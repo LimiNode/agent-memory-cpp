@@ -252,6 +252,24 @@ public:
 };
 ```
 
+`ContentHash` stored in `KnowledgeUnitEnvelope` is computed with a versioned,
+kind-specific `ContentHashRecipeVersion`. Recipe input is canonical bytes, not
+the current physical file path or importer-local location:
+
+- `Chunk`: `ResourceBody` digest, chunk span/offset identity and normalized
+  chunk text digest. If raw body storage is external, the stable body digest
+  participates in identity; transient source path does not.
+- `QAPair`: normalized question/answer payload fields and declared identity
+  metadata.
+- `Fact`: canonical subject/predicate/object/time identity.
+- `ConversationEpisode`, `CompiledArticle`, `Note`: canonical payload text or a
+  stable `ResourceBody` digest for large bodies.
+- `Event`, `Entity`, `Relation`, `Summary`, `Custom`: canonical primary text
+  plus declared identity metadata/payload bytes.
+
+Changing recipe version without a migration preserving the old stored hash
+creates a new `KnowledgeUnitId` plus supersede/merge lineage.
+
 ### 4.1. Allocation и инварианты
 
 - `KnowledgeUnitId::allocate()` выдаёт монотонно возрастающий `uint64_t` per backend (per-MDBX-env atomic counter). Не зависит от content.
@@ -300,7 +318,10 @@ writer.commit();
 
 1. Прочитать все envelope из старой БД.
 2. Для каждого envelope:
-   - Извлечь `(kind, scope, content_hash)` из старого ID.
+   - Прочитать `(kind, scope, content_hash, content_hash_recipe_version)` из
+     envelope. Для legacy DB без persisted hash выполнить одноразовый recompute
+     по legacy recipe и записать hash в envelope перед включением immutable-key
+     enforcement.
    - Аллоцировать новый monotonic `KnowledgeUnitId`.
    - Перезаписать envelope с новым id в `knowledge_units`.
    - Записать `KnowledgeUnitKey → KnowledgeUnitId` в `content_key_to_unit_id`.
@@ -862,7 +883,10 @@ Migration strategy:
 
 Детальная процедура описана в секции 4.3 (DBI mapping → migration). Краткое summary:
 
-1. Построить lookup-таблицу `old_id → new_id` через чтение всех envelope и вычисление `KnowledgeUnitKey` (kind, scope, content_hash из старого ID).
+1. Построить lookup-таблицу `old_id → new_id` через чтение всех envelope и
+   persisted `KnowledgeUnitKey` (`kind`, `scope`, stored `content_hash`,
+   `content_hash_recipe_version`). Для legacy DB без persisted hash сначала
+   выполнить одноразовый recompute/backfill по legacy recipe.
 2. Аллоцировать новый monotonic `KnowledgeUnitId` для каждого уникального key.
 3. Перезаписать envelope с новым id в `knowledge_units`.
 4. Записать `KnowledgeUnitKey → KnowledgeUnitId` в `content_key_to_unit_id`.

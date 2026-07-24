@@ -85,9 +85,9 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `MdbxKnowledgeUnitStore` (planned) — реализует `IKnowledgeUnitStore` через `knowledge_units` envelope table + `unit_components` + `unit_projections` + per-kind payload DBIs
 - `MdbxQAKnowledgeBase` (planned) — реализует `IQAKnowledgeBase` через canonical `qa_payloads` + projection/inverted indexes
 - `MdbxFactStore` (planned) — реализует `IFactStore` через canonical `fact_payloads` + projection/inverted indexes; decay считается downstream
-- `MdbxTemporalIndex` (planned) — реализует `ITemporalIndex` через `RangeIndexTable<sortable_uint64_timestamp, EventPayload>`
+- `MdbxTemporalIndex` (planned) — реализует `ITemporalIndex` через `RangeIndexTable<CompositeKey<ScopeId, Timestamp, EventId>, EventPayload>`
 - `MdbxGraphStore` (planned) — реализует `IGraphStore` через `graph_edges_by_src` / `graph_edges_by_dst`; `EdgeKind` и traversal policy downstream
-- `MdbxResourceMetadataFilters` (planned) — `ReverseIndexTable<(metadata_key, metadata_value), ResourceId>` для pre-filter
+- `MdbxResourceMetadataFilters` (planned) — `ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>` для canonical unit pre-filter; any `ResourceId` pre-filter remains adapter-local
 - `MdbxResourceBodyStore` (planned) — optional primary raw body storage через `KeyValueTable<ResourceId, bytes>` или application-owned chunked layout; не через reverse indexes
 - Существующие: `MdbxDocumentStorage`, `MdbxResourceManifestStorage`
 

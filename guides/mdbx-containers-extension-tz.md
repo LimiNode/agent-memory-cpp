@@ -376,14 +376,20 @@ duplicate values без повторов или пропусков. `limit > 0` 
 
 MDBX flags: `MDBX_DUPSORT`. Thread-safety: per-thread transaction. Backward compat: новый класс.
 
-Use cases: `token -> chunk_id` (lexical), `(token, field) -> posting` (BM25F), `(metadata_key, metadata_value) -> ResourceId` (pre-filter), `(src_node, edge_kind) -> EdgePayload` (graph outgoing), `(dst_node) -> src_node` (graph incoming reverse), `timestamp -> EventPayload` (temporal).
+Use cases: `token -> chunk_id` and `inverted_token_to_unit` candidate lookup,
+`(metadata_key, metadata_value) -> UnitId` pre-filter, graph outgoing/incoming
+reverse orientations. Canonical `field_to_postings` is a `KeyValueTable` by
+full posting identity (§5.5), and temporal indexes use `RangeIndexTable`.
 
 Scope-aware варианты (ADR-012 в `guides/memory-stacks-roadmap.md`): `InvertedKey` расширяется префиксом `ScopeId`, чтобы secondary indexes были multi-tenant. Примеры из DBI-схемы roadmap-а:
 
 - `(scope_id, speaker_id) -> UnitId` — `speaker_to_units` (capability `SpeakerAttribution`).
 - `(scope_id, session_id) -> UnitId` — `session_to_units` (capability `SpeakerAttribution`).
 - `(scope_id, metadata_key, metadata_value) -> UnitId` — `metadata_filters` (всегда открыт, lightweight pre-filter).
-- `(scope_id, projection_kind, field_id, token_id, unit_id) -> PostingStats` — `field_to_postings` (BM25F по projections).
+- `(scope_id, token_id, projection_kind, field_id) -> UnitId` — `inverted_token_to_unit` candidate index.
+
+`field_to_postings` is intentionally absent from `ReverseIndexTable` examples:
+it is a KV table keyed by full posting identity in §5.5.
 
 Реализация: `InvertedKey = CompositeKey<ScopeId, ...>` либо `ScopeId`-prefixed key struct с `to_bytes()`/`from_bytes()`. Класс `ReverseIndexTable` остаётся generic; scope-awareness обеспечивается композицией ключей на уровне вызывающего кода.
 
@@ -583,9 +589,13 @@ void Connection::multi_write(Op&& op);  // RAII: commit/rollback
    `content_key_to_unit_id`.
 2. `KnowledgeUnitKey` immutable for an existing `UnitId`. Если caller передаёт
    existing `UnitId`, storage сначала читает старый envelope из
-   `knowledge_units` и вычисляет `old_key`; `old_key != new_key` rejected
-   before writes. Смена `kind`, `scope_id` или content hash требует нового
-   `UnitId` плюс explicit supersede/merge relationship downstream.
+   `knowledge_units` и строит `old_key` from
+   `(old_envelope.kind, old_envelope.scope_id, old_envelope.content_hash)`;
+   `old_key != new_key` rejected before writes. It also compares
+   `content_hash_recipe_version`: recipe changes require a migration preserving
+   the old stored hash, or a new `UnitId`. No old payload read is required for
+   the immutability check. Смена `kind`, `scope_id` или content hash требует
+   нового `UnitId` плюс explicit supersede/merge relationship downstream.
 3. Если key уже указывает на тот же `UnitId`, операция становится idempotent
    update для mutable fields этого unit. Если key указывает на другой `UnitId`,
    write конфликтует: default policy возвращает duplicate/conflict result
@@ -612,7 +622,8 @@ void Connection::multi_write(Op&& op);  // RAII: commit/rollback
 10. Embedding metadata + vectors (`embedding_meta`, `embedding_vectors`) only
     when the selected profile marks dense writes as synchronous; heavy
     recompute/HNSW/backfill jobs may be delegated to AsyncIndexer with a durable
-    revision-guarded `IndexUpdateJob`.
+    revision-guarded `IndexUpdateJob(unit_id, unit_revision, projection_kind,
+    index_kind)`.
 11. Все scope-aware secondary/range indexes, относящиеся к данной write:
     `inverted_token_to_unit` (candidate index по каждой projection),
     `field_to_postings` (KV posting stats by full posting identity),
@@ -632,9 +643,24 @@ metadata filters and active lexical candidate/stat indexes for the same
 revision. Async eventual mode is allowed only for indexes explicitly marked
 `eventually_consistent=true` by their owning roadmap (for example heavy dense
 embedding recompute, HNSW rebuild, bulk lexical backfill). In async mode
-`write_unit` commits a durable `IndexUpdateJob(unit_id, revision,
-projection_kind)`; workers must be idempotent, skip stale revisions, replay
-after crash, and tolerate delete/update before older jobs run.
+`write_unit` commits a durable `IndexUpdateJob(unit_id, unit_revision,
+projection_kind, index_kind)`; workers must be idempotent, skip stale revisions,
+replay after crash, and tolerate delete/update before older jobs run.
+
+`ContentHash` recipe is versioned and kind-specific. The recipe input MUST be
+canonical bytes:
+
+- `QAPair`: normalized question/answer payload fields and declared identity
+  metadata.
+- `Fact`: canonical subject/predicate/object/time identity.
+- `ConversationEpisode` / `CompiledArticle` / `Note`: canonical payload text
+  or a stable `ResourceBody` digest if the body is stored externally.
+- `Chunk`: `ResourceBody` digest plus span/offset identity and normalized chunk
+  text digest; transient file path or importer-local location is not identity.
+
+Envelope previews, `SourceRefSummary` display excerpts, usage stats,
+projections, embeddings and runtime counters are excluded unless a future recipe
+version explicitly lists them.
 
 При исключении в любом шаге `MultiTableWriter` откатывает все synchronous
 canonical groups и выбранные synchronous profile-delta writes; частично
@@ -850,7 +876,7 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 | `fact_payloads` | по capability `TemporalFact` | `agent_memory.fact.v1` | TBD | Per-kind payload для `Fact` units |
 | `conversation_episode_payloads` | по capability `ConversationMemory` | `agent_memory.episode.v1` | TBD | Per-kind payload для `ConversationEpisode` units |
 | `compiled_article_payloads` | по capability `CompiledArticles` | `agent_memory.compiled_article.v1` | TBD | Per-kind payload для `CompiledArticle` units |
-| `chunk_payloads` | по capability `ChunkedContent` | `agent_memory.chunk.v1` | TBD | Per-kind payload для `Chunk` units |
+| `chunk_payloads` | да, для profiles accepting `KnowledgeUnitKind::Chunk` | `agent_memory.chunk.v1` | TBD | Per-kind payload для `Chunk` units |
 | `source_refs` | по capability `FullSourceRefs` (M1) | `agent_memory.source_ref.v1` | TBD | Full `SourceRef` vector by `UnitId`; inline summaries remain in envelope |
 | `unit_projections` | да (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections |
 | `embedding_meta` | по capability `DenseVectors` | `agent_memory.embedding_meta.v1` | TBD | Версионированная мета (model_id, version, dim, encoder_id) |
@@ -889,9 +915,8 @@ follows:
 | `TemporalFact` | `enable_fact_payload` / `MemoryCapability::TemporalValidity` plus fact payload selector |
 | `ConversationMemory` | `enable_conversation_episode` / `MemoryCapability::ConversationMemory` |
 | `CompiledArticles` | `enable_compiled_article` / `MemoryCapability::CompiledArticles` |
-| `ChunkedContent` | `enable_chunk_payloads` / `MemoryCapability::ChunkedContent`; default true for `Chunk` units |
 | `FullSourceRefs` | `enable_full_source_refs` / `MemoryCapability::FullSourceRefs` |
-| `ResponseCache` | `enable_response_cache` / `MemoryCapability::ResponseCache`; +1 profile delta in §5.5.1 |
+| `ResponseCache` | `response_cache_storage != Disabled` / `MemoryCapability::ResponseCache`; DBI opens only when `response_cache_storage == Mdbx` |
 | `PromptPrefixCache` | `enable_prompt_cache` / `MemoryCapability::PromptCache`; provider-side cache, no canonical DBI by default |
 
 Замечания:
@@ -941,7 +966,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; operational handoff, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
-| Opt-in response cache delta | 0 by default, +1 if `enable_response_cache=true` persists locally | +1 | KV supported | `response_cache` keyed by `ResponseCacheStorageKey = (scope, provider, model, request_hash, suffix, schema_version)`; runtime-services-roadmap.md owns policy and safety defaults. |
+| Opt-in response cache delta | 0 by default, +1 if `response_cache_storage == Mdbx` | +1 | KV supported | `response_cache` keyed by `ResponseCacheStorageKey = (scope, provider, model, request_hash, suffix, schema_version)`; runtime-services-roadmap.md owns policy and safety defaults. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, +5 opt-in | +5 | opt-in only | Not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
 | Planned expanded peak under current assumptions | profile-selected | 56 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + response cache + sync + reserve | within ceiling | Leaves at least 8 DBI slots of headroom under `max_dbs = 64`. |
@@ -1060,7 +1085,7 @@ budget автоматически; они считаются только при
 - **Include guards:** новые файлы используют `MDBX_CONTAINERS_HEADER_<PATH>_<FILE>_HPP_INCLUDED`.
 - **Doxygen:** все новые публичные API документированы на английском (см. `external/mdbx-containers/guides/coding-style.md`).
 - **Application schema versioning:** версии payload-ов остаются на стороне `agent-memory-cpp` через `schema_info` (`envelope_schema_version`, `component_schema_versions[]`, `profile_signature`, `migration_phase`). `mdbx-containers` не мигрирует и не интерпретирует application payload schema.
-- **Canonical `profile_signature`:** детерминированный hash от application-level profile manifest-а: `envelope_schema_version`, отсортированный список `component_schema_versions`, DBI manifest (`dbi_name`, table type, MDBX flags, key/value layout ids), index layout versions, capability set и `migration_phase`. Термин `schema checksum` в этом ТЗ не используется как отдельное поле; если он появится позже, он должен быть явно mapped к `profile_signature` или заменён им.
+- **Canonical `profile_signature`:** детерминированный hash от application-level profile manifest-а: `envelope_schema_version`, отсортированный список `component_schema_versions`, DBI manifest (`dbi_name`, table type, MDBX flags, key/value layout ids), index layout versions, capability set, profile selectors/policies (including `response_cache_storage`) и `migration_phase`. Термин `schema checksum` в этом ТЗ не используется как отдельное поле; если он появится позже, он должен быть явно mapped к `profile_signature` или заменён им.
 - **Sync schema compatibility (opt-in):** если §11.7 когда-либо разрешит включить upstream sync subsystem из §1.5, `agent-memory-cpp` предоставляет application-level compatibility guard до запуска upstream sync / до передачи user DBI batches в `SyncEngine`. `mdbx-containers` не читает `schema_info`, не знает `profile_signature` и не выполняет application schema validation.
 
 Минимальный контракт для будущего sync adoption:
@@ -1340,6 +1365,12 @@ LeaseUntilKey = (lease_until_ms, job_id)
 Delayed jobs are promoted first and ready jobs are claimed by priority/FIFO.
 The full `JobRecord`, lifecycle transitions, leases, cancellation and retry
 policy are defined downstream in `guides/runtime-services-roadmap.md` §4.6.
+Default topology is one shared persistent runtime queue per `MemoryStack`.
+`JobRecord.kind` distinguishes `Compaction`, `AsyncIndex`, maintenance and
+future worker payloads; `IndexUpdateJob` is only one opaque job payload kind.
+The §5.5.1 expanded peak therefore counts one +5 runtime-queue delta. Opening a
+second physical queue is a separate profile delta (+5 DBIs) and must update the
+budget table before implementation.
 
 Atomic claim pattern:
 

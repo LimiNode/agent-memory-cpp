@@ -10,7 +10,7 @@
 
 Этот документ конкретизирует retrieval и evaluation слой поверх архитектурного манифеста `memory-stacks-roadmap.md`. Описывает:
 
-- `KnowledgeUnitEnvelope` — lean lookup-critical contract (13 полей).
+- `KnowledgeUnitEnvelope` — lean lookup-critical contract with persisted identity hash.
 - Components — operational + per-kind payload компоненты.
 - `SearchProjection` — retrieval-specific text views.
 - Domain stores — capability-aware I/O интерфейсы.
@@ -51,7 +51,9 @@ struct KnowledgeUnitEnvelope {
     int64_t created_at_ms;
     int64_t updated_at_ms;
     int64_t observed_at_ms;         // когда source наблюдался
-    uint64_t revision;              // монотонный per UnitId, инкремент при content-bearing changes (см. §3.5)
+    uint64_t revision;              // монотонный per UnitId, increments on mutable retrieval-view changes (§3.5)
+    ContentHash content_hash;        // persisted identity hash used by KnowledgeUnitKey
+    uint16_t content_hash_recipe_version;
     double priority_weight;         // [0.0, 1.0], ranking boost
     std::vector<KnowledgeUnitId> supersedes;     // lineage вперёд (vector: может быть несколько predecessors)
     std::optional<KnowledgeUnitId> superseded_by; // lineage назад (single, immediate successor)
@@ -99,16 +101,31 @@ std::string generate_primary_text(KnowledgeUnitKind kind, const ComponentView& c
 
 ### 3.5. Revision semantics (canonical)
 
-`revision++` on content-bearing changes:
+`KnowledgeUnitKey = (kind, scope_id, content_hash)` is immutable for a given
+`KnowledgeUnitId`. `content_hash` and `content_hash_recipe_version` are stored
+in the envelope so storage can verify identity with one primary read. Changes
+to hash material create a new `UnitId` plus supersede/merge lineage; they do not
+mutate the old unit in place.
+
+`revision++` on mutable content-view changes that do not alter
+`KnowledgeUnitKey`:
 
 - `primary_text` changed
 - `display_text` changed (если retrieval-relevant)
-- `sources` changed
-- `payload` changed (QAPayload, FactPayload, и т.д.)
+- non-identity source summary changes
 - `lifecycle_state` changed (только durable transitions):
   - `Active -> Superseded`, `Active -> Deprecated`, `Active -> Erased`
   - `Superseded -> Deprecated`, `Superseded -> Erased`
 - `projections` regeneration
+
+Hash material changes require a new `UnitId`:
+
+- `kind` changed
+- `scope_id` changed
+- canonical payload/body identity changed (QAPayload/FactPayload/Chunk body
+  digest/etc.)
+- `content_hash_recipe_version` changed without a migration preserving the old
+  stored hash
 
 `revision` НЕ инкрементится на:
 

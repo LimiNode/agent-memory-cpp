@@ -213,9 +213,8 @@ enum class MemoryCapability : uint64_t {
     EmbeddingMigration = 1ull << 10,
     CompiledArticles   = 1ull << 11,
     ConversationMemory = 1ull << 12,
-    ChunkedContent     = 1ull << 13,
-    FullSourceRefs     = 1ull << 14,
-    ResponseCache      = 1ull << 15,
+    FullSourceRefs     = 1ull << 13,
+    ResponseCache      = 1ull << 14,
 };
 
 using CapabilitySet = std::underlying_type_t<MemoryCapability>;
@@ -272,6 +271,7 @@ struct SpeakerScopePolicy {
 
 enum class RetrievalMode { Associative, Targeted, Hybrid, Disabled };
 enum class FusionStrategy { RRF, WeightedMax, Learned, Planner };
+enum class ResponseCacheStorageMode : uint8_t { Disabled, MemoryOnly, Mdbx };
 
 struct HybridRetrievalConfig {
     FusionStrategy fusion = FusionStrategy::RRF;
@@ -377,13 +377,13 @@ struct MemoryProfileSpec {
     bool enable_fact_payload = false;
     bool enable_conversation_episode = false;
     bool enable_compiled_article = false;
-    bool enable_chunk_payloads = true;
     bool enable_full_source_refs = false;
     bool enable_embedding_meta = false;
     bool enable_compaction = false;
     bool enable_async_indexer = false;
     bool enable_prompt_cache = false;
-    bool enable_response_cache = false;
+    ResponseCacheStorageMode response_cache_storage =
+        ResponseCacheStorageMode::Disabled;
     bool enable_context_planner = false;
     bool enable_encrypted_storage = false;
 
@@ -973,11 +973,12 @@ authoritative DBI budget checkpoint — в §5.5.1 того же TZ.
 ### 12.1. Capability-to-Storage Mapping
 
 `MemoryProfileSpec` выбирает logical capabilities: QAPairs, TemporalFact,
-ConversationMemory, CompiledArticles, ChunkedContent, FullSourceRefs,
+ConversationMemory, CompiledArticles, FullSourceRefs,
 DenseVectors, LexicalBm25F, GraphRelations, TemporalValidity,
 SpeakerAttribution, UsageStats, Compaction, PromptPrefixCache and opt-in
-ResponseCache. Concrete DBI names and table types for these capabilities are
-enumerated in TZ §5.5.
+ResponseCache. `ChunkPayload` storage is mandatory for profiles that accept
+`KnowledgeUnitKind::Chunk`; it is not a separate capability selector. Concrete
+DBI names and table types for these capabilities are enumerated in TZ §5.5.
 
 ### 12.2. Runtime and Mode-Specific Deltas
 
@@ -999,7 +1000,7 @@ profile-delta row to TZ §5.5.1.
 
 Включено:
 
-- KnowledgeUnitEnvelope (lean hot-path envelope, ~16 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, lineage fields, priority_weight).
+- KnowledgeUnitEnvelope (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
 - primary_text + display_text в envelope; sources — inline `vector<SourceRefSummary>` (max ~3 на unit, <=256 байт excerpt preview каждый).
 - KnowledgeUnitId монотонный, opaque (`uint64_t`). `KnowledgeUnitKey = (kind, ScopeId, ContentHash)` и content-key secondary index (`content_key_to_unit_id`) — для dedupe/supersedence готов с M0.
 - SearchProjection::Original создаётся с самого начала (минимальный: unit_id → primary_text). BM25F работает через projection model с M0 (не flat fallback).
@@ -1152,7 +1153,7 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 1: Envelope + базовые DBI
 
-- Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~16 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, lineage fields, priority_weight).
+- Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
 - MDBX DBI: default-open physical set from
   `mdbx-containers-extension-tz.md` §5.5, including identity DBI
   `knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind` and
@@ -1163,7 +1164,16 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 1.5: Revision semantics + stale-filter
 
-- Определить revision++ правила (на content-bearing changes: primary_text, display_text (если retrieval-relevant), sources, payload, projections regeneration, lifecycle_state (только durable transitions)). НЕ инкрементить на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown. Explicit list durable lifecycle transitions, инкрементящих revision: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated.
+- Определить revision++ правила: инкремент только на mutable retrieval-view
+  changes, которые сохраняют stored `content_hash` (`primary_text`,
+  `display_text` если retrieval-relevant, non-identity source summaries,
+  projections regeneration, lifecycle_state только durable transitions).
+  Identity hash material changes (`kind`, `scope_id`, canonical payload/body
+  identity, hash recipe without preserving migration) create a new `UnitId` plus
+  supersede/merge lineage. НЕ инкрементить на UsageStats / Decay /
+  priority_weight / EmbeddingMeta / soft suppression / cooldown. Explicit list
+  durable lifecycle transitions, инкрементящих revision: Active→Superseded,
+  Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated.
 - `LexicalPosting` хранит `unit_revision` (envelope.revision на момент постинга).
 - `EmbeddingMetaComponent` хранит `unit_revision_at_compute`.
 - Retrieval-time: skip posting if `posting.unit_revision < envelope.revision`; recompute/skip embedding if `embedding.unit_revision_at_compute < envelope.revision`.
@@ -1459,8 +1469,10 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
 - **Profile** — см. MemoryProfileSpec.
 - **Stack** — см. MemoryStack.
 - **Maturity Level** — M0/M1/M2, определяет ship-it критерии и scope функциональности.
-- **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на content-bearing changes: primary_text, display_text (если retrieval-relevant), sources, payload, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated). НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
+- **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на mutable retrieval-view changes that preserve stored `content_hash`: `primary_text`, `display_text` если retrieval-relevant, non-identity source summaries, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated). Смена identity hash material создаёт новый `UnitId` plus supersede/merge lineage. НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
 - **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и per-record metadata (`LexicalPosting.resource_generation`, `EmbeddingMetaComponent.unit_revision_at_compute`). Envelope-level versioning — это `revision`, не `generation`.
 - **Stale filter** — per-record check: `LexicalPosting.unit_revision < envelope.revision` → skip; `EmbeddingMetaComponent.unit_revision_at_compute < envelope.revision` → recompute или skip. M0: inline в retrieval pipeline; M2: `unit_revision_index` DBI для batch reindex (см. §17.11).
-- **Profile signature** — hash от MemoryProfileSpec, используется для drift detection.
+- **Profile signature** — hash от full `MemoryProfileSpec`, including
+  capabilities, selectors and storage modes such as `response_cache_storage`;
+  используется для drift detection.
 - **ADR** — Architecture Decision Record, раздел в этом документе с фиксированным решением.

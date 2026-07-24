@@ -213,7 +213,12 @@ ResponseCacheStorageKey =
 string suffix are distinct. If the hash recipe or canonical request encoding
 changes, `schema_version` changes and old entries are ignored or migrated.
 
-При `MemoryStack::open()` — загрузить из DBI. На eviction (LRU in-memory) — удалить из DBI. Переживает restart.
+`response_cache_storage` controls local response-cache persistence:
+
+- `Disabled`: no lookup/store calls and no DBI.
+- `MemoryOnly`: per-process cache, no DBI, lost on restart.
+- `Mdbx`: load from `response_cache` on `MemoryStack::open()`; eviction deletes
+  from DBI; survives restart.
 
 `IPromptPrefixCache` **НЕ персистится**: ключи детерминированно вычисляются через хэш-функцию, persistence не нужна.
 
@@ -222,12 +227,14 @@ changes, `schema_version` changes and old entries are ignored or migrated.
 ### 3.7. Default Behavior
 
 - `IPromptPrefixCache`: opt-in через `enable_prompt_cache=true`. Default **ON** для профилей с hybrid retrieval (BasicRag, AgentLTM, QAKnowledgeBase) — provider-side кэш даёт прямую экономию токенов без consistency рисков.
-- `IResponseCache`: opt-in через `enable_response_cache=true`. Default **OFF везде** — для безопасности (см. §3.1 rationale).
+- `IResponseCache`: opt-in через `response_cache_storage != Disabled`. Default
+  **OFF везде** — для безопасности (см. §3.1 rationale).
 
 ### 3.8. Validation Rules
 
 - `IPromptPrefixCache.compute_cache_key()` вызывается при каждом LLM call (cheap, O(1) lookup).
-- `IResponseCache.lookup()` вызывается ТОЛЬКО если spec.enable_response_cache=true (default не вызывается).
+- `IResponseCache.lookup()` вызывается ТОЛЬКО если
+  `spec.response_cache_storage != Disabled` (default не вызывается).
 - scope-aware keys: разные `scope_id` имеют разные cache entries.
 - TTL для `IResponseCache`: default 1 час, configurable per provider.
 
@@ -332,8 +339,9 @@ Default M0/M1 consistency mode:
 Async eventual mode is allowed only as explicit profile policy for indexes that
 declare `eventually_consistent=true` (for example heavy embedding recompute,
 HNSW graph rebuild, bulk lexical backfill). In that mode write_unit must enqueue
-a durable `IndexUpdateJob(unit_id, revision, projection_kind)` and readers must
-respect revision/generation guards documented by the owning roadmap.
+a durable `IndexUpdateJob(unit_id, unit_revision, projection_kind, index_kind)`
+and readers must respect revision/generation guards documented by the owning
+roadmap.
 
 ### 4.2. Interface
 
@@ -342,8 +350,8 @@ class IAsyncIndexer {
 public:
     virtual ~IAsyncIndexer() = default;
 
-    // Enqueue indexing job
-    virtual void enqueue(IndexJob job) = 0;
+    // Atomically enqueue an async index update in the caller's write transaction.
+    virtual JobId enqueue(IndexUpdateJob job, Transaction& txn) = 0;
 
     // Force flush (для admin/test)
     virtual void flush() = 0;
@@ -352,12 +360,20 @@ public:
     virtual AsyncIndexerStats stats() const = 0;
 };
 
-struct IndexJob {
+enum class IndexKind : uint8_t {
+    LexicalBackfill,
+    EmbeddingRecompute,
+    HnswRebuild,
+    Maintenance,
+};
+
+struct IndexUpdateJob {
     enum class Op { Upsert, Erase };
     Op op;
     KnowledgeUnitId unit_id;
-    std::vector<SearchProjection> projections;
-    std::vector<EmbeddingWriteRequest> embeddings;
+    uint64_t unit_revision;
+    ProjectionKind projection_kind;
+    IndexKind index_kind;
 };
 
 struct AsyncIndexerStats {
@@ -377,37 +393,51 @@ class BackgroundIndexer : public IAsyncIndexer {
 public:
     explicit BackgroundIndexer(
         MemoryStack& stack,
+        TaskQueue& queue,
         size_t batch_size = 1000,
         size_t max_bytes = 50 * 1024 * 1024);
 
-    void enqueue(IndexJob job) override;
+    JobId enqueue(IndexUpdateJob job, Transaction& txn) override;
     void flush() override;
     AsyncIndexerStats stats() const override;
 
 private:
     void worker_loop();
-    void process_batch(std::vector<IndexJob>& batch);
+    void process_batch(std::vector<ClaimedJob>& batch);
 
     MemoryStack& m_stack;
+    TaskQueue& m_queue;
     size_t m_batch_size;
     size_t m_max_bytes;
 
-    std::queue<IndexJob> m_queue;
-    std::mutex m_mutex;
-    std::condition_variable m_cv;
+    std::vector<ClaimedJob> m_claimed_batch; // volatile only after durable claim
     std::thread m_worker;
     std::atomic<bool> m_running{true};
     AsyncIndexerStats m_stats;
 };
 ```
 
-Worker thread батчит до batch_size или max_bytes, потом flushes через MultiTableWriter. На stop — flushes остаток.
+Worker thread claims durable `AsyncIndex` jobs from the shared `TaskQueue` (§4.6)
+and may batch claimed records up to `batch_size` or `max_bytes` before writing
+derived indexes through `MultiTableWriter`. The in-memory batch is volatile only
+after a durable claim; there is no process-only `std::queue` as the source of
+truth.
 
-Jobs are idempotent and guarded by `(unit_id, revision)`: if the unit has been
-updated or erased before the job runs, the worker skips stale work. Crash
-recovery replays durable jobs; delete/update before an older job is processed is
-safe because the worker compares the stored revision before writing derived
-indexes.
+Jobs are idempotent and guarded by `(unit_id, unit_revision, projection_kind)`.
+The payload never embeds stale `SearchProjection` or embedding vectors. Before
+writing derived indexes, the worker loads the authoritative unit envelope,
+selected projection and payload/body state from storage:
+
+- if the unit is missing or erased, the worker applies the erase path or marks
+  the job `Done` when no derived rows remain;
+- if `envelope.revision != job.unit_revision`, the job is stale and is marked
+  `Done` without writes;
+- otherwise the worker regenerates the requested `IndexKind` from authoritative
+  data and commits derived index updates atomically.
+
+Crash recovery relies on queue leases: crash after enqueue leaves `Pending`,
+crash after claim returns the job to ready after lease expiry, and stale
+revision/delete races are handled by the checks above.
 
 ### 4.4. Batch triggers
 
@@ -418,10 +448,13 @@ indexes.
 ### 4.5. Failure handling
 
 При ошибке в batch:
-- Save checkpoint (последний успешный job).
-- Re-enqueue failed jobs.
-- Increment stats.jobs_failed.
-- Если retry > 3 — log error и drop.
+- Successful claimed jobs call `complete(job_id)` in the same transaction that
+  commits derived index writes.
+- Failed jobs call `fail_retry(job_id, backoff, last_error)` while attempts
+  remain; the queue updates status, lease and ready/scheduled indexes.
+- Exhausted retries call `fail_dead(job_id, last_error)` and remain inspectable
+  through `jobs_by_status = Dead`.
+- No async index job is silently dropped.
 
 ### 4.6. Persistent Runtime Queue
 
@@ -449,6 +482,12 @@ jobs_by_lease:
 jobs_by_status:
   ReverseIndexTable<JobStatus, JobId>
 ```
+
+Default topology is one shared persistent queue per `MemoryStack`. `JobRecord.kind`
+distinguishes `Compaction`, `AsyncIndex`, maintenance and future workers; the DBI
+budget in `mdbx-containers-extension-tz.md` §5.5.1 counts this single +5 queue
+delta once. A separate physical queue for AsyncIndexer would require another +5
+profile delta and an updated budget checkpoint.
 
 `JobRecord` хранит как минимум `job_id`, `kind`, codec/versioned payload bytes,
 `status`, `priority`, `created_at_ms`,
@@ -729,7 +768,7 @@ returning a shallow executable plan.
 | Service | Capability | Default |
 |---|---|---|
 | PromptPrefixCache | `enable_prompt_cache = true` | opt-in (default ON для hybrid retrieval профилей) |
-| ResponseCache | `enable_response_cache = true` | opt-in, default **OFF** (для безопасности) |
+| ResponseCache | `response_cache_storage != Disabled` | opt-in, default **OFF** (для безопасности) |
 | AsyncIndexer | `enable_async_indexer = true` or required by an async-only index policy | optional; rebuild/backfill/heavy async jobs |
 | WriteGate | (always on if WritePolicy set) | conditional |
 | CompactionWorker | `enable_compaction = true` | opt-in |
@@ -737,7 +776,8 @@ returning a shallow executable plan.
 
 Уточнение по defaults:
 - `PromptPrefixCache` default **ON** для профилей с hybrid retrieval (BasicRag, AgentLTM, QAKnowledgeBase) — provider-side кэш даёт прямую экономию токенов без consistency рисков.
-- `ResponseCache` default **OFF везде** — opt-in через явное `enable_response_cache=true` в spec (см. §3.1 rationale).
+- `ResponseCache` default **OFF везде** — opt-in через явное
+  `response_cache_storage != Disabled` в spec (см. §3.1 rationale).
 
 ### 6.2. Инициализация
 
@@ -745,7 +785,7 @@ returning a shallow executable plan.
 1. Создаются DBI по capabilities.
 2. Инициализируются runtime-сервисы:
    - `IPromptPrefixCache` — если `enable_prompt_cache=true` (default ON для hybrid retrieval профилей).
-   - `IResponseCache` — только если `enable_response_cache=true` (default OFF).
+   - `IResponseCache` — только если `response_cache_storage != Disabled` (default OFF).
    - `AsyncIndexer` — если `enable_async_indexer=true` или выбран profile с
      async-only indexing policy.
    - `WriteGate` — если `spec.write_policy` задан.
@@ -759,9 +799,10 @@ returning a shallow executable plan.
 1. Stop accepting new requests.
 2. AsyncIndexer.flush() — finish pending batches.
 3. CompactionWorker.stop() — finish current job, then exit.
-4. `IResponseCache` — опционально persist to DBI (`response_cache`), только
-   если выбран `enable_response_cache=true`; physical storage costs +1 opt-in
-   profile delta in `mdbx-containers-extension-tz.md` §5.5.1.
+4. `IResponseCache` — persist to DBI (`response_cache`) only when
+   `response_cache_storage == Mdbx`; `MemoryOnly` keeps no DBI state and
+   `Disabled` uses the no-op stub. Physical storage costs +1 opt-in profile
+   delta in `mdbx-containers-extension-tz.md` §5.5.1 only for `Mdbx`.
 5. `IPromptPrefixCache` — persistence не требуется (ключи детерминированно вычисляются).
 6. Освобождение handles.
 
@@ -822,7 +863,8 @@ IPromptPrefixCache.metrics().cache_read_input_tokens += response.usage.cache_rea
 
 **Provider-side vs local cache split:**
 - `IPromptPrefixCache.compute_cache_key()` вызывается при каждом LLM call (cheap, no-op если ключ не меняется).
-- `IResponseCache.lookup()` вызывается **ТОЛЬКО** если spec.enable_response_cache=true. По умолчанию — не вызывается.
+- `IResponseCache.lookup()` вызывается **ТОЛЬКО** если
+  `spec.response_cache_storage != Disabled`. По умолчанию — не вызывается.
 - Это даёт чёткое разделение provider-side (always) и local response (opt-in).
 
 ### 7.3. Background path
@@ -884,14 +926,14 @@ Per memory-stacks-roadmap.md секция 16, конкретизация:
 | 11.2 | AsyncIndexer (background thread + batch processing) |
 | 12.5 | `IPromptPrefixCache` (in-memory LRU key dedup) + `AnthropicCacheControlAdapter` |
 | 12.6 | `IResponseCache` stub (default OFF, no-op implementation для safe by default) |
-| M2.x | `IResponseCache` full implementation + MDBX persistence (`response_cache` DBI, +1 opt-in profile delta in `mdbx-containers-extension-tz.md` §5.5.1) |
+| M2.x | `IResponseCache` full implementation with `MemoryOnly` and `Mdbx` modes (`response_cache` DBI only for `Mdbx`, +1 opt-in profile delta in `mdbx-containers-extension-tz.md` §5.5.1) |
 | M2.x | `IMemoryAwareContextPlanner` + urgency/recall/risk-aware context policy |
 
 ## 10. Open Issues
 
 - PromptCache invalidation при обновлении knowledge (когда unit перезаписан, cache entries могут быть stale). Решение: scope-based invalidation при bulk update.
 - **ResponseCache correctness при tool/function calls: если LLM вызывает tools, response зависит не только от prompt, но и от tool results. Решение: хэшировать полный conversation context (prompt + tool definitions + tool call history + tool results), не только prompt. Альтернатива: opt-out response cache для turns с tool calls.**
-- AsyncIndexer backpressure: если consumer (retrieval) медленнее producer (writes), queue растёт. Решение: bounded queue + drop policy.
+- AsyncIndexer backpressure: если worker медленнее producer (writes), durable queue растёт. Решение: bounded durable depth, producer throttle/reject for async-only indexes, metrics/alerts and `fail_dead` for exhausted retries; no silent drop.
 - WriteGate flush trigger: на скольких units считать "OnSizeThreshold" — bytes или count?
 - Multi-stack coordination: если несколько MemoryStack разделяют scope, runtime services не координируются. M2+.
 - ResponseCache staleness при live data: cache TTL 1 час может вернуть устать данные для time-sensitive запросов. Опции: (a) короткий TTL, (b) invalidation при записи в KnowledgeUnit, (c) включение timestamp в key (но это убивает hit rate).
