@@ -616,6 +616,35 @@ derived write and `complete(token)` are rejected. Long-running batches must
 heartbeat with `renew_lease(token, new_deadline)` before the previous lease
 expires.
 
+#### 4.6.1 Typed transition pattern
+
+`TaskQueue` should avoid one large open-coded `switch(JobStatus)` for owner
+sensitive transitions. Model each durable state as a typed transition surface
+that consumes the current persisted `JobRecord` snapshot plus any required
+`ClaimToken`, validates the allowed transition, and returns:
+
+- the next `JobRecord`;
+- index delta for `jobs_ready`, `jobs_scheduled`, `jobs_by_lease` and
+  `jobs_by_status`;
+- optional handler payload delta such as compaction handoff update.
+
+This is a local C++ pattern, not a dependency on a state-machine framework. It
+is inspired by the `Automaton` / `Mode` / `Family` split in `andrewtc/mode`:
+state-specific code owns its allowed transitions, a family exposes the common
+interface, and transition code can explicitly transfer only the state it is
+allowed to carry forward. For this roadmap, the concrete family is
+`JobLifecycle`, with state surfaces such as `PendingJob`, `RunningJob`,
+`CancelledJob`, `DeadJob` and `DoneJob`.
+
+Acceptance checks:
+
+- every durable transition has one typed function and one table-driven test
+  case;
+- invalid transitions are rejected before index mutation;
+- owner-sensitive transitions require `ClaimToken`;
+- transition functions produce both primary-record and secondary-index deltas,
+  so `JobRecord` and queue indexes cannot drift.
+
 Queue storage acceptance cases:
 
 - concurrent enqueue transactions allocate distinct increasing `JobId` values;

@@ -1329,6 +1329,10 @@ double apply_filters(
 - Job types: DecayJob, DedupeJob, ArchiveColdJob.
 - Downstream `TaskQueue`/`JobStore` из `runtime-services-roadmap.md` §4.6;
   MDBX storage recipe — `mdbx-containers-extension-tz.md` §12.5.
+- Job lifecycle transitions use the typed transition pattern from
+  `runtime-services-roadmap.md` §4.6.1: state-specific transition functions
+  consume persisted `JobRecord` + `ClaimToken` when required and return both
+  primary-record and queue-index deltas.
 - CompactionHandoff structure.
 - Async worker thread.
 
