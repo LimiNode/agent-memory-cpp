@@ -107,6 +107,12 @@ in the envelope so storage can verify identity with one primary read. Changes
 to hash material create a new `UnitId` plus supersede/merge lineage; they do not
 mutate the old unit in place.
 
+`content_hash` is a derived storage value, not caller authority. Upsert code
+MUST compute it through the single versioned `compute_content_hash(kind,
+CanonicalIdentityInput)` pipeline from `knowledge-units-roadmap.md` §4, then
+persist both the hash and recipe version in the envelope. Caller-provided hashes
+are accepted only as optional assertions and must be rejected on mismatch.
+
 `revision++` on mutable content-view changes that do not alter
 `KnowledgeUnitKey`:
 
@@ -351,7 +357,8 @@ Backend — `embedding_meta` + `embedding_vectors` DBI. Методы: `put_vecto
 - `IFactStore` — если `enable_fact_payload = true`.
 - `IEpisodeStore` — если `enable_conversation_episode = true`.
 - `IArticleStore` — если `enable_compiled_article = true`.
-- `IChunkStore` — если `enable_chunk_payload` (по умолчанию для Chunk kind).
+- `IChunkStore` — backed by canonical always-open `chunk_payloads`; required
+  when writing `KnowledgeUnitKind::Chunk`.
 
 ### 6.6. Типичный DBI usage
 

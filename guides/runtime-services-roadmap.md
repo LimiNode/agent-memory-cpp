@@ -393,7 +393,7 @@ class BackgroundIndexer : public IAsyncIndexer {
 public:
     explicit BackgroundIndexer(
         MemoryStack& stack,
-        TaskQueue& queue,
+        JobDispatcher& dispatcher,
         size_t batch_size = 1000,
         size_t max_bytes = 50 * 1024 * 1024);
 
@@ -406,7 +406,7 @@ private:
     void process_batch(std::vector<ClaimedJob>& batch);
 
     MemoryStack& m_stack;
-    TaskQueue& m_queue;
+    JobDispatcher& m_dispatcher;
     size_t m_batch_size;
     size_t m_max_bytes;
 
@@ -417,11 +417,11 @@ private:
 };
 ```
 
-Worker thread claims durable `AsyncIndex` jobs from the shared `TaskQueue` (§4.6)
-and may batch claimed records up to `batch_size` or `max_bytes` before writing
-derived indexes through `MultiTableWriter`. The in-memory batch is volatile only
-after a durable claim; there is no process-only `std::queue` as the source of
-truth.
+Worker thread receives typed durable `AsyncIndex` jobs from the shared
+`JobDispatcher` (§4.6) and may batch claimed records up to `batch_size` or
+`max_bytes` before writing derived indexes through `MultiTableWriter`. The
+in-memory batch is volatile only after a durable claim; there is no process-only
+`std::queue` as the source of truth.
 
 Jobs are idempotent and guarded by `(unit_id, unit_revision, projection_kind)`.
 The payload never embeds stale `SearchProjection` or embedding vectors. Before
@@ -448,11 +448,11 @@ revision/delete races are handled by the checks above.
 ### 4.5. Failure handling
 
 При ошибке в batch:
-- Successful claimed jobs call `complete(job_id)` in the same transaction that
+- Successful claimed jobs call `complete(token)` in the same transaction that
   commits derived index writes.
-- Failed jobs call `fail_retry(job_id, backoff, last_error)` while attempts
+- Failed jobs call `fail_retry(token, backoff, last_error)` while attempts
   remain; the queue updates status, lease and ready/scheduled indexes.
-- Exhausted retries call `fail_dead(job_id, last_error)` and remain inspectable
+- Exhausted retries call `fail_dead(token, last_error)` and remain inspectable
   through `jobs_by_status = Dead`.
 - No async index job is silently dropped.
 
@@ -489,10 +489,48 @@ budget in `mdbx-containers-extension-tz.md` §5.5.1 counts this single +5 queue
 delta once. A separate physical queue for AsyncIndexer would require another +5
 profile delta and an updated budget checkpoint.
 
+`JobDispatcher` is the only component allowed to claim from the shared queue:
+
+```cpp
+class JobDispatcher {
+public:
+    void register_async_index_handler(IAsyncIndexerHandler& handler);
+    void register_compaction_handler(ICompactionJobHandler& handler);
+
+    std::optional<DispatchResult> run_once(
+        int64_t now_ms,
+        std::chrono::milliseconds lease_duration);
+};
+```
+
+Dispatcher policy keeps the queue physical layout global but the dispatch
+contract kind-aware: dispatcher claims the first ready job, decodes
+`JobRecord.kind` and codec version centrally, and routes only typed payloads to
+registered handlers. Workers do not call `claim_next`, do not scan for their own
+kind, do not leave unsupported jobs at the head of ready, and do not claim
+payload codecs they cannot decode. If global priority selects a ready job for an
+unavailable worker kind, dispatcher owns the retry/backoff or
+worker-availability policy; individual workers never implement ad hoc
+kind-skipping.
+
 `JobRecord` хранит как минимум `job_id`, `kind`, codec/versioned payload bytes,
-`status`, `priority`, `created_at_ms`,
-`run_after_ms`, `attempts`, `max_attempts`, `lease_owner`, `lease_until_ms`,
+`status`, `priority`, `created_at_ms`, `run_after_ms`, `attempts`,
+`max_attempts`, `lease_owner`, `lease_epoch`, `lease_until_ms`,
 `cancel_requested`, optional `started_at_ms`, `completed_at_ms` и `last_error`.
+
+```cpp
+struct ClaimToken {
+    JobId job_id;
+    WorkerId worker_id;
+    uint64_t lease_epoch;
+    int64_t lease_until_ms;
+};
+
+struct ClaimedJob {
+    ClaimToken token;
+    JobRecord record;
+};
+```
 
 `ScheduleKey = (run_after_ms, job_id)` используется только для delayed
 promotion. `ReadyOrderKey = (priority_rank, job_id)`, где меньший ключ
@@ -504,8 +542,9 @@ Allocation uses an MDBX sequence bound to `jobs_by_id`; it is advanced inside
 the same enqueue transaction and is never derived from `max(job_id) + 1`.
 Pruning terminal jobs does not reset or reuse the sequence.
 
-`claim_next(now, worker_id, lease_duration)` выполняется как atomic
-compare/claim в write transactions:
+`claim_next(now, worker_id, lease_duration)` is only called by
+`JobDispatcher`. It performs atomic compare/claim in a write transaction and
+returns `ClaimedJob`:
 
 1. `promote_due(now)` переносит все `jobs_scheduled` entries с
    `run_after_ms <= now` в `jobs_ready`. Implementation may process bounded
@@ -515,8 +554,8 @@ compare/claim в write transactions:
    be hidden behind older low-priority jobs.
 2. bounded read первого ready key (`limit = 1`), перечитать primary job record,
    проверить application predicate (`Pending`, not cancelled, attempts <
-   max), перевести job в `Running`, записать lease, обновить primary record and
-   ready/status/lease indexes, затем commit.
+   max), перевести job в `Running`, increment `lease_epoch`, записать lease,
+   обновить primary record and ready/status/lease indexes, затем commit.
 
 Реализация не делает unbounded materialization очереди; large due backlogs
 обрабатываются page loop-ом с продолжением по cursor.
@@ -554,6 +593,28 @@ State transitions:
   `lease_until_ms <= now`; если `cancel_requested = true`, job переходит в
   `Cancelled`, иначе idempotent jobs возвращаются в `Pending`, а
   non-idempotent jobs помечаются как `Failed`/`Dead` по policy.
+
+The transition names above are shorthand. Normative owner-sensitive signatures
+are `renew_lease(token, new_deadline)`, `complete(token)`,
+`fail_retry(token, backoff, last_error)`, `fail_dead(token, last_error)` and
+`ack_cancel(token)`. Each successful claim and each lease recovery increments
+`lease_epoch`; stale workers cannot reuse an old token.
+
+All owner-sensitive transitions MUST accept `ClaimToken` and, in the same
+transaction as any derived writes or terminal transition, verify:
+
+```text
+status == Running
+lease_owner == token.worker_id
+lease_epoch == token.lease_epoch
+lease_until_ms >= now
+```
+
+If any predicate fails, the worker's write/transition is rejected as stale.
+Acceptance case: A claims -> lease expires -> B claims -> A resumes => A's
+derived write and `complete(token)` are rejected. Long-running batches must
+heartbeat with `renew_lease(token, new_deadline)` before the previous lease
+expires.
 
 Queue storage acceptance cases:
 

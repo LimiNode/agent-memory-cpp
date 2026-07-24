@@ -892,8 +892,13 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | EmbeddingMigration | no | no | yes | no | yes | no | yes |
 | CompiledArticles | no | no | no | no | yes | no | yes |
 | ConversationMemory | no | no | no | yes | no | no | yes |
+| FullSourceRefs | no | opt | opt | opt | yes | opt | yes |
+| ResponseCache | opt | opt | opt | opt | opt | opt | opt |
 
 `opt` — capability не включена по умолчанию, но может быть добавлена через minor in-place migration.
+`ResponseCache` capability is present iff `response_cache_storage != Disabled`;
+`MemoryOnly` enables the runtime service without DBI, while `Mdbx` also opens
+the `response_cache` profile delta.
 
 ## 10. Validation Rules
 
@@ -976,9 +981,11 @@ authoritative DBI budget checkpoint — в §5.5.1 того же TZ.
 ConversationMemory, CompiledArticles, FullSourceRefs,
 DenseVectors, LexicalBm25F, GraphRelations, TemporalValidity,
 SpeakerAttribution, UsageStats, Compaction, PromptPrefixCache and opt-in
-ResponseCache. `ChunkPayload` storage is mandatory for profiles that accept
-`KnowledgeUnitKind::Chunk`; it is not a separate capability selector. Concrete
-DBI names and table types for these capabilities are enumerated in TZ §5.5.
+ResponseCache. `chunk_payloads` is a canonical always-open DBI, and
+`ChunkPayload` is required when writing `KnowledgeUnitKind::Chunk`; it is not a
+separate capability selector and does not require an additional kind selector.
+Concrete DBI names and table types for these capabilities are enumerated in TZ
+§5.5.
 
 ### 12.2. Runtime and Mode-Specific Deltas
 

@@ -270,6 +270,47 @@ the current physical file path or importer-local location:
 Changing recipe version without a migration preserving the old stored hash
 creates a new `KnowledgeUnitId` plus supersede/merge lineage.
 
+The normative computation entrypoint is:
+
+```cpp
+struct ContentHashResult {
+    ContentHash hash;
+    uint16_t recipe_version;
+};
+
+struct CanonicalIdentityInput {
+    KnowledgeUnitKind kind;
+    ScopeId scope;
+    std::optional<ResourceDigest> resource_body_digest;
+    std::optional<ChunkSpan> chunk_span;
+    std::optional<ContentDigest> normalized_chunk_text_digest;
+    std::vector<uint8_t> canonical_payload_identity_bytes;
+};
+
+ContentHashResult compute_content_hash(
+    KnowledgeUnitKind kind,
+    const CanonicalIdentityInput& input);
+```
+
+`compute_content_hash` owns the algorithm/domain prefix, field order,
+normalization and truncation rule. Current recipe: encode
+`agent-memory.content-hash.v1`, `kind`, `scope`, then recipe-defined identity
+fields; compute SHA-256 over those canonical bytes; store the first 16 bytes as
+`ContentHash`. Legacy `<kind>:<scope>:<sha256(content)>` databases migrate by
+decoding the 32-byte SHA-256 from the old id, keeping the leftmost 16 bytes as
+`ContentHash`, and writing `content_hash_recipe_version = 0` before any v1
+re-hash migration.
+
+Identity vs mutable fields:
+
+| Kind | Identity fields | Mutable fields (`revision++`) |
+|---|---|---|
+| `Chunk` | `resource_body_digest`, span/offset identity, normalized chunk text digest | display text, source summaries, retrieval projections, lifecycle |
+| `QAPair` | normalized question/answer identity fields | display text, source summaries, usage/ranking metadata, projections, lifecycle |
+| `Fact` | subject/predicate/object/time identity | confidence, display text, non-identity source summaries, projections, lifecycle |
+| `ConversationEpisode`, `CompiledArticle`, `Note` | canonical payload text or stable `ResourceBody` digest | title/display summaries, source summaries, projections, lifecycle |
+| `Event`, `Entity`, `Relation`, `Summary`, `Custom` | canonical primary identity text plus declared identity metadata/payload bytes | display summaries, non-identity metadata, projections, lifecycle |
+
 ### 4.1. Allocation и инварианты
 
 - `KnowledgeUnitId::allocate()` выдаёт монотонно возрастающий `uint64_t` per backend (per-MDBX-env atomic counter). Не зависит от content.
@@ -290,11 +331,17 @@ Storage использует **два** DBI для разделения identity
 Идемпотентный upsert через `content_key_to_unit_id`:
 
 ```cpp
-// 1. Вычислить key из payload.
+// 1. Build canonical identity input from authoritative fields/stores.
+CanonicalIdentityInput input = build_identity_input(unit, resource_body_store);
+ContentHashResult identity = compute_content_hash(unit.kind, input);
+
+unit.envelope.content_hash = identity.hash;
+unit.envelope.content_hash_recipe_version = identity.recipe_version;
+
 KnowledgeUnitKey key{
     unit.kind,
     unit.scope,
-    ContentHash::compute(serialize_payload(unit.payload))
+    identity.hash
 };
 
 // 2. Проверить наличие существующего unit.
@@ -378,7 +425,10 @@ chunk.detected_language = std::string{"cpp"};
 
 #### 5.1.3. Storage
 
-DBI `chunk_payloads` (key = UnitId). `ChunkPayload` всегда присутствует для Chunk kind (в отличие от optional payloads для других kinds). Включается автоматически при `kind == Chunk`, не требует capability flag.
+DBI `chunk_payloads` (key = UnitId) is canonical always-open. `ChunkPayload`
+всегда присутствует для Chunk kind (в отличие от optional payloads для других
+kinds). Write validation requires it when `kind == Chunk`; it does not require a
+capability flag and is not created dynamically on first write.
 
 ### 5.2. QAPayload
 

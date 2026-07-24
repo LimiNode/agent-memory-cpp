@@ -585,8 +585,14 @@ void Connection::multi_write(Op&& op);  // RAII: commit/rollback
 (Layer B + C, ADR-001): `MemoryStack::write_unit` обязан записать атомарно
 через один `MultiTableWriter`:
 
-1. Вычислить `KnowledgeUnitKey = (kind, scope_id, content_hash)` и прочитать
-   `content_key_to_unit_id`.
+1. Build `CanonicalIdentityInput` from authoritative request fields and stores,
+   compute `ContentHashResult` through the single
+   `compute_content_hash(kind, input)` pipeline from
+   `knowledge-units-roadmap.md` §4, write `content_hash` and
+   `content_hash_recipe_version` into the envelope, then compute
+   `KnowledgeUnitKey = (kind, scope_id, content_hash)` and read
+   `content_key_to_unit_id`. Caller-supplied hash values are diagnostics only
+   unless they match the recomputed result.
 2. `KnowledgeUnitKey` immutable for an existing `UnitId`. Если caller передаёт
    existing `UnitId`, storage сначала читает старый envelope из
    `knowledge_units` и строит `old_key` from
@@ -661,6 +667,12 @@ canonical bytes:
 Envelope previews, `SourceRefSummary` display excerpts, usage stats,
 projections, embeddings and runtime counters are excluded unless a future recipe
 version explicitly lists them.
+
+For `Chunk`, `resource_body_digest`, span/offset identity and normalized
+chunk-text digest are required inputs to `write_unit`, or storage must load them
+from authoritative `ResourceBodyStore` / chunk-normalization records before
+computing the hash. `ChunkPayload` alone is not sufficient identity material if
+it only contains offsets, headings, code blocks or symbol hints.
 
 При исключении в любом шаге `MultiTableWriter` откатывает все synchronous
 canonical groups и выбранные synchronous profile-delta writes; частично
@@ -876,7 +888,7 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 | `fact_payloads` | по capability `TemporalFact` | `agent_memory.fact.v1` | TBD | Per-kind payload для `Fact` units |
 | `conversation_episode_payloads` | по capability `ConversationMemory` | `agent_memory.episode.v1` | TBD | Per-kind payload для `ConversationEpisode` units |
 | `compiled_article_payloads` | по capability `CompiledArticles` | `agent_memory.compiled_article.v1` | TBD | Per-kind payload для `CompiledArticle` units |
-| `chunk_payloads` | да, для profiles accepting `KnowledgeUnitKind::Chunk` | `agent_memory.chunk.v1` | TBD | Per-kind payload для `Chunk` units |
+| `chunk_payloads` | да (canonical always-open) | `agent_memory.chunk.v1` | TBD | Per-kind payload для `Chunk` units; required when writing `KnowledgeUnitKind::Chunk` |
 | `source_refs` | по capability `FullSourceRefs` (M1) | `agent_memory.source_ref.v1` | TBD | Full `SourceRef` vector by `UnitId`; inline summaries remain in envelope |
 | `unit_projections` | да (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections |
 | `embedding_meta` | по capability `DenseVectors` | `agent_memory.embedding_meta.v1` | TBD | Версионированная мета (model_id, version, dim, encoder_id) |
@@ -1371,6 +1383,10 @@ future worker payloads; `IndexUpdateJob` is only one opaque job payload kind.
 The §5.5.1 expanded peak therefore counts one +5 runtime-queue delta. Opening a
 second physical queue is a separate profile delta (+5 DBIs) and must update the
 budget table before implementation.
+Kind-aware dispatch is downstream: a single `JobDispatcher` owns `claim_next`,
+decodes `JobRecord.kind`/codec version and routes typed payloads to handlers.
+Individual workers do not claim from the shared queue and do not scan for their
+own kind.
 
 Atomic claim pattern:
 
@@ -1386,6 +1402,15 @@ Atomic claim pattern:
 6. удалить старые scheduled/ready/status/lease index entries и, если нужно, добавить
    новые;
 7. commit/rollback выполняет обычный `MultiTableWriter`.
+
+The claim transition also increments `lease_epoch`, writes `lease_owner` /
+`lease_until_ms`, and returns a downstream
+`ClaimToken(job_id, worker_id, lease_epoch, lease_until_ms)`. Owner-sensitive
+downstream transitions (`renew_lease`, `complete`, `fail_retry`, `fail_dead`,
+`ack_cancel`) must receive the token and check `status == Running`,
+`lease_owner`, `lease_epoch` and non-expired `lease_until_ms` in the same
+transaction as any terminal state update or derived write. This prevents a
+worker whose lease expired from completing a newer claim attempt.
 
 Queue storage acceptance:
 
