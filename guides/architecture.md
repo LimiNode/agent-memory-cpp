@@ -37,8 +37,10 @@ Rules:
 - Context assembly consumes retrieval results and memory policies; it should not
   perform storage-specific queries directly.
 - Runtime services (PromptPrefixCache + optional ResponseCache, CompactionWorker, WriteGate, AsyncIndexer)
-  depend only on Layer 1 + Layer 2 contracts; they never reach into a concrete
-  MemoryStack to read profile-specific state.
+  are instance-owned by a `MemoryStack` when enabled, but depend only on narrow
+  Layer 1 + Layer 2 facades such as `IRuntimeStorageFacade`,
+  `IRuntimeProfileView` and `ICompactionWriteContext`; they never reach into a
+  concrete `MemoryStack` to read mutable profile-specific internals.
 
 ## Static Library Bias
 
@@ -91,8 +93,10 @@ Invariants:
 - Layer 4 does not depend on Layer 1 (only through Layer 2 and Layer 3).
 - Layer 3 does not depend on Layer 4.
 - Layer 2 does not depend on Layer 3 (can be used directly).
-- Runtime services may be invoked from any layer, but they do not depend on a
-  specific `MemoryStack` instance.
+- Runtime services may be invoked from any layer. They may be owned by a
+  specific `MemoryStack` instance, but their implementation talks to
+  `MemoryStackRuntimeFacade` / Layer 1 + Layer 2 contracts rather than concrete
+  stack internals.
 
 The layering reinforces the DDD dependency direction above: lower layers know
 nothing about upper layers, and the application boundary never reaches past

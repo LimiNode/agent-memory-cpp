@@ -176,7 +176,7 @@ summary.quote_hash = compute_quote_hash(summary.preview);
 summary.confidence = 0.92;
 
 KnowledgeUnitEnvelopeBuilder env_builder;
-env_builder.set_id(KnowledgeUnitId::allocate());
+// id is assigned by storage inside the write_unit/upsert transaction
 env_builder.set_kind(KnowledgeUnitKind::Fact);
 env_builder.set_scope(ScopeId::global());
 env_builder.add_source_summary(summary);  // inline, ≤3 на unit
@@ -202,8 +202,6 @@ must preserve the original content-addressing key.
 class KnowledgeUnitId {
     uint64_t m_value;
 public:
-    static KnowledgeUnitId allocate();  // монотонно, opaque, никогда не reused
-
     uint64_t value() const noexcept;
 
     bool operator==(const KnowledgeUnitId& rhs) const noexcept {
@@ -311,24 +309,34 @@ writing `content_hash_recipe_version = 0` before any v1 re-hash migration.
 Canonical wire grammar v1:
 
 ```text
-stream        = domain kind scope field*
+stream        = domain kind scope fields
 domain        = u16be byte_len + UTF-8 bytes "agent-memory.content-hash.v1"
 kind          = u16be stable KnowledgeUnitKind value
 scope         = u32be byte_len + normalized UTF-8 bytes
-field         = u16be field_tag + u8 presence + u32be byte_len + payload
+fields        = every field tag from the per-kind table, exactly once,
+                strictly in the table order
+field         = u16be field_tag + u8 presence + u32be byte_len + payload?
 presence      = 0 absent, 1 present-empty, 2 present-non-empty
 integer       = fixed-width big-endian two's-complement or unsigned
 timestamp     = i64be milliseconds since Unix epoch
 digest        = raw bytes with fixed length declared by the field tag
-string        = u32be byte_len + UTF-8 NFC bytes after recipe normalization
+string        = UTF-8 NFC bytes after recipe normalization
 list/map      = u32be item_count + encoded items; maps sorted by encoded key
 ```
 
-Absent optional and present-empty optional are distinct through `presence`.
-Every string input is converted to UTF-8 NFC. Recipe-specific text
-normalization (case folding, whitespace folding, line-ending normalization)
-must be listed by the per-kind encoder before bytes are emitted. Concatenating
-raw strings is forbidden; all fields use tag + presence + length framing.
+Absent optional and present-empty optional are distinct through `presence`:
+
+- absent: `presence = 0`, `byte_len = 0`, payload absent;
+- present-empty: `presence = 1`, `byte_len = 0`, payload absent;
+- present-non-empty: `presence = 2`, `byte_len > 0`, payload present.
+
+Duplicate, unknown or out-of-order field tags are encoding errors. Skipping an
+absent field tag is also an encoding error; every tag in the per-kind table is
+emitted exactly once. For fixed-width integers and digests, `byte_len` MUST
+match the field's declared width. For maps, keys are normalized before sorting;
+if two keys become equal after normalization, encoding fails instead of picking
+one value. Concatenating raw strings is forbidden; all fields use tag +
+presence + length framing.
 
 Stable field-tag order:
 
@@ -340,11 +348,31 @@ Stable field-tag order:
 | `ConversationEpisode`, `CompiledArticle`, `Note` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
 | `Event`, `Entity`, `Relation`, `Summary`, `Custom` | `0x0401 primary_identity_text`, `0x0402 declared_identity_metadata_map`, `0x0403 declared_payload_digest` |
 
+Text normalization table for recipe v1:
+
+| Field family | Normalization |
+|---|---|
+| `normalized_question` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
+| `normalized_answer` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, preserve internal whitespace except line-ending normalization, case preserved |
+| `subject`, `predicate`, `object` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
+| `canonical_text_digest` source text | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim trailing whitespace on each line, trim outer blank lines, case preserved, then digest the normalized bytes |
+| `primary_identity_text` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
+| metadata keys | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer whitespace, ASCII lower-case for `[A-Z]`, collapse internal whitespace runs to one ASCII space |
+| metadata string values | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer whitespace, preserve case |
+| tags used as identity metadata | same as metadata string values; tag identity is not translated |
+| digests, timestamps, integer spans | no text normalization; encode fixed-width binary payloads |
+
 Per-kind typed encoders build these fields inside the library. Callers provide
 typed identity inputs or authoritative body digests, not opaque canonical byte
-buffers. Golden vectors are required for every kind, empty vs absent optional,
-Unicode composed vs decomposed strings, boundary integer/timestamp values,
-legacy recipe v0 and C++11/C++17 cross-platform equality.
+buffers. Golden vectors are part of the implementation gate, not optional test
+coverage: for every kind family the repository must contain typed logical input,
+exact canonical byte stream in hex, full SHA-256 and stored 16-byte
+`ContentHash`. The minimum vector set covers every kind family in the field-tag
+table, absent vs present-empty vs present-non-empty, Unicode NFC/NFD
+equivalence, duplicate metadata keys after normalization, boundary
+integer/timestamp values, legacy recipe v0 and C++11/C++17 cross-platform
+equality. Implementations must refuse to enable v1 dedupe migration until those
+vectors pass.
 
 Identity vs mutable fields:
 
@@ -358,7 +386,10 @@ Identity vs mutable fields:
 
 ### 4.1. Allocation и инварианты
 
-- `KnowledgeUnitId::allocate()` выдаёт монотонно возрастающий `uint64_t` per backend (per-MDBX-env atomic counter). Не зависит от content.
+- `KnowledgeUnitId` allocation is storage-owned. MDBX-backed storage obtains it
+  from `knowledge_unit_sequence.next(txn)` inside the same write transaction
+  that installs the content-key mapping. There is no public
+  static allocation API in the canonical path.
 - Reuse id после erase запрещён (даже если соответствующий unit удалён).
 - `KnowledgeUnitId` opaque для storage layer; не парсится ни во что.
 - При экспорте в логи/traces допускается hex-форма `to_string()` (32 hex chars), но не должно влиять на routing.
@@ -401,9 +432,10 @@ return connection.multi_write([&](Transaction& txn) -> UpsertResult {
     unit.id = new_id;
     unit.envelope.id = new_id;
 
-    if (!content_key_to_unit_id.insert_if_absent(key, new_id, txn)) {
+    auto cas = content_key_to_unit_id.insert_if_absent(key, new_id, txn);
+    if (!cas.inserted) {
         return UpsertResult::Existed{
-            *content_key_to_unit_id.find(key, txn)
+            *cas.existing_value
         };
     }
 
@@ -539,7 +571,7 @@ M1 добавляет поверх M0:
 QAPayload qa;
 qa.canonical_question = "How does the KnowledgeUnitId allocator work?";
 qa.question_variants = {"KU id allocation", "monotonic unit id"};
-qa.answer = "KnowledgeUnitId::allocate() returns a monotonic uint64_t ...";
+qa.answer = "KnowledgeUnitId is allocated from the storage sequence inside the write transaction ...";
 qa.category = "architecture";
 qa.last_verified_at_ms = 1700000000000;
 qa.frequency = 0;
@@ -1028,7 +1060,7 @@ Round-trip test обязателен: `basic_rag` → `agent_ltm` → `basic_rag
 |---|---|---|
 | 1 | KnowledgeUnitEnvelope + базовые DBI | envelope только |
 | 5 | Component infrastructure | operational components (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta) |
-| 5.5 | KnowledgeUnitKey DBI | `content_key_to_unit_id` DBI + `KnowledgeUnitKey`/`ContentHash` structs + monotonic `KnowledgeUnitId::allocate()` (см. секцию 4) |
+| 5.5 | KnowledgeUnitKey DBI | `content_key_to_unit_id` DBI + `KnowledgeUnitKey`/`ContentHash` structs + storage-owned monotonic `KnowledgeUnitId` sequence (см. секцию 4) |
 | 5.6 | SourceRefSummary inline + source_refs DBI (M1) | `SourceRefSummary` в envelope (≤3 на unit) + `source_refs` DBI для полных цитат (см. секцию 3) |
 | 6 | Payload components per kind | QAPayload, FactPayload, ChunkPayload, ConversationEpisodePayload, CompiledArticlePayload |
 | 9 | Lifecycle FSM (4 durable states) | Active / Superseded / Deprecated / Erased; lifecycle extension с anti-loop подсвинком через `UsageStatsComponent.cooldown_until_ms` (см. секцию 6) |

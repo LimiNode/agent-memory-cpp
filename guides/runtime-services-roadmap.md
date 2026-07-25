@@ -392,7 +392,7 @@ struct AsyncIndexerStats {
 class BackgroundIndexer : public IAsyncIndexer {
 public:
     explicit BackgroundIndexer(
-        MemoryStack& stack,
+        IRuntimeStorageFacade& storage,
         JobDispatcher& dispatcher,
         size_t batch_size = 1000,
         size_t max_bytes = 50 * 1024 * 1024);
@@ -402,26 +402,26 @@ public:
     AsyncIndexerStats stats() const override;
 
 private:
-    void worker_loop();
+    // Called by the bounded AsyncIndex executor after dispatcher claim.
     void process_batch(std::vector<ClaimedJob>& batch);
 
-    MemoryStack& m_stack;
+    IRuntimeStorageFacade& m_storage;
     JobDispatcher& m_dispatcher;
     size_t m_batch_size;
     size_t m_max_bytes;
 
-    std::vector<ClaimedJob> m_claimed_batch; // volatile only after durable claim
-    std::thread m_worker;
-    std::atomic<bool> m_running{true};
     AsyncIndexerStats m_stats;
 };
 ```
 
-Worker thread receives typed durable `AsyncIndex` jobs from the shared
-`JobDispatcher` (§4.6) and may batch claimed records up to `batch_size` or
-`max_bytes` before writing derived indexes through `MultiTableWriter`. The
-in-memory batch is volatile only after a durable claim; there is no process-only
-`std::queue` as the source of truth.
+`IRuntimeStorageFacade` is a narrow Layer 1/Layer 2 surface: unit/projection
+reads, derived-index writes and transaction creation. It is not a concrete
+`MemoryStack` and does not expose mutable profile internals. The executor
+receives typed durable `AsyncIndex` jobs from the shared `JobDispatcher` (§4.6)
+and may batch accepted records up to `batch_size` or `max_bytes` before writing
+derived indexes through `MultiTableWriter`. The in-memory batch is volatile only
+after a durable claim and successful executor acceptance; there is no
+process-only `std::queue` as the source of truth.
 
 Jobs are idempotent and guarded by `(unit_id, unit_revision, projection_kind)`.
 The payload never embeds stale `SearchProjection` or embedding vectors. Before
@@ -448,11 +448,12 @@ revision/delete races are handled by the checks above.
 ### 4.5. Failure handling
 
 При ошибке в batch:
-- Successful claimed jobs call `complete(token)` in the same transaction that
-  commits derived index writes.
-- Handler execution errors call `fail_retry(token, backoff, last_error)` while attempts
-  remain; the queue updates status, lease and ready/scheduled indexes.
-- Exhausted retries call `fail_dead(token, last_error)` and remain inspectable
+- Successful claimed jobs call `complete(token, now_ms, result)` in the same
+  transaction that commits derived index writes.
+- Executor execution errors call `fail_retry(token, now_ms, backoff, last_error)`
+  while attempts remain; the queue updates status, lease and ready/scheduled
+  indexes.
+- Exhausted retries call `fail_dead(token, now_ms, last_error, result)` and remain inspectable
   through `jobs_by_status = Dead`.
 - No async index job is silently dropped.
 
@@ -491,13 +492,25 @@ budget in `mdbx-containers-extension-tz.md` §5.5.1 counts this single +5 queue
 delta once. A separate physical queue for AsyncIndexer would require another +5
 profile delta and an updated budget checkpoint.
 
-`JobDispatcher` is the only component allowed to claim from the shared queue:
+`JobDispatcher` is the only component allowed to claim from the shared queue.
+The dispatcher owns the claim loop and submits typed claimed jobs to bounded
+per-kind executors:
 
 ```cpp
+enum class SubmitResult { Accepted, Saturated, ShuttingDown, Unsupported };
+
+struct ClaimedJob;
+
+class IJobExecutor {
+public:
+    virtual ~IJobExecutor() = default;
+    virtual SubmitResult submit(ClaimedJob job) = 0;
+};
+
 class JobDispatcher {
 public:
-    void register_async_index_handler(IAsyncIndexerHandler& handler);
-    void register_compaction_handler(ICompactionJobHandler& handler);
+    void register_async_index_executor(IJobExecutor& executor);
+    void register_compaction_executor(IJobExecutor& executor);
 
     std::optional<DispatchResult> run_once(
         int64_t now_ms,
@@ -508,24 +521,38 @@ public:
 Dispatcher policy keeps the queue physical layout global but the dispatch
 contract kind-aware: dispatcher claims the first ready job, decodes
 `JobRecord.kind` and codec version centrally, and routes only typed payloads to
-registered handlers. Workers do not call `claim_next`, do not scan for their own
-kind, do not leave unsupported jobs at the head of ready, and do not claim
-payload codecs they cannot decode.
+registered bounded executors. Workers do not call `claim_next`, do not scan for
+their own kind, do not leave unsupported jobs at the head of ready, and do not
+claim payload codecs they cannot decode. Token ownership stays with the
+dispatcher until `submit()` returns `Accepted`; after acceptance the executor is
+responsible for lease renewal, terminal/retry transition and cooperative
+shutdown. If `submit()` returns `Saturated` or `ShuttingDown`, dispatcher
+immediately calls `release_unhandled(token, now_ms, backoff, reason)` so the
+claim does not disappear into a volatile queue. If no executor supports the
+kind/version, dispatcher applies the unavailable-executor path below.
 
-Unavailable handler path:
+Unavailable executor path:
 
 - unknown `JobRecord.kind` or unsupported codec version is unrecoverable and
   transitions to `Dead` with `last_error`;
-- temporarily unavailable handler/capability calls
-  `release_unhandled(token, backoff, reason)`, returns the job to scheduled
+- temporarily unavailable executor/capability calls
+  `release_unhandled(token, now_ms, backoff, reason)`, returns the job to scheduled
   `Pending` without incrementing execution `attempts`;
-- handler execution failure calls `fail_retry(token, backoff, last_error)` and
-  increments `attempts`; exhausted attempts call `fail_dead(token, last_error)`.
+- executor execution failure calls `fail_retry(token, now_ms, backoff, last_error)`
+  and increments `attempts`; exhausted attempts call
+  `fail_dead(token, now_ms, last_error, std::nullopt)`.
 
-`JobRecord` хранит как минимум `job_id`, `kind`, codec/versioned payload bytes,
-`status`, `priority`, `created_at_ms`, `run_after_ms`, `attempts`,
-`max_attempts`, `lease_owner`, `lease_epoch`, `lease_until_ms`,
-`cancel_requested`, optional `started_at_ms`, `completed_at_ms` и `last_error`.
+`JobRecord` хранит как минимум `job_id`, `kind`, codec/versioned immutable input
+`payload_bytes`, `status`, `priority`, `created_at_ms`, `run_after_ms`,
+`attempts`, `max_attempts`, `lease_owner`, `lease_epoch`, `lease_until_ms`,
+`cancel_requested`, optional `started_at_ms`, `completed_at_ms`, `last_error`,
+optional `result_codec_version` and `result_bytes`.
+
+`payload_bytes` is immutable after enqueue. `result_bytes` is written only by a
+terminal transition (`Done`, `Cancelled` with outcome, or `Dead` with terminal
+diagnostics when the job kind defines one). Retention/pruning of result bytes is
+the same as the owning `JobRecord`; admin views decode input and result payloads
+separately.
 
 ```cpp
 struct ClaimToken {
@@ -538,6 +565,11 @@ struct ClaimToken {
 struct ClaimedJob {
     ClaimToken token;
     JobRecord record;
+};
+
+struct ResultPayload {
+    uint16_t codec_version = 0;
+    std::vector<uint8_t> bytes;
 };
 ```
 
@@ -587,7 +619,8 @@ State transitions:
   transaction; concurrent enqueue and restart must preserve monotonicity.
 - `claim_next` переводит `Pending -> Running`, снимает ready entry и ставит
   lease/status entries.
-- `renew_lease` обновляет `lease_until_ms` и `jobs_by_lease`.
+- `renew_lease` обновляет `lease_until_ms` и `jobs_by_lease`, returning an
+  updated `ClaimToken`.
 - `complete` переводит `Running -> Done`, удаляет lease entry и обновляет
   status.
 - `fail_retry` переводит `Running -> Pending`, увеличивает attempts,
@@ -607,11 +640,48 @@ State transitions:
   non-idempotent jobs помечаются как `Dead` with inspectable `last_error`.
 
 The transition names above are shorthand. Normative owner-sensitive signatures
-are `renew_lease(token, new_deadline)`, `complete(token)`,
-`fail_retry(token, backoff, last_error)`, `release_unhandled(token, backoff,
-reason)`, `fail_dead(token, last_error)` and `ack_cancel(token)`. Each
-successful claim and each lease recovery increments `lease_epoch`; stale workers
-cannot reuse an old token.
+are:
+
+```cpp
+ClaimToken renew_lease(
+    const ClaimToken& token,
+    int64_t now_ms,
+    int64_t new_deadline_ms);
+
+void complete(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::optional<ResultPayload> result);
+
+void fail_retry(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::chrono::milliseconds backoff,
+    std::string last_error);
+
+void release_unhandled(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::chrono::milliseconds backoff,
+    std::string reason);
+
+void fail_dead(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::string last_error,
+    std::optional<ResultPayload> result);
+
+void ack_cancel(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::optional<ResultPayload> result);
+```
+
+Each successful claim and each lease recovery increments `lease_epoch`; stale
+workers cannot reuse an old token. Ordinary renewal does not increment
+`lease_epoch`, but it returns a new token carrying the updated
+`lease_until_ms`; callers must replace their old token before scheduling the
+next heartbeat.
 
 All owner-sensitive transitions MUST accept `ClaimToken` and, in the same
 transaction as any derived writes or terminal transition, verify:
@@ -625,11 +695,12 @@ now_ms < lease_until_ms
 
 If any predicate fails, the worker's write/transition is rejected as stale.
 Acceptance case: A claims -> lease expires -> B claims -> A resumes => A's
-derived write and `complete(token)` are rejected. Long-running batches must
-heartbeat with `renew_lease(token, new_deadline)` before the previous lease
-expires. Recovery is eligible when `lease_until_ms <= now_ms`; owner-sensitive
-transitions are valid only when `now_ms < lease_until_ms`, using the same
-caller-provided `now_ms` value for the whole transaction.
+derived write and `complete(token, now_ms, result)` are rejected. Long-running
+batches must heartbeat with `renew_lease(token, now_ms, new_deadline)` before
+the previous lease expires. Recovery is eligible when
+`lease_until_ms <= now_ms`; owner-sensitive transitions are valid only when
+`now_ms < lease_until_ms`, using the same caller-provided `now_ms` value for the
+whole transaction.
 
 #### 4.6.1 Typed transition pattern
 
@@ -641,7 +712,7 @@ that consumes the current persisted `JobRecord` snapshot plus any required
 - the next `JobRecord`;
 - index delta for `jobs_ready`, `jobs_scheduled`, `jobs_by_lease` and
   `jobs_by_status`;
-- optional handler payload delta such as compaction handoff update.
+- optional executor payload delta such as compaction handoff update.
 
 This is a local C++ pattern, not a dependency on a state-machine framework. It
 is inspired by the `Automaton` / `Mode` / `Family` split in `andrewtc/mode`:
@@ -667,6 +738,13 @@ Queue storage acceptance cases:
   sequence;
 - after pruning terminal jobs, including the current maximum `JobId`, the next
   enqueue still allocates a greater id and never reuses a deleted id.
+- saturated executor submit calls `release_unhandled` for the same `JobId`
+  before returning from `run_once`;
+- process shutdown after claim but before executor acceptance requeues through
+  `release_unhandled` or lease recovery; no token remains only in memory;
+- `CompactionExecutor` enforces `max_concurrency = 1` per stack/scope while
+  `AsyncIndexExecutor` may use bounded parallelism;
+- unsupported kind/version never blocks the ready head indefinitely.
 
 Compaction handoff recovery uses the same `JobId`: `compaction_handoffs`
 stores checkpoint payload for the running job, while queue lease recovery is
@@ -717,14 +795,14 @@ struct GateDecision {
 class DefaultWriteGate : public IWriteGate {
 public:
     explicit DefaultWriteGate(
-        MemoryStack& stack,
+        IRuntimeProfileView& profile,
         WritePolicy policy);
 
     GateDecision evaluate(const WriteRequest& req) override;
     void flush() override;
 
 private:
-    MemoryStack& m_stack;
+    IRuntimeProfileView& m_profile;
     WritePolicy m_policy;
     std::vector<WriteRequest> m_buffer;
     std::mutex m_mutex;

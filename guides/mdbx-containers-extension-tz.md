@@ -574,12 +574,39 @@ public:
     void rollback();
 };
 
+template <typename K, typename V>
+struct InsertIfAbsentResult {
+    bool inserted = false;
+    std::optional<V> existing_value;
+};
+
+template <typename K, typename V>
+InsertIfAbsentResult<K, V> KeyValueTable<K, V>::insert_if_absent(
+    const K& key,
+    const V& value,
+    Transaction& txn);
+
+struct TransactionAbort {
+    std::string reason;
+};
+
 // Connection extension:
 template <typename Op>
-void Connection::multi_write(Op&& op);  // RAII: commit/rollback
+auto Connection::multi_write(Op&& op)
+    -> decltype(op(std::declval<Transaction&>()));  // RAII: commit/rollback
 ```
 
 Документировать best practice: обновление primary + secondary indexes в одной транзакции (например, добавление chunk в `agent_memory_chunks` + соответствующих postings в `lexical_postings`).
+
+`Connection::multi_write` opens one write transaction, invokes the callback,
+commits when the callback returns successfully, rolls back when the callback
+throws any exception or `TransactionAbort`, and returns the callback result to
+the caller only after commit succeeds. If commit fails, the callback result is
+not reported as committed; the helper throws the commit error after
+rollback/close cleanup. `KeyValueTable::insert_if_absent` MUST use no-overwrite
+semantics: it inserts only when the key has no committed or same-transaction
+value, and on collision returns the existing value without overwriting it.
+Implementing this as unconditional `put` is forbidden for identity mappings.
 
 Ключевой use case под Layer 1 архитектуру из `guides/memory-stacks-roadmap.md`
 (Layer B + C, ADR-001): `MemoryStack::write_unit` обязан записать атомарно
@@ -612,39 +639,43 @@ void Connection::multi_write(Op&& op);  // RAII: commit/rollback
    write конфликтует: default policy возвращает duplicate/conflict result
    without writes; explicit merge/supersede policy должна быть выбрана
    downstream до входа в storage transaction.
-4. Envelope в `knowledge_units` (DBI:
+4. Allocate the new `UnitId` from `knowledge_unit_sequence.next(txn)` only
+   after the dedupe read shows no existing mapping.
+5. Install `KnowledgeUnitKey -> UnitId` in `content_key_to_unit_id` with
+   `insert_if_absent`. If another writer inserts the same key first, the
+   operation returns `UpsertResult::Existed(existing_id)` and MUST NOT write
+   envelope, payloads, components or indexes for the newly allocated id. The
+   skipped sequence value is allowed; sequence monotonicity is more important
+   than gap-free ids.
+6. Envelope в `knowledge_units` (DBI:
    `KeyValueTable<UnitId, KnowledgeUnitEnvelope>`).
-5. Mapping `KnowledgeUnitKey -> UnitId` в `content_key_to_unit_id`, using
-   `insert_if_absent` / CAS semantics. If another writer inserts the same key
-   first, the operation returns `UpsertResult::Existed(existing_id)` and MUST
-   not create an orphan `knowledge_units` envelope.
-6. `knowledge_units_by_kind` update: добавить `(scope_id, kind) -> UnitId`.
+7. `knowledge_units_by_kind` update: добавить `(scope_id, kind) -> UnitId`.
    Поскольку `KnowledgeUnitKey` immutable, смена `(scope_id, kind)` внутри того
    же `UnitId` запрещена; removal старой by-kind записи выполняется только при
    erase/tombstone или migration, используя old envelope.
-7. Ровно один per-kind payload, соответствующий `KnowledgeUnitKind`: write в
+8. Ровно один per-kind payload, соответствующий `KnowledgeUnitKind`: write в
    `qa_payloads` / `fact_payloads` / `conversation_episode_payloads` /
    `compiled_article_payloads` / `chunk_payloads`. Stale payload прежнего kind
    не допускается в normal update path, потому что kind immutable; migration
    cleanup должен использовать old envelope.
-8. Tag-prefixed operational components в `unit_components` (DBI:
+9. Tag-prefixed operational components в `unit_components` (DBI:
    `TypeDiscriminatedTable<ComponentKind, UnitId, ValueVariant<UsageStats |
    Speaker | Temporal | EmbeddingMeta | CompactionMeta>>`).
-9. Projections в `unit_projections` (DBI:
+10. Projections в `unit_projections` (DBI:
    `KeyValueTable<(scope_id, UnitId, ProjectionKind, revision),
    SearchProjection>`).
-10. Embedding metadata + vectors (`embedding_meta`, `embedding_vectors`) only
+11. Embedding metadata + vectors (`embedding_meta`, `embedding_vectors`) only
     when the selected profile marks dense writes as synchronous; heavy
     recompute/HNSW/backfill jobs may be delegated to AsyncIndexer with a durable
     revision-guarded `IndexUpdateJob(unit_id, unit_revision, projection_kind,
     index_kind)`.
-11. Все scope-aware secondary/range indexes, относящиеся к данной write:
+12. Все scope-aware secondary/range indexes, относящиеся к данной write:
     `inverted_token_to_unit` (candidate index по каждой projection),
     `field_to_postings` (KV posting stats by full posting identity),
     `temporal_event_index`/`temporal_unit_index`,
     `speaker_to_units`/`session_to_units`, `usage_stats_index`,
     `graph_edges_by_src`/`graph_edges_by_dst`, `metadata_filters`.
-12. Optional/profile-gated writes, если профиль их включает:
+13. Optional/profile-gated writes, если профиль их включает:
     `source_refs.replace_for_unit(unit_id, refs)` for `enable_full_source_refs`,
     runtime queue writes, response cache invalidation или другие
     profile-specific indexes. Эти DBI обязаны быть перечислены в canonical
@@ -663,7 +694,10 @@ replay after crash, and tolerate delete/update before older jobs run.
 
 `ContentHash` recipe is versioned and kind-specific. The recipe input MUST be
 canonical bytes using the tagged length-prefixed wire grammar from
-`knowledge-units-roadmap.md` §4:
+`knowledge-units-roadmap.md` §4. That grammar is strict: every declared field
+tag for the kind is emitted exactly once and in order; absent fields are encoded
+with `presence = 0`, `byte_len = 0` and no payload; duplicate, unknown or
+out-of-order tags are encoding errors.
 
 - `QAPair`: normalized question/answer payload fields and declared identity
   metadata.
@@ -677,10 +711,12 @@ Envelope previews, `SourceRefSummary` display excerpts, usage stats,
 projections, embeddings and runtime counters are excluded unless a future recipe
 version explicitly lists them.
 
-Golden vectors for every `KnowledgeUnitKind`, empty vs absent optional fields,
-Unicode composed vs decomposed strings, boundary integer/timestamp values,
-legacy recipe v0 and C++11/C++17 equality are required before implementing this
-hash as a migration gate.
+Golden vectors with typed input, exact encoded bytes, full SHA-256 and stored
+16-byte `ContentHash` are required before implementing this hash as a migration
+gate. The minimum set is defined in `knowledge-units-roadmap.md` §4 and covers
+every kind family, absent/empty/non-empty fields, Unicode composed/decomposed
+equivalence, duplicate metadata key rejection, boundary integers/timestamps,
+legacy recipe v0 and C++11/C++17 equality.
 
 For `Chunk`, `resource_body_digest`, span/offset identity and normalized
 chunk-text digest are required inputs to `write_unit`, or storage must load them
@@ -1401,9 +1437,11 @@ The §5.5.1 expanded peak therefore counts one +5 runtime-queue delta. Opening a
 second physical queue is a separate profile delta (+5 DBIs) and must update the
 budget table before implementation.
 Kind-aware dispatch is downstream: a single `JobDispatcher` owns `claim_next`,
-decodes `JobRecord.kind`/codec version and routes typed payloads to handlers.
-Individual workers do not claim from the shared queue and do not scan for their
-own kind.
+decodes `JobRecord.kind`/codec version and routes typed payloads to bounded
+per-kind executors. Individual workers do not claim from the shared queue and
+do not scan for their own kind. `jobs_by_id` stores an opaque job record; input
+payload immutability, optional result bytes and owner-sensitive transition
+signatures are defined in `runtime-services-roadmap.md` §4.6.
 
 Atomic claim pattern:
 
