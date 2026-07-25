@@ -55,6 +55,7 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - Usage decay, freshness ranking, profile/scenario lifecycle
 - LLM-вызовы (любые модели, провайдеры, prompt engineering)
 - Embedding model execution (ONNX, llama.cpp, OpenAI-compat, ...)
+- Language detection / translation execution and package routing
 - Парсеры (markdown, PDF, DOCX, code, ASR, VLM)
 - Cross-encoder rerankers
 - Chunker'ы (HybridChunker, sentence splitter, sliding window)
@@ -104,6 +105,9 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `LlmQueryRewriter` — RAG Fusion
 - `LlmRelevanceClassifier` — Corrective RAG validator
 - `CrossEncoderReranker` — через ONNX
+- `ITranslationAdapter` implementations — optional Argos Translate sidecar,
+  offline model wrapper or external translation service; writes
+  `TranslatedCanonical` projections through domain storage contracts
 - `MarkdownHybridChunker`, `DoclingParser`, `WhisperTranscriber` — примеры парсеров
 
 ## Правила зависимости

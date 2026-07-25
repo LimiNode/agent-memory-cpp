@@ -138,6 +138,7 @@ enum class ProjectionKind : std::uint16_t {
     QAAnswer        = 4,
     Summary         = 5,
     CodeSymbols     = 6,
+    TranslatedCanonical = 7,
 };
 
 enum class FieldId : std::uint16_t {
@@ -638,6 +639,7 @@ retrieval path.
 | QAAnswer         | qa_a (w_qa_a), body (w_body)                                                    |
 | Summary          | summary (w_summary), tag (w_tag), title (w_title)                               |
 | CodeSymbols      | symbol (w_symbol), code (w_code)                                                |
+| TranslatedCanonical | title (w_title), heading (w_heading), body (w_body), tag (w_tag), meta (w_meta), summary (w_summary) |
 
 `DenseContextual` is consumed by the dense retriever; BM25F still indexes the
 projection so secondary lexical retrieval can fall back to it after fusion.
@@ -771,7 +773,24 @@ DenseContextual:
     body    = envelope.primary_text
     meta    = envelope.metadata_typed
     summary = nearest Summary projection if present, else empty
+
+TranslatedCanonical:
+    title   = translated envelope.title when present, else original title
+    heading = translated heading path when present
+    body    = translated extracted text or chunk body
+    tags    = translated/normalized tags only when the adapter can preserve tag identity
+    meta    = envelope.metadata_typed + canonical_language
+    summary = translated summary when present
 ```
+
+`TranslatedCanonical` is generated only when the profile enables
+`TranslationProjection` and supplies a `TranslationPolicy`. Its source of
+truth is the original resource/unit revision plus `TranslationMetaComponent`
+(`provider_id`, `model_id`, package digest, detected source language and pivot
+path). If the source revision, canonical language or translation package digest
+changes, only the translated projection is stale; `Original` postings remain
+valid. See
+[`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
 
 Open question 17.4 from `memory-stacks-roadmap.md` (`When does a SearchProjection
 regenerate?`) is resolved for the lexical path: projections regenerate on
@@ -923,6 +942,12 @@ BM25F active projection_kinds  = { Original, QAQuestion, QAAnswer, Summary }
 vector active projection_kinds = { Original, DenseContextual }
 graph  active projection_kinds  = { Original }
 ```
+
+When `TranslationProjection` is enabled, planners may add
+`TranslatedCanonical` to BM25F/vector projection sets for cross-lingual recall.
+The default result context still carries `SourceRef` to the original resource;
+translated snippets are auxiliary unless the caller explicitly asks for a
+translated answer surface.
 
 Secondary retrieval (post-fusion) may load `CodeSymbols` or `DenseContextual`
 if RRF confidence is below a threshold or if the query parser hints at code
@@ -1171,8 +1196,8 @@ of that ordering; each substep is its own PR.
 11. Add `projection_kind` and `scope_id` to the `inverted_token_to_unit`
     and `field_to_postings` keys (see MDBX Layout above).
 12. Add projection build rules per `ProjectionKind` for `Original`, `QAQuestion`,
-    `QAAnswer`, `Summary`, and `CodeSymbols` (see Projection Build Rules
-    Per ProjectionKind).
+    `QAAnswer`, `Summary`, `CodeSymbols`, `DenseContextual`, and optional
+    `TranslatedCanonical` (see Projection Build Rules Per ProjectionKind).
 13. Promote the MDBX layout so `field_to_postings` is keyed by
     `(scope_id, projection_kind, field_id, token_id, unit_id)` and BM25F,
     BM25, and future fielded sparse retrievers share the same posting

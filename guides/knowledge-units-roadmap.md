@@ -95,8 +95,12 @@ generic unit when no stronger domain mapping is available:
 - `trust_level` defaults to profile policy (`C`/`D`) unless supplied by source
   metadata;
 - tags come from frontmatter/sidecar metadata when available;
+- original language is detected when possible and stored on the payload or
+  translation metadata;
 - `SourceRef` points back to the raw resource and byte/text range;
 - `SearchProjection::Original` is generated from extracted text immediately;
+- `SearchProjection::TranslatedCanonical` may be generated later when the
+  `TranslationProjection` capability is enabled;
 - curated Facts/QAPairs/Summaries may be derived later by compaction or
   application normalizers.
 
@@ -858,6 +862,7 @@ enum class DerivedRecordKind : uint32_t {
     TemporalComponent = 103,
     EmbeddingMetaComponent = 104,
     CompactionMetaComponent = 105,
+    TranslationMetaComponent = 106,
     QAPayload = 110,
     FactPayload = 111,
     ChunkPayload = 112,
@@ -874,7 +879,7 @@ enum class DerivedRecordKind : uint32_t {
 };
 ```
 
-Значения 100-120 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
+Значения 100-123 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
 
 ### 7.2. Resource Manifest Records
 
@@ -900,6 +905,7 @@ enum class DerivedRecordKind : uint32_t {
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
 | EmbeddingMetaComponent | `unit_components` (tag=EmbeddingMeta) | EmbeddingMeta=true |
 | CompactionMetaComponent | `unit_components` (tag=CompactionMeta) | Compaction=true |
+| TranslationMetaComponent | `unit_components` (tag=TranslationMeta) | TranslationProjection=true |
 | QAPayload | `qa_payloads` | QAPairs=true (enable_qa_payload) |
 | FactPayload | `fact_payloads` | enable_fact_payload=true |
 | ChunkPayload | `chunk_payloads` | Chunk kind (default, всегда) |

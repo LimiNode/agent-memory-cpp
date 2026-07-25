@@ -225,10 +225,10 @@ does not replace them:
   local persistence, and urgency-aware context planning can be added while
   keeping live affect dynamics in a sibling runtime controller.
 
-LLM contextualization, cross-encoder rerank, hybrid chunkers, ASR,
-VLM document parsing, hosted vector databases, Python bindings, and
-agent framework bridges stay in `adapters/` and `examples/`. They do
-not enter the core contract.
+LLM contextualization, cross-encoder rerank, translation adapters, hybrid
+chunkers, ASR, VLM document parsing, hosted vector databases, Python bindings,
+and agent framework bridges stay in `adapters/` and `examples/`. They do not
+enter the core contract.
 
 The canonical, currently normative specification of the data model,
 profiles, stacks, capability matrix, validation rules, and maturity lives in
@@ -527,6 +527,8 @@ CMake flags (planned):
   CompiledArticle, Chunk), lifecycle FSM.
 - [`guides/lexical-search-roadmap.md`](lexical-search-roadmap.md) —
   BM25F, postings, tokenization.
+- [`guides/translation-adapters-roadmap.md`](translation-adapters-roadmap.md) —
+  optional cross-lingual projections and translation adapter provenance.
 - [`guides/optimization-roadmap.md`](optimization-roadmap.md) —
   vector/binary storage, scope-aware secondary indexes, compression.
 - [`guides/mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) —

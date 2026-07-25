@@ -45,7 +45,7 @@ Disclaimer:
 | LlamaIndex | Python framework | Document agent + OCR + indices/graphs/retrievers/query engines/reranking. | LlamaIndex = огромный application framework. Совпадает по retriever interface pattern (IRetriever, HybridRetriever). Не конкуренты, разные abstraction levels. |
 | codebase-memory-mcp (research source / pattern donor, не direct competitor) | C static-binary MCP server | Code intelligence через tree-sitter + Hybrid LSP + SQLite-graph (14 MCP tools, ~162 KB pure C). | НЕ direct competitor (different scope: code intelligence, не agent memory). Изучен как pattern donor — 9 конкретных engineering patterns (MinHash + LSH, RotSQ quantization, coverage shadow graph, atomic shared ID, bounded BFS, team-shared artifact, Cypher subset, AC-over-LZ4, adaptive-poll watcher). См. детали и приоритеты в [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md). License: MIT. |
 
-## 3. Sister library references (C++ engineering inspiration)
+## 3. Sister library / adapter references
 
 | Project | Что у нас похожего | Что можно позаимствовать |
 |---|---|---|
@@ -54,6 +54,7 @@ Disclaimer:
 | USearch | IDenseIndex + binary signatures + SIMD HammingTopK strategy. | C++ HNSW + SIMD opt + binary Tanimoto/Sørensen similarities. Reference для Eigen/SIMD стратегии (AVX2/AVX-512 POPCNT). Disk-backed index experiments. |
 | sqlite-vec | Embedded-C++ static library + vector search. Pure C, no deps, float/int8/binary. | Reference для embedded-архитектуры: vector search без external DB server. |
 | Tantivy (Rust) | BM25 search, embedded-first. | Tokenization design, BM25 scoring. Cross-implementation reference для BM25 correctness. |
+| Argos Translate | Optional cross-lingual ingestion/retrieval adapter. | Offline package identity, model digest provenance and pivot path tracking for `TranslatedCanonical` projections. No Python dependency in core. |
 
 ## 4. C++ embeddable memory stores (architectural reference)
 
@@ -107,6 +108,9 @@ Disclaimer:
 - **USearch**: SIMD-first design для binary embeddings (HammingTopK kernel).
 - **DuckDB / SQLite-vec**: "single-file DB as library" deployment model — мы тоже.
 - **Tantivy**: BM25 tokenization edge-cases (Cyrillic, CJK, identifiers in code).
+- **Argos Translate**: offline translation package/pivot semantics for optional
+  `ITranslationAdapter` and `TranslationMetaComponent`; see
+  [`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
 
 ## 7. Open questions / roadmap items (из конкурентного анализа)
 
@@ -125,6 +129,7 @@ Disclaimer:
 - guides/optimization-roadmap.md — retrieval/index engineering.
 - guides/knowledge-base-roadmap.md — retrieval + eval pipeline.
 - guides/lexical-search-roadmap.md — BM25F + projections + Cyrillic morphology.
+- guides/translation-adapters-roadmap.md — optional cross-lingual projections.
 - ai-agent-playbook/concepts/ — общий агентский knowledge base (СВИНОПАС, Anna_AI, GraphRAG и др.).
 
 ## 9. External references
@@ -155,3 +160,4 @@ Disclaimer:
 
 ### Research source / pattern donor (not a direct competitor):
 - codebase-memory-mcp: https://github.com/DeusData/codebase-memory-mcp (MIT; 9 patterns extracted in [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md))
+- Argos Translate: https://github.com/argosopentech/argos-translate
