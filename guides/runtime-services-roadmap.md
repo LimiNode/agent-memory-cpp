@@ -450,7 +450,7 @@ revision/delete races are handled by the checks above.
 При ошибке в batch:
 - Successful claimed jobs call `complete(token)` in the same transaction that
   commits derived index writes.
-- Failed jobs call `fail_retry(token, backoff, last_error)` while attempts
+- Handler execution errors call `fail_retry(token, backoff, last_error)` while attempts
   remain; the queue updates status, lease and ready/scheduled indexes.
 - Exhausted retries call `fail_dead(token, last_error)` and remain inspectable
   through `jobs_by_status = Dead`.
@@ -460,9 +460,11 @@ revision/delete races are handled by the checks above.
 
 `TaskQueue` / `JobStore` является downstream runtime abstraction
 `agent-memory-cpp`, а не public API `mdbx-containers`. Он владеет job lifecycle:
-`Pending`, `Running`, `Done`, `Failed`, `Dead`, `Cancelled`,
-retry/backoff policy, worker leases, attempts, stale-worker recovery,
-priority/FIFO ordering и cancellation.
+`Pending`, `Running`, `Done`, `Dead`, `Cancelled`, retry/backoff policy, worker
+leases, attempts, stale-worker recovery, priority/FIFO ordering и cancellation.
+Retryable failures return to `Pending` with backoff; exhausted or unrecoverable
+failures become inspectable terminal `Dead`. There is no durable `Failed`
+state in the canonical queue.
 
 Persistent MDBX implementation uses generic storage primitives only:
 
@@ -508,10 +510,17 @@ contract kind-aware: dispatcher claims the first ready job, decodes
 `JobRecord.kind` and codec version centrally, and routes only typed payloads to
 registered handlers. Workers do not call `claim_next`, do not scan for their own
 kind, do not leave unsupported jobs at the head of ready, and do not claim
-payload codecs they cannot decode. If global priority selects a ready job for an
-unavailable worker kind, dispatcher owns the retry/backoff or
-worker-availability policy; individual workers never implement ad hoc
-kind-skipping.
+payload codecs they cannot decode.
+
+Unavailable handler path:
+
+- unknown `JobRecord.kind` or unsupported codec version is unrecoverable and
+  transitions to `Dead` with `last_error`;
+- temporarily unavailable handler/capability calls
+  `release_unhandled(token, backoff, reason)`, returns the job to scheduled
+  `Pending` without incrementing execution `attempts`;
+- handler execution failure calls `fail_retry(token, backoff, last_error)` and
+  increments `attempts`; exhausted attempts call `fail_dead(token, last_error)`.
 
 `JobRecord` хранит как минимум `job_id`, `kind`, codec/versioned payload bytes,
 `status`, `priority`, `created_at_ms`, `run_after_ms`, `attempts`,
@@ -584,21 +593,25 @@ State transitions:
 - `fail_retry` переводит `Running -> Pending`, увеличивает attempts,
   применяет backoff в `run_after_ms` и возвращает scheduled или ready entry.
 - `fail_dead` переводит `Running -> Dead`, когда retry budget исчерпан.
+- `release_unhandled` переводит `Running -> Pending` with backoff when the
+  dispatcher cannot currently route a known job kind/version; it does not
+  increment execution attempts.
 - `request_cancel` переводит `Pending -> Cancelled`; для `Running` ставит
   `cancel_requested`, после чего worker завершает cooperative cancel либо
   lease recovery переводит record в terminal/cancellable state.
 - `ack_cancel` переводит `Running -> Cancelled`, удаляет lease entry и
   выставляет `completed_at_ms`.
-- `recover_expired_leases(now)` bounded-scan-ит `jobs_by_lease` по
-  `lease_until_ms <= now`; если `cancel_requested = true`, job переходит в
+- `recover_expired_leases(now_ms)` bounded-scan-ит `jobs_by_lease` по
+  `lease_until_ms <= now_ms`; если `cancel_requested = true`, job переходит в
   `Cancelled`, иначе idempotent jobs возвращаются в `Pending`, а
-  non-idempotent jobs помечаются как `Failed`/`Dead` по policy.
+  non-idempotent jobs помечаются как `Dead` with inspectable `last_error`.
 
 The transition names above are shorthand. Normative owner-sensitive signatures
 are `renew_lease(token, new_deadline)`, `complete(token)`,
-`fail_retry(token, backoff, last_error)`, `fail_dead(token, last_error)` and
-`ack_cancel(token)`. Each successful claim and each lease recovery increments
-`lease_epoch`; stale workers cannot reuse an old token.
+`fail_retry(token, backoff, last_error)`, `release_unhandled(token, backoff,
+reason)`, `fail_dead(token, last_error)` and `ack_cancel(token)`. Each
+successful claim and each lease recovery increments `lease_epoch`; stale workers
+cannot reuse an old token.
 
 All owner-sensitive transitions MUST accept `ClaimToken` and, in the same
 transaction as any derived writes or terminal transition, verify:
@@ -607,14 +620,16 @@ transaction as any derived writes or terminal transition, verify:
 status == Running
 lease_owner == token.worker_id
 lease_epoch == token.lease_epoch
-lease_until_ms >= now
+now_ms < lease_until_ms
 ```
 
 If any predicate fails, the worker's write/transition is rejected as stale.
 Acceptance case: A claims -> lease expires -> B claims -> A resumes => A's
 derived write and `complete(token)` are rejected. Long-running batches must
 heartbeat with `renew_lease(token, new_deadline)` before the previous lease
-expires.
+expires. Recovery is eligible when `lease_until_ms <= now_ms`; owner-sensitive
+transitions are valid only when `now_ms < lease_until_ms`, using the same
+caller-provided `now_ms` value for the whole transaction.
 
 #### 4.6.1 Typed transition pattern
 

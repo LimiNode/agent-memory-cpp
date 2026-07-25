@@ -29,7 +29,15 @@ evidence are part of the semantic contract. See
 
 ### 2.1. Architecture
 
-`CompactionWorker` — фоновый компонент `MemoryStack`, обрабатывающий compaction jobs. Один worker thread per MemoryStack (per ADR-013, см. также Open Issue 17.6 в `memory-stacks-roadmap.md`). Использует downstream `TaskQueue`/`JobStore` из `runtime-services-roadmap.md` §4.6 для persistent очереди; MDBX persistence строится на storage recipe `mdbx-containers-extension-tz.md` §12.5: `compaction_jobs_by_id`, `compaction_jobs_scheduled`, `compaction_jobs_ready`, `compaction_jobs_by_lease`, `compaction_jobs_by_status` плюс `compaction_handoffs` для operational handoff state.
+`CompactionWorker` — фоновый компонент `MemoryStack`, обрабатывающий compaction
+jobs. Один worker thread per MemoryStack (per ADR-013, см. также Open Issue 17.6
+в `memory-stacks-roadmap.md`). Persistent scheduling uses the shared downstream
+`TaskQueue`/`JobStore` from `runtime-services-roadmap.md` §4.6 and the generic
+`jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`,
+`jobs_by_status` MDBX recipe from `mdbx-containers-extension-tz.md` §12.5.
+`JobRecord.kind = Compaction`; compaction-specific data is a versioned opaque
+payload plus the single extra `compaction_handoffs` DBI for operational handoff
+state.
 
 ```cpp
 class CompactionWorker {
@@ -48,8 +56,8 @@ public:
 
     // Status
     CompactionStats stats() const;
-    std::vector<JobState> active_jobs() const;
-    std::vector<JobState> recent_jobs(size_t limit) const;
+    std::vector<JobRecordView> active_jobs() const;
+    std::vector<JobRecordView> recent_jobs(size_t limit) const;
     std::optional<CompactionHandoff> current_handoff() const;
 
     // Manual trigger (для admin tool)
@@ -68,12 +76,10 @@ Worker создаётся через `MemoryStack::compaction()` (см. `memory-
 Решение: один worker thread per MemoryStack (per Open Issue 17.6 в `memory-stacks-roadmap.md`).
 
 - Write operations (on-write cheap jobs) и compaction jobs используют одну MDBX транзакцию через `MultiTableWriter` (`mdbx-containers-extension-tz.md` секция 3.7).
-- Compaction jobs ждут в persistent queue с DBI
-  `compaction_jobs_by_id`, `compaction_jobs_scheduled`,
-  `compaction_jobs_ready`, `compaction_jobs_by_lease` и
-  `compaction_jobs_by_status`; due jobs сначала продвигаются из scheduled в
-  ready, затем worker обрабатывает ready queue последовательно с priority/FIFO
-  ordering.
+- Compaction jobs ждут в shared persistent `jobs_*` queue. `JobDispatcher` is
+  the only component that claims jobs; it routes typed `CompactionJobPayload`
+  records to the compaction handler. No compaction-specific queue DBIs are
+  opened.
 - Нет параллельного compaction внутри одного stack — избежание lock contention на secondary indexes.
 - Worker thread использует per-thread transaction model из `mdbx-containers` (per-thread → один worker thread владеет одной активной транзакцией).
 - On-write cheap operations (mark dirty, enqueue DecayJob) выполняются в вызывающем потоке через `MultiTableWriter`, не блокируют worker.
@@ -147,7 +153,9 @@ public:
     virtual std::string name() const = 0;
     virtual CompactionParams params() const = 0;
     virtual Result<void> validate(const MemoryStack& stack) const = 0;
-    virtual Result<JobOutcome> run(MemoryStack& stack) = 0;
+    virtual Result<JobOutcome> run(
+        const ClaimToken& token,
+        JobExecutionContext& context) = 0;
     virtual std::optional<HandoffState> checkpoint() const { return std::nullopt; }
     virtual void restore(HandoffState state) {}
     virtual bool is_idempotent() const { return true; }
@@ -155,7 +163,39 @@ public:
 };
 ```
 
-`validate()` — перед постановкой в очередь, возвращает ошибку если preconditions не выполнены. `run()` — вызывается worker thread, должен использовать `stack.compaction_txn()` для atomic multi-DBI write. При exception worker логирует error, помечает job как Failed, инкрементит retry counter. `checkpoint()`/`restore()` — опциональный механизм для длинных jobs. `is_idempotent()` — критично для crash recovery: если `false` и worker crashed mid-job, при restart job помечается Failed без перезапуска. DecayJob, DedupeJob, ArchiveColdJob, EmbeddingRecomputeJob — idempotent. MergeJob — conditional (если restore checkpoint возможен).
+`validate()` — перед постановкой в shared queue, возвращает ошибку если
+preconditions не выполнены. `run()` вызывается только через `JobDispatcher` for
+`JobRecord.kind = Compaction`. The job MUST NOT open an independent compaction
+write transaction. `JobExecutionContext` provides the single fenced write
+transaction that first verifies `ClaimToken` (`runtime-services-roadmap.md`
+§4.6) and then commits compaction application writes plus queue terminal/retry
+transition atomically.
+
+```cpp
+class JobExecutionContext {
+public:
+    MemoryStack& stack();
+    Transaction& txn();
+
+    void verify_active_lease(const ClaimToken& token, int64_t now_ms);
+    void renew_lease(const ClaimToken& token, int64_t new_deadline_ms);
+    void write_handoff(const CompactionHandoff& handoff);
+    void complete_with_writes(const ClaimToken& token, JobOutcome outcome);
+    void fail_retry_with_writes(
+        const ClaimToken& token,
+        std::chrono::milliseconds backoff,
+        std::string last_error);
+    void fail_dead_with_writes(const ClaimToken& token, std::string last_error);
+};
+```
+
+При exception dispatcher records `last_error` and applies `fail_retry` or
+`fail_dead` through the same fenced transition. `checkpoint()`/`restore()` —
+опциональный механизм для длинных jobs. `is_idempotent()` — критично для crash
+recovery: если `false` и checkpoint отсутствует, recovery sends the job to
+`Dead` for manual review rather than replaying it. DecayJob, DedupeJob,
+ArchiveColdJob, EmbeddingRecomputeJob — idempotent. MergeJob — conditional (если
+restore checkpoint возможен).
 
 ### 3.2. JobOutcome
 
@@ -173,33 +213,33 @@ struct JobOutcome {
 
 `was_partial` устанавливается если job завершился через exception в середине обработки, или был cancelled через `stop_immediate()`. Используется для retry-логики и reporting.
 
-### 3.3. JobState (storage representation)
+### 3.3. Compaction job payload (storage representation)
 
-Сериализуемая запись для DBI `compaction_jobs_by_id` (key = `JobId`, сериализация msgpack/flat binary). Secondary queue indexes следуют контракту `runtime-services-roadmap.md` §4.6:
+Generic lifecycle state lives in shared `JobRecord` (`jobs_by_id`) and queue
+indexes from `runtime-services-roadmap.md` §4.6. Compaction-specific data is the
+versioned payload stored in `JobRecord.payload_bytes`; it does not duplicate
+status, lease, attempts, priority or worker ownership:
 
 ```cpp
-struct JobState {
-    JobId job_id;
+struct CompactionJobPayload {
+    uint16_t codec_version = 1;
     ICompactionJob::Kind kind;
     std::string name;
     std::vector<uint8_t> params_blob;          // сериализованные params
-    JobStatus status = JobStatus::Pending;     // Pending, Running, Done, Failed, Dead, Cancelled
-    int priority = 0;
-    // FIFO ordering uses monotonic JobId per runtime-services-roadmap.md §4.6.
-    int64_t created_at_ms = 0;
-    int64_t started_at_ms = 0;
-    int64_t completed_at_ms = 0;
-    int64_t run_after_ms = 0;                  // для delayed jobs
-    int64_t lease_until_ms = 0;
-    uint32_t attempts = 0;
-    uint32_t max_attempts = 3;
-    bool cancel_requested = false;
-    std::string last_error;
-    JobOutcome outcome;
-    std::optional<std::string> worker_id;      // lease owner while Running
     std::optional<HandoffState> handoff_state; // checkpoint для resume
 };
+
+struct CompactionOutcomePayload {
+    uint16_t codec_version = 1;
+    JobOutcome outcome;
+};
 ```
+
+`JobRecord.kind` is `Compaction`; `JobRecord.priority`, `run_after_ms`,
+`attempts`, `max_attempts`, `lease_owner`, `lease_epoch`, `lease_until_ms`,
+`status`, `last_error` and timestamps remain the single source of truth for
+lifecycle and dispatch. Admin APIs may expose `JobRecordView` by joining
+`JobRecord` with decoded `CompactionJobPayload`.
 
 ## 4. Job Types
 
@@ -424,7 +464,8 @@ struct CompactionHandoffParams {
 
 class CompactionHandoffJob : public ICompactionJob {
     // Автоматически enqueue'ится при:
-    // - compaction worker stop (graceful): создаёт handoff с status = Aborted, current_state = serialized JobState.
+    // - compaction worker stop (graceful): создаёт handoff с status = Aborted,
+    //   current_state = serialized HandoffState / CompactionJobPayload checkpoint.
     // - compaction worker startup: queue lease recovery owns requeue;
     //   handoff payload restores the same JobId checkpoint.
     // - explicit checkpoint call: periodic snapshot каждые checkpoint_interval_ms.
@@ -541,7 +582,7 @@ struct CompactionHandoff {
     std::vector<std::string> constraints;          // max_duration, max_units, safety constraints
     std::vector<std::string> plan_steps;           // ["scan candidates", "apply decay", ...]
     std::optional<bool> approval_required;         // true если sensitive operation (physical_erase)
-    std::string current_state;                     // сериализованное JobState (base64 или msgpack blob)
+    std::string current_state;                     // serialized HandoffState / compaction checkpoint (base64 or msgpack blob)
     std::vector<std::string> error_history;        // лог ошибок для post-mortem
     std::optional<std::string> next_step;          // checkpoint: что делать при resume
 
@@ -648,12 +689,15 @@ Threshold для enqueue (per stack):
 2. Открывает `compaction_handoffs` DBI, ищет in-progress handoff
    (status = InProgress) для текущего session.
 3. Если найден и соответствующий `JobId` возвращён queue recovery в
-   claimable `Pending` state — десериализует job через `deserialize_job(handoff->job_kind,
-   handoff->params_blob)`, восстанавливает state через
-   `ICompactionJob::restore(handoff->current_state)`, resume с
+   claimable `Pending` state — dispatcher later decodes `CompactionJobPayload`
+   from `JobRecord.payload_bytes`; handler десериализует job через
+   `deserialize_job(handoff->job_kind, handoff->params_blob)`, восстанавливает
+   state через `ICompactionJob::restore(handoff->current_state)`, resume с
    `checkpoint_at_unit`.
 4. Если `is_idempotent()` = true — безопасно перезапустить с offset (или с начала если checkpoint отсутствует).
-5. Если `is_idempotent()` = false и checkpoint отсутствует — fail safely, логирует error, помечает job = Failed (manual review required).
+5. Если `is_idempotent()` = false и checkpoint отсутствует — fail safely,
+   логирует error, переводит shared `JobRecord` в `Dead` (manual review
+   required).
 
 ### 7.2. MemoryStack crash
 
@@ -674,7 +718,7 @@ MDBX гарантирует atomicity per transaction (через `MultiTableWri
 4. Re-enqueue если `retry_policy.attempts < max_attempts`:
    - Backoff: exponential (1s, 5s, 30s, 5min).
    - Новый `run_after_ms` через `enqueue_delayed`.
-5. Если `attempts >= max_attempts` — mark job = `Dead` (manual review).
+5. Если `attempts >= max_attempts` — mark shared `JobRecord` = `Dead` (manual review).
 
 ```cpp
 struct RetryPolicy {
@@ -745,7 +789,7 @@ merge_params.scope_id = "agent:nika";
 auto merge_id = compaction.trigger_now(ICompactionJob::Kind::Merge, merge_params);
 
 auto stats = compaction.stats();           // CompactionStats snapshot
-auto recent = compaction.recent_jobs(10);  // last 10 JobState records
+auto recent = compaction.recent_jobs(10);  // last 10 JobRecordView records
 
 auto handoff = compaction.current_handoff();
 if (handoff && handoff->status == HandoffStatus::InProgress) {
@@ -760,8 +804,8 @@ if (handoff && handoff->status == HandoffStatus::InProgress) {
 
 | Шаг | Что | Зависимости |
 |---|---|---|
-| 14.0 | `ICompactionJob` interface + `CompactionWorker` skeleton + `JobState` сериализация | Шаги 1-2 (envelope + DBI) |
-| 14.1 | compaction queue DBIs (`compaction_jobs_by_id`, `compaction_jobs_scheduled`, `compaction_jobs_ready`, `compaction_jobs_by_lease`, `compaction_jobs_by_status`) + downstream `TaskQueue` integration (`runtime-services-roadmap.md` §4.6; storage recipe `mdbx-containers-extension-tz.md` §12.5) + `DecayJob`/`DedupeJob`/`ArchiveColdJob` (M1 minimum) | 14.0, шаги 5, 10 (components + DecayPolicy) |
+| 14.0 | `ICompactionJob` interface + `CompactionWorker` skeleton + `CompactionJobPayload` / `CompactionOutcomePayload` serialization | Шаги 1-2 (envelope + DBI) |
+| 14.1 | shared runtime `jobs_*` queue integration (`runtime-services-roadmap.md` §4.6; storage recipe `mdbx-containers-extension-tz.md` §12.5) + `JobDispatcher` compaction handler + `DecayJob`/`DedupeJob`/`ArchiveColdJob` (M1 minimum); no compaction-specific queue DBIs | 14.0, шаги 5, 10 (components + DecayPolicy) |
 | 14.2 | `CompactionHandoff` structure + crash recovery + `CompactionHandoffJob` meta-job | 14.1 |
 | 14.3 | `MergeJob` для episode compaction | `ConversationEpisodePayload` (см. `knowledge-units-roadmap.md` 5.5.4) |
 | 14.4 | `SummaryPromotionJob` (с `ITextAdapter` интерфейсом) + `EmbeddingRecomputeJob` | `CompiledArticlePayload`, `DenseVectors` capability |

@@ -344,9 +344,8 @@ Per
 - **CompactionWorker** (async) — выполняет `ICompactionJob`-ы:
   Decay, Dedupe, ArchiveCold (M1); Merge, SummaryPromotion,
   EmbeddingRecompute (M2). Хранит состояние jobs в downstream `TaskQueue`
-  DBI (`compaction_jobs_by_id`, `compaction_jobs_scheduled`,
-  `compaction_jobs_ready`,
-  `compaction_jobs_by_lease`, `compaction_jobs_by_status`) и handoff в
+  DBI (`jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`,
+  `jobs_by_status`) with `JobRecord.kind = Compaction`; handoff state lives in
   `compaction_handoffs`.
 - **AsyncIndexer** (background) — батчит inserts в lexical / vector /
   projection индексы. Default: 1000 units или 50 MB, whichever first.

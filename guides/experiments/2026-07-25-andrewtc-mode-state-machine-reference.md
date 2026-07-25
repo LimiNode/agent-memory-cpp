@@ -12,6 +12,8 @@ ingestion pipelines.
 ### Source
 
 - Repository: `https://github.com/andrewtc/mode`
+- Inspected revision: `f0ce95a77bc797e868bd2ff7c8b1df5ebe88271b`
+- Reference surface: `README.md` at that revision
 - Public README inspection date: 2026-07-25
 - Local git fetch: unavailable during this review due GitHub connectivity
   timeout from the working environment.
@@ -51,6 +53,10 @@ C++17 static library. Do borrow the design pressure:
 Added `runtime-services-roadmap.md` §4.6.1 "Typed transition pattern" and a
 cross-reference from `memory-stacks-roadmap.md` Step 14. This keeps the idea
 local to runtime services and avoids creating a generic state-machine subsystem.
+The whitelist of allowed `JobLifecycle` transitions, `ClaimToken` fencing, and
+queue-index delta production are local `agent-memory-cpp` policy; upstream
+`mode` is intentionally small and does not provide those queue consistency
+guarantees by itself.
 
 ### Follow-Up Checks
 

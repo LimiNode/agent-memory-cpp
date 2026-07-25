@@ -592,7 +592,12 @@ void Connection::multi_write(Op&& op);  // RAII: commit/rollback
    `content_hash_recipe_version` into the envelope, then compute
    `KnowledgeUnitKey = (kind, scope_id, content_hash)` and read
    `content_key_to_unit_id`. Caller-supplied hash values are diagnostics only
-   unless they match the recomputed result.
+   unless they match the recomputed result. The identity input read,
+   `content_key_to_unit_id` lookup, `KnowledgeUnitId` allocation and
+   no-overwrite mapping insert MUST happen inside the same MDBX write
+   transaction. MDBX-backed `ResourceBodyStore` reads receive that transaction;
+   external body stores must provide an immutable digest/version token verified
+   before commit.
 2. `KnowledgeUnitKey` immutable for an existing `UnitId`. Если caller передаёт
    existing `UnitId`, storage сначала читает старый envelope из
    `knowledge_units` и строит `old_key` from
@@ -609,7 +614,10 @@ void Connection::multi_write(Op&& op);  // RAII: commit/rollback
    downstream до входа в storage transaction.
 4. Envelope в `knowledge_units` (DBI:
    `KeyValueTable<UnitId, KnowledgeUnitEnvelope>`).
-5. Mapping `KnowledgeUnitKey -> UnitId` в `content_key_to_unit_id`.
+5. Mapping `KnowledgeUnitKey -> UnitId` в `content_key_to_unit_id`, using
+   `insert_if_absent` / CAS semantics. If another writer inserts the same key
+   first, the operation returns `UpsertResult::Existed(existing_id)` and MUST
+   not create an orphan `knowledge_units` envelope.
 6. `knowledge_units_by_kind` update: добавить `(scope_id, kind) -> UnitId`.
    Поскольку `KnowledgeUnitKey` immutable, смена `(scope_id, kind)` внутри того
    же `UnitId` запрещена; removal старой by-kind записи выполняется только при
@@ -654,7 +662,8 @@ projection_kind, index_kind)`; workers must be idempotent, skip stale revisions,
 replay after crash, and tolerate delete/update before older jobs run.
 
 `ContentHash` recipe is versioned and kind-specific. The recipe input MUST be
-canonical bytes:
+canonical bytes using the tagged length-prefixed wire grammar from
+`knowledge-units-roadmap.md` §4:
 
 - `QAPair`: normalized question/answer payload fields and declared identity
   metadata.
@@ -667,6 +676,11 @@ canonical bytes:
 Envelope previews, `SourceRefSummary` display excerpts, usage stats,
 projections, embeddings and runtime counters are excluded unless a future recipe
 version explicitly lists them.
+
+Golden vectors for every `KnowledgeUnitKind`, empty vs absent optional fields,
+Unicode composed vs decomposed strings, boundary integer/timestamp values,
+legacy recipe v0 and C++11/C++17 equality are required before implementing this
+hash as a migration gate.
 
 For `Chunk`, `resource_body_digest`, span/offset identity and normalized
 chunk-text digest are required inputs to `write_unit`, or storage must load them
@@ -974,7 +988,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 |---|---:|---:|---|---|
 | Canonical memory-stack DBIs from §5.5 | up to 29 profile-selected | 29 full inventory | mixed | Count every row in the §5.5 summary table exactly once when full canonical inventory is enabled. |
 | Existing document/resource adapter DBIs from §5.4 | 0 by default, +4 if legacy adapter enabled | +4 | KV supported | Adapter-local; not part of canonical memory-stack layout. |
-| Runtime queue profile delta | 0 by default, +5 per persistent queue | +5 | mixed | `*_jobs_by_id`, `*_jobs_scheduled`, `*_jobs_ready`, `*_jobs_by_lease`, `*_jobs_by_status`; owned by `runtime-services-roadmap.md`. |
+| Runtime queue profile delta | 0 by default, +5 for the shared persistent queue | +5 | mixed | `jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`, `jobs_by_status`; owned by `runtime-services-roadmap.md`. |
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; operational handoff, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
@@ -1377,6 +1391,9 @@ LeaseUntilKey = (lease_until_ms, job_id)
 Delayed jobs are promoted first and ready jobs are claimed by priority/FIFO.
 The full `JobRecord`, lifecycle transitions, leases, cancellation and retry
 policy are defined downstream in `guides/runtime-services-roadmap.md` §4.6.
+Canonical durable statuses are `Pending`, `Running`, `Done`, `Dead` and
+`Cancelled`; retryable failures return to `Pending`, and exhausted or
+unrecoverable failures become inspectable `Dead`.
 Default topology is one shared persistent runtime queue per `MemoryStack`.
 `JobRecord.kind` distinguishes `Compaction`, `AsyncIndex`, maintenance and
 future worker payloads; `IndexUpdateJob` is only one opaque job payload kind.
@@ -1406,11 +1423,12 @@ Atomic claim pattern:
 The claim transition also increments `lease_epoch`, writes `lease_owner` /
 `lease_until_ms`, and returns a downstream
 `ClaimToken(job_id, worker_id, lease_epoch, lease_until_ms)`. Owner-sensitive
-downstream transitions (`renew_lease`, `complete`, `fail_retry`, `fail_dead`,
-`ack_cancel`) must receive the token and check `status == Running`,
-`lease_owner`, `lease_epoch` and non-expired `lease_until_ms` in the same
-transaction as any terminal state update or derived write. This prevents a
-worker whose lease expired from completing a newer claim attempt.
+downstream transitions (`renew_lease`, `complete`, `fail_retry`,
+`release_unhandled`, `fail_dead`, `ack_cancel`) must receive the token and check
+`status == Running`, `lease_owner`, `lease_epoch` and `now_ms < lease_until_ms`
+in the same transaction as any terminal state update or derived write. Recovery
+is eligible when `lease_until_ms <= now_ms`. This prevents a worker whose lease
+expired from completing a newer claim attempt.
 
 Queue storage acceptance:
 

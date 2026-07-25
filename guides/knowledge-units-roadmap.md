@@ -284,7 +284,10 @@ struct CanonicalIdentityInput {
     std::optional<ResourceDigest> resource_body_digest;
     std::optional<ChunkSpan> chunk_span;
     std::optional<ContentDigest> normalized_chunk_text_digest;
-    std::vector<uint8_t> canonical_payload_identity_bytes;
+    std::optional<QAPairIdentity> qa_pair;
+    std::optional<FactIdentity> fact;
+    std::optional<TextBodyIdentity> text_body;
+    std::optional<DeclaredMetadataIdentity> declared_metadata;
 };
 
 ContentHashResult compute_content_hash(
@@ -293,13 +296,51 @@ ContentHashResult compute_content_hash(
 ```
 
 `compute_content_hash` owns the algorithm/domain prefix, field order,
-normalization and truncation rule. Current recipe: encode
-`agent-memory.content-hash.v1`, `kind`, `scope`, then recipe-defined identity
-fields; compute SHA-256 over those canonical bytes; store the first 16 bytes as
-`ContentHash`. Legacy `<kind>:<scope>:<sha256(content)>` databases migrate by
-decoding the 32-byte SHA-256 from the old id, keeping the leftmost 16 bytes as
-`ContentHash`, and writing `content_hash_recipe_version = 0` before any v1
-re-hash migration.
+normalization and truncation rule. `kind` argument and `input.kind` MUST match.
+Current recipe: encode `agent-memory.content-hash.v1`, `kind`, `scope`, then
+recipe-defined identity fields; compute SHA-256 over those canonical bytes;
+store the first 16 bytes as `ContentHash`. Legacy
+`<kind>:<scope>:<sha256(content)>` databases migrate by decoding the 32-byte
+SHA-256 from the old id, keeping the leftmost 16 bytes as `ContentHash`, and
+writing `content_hash_recipe_version = 0` before any v1 re-hash migration.
+
+Canonical wire grammar v1:
+
+```text
+stream        = domain kind scope field*
+domain        = u16be byte_len + UTF-8 bytes "agent-memory.content-hash.v1"
+kind          = u16be stable KnowledgeUnitKind value
+scope         = u32be byte_len + normalized UTF-8 bytes
+field         = u16be field_tag + u8 presence + u32be byte_len + payload
+presence      = 0 absent, 1 present-empty, 2 present-non-empty
+integer       = fixed-width big-endian two's-complement or unsigned
+timestamp     = i64be milliseconds since Unix epoch
+digest        = raw bytes with fixed length declared by the field tag
+string        = u32be byte_len + UTF-8 NFC bytes after recipe normalization
+list/map      = u32be item_count + encoded items; maps sorted by encoded key
+```
+
+Absent optional and present-empty optional are distinct through `presence`.
+Every string input is converted to UTF-8 NFC. Recipe-specific text
+normalization (case folding, whitespace folding, line-ending normalization)
+must be listed by the per-kind encoder before bytes are emitted. Concatenating
+raw strings is forbidden; all fields use tag + presence + length framing.
+
+Stable field-tag order:
+
+| Kind | Field tags in order |
+|---|---|
+| `Chunk` | `0x0001 resource_body_digest`, `0x0002 span_start`, `0x0003 span_end`, `0x0004 normalized_chunk_text_digest` |
+| `QAPair` | `0x0101 normalized_question`, `0x0102 normalized_answer`, `0x0103 identity_metadata_map` |
+| `Fact` | `0x0201 subject`, `0x0202 predicate`, `0x0203 object`, `0x0204 valid_time`, `0x0205 observed_time` |
+| `ConversationEpisode`, `CompiledArticle`, `Note` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
+| `Event`, `Entity`, `Relation`, `Summary`, `Custom` | `0x0401 primary_identity_text`, `0x0402 declared_identity_metadata_map`, `0x0403 declared_payload_digest` |
+
+Per-kind typed encoders build these fields inside the library. Callers provide
+typed identity inputs or authoritative body digests, not opaque canonical byte
+buffers. Golden vectors are required for every kind, empty vs absent optional,
+Unicode composed vs decomposed strings, boundary integer/timestamp values,
+legacy recipe v0 and C++11/C++17 cross-platform equality.
 
 Identity vs mutable fields:
 
@@ -331,33 +372,48 @@ Storage использует **два** DBI для разделения identity
 Идемпотентный upsert через `content_key_to_unit_id`:
 
 ```cpp
-// 1. Build canonical identity input from authoritative fields/stores.
-CanonicalIdentityInput input = build_identity_input(unit, resource_body_store);
-ContentHashResult identity = compute_content_hash(unit.kind, input);
+return connection.multi_write([&](Transaction& txn) -> UpsertResult {
+    // 1. Build canonical identity input from authoritative fields/stores using
+    // the same transaction snapshot as the later dedupe and write.
+    CanonicalIdentityInput input =
+        build_identity_input(unit, resource_body_store, txn);
+    ContentHashResult identity = compute_content_hash(unit.kind, input);
 
-unit.envelope.content_hash = identity.hash;
-unit.envelope.content_hash_recipe_version = identity.recipe_version;
+    unit.envelope.content_hash = identity.hash;
+    unit.envelope.content_hash_recipe_version = identity.recipe_version;
 
-KnowledgeUnitKey key{
-    unit.kind,
-    unit.scope,
-    identity.hash
-};
+    KnowledgeUnitKey key{
+        unit.kind,
+        unit.scope,
+        identity.hash
+    };
 
-// 2. Проверить наличие существующего unit.
-auto existing = content_key_to_unit_id.find(key);
-if (existing) {
-    return UpsertResult::Existed{existing->unit_id};  // dedupe
-}
+    // 2. Dedupe check and no-overwrite insert are both inside the write txn.
+    if (auto existing = content_key_to_unit_id.find(key, txn)) {
+        return UpsertResult::Existed{*existing};
+    }
 
-// 3. Аллоцировать новый monotonic id и записать обе записи в одной транзакции.
-auto new_id = KnowledgeUnitId::allocate();
-unit.id = new_id;
-MultiTableWriter writer;
-writer.put(knowledge_units, new_id, unit);
-writer.put(content_key_to_unit_id, key, new_id);
-writer.commit();
+    auto new_id = knowledge_unit_sequence.next(txn);
+    unit.id = new_id;
+    unit.envelope.id = new_id;
+
+    if (!content_key_to_unit_id.insert_if_absent(key, new_id, txn)) {
+        return UpsertResult::Existed{
+            *content_key_to_unit_id.find(key, txn)
+        };
+    }
+
+    knowledge_units.put(new_id, unit.envelope, txn);
+    write_payload_and_indexes(unit, txn);
+    return UpsertResult::Inserted{new_id};
+});
 ```
+
+All authoritative reads used to build `CanonicalIdentityInput` MUST belong to the
+same transaction snapshot. MDBX-backed `ResourceBodyStore` reads receive `txn`.
+External body stores must provide an immutable digest/version token, and
+`write_unit` verifies that token before commit; otherwise the body is not valid
+identity input for idempotent upsert.
 
 ### 4.3. Миграция с hash-based scheme
 
