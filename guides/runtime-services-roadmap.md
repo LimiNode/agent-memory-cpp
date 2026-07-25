@@ -328,7 +328,7 @@ write visibility для critical retrieval indexes.
 
 Default M0/M1 consistency mode:
 
-- `MemoryStack::write_unit` commits envelope, components, projections,
+- `MemoryStack::create_or_get_unit` / `update_unit` commits envelope, components, projections,
   content-key/by-kind indexes, lexical candidate/stat indexes needed by active
   retrieval, metadata filters and selected lightweight secondary indexes in one
   `MultiTableWriter` transaction.
@@ -338,7 +338,7 @@ Default M0/M1 consistency mode:
 
 Async eventual mode is allowed only as explicit profile policy for indexes that
 declare `eventually_consistent=true` (for example heavy embedding recompute,
-HNSW graph rebuild, bulk lexical backfill). In that mode write_unit must enqueue
+HNSW graph rebuild, bulk lexical backfill). In that mode create/update must enqueue
 a durable `IndexUpdateJob(unit_id, unit_revision, projection_kind, index_kind)`
 and readers must respect revision/generation guards documented by the owning
 roadmap.
@@ -499,12 +499,32 @@ per-kind executors:
 ```cpp
 enum class SubmitResult { Accepted, Saturated, ShuttingDown, Unsupported };
 
-struct ClaimedJob;
+struct ClaimToken {
+    JobId job_id;
+    WorkerId worker_id;
+    uint64_t lease_epoch;
+    int64_t lease_until_ms;
+};
+
+struct ClaimedJob {
+    ClaimToken token;
+    JobRecord record;
+};
+
+struct ResultPayload {
+    uint16_t codec_version = 0;
+    std::vector<uint8_t> bytes;
+};
+
+struct SubmitOutcome {
+    SubmitResult result = SubmitResult::Unsupported;
+    std::optional<ClaimedJob> unaccepted_job;
+};
 
 class IJobExecutor {
 public:
     virtual ~IJobExecutor() = default;
-    virtual SubmitResult submit(ClaimedJob job) = 0;
+    virtual SubmitOutcome try_submit(ClaimedJob job) = 0;
 };
 
 class JobDispatcher {
@@ -524,9 +544,11 @@ contract kind-aware: dispatcher claims the first ready job, decodes
 registered bounded executors. Workers do not call `claim_next`, do not scan for
 their own kind, do not leave unsupported jobs at the head of ready, and do not
 claim payload codecs they cannot decode. Token ownership stays with the
-dispatcher until `submit()` returns `Accepted`; after acceptance the executor is
-responsible for lease renewal, terminal/retry transition and cooperative
-shutdown. If `submit()` returns `Saturated` or `ShuttingDown`, dispatcher
+dispatcher until `try_submit()` returns `Accepted`; after acceptance the
+executor is responsible for lease renewal, terminal/retry transition and
+cooperative shutdown. `ClaimedJob` is move-only. If `try_submit()` returns
+`Saturated`, `ShuttingDown` or `Unsupported`, the executor must return the
+unchanged `ClaimedJob` in `SubmitOutcome::unaccepted_job`, and dispatcher
 immediately calls `release_unhandled(token, now_ms, backoff, reason)` so the
 claim does not disappear into a volatile queue. If no executor supports the
 kind/version, dispatcher applies the unavailable-executor path below.
@@ -554,32 +576,13 @@ diagnostics when the job kind defines one). Retention/pruning of result bytes is
 the same as the owning `JobRecord`; admin views decode input and result payloads
 separately.
 
-```cpp
-struct ClaimToken {
-    JobId job_id;
-    WorkerId worker_id;
-    uint64_t lease_epoch;
-    int64_t lease_until_ms;
-};
-
-struct ClaimedJob {
-    ClaimToken token;
-    JobRecord record;
-};
-
-struct ResultPayload {
-    uint16_t codec_version = 0;
-    std::vector<uint8_t> bytes;
-};
-```
-
 `ScheduleKey = (run_after_ms, job_id)` используется только для delayed
 promotion. `ReadyOrderKey = (priority_rank, job_id)`, где меньший ключ
 выбирается раньше; `priority_rank` нормализуется так, чтобы higher logical
 priority сортировался раньше. `LeaseUntilKey = (lease_until_ms, job_id)`.
 `JobId` является durable monotonic sequence внутри queue и тем самым
 обеспечивает FIFO для одинаковой priority без отдельной sequence/meta DBI.
-Allocation uses an MDBX sequence bound to `jobs_by_id`; it is advanced inside
+Allocation uses `TableSequence(jobs_by_id)`; it is advanced inside
 the same enqueue transaction and is never derived from `max(job_id) + 1`.
 Pruning terminal jobs does not reset or reuse the sequence.
 
@@ -615,7 +618,7 @@ struct JobIndexKeys {
 State transitions:
 
 - `enqueue` создает `Pending` record и scheduled либо ready/status index entries.
-  It allocates `JobId` from the durable `jobs_by_id` sequence in the same write
+  It allocates `JobId` from `TableSequence(jobs_by_id)` in the same write
   transaction; concurrent enqueue and restart must preserve monotonicity.
 - `claim_next` переводит `Pending -> Running`, снимает ready entry и ставит
   lease/status entries.
@@ -738,8 +741,9 @@ Queue storage acceptance cases:
   sequence;
 - after pruning terminal jobs, including the current maximum `JobId`, the next
   enqueue still allocates a greater id and never reuses a deleted id.
-- saturated executor submit calls `release_unhandled` for the same `JobId`
-  before returning from `run_once`;
+- saturated executor submit returns the move-only `ClaimedJob` to dispatcher,
+  and dispatcher calls `release_unhandled` for the same `job_id`, `worker_id`
+  and `lease_epoch` before returning from `run_once`;
 - process shutdown after claim but before executor acceptance requeues through
   `release_unhandled` or lease recovery; no token remains only in memory;
 - `CompactionExecutor` enforces `max_concurrency = 1` per stack/scope while
@@ -758,7 +762,7 @@ atomicity; runtime semantics остаются здесь.
 
 ### 5.1. Purpose
 
-Применяет WritePolicy из spec к каждой WriteRequest. Реализует importance threshold, dedupe, supersede, flush triggers.
+Применяет WritePolicy из spec к create/update requests. Реализует importance threshold, dedupe, supersede, flush triggers.
 
 ### 5.2. Interface
 
@@ -767,7 +771,7 @@ class IWriteGate {
 public:
     virtual ~IWriteGate() = default;
 
-    virtual GateDecision evaluate(const WriteRequest& req) = 0;
+    virtual GateDecision evaluate(const CreateUnitRequest& req) = 0;
 
     // Manual flush (для тестов)
     virtual void flush() = 0;
@@ -798,13 +802,13 @@ public:
         IRuntimeProfileView& profile,
         WritePolicy policy);
 
-    GateDecision evaluate(const WriteRequest& req) override;
+    GateDecision evaluate(const CreateUnitRequest& req) override;
     void flush() override;
 
 private:
     IRuntimeProfileView& m_profile;
     WritePolicy m_policy;
-    std::vector<WriteRequest> m_buffer;
+    std::vector<CreateUnitRequest> m_buffer;
     std::mutex m_mutex;
     std::chrono::steady_clock::time_point m_last_flush;
 };
@@ -1002,7 +1006,7 @@ returning a shallow executable plan.
 
 ```
 Application
-  ↓ stack.write_unit(request)
+  ↓ stack.create_or_get_unit(request)
   ↓
 WriteGate.evaluate(request)
   ↓

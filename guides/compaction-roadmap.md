@@ -10,7 +10,7 @@
 
 - `CompactionWorker` — фоновый компонент MemoryStack, обрабатывающий compaction jobs.
 - `ICompactionJob` интерфейс и его контракт (validate / run / checkpoint / restore / is_idempotent).
-- Job types: DecayJob, DedupeJob, MergeJob, ArchiveColdJob, SummaryPromotionJob, EmbeddingRecomputeJob, CompactionHandoffJob.
+- Job types: DecayJob, DedupeJob, MergeJob, ArchiveColdJob, SummaryPromotionJob, EmbeddingRecomputeJob.
 - `CompactionHandoff` — структурированная запись для crash recovery и operational handoff.
 - Scheduling policy: hybrid on-write + on-schedule; threading model; crash recovery; admin operations (CLI + programmatic).
 
@@ -90,8 +90,8 @@ claiming belongs to the shared `JobDispatcher`.
 
 ```cpp
 // Conceptual flow: on-write path
-auto write_result = stack.write_unit(WriteRequest{...});
-// внутри write_unit:
+auto write_result = stack.create_or_get_unit(CreateUnitRequest{...});
+// внутри create_or_get_unit:
 //   1. MultiTableWriter txn открыт
 //   2. envelope + components + projections записаны
 //   3. CompactionMetaComponent.dirty_decay = true
@@ -148,7 +148,7 @@ public:
 
     enum class Kind : uint16_t {
         Decay = 0, Dedupe = 1, Merge = 2, ArchiveCold = 3,
-        SummaryPromotion = 4, EmbeddingRecompute = 5, CompactionHandoff = 6,
+        SummaryPromotion = 4, EmbeddingRecompute = 5,
     };
 
     virtual ~ICompactionJob() = default;
@@ -176,55 +176,73 @@ small jobs that do not need heartbeat/checkpoint may complete in a single
 bounded transaction.
 
 ```cpp
+struct BatchCommitResult {
+    ClaimToken renewed_token;
+    CompactionProgress progress;
+};
+
 class JobExecutionContext {
 public:
     ICompactionReadContext& reads();
-    ICompactionWriteContext& writes();
 
-    void verify_active_lease(const ClaimToken& token, int64_t now_ms);
-    ClaimToken renew_lease(
+    template<class Apply>
+    BatchCommitResult commit_batch(
         const ClaimToken& token,
         int64_t now_ms,
-        int64_t new_deadline_ms);
-    void write_handoff(const CompactionHandoff& handoff);
-    void complete_with_writes(
+        int64_t new_lease_deadline_ms,
+        const CompactionHandoff& checkpoint,
+        Apply&& apply);
+
+    template<class Apply>
+    void complete_batch(
         const ClaimToken& token,
         int64_t now_ms,
-        JobOutcome outcome);
-    void fail_retry_with_writes(
+        JobOutcome outcome,
+        Apply&& apply_final_writes);
+
+    template<class Apply>
+    void retry_batch(
         const ClaimToken& token,
         int64_t now_ms,
         std::chrono::milliseconds backoff,
         std::string last_error,
-        const CompactionHandoff& updated_handoff);
-    void fail_dead_with_writes(
+        const CompactionHandoff& checkpoint,
+        Apply&& apply_partial_writes);
+
+    template<class Apply>
+    void dead_batch(
         const ClaimToken& token,
         int64_t now_ms,
         std::string last_error,
-        std::optional<JobOutcome> outcome);
+        std::optional<JobOutcome> outcome,
+        Apply&& apply_final_writes);
 };
 ```
+
+`Apply` receives an `ICompactionWriteTxn&` opened and owned by
+`JobExecutionContext`. The context verifies `ClaimToken`, invokes `Apply`,
+writes handoff/outcome/queue index deltas, commits, and returns only after
+commit succeeds. A renewed token is returned only from `commit_batch` after the
+lease update has committed. Terminal transitions are owned by the executor via
+`complete_batch`, `retry_batch` or `dead_batch`; a job returns `JobOutcome` but
+does not separately complete the queue record.
 
 Bounded batch protocol for long jobs:
 
 ```text
 repeat:
     compute/read next bounded batch without a write transaction
-    begin write transaction
+    context.commit_batch(...)
     set one caller-provided now_ms for this transaction
     verify ClaimToken and now_ms < lease_until_ms
     apply idempotent or revision-guarded application writes
     update CompactionHandoff checkpoint to exactly the committed state
-    renew lease and receive updated ClaimToken
+    renew lease and receive updated ClaimToken after commit
     commit
 until complete
 
-final transaction:
-    verify updated ClaimToken with one now_ms
-    apply final writes, if any
-    persist CompactionOutcomePayload in JobRecord.result_bytes
-    transition Running -> Done
-    commit
+final transition:
+    context.complete_batch(...)
 ```
 
 Crash semantics:
@@ -499,36 +517,13 @@ class EmbeddingRecomputeJob : public ICompactionJob {
 `embedding_vectors`) для storage layout embedding meta полей и
 `policies-roadmap.md` для downstream decay policy.
 
-### 4.7. CompactionHandoffJob (meta-job)
+### 4.7. Handoff Checkpointing
 
-Сохраняет handoff state в `compaction_handoffs` DBI для crash recovery.
-
-```cpp
-struct CompactionHandoffParams {
-    HandoffId handoff_id;
-    SessionId session_id;
-    std::string goal;                       // что делает compaction
-    std::vector<std::string> plan_steps;    // ["scan candidates", "apply decay", ...]
-    std::vector<std::string> constraints;   // max_duration, max_units, safety
-    std::optional<bool> approval_required;
-};
-
-class CompactionHandoffJob : public ICompactionJob {
-    // Автоматически enqueue'ится при:
-    // - compaction worker stop (graceful): создаёт handoff с status = Aborted,
-    //   current_state = serialized HandoffState / CompactionJobPayload checkpoint.
-    // - compaction worker startup: queue lease recovery owns requeue;
-    //   handoff payload restores the same JobId checkpoint.
-    // - explicit checkpoint call: periodic snapshot каждые checkpoint_interval_ms.
-    //
-    // Приоритет: высокий (priority = 100).
-    //
-    // Не идемпотентен по умолчанию (каждая запись — новая HandoffId),
-    // но повторное выполнение с тем же handoff_id безопасно (overwrite).
-};
-```
-
-См. секцию 5 для детальной структуры `CompactionHandoff`.
+`CompactionHandoff` is not a separate job kind. Checkpoints are written by the
+currently running compaction job through `commit_batch`, `retry_batch` or
+`dead_batch` for the same `JobId`. This keeps queue lifecycle, checkpoint and
+application writes under one fenced transition and prevents a second resume job
+from being enqueued for the same logical operation.
 
 ### 4.8. SummaryTreeJob (M2+, RAPTOR-style)
 
@@ -622,8 +617,9 @@ enum class HandoffStatus : uint8_t {
 };
 
 struct CompactionHandoff {
-    HandoffId handoff_id;
-    SessionId session_id;
+    JobId job_id;
+    std::optional<StackId> stack_id;
+    std::optional<SessionId> last_session_id;      // diagnostic only
     int64_t created_at_ms = 0;
     int64_t updated_at_ms = 0;
     HandoffStatus status = HandoffStatus::InProgress;
@@ -646,7 +642,6 @@ struct CompactionHandoff {
 
     // Job metadata (для resume)
     ICompactionJob::Kind job_kind;
-    JobId job_id;
 };
 ```
 
@@ -657,10 +652,13 @@ DBI `compaction_handoffs` (см. `mdbx-containers-extension-tz.md` §5.5.1 и
 
 ```
 compaction_handoffs
-  key = SessionId → CompactionHandoff
+  key = JobId → CompactionHandoff
 ```
 
-Session-scoped: один handoff per session. При создании нового handoff старый помечается `Completed` или `Aborted`.
+If one MDBX environment hosts multiple stack instances with overlapping job id
+spaces, the key becomes `(StackId, JobId)`. `SessionId` is diagnostic value data
+only and is never used for recovery lookup. There is at most one mutable
+handoff per queue job.
 
 ### 5.4. Checkpoint lifecycle
 
@@ -708,7 +706,7 @@ restart recovery uses only the last committed handoff checkpoint.
 | Schedule timer (per `WritePolicy.flush_interval_ms`) | Enqueue `DecayJob` (forced flush) |
 | Model upgrade | Enqueue `EmbeddingRecomputeJob` для всех units в scope |
 | Manual CLI / admin tool | `worker.trigger_now(kind, params)` |
-| Worker stop (graceful) | Auto-enqueue `CompactionHandoffJob` (Aborted status) |
+| Worker stop (graceful) | Request `retry_batch(..., StopReason::GracefulShutdown)` for the same `JobId` |
 | Worker startup | Run queue lease recovery, then use in-progress `compaction_handoffs` only to restore checkpoint payload for the same `JobId` |
 
 ### 6.3. Job priority
@@ -717,7 +715,6 @@ Compaction jobs обрабатываются FIFO с учётом priority (бо
 
 | Kind | Priority | Обоснование |
 |---|---|---|
-| `CompactionHandoffJob` | 100 | высокий — для crash recovery |
 | `DecayJob` | 50 | нормальный — affects retrieval score |
 | `DedupeJob` | 40 | нормальный — affects storage size |
 | `MergeJob` | 30 | нормальный — episode compaction |
@@ -743,8 +740,8 @@ Threshold для enqueue (per stack):
 
 1. Запускает `TaskQueue::recover_expired_leases(now)`; queue является
    единственным владельцем requeue/terminalize решения для expired jobs.
-2. Открывает `compaction_handoffs` DBI, ищет in-progress handoff
-   (status = InProgress) для текущего session.
+2. Открывает `compaction_handoffs` DBI by `JobId` for jobs recovered by queue
+   lease recovery.
 3. Если найден и соответствующий `JobId` возвращён queue recovery в
    claimable `Pending` state — dispatcher later decodes `CompactionJobPayload`
    from immutable `JobRecord.payload_bytes`; executor десериализует job from that
@@ -788,7 +785,7 @@ Acceptance cases:
 2. If retry budget remains, call one fenced transition:
 
 ```cpp
-context.fail_retry_with_writes(
+context.retry_batch(
     token,
     now_ms,
     backoff,
@@ -800,7 +797,7 @@ This atomically verifies the token, writes the checkpoint, transitions the same
 `JobRecord` from `Running` to `Pending`, preserves the same `JobId`, creates the
 new `jobs_scheduled` entry and removes the lease entry. `enqueue_delayed()` is
 only for a new independent operation, not retry/resume of the same handoff.
-3. If attempts are exhausted, call `fail_dead_with_writes(token, now_ms, ...)`
+3. If attempts are exhausted, call `dead_batch(token, now_ms, ...)`
    and persist the terminal outcome in `JobRecord.result_bytes`.
 
 ```cpp
@@ -844,11 +841,11 @@ struct RetryPolicy {
 ```
 agent-memory-cli compaction status
 agent-memory-cli compaction enqueue <kind> [--scope <scope_id>] [--params <json>]
-agent-memory-cli compaction list [--limit N] [--status <pending|running|done|failed>]
+agent-memory-cli compaction list [--limit N] [--status <pending|running|done|dead|cancelled>]
 agent-memory-cli compaction cancel <job_id>
 agent-memory-cli compaction handoff list
-agent-memory-cli compaction handoff inspect <session_id>
-agent-memory-cli compaction retry <job_id>     # re-enqueue Dead job
+agent-memory-cli compaction handoff inspect <job_id>
+agent-memory-cli compaction retry <job_id>     # fenced/manual transition Dead -> Pending for same JobId
 agent-memory-cli compaction stats              # CompactionStats snapshot
 ```
 
@@ -889,7 +886,7 @@ if (handoff && handoff->status == HandoffStatus::InProgress) {
 |---|---|---|
 | 14.0 | `ICompactionJob` interface + `CompactionWorker` skeleton + `CompactionJobPayload` / `CompactionOutcomePayload` serialization | Шаги 1-2 (envelope + DBI) |
 | 14.1 | shared runtime `jobs_*` queue integration (`runtime-services-roadmap.md` §4.6; storage recipe `mdbx-containers-extension-tz.md` §12.5) + `JobDispatcher` compaction executor + `DecayJob`/`DedupeJob`/`ArchiveColdJob` (M1 minimum); no compaction-specific queue DBIs | 14.0, шаги 5, 10 (components + DecayPolicy) |
-| 14.2 | `CompactionHandoff` structure + crash recovery + `CompactionHandoffJob` meta-job | 14.1 |
+| 14.2 | `CompactionHandoff` structure + crash recovery keyed by `JobId`; no handoff meta-job | 14.1 |
 | 14.3 | `MergeJob` для episode compaction | `ConversationEpisodePayload` (см. `knowledge-units-roadmap.md` 5.5.4) |
 | 14.4 | `SummaryPromotionJob` (с `ITextAdapter` интерфейсом) + `EmbeddingRecomputeJob` | `CompiledArticlePayload`, `DenseVectors` capability |
 | 14.5 | CLI commands для admin operations + Eval pipeline (CompactionHandoff test case) | 14.2-14.4 |

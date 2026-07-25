@@ -481,7 +481,7 @@ agent-memory-cli profile-migrate \
 1. Открыть source stack с source profile (auto-detect через `schema_info`).
 2. Открыть target stack с target profile (создаёт новый env).
 3. Scan all units в source через `source.units().scan_all()`.
-4. Для каждого unit: derive components (capability-aware), generate default projections (Original, QAQuestion/QAAnswer/Summary per kind), write to target через `target.write_unit(WriteRequest{...})`.
+4. Для каждого unit: derive components (capability-aware), generate default projections (Original, QAQuestion/QAAnswer/Summary per kind), create in target через `target.create_or_get_unit(CreateUnitRequest{...})`.
 5. Verify golden dataset на target (если `--validate`).
 6. Atomic swap (rename файлов) при `--auto-swap`.
 
@@ -523,7 +523,7 @@ Rolling back (removing /data/new.mdbx)...
 Exit code: 1
 ```
 
-См. `memory-stacks-roadmap.md` секция 14.2 для conceptual алгоритма. Детальная реализация — на базе `MemoryStack::scan_all()` + `write_unit()` в loop.
+См. `memory-stacks-roadmap.md` секция 14.2 для conceptual алгоритма. Детальная реализация — на базе `MemoryStack::scan_all()` + `create_or_get_unit()` в loop.
 
 ### 4.8. dump-unit / dump-components
 
@@ -652,12 +652,12 @@ Compaction admin operations (детали в `compaction-roadmap.md` секци�
 ```bash
 agent-memory-cli compaction status
 agent-memory-cli compaction enqueue <kind> [--scope <scope_id>] [--params <json>]
-agent-memory-cli compaction list [--limit N] [--status <pending|running|done|failed>]
+agent-memory-cli compaction list [--limit N] [--status <pending|running|done|dead|cancelled>]
 agent-memory-cli compaction cancel <job_id>
 agent-memory-cli compaction retry <job_id>
 agent-memory-cli compaction stats
 agent-memory-cli compaction handoff list
-agent-memory-cli compaction handoff inspect <session_id>
+agent-memory-cli compaction handoff inspect <job_id>
 ```
 
 Описание:
@@ -669,7 +669,7 @@ agent-memory-cli compaction handoff inspect <session_id>
 - `compaction retry <job_id>`: re-enqueue Dead job.
 - `compaction stats`: snapshot `CompactionStats`.
 - `compaction handoff list`: список handoff records.
-- `compaction handoff inspect <session_id>`: полная dump `CompactionHandoff` (goal, plan_steps, constraints, progress).
+- `compaction handoff inspect <job_id>`: полная dump `CompactionHandoff` (goal, plan_steps, constraints, progress).
 
 Пример:
 

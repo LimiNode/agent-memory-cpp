@@ -154,6 +154,13 @@ enum class FieldId : std::uint16_t {
     summary   = 10,
 };
 
+struct ProjectionQueryVariant final {
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    LanguageCode language;
+    std::string text;
+    std::optional<ProjectionDerivationId> derivation;
+};
+
 struct LexicalPosting final {
     TokenId token_id = 0;
     KnowledgeUnitId unit_id;
@@ -374,6 +381,7 @@ Planned dependency-free contracts:
 ```cpp
 struct LexicalQuery final {
     std::string text;
+    std::vector<ProjectionQueryVariant> query_variants;
     std::vector<ScopeId> scope_ids;
     std::optional<ProjectionKind> pin_projection_kind; // nullopt = stack default
     std::size_t limit = 10;
@@ -605,6 +613,7 @@ struct SearchProjection final {
     KnowledgeUnitId unit_id;
     ProjectionKind kind = ProjectionKind::Original;
     std::uint64_t revision = 0;
+    std::uint64_t projection_generation = 0;
 
     // Canonical fielded text. Empty fields are skipped at index time.
     std::string title;
@@ -617,6 +626,7 @@ struct SearchProjection final {
     std::string qa_question;   // populated when kind = QAQuestion
     std::string qa_answer;     // populated when kind = QAAnswer
     std::string summary;       // populated when kind = Summary
+    std::optional<TranslationProjectionMeta> translation_meta; // TranslatedCanonical only
 };
 ```
 
@@ -639,7 +649,7 @@ retrieval path.
 | QAAnswer         | qa_a (w_qa_a), body (w_body)                                                    |
 | Summary          | summary (w_summary), tag (w_tag), title (w_title)                               |
 | CodeSymbols      | symbol (w_symbol), code (w_code)                                                |
-| TranslatedCanonical | title (w_title), heading (w_heading), body (w_body), tag (w_tag), meta (w_meta), summary (w_summary) |
+| TranslatedCanonical | body (w_body), tag (w_tag), meta (w_meta) |
 
 `DenseContextual` is consumed by the dense retriever; BM25F still indexes the
 projection so secondary lexical retrieval can fall back to it after fusion.
@@ -680,8 +690,8 @@ score(u, q) = sum over query terms t:
 
 where:
     idf(t)              = log(1 + (N - df(t) + 0.5) / (df(t) + 0.5))
-    df(t)               = units containing t (Original projection stats)
-    N                   = unit_count (Original projection)
+    df(t)               = units containing t in the active projection_kind stats
+    N                   = unit_count for the active projection_kind
     tf_sat(t, u, f)     = tf(t, u, f) * (k1 + 1) /
                           (tf(t, u, f) + k1 *
                            (1 - b + b * len_f(u) / avg_len_f))
@@ -775,21 +785,20 @@ DenseContextual:
     summary = nearest Summary projection if present, else empty
 
 TranslatedCanonical:
-    title   = translated envelope.title when present, else original title
-    heading = translated heading path when present
     body    = translated extracted text or chunk body
-    tags    = translated/normalized tags only when the adapter can preserve tag identity
-    meta    = envelope.metadata_typed + canonical_language
-    summary = translated summary when present
+    tags    = language-neutral tags only
+    meta    = canonical_language + translation derivation fingerprint
 ```
 
 `TranslatedCanonical` is generated only when the profile enables
 `TranslationProjection` and supplies a `TranslationPolicy`. Its source of
-truth is the original resource/unit revision plus `TranslationMetaComponent`
-(`provider_id`, `model_id`, package digest, detected source language and pivot
-path). If the source revision, canonical language or translation package digest
-changes, only the translated projection is stale; `Original` postings remain
-valid. See
+truth is the original resource/unit revision plus `TranslationProjectionMeta`
+embedded in the projection value. If the source revision, canonical language,
+translation policy fingerprint or package/model fingerprint changes, only the
+translated projection gets a new `projection_generation`; `Original` postings
+remain valid. Translated projection postings store that generation in
+`PostingStats.generation`, and stale-check compares it with the active
+projection generation, not only with `KnowledgeUnitEnvelope.revision`. See
 [`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
 
 Open question 17.4 from `memory-stacks-roadmap.md` (`When does a SearchProjection
@@ -944,10 +953,13 @@ graph  active projection_kinds  = { Original }
 ```
 
 When `TranslationProjection` is enabled, planners may add
-`TranslatedCanonical` to BM25F/vector projection sets for cross-lingual recall.
-The default result context still carries `SourceRef` to the original resource;
-translated snippets are auxiliary unless the caller explicitly asks for a
-translated answer surface.
+`TranslatedCanonical` to BM25F/vector projection sets for cross-lingual recall,
+but lexical search must use a translated `ProjectionQueryVariant` for that
+projection. The original query is searched against `Original`; the translated
+query is searched against `TranslatedCanonical`; RRF fuses the two result
+streams. The default result context still carries `SourceRef` to the original
+resource; translated snippets are auxiliary unless the caller explicitly asks
+for a translated answer surface.
 
 Secondary retrieval (post-fusion) may load `CodeSymbols` or `DenseContextual`
 if RRF confidence is below a threshold or if the query parser hints at code

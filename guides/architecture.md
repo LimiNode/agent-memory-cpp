@@ -229,10 +229,13 @@ does not replace them:
   local persistence, and urgency-aware context planning can be added while
   keeping live affect dynamics in a sibling runtime controller.
 
-LLM contextualization, cross-encoder rerank, translation adapters, hybrid
-chunkers, ASR, VLM document parsing, hosted vector databases, Python bindings,
-and agent framework bridges stay in `adapters/` and `examples/`. They do not
-enter the core contract.
+LLM contextualization engines, cross-encoder rerank engines, concrete
+translation engines, hybrid chunker implementations, ASR, VLM document parsing,
+hosted vector databases, Python bindings, and agent framework bridges stay in
+`adapters/` and `examples/`. Dependency-free SPI/value types such as
+`ITranslationAdapter`, `LanguageCode`, `TranslationPolicy` and
+translation provenance metadata may live in the core/domain contract; concrete
+provider SDKs, package managers and model runtimes do not.
 
 The canonical, currently normative specification of the data model,
 profiles, stacks, capability matrix, validation rules, and maturity lives in

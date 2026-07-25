@@ -109,7 +109,7 @@ Disclaimer:
 - **DuckDB / SQLite-vec**: "single-file DB as library" deployment model — мы тоже.
 - **Tantivy**: BM25 tokenization edge-cases (Cyrillic, CJK, identifiers in code).
 - **Argos Translate**: offline translation package/pivot semantics for optional
-  `ITranslationAdapter` and `TranslationMetaComponent`; see
+  `ITranslationAdapter` and `TranslationProjectionMeta`; see
   [`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
 
 ## 7. Open questions / roadmap items (из конкурентного анализа)

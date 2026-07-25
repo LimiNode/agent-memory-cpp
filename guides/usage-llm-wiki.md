@@ -475,7 +475,7 @@ When a new raw resource arrives:
 2. IResourceStore adapter ingests raw bytes (see architecture.md
    "Planned Resource Reindexing Direction").
 3. Chunkers split into Chunk units (see chunkers-roadmap.md).
-4. Write units via stack.write_unit(WriteRequest):
+4. Create units via stack.create_or_get_unit(CreateUnitRequest):
      - envelope.kind = Chunk
      - payload = ChunkPayload
      - projections = Original projection
@@ -736,7 +736,7 @@ inherit them.
 
 - This is the same concern Cole Medin flags in his playbook checklist
   ("Настроить PII-фильтрацию (опционально, но рекомендуется)").
-  PII filtering happens upstream of `write_unit`.
+  PII filtering happens upstream of `create_or_get_unit` / `update_unit`.
 - `CompiledArticlePayload.readers` (planned; see
   [`knowledge-units-roadmap.md`](knowledge-units-roadmap.md) §5.6) lets
   you tag articles with audience constraints; downstream retrieval can

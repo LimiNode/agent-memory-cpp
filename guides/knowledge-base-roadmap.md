@@ -73,7 +73,7 @@ Hot path retrieval использует только `id`, `kind`, `scope_id`, `
 
 ### 3.3. Per-kind правила генерации primary_text
 
-При создании `WriteRequest` с пустым `primary_text` generation function заполняет поле:
+При создании `CreateUnitRequest` с пустым `primary_text` generation function заполняет поле:
 
 ```cpp
 std::string generate_primary_text(KnowledgeUnitKind kind, const ComponentView& components) {

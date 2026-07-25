@@ -300,7 +300,7 @@ enum class WriteFlushTrigger {
 
 ```cpp
 class WriteGate {
-    GateDecision evaluate(const WriteRequest& req);
+    GateDecision evaluate(const CreateUnitRequest& req);
 
     // 1. importance threshold check
     if (req.importance_score < policy.importance_threshold)

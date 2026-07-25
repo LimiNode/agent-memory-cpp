@@ -609,8 +609,8 @@ value, and on collision returns the existing value without overwriting it.
 Implementing this as unconditional `put` is forbidden for identity mappings.
 
 Ключевой use case под Layer 1 архитектуру из `guides/memory-stacks-roadmap.md`
-(Layer B + C, ADR-001): `MemoryStack::write_unit` обязан записать атомарно
-через один `MultiTableWriter`:
+(Layer B + C, ADR-001): `MemoryStack::create_or_get_unit` обязан записать
+атомарно через один `MultiTableWriter`:
 
 1. Build `CanonicalIdentityInput` from authoritative request fields and stores,
    compute `ContentHashResult` through the single
@@ -625,28 +625,27 @@ Implementing this as unconditional `put` is forbidden for identity mappings.
    transaction. MDBX-backed `ResourceBodyStore` reads receive that transaction;
    external body stores must provide an immutable digest/version token verified
    before commit.
-2. `KnowledgeUnitKey` immutable for an existing `UnitId`. Если caller передаёт
-   existing `UnitId`, storage сначала читает старый envelope из
-   `knowledge_units` и строит `old_key` from
-   `(old_envelope.kind, old_envelope.scope_id, old_envelope.content_hash)`;
-   `old_key != new_key` rejected before writes. It also compares
-   `content_hash_recipe_version`: recipe changes require a migration preserving
-   the old stored hash, or a new `UnitId`. No old payload read is required for
-   the immutability check. Смена `kind`, `scope_id` или content hash требует
-   нового `UnitId` плюс explicit supersede/merge relationship downstream.
-3. Если key уже указывает на тот же `UnitId`, операция становится idempotent
-   update для mutable fields этого unit. Если key указывает на другой `UnitId`,
-   write конфликтует: default policy возвращает duplicate/conflict result
-   without writes; explicit merge/supersede policy должна быть выбрана
-   downstream до входа в storage transaction.
-4. Allocate the new `UnitId` from `knowledge_unit_sequence.next(txn)` only
-   after the dedupe read shows no existing mapping.
+2. `KnowledgeUnitKey` immutable for an existing `UnitId`. Create-or-get never
+   mutates an existing mapping. Mutable updates use `MemoryStack::update_unit`
+   with `expected_revision`; storage first reads the old envelope from
+   `knowledge_units`, verifies revision, reconstructs the old key from
+   `(old_envelope.kind, old_envelope.scope_id, old_envelope.content_hash)` and
+   rejects any patch that would change the immutable key or
+   `content_hash_recipe_version`. Recipe changes require a migration preserving
+   the old stored hash, or a new `UnitId`. Смена `kind`, `scope_id` или content
+   hash требует нового `UnitId` плюс explicit supersede/merge relationship
+   downstream.
+3. Если key уже существует, create-or-get возвращает duplicate/existed result
+   without writes. It does not update mutable fields. Explicit merge/supersede
+   policy должна быть выбрана downstream до входа в storage transaction.
+4. Allocate the new `UnitId` from `TableSequence(knowledge_units).next(txn)`
+   only after the dedupe read shows no existing mapping.
 5. Install `KnowledgeUnitKey -> UnitId` in `content_key_to_unit_id` with
    `insert_if_absent`. If another writer inserts the same key first, the
    operation returns `UpsertResult::Existed(existing_id)` and MUST NOT write
    envelope, payloads, components or indexes for the newly allocated id. The
-   skipped sequence value is allowed; sequence monotonicity is more important
-   than gap-free ids.
+   skipped sequence value is allowed and committed in this collision path;
+   sequence monotonicity is more important than gap-free ids.
 6. Envelope в `knowledge_units` (DBI:
    `KeyValueTable<UnitId, KnowledgeUnitEnvelope>`).
 7. `knowledge_units_by_kind` update: добавить `(scope_id, kind) -> UnitId`.
@@ -688,7 +687,7 @@ metadata filters and active lexical candidate/stat indexes for the same
 revision. Async eventual mode is allowed only for indexes explicitly marked
 `eventually_consistent=true` by their owning roadmap (for example heavy dense
 embedding recompute, HNSW rebuild, bulk lexical backfill). In async mode
-`write_unit` commits a durable `IndexUpdateJob(unit_id, unit_revision,
+`create_or_get_unit` / `update_unit` commit a durable `IndexUpdateJob(unit_id, unit_revision,
 projection_kind, index_kind)`; workers must be idempotent, skip stale revisions,
 replay after crash, and tolerate delete/update before older jobs run.
 
@@ -719,7 +718,7 @@ equivalence, duplicate metadata key rejection, boundary integers/timestamps,
 legacy recipe v0 and C++11/C++17 equality.
 
 For `Chunk`, `resource_body_digest`, span/offset identity and normalized
-chunk-text digest are required inputs to `write_unit`, or storage must load them
+chunk-text digest are required inputs to `create_or_get_unit`, or storage must load them
 from authoritative `ResourceBodyStore` / chunk-normalization records before
 computing the hash. `ChunkPayload` alone is not sufficient identity material if
 it only contains offsets, headings, code blocks or symbol hints.
@@ -728,7 +727,7 @@ it only contains offsets, headings, code blocks or symbol hints.
 canonical groups и выбранные synchronous profile-delta writes; частично
 записанный unit не наблюдаем.
 `commit()` бросает `MdbxException` на conflict; retry policy остаётся на
-стороне `MemoryStack::write_unit` (см. `WritePolicy` в
+стороне `MemoryStack::create_or_get_unit` / `update_unit` (см. `WritePolicy` в
 `guides/memory-stacks-roadmap.md`, секция 6.2).
 
 ### 3.8 Расширения `Connection` и `Config`
@@ -790,6 +789,34 @@ inline std::vector<std::uint8_t> from_hex_string(const std::string& hex);
 **`ValueTable<V>`:** `set_many(container, txn)`, `merge_from(other, txn)`.
 
 **`SequenceTable<V>`:** `reserve(begin, end) → vector<id>`, `append_if_absent(value) → optional<id>`.
+
+**`TableSequence`:** transactional sequence bound to an existing table/DBI:
+
+```cpp
+class TableSequence {
+public:
+    explicit TableSequence(BaseTable& table);
+
+    std::uint64_t next(Transaction& txn);
+    std::uint64_t reserve(std::uint64_t count, Transaction& txn);
+};
+```
+
+`TableSequence` is the normative allocator for `knowledge_units` and
+`jobs_by_id`. It uses the existing MDBX DBI sequence facility
+(`mdbx_dbi_sequence`) bound to the owning table, creates no extra DBI, advances
+inside the caller's write transaction and rolls back on transaction abort.
+The first allocated value for a fresh table is `1`; `0` remains the invalid
+sentinel. `next(txn)` returns the first reserved value; `reserve(count, txn)`
+returns the first value in a contiguous range `[first, first + count)`.
+`count = 0` is an error. Overflow is an error and MUST NOT perform partial
+writes.
+
+When a callback allocates an id and then commits an `insert_if_absent`
+collision path as `Existed`, the sequence increment is committed too and may
+leave a gap. When the transaction aborts or commit fails, the sequence
+increment is not consumed. This keeps DBI budget unchanged while giving
+knowledge-unit ids and job ids a transactional allocator.
 
 **`AnyValueTable<K, Options>`:** `bulk_set_of_type<T>(container, txn)`, `list_keys_by_type<T>(txn)`.
 
@@ -924,7 +951,7 @@ usage_stats_index                     ReverseIndexTable<CompositeKey<ScopeId, Un
 schema_info                           KeyValueTable<string, SchemaInfo>                  // envelope_version, component_versions[], profile_signature
 ```
 
-См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для дополнительных Layer-1 primitives under consideration (Patterns 3, 4, 6): coverage shadow graph (новый §5.7 — `coverage_units`, `coverage_files`, `coverage_regions`), atomic shared ID generator (extends §4 SequenceTable P3 → P1), team-shared graph artifact (offline snapshot format — proposed job, not yet in `compaction-roadmap.md`).
+См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для дополнительных Layer-1 primitives under consideration (Patterns 3, 4, 6): coverage shadow graph (новый §5.7 — `coverage_units`, `coverage_files`, `coverage_regions`), `TableSequence` as the normative atomic table-bound ID generator, team-shared graph artifact (offline snapshot format — proposed job, not yet in `compaction-roadmap.md`).
 
 Сводная таблица DBI секции 5.5 (для быстрого чтения владельца PR и capability-зависимости):
 
@@ -940,7 +967,7 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 | `compiled_article_payloads` | по capability `CompiledArticles` | `agent_memory.compiled_article.v1` | TBD | Per-kind payload для `CompiledArticle` units |
 | `chunk_payloads` | да (canonical always-open) | `agent_memory.chunk.v1` | TBD | Per-kind payload для `Chunk` units; required when writing `KnowledgeUnitKind::Chunk` |
 | `source_refs` | по capability `FullSourceRefs` (M1) | `agent_memory.source_ref.v1` | TBD | Full `SourceRef` vector by `UnitId`; inline summaries remain in envelope |
-| `unit_projections` | да (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections |
+| `unit_projections` | да (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections; TranslatedCanonical carries projection-level derivation metadata in the value |
 | `embedding_meta` | по capability `DenseVectors` | `agent_memory.embedding_meta.v1` | TBD | Версионированная мета (model_id, version, dim, encoder_id) |
 | `embedding_vectors` | по capability `DenseVectors` | `agent_memory.embedding_vector.v1` | TBD | Vector blob по `(scope, model_id, ProjectionKind, unit_id)` |
 | `inverted_token_to_unit` | по capability `LexicalIndex` | `agent_memory.inv_token.v1` | TBD | Scope-aware reverse index `(scope, token_id, projection, field) -> UnitId` |
@@ -983,7 +1010,7 @@ follows:
 
 Замечания:
 
-- `unit_projections` использует multi-version ключ `(scope_id, UnitId, ProjectionKind, revision)`. При write активной projection инкрементируется `revision`; старые revisions остаются до compaction purge (см. `guides/memory-stacks-roadmap.md`, open issue 17.4).
+- `unit_projections` использует multi-version ключ `(scope_id, UnitId, ProjectionKind, revision)`. При write активной projection инкрементируется `revision`; old revisions remain until compaction purge. `TranslatedCanonical` also carries a `projection_generation` / derivation fingerprint in the value so model/package-only refresh can invalidate translated postings without changing `KnowledgeUnitEnvelope.revision`.
 - `embedding_meta` хранит версионированную мета-информацию (model_id + version), чтобы CompactionWorker мог удалять versions старше N дней при отсутствии ссылок (см. roadmap, open issue 17.3).
 - `embedding_vectors` упорядочен по `(scope_id, model_id, ProjectionKind, UnitId)` для cluster-friendly чтения при exact scan; для ANN-расширений порядок может быть пересмотрен в `guides/optimization-roadmap.md`.
 - Все secondary/range indexes, которые должны обслуживать range-query или
@@ -1025,7 +1052,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Canonical memory-stack DBIs from §5.5 | up to 29 profile-selected | 29 full inventory | mixed | Count every row in the §5.5 summary table exactly once when full canonical inventory is enabled. |
 | Existing document/resource adapter DBIs from §5.4 | 0 by default, +4 if legacy adapter enabled | +4 | KV supported | Adapter-local; not part of canonical memory-stack layout. |
 | Runtime queue profile delta | 0 by default, +5 for the shared persistent queue | +5 | mixed | `jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`, `jobs_by_status`; owned by `runtime-services-roadmap.md`. |
-| Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; operational handoff, not queue ordering. |
+| Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Opt-in response cache delta | 0 by default, +1 if `response_cache_storage == Mdbx` | +1 | KV supported | `response_cache` keyed by `ResponseCacheStorageKey = (scope, provider, model, request_hash, suffix, schema_version)`; runtime-services-roadmap.md owns policy and safety defaults. |

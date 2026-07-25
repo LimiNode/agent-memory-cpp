@@ -154,7 +154,8 @@ struct SourceRef {
 **M1 (добавление `source_refs` DBI):**
 - В envelope остаётся `vector<SourceRefSummary>` (≤3).
 - Полные `SourceRef` с `excerpt_text` хранятся в отдельной `source_refs` DBI (key = `KnowledgeUnitId` → `vector<SourceRef>`).
-- Public write path: `WriteRequest::full_source_refs` writes full refs
+- Public create/update path: `CreateUnitRequest::full_source_refs` /
+  `MutableUnitPatch::full_source_refs` writes full refs
   atomically with the unit when `enable_full_source_refs=true`. Migration/admin
   tools may also call `SourceRefStore::replace_for_unit(unit_id, refs, txn)`;
   this API replaces the entire vector for that unit and must be used in the
@@ -176,7 +177,7 @@ summary.quote_hash = compute_quote_hash(summary.preview);
 summary.confidence = 0.92;
 
 KnowledgeUnitEnvelopeBuilder env_builder;
-// id is assigned by storage inside the write_unit/upsert transaction
+// id is assigned by storage inside the create_or_get transaction
 env_builder.set_kind(KnowledgeUnitKind::Fact);
 env_builder.set_scope(ScopeId::global());
 env_builder.add_source_summary(summary);  // inline, ≤3 на unit
@@ -321,7 +322,10 @@ integer       = fixed-width big-endian two's-complement or unsigned
 timestamp     = i64be milliseconds since Unix epoch
 digest        = raw bytes with fixed length declared by the field tag
 string        = UTF-8 NFC bytes after recipe normalization
-list/map      = u32be item_count + encoded items; maps sorted by encoded key
+value         = u8 type_tag + type-specific payload
+list          = u32be item_count + value*
+map           = u32be item_count + (normalized string key + value)*,
+                sorted by encoded key
 ```
 
 Absent optional and present-empty optional are distinct through `presence`:
@@ -336,7 +340,29 @@ emitted exactly once. For fixed-width integers and digests, `byte_len` MUST
 match the field's declared width. For maps, keys are normalized before sorting;
 if two keys become equal after normalization, encoding fails instead of picking
 one value. Concatenating raw strings is forbidden; all fields use tag +
-presence + length framing.
+presence + length framing. Unicode normalization and whitespace classes use
+Unicode 15.1.0 for recipe v1; changing Unicode data version requires a new
+recipe version.
+
+`ScopeId::canonical_bytes()` is `UTF-8 NFC`, CRLF/CR -> LF, trim outer Unicode
+whitespace, ASCII lower-case for `[A-Z]`, and forbids empty result, NUL bytes
+and path traversal tokens (`..`, `.` as full path segment). Scope aliases must
+be resolved before hashing; unresolved aliases are encoding errors.
+
+Typed metadata value encoding:
+
+| Type tag | Type | Payload |
+|---:|---|---|
+| `0x00` | null | empty |
+| `0x01` | bool false | empty |
+| `0x02` | bool true | empty |
+| `0x03` | i64 | i64be |
+| `0x04` | u64 | u64be |
+| `0x05` | f64 | IEEE-754 binary64 big-endian; NaN forbidden |
+| `0x06` | string | normalized string bytes |
+| `0x07` | bytes | raw bytes |
+| `0x08` | list | recursive `list` |
+| `0x09` | map | recursive `map` |
 
 Stable field-tag order:
 
@@ -356,6 +382,7 @@ Text normalization table for recipe v1:
 | `normalized_answer` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, preserve internal whitespace except line-ending normalization, case preserved |
 | `subject`, `predicate`, `object` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
 | `canonical_text_digest` source text | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim trailing whitespace on each line, trim outer blank lines, case preserved, then digest the normalized bytes |
+| `title_identity` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
 | `primary_identity_text` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
 | metadata keys | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer whitespace, ASCII lower-case for `[A-Z]`, collapse internal whitespace runs to one ASCII space |
 | metadata string values | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer whitespace, preserve case |
@@ -387,7 +414,7 @@ Identity vs mutable fields:
 ### 4.1. Allocation и инварианты
 
 - `KnowledgeUnitId` allocation is storage-owned. MDBX-backed storage obtains it
-  from `knowledge_unit_sequence.next(txn)` inside the same write transaction
+  from `TableSequence(knowledge_units).next(txn)` inside the same write transaction
   that installs the content-key mapping. There is no public
   static allocation API in the canonical path.
 - Reuse id после erase запрещён (даже если соответствующий unit удалён).
@@ -404,7 +431,7 @@ Storage использует **два** DBI для разделения identity
 | `knowledge_units` | `KnowledgeUnitId` | `KnowledgeUnitEnvelope` | primary storage; O(1) lookup по id |
 | `content_key_to_unit_id` | `KnowledgeUnitKey` | `KnowledgeUnitId` | dedupe/migration; O(1) "есть ли уже unit с таким content?" |
 
-Идемпотентный upsert через `content_key_to_unit_id`:
+Идемпотентный create-or-get через `content_key_to_unit_id`:
 
 ```cpp
 return connection.multi_write([&](Transaction& txn) -> UpsertResult {
@@ -428,7 +455,7 @@ return connection.multi_write([&](Transaction& txn) -> UpsertResult {
         return UpsertResult::Existed{*existing};
     }
 
-    auto new_id = knowledge_unit_sequence.next(txn);
+    auto new_id = TableSequence(knowledge_units).next(txn);
     unit.id = new_id;
     unit.envelope.id = new_id;
 
@@ -445,10 +472,46 @@ return connection.multi_write([&](Transaction& txn) -> UpsertResult {
 });
 ```
 
+This path is create/dedupe only. If an existing mapping is found, the function
+returns `UpsertResult::Existed` and MUST NOT update envelope, payload,
+components, projections or indexes of the existing unit.
+
+Mutable update is a separate revision-guarded operation:
+
+```cpp
+return connection.multi_write([&](Transaction& txn) -> UpdateUnitResult {
+    auto old = knowledge_units.get(unit_id, txn);
+    if (!old || old->revision != expected_revision) {
+        return UpdateUnitResult::Stale{};
+    }
+
+    CanonicalIdentityInput input =
+        build_identity_input_from_existing_identity(*old, txn);
+    ContentHashResult identity = compute_content_hash(old->kind, input);
+    KnowledgeUnitKey old_key{old->kind, old->scope_id, old->content_hash};
+    KnowledgeUnitKey checked_key{old->kind, old->scope_id, identity.hash};
+    if (old_key != checked_key ||
+        old->content_hash_recipe_version != identity.recipe_version) {
+        return UpdateUnitResult::ImmutableIdentityChanged{};
+    }
+
+    auto next = apply_mutable_patch(*old, patch);
+    next.revision = old->revision + 1;
+    knowledge_units.put(unit_id, next, txn);
+    update_mutable_components_projections_and_indexes(unit_id, next, patch, txn);
+    return UpdateUnitResult::Updated{unit_id, next.revision};
+});
+```
+
+`update_unit` may change only the mutable fields listed below. It must not
+change `kind`, `scope_id`, `content_hash`, `content_hash_recipe_version` or the
+content-addressing identity material. Every update uses optimistic revision
+guarding; stale revision conflicts return without writes.
+
 All authoritative reads used to build `CanonicalIdentityInput` MUST belong to the
 same transaction snapshot. MDBX-backed `ResourceBodyStore` reads receive `txn`.
 External body stores must provide an immutable digest/version token, and
-`write_unit` verifies that token before commit; otherwise the body is not valid
+`create_or_get_unit` verifies that token before commit; otherwise the body is not valid
 identity input for idempotent upsert.
 
 ### 4.3. Миграция с hash-based scheme
@@ -781,7 +844,7 @@ enum class LifecycleState : uint8_t {
 |---|---|---|---|
 | (new) | Active | write | initial state |
 | Active | Superseded | supersede operation (newer unit supersedes older) | старый unit помечается Superseded, новый становится Active |
-| Active | Deprecated | manual deprecation | авторский сигнал через WriteRequest |
+| Active | Deprecated | manual deprecation | авторский сигнал через `MutableUnitPatch` |
 | Active | Erased | manual erase | физическое удаление или logical remove (single-shot, минует Deprecated) |
 | Superseded | Deprecated | compaction review | после N дней в Superseded |
 | Superseded | Erased | compaction cleanup | cleanup Superseded chains (без Deprecated stage) |
@@ -894,7 +957,6 @@ enum class DerivedRecordKind : uint32_t {
     TemporalComponent = 103,
     EmbeddingMetaComponent = 104,
     CompactionMetaComponent = 105,
-    TranslationMetaComponent = 106,
     QAPayload = 110,
     FactPayload = 111,
     ChunkPayload = 112,
@@ -937,7 +999,6 @@ enum class DerivedRecordKind : uint32_t {
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
 | EmbeddingMetaComponent | `unit_components` (tag=EmbeddingMeta) | EmbeddingMeta=true |
 | CompactionMetaComponent | `unit_components` (tag=CompactionMeta) | Compaction=true |
-| TranslationMetaComponent | `unit_components` (tag=TranslationMeta) | TranslationProjection=true |
 | QAPayload | `qa_payloads` | QAPairs=true (enable_qa_payload) |
 | FactPayload | `fact_payloads` | enable_fact_payload=true |
 | ChunkPayload | `chunk_payloads` | Chunk kind (default, всегда) |
