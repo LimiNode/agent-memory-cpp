@@ -40,18 +40,25 @@ adapter may be implemented as an in-process C++ plugin, a subprocess, a Python
 sidecar or an external service.
 
 ```cpp
-struct LanguageCode {
+struct CanonicalLanguageCode {
     std::string bcp47; // canonical BCP-47, e.g. "en", "ru", "uk", "zh-Hant"
 };
 
-enum class LanguageSpecial : uint8_t { None, Unknown, Mixed };
+struct UnknownLanguage {};
+struct MixedLanguage {};
+
+using DetectedLanguage = std::variant<
+    CanonicalLanguageCode,
+    UnknownLanguage,
+    MixedLanguage>;
+
 enum class TranslationBackendMode : uint8_t { Disabled, OfflineAdapter, ExternalService };
-enum class TranslationProjectionMode : uint8_t { Disabled, QueryOnly, Persisted };
+enum class TranslationProjectionMode : uint8_t { Disabled, Persisted };
 
 struct TranslationPolicy {
     TranslationProjectionMode projection_mode = TranslationProjectionMode::Disabled;
     TranslationBackendMode backend_mode = TranslationBackendMode::Disabled;
-    LanguageCode canonical_language;
+    CanonicalLanguageCode canonical_language;
     bool allow_pivot = true;
 };
 
@@ -84,8 +91,8 @@ struct ArtifactFingerprint {
 
 struct TranslationRequest {
     std::string text;
-    std::optional<LanguageCode> source_language;
-    LanguageCode target_language;
+    std::optional<DetectedLanguage> source_language;
+    CanonicalLanguageCode target_language;
     TranslationBackendMode backend_mode = TranslationBackendMode::Disabled;
     std::optional<TranslationSource> source;
 };
@@ -94,8 +101,8 @@ struct TranslationStepProvenance {
     std::string provider_id;
     std::string package_id;
     std::string package_version;
-    LanguageCode from;
-    LanguageCode to;
+    CanonicalLanguageCode from;
+    CanonicalLanguageCode to;
     std::string provider_native_from;
     std::string provider_native_to;
     std::string model_id;
@@ -104,8 +111,8 @@ struct TranslationStepProvenance {
 
 struct TranslationResult {
     std::string translated_text;
-    LanguageCode detected_source_language;
-    LanguageCode target_language;
+    DetectedLanguage detected_source_language;
+    CanonicalLanguageCode target_language;
     std::vector<TranslationStepProvenance> steps;
     double quality_hint = 0.0;
 };
@@ -121,13 +128,20 @@ The adapter contract is intentionally synchronous in the minimal sketch. The
 runtime may schedule translation through `TaskQueue`/`JobDispatcher` when the
 implementation reaches background ingestion jobs.
 
-`LanguageCode` equality uses canonicalized BCP-47 bytes. Canonicalization
-normalizes language to lower-case, script to TitleCase, region to upper-case
-and resolves known aliases before profile signature or cache-key calculation.
-`Unknown` and `Mixed` are explicit special values, not free-form strings.
+`CanonicalLanguageCode` equality uses canonicalized BCP-47 bytes.
+Canonicalization normalizes language to lower-case, script to TitleCase, region
+to upper-case and resolves known aliases before profile signature or cache-key
+calculation. `UnknownLanguage` and `MixedLanguage` are explicit
+`DetectedLanguage` variants, not free-form strings and not valid target
+languages.
 Provider-native codes are stored separately in `TranslationStepProvenance`; an
 Argos adapter owns the mapping table between provider codes such as `zt` and
 core BCP-47 such as `zh-Hant`.
+`TranslationRequest::source_language == nullopt` means the caller did not supply
+detection evidence. `UnknownLanguage` means detection was attempted but produced
+no stable language. `MixedLanguage` means the source spans multiple languages
+and the adapter may reject, segment internally or use a provider-native mixed
+mode, but must report the chosen steps explicitly.
 
 ## 4. Stored Metadata
 
@@ -144,8 +158,8 @@ struct ProjectionDerivationId {
 
 struct TranslationProjectionMeta {
     ProjectionDerivationId derivation_id;
-    LanguageCode original_language;
-    LanguageCode canonical_language;
+    DetectedLanguage original_language;
+    CanonicalLanguageCode canonical_language;
     std::vector<TranslationStepProvenance> steps;
     double quality_hint = 0.0;
     std::uint64_t translated_at_ms = 0;
@@ -177,8 +191,8 @@ struct TranslationPackageManifest {
     std::string provider_id;
     std::string package_id;
     std::string package_version;
-    LanguageCode from;
-    LanguageCode to;
+    CanonicalLanguageCode from;
+    CanonicalLanguageCode to;
     std::string model_id;
     ArtifactFingerprint fingerprint;
     std::string local_path;
@@ -223,6 +237,24 @@ Query-time flow:
 5. Fuse original-query and translated-query streams through RRF.
 6. Build final context from original source excerpts unless the caller requests
    translated snippets.
+
+Query-time-only translation without persisted `TranslatedCanonical` projections
+is deferred until the retrieval planner has an explicit corpus-language routing
+contract. M1 uses query translation only as the matching query side for
+persisted translated projections.
+
+```cpp
+struct QueryTranslationTrace {
+    DetectedLanguage source_language;
+    CanonicalLanguageCode target_language;
+    std::vector<TranslationStepProvenance> steps;
+    std::uint64_t translated_at_ms = 0;
+};
+```
+
+`QueryTranslationTrace` belongs to the retrieval trace/query variant. It is not
+persisted as `TranslationProjectionMeta`, because it describes the caller query,
+not a stored projection generation.
 
 `ProjectionQueryVariant` is defined in
 [`lexical-search-roadmap.md`](lexical-search-roadmap.md) and is also carried by

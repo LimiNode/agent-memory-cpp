@@ -497,7 +497,7 @@ The dispatcher owns the claim loop and submits typed claimed jobs to bounded
 per-kind executors:
 
 ```cpp
-enum class SubmitResult { Accepted, Saturated, ShuttingDown, Unsupported };
+enum class SubmitRejectionReason { Saturated, ShuttingDown, Unsupported };
 
 struct ClaimToken {
     JobId job_id;
@@ -516,15 +516,36 @@ struct ResultPayload {
     std::vector<uint8_t> bytes;
 };
 
-struct SubmitOutcome {
-    SubmitResult result = SubmitResult::Unsupported;
-    std::optional<ClaimedJob> unaccepted_job;
+struct MaintenanceJobPayload {
+    uint16_t codec_version = 0;
+    std::vector<uint8_t> bytes;
 };
+
+template<class Payload>
+struct TypedClaimedJob {
+    ClaimToken token;
+    JobId job_id;
+    Payload payload;
+};
+
+using AnyTypedClaimedJob = std::variant<
+    TypedClaimedJob<CompactionJobPayload>,
+    TypedClaimedJob<IndexUpdateJob>,
+    TypedClaimedJob<MaintenanceJobPayload>>;
+
+struct AcceptedSubmission {};
+
+struct RejectedTypedJob {
+    SubmitRejectionReason reason = SubmitRejectionReason::Unsupported;
+    AnyTypedClaimedJob unaccepted_job;
+};
+
+using SubmitOutcome = std::variant<AcceptedSubmission, RejectedTypedJob>;
 
 class IJobExecutor {
 public:
     virtual ~IJobExecutor() = default;
-    virtual SubmitOutcome try_submit(ClaimedJob job) = 0;
+    virtual SubmitOutcome try_submit(AnyTypedClaimedJob job) = 0;
 };
 
 class JobDispatcher {
@@ -544,14 +565,17 @@ contract kind-aware: dispatcher claims the first ready job, decodes
 registered bounded executors. Workers do not call `claim_next`, do not scan for
 their own kind, do not leave unsupported jobs at the head of ready, and do not
 claim payload codecs they cannot decode. Token ownership stays with the
-dispatcher until `try_submit()` returns `Accepted`; after acceptance the
+dispatcher until `try_submit()` returns `AcceptedSubmission`; after acceptance the
 executor is responsible for lease renewal, terminal/retry transition and
-cooperative shutdown. `ClaimedJob` is move-only. If `try_submit()` returns
-`Saturated`, `ShuttingDown` or `Unsupported`, the executor must return the
-unchanged `ClaimedJob` in `SubmitOutcome::unaccepted_job`, and dispatcher
-immediately calls `release_unhandled(token, now_ms, backoff, reason)` so the
-claim does not disappear into a volatile queue. If no executor supports the
-kind/version, dispatcher applies the unavailable-executor path below.
+cooperative shutdown. `ClaimedJob`/`TypedClaimedJob` are move-only. Executors
+never receive opaque `JobRecord` bytes. If `try_submit()` returns
+`RejectedTypedJob`, it must include the unchanged typed job with the original
+token/job id; dispatcher immediately calls
+`release_unhandled(token, now_ms, backoff, reason)` so the claim does not
+disappear into a volatile queue. `SubmitOutcome` is a closed variant: accepted
+submissions carry no unaccepted job, and rejected submissions always carry one.
+If no executor supports the kind/version, dispatcher applies the
+unavailable-executor path below.
 
 Unavailable executor path:
 

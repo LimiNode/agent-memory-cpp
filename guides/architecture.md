@@ -233,7 +233,8 @@ LLM contextualization engines, cross-encoder rerank engines, concrete
 translation engines, hybrid chunker implementations, ASR, VLM document parsing,
 hosted vector databases, Python bindings, and agent framework bridges stay in
 `adapters/` and `examples/`. Dependency-free SPI/value types such as
-`ITranslationAdapter`, `LanguageCode`, `TranslationPolicy` and
+`ITranslationAdapter`, `CanonicalLanguageCode`, `DetectedLanguage`,
+`TranslationPolicy` and
 translation provenance metadata may live in the core/domain contract; concrete
 provider SDKs, package managers and model runtimes do not.
 

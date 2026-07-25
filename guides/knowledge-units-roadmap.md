@@ -419,7 +419,7 @@ Identity vs mutable fields:
   static allocation API in the canonical path.
 - Reuse id после erase запрещён (даже если соответствующий unit удалён).
 - `KnowledgeUnitId` opaque для storage layer; не парсится ни во что.
-- При экспорте в логи/traces допускается hex-форма `to_string()` (32 hex chars), но не должно влиять на routing.
+- При экспорте в логи/traces допускается hex-форма `to_string()` (16 lowercase hex chars, zero-padded), но не должно влиять на routing.
 - Strong typedef: нет implicit conversion в `std::string`, `ChunkId` или арифметические типы.
 
 ### 4.2. DBI mapping
@@ -434,7 +434,7 @@ Storage использует **два** DBI для разделения identity
 Идемпотентный create-or-get через `content_key_to_unit_id`:
 
 ```cpp
-return connection.multi_write([&](Transaction& txn) -> UpsertResult {
+return connection.multi_write([&](Transaction& txn) -> CreateOrGetResult {
     // 1. Build canonical identity input from authoritative fields/stores using
     // the same transaction snapshot as the later dedupe and write.
     CanonicalIdentityInput input =
@@ -452,7 +452,7 @@ return connection.multi_write([&](Transaction& txn) -> UpsertResult {
 
     // 2. Dedupe check and no-overwrite insert are both inside the write txn.
     if (auto existing = content_key_to_unit_id.find(key, txn)) {
-        return UpsertResult::Existed{*existing};
+        return ExistingUnit{*existing};
     }
 
     auto new_id = TableSequence(knowledge_units).next(txn);
@@ -461,19 +461,21 @@ return connection.multi_write([&](Transaction& txn) -> UpsertResult {
 
     auto cas = content_key_to_unit_id.insert_if_absent(key, new_id, txn);
     if (!cas.inserted) {
-        return UpsertResult::Existed{
+        return ExistingUnit{
             *cas.existing_value
         };
     }
 
     knowledge_units.put(new_id, unit.envelope, txn);
     write_payload_and_indexes(unit, txn);
-    return UpsertResult::Inserted{new_id};
+    std::vector<JobId> enqueued_jobs =
+        enqueue_post_write_jobs(unit.envelope, txn);
+    return CreatedUnit{new_id, enqueued_jobs};
 });
 ```
 
 This path is create/dedupe only. If an existing mapping is found, the function
-returns `UpsertResult::Existed` and MUST NOT update envelope, payload,
+returns `ExistingUnit` and MUST NOT update envelope, payload,
 components, projections or indexes of the existing unit.
 
 Mutable update is a separate revision-guarded operation:
@@ -481,8 +483,11 @@ Mutable update is a separate revision-guarded operation:
 ```cpp
 return connection.multi_write([&](Transaction& txn) -> UpdateUnitResult {
     auto old = knowledge_units.get(unit_id, txn);
-    if (!old || old->revision != expected_revision) {
-        return UpdateUnitResult::Stale{};
+    if (!old) {
+        return UnitNotFound{};
+    }
+    if (old->revision != expected_revision) {
+        return StaleUnitRevision{expected_revision, old->revision};
     }
 
     CanonicalIdentityInput input =
@@ -492,14 +497,16 @@ return connection.multi_write([&](Transaction& txn) -> UpdateUnitResult {
     KnowledgeUnitKey checked_key{old->kind, old->scope_id, identity.hash};
     if (old_key != checked_key ||
         old->content_hash_recipe_version != identity.recipe_version) {
-        return UpdateUnitResult::ImmutableIdentityChanged{};
+        return ImmutableIdentityChanged{};
     }
 
     auto next = apply_mutable_patch(*old, patch);
     next.revision = old->revision + 1;
     knowledge_units.put(unit_id, next, txn);
     update_mutable_components_projections_and_indexes(unit_id, next, patch, txn);
-    return UpdateUnitResult::Updated{unit_id, next.revision};
+    std::vector<JobId> enqueued_jobs =
+        enqueue_post_update_jobs(unit_id, next.revision, patch, txn);
+    return UpdatedUnit{unit_id, next.revision, enqueued_jobs};
 });
 ```
 

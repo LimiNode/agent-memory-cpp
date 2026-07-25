@@ -324,12 +324,16 @@ enum class RetrievalMode { Associative, Targeted, Hybrid, Disabled };
 enum class FusionStrategy { RRF, WeightedMax, Learned, Planner };
 enum class ResponseCacheStorageMode : uint8_t { Disabled, MemoryOnly, Mdbx };
 enum class TranslationBackendMode : uint8_t { Disabled, OfflineAdapter, ExternalService };
-enum class TranslationProjectionMode : uint8_t { Disabled, QueryOnly, Persisted };
+enum class TranslationProjectionMode : uint8_t { Disabled, Persisted };
+
+struct CanonicalLanguageCode {
+    std::string bcp47 = "en";
+};
 
 struct TranslationPolicy {
     TranslationProjectionMode projection_mode = TranslationProjectionMode::Disabled;
     TranslationBackendMode backend_mode = TranslationBackendMode::Disabled;
-    std::string canonical_language = "en";
+    CanonicalLanguageCode canonical_language;
     bool allow_pivot = true;
 };
 
@@ -552,32 +556,54 @@ struct CreateUnitRequest {
 
 struct MutableUnitPatch {
     std::optional<std::string> display_text;
-    std::vector<ComponentVariant> components;
-    std::vector<SearchProjection> projections;
-    std::vector<GraphEdge> graph_edges;
+    std::optional<std::vector<ComponentVariant>> components;
+    std::optional<std::vector<SearchProjection>> projections;
+    std::optional<std::vector<GraphEdge>> graph_edges;
     std::optional<std::vector<SourceRef>> full_source_refs;
     std::optional<double> importance_score;
 };
 
-struct CreateOrGetResult {
+struct CreatedUnit {
     KnowledgeUnitId unit_id;
-    bool deduplicated = false;
-    std::optional<KnowledgeUnitId> merged_into;
     std::vector<JobId> enqueued_jobs;
 };
 
-struct UpdateUnitResult {
+struct ExistingUnit {
+    KnowledgeUnitId unit_id;
+};
+
+using CreateOrGetResult = std::variant<CreatedUnit, ExistingUnit>;
+
+struct UpdatedUnit {
     KnowledgeUnitId unit_id;
     std::uint64_t new_revision = 0;
-    bool stale_revision = false;
     std::vector<JobId> enqueued_jobs;
 };
+
+struct UnitNotFound {};
+
+struct StaleUnitRevision {
+    std::uint64_t expected_revision = 0;
+    std::uint64_t actual_revision = 0;
+};
+
+struct ImmutableIdentityChanged {};
+
+using UpdateUnitResult = std::variant<
+    UpdatedUnit,
+    UnitNotFound,
+    StaleUnitRevision,
+    ImmutableIdentityChanged>;
 ```
 
 `create_or_get_unit` is create/dedupe only. If the content key already exists it
-returns `deduplicated = true` and does not mutate the existing unit. Mutable
-updates use `update_unit` with `expected_revision`; stale revisions fail without
-writes. `update_unit` may change only fields listed as mutable in
+returns `ExistingUnit` and does not mutate the existing unit. Mutable updates
+use `update_unit` with `expected_revision`; stale revisions return
+`StaleUnitRevision` without writes. `MutableUnitPatch` collection fields use
+`nullopt` for "leave unchanged", an empty vector for "clear this collection" and
+a non-empty vector for "replace the whole collection". Fine-grained collection
+deltas are deferred until a future explicit `CollectionPatch<T>` contract.
+`update_unit` may change only fields listed as mutable in
 `knowledge-units-roadmap.md` §4, increments envelope revision, regenerates
 affected projections and updates secondary indexes in one transaction.
 
@@ -990,9 +1016,10 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 `MemoryOnly` enables the runtime service without DBI, while `Mdbx` also opens
 the `response_cache` profile delta.
 `TranslationProjection` capability is present iff
-`translation_policy.projection_mode == Persisted`; `QueryOnly` translation uses
-the adapter SPI without opening persisted translated projections. The normalized
-`TranslationPolicy` participates in `profile_signature`.
+`translation_policy.projection_mode == Persisted`. Query-time-only translation
+without persisted translated projections is deferred until the retrieval planner
+has a corpus-language routing contract. The normalized `TranslationPolicy`
+participates in `profile_signature`.
 
 ## 10. Validation Rules
 
@@ -1012,7 +1039,6 @@ the adapter SPI without opening persisted translated projections. The normalized
 | ContextBudget: сумма per-block <= total_tokens | "ContextBudget overflow" |
 | HybridRetrievalConfig: retriever_weights.size() == number of retrievers | "Weights size mismatch" |
 | `translation_policy.projection_mode == Persisted` требует capability `TranslationProjection`, `backend_mode != Disabled`, canonical BCP-47 language и persisted projection schema | "Persisted translation requires active TranslationPolicy" |
-| `translation_policy.projection_mode == QueryOnly` требует `backend_mode != Disabled`, но не открывает persisted translated projections | "Query-only translation requires backend" |
 | envelope_schema_version в spec соответствует сохранённому | "Schema version mismatch (migration required)" |
 
 Дополнительно: `profile_signature` (hash от spec) сохраняется в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с текущим и диагностируется drift.

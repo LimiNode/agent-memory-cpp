@@ -154,11 +154,31 @@ enum class FieldId : std::uint16_t {
     summary   = 10,
 };
 
+struct CanonicalLanguageCode {
+    std::string bcp47;
+};
+
+struct UnknownLanguage {};
+struct MixedLanguage {};
+
+using DetectedLanguage = std::variant<
+    CanonicalLanguageCode,
+    UnknownLanguage,
+    MixedLanguage>;
+
+struct QueryTranslationTrace final {
+    DetectedLanguage source_language;
+    CanonicalLanguageCode target_language;
+    std::vector<TranslationStepProvenance> steps;
+    std::uint64_t translated_at_ms = 0;
+};
+
 struct ProjectionQueryVariant final {
     ProjectionKind projection_kind = ProjectionKind::Original;
-    LanguageCode language;
+    CanonicalLanguageCode query_language;
     std::string text;
-    std::optional<ProjectionDerivationId> derivation;
+    std::optional<ProjectionDerivationId> target_projection_derivation;
+    std::optional<QueryTranslationTrace> query_translation;
 };
 
 struct LexicalPosting final {
@@ -960,6 +980,10 @@ query is searched against `TranslatedCanonical`; RRF fuses the two result
 streams. The default result context still carries `SourceRef` to the original
 resource; translated snippets are auxiliary unless the caller explicitly asks
 for a translated answer surface.
+`ProjectionQueryVariant::target_projection_derivation` is set only when the
+planner pins the query to a known persisted translated projection generation.
+`query_translation` records query-side provenance and must not be copied into
+stored projection metadata.
 
 Secondary retrieval (post-fusion) may load `CodeSymbols` or `DenseContextual`
 if RRF confidence is below a threshold or if the query parser hints at code

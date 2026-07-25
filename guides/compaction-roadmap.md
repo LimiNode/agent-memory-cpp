@@ -181,6 +181,12 @@ struct BatchCommitResult {
     CompactionProgress progress;
 };
 
+enum class RetryReason : uint8_t {
+    ExecutionFailure,
+    GracefulShutdown,
+    CooperativeYield,
+};
+
 class JobExecutionContext {
 public:
     ICompactionReadContext& reads();
@@ -205,6 +211,7 @@ public:
         const ClaimToken& token,
         int64_t now_ms,
         std::chrono::milliseconds backoff,
+        RetryReason reason,
         std::string last_error,
         const CompactionHandoff& checkpoint,
         Apply&& apply_partial_writes);
@@ -225,7 +232,11 @@ writes handoff/outcome/queue index deltas, commits, and returns only after
 commit succeeds. A renewed token is returned only from `commit_batch` after the
 lease update has committed. Terminal transitions are owned by the executor via
 `complete_batch`, `retry_batch` or `dead_batch`; a job returns `JobOutcome` but
-does not separately complete the queue record.
+does not separately complete the queue record. `retry_batch` with
+`ExecutionFailure` increments attempts; `GracefulShutdown`,
+`CooperativeYield` and dispatcher `release_unhandled` keep the attempt counter
+unchanged. Jobs transition to `Dead` only after exhausted or unrecoverable
+execution failures.
 
 Bounded batch protocol for long jobs:
 
@@ -525,6 +536,18 @@ currently running compaction job through `commit_batch`, `retry_batch` or
 application writes under one fenced transition and prevents a second resume job
 from being enqueued for the same logical operation.
 
+Handoff lifecycle follows the owning `JobRecord`:
+
+- `commit_batch` and `retry_batch` persist `InProgress` handoff state.
+- `complete_batch` marks the handoff `Completed` with the final outcome.
+- `dead_batch` marks it `Failed` unless the failure is an explicit cancel path,
+  which marks it `Aborted`.
+- Terminal handoffs are retained no longer than the terminal `JobRecord`; they
+  are pruned atomically with the record or by the same retention job.
+- Startup recovery resumes only `InProgress` handoffs whose `JobRecord` is
+  still `Pending` or `Running` and whose job id, kind and payload codec match.
+  Terminal, missing or mismatched orphan handoffs are ignored and pruned.
+
 ### 4.8. SummaryTreeJob (M2+, RAPTOR-style)
 
 Reference: arXiv:2401.18059 — "RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval".
@@ -706,7 +729,7 @@ restart recovery uses only the last committed handoff checkpoint.
 | Schedule timer (per `WritePolicy.flush_interval_ms`) | Enqueue `DecayJob` (forced flush) |
 | Model upgrade | Enqueue `EmbeddingRecomputeJob` для всех units в scope |
 | Manual CLI / admin tool | `worker.trigger_now(kind, params)` |
-| Worker stop (graceful) | Request `retry_batch(..., StopReason::GracefulShutdown)` for the same `JobId` |
+| Worker stop (graceful) | Request `retry_batch(..., RetryReason::GracefulShutdown)` for the same `JobId` |
 | Worker startup | Run queue lease recovery, then use in-progress `compaction_handoffs` only to restore checkpoint payload for the same `JobId` |
 
 ### 6.3. Job priority
@@ -789,8 +812,12 @@ context.retry_batch(
     token,
     now_ms,
     backoff,
+    RetryReason::ExecutionFailure,
     last_error,
-    updated_handoff);
+    updated_handoff,
+    [&](ICompactionWriteTxn& writes) {
+        writes.record_partial_result(partial_result);
+    });
 ```
 
 This atomically verifies the token, writes the checkpoint, transitions the same

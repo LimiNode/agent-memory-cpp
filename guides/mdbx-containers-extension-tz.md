@@ -642,7 +642,8 @@ Implementing this as unconditional `put` is forbidden for identity mappings.
    only after the dedupe read shows no existing mapping.
 5. Install `KnowledgeUnitKey -> UnitId` in `content_key_to_unit_id` with
    `insert_if_absent`. If another writer inserts the same key first, the
-   operation returns `UpsertResult::Existed(existing_id)` and MUST NOT write
+   operation returns an existing-id result (upstream maps this to
+   `ExistingUnit{existing_id}`) and MUST NOT write
    envelope, payloads, components or indexes for the newly allocated id. The
    skipped sequence value is allowed and committed in this collision path;
    sequence monotonicity is more important than gap-free ids.
