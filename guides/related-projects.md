@@ -37,7 +37,7 @@ Disclaimer:
 |---|---|---|---|
 | mem0 | Python SDK / server | Universal memory layer для AI agents. Multi-level memory, user/session/agent state, hybrid search, BM25, entity extraction, temporal reasoning. | agent-memory-cpp НЕ SDK; C++17 core. mem0 = продукт/обёртка, мы = primitive для embedding. |
 | Letta / MemGPT | Python платформа | Stateful agents с advanced memory + runtime + self-improve. | Letta = agent runtime platform. Мы = memory/retrieval core без agent loop. Потенциальный customer: наш core как storage backend для Letta. |
-| Graphiti / Zep | Python library | Temporal context graphs для AI agents. Bi-temporal facts, provenance/source data, incremental updates, hybrid retrieval. | **Самый близкий конкурент по temporal+provenance части**. Python-only, не embedded. Наша ниша: embedded C++17 с теми же свойствами (TemporalComponent + GraphEdge). |
+| Graphiti / Zep | Python library | Temporal context graphs для AI agents. Bi-temporal facts, provenance/source data, incremental updates, hybrid retrieval. | **Самый близкий конкурент по temporal+provenance части**. Python-only, не embedded. Наша ниша: embedded C++17; current M1 uses `TemporalComponent` + `GraphEdge`, while Graphiti-style bi-temporal semantics are tracked as M2+ AM-13. |
 | Cognee | Python platform | Self-hosted AI memory platform с persistent long-term memory, knowledge graph, vector embeddings, graph reasoning, ontology generation. | Cognee = Python платформа с UI/ingestion. Мы = storage/retrieval core для embedding в C++ apps. |
 | A-MEM / AgenticMemory | Research prototype | Zettelkasten-style agentic memory: dynamic organization, notes, structured attributes, links, memory evolution. (arXiv:2502.12110) | Research-grade, не production. Inspirational для memory evolution (CompactionWorker + SummaryTreeJob). |
 | LightRAG | Python framework | Dual-level graph + vector RAG (EMNLP 2025). | LightRAG = document RAG framework, не typed agent memory. Совпадает по hybrid retrieval pattern (graph + vector + RRF). |
@@ -98,7 +98,7 @@ Disclaimer:
 
 ## 6. Architecture inspiration notes (что позаимствовать из каждого)
 
-- **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until). Мы уже делаем через TemporalComponent + GraphEdge с weight/last_used_at/valid_until_ms.
+- **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until). Current M1 design has single-axis `TemporalComponent` + `GraphEdge`; Graphiti-style valid-time/recorded-time semantics are planned in [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md) AM-13.
 - **Cognee**: knowledge graph + community detection для "global questions". У нас CommunitySummaryJob (M2+, GraphRAG-style).
 - **mem0**: explicit fact extraction с slot-based QA retrieval. У нас QALookup slot в QAKB profile.
 - **Letta / MemGPT**: agent context block architecture (Persona + Memory + Recent). У нас ContextBlock / Context через ContextBuilder.
@@ -115,11 +115,26 @@ Disclaimer:
 - **Gigatoken**: tokenizer-aware raw ingestion pipeline and benchmark hygiene;
   see [`chunkers-roadmap.md`](chunkers-roadmap.md) §10 and
   [`experiments/2026-07-27-gigatoken-tokenization-reference.md`](experiments/2026-07-27-gigatoken-tokenization-reference.md).
+- **Memory for Autonomous LLM Agents survey**: write/manage/read lifecycle,
+  contradiction handling, privacy/deletion correctness and evaluation beyond
+  static Recall@K; see
+  [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md).
+- **Mem0**: entity linking, multi-signal retrieval, temporal retrieval and
+  memory benchmark axes; useful as a comparison target, but its ADD-only public
+  direction becomes a selectable `MemoryMutationPolicy`, not our universal
+  storage rule.
+- **ToM-SWE / Mind Modeling / MetaMind / Archon-style workflow sources**:
+  useful for ADELIA and runtime layers; core `agent-memory-cpp` stores
+  evidence and derived units, not application-owned mental models or workflow
+  engines.
 
 ## 7. Open questions / roadmap items (из конкурентного анализа)
 
 - M1: как наши MemoryStacks сравниваются с mem0/Cognee/Zep real-world performance на их test datasets?
 - M2: Bi-temporal knowledge graph (Graphiti-style edge-level TTL) — нужен ли отдельный edge-level TTL job? (deferred M2+)
+- M2+: Lifecycle governance AM-13..AM-18 — map bi-temporal validity,
+  derivation/causal relations, progressive retrieval and mutation policy to
+  concrete profile deltas and DBI budget before implementation.
 - M2: Community detection (Leiden/Louvain) для CommunitySummaryJob — брать готовую C++ библиотеку или своя реализация? (deferred M2+)
 - M2: SPLADE / ColBERT adapters — пробовать интегрировать готовые реализации или LLM-distilled sparse vectors?
 - M3: Distributed scope routing — у mem0 и Zep это multi-tenant. У нас пока single-process. (out of scope, research)

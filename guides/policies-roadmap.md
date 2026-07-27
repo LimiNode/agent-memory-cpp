@@ -296,6 +296,39 @@ enum class WriteFlushTrigger {
 | allow_merge | bool | — | true | разрешить merge similar units |
 | allow_episode_compaction | bool | — | true | разрешить episode compaction |
 
+### 3.2.1. MemoryMutationPolicy (M2+)
+
+`WritePolicy` answers mechanical questions: when to flush, which importance
+threshold to use, how close is "duplicate enough", and whether supersede/merge
+operations are allowed. It should not be the only semantic mutation contract.
+
+M2+ profiles should add an explicit mutation policy:
+
+```cpp
+enum class MemoryMutationPolicy : uint8_t {
+    AppendOnly,
+    Supersede,
+    Merge,
+    Mutable,
+    Immutable,
+    OperatorConfirmed
+};
+```
+
+Default guidance:
+
+- raw resources, episodes and audit logs: `AppendOnly`;
+- factual claims and temporal facts: `Supersede`;
+- near-duplicate derived notes or summaries: `Merge`;
+- curated cards or high-risk model records: `OperatorConfirmed`;
+- compliance/audit records: `Immutable`;
+- application-owned low-risk state: `Mutable`, with normal
+  `KnowledgeUnitEnvelope::revision` increments for retrieval-visible changes.
+
+The detailed lifecycle-governance contract is in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+AM-18.
+
 ### 3.3. WriteGate behavior
 
 ```cpp

@@ -231,6 +231,31 @@ Curated bibliography с маппингом paper → roadmap decision для `ag
 - **Зачем**: Bridge query/document vocabulary mismatch before heavier learned
   sparse backends are enabled.
 
+## 9A. Agent Memory Governance
+
+### Memory for Autonomous LLM Agents
+
+- **Paper**: arXiv:2603.07670 — "Memory for Autonomous LLM Agents:
+  Mechanisms, Evaluation, and Emerging Frontiers".
+- **Roadmap decision**: M2+ lifecycle-governance roadmap:
+  `memory-lifecycle-governance-roadmap.md` AM-13..AM-18. Use the paper as a
+  framing reference for write/manage/read policy separation, contradiction and
+  staleness handling, privacy/deletion correctness, and evaluation beyond
+  static retrieval metrics.
+- **Зачем**: It connects memory mechanics with autonomous-agent workloads, where
+  retrieval quality, temporal correctness, management actions and governance
+  must be evaluated together.
+
+### ToM / Mind Modeling Sources
+
+- **Papers**: arXiv:2510.21903 (ToM-SWE) and arXiv:2605.10306 (Mind Modeling).
+- **Roadmap decision**: Out-of-core for `agent-memory-cpp`; useful for ADELIA or
+  runtime sidecars that consume evidence-backed memory records. The core stores
+  observations, claims, provenance, policies and traces; it does not own hidden
+  mental-state modeling.
+- **Зачем**: Keeps the storage/retrieval core ethically and architecturally
+  narrower while preserving a path for personalization layers.
+
 ## 10. Implementation Phases
 
 Phase 1 — retrieval baseline:
@@ -280,6 +305,8 @@ Phase 5a — playbook follow-ups:
 | arXiv:2305.14283 (Rewrite-Retrieve-Read) | memory-stacks-roadmap.md | IQueryTransformer hook |
 | LLM page relevance classification | retrieval-techniques-roadmap.md | M2+ retriever/page-scanning adapter lane |
 | doc2query / document expansion | chunkers-roadmap.md | M2+ materialized derived SearchProjection |
+| arXiv:2603.07670 (Agent memory survey) | memory-lifecycle-governance-roadmap.md | AM-13..AM-18 |
+| arXiv:2510.21903 / arXiv:2605.10306 (ToM / Mind Modeling) | memory-lifecycle-governance-roadmap.md | Out-of-core ADELIA/runtime boundary |
 | arXiv:2310.11511 (Self-RAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 | arXiv:2401.15884 (CRAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 

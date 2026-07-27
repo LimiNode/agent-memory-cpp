@@ -705,9 +705,14 @@ fact.aliases = {"Albert Einstein", "Альберт Эйнштейн"};
 
 DBI `fact_payloads`. Включается через `enable_fact_payload=true`.
 
-#### 5.3.4. Temporal bi-temporal
+#### 5.3.4. Temporal validity
 
-Facts используют `TemporalComponent.valid_from_ms` / `valid_until_ms` для supersedence chains. Устаревший fact помечается `Superseded` через Lifecycle FSM; новый становится `Active`. Retrieval возвращает только `Active` (если не указан bi-temporal query).
+Facts используют M1 `TemporalComponent.valid_from_ms` / `valid_until_ms` для
+validity and supersedence chains. Устаревший fact помечается `Superseded`
+через Lifecycle FSM; новый становится `Active`. Retrieval возвращает только
+`Active` unless an explicit historical/temporal filter asks for older records.
+Full valid-time vs recorded-time bi-temporal semantics are M2+ AM-13 in
+`guides/memory-lifecycle-governance-roadmap.md`.
 
 ### 5.4. EventPayload (опциональный)
 

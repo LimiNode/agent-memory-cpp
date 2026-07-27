@@ -322,8 +322,13 @@ See [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadm
 2. **A-MEM per-note evolution на MDBX.** Per-note evolution требует atomic updates существующих notes + regenerations of links. Как это ложится на нашу `MultiTableWriter` transaction и `envelope.revision` increments?
 3. **Spreading activation depth.** Какой depth оптимален для разных workloads? lifemodel не публикует конкретные параметры [Source: internal note — no public source available. Path: ai-agent-playbook/concepts/ai-agents/Dual-layer memory retrieval LanceDB и spreading activation graph.md].
 4. **Cyrillic anti-loop.** СВИНОПАС специально использует лемматизацию/стемминг для русского + alias resolution. Нужно ли это для нашего стека на уровне archetype или на уровне per-stack (например, для Russian-language `BasicRag`)? [Source: internal note — no public source available. Path: ai-agent-playbook/concepts/rag-knowledge/Внешняя память LLM-агентов — система СВИНОПАС.md]
-5. **Bi-temporal validation.** Zep использует bi-temporal model. Наш `TemporalComponent.valid_from_ms`/`valid_until_ms` одномерный. Нужно ли расширять?
-6. **ToM sidecar vs IntentRouter.** Где кончается `IntentRouter` (классификация intent → retriever selection) и начинается ToM sidecar (persistent user model)? Сейчас у нас только `IntentRouter`. ToM — потенциальный M2+ extension.
+5. **Bi-temporal validation.** Решение: расширять как M2+ AM-13 через отдельный
+   `BiTemporalComponent` и range indexes; M1 `TemporalComponent` остаётся
+   одноосевым. См. `guides/memory-lifecycle-governance-roadmap.md`.
+6. **ToM sidecar vs IntentRouter.** Решение по boundary: ToM/user-modeling
+   остаётся ADELIA/runtime sidecar; `agent-memory-cpp` хранит evidence-backed
+   units, policies and retrieval traces. См.
+   `guides/memory-lifecycle-governance-roadmap.md` §10.
 7. **Embedding anisotropy problem.** NOUZ явно признаёт, что сырой cosine обманчив из-за анизотропии embeddings [Source: internal note — no public source available. Path: ai-agent-playbook/concepts/NOUZ — структурированная память для ИИ-агентов в Obsidian.md]. Нужна ли calibration layer для нашего dense retrieval? Mem0 обходит это через multi-signal scoring; возможно, мы автоматически получаем benefit из `HybridRetriever` fusion (см. §7.1: `HybridRetriever` — proposed API sketch; реальный тип — `HybridRetrievalEngine`).
 8. **Anti-loop для не live-chat workloads.** Cooldown механизм СВИНОПАС разработан для voice-streamed chat. Как он работает для batch retrieval workloads (one-shot Q&A)? Возможно, нужен different decay curve.
 

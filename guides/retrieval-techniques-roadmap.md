@@ -936,7 +936,13 @@ being enabled in a production profile.
 5. **Anti-loop formula для не-live workloads.** Cooldown+decay по СВИНОПАС разработан для voice-streamed chat [Source: internal note — no public source available. Path: ai-agent-playbook/concepts/rag-knowledge/Внешняя память LLM-агентов — система СВИНОПАС.md]. Какой decay curve оптимален для batch retrieval?
 6. **Spreading activation depth & decay-per-hop.** lifemodel не публикует конкретные параметры [Source: internal note — no public source available. Path: ai-agent-playbook/concepts/ai-agents/Dual-layer memory retrieval LanceDB и spreading activation graph.md]. Нужны работы на наших корпусах.
 7. **Embedding anisotropy problem.** NOUZ документирует: сырой cosine обманчив из-за анизотропии embeddings [Source: internal note — no public source available. Path: ai-agent-playbook/concepts/NOUZ — структурированная память для ИИ-агентов в Obsidian.md]. Нужна ли calibration layer? Mem0 обходит через multi-signal scoring — возможно, наш `HybridRetriever` автоматически выигрывает.
-8. **Bi-temporal validation.** Zep использует bi-temporal; наш `TemporalComponent.valid_from_ms`/`valid_until_ms` одномерный [Source: github.com/getzep/graphiti — Zep Graphiti] <br>[Internal note: ai-agent-playbook/tools/ai-agents/Zep Graphiti — temporal knowledge graph для AI-агентов (документация).md]. Нужно ли расширять для legal/compliance workloads?
+8. **Bi-temporal validation.** Zep использует bi-temporal; наш M1
+   `TemporalComponent.valid_from_ms`/`valid_until_ms` одноосевый [Source:
+   github.com/getzep/graphiti — Zep Graphiti] <br>[Internal note:
+   ai-agent-playbook/tools/ai-agents/Zep Graphiti — temporal knowledge graph
+   для AI-агентов (документация).md]. Решение вынесено в M2+ AM-13:
+   `BiTemporalComponent` + valid-time/recorded-time range indexes in
+   `guides/memory-lifecycle-governance-roadmap.md`.
 9. **Multimodal RAG readiness.** Docling — M2+ candidate. Стоит ли включать в M1 как optional adapter?
 10. **Learned sparse в M2 backend.** BGE-M3 sparse + dense + ColBERT даёт единый inference pipeline. Это сильный кандидат для production-grade M2+ retrieval.
 11. **LLM page relevance classification.** Для regulated/spec workloads нужен

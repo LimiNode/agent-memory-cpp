@@ -195,6 +195,12 @@ struct CompactionMetaComponent {
 };
 ```
 
+`TemporalComponent` is the M1 single-axis temporal component. M2+ bi-temporal
+semantics (`valid_from_ms` / `valid_to_ms` vs `recorded_at_ms` /
+`invalidated_at_ms`) are specified separately in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+AM-13 and should not be claimed by this component alone.
+
 ### 4.2. Per-kind payload components
 
 Per-kind данные живут в выделенных payload-компонентах. Подробные спецификации — в `guides/knowledge-units-roadmap.md`.
@@ -681,6 +687,13 @@ M1 minimum: ≥50 test cases; ≥3 distinct intent types (QALookup, FactLookup, 
 - `IndexSize` — bytes per category (units, postings, graph, temporal).
 - `ReindexTime` — seconds per resource, per backend.
 
+M2+ memory-governance metrics are tracked in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+AM-17: answer groundedness/relevance, temporal accuracy, stale-fact rate,
+contradiction handling, task success, token cost, write amplification, memory
+growth and privacy/deletion correctness. They extend the M1 retrieval gate; they
+do not replace it.
+
 ### 9.5. Hybrid Lift Target
 
 CI gate: `Recall@10(hybrid) >= 1.20 * Recall@10(BM25-only)`, `NoAnswerAccuracy(hybrid) >= NoAnswerAccuracy(BM25-only)`, `p95 latency(hybrid) <= 2x p95 latency(BM25-only)`. Failing lift — release blocker.
@@ -763,6 +776,8 @@ Reporting:
 - `guides/policies-roadmap.md` (future) — детальная спецификация DecayPolicy/WritePolicy/SpeakerScopePolicy.
 - `guides/compaction-roadmap.md` (future) — CompactionWorker, job types, handoff structure.
 - `guides/runtime-services-roadmap.md` (future) — PromptCache, AsyncIndexer, WriteGate.
+- `guides/memory-lifecycle-governance-roadmap.md` — M2+ bi-temporal validity,
+  progressive retrieval, mutation policy and expanded memory-eval contracts.
 
 External references (ai-agent-playbook):
 

@@ -60,6 +60,11 @@ Non-goals документа:
 
 See [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md) for a comparison of 13+ external memory architectures (Karpathy / A-MEM / lifemodel / СВИНОПАС / NOUZ / Self-Evolving / Vault Audit AI / Mem0 / Letta / Zep / Memoria) and their applicability to the in-house stack patterns.
 
+See [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+for M2+ lifecycle governance items: bi-temporal knowledge, abstraction and
+derivation graph, causal relations, progressive retrieval, expanded memory
+evaluation and policy-selectable mutation.
+
 ## 3. ADR-001: Memory Data Model
 
 ### 3.1. Решение
@@ -276,6 +281,13 @@ baseline above. They are tracked separately in
 [`affective-memory-roadmap.md`](affective-memory-roadmap.md) as an overlay on
 `AgentLongTermMemory`: `AffectiveEpisodes`, `GoalAttribution`,
 `OutcomeTracking`, `RelationshipState`, and `SensitiveInferencePolicy`.
+
+Future lifecycle-governance capabilities are intentionally not added to the M1
+capability enum yet. `BiTemporalValidity`, `AbstractionGraph`,
+`CausalRelations`, `ProgressiveRetrieval`, `MemoryGovernance` and
+`MutationPolicy` are tracked in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+until their profile matrix and DBI budget deltas are specified.
 
 General cross-cutting opt-ins such as encrypted local storage and context
 planning are not affective capabilities. They are represented by
@@ -1275,6 +1287,9 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `runtime-services-roadmap.md` — PromptCache, AsyncIndexer, WriteGate.
 - `cli-roadmap.md` — agent-memory-cli target.
 - `guides/related-projects.md` — ландшафтная карта (mem0 / Cognee / Zep / Graphiti для direct competitors, FAISS / hnswlib / USearch / sqlite-vec для sister libraries) и cross-project benchmark plan.
+- `memory-lifecycle-governance-roadmap.md` — M2+ lifecycle governance:
+  bi-temporal knowledge, derivation graph, causal relations, progressive
+  retrieval, expanded memory evaluation and mutation policy.
 
 ## 16. Recommended Implementation Order
 
@@ -1464,6 +1479,20 @@ double apply_filters(
 - Golden dataset: ≥50 test cases, ≥3 интента.
 - RetrievalMetrics: Recall@K, MRR, NDCG@K, ContextPrecision, NoAnswerAccuracy, CitationFidelity, Latency p50/p95/p99.
 - HybridLiftTarget: Recall@10(hybrid) ≥ 1.20 * Recall@10(BM25-only).
+
+### Шаг 15.5: Memory lifecycle governance (M2+)
+
+- BiTemporalComponent and range indexes for valid-time vs recorded-time
+  queries.
+- MemoryMutationPolicy for append-only, supersede, merge, mutable, immutable
+  and operator-confirmed profiles.
+- AbstractionComponent and relation indexes for derivation/support/contradiction
+  links.
+- MemoryRelationKind for causal and consistency-aware retrieval.
+- Progressive retrieval traces from high-level models/summaries down to raw
+  evidence.
+- Expanded memory-eval metrics from
+  `memory-lifecycle-governance-roadmap.md` AM-17.
 
 ### Шаг 16: CLI tool (M2, отложен)
 
