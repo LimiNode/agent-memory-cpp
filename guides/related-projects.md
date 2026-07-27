@@ -55,6 +55,7 @@ Disclaimer:
 | sqlite-vec | Embedded-C++ static library + vector search. Pure C, no deps, float/int8/binary. | Reference для embedded-архитектуры: vector search без external DB server. |
 | Tantivy (Rust) | BM25 search, embedded-first. | Tokenization design, BM25 scoring. Cross-implementation reference для BM25 correctness. |
 | Argos Translate | Optional cross-lingual ingestion/retrieval adapter. | Offline package identity, model digest provenance and pivot path tracking for `TranslatedCanonical` projections. No Python dependency in core. |
+| Gigatoken | High-throughput language-model tokenization and raw file tokenization pipeline. | Pattern donor for tokenizer-aware ingestion: file/bytes sources, compression, document boundaries, safe chunk splitting, persistent worker caches, and ingestion throughput benchmarks. No Rust/Python dependency in core. |
 
 ## 4. C++ embeddable memory stores (architectural reference)
 
@@ -111,6 +112,9 @@ Disclaimer:
 - **Argos Translate**: offline translation package/pivot semantics for optional
   `ITranslationAdapter` and `TranslationProjectionMeta`; see
   [`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
+- **Gigatoken**: tokenizer-aware raw ingestion pipeline and benchmark hygiene;
+  see [`chunkers-roadmap.md`](chunkers-roadmap.md) §10 and
+  [`experiments/2026-07-27-gigatoken-tokenization-reference.md`](experiments/2026-07-27-gigatoken-tokenization-reference.md).
 
 ## 7. Open questions / roadmap items (из конкурентного анализа)
 
@@ -161,3 +165,4 @@ Disclaimer:
 ### Research source / pattern donor (not a direct competitor):
 - codebase-memory-mcp: https://github.com/DeusData/codebase-memory-mcp (MIT; 9 patterns extracted in [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md))
 - Argos Translate: https://github.com/argosopentech/argos-translate
+- Gigatoken: https://github.com/marcelroed/gigatoken

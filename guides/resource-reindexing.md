@@ -94,7 +94,16 @@ introduced.
 `pipeline_config_hash` should cover settings that change derived records even
 when source text is unchanged. Examples include chunking settings, parser
 version, embedding model id, normalization policy, signature encoder config,
-and index-specific encoding settings.
+index-specific encoding settings, raw source format, compression framing,
+document boundary policy, tokenizer id, token budget, overlap, and safe-boundary
+policy.
+
+Tokenizer-aware ingestion treats source bytes, decompression, document
+boundaries, parser/extractor output, token-budgeted chunking and index
+projection generation as separate reproducible stages. This follows the
+Gigatoken-style pipeline lesson captured in
+[`chunkers-roadmap.md`](chunkers-roadmap.md) §10, without making Gigatoken or
+any Rust/Python tokenizer a core dependency.
 
 `DerivedRecordRef` is intentionally broad at the roadmap stage, but concrete
 code should define field usage precisely. Chunk, embedding, and vector records

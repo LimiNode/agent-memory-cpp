@@ -645,3 +645,112 @@ Content edits создают новую identity. Стабилен при пов
 - [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §16 — Recommended Implementation Order.
 - [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) — что эти chunks индексируют и как.
 - [`research-reading-map.md`](research-reading-map.md) — research references backing this project.
+
+## §10. Tokenizer-Aware Raw Input Pipeline
+
+Large raw corpora need a source pipeline before semantic chunkers run. Borrow
+the pattern from `marcelroed/gigatoken`: keep input source, compression,
+document boundary policy and tokenizer budget separate. Gigatoken is a Rust/PyO3
+tokenizer and is not a core dependency; the useful local idea is the pipeline
+shape.
+
+[Source: marcelroed/gigatoken README and design doc, inspected at
+`34a1599f0c0ae7d7cd0d1c530e6522320158b360` on 2026-07-27.]
+
+```cpp
+enum class RawInputFormat : uint8_t {
+    PlainText,
+    Markdown,
+    JsonLines,
+    Parquet,
+    ExtractedPdfText,
+    Transcript,
+    OpaqueBytes
+};
+
+enum class RawCompressionKind : uint8_t {
+    None,
+    Gzip,
+    Zstd
+};
+
+enum class DocumentBoundaryMode : uint8_t {
+    WholeResource,
+    Separator,
+    JsonLine,
+    ParquetRow,
+    StructuralHeading,
+    AdapterDefined
+};
+
+struct RawDocumentSourceSpec {
+    RawInputFormat format = RawInputFormat::PlainText;
+    RawCompressionKind compression = RawCompressionKind::None;
+    DocumentBoundaryMode boundary_mode = DocumentBoundaryMode::WholeResource;
+    std::string separator;
+    std::string text_field;
+    std::string parser_id;
+    std::string parser_version;
+};
+
+struct TokenBudgetPolicy {
+    std::string tokenizer_id;
+    std::uint32_t target_tokens = 1024;
+    std::uint32_t overlap_tokens = 200;
+    bool require_safe_boundaries = true;
+};
+```
+
+Rules:
+
+- Compression is storage/input framing, not document semantics. `.jsonl.zst`
+  is still JSONL after decompression.
+- `DocumentBoundaryMode` determines where independent documents start before
+  chunking. For example, JSONL line boundaries and Parquet rows are document
+  boundaries; Markdown headings are structural chunk boundaries.
+- Token-counted chunking requires a tokenizer adapter identity. If an exact
+  model tokenizer is unavailable, the chunker may use an estimator, but must
+  record that fact in metadata and benchmark it separately.
+- Oversized documents may be split internally only at UTF-8-safe and
+  tokenizer-safe boundaries. A tokenizer-safe split must not change the token
+  sequence relative to encoding the full document, except for explicitly
+  documented separator/special-token policy.
+- `ResourceRevision::pipeline_config_hash` includes source format, compression,
+  boundary policy, parser version, tokenizer id, token budget, overlap and
+  normalization policy.
+
+The C++ core owns the dependency-free contracts above. Concrete high-throughput
+tokenizers, SIMD pretokenizers, Python/Rust bridges, Parquet readers and PDF
+extractors remain optional adapters or tools.
+
+### 10.1. Chunk metadata additions
+
+Tokenizer-aware chunkers SHOULD record:
+
+| Field | Where | Purpose |
+|---|---|---|
+| `tokenizer_id` | metadata_typed / `ChunkPayload` extension | Tokenizer or estimator identity used for chunk sizing. |
+| `token_count` | metadata_typed / `ChunkPayload` extension | Count used by context budgeting and ingestion evaluation. |
+| `source_format` | `ResourceRevision` / metadata_typed | Format after compression detection, before parser-specific transforms. |
+| `boundary_mode` | `ResourceRevision` / metadata_typed | Reproducible document split policy. |
+| `safe_boundary_policy` | metadata_typed | Whether splits are tokenizer-exact, UTF-8-only, structural-only or estimator-based. |
+
+These fields do not replace `SourceRef` byte/text ranges. They explain how the
+chunk was produced and when it must be regenerated.
+
+### 10.2. Ingestion benchmark gates
+
+M1 ingestion benchmarks SHOULD report:
+
+- raw input read/decompression throughput;
+- parser/extractor throughput;
+- tokenization throughput, split by exact tokenizer vs estimator;
+- chunk materialization throughput;
+- lexical projection/index build throughput;
+- peak RSS and output bytes per source byte;
+- correctness checks: UTF-8 validity, source citation ranges, token-budget
+  bound, and parity between whole-document tokenization and chunked tokenization
+  for tokenizer-safe split modes.
+
+Gigatoken-style numbers are a useful upper-bound reference for tokenization
+throughput, not a target guarantee for the whole agent-memory ingestion path.
