@@ -63,7 +63,8 @@ See [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md) for a c
 See [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
 for M2+ lifecycle governance items: bi-temporal knowledge, abstraction and
 derivation graph, causal relations, progressive retrieval, expanded memory
-evaluation and policy-selectable mutation.
+evaluation, policy-selectable mutation, deterministic-first entity resolution,
+typed query/MCP safety and logical index separation.
 
 ## 3. ADR-001: Memory Data Model
 
@@ -288,6 +289,10 @@ capability enum yet. `BiTemporalValidity`, `AbstractionGraph`,
 `MutationPolicy` are tracked in
 [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
 until their profile matrix and DBI budget deltas are specified.
+
+Additional M2+ lifecycle candidates such as `EntityResolution`,
+`TypedToolFilters` and `LogicalIndexSeparation` are also tracked there until
+their profile deltas and test gates are defined.
 
 General cross-cutting opt-ins such as encrypted local storage and context
 planning are not affective capabilities. They are represented by
@@ -1289,7 +1294,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `guides/related-projects.md` — ландшафтная карта (mem0 / Cognee / Zep / Graphiti для direct competitors, FAISS / hnswlib / USearch / sqlite-vec для sister libraries) и cross-project benchmark plan.
 - `memory-lifecycle-governance-roadmap.md` — M2+ lifecycle governance:
   bi-temporal knowledge, derivation graph, causal relations, progressive
-  retrieval, expanded memory evaluation and mutation policy.
+  retrieval, expanded memory evaluation, mutation policy, entity resolution
+  and typed query/MCP safety.
 
 ## 16. Recommended Implementation Order
 
@@ -1493,6 +1499,10 @@ double apply_filters(
   evidence.
 - Expanded memory-eval metrics from
   `memory-lifecycle-governance-roadmap.md` AM-17.
+- Deterministic-first entity resolution (AM-19) with LLM fallback only as an
+  auditable proposal.
+- Typed query/tool filters (AM-20) so LLM output never becomes schema syntax.
+- Logical index separation and an LLM-free baseline read path (AM-21).
 
 ### Шаг 16: CLI tool (M2, отложен)
 

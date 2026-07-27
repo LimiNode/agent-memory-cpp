@@ -691,8 +691,9 @@ M2+ memory-governance metrics are tracked in
 [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
 AM-17: answer groundedness/relevance, temporal accuracy, stale-fact rate,
 contradiction handling, task success, token cost, write amplification, memory
-growth and privacy/deletion correctness. They extend the M1 retrieval gate; they
-do not replace it.
+growth, privacy/deletion correctness and entity-resolution quality
+(merge precision/recall, ambiguous-rate, false-merge rate). They extend the M1
+retrieval gate; they do not replace it.
 
 ### 9.5. Hybrid Lift Target
 

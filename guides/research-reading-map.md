@@ -256,6 +256,20 @@ Curated bibliography с маппингом paper → roadmap decision для `ag
 - **Зачем**: Keeps the storage/retrieval core ethically and architecturally
   narrower while preserving a path for personalization layers.
 
+### Graphiti / Zep Engineering Notes
+
+- **Source**: https://github.com/getzep/graphiti,
+  https://blog.getzep.com/scaling-agent-memory-zep-30x/, and
+  https://blog.getzep.com/graphiti-hits-20k-stars-mcp-server-1-0/.
+- **Roadmap decision**: Extend
+  `memory-lifecycle-governance-roadmap.md` beyond AM-13..AM-18 with
+  deterministic-first entity resolution, typed query/MCP safety, logical index
+  separation and an LLM-free baseline read path.
+- **Зачем**: Graphiti is the closest open-source temporal-context-graph
+  reference for episodes/provenance, temporal fact invalidation and hybrid
+  graph retrieval. Zep production notes are useful as architecture pressure
+  tests, not as an immediate microservice mandate.
+
 ## 10. Implementation Phases
 
 Phase 1 — retrieval baseline:
@@ -307,6 +321,7 @@ Phase 5a — playbook follow-ups:
 | doc2query / document expansion | chunkers-roadmap.md | M2+ materialized derived SearchProjection |
 | arXiv:2603.07670 (Agent memory survey) | memory-lifecycle-governance-roadmap.md | AM-13..AM-18 |
 | arXiv:2510.21903 / arXiv:2605.10306 (ToM / Mind Modeling) | memory-lifecycle-governance-roadmap.md | Out-of-core ADELIA/runtime boundary |
+| getzep/graphiti + Zep engineering notes | memory-lifecycle-governance-roadmap.md | AM-19..AM-21 |
 | arXiv:2310.11511 (Self-RAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 | arXiv:2401.15884 (CRAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 

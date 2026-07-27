@@ -50,6 +50,12 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
   state machines
 - Graph semantics: `EdgeKind`, expiration policy, evidence/provenance policy,
   contradiction handling, bounded expansion rules
+- Entity-resolution semantics: canonicalization, alias policy, scope/type
+  compatibility, merge confidence, ambiguous-result handling and LLM proposal
+  review
+- LLM/tool query safety policy: permission model, schema allowlists,
+  `EntityTypeId`/`RelationTypeId` registry mapping and validation before any
+  backend-specific query text is built
 - Source/artifact identity: `SourceRef`, `ResourceId`, `ArtifactDescriptor`,
   raw-document retention policy
 - Usage decay, freshness ranking, profile/scenario lifecycle
@@ -79,6 +85,10 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `qa/IQAKnowledgeBase` — QAPair storage и retrieval
 - `facts/IFactStore`, `facts/ITemporalIndex`, `facts/Event` — facts/events
 - `graph/IGraphStore`, `graph/GraphTypes` — граф с bounded expansion
+- `entity/IEntityResolver` — deterministic-first entity resolution with
+  optional LLM proposal adapter; durable merges remain policy-checked
+- `tools/MemoryPermission` and typed filter contracts — LLM-facing tools accept
+  internal ids/allowlisted filters, not backend schema labels or DBI/table names
 - `context/ContextBudget`, `context/ContextBlock` — budgeted structures
 
 ### Адаптеры к mdbx-containers (`src/agent_memory/infrastructure/mdbx/`)
@@ -88,6 +98,10 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `MdbxFactStore` (planned) — реализует `IFactStore` через canonical `fact_payloads` + projection/inverted indexes; decay считается downstream
 - `MdbxTemporalIndex` (planned) — реализует `ITemporalIndex` через `RangeIndexTable<CompositeKey<ScopeId, Timestamp, EventId>, EventPayload>`
 - `MdbxGraphStore` (planned) — реализует `IGraphStore` через `graph_edges_by_src` / `graph_edges_by_dst`; `EdgeKind` и traversal policy downstream
+- `MdbxEntityResolutionIndex` (planned) — реализует candidate lookup для
+  `IEntityResolver` через canonical-name/alias indexes, lexical signatures,
+  dense/binary candidate indexes and scope/type filters; merge semantics stay
+  downstream
 - `MdbxResourceMetadataFilters` (planned) — `ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>` для canonical unit pre-filter; any `ResourceId` pre-filter remains adapter-local
 - `MdbxResourceBodyStore` (planned) — optional primary raw body storage через `KeyValueTable<ResourceId, bytes>` или application-owned chunked layout; не через reverse indexes
 - Существующие: `MdbxDocumentStorage`, `MdbxResourceManifestStorage`
