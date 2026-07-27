@@ -17,6 +17,12 @@ The library should remain a universal embedded memory/retrieval toolkit. The
 affective lane is an opt-in profile extension for projects that need durable
 emotional context, relationship history, and outcome-aware episode recall.
 
+Generic runtime origin, causal context, perspective, epistemic status,
+task/decision/procedure payloads and reconciliation live in
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+This document only adds affective appraisal, coping, relationship and
+sensitive-inference semantics on top of those generic contracts.
+
 ## ADR-A01 — Live affect is runtime state
 
 The current affective state of an agent is not a `KnowledgeUnit` and must not
@@ -362,6 +368,12 @@ The active goal catalogue stays in the planning/affect runtime. Memory stores
 which goals a concrete episode affected.
 
 ### ActionOutcomeComponent
+
+Generic action/decision/outcome identity and causal links are specified by
+`DecisionPayload`, `CausalContextComponent` and runtime graph relations in
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+The component below is the affective overlay: coping strategy, utility
+prediction error and affective outcome interpretation.
 
 ```cpp
 enum class CopingStrategy : std::uint8_t {

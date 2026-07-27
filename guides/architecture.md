@@ -59,6 +59,19 @@ types, templates, and trivial inline helpers.
 - Avoid speculative plugin systems before at least two real implementations
   require the same extension point.
 
+## Agent Runtime Integration
+
+`agent-memory-cpp` may store durable cognitive records for external runtimes:
+runtime origin, local perspective, causal context, task/decision/procedure
+payloads, outcomes, introspection observations and reconciliation metadata.
+The external runtime owns live cognition, scheduling, focus, authority, tool
+execution, topology mutation, transport and consensus.
+
+The neutral contracts live in
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+Reference integrations such as ADELIA map their native ids to
+`RuntimeObjectRef` in adapters; core headers must not include ADELIA types.
+
 ## Layer Architecture
 
 The system is organized as four layers plus an orthogonal runtime-services
@@ -270,51 +283,41 @@ and acts as the deterministic baseline for tests and small local workloads.
 
 ## Maturity Levels (M0/M1/M2)
 
-Краткое описание уровней зрелости из
-[`guides/memory-stacks-roadmap.md`](memory-stacks-roadmap.md) секция 13. Каждый
-уровень определяет набор включённых возможностей и явные ship-it критерии;
-прогресс между ними additive.
+Normative scope lives in [`milestones.md`](milestones.md). This section is a
+short orientation summary only; if it conflicts with `milestones.md`, the
+milestone manifest wins.
 
-### M0 — MVP
+### M0 — Lexical Document Memory
 
-- Lean envelope (~16 полей) + scope-aware keys + BM25F + lifecycle FSM
-  (Active / SoftSuppressed / Superseded / Deprecated / Erased).
-- Готовые стеки: `BasicRagStack`, `QAKnowledgeBaseStack`.
-- Один MDBX env, ~10-15 DBI. In-memory prompt cache (M0 opt).
-- Без Components, Payloads per kind, SearchProjections, Decay/Write Policy,
-  Compaction.
+- Raw resource ingest, `ResourceBodyStore`, Chunk/Note units, immutable
+  content identity, inline source summaries, `SearchProjection::Original`,
+  scope-aware BM25F, and a minimal retrieval trace.
+- Default factory is lexical. Dense vectors, graph, compaction, sync,
+  translation, speaker/chat/wiki profiles, and bi-temporal storage are not M0.
 
 Ship-it:
 
 - `BasicRag` retrieve+write на 10k units с p95 latency ≤ 50 ms.
 - Все unit-тесты на envelope serialization проходят.
-- Lifecycle FSM покрыт тестами для всех 5 состояний.
+- Lifecycle FSM покрыт тестами для 4 durable states.
 
-### M1 — Production
+### M1 — Staged Production
 
-- Все components (UsageStats, Speaker, Temporal, EmbeddingMeta,
-  CompactionMeta) + все payload-компоненты (QA, Fact, ConversationEpisode,
-  CompiledArticle, Chunk).
-- SearchProjections DBI с 4 стандартными kinds: Original, QAQuestion,
-  QAAnswer, Summary.
-- BM25F по projections (projection_kind в posting keys).
-- DecayPolicy + WritePolicy + SpeakerScopePolicy.
-- 7 готовых MemoryStacks (BasicRag, QAKB, AgentLTM, SpeakerChat,
-  CompiledWiki, TemporalFact, FullResearch).
-- `CompactionWorker` (async): Decay, Dedupe, ArchiveCold + handoff.
-- `PromptPrefixCache` + optional `ResponseCache` (LRU + AnthropicCacheControlAdapter aware).
-- Eval pipeline с golden dataset.
+- M1a: optional dense retrieval, exact vector baseline, explicit embedder
+  registration, hybrid/RRF, and reproducible benchmark harness.
+- M1b: QA/fact payloads, operational components, full source refs,
+  single-axis temporal validity, and deterministic knowledge activation
+  metadata.
+- M1c: persistent runtime queue, bounded async indexer, basic compaction,
+  usage range indexes, and write transaction limits.
 
 Ship-it:
 
-- Все 7 MemoryStacks открываются и проходят round-trip write/read.
-- `AgentLongTermMemory` retrieve с decay: Recall@10(hybrid) ≥
-  1.20 × Recall@10(BM25-only) на golden dataset.
-- Cooldown-фильтр работает (fact не возвращается в течение `cooldown_ms`
-  после retrieval).
-- Compaction worker crash-safe (write-ahead job state).
-- Anti-loop подсвинок (`self_echo_suppression`) применяется в
-  `DecayAwareRetriever`.
+- Each M1 stage has profile-specific open/create/reopen tests.
+- Hybrid profiles fail fast when dense is requested without an embedder.
+- Temporal M1 tests cover single-axis validity and supersedence, not
+  bi-temporal history.
+- Runtime jobs are bounded and crash-safe before compaction is declared ready.
 
 ### M2 — Advanced
 
@@ -329,8 +332,7 @@ Ship-it:
 
 Ship-it:
 
-- 50+ golden test cases покрывают все intent-классы (TemporalPointLookup,
-  SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff).
+- 50+ golden test cases покрывают все enabled intent/activation classes.
 - p95 latency ≤ 2× baseline BM25 для всех профилей.
 - Migration script `basic_rag → agent_ltm` работает без потери данных.
 - CLI tool покрывает inspect / stats / check / vacuum / reindex /

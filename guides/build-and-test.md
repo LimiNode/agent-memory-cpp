@@ -63,6 +63,21 @@ When tests and benchmarks are enabled together, CTest also registers
 registers benchmark CLI smoke tests for the binary flat-vs-float mode and the
 binary rerank grid mode.
 
+Benchmark numbers are reviewable only when they satisfy the contract in
+[`milestones.md`](milestones.md): dataset manifest/hash, hardware snapshot,
+compiler/build flags, cold/warm procedure, query mix, index state, top-k,
+concurrency, retrieval mode, embedding-generation inclusion policy, filter mix,
+median/p95/p99, peak RSS/map size, and write-amplification counters where
+writes are measured. Smoke fixtures validate report shape; they are not
+production benchmark claims.
+
+Validate the roadmap DBI manifest whenever `guides/dbi-manifest.yaml` or
+`guides/mdbx-containers-extension-tz.md` changes:
+
+```bash
+py -3 tools/validate-dbi-manifest.py guides/dbi-manifest.yaml
+```
+
 Run the BoW-vs-BM25 synthetic sweep fixture:
 
 ```bash

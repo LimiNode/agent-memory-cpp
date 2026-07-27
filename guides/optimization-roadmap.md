@@ -1155,7 +1155,7 @@ Production dense index modes (после M2):
   Default для AgentLTM/FullResearch: HNSW или BinaryCandidateFilter + AE-128.
   Default для CompiledWiki: HNSW или BinaryCandidateFilter + AE-256.
   Default для BasicRag: Exact (small corpus).
-  
+
 Production trade-off:
   - HNSW: best quality (>0.97 Recall@10), но graph storage ~20% от vector size.
   - BinaryCF: ~95% от HNSW quality, меньше storage, лучше для filtered query.
@@ -1355,15 +1355,13 @@ graph_edges_by_dst:
     value = GraphEdgePayload (edge_kind, weight, reason, generation)
     used by:  IRelationStore::incoming, reverse expansion
 
-temporal_event_index:
-    key   = (scope_id, valid_from_ms, valid_until_ms, unit_id)
-    value = empty
+temporal_unit_index:
+    key   = (scope_id, valid_from_ms, unit_id)
+    value = valid_until_ms / compact validity payload
     used by:  ITemporalIndex::range, ITemporalIndex::at
 
-temporal_unit_index:
-    key   = (scope_id, observed_at_ms, unit_id)
-    value = empty
-    used by:  ITemporalIndex::at, observed-at lookup
+Recorded/observed-time indexing is M2+ bi-temporal scope, not part of the M1
+single-axis temporal contract.
 
 speaker_to_units:
     key   = (scope_id, speaker_id, unit_id)
@@ -1375,9 +1373,15 @@ session_to_units:
     value = empty
     used by:  session-scoped retrieval
 
-usage_stats_index:
-    key   = (scope_id, unit_id)
-    value = UsageStatsComponent (copy for fast ranking)
+usage_by_last_access:
+    key   = (scope_id, last_used_at_ms, unit_id)
+    value = empty
+    used by: decay/archive scans
+
+usage_by_cooldown:
+    key   = (scope_id, cooldown_until_ms, unit_id)
+    value = empty
+    used by: cooldown expiry scans
 
 unit_revision_index: optional, M2+
     key   = (scope_id, unit_id, revision)

@@ -52,6 +52,10 @@ The library scope is limited to:
 - embedding interfaces and adapters;
 - exact and approximate indexes;
 - retrieval and ranking;
+- knowledge activation/planning contracts for domain maps and playbooks;
+- durable cognitive-runtime integration records such as origin, perspective,
+  causal context, task/decision/procedure payloads, and reconciliation
+  metadata;
 - context assembly for downstream agents or LLM calls.
 
 ## Non-Goals
@@ -59,6 +63,8 @@ The library scope is limited to:
 Do not add these to the core library:
 
 - autonomous-agent orchestration;
+- live cognition, scheduling, focus arbitration, authority enforcement, action
+  execution, topology mutation, distributed transport, or consensus;
 - browser automation;
 - participant simulation;
 - TTS/ASR pipelines;

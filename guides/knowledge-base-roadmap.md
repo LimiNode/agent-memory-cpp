@@ -251,7 +251,12 @@ struct CompiledArticlePayload {
 
 ### 4.3. Storage layout для components
 
-- **Operational components** — единая DBI `unit_components` через `TypeDiscriminatedTable` (ComponentKind tag + UnitId → ValueVariant): UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta.
+- **Operational components** — DBI `unit_components` через
+  `TypeDiscriminatedTable` with physical key
+  `CompositeKey<ComponentKind, UnitId> -> TypedComponentValue`. The tag is part
+  of the physical key, not only a prefix inside the value, so multiple
+  components for the same unit cannot overwrite one another. Stable
+  application-owned type ids and fail-closed validation are mandatory.
 - **Per-kind payloads** — отдельные DBI: `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads`. Key = UnitId.
 - `MultiTableWriter` обеспечивает atomic coordinated writes (envelope + components + projections + secondary indexes в одной транзакции).
 
@@ -335,7 +340,10 @@ public:
 
 ### 6.2. IComponentStore (если любой компонент включён)
 
-Backend — `TypeDiscriminatedTable`, DBI `unit_components`. Открывается если `enable_usage_stats`/`enable_temporal_validity`/`enable_speaker`/`enable_embedding_meta`/`enable_compaction`.
+Backend — `TypeDiscriminatedTable`, DBI `unit_components`, physical key
+`(ComponentKind, UnitId)`. Открывается если
+`enable_usage_stats`/`enable_temporal_validity`/`enable_speaker`/
+`enable_embedding_meta`/`enable_compaction`/`enable_knowledge_activation`.
 
 ```cpp
 class IComponentStore {
@@ -378,6 +386,27 @@ Retrieval — directed graph typed retrievers. `HybridRetriever` orchestrator п
 
 `RetrievalPlan` — value type, передаваемый между retrievers. Полная спецификация — в `memory-stacks-roadmap.md` секция 7.3. Retrieval-ориентированные поля: `raw_query`, `query_type`, `scope_ids`, `tiers`, `mode`, `retrievers[]`, `kinds[]`, `temporal_window?`, `speaker_filter?`, `metadata_filter?`, `candidate_pool_size=200`, `limit=32`, `context_budget?`, `decay_policy_override?`.
 
+Runtime-integration filters are optional and only active when
+`CognitiveTrace` is enabled:
+
+```cpp
+struct RuntimeRetrievalFilters {
+    std::vector<RuntimeObjectRef> observer_filter;
+    std::vector<RuntimeObjectRef> character_filter;
+    std::vector<RuntimeObjectRef> producer_node_filter;
+    std::vector<std::string> trace_ids;
+    std::optional<std::uint64_t> sequence_from;
+    std::optional<std::uint64_t> sequence_until;
+    std::vector<EpistemicLayer> epistemic_layers;
+    bool require_evidence = false;
+    bool include_conflicts = true;
+    bool include_superseded = false;
+};
+```
+
+`ScopeId` remains a namespace/access boundary. Observer, character, producer,
+authority, partition and replica are not encoded as scope.
+
 ### 7.2. IUnitRetriever
 
 ```cpp
@@ -395,7 +424,8 @@ public:
 - `DenseRetriever` — vector search по `embedding_vectors`.
 - `QARetriever` — targeted lookup по `IQAKnowledgeBase` (QALookup intent).
 - `GraphRetriever` — bounded expansion через `graph_edges_by_src`/`graph_edges_by_dst`.
-- `TemporalRetriever` — query `temporal_event_index`/`temporal_unit_index`.
+- `TemporalRetriever` — query `temporal_unit_index`; M1 temporal lookup has one
+  authoritative validity axis.
 - `DecayAwareRetriever` — обёртка, применяет DecayPolicy поверх других retrievers.
 - `AntiLoopCooldown` — фильтр перед scoring, пропускает units с `cooldown_until_ms > now_ms`.
 - `IntentRouter` — pre-router, классифицирует query и выбирает retrievers.
@@ -413,6 +443,10 @@ struct RetrievalHit {
     std::vector<SourceRef> source_refs;
     std::string snippet;
     std::optional<ProjectionKind> projection_kind;
+    std::optional<DetailLevel> detail_level;
+    std::vector<DrillDownRef> drill_down;
+    std::optional<PerspectiveComponent> perspective_summary;
+    std::optional<EpistemicLayer> epistemic_layer;
 };
 ```
 
@@ -493,6 +527,10 @@ BFS от seed units, max_depth BFS, max_edges — глобальный cap, allo
 
 ### 7.6. Adaptive Routing
 
+This section covers query-type routing. Domain/concept/playbook activation is
+specified in [`knowledge-activation-roadmap.md`](knowledge-activation-roadmap.md)
+and is a separate capability from vector/lexical retrieval.
+
 `ILightweightIntentRouter` — non-LLM классификатор (decision tree / trained classifier):
 
 ```cpp
@@ -504,10 +542,17 @@ enum class QueryType : uint8_t {
     TemporalLookup,      // "What happened on ..."
     GraphLookup,         // "What is connected to ...?"
     NoAnswerCheck,       // impossible-to-answer queries
+    CausalWhy,
+    DecisionRecall,
+    TaskRecall,
+    PerspectiveLookup,
+    KnowledgeAtSequence,
+    UnresolvedProblemLookup,
+    EvidenceDrillDown,
 };
 ```
 
-Pre-router (перед retrieval) — per stack configurable. `QALookup` → приоритет `QARetriever`. `TemporalLookup` → `TemporalRetriever` + `LexicalRetriever`. Default `Unknown` — применяются все retrievers по profile.
+Pre-router (перед retrieval) — per stack configurable. `QALookup` → приоритет `QARetriever`. `TemporalLookup` → `TemporalRetriever` + `LexicalRetriever`. Default `Unknown` — применяются все retrievers по profile. Domain, role, stage, topic, platform, and audience are soft routing signals by default; they should boost or prioritize candidates rather than exclude neighboring domains unless a profile explicitly marks the field as a strict safety filter.
 
 ## 8. ContextAssembly with Budgets
 
@@ -555,12 +600,13 @@ Citations обязательны: каждый `ContextBlock` имеет `source
 
 ```cpp
 struct ContextBlock {
-    BlockType block_type;                 // QA | Chunk | Summary | Graph | Evidence
+    BlockType block_type;                 // QA | Chunk | Summary | Graph | Evidence | Task | Decision | Procedure | Episode | Perspective | Conflict | CausalPath
     std::string content;
     std::vector<SourceRefSummary> sources; // inline summaries; полный SourceRef с excerpt_text — через source_refs DBI (M1)
     double score;
     size_t token_count;
     std::vector<KnowledgeUnitId> unit_ids;
+    std::string perspective_label;        // "User stated", "Node inferred", etc.
 };
 
 struct Context {
@@ -573,6 +619,10 @@ struct Context {
 ```
 
 Determinism: given the same plan/hits/budget → same `Context`. Это делает retrieval traces reproducible.
+
+Perspective-safe context assembly must not collapse local interpretations into
+omniscient facts. Blocks should use labels such as `User stated`,
+`Planner believed`, `RiskNode inferred` and `System reconstruction estimates`.
 
 ### 8.4. IContextCompressor Hook (M2+)
 
@@ -634,12 +684,15 @@ Evaluation — first-class citizen. Retrieval traces, datasets, metrics — ча
 ```cpp
 struct RetrievalTrace {
     std::string trace_id;
+    std::string runtime_trace_id;
+    std::string runtime_span_id;
     RetrievalPlan plan;
     std::vector<std::vector<RetrievalHit>> per_retriever_hits;  // associative
     std::vector<RetrievalHit> targeted_hits;                     // targeted (QALookup)
     std::vector<RetrievalHit> fused_hits;
     Context final_context;
     LatencyStats latency_ms;                                    // per-stage
+    std::vector<KnowledgeUnitId> causal_path;
 };
 ```
 
@@ -701,11 +754,28 @@ CI gate: `Recall@10(hybrid) >= 1.20 * Recall@10(BM25-only)`, `NoAnswerAccuracy(h
 
 ### 9.6. Intent-class-specific test cases (M1)
 
-- **TemporalPointLookup** — bi-temporal query: "What was true at T?" + "What is true now?".
+- **TemporalValidityLookup** — single-axis temporal query: "What is valid at T?" + "What is valid now?". True bi-temporal queries are M2+ AM-13.
 - **SupersedenceChain** — новый fact supersed'ит старый: retrieval возвращает новый, не старый.
 - **CooldownRespect** — после retrieval unit не возвращается в течение cooldown_ms.
 - **SpeakerFilter** — фильтрация по `speaker_scope` (Self/Owner/Cohost/Audience).
 - **CompactionHandoff** — compaction worker восстанавливается после crash через `compaction_handoffs` DBI.
+- **CrossDomainCoverage** — activation plan includes required neighboring
+  domains and concepts for cross-domain tasks.
+- **ProcedureActivation** — playbook header is selected before loading the full
+  playbook body or raw evidence chunks.
+- **SameEventDifferentPerspectives** — several node interpretations of the
+  same event remain distinct and labeled.
+- **KnowledgeAtSequence** — retrieval excludes knowledge recorded after the
+  requested runtime sequence.
+- **CausalWhy** — action recall returns decision, evidence and direct causal
+  path.
+- **DecisionAlternatives** — selected and rejected alternatives survive
+  retrieval/compaction.
+- **PerspectiveLeakage** — local/private perspective does not leak without an
+  allowed projection.
+- **EvidenceDrillDown** — summary opens to structured record, then raw evidence.
+- **ReplayDeterminism** — same append-only corpus rebuilds the same derived
+  projection.
 
 ### 9.7. BEIR-style heterogeneous benchmark methodology
 

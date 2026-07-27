@@ -18,6 +18,13 @@ agent framework.
   goals, and non-goals.
 - [Architecture](guides/architecture.md) - DDD-like boundaries, dependency
   direction, and planned source areas.
+- [Milestones](guides/milestones.md) - normative M0/M1/M2 scope and
+  capability manifest.
+- [Knowledge activation](guides/knowledge-activation-roadmap.md) - domain maps,
+  playbooks, soft routing, and context-planning concepts.
+- [Agent runtime integration](guides/agent-runtime-integration-roadmap.md) -
+  optional cognitive-runtime trace, perspective, procedure, and reconciliation
+  contracts.
 - [Codebase orientation](guides/codebase-orientation.md) - current repository
   map and extension points.
 - [Build and test](guides/build-and-test.md) - CMake options, local checks, and

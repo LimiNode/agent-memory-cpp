@@ -18,8 +18,8 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 
 - `ReverseIndexTable` — secondary index через DUPSORT
 - `RangeIndexTable` — range queries + pagination
-- `TypeDiscriminatedTable<EnumTag, Key, ValueTypes...>` — type-tag
-  polymorphic values behind caller-owned keys
+- `TypeDiscriminatedTable<EnumTag, Key, ValueTypes...>` — typed values with
+  physical key `(EnumTag, Key)` and stable application-owned type ids
 - `CompositeKey<Parts...>` + helpers — typed composite keys
 - `MultiTableWriter` / `Connection::multi_write` — atomic multi-table writes
 - `KeyValueTable` extensions (batch, diagnostics, paginated_range)
@@ -50,6 +50,12 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
   state machines
 - Graph semantics: `EdgeKind`, expiration policy, evidence/provenance policy,
   contradiction handling, bounded expansion rules
+- Knowledge activation semantics: `DomainMap`, `Playbook`,
+  `CapabilityRegistry`, activation rules, strict-vs-soft routing policy and
+  context-budget allocation
+- Agent runtime integration semantics: `RuntimeObjectRef`, perspective,
+  authority, causal history, task/decision/procedure lifecycle, action
+  execution, partition reconciliation and topology mutation
 - Entity-resolution semantics: canonicalization, alias policy, scope/type
   compatibility, merge confidence, ambiguous-result handling and LLM proposal
   review
@@ -78,6 +84,11 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `domain/TypedMetadata` + расширенные `MetadataFilter` (Range, In, Tag)
 - `retrieval/RetrievalPlan` — что включать в retrieval
 - `retrieval/IUnitRetriever` — multi-retriever composition
+- `retrieval/KnowledgePlanner` / activation contracts — domain maps,
+  playbooks, soft routing and deterministic activation metadata
+- `runtime_integration/*` (planned) — neutral runtime origin, perspective,
+  epistemic, causal, task/decision/procedure and reconciliation contracts;
+  adapters map ADELIA or other runtime ids without exposing those headers
 - `retrieval/IContextBuilder` — budgeted context assembly
 - `eval/RetrievalTrace` + `eval/RetrievalDataset` + `eval/RetrievalMetrics` — eval harness
 - `lexical/IChunkEnricher` (расширенный до `SearchProjection`) — Contextual Retrieval
@@ -96,7 +107,7 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `MdbxKnowledgeUnitStore` (planned) — реализует `IKnowledgeUnitStore` через `knowledge_units` envelope table + `unit_components` + `unit_projections` + per-kind payload DBIs
 - `MdbxQAKnowledgeBase` (planned) — реализует `IQAKnowledgeBase` через canonical `qa_payloads` + projection/inverted indexes
 - `MdbxFactStore` (planned) — реализует `IFactStore` через canonical `fact_payloads` + projection/inverted indexes; decay считается downstream
-- `MdbxTemporalIndex` (planned) — реализует `ITemporalIndex` через `RangeIndexTable<CompositeKey<ScopeId, Timestamp, EventId>, EventPayload>`
+- `MdbxTemporalIndex` (planned) — реализует `ITemporalIndex` через `temporal_unit_index`; separate event indexes are legacy/future only
 - `MdbxGraphStore` (planned) — реализует `IGraphStore` через `graph_edges_by_src` / `graph_edges_by_dst`; `EdgeKind` и traversal policy downstream
 - `MdbxEntityResolutionIndex` (planned) — реализует candidate lookup для
   `IEntityResolver` через canonical-name/alias indexes, lexical signatures,

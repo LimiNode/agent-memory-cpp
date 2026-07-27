@@ -1,0 +1,260 @@
+# Machine-readable DBI manifest for agent-memory-cpp roadmap.
+# Keep this file in sync with guides/mdbx-containers-extension-tz.md section 5.5/5.5.1.
+
+version: agent_memory.dbi_manifest.v1
+max_dbs_default: 96
+minimum_free_slots: 16
+
+canonical:
+  - name: knowledge_units
+    owner: core
+    table_type: KeyValueTable
+    opens: always
+    sync: kv_supported
+    migration_peak: 1
+  - name: content_key_to_unit_id
+    owner: core
+    table_type: KeyValueTable
+    opens: always
+    sync: kv_supported
+    migration_peak: 1
+  - name: knowledge_units_by_kind
+    owner: core
+    table_type: ReverseIndexTable
+    opens: always
+    sync: dupsort_not_supported
+    migration_peak: 1
+  - name: unit_components
+    owner: core
+    table_type: TypeDiscriminatedTable
+    physical_key: [ComponentKind, UnitId]
+    opens: component_profile
+    sync: kv_supported_if_type_discriminated_is_kv_backed
+    migration_peak: 1
+  - name: qa_payloads
+    owner: qa
+    table_type: KeyValueTable
+    opens: QAPairs
+    sync: kv_supported
+    migration_peak: 1
+  - name: fact_payloads
+    owner: facts
+    table_type: KeyValueTable
+    opens: TemporalFact
+    sync: kv_supported
+    migration_peak: 1
+  - name: conversation_episode_payloads
+    owner: chat
+    table_type: KeyValueTable
+    opens: ConversationMemory
+    sync: kv_supported
+    migration_peak: 1
+  - name: compiled_article_payloads
+    owner: compiled_wiki
+    table_type: KeyValueTable
+    opens: CompiledArticles
+    sync: kv_supported
+    migration_peak: 1
+  - name: chunk_payloads
+    owner: ingestion
+    table_type: KeyValueTable
+    opens: always
+    sync: kv_supported
+    migration_peak: 1
+  - name: source_refs
+    owner: provenance
+    table_type: KeyValueTable
+    opens: FullSourceRefs
+    sync: kv_supported
+    migration_peak: 1
+  - name: unit_projections
+    owner: retrieval
+    table_type: KeyValueTable
+    opens: indexed_retrieval
+    sync: kv_supported
+    migration_peak: 1
+  - name: embedding_meta
+    owner: embeddings
+    table_type: KeyValueTable
+    opens: DenseVectors
+    sync: kv_supported
+    migration_peak: 1
+  - name: embedding_vectors
+    owner: embeddings
+    table_type: KeyValueTable
+    opens: DenseVectors
+    sync: kv_supported
+    migration_peak: 1
+  - name: inverted_token_to_unit
+    owner: lexical
+    table_type: ReverseIndexTable
+    opens: LexicalIndex
+    sync: dupsort_not_supported
+    migration_peak: 1
+  - name: field_to_postings
+    owner: lexical
+    table_type: KeyValueTable
+    opens: LexicalIndex
+    sync: kv_supported
+    migration_peak: 1
+  - name: lexical_token_by_text
+    owner: lexical
+    table_type: KeyValueTable
+    opens: LexicalIndex
+    sync: kv_supported
+    migration_peak: 1
+  - name: lexical_token_by_id
+    owner: lexical
+    table_type: KeyValueTable
+    opens: LexicalIndex
+    sync: kv_supported
+    migration_peak: 1
+  - name: lexical_chunk_stats
+    owner: lexical
+    table_type: KeyValueTable
+    opens: LexicalIndex
+    sync: kv_supported
+    migration_peak: 1
+  - name: lexical_token_stats
+    owner: lexical
+    table_type: KeyValueTable
+    opens: LexicalIndex
+    sync: kv_supported
+    migration_peak: 1
+  - name: lexical_collection_stats
+    owner: lexical
+    table_type: KeyValueTable
+    opens: LexicalIndex
+    sync: kv_supported
+    migration_peak: 1
+  - name: metadata_filters
+    owner: metadata
+    table_type: ReverseIndexTable
+    opens: lightweight_prefilter
+    sync: dupsort_not_supported
+    migration_peak: 1
+  - name: graph_edges_by_src
+    owner: graph
+    table_type: ReverseIndexTable
+    opens: GraphIndex
+    sync: dupsort_not_supported
+    migration_peak: 1
+  - name: graph_edges_by_dst
+    owner: graph
+    table_type: ReverseIndexTable
+    opens: GraphIndex
+    sync: dupsort_not_supported
+    migration_peak: 1
+  - name: temporal_unit_index
+    owner: temporal
+    table_type: RangeIndexTable
+    opens: TemporalIndex
+    sync: kv_supported_if_range_is_kv_backed
+    migration_peak: 1
+  - name: speaker_to_units
+    owner: speaker
+    table_type: ReverseIndexTable
+    opens: SpeakerAttribution
+    sync: dupsort_not_supported
+    migration_peak: 1
+  - name: session_to_units
+    owner: speaker
+    table_type: ReverseIndexTable
+    opens: SpeakerAttribution
+    sync: dupsort_not_supported
+    migration_peak: 1
+  - name: usage_by_last_access
+    owner: usage
+    table_type: RangeIndexTable
+    opens: UsageTracking
+    sync: kv_supported_if_range_is_kv_backed
+    migration_peak: 1
+  - name: usage_by_cooldown
+    owner: usage
+    table_type: RangeIndexTable
+    opens: UsageTracking
+    sync: kv_supported_if_range_is_kv_backed
+    migration_peak: 1
+  - name: schema_info
+    owner: schema
+    table_type: KeyValueTable
+    opens: always
+    sync: kv_supported
+    migration_peak: 1
+
+profile_deltas:
+  - name: legacy_document_resource_adapter
+    dbis: 4
+    migration_peak: 4
+    default: false
+  - name: shared_runtime_queue
+    dbis: 5
+    migration_peak: 5
+    default: false
+  - name: compaction_handoff
+    dbis: 1
+    migration_peak: 1
+    default: false
+  - name: resource_body_simple_kv
+    dbis: 1
+    migration_peak: 1
+    default: false
+  - name: resource_body_chunked
+    dbis: 2
+    migration_peak: 2
+    default: false
+  - name: source_refs_by_resource
+    dbis: 1
+    migration_peak: 1
+    default: false
+  - name: response_cache_mdbx
+    dbis: 1
+    migration_peak: 1
+    default: false
+  - name: event_record_index
+    dbis: 1
+    migration_peak: 1
+    default: false
+    milestone: M2+
+    note: Future profile delta only if agent-memory introduces EventRecord as an entity separate from KnowledgeUnit.
+  - name: sync_system_8c76661d
+    dbis: 6
+    migration_peak: 6
+    default: false
+    names:
+      - _mdbxc_meta
+      - _mdbxc_changelog
+      - _mdbxc_origins
+      - _mdbxc_applied
+      - _mdbxc_identity_index
+      - _mdbxc_sync_schema
+  - name: migration_dual_write_reserve
+    dbis: 0
+    migration_peak: 8
+    default: false
+
+expanded_peak_reference:
+  canonical_full_inventory: 29
+  legacy_document_resource_adapter: 4
+  shared_runtime_queue: 5
+  compaction_handoff: 1
+  resource_body_chunked: 2
+  source_refs_by_resource: 1
+  response_cache_mdbx: 1
+  sync_system_8c76661d: 6
+  migration_dual_write_reserve: 8
+  total: 57
+
+runtime_integration_mapping:
+  a0_a2_new_dbis: 0
+  cognitive_trace_components: unit_components
+  task_decision_procedure_payloads: unit_components
+  causal_relations: [graph_edges_by_src, graph_edges_by_dst]
+  raw_event_payloads: resource_body_profile_delta
+  sequence_filtering: [metadata_filters, temporal_unit_index]
+  future_partition_candidates:
+    - replica_frontiers
+    - reconciliation_jobs
+  notes:
+    - A0-A2 do not add runtime_event_index or temporal_event_index.
+    - Future partition DBIs are not budgeted until a concrete implementation task updates profile_deltas.

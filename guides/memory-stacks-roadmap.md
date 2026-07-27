@@ -55,6 +55,14 @@ Non-goals документа:
 | ADR-015 | Maturity Levels | M0 (MVP) / M1 (Production) / M2 (Advanced) с ship-it критериями |
 | ADR-016 | Raw resources vs normalized units | Raw ResourceBody first-class; card-like KnowledgeUnits are curated derivatives, not mandatory input format |
 | ADR-017 | Translation projections | Original text stays authoritative; translated canonical-language text is an optional derived SearchProjection |
+| ADR-018 | Knowledge activation | One logical corpus with domain maps, playbooks, activation metadata, soft routing, and budgeted context planning |
+| ADR-019 | Agent runtime integration boundary | Memory stores durable cognitive records; runtime owns live cognition and execution |
+| ADR-020 | Perspective orthogonal to Scope | Scope is namespace/ownership; observer/character/authority/partition are components |
+| ADR-021 | Introspection as observation | Node self-report is persisted evidence, not privileged truth |
+| ADR-022 | Causal history first-class | Decisions/actions/outcomes carry direct causes, trace ids and evidence |
+| ADR-023 | Bi-temporal agent knowledge | World validity and runtime knowledge time are distinct M2+/A-lane axes |
+| ADR-024 | Monotonic evidence | Raw observations/events are append-only except explicit erase policy |
+| ADR-025 | Semantic replication | Memory exports/imports records and conflicts; it does not replicate MDBX pages |
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это extension candidate для `GraphStore` (расширяет capability flag `GraphRelations` поверх substrate из ADR-006 GraphStorage; storage substrate и capability flag — отдельные сущности, не синонимы).
 
@@ -65,6 +73,20 @@ for M2+ lifecycle governance items: bi-temporal knowledge, abstraction and
 derivation graph, causal relations, progressive retrieval, expanded memory
 evaluation, policy-selectable mutation, deterministic-first entity resolution,
 typed query/MCP safety and logical index separation.
+
+See [`milestones.md`](milestones.md) for the normative M0/M1/M2 scope lock.
+This roadmap keeps architectural details, but milestone ownership and ship-it
+requirements are resolved by the milestone manifest.
+
+See [`knowledge-activation-roadmap.md`](knowledge-activation-roadmap.md) for
+the knowledge-planning layer: DomainMap, Playbook, CapabilityRegistry, strict
+filters versus soft routing, and activation-specific eval classes.
+
+See [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md)
+for the optional A0-A4 cognitive-runtime integration lane. That lane stores
+durable runtime origin, perspective, causal, task/decision/procedure and
+reconciliation records without adding live scheduling, action execution or
+ADELIA headers to core.
 
 ## 3. ADR-001: Memory Data Model
 
@@ -272,6 +294,10 @@ enum class MemoryCapability : uint64_t {
     FullSourceRefs     = 1ull << 13,
     ResponseCache      = 1ull << 14,
     TranslationProjection = 1ull << 15,
+    KnowledgeActivation = 1ull << 16,
+    CognitiveTrace = 1ull << 17,
+    ProceduralActivation = 1ull << 18,
+    ReplicaReconciliation = 1ull << 19,
 };
 
 using CapabilitySet = std::underlying_type_t<MemoryCapability>;
@@ -299,6 +325,19 @@ planning are not affective capabilities. They are represented by
 `enable_encrypted_storage`/`EncryptionPolicy` and
 `enable_context_planner`/`ContextTierPolicy` in `MemoryProfileSpec` because
 ordinary RAG and agent-memory profiles may use them too.
+
+`KnowledgeActivation` is a domain-planning capability, not a new physical
+database by itself. It enables deterministic activation metadata, DomainMap and
+Playbook handling, soft domain routing, and activation eval fixtures. Storage
+uses the existing envelope/projection/metadata/graph substrate until a future
+profile explicitly adds `playbook_payloads`, `domain_map_payloads`, or
+`activation_rules` DBI deltas to `mdbx-containers-extension-tz.md`.
+
+`CognitiveTrace`, `ProceduralActivation` and `ReplicaReconciliation` are
+coarse-grained runtime-integration groups. They deliberately do not create a
+capability bit for each scalar component. A0-A2 use existing `unit_components`,
+graph edges, resource bodies and projections; partition-specific DBIs require a
+future manifest delta.
 
 ### 6.2. Политики
 
@@ -466,6 +505,10 @@ struct MemoryProfileSpec {
     ResponseCacheStorageMode response_cache_storage =
         ResponseCacheStorageMode::Disabled;
     bool enable_context_planner = false;
+    bool enable_knowledge_activation = false;
+    bool enable_cognitive_trace = false;
+    bool enable_procedural_activation = false;
+    bool enable_replica_reconciliation = false;
     bool enable_encrypted_storage = false;
     std::optional<DecayPolicy> decay_policy;
     std::optional<WritePolicy> write_policy;
@@ -689,13 +732,13 @@ public:
         std::size_t max_generated_variants = 5;
         std::size_t max_history_tokens = 0;
     };
-    
+
     struct QueryVariant {
         std::string text;
         std::string transformer_id;  // "hyde", "rewrite", "self_rag"
         double weight = 1.0;
     };
-    
+
     virtual std::vector<QueryVariant> transform(
         const QueryTransformationContext& context) = 0;
 };
@@ -750,14 +793,14 @@ Post-retrieval оценка качества candidates. Может trigger corr
 class IRetrievalEvaluator {
 public:
     virtual ~IRetrievalEvaluator() = default;
-    
+
     struct RetrievalDecision {
         enum class Action { Accept, Reject, CorrectiveSearch, FallbackToLLM };
         Action action;
         std::optional<std::string> corrective_query;
         double confidence;
     };
-    
+
     virtual RetrievalDecision evaluate(
         const Query& q,
         const std::vector<RetrievalHit>& hits) = 0;
@@ -790,7 +833,7 @@ inline MemoryProfileSpec BasicRag() {
     s.name = "basic_rag";
     s.envelope_schema_version = 1;
     s.enable_lexical_bm25f = true;
-    s.enable_dense_vectors = true;
+    s.enable_dense_vectors = false;
     s.enable_graph = false;
     s.enable_usage_stats = false;
     s.enable_qa_payload = false;
@@ -806,9 +849,9 @@ inline MemoryProfileSpec BasicRag() {
     s.hybrid_config = HybridRetrievalConfig(
         FusionStrategy::RRF,
         /*rrf_k_constant=*/60.0,
-        /*retriever_weights=*/std::vector<double>{1.0, 1.0},
+        /*retriever_weights=*/std::vector<double>{1.0},
         /*candidate_pool_size=*/200);
-    // dense_index_config: not set (default DenseIndexMode::Exact).
+    // BasicHybridRag(IEmbedder&) is the explicit dense opt-in variant.
     return s;
 }
 ```
@@ -852,6 +895,8 @@ inline MemoryProfileSpec AgentLongTermMemory() {
     s.enable_fact_payload = true;
     s.enable_embedding_meta = true;
     s.enable_compaction = true;
+    s.enable_context_planner = true;
+    s.enable_knowledge_activation = true;
     s.context_budget = ContextBudget(
         /*total_tokens=*/4096,
         /*qa_tokens=*/512,
@@ -945,6 +990,8 @@ inline MemoryProfileSpec CompiledWiki() {
     s.enable_fact_payload = true;
     s.enable_embedding_meta = true;
     s.enable_compaction = true;
+    s.enable_context_planner = true;
+    s.enable_knowledge_activation = true;
     s.context_budget = ContextBudget(
         /*total_tokens=*/6000,
         /*qa_tokens=*/0,
@@ -1005,6 +1052,33 @@ inline MemoryProfileSpec FullResearchMemory() {
 }
 ```
 
+### 8.8. CognitiveRuntimeMemory
+
+Optional overlay for ADELIA-like cognitive runtimes. It stores durable runtime
+origin, perspective, causal context, task/decision/procedure records and
+progressive-disclosure hints. It does not execute actions, schedule nodes or
+own runtime authority.
+
+```cpp
+inline MemoryProfileSpec CognitiveRuntimeMemory() {
+    MemoryProfileSpec s = AgentLongTermMemory();
+    s.name = "cognitive_runtime";
+    s.enable_context_planner = true;
+    s.enable_knowledge_activation = true;
+    s.enable_cognitive_trace = true;
+    s.enable_procedural_activation = true;
+    s.enable_graph = true;
+    s.enable_full_source_refs = true;
+    // Replica reconciliation is A3 and remains opt-in.
+    s.enable_replica_reconciliation = false;
+    return s;
+}
+```
+
+This profile opens no new DBI by default. A0-A2 runtime components use
+`unit_components`; causal and procedure relations use the existing graph DBIs;
+raw event/tool payloads use `ResourceBodyStore` when enabled.
+
 See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision guide on choosing between Karpathy 3-layer, A-MEM, lifemodel, NOUZ, Mem0/Letta/Zep, Блок фактов, and dual-layer patterns for your workload.
 
 ## 9. Capability Matrix
@@ -1012,7 +1086,7 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | Capability | BasicRag | QAKB | AgentLTM | SpeakerChat | CompiledWiki | TemporalFact | FullResearch |
 |---|---|---|---|---|---|---|---|
 | LexicalBm25F | yes | yes | yes | yes | yes | yes | yes |
-| DenseVectors | yes | yes | yes | no | yes | no | yes |
+| DenseVectors | no | yes | yes | no | yes | no | yes |
 | QAPairs | no | yes | no | no | no | no | yes |
 | TemporalValidity | no | yes | yes | yes | no | yes | yes |
 | UsageStats | no | yes | yes | yes | no | no | yes |
@@ -1027,6 +1101,7 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | FullSourceRefs | no | opt | opt | opt | yes | opt | yes |
 | ResponseCache | opt | opt | opt | opt | opt | opt | opt |
 | TranslationProjection | opt | opt | opt | opt | opt | opt | opt |
+| KnowledgeActivation | no | opt | yes | opt | yes | opt | yes |
 
 `opt` — capability не включена по умолчанию, но может быть добавлена через minor in-place migration.
 `ResponseCache` capability is present iff `response_cache_storage != Disabled`;
@@ -1037,6 +1112,14 @@ the `response_cache` profile delta.
 without persisted translated projections is deferred until the retrieval planner
 has a corpus-language routing contract. The normalized `TranslationPolicy`
 participates in `profile_signature`.
+`KnowledgeActivation` capability is present iff
+`enable_knowledge_activation == true`; it uses existing canonical storage until
+a profile-specific DBI delta is added to the physical manifest.
+`CognitiveTrace` capability is present iff `enable_cognitive_trace == true`.
+`ProceduralActivation` capability is present iff
+`enable_procedural_activation == true`. `ReplicaReconciliation` capability is
+present iff `enable_replica_reconciliation == true`; it remains A3 and opens no
+DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 
 ## 10. Validation Rules
 
@@ -1050,6 +1133,10 @@ participates in `profile_signature`.
 | Compaction=true требует UsageStats=true | "Compaction requires UsageStats" |
 | CompiledArticles=true требует Compaction=true | "CompiledArticles requires Compaction" |
 | ConversationMemory=true требует SpeakerAttribution=true | "ConversationMemory requires SpeakerAttribution" |
+| KnowledgeActivation=true требует ContextPlanner=true | "KnowledgeActivation requires context planner" |
+| CognitiveTrace=true требует Components + FullSourceRefs | "CognitiveTrace requires components and source refs" |
+| ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
+| ReplicaReconciliation=true требует CognitiveTrace=true | "ReplicaReconciliation requires cognitive trace" |
 | EmbeddingMigration=true требует DenseVectors=true | "EmbeddingMigration requires DenseVectors" |
 | DecayPolicy: cooldown_ms >= 0, half_life_ms > 0 (если mode != None) | "Invalid DecayPolicy" |
 | WritePolicy: flush_interval_ms > 0 (если trigger == OnTimer) | "Invalid WritePolicy" |
@@ -1140,6 +1227,11 @@ profile-delta row to TZ §5.5.1.
 
 ## 13. Maturity Levels
 
+Normative scope lives in [`milestones.md`](milestones.md). The subsections
+below remain as a detailed architectural orientation, but the staged split
+`M0`, `M1a`, `M1b`, `M1c`, `M2`, and `M2+` in `milestones.md` wins on any
+scope conflict.
+
 ### 13.1. M0 — MVP
 
 Цель: запустить первый end-to-end pipeline на минимальном стеке.
@@ -1152,7 +1244,8 @@ profile-delta row to TZ §5.5.1.
 - SearchProjection::Original создаётся с самого начала (минимальный: unit_id → primary_text). BM25F работает через projection model с M0 (не flat fallback).
 - Lifecycle FSM с состояниями Active / Superseded / Deprecated / Erased (4 durable states). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.
 - Минимальный QAPayload (только canonical_question + answer + optional category + last_verified_at_ms) для QAKnowledgeBaseStack с M0.
-- Расширенный QAPayload (question_variants, frequency ranking, bi-temporal) — M1.
+- Расширенный QAPayload (question_variants, frequency ranking) — M1b.
+  Bi-temporal history is M2+ and belongs to AM-13.
 - ChunkPayload (minimal) для BasicRagStack с M0. Остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload) — M1.
 - BasicRagStack, QAKnowledgeBaseStack.
 - Чтение через ILexicalIndex, запись через простой write API.
@@ -1160,21 +1253,27 @@ profile-delta row to TZ §5.5.1.
   tenant/project/agent-scoped lookup или range query. Primary lookup by globally
   unique `UnitId` является явным исключением.
 
-Не включено (M1+): Components, расширенные QAPayload (variants/frequency/bi-temporal) и остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, PromptPrefixCache + ResponseCache, full SourceRef DBI (в M0 — только inline summary).
+Не включено (M1+): Components, расширенные QAPayload (variants/frequency) и остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, PromptPrefixCache + ResponseCache, full SourceRef DBI (в M0 — только inline summary), bi-temporal history.
 
 Ship-it критерии:
 
-- BasicRag retrieve+write на 10k unit работает с p95 latency ≤ 50 ms.
+- BasicRag retrieve+write на 10k unit работает с p95 latency ≤ 50 ms under
+  the reproducible benchmark contract in `milestones.md`.
 - Все unit-тесты на envelope serialization проходят.
 - Lifecycle FSM покрыт тестами для всех 4 durable states.
 
 ### 13.2. M1 — Production
 
+M1 is staged by `milestones.md`: M1a hybrid retrieval, M1b structured
+knowledge, M1c runtime maintenance. A profile may only claim the part it
+implements and tests.
+
 Цель: полноценные профили для реальных use-cases.
 
 Включено (поверх M0):
 
-- Все компоненты (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta).
+- Все компоненты (UsageStats, Speaker, Temporal, EmbeddingMeta,
+  CompactionMeta, ActivationMetadata).
 - Все payload-компоненты (QAPayload, FactPayload, ConversationEpisodePayload, CompiledArticlePayload, ChunkPayload).
 - SearchProjections DBI с 4 стандартными kind: Original, QAQuestion, QAAnswer, Summary.
 - BM25F по projections (projection_kind в posting keys).
@@ -1183,6 +1282,8 @@ Ship-it критерии:
 - CompactionWorker с базовыми job types: DecayJob, DedupeJob, ArchiveColdJob.
 - PromptCache (LRU + AnthropicCacheControlAdapter).
 - IRetrievalTrace с метриками cache_hit_rate, anti_loop_skip_rate, decay_score_distribution.
+- Knowledge activation metadata for deterministic DomainMap/Playbook routing
+  when `KnowledgeActivation` is enabled.
 
 Не включено (M2+):
 
@@ -1192,6 +1293,7 @@ Ship-it критерии:
 - CLI tool.
 - Distributed scope routing.
 - Eval pipeline с intent-класс-специфичными golden datasets.
+- Bi-temporal storage and true bi-temporal eval.
 
 Ship-it критерии:
 
@@ -1211,7 +1313,7 @@ Ship-it критерии:
 - Multi-vector embeddings (multi-model, multi-projection) с cross-model RRF.
 - Compaction: MergeJob, SummaryPromotionJob, EmbeddingRecomputeJob.
 - CLI tool (`agent-memory-cli`).
-- Eval pipeline с intent-классами: TemporalPointLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff.
+- Eval pipeline с intent-классами: TemporalValidityLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff, CrossDomainCoverage, ProcedureActivation.
 - Distributed scope routing (multi-process / multi-host scope namespaces).
 - Compaction metrics и self-tuning.
 - Embedding recompute migration с progress tracking.
@@ -1219,7 +1321,8 @@ Ship-it критерии:
 Ship-it критерии:
 
 - 50+ golden test cases покрывают все intent-классы.
-- p95 latency ≤ 2x baseline BM25 для всех профилей.
+- p95 latency ≤ 2x baseline BM25 для всех профилей under the reproducible
+  benchmark contract in `milestones.md`.
 - Migration script `basic_rag → agent_ltm` работает без потери данных.
 - CLI tool покрывает inspect/stats/check/vacuum/reindex/profile-info/profile-migrate.
 
@@ -1237,8 +1340,10 @@ new_spec.enable_usage_stats = true;
 new_spec.decay_policy = MemoryProfiles::DefaultAgentDecay();
 
 // migration in-place:
-// 1. Создать usage_stats_index DBI (если не существует)
+// 1. Создать unit_components, usage_by_last_access and usage_by_cooldown DBIs
+//    (если не существуют)
 // 2. Заполнить нулевыми UsageStatsComponent для всех существующих units
+//    and write bounded range-index entries for last access / cooldown
 // 3. Обновить profile_signature в schema_info
 // 4. Vacuum (опционально)
 ```
@@ -1371,7 +1476,9 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 - `TypeDiscriminatedTable` в mdbx-containers (если ещё не реализован).
 - `ComponentStore` (CRUD с tag-prefix).
-- Компоненты: UsageStatsComponent, SpeakerComponent, TemporalComponent, EmbeddingMetaComponent, CompactionMetaComponent.
+- Компоненты: UsageStatsComponent, SpeakerComponent, TemporalComponent,
+  EmbeddingMetaComponent, CompactionMetaComponent,
+  ActivationMetadataComponent.
 - DBI: `unit_components` (TypeDiscriminatedTable).
 - Валидация инвариантов (Decay требует UsageStats и т.д.).
 
@@ -1397,7 +1504,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `GraphEdgePayload` struct + EdgeKind enum.
 - DBI: `graph_edges_by_src`, `graph_edges_by_dst`.
 - Bounded graph expansion (max_depth, max_edges, budget_tokens).
-- TemporalComponent + DBI: `temporal_event_index`, `temporal_unit_index`.
+- TemporalComponent + DBI: `temporal_unit_index` only for M1. A separate
+  event range index requires a future authoritative `EventRecord` entity.
 - `floating subgraph` как retrieval view.
 
 ### Шаг 9: Speaker + Session indexes

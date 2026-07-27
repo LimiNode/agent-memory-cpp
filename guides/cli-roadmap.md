@@ -369,7 +369,7 @@ Index names:
 - `bm25`: перестроить `inverted_token_to_unit`, `field_to_postings`.
 - `dense`: перестроить `embedding_vectors` (используя указанный `--model`).
 - `graph`: перестроить `graph_edges_by_src`, `graph_edges_by_dst`.
-- `temporal`: перестроить `temporal_event_index`, `temporal_unit_index`.
+- `temporal`: перестроить `temporal_unit_index`.
 - `metadata`: перестроить `metadata_filters`.
 - `all`: все indexes (default).
 
@@ -592,7 +592,7 @@ agent-memory-cli run-eval \
 - `--path <path>`: путь к MDBX environment для evaluation.
 - `--dataset <path>`: путь к golden dataset (YAML формат).
 - `--report <output>`: путь к output report (HTML или JSON).
-- `--intent <intent_class>`: запустить только для указанного intent class (QALookup, FactLookup, GraphLookup, NoAnswer, TemporalPointLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff).
+- `--intent <intent_class>`: запустить только для указанного intent class (QALookup, FactLookup, GraphLookup, NoAnswer, TemporalValidityLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff, CrossDomainCoverage, ProcedureActivation, SameEventDifferentPerspectives, KnowledgeAtSequence, CausalWhy, DecisionAlternatives, ProcedureDegradation, PartitionAppendMerge, PartitionConflictPreserved, PerspectiveLeakage, EvidenceDrillDown, DerivedErasePropagation, ReplayDeterminism).
 - `--threshold <hybrid_lift>`: target HybridLift ratio (default 1.20).
 
 Пример:

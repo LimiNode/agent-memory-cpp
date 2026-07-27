@@ -47,10 +47,14 @@ enum class KnowledgeUnitKind : uint16_t {
     CompiledArticle = 7,
     ConversationEpisode = 8,
     Note = 9,
-    Task = 10,        // reserved
-    Decision = 11,    // reserved
-    Custom = 12,      // escape hatch через metadata_typed["payload"]
-    // NUM_KINDS = 13
+    Task = 10,
+    Decision = 11,
+    Playbook = 12,
+    DomainMap = 13,
+    CapabilityMap = 14,
+    Custom = 15,      // escape hatch через metadata_typed["payload"]
+    Procedure = 16,
+    // NUM_KINDS = 17
 };
 ```
 
@@ -70,15 +74,38 @@ enum class KnowledgeUnitKind : uint16_t {
 | CompiledArticle | CompiledArticlePayload | — | Karpathy-style wiki articles |
 | ConversationEpisode | ConversationEpisodePayload | — | multi-utterance bundle |
 | Note | (no specific payload) | Embedded в primary_text, `ResourceBodyStore` source | generic free-form / raw document entrypoint |
-| Task | (reserved) | — | для future handoff structure |
-| Decision | (reserved) | — | для future handoff structure |
+| Playbook | (no specific payload in M1b) | activation metadata + graph edges | procedure with triggers, prerequisites, steps, outputs |
+| DomainMap | CompiledArticlePayload initially | graph edges + activation metadata | materialized domain view for context planning |
+| CapabilityMap | (no specific payload in M1b) | activation metadata | compact registry of tools/playbook families |
+| Task | TaskPayload component initially | runtime origin + causal/perspective components | durable task memory, not scheduler |
+| Decision | DecisionPayload component initially | alternatives + causal/evidence links | decision recall and causal why |
 | Custom | metadata_typed["payload"] | — | escape hatch через JSON-like value |
+| Procedure | ProcedurePayload component initially | activation metadata + outcome stats | learned/imported versioned procedure |
 
-Примечание: для kinds без dedicated payload (Event, Entity, Relation, Summary, Note) основная информация содержится в `envelope.primary_text`/`display_text` и/или operational components (`SpeakerComponent`, `TemporalComponent` и т.д.).
+Примечание: для kinds без dedicated payload (Event, Entity, Relation, Summary,
+Note, Playbook, CapabilityMap) основная информация содержится в
+`envelope.primary_text`/`display_text`, activation metadata, graph edges and/or
+operational components (`SpeakerComponent`, `TemporalComponent` и т.д.).
+Dedicated `PlaybookPayload`, `DomainMapPayload` or `ActivationRules` DBIs are
+not canonical until `mdbx-containers-extension-tz.md` adds explicit profile
+deltas.
 
-### 2.2. Reserved kinds
+### 2.2. Runtime integration kinds
 
-`Task` (handoff records) и `Decision` (decision points в agent reasoning) зарезервированы для follow-up. Контракты будут определены, когда соответствующие use-cases материализуются (M2+).
+`Task`, `Decision` and `Procedure` are specified by
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+They store durable cognitive records and procedure knowledge; they do not
+execute tasks, actions or procedures. Their first storage mapping is
+`unit_components` with stable component tags (`TaskPayload`, `DecisionPayload`,
+`ProcedurePayload`) so no dedicated DBI is added to the default profile.
+
+Introspection snapshots, unresolved problems and reconciliation conflicts start
+as `Custom` prototypes until their fields stabilize.
+
+`Playbook`, `DomainMap` and `CapabilityMap` are specified by
+[`knowledge-activation-roadmap.md`](knowledge-activation-roadmap.md). They are
+canonical, versioned knowledge objects that cite evidence; they must not be
+treated as ordinary source chunks.
 
 ### 2.3. Generic raw document units
 
@@ -265,8 +292,12 @@ the current physical file path or importer-local location:
 - `QAPair`: normalized question/answer payload fields and declared identity
   metadata.
 - `Fact`: canonical subject/predicate/object/time identity.
-- `ConversationEpisode`, `CompiledArticle`, `Note`: canonical payload text or a
-  stable `ResourceBody` digest for large bodies.
+- `ConversationEpisode`, `CompiledArticle`, `Note`, `Playbook`, `DomainMap`,
+  `CapabilityMap`, `Procedure`: canonical payload text or a stable
+  `ResourceBody` digest for large bodies. File path and domain membership are
+  not identity fields.
+- `Task`, `Decision`: stable task/decision identity metadata, runtime origin
+  and declared payload digest; mutable status/outcome fields are not identity.
 - `Event`, `Entity`, `Relation`, `Summary`, `Custom`: canonical primary text
   plus declared identity metadata/payload bytes.
 
@@ -371,7 +402,8 @@ Stable field-tag order:
 | `Chunk` | `0x0001 resource_body_digest`, `0x0002 span_start`, `0x0003 span_end`, `0x0004 normalized_chunk_text_digest` |
 | `QAPair` | `0x0101 normalized_question`, `0x0102 normalized_answer`, `0x0103 identity_metadata_map` |
 | `Fact` | `0x0201 subject`, `0x0202 predicate`, `0x0203 object`, `0x0204 valid_time`, `0x0205 observed_time` |
-| `ConversationEpisode`, `CompiledArticle`, `Note` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
+| `ConversationEpisode`, `CompiledArticle`, `Note`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
+| `Task`, `Decision` | `0x0351 stable_runtime_identity`, `0x0352 runtime_origin_digest`, `0x0353 declared_payload_digest` |
 | `Event`, `Entity`, `Relation`, `Summary`, `Custom` | `0x0401 primary_identity_text`, `0x0402 declared_identity_metadata_map`, `0x0403 declared_payload_digest` |
 
 Text normalization table for recipe v1:
@@ -408,7 +440,8 @@ Identity vs mutable fields:
 | `Chunk` | `resource_body_digest`, span/offset identity, normalized chunk text digest | display text, source summaries, retrieval projections, lifecycle |
 | `QAPair` | normalized question/answer identity fields | display text, source summaries, usage/ranking metadata, projections, lifecycle |
 | `Fact` | subject/predicate/object/time identity | confidence, display text, non-identity source summaries, projections, lifecycle |
-| `ConversationEpisode`, `CompiledArticle`, `Note` | canonical payload text or stable `ResourceBody` digest | title/display summaries, source summaries, projections, lifecycle |
+| `ConversationEpisode`, `CompiledArticle`, `Note`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | canonical payload text or stable `ResourceBody` digest | title/display summaries, source summaries, domains/facets/intents/agent_roles, activation rules, projections, lifecycle, outcome statistics |
+| `Task`, `Decision` | stable runtime identity + declared payload digest | status, assigned runtime refs, rationale summary, produced units, projections, lifecycle |
 | `Event`, `Entity`, `Relation`, `Summary`, `Custom` | canonical primary identity text plus declared identity metadata/payload bytes | display summaries, non-identity metadata, projections, lifecycle |
 
 ### 4.1. Allocation и инварианты
@@ -797,22 +830,31 @@ DBI `compiled_article_payloads`. Включается через `enable_compile
 
 `status` field управляет lifecycle transitions: `draft` → `published` → `archived`. `archived` соответствует `Deprecated` lifecycle state; retrieval фильтрует по умолчанию.
 
-### 5.7. Reserved Kinds (Task, Decision)
+### 5.7. Task, Decision and Procedure
 
-```cpp
-// TODO: определить структуру в M2.
-// Сейчас зарезервированы для follow-up:
-// - Task: handoff records (operational handoff structure)
-// - Decision: ссылки на decision points в agent reasoning
-```
+`Task`, `Decision` and `Procedure` are formal A-lane kinds. Their payloads are
+stored as typed components first; dedicated DBIs are deferred until measured
+access patterns justify them.
 
-Контракты будут определены, когда соответствующие use-cases материализуются (M2+).
+Primary text rules:
 
-`Decision` also becomes relevant for affective-agent memory once action,
-coping, outcome, and prediction-error payloads stabilize. See
-[`affective-memory-roadmap.md`](affective-memory-roadmap.md) for the optional
-`ActionOutcomeComponent` direction; it is not part of the base KnowledgeUnit
-contract yet.
+- `Task`: title, current status and short goal summary.
+- `Decision`: selected alternative, rationale summary and confidence.
+- `Procedure`: name, status, version and short capability/precondition summary.
+
+Projection rules:
+
+- `Original`: perspective-safe one-paragraph summary.
+- `Summary`: compact body for context assembly.
+- `Structured`: future progressive-disclosure projection for typed fields.
+
+Context rendering must keep perspective labels such as `User stated`,
+`Planner believed`, `RiskNode inferred` or `System reconstruction estimates`.
+Memory retrieval of a task/procedure never executes it.
+
+See [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md)
+for `TaskPayload`, `DecisionPayload`, `ProcedurePayload`, runtime origin,
+perspective and causal contracts.
 
 ### 5.8. Custom (escape hatch)
 
@@ -978,6 +1020,15 @@ enum class DerivedRecordKind : uint32_t {
     KnowledgeUnitKey = 121,
     SourceRefSummary = 122,
     SourceRef = 123,
+    ActivationMetadataComponent = 124,
+    RuntimeOriginComponent = 130,
+    CausalContextComponent = 131,
+    PerspectiveComponent = 132,
+    EpistemicStatusComponent = 133,
+    FocusContextComponent = 134,
+    TaskPayload = 135,
+    DecisionPayload = 136,
+    ProcedurePayload = 137,
     // NB: KnowledgeUnitRevision НЕ существует как отдельный manifest record —
     // revision — это поле KnowledgeUnitEnvelope.revision, не отдельный kind.
     // Per-record stale-check живёт в LexicalPosting.unit_revision и
@@ -985,7 +1036,7 @@ enum class DerivedRecordKind : uint32_t {
 };
 ```
 
-Значения 100-123 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
+Значения 100-137 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
 
 ### 7.2. Resource Manifest Records
 
@@ -1011,6 +1062,15 @@ enum class DerivedRecordKind : uint32_t {
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
 | EmbeddingMetaComponent | `unit_components` (tag=EmbeddingMeta) | EmbeddingMeta=true |
 | CompactionMetaComponent | `unit_components` (tag=CompactionMeta) | Compaction=true |
+| ActivationMetadataComponent | `unit_components` (tag=ActivationMetadata) | KnowledgeActivation=true |
+| RuntimeOriginComponent | `unit_components` (tag=RuntimeOrigin) | CognitiveTrace=true |
+| CausalContextComponent | `unit_components` (tag=CausalContext) | CognitiveTrace=true |
+| PerspectiveComponent | `unit_components` (tag=Perspective) | CognitiveTrace=true |
+| EpistemicStatusComponent | `unit_components` (tag=EpistemicStatus) | CognitiveTrace=true |
+| FocusContextComponent | `unit_components` (tag=FocusContext) | CognitiveTrace=true |
+| TaskPayload | `unit_components` (tag=TaskPayload) | CognitiveTrace=true |
+| DecisionPayload | `unit_components` (tag=DecisionPayload) | CognitiveTrace=true |
+| ProcedurePayload | `unit_components` (tag=ProcedurePayload) | ProceduralActivation=true |
 | QAPayload | `qa_payloads` | QAPairs=true (enable_qa_payload) |
 | FactPayload | `fact_payloads` | enable_fact_payload=true |
 | ChunkPayload | `chunk_payloads` | Chunk kind (default, всегда) |
@@ -1019,7 +1079,11 @@ enum class DerivedRecordKind : uint32_t {
 | Full SourceRef vector | `source_refs` | `enable_full_source_refs=true` (M1) |
 | SearchProjections | `unit_projections` | indexed retrieval (always для BasicRag+) |
 
-Operational components живут в единой `unit_components` DBI через `TypeDiscriminatedTable` (из `mdbx-containers-extension-tz.md`). Per-kind payloads — отдельные таблицы для изоляции schema и быстрого scan по kind.
+Operational components живут в единой `unit_components` DBI через
+`TypeDiscriminatedTable` (из `mdbx-containers-extension-tz.md`) with physical
+key `(ComponentKind, UnitId)`. The tag is part of the key, so several
+components for the same unit cannot overwrite each other. Per-kind payloads —
+отдельные таблицы для изоляции schema и быстрого scan по kind.
 
 ### 8.2. Capability-aware DBI Creation
 
@@ -1034,7 +1098,9 @@ Operational components живут в единой `unit_components` DBI чере
 2. По capability флагам создаются дополнительные DBI (см. таблицу 8.1).
 3. При drift detected (см. `memory-stacks-roadmap.md` секция 14): error или auto-migrate (per ADR-003, ADR-004).
 
-DBI budget target ≤ 64 (расширение `max_dbs` 16→64 в `mdbx-containers`). Typical M1 stack: 18-22 DBI. Headroom есть.
+DBI budget target follows the shared manifest: canonical count 29, expanded peak 57,
+`Config::max_dbs = 96` by default, and at least 16 free DBI slots reserved for
+future profiles.
 
 ### 8.3. Multi-Component Writes
 
@@ -1132,7 +1198,7 @@ Round-trip test обязателен: `basic_rag` → `agent_ltm` → `basic_rag
 | Шаг | Что добавляется | Payload/component |
 |---|---|---|
 | 1 | KnowledgeUnitEnvelope + базовые DBI | envelope только |
-| 5 | Component infrastructure | operational components (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta) |
+| 5 | Component infrastructure | operational components (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta, ActivationMetadata, runtime-integration components) |
 | 5.5 | KnowledgeUnitKey DBI | `content_key_to_unit_id` DBI + `KnowledgeUnitKey`/`ContentHash` structs + storage-owned monotonic `KnowledgeUnitId` sequence (см. секцию 4) |
 | 5.6 | SourceRefSummary inline + source_refs DBI (M1) | `SourceRefSummary` в envelope (≤3 на unit) + `source_refs` DBI для полных цитат (см. секцию 3) |
 | 6 | Payload components per kind | QAPayload, FactPayload, ChunkPayload, ConversationEpisodePayload, CompiledArticlePayload |
@@ -1140,7 +1206,8 @@ Round-trip test обязателен: `basic_rag` → `agent_ltm` → `basic_rag
 | 9.1 | Anti-loop подсвинок | self_echo_suppression в DecayAwareRetriever + AntiLoopCooldown фильтр; cooldown/soft_suppression хранятся в UsageStatsComponent (НЕ LifecycleState, НЕ инкрементит revision) |
 | 12 | Round-trip тесты для default stacks | все payloads (write → close → reopen → verify) |
 
-Дополнительные шаги (M2+): EventPayload (если потребуется), Task/Decision payloads.
+Дополнительные шаги (M2+): EventPayload (если потребуется), dedicated
+Task/Decision/Procedure payload DBIs if measured access patterns justify them.
 
 ## 11. References
 

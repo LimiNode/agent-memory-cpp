@@ -14,7 +14,7 @@
 - Embeddings — multi-projection, multi-model (DBI: `embedding_meta`, `embedding_vectors`).
 - Secondary indexes — scope-aware (`scope_id` как префикс ключа), см. ADR-012 в `guides/memory-stacks-roadmap.md`.
 
-Применение storage primitives в MDBX env (бюджет 64 DBI, см. секцию 12.6 roadmap-а) согласуется с capability matrix из `guides/memory-stacks-roadmap.md`, секция 9.
+Применение storage primitives в MDBX env (recommended budget 96 DBI, см. §5.5.1) согласуется с capability matrix из `guides/memory-stacks-roadmap.md`, секция 9.
 
 ## 1. Цели и non-goals
 
@@ -60,7 +60,13 @@
 
 #### 1.5.1 Purpose
 
-Этот раздел носит **чисто информационный характер** на момент написания ТЗ. Локальный submodule `external/mdbx-containers` (commit `e9e9f2f`, tag `v1.0.0-97-ge9e9f2f`) **не содержит** подкаталога `sync/`. Upstream `external/mdbx-containers` main snapshot `d4d219c` реализует sync subsystem, описанный ниже. Цель раздела — зафиксировать состояние upstream sync v0.1 в этом ТЗ, чтобы будущие ревизии не дрифтовали относительно фактической поверхности API. Никакие изменения в текущих DBIs секции 5 не подразумеваются; фиксация adoption — отдельный вопрос §11.7.
+Этот раздел носит **чисто информационный характер** на момент написания ТЗ.
+Последний проверенный локальный upstream checkout: `E:\_repoz\mdbx-containers`,
+commit `8c76661d` (`feat(sync): add logical adapter primary DBI contract`).
+Цель раздела — зафиксировать состояние upstream sync v0.1 / logical-adapter
+surface в этом ТЗ, чтобы будущие ревизии не дрифтовали относительно фактической
+поверхности API. Никакие изменения в текущих DBIs секции 5 не подразумеваются;
+фиксация adoption — отдельный вопрос §11.7.
 
 #### 1.5.2 Source attribution policy
 
@@ -73,7 +79,7 @@
 
 #### 1.5.3 Upstream `sync` v0.1 — файлы
 
-Директория: `include/mdbx_containers/sync/` в upstream main snapshot `d4d219c`. Состав:
+Директория: `include/mdbx_containers/sync/` в upstream snapshot `8c76661d`. Состав:
 
 | Файл | Назначение | Ориентир LOC |
 |---|---|---|
@@ -88,7 +94,7 @@
 | `WebSocketTransport.hpp` | Framework-neutral WebSocket-shaped adapter seam | н/д |
 | `TransportMiddleware.hpp` | Transport middleware, allow-list, rate limiting, auth context policies | н/д |
 
-Внутренний layout дополнительно содержит `stores/` подкаталог с 5 системными DBIs (см. §1.5.10) и compile-time gate `MDBXC_SYNC_ENABLED` (default `0`). Подключение sync-функционала требует явного `-DMDBXC_SYNC_ENABLED=1` при сборке `mdbx-containers`.
+Внутренний layout дополнительно содержит `stores/` подкаталог с 6 системными DBIs (см. §1.5.10) и compile-time gate `MDBXC_SYNC_ENABLED` (default `0`). Подключение sync-функционала требует явного `-DMDBXC_SYNC_ENABLED=1` при сборке `mdbx-containers`.
 
 Public first-class упоминания sync subsystem в PR descriptions — это GitHub PR #86–#105 (chronologically; детали в §1.5.8). PR #104 и PR #105 уже merged на момент этого snapshot-а; transport DTO codec и HTTP adapter seam входят в v0.1.
 
@@ -101,10 +107,11 @@ Sync v0.1 покрывает wire-format round-trip только для опре
 | `KeyValueTable<K, V, Options>` | Supported | Базовый KV путь |
 | `KeyTable<K, Options>` | Supported | Set-like без payload |
 | `ValueTable<V>` | Supported | Одиночный value per name |
-| `SequenceTable<V>` | Supported | Auto-increment ID generator |
+| `SequenceTable<V>` | Supported | Appendable table with stable uint64 indices; **not** a global atomic ID allocator |
 | `VectorStore` (через `vector::VectorStore`) | Supported (indirect) | Persistent path использует `SequenceTable` + `KeyValueTable` в v0.1 |
 | `AnyValueTable<K, Options>` | **NOT supported** | Heterogeneous typed payload не имеет wire-format в v0.1 |
 | `KeyMultiValueTable<K, V, Options>` | **NOT supported** | DUPSORT multi-payload; блокирует inverted index sync (см. §5.6) |
+| `KeyOrderedMultiValueTable<K, V, Options>` | **NOT supported** | Ordered DUPSORT multi-payload; out of v0.1 sync coverage |
 | `HashedKeyValueStore` | **NOT supported** | Coverage shadow-graphs and HashedKeyValueStore excluded |
 
 Покрытие для любого table type, не перечисленного как «Supported», считается **out of v0.1 scope**; см. §5.6 для влияния на DBI-схему настоящего проекта.
@@ -195,7 +202,7 @@ Upstream PR-ы, появившиеся после submodule-pointer-а `e9e9f2f`
 
 #### 1.5.10 System DBIs и `max_dbs` budget
 
-Upstream sync subsystem вводит 5 системных DBIs:
+Upstream sync subsystem вводит 6 системных DBIs в snapshot `8c76661d`:
 
 | System DBI | Назначение |
 |---|---|
@@ -204,8 +211,9 @@ Upstream sync subsystem вводит 5 системных DBIs:
 | `_mdbxc_origins` | Accelerator index: `origin_node_id → max known changelog seq` для multi-origin pull |
 | `_mdbxc_applied` | Last contiguous applied `seq` per origin; primary replay/skip state |
 | `_mdbxc_identity_index` | Declared identity map для opaque app keys ↔ storage identity; write path deferred в v0.1 |
+| `_mdbxc_sync_schema` | Persistent logical schema registry used by `SchemaRegistryStore` and logical table adapters |
 
-Эти 5 DBIs разделяют тот же `Config::max_dbs` budget с таблицами секции 5.5.
+Эти 6 DBIs разделяют тот же `Config::max_dbs` budget с таблицами секции 5.5.
 На момент написания ТЗ sync subsystem не активирован и не открывается
 M0/M1/M2-профилями, но при любом opt-in adoption эти DBIs обязаны входить в
 расчёт §5.5.1.
@@ -224,7 +232,9 @@ M0/M1/M2-профилями, но при любом opt-in adoption эти DBIs 
 - `KeyMultiValueTable<K, V, Options>` — DUPSORT, multi-payload per key.
 - `KeyTable<K, Options>` — set-like, ключи без payload.
 - `ValueTable<V>` — одиночный value по фиксированному имени.
-- `SequenceTable<V>` — auto-increment uint64 ID generator.
+- `SequenceTable<V>` — appendable table with stable uint64 indices. It is not
+  the required atomic allocator for `KnowledgeUnitId`, `JobId`, or queue
+  ordering; `TableSequence` in §12.5 defines that downstream contract.
 - `AnyValueTable<K, Options>` — heterogeneous typed values с runtime type info.
 
 Инфраструктура (см. `external/mdbx-containers/common/`):
@@ -254,7 +264,7 @@ memory-stack manifest; секции 5.1–5.4 — inventory для reconciliatio
 2. **ABI compatibility.** Существующие сигнатуры публичных методов не меняются. Новые методы добавляются без переупорядочивания vtable или изменения layout.
 3. **Death-of-the-author** (`external/mdbx-containers/PHILOSOPHY.md`). Библиотека оценивается по техническим качествам; `include/` остаётся первичным source of truth.
 4. **Per-thread transaction model.** Каждый поток владеет не более чем одной активной транзакцией (см. `common/Connection.hpp`). Multi-table write обеспечивается одним `Transaction` объектом, разделяемым между таблицами, а не координацией отдельных транзакций.
-5. **DRY через композицию.** Не дублировать логику existing классов. Новые классы строятся поверх `KeyValueTable`, `KeyMultiValueTable`, `AnyValueTable`.
+5. **DRY через композицию.** Не дублировать логику existing классов. Новые классы строятся поверх existing table primitives when their durable semantics fit. Persisted polymorphic data must use stable application-owned tags and an explicit physical key layout; default `AnyValueTable` type tags are not acceptable for canonical storage.
 6. **Naming conventions.** PascalCase для классов и публичных методов, `m_` prefix для private полей, snake_case для free functions в `detail::` namespace.
 7. **Include guards** — `MDBX_CONTAINERS_HEADER_<PATH>_<FILE>_<EXT>_INCLUDED` (см. `external/mdbx-containers/AGENTS.md`).
 8. **Doxygen комментарии** на английском для всех публичных API.
@@ -466,7 +476,8 @@ pagination over stable snapshots. Mutating page loops must either use
 `range_page` with exclusive cursor or repeatedly read the first bounded page of
 the current range after each mutation.
 
-Use cases: `temporal_event_index` (timestamp range), `binary_bucket_index` (short_key range + neighbor expansion), `lexical_postings` (token_id range).
+Use cases: `temporal_unit_index` (timestamp range), `binary_bucket_index`
+(short_key range + neighbor expansion), `lexical_postings` (token_id range).
 
 ### 3.4 `TypeDiscriminatedTable<EnumTag, Key, ValueVariant>`
 
@@ -479,7 +490,7 @@ template <typename EnumTag, typename Key, typename... ValueTypes>
 class TypeDiscriminatedTable {
 public:
     template <typename T>
-    void add(EnumTag tag, const Key& key, const T& value, const Transaction& txn);
+    void put(EnumTag tag, const Key& key, const T& value, const Transaction& txn);
 
     template <typename T>
     std::optional<T> find(EnumTag tag, const Key& key, const Transaction& txn) const;
@@ -490,18 +501,76 @@ public:
                 bool create_if_missing, const Transaction& txn);
 
     bool remove(EnumTag tag, const Key& key, const Transaction& txn);
+    bool contains(EnumTag tag, const Key& key, const Transaction& txn) const;
     std::vector<Key> list_keys_by_tag(EnumTag tag, const Transaction& txn) const;
+    Page<Key> list_keys_by_tag_page(EnumTag tag, PageCursor cursor,
+                                    std::size_t limit,
+                                    const Transaction& txn) const;
     std::size_t count_by_tag(EnumTag tag, const Transaction& txn) const;
 
     void set_type_tag_check(bool enabled);
 };
 ```
 
-Внутри: `AnyValueTable<Key>` (см. `external/mdbx-containers/include/mdbx_containers/AnyValueTable.hpp`) с type-tag prefix. Опциональная проверка через `set_type_tag_check(true)`.
+Внутри: `KeyValueTable<CompositeKey<EnumTag, Key>, TypedValueBytes>`.
+`EnumTag` является частью физического ключа, а не только prefix-ом внутри
+value. Это обязательный инвариант: `TypeDiscriminatedTable<ComponentKind,
+UnitId, ...>` должен хранить несколько components для одного `UnitId` без
+перезаписи.
+
+`TypedValueBytes` содержит application-owned stable type id, payload codec id,
+payload schema version and encoded payload bytes. `typeid(T).name()` запрещён
+для persisted tags. Unknown tag/type id is rejected fail-closed. If an
+implementation chooses to reuse `AnyValueTable` internally, it must still use
+the composite physical key `(EnumTag, Key)` and enable stable tag validation on
+every open; the default `AnyValueTable` type tags are not acceptable for this
+primitive.
+
+`put(tag, key, value)` is replace/upsert for the exact physical key
+`(tag, key)`; it MUST NOT modify other tags stored for the same logical key.
+`remove(tag, key)` removes that exact physical key only. `list_keys_by_tag`
+and `list_keys_by_tag_page` use the `(tag, key)` prefix and must not require a
+full DBI scan. Loading all components for one logical key uses bounded point
+reads over the stable tag registry; this is O(number_of_registered_tags) and
+does not require a second orientation. A future profile may add
+`unit_components_by_unit` only if a measured workload requires range iteration
+by `UnitId`.
+
+Stable tag registry for `agent-memory-cpp`:
+
+```cpp
+enum class ComponentKind : std::uint16_t {
+    UsageStats = 1,
+    Speaker = 2,
+    Temporal = 3,
+    EmbeddingMeta = 4,
+    CompactionMeta = 5,
+    ActivationMetadata = 6,
+    RuntimeOrigin = 7,
+    CausalContext = 8,
+    Perspective = 9,
+    EpistemicStatus = 10,
+    FocusContext = 11,
+    TaskPayload = 12,
+    DecisionPayload = 13,
+    ProcedurePayload = 14,
+};
+```
+
+Registry governance:
+
+- numeric values are never reused;
+- removed values stay reserved;
+- unknown tags and unknown type ids are rejected fail-closed on open/read;
+- tag validation is always enabled for persisted stores;
+- renaming a C++ type does not change the stored id;
+- payload schema version is stored separately from the component tag;
+- payload schema changes require migration or an explicit compatible decoder;
+- the tag registry participates in `profile_signature`.
 
 Use cases:
 
-- `unit_components` (Layer B, см. ADR-001 в `guides/memory-stacks-roadmap.md`): `ComponentKind` tag ∈ {`UsageStats`, `Speaker`, `Temporal`, `EmbeddingMeta`, `CompactionMeta`}, ключ — `UnitId`, value — `ValueVariant<UsageStatsComponent, SpeakerComponent, TemporalComponent, EmbeddingMetaComponent, CompactionMetaComponent>`. Operational компоненты, читаемые лениво из retrieval layer; tag-prefix позволяет держать все компоненты в одной DBI с минимальным I/O envelope-а.
+- `unit_components` (Layer B, см. ADR-001 в `guides/memory-stacks-roadmap.md`): `ComponentKind` tag ∈ {`UsageStats`, `Speaker`, `Temporal`, `EmbeddingMeta`, `CompactionMeta`, `ActivationMetadata`, runtime-integration tags}, logical key — `UnitId`, physical key — `(ComponentKind, UnitId)`, value — typed component bytes for operational, activation, cognitive-trace and task/decision/procedure payload components. Operational components are lazy-read by retrieval layer. Loading all components for one unit is implemented as bounded point reads over known component kinds unless a future profile adds a second orientation.
 - per-kind payload-компоненты (`QAPayload`, `FactPayload`, `ConversationEpisodePayload`, `CompiledArticlePayload`, `ChunkPayload`) — при необходимости выносятся в отдельные DBI; canonical names listed in §5.5.
 
 ### 3.5 `CompositeKey<Parts...>` и хелперы
@@ -658,9 +727,9 @@ Implementing this as unconditional `put` is forbidden for identity mappings.
    `compiled_article_payloads` / `chunk_payloads`. Stale payload прежнего kind
    не допускается в normal update path, потому что kind immutable; migration
    cleanup должен использовать old envelope.
-9. Tag-prefixed operational components в `unit_components` (DBI:
-   `TypeDiscriminatedTable<ComponentKind, UnitId, ValueVariant<UsageStats |
-   Speaker | Temporal | EmbeddingMeta | CompactionMeta>>`).
+9. Typed operational components в `unit_components` (DBI:
+   `TypeDiscriminatedTable<ComponentKind, UnitId, TypedComponentValue>` with
+   physical key `(ComponentKind, UnitId)`).
 10. Projections в `unit_projections` (DBI:
    `KeyValueTable<(scope_id, UnitId, ProjectionKind, revision),
    SearchProjection>`).
@@ -672,8 +741,9 @@ Implementing this as unconditional `put` is forbidden for identity mappings.
 12. Все scope-aware secondary/range indexes, относящиеся к данной write:
     `inverted_token_to_unit` (candidate index по каждой projection),
     `field_to_postings` (KV posting stats by full posting identity),
-    `temporal_event_index`/`temporal_unit_index`,
-    `speaker_to_units`/`session_to_units`, `usage_stats_index`,
+    `temporal_unit_index`,
+    `speaker_to_units`/`session_to_units`, `usage_by_last_access`,
+    `usage_by_cooldown`,
     `graph_edges_by_src`/`graph_edges_by_dst`, `metadata_filters`.
 13. Optional/profile-gated writes, если профиль их включает:
     `source_refs.replace_for_unit(unit_id, refs)` for `enable_full_source_refs`,
@@ -766,7 +836,7 @@ inline std::vector<std::uint8_t> from_hex_string(const std::string& hex);
 
 1. **Текущий target — single-env / single-writer.** M0/M1/M2 ориентированы на embedded deployment с одним MDBX env и атомарной записью через один `Transaction` / `MultiTableWriter`. Sharding сразу меняет transaction boundary: запись envelope + components + projections + secondary indexes перестаёт быть атомарной, если части unit-а попадают в разные env.
 2. **`scope_id` уже является логическим partition key.** Scope-aware secondary indexes начинаются с `scope_id` (см. §3.2 и `guides/memory-stacks-roadmap.md` ADR-012). Для текущих профилей этого достаточно, чтобы изолировать tenant / project / agent namespace без физического дробления storage.
-3. **DBI budget не должен умножаться на shards.** Секция §5.5 уже планирует десятки DBI в одном env, а §1.5.10 добавляет потенциальные 5 sync DBI при opt-in adoption. Физический shard-per-scope или shard-per-capability быстро превращает `max_dbs` budget из локального ограничения в distributed capacity model; это отдельный дизайн.
+3. **DBI budget не должен умножаться на shards.** Секция §5.5 уже планирует десятки DBI в одном env, а §1.5.10 добавляет потенциальные 6 sync DBI при opt-in adoption. Физический shard-per-scope или shard-per-capability быстро превращает `max_dbs` budget из локального ограничения в distributed capacity model; это отдельный дизайн.
 4. **CAP / consistency trade-offs не возникают бесплатно.** Как только shards живут в разных env / process / hosts, нужны явные ответы про consistency, availability under partition, resharding, tombstones, read-your-writes и cross-shard query merge. Встраивать только имена shard-ов без этих контрактов опаснее, чем не встраивать sharding вообще.
 
 Важно не смешивать sharding с DUPSORT:
@@ -813,11 +883,22 @@ returns the first value in a contiguous range `[first, first + count)`.
 `count = 0` is an error. Overflow is an error and MUST NOT perform partial
 writes.
 
+`TableSequence` MUST NOT be implemented as `max(existing_key) + 1`.
+Pruning tail records, deleting old jobs, or rebuilding secondary indexes must
+not lower or recompute the next sequence value. Concurrent writers rely on MDBX
+write-transaction serialization; two committed write transactions cannot
+receive overlapping ranges. After process restart, the next value is read from
+the MDBX DBI sequence state, not inferred from table contents.
+
 When a callback allocates an id and then commits an `insert_if_absent`
 collision path as `Existed`, the sequence increment is committed too and may
 leave a gap. When the transaction aborts or commit fails, the sequence
 increment is not consumed. This keeps DBI budget unchanged while giving
 knowledge-unit ids and job ids a transactional allocator.
+
+Acceptance cases: concurrent writers, abort rollback, restart, overflow,
+tail-record pruning, `reserve(count)` contiguity, and allocation plus
+`insert_if_absent` in the same transaction.
 
 **`AnyValueTable<K, Options>`:** `bulk_set_of_type<T>(container, txn)`, `list_keys_by_type<T>(txn)`.
 
@@ -909,8 +990,9 @@ knowledge_units_by_kind               ReverseIndexTable<CompositeKey<ScopeId, Kn
 
 // Layer B — operational components + separate per-kind payload DBIs
 unit_components                       TypeDiscriminatedTable<ComponentKind, UnitId,
-                                                            ValueVariant<UsageStats | Speaker | Temporal
-                                                                       | EmbeddingMeta | CompactionMeta>>
+                                                            TypedComponentValue>
+                                      // physical key = (ComponentKind, UnitId);
+                                      // multiple components per UnitId must not overwrite each other.
 qa_payloads                           KeyValueTable<UnitId, QAPayload>                   // capability QAPairs
 fact_payloads                         KeyValueTable<UnitId, FactPayload>                 // capability TemporalFact
 conversation_episode_payloads         KeyValueTable<UnitId, ConversationEpisodePayload> // capability ConversationMemory
@@ -942,11 +1024,11 @@ lexical_collection_stats              KeyValueTable<CompositeKey<ScopeId, Projec
 metadata_filters                      ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>
 graph_edges_by_src                    ReverseIndexTable<CompositeKey<ScopeId, FromUnitId, EdgeKind>, RelationValue<ToUnitId, EdgePayload>>
 graph_edges_by_dst                    ReverseIndexTable<CompositeKey<ScopeId, ToUnitId, EdgeKind>, RelationValue<FromUnitId, EdgePayload>>
-temporal_event_index                  RangeIndexTable<CompositeKey<ScopeId, Timestamp, EventId>, EventPayload>
 temporal_unit_index                   RangeIndexTable<CompositeKey<ScopeId, Timestamp, UnitId>, UnitId>
 speaker_to_units                      ReverseIndexTable<CompositeKey<ScopeId, SpeakerId>, UnitId>
 session_to_units                      ReverseIndexTable<CompositeKey<ScopeId, SessionId>, UnitId>
-usage_stats_index                     ReverseIndexTable<CompositeKey<ScopeId, UnitId>, UsageStatsComponent>
+usage_by_last_access                  RangeIndexTable<CompositeKey<ScopeId, LastUsedAtMs, UnitId>, Empty>
+usage_by_cooldown                     RangeIndexTable<CompositeKey<ScopeId, CooldownUntilMs, UnitId>, Empty>
 
 // Schema metadata
 schema_info                           KeyValueTable<string, SchemaInfo>                  // envelope_version, component_versions[], profile_signature
@@ -961,7 +1043,7 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 | `knowledge_units` | да (Layer A envelope hot path) | `agent_memory.knowledge_unit.v1` | TBD | Primary envelope storage по `UnitId` |
 | `content_key_to_unit_id` | да (Layer A dedupe/migration) | `agent_memory.content_key.v1` | TBD | Content-addressed lookup `KnowledgeUnitKey -> UnitId` |
 | `knowledge_units_by_kind` | да (Layer A, DUPSORT) | `agent_memory.unit_by_kind.v1` | TBD | Scope-aware reverse index `(ScopeId, KnowledgeUnitKind) -> UnitId[]` |
-| `unit_components` | да (Layer B operational) | `agent_memory.component.v1` | TBD | Tag-prefixed components (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta) |
+| `unit_components` | да (Layer B operational) | `agent_memory.component.v1` | TBD | Typed components by physical key `(ComponentKind, UnitId)` |
 | `qa_payloads` | по capability `QAPairs` | `agent_memory.qa.v1` | TBD | Per-kind payload для `QAPair` units |
 | `fact_payloads` | по capability `TemporalFact` | `agent_memory.fact.v1` | TBD | Per-kind payload для `Fact` units |
 | `conversation_episode_payloads` | по capability `ConversationMemory` | `agent_memory.episode.v1` | TBD | Per-kind payload для `ConversationEpisode` units |
@@ -981,14 +1063,34 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 | `metadata_filters` | да (lightweight pre-filter) | `agent_memory.metadata_filter.v1` | TBD | Reverse index `(scope, metadata_key, metadata_value) -> UnitId` |
 | `graph_edges_by_src` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Scope-aware outgoing edges with value `RelationValue<ToUnitId, EdgePayload>` |
 | `graph_edges_by_dst` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Scope-aware incoming edges with value `RelationValue<FromUnitId, EdgePayload>` |
-| `temporal_event_index` | по capability `TemporalIndex` | `agent_memory.event.v1` | TBD | Scope-aware range index `(scope, timestamp, event_id) -> EventPayload` |
 | `temporal_unit_index` | по capability `TemporalIndex` | `agent_memory.unit_ts.v1` | TBD | Scope-aware range index `(scope, timestamp, unit_id) -> UnitId` |
 | `speaker_to_units` | по capability `SpeakerAttribution` | `agent_memory.speaker.v1` | TBD | Reverse index `(scope, speaker_id) -> UnitId` |
 | `session_to_units` | по capability `SpeakerAttribution` | `agent_memory.session.v1` | TBD | Reverse index `(scope, session_id) -> UnitId` |
-| `usage_stats_index` | по capability `UsageTracking` | `agent_memory.usage_stats.v1` | TBD | Reverse index `(scope, unit_id) -> UsageStatsComponent` |
+| `usage_by_last_access` | по capability `UsageTracking` | `agent_memory.usage_last_access.v1` | TBD | Range index `(scope, last_used_at_ms, unit_id) -> empty` for decay/archive scans |
+| `usage_by_cooldown` | по capability `UsageTracking` | `agent_memory.usage_cooldown.v1` | TBD | Range index `(scope, cooldown_until_ms, unit_id) -> empty` for cooldown expiry scans |
 | `schema_info` | да (schema metadata) | `agent_memory.schema.v1` | TBD | Envelope_version, component_versions[], profile_signature |
 
 Владелец каждой DBI будет зафиксирован в соответствующем PR; на этапе TZ — TBD. Версия payload соответствует общему контракту `agent_memory.<concept>.v1`, см. `guides/memory-stacks-roadmap.md` ADR-001 and §12 ownership rules.
+
+`temporal_unit_index` is the only M1 temporal range index. `Event` units remain
+ordinary `KnowledgeUnit` records whose validity lives in `TemporalComponent`.
+Do not add `temporal_event_index` to the canonical inventory unless a later
+profile introduces a separate authoritative `EventRecord` entity and updates
+the DBI manifest/budget.
+
+M1 temporal query contract:
+
+| Operation | Status | Contract |
+|---|---|---|
+| range by `valid_from_ms` | Supported | Range page over `(scope, valid_from_ms, unit_id)` |
+| latest records before `T` | Supported with limit | Bounded backward/range scan with explicit result limit |
+| point-in-validity lookup at `T` | Supported only through bounded algorithm | Scan candidates with `valid_from_ms <= T`, stop at configured page/age limit, verify `valid_until_ms` from value/component |
+| arbitrary interval overlap | M2+ | Requires interval buckets or a second index |
+| valid-time plus recorded-time lookup | M2+ | AM-13 bi-temporal storage |
+
+Profiles must surface the point-lookup bound in diagnostics. A profile that
+needs unbounded historical interval lookup cannot claim M1 temporal readiness
+with only `temporal_unit_index`.
 
 Capability labels in this manifest map to `MemoryProfileSpec` selectors as
 follows:
@@ -1037,13 +1139,18 @@ follows:
   application payload поверх `KeyValueTable`, а не как публичный тип
   `mdbx_containers`.
 
-Все таблицы используют префикс payload versioning (`agent_memory.knowledge_unit.v1`, `agent_memory.qa.v1`, и т.п.). `Config::max_dbs = 64` является текущим ceiling для одного MDBX env.
+Все таблицы используют префикс payload versioning (`agent_memory.knowledge_unit.v1`, `agent_memory.qa.v1`, и т.п.). `Config::max_dbs = 96` является рекомендуемым ceiling для одного agent-memory MDBX env; profiles that keep `64` must opt out of enough deltas to preserve the manifest reserve.
 
 #### 5.5.1 DBI budget checkpoint
 
-`Config::max_dbs = 64` является capacity ceiling, а не обещанием открыть 64
-named DBIs в каждом профиле. Canonical baseline берётся из physical manifest
-§5.5; таблица ниже затем добавляет явные profile, sync and migration deltas.
+`Config::max_dbs = 96` является recommended capacity ceiling, а не обещанием открыть 96
+named DBIs в каждом профиле. Machine-readable inventory in
+[`dbi-manifest.yaml`](dbi-manifest.yaml) is the normative source of truth for
+DBI names, selectors, sync modes and budget arithmetic. The §5.5 summary table
+and this checkpoint are review-friendly projections of that manifest and must
+be validated with `tools/validate-dbi-manifest.py` before merge. Canonical
+baseline берётся из manifest/§5.5; таблица ниже затем добавляет явные profile,
+sync and migration deltas.
 Legacy/profile-specific inventory из §5.1-§5.4 не считается автоматически;
 каждая такая DBI должна попасть в конкретный `MemoryProfileSpec` manifest,
 прежде чем её можно учитывать в budget.
@@ -1057,15 +1164,55 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Opt-in response cache delta | 0 by default, +1 if `response_cache_storage == Mdbx` | +1 | KV supported | `response_cache` keyed by `ResponseCacheStorageKey = (scope, provider, model, request_hash, suffix, schema_version)`; runtime-services-roadmap.md owns policy and safety defaults. |
-| Optional sync system DBIs from §1.5.10 | 0 by default, +5 opt-in | +5 | opt-in only | Not used by M0/M1/M2 while §11.7 is DEFER. |
+| Optional sync system DBIs from §1.5.10 | 0 by default, +6 opt-in | +6 | opt-in only | Not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
-| Planned expanded peak under current assumptions | profile-selected | 56 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + response cache + sync + reserve | within ceiling | Leaves at least 8 DBI slots of headroom under `max_dbs = 64`. |
+| Planned expanded peak under current assumptions | profile-selected | 57 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + response cache + sync + reserve | within recommended ceiling | Leaves 39 DBI slots of headroom under `max_dbs = 96`; profiles that choose the legacy `64` ceiling must disable deltas until at least 16 free slots remain. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
 orientation, steady-state count, migration peak, and sync support status.
 Manual acceptance check: enumerate the §5.5 summary table rows, add only
-profile-selected deltas, then verify `steady + sync + migration_reserve <= 64`.
+profile-selected deltas, then verify `steady + sync + migration_reserve <= max_dbs - minimum_free_slots`.
+
+### 5.5.2. Operational limits for one MDBX environment
+
+The canonical layout assumes one physical MDBX environment may contain primary
+units, raw bodies, lexical postings, vectors, usage updates, runtime queue
+records, compaction checkpoints, source refs, and optional sync DBIs. This is
+allowed only with bounded write policies:
+
+- every mutating API defines maximum records per write transaction;
+- every mutating API defines maximum encoded batch bytes;
+- foreground write transactions have a documented maximum target duration;
+- read transactions used by retrieval, reindex, compaction and sync workers
+  have a documented maximum lifetime;
+- lexical reindex and projection rebuild run in paginated batches, never as an
+  unbounded full-index rewrite in one transaction;
+- compaction and async indexing yield to foreground ingestion/retrieval writes
+  through queue priority or backpressure;
+- map growth policy is documented for large resource-body and vector profiles.
+
+Initial profile defaults:
+
+| Limit | Default | Enforcement |
+|---|---:|---|
+| records per write transaction | 4096 | split or reject before write |
+| encoded bytes per transaction | 32 MiB | split or reject before write |
+| foreground write transaction target | 50 ms | batch coordinator yields/checkpoints |
+| retrieval read transaction lifetime | 500 ms | diagnostics + watchdog in debug/check builds |
+| maintenance read transaction lifetime | 5 s | worker checkpoint/retry |
+| relation/range page size | 1024 entries | API validation caps requested limit |
+| ready queue dispatch page | 512 jobs | dispatcher pagination |
+| compaction batch | 512 units or 32 MiB | checkpoint and reschedule |
+| resource body chunk size | 1 MiB encoded | `ResourceBodyStore` validation |
+| maximum MDBX-backed body size | 512 MiB per resource | ingestion rejects or externalizes |
+| lexical reindex batch | 2048 units | indexer checkpoint |
+
+On limit pressure, APIs must choose one documented behavior: reject, split,
+retry with checkpoint, defer to queue, or apply backpressure. Silent unbounded
+growth is not allowed. Exact numeric defaults may be tuned by implementation
+PRs, but the contract is normative: a profile cannot claim M1c readiness until
+these limits are enforced or explicitly surfaced in profile diagnostics.
 
 ### 5.6. Sync subsystem mapping (informational)
 
@@ -1083,7 +1230,7 @@ budget автоматически; они считаются только при
 | `knowledge_units` | `KeyValueTable<UnitId, KnowledgeUnitEnvelope>` (§5.5 Layer A) | Supported | Базовый KV путь; sync v0.1 покрывает |
 | `content_key_to_unit_id` | `KeyValueTable<KnowledgeUnitKey, UnitId>` (§5.5 Layer A) | Supported | Dedupe/migration lookup; KV путь |
 | `knowledge_units_by_kind` | `ReverseIndexTable<CompositeKey<ScopeId, KnowledgeUnitKind>, UnitId>` DUPSORT (§5.5) | **NOT supported** | DUPSORT не покрыт в v0.1; reverse index layer не синхронизируется |
-| `unit_components` | `TypeDiscriminatedTable<ComponentKind, UnitId, ValueVariant<…>>` через `AnyValueTable` (§3.4) | **NOT supported** | `AnyValueTable` не покрыт в v0.1 |
+| `unit_components` | `TypeDiscriminatedTable<ComponentKind, UnitId, TypedComponentValue>` over `KeyValueTable<CompositeKey<ComponentKind, UnitId>, TypedValueBytes>` (§3.4) | Supported if implemented exactly as KV | The old `AnyValueTable<UnitId>` interpretation is forbidden because it loses components and is not sync-covered |
 | `qa_payloads`, `fact_payloads`, `conversation_episode_payloads`, `compiled_article_payloads`, `chunk_payloads` | `KeyValueTable<UnitId, PerKindPayload>` (§5.5 Layer B) | Supported | Per-kind payloads — обычные KV |
 | `source_refs` | `KeyValueTable<UnitId, std::vector<SourceRef>>` (§5.5 Layer B) | Supported | Full source refs; M1 capability |
 | `unit_projections` | `KeyValueTable<CompositeKey<...>, SearchProjection>` (§5.5 Layer C) | Supported | Composite key — opaque bytes на wire (см. §1.5.5) |
@@ -1093,20 +1240,34 @@ budget автоматически; они считаются только при
 | `lexical_token_by_text`, `lexical_token_by_id`, `lexical_chunk_stats`, `lexical_token_stats`, `lexical_collection_stats` | `KeyValueTable<CompositeKey<...>, ...>` (§5.5) | Supported | Canonical lexical dictionary/stats DBI |
 | `metadata_filters` | `ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>` поверх `KeyMultiValueTable` | **NOT supported** | Pre-filter indexes не синхронизируются в v0.1 |
 | `graph_edges_by_src`, `graph_edges_by_dst` | `ReverseIndexTable` поверх `KeyMultiValueTable` | **NOT supported** | Graph edges — DUPSORT-семантика, см. §3.2 + §5.5 |
-| `temporal_event_index`, `temporal_unit_index` | `RangeIndexTable<CompositeKey<ScopeId, Timestamp, ...>, …>` поверх `KeyValueTable` или `KeyMultiValueTable` (§3.3) | Supported *или* **NOT supported** в зависимости от impl-а | Требует решения: если `RangeIndexTable` реализуется поверх `KeyMultiValueTable` (multi-payload per key), статус NOT supported; если поверх `KeyValueTable` (single payload), Supported |
+| `temporal_unit_index` | `RangeIndexTable<CompositeKey<ScopeId, Timestamp, UnitId>, UnitId>` поверх `KeyValueTable` или `KeyMultiValueTable` (§3.3) | Supported *или* **NOT supported** в зависимости от impl-а | Требует решения: если `RangeIndexTable` реализуется поверх `KeyMultiValueTable` (multi-payload per key), статус NOT supported; если поверх `KeyValueTable` (single payload), Supported |
 | `speaker_to_units`, `session_to_units` | `ReverseIndexTable` поверх `KeyMultiValueTable` | **NOT supported** | DUPSORT |
-| `usage_stats_index` | `ReverseIndexTable<CompositeKey<ScopeId, UnitId>, UsageStatsComponent>` (§5.5) | **NOT supported** | DUPSORT |
+| `usage_by_last_access`, `usage_by_cooldown` | `RangeIndexTable<CompositeKey<ScopeId, Timestamp, UnitId>, Empty>` over `KeyValueTable` (§5.5) | Supported if implemented as KV range indexes | Serves decay/archive/cooldown range scans; not a component duplicate |
 | `schema_info` | `KeyValueTable<string, SchemaInfo>` (§5.5) | Supported | KV |
 | `source_refs_by_resource`, `response_cache` | `ReverseIndexTable` / `KeyValueTable` profile deltas (§5.5.1) | Mixed | `source_refs_by_resource` is DUPSORT and not sync v0.1; `response_cache` is KV |
 | legacy `lexical_token_by_text`, `lexical_token_by_id`, `lexical_chunk_stats`, `lexical_token_stats` | `KeyValueTable<...>` (§5.1) | Supported | Legacy lexical aliases; canonical names live in §5.5 |
 | legacy `lexical_postings`, `lexical_field_postings` | `KeyMultiValueTable<...>` / `ReverseIndexTable` (§5.1, §3.2) | **NOT supported** | Legacy DUPSORT postings — critical gap for BM25 sync |
-| `binary_bucket_index`, `embedding_store`, `chunk_store` | `RangeIndexTable` / `KeyValueTable` (§5.2) | Supported (KV) *или* **NOT supported** (если `RangeIndexTable` через `KeyMultiValueTable`) | Зависит от impl-а, см. temporal_event_index выше |
+| `binary_bucket_index`, `embedding_store`, `chunk_store` | `RangeIndexTable` / `KeyValueTable` (§5.2) | Supported (KV) *или* **NOT supported** (если `RangeIndexTable` через `KeyMultiValueTable`) | Зависит от impl-а, см. `temporal_unit_index` выше |
 | legacy `qa_knowledge`, `fact_store`, `event_store`, `graph_nodes` | `KeyValueTable<...>` (§5.3) | Supported | Legacy KV aliases; canonical names live in §5.5 |
 | legacy `qa_inverted`, `fact_inverted`, `resource_metadata_filters`, `graph_edges_by_src/dst` | `ReverseIndexTable` поверх `KeyMultiValueTable` | **NOT supported** | Legacy DUPSORT aliases; canonical names live in §5.5 |
 | legacy `resource_kinds` | `TypeDiscriminatedTable<DerivedRecordKind, ResourceId, payload>` через `AnyValueTable` (§5.3) | **NOT supported** | Legacy `AnyValueTable` alias |
 | `agent_memory_documents`, `agent_memory_chunks`, `agent_memory_document_chunks`, `agent_memory_resource_manifests` | `KeyValueTable<...>` (§5.4) | Supported | KV infrastructure |
 
 Эта таблица — **best-effort projection на момент написания TZ**. Статус для каждого DBI может измениться после `RangeIndexTable` upstream-уточнения (`KeyValueTable` vs `KeyMultiValueTable` основа) и после `KeyMultiValueTable` sync coverage, который формально запланирован на v0.2 (см. §11.7).
+
+Sync role map:
+
+| Role | DBIs | Adoption rule |
+|---|---|---|
+| authoritative logical state | `knowledge_units`, `content_key_to_unit_id`, `unit_components`, per-kind payload DBIs, `source_refs`, `schema_info`, MDBX-backed `resource_bodies` deltas | Require stable codec/layout and logical adapter before multi-host sync |
+| derived/rebuildable indexes | `unit_projections`, lexical dictionary/stats/postings, `metadata_filters`, `graph_edges_by_*`, `temporal_unit_index`, `speaker_to_units`, `session_to_units`, `usage_by_*`, `embedding_vectors` | May be rebuilt from authoritative state; raw sync is optional and must not be the only recovery path |
+| runtime operational state | runtime queue DBIs, `compaction_handoffs`, `response_cache` | Sync is profile-specific; single-host profiles do not enable it |
+| upstream system state | `_mdbxc_meta`, `_mdbxc_changelog`, `_mdbxc_origins`, `_mdbxc_applied`, `_mdbxc_identity_index`, `_mdbxc_sync_schema` | Open only when sync is explicitly adopted |
+
+Composition over a supported `KeyValueTable` is not automatically
+sync-compatible. `TypeDiscriminatedTable`, `RangeIndexTable` and
+`ResourceBodyStore` require profile-level codec/layout tests and explicit
+adapter registration before they can be treated as sync-covered.
 
 #### 5.6.2 Critical gaps (явные)
 
@@ -1115,10 +1276,13 @@ budget автоматически; они считаются только при
 1. **`inverted_token_to_unit` (DBI из §3.3 / §5.5 Layer C secondary indexes).**
    Underlying `KeyMultiValueTable` через `ReverseIndexTable` (см. §3.2) — DUPSORT-семантика. Sync v0.1 не покрывает `KeyMultiValueTable`, поэтому lexical inverted index **не синхронизируется между узлами в v0.1**.
 
-2. **`unit_components` (DBI из §3.4 / §5.5 Layer B).**
-   Underlying `AnyValueTable` через `TypeDiscriminatedTable` (см. §3.4). Sync v0.1 не покрывает `AnyValueTable`, поэтому operational components из `unit_components` **не синхронизируются между узлами в v0.1**. Per-kind payload DBIs используют `KeyValueTable` и покрыты в §5.6.1.
+2. **`unit_components` old interpretation (DBI из §3.4 / §5.5 Layer B).**
+   `AnyValueTable<UnitId>` is explicitly rejected. It stores one value per
+   physical key, can overwrite multiple components for the same unit, and is
+   not sync-covered. The required contract is a KV-backed physical key
+   `(ComponentKind, UnitId)` with stable application-owned typed payload ids.
 
-Та же проблема распространяется на остальные DUPSORT-производные DBI (`metadata_filters`, `graph_edges_by_src/dst`, `speaker_to_units`, `session_to_units`, `usage_stats_index`, legacy BM25 `lexical_postings`). Canonical `field_to_postings` является KV table и покрывается sync v0.1 как derived posting stats.
+Та же проблема распространяется на остальные DUPSORT-производные DBI (`metadata_filters`, `graph_edges_by_src/dst`, `speaker_to_units`, `session_to_units`, legacy BM25 `lexical_postings`). Canonical `field_to_postings`, lexical dictionary/stats, `unit_components` in its KV-backed contract, and usage range indexes are KV-derived and can be covered by sync v0.1 if the profile ever adopts sync.
 
 Цитата из upstream `DESIGN.md` (по указанному в §1.5.3 файлу):
 
@@ -1128,11 +1292,11 @@ budget автоматически; они считаются только при
 
 #### 5.6.3 Implication для agent-memory-cpp
 
-До тех пор, пока upstream не выпустит v0.2 с `KeyMultiValueTable` и `AnyValueTable` wire-format-ом, **lexical inverted index и scope-aware secondary indexes, а также `unit_components` storage, не могут быть синхронизированы между узлами**. Это напрямую влияет на multi-host scenario в `guides/memory-stacks-roadmap.md` §13.2/13.3 (Distributed scope routing).
+До тех пор, пока upstream не выпустит v0.2 с `KeyMultiValueTable` wire-format-ом, **lexical inverted candidate index и DUPSORT scope-aware secondary indexes не могут быть синхронизированы между узлами**. Это напрямую влияет на multi-host scenario в `guides/memory-stacks-roadmap.md` §13.2/13.3 (Distributed scope routing). `unit_components` no longer depends on `AnyValueTable` under this TZ, but it still requires a new upstream `TypeDiscriminatedTable` implementation and round-trip tests.
 
 **Промежуточное решение** для проекта: defer sync adoption для путей `KeyMultiValueTable` / `AnyValueTable` до v0.2. KV-derived пути (`knowledge_units`, `unit_projections`, `embedding_*`, `schema_info`, per-kind payloads) технически покрыты, но включать их в v0.1 single-host конфигурации смысла нет (single-writer per env остаётся правилом M0/M1/M2, см. §1 non-goals).
 
-Конкретное решение о formal adoption (включая budget reallocation для 5 sync system DBIs) фиксируется в §11.7.
+Конкретное решение о formal adoption (включая budget reallocation для 6 sync system DBIs) фиксируется в §11.7.
 
 ## 6. Порядок реализации (приоритеты)
 
@@ -1219,9 +1383,11 @@ budget автоматически; они считаются только при
   `qa_knowledge` inventory из §5.3 не открывается в canonical profile.
 - `MdbxGraphStore` использует `graph_edges_by_src` и `graph_edges_by_dst` как
   две явные physical orientations; traversal policy остаётся downstream.
-- `MdbxTemporalIndex` использует `temporal_event_index` /
-  `temporal_unit_index` для range queries; event payload semantics остаются
-  downstream.
+- `MdbxTemporalIndex` использует `temporal_unit_index` для range queries.
+  M1 treats events as ordinary `KnowledgeUnit` records with `TemporalComponent`.
+  A separate `temporal_event_index` is a future profile delta only if
+  `agent-memory-cpp` introduces an authoritative `EventRecord` entity outside
+  `KnowledgeUnit`.
 
 Все интеграционные тесты должны проходить в C++11 и C++17 режимах.
 
@@ -1236,7 +1402,7 @@ Contract tests для будущей adoption-ветки:
 3. **Partial coverage guard.** Fixture с KV-derived таблицей и DUPSORT-derived inverted index не должен объявляться fully synced profile: успешный KV round-trip не маскирует отсутствие `KeyMultiValueTable` coverage. Этот guard принадлежит `agent-memory-cpp` profile validator-у.
 4. **DirectSyncPeer / SyncEngine contract.** Для `DirectSyncPeer` и `SyncEngine` отдельно проверяются pull/push, `ApplyResult::{Applied,Skipped,Conflict}`, conflict diagnostic и idempotent replay (`Skipped`).
 5. **SyncWorker over DirectSyncPeer contract.** Для `SyncWorker` поверх `DirectSyncPeer` отдельно проверяются round failure, переход в `Backoff`, retry и возврат в `Idle` после успешного round-а.
-6. **System DBI budget.** Для зафиксированного upstream snapshot `d4d219c` проверяется, что 5 системных DBI из §1.5.10 учитываются в `max_dbs` budget и отражены в diagnostics. При обновлении pinned upstream snapshot ожидание пересматривается по system-DBI manifest.
+6. **System DBI budget.** Для зафиксированного upstream snapshot `8c76661d` проверяется, что 6 системных DBI из §1.5.10 учитываются в `max_dbs` budget и отражены в diagnostics. При обновлении pinned upstream snapshot ожидание пересматривается по system-DBI manifest.
 
 Текущий TZ не требует создавать эти тесты до формальной adoption. Их назначение — зафиксировать future acceptance criteria, чтобы sync v0.1 не был случайно включён как «почти готовый» distributed mode.
 
@@ -1301,8 +1467,8 @@ Opt-in sync metrics применяются только в сборках с `MD
 |---|---|---|---|
 | Sync opt-in | KV sync round-trip через `DirectSyncPeer` | applied records, p50/p95/p99 apply latency, bytes in/out | report-only baseline на reference hardware |
 | Sync opt-in | Application schema mismatch guard | incompatible `profile_signature` / `migration_phase` | `100%` application-level rejection before user DBI mutation |
-| Sync opt-in | Unsupported table profile validator | DBI manifest with `KeyMultiValueTable` / `AnyValueTable` / `HashedKeyValueStore` | `100%` startup rejection before sync begins; no silent partial-success |
-| Sync opt-in | System DBI budget | counted sync DBIs | 5 additional DBIs for pinned snapshot `d4d219c`; revise expectation when pinned upstream snapshot changes |
+| Sync opt-in | Unsupported table profile validator | DBI manifest with `KeyMultiValueTable` / `KeyOrderedMultiValueTable` / `AnyValueTable` / `HashedKeyValueStore` | `100%` startup rejection before sync begins; no silent partial-success |
+| Sync opt-in | System DBI budget | counted sync DBIs | 6 additional DBIs for pinned snapshot `8c76661d`; revise expectation when pinned upstream snapshot changes |
 | Sync opt-in | Idempotent re-apply | duplicate batch handling | `100%` duplicate records reported as `Skipped`, no duplicate user records |
 
 Измерительный протокол: не менее `30` независимых benchmark rounds, каждый round — `10 000` операций на freshly-constructed state; для каждого round-а вычисляются p50/p95/p99 по его `10 000` операциям; затем для каждого percentile (p50/p95/p99) вычисляется median (и dispersion: std-dev или IQR) по `30` rounds — это и есть финальная reported metric; дополнительно per-round p50/p95/p99 фиксируются; warm-up period документируется (минимум `3` предварительных round-а отбрасываются); эффекты GC/памяти измеряются и комментируются; hardware doc фиксируется в `external/mdbx-containers/bench/results/<YYYY-MM>/`. Альтернативный упрощённый вариант: не менее `1 000 000` operation-level samples; p50/p95/p99 по полной выборке; median ± stddev между независимыми rounds.
@@ -1326,28 +1492,29 @@ Opt-in sync metrics применяются только в сборках с `MD
 
 5. **Schema versioning остаётся на стороне приложения.** `TypeDiscriminatedTable` не навязывает payload version. Контракт: payload prefix `agent_memory.knowledge_unit.v1` etc. валидируется на уровне `agent-memory-cpp`, не в mdbx-containers.
 
-6. **`max_dbs` ceiling.** `Config::max_dbs = 64` является capacity ceiling для
-одного MDBX env. Единственный authoritative accounting — §5.5.1; каждое новое
-physical DBI или profile delta обязано обновить этот checkpoint. Verify, что
-MDBX env flags поддерживают выбранный profile manifest без `MDBX_NOTLS`
-reconfiguration.
+6. **`max_dbs` ceiling.** `Config::max_dbs = 96` является recommended capacity
+ceiling для agent-memory MDBX env. Legacy `64` допустим только для явно
+урезанных profile combinations, которые проходят manifest reserve check.
+Единственный authoritative accounting — §5.5.1; каждое новое physical DBI или
+profile delta обязано обновить этот checkpoint. Verify, что MDBX env flags
+поддерживают выбранный profile manifest без `MDBX_NOTLS` reconfiguration.
 
 7. **Sync subsystem adoption** (см. §1.5 и §5.6). Принимать ли upstream `sync` v0.1, отложить adoption полностью, или форкать custom решение?
 
-   **Контекст.** v0.1 покрывает только KV-derived table types (`KeyValueTable`, `KeyTable`, `ValueTable`, `SequenceTable`, `VectorStore` indirect). Это **исключает** наши критические paths: lexical candidate index через `inverted_token_to_unit` (`KeyMultiValueTable` underlying) и `unit_components` storage (`AnyValueTable` underlying через `TypeDiscriminatedTable`). Тот же gap покрывает DUPSORT secondary indexes (`metadata_filters`, `graph_edges_by_*`, `speaker_to_units`, `session_to_units`, `usage_stats_index`), а также legacy DUPSORT-производные пути из §5.3. Canonical `field_to_postings` and lexical dictionary/stats are KV and covered by the v0.1 table-type surface.
+   **Контекст.** v0.1 покрывает только KV-derived table types (`KeyValueTable`, `KeyTable`, `ValueTable`, `SequenceTable`, `VectorStore` indirect). Это **исключает** lexical candidate index через `inverted_token_to_unit` (`KeyMultiValueTable` underlying) и DUPSORT secondary indexes (`metadata_filters`, `graph_edges_by_*`, `speaker_to_units`, `session_to_units`), а также legacy DUPSORT-производные пути из §5.3. Canonical `field_to_postings`, lexical dictionary/stats, usage range indexes and the corrected KV-backed `unit_components` contract are KV-derived, but still need profile-level adoption tests before sync can be enabled.
 
    **Trade-offs.**
 
-   - **Принять v0.1 сейчас.** Получаем baseline для KV-путей (`knowledge_units`, `unit_projections`, `embedding_*`, `schema_info`, per-kind payloads, `field_to_postings`, lexical dictionary/stats) — но inverted candidate indexes и components по-прежнему остаются локальными. Mixed replication state (часть DBIs synced, часть — нет) увеличивает operational complexity без видимого выигрыша для M0/M1/M2.
+   - **Принять v0.1 сейчас.** Получаем baseline для KV-путей (`knowledge_units`, `unit_projections`, `embedding_*`, `schema_info`, per-kind payloads, `field_to_postings`, lexical dictionary/stats, usage range indexes, corrected `unit_components`) — но inverted candidate indexes и DUPSORT secondary indexes по-прежнему остаются локальными. Mixed replication state (часть DBIs synced, часть — нет) увеличивает operational complexity без видимого выигрыша для M0/M1/M2.
    - **Игнорировать sync полностью.** Минимальный cognitive load на этом этапе; остаёмся strict single-host. Стоимость: позже придётся догонять upstream API drift-ы, если когда-нибудь понадобится multi-host.
-   - **Форкнуть custom решение** (поверх существующих `KeyValueTable`/`KeyMultiValueTable`). Полный контроль над wire format и table coverage, включая `KeyMultiValueTable` и `AnyValueTable`. Стоимость: собственный DESIGN.md, свои round-trip тесты, своя on-call ответственность за конфликт-резолюцию. По сути повторяет upstream работу.
+   - **Форкнуть custom решение** (поверх существующих `KeyValueTable`/`KeyMultiValueTable`). Полный контроль над wire format и table coverage, включая `KeyMultiValueTable`. Стоимость: собственный DESIGN.md, свои round-trip тесты, своя on-call ответственность за конфликт-резолюцию. По сути повторяет upstream работу.
 
    Дополнительные соображения:
 
-   - **Budget impact.** Активация sync v0.1 добавляет 5 системных DBIs (`_mdbxc_meta`, `_mdbxc_changelog`, `_mdbxc_origins`, `_mdbxc_applied`, `_mdbxc_identity_index`, см. §1.5.10) в `max_dbs` budget. Текущий план — 64 (см. §5.5.1). Sync-adoption subtotal для canonical manifest + legacy document adapter + sync + migration reserve равен 46 DBI; authoritative expanded peak с runtime queue, handoff, resource-body, source-ref reverse lookup and response-cache deltas равен 56 по §5.5.1. Любая новая capability обязана обновить §5.5.1 до adoption.
+   - **Budget impact.** Активация sync v0.1 добавляет 6 системных DBIs (`_mdbxc_meta`, `_mdbxc_changelog`, `_mdbxc_origins`, `_mdbxc_applied`, `_mdbxc_identity_index`, `_mdbxc_sync_schema`, см. §1.5.10) в `max_dbs` budget. Recommended ceiling — 96 (см. §5.5.1). Authoritative expanded peak с runtime queue, handoff, resource-body, source-ref reverse lookup and response-cache deltas равен 57 по §5.5.1. Любая новая capability обязана обновить §5.5.1 до adoption.
    - **`IdentityIndexStore` write path deferred upstream.** Не все identity-mapping writes покрыты в v0.1; конкретные edges помечены в upstream `SyncEngine.hpp` TODO-комментариями. Это влияет на dedup state, но не блокирует базовый pull/push.
-   - **HTTP/WebSocket transport seams.** GitHub PR #104 и #105 уже merged в upstream main snapshot `d4d219c`: `TransportMessageCodec` и framework-neutral HTTP seam входят в v0.1; WebSocket seam также присутствует в текущем `DESIGN.md`. Это снимает прежний blocker «нет HTTP seam», но не превращает sync v0.1 в готовый distributed profile для `agent-memory-cpp`: concrete production socket transport остаётся adapter-local responsibility, а table coverage gaps ниже важнее для M0/M1/M2.
-   - **Wire-format byte cost.** 5 sync DBIs суммарно хранят metadata/changelog/origins/applied/identity. Полная on-disk cost-модель (включая compression overhead) — отдельная задача, не решается в этом TZ; ссылка на общий принцип raw-code vs end-to-end storage footprint — §1.5.10 note.
+   - **HTTP/WebSocket transport seams.** GitHub PR #104 и #105 уже merged in the older upstream snapshot; `8c76661d` additionally contains logical schema registry and logical adapter primary DBI validation. This removes the old "no HTTP seam" blocker, but transport pull/push still remains raw-DBI oriented, so sync v0.1 is not a ready distributed profile for `agent-memory-cpp`.
+   - **Wire-format byte cost.** 6 sync DBIs суммарно хранят metadata/changelog/origins/applied/identity/schema registry. Полная on-disk cost-модель (включая compression overhead) — отдельная задача, не решается в этом TZ; ссылка на общий принцип raw-code vs end-to-end storage footprint — §1.5.10 note.
 
    **Decision deadline** привязан к двум внешним триггерам и одному readiness-check:
 
@@ -1909,6 +2076,26 @@ resource_body_manifest +1
 resource_body_chunks   +1  // chunked body store
 ```
 
+Crash/recovery contract for chunked `ResourceBodyStore`:
+
+1. Write chunk records first with `(resource_id, body_revision, chunk_index)`.
+2. Verify chunk count, total encoded bytes and full body digest.
+3. Write the complete descriptor last. Readers only discover a body through a
+   complete descriptor.
+4. If a transaction aborts before the descriptor write, readers see no new body.
+5. Replacement writes a new `body_revision`; old complete revisions remain
+   readable until a bounded GC removes them after no `SourceRef`/unit points to
+   them.
+6. Startup/check tooling can find descriptor-less chunks and stale descriptors
+   through bounded pages and remove or report them.
+
+Descriptor fields: `resource_id`, `body_revision`, `codec_id`,
+`codec_version`, `compression_id`, `encryption_id` or none,
+`chunk_size_limit`, `chunk_count`, `encoded_size`, `decoded_size`,
+`body_digest`, `created_at_ms`, and `complete=true`. A missing body is reported
+as `ARTIFACT_UNAVAILABLE` / equivalent diagnostic; reverse indexes must not
+inline the missing bytes as a fallback.
+
 После появления двух независимых не-agent-memory consumer-ов можно оформить
 отдельный upstream proposal для generic `LargeValueStore<BlobId>` /
 `ChunkedBlobStore<BlobId>`. До этого это application-owned adapter pattern.
@@ -1921,7 +2108,7 @@ resource_body_chunks   +1  // chunked body store
 - [`guides/knowledge-base-roadmap.md`](knowledge-base-roadmap.md) §5 — потребители `KnowledgeUnitStore` (использует `knowledge_units` + `unit_components` + `unit_projections`), `ComponentStore` (`unit_components` через `TypeDiscriminatedTable`), `FactStore`/`QAKnowledgeBase`/`GraphStore` (соответствующие per-kind payload DBI).
 - [`guides/lexical-search-roadmap.md`](lexical-search-roadmap.md) §"BM25 baseline" — потребитель `lexical_index_*` DBI (`inverted_token_to_unit`, `field_to_postings`); `MultiTableWriter` обеспечивает атомарность write primary + secondary indexes.
 - [`guides/runtime-services-roadmap.md`](runtime-services-roadmap.md) §"PromptCache" / §"AsyncIndexer" / §"WriteGate" — владелец runtime queue abstraction; при MDBX persistence использует storage recipe §12.5.
-- [`guides/compaction-roadmap.md`](compaction-roadmap.md) §"CompactionWorker" — потребитель `MultiTableWriter` (атомарный compaction), `usage_stats_index` (для `DecayJob`), `embedding_meta` (для `EmbeddingRecomputeJob`) и downstream runtime queue из `runtime-services-roadmap.md`.
+- [`guides/compaction-roadmap.md`](compaction-roadmap.md) §"CompactionWorker" — потребитель `MultiTableWriter` (атомарный compaction), `usage_by_last_access` / `usage_by_cooldown` (для `DecayJob` и cooldown expiry), `embedding_meta` (для `EmbeddingRecomputeJob`) и downstream runtime queue из `runtime-services-roadmap.md`.
 - [`guides/knowledge-units-roadmap.md`](knowledge-units-roadmap.md) §3 — владелец canonical `SourceRef` / `ResourceId` provenance contract; future compact-projection traceability should reuse `graph_edges_by_src` / `graph_edges_by_dst` and application-owned payloads instead of adding domain-specific `mdbx_containers` APIs.
 - [`guides/experiments/2026-07-23-tencentdb-agent-memory-reference.md`](experiments/2026-07-23-tencentdb-agent-memory-reference.md) — TencentDB Agent Memory reference review that motivated the downstream addressable-compression pattern in §12.8.
 - [`guides/memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §"Layer 1 (Storage Primitives)" and §12 ownership — основной downstream-потребитель: все секции 5.5 DBIs становятся частью capability-aware MDBX-схемы компонентной архитектуры.
