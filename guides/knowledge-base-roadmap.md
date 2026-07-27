@@ -196,7 +196,7 @@ struct CompactionMetaComponent {
 ```
 
 `TemporalComponent` is the M1 single-axis temporal component. M2+ bi-temporal
-semantics (`valid_from_ms` / `valid_to_ms` vs `recorded_at_ms` /
+semantics (`valid_from_ms` / `valid_until_ms` vs `recorded_at_ms` /
 `invalidated_at_ms`) are specified separately in
 [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
 AM-13 and should not be claimed by this component alone.
@@ -316,7 +316,7 @@ Generation rules детерминированы: given the same unit + component
 
 ## 6. Domain Stores (capability-aware)
 
-`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget ≤ 64.
+`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget follows `dbi-manifest.yaml`: logical expanded peak 57, configured `max_dbs` 96, reserved headroom 39, and minimum required headroom 16.
 
 ### 6.1. IKnowledgeUnitStore (всегда открыт)
 
@@ -395,8 +395,7 @@ struct RuntimeRetrievalFilters {
     std::vector<RuntimeObjectRef> character_filter;
     std::vector<RuntimeObjectRef> producer_node_filter;
     std::vector<std::string> trace_ids;
-    std::optional<std::uint64_t> sequence_from;
-    std::optional<std::uint64_t> sequence_until;
+    std::vector<RuntimeSequenceRange> sequence_ranges;
     std::vector<EpistemicLayer> epistemic_layers;
     bool require_evidence = false;
     bool include_conflicts = true;
@@ -406,6 +405,12 @@ struct RuntimeRetrievalFilters {
 
 `ScopeId` remains a namespace/access boundary. Observer, character, producer,
 authority, partition and replica are not encoded as scope.
+
+Runtime-integration filter types and physical secondary-index mappings are
+defined in
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+They use generic `metadata_filters` and range-index substrates rather than
+per-component DBIs.
 
 ### 7.2. IUnitRetriever
 

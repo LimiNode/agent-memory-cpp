@@ -168,7 +168,7 @@ The old `DocumentChunk` / `MemoryObject` / `chat::Message` /
 
 - A lean `KnowledgeUnitEnvelope` (~16-field hot-path struct): id, kind,
   scope_id, primary_text, display_text, lifecycle_state, sources,
-  timestamps, generation, priority_weight, supersedes/superseded_by.
+  timestamps, revision, priority_weight, supersedes/superseded_by.
   See [`guides/knowledge-units-roadmap.md`](knowledge-units-roadmap.md)
   for per-kind specifications and migration helpers.
 - Typed components (operational + per-kind payloads): operational
@@ -377,7 +377,7 @@ matrix и validation rules.
 Состав knowledge base:
 
 - `KnowledgeUnitEnvelope` (~16 полей lean): id, kind, scope_id, primary_text,
-  display_text, lifecycle_state, sources, timestamps, generation,
+  display_text, lifecycle_state, sources, timestamps, revision,
   priority_weight, supersedes/superseded_by.
 - Components (operational + per-kind payloads): UsageStats, Speaker,
   Temporal, EmbeddingMeta, CompactionMeta + QAPayload, FactPayload,

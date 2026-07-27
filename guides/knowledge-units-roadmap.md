@@ -49,10 +49,10 @@ enum class KnowledgeUnitKind : uint16_t {
     Note = 9,
     Task = 10,
     Decision = 11,
-    Playbook = 12,
-    DomainMap = 13,
-    CapabilityMap = 14,
-    Custom = 15,      // escape hatch через metadata_typed["payload"]
+    Custom = 12,      // escape hatch через metadata_typed["payload"]
+    Playbook = 13,
+    DomainMap = 14,
+    CapabilityMap = 15,
     Procedure = 16,
     // NUM_KINDS = 17
 };
@@ -61,6 +61,10 @@ enum class KnowledgeUnitKind : uint16_t {
 Ссылка на `memory-stacks-roadmap.md` секцию 6.3 для размещения `kind` в envelope.
 
 ### 2.1. Kind → Payload mapping
+
+Numeric kind values are append-only wire ids. `Custom = 12` is preserved even
+though `Playbook`, `DomainMap`, `CapabilityMap` and `Procedure` are specified
+later in the roadmap; stable ids are more important than grouping.
 
 | Kind | Primary payload | Optional additional | Notes |
 |---|---|---|---|
@@ -1029,6 +1033,9 @@ enum class DerivedRecordKind : uint32_t {
     TaskPayload = 135,
     DecisionPayload = 136,
     ProcedurePayload = 137,
+    TaskStateComponent = 138,
+    ProcedureStateComponent = 139,
+    ProcedureStatsComponent = 140,
     // NB: KnowledgeUnitRevision НЕ существует как отдельный manifest record —
     // revision — это поле KnowledgeUnitEnvelope.revision, не отдельный kind.
     // Per-record stale-check живёт в LexicalPosting.unit_revision и
@@ -1036,7 +1043,7 @@ enum class DerivedRecordKind : uint32_t {
 };
 ```
 
-Значения 100-137 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
+Значения 100-140 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
 
 ### 7.2. Resource Manifest Records
 
@@ -1071,6 +1078,9 @@ enum class DerivedRecordKind : uint32_t {
 | TaskPayload | `unit_components` (tag=TaskPayload) | CognitiveTrace=true |
 | DecisionPayload | `unit_components` (tag=DecisionPayload) | CognitiveTrace=true |
 | ProcedurePayload | `unit_components` (tag=ProcedurePayload) | ProceduralActivation=true |
+| TaskStateComponent | `unit_components` (tag=TaskState) | CognitiveTrace=true |
+| ProcedureStateComponent | `unit_components` (tag=ProcedureState) | ProceduralActivation=true |
+| ProcedureStatsComponent | `unit_components` (tag=ProcedureStats) | ProceduralActivation=true |
 | QAPayload | `qa_payloads` | QAPairs=true (enable_qa_payload) |
 | FactPayload | `fact_payloads` | enable_fact_payload=true |
 | ChunkPayload | `chunk_payloads` | Chunk kind (default, всегда) |

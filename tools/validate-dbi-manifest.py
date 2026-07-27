@@ -9,6 +9,7 @@ copy of the same inventory.
 from __future__ import annotations
 
 import argparse
+import copy
 import re
 import sys
 from pathlib import Path
@@ -80,6 +81,14 @@ STALE_TERMS = {
     "total: 58",
 }
 
+PEAK_META_KEYS = {"canonical_full_inventory", "total"}
+RUNTIME_MAPPING_REFERENCE_KEYS = {
+    "cognitive_trace_components",
+    "task_decision_procedure_payloads",
+    "causal_relations",
+    "sequence_filtering",
+}
+
 
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
@@ -96,6 +105,10 @@ def load_manifest(path: Path) -> dict:
 def validate_manifest(data: dict, errors: list[str]) -> None:
     if data.get("version") != "agent_memory.dbi_manifest.v1":
         fail(errors, "unexpected manifest version")
+
+    for field in ("max_dbs_default", "minimum_free_slots"):
+        if not isinstance(data.get(field), int) or data.get(field) < 0:
+            fail(errors, f"{field} must be a non-negative integer")
 
     canonical = data.get("canonical")
     if not isinstance(canonical, list) or not canonical:
@@ -123,7 +136,10 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             fail(errors, f"{name}: unknown opens selector {row.get('opens')!r}")
         if row.get("sync") not in ALLOWED_SYNC:
             fail(errors, f"{name}: unknown sync mode {row.get('sync')!r}")
-        if row.get("migration_peak") != 1:
+        migration_peak = row.get("migration_peak")
+        if not isinstance(migration_peak, int) or migration_peak < 0:
+            fail(errors, f"{name}: migration_peak must be a non-negative integer")
+        if migration_peak != 1:
             fail(errors, f"{name}: canonical migration_peak must be 1")
         if row.get("opens") == "always" and name in {
             "embedding_meta",
@@ -151,6 +167,8 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         fail(errors, "profile_deltas must be a list")
         deltas = []
     delta_names: set[str] = set()
+    delta_by_name: dict[str, dict] = {}
+    explicit_dbi_names = set(names)
     for row in deltas:
         if not isinstance(row, dict):
             fail(errors, "profile delta row must be a mapping")
@@ -162,8 +180,19 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         if name in delta_names:
             fail(errors, f"duplicate profile delta: {name}")
         delta_names.add(name)
+        delta_by_name[name] = row
         if "dbis" not in row or "migration_peak" not in row:
             fail(errors, f"{name}: profile delta requires dbis and migration_peak")
+        for field in ("dbis", "migration_peak"):
+            if not isinstance(row.get(field), int) or row.get(field) < 0:
+                fail(errors, f"{name}: {field} must be a non-negative integer")
+        for explicit_name in row.get("names", []) or []:
+            if not isinstance(explicit_name, str) or not explicit_name:
+                fail(errors, f"{name}: explicit DBI name must be a non-empty string")
+                continue
+            if explicit_name in explicit_dbi_names:
+                fail(errors, f"duplicate explicit DBI name across manifest: {explicit_name}")
+            explicit_dbi_names.add(explicit_name)
 
     sync_delta = next(
         (row for row in deltas if isinstance(row, dict) and row.get("name") == "sync_system_8c76661d"),
@@ -172,27 +201,54 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
     if not sync_delta:
         fail(errors, "missing sync_system_8c76661d profile delta")
     else:
-        names = set(sync_delta.get("names", []))
-        if names != EXPECTED_SYNC_SYSTEM_DBIS:
+        sync_names = set(sync_delta.get("names", []))
+        if sync_names != EXPECTED_SYNC_SYSTEM_DBIS:
             fail(errors, "sync_system_8c76661d names do not match expected system DBIs")
         if sync_delta.get("dbis") != len(EXPECTED_SYNC_SYSTEM_DBIS):
             fail(errors, "sync_system_8c76661d dbis must be 6")
 
-    expected_total = (
-        peak.get("canonical_full_inventory", 0)
-        + peak.get("legacy_document_resource_adapter", 0)
-        + peak.get("shared_runtime_queue", 0)
-        + peak.get("compaction_handoff", 0)
-        + peak.get("resource_body_chunked", 0)
-        + peak.get("source_refs_by_resource", 0)
-        + peak.get("response_cache_mdbx", 0)
-        + peak.get("sync_system_8c76661d", 0)
-        + peak.get("migration_dual_write_reserve", 0)
+    for key, value in peak.items():
+        if not isinstance(value, int) or value < 0:
+            fail(errors, f"expanded_peak_reference.{key} must be a non-negative integer")
+
+    peak_delta_keys = set(peak) - PEAK_META_KEYS
+    for key in sorted(peak_delta_keys):
+        delta = delta_by_name.get(key)
+        if delta is None:
+            fail(errors, f"expanded peak references unknown profile delta: {key}")
+            continue
+        expected_value = delta.get("migration_peak") if delta.get("dbis") == 0 else delta.get("dbis")
+        if peak.get(key) != expected_value:
+            fail(
+                errors,
+                f"expanded peak {key} mismatch ({peak.get(key)} != {expected_value})",
+            )
+
+    expected_total = peak.get("canonical_full_inventory", 0) + sum(
+        peak.get(key, 0) for key in peak_delta_keys
     )
     if peak.get("total") != expected_total:
         fail(errors, f"expanded peak total mismatch ({peak.get('total')} != {expected_total})")
-    if data.get("max_dbs_default", 0) - peak.get("total", 0) < data.get("minimum_free_slots", 0):
+    headroom = data.get("max_dbs_default", 0) - peak.get("total", 0)
+    if headroom < 0:
+        fail(errors, "expanded peak exceeds max_dbs_default")
+    if headroom < data.get("minimum_free_slots", 0):
         fail(errors, "expanded peak violates minimum_free_slots")
+
+    runtime_mapping = data.get("runtime_integration_mapping", {})
+    if runtime_mapping:
+        if not isinstance(runtime_mapping, dict):
+            fail(errors, "runtime_integration_mapping must be a mapping")
+        else:
+            if runtime_mapping.get("a0_a2_new_dbis") != 0:
+                fail(errors, "runtime_integration_mapping.a0_a2_new_dbis must be 0")
+            allowed_refs = set(names) | {"resource_body_profile_delta"}
+            for key in RUNTIME_MAPPING_REFERENCE_KEYS:
+                value = runtime_mapping.get(key)
+                refs = value if isinstance(value, list) else [value]
+                for ref in refs:
+                    if ref not in allowed_refs:
+                        fail(errors, f"runtime_integration_mapping.{key} unknown DBI ref: {ref}")
 
 
 def canonical_names_from_tz(path: Path) -> set[str]:
@@ -228,9 +284,67 @@ def validate_markdown(manifest: dict, tz_path: Path, errors: list[str]) -> None:
             fail(errors, f"stale term remains in TZ: {term}")
 
 
+def run_self_test(manifest_path: Path) -> int:
+    base = load_manifest(manifest_path)
+    base_errors: list[str] = []
+    validate_manifest(base, base_errors)
+    if base_errors:
+        for error in base_errors:
+            print(f"ERROR: valid fixture failed: {error}", file=sys.stderr)
+        return 1
+
+    cases = []
+
+    duplicate_name = copy.deepcopy(base)
+    duplicate_name["canonical"][1]["name"] = duplicate_name["canonical"][0]["name"]
+    cases.append(("duplicate canonical DBI name", duplicate_name, "duplicate canonical DBI name"))
+
+    wrong_total = copy.deepcopy(base)
+    wrong_total["expanded_peak_reference"]["total"] += 1
+    cases.append(("wrong expanded total", wrong_total, "expanded peak total mismatch"))
+
+    unknown_selector = copy.deepcopy(base)
+    unknown_selector["canonical"][0]["opens"] = "UnknownSelector"
+    cases.append(("unknown selector", unknown_selector, "unknown opens selector"))
+
+    peak_too_large = copy.deepcopy(base)
+    peak_too_large["max_dbs_default"] = 1
+    cases.append(("peak exceeds max_dbs", peak_too_large, "expanded peak exceeds max_dbs_default"))
+
+    delta_mismatch = copy.deepcopy(base)
+    delta_mismatch["profile_deltas"][0]["dbis"] += 1
+    cases.append(("delta/reference mismatch", delta_mismatch, "expanded peak legacy_document_resource_adapter mismatch"))
+
+    unknown_runtime_ref = copy.deepcopy(base)
+    unknown_runtime_ref["runtime_integration_mapping"]["sequence_filtering"].append("missing_dbi")
+    cases.append(("unknown runtime mapping ref", unknown_runtime_ref, "unknown DBI ref"))
+
+    failed = False
+    for name, fixture, expected in cases:
+        errors: list[str] = []
+        validate_manifest(fixture, errors)
+        if not any(expected in error for error in errors):
+            print(
+                f"ERROR: negative fixture {name!r} did not produce {expected!r}; "
+                f"errors={errors}",
+                file=sys.stderr,
+            )
+            failed = True
+
+    if failed:
+        return 1
+    print("dbi manifest self-test ok")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("manifest", type=Path)
+    parser.add_argument(
+        "--self-test",
+        action="store_true",
+        help="run in-memory positive and negative validator fixtures",
+    )
     parser.add_argument(
         "--tz",
         type=Path,
@@ -238,6 +352,9 @@ def main(argv: list[str]) -> int:
         help="roadmap TZ markdown to cross-check",
     )
     args = parser.parse_args(argv)
+
+    if args.self_test:
+        return run_self_test(args.manifest)
 
     errors: list[str] = []
     try:

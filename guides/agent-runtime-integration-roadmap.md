@@ -74,6 +74,8 @@ runtime integration lane is cross-listed there as ADR-019..ADR-025.
     them.
 11. A0-A2 do not add per-component DBIs.
 12. Core contracts do not include ADELIA headers.
+13. `KnowledgeUnitId` is a local storage key, not a replicated identity.
+14. Runtime sequence values are ordered only within one runtime/replica origin.
 
 ## Neutral Runtime References
 
@@ -91,11 +93,13 @@ enum class RuntimeObjectKind : std::uint16_t {
     Capability = 10,
     Coalition = 11,
     Partition = 12,
-    Replica = 13
+    Replica = 13,
+    Event = 14
 };
 
 struct RuntimeObjectRef {
-    std::string system_id;
+    std::string adapter_id;           // e.g. "adelia"
+    std::string runtime_instance_id;  // concrete world/runtime instance
     RuntimeObjectKind kind = RuntimeObjectKind::Runtime;
     std::string opaque_id;
     std::optional<std::uint64_t> revision;
@@ -105,10 +109,54 @@ struct RuntimeObjectRef {
 An ADELIA adapter maps runtime-native node identifiers to neutral refs:
 
 ```text
-native node identifier -> RuntimeObjectRef{"adelia", Node, "...", revision}
+native node identifier -> RuntimeObjectRef{"adelia", runtime_id, Node, "...", revision}
 ```
 
 The mapping lives in the adapter, not in core headers.
+
+## Replicated Identity And Runtime Time
+
+`KnowledgeUnitId` remains the compact local MDBX key. It is valid only inside
+one physical database/environment. Cross-database references, import/export,
+causal records and reconciliation use globally stable identities:
+
+```cpp
+struct GlobalKnowledgeUnitId {
+    std::array<std::uint8_t, 16> value;
+};
+
+struct KnowledgeUnitRef {
+    GlobalKnowledgeUnitId global_id;
+    std::optional<KnowledgeUnitId> local_id;
+};
+```
+
+An implementation may derive `GlobalKnowledgeUnitId` from
+`(origin_replica, origin_sequence)` or use a 128-bit random/content-derived
+identifier, but the chosen scheme must be stable across export/import. Local
+import may remap `KnowledgeUnitId`; it must not rewrite global ids.
+
+Runtime log positions are origin-scoped:
+
+```cpp
+struct RuntimeSequence {
+    RuntimeObjectRef runtime_instance;  // kind = Runtime
+    RuntimeObjectRef replica;           // kind = Replica
+    std::uint64_t value = 0;
+};
+
+struct RuntimeSequenceRange {
+    RuntimeObjectRef runtime_instance;
+    RuntimeObjectRef replica;
+    std::optional<std::uint64_t> from;
+    std::optional<std::uint64_t> until;
+};
+```
+
+Sequence values may be compared numerically only when `runtime_instance` and
+`replica` match. Ordering across different origins requires explicit causal
+edges, a hybrid logical timestamp/vector clock supplied by the runtime, or must
+remain partially ordered.
 
 ## Components
 
@@ -120,14 +168,14 @@ No new DBI is allocated for each component.
 
 ```cpp
 struct RuntimeOriginComponent {
-    RuntimeObjectRef runtime;
+    RuntimeObjectRef runtime_instance;
     std::optional<RuntimeObjectRef> producer_node;
 
     std::string run_id;
     std::string trace_id;
     std::string span_id;
 
-    std::uint64_t event_sequence = 0;
+    std::optional<RuntimeSequence> event_sequence;
 
     std::optional<RuntimeObjectRef> partition;
     std::optional<RuntimeObjectRef> replica;
@@ -138,13 +186,36 @@ struct RuntimeOriginComponent {
 
 ```cpp
 struct CausalContextComponent {
-    std::vector<KnowledgeUnitId> direct_cause_units;
-    std::vector<RuntimeObjectRef> direct_cause_events;
+    std::vector<KnowledgeUnitRef> direct_cause_units;
+    std::vector<RuntimeObjectRef> direct_cause_events;  // kind = Event
 
     std::string correlation_id;
     std::string causation_id;
 
-    std::optional<std::uint64_t> logical_clock;
+    std::optional<RuntimeSequence> local_log_position;
+};
+```
+
+### Authority Evidence
+
+Persisted authority metadata is historical evidence, not a current permission
+grant. The runtime must re-check live authorization before executing any
+action, especially after replay, import or reconciliation.
+
+```cpp
+enum class AuthorityEvidenceKind : std::uint8_t {
+    Claimed = 1,
+    Observed = 2,
+    RuntimeVerified = 3,
+    OperatorGranted = 4
+};
+
+struct AuthorityEvidenceRef {
+    RuntimeObjectRef authority;
+    AuthorityEvidenceKind evidence_kind = AuthorityEvidenceKind::Observed;
+    std::string historical_receipt_id;
+    std::int64_t observed_at_ms = 0;
+    std::optional<std::int64_t> expires_at_ms;
 };
 ```
 
@@ -164,7 +235,7 @@ struct PerspectiveComponent {
     RuntimeObjectRef observer;
     std::optional<RuntimeObjectRef> represented_subject;
     std::optional<RuntimeObjectRef> character;
-    std::optional<RuntimeObjectRef> authority;
+    std::optional<AuthorityEvidenceRef> authority_evidence;
 
     PerspectiveMode mode = PerspectiveMode::Observer;
 
@@ -204,23 +275,11 @@ Retrieval must not automatically mix `Hypothesis` and `ValidatedClaim`.
 
 ### BiTemporalComponent
 
-This component is not M1 temporal validity. It belongs to M2+/A-lane workloads
-that need to distinguish world validity from runtime knowledge time.
-
-```cpp
-struct BiTemporalComponent {
-    std::optional<std::int64_t> valid_from_ms;
-    std::optional<std::int64_t> valid_until_ms;
-
-    std::int64_t recorded_at_ms = 0;
-    std::optional<std::int64_t> superseded_at_ms;
-
-    std::optional<std::uint64_t> recorded_sequence;
-    std::optional<std::uint64_t> superseded_sequence;
-};
-```
-
-Unknown timestamps are `std::optional`, not `0`.
+The canonical M2+ bi-temporal component lives in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+AM-13. This roadmap does not define a second temporal source of truth. A-lane
+runtime knowledge time uses that component's `recorded_at_ms`,
+`invalidated_at_ms`, `recorded_sequence` and `invalidated_sequence` fields.
 
 ### FocusContextComponent
 
@@ -268,19 +327,27 @@ struct TaskPayload {
     std::string title;
     std::string goal_text;
 
-    TaskStatus status = TaskStatus::Proposed;
-
     std::optional<RuntimeObjectRef> requested_by;
     std::optional<RuntimeObjectRef> assigned_to;
     std::optional<RuntimeObjectRef> parent_task;
 
     std::vector<RuntimeObjectRef> required_capabilities;
-    std::vector<KnowledgeUnitId> constraints;
-    std::vector<KnowledgeUnitId> produced_units;
+    std::vector<KnowledgeUnitRef> constraints;
+    std::vector<KnowledgeUnitRef> produced_units;
 
     std::optional<std::int64_t> deadline_ms;
 };
+
+struct TaskStateComponent {
+    TaskStatus current_status = TaskStatus::Proposed;
+    std::uint64_t state_revision = 0;
+    std::optional<KnowledgeUnitRef> last_transition;
+};
 ```
+
+`TaskPayload` is the stable task definition. Status transitions are append-only
+events plus `TaskStateComponent`; they do not mutate the definition just to
+record runtime progress.
 
 ```cpp
 struct DecisionAlternative {
@@ -290,8 +357,8 @@ struct DecisionAlternative {
     std::optional<double> predicted_utility;
     std::optional<double> predicted_risk;
 
-    std::vector<KnowledgeUnitId> supporting_units;
-    std::vector<KnowledgeUnitId> opposing_units;
+    std::vector<KnowledgeUnitRef> supporting_units;
+    std::vector<KnowledgeUnitRef> opposing_units;
 };
 
 struct DecisionPayload {
@@ -302,9 +369,9 @@ struct DecisionPayload {
     double confidence = 0.0;
 
     std::optional<RuntimeObjectRef> committed_by;
-    std::optional<RuntimeObjectRef> authority;
+    std::optional<AuthorityEvidenceRef> authority_evidence;
 
-    std::vector<KnowledgeUnitId> resulting_actions;
+    std::vector<RuntimeObjectRef> resulting_actions;  // kind = Action or Event
 };
 ```
 
@@ -334,21 +401,28 @@ struct ProcedurePayload {
     std::string name;
     std::string description;
 
-    ProcedureStatus status = ProcedureStatus::Candidate;
     std::uint64_t version = 1;
 
     std::vector<RuntimeObjectRef> required_capabilities;
-    std::vector<KnowledgeUnitId> preconditions;
+    std::vector<KnowledgeUnitRef> preconditions;
 
     std::string workflow_format;
     std::string workflow_reference;
 
-    std::vector<KnowledgeUnitId> source_episodes;
-    std::vector<KnowledgeUnitId> validation_cases;
+    std::vector<KnowledgeUnitRef> source_episodes;
+    std::vector<KnowledgeUnitRef> validation_cases;
+};
 
+struct ProcedureStateComponent {
+    ProcedureStatus current_status = ProcedureStatus::Candidate;
+    std::uint64_t state_revision = 0;
+    std::optional<KnowledgeUnitRef> last_transition;
+};
+
+struct ProcedureStatsComponent {
+    std::uint64_t activation_count = 0;
     std::uint64_t success_count = 0;
     std::uint64_t failure_count = 0;
-
     std::optional<double> estimated_success_probability;
     std::optional<double> mean_utility;
 };
@@ -397,8 +471,7 @@ struct RuntimeRetrievalFilters {
     std::vector<RuntimeObjectRef> producer_node_filter;
     std::vector<std::string> trace_ids;
 
-    std::optional<std::uint64_t> sequence_from;
-    std::optional<std::uint64_t> sequence_until;
+    std::vector<RuntimeSequenceRange> sequence_ranges;
 
     std::vector<EpistemicLayer> epistemic_layers;
 
@@ -407,6 +480,23 @@ struct RuntimeRetrievalFilters {
     bool include_superseded = false;
 };
 ```
+
+Physical index mapping:
+
+| Filter field | Canonical substrate | Logical key shape |
+|---|---|---|
+| `trace_id` | `metadata_filters` | `(scope_id, RuntimeTraceId, trace_id) -> UnitId` |
+| `producer_node` | `metadata_filters` | `(scope_id, RuntimeProducer, encoded_runtime_ref) -> UnitId` |
+| `observer` | `metadata_filters` | `(scope_id, RuntimeObserver, encoded_runtime_ref) -> UnitId` |
+| `character` | `metadata_filters` | `(scope_id, RuntimeCharacter, encoded_runtime_ref) -> UnitId` |
+| `epistemic_layer` | `metadata_filters` | `(scope_id, EpistemicLayer, layer) -> UnitId` |
+| `procedure_status` | `metadata_filters` | `(scope_id, ProcedureStatus, status) -> UnitId` |
+| `replica` | `metadata_filters` | `(scope_id, RuntimeReplica, encoded_runtime_ref) -> UnitId` |
+| `event_sequence` | range substrate | `(scope_id, runtime_instance, replica, sequence) -> UnitId` |
+
+These are generic secondary keys, not per-component DBIs. If a profile cannot
+materialize a listed key, the corresponding filter must be documented as
+scan-backed and excluded from latency guarantees.
 
 New query classes:
 
@@ -460,14 +550,14 @@ execution request.
 
 ```cpp
 struct ProcedureActivationCandidate {
-    KnowledgeUnitId procedure_id;
+    KnowledgeUnitRef procedure;
 
     double precondition_match = 0.0;
     double capability_match = 0.0;
     double historical_success = 0.0;
     double context_relevance = 0.0;
 
-    std::vector<KnowledgeUnitId> supporting_units;
+    std::vector<KnowledgeUnitRef> supporting_units;
     std::vector<RuntimeObjectRef> missing_capabilities;
 
     bool requires_validation = false;
@@ -526,15 +616,25 @@ enum class ReconciliationRelation : std::uint8_t {
 };
 
 struct ReconciliationConflict {
-    KnowledgeUnitId left;
-    KnowledgeUnitId right;
+    KnowledgeUnitRef left;
+    KnowledgeUnitRef right;
 
     ReconciliationRelation relation = ReconciliationRelation::Incomparable;
-    std::vector<KnowledgeUnitId> evidence;
+    std::vector<KnowledgeUnitRef> evidence;
 
     bool resolved = false;
 };
 ```
+
+Duplicate content does not imply duplicate occurrence. Two records with the
+same content hash may remain distinct if their `GlobalKnowledgeUnitId`,
+runtime origin or causal context differs.
+
+Erase/tombstone merge is monotonic. If one partition carries an authorized
+erase tombstone, merge must not resurrect the erased sensitive record. Derived
+projections, embeddings, summaries and materialized states may be rebuilt
+locally from canonical records; they do not have to be replicated as canonical
+truth.
 
 Without coordination, the monotonic core may append raw events, observations,
 hypotheses, provenance and procedure candidates. Erase, final conflict

@@ -554,6 +554,9 @@ enum class ComponentKind : std::uint16_t {
     TaskPayload = 12,
     DecisionPayload = 13,
     ProcedurePayload = 14,
+    TaskState = 15,
+    ProcedureState = 16,
+    ProcedureStats = 17,
 };
 ```
 

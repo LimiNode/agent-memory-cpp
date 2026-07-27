@@ -137,20 +137,20 @@ Capabilities:
 Schema:
   Envelope version:    1
   Component versions:  UsageStats=1, Speaker=0, Temporal=1, EmbeddingMeta=1, CompactionMeta=1
-  Generation:          42
+  Resource generation: 42
 
 Statistics:
   Total units:         128,539
   Active:              124,102
-  SoftSuppressed:      1,247
   Superseded:          2,890
   Deprecated:          300
   Erased:              0
+  Usage cooldown:      1,247
   Components:          128,539 envelopes + 128,539 UsageStats + 89,234 Temporal
   Projections:         342,118 (Original 128,539, QAQuestion 45,221, QAAnswer 40,901, Summary 127,457)
   Embeddings:          128,539 (1 model, 1 projection)
   Compaction jobs:     3 active, 142 completed, 0 failed
-  DBI count:           22 of 64
+  DBI count:           22 of 96 (expanded peak 57, reserved headroom 39)
   MDBX size:           487 MB
 ```
 
@@ -185,16 +185,18 @@ JSON вариант (через `--json`):
       "embedding_meta": 1,
       "compaction_meta": 1
     },
-    "generation": 42
+    "resource_generation": 42
   },
   "stats": {
     "total_units": 128539,
     "lifecycle": {
       "active": 124102,
-      "soft_suppressed": 1247,
       "superseded": 2890,
       "deprecated": 300,
       "erased": 0
+    },
+    "usage": {
+      "cooldown": 1247
     },
     "components": {
       "envelopes": 128539,
@@ -221,7 +223,10 @@ JSON вариант (через `--json`):
       "failed_jobs": 0
     },
     "dbi_count": 22,
-    "dbi_max": 64,
+    "dbi_max": 96,
+    "dbi_expanded_peak": 57,
+    "dbi_reserved_headroom": 39,
+    "dbi_minimum_free_slots": 16,
     "mdbx_size_bytes": 510707712
   }
 }
@@ -288,7 +293,7 @@ Checking /data/agent_memory.mdbx...
 MDBX env: OK
 Schema versions: OK
 Profile signature: OK (matches agent_ltm)
-DBI count: 22 (within 64 limit)
+DBI count: 22 (within configured 96 limit; expanded peak 57)
 Orphan components: 0
 Orphan projections: 0
 Index consistency: OK
@@ -303,7 +308,7 @@ Checking /data/agent_memory.mdbx...
 MDBX env: OK
 Schema versions: OK
 Profile signature: OK (matches agent_ltm)
-DBI count: 22 (within 64 limit)
+DBI count: 22 (within configured 96 limit; expanded peak 57)
 Orphan components: 3 found
   Rebuilding metadata_filters...
   Rebuilt 3 entries.
@@ -324,7 +329,7 @@ agent-memory-cli vacuum [--path <path>] [--aggressive]
 
 Параметры:
 
-- `--aggressive`: расширенный режим (также удаляет SoftSuppressed > 30 days и Superseded > 90 days).
+- `--aggressive`: расширенный режим (также архивирует units in usage cooldown > 30 days и удаляет Superseded > 90 days).
 
 Примеры:
 
@@ -343,7 +348,7 @@ Aggressive mode:
 Before: 487 MB
 After:  412 MB (15.4% reduction)
 Erased units removed: 0
-SoftSuppressed expired: 1,247
+Usage cooldown archived: 1,247
 Superseded expired: 1,820
 Time: 4.2 sec
 ```

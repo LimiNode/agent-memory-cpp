@@ -76,7 +76,12 @@ Validate the roadmap DBI manifest whenever `guides/dbi-manifest.yaml` or
 
 ```bash
 py -3 tools/validate-dbi-manifest.py guides/dbi-manifest.yaml
+py -3 tools/validate-dbi-manifest.py guides/dbi-manifest.yaml --self-test
 ```
+
+When `AGENT_MEMORY_BUILD_TESTS=ON`, CTest also exposes
+`agent_memory_dbi_manifest_validate` and
+`agent_memory_dbi_manifest_validator_self_test`.
 
 Run the BoW-vs-BM25 synthetic sweep fixture:
 

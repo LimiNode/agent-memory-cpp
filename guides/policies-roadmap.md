@@ -7,7 +7,7 @@
 ## 1. Purpose
 
 - Что описывает: DecayPolicy (anti-loop, забывание, soft-suppression), WritePolicy (trigger, dedupe, importance), SpeakerScopePolicy (multi-user фильтрация), RetrievalMode (associative/targeted/hybrid), HybridRetrievalConfig (RRF/weighted/learned).
-- Cross-references: memory-stacks-roadmap.md (ADR-008, ADR-009), knowledge-units-roadmap.md (SoftSuppressed lifecycle), knowledge-base-roadmap.md (DecayAwareRetriever, AntiLoopCooldown).
+- Cross-references: memory-stacks-roadmap.md (ADR-008, ADR-009), knowledge-units-roadmap.md (durable lifecycle), knowledge-base-roadmap.md (DecayAwareRetriever, AntiLoopCooldown).
 
 Sensitive affective inferences add policy requirements beyond generic
 decay/write rules: provenance, confidence, retention, personalization consent,
@@ -549,7 +549,7 @@ See [`memory-routing-roadmap.md`](memory-routing-roadmap.md) for two routing par
 ## 9. References
 
 - `guides/memory-stacks-roadmap.md` — секции 6.2, 6.3, 8 (defaults per stack).
-- `guides/knowledge-units-roadmap.md` — SoftSuppressed lifecycle state.
+- `guides/knowledge-units-roadmap.md` — durable lifecycle states; cooldown/soft suppression is usage policy state.
 - `guides/knowledge-base-roadmap.md` — DecayAwareRetriever, AntiLoopCooldown.
 - `guides/compaction-roadmap.md` — как политики взаимодействуют с compaction jobs.
 - ai-agent-playbook: concepts/rag-knowledge/Внешняя память LLM-агентов — система СВИНОПАС.md — anti-loop / cooldown / подсвинок.

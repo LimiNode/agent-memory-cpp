@@ -111,8 +111,8 @@ Storage ownership:
 |---|---|---|
 | Knowledge card | Declarative curated knowledge object | `KnowledgeUnitKind` appropriate to fact/concept/note plus source refs |
 | `Playbook` | Authoritative canonical knowledge object with provenance | `KnowledgeUnitKind::Playbook`, `knowledge_units`, projections, source refs, activation metadata |
-| `ProcedureCandidate` | Learned/imported proposal from traces | `KnowledgeUnitKind::Procedure` with `ProcedurePayload.status = Candidate` |
-| `Procedure` | Validated versioned procedure | `KnowledgeUnitKind::Procedure`, activation metadata, outcome statistics |
+| `ProcedureCandidate` | Learned/imported proposal from traces | `KnowledgeUnitKind::Procedure` with `ProcedureStateComponent.current_status = Candidate` |
+| `Procedure` | Validated versioned procedure | `KnowledgeUnitKind::Procedure`, activation metadata, `ProcedureStatsComponent` |
 | `DomainMap` | Versioned materialized configuration/derived state | `KnowledgeUnitKind::DomainMap`, compiled body/projection, graph edges |
 | `CapabilityRegistry` / `CapabilityMap` | Runtime/application registry projected into bootstrap context | `KnowledgeUnitKind::CapabilityMap` only when persisted as knowledge; executors stay outside memory core |
 | Runtime capability implementation | Live executable capability | external runtime only; memory stores ids, schemas and requirements |

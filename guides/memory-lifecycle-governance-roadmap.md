@@ -110,11 +110,11 @@ validity time from the time when the agent recorded or invalidated the claim.
 ```cpp
 struct BiTemporalComponent {
     std::optional<std::int64_t> valid_from_ms;
-    std::optional<std::int64_t> valid_to_ms;
+    std::optional<std::int64_t> valid_until_ms;
     std::int64_t recorded_at_ms = 0;
     std::optional<std::int64_t> invalidated_at_ms;
-    std::optional<std::uint64_t> recorded_sequence;
-    std::optional<std::uint64_t> invalidated_sequence;
+    std::optional<RuntimeSequence> recorded_sequence;
+    std::optional<RuntimeSequence> invalidated_sequence;
 };
 ```
 
@@ -128,13 +128,16 @@ Required query forms:
 - `known_at_sequence(sequence)`: what a runtime component could have known when
   an external event sequence was processed.
 
-`recorded_sequence` and `invalidated_sequence` are optional. They are useful
-for agent runtimes that have a durable event log and need deterministic replay
-or "what did component X know at decision Y?" audits.
+`recorded_sequence` and `invalidated_sequence` are optional origin-scoped
+runtime log positions. `RuntimeSequence` is specified in
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+Sequence values are numerically ordered only inside one runtime/replica origin.
+They are useful for agent runtimes that have a durable event log and need
+deterministic replay or "what did component X know at decision Y?" audits.
 
 Storage implications:
 
-- add scope-aware range indexes over `valid_from_ms`, `valid_to_ms`,
+- add scope-aware range indexes over `valid_from_ms`, `valid_until_ms`,
   `recorded_at_ms` and `invalidated_at_ms`;
 - keep temporal semantics in `agent-memory-cpp`;
 - use generic MDBX range-index primitives rather than a Graphiti-specific
