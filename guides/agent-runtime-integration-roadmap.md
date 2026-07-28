@@ -147,6 +147,11 @@ to be distinct units. Content identity and dedupe use `KnowledgeUnitKey` /
 `ContentHash` separately. Local import may remap `KnowledgeUnitId`; it must not
 rewrite global ids.
 
+When `KnowledgeUnitRef::local_id` is present, resolving it in the current
+database must yield the same `global_id`. A missing or mismatched local binding
+is a validation error; callers that cannot establish the binding must omit
+`local_id` and retain the globally stable reference only.
+
 Runtime log positions are origin-scoped:
 
 ```cpp

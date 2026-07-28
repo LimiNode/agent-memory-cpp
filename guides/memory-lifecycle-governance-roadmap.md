@@ -168,7 +168,7 @@ struct AbstractionComponent {
 
 struct DerivationComponent {
     std::vector<KnowledgeUnitRef> source_episodes;
-    std::vector<ExternalObjectRef> runtime_sources;
+    std::vector<RuntimeObjectRef> runtime_sources;
     std::string producer_id;
     std::string producer_version;
     double confidence = 1.0;
