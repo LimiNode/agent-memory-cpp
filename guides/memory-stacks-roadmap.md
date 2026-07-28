@@ -63,6 +63,7 @@ Non-goals документа:
 | ADR-023 | Bi-temporal agent knowledge | World validity and runtime knowledge time are distinct M2+/A-lane axes |
 | ADR-024 | Monotonic evidence | Raw observations/events are append-only except explicit erase policy |
 | ADR-025 | Semantic replication | Memory exports/imports records and conflicts; it does not replicate MDBX pages |
+| ADR-026 | Artifact provenance | Source/Revision/Artifact/Representation/Segment, typed evidence anchors, own catalog/blob truth and derived external-vector adapters |
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это extension candidate для `GraphStore` (расширяет capability flag `GraphRelations` поверх substrate из ADR-006 GraphStorage; storage substrate и capability flag — отдельные сущности, не синонимы).
 
@@ -73,6 +74,11 @@ for M2+ lifecycle governance items: bi-temporal knowledge, abstraction and
 derivation graph, causal relations, progressive retrieval, expanded memory
 evaluation, policy-selectable mutation, deterministic-first entity resolution,
 typed query/MCP safety and logical index separation.
+
+See [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md) for the
+artifact-aware extension of ADR-016: source revisions, immutable original
+bytes, versioned derived representations, typed evidence locations and the
+separate artifact-processing lineage graph.
 
 See [`milestones.md`](milestones.md) for the normative M0/M1/M2 scope lock.
 This roadmap keeps architectural details, but milestone ownership and ship-it
@@ -298,6 +304,7 @@ enum class MemoryCapability : uint64_t {
     CognitiveTrace = 1ull << 17,
     ProceduralActivation = 1ull << 18,
     ReplicaReconciliation = 1ull << 19,
+    ArtifactProvenance = 1ull << 20,
 };
 
 using CapabilitySet = std::underlying_type_t<MemoryCapability>;
@@ -315,6 +322,11 @@ capability enum yet. `BiTemporalValidity`, `AbstractionGraph`,
 `MutationPolicy` are tracked in
 [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
 until their profile matrix and DBI budget deltas are specified.
+
+`ArtifactProvenance` is an optional M2 capability. It enables the catalog and
+blob/retention contracts from
+[`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md); concrete
+MDBX DBI deltas stay profile-owned and are not part of the baseline manifest.
 
 Additional M2+ lifecycle candidates such as `EntityResolution`,
 `TypedToolFilters` and `LogicalIndexSeparation` are also tracked there until
@@ -1102,6 +1114,7 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | ResponseCache | opt | opt | opt | opt | opt | opt | opt |
 | TranslationProjection | opt | opt | opt | opt | opt | opt | opt |
 | KnowledgeActivation | no | opt | yes | opt | yes | opt | yes |
+| ArtifactProvenance | no | no | no | no | opt | no | yes |
 
 `opt` — capability не включена по умолчанию, но может быть добавлена через minor in-place migration.
 `ResponseCache` capability is present iff `response_cache_storage != Disabled`;
@@ -1115,6 +1128,9 @@ participates in `profile_signature`.
 `KnowledgeActivation` capability is present iff
 `enable_knowledge_activation == true`; it uses existing canonical storage until
 a profile-specific DBI delta is added to the physical manifest.
+`ArtifactProvenance` capability is present iff the profile declares an
+artifact catalog and BlobStore backend; it requires `FullSourceRefs` and the
+artifact-aware SourceRef/EvidenceAnchor schema.
 `CognitiveTrace` capability is present iff `enable_cognitive_trace == true`.
 `ProceduralActivation` capability is present iff
 `enable_procedural_activation == true`. `ReplicaReconciliation` capability is
@@ -1138,6 +1154,7 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
 | ReplicaReconciliation=true требует CognitiveTrace=true | "ReplicaReconciliation requires cognitive trace" |
 | EmbeddingMigration=true требует DenseVectors=true | "EmbeddingMigration requires DenseVectors" |
+| ArtifactProvenance=true requires FullSourceRefs=true | "ArtifactProvenance requires full source refs" |
 | DecayPolicy: cooldown_ms >= 0, half_life_ms > 0 (если mode != None) | "Invalid DecayPolicy" |
 | WritePolicy: flush_interval_ms > 0 (если trigger == OnTimer) | "Invalid WritePolicy" |
 | ContextBudget: сумма per-block <= total_tokens | "ContextBudget overflow" |

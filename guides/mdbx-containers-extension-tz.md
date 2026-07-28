@@ -2033,6 +2033,14 @@ paired indexes, and report-only generic microbenchmarks.
 
 ### 12.9 Large values and raw document bodies
 
+The normative artifact/provenance model is documented in
+[`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md). It keeps
+`Source`, `SourceRevision`, `Artifact`, `Representation`, `Segment` and typed
+evidence locators in `agent-memory-cpp`; this document still specifies only the
+generic MDBX storage primitives and raw-body layout. Artifact catalog and
+technical-lineage records are application-owned profile data, not new upstream
+domain types.
+
 MDBX может хранить raw documents внутри env. Запрет относится только к
 secondary/reverse indexes и descriptor/ref tables: туда нельзя класть большие
 inline bodies, потому что это раздувает B-tree, дублирует payload и ухудшает

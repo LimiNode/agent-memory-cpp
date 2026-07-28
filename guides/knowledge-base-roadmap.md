@@ -623,6 +623,14 @@ struct Context {
 };
 ```
 
+For artifact-aware sources, `SourceRefSummary` remains the text/citation path.
+The associated full reference may carry an `EvidenceAnchor` with a typed page,
+region, time or other media locator as specified in
+[`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md). Context does
+not implicitly include binary bytes: a host may request an explicit
+materialization of a cited page, frame, crop or clip when its downstream model
+can consume it.
+
 Determinism: given the same plan/hits/budget → same `Context`. Это делает retrieval traces reproducible.
 
 Perspective-safe context assembly must not collapse local interpretations into

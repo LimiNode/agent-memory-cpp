@@ -62,8 +62,9 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - LLM/tool query safety policy: permission model, schema allowlists,
   `EntityTypeId`/`RelationTypeId` registry mapping and validation before any
   backend-specific query text is built
-- Source/artifact identity: `SourceRef`, `ResourceId`, `ArtifactDescriptor`,
-  raw-document retention policy
+- Source/artifact identity: `SourceRef`, `ResourceId`, SourceRevision,
+  Artifact, Representation, Segment, typed evidence locators and raw-document
+  retention policy
 - Usage decay, freshness ranking, profile/scenario lifecycle
 - LLM-вызовы (любые модели, провайдеры, prompt engineering)
 - Embedding model execution (ONNX, llama.cpp, OpenAI-compat, ...)
@@ -160,6 +161,8 @@ agent-memory-cpp реализует ДОМЕННЫЕ КОНТРАКТЫ (Knowled
 - `guides/mdbx-containers-extension-tz.md` — спецификация расширений mdbx-containers
 - `guides/knowledge-base-roadmap.md` — общий roadmap KB архитектуры
 - `guides/knowledge-units-roadmap.md` — спецификация KnowledgeUnit типов
+- `guides/artifact-provenance-roadmap.md` — source revision, artifact,
+  representation, segment and BlobStore boundaries
 - `guides/lexical-search-roadmap.md` — BM25F fielded storage
 - `guides/optimization-roadmap.md` — compression, binary signature index, bucket index
 - `guides/architecture.md` — общая архитектура проекта

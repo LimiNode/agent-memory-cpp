@@ -118,7 +118,11 @@ Goal: broaden from the stable M1 substrate to advanced memory systems.
 
 M2 may include graph expansion, speaker-aware chat, compiled wiki, translation
 projections, richer context planning, CLI, migration tools, ANN backends,
-advanced mutation policies, and profile-specific golden datasets.
+advanced mutation policies, artifact provenance profiles, and profile-specific
+golden datasets. An artifact provenance profile adds stable Source/Revision
+identity, immutable original bytes, versioned representations, typed evidence
+locators and segment-to-Chunk materialization. It is optional for M2, but a
+public non-text source connector must not bypass this contract.
 
 ### M2+ - Research / Optional
 
@@ -181,6 +185,7 @@ and guarantees are actually comparable.
 | `architecture.md` | Normative, except duplicated milestone summaries | High-level boundaries |
 | `memory-stacks-roadmap.md` | Normative for profiles and ADRs; milestone split delegated here | Capability model |
 | `knowledge-base-roadmap.md` | Normative for retrieval/store contracts | Must follow this file for M0/M1 scope |
+| `artifact-provenance-roadmap.md` | Normative for M2 artifact profiles | Required before public non-text connectors or external derived-index adapters |
 | `knowledge-activation-roadmap.md` | Normative for activation/planning concepts; implementation staged by this file | Domain maps, playbooks, soft routing |
 | `agent-runtime-integration-roadmap.md` | Proposal / A-lane | Cognitive runtime integration without core execution |
 | `mdbx-containers-extension-tz.md` | Normative for physical DBI manifest and upstream primitive contracts | Must track exact upstream compatibility snapshots |

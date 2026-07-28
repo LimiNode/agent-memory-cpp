@@ -140,7 +140,17 @@ unit is searchable and citeable, but carries weaker semantics. It should not be
 forced to pretend to be `Fact`, `QAPair`, `CompiledArticle` or any other
 curated kind until an explicit normalizer/extractor produces those units.
 
-## 3. SourceRef (canonical contract)
+## 3. SourceRef (M0 compatibility contract)
+
+> **Artifact-aware extension.** The M0 text-only layout below remains the
+> compact compatibility subset. Before any public source connector or
+> non-text ingestion API is released, the normative source model is
+> [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md):
+> `Source -> SourceRevision -> Artifact -> Representation -> Segment`, with
+> typed `EvidenceAnchor` locators. `TextRange` maps to `TextLocator`; it is not
+> a sufficient universal locator for pages, images, audio, video, slides or
+> spreadsheets. `ResourceId` is the local handle of a concrete source revision,
+> not the identity of a changing logical source.
 
 `SourceRef` — first-class provenance для всех retrieval-eligible units. Обязателен для Fact, QAPair, Relation, Event, и любого GraphNode, доступного через expansion. Рекомендуется для Chunk и CompiledArticle.
 

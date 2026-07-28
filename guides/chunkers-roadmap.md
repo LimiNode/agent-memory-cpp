@@ -65,6 +65,15 @@ IResourceAdapter
   -> optional later normalizer: Fact / QAPair / Summary / CompiledArticle
 ```
 
+For document, image, audio and video ingestion, this is the text-only view of
+the normative artifact pipeline in
+[`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md). A raw
+resource binds to a `SourceRevision` and immutable `Artifact`; extractors emit
+versioned `Representation` records and addressable `Segment` records before
+segment-backed `Chunk` units are indexed. A concrete parser remains an
+`IResourceAdapter`; it must not make its private extraction JSON the core
+provenance model.
+
 If a source already provides curated metadata, the importer may create a
 specific `KnowledgeUnitKind` immediately. If it does not, the importer creates
 a weaker generic `Note`/`Chunk` unit that is still searchable and citeable.

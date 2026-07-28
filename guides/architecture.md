@@ -199,7 +199,10 @@ Cross-cutting contracts:
 - A `SourceRef` first-class provenance value type lifted into the
   domain layer. Every component / projection that needs citation,
   every `RetrievalHit`, and every retrieval trace entry references
-  `SourceRef`.
+  `SourceRef`. Artifact-aware ingestion extends this with stable source and
+  revision identities, immutable artifacts, versioned representations,
+  segment-backed Chunk units and typed evidence locators; see
+  [`guides/artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md).
 - A retriever graph built on `RetrievalPlan`, `IUnitRetriever`, and
   `RetrievalHit` with `KnowledgeUnitId` as the unified key. `ChunkId`
   is one of many unit kinds, not the only key.
@@ -250,6 +253,11 @@ hosted vector databases, Python bindings, and agent framework bridges stay in
 `TranslationPolicy` and
 translation provenance metadata may live in the core/domain contract; concrete
 provider SDKs, package managers and model runtimes do not.
+
+The default retrieval/storage route is the library's own stores and indexes.
+An external vector database, when selected by an adapter, is a derived segment
+index only and does not own canonical artifact bytes, evidence anchors or
+backup truth.
 
 The canonical, currently normative specification of the data model,
 profiles, stacks, capability matrix, validation rules, and maturity lives in

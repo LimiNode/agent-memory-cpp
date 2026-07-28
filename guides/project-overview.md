@@ -109,6 +109,15 @@ Resource manifests, source revision tracking, targeted reindexing, tombstones,
 and compaction for mutable memory are tracked in
 `guides/resource-reindexing.md`.
 
+## Artifact And Provenance Backlog
+
+Stable source revisions, immutable artifact bytes, versioned extraction
+representations, typed evidence locators, multimodal segments, retention and
+backup boundaries are tracked in
+[`guides/artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md).
+The default path is the library's own catalog, blob storage and indexes; any
+external vector database remains an optional derived-index adapter.
+
 ## Lexical Search Backlog
 
 BM25, token dictionaries, postings, Unicode tokenization, raw resource stores,
