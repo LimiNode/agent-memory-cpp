@@ -273,14 +273,14 @@ Procedure activation:
 
 ```cpp
 struct ProcedureActivationCandidate {
-    KnowledgeUnitId procedure_id;
+    KnowledgeUnitRef procedure;
 
     double precondition_match = 0.0;
     double capability_match = 0.0;
     double historical_success = 0.0;
     double context_relevance = 0.0;
 
-    std::vector<KnowledgeUnitId> supporting_units;
+    std::vector<KnowledgeUnitRef> supporting_units;
     std::vector<RuntimeObjectRef> missing_capabilities;
 
     bool requires_validation = false;

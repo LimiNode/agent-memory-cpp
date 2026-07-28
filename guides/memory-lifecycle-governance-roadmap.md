@@ -161,13 +161,13 @@ enum class AbstractionLevel : uint8_t {
 
 struct AbstractionComponent {
     AbstractionLevel level;
-    std::vector<KnowledgeUnitId> derived_from;
-    std::vector<KnowledgeUnitId> supports;
-    std::vector<KnowledgeUnitId> contradicts;
+    std::vector<KnowledgeUnitRef> derived_from;
+    std::vector<KnowledgeUnitRef> supports;
+    std::vector<KnowledgeUnitRef> contradicts;
 };
 
 struct DerivationComponent {
-    std::vector<KnowledgeUnitId> source_episodes;
+    std::vector<KnowledgeUnitRef> source_episodes;
     std::vector<ExternalObjectRef> runtime_sources;
     std::string producer_id;
     std::string producer_version;

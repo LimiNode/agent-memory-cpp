@@ -245,7 +245,7 @@ struct CompiledArticlePayload {
     std::vector<std::string> keywords;
     ArticleStatus status;             // Draft | Review | Published | Archived
     int64_t last_compiled_at_ms;
-    std::vector<KnowledgeUnitId> derived_from;
+    std::vector<KnowledgeUnitRef> derived_from;
 };
 ```
 
@@ -697,7 +697,7 @@ struct RetrievalTrace {
     std::vector<RetrievalHit> fused_hits;
     Context final_context;
     LatencyStats latency_ms;                                    // per-stage
-    std::vector<KnowledgeUnitId> causal_path;
+    std::vector<KnowledgeUnitRef> causal_path;
 };
 ```
 

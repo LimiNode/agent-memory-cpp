@@ -75,13 +75,16 @@ Validate the roadmap DBI manifest whenever `guides/dbi-manifest.yaml` or
 `guides/mdbx-containers-extension-tz.md` changes:
 
 ```bash
+py -3 -m pip install -r tools/requirements-tools.txt
 py -3 tools/validate-dbi-manifest.py guides/dbi-manifest.yaml
 py -3 tools/validate-dbi-manifest.py guides/dbi-manifest.yaml --self-test
 ```
 
 When `AGENT_MEMORY_BUILD_TESTS=ON`, CTest also exposes
 `agent_memory_dbi_manifest_validate` and
-`agent_memory_dbi_manifest_validator_self_test`.
+`agent_memory_dbi_manifest_validator_self_test` when Python and PyYAML are
+available. CI installs the pinned tool dependency from
+`tools/requirements-tools.txt` before configure, so these tests are a CI gate.
 
 Run the BoW-vs-BM25 synthetic sweep fixture:
 

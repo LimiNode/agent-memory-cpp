@@ -100,6 +100,7 @@ enum class RuntimeObjectKind : std::uint16_t {
 struct RuntimeObjectRef {
     std::string adapter_id;           // e.g. "adelia"
     std::string runtime_instance_id;  // concrete world/runtime instance
+    std::optional<std::string> replica_id;
     RuntimeObjectKind kind = RuntimeObjectKind::Runtime;
     std::string opaque_id;
     std::optional<std::uint64_t> revision;
@@ -109,10 +110,17 @@ struct RuntimeObjectRef {
 An ADELIA adapter maps runtime-native node identifiers to neutral refs:
 
 ```text
-native node identifier -> RuntimeObjectRef{"adelia", runtime_id, Node, "...", revision}
+native node identifier -> RuntimeObjectRef{"adelia", runtime_id, replica_id, Node, "...", revision}
 ```
 
 The mapping lives in the adapter, not in core headers.
+
+Object identity is `(adapter_id, runtime_instance_id, replica_id, kind,
+opaque_id, revision?)`. `replica_id` is required when `opaque_id` is only
+replica-local. If an adapter omits `replica_id`, it must guarantee that
+`opaque_id` is globally unique within the runtime instance for that kind.
+For `RuntimeObjectKind::Replica`, `opaque_id` is the replica identifier;
+`replica_id` may be absent or equal to `opaque_id`.
 
 ## Replicated Identity And Runtime Time
 
@@ -131,10 +139,13 @@ struct KnowledgeUnitRef {
 };
 ```
 
-An implementation may derive `GlobalKnowledgeUnitId` from
-`(origin_replica, origin_sequence)` or use a 128-bit random/content-derived
-identifier, but the chosen scheme must be stable across export/import. Local
-import may remap `KnowledgeUnitId`; it must not rewrite global ids.
+`GlobalKnowledgeUnitId` is occurrence identity, not content identity. It may be
+a random 128-bit id or a hash over occurrence material such as
+`(origin_replica, origin_sequence, provenance, nonce)`. It must not be a pure
+content hash: two equal messages or observations at different times are allowed
+to be distinct units. Content identity and dedupe use `KnowledgeUnitKey` /
+`ContentHash` separately. Local import may remap `KnowledgeUnitId`; it must not
+rewrite global ids.
 
 Runtime log positions are origin-scoped:
 
@@ -181,6 +192,10 @@ struct RuntimeOriginComponent {
     std::optional<RuntimeObjectRef> replica;
 };
 ```
+
+If both `RuntimeOriginComponent.runtime_instance` / `replica` and
+`event_sequence` are present, they must describe the same origin. A mismatch is
+a validation error, not a merge policy choice.
 
 ### CausalContextComponent
 
@@ -266,8 +281,8 @@ struct EpistemicStatusComponent {
     std::string producer_model_id;
     std::string producer_model_version;
 
-    std::vector<KnowledgeUnitId> supporting_units;
-    std::vector<KnowledgeUnitId> contradicting_units;
+    std::vector<KnowledgeUnitRef> supporting_units;
+    std::vector<KnowledgeUnitRef> contradicting_units;
 };
 ```
 
@@ -527,6 +542,11 @@ struct DrillDownRef {
     DetailLevel available_level = DetailLevel::Summary;
 };
 ```
+
+`DrillDownRef::target_unit` is an ephemeral local retrieval handle. It is valid
+only inside the current database/session response and must not be serialized as
+a durable cross-replica reference. Durable drill-down references use
+`KnowledgeUnitRef`.
 
 `RetrievalHit` may expose the current detail level, drill-down refs,
 perspective summary and epistemic layer. This lets ADELIA first receive an
