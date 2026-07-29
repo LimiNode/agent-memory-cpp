@@ -1023,6 +1023,18 @@ DBI `conversation_episode_payloads`. Включается через `enable_con
 
 `episode_compaction` job (см. `compaction-roadmap.md`, future) сливает N соседних episodes в один SuperEpisode при превышении context budget или по retention policy.
 
+#### 5.5.5. Hierarchical Episode Retrieval And Packing (M2+)
+
+Episode retrieval first ranks summary/episode projections, then hydrates only
+the selected utterance range; it does not treat every message as an independent
+dense unit by default. A future immutable episode payload block may pack
+utterance-id and timestamp deltas, speaker run-lengths, participant dictionary,
+token offsets and compressed text bodies. `episode -> SuperEpisode -> summary`
+is a retrieval hierarchy, not permission to drop source utterances or their
+locators. Promotion requires recall/context-fidelity, segment-read, decoded
+byte, p50/p95/p99, append/update and compaction benchmarks against the current
+row-oriented payload.
+
 ### 5.6. CompiledArticlePayload
 
 Payload для `KnowledgeUnitKind::CompiledArticle`. Используется в CompiledWikiStack и FullResearch stack.
@@ -1345,7 +1357,7 @@ components for the same unit cannot overwrite each other. Per-kind payloads —
 2. По capability флагам создаются дополнительные DBI (см. таблицу 8.1).
 3. При drift detected (см. `memory-stacks-roadmap.md` секция 14): error или auto-migrate (per ADR-003, ADR-004).
 
-DBI budget target follows the shared manifest: canonical count 29, expanded peak 58,
+DBI budget target follows the shared manifest: canonical count 29, expanded peak 61,
 `Config::max_dbs = 96` by default, and at least 16 free DBI slots reserved for
 future profiles.
 

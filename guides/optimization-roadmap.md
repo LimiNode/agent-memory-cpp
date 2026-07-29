@@ -456,7 +456,11 @@ class ProductQuantizationCodec final : public IEmbeddingCodec {
 Storage: 768 × 4 bytes → 8 × 1 byte = ~96x compression.
 Distance: asymmetric ADC (approximate distance computation).
 
-Применение: cold storage tier (архивные embeddings), не hot retrieval.
+PQ has three distinct planned uses: archival payload storage, direct ADC
+scoring for a bounded intermediate rerank, and a future IVF-PQ candidate mode.
+They have different latency/recall contracts and must not be collapsed into one
+generic "PQ enabled" switch. The first direct-ADC use remains M2+ and is
+benchmark-gated against raw quantized and exact-float rerank.
 
 ## Projection-Aware Vector Storage
 
@@ -484,6 +488,31 @@ embedding_meta
             { model_id, version, dim, encoder_id, seed,
               written_at_ms, is_active, superseded_by_revision }
 ```
+
+### Immutable Derived Vector Blob Deduplication (M2+)
+
+M1 may store `vector_blob` inline in `embedding_vectors`. M2+ may replace the
+value with an immutable `DerivedVectorBlobRef` and store the encoded bytes once:
+
+```text
+derived_vector_blobs
+    key   = (dedup_namespace, projection_bytes_digest,
+             preprocessing_descriptor_digest, model_descriptor_digest,
+             metric, dimension, vector_codec_descriptor_digest)
+    value = immutable encoded vector payload
+
+embedding_vectors
+    key   = (scope_id, model_id, model_version, ProjectionKind, UnitId)
+    value = DerivedVectorBlobRef or inline vector_blob
+```
+
+The default `dedup_namespace` is scope-local; sharing across scopes requires an
+explicit trusted-workspace policy so equality of private content is not exposed
+as a side channel. A shared blob is only a rebuildable byte optimisation. Each
+projection keeps its own `EmbeddingMetaComponent`, active revision, lifecycle,
+authority and provenance binding. Compaction reclaims a blob only after no
+active, retained-revision, export, or in-flight manifest reference can resolve
+it; mutable reference counts are advisory rather than the source of truth.
 
 ### Multi-Projection Example
 
@@ -569,9 +598,11 @@ Two embeddings with the same `(scope_id, unit_id)` but different
 - For a given `(scope_id, unit_id, projection_kind)`, at most one row per
   `model_id` has `is_active == true`. Older revisions may persist until
   compaction purge.
-- A read that requests a `projection_kind` with no `is_active` row falls back
-  to the most recent `is_active` sibling of the same unit, or returns an empty
-  vector if none exists.
+- A read for an exact `(scope_id, unit_id, projection_kind, model_id,
+  model_version)` returns that active row or `NotFound`. It never falls back to
+  another projection kind or model sibling. Explicit recovery routes use
+  `DenseProjectionRoute` in `RetrievalPlan` and are recorded in
+  `RetrievalTrace`.
 - Cross-model fusion requires at least two `is_active` rows from different
   `model_id` values within the same `(scope_id, projection_kind)`.
 
@@ -864,7 +895,6 @@ struct BinaryBucketSearchBudget {
     uint32_t max_bucket_probes = 0;
     uint32_t max_posting_visits = 0;
     uint32_t max_unique_candidates = 0;
-    uint64_t max_decoded_bytes = 0;
     uint32_t max_exact_rerank_candidates = 0;
 };
 ```
@@ -872,7 +902,10 @@ struct BinaryBucketSearchBudget {
 Every search-budget field is required and must be nonzero for an enabled
 backend; `max_exact_rerank_candidates <= max_unique_candidates <=
 max_posting_visits` is also required. They are hard validation limits, not
-tuning hints.
+tuning hints. Physical `segment_reads`, cursor seeks, encoded bytes and decoded
+bytes are capped by the shared `RetrievalIoBudget` in
+[`knowledge-base-roadmap.md`](knowledge-base-roadmap.md), so one global I/O
+contract rather than a vector-only duplicate governs a hybrid query.
 The query trace records the actual probe, posting, decode, deduplication and
 rerank counts plus the first exhausted limit. A planner may select a smaller
 budget, but it must not silently exceed the profile maximum. This deliberately
@@ -1057,15 +1090,47 @@ query text
     -> descriptor/table-scoped bucket and segment lookups
     -> bounded decode/decompression of posting lists
     -> full-signature Hamming filter
+    -> intersect pushdown-safe CandidateSet
     -> unique canonical projection ids
-    -> batch fetch float embeddings for the requested
+    -> optional direct score over encoded int8/PQ/RotSQ payloads
+    -> bounded exact float16/float32 rerank for the requested
        (model_id, model_version, projection_kind)
     -> optional cross-model RRF
-    -> exact rerank
-    -> fetch unit text
+    -> canonical hydration, active-revision and provenance validation
+    -> optional host-owned model rerank over validated snippets
+    -> fetch context text
 ```
 
-Float rerank remains mandatory for quality-sensitive retrieval.
+Float rerank remains mandatory for quality-sensitive retrieval. `BinaryOnly`
+and other compact-only modes must explicitly opt into their lower-quality
+contract rather than silently inheriting the quality-sensitive profile.
+
+### Tiered Encoded Rerank (M2+)
+
+```cpp
+struct TieredRerankBudget {
+    std::uint32_t max_binary_candidates = 0;
+    std::uint32_t max_quantized_candidates = 0;
+    std::uint32_t max_exact_candidates = 0;
+    std::uint32_t max_host_model_rerank_candidates = 0;
+};
+```
+
+The required ordering is `host-model <= exact <= quantized <= binary`; each
+nonzero stage is bounded by its preceding stage and by `CandidateSet` plus
+`RetrievalIoBudget`. An encoded vector codec may advertise direct batch scoring
+only when it can score the configured metric from its payload without silently
+materializing one full `Embedding` per candidate. The capability records metric,
+normalization, codec/version and score semantics; unsupported codecs skip this
+stage and proceed to exact rerank. PQ ADC, int8 dot/cosine, and RotSQ-style
+scores are competing candidates, not a mandatory codec chain.
+
+The optional final model rerank is a host-provided adapter over already
+hydrated, policy-valid snippets. The core validates its budget and traces its
+input/output but neither embeds a cross-encoder nor makes external inference a
+library dependency. Benchmarks compare every enabled tier with the exact
+per-projection baseline and report stage survivor counts, direct-score time,
+decoded bytes, recall and final answer/citation quality.
 
 The returned `VectorHit` remains only a candidate. The retrieval engine
 hydrates the active envelope/payload, validates scope, lifecycle, authority,

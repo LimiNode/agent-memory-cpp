@@ -655,6 +655,30 @@ affected projections and updates secondary indexes in one transaction.
 ### 7.3. Retrieval
 
 ```cpp
+enum class MissingProjectionPolicy : uint8_t {
+    ReturnEmpty,
+    ScheduleRecompute,
+    UseExplicitFallbackRoute,
+};
+
+struct DenseProjectionRoute {
+    std::string route_id;
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    std::string model_id;
+    std::string model_version;
+    std::size_t candidate_limit = 0;
+    MissingProjectionPolicy on_missing = MissingProjectionPolicy::ReturnEmpty;
+    std::optional<std::string> fallback_route_id;
+};
+
+struct RetrievalIoBudget {
+    std::uint32_t max_segment_reads = 0;
+    std::uint32_t max_mdbx_cursor_seeks = 0;
+    std::uint64_t max_encoded_bytes_read = 0;
+    std::uint64_t max_decoded_bytes = 0;
+    std::uint64_t max_io_time_us = 0;
+};
+
 struct RetrievalPlan {
     std::string raw_query;
     std::vector<ProjectionQueryVariant> query_variants;
@@ -667,6 +691,7 @@ struct RetrievalPlan {
     RetrievalMode mode = RetrievalMode::Hybrid;
 
     std::vector<RetrieverSpec> retrievers;
+    std::vector<DenseProjectionRoute> dense_routes;  // M2+, exact projection routes
     std::optional<BoundedQueryPlan> bounded_query_plan; // M2 decomposition
 
     std::vector<KnowledgeUnitKind> kinds;
@@ -679,6 +704,7 @@ struct RetrievalPlan {
 
     size_t candidate_pool_size = 200;
     size_t limit = 32;
+    std::optional<RetrievalIoBudget> io_budget;  // M2+ physical read/decode cap
     std::optional<ContextBudget> context_budget;
 
     std::optional<DecayPolicy> decay_policy_override;

@@ -503,6 +503,49 @@ Segments allow resource updates to touch fewer bytes and make tombstone cleanup
 more incremental. The simple blob layout is still the right first backend
 because it is easier to test against the in-memory BM25F baseline.
 
+### Compressed Posting Blocks And Dynamic Pruning (M2+)
+
+The M2 physical segment remains a derived lexical representation, not a second
+source of truth for a unit or its current lifecycle. Its versioned layout may
+contain:
+
+```text
+[header: scoring/statistics generation, record count, safe upper bounds]
+[delta-coded unit ids]
+[term frequencies and field statistics]
+[optional per-document delta-coded positions]
+[skip offsets]
+[revision/resource-generation data]
+[optional conservative zone synopsis]
+```
+
+Unit ids and positions are candidates for delta plus bounded integer packing
+(VByte, SIMD-BP128, Stream VByte, FastPFOR or an equivalent codec); term
+frequencies may use bit packing; repeated generation/source fields may use a
+local dictionary or RLE. No particular third-party wire format is a public
+contract. A segment that cannot safely use a narrow delta representation must
+use a lossless wide fallback.
+
+Dynamic pruning is introduced in stages: exhaustive DAAT BM25F baseline first,
+then MaxScore/WAND, then Block-Max WAND only after the per-block score upper
+bounds are proved conservative for the active BM25F formula, field weights and
+collection-statistics generation. A stale bound may reduce pruning efficiency,
+but it must never discard a document that exhaustive BM25F could return in
+top-K. Segment zone synopses may skip a block only for immutable or
+generation-bound predicates; mutable lifecycle/authority/revision decisions
+continue through `CandidateSet` and final canonical validation.
+
+Before scoring or position decode, lexical candidates intersect the same
+execution-local `CandidateSet` used by dense, graph and temporal routes. This
+pushes exact scope/authority/lifecycle/time/source filters ahead of expensive
+work without treating the set as a substitute for stale-posting checks.
+
+Acceptance compares each mode with exhaustive BM25F on identical corpus and
+filters. It reports nDCG/Recall, decoded posting integers and position bytes per
+query, posting blocks touched, documents fully scored, CandidateSet filtering
+rate, encoded/decoded I/O, p50/p95/p99 latency, update/delete/compaction cost,
+and corrupt/obsolete-statistics negative cases.
+
 ## Targeted Reindexing
 
 When a unit is reindexed for a given `projection_kind`:
@@ -939,6 +982,15 @@ Storage estimate: 1M units × 32 tokens × 128 dim float32 = ~16 GB (raw).
 С ColBERTv2 compression: ~1.6-2.7 GB.
 
 Status: M2+ optional, дорого по памяти. Для high-precision use cases.
+
+The M2+ storage contract is a `VectorSetProjection`: canonical unit/projection
+identity, embedding-space and modality descriptor, pooling rule,
+`max_vectors_per_unit`, encoded vector-set payload, and token/sentence/patch
+locators. Coarse unit retrieval precedes bounded MaxSim over the selected vector
+sets. Equal dimension is not sufficient compatibility: embedding space,
+preprocessing, pooling and vector-set layout must match. Residual compression
+and late-interaction ANN remain optional adapters evaluated against a
+single-vector exact baseline and the global `RetrievalIoBudget`.
 
 ## Hybrid Retrieval
 

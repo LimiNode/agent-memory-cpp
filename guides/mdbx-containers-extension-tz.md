@@ -1325,9 +1325,11 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned. |
 | Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV supported | `runtime_sequence_index`; A1 runtime-history acceleration. |
+| Compressed lexical posting-segment delta | 0 by default, +1 when M2 lexical segments are enabled | +1 | KV supported | `lexical_posting_segments`; derived BM25F block layout with conservative score bounds, not a replacement for canonical units or exhaustive baseline. |
+| Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, snapshot-derived opt-in | snapshot-derived | opt-in only | Count the enabled raw/logical store manifest at the pinned upstream SHA; not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
-| Planned expanded peak under current assumptions | profile-selected | 58 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 38 DBI slots of headroom under `max_dbs = 96`, including 22 above the required 16 free slots; profiles that choose the legacy `64` ceiling must disable deltas until at least 16 free slots remain. |
+| Planned expanded peak under current assumptions | profile-selected | 61 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 35 DBI slots of headroom under `max_dbs = 96`, including 19 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
@@ -2461,6 +2463,16 @@ backlog or an alternative application-level retrieval contract.
    until it demonstrates an end-to-end win; it must not be the default format
    for a latency-sensitive exact scan.
 
+   A vector payload descriptor may declare a metric-specific direct batch
+   scoring capability for its encoded representation. The capability must bind
+   score semantics, normalization, codec/version and supported dimensions, and
+   must return a bounded approximate score without silently materializing one
+   full float vector per candidate. It is a generic vector-layer candidate only:
+   application tier selection, CandidateSet filtering, profile policy and final
+   hydration remain downstream. Product quantization archival storage, PQ ADC
+   rerank and any IVF-PQ candidate layer are separate modes with separate
+   benchmark contracts.
+
    The public contract must not require a particular implementation library or
    expose a third-party packed wire format. SIMD-BP128, Stream VByte, FastPFOR,
    and similar libraries are acceptable optional implementation candidates for
@@ -2472,6 +2484,12 @@ backlog or an alternative application-level retrieval contract.
    per-column bytes, build and decode throughput, p50/p95/p99 query latency,
    decoded bytes per query, recall against exact baseline, write amplification,
    compaction cost, reopen time, and peak memory.
+
+   A generic block reader/decoder should expose measured block reads, encoded
+   bytes read and decoded bytes to its caller. Global seek/read/deadline budgets
+   and cache/page-fault telemetry remain application-owned because they span
+   MDBX, external stores, filters and several retrievers rather than one vector
+   collection.
 
    The downstream application remains responsible for deciding which records
    share a block or hash bucket, for canonical record ownership and hydration,

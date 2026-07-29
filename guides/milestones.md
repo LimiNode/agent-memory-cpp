@@ -133,12 +133,24 @@ identity, immutable original bytes, versioned representations, typed evidence
 locators and segment-to-Chunk materialization. It is optional for M2, but a
 public non-text source connector must not bypass this contract.
 
+M2 retrieval engineering may add projection-exact fallback routes,
+`CandidateSet` filter pushdown, physical I/O budgets/tracing, tiered encoded
+rerank, compressed lexical posting segments with conservative dynamic pruning,
+and immutable derived-vector blob deduplication. These are benchmark-gated
+optimisations over the canonical M1 storage contracts, not alternate sources of
+truth.
+
 ### M2+ - Research / Optional
 
 Bi-temporal storage, abstraction graphs, causal relations, entity resolution,
 logical sync adoption, late interaction, learned sparse backends, and advanced
 binary document encoders live here until they receive DBI budget rows,
 acceptance tests, and explicit profile owners.
+
+M2+/M3 physical-profile experiments include time-partitioned temporal segments,
+packed graph adjacency, hierarchical episode blocks, and multi-vector
+`VectorSetProjection` retrieval. Their code work follows only after the shared
+candidate/I/O contracts and profile-specific baselines exist.
 
 ## Orthogonal A-Lane: Agent Runtime Integration
 

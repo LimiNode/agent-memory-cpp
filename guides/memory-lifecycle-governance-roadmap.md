@@ -143,6 +143,21 @@ Storage implications:
 - use generic MDBX range-index primitives rather than a Graphiti-specific
   graph schema.
 
+### Physical Query Profiles And Benchmarks (M2+)
+
+Temporal optimisation keeps valid time and recorded/observed time as separate
+access paths. The acceptance matrix covers `active_at`, interval overlap,
+latest valid value, subject/predicate history, `known_at`, and recorded-time
+cutoffs; one range index must not silently answer the other axis.
+
+Time-partitioned immutable segments, conservative min/max time synopses,
+start-time plus end-time indexes, delta-of-delta timestamp columns, and RLE or
+dictionary coding for repeated source/session/speaker values are M2+ physical
+experiments. They may skip only segments whose immutable bounds prove no match.
+Every profile is measured against the range-index baseline for candidate count,
+segment reads, decoded bytes, p50/p95/p99, update/compaction cost, and
+time-travel correctness.
+
 ## 4. AM-14: Abstraction And Derivation Graph
 
 Raw documents, chunks, facts, episodes, summaries and higher-level models are

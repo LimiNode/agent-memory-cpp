@@ -250,6 +250,22 @@ profile_deltas:
     names: [runtime_sequence_index]
     milestone: A1
     note: Range key (ScopeId, encoded runtime identity, encoded replica identity, sequence, UnitId) for KnowledgeAtSequence.
+  - name: lexical_posting_segments
+    dbis: 1
+    migration_peak: 1
+    default: false
+    names: [lexical_posting_segments]
+    capability: LexicalIndex
+    milestone: M2
+    note: Immutable compressed lexical posting blocks with conservative skip and score-bound metadata; replaces neither canonical unit rows nor exhaustive BM25F baseline.
+  - name: derived_vector_blob_dedup
+    dbis: 1
+    migration_peak: 1
+    default: false
+    names: [derived_vector_blobs]
+    capability: DenseVectors
+    milestone: M2
+    note: Scope-local immutable encoded-vector payload deduplication; projection metadata and lifecycle remain per-unit.
   - name: event_record_index
     dbis: 1
     migration_peak: 1

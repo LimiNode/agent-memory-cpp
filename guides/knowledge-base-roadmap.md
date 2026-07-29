@@ -327,7 +327,7 @@ Generation rules детерминированы: given the same unit + component
 
 ## 6. Domain Stores (capability-aware)
 
-`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget follows `dbi-manifest.yaml`: logical expanded peak 58, configured `max_dbs` 96, reserved headroom 38, and minimum required headroom 16.
+`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget follows `dbi-manifest.yaml`: logical expanded peak 61, configured `max_dbs` 96, reserved headroom 35, and minimum required headroom 16.
 
 ### 6.1. IKnowledgeUnitStore (всегда открыт)
 
@@ -441,6 +441,54 @@ deduplicates candidates by canonical unit/revision identity, and the retrieval
 trace records branch-to-hit-to-context-block lineage. M0/M1 use one original
 branch; decomposition, multi-hop routing and multilingual pivots are M2
 opt-in behavior.
+
+### 7.1.1. Exact Projection Routes And Missing Data (M2+)
+
+An embedding lookup always names one exact `(projection_kind, model_id,
+model_version)` route. The canonical `DenseProjectionRoute` and
+`MissingProjectionPolicy` live in `memory-stacks-roadmap.md` Section 7.3.
+Storage returns that active projection or `NotFound`; it
+must never silently substitute `Original`, `QAQuestion`, `QAAnswer`,
+`DenseContextual`, or another sibling merely because dimension and model happen
+to match.
+
+`UseExplicitFallbackRoute` is valid only when `fallback_route_id` names another
+route in the same plan, has its own candidate budget, and does not create a
+cycle. The planner owns this semantic decision; storage owns only exact lookup.
+The trace records a missing projection, recompute request, or fallback route so
+evaluation can distinguish a true primary-route hit from a recovery path.
+
+### 7.1.2. CandidateSet And Physical I/O Budget (M2+)
+
+`CandidateSet` is an execution-local set of eligible canonical unit ids after
+scope, strict authority, lifecycle, temporal, speaker, source, and other
+pushdown-safe filters. It is not a durable index and never replaces final
+revision/provenance validation during hydration.
+
+```cpp
+enum class CandidateSetRepresentation : uint8_t {
+    All,
+    Empty,
+    SortedIds,
+    Bitmap,
+};
+```
+
+The planner chooses `SortedIds` for sparse sets and an implementation-selected
+bitmap representation for dense sets; a Roaring-compatible implementation is
+an optional optimisation, not a core dependency. Retrievers intersect their
+candidates with the set before expensive vector decode, lexical scoring or
+graph expansion whenever the filter is exact and cheap to materialize. Dynamic
+facts such as active revision remain subject to the final canonical check.
+
+`RetrievalIoBudget` (defined in `memory-stacks-roadmap.md` Section 7.3) is a
+runtime limit shared by lexical, dense, graph and temporal routes. All enabled
+fields are nonzero hard caps; the effective budget
+is the minimum of the profile, branch and route limits. It complements the
+logical candidate budgets: a query may be under its candidate count yet exceed
+its encoded read, seek, or elapsed-I/O allowance. Page-fault and cache metrics
+are telemetry when the platform can provide them, never portability-sensitive
+correctness gates.
 
 Runtime-integration filters are optional and only active when
 `CognitiveTrace` is enabled:
@@ -583,6 +631,15 @@ struct GraphExpansionOptions {
 ```
 
 BFS от seed units, max_depth BFS, max_edges — глобальный cap, allowed_edge_kinds — фильтр (empty = all), min_weight — prune low-confidence. Determinism: ordering `(edge_weight desc, edge_kind, from_id, to_id)`. Floating subgraph как retrieval view (не stored as separate copy).
+
+M2+ may add immutable adjacency segments as an optimisation over canonical
+`graph_edges_by_src`/`graph_edges_by_dst` rows: sorted neighbour ids, packed
+weights, dictionary-coded edge kinds, and optional metadata locators. The
+segment is never the authority for an edge. `CandidateSet` may represent BFS
+frontier and visited nodes, while the existing depth/edge/token limits remain
+hard traversal budgets. Benchmark against row-wise expansion on breadth,
+locality, update/compaction cost, decoded bytes and deterministic result order
+before promoting a packed adjacency layout.
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это уточняет API shape `GraphStore` для будущих расширений (callbacks + early-stop visitor, schema introspection для diagnostics).
 
@@ -762,6 +819,22 @@ Evaluation — first-class citizen. Retrieval traces, datasets, metrics — ча
 ### 9.1. RetrievalTrace
 
 ```cpp
+struct RetrievalIoCounters {
+    std::uint32_t segment_reads = 0;
+    std::uint32_t mdbx_cursor_seeks = 0;
+    std::uint64_t encoded_bytes_read = 0;
+    std::uint64_t decoded_bytes = 0;
+    std::uint64_t cache_hits = 0;
+    std::uint64_t cache_misses = 0;
+    std::optional<std::string> first_exhausted_limit;
+};
+
+struct ProjectionRouteTrace {
+    std::string route_id;
+    std::string outcome;  // used, missing, recompute_scheduled, fallback
+    std::optional<std::string> fallback_route_id;
+};
+
 struct QueryBranchTrace {
     std::string branch_id;
     std::vector<KnowledgeUnitRef> candidate_units;
@@ -780,11 +853,21 @@ struct RetrievalTrace {
     std::vector<RetrievalHit> fused_hits;
     Context final_context;
     LatencyStats latency_ms;                                    // per-stage
+    RetrievalIoBudget effective_io_budget;
+    RetrievalIoCounters io_counters;
+    std::vector<ProjectionRouteTrace> projection_route_events;
     std::vector<KnowledgeUnitRef> causal_path;
 };
 ```
 
 Latency per stage: tokenize, lexical, vector, qa, graph, temporal, fusion, build_context. Метрики: `cache_hit_rate`, `anti_loop_skip_rate`, `decay_score_distribution` (histogram), `retrieval_channel_latency` (p50/p95/p99 per channel). Per-retriever breakdown: `associative` (lexical/vector/graph) vs `targeted` (QA, exact match). Associative timeout 50ms, targeted 4000ms.
+
+`RetrievalIoCounters` records segment reads, MDBX cursor seeks, encoded and
+decoded bytes, cache hits/misses when available, and the first exhausted I/O
+limit. `ProjectionRouteTrace` records exact route use, missing projections,
+scheduled recompute, and explicit fallback. These supplement the existing
+per-stage latency and channel metrics without turning optional page-fault data
+into a portability-sensitive correctness gate.
 
 ### 9.2. RetrievalDataset / TestCase / Judgment
 
