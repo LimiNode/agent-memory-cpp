@@ -2312,6 +2312,108 @@ replicate or are rebuilt from canonical application records. SIMD/AVX/NEON
 kernel work is a separate upstream performance proposal, gated by reproducible
 flat-index benchmarks and preserving scalar score semantics.
 
+### 12.11 Accelerated binary and blocked vector retrieval
+
+`agent-memory-cpp` already has a useful in-memory acceleration baseline:
+`ExactVectorIndex` selects scalar/SSE/AVX2 float similarity kernels;
+`FlatBinarySignatureIndex` stores signatures contiguously and uses
+width-aware Hamming dispatch; and the experimental `MultiProbeHammingIndex`
+generates bounded candidates from projected-bit buckets before exact Hamming
+ranking. These are not yet a durable production vector backend: the exact
+float index stores application records in a map, the bucket index is
+in-memory-only, and neither owns a persisted block lifecycle or canonical
+hydration contract.
+
+The following are candidate generic `mdbx-containers` capabilities. They do
+not introduce `QAPair`, `ChunkId`, `KnowledgeUnit` or application metadata into
+the upstream API:
+
+1. **Vector collection descriptor.** Persist and validate collection schema:
+   stable collection id, descriptor version, dimension, metric,
+   normalization rule, vector codec/quantizer identity and version, binary
+   signature encoder identity, and block layout version. A caller supplies
+   opaque stable record ids; local numeric allocation is never a durable
+   identity.
+2. **SIMD exact scan kernel.** A vector-only, contiguous scan surface with
+   scalar fallback and runtime SSE/AVX2/AVX-512/NEON dispatch. It returns only
+   `(record_id, score)` candidates and keeps payload hydration outside the
+   vector layer. It is the exact oracle for quality tests and the final rerank
+   path for bounded candidates.
+3. **Binary signature bucket index.** A collection-scoped, bounded multi-probe
+   posting index over opaque record ids. The signature descriptor is part of
+   the key space; different encoders, widths or normalization rules never
+   share buckets. It may use a full signature or a deterministic projected-bit
+   bucket key, but its result is always a candidate superset/approximation
+   subject to later verification, never a proof of vector equality.
+4. **Immutable vector blocks.** Store vectors in bounded contiguous blocks,
+   addressed by `(collection, generation, block_id)`. A stable-id locator maps
+   each record to `(generation, block_id, slot)`, while bucket postings point
+   to record ids or block/slot locations. Insert/update writes a new block or
+   generation and atomically swaps the active manifest; delete uses a
+   tombstone/active-generation rule and compaction reclaims unreachable blocks.
+   The primary vector payload is stored once, not duplicated in every
+   multi-probe bucket.
+
+The intended query path is bounded and deterministic:
+
+```text
+query embedding
+  -> compatible binary signature
+  -> bounded bucket probes and deduplicated record candidates
+  -> load/decode only candidate vector blocks
+  -> optional quantized approximate score
+  -> exact float32 rerank of the selected candidates
+  -> application canonical hydration and active-revision validation
+```
+
+This permits the proposed batch-by-hash layout, with an important terminology
+distinction:
+
+- an **artifact/content digest** can prove byte equality and permits dedupe;
+- a **binary signature or bucket hash** only groups likely neighbours. Equal
+  signatures do not prove equal source vectors, so every returned candidate
+  still receives the configured exact Hamming and/or full-vector verification;
+- a projected bucket key is even coarser, therefore may contain several full
+  signatures and must not be used as a durable record identity.
+
+For the blocked layout, vectors sharing a selected primary signature/bucket may
+be packed into the same immutable block. Additional probe buckets store compact
+postings only. This gives sequential reads and amortizes one block decode
+across many candidates, without asserting that the bucket is lossless or that
+all equal-signature vectors are equal.
+
+`Quantization -> optional Zstd` is an allowed block codec pipeline, not a
+default promise. Quantization (`float16`, `int8`, PQ or another versioned
+codec) occurs before optional block compression. Zstd acts on a complete
+bounded immutable block and is decoded once into a contiguous temporary buffer;
+it is not applied per vector and is not on the hot full-corpus scan path.
+Compression is accepted only when measured on representative embeddings:
+high-entropy float or quantized bytes may have negligible Zstd savings. The
+block header records codec ids/versions, per-block quantization parameters,
+record count, decoded/encoded byte sizes, digest and a strict decoded-size
+limit. Corrupt, oversized or descriptor-incompatible blocks fail closed.
+
+The proposed acceptance suite must report exact-oracle recall, final reranked
+quality, p50/p95/p99 latency, candidate count, bucket/posting visits, decoded
+bytes, RSS, on-disk bytes, ingest/update/delete/compaction cost and recovery
+after an interrupted block publication. It must compare: flat float32 SIMD,
+flat binary Hamming, bucketed binary plus exact rerank, and every enabled
+quantized/compressed block mode. A bucket or codec is not promoted to a default
+backend merely because it uses fewer bytes.
+
+Recommended upstream sequencing:
+
+1. `TableSequence` as a small independent primitive.
+2. Benchmark-backed vector-only contiguous scan/SIMD kernel and collection
+   descriptor, without application payloads.
+3. Blocked vector store plus binary bucket postings and lifecycle tests.
+4. HNSW/other ANN only after the blocked candidate path has stable ids,
+   descriptor validation, update/delete semantics and benchmark evidence.
+
+`agent-memory-cpp` remains responsible for encoder/autoencoder training,
+signature policy, model selection, query planning, QAPair and provenance
+records, metadata/authority filtering, fusion and context construction.
+
 ## 13. Перекрёстные ссылки (потребители в agent-memory-cpp)
 
 Этот раздел фиксирует downstream-потребителей TZ: какие roadmap-документы и компоненты `agent-memory-cpp` будут использовать конкретные DBIs из секции 5.5 и storage decisions/patterns из секции 12.
