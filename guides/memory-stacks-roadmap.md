@@ -107,7 +107,7 @@ Layer A: KnowledgeUnitEnvelope (lookup-critical, hot path)
 
 Layer B: Components (operational + per-kind payloads)
   UsageStatsComponent, SpeakerComponent, TemporalComponent,
-  EmbeddingMetaComponent, CompactionMetaComponent,
+  CompactionMetaComponent,
   QAPayload, FactPayload, ConversationEpisodePayload,
   CompiledArticlePayload, ChunkPayload
 
@@ -476,6 +476,14 @@ struct DenseIndexConfig {
 ### 6.3. Полная спецификация
 
 ```cpp
+struct RetrievalIoBudget {
+    std::uint32_t max_segment_reads = 0;
+    std::uint32_t max_mdbx_cursor_seeks = 0;
+    std::uint64_t max_encoded_bytes_read = 0;
+    std::uint64_t max_decoded_bytes = 0;
+    std::uint64_t max_io_time_us = 0;
+};
+
 struct MemoryProfileSpec {
     std::string name;
 
@@ -493,7 +501,7 @@ struct MemoryProfileSpec {
     bool enable_conversation_episode = false;
     bool enable_compiled_article = false;
     bool enable_full_source_refs = false;
-    bool enable_embedding_meta = false;
+    bool enable_embedding_meta = false; // opens dedicated embedding_meta, not unit_components
     bool enable_compaction = false;
     bool enable_async_indexer = false;
     bool enable_context_planner = false;
@@ -506,6 +514,7 @@ struct MemoryProfileSpec {
     std::optional<WritePolicy> write_policy;
     std::optional<SpeakerScopePolicy> speaker_policy;
     std::optional<HybridRetrievalConfig> hybrid_config;
+    std::optional<RetrievalIoBudget> retrieval_io_budget;
     std::optional<ContextBudget> context_budget;
     std::optional<ContextTierPolicy> context_tier_policy;
     std::optional<RetrievalMode> default_retrieval_mode;
@@ -661,22 +670,48 @@ enum class MissingProjectionPolicy : uint8_t {
     UseExplicitFallbackRoute,
 };
 
+enum class ProjectionRouteInputKind : uint8_t {
+    Corpus,
+    PriorRouteCandidates,
+};
+
+enum class BudgetExhaustionAction : uint8_t {
+    ReturnPartial,
+    DropRoute,
+    FailIfRequired,
+};
+
 struct DenseProjectionRoute {
     std::string route_id;
     ProjectionKind projection_kind = ProjectionKind::Original;
     std::string model_id;
     std::string model_version;
     std::size_t candidate_limit = 0;
+    ProjectionRouteInputKind input_kind = ProjectionRouteInputKind::Corpus;
+    std::optional<std::string> parent_route_id;
+    std::size_t input_candidate_limit = 0;
+    FusionStrategy fusion_strategy = FusionStrategy::RRF;
     MissingProjectionPolicy on_missing = MissingProjectionPolicy::ReturnEmpty;
     std::optional<std::string> fallback_route_id;
+    std::optional<RetrievalIoBudget> io_budget;
+    std::optional<TieredRerankBudget> rerank_budget;
+    BudgetExhaustionAction on_budget_exhaustion = BudgetExhaustionAction::ReturnPartial;
 };
 
-struct RetrievalIoBudget {
-    std::uint32_t max_segment_reads = 0;
-    std::uint32_t max_mdbx_cursor_seeks = 0;
-    std::uint64_t max_encoded_bytes_read = 0;
-    std::uint64_t max_decoded_bytes = 0;
-    std::uint64_t max_io_time_us = 0;
+struct RetrievalAccessContext {
+    std::string principal_id;
+    std::vector<std::string> role_ids;
+    std::vector<std::string> jurisdictions;
+    std::vector<std::string> policy_claims;
+    std::string issuer_id;
+    std::string claims_version;
+};
+
+enum class RetrievalCompletion : uint8_t {
+    Complete,
+    BudgetExhausted,
+    RouteDropped,
+    RequiredRouteFailed,
 };
 
 struct RetrievalPlan {
@@ -686,6 +721,7 @@ struct RetrievalPlan {
 
     std::vector<ScopeId> scope_ids;
     std::optional<ScopeId> default_scope;
+    RetrievalAccessContext access_context;
 
     std::vector<MemoryTier> tiers = {MemoryTier::Hot, MemoryTier::Warm};
     RetrievalMode mode = RetrievalMode::Hybrid;
@@ -695,7 +731,8 @@ struct RetrievalPlan {
     std::optional<BoundedQueryPlan> bounded_query_plan; // M2 decomposition
 
     std::vector<KnowledgeUnitKind> kinds;
-    std::optional<TemporalWindow> temporal_window;
+    std::optional<TemporalWindow> temporal_window;  // M1 single-axis compatibility
+    std::optional<TemporalQuery> temporal_query;    // M2+ tagged bi-temporal frontier
     std::optional<SpeakerScopePolicy> speaker_filter;
     std::optional<TypedMetadataFilter> metadata_filter;
 
@@ -716,8 +753,42 @@ struct RetrievalResult {
     std::vector<RetrievalHit> hits;
     std::optional<Context> assembled_context;
     RetrievalTrace trace;
+    RetrievalCompletion completion = RetrievalCompletion::Complete;
 };
 ```
+
+`RetrievalAccessContext` is immutable input from the embedding application. The
+host authenticates its principal and issues role, jurisdiction and other
+policy-relevant claims; the memory library neither authenticates identities nor
+consults hidden host-global state. `AccessPolicy` evaluates this context before
+candidate creation and again before materialization.
+
+`MissingProjectionPolicy` is a route-availability policy: `missing` means the
+requested collection or descriptor is absent or incompatible. Sparse per-unit
+coverage, an empty search result, a stale row and budget exhaustion are separate
+outcomes and must not trigger an implicit whole-query fallback.
+
+`PriorRouteCandidates` requires a non-empty `parent_route_id` and a nonzero
+`input_candidate_limit`; `Corpus` requires neither. The planner validates the
+route DAG, parent order and bounds before execution. The default QAPair profile
+uses `QAQuestion` from `Corpus`; `QAAnswer` is a bounded
+`PriorRouteCandidates` rerank. Corpus-wide answer search is explicit,
+benchmark-gated opt-in.
+
+The profile, branch and route budgets are hard maxima. A route's effective cap
+is the field-wise minimum of all enabled levels. The plan order is the
+deterministic admission order: every known-cost read/decode is admitted only
+when it fits both the route allowance and shared query counter, and unused
+allowance remains available to later routes. `0` is invalid for an engaged cap;
+an absent optional budget means that level supplies no additional cap. A future
+parallel executor must reproduce this observable accounting until a separate
+fair-sharing contract is accepted.
+
+On budget exhaustion, a route follows its declared `on_budget_exhaustion`.
+`ReturnPartial` may participate in fusion only with an explicit partial outcome;
+`DropRoute` contributes no hits; `FailIfRequired` makes the query result
+`RequiredRouteFailed`. No `BudgetExhausted` result may claim exhaustive top-K
+semantics.
 
 ## M2+ Retrieval Hooks
 
@@ -821,7 +892,10 @@ public:
 // CRAG implementation:
 class CragRetrievalEvaluator final : public IRetrievalEvaluator {
 public:
-    RetrievalDecision evaluate(const Query& q, const auto& hits) override {
+    RetrievalDecision evaluate(
+        const Query& q,
+        const std::vector<RetrievalHit>& hits
+    ) override {
         // Lightweight evaluator (fine-tuned T5 или rule-based).
         // Confidence < threshold → CorrectiveSearch с web fallback.
     }
@@ -1446,12 +1520,12 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
   Identity hash material changes (`kind`, `scope_id`, canonical payload/body
   identity, hash recipe without preserving migration) create a new `UnitId` plus
   supersede/merge lineage. НЕ инкрементить на UsageStats / Decay /
-  priority_weight / EmbeddingMeta / soft suppression / cooldown. Explicit list
+  priority_weight / embedding metadata / soft suppression / cooldown. Explicit list
   durable lifecycle transitions, инкрементящих revision: Active→Superseded,
   Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated.
 - `LexicalPosting` хранит `unit_revision` (envelope.revision на момент постинга).
-- `EmbeddingMetaComponent` хранит `unit_revision_at_compute`.
-- Retrieval-time: skip posting if `posting.unit_revision < envelope.revision`; recompute/skip embedding if `embedding.unit_revision_at_compute < envelope.revision`.
+- `EmbeddingProjectionMeta` хранит unit and projection freshness tokens.
+- Retrieval-time: skip posting if `posting.unit_revision < envelope.revision`; recompute/skip a dense row unless both embedding freshness tokens match the active canonical projection.
 - Подробности — §17.11 Stale-filter pattern.
 
 ### Шаг 2: Scope-aware keys + metadata filters
@@ -1504,7 +1578,7 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `TypeDiscriminatedTable` в mdbx-containers (если ещё не реализован).
 - `ComponentStore` (CRUD с tag-prefix).
 - Компоненты: UsageStatsComponent, SpeakerComponent, TemporalComponent,
-  EmbeddingMetaComponent, CompactionMetaComponent,
+  CompactionMetaComponent,
   ActivationMetadataComponent.
 - DBI: `unit_components` (TypeDiscriminatedTable).
 - Валидация инвариантов (Decay требует UsageStats и т.д.).
@@ -1719,7 +1793,7 @@ double apply_filters(
 ### 17.11. Stale-filter pattern — revision-based per-record check
 
 - `LexicalPosting.unit_revision < envelope.revision` → skip posting (defer to async reindex).
-- `EmbeddingMetaComponent.unit_revision_at_compute < envelope.revision` → recompute or skip.
+- `EmbeddingProjectionMeta` token mismatch → recompute or skip.
 - Постинг может быть stale даже если unit не удалён (например, payload изменился, и в BM25F-индексе застрял старый term frequency).
 - Реализация M0: per-posting check inline в retrieval pipeline.
 - Реализация M2 (при >1M units): `unit_revision_index` DBI для batch reindex.
@@ -1782,8 +1856,8 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
 - **Stack** — см. MemoryStack.
 - **Maturity Level** — M0/M1/M2, определяет ship-it критерии и scope функциональности.
 - **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на mutable retrieval-view changes that preserve stored `content_hash`: `primary_text`, `display_text` если retrieval-relevant, non-identity source summaries, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated). Смена identity hash material создаёт новый `UnitId` plus supersede/merge lineage. НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
-- **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и per-record metadata (`LexicalPosting.resource_generation`, `EmbeddingMetaComponent.unit_revision_at_compute`). Envelope-level versioning — это `revision`, не `generation`.
-- **Stale filter** — per-record check: `LexicalPosting.unit_revision < envelope.revision` → skip; `EmbeddingMetaComponent.unit_revision_at_compute < envelope.revision` → recompute или skip. M0: inline в retrieval pipeline; M2: `unit_revision_index` DBI для batch reindex (см. §17.11).
+- **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и projection metadata. Envelope-level versioning — это `revision`, не `generation`.
+- **Stale filter** — per-record check: `LexicalPosting.unit_revision < envelope.revision` → skip; a dense row requires matching unit and projection freshness tokens. M0: inline в retrieval pipeline; M2: `unit_revision_index` DBI для batch reindex (см. §17.11).
 - **Profile signature** — hash от full `MemoryProfileSpec`, including
   core capabilities and selectors; host LLM cache settings are deliberately
   excluded;

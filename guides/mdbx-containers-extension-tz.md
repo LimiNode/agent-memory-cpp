@@ -274,6 +274,7 @@ System DBI budget привязан к pinned upstream snapshot-у, а не к ч
 | `_mdbxc_logical_delivery` | Persisted logical-delivery deduplication/watermarks |
 | `_mdbxc_logical_delivery_order` | Ordered logical-delivery state |
 | `_mdbxc_logical_outbox` | Durable logical-delivery outbox with cumulative acknowledgement |
+| `_mdbxc_logical_delivery_watermarks` | Optional lazy per-origin pruning watermark; opened only by `prune_logical_delivery_markers()` |
 
 `SyncEngine::initialize_system_stores()` открывает seven DBIs: `_mdbxc_meta`,
 `_mdbxc_changelog`, `_mdbxc_applied`, `_mdbxc_sync_schema` and the three
@@ -284,6 +285,12 @@ in production, rather than assume a fixed `+6`. На момент написан
 subsystem не активирован и не открывается M0/M1/M2-профилями.
 
 > **Note**: raw-code compression и storage budget — разные вещи. Размер wire-format payload-ов зависит от compression-а (LZ4 / ZSTD), и raw source code footprint (см. §1.5.3) не равен полному end-to-end storage footprint при включённом sync. Полная cost-модель откладывается до формальной adoption.
+
+The reference `sync_system_be72a2b = 9` delta deliberately excludes
+`_mdbxc_logical_delivery_watermarks`. A profile that enables logical-delivery
+marker pruning selects the separate
+`logical_delivery_watermark_pruning = +1` delta; it must not claim the
+reference total `61` without that additional DBI slot.
 
 ### 1.6. Текущее состояние
 
@@ -365,6 +372,13 @@ Guarded C++17 overloads may use `std::optional`; an unguarded public C++11
 header may not name it.
 
 ### 3.1 Расширения `KeyValueTable` (без нового файла)
+
+> **Conditional downstream sketch, not an upstream implementation ticket.** The
+> following APIs describe an application-local convenience pattern. They may
+> become an `mdbx-containers` proposal only after a separately accepted generic
+> design, an independent consumer and C++11-compatible signatures. Until then,
+> `agent-memory-cpp` implements any required recipe downstream using existing
+> transactions and table operations.
 
 Добавить в `external/mdbx-containers/include/mdbx_containers/KeyValueTable.hpp`:
 
@@ -1618,13 +1632,17 @@ Contract tests для будущей adoption-ветки:
 3. **Partial coverage guard.** Fixture с KV-derived таблицей и DUPSORT-derived inverted index не должен объявляться fully synced profile: успешный KV round-trip не маскирует отсутствие `KeyMultiValueTable` coverage. Этот guard принадлежит `agent-memory-cpp` profile validator-у.
 4. **DirectSyncPeer / SyncEngine contract.** Для `DirectSyncPeer` и `SyncEngine` отдельно проверяются pull/push, `ApplyResult::{Applied,Skipped,Conflict}`, conflict diagnostic и idempotent replay (`Skipped`).
 5. **SyncWorker over DirectSyncPeer contract.** Для `SyncWorker` поверх `DirectSyncPeer` отдельно проверяются round failure, переход в `Backoff`, retry и возврат в `Idle` после успешного round-а.
-6. **System DBI budget.** Для зафиксированного upstream snapshot `be72a2b` проверяется, что девять named system DBI из §1.5.10 учитываются в `max_dbs` budget и отражены в diagnostics. При обновлении pinned upstream snapshot ожидание пересматривается по system-DBI manifest.
+6. **System DBI budget.** Для зафиксированного upstream snapshot `be72a2b` проверяется, что девять base system DBI из §1.5.10 учитываются в `max_dbs` budget и отражены в diagnostics. Fixture with `prune_logical_delivery_markers()` additionally reserves and observes `_mdbxc_logical_delivery_watermarks`; the reference peak excludes it unless the pruning profile is selected. При обновлении pinned upstream snapshot ожидание пересматривается по system-DBI manifest.
 
 Текущий TZ не требует создавать эти тесты до формальной adoption. Их назначение — зафиксировать future acceptance criteria, чтобы sync v0.1 не был случайно включён как «почти готовый» distributed mode.
 
 ## 9. Документация и примеры
 
 ### 9.1 Обновления в `external/mdbx-containers/README.md` и `README-RU.md`
+
+> **Conditional future proposal.** These documentation/examples are not work
+> requested from the pinned upstream snapshot. They apply only if a later
+> upstream-bound primitive proposal is accepted under the ownership lock in §1.
 
 Добавить секцию "New table types" с описанием каждого нового класса, мотивацией, code snippet.
 
@@ -1902,6 +1920,11 @@ Possible upstream `PersistentQueue` рассматривается только 
 `TaskQueue` принадлежит `guides/runtime-services-roadmap.md`.
 
 ### 12.6 Готовые наборы сигнатур для наших generic-примитивов
+
+> **Conditional future proposal.** These signatures are retained as downstream
+> design sketches and acceptance questions, not a directive to extend public
+> `mdbx-containers` headers. Any upstream adoption requires the §1 ownership
+> gate and a standalone C++11-compatible design.
 
 Дополнить описания `ReverseIndexTable` и `RangeIndexTable` (см. секции 3.2 и 3.3) следующими методами, если их ещё нет в upstream-спецификации. Все дополнения — аддитивные, без изменения layout существующих классов.
 

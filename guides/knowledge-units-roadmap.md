@@ -880,14 +880,14 @@ unit_projections(..., QAQuestion, revision) lexical question + variants
 unit_projections(..., QAAnswer, revision)   lexical answer view
 embedding_vectors(scope, model, version,
                   projection_kind, UnitId)  rebuildable dense projection
-embedding_meta(same logical projection)     model/codec and stale-revision metadata
+embedding_meta(same logical projection)     model/codec and complete projection freshness metadata
 ```
 
 A dense record is addressed by the application-owned projection tuple
-`(ScopeId, UnitId, ProjectionKind, model_id, model_version)`, never by a
-vector backend's local numeric id. `EmbeddingMetaComponent.unit_revision_at_compute`
-must equal the active envelope revision before a dense hit may be returned as
-current. A backend hit is only a candidate: the retriever hydrates the active
+`(ScopeId, model_id, model_version, ProjectionKind, UnitId)`, never by a
+vector backend's local numeric id. `EmbeddingProjectionMeta.unit_revision_at_compute`
+and `projection_generation_at_compute` must equal the active envelope and
+projection values before a dense hit may be returned as current. A backend hit is only a candidate: the retriever hydrates the active
 `KnowledgeUnitEnvelope` + `QAPayload`, applies scope/authority/lifecycle
 filters, and resolves provenance before constructing context or a citation.
 
@@ -900,8 +900,9 @@ artifact but cannot be presented as the active projection for the changed unit.
 
 The default dense route for a QAPair is `QAQuestion`: a user query normally
 matches the formulation of a question before the answer body is fetched. A
-retrieval plan may enable `QAAnswer` as a bounded second-stage rerank or as a
-separate candidate route when answer terminology is known to improve recall.
+retrieval plan enables `QAAnswer` as a bounded second-stage rerank over
+`QAQuestion` candidates by default. Corpus-wide `QAAnswer` search is a separate
+explicit, benchmark-gated route; it is never inferred from a route name.
 `QACombined` is a third, experimental route for cases where the joint wording
 helps; it must be independently embedded, versioned, evaluated and budgeted.
 It must not replace `QAQuestion`, because a long answer can otherwise drown out
@@ -909,8 +910,8 @@ the wording a user actually asks for.
 
 Every enabled route has its own `(scope, unit, projection kind, model,
 model-version)` identity, binary-signature descriptor and active-revision
-validation. The retrieval plan declares per-route candidate limits, whether an
-answer-vector fetch is permitted after the question stage, and the fusion rule
+validation. The retrieval plan declares corpus or parent-route input, bounded
+input/output candidate limits, and the fusion rule
 (for example calibrated weighted score or RRF). It records those choices and
 their candidates in the retrieval trace. Default weights such as `0.7/0.3` are
 profile parameters to calibrate against a QA golden dataset, not universal
@@ -1258,7 +1259,6 @@ enum class DerivedRecordKind : uint32_t {
     UsageStatsComponent = 101,
     SpeakerComponent = 102,
     TemporalComponent = 103,
-    EmbeddingMetaComponent = 104,
     CompactionMetaComponent = 105,
     QAPayload = 110,
     FactPayload = 111,
@@ -1286,7 +1286,7 @@ enum class DerivedRecordKind : uint32_t {
     // NB: KnowledgeUnitRevision НЕ существует как отдельный manifest record —
     // revision — это поле KnowledgeUnitEnvelope.revision, не отдельный kind.
     // Per-record stale-check живёт в LexicalPosting.unit_revision и
-    // EmbeddingMetaComponent.unit_revision_at_compute.
+    // the dedicated EmbeddingProjectionMeta store.
 };
 ```
 
@@ -1314,7 +1314,6 @@ enum class DerivedRecordKind : uint32_t {
 | UsageStatsComponent | `unit_components` (tag=UsageStats) | UsageStats=true |
 | SpeakerComponent | `unit_components` (tag=Speaker) | SpeakerAttribution=true |
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
-| EmbeddingMetaComponent | `unit_components` (tag=EmbeddingMeta) | EmbeddingMeta=true |
 | CompactionMetaComponent | `unit_components` (tag=CompactionMeta) | Compaction=true |
 | ActivationMetadataComponent | `unit_components` (tag=ActivationMetadata) | KnowledgeActivation=true |
 | RuntimeOriginComponent | `unit_components` (tag=RuntimeOrigin) | CognitiveTrace=true |

@@ -147,7 +147,7 @@ logical sync adoption, late interaction, learned sparse backends, and advanced
 binary document encoders live here until they receive DBI budget rows,
 acceptance tests, and explicit profile owners.
 
-M2+/M3 physical-profile experiments include time-partitioned temporal segments,
+M2+ physical-profile experiments include time-partitioned temporal segments,
 packed graph adjacency, hierarchical episode blocks, and multi-vector
 `VectorSetProjection` retrieval. Their code work follows only after the shared
 candidate/I/O contracts and profile-specific baselines exist.

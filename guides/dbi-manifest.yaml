@@ -286,6 +286,12 @@ profile_deltas:
       - _mdbxc_logical_delivery
       - _mdbxc_logical_delivery_order
       - _mdbxc_logical_outbox
+  - name: logical_delivery_watermark_pruning
+    dbis: 1
+    migration_peak: 1
+    default: false
+    names: [_mdbxc_logical_delivery_watermarks]
+    note: Optional lazy sync DBI created only by SyncEngine::prune_logical_delivery_markers(); profiles enabling marker pruning must reserve this delta in addition to sync_system_be72a2b.
   - name: migration_dual_write_reserve
     dbis: 0
     migration_peak: 8

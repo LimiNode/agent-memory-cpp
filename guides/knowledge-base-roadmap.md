@@ -61,7 +61,7 @@ struct KnowledgeUnitEnvelope {
 };
 ```
 
-> **Замечание:** `KnowledgeUnitEnvelope` НЕ содержит поля `generation`. `generation` — per-resource / per-derived-record version, живёт в `ResourceManifest.generation` (per-resource) и в per-record metadata (`LexicalPosting.resource_generation`, `EmbeddingMetaComponent.unit_revision_at_compute`). Envelope-level versioning — это `revision` (uint64_t), не `generation`.
+> **Замечание:** `KnowledgeUnitEnvelope` НЕ содержит поля `generation`. `generation` — per-resource / per-derived-record version, живёт в `ResourceManifest.generation` (per-resource) и в per-record metadata (`LexicalPosting.resource_generation`, `EmbeddingProjectionMeta` freshness token). Envelope-level versioning — это `revision` (uint64_t), не `generation`.
 
 ### 3.1. Lookup-critical поля
 
@@ -138,12 +138,12 @@ Hash material changes require a new `UnitId`:
 - `UsageStatsComponent` changes (`use_count`, `last_used_at_ms`, `cooldown_until_ms`, `soft_suppression_until_ms`) — runtime state, не content-bearing
 - `Decay` scoring metadata changes
 - `priority_weight` изменения (scoring metadata)
-- `EmbeddingMetaComponent` changes (производные данные; используется `unit_revision_at_compute` для stale-check)
+- `EmbeddingProjectionMeta` changes (производные данные; используется freshness token для stale-check)
 - Anti-loop cooldown state (`UsageStatsComponent.cooldown_until_ms`) — runtime, не content-bearing
 
 `DecayAwareRetriever` / `HybridRetriever` stale-filter:
 
-- Skip unit if `envelope.revision > any cached projection revision` (LexicalPosting.unit_revision, EmbeddingMetaComponent.unit_revision_at_compute).
+- Skip a derived hit unless its unit and projection freshness tokens match the active canonical values (LexicalPosting.unit_revision, `EmbeddingProjectionMeta`).
 - Подробности stale-filter pattern — `memory-stacks-roadmap.md` §17.11.
 
 ## 4. Components (operational + per-kind)
@@ -189,13 +189,24 @@ struct VectorRef {
 
 // This is the durable application projection identity. It is not a
 // VectorStore local id, an ANN node id, or an ownership claim over vector bytes.
-struct EmbeddingMetaComponent {
+// It lives in the dedicated `embedding_meta` store, not in `unit_components`.
+struct EmbeddingProjectionMeta {
+    ScopeId scope_id;
+    KnowledgeUnitId unit_id;
+    ProjectionKind projection_kind;
     std::string model_id;             // e.g. "bge-small-en-v1.5"
     std::string model_version;
-    uint64_t unit_revision_at_compute; // envelope.revision на момент вычисления embedding (stale-check)
+    uint64_t unit_revision_at_compute;
+    uint64_t projection_generation_at_compute = 0;
+    std::string projection_derivation_fingerprint;
+    std::string model_descriptor_fingerprint;
+    std::string vector_codec_descriptor_fingerprint;
     int64_t computed_at_ms;
-    std::optional<VectorRef> vector_ref;
 };
+
+// A dense row is active only when both freshness tokens equal the active
+// canonical projection. A unit revision alone is insufficient for a translated
+// or regenerated projection whose derivation changes independently.
 
 struct CompactionMetaComponent {
     int64_t last_decay_at_ms;
@@ -354,7 +365,8 @@ public:
 Backend — `TypeDiscriminatedTable`, DBI `unit_components`, physical key
 `(ComponentKind, UnitId)`. Открывается если
 `enable_usage_stats`/`enable_temporal_validity`/`enable_speaker`/
-`enable_embedding_meta`/`enable_compaction`/`enable_knowledge_activation`.
+`enable_compaction`/`enable_knowledge_activation`. `enable_dense_vectors`
+opens the separate `embedding_meta` store; it is not a component selector.
 
 ```cpp
 class IComponentStore {
@@ -375,13 +387,13 @@ Backend — DBI `unit_projections`. Методы: `put`, `list(unit_id, kind_fil
 Backend — `embedding_meta` + `embedding_vectors` DBI. Методы: `put_vector(model_id, kind, unit_id, vector)`, `get_vector(...)`, `get_meta(kind, unit_id)`. Multi-model — M2.
 
 `IEmbeddingStore` owns rebuildable projection bytes, not canonical knowledge
-payloads. Its durable lookup identity is `(scope_id, unit_id,
-projection_kind, model_id, model_version)`; a physical vector backend may map
+payloads. Its durable lookup identity is `(scope_id, model_id, model_version,
+projection_kind, unit_id)`; a physical vector backend may map
 that identity to a local slot or block offset, but that mapping is private and
 rebuildable. `DenseRetriever` treats every backend result as a candidate and
-must hydrate the active unit/projection, verify
-`EmbeddingMetaComponent.unit_revision_at_compute`, and then apply lifecycle,
-scope, authority and provenance rules before returning a `RetrievalHit`.
+must hydrate the active unit/projection, verify the complete
+`EmbeddingProjectionMeta` freshness token, and then apply lifecycle, scope,
+authority and provenance rules before returning a `RetrievalHit`.
 
 ### 6.5. Per-payload stores (по capability)
 
@@ -416,6 +428,7 @@ struct QueryBranchBudget {
     std::size_t candidate_limit = 0;
     std::size_t token_limit = 0;
     std::uint64_t latency_budget_ms = 0;
+    std::optional<RetrievalIoBudget> io_budget;
 };
 
 struct QueryBranch {
@@ -442,7 +455,7 @@ trace records branch-to-hit-to-context-block lineage. M0/M1 use one original
 branch; decomposition, multi-hop routing and multilingual pivots are M2
 opt-in behavior.
 
-### 7.1.1. Exact Projection Routes And Missing Data (M2+)
+### 7.1.1. Exact Projection Routes And Missing Data (M2)
 
 An embedding lookup always names one exact `(projection_kind, model_id,
 model_version)` route. The canonical `DenseProjectionRoute` and
@@ -458,7 +471,7 @@ cycle. The planner owns this semantic decision; storage owns only exact lookup.
 The trace records a missing projection, recompute request, or fallback route so
 evaluation can distinguish a true primary-route hit from a recovery path.
 
-### 7.1.2. CandidateSet And Physical I/O Budget (M2+)
+### 7.1.2. CandidateSet And Physical I/O Budget (M2)
 
 `CandidateSet` is an execution-local set of eligible canonical unit ids after
 scope, strict authority, lifecycle, temporal, speaker, source, and other
@@ -478,23 +491,36 @@ The planner chooses `SortedIds` for sparse sets and an implementation-selected
 bitmap representation for dense sets; a Roaring-compatible implementation is
 an optional optimisation, not a core dependency. Retrievers intersect their
 candidates with the set before expensive vector decode, lexical scoring or
-graph expansion whenever the filter is exact and cheap to materialize. Dynamic
-facts such as active revision remain subject to the final canonical check.
+graph expansion only under one of two contracts:
+
+1. CandidateSet construction and canonical hydration use the same consistent
+   read snapshot/frontier, and every pushed-down secondary row is confirmed for
+   that frontier; or
+2. a derived index returns a conservative superset and final hydration performs
+   the mutable canonical decision.
+
+An implementation must not silently exclude a currently eligible unit from a
+stale lifecycle, source, temporal or authority row. Strict deny-by-default
+access still applies before expensive candidate work, but its deny decision
+must be evaluated against authoritative `RetrievalAccessContext`/policy data at
+the same frontier, never a stale allow/deny cache. The trace records the
+CandidateSet representation, source generation and read frontier.
 
 `RetrievalIoBudget` (defined in `memory-stacks-roadmap.md` Section 7.3) is a
 runtime limit shared by lexical, dense, graph and temporal routes. All enabled
-fields are nonzero hard caps; the effective budget
-is the minimum of the profile, branch and route limits. It complements the
-logical candidate budgets: a query may be under its candidate count yet exceed
-its encoded read, seek, or elapsed-I/O allowance. Page-fault and cache metrics
-are telemetry when the platform can provide them, never portability-sensitive
-correctness gates.
+fields are nonzero hard caps; the effective budget is the field-wise minimum of
+profile, branch and route limits. Admission occurs before a known-cost
+read/decode. `RetrievalResult.completion` and per-route trace outcomes expose
+budget exhaustion to callers; page-fault and cache metrics remain telemetry,
+never portability-sensitive correctness gates.
 
 Runtime-integration filters are optional and only active when
 `CognitiveTrace` is enabled:
 
 ```cpp
 struct RuntimeRetrievalFilters {
+    std::vector<RuntimeObjectRef> runtime_instance_filter;
+    std::vector<RuntimeObjectRef> replica_filter;
     std::vector<RuntimeObjectRef> observer_filter;
     std::vector<RuntimeObjectRef> character_filter;
     std::vector<RuntimeObjectRef> producer_node_filter;
@@ -718,12 +744,13 @@ Citations обязательны: каждый `ContextBlock` имеет `citati
 
 ```cpp
 struct ContextBlock {
+    std::string block_id;
     BlockType block_type;                 // QA | Chunk | Summary | Graph | Evidence | Task | Decision | Procedure | Episode | Perspective | Conflict | CausalPath
     std::string content;
     std::vector<CitationHandle> citations; // M0 summary; M1 full ref/anchor handles
     double score;
     size_t token_count;
-    std::vector<KnowledgeUnitId> unit_ids;
+    std::vector<KnowledgeUnitRef> unit_refs;
     std::string perspective_label;        // "User stated", "Node inferred", etc.
 };
 
@@ -831,8 +858,10 @@ struct RetrievalIoCounters {
 
 struct ProjectionRouteTrace {
     std::string route_id;
-    std::string outcome;  // used, missing, recompute_scheduled, fallback
+    std::string outcome;  // used, missing, recompute_scheduled, fallback, budget_exhausted, dropped
     std::optional<std::string> fallback_route_id;
+    RetrievalIoCounters io_counters;
+    RetrievalCompletion completion = RetrievalCompletion::Complete;
 };
 
 struct QueryBranchTrace {
@@ -842,12 +871,24 @@ struct QueryBranchTrace {
     std::vector<std::string> context_block_ids;
 };
 
+struct ContextBlockTrace {
+    std::string block_id;
+    std::string branch_id;
+    std::vector<KnowledgeUnitRef> source_units;
+    std::vector<std::uint64_t> envelope_revisions;
+    std::vector<std::uint64_t> projection_generations;
+    std::vector<CitationHandle> citations;
+    std::string temporal_frontier;
+    std::string selection_reason;
+};
+
 struct RetrievalTrace {
     std::string trace_id;
     std::string runtime_trace_id;
     std::string runtime_span_id;
     RetrievalPlan plan;
     std::vector<QueryBranchTrace> query_branches;
+    std::vector<ContextBlockTrace> context_block_lineage;
     std::vector<std::vector<RetrievalHit>> per_retriever_hits;  // associative
     std::vector<RetrievalHit> targeted_hits;                     // targeted (QALookup)
     std::vector<RetrievalHit> fused_hits;
@@ -868,6 +909,14 @@ limit. `ProjectionRouteTrace` records exact route use, missing projections,
 scheduled recompute, and explicit fallback. These supplement the existing
 per-stage latency and channel metrics without turning optional page-fault data
 into a portability-sensitive correctness gate.
+
+`ContextBlock.block_id` is deterministic for the validated block inputs. Every
+`QueryBranchTrace.context_block_ids` entry resolves to exactly one
+`ContextBlockTrace`, which records the source occurrence, active envelope and
+projection versions, citations, temporal frontier and selection reason. This
+creates a replayable branch -> hit -> context-block chain without requiring the
+trace itself to be a mandatory durable audit record; retention and redaction are
+application policy.
 
 ### 9.2. RetrievalDataset / TestCase / Judgment
 

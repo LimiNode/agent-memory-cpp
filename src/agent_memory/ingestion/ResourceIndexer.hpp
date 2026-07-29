@@ -9,7 +9,9 @@
 #include <agent_memory/storage/IDocumentStorage.hpp>
 #include <agent_memory/storage/IResourceManifestStorage.hpp>
 
+#include <exception>
 #include <mutex>
+#include <stdexcept>
 
 namespace agent_memory {
 
@@ -22,14 +24,35 @@ namespace agent_memory {
         DocumentSnapshot document_snapshot;
     };
 
+    /// \brief Reports that an in-process reindex rollback could not complete.
+    ///
+    /// The caller must repair or rebuild the affected derived records before
+    /// treating the prototype stores as synchronized again.
+    class ResourceIndexRollbackError final : public std::runtime_error {
+    public:
+        ResourceIndexRollbackError(
+            std::exception_ptr original_failure,
+            std::exception_ptr rollback_failure
+        );
+
+        [[nodiscard]] const std::exception_ptr& original_failure() const noexcept;
+        [[nodiscard]] const std::exception_ptr& rollback_failure() const noexcept;
+
+    private:
+        std::exception_ptr m_original_failure;
+        std::exception_ptr m_rollback_failure;
+    };
+
     /// \brief Pre-chunked dense/vector prototype for targeted resource indexing.
     ///
     /// This is not the lexical-first public M0 resource importer contract.
     /// The prototype serializes calls made through one instance, rejects stale
     /// generations, and compensates records written by a throwing in-process
-    /// attempt. Dependency interfaces do not provide a cross-store transaction,
-    /// so callers still need the M0 importer for crash-atomic publication across
-    /// processes or independently constructed indexers.
+    /// attempt. A failed compensation raises `ResourceIndexRollbackError` so
+    /// the caller can repair the affected derived stores. Dependency interfaces
+    /// do not provide a cross-store transaction, so callers still need the M0
+    /// importer for crash-atomic publication across processes or independently
+    /// constructed indexers.
     class IResourceIndexer {
     public:
         virtual ~IResourceIndexer();
@@ -41,6 +64,7 @@ namespace agent_memory {
 
         /// \brief Removes all known derived records for one resource.
         /// \return True when a manifest was found and removed.
+        /// \note A cleanup failure leaves the manifest visible for a retry.
         [[nodiscard]] virtual bool erase_resource(const ResourceId& resource_id) = 0;
     };
 

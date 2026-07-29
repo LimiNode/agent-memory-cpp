@@ -483,15 +483,17 @@ compaction state:
 
 ```text
 embedding_meta
-    key   = (scope_id, UnitId, ProjectionKind, model_id, version)
-    value = EmbeddingMetaComponent
-            { model_id, version, dim, encoder_id, seed,
-              written_at_ms, is_active, superseded_by_revision }
+    key   = (scope_id, model_id, model_version, ProjectionKind, UnitId)
+    value = EmbeddingProjectionMeta
+            { unit_revision_at_compute, projection_generation_at_compute,
+              projection_derivation_fingerprint, model_descriptor_fingerprint,
+              vector_codec_descriptor_fingerprint, dim, encoder_id,
+              written_at_ms, is_active }
 ```
 
-### Immutable Derived Vector Blob Deduplication (M2+)
+### Immutable Derived Vector Blob Deduplication (M2)
 
-M1 may store `vector_blob` inline in `embedding_vectors`. M2+ may replace the
+M1 may store `vector_blob` inline in `embedding_vectors`. M2 may replace the
 value with an immutable `DerivedVectorBlobRef` and store the encoded bytes once:
 
 ```text
@@ -509,7 +511,7 @@ embedding_vectors
 The default `dedup_namespace` is scope-local; sharing across scopes requires an
 explicit trusted-workspace policy so equality of private content is not exposed
 as a side channel. A shared blob is only a rebuildable byte optimisation. Each
-projection keeps its own `EmbeddingMetaComponent`, active revision, lifecycle,
+projection keeps its own `EmbeddingProjectionMeta`, active revision, lifecycle,
 authority and provenance binding. Compaction reclaims a blob only after no
 active, retained-revision, export, or in-flight manifest reference can resolve
 it; mutable reference counts are advisory rather than the source of truth.
@@ -571,19 +573,25 @@ The RRF fusion (or weighted alternative) is implemented in the retrieval layer
 (`retrieval/`) over per-(model, projection) candidate lists produced by
 `IEmbeddingStore`.
 
-### EmbeddingMeta Component
+### Embedding Projection Metadata
 
-`EmbeddingMetaComponent` (per `memory-stacks-roadmap.md` Section 12.2) carries
-metadata that lets the retrieval layer pick the right embedding at query time:
+`EmbeddingProjectionMeta` is the sole authoritative dense metadata row for one
+exact projection/model tuple. It is not a unit component and carries metadata
+that lets the retrieval layer validate the right embedding at query time:
 
 ```text
-EmbeddingMetaComponent {
+EmbeddingProjectionMeta {
     ProjectionKind projection_kind;
     std::string    model_id;
-    std::string    version;
+    std::string    model_version;
     std::uint32_t  dim;
     std::string    encoder_id;
     std::uint64_t  seed;
+    std::uint64_t  unit_revision_at_compute;
+    std::uint64_t  projection_generation_at_compute;
+    std::string    projection_derivation_fingerprint;
+    std::string    model_descriptor_fingerprint;
+    std::string    vector_codec_descriptor_fingerprint;
     std::int64_t   written_at_ms;
     bool           is_active;             // false during migration
     std::uint32_t  superseded_by_revision; // 0 if active
@@ -598,8 +606,9 @@ Two embeddings with the same `(scope_id, unit_id)` but different
 - For a given `(scope_id, unit_id, projection_kind)`, at most one row per
   `model_id` has `is_active == true`. Older revisions may persist until
   compaction purge.
-- A read for an exact `(scope_id, unit_id, projection_kind, model_id,
-  model_version)` returns that active row or `NotFound`. It never falls back to
+- A read for an exact `(scope_id, model_id, model_version, projection_kind,
+  unit_id)`
+  returns that active row or `NotFound`. It never falls back to
   another projection kind or model sibling. Explicit recovery routes use
   `DenseProjectionRoute` in `RetrievalPlan` and are recorded in
   `RetrievalTrace`.
@@ -640,7 +649,8 @@ The job recomputes one embedding per `(unit_id, projection_kind)` it owns:
 for each (unit_id, projection_kind) in scope:
     fetch SearchProjection[projection_kind] for unit_id
     embed it with the target model
-    write new embedding_meta row with version = new_version, is_active = true
+    write new embedding_meta row with model version = new_version, fresh unit/
+        projection tokens, and is_active = true
     write new embedding_vectors row keyed by (scope_id, target_model_id,
                                               target_model_version,
                                               projection_kind, unit_id)
@@ -654,8 +664,8 @@ other projections. Migration cost scales with the chosen subset.
 Old rows remain in `embedding_meta` and `embedding_vectors` until compaction
 purge. Their state is:
 
-- `EmbeddingMetaComponent::is_active = false`.
-- `EmbeddingMetaComponent::superseded_by_revision = new_version`.
+- `EmbeddingProjectionMeta::is_active = false`.
+- `EmbeddingProjectionMeta::superseded_by_revision = new_version`.
 
 The retrieval layer still sees them, but with `is_active = false` they are not
 fused into the primary candidate list unless explicitly requested (for A/B
@@ -879,6 +889,7 @@ struct BinaryBucketIndexDescriptor {
     std::string normalization_rule;
     std::string vector_codec_id;
     uint32_t vector_codec_version = 1;
+    std::string vector_codec_config_digest;
     std::string block_compression_codec_id;
     uint32_t block_compression_codec_version = 1;
     std::string block_compression_dictionary_digest;
@@ -912,6 +923,13 @@ budget, but it must not silently exceed the profile maximum. This deliberately
 separates bucket-search depth from `returned_candidate_limit`: the latter is
 the public candidate/output contract, while the former limits the work needed
 to obtain it.
+
+`vector_codec_config_digest` is a digest of the canonical codec configuration:
+for PQ/IVF-PQ it includes trained codebooks, rotation and quantization
+scales/zero-points; for other codecs it includes every score-affecting parameter.
+It participates in `descriptor_fingerprint`. Reader or writer descriptor
+mismatch fails closed: encoded payloads must never be scored against a different
+trained artifact merely because a human-readable codec id/version coincides.
 
 The first durable layout uses exactly one `key_tables` entry. Multiple entries
 are a later multi-index-hashing mode, not an implicit consequence of
@@ -1105,7 +1123,7 @@ Float rerank remains mandatory for quality-sensitive retrieval. `BinaryOnly`
 and other compact-only modes must explicitly opt into their lower-quality
 contract rather than silently inheriting the quality-sensitive profile.
 
-### Tiered Encoded Rerank (M2+)
+### Tiered Encoded Rerank (M2)
 
 ```cpp
 struct TieredRerankBudget {
@@ -1437,34 +1455,20 @@ FullResearch:       BinaryCandidateFilter (AE-128)
 | Stack | M1 default | M2 production candidate | Selection criteria |
 |---|---|---|---|
 | BasicRag | Exact | Exact | Small corpus, keyword-heavy, M2 не меняется |
-| QAKnowledgeBase | Exact или BinaryCandidateFilter (RH-128) | HNSW (если corpus > 50k) | Corpus size + filter usage |
+| QAKnowledgeBase | Exact или BinaryCandidateFilter (RH-128) | benchmark-selected ANN or BinaryCF | Measured corpus/I/O/filter frontier |
 | AgentLTM | BinaryCandidateFilter (AE-128) | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
 | SpeakerAwareChat | Exact | Exact | Keyword-heavy, не semantic-heavy |
 | CompiledWiki | BinaryCandidateFilter (AE-256) | HNSW или BinaryCF (AE-256) | Quality priority |
 | TemporalFactStore | Exact | Exact | Smaller corpus, recency-based |
 | FullResearch | BinaryCandidateFilter (AE-128) | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
 
-Decision logic (M2):
-  - Filter-heavy query (>50% queries use metadata filter): BinaryCF preferred.
-  - Latency-critical (< 50ms p95): HNSW preferred.
-  - Storage-critical (memory-constrained): BinaryOnly preferred.
-  - Default: HNSW если corpus > 100k units, иначе BinaryCF.
-
-Benchmark-driven choice: profile different stacks per use case через golden dataset.
-
-Решение принимается на основании: corpus size, recall target, hardware
-budget, latency budget. См. §"Quality Targets Per Mode" выше для production
-target values.
-
-Production dense index modes (после M2):
-  Default для AgentLTM/FullResearch: HNSW или BinaryCandidateFilter + AE-128.
-  Default для CompiledWiki: HNSW или BinaryCandidateFilter + AE-256.
-  Default для BasicRag: Exact (small corpus).
-
-Production trade-off:
-  - HNSW: best quality (>0.97 Recall@10), но graph storage ~20% от vector size.
-  - BinaryCF: ~95% от HNSW quality, меньше storage, лучше для filtered query.
-  - Exact: ground truth, но O(N) latency.
+The table contains bootstrap hypotheses, not automatic production defaults.
+Promotion of HNSW, BinaryCandidateFilter, BinaryOnly or a future ANN backend is
+benchmark-gated per profile against the exact baseline with identical qrels,
+filters, candidate depth, cold/warm I/O mode, hardware, update/delete and
+compaction workload. Reports include recall/nDCG, p50/p95/p99, encoded bytes,
+seeks, RSS, disk footprint and write amplification. Corpus size, a latency goal
+or a generic recall percentage alone never selects a backend.
 
 ### Multi-Mode Migration
 
@@ -1523,19 +1527,17 @@ Reference: arXiv:1603.09320 — "Efficient and robust approximate nearest neighb
   - Storage: edges в adjacency list, nodes в flat array.
 
 Параметры per stack:
-  BasicRag:       usually Exact; HNSW только если corpus > 100k units AND dense retrieval enabled.
-                  Default params (когда используется): HNSW (M=16, efConstruction=100, efSearch=50).
-  AgentLTM:       HNSW (M=32, efConstruction=200, efSearch=100) — quality
-  CompiledWiki:   HNSW (M=32, efConstruction=200, efSearch=100)
-  FullResearch:   HNSW (M=32, efConstruction=200, efSearch=100)
+   All profiles:   optional bootstrap parameters are selected only for a locked
+                   benchmark candidate; no corpus-size threshold enables HNSW.
 
 Storage estimate:
   - 1M units × 768-dim float32: 3 GB (vector) + ~600 MB (graph edges)
   - С quantized vectors: меньше.
 
-Tradeoff vs BinaryCandidateFilter:
-  - HNSW: лучше quality для high-recall (>0.97), random access slow.
-  - BinaryCF: лучше для batch rerank + structured filtering.
+Tradeoff vs BinaryCandidateFilter is workload-dependent: HNSW's random graph
+reads may lose on filter-heavy or cold-storage workloads, while BinaryCF may
+lose recall at the same latency. Both are benchmark candidates, not universal
+quality/storage guarantees.
 
 See [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md) for binary embeddings (extending PR #29 binary signatures to general semantic-preserving quantizers; XOR + POPCNT SIMD distance; quality vs storage tradeoff at 64/128/256/512 bits per dim).
 
@@ -1708,12 +1710,13 @@ binary_bucket_index:                     // if DenseVectors
     value = posting list
             vector<BinaryBucketPosting>:
               { unit_id, full_signature, unit_revision,
+                projection_generation, projection_derivation_fingerprint,
                 optional resource_generation }
     used by:  binary signature candidate filter
 
-embedding_meta:                          // if EmbeddingMeta or EmbeddingMigration
-    key   = (scope_id, unit_id, projection_kind, model_id, version)
-    value = EmbeddingMetaComponent
+embedding_meta:                          // if DenseVectors or EmbeddingMigration
+    key   = (scope_id, model_id, model_version, projection_kind, unit_id)
+    value = EmbeddingProjectionMeta
     used by:  projection/model selection at retrieval time
 
 embedding_vectors:                       // if DenseVectors

@@ -131,7 +131,7 @@ int main() {
     }
 
     auto invalid_extra_key = make_manifest(
-        agent_memory::ResourceId{"resource:invalid-key"},
+        resource_id,
         4,
         "bucket:24:invalid"
     );
@@ -147,6 +147,15 @@ int main() {
 
     if(!rejects_manifest(storage, std::move(invalid_extra_key))) {
         return fail("storage must reject manifest with extra ref fields");
+    }
+
+    const auto after_rejected_replacement = storage.find_manifest(resource_id);
+    if(
+        !after_rejected_replacement
+        || after_rejected_replacement->revision.generation != 2
+        || after_rejected_replacement->records[1].key != "bucket:24:beta"
+    ) {
+        return fail("throwing manifest replacement must preserve the visible manifest");
     }
 
     auto invalid_missing_key = make_manifest(

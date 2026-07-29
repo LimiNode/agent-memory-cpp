@@ -7,6 +7,7 @@
 
 #include <agent_memory/domain/Resource.hpp>
 
+#include <exception>
 #include <optional>
 
 namespace agent_memory {
@@ -18,6 +19,10 @@ namespace agent_memory {
 
         /// \brief Inserts or replaces a resource manifest.
         /// \pre `is_valid_resource_manifest(manifest)` must be true.
+        /// \exception Any implementation-defined storage exception.
+        /// \post If this function throws, the previously visible manifest for
+        /// the resource remains visible. Implementations must provide the
+        /// strong exception guarantee for one manifest replacement.
         virtual void upsert_manifest(ResourceManifest manifest) = 0;
 
         /// \brief Finds a resource manifest by resource id.

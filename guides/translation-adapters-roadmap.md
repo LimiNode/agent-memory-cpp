@@ -185,6 +185,10 @@ Rules:
   `TranslatedCanonical` stale.
 - `SearchProjection`, `TranslationProjectionMeta` and lexical/vector index
   deltas commit together for the same generation.
+- The matching `EmbeddingProjectionMeta` stores the same active projection
+  generation and derivation fingerprint. A dense hit is current only when both
+  that token and `unit_revision_at_compute` match the active projection; an
+  unchanged envelope revision never validates an older translation package.
 - Source citations point to `SourceRef` on the original resource, not to the
   translated projection.
 

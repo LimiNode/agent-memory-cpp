@@ -382,7 +382,7 @@ class DedupeJob : public ICompactionJob {
     //       skip (no-op)
     //
     // Distance вычисляется через embeddings:
-    //   - default: cosine distance между EmbeddingMetaComponent.vector_ref
+    //   - default: cosine distance between exact EmbeddingProjectionMeta rows
     //   - fallback: BM25F similarity на unit_projections
     //
     // Идемпотентен (после supersede / merge — повторный запуск no-op).
@@ -941,7 +941,7 @@ Internal documents:
 
 - `guides/memory-stacks-roadmap.md` — секции 7 (MemoryStack), 8 (Default Stacks), 9 (Capability Matrix), 10 (Validation Rules), 16 (Implementation Order, шаг 14); ADR-009 (compaction strategy), ADR-013 (runtime services). Physical compaction DBI names live in `mdbx-containers-extension-tz.md` §12.5 / §5.5.1.
 - `guides/knowledge-units-roadmap.md` — `CompactionMetaComponent`, Lifecycle FSM, episode compaction (секция 5.5.4).
-- `guides/knowledge-base-roadmap.md` — `DecayAwareRetriever`, `UsageStatsComponent`, Eval pipeline CompactionHandoff test case (секция 9.6), `EmbeddingMetaComponent`.
+- `guides/knowledge-base-roadmap.md` — `DecayAwareRetriever`, `UsageStatsComponent`, Eval pipeline CompactionHandoff test case (секция 9.6), `EmbeddingProjectionMeta`.
 - `guides/policies-roadmap.md` (future) — DecayPolicy / WritePolicy полные спецификации.
 - `guides/runtime-services-roadmap.md` — секция 4.6 (`TaskQueue` / `JobStore` runtime contract).
 - `guides/mdbx-containers-extension-tz.md` — секция 12.5 (generic runtime-job storage recipe), секция 3.7 (MultiTableWriter).

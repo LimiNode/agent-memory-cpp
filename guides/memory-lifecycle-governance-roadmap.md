@@ -116,6 +116,20 @@ struct BiTemporalComponent {
     std::optional<RuntimeSequence> recorded_sequence;
     std::optional<RuntimeSequence> invalidated_sequence;
 };
+
+enum class TemporalQueryKind : std::uint8_t {
+    ActiveAt,
+    KnownAt,
+    ActiveAtKnownAt,
+    KnownAtSequence,
+};
+
+struct TemporalQuery {
+    TemporalQueryKind kind = TemporalQueryKind::ActiveAt;
+    std::optional<std::int64_t> valid_time_ms;
+    std::optional<std::int64_t> recorded_cutoff_ms;
+    std::optional<RuntimeSequence> sequence_cutoff;
+};
 ```
 
 Required query forms:
@@ -134,6 +148,14 @@ runtime log positions. `RuntimeSequence` is specified in
 Sequence values are numerically ordered only inside one runtime/replica origin.
 They are useful for agent runtimes that have a durable event log and need
 deterministic replay or "what did component X know at decision Y?" audits.
+
+`TemporalQuery` is the retrieval-plan representation of these forms. Validation
+requires exactly the fields named by its tag: `ActiveAt` needs `valid_time_ms`,
+`KnownAt` needs `recorded_cutoff_ms`, `ActiveAtKnownAt` needs both, and
+`KnownAtSequence` needs an origin-qualified `sequence_cutoff`. Candidate
+construction and final hydration evaluate the same query frontier; trace records
+the normalized effective frontier. The legacy single-axis `TemporalWindow`
+remains M1 compatibility input and cannot claim bi-temporal replay semantics.
 
 Storage implications:
 

@@ -201,6 +201,16 @@ If both `RuntimeOriginComponent.runtime_instance` / `replica` and
 `event_sequence` are present, they must describe the same origin. A mismatch is
 a validation error, not a merge policy choice.
 
+`validate_runtime_origin()` is the common validation rule for every A-lane
+record. It requires non-empty stable identities and validates
+`runtime_instance.kind == Runtime`, `replica.kind == Replica`, and
+`producer_node.kind == Node` when present. Optional producer, partition and
+replica references must belong to the same stable `(adapter_id,
+runtime_instance_id, replica_id)` origin tuple; optional revisions are observed
+state and never participate in equality. `RuntimeSequence` and
+`RuntimeSequenceRange` use the same tuple. A cross-origin reference is explicit
+causal evidence, not a valid local origin field.
+
 ### CausalContextComponent
 
 ```cpp
@@ -375,7 +385,11 @@ struct TaskPayload {
 struct TaskStateComponent {
     TaskStatus current_status = TaskStatus::Proposed;
     std::uint64_t state_revision = 0;
+    std::optional<std::int32_t> priority;
     std::optional<RuntimeObjectRef> assigned_to;
+    std::optional<std::int64_t> assignment_lease_expires_at_ms;
+    std::optional<KnowledgeUnitRef> assignment_lease_evidence;
+    std::optional<KnowledgeUnitRef> cancellation_outcome;
     std::vector<KnowledgeUnitRef> produced_units;
     std::optional<KnowledgeUnitRef> last_transition;
 };
@@ -418,6 +432,11 @@ invoke a capability or decide whether an external runtime should perform the
 transition; those remain runtime/operator responsibilities.
 `mdbx-containers` supplies only the generic transactional storage primitives
 used by this application-owned contract.
+
+Priority and assignment leases are durable application-owned observations, not
+a scheduler: the application decides assignment, renewal, expiry handling and
+queue ordering. A cancellation transition records its structured outcome and
+evidence; the library never invokes or interrupts external work.
 
 ```cpp
 struct DecisionAlternative {
@@ -556,6 +575,8 @@ ordinary RAG profiles:
 
 ```cpp
 struct RuntimeRetrievalFilters {
+    std::vector<RuntimeObjectRef> runtime_instance_filter;
+    std::vector<RuntimeObjectRef> replica_filter;
     std::vector<RuntimeObjectRef> observer_filter;
     std::vector<RuntimeObjectRef> character_filter;
     std::vector<RuntimeObjectRef> producer_node_filter;
@@ -571,11 +592,18 @@ struct RuntimeRetrievalFilters {
 };
 ```
 
+Every supplied runtime filter is an exact stable-identity predicate; optional
+revisions are ignored. `runtime_instance_filter`, `replica_filter` and each
+`RuntimeSequenceRange` intersect, and a sequence range is valid only for the
+same runtime/replica origin selected by those filters. A plan that names
+incompatible origins is invalid rather than an empty best-effort query.
+
 Physical index mapping:
 
 | Filter field | Canonical substrate | Logical key shape |
 |---|---|---|
 | `trace_id` | `metadata_filters` | `(scope_id, RuntimeTraceId, trace_id) -> UnitId` |
+| `runtime_instance` | `metadata_filters` | `(scope_id, RuntimeInstance, encoded_runtime_ref) -> UnitId` |
 | `producer_node` | `metadata_filters` | `(scope_id, RuntimeProducer, encoded_runtime_ref) -> UnitId` |
 | `observer` | `metadata_filters` | `(scope_id, RuntimeObserver, encoded_runtime_ref) -> UnitId` |
 | `character` | `metadata_filters` | `(scope_id, RuntimeCharacter, encoded_runtime_ref) -> UnitId` |

@@ -22,6 +22,11 @@ namespace {
             m_fail_next_upsert = true;
         }
 
+        void fail_on_nth_erase(std::size_t ordinal) noexcept {
+            m_fail_on_erase_ordinal = ordinal;
+            m_erase_count = 0;
+        }
+
         void upsert_document(agent_memory::DocumentSnapshot snapshot) override {
             if(m_fail_next_upsert) {
                 m_fail_next_upsert = false;
@@ -79,6 +84,15 @@ namespace {
         }
 
         [[nodiscard]] bool erase_document(const agent_memory::DocumentId& id) override {
+            ++m_erase_count;
+            if(
+                m_fail_on_erase_ordinal != 0
+                && m_erase_count == m_fail_on_erase_ordinal
+            ) {
+                m_fail_on_erase_ordinal = 0;
+                throw std::runtime_error("simulated document erase failure");
+            }
+
             bool removed = m_documents.erase(id) > 0;
             const auto ids_it = m_chunk_ids_by_document.find(id);
             if(ids_it != m_chunk_ids_by_document.end()) {
@@ -92,6 +106,8 @@ namespace {
 
     private:
         bool m_fail_next_upsert = false;
+        std::size_t m_fail_on_erase_ordinal = 0;
+        std::size_t m_erase_count = 0;
         std::map<agent_memory::DocumentId, agent_memory::Document> m_documents;
         std::map<agent_memory::ChunkId, agent_memory::DocumentChunk> m_chunks;
         std::map<
@@ -152,6 +168,10 @@ namespace {
             m_upsert_count = 0;
         }
 
+        void fail_next_erase() noexcept {
+            m_fail_next_erase = true;
+        }
+
         [[nodiscard]] agent_memory::SimilarityMetric similarity_metric() const noexcept override {
             return m_inner.similarity_metric();
         }
@@ -189,6 +209,10 @@ namespace {
         }
 
         [[nodiscard]] bool erase(const agent_memory::ChunkId& chunk_id) override {
+            if(m_fail_next_erase) {
+                m_fail_next_erase = false;
+                throw std::runtime_error("simulated vector erase failure");
+            }
             return m_inner.erase(chunk_id);
         }
 
@@ -200,10 +224,19 @@ namespace {
         agent_memory::ExactVectorIndex m_inner;
         std::size_t m_fail_on_upsert_ordinal = 0;
         std::size_t m_upsert_count = 0;
+        bool m_fail_next_erase = false;
     };
 
     class FakeEmbedder final : public agent_memory::IEmbedder {
     public:
+        void reset_call_count() noexcept {
+            m_call_count = 0;
+        }
+
+        [[nodiscard]] std::size_t call_count() const noexcept {
+            return m_call_count;
+        }
+
         [[nodiscard]] const agent_memory::EmbeddingModelInfo& info() const noexcept override {
             return m_info;
         }
@@ -211,6 +244,7 @@ namespace {
         [[nodiscard]] agent_memory::Embedding embed(
             const agent_memory::EmbeddingRequest& request
         ) override {
+            ++m_call_count;
             if(request.purpose != agent_memory::EmbeddingPurpose::Document) {
                 throw std::invalid_argument("fake embedder expects document purpose");
             }
@@ -222,6 +256,7 @@ namespace {
         }
 
     private:
+        std::size_t m_call_count = 0;
         agent_memory::EmbeddingModelInfo m_info{
             "fake-embedder",
             2,
@@ -427,6 +462,51 @@ int main() {
         return fail("manifest failure must restore the previously published resource state");
     }
 
+    const agent_memory::DocumentId rollback_failed_document_id{"doc:indexer:rollback-failed"};
+    const agent_memory::ChunkId rollback_failed_first_chunk_id{"chunk:indexer:rollback-failed:first"};
+    const agent_memory::ChunkId rollback_failed_second_chunk_id{"chunk:indexer:rollback-failed:second"};
+    document_storage.fail_on_nth_erase(2);
+    vector_index.fail_on_nth_upsert(2);
+    try {
+        indexer.reindex_resource(make_snapshot(
+            resource_id,
+            2,
+            rollback_failed_document_id,
+            {
+                make_chunk(
+                    rollback_failed_first_chunk_id,
+                    rollback_failed_document_id,
+                    0,
+                    "updated first chunk"
+                ),
+                make_chunk(
+                    rollback_failed_second_chunk_id,
+                    rollback_failed_document_id,
+                    20,
+                    "updated second chunk"
+                )
+            }
+        ));
+        return fail("resource indexer must surface an incomplete rollback");
+    } catch(const agent_memory::ResourceIndexRollbackError& error) {
+        if(!error.original_failure() || !error.rollback_failure()) {
+            return fail("rollback failure must retain both original and rollback diagnostics");
+        }
+    }
+
+    if(
+        !manifest_storage.find_manifest(resource_id)
+        || manifest_storage.find_manifest(resource_id)->revision.generation != 1
+    ) {
+        return fail("rollback failure must preserve the active manifest under its strong exception contract");
+    }
+
+    if(!document_storage.find_document(rollback_failed_document_id)) {
+        return fail("rollback failure fixture must leave repair-visible derived state");
+    }
+    const bool repaired_document = document_storage.erase_document(rollback_failed_document_id);
+    (void)repaired_document;
+
     const agent_memory::DocumentId new_document_id{"doc:indexer:new"};
     const agent_memory::ChunkId new_chunk_id{"chunk:indexer:new"};
 
@@ -476,6 +556,7 @@ int main() {
         }
     ));
 
+    embedder.reset_call_count();
     try {
         indexer.reindex_resource(make_snapshot(
             resource_id,
@@ -494,6 +575,11 @@ int main() {
     } catch(const std::logic_error&) {
     }
 
+    if(embedder.call_count() != 0) {
+        return fail("stale generation must be rejected before embedding");
+    }
+
+    embedder.reset_call_count();
     indexer.reindex_resource(make_snapshot(
         resource_id,
         3,
@@ -507,6 +593,10 @@ int main() {
             )
         }
     ));
+
+    if(embedder.call_count() != 0) {
+        return fail("idempotent generation must return before embedding");
+    }
 
     auto conflicting_generation = make_snapshot(
         resource_id,
@@ -522,10 +612,15 @@ int main() {
         }
     );
     ++conflicting_generation.revision.content_hash;
+    embedder.reset_call_count();
     try {
         indexer.reindex_resource(std::move(conflicting_generation));
         return fail("resource indexer must reject a conflicting resource generation");
     } catch(const std::logic_error&) {
+    }
+
+    if(embedder.call_count() != 0) {
+        return fail("conflicting generation must be rejected before embedding");
     }
 
     const auto newest_manifest = manifest_storage.find_manifest(resource_id);
@@ -537,6 +632,18 @@ int main() {
         document_storage.find_document(agent_memory::DocumentId{"doc:indexer:idempotent"})
     ) {
         return fail("stale, conflicting, or idempotent work must not replace the active generation");
+    }
+
+    vector_index.fail_next_erase();
+    try {
+        const bool erased = indexer.erase_resource(resource_id);
+        (void)erased;
+        return fail("resource erase must propagate derived cleanup failures");
+    } catch(const std::runtime_error&) {
+    }
+
+    if(!manifest_storage.find_manifest(resource_id)) {
+        return fail("failed resource cleanup must retain the manifest for retry");
     }
 
     if(!indexer.erase_resource(resource_id)) {

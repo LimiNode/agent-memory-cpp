@@ -503,7 +503,7 @@ Segments allow resource updates to touch fewer bytes and make tombstone cleanup
 more incremental. The simple blob layout is still the right first backend
 because it is easier to test against the in-memory BM25F baseline.
 
-### Compressed Posting Blocks And Dynamic Pruning (M2+)
+### Compressed Posting Blocks And Dynamic Pruning (M2)
 
 The M2 physical segment remains a derived lexical representation, not a second
 source of truth for a unit or its current lifecycle. Its versioned layout may

@@ -131,15 +131,12 @@ namespace agent_memory {
             IDocumentStorage& storage,
             const DocumentId& document_id,
             const std::optional<DocumentSnapshot>& previous
-        ) noexcept {
-            try {
-                if(previous) {
-                    storage.upsert_document(*previous);
-                } else {
-                    const bool removed = storage.erase_document(document_id);
-                    (void)removed;
-                }
-            } catch(...) {
+        ) {
+            if(previous) {
+                storage.upsert_document(*previous);
+            } else {
+                const bool removed = storage.erase_document(document_id);
+                (void)removed;
             }
         }
 
@@ -147,7 +144,8 @@ namespace agent_memory {
             IVectorIndex& index,
             const std::vector<std::optional<VectorRecord>>& previous,
             const std::vector<VectorRecord>& attempted
-        ) noexcept {
+        ) {
+            std::exception_ptr first_failure;
             for(std::size_t index_position = 0; index_position < attempted.size(); ++index_position) {
                 try {
                     if(previous[index_position]) {
@@ -157,11 +155,34 @@ namespace agent_memory {
                         (void)removed;
                     }
                 } catch(...) {
+                    if(!first_failure) {
+                        first_failure = std::current_exception();
+                    }
                 }
+            }
+
+            if(first_failure) {
+                std::rethrow_exception(first_failure);
             }
         }
 
     } // namespace
+
+    ResourceIndexRollbackError::ResourceIndexRollbackError(
+        std::exception_ptr original_failure,
+        std::exception_ptr rollback_failure
+    )
+        : std::runtime_error("ResourceIndexer rollback failed; repair or rebuild derived records")
+        , m_original_failure(std::move(original_failure))
+        , m_rollback_failure(std::move(rollback_failure)) {}
+
+    const std::exception_ptr& ResourceIndexRollbackError::original_failure() const noexcept {
+        return m_original_failure;
+    }
+
+    const std::exception_ptr& ResourceIndexRollbackError::rollback_failure() const noexcept {
+        return m_rollback_failure;
+    }
 
     IResourceIndexer::~IResourceIndexer() = default;
 
@@ -185,8 +206,6 @@ namespace agent_memory {
             throw std::invalid_argument("ResourceIndexSnapshot produced invalid manifest");
         }
 
-        auto vector_records = make_vector_records(snapshot.document_snapshot, *m_embedder);
-
         const auto old_manifest = m_manifest_storage->find_manifest(
             snapshot.revision.resource_id
         );
@@ -202,6 +221,8 @@ namespace agent_memory {
                 throw std::logic_error("ResourceIndexSnapshot generation conflicts with active manifest");
             }
         }
+
+        auto vector_records = make_vector_records(snapshot.document_snapshot, *m_embedder);
 
         const auto previous_document = load_document_snapshot(
             *m_document_storage,
@@ -222,9 +243,28 @@ namespace agent_memory {
             }
             m_manifest_storage->upsert_manifest(manifest);
         } catch(...) {
-            restore_vector_records(*m_vector_index, previous_vectors, vector_records);
-            restore_document_snapshot(*m_document_storage, document_id, previous_document);
-            throw;
+            const auto original_failure = std::current_exception();
+            std::exception_ptr rollback_failure;
+
+            try {
+                restore_vector_records(*m_vector_index, previous_vectors, vector_records);
+            } catch(...) {
+                rollback_failure = std::current_exception();
+            }
+
+            try {
+                restore_document_snapshot(*m_document_storage, document_id, previous_document);
+            } catch(...) {
+                if(!rollback_failure) {
+                    rollback_failure = std::current_exception();
+                }
+            }
+
+            if(rollback_failure) {
+                throw ResourceIndexRollbackError(original_failure, rollback_failure);
+            }
+
+            std::rethrow_exception(original_failure);
         }
 
         if(old_manifest) {
@@ -242,11 +282,8 @@ namespace agent_memory {
             return false;
         }
 
+        erase_derived_records(*manifest);
         m_manifest_storage->erase_manifest(resource_id);
-        try {
-            erase_derived_records(*manifest);
-        } catch(...) {
-        }
         return true;
     }
 
