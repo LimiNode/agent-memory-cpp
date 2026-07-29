@@ -933,7 +933,7 @@ if (handoff && handoff->status == HandoffStatus::InProgress) {
 - **Shutdown timeout.** `stop()` — graceful, ждёт завершения current job. Если job висит (LLM timeout, model unavailable) — нужен timeout cap. Default: 60s, configurable.
 - **Physical_erase audit log.** При `ArchiveColdJob.physical_erase = true` — нужен отдельный `audit_log` DBI (какие unit_ids удалены, когда, по какой причине).
 - **Compaction metrics в RetrievalTrace.** Добавить `compaction_metrics` в `RetrievalTrace` (см. `knowledge-base-roadmap.md` секция 9.1): `last_decay_at_ms`, `cold_candidate_count`, `pending_decay_jobs`.
-- **Tiered storage (M2+).** Hot tier: `ExactVectorIndex` / HNSW / `BinaryCandidateFilterIndex` (fast queries). Warm tier: F16 storage, `BinaryCandidateFilter` + AE-128 (medium speed, smaller). Cold tier: `ProductQuantizationCodec` (M2+) для archived embeddings (slow queries, ~96x compression). Compaction: tier transitions per `DecayPolicy.cold_threshold` + age. Hot -> Warm: после 30 days без retrieval. Warm -> Cold: после 90 days без retrieval. Cold -> Erased: после 365 days без retrieval.
+- **Tiered storage (M2+).** Hot tier starts with `ExactVectorIndex`. HNSW or `BinaryCandidateFilterIndex` becomes an explicit profile override only after the exact-baseline gate passes for the tiered workload. Warm tier may use F16 storage and benchmark-approved `BinaryCandidateFilter` + AE-128; cold tier may use `ProductQuantizationCodec` (M2+) for archived embeddings (slow queries, ~96x compression). Compaction: tier transitions per `DecayPolicy.cold_threshold` + age. Hot -> Warm: после 30 days без retrieval. Warm -> Cold: после 90 days без retrieval. Cold -> Erased: после 365 days без retrieval.
 
 ## 12. References
 

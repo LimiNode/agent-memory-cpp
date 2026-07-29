@@ -8,7 +8,7 @@ agent-memory-cpp — embedded C++17 memory/retrieval engine для AI agents с:
   - MDBX storage.
   - Typed KnowledgeUnits (Chunk / QAPair / Fact / Entity / Relation / Event / Summary / ConversationEpisode / CompiledArticle / Task / Decision).
   - Capability-aware MemoryProfileSpec (BasicRag / AgentLTM / CompiledWiki и др.) с per-stack DBIs.
-  - MDBX-based revision-safe indexes (LexicalPosting.unit_revision).
+  - MDBX-based projection-version-safe indexes (`LexicalPosting.projection_version`).
   - BM25/vector/graph/temporal retrieval с multi-mode dense index (Exact / BinaryCandidateFilter / BinaryOnly / ApproximateVector / Hnsw).
   - Optional encoders (RandomHyperplaneLSH / AutoencoderBinarizer).
   - CompactionWorker с 9 job types.

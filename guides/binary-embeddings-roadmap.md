@@ -454,7 +454,7 @@ Planned binary signatures vs planned binary embeddings — two sides of the same
 | **Encoder** | `RandomHyperplaneLSH` baseline + `AutoencoderBinarizer` M2+ | Multiple encoders (sign, LSH, autoencoder, PQ, RotSQ) |
 | **Reconstruction** | None (fingerprint only) | Optional decoder for `ApproximateVector` mode |
 | **Quality hypothesis** | Coarse filter: Recall@10 ≈ 0.95 (binary + float rerank, hypothesis) | Standalone: Recall@10 ≈ 0.95 (256+ bits, hypothesis); binary-only: ≈ 0.85 (hypothesis) |
-| **Use in `DenseIndexMode`** | `BinaryCandidateFilter` (planned default) | `BinaryCandidateFilter` / `BinaryOnly` / `ApproximateVector` |
+| **Use in `DenseIndexMode`** | `BinaryCandidateFilter` (benchmark-gated candidate) | `BinaryCandidateFilter` / `BinaryOnly` / `ApproximateVector` |
 
 The binary-signatures roadmap is **the first slice** of the binary embeddings roadmap. It plans to establish the encoder registry, signature value types, and bucket index. Binary embeddings roadmap **extends** that into:
 
@@ -582,7 +582,7 @@ M0 scope:
 - `MultiProbeHammingIndex` bounded in-memory bucket prototype (implemented, experimental; no worst-case sub-linear guarantee).
 - Persisted `RandomHyperplaneLSH` / production Hamming ANN wiring (Planned API).
 - `binary_bucket_index` MDBX layout (Planned API).
-- `DenseIndexMode::BinaryCandidateFilter` default candidate-filter mode (Planned API).
+- `DenseIndexMode::BinaryCandidateFilter` benchmark-gated candidate-filter mode (Planned API).
 
 The in-memory multi-probe prototype is intentionally not the persistence
 contract. A durable candidate-filter implementation first adopts the

@@ -430,8 +430,9 @@ enable_embedding_meta      = true   // track embedding provenance
 enable_compaction          = true   // SummaryPromotionJob requires Compaction
 context_budget             = total_tokens=6000, qa=0, chunk=2000,
                             graph=0, summary=2000, evidence=512
-dense_index_config.mode    = BinaryCandidateFilter  # planned candidate mode
-                            or Hnsw for >100k units
+dense_index_config.mode    = Exact  # required baseline
+                            # BinaryCandidateFilter or Hnsw is an explicit,
+                            # profile-specific override after the exact-baseline gate
 ```
 
 `enable_compaction = true` is a hard requirement: validation rule
@@ -439,7 +440,7 @@ dense_index_config.mode    = BinaryCandidateFilter  # planned candidate mode
 [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §10 row 7) blocks
 `enable_compiled_article = true` if compaction is off.
 
-**Note:** `BinaryCandidateFilter`, `RandomHyperplaneLSH` bucket wiring, and `binary_bucket_index` (MDBX) are NOT yet implemented. `BinarySignature`, `IBinarySignatureEncoder`, and the scalar `RandomHyperplaneBinaryEncoder` baseline exist as lower-level primitives, but this full configuration block is still forward-looking and will fail until dense-index integration lands. Subject to implementation gates per `binary-embeddings-roadmap.md`.
+**Note:** `BinaryCandidateFilter`, `RandomHyperplaneLSH` bucket wiring, and `binary_bucket_index` (MDBX) are NOT yet implemented. `BinarySignature`, `IBinarySignatureEncoder`, and the scalar `RandomHyperplaneBinaryEncoder` baseline exist as lower-level primitives, but this full configuration block is still forward-looking and will fail until dense-index integration lands. A binary or HNSW override is never selected merely by corpus size; it is subject to the profile-specific exact-baseline gate in `binary-embeddings-roadmap.md`.
 
 ### §6.3. Folder / DBI layout
 
@@ -655,8 +656,8 @@ the old version. Caused by missing or stale index entries.
   Reindexing Per Projection Kind").
 - Stale-filter via `unit_revision` (planned; see
   [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §17.11):
-  `LexicalPosting.unit_revision < envelope.revision` → skip posting at
-  retrieval time.
+  `LexicalPosting.projection_version != active ProjectionVersionRef` → skip
+  posting at retrieval time.
 
 ### §7.3. Wiki drift / bloat
 

@@ -94,7 +94,8 @@ struct ResourceRevision final {
     std::optional<SourceId> source_id;
     std::optional<SourceRevisionId> source_revision_id;
     std::uint64_t generation = 0;
-    std::uint64_t content_hash = 0;
+    ResourceBodyDigest body_digest;  // SHA-256 baseline over immutable source bytes
+    std::uint64_t content_hash = 0;  // optional local fast freshness hash, never citation integrity
     std::uint64_t pipeline_config_hash = 0;
     std::vector<SourceLocatorObservation> locator_observations;
 };
@@ -148,7 +149,12 @@ implementation may use immutable versioned entries in `ResourceBodyStore` or an
 artifact BlobStore; the current `ResourceManifest` is an active-view pointer,
 not permission to discard cited generations.
 
-`ResourceId` is never recomputed from `content_hash`, `pipeline_config_hash`,
+`ResourceBodyDigest` is algorithm-tagged and uses SHA-256 as the M0 baseline.
+It is part of every newly imported `ResourceRevisionRef`, `ResourceBodyStore`
+descriptor, retained-body lookup and reopen/backup fixture. `content_hash` is a
+prototype-local fast freshness hint only; it has no cross-build collision,
+encoding, or citation-integrity contract. `ResourceId` is never recomputed from
+`content_hash`, `pipeline_config_hash`,
 path or URI. A connector may discover a rename through a stable provider/file
 identity, an explicit application mapping, or an operator-confirmed match, then
 append/update a `SourceLocator` while retaining the logical ResourceId. Equal
@@ -211,7 +217,7 @@ resource_manifests:
     value = list of derived record references for the current generation
 
 resource_bodies:
-    key   = (resource_id, generation, content_hash)
+    key   = (resource_id, generation, body_digest)
     value = immutable source bytes or an addressable body/blob reference
 
 chunks:
@@ -252,8 +258,8 @@ parsing a document, calling an embedder, or rebuilding a large derived index:
    stale generations before making a derived view visible.
 ```
 
-If content hash and ingestion settings did not change, the reindex operation may
-skip expensive work. The skip check must compare both `content_hash` and
+If the body digest and ingestion settings did not change, the reindex operation may
+skip expensive work. The skip check must compare both `body_digest` and
 `pipeline_config_hash`.
 
 The M0 lexical-first importer requires the source body, raw units, mandatory

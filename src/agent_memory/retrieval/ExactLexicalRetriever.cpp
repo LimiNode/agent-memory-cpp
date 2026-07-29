@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <unordered_set>
@@ -26,7 +27,8 @@ namespace agent_memory {
                 ResourceId{"resource:corpus"},
                 1,
                 0,
-                0
+                0,
+                std::nullopt
             };
         }
 

@@ -12,6 +12,7 @@
 #include <exception>
 #include <mutex>
 #include <stdexcept>
+#include <vector>
 
 namespace agent_memory {
 
@@ -24,6 +25,17 @@ namespace agent_memory {
         DocumentSnapshot document_snapshot;
     };
 
+    enum class ResourceIndexRecoveryStage : std::uint8_t {
+        VectorRestore,
+        DocumentRestore
+    };
+
+    /// \brief One failed best-effort recovery operation.
+    struct ResourceIndexRecoveryFailure final {
+        ResourceIndexRecoveryStage stage = ResourceIndexRecoveryStage::VectorRestore;
+        std::exception_ptr failure;
+    };
+
     /// \brief Reports that an in-process reindex rollback could not complete.
     ///
     /// The caller must repair or rebuild the affected derived records before
@@ -32,15 +44,36 @@ namespace agent_memory {
     public:
         ResourceIndexRollbackError(
             std::exception_ptr original_failure,
-            std::exception_ptr rollback_failure
+            std::vector<ResourceIndexRecoveryFailure> recovery_failures
         );
 
         [[nodiscard]] const std::exception_ptr& original_failure() const noexcept;
         [[nodiscard]] const std::exception_ptr& rollback_failure() const noexcept;
+        [[nodiscard]] const std::vector<ResourceIndexRecoveryFailure>& recovery_failures()
+            const noexcept;
 
     private:
         std::exception_ptr m_original_failure;
-        std::exception_ptr m_rollback_failure;
+        std::vector<ResourceIndexRecoveryFailure> m_recovery_failures;
+    };
+
+    /// \brief Reports cleanup failure after a replacement manifest was published.
+    class ResourceIndexReclaimError final : public std::runtime_error {
+    public:
+        ResourceIndexReclaimError(
+            ResourceManifest published_manifest,
+            ResourceManifest unreclaimed_manifest,
+            std::exception_ptr reclaim_failure
+        );
+
+        [[nodiscard]] const ResourceManifest& published_manifest() const noexcept;
+        [[nodiscard]] const ResourceManifest& unreclaimed_manifest() const noexcept;
+        [[nodiscard]] const std::exception_ptr& reclaim_failure() const noexcept;
+
+    private:
+        ResourceManifest m_published_manifest;
+        ResourceManifest m_unreclaimed_manifest;
+        std::exception_ptr m_reclaim_failure;
     };
 
     /// \brief Pre-chunked dense/vector prototype for targeted resource indexing.
@@ -48,11 +81,13 @@ namespace agent_memory {
     /// This is not the lexical-first public M0 resource importer contract.
     /// The prototype serializes calls made through one instance, rejects stale
     /// generations, and compensates records written by a throwing in-process
-    /// attempt. A failed compensation raises `ResourceIndexRollbackError` so
-    /// the caller can repair the affected derived stores. Dependency interfaces
-    /// do not provide a cross-store transaction, so callers still need the M0
-    /// importer for crash-atomic publication across processes or independently
-    /// constructed indexers.
+    /// attempt. Failed compensation and post-publication reclamation are
+    /// reported with typed errors so the caller can repair derived stores.
+    /// Deletion first persists an erase-pending manifest, which is not eligible
+    /// for retrieval, and retries its cleanup on the next erase call. Dependency
+    /// interfaces do not provide a cross-store transaction, so callers still
+    /// need the M0 importer for crash-atomic publication across processes or
+    /// independently constructed indexers.
     class IResourceIndexer {
     public:
         virtual ~IResourceIndexer();
@@ -63,8 +98,9 @@ namespace agent_memory {
         virtual void reindex_resource(ResourceIndexSnapshot snapshot) = 0;
 
         /// \brief Removes all known derived records for one resource.
-        /// \return True when a manifest was found and removed.
-        /// \note A cleanup failure leaves the manifest visible for a retry.
+        /// \return True when a manifest was found and removal was completed.
+        /// \note A cleanup failure leaves an erase-pending manifest that is not
+        /// eligible for retrieval and can be retried by calling this method.
         [[nodiscard]] virtual bool erase_resource(const ResourceId& resource_id) = 0;
     };
 
@@ -77,6 +113,11 @@ namespace agent_memory {
             IEmbedder& embedder,
             IVectorIndex& vector_index
         );
+
+        ResourceIndexer(const ResourceIndexer&) = delete;
+        ResourceIndexer& operator=(const ResourceIndexer&) = delete;
+        ResourceIndexer(ResourceIndexer&&) = delete;
+        ResourceIndexer& operator=(ResourceIndexer&&) = delete;
 
         void reindex_resource(ResourceIndexSnapshot snapshot) override;
 

@@ -7,19 +7,35 @@
 
 #include "Identifiers.hpp"
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace agent_memory {
 
+    /// \brief Algorithm identifier for a portable resource-body digest.
+    enum class ResourceBodyDigestAlgorithm : std::uint8_t {
+        Sha256
+    };
+
+    /// \brief Algorithm-tagged digest of immutable source bytes.
+    struct ResourceBodyDigest final {
+        ResourceBodyDigestAlgorithm algorithm = ResourceBodyDigestAlgorithm::Sha256;
+        std::array<std::uint8_t, 32> bytes{};
+    };
+
     /// \brief Current revision identity for an original source resource.
     struct ResourceRevision final {
         ResourceId resource_id;
         std::uint64_t generation = 0;
+        /// \brief Prototype-local freshness hash, not portable evidence integrity.
         std::uint64_t content_hash = 0;
         std::uint64_t pipeline_config_hash = 0;
+        /// \brief Required by the future M0 importer; optional for this prototype.
+        std::optional<ResourceBodyDigest> body_digest;
     };
 
     /// \brief Kind of derived record created from a resource revision.
@@ -50,10 +66,17 @@ namespace agent_memory {
         std::uint32_t ordinal = 0;
     };
 
+    /// \brief Publication state of a resource-owned derived-record manifest.
+    enum class ResourceManifestState : std::uint8_t {
+        Active,
+        ErasePending
+    };
+
     /// \brief Manifest of records derived from one resource revision.
     struct ResourceManifest final {
         ResourceRevision revision;
         std::vector<DerivedRecordRef> records;
+        ResourceManifestState state = ResourceManifestState::Active;
     };
 
     /// \brief Returns stable lowercase derived-record kind name.
@@ -83,6 +106,11 @@ namespace agent_memory {
 
     /// \brief Returns true when a manifest can be persisted by storage backends.
     [[nodiscard]] bool is_valid_resource_manifest(
+        const ResourceManifest& manifest
+    ) noexcept;
+
+    /// \brief Returns whether a manifest is eligible for active retrieval.
+    [[nodiscard]] bool is_active_resource_manifest(
         const ResourceManifest& manifest
     ) noexcept;
 

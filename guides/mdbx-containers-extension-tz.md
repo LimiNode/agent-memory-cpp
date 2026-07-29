@@ -276,12 +276,20 @@ System DBI budget привязан к pinned upstream snapshot-у, а не к ч
 | `_mdbxc_logical_outbox` | Durable logical-delivery outbox with cumulative acknowledgement |
 | `_mdbxc_logical_delivery_watermarks` | Optional lazy per-origin pruning watermark; opened only by `prune_logical_delivery_markers()` |
 
-`SyncEngine::initialize_system_stores()` открывает seven DBIs: `_mdbxc_meta`,
-`_mdbxc_changelog`, `_mdbxc_applied`, `_mdbxc_sync_schema` and the three
-logical-delivery DBIs. `_mdbxc_origins` is lazy and `_mdbxc_identity_index`
-remains declared with a deferred write path. Therefore adoption planning MUST
-count the actual enabled-store manifest, including lazy stores that can appear
-in production, rather than assume a fixed `+6`. На момент написания ТЗ sync
+`sync_system_be72a2b = 9` is a conservative `max_dbs` reserve, not a claim
+that a normal runtime eagerly opens nine DBIs. The accounting is:
+
+| Mode | DBIs created or reserved |
+|---|---:|
+| normal `SyncEngine::initialize_system_stores()` | eager 7: `_mdbxc_meta`, `_mdbxc_changelog`, `_mdbxc_applied`, `_mdbxc_sync_schema`, and the three logical-delivery DBIs |
+| raw capture used | lazy `_mdbxc_origins` (+1) |
+| direct identity-index writer adopted | deferred `_mdbxc_identity_index` (+1) |
+| logical-delivery marker pruning selected | separate lazy `_mdbxc_logical_delivery_watermarks` (+1) |
+
+Runtime diagnostics must report the DBIs opened by the selected mode, while the
+profile reserves all DBIs it can enable. Therefore adoption planning counts the
+actual enabled-store manifest, including lazy stores that can appear in
+production, rather than assume a fixed `+6`. На момент написания ТЗ sync
 subsystem не активирован и не открывается M0/M1/M2-профилями.
 
 > **Note**: raw-code compression и storage budget — разные вещи. Размер wire-format payload-ов зависит от compression-а (LZ4 / ZSTD), и raw source code footprint (см. §1.5.3) не равен полному end-to-end storage footprint при включённом sync. Полная cost-модель откладывается до формальной adoption.
@@ -864,8 +872,8 @@ Implementing this as unconditional `put` is forbidden for identity mappings.
 11. Embedding metadata + vectors (`embedding_meta`, `embedding_vectors`) only
     when the selected profile marks dense writes as synchronous; heavy
 recompute/HNSW/backfill jobs may be delegated to AsyncIndexer with a durable
-revision-guarded `IndexUpdateJob(unit_id, unit_revision, projection_kind,
-projection_generation, index_kind)`.
+projection-version-guarded `IndexUpdateJob(unit_id, projection_kind,
+projection_version, index_kind)`.
 12. Все scope-aware secondary/range indexes, относящиеся к данной write:
     `inverted_token_to_unit` (candidate index по каждой projection),
     `field_to_postings` (KV posting stats by full posting identity),
@@ -886,8 +894,8 @@ metadata filters and active lexical candidate/stat indexes for the same
 revision. Async eventual mode is allowed only for indexes explicitly marked
 `eventually_consistent=true` by their owning roadmap (for example heavy dense
 embedding recompute, HNSW rebuild, bulk lexical backfill). In async mode
-`create_or_get_unit` / `update_unit` commit a durable `IndexUpdateJob(unit_id, unit_revision,
-projection_kind, projection_generation, index_kind)`; workers must be idempotent, skip stale revisions and projection generations,
+`create_or_get_unit` / `update_unit` commit a durable `IndexUpdateJob(unit_id, projection_kind,
+projection_version, index_kind)`; workers must be idempotent, skip stale projection versions,
 replay after crash, and tolerate delete/update before older jobs run.
 
 `ContentHash` recipe is versioned and kind-specific. The recipe input MUST be
@@ -980,7 +988,15 @@ inline std::vector<std::uint8_t> from_hex_string(const std::string& hex);
 
 ## 4. Расширения существующих классов
 
-Для каждого класса добавить методы (без поломки ABI):
+> **Conditional downstream inventory.** The following operations are historical
+> application wishes and downstream convenience sketches, not an instruction to
+> extend public `mdbx-containers` APIs. Apart from already available
+> `TableSequence`, an item may become upstream work only after the §1 ownership
+> gate, a separately accepted generic design, an independent consumer, and a
+> C++11-compatible public surface. Until then `agent-memory-cpp` implements the
+> needed recipe downstream using existing transactions and tables.
+
+For each class, the following operations are candidates only:
 
 **`KeyValueTable<K, V, Options>`:** `update_many`, `merge`, `snapshot`, `reindex`, `try_update(key, Fn, default_value, txn)`, `add_many(container, txn)`, `erase_many(keys, txn) → size_t`, `bulk_erase_if(pred, txn) → size_t`, `diagnostics() → {size, key_size_avg, value_size_avg, key_size_p95, value_size_p95, fragmentation_pct}`.
 
@@ -1619,7 +1635,8 @@ snapshot-derived sync system DBIs) фиксируется в §11.7.
   `agent-memory-cpp` introduces an authoritative `EventRecord` entity outside
   `KnowledgeUnit`.
 
-Все интеграционные тесты должны проходить в C++11 и C++17 режимах.
+Upstream public headers and upstream-facing compatibility tests must pass in
+C++11 and C++17 modes. `agent-memory-cpp` integration tests remain C++17-only.
 
 ### 8.3 Sync tests (opt-in)
 
@@ -1632,7 +1649,7 @@ Contract tests для будущей adoption-ветки:
 3. **Partial coverage guard.** Fixture с KV-derived таблицей и DUPSORT-derived inverted index не должен объявляться fully synced profile: успешный KV round-trip не маскирует отсутствие `KeyMultiValueTable` coverage. Этот guard принадлежит `agent-memory-cpp` profile validator-у.
 4. **DirectSyncPeer / SyncEngine contract.** Для `DirectSyncPeer` и `SyncEngine` отдельно проверяются pull/push, `ApplyResult::{Applied,Skipped,Conflict}`, conflict diagnostic и idempotent replay (`Skipped`).
 5. **SyncWorker over DirectSyncPeer contract.** Для `SyncWorker` поверх `DirectSyncPeer` отдельно проверяются round failure, переход в `Backoff`, retry и возврат в `Idle` после успешного round-а.
-6. **System DBI budget.** Для зафиксированного upstream snapshot `be72a2b` проверяется, что девять base system DBI из §1.5.10 учитываются в `max_dbs` budget и отражены в diagnostics. Fixture with `prune_logical_delivery_markers()` additionally reserves and observes `_mdbxc_logical_delivery_watermarks`; the reference peak excludes it unless the pruning profile is selected. При обновлении pinned upstream snapshot ожидание пересматривается по system-DBI manifest.
+6. **System DBI budget.** Для зафиксированного upstream snapshot `be72a2b` проверяется reserve `9` base system DBIs в `max_dbs` budget. Normal-runtime diagnostics observe eager `7`; raw capture observes `_mdbxc_origins` as a lazy `+1`; direct identity-index use observes `_mdbxc_identity_index` as a deferred `+1`. Fixture with `prune_logical_delivery_markers()` additionally reserves and observes `_mdbxc_logical_delivery_watermarks`; the reference peak excludes it unless the pruning profile is selected. При обновлении pinned upstream snapshot ожидание пересматривается по system-DBI manifest.
 
 Текущий TZ не требует создавать эти тесты до формальной adoption. Их назначение — зафиксировать future acceptance criteria, чтобы sync v0.1 не был случайно включён как «почти готовый» distributed mode.
 

@@ -158,11 +158,7 @@ Translated projections are regular `SearchProjection` records with
 with the projection value, not stored as a unit-level component:
 
 ```cpp
-struct ProjectionDerivationId {
-    std::uint64_t source_revision = 0;
-    std::uint64_t projection_generation = 0;
-    std::array<std::uint8_t, 32> policy_fingerprint;
-};
+using ProjectionDerivationId = ProjectionVersionRef;
 
 struct TranslationProjectionMeta {
     ProjectionDerivationId derivation_id;
@@ -178,16 +174,16 @@ Rules:
 
 - `SearchProjection::Original` is always built from original/extracted text.
 - `TranslatedCanonical` is built only when `TranslationProjection` is enabled.
-- `TranslationProjectionMeta.derivation_id.source_revision` must match the
-  source unit revision used to generate the projection.
+- `TranslationProjectionMeta.derivation_id.unit_revision_at_build` must match
+  the source unit revision used to generate the projection.
 - Changing canonical language, provider, model, package fingerprint or policy
-  fingerprint creates a new `projection_generation` and makes only
+  fingerprint creates a new `ProjectionVersionRef.derivation_generation` and makes only
   `TranslatedCanonical` stale.
 - `SearchProjection`, `TranslationProjectionMeta` and lexical/vector index
-  deltas commit together for the same generation.
+  deltas commit together for the same `ProjectionVersionRef`.
 - The matching `EmbeddingProjectionMeta` stores the same active projection
-  generation and derivation fingerprint. A dense hit is current only when both
-  that token and `unit_revision_at_compute` match the active projection; an
+  version. A dense hit is current only when its complete version matches the
+  active projection; an
   unchanged envelope revision never validates an older translation package.
 - Source citations point to `SourceRef` on the original resource, not to the
   translated projection.
@@ -235,7 +231,7 @@ Ingestion-time flow:
    canonical language, call `ITranslationAdapter`.
 4. Write `SearchProjection::TranslatedCanonical` with embedded
    `TranslationProjectionMeta` in the same coordinated write.
-5. Reindex only the translated projection generation.
+5. Reindex only the translated projection version.
 
 Query-time flow:
 

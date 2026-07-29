@@ -83,6 +83,12 @@ namespace {
         };
     }
 
+    agent_memory::ResourceBodyDigest make_body_digest(std::uint8_t value) {
+        agent_memory::ResourceBodyDigest digest;
+        digest.bytes.fill(value);
+        return digest;
+    }
+
 } // namespace
 
 int main() {
@@ -120,7 +126,10 @@ int main() {
             return fail("MDBX manifest storage must restore posting key");
         }
 
-        storage.upsert_manifest(make_manifest(resource_id, 2, "bucket:24:beta"));
+        auto replacement = make_manifest(resource_id, 2, "bucket:24:beta");
+        replacement.revision.body_digest = make_body_digest(0x3CU);
+        replacement.state = agent_memory::ResourceManifestState::ErasePending;
+        storage.upsert_manifest(std::move(replacement));
     }
 
     {
@@ -140,9 +149,12 @@ int main() {
         if(
             persisted->revision.generation != 2 ||
             persisted->records.size() != 2 ||
-            persisted->records[1].key != "bucket:24:beta"
+            persisted->records[1].key != "bucket:24:beta" ||
+            !persisted->revision.body_digest ||
+            persisted->revision.body_digest->bytes != make_body_digest(0x3CU).bytes ||
+            persisted->state != agent_memory::ResourceManifestState::ErasePending
         ) {
-            return fail("MDBX manifest storage must persist replacement manifest");
+            return fail("MDBX manifest storage must persist v3 manifest fields");
         }
 
         if(!agent_memory::is_valid_resource_manifest(*persisted)) {

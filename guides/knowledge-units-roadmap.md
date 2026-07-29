@@ -230,7 +230,7 @@ struct TextRange {
 struct ResourceRevisionRef {
     ResourceId resource_id;
     uint64_t generation;
-    uint64_t content_hash;
+    ResourceBodyDigest body_digest;  // SHA-256 baseline over the full retained body
 };
 
 enum class SourceTextOrigin : uint8_t {
@@ -279,7 +279,7 @@ struct CitationHandle {
 ### 3.1. Required Fields And Invariants
 
 - `resource_revision` is required for every newly imported quote-based summary.
-  Its resource id must equal `resource_id`, and its generation/content hash must
+  Its resource id must equal `resource_id`, and its generation/body digest must
   identify the retained body revision from which `excerpt` was measured. A
   legacy migration may leave it absent only for an explicitly `preview-only`
   citation; such a citation cannot re-read or materialize its original range.
@@ -341,7 +341,8 @@ summary.resource_id = imported_resource.resource_id;  // allocated by IResourceI
 summary.resource_revision = ResourceRevisionRef{
     summary.resource_id,
     /*generation=*/7,
-    /*content_hash=*/0x7c91a2d4
+    /*body_digest=*/ResourceBodyDigest{/*algorithm=*/ResourceBodyDigestAlgorithm::Sha256,
+                                       /*bytes=*/sha256_of_retained_body}
 };
 summary.uri = "https://docs.example.com/spec#section-3";
 summary.excerpt = TextRange{/*byte_offset=*/1024, /*byte_length=*/512};
@@ -885,9 +886,9 @@ embedding_meta(same logical projection)     model/codec and complete projection 
 
 A dense record is addressed by the application-owned projection tuple
 `(ScopeId, model_id, model_version, ProjectionKind, UnitId)`, never by a
-vector backend's local numeric id. `EmbeddingProjectionMeta.unit_revision_at_compute`
-and `projection_generation_at_compute` must equal the active envelope and
-projection values before a dense hit may be returned as current. A backend hit is only a candidate: the retriever hydrates the active
+vector backend's local numeric id. Its `EmbeddingProjectionMeta.projection_version`
+must equal the active `ProjectionVersionRef` before a dense hit may be returned
+as current. A backend hit is only a candidate: the retriever hydrates the active
 `KnowledgeUnitEnvelope` + `QAPayload`, applies scope/authority/lifecycle
 filters, and resolves provenance before constructing context or a citation.
 
@@ -1285,7 +1286,7 @@ enum class DerivedRecordKind : uint32_t {
     GlobalIdentityComponent = 142,
     // NB: KnowledgeUnitRevision НЕ существует как отдельный manifest record —
     // revision — это поле KnowledgeUnitEnvelope.revision, не отдельный kind.
-    // Per-record stale-check живёт в LexicalPosting.unit_revision и
+    // Per-record stale-check lives in LexicalPosting.projection_version and
     // the dedicated EmbeddingProjectionMeta store.
 };
 ```

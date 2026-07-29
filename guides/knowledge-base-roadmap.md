@@ -143,7 +143,7 @@ Hash material changes require a new `UnitId`:
 
 `DecayAwareRetriever` / `HybridRetriever` stale-filter:
 
-- Skip a derived hit unless its unit and projection freshness tokens match the active canonical values (LexicalPosting.unit_revision, `EmbeddingProjectionMeta`).
+- Skip a derived hit unless its complete `ProjectionVersionRef` matches the active canonical projection value.
 - Подробности stale-filter pattern — `memory-stacks-roadmap.md` §17.11.
 
 ## 4. Components (operational + per-kind)
@@ -187,6 +187,15 @@ struct VectorRef {
     std::string model_version;
 };
 
+// Canonical freshness identity for every derived search projection. It is
+// shared by lexical postings, dense rows, binary buckets and index jobs.
+struct ProjectionVersionRef {
+    uint64_t unit_revision_at_build = 0;
+    uint64_t projection_revision = 0;
+    uint64_t derivation_generation = 0;
+    std::string derivation_fingerprint;
+};
+
 // This is the durable application projection identity. It is not a
 // VectorStore local id, an ANN node id, or an ownership claim over vector bytes.
 // It lives in the dedicated `embedding_meta` store, not in `unit_components`.
@@ -196,17 +205,15 @@ struct EmbeddingProjectionMeta {
     ProjectionKind projection_kind;
     std::string model_id;             // e.g. "bge-small-en-v1.5"
     std::string model_version;
-    uint64_t unit_revision_at_compute;
-    uint64_t projection_generation_at_compute = 0;
-    std::string projection_derivation_fingerprint;
+    ProjectionVersionRef projection_version;
     std::string model_descriptor_fingerprint;
     std::string vector_codec_descriptor_fingerprint;
     int64_t computed_at_ms;
 };
 
-// A dense row is active only when both freshness tokens equal the active
-// canonical projection. A unit revision alone is insufficient for a translated
-// or regenerated projection whose derivation changes independently.
+// A dense row is active only when its full ProjectionVersionRef equals the
+// active canonical projection. A unit revision alone is insufficient for a
+// translated or regenerated projection whose derivation changes independently.
 
 struct CompactionMetaComponent {
     int64_t last_decay_at_ms;
@@ -301,7 +308,7 @@ struct SearchProjection {
     UnitId unit_id;
     ScopeId scope_id;
     ProjectionKind kind;
-    uint64_t revision;                  // инкремент при регенерации
+    ProjectionVersionRef version;
     int64_t valid_from_ms;
     int64_t valid_until_ms;             // 0 = still valid
     std::string text;
@@ -314,11 +321,15 @@ struct SearchProjection {
 
 ```
 unit_projections
-    key   = (scope_id, UnitId, ProjectionKind, revision)
+    key   = (scope_id, UnitId, ProjectionKind, version.projection_revision)
     value = SearchProjection
 ```
 
-Sparse storage: хранятся только сгенерированные projections. Версионирование: `revision` инкремент при регенерации; старые revisions остаются до compaction purge.
+Sparse storage retains only generated projections. `version.projection_revision`
+increments on regenerated text views; a changed derivation package increments
+`derivation_generation` and changes `derivation_fingerprint`. Old versions
+remain until compaction purge. A row is active only when its complete
+`ProjectionVersionRef` equals the profile's active projection version.
 
 ### 5.2. Per-kind generation rules
 
@@ -520,7 +531,7 @@ Runtime-integration filters are optional and only active when
 ```cpp
 struct RuntimeRetrievalFilters {
     std::vector<RuntimeObjectRef> runtime_instance_filter;
-    std::vector<RuntimeObjectRef> replica_filter;
+    std::vector<RuntimeOriginKey> origin_filter;
     std::vector<RuntimeObjectRef> observer_filter;
     std::vector<RuntimeObjectRef> character_filter;
     std::vector<RuntimeObjectRef> producer_node_filter;
@@ -857,11 +868,27 @@ struct RetrievalIoCounters {
 };
 
 struct ProjectionRouteTrace {
+    std::string branch_id;
     std::string route_id;
+    std::optional<std::string> parent_route_id;
+    std::string input_candidate_set_id;
+    std::string execution_id;
+    std::uint32_t input_candidate_count = 0;
+    std::uint32_t output_candidate_count = 0;
     std::string outcome;  // used, missing, recompute_scheduled, fallback, budget_exhausted, dropped
     std::optional<std::string> fallback_route_id;
     RetrievalIoCounters io_counters;
     RetrievalCompletion completion = RetrievalCompletion::Complete;
+};
+
+struct PolicyDecisionTrace {
+    std::string policy_fingerprint;
+    std::string claims_issuer_id;
+    std::string claims_version;
+    std::uint32_t pre_candidate_allow_count = 0;
+    std::uint32_t pre_candidate_deny_count = 0;
+    std::uint32_t post_fusion_allow_count = 0;
+    std::uint32_t post_fusion_deny_count = 0;
 };
 
 struct QueryBranchTrace {
@@ -871,14 +898,19 @@ struct QueryBranchTrace {
     std::vector<std::string> context_block_ids;
 };
 
+struct ContextBlockInputTrace {
+    KnowledgeUnitRef source_unit;
+    std::uint64_t envelope_revision = 0;
+    ProjectionVersionRef projection_version;
+    std::vector<CitationHandle> citations;
+};
+
 struct ContextBlockTrace {
     std::string block_id;
     std::string branch_id;
-    std::vector<KnowledgeUnitRef> source_units;
-    std::vector<std::uint64_t> envelope_revisions;
-    std::vector<std::uint64_t> projection_generations;
-    std::vector<CitationHandle> citations;
-    std::string temporal_frontier;
+    std::vector<ContextBlockInputTrace> inputs;
+    std::optional<TemporalQuery> temporal_query;
+    std::string normalized_temporal_frontier_digest;
     std::string selection_reason;
 };
 
@@ -896,6 +928,7 @@ struct RetrievalTrace {
     LatencyStats latency_ms;                                    // per-stage
     RetrievalIoBudget effective_io_budget;
     RetrievalIoCounters io_counters;
+    PolicyDecisionTrace policy_decision;
     std::vector<ProjectionRouteTrace> projection_route_events;
     std::vector<KnowledgeUnitRef> causal_path;
 };
@@ -910,13 +943,25 @@ scheduled recompute, and explicit fallback. These supplement the existing
 per-stage latency and channel metrics without turning optional page-fault data
 into a portability-sensitive correctness gate.
 
+`PolicyDecisionTrace` is redacted observability rather than an authorization
+cache: it identifies the applied policy and host claims version, and records
+only aggregate pre-candidate and post-fusion allow/deny counts. It never stores
+the identity, text, citation, or metadata of a denied knowledge unit.
+
+Every `ProjectionRouteTrace` names its branch, parent input where applicable,
+and deterministic route execution identity. This makes fallback activation and
+candidate fan-out replayable without allowing the same fallback route to run
+twice for identical branch input.
+
 `ContextBlock.block_id` is deterministic for the validated block inputs. Every
 `QueryBranchTrace.context_block_ids` entry resolves to exactly one
-`ContextBlockTrace`, which records the source occurrence, active envelope and
-projection versions, citations, temporal frontier and selection reason. This
-creates a replayable branch -> hit -> context-block chain without requiring the
-trace itself to be a mandatory durable audit record; retention and redaction are
-application policy.
+`ContextBlockTrace`. Each `ContextBlockInputTrace` binds one source occurrence,
+active envelope revision, complete projection version and its citations; no
+parallel arrays need implicit positional correspondence. The trace retains the
+normalized `TemporalQuery` when present and a canonical digest of its effective
+frontier. This creates a replayable branch -> hit -> context-block chain without
+requiring the trace itself to be a mandatory durable audit record; retention and
+redaction are application policy.
 
 ### 9.2. RetrievalDataset / TestCase / Judgment
 

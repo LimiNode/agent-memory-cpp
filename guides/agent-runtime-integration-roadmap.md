@@ -105,6 +105,15 @@ struct RuntimeObjectRef {
     std::string opaque_id;
     std::optional<std::uint64_t> revision;
 };
+
+// Canonical origin for an append-only runtime sequence. It deliberately does
+// not reuse RuntimeObjectRef: a sequence belongs to a runtime/replica pair,
+// not to a replica object with its own opaque_id and optional revision.
+struct RuntimeOriginKey {
+    std::string adapter_id;
+    std::string runtime_instance_id;
+    std::string replica_id;
+};
 ```
 
 An ADELIA adapter maps runtime-native node identifiers to neutral refs:
@@ -129,13 +138,13 @@ legacy form where `replica_id == opaque_id` before equality, persistence or
 import/export validation.
 
 Adapters must reject an empty `adapter_id`, `runtime_instance_id` or
-`opaque_id`. A `RuntimeSequence` or `RuntimeSequenceRange` validates that its
-`runtime_instance.kind == Runtime` and `replica.kind == Replica`; the pair must
-have the same `adapter_id` and `runtime_instance_id`. Implementations encode
-the stable tuple above once and reuse that encoding for equality, keys and
-filter comparisons. The optional revision may be exposed to callers for stale
-observation detection, but changing it must not make a different runtime
-object.
+`opaque_id`. `RuntimeOriginKey` has non-empty fields and is normalized once for
+equality, keys, import/export validation and filters. A conversion from a
+`RuntimeObjectRef` runtime/replica pair validates `Runtime` and `Replica` kinds,
+matching adapter/runtime ids, and requires
+`runtime_instance.replica_id == replica.opaque_id`. The optional object revision
+may be exposed to callers for stale observation detection, but changing it must
+not make a different runtime object or sequence origin.
 
 ## Replicated Identity And Runtime Time
 
@@ -151,14 +160,12 @@ Runtime log positions are origin-scoped:
 
 ```cpp
 struct RuntimeSequence {
-    RuntimeObjectRef runtime_instance;  // kind = Runtime
-    RuntimeObjectRef replica;           // kind = Replica
+    RuntimeOriginKey origin;
     std::uint64_t value = 0;
 };
 
 struct RuntimeSequenceRange {
-    RuntimeObjectRef runtime_instance;
-    RuntimeObjectRef replica;
+    RuntimeOriginKey origin;
     std::optional<std::uint64_t> from;
     std::optional<std::uint64_t> until;
 };
@@ -168,10 +175,25 @@ struct RuntimeSequenceRange {
 `from` is unbounded below, an absent `until` is unbounded above, and both absent
 means all sequence values for the validated origin. When both bounds are
 present, `from <= until` is required. Sequence values may be compared
-numerically only when the stable identities of `runtime_instance` and `replica`
-match (their optional revisions are ignored). Ordering across different origins requires explicit causal
-edges, a hybrid logical timestamp/vector clock supplied by the runtime, or must
-remain partially ordered.
+numerically only when their `RuntimeOriginKey` values match; cross-origin order
+requires causal edges or a separate vector-clock/HLC contract.
+
+```cpp
+struct KnowledgeVisibilityReceipt {
+    KnowledgeUnitRef unit;
+    RuntimeOriginKey origin;
+    std::uint64_t visible_at_sequence = 0;
+    std::int64_t recorded_at_ms = 0;
+    std::optional<KnowledgeUnitRef> import_or_reconciliation_evidence;
+};
+```
+
+`KnowledgeVisibilityReceipt` is append-only and records when a concrete origin
+could first use an occurrence, including after semantic import or
+reconciliation. `KnownAtSequence(origin, cutoff)` includes a unit only when an
+applicable receipt has `visible_at_sequence <= cutoff`; unknown origin-local
+visibility is excluded. A producer sequence is not substituted for another
+replica's receipt.
 
 ## Components
 
@@ -191,15 +213,16 @@ struct RuntimeOriginComponent {
     std::string span_id;
 
     std::optional<RuntimeSequence> event_sequence;
+    std::optional<RuntimeOriginKey> sequence_origin;
 
     std::optional<RuntimeObjectRef> partition;
     std::optional<RuntimeObjectRef> replica;
 };
 ```
 
-If both `RuntimeOriginComponent.runtime_instance` / `replica` and
-`event_sequence` are present, they must describe the same origin. A mismatch is
-a validation error, not a merge policy choice.
+If `sequence_origin` or `event_sequence` is present, it must describe the same
+normalized origin as the runtime/replica object observations. A mismatch is a
+validation error, not a merge policy choice.
 
 `validate_runtime_origin()` is the common validation rule for every A-lane
 record. It requires non-empty stable identities and validates
@@ -382,6 +405,25 @@ struct TaskPayload {
     std::optional<std::int64_t> deadline_ms;
 };
 
+struct TaskAssignmentLeaseEvidence {
+    KnowledgeUnitRef task;
+    RuntimeObjectRef assignee;
+    RuntimeOriginComponent origin;
+    std::int64_t granted_at_ms = 0;
+    std::int64_t expires_at_ms = 0;
+    std::vector<KnowledgeUnitRef> evidence;
+    std::optional<std::string> external_receipt;
+};
+
+struct TaskCancellationOutcome {
+    KnowledgeUnitRef task;
+    RuntimeObjectRef actor;
+    RuntimeOriginComponent origin;
+    std::string outcome_kind;
+    std::vector<KnowledgeUnitRef> evidence;
+    std::optional<std::string> external_receipt;
+};
+
 struct TaskStateComponent {
     TaskStatus current_status = TaskStatus::Proposed;
     std::uint64_t state_revision = 0;
@@ -415,6 +457,7 @@ struct DurableStateTransition {
     std::optional<std::string> external_receipt;
     std::optional<std::string> external_state_revision;
     std::vector<KnowledgeUnitRef> evidence;
+    std::vector<KnowledgeUnitRef> state_change_evidence;
 };
 ```
 
@@ -437,6 +480,15 @@ Priority and assignment leases are durable application-owned observations, not
 a scheduler: the application decides assignment, renewal, expiry handling and
 queue ordering. A cancellation transition records its structured outcome and
 evidence; the library never invokes or interrupts external work.
+
+`TaskStateComponent` is valid only when `assigned_to`,
+`assignment_lease_expires_at_ms`, and `assignment_lease_evidence` are either all
+present or all absent. The referenced `TaskAssignmentLeaseEvidence` must name
+the same task occurrence, assignee, expiry and normalized origin. `Cancelled`
+requires `cancellation_outcome`; every other status has no active cancellation
+outcome. Any priority, lease, or cancellation change is represented by the
+accepted `DurableStateTransition.state_change_evidence`, yielding an immutable
+audit/reconciliation history rather than a mutable observation alone.
 
 ```cpp
 struct DecisionAlternative {
@@ -576,7 +628,7 @@ ordinary RAG profiles:
 ```cpp
 struct RuntimeRetrievalFilters {
     std::vector<RuntimeObjectRef> runtime_instance_filter;
-    std::vector<RuntimeObjectRef> replica_filter;
+    std::vector<RuntimeOriginKey> origin_filter;
     std::vector<RuntimeObjectRef> observer_filter;
     std::vector<RuntimeObjectRef> character_filter;
     std::vector<RuntimeObjectRef> producer_node_filter;
@@ -728,20 +780,36 @@ enum class ReconciliationRelation : std::uint8_t {
     Incomparable = 6
 };
 
+struct ReconciliationResolution {
+    KnowledgeUnitRef left;
+    KnowledgeUnitRef right;
+    RuntimeObjectRef resolved_by;
+    RuntimeOriginComponent origin;
+    std::string policy_id;
+    std::string policy_version;
+    std::vector<KnowledgeUnitRef> evidence;
+    std::optional<std::string> external_receipt;
+};
+
 struct ReconciliationConflict {
     KnowledgeUnitRef left;
     KnowledgeUnitRef right;
 
     ReconciliationRelation relation = ReconciliationRelation::Incomparable;
     std::vector<KnowledgeUnitRef> evidence;
-
-    bool resolved = false;
+    std::optional<KnowledgeUnitRef> resolution;
 };
 ```
 
 Duplicate content does not imply duplicate occurrence. Two records with the
 same content hash may remain distinct if their `GlobalKnowledgeUnitId`,
 runtime origin or causal context differs.
+
+An unset `resolution` means the conflict remains retrieval-visible. A set value
+must resolve to an immutable `ReconciliationResolution` for the same ordered
+pair or explicitly documented symmetric pair, with resolver, policy version,
+origin and evidence. The boolean state is derived from the presence of that
+record and never overwrites the unresolved evidence.
 
 Erase/tombstone merge is monotonic. If one partition carries an authorized
 erase tombstone, merge must not resurrect the erased sensitive record. Derived
@@ -782,9 +850,9 @@ A0-A2 use existing substrate:
 
 Do not add a separate `runtime_event_index` or revive `temporal_event_index`:
 the only A-lane materialized range key is the explicitly budgeted
-`runtime_sequence_index` profile delta. `global_unit_id_to_local_id` is likewise
-an explicitly budgeted A0 profile delta, rather than an overloading of a
-scope-local metadata index. If partition support later needs more materialized
+`runtime_sequence_index` profile delta. `global_unit_id_to_local_id` is an M1b
+`DurableGlobalIdentity` capability reusable by A-lane profiles, rather than an
+overloading of a scope-local metadata index. If partition support later needs more materialized
 DBIs, `replica_frontiers` and `reconciliation_jobs` are the first candidates,
 but they are not in the canonical or expanded budget until a concrete
 implementation task updates `dbi-manifest.yaml`.
@@ -836,7 +904,7 @@ lock in `milestones.md`.
 | A0 | Adapter prototype | `Custom` units, typed metadata, example adapter | M0 raw/resource/projection substrate |
 | A1 | Cognitive trace contracts | runtime origin, causal, perspective, epistemic components, sequence filters | M1b components and graph substrate; M2+ for bi-temporal |
 | A2 | Task, Decision and Procedure | formal payloads, procedure activation, capability refs, outcome stats | M1b + activation metadata; M1c for background validation jobs |
-| A3 | Partition and reconciliation | replica stamps, import/export, semantic conflicts, merge tests | M2/M2+ lifecycle governance |
+| A3 | Partition and reconciliation | replica stamps, import/export, semantic conflicts, merge tests | M1b DurableGlobalIdentity and identity-scheme validation; M2/M2+ lifecycle governance |
 | A4 | Plasticity support | procedure mining, topology mutation evidence, introspection snapshots, rollback records | external runtime policy; memory stores evidence only |
 
 ## ADELIA Reference Adapter

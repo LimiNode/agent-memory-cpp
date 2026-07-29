@@ -485,8 +485,7 @@ compaction state:
 embedding_meta
     key   = (scope_id, model_id, model_version, ProjectionKind, UnitId)
     value = EmbeddingProjectionMeta
-            { unit_revision_at_compute, projection_generation_at_compute,
-              projection_derivation_fingerprint, model_descriptor_fingerprint,
+            { projection_version, model_descriptor_fingerprint,
               vector_codec_descriptor_fingerprint, dim, encoder_id,
               written_at_ms, is_active }
 ```
@@ -575,26 +574,25 @@ The RRF fusion (or weighted alternative) is implemented in the retrieval layer
 
 ### Embedding Projection Metadata
 
-`EmbeddingProjectionMeta` is the sole authoritative dense metadata row for one
-exact projection/model tuple. It is not a unit component and carries metadata
-that lets the retrieval layer validate the right embedding at query time:
+`EmbeddingProjectionMeta` is defined canonically in
+[`knowledge-base-roadmap.md`](knowledge-base-roadmap.md). It is the sole
+authoritative dense metadata row for one exact projection/model tuple, not a
+unit component. This storage view adds physical vector details only:
 
 ```text
 EmbeddingProjectionMeta {
+    ProjectionVersionRef projection_version;
     ProjectionKind projection_kind;
     std::string    model_id;
     std::string    model_version;
     std::uint32_t  dim;
     std::string    encoder_id;
     std::uint64_t  seed;
-    std::uint64_t  unit_revision_at_compute;
-    std::uint64_t  projection_generation_at_compute;
-    std::string    projection_derivation_fingerprint;
     std::string    model_descriptor_fingerprint;
     std::string    vector_codec_descriptor_fingerprint;
     std::int64_t   written_at_ms;
     bool           is_active;             // false during migration
-    std::uint32_t  superseded_by_revision; // 0 if active
+    std::uint32_t  superseded_by_projection_revision; // 0 if active
 }
 ```
 
@@ -978,8 +976,8 @@ unit_store:
 ```
 
 - Store bucket values as compact posting lists of `BinaryBucketPosting`
-  (`{unit_id, full_signature, unit_revision, optional resource_generation}`).
-  Filter на stale: `skip if posting.unit_revision < envelope.revision`.
+  (`{unit_id, full_signature, projection_version, optional resource_generation}`).
+  Filter on stale: skip unless `posting.projection_version` equals the active version.
 - Keep one-stage bucket values with embedded float vectors as an experimental
   benchmark variant.
 - Prefer sparse MDBX key-value lookup for 64-bit short keys.
@@ -1111,7 +1109,7 @@ query text
     -> intersect pushdown-safe CandidateSet
     -> unique canonical projection ids
     -> optional direct score over encoded int8/PQ/RotSQ payloads
-    -> bounded exact float16/float32 rerank for the requested
+    -> bounded lossless float32 exact rerank for the requested
        (model_id, model_version, projection_kind)
     -> optional cross-model RRF
     -> canonical hydration, active-revision and provenance validation
@@ -1119,9 +1117,12 @@ query text
     -> fetch context text
 ```
 
-Float rerank remains mandatory for quality-sensitive retrieval. `BinaryOnly`
-and other compact-only modes must explicitly opt into their lower-quality
-contract rather than silently inheriting the quality-sensitive profile.
+Float32 or another lossless canonical vector representation is the only
+ground-truth `exact` rerank. A full scan over float16 is useful, but is an
+encoded approximate rerank and must be traced and benchmarked as
+`full_stored_vector_rerank`, not as exact parity. `BinaryOnly` and other
+compact-only modes must explicitly opt into their lower-quality contract rather
+than silently inheriting the quality-sensitive profile.
 
 ### Tiered Encoded Rerank (M2)
 
@@ -1440,12 +1441,12 @@ Registry и Versioning" остаётся для обратной совмест�
 
 ```text
 BasicRag:           Exact (encoder n/a)
-QAKnowledgeBase:    Exact или BinaryCandidateFilter (RH-128)
-AgentLTM:           BinaryCandidateFilter (AE-128)   // production default
+QAKnowledgeBase:    Exact (BinaryCandidateFilter after benchmark gate)
+AgentLTM:           Exact (BinaryCandidateFilter after benchmark gate)
 SpeakerAwareChat:   Exact (n/a)                       // keyword-heavy
-CompiledWiki:       BinaryCandidateFilter (AE-256)    // quality
+CompiledWiki:       Exact (BinaryCandidateFilter after benchmark gate)
 TemporalFactStore:  Exact (n/a)
-FullResearch:       BinaryCandidateFilter (AE-128)
+FullResearch:       Exact (BinaryCandidateFilter after benchmark gate)
 ```
 
 ### Per-Stack Default Mode: M1 vs M2 Production Candidate
@@ -1455,12 +1456,12 @@ FullResearch:       BinaryCandidateFilter (AE-128)
 | Stack | M1 default | M2 production candidate | Selection criteria |
 |---|---|---|---|
 | BasicRag | Exact | Exact | Small corpus, keyword-heavy, M2 не меняется |
-| QAKnowledgeBase | Exact или BinaryCandidateFilter (RH-128) | benchmark-selected ANN or BinaryCF | Measured corpus/I/O/filter frontier |
-| AgentLTM | BinaryCandidateFilter (AE-128) | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
+| QAKnowledgeBase | Exact | benchmark-selected ANN or BinaryCF | Measured corpus/I/O/filter frontier |
+| AgentLTM | Exact | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
 | SpeakerAwareChat | Exact | Exact | Keyword-heavy, не semantic-heavy |
-| CompiledWiki | BinaryCandidateFilter (AE-256) | HNSW или BinaryCF (AE-256) | Quality priority |
+| CompiledWiki | Exact | HNSW или BinaryCF (AE-256) | Quality priority |
 | TemporalFactStore | Exact | Exact | Smaller corpus, recency-based |
-| FullResearch | BinaryCandidateFilter (AE-128) | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
+| FullResearch | Exact | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
 
 The table contains bootstrap hypotheses, not automatic production defaults.
 Promotion of HNSW, BinaryCandidateFilter, BinaryOnly or a future ANN backend is
@@ -1709,8 +1710,7 @@ binary_bucket_index:                     // if DenseVectors
              descriptor_fingerprint, key_projection_id, short_key)
     value = posting list
             vector<BinaryBucketPosting>:
-              { unit_id, full_signature, unit_revision,
-                projection_generation, projection_derivation_fingerprint,
+              { unit_id, full_signature, projection_version,
                 optional resource_generation }
     used by:  binary signature candidate filter
 
@@ -1787,7 +1787,7 @@ Revision filtering (cheap stale-removal) — primary path через
 unit_id matches secondary index lookup (binary_bucket_index, edge indexes, ...)
     -> batch load current envelopes (по KnowledgeUnitId)
     -> для каждого candidate:
-        skip if posting.unit_revision < envelope.revision  // stale signature
+        skip unless posting.projection_version equals the active projection version
         (rare) skip if posting.resource_generation
                 && ResourceManifest.generation differs      // derived record
         else: accept (compute Hamming / score / rank)
@@ -2132,7 +2132,7 @@ add projection-aware benchmarks.
 (см. §"Dense Index Modes (Backend Selection)" выше для интерфейсов,
 storage estimates, quality targets и per-stack defaults).
 
-23. **Step 23: BinaryCandidateFilter mode (default production).**
+23. **Step 23: benchmark-gated BinaryCandidateFilter mode.**
     - `IDenseIndex` interface + `DenseIndexMode` enum + `DenseIndexConfig` в
       `MemoryProfileSpec`.
     - `ExactVectorIndex` (brute-force float cosine) реализация + benchmarks

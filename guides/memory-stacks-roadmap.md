@@ -675,6 +675,11 @@ enum class ProjectionRouteInputKind : uint8_t {
     PriorRouteCandidates,
 };
 
+enum class ProjectionRouteActivation : uint8_t {
+    Root,
+    FallbackOnly,
+};
+
 enum class BudgetExhaustionAction : uint8_t {
     ReturnPartial,
     DropRoute,
@@ -683,6 +688,7 @@ enum class BudgetExhaustionAction : uint8_t {
 
 struct DenseProjectionRoute {
     std::string route_id;
+    ProjectionRouteActivation activation = ProjectionRouteActivation::Root;
     ProjectionKind projection_kind = ProjectionKind::Original;
     std::string model_id;
     std::string model_version;
@@ -699,9 +705,12 @@ struct DenseProjectionRoute {
 };
 
 struct RetrievalAccessContext {
+    // Immutable normalized grants issued by the host, never caller-selected plan input.
     std::string principal_id;
     std::vector<std::string> role_ids;
     std::vector<std::string> jurisdictions;
+    std::vector<ScopeId> authorized_scope_ids;
+    std::optional<double> trust_score;
     std::vector<std::string> policy_claims;
     std::string issuer_id;
     std::string claims_version;
@@ -727,7 +736,7 @@ struct RetrievalPlan {
     RetrievalMode mode = RetrievalMode::Hybrid;
 
     std::vector<RetrieverSpec> retrievers;
-    std::vector<DenseProjectionRoute> dense_routes;  // M2+, exact projection routes
+    std::vector<DenseProjectionRoute> dense_routes;  // M2 exact projection routes
     std::optional<BoundedQueryPlan> bounded_query_plan; // M2 decomposition
 
     std::vector<KnowledgeUnitKind> kinds;
@@ -741,7 +750,7 @@ struct RetrievalPlan {
 
     size_t candidate_pool_size = 200;
     size_t limit = 32;
-    std::optional<RetrievalIoBudget> io_budget;  // M2+ physical read/decode cap
+    std::optional<RetrievalIoBudget> io_budget;  // M2 physical read/decode cap
     std::optional<ContextBudget> context_budget;
 
     std::optional<DecayPolicy> decay_policy_override;
@@ -756,6 +765,24 @@ struct RetrievalResult {
     RetrievalCompletion completion = RetrievalCompletion::Complete;
 };
 ```
+
+`RetrievalAccessContext` is issued by the embedding host after authentication
+and authorization. `authorized_scope_ids` is normalized, contains no empty or
+duplicate scope, and is the complete scope grant for this request. A validated
+plan requires `scope_ids` to be a subset of `authorized_scope_ids`; a caller
+cannot grant itself access by placing an arbitrary `ScopeId` in the plan.
+`Visibility::Scope` requires both a requested scope and the matching host grant.
+Missing `trust_score` fails a policy that specifies `minimum_trust`.
+
+Dense route validation requires globally unique route IDs and one acyclic graph
+containing both `parent_route_id` and `fallback_route_id` edges. A root route
+may read the corpus. A `PriorRouteCandidates` route must name a parent and has
+an explicit bounded `input_candidate_limit`. A `FallbackOnly` route is never
+scheduled as a root: it runs only when its parent selected
+`UseExplicitFallbackRoute` because the requested projection is absent or
+incompatible. The executor runs a route at most once for one
+`(branch_id, route_id, input-candidate-set identity)` tuple; repeated fallback
+edges reuse the existing outcome rather than duplicate I/O or candidates.
 
 `RetrievalAccessContext` is immutable input from the embedding application. The
 host authenticates its principal and issues role, jurisdiction and other
@@ -1023,11 +1050,10 @@ inline MemoryProfileSpec AgentLongTermMemory() {
         /*candidate_pool_size=*/200);
     s.default_retrieval_mode = RetrievalMode::Hybrid;
     s.dense_index_config = DenseIndexConfig(
-        DenseIndexMode::BinaryCandidateFilter,
-        /*bit_count=*/128,
-        /*encoder_id=*/"autoencoder_binarizer_v1");
-    // M2+ alternative: DenseIndexMode::Hnsw + HnswConfig{m=32, ef_construction=200, ef_search=100}
-    // for better Recall@10 at corpus > 100k units.
+        DenseIndexMode::Exact,
+        /*bit_count=*/0,
+        /*encoder_id=*/"");
+    // M2+: BinaryCandidateFilter or Hnsw is an explicit benchmark-gated override.
     return s;
 }
 ```
@@ -1093,11 +1119,10 @@ inline MemoryProfileSpec CompiledWiki() {
         /*summary_tokens=*/2000,
         /*evidence_tokens=*/512);
     s.dense_index_config = DenseIndexConfig(
-        DenseIndexMode::BinaryCandidateFilter,
-        /*bit_count=*/256,
-        /*encoder_id=*/"autoencoder_binarizer_v1");
-    // M2+ alternative: DenseIndexMode::Hnsw + HnswConfig{m=32, ef_construction=200, ef_search=100}
-    // for better Recall@10 at corpus > 100k units.
+        DenseIndexMode::Exact,
+        /*bit_count=*/0,
+        /*encoder_id=*/"");
+    // M2+: BinaryCandidateFilter or Hnsw is an explicit benchmark-gated override.
     return s;
 }
 ```
@@ -1136,11 +1161,10 @@ inline MemoryProfileSpec FullResearchMemory() {
     s.enable_conversation_episode = true;
     s.enable_compiled_article = true;
     s.dense_index_config = DenseIndexConfig(
-        DenseIndexMode::BinaryCandidateFilter,
-        /*bit_count=*/128,
-        /*encoder_id=*/"autoencoder_binarizer_v1");
-    // M2+ alternative: DenseIndexMode::Hnsw + HnswConfig{m=32, ef_construction=200, ef_search=100}
-    // for better Recall@10 at corpus > 100k units.
+        DenseIndexMode::Exact,
+        /*bit_count=*/0,
+        /*encoder_id=*/"");
+    // M2+: BinaryCandidateFilter or Hnsw is an explicit benchmark-gated override.
     return s;
 }
 ```
@@ -1523,9 +1547,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
   priority_weight / embedding metadata / soft suppression / cooldown. Explicit list
   durable lifecycle transitions, инкрементящих revision: Active→Superseded,
   Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated.
-- `LexicalPosting` хранит `unit_revision` (envelope.revision на момент постинга).
-- `EmbeddingProjectionMeta` хранит unit and projection freshness tokens.
-- Retrieval-time: skip posting if `posting.unit_revision < envelope.revision`; recompute/skip a dense row unless both embedding freshness tokens match the active canonical projection.
+- `LexicalPosting` and `EmbeddingProjectionMeta` carry the same `ProjectionVersionRef`.
+- Retrieval-time: skip a posting or dense row unless its complete projection version equals the active canonical projection version.
 - Подробности — §17.11 Stale-filter pattern.
 
 ### Шаг 2: Scope-aware keys + metadata filters
@@ -1563,7 +1586,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - Mode-specific DBI creation в `MemoryStack::open(spec, mode)` с capability-aware логикой (см. §12.7).
 - `BinaryCandidateFilter` may become a profile default only after its
   application-owned `BinaryBucketIndexDescriptor`, `BinaryBucketSearchBudget`,
-  active-generation publication and stale-hydration checks are present. The
+  active-generation publication and stale-hydration checks are present **and**
+  that profile passes the documented exact-baseline benchmark gate. The
   baseline starts with one short-key table; multi-index hashing is a separately
   benchmarked M2+ option, not an automatic profile expansion.
 - `RetrievalPlan.dense_index_mode_override` для runtime override (см. §7.3).
@@ -1792,8 +1816,8 @@ double apply_filters(
 
 ### 17.11. Stale-filter pattern — revision-based per-record check
 
-- `LexicalPosting.unit_revision < envelope.revision` → skip posting (defer to async reindex).
-- `EmbeddingProjectionMeta` token mismatch → recompute or skip.
+- `LexicalPosting.projection_version != active ProjectionVersionRef` → skip posting (defer to async reindex).
+- `EmbeddingProjectionMeta.projection_version` mismatch → recompute or skip.
 - Постинг может быть stale даже если unit не удалён (например, payload изменился, и в BM25F-индексе застрял старый term frequency).
 - Реализация M0: per-posting check inline в retrieval pipeline.
 - Реализация M2 (при >1M units): `unit_revision_index` DBI для batch reindex.
@@ -1857,7 +1881,7 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
 - **Maturity Level** — M0/M1/M2, определяет ship-it критерии и scope функциональности.
 - **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на mutable retrieval-view changes that preserve stored `content_hash`: `primary_text`, `display_text` если retrieval-relevant, non-identity source summaries, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated). Смена identity hash material создаёт новый `UnitId` plus supersede/merge lineage. НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
 - **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и projection metadata. Envelope-level versioning — это `revision`, не `generation`.
-- **Stale filter** — per-record check: `LexicalPosting.unit_revision < envelope.revision` → skip; a dense row requires matching unit and projection freshness tokens. M0: inline в retrieval pipeline; M2: `unit_revision_index` DBI для batch reindex (см. §17.11).
+- **Stale filter** — per-record check: a lexical posting and dense row require a complete matching `ProjectionVersionRef`. M0: inline в retrieval pipeline; M2: projection-version indexes for batch reindex (см. §17.11).
 - **Profile signature** — hash от full `MemoryProfileSpec`, including
   core capabilities and selectors; host LLM cache settings are deliberately
   excluded;

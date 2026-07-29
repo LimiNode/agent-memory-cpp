@@ -116,6 +116,13 @@ namespace agent_memory {
             return false;
         }
 
+        if(
+            manifest.state != ResourceManifestState::Active
+            && manifest.state != ResourceManifestState::ErasePending
+        ) {
+            return false;
+        }
+
         for(const auto& record : manifest.records) {
             if(!is_valid_derived_record_ref(record)) {
                 return false;
@@ -123,6 +130,10 @@ namespace agent_memory {
         }
 
         return true;
+    }
+
+    bool is_active_resource_manifest(const ResourceManifest& manifest) noexcept {
+        return manifest.state == ResourceManifestState::Active;
     }
 
     bool matches_revision_hashes(

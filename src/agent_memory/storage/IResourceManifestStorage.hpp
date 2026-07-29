@@ -35,6 +35,9 @@ namespace agent_memory {
         /// \brief Removes a resource manifest.
         /// \param resource_id Resource id to remove.
         /// \return True when a manifest was removed.
+        /// \post If this function throws, the previously visible manifest for
+        /// the resource remains visible. Implementations must provide the
+        /// strong exception guarantee for one manifest removal.
         [[nodiscard]] virtual bool erase_manifest(
             const ResourceId& resource_id
         ) = 0;

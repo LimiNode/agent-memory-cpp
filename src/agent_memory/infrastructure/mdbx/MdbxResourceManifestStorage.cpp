@@ -15,8 +15,12 @@ namespace agent_memory {
 
     namespace {
 
-        constexpr std::string_view RESOURCE_MANIFEST_PAYLOAD_VERSION =
+        constexpr std::string_view RESOURCE_MANIFEST_PAYLOAD_VERSION_V1 =
             "agent_memory.resource_manifest.v1";
+        constexpr std::string_view RESOURCE_MANIFEST_PAYLOAD_VERSION_V2 =
+            "agent_memory.resource_manifest.v2";
+        constexpr std::string_view RESOURCE_MANIFEST_PAYLOAD_VERSION_V3 =
+            "agent_memory.resource_manifest.v3";
 
         std::string sanitize_table_part(std::string value) {
             if(value.empty()) {
@@ -51,6 +55,31 @@ namespace agent_memory {
 
         void append_uint64(std::string& payload, std::uint64_t value) {
             append_string(payload, std::to_string(value));
+        }
+
+        void append_manifest_state(std::string& payload, ResourceManifestState state) {
+            append_string(
+                payload,
+                state == ResourceManifestState::Active ? "active" : "erase_pending"
+            );
+        }
+
+        void append_body_digest(
+            std::string& payload,
+            const std::optional<ResourceBodyDigest>& digest
+        ) {
+            if(!digest) {
+                append_string(payload, "none");
+                return;
+            }
+
+            append_string(payload, "sha256");
+            std::string bytes;
+            bytes.reserve(digest->bytes.size());
+            for(const auto byte : digest->bytes) {
+                bytes.push_back(static_cast<char>(byte));
+            }
+            append_string(payload, bytes);
         }
 
         class PayloadReader final {
@@ -161,17 +190,53 @@ namespace agent_memory {
             };
         }
 
+        ResourceManifestState read_manifest_state(PayloadReader& reader) {
+            const auto text = reader.read_string();
+            if(text == "active") {
+                return ResourceManifestState::Active;
+            }
+            if(text == "erase_pending") {
+                return ResourceManifestState::ErasePending;
+            }
+            throw std::runtime_error("Invalid resource manifest state");
+        }
+
+        std::optional<ResourceBodyDigest> read_body_digest(PayloadReader& reader) {
+            const auto algorithm = reader.read_string();
+            if(algorithm == "none") {
+                return std::nullopt;
+            }
+            if(algorithm != "sha256") {
+                throw std::runtime_error("Unsupported resource body digest algorithm");
+            }
+
+            const auto bytes = reader.read_string();
+            if(bytes.size() != ResourceBodyDigest{}.bytes.size()) {
+                throw std::runtime_error("Invalid SHA-256 resource body digest length");
+            }
+
+            ResourceBodyDigest digest;
+            for(std::size_t index = 0; index < digest.bytes.size(); ++index) {
+                digest.bytes[index] = static_cast<std::uint8_t>(
+                    static_cast<unsigned char>(bytes[index])
+                );
+            }
+            return digest;
+        }
+
         std::string serialize_manifest(const ResourceManifest& manifest) {
             if(!is_valid_resource_manifest(manifest)) {
                 throw std::invalid_argument("ResourceManifest is invalid");
             }
 
             std::string payload;
-            append_string(payload, RESOURCE_MANIFEST_PAYLOAD_VERSION);
+            append_string(payload, RESOURCE_MANIFEST_PAYLOAD_VERSION_V3);
             append_string(payload, manifest.revision.resource_id.value());
             append_uint64(payload, manifest.revision.generation);
             append_uint64(payload, manifest.revision.content_hash);
             append_uint64(payload, manifest.revision.pipeline_config_hash);
+            append_body_digest(payload, manifest.revision.body_digest);
+            append_manifest_state(payload, manifest.state);
             append_size(payload, manifest.records.size());
             for(const auto& record : manifest.records) {
                 append_record(payload, record);
@@ -181,7 +246,12 @@ namespace agent_memory {
 
         ResourceManifest deserialize_manifest(std::string_view payload) {
             PayloadReader reader{payload};
-            if(reader.read_string() != RESOURCE_MANIFEST_PAYLOAD_VERSION) {
+            const auto version = reader.read_string();
+            if(
+                version != RESOURCE_MANIFEST_PAYLOAD_VERSION_V1
+                && version != RESOURCE_MANIFEST_PAYLOAD_VERSION_V2
+                && version != RESOURCE_MANIFEST_PAYLOAD_VERSION_V3
+            ) {
                 throw std::runtime_error("Unsupported resource manifest payload version");
             }
 
@@ -190,6 +260,15 @@ namespace agent_memory {
             manifest.revision.generation = reader.read_uint64();
             manifest.revision.content_hash = reader.read_uint64();
             manifest.revision.pipeline_config_hash = reader.read_uint64();
+            if(version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V3) {
+                manifest.revision.body_digest = read_body_digest(reader);
+            }
+            if(
+                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V2 ||
+                version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V3
+            ) {
+                manifest.state = read_manifest_state(reader);
+            }
 
             const auto count = reader.read_size();
             manifest.records.reserve(count);

@@ -580,18 +580,19 @@ query time when their generation does not match the current resource generation.
 That path needs a cheap current-generation lookup or cache; otherwise stale
 filtering can turn lexical search into too many random reads.
 
-### Stale Filter via unit_revision
+### Stale Filter via ProjectionVersionRef
 
-LexicalPosting хранит unit_revision (envelope.revision на момент индексации).
+LexicalPosting stores the complete `ProjectionVersionRef` captured at indexing.
 Retrieval-time stale-filter:
   1. Posting lookup → candidates.
   2. Bulk load current envelopes.
-  3. Skip if posting.unit_revision < envelope.revision.
+  3. Skip unless `posting.projection_version` equals the active projection version.
 
 См. также: ResourceManifest.generation filtering только для derived records от source resource (M2+).
 
-unit_revision-based filtering — это per-posting check, не отдельная DBI.
-unit_revision_index (optional, M2+) — отдельная DBI для batch validation / debugging.
+Projection-version filtering is a per-posting check, not a separate DBI.
+`projection_version_index` (optional, M2+) is a separate DBI for batch
+validation and debugging.
 
 The reindex path is **projection-aware**: an update that only changes a
 `Summary` projection does not invalidate `Original`, `QAQuestion`, or
@@ -666,8 +667,7 @@ struct SearchProjection final {
     ScopeId scope_id;
     KnowledgeUnitId unit_id;
     ProjectionKind kind = ProjectionKind::Original;
-    std::uint64_t revision = 0;
-    std::uint64_t projection_generation = 0;
+    ProjectionVersionRef version;
 
     // Canonical fielded text. Empty fields are skipped at index time.
     std::string title;
@@ -721,7 +721,7 @@ inverted_token_to_unit:
 
 field_to_postings:                 // KV posting stats by full posting identity
     key   = (scope_id, projection_kind, field_id, token_id, unit_id)
-    value = PostingStats { tf, positions_count, resource_generation, projection_generation, resource_id }
+    value = PostingStats { tf, positions_count, resource_generation, projection_version, resource_id }
 ```
 
 A `unit_id` may appear multiple times for the same token — once per
@@ -849,10 +849,10 @@ TranslatedCanonical:
 truth is the original resource/unit revision plus `TranslationProjectionMeta`
 embedded in the projection value. If the source revision, canonical language,
 translation policy fingerprint or package/model fingerprint changes, only the
-translated projection gets a new `projection_generation`; `Original` postings
-remain valid. Translated projection postings store that generation in
-`PostingStats.projection_generation`, and stale-check compares it with the active
-projection generation, not only with `KnowledgeUnitEnvelope.revision`. See
+translated projection gets a new `ProjectionVersionRef.derivation_generation`;
+`Original` postings remain valid. Translated projection postings store the full
+version in `PostingStats.projection_version`, and stale-check compares it with
+the active projection version, not only with `KnowledgeUnitEnvelope.revision`. See
 [`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
 
 Open question 17.4 from `memory-stacks-roadmap.md` (`When does a SearchProjection
@@ -1317,9 +1317,9 @@ of that ordering; each substep is its own PR.
     [`optimization-roadmap.md`](optimization-roadmap.md) "Secondary
     Indexes" and `mdbx-containers-extension-tz.md` §5.5.
 
-unit_id <-> envelope.revision:
-  - LexicalPosting.unit_revision = envelope.revision на момент индексации.
-  - Не путать с ResourceManifest.generation (resource-level version).
+unit_id <-> ProjectionVersionRef:
+  - LexicalPosting stores the active projection version at indexing time.
+  - Do not confuse it with ResourceManifest.generation (resource-level version).
 
 ### L5. Morphology, raw stores, and later layers
 

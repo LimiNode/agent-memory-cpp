@@ -286,6 +286,7 @@ profile_deltas:
       - _mdbxc_logical_delivery
       - _mdbxc_logical_delivery_order
       - _mdbxc_logical_outbox
+    note: Conservative max_dbs reserve. Normal SyncEngine initialization eagerly creates 7 DBIs; raw capture lazily creates _mdbxc_origins (+1), and _mdbxc_identity_index is a deferred direct-use-only path (+1).
   - name: logical_delivery_watermark_pruning
     dbis: 1
     migration_peak: 1

@@ -121,6 +121,7 @@ enum class TemporalQueryKind : std::uint8_t {
     ActiveAt,
     KnownAt,
     ActiveAtKnownAt,
+    InvalidatedAfter,
     KnownAtSequence,
 };
 
@@ -128,6 +129,7 @@ struct TemporalQuery {
     TemporalQueryKind kind = TemporalQueryKind::ActiveAt;
     std::optional<std::int64_t> valid_time_ms;
     std::optional<std::int64_t> recorded_cutoff_ms;
+    std::optional<std::int64_t> invalidated_after_ms;
     std::optional<RuntimeSequence> sequence_cutoff;
 };
 ```
@@ -142,20 +144,26 @@ Required query forms:
 - `known_at_sequence(sequence)`: what a runtime component could have known when
   an external event sequence was processed.
 
-`recorded_sequence` and `invalidated_sequence` are optional origin-scoped
+`recorded_sequence` and `invalidated_sequence` are optional producer-origin
 runtime log positions. `RuntimeSequence` is specified in
 [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
 Sequence values are numerically ordered only inside one runtime/replica origin.
 They are useful for agent runtimes that have a durable event log and need
 deterministic replay or "what did component X know at decision Y?" audits.
+For imported or reconciled occurrences, `KnownAtSequence` uses append-only
+`KnowledgeVisibilityReceipt` records for the querying origin; a producer's
+sequence never implies visibility at another replica.
 
 `TemporalQuery` is the retrieval-plan representation of these forms. Validation
 requires exactly the fields named by its tag: `ActiveAt` needs `valid_time_ms`,
-`KnownAt` needs `recorded_cutoff_ms`, `ActiveAtKnownAt` needs both, and
-`KnownAtSequence` needs an origin-qualified `sequence_cutoff`. Candidate
-construction and final hydration evaluate the same query frontier; trace records
-the normalized effective frontier. The legacy single-axis `TemporalWindow`
-remains M1 compatibility input and cannot claim bi-temporal replay semantics.
+`KnownAt` needs `recorded_cutoff_ms`, `ActiveAtKnownAt` needs both,
+`InvalidatedAfter` needs `invalidated_after_ms`, and `KnownAtSequence` needs an
+origin-qualified `sequence_cutoff`. `InvalidatedAfter(t)` selects records whose
+recorded invalidation time is strictly greater than `t`; records without an
+invalidation time are excluded. Candidate construction and final hydration
+evaluate the same query frontier; trace records the normalized effective
+frontier. The legacy single-axis `TemporalWindow` remains M1 compatibility input
+and cannot claim bi-temporal replay semantics.
 
 Storage implications:
 

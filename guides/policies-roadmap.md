@@ -36,13 +36,18 @@ struct AccessPolicy {
 An absent policy is deny-by-default outside the record's owning scope. The
 retriever receives the immutable host-issued `RetrievalAccessContext` from the
 future `RetrievalPlan`; it never infers a principal, role or jurisdiction from
-ambient process state. It applies scope/access/status/language/jurisdiction/trust
-constraints before candidate creation and repeats the authorization check after
-fusion and before context materialization. `RetrievalTrace` records policy
-version and allow/deny counts without exposing denied content. Initial mappings use typed
-metadata in existing `metadata_filters`; a new DBI is forbidden until a measured
-query pattern requires one. Required fixtures cover cross-scope access denial,
-role changes, jurisdiction/trust exclusions, post-fusion leakage, and a soft
+ambient process state. `RetrievalPlan.scope_ids` must be a subset of the
+context's host-issued `authorized_scope_ids`; `ScopeId` remains namespace and
+ownership, not proof of authority. `Visibility::Scope` therefore requires the
+record scope to be both requested and granted. It applies
+scope/access/status/language/jurisdiction/trust constraints before candidate
+creation and repeats the authorization check after fusion and before context
+materialization. A missing `trust_score` does not satisfy `minimum_trust`.
+`RetrievalTrace` records an applied policy fingerprint plus aggregate allow/deny
+counts without exposing denied content. Initial mappings use typed metadata in
+existing `metadata_filters`; a new DBI is forbidden until a measured query
+pattern requires one. Required fixtures cover cross-scope access denial, role
+changes, jurisdiction/trust exclusions, post-fusion leakage, and a soft
 domain-routing fallback that never bypasses a strict deny.
 
 The existing `IRetrievalEngine::RetrievalRequest` is an M0 lexical compatibility

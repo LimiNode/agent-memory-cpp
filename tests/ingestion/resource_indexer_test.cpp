@@ -6,6 +6,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -123,6 +124,10 @@ namespace {
             m_fail_next_upsert = true;
         }
 
+        void fail_next_erase() noexcept {
+            m_fail_next_erase = true;
+        }
+
         void upsert_manifest(agent_memory::ResourceManifest manifest) override {
             if(m_fail_next_upsert) {
                 m_fail_next_upsert = false;
@@ -150,11 +155,16 @@ namespace {
         [[nodiscard]] bool erase_manifest(
             const agent_memory::ResourceId& resource_id
         ) override {
+            if(m_fail_next_erase) {
+                m_fail_next_erase = false;
+                throw std::runtime_error("simulated manifest erase failure");
+            }
             return m_manifests.erase(resource_id) > 0;
         }
 
     private:
         bool m_fail_next_upsert = false;
+        bool m_fail_next_erase = false;
         std::map<agent_memory::ResourceId, agent_memory::ResourceManifest> m_manifests;
     };
 
@@ -317,9 +327,20 @@ namespace {
         };
     }
 
+    agent_memory::ResourceBodyDigest make_body_digest(std::uint8_t value) {
+        agent_memory::ResourceBodyDigest digest;
+        digest.bytes.fill(value);
+        return digest;
+    }
+
 } // namespace
 
 int main() {
+    static_assert(!std::is_copy_constructible<agent_memory::ResourceIndexer>::value);
+    static_assert(!std::is_copy_assignable<agent_memory::ResourceIndexer>::value);
+    static_assert(!std::is_move_constructible<agent_memory::ResourceIndexer>::value);
+    static_assert(!std::is_move_assignable<agent_memory::ResourceIndexer>::value);
+
     InMemoryDocumentStorage document_storage;
     InMemoryResourceManifestStorage manifest_storage;
     FakeEmbedder embedder;
@@ -467,6 +488,7 @@ int main() {
     const agent_memory::ChunkId rollback_failed_second_chunk_id{"chunk:indexer:rollback-failed:second"};
     document_storage.fail_on_nth_erase(2);
     vector_index.fail_on_nth_upsert(2);
+    vector_index.fail_next_erase();
     try {
         indexer.reindex_resource(make_snapshot(
             resource_id,
@@ -489,7 +511,15 @@ int main() {
         ));
         return fail("resource indexer must surface an incomplete rollback");
     } catch(const agent_memory::ResourceIndexRollbackError& error) {
-        if(!error.original_failure() || !error.rollback_failure()) {
+        if(
+            !error.original_failure()
+            || !error.rollback_failure()
+            || error.recovery_failures().size() != 2
+            || error.recovery_failures()[0].stage
+                != agent_memory::ResourceIndexRecoveryStage::VectorRestore
+            || error.recovery_failures()[1].stage
+                != agent_memory::ResourceIndexRecoveryStage::DocumentRestore
+        ) {
             return fail("rollback failure must retain both original and rollback diagnostics");
         }
     }
@@ -623,6 +653,31 @@ int main() {
         return fail("conflicting generation must be rejected before embedding");
     }
 
+    auto digest_conflicting_generation = make_snapshot(
+        resource_id,
+        3,
+        agent_memory::DocumentId{"doc:indexer:digest-conflict"},
+        {
+            make_chunk(
+                agent_memory::ChunkId{"chunk:indexer:digest-conflict"},
+                agent_memory::DocumentId{"doc:indexer:digest-conflict"},
+                0,
+                "digest-conflicting chunk"
+            )
+        }
+    );
+    digest_conflicting_generation.revision.body_digest = make_body_digest(0x11U);
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(std::move(digest_conflicting_generation));
+        return fail("resource indexer must reject a conflicting body digest");
+    } catch(const std::logic_error&) {
+    }
+
+    if(embedder.call_count() != 0) {
+        return fail("conflicting body digest must be rejected before embedding");
+    }
+
     const auto newest_manifest = manifest_storage.find_manifest(resource_id);
     if(
         !newest_manifest ||
@@ -634,6 +689,47 @@ int main() {
         return fail("stale, conflicting, or idempotent work must not replace the active generation");
     }
 
+    const agent_memory::DocumentId reclaim_document_id{"doc:indexer:reclaim"};
+    const agent_memory::ChunkId reclaim_chunk_id{"chunk:indexer:reclaim"};
+    document_storage.fail_on_nth_erase(2);
+    try {
+        indexer.reindex_resource(make_snapshot(
+            resource_id,
+            4,
+            reclaim_document_id,
+            {
+                make_chunk(reclaim_chunk_id, reclaim_document_id, 0, "reclaim chunk")
+            }
+        ));
+        return fail("reindex must surface failed post-publication reclamation");
+    } catch(const agent_memory::ResourceIndexReclaimError& error) {
+        if(
+            error.published_manifest().revision.generation != 4
+            || error.unreclaimed_manifest().revision.generation != 3
+            || error.unreclaimed_manifest().records.empty()
+            || !error.reclaim_failure()
+        ) {
+            return fail("reclaim failure must retain published and unreclaimed manifest diagnostics");
+        }
+    }
+
+    const auto reclaim_manifest = manifest_storage.find_manifest(resource_id);
+    if(
+        !reclaim_manifest
+        || reclaim_manifest->revision.generation != 4
+        || !document_storage.find_document(reclaim_document_id)
+        || !document_storage.find_document(newest_document_id)
+        || !vector_index.find(reclaim_chunk_id)
+        || !vector_index.find(newest_chunk_id)
+    ) {
+        return fail("failed reclaim must preserve the newly published active generation");
+    }
+
+    const bool repaired_reclaim_document = document_storage.erase_document(newest_document_id);
+    (void)repaired_reclaim_document;
+    const bool repaired_reclaim_vector = vector_index.erase(newest_chunk_id);
+    (void)repaired_reclaim_vector;
+
     vector_index.fail_next_erase();
     try {
         const bool erased = indexer.erase_resource(resource_id);
@@ -642,8 +738,13 @@ int main() {
     } catch(const std::runtime_error&) {
     }
 
-    if(!manifest_storage.find_manifest(resource_id)) {
-        return fail("failed resource cleanup must retain the manifest for retry");
+    const auto erase_pending_manifest = manifest_storage.find_manifest(resource_id);
+    if(
+        !erase_pending_manifest
+        || agent_memory::is_active_resource_manifest(*erase_pending_manifest)
+        || document_storage.find_document(reclaim_document_id)
+    ) {
+        return fail("failed resource cleanup must retain an inactive manifest for retry");
     }
 
     if(!indexer.erase_resource(resource_id)) {
@@ -654,11 +755,11 @@ int main() {
         return fail("resource erase must remove manifest");
     }
 
-    if(document_storage.find_document(newest_document_id)) {
+    if(document_storage.find_document(reclaim_document_id)) {
         return fail("resource erase must remove current document");
     }
 
-    if(vector_index.find(newest_chunk_id)) {
+    if(vector_index.find(reclaim_chunk_id)) {
         return fail("resource erase must remove current vector record");
     }
 
