@@ -315,6 +315,19 @@ reconciliation, а не параллельная physical schema.
 вынесены вверх до второго независимого consumer-а и согласованного generic
 codec/ordering contract.
 
+`std::optional<T>` в sketch-ах ниже обозначает C++17 form API. Если такой API
+когда-либо становится public upstream surface, C++11 build обязан получать
+семантически эквивалентную форму без Boost:
+
+| C++17 form | Required C++11 alternative |
+|---|---|
+| return `std::optional<T>` | `bool try_x(..., T& out)` or existing `find_compat` pair |
+| optional input cursor/filter | nullable pointer to caller-owned value or explicit `has_*` flag + value |
+| optional struct member | `bool has_*` plus the value field |
+
+Guarded C++17 overloads may use `std::optional`; an unguarded public C++11
+header may not name it.
+
 ### 3.1 Расширения `KeyValueTable` (без нового файла)
 
 Добавить в `external/mdbx-containers/include/mdbx_containers/KeyValueTable.hpp`:
@@ -1469,11 +1482,11 @@ snapshot-derived sync system DBIs) фиксируется в §11.7.
 
 - **ABI:** новые методы добавляются как overloads или шаблоны. Template instantiations расширяются, но layout существующих классов не меняется. `MDBX_DUPSORT` flag применяется только в новых классах.
 - **Source compat:** старый код с `KeyValueTable<K, V>` компилируется без правок.
-- **C++11 baseline:** public C++11 API не использует `std::optional`,
-  structured bindings, `if constexpr` или `std::byte`. Sketch-и ниже, где
-  встречается optional value, должны быть выражены через существующую
-  compatibility pair/out-parameter форму либо через отдельно согласованный
-  dependency-free compatibility type. Boost не является неявной dependency.
+- **C++11 baseline:** guarded C++17 overloads may use `std::optional`, but an
+  unguarded C++11 public API uses the equivalent `try_*`/out-parameter or
+  existing `find_compat` pair defined above. `std::byte`, structured bindings
+  and `if constexpr` likewise remain behind the C++17 guard. Boost не является
+  неявной dependency.
 - **Include guards:** новые файлы используют `MDBX_CONTAINERS_HEADER_<PATH>_<FILE>_HPP_INCLUDED`.
 - **Doxygen:** все новые публичные API документированы на английском (см. `external/mdbx-containers/guides/coding-style.md`).
 - **Application schema versioning:** версии payload-ов остаются на стороне `agent-memory-cpp` через `schema_info` (`envelope_schema_version`, `component_schema_versions[]`, `profile_signature`, `migration_phase`). `mdbx-containers` не мигрирует и не интерпретирует application payload schema.
@@ -1634,10 +1647,11 @@ Opt-in sync metrics применяются только в сборках с `MD
 создаёт multi-writer distributed semantics; они требуют отдельного ownership,
 identity and conflict design (§12.10) и остаются за рамками текущего TZ.
 
-4. **C++11 public API.** `std::optional`, `std::byte`, structured bindings и
-`if constexpr` нельзя публиковать в C++11 surface. Boost polyfill не является
-неявной dependency; выбирается existing compatibility pair/out-parameter
-contract или отдельно согласованный dependency-free compatibility type.
+4. **C++11 public API.** Guarded C++17 overloads may expose
+`std::optional`; unguarded C++11 surface uses the equivalent
+`try_*`/out-parameter or existing compatibility-pair contract from §3.
+`std::byte`, structured bindings и `if constexpr` likewise stay behind the
+C++17 guard. Boost polyfill не является неявной dependency.
 
 5. **Schema versioning остаётся на стороне приложения.** `TypeDiscriminatedTable` не навязывает payload version. Контракт: payload prefix `agent_memory.knowledge_unit.v1` etc. валидируется на уровне `agent-memory-cpp`, не в mdbx-containers.
 
