@@ -150,7 +150,7 @@ Statistics:
   Projections:         342,118 (Original 128,539, QAQuestion 45,221, QAAnswer 40,901, Summary 127,457)
   Embeddings:          128,539 (1 model, 1 projection)
   Compaction jobs:     3 active, 142 completed, 0 failed
-  DBI count:           22 of 96 (expanded peak 57, reserved headroom 39)
+  DBI count:           22 of 96 (expanded peak 58, reserved headroom 38)
   MDBX size:           487 MB
 ```
 
@@ -224,8 +224,8 @@ JSON вариант (через `--json`):
     },
     "dbi_count": 22,
     "dbi_max": 96,
-    "dbi_expanded_peak": 57,
-    "dbi_reserved_headroom": 39,
+    "dbi_expanded_peak": 58,
+    "dbi_reserved_headroom": 38,
     "dbi_minimum_free_slots": 16,
     "mdbx_size_bytes": 510707712
   }
@@ -293,7 +293,7 @@ Checking /data/agent_memory.mdbx...
 MDBX env: OK
 Schema versions: OK
 Profile signature: OK (matches agent_ltm)
-DBI count: 22 (within configured 96 limit; expanded peak 57)
+DBI count: 22 (within configured 96 limit; expanded peak 58)
 Orphan components: 0
 Orphan projections: 0
 Index consistency: OK
@@ -308,7 +308,7 @@ Checking /data/agent_memory.mdbx...
 MDBX env: OK
 Schema versions: OK
 Profile signature: OK (matches agent_ltm)
-DBI count: 22 (within configured 96 limit; expanded peak 57)
+DBI count: 22 (within configured 96 limit; expanded peak 58)
 Orphan components: 3 found
   Rebuilding metadata_filters...
   Rebuilt 3 entries.

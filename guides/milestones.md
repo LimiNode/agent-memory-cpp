@@ -40,7 +40,7 @@ Required capabilities:
 
 | Capability | Required API | Required DBI | Required tests | Deferred dependencies | Owner |
 |---|---|---|---|---|---|
-| Raw resource ingest | `IResourceStore`, `ResourceManifest`, `ResourceBodyStore` | `resource_bodies` profile delta if MDBX-backed | import UTF-8 `.md`/`.txt`/logs, stable logical ResourceId across an update, re-open, reject derived text without extractor provenance | chunked body store optional | `resource-reindexing.md`, `mdbx-containers-extension-tz.md` |
+| Raw resource ingest | `IResourceImporter`, `IResourceManifestStorage`, `ResourceBodyStore`, `ResourceManifest` | `resource_bodies` profile delta if MDBX-backed | import UTF-8 `.md`/`.txt`/logs, stable logical ResourceId across an update, re-open, reject derived text without extractor provenance | chunked body store optional | `resource-reindexing.md`, `mdbx-containers-extension-tz.md` |
 | Chunk/Note units | `IKnowledgeUnitStore::create_or_get_unit` | `knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind`, `chunk_payloads` | create/get/reopen, duplicate content dedupe | Fact/QA rich payloads | `knowledge-base-roadmap.md` |
 | Immutable identity | `KnowledgeUnitKey`, `supersede_unit`, `update_mutable_fields` | `content_key_to_unit_id` | identity-field update rejected, mutable patch accepted | merge policy | `knowledge-units-roadmap.md` |
 | Source summaries | `SourceRefSummary` inline in envelope | `knowledge_units` | imported raw unit carries a revision-bound citation preview that survives reopen and resource update | full `source_refs` DBI | `knowledge-base-roadmap.md` |
@@ -185,6 +185,34 @@ peak RSS/map size, and write-amplification counters where writes are measured.
 Cross-project comparisons, including TencentDB-Agent-Memory, Graphiti/Zep or
 Mem0-style systems, require a compatibility matrix that states which workloads
 and guarantees are actually comparable.
+
+Every comparative run additionally stores a `ComparisonParityManifest`:
+
+```cpp
+struct ComparisonParityManifest {
+    std::string corpus_digest;
+    std::string relevance_qrels_digest;
+    std::string chunking_configuration_digest;
+    std::string tokenizer_configuration_digest;
+    std::string embedding_artifact_id;
+    std::string adapter_or_engine_version;
+    std::size_t candidate_depth = 0;
+    std::size_t final_limit = 0;
+    std::string filter_policy_id;
+    std::string cache_state;       // cold | warm | declared mixed procedure
+    bool embedding_generation_included = false;
+};
+```
+
+The own MDBX engine is the primary implementation under test. A text-only
+Qdrant adapter is allowed as an early compatibility and comparison baseline,
+never as the source of truth for artifacts or provenance. Benchmark suites use
+the same corpus/chunking/embedding/filter contract for both engines; they record
+adapter overhead separately. Retrieval quality starts with BEIR-compatible
+text tasks and a maintained local provenance fixture. Multilingual claims add
+MIRACL language slices. Long-horizon memory, multimodal evidence and lifecycle
+claims are reported as separate workload families rather than folded into an
+incomparable vector-search score.
 
 ## Document Status Registry
 

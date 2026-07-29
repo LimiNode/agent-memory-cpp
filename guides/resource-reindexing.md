@@ -75,6 +75,20 @@ The first value types should stay dependency-free and live near the domain or
 storage contracts.
 
 ```cpp
+enum class SourceLocatorKind : uint8_t {
+    WorkspaceRelativePath,
+    CanonicalUri,
+    ImportedArchivePath,
+    ApplicationAlias
+};
+
+struct SourceLocatorObservation final {
+    std::string workspace_root_id;
+    SourceLocatorKind kind = SourceLocatorKind::WorkspaceRelativePath;
+    std::string normalized_relative_path;
+    std::uint64_t observed_at_ms = 0;
+};
+
 struct ResourceRevision final {
     ResourceId resource_id;
     std::optional<SourceId> source_id;
@@ -82,13 +96,7 @@ struct ResourceRevision final {
     std::uint64_t generation = 0;
     std::uint64_t content_hash = 0;
     std::uint64_t pipeline_config_hash = 0;
-};
-
-enum class SourceLocatorKind : uint8_t {
-    WorkspaceRelativePath,
-    CanonicalUri,
-    ImportedArchivePath,
-    ApplicationAlias
+    std::vector<SourceLocatorObservation> locator_observations;
 };
 
 enum class SourceLocatorStatus : uint8_t { Active, Alias, Retired };
@@ -148,6 +156,13 @@ bytes alone must not silently merge two independently imported documents.
 `workspace_root_id` is an application-defined portable root label, not an
 absolute machine path; export preserves root-relative paths and aliases where
 retention policy permits.
+
+`SourceLocator` is mutable source-level history for navigation and rename
+tracking. `SourceLocatorObservation` is the immutable portable location seen by
+one `ResourceRevision`; every imported revision records at least one
+observation. A later document may reuse a retired path without changing the
+older revision's observed location. Artifact-aware profiles carry the same
+observations on the corresponding `SourceRevision` and include them in export.
 
 `pipeline_config_hash` should cover settings that change derived records even
 when source text is unchanged. Examples include chunking settings, parser
@@ -361,12 +376,32 @@ CLI UX, frontmatter parsing and PDF/OCR adapters remain outside the core.
 ## Existing Dense Prototype And Future Contracts
 
 `src/agent_memory/ingestion/ResourceIndexer` is a pre-chunked dense/vector
-prototype. It requires `IEmbedder` and `IVectorIndex`, and its current
-delete-then-write flow is not the M0 importer publication contract above. It is
-useful for targeted vector-index experiments, but applications must not treat it
-as the generic import API or as failure-atomic reindexing. A later implementation
-PR may replace or adapt it only together with lexical-first and generation/transaction
-conformance tests.
+prototype. It requires `IEmbedder` and `IVectorIndex`. It now writes replacement
+document/vector records and publishes the replacement manifest before it performs
+best-effort reclamation of records that belong only to the old manifest. Thus a
+write failure before manifest publication leaves the previous manifest reachable;
+an interruption during reclamation can leave harmless stale derived records, never
+remove the published replacement. The independent prototype backends cannot make
+this a cross-store transaction, so applications must not treat it as the generic
+M0 import API or as failure-atomic reindexing.
+
+### Legacy Public API Boundary
+
+The current `Document`, `DocumentChunk`, `RetrievedChunk`, and structured-fact
+records predate the M0 provenance contract. `Document::TextRange` is only a
+byte-coordinate primitive; it has no resource revision or representation
+binding. `RetrievedChunk` cannot carry a revision-bound citation. The former
+fact-local `SourceRef` has been renamed `FactSourceRef` so it cannot be confused
+with the canonical provenance `SourceRef` described in
+`knowledge-units-roadmap.md`.
+
+New source connectors and public artifact-aware retrieval must use the canonical
+`SourceRefSummary`/full `SourceRef` contract and return a hydration handle for
+its `EvidenceAnchor`. A temporary adapter may project a canonical reference into
+`FactSourceRef` or `Document::TextRange` for legacy consumers, but never the
+other way around. The first public M0 importer/retrieval API introduces the
+canonical domain header; no adapter may expose the legacy types as its durable
+provenance model.
 
 Possible dependency-free contracts:
 

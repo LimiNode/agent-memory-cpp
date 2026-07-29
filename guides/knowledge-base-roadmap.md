@@ -316,7 +316,7 @@ Generation rules детерминированы: given the same unit + component
 
 ## 6. Domain Stores (capability-aware)
 
-`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget follows `dbi-manifest.yaml`: logical expanded peak 57, configured `max_dbs` 96, reserved headroom 39, and minimum required headroom 16.
+`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget follows `dbi-manifest.yaml`: logical expanded peak 58, configured `max_dbs` 96, reserved headroom 38, and minimum required headroom 16.
 
 ### 6.1. IKnowledgeUnitStore (всегда открыт)
 
@@ -385,6 +385,42 @@ Retrieval — directed graph typed retrievers. `HybridRetriever` orchestrator п
 ### 7.1. RetrievalPlan (cross-stack)
 
 `RetrievalPlan` — value type, передаваемый между retrievers. Полная спецификация — в `memory-stacks-roadmap.md` секция 7.3. Retrieval-ориентированные поля: `raw_query`, `query_type`, `scope_ids`, `tiers`, `mode`, `retrievers[]`, `kinds[]`, `temporal_window?`, `speaker_filter?`, `metadata_filter?`, `candidate_pool_size=200`, `limit=32`, `context_budget?`, `decay_policy_override?`.
+
+For M2 decomposition, a `RetrievalPlan` may carry one immutable
+`BoundedQueryPlan`. A host or optional query transformer may construct it, but
+the core only validates and executes its bounded retrieval branches; it does
+not run an agent loop or require an LLM.
+
+```cpp
+struct QueryBranchBudget {
+    std::size_t candidate_limit = 0;
+    std::size_t token_limit = 0;
+    std::uint64_t latency_budget_ms = 0;
+};
+
+struct QueryBranch {
+    std::string branch_id;
+    std::string text;
+    std::string derivation;  // original, rewrite, decomposition, translation, HyDE
+    std::optional<std::string> parent_branch_id;
+    QueryBranchBudget budget;
+};
+
+struct BoundedQueryPlan {
+    std::vector<QueryBranch> branches;
+    std::size_t max_branches = 0;
+    std::size_t total_candidate_limit = 0;
+    std::size_t total_token_limit = 0;
+    std::uint64_t total_latency_budget_ms = 0;
+};
+```
+
+Validation rejects an empty plan, duplicate branch ids, cycles, branch counts
+above `max_branches`, or aggregate budgets above their declared totals. Fusion
+deduplicates candidates by canonical unit/revision identity, and the retrieval
+trace records branch-to-hit-to-context-block lineage. M0/M1 use one original
+branch; decomposition, multi-hop routing and multilingual pivots are M2
+opt-in behavior.
 
 Runtime-integration filters are optional and only active when
 `CognitiveTrace` is enabled:
@@ -616,12 +652,17 @@ struct ContextBlock {
 
 struct Context {
     std::vector<ContextBlock> blocks;
+    std::vector<MaterializationInstruction> materialization_instructions;
     size_t total_tokens;
     std::string trace_id;
     std::string retrieval_plan_id;
     bool truncated;
 };
 ```
+
+`materialization_instructions` is empty for text-only contexts. Every entry
+must name an `EvidenceAnchorId` reachable from a SourceRef in `blocks`; it is a
+typed, authorization-gated request handle and never an implicit binary payload.
 
 For artifact-aware sources, `SourceRefSummary` remains the text/citation path.
 The associated full reference may carry an `EvidenceAnchor` with a typed page,
@@ -695,11 +736,19 @@ Evaluation — first-class citizen. Retrieval traces, datasets, metrics — ча
 ### 9.1. RetrievalTrace
 
 ```cpp
+struct QueryBranchTrace {
+    std::string branch_id;
+    std::vector<KnowledgeUnitRef> candidate_units;
+    std::vector<KnowledgeUnitRef> fused_units;
+    std::vector<std::string> context_block_ids;
+};
+
 struct RetrievalTrace {
     std::string trace_id;
     std::string runtime_trace_id;
     std::string runtime_span_id;
     RetrievalPlan plan;
+    std::vector<QueryBranchTrace> query_branches;
     std::vector<std::vector<RetrievalHit>> per_retriever_hits;  // associative
     std::vector<RetrievalHit> targeted_hits;                     // targeted (QALookup)
     std::vector<RetrievalHit> fused_hits;

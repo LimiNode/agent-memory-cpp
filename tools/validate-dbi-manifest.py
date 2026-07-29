@@ -73,13 +73,21 @@ EXPECTED_SYNC_SYSTEM_DBIS = {
     "_mdbxc_sync_schema",
 }
 
+EXPECTED_PHYSICAL_KEYS = {
+    "embedding_meta": [
+        "ScopeId", "ModelId", "ModelVersion", "ProjectionKind", "UnitId",
+    ],
+    "embedding_vectors": [
+        "ScopeId", "ModelId", "ModelVersion", "ProjectionKind", "UnitId",
+    ],
+}
+
 STALE_TERMS = {
     "usage_stats_index",
     "TemporalPointLookup",
     "sync +5",
     "5 additional DBIs",
     "canonical_full_inventory: 30",
-    "total: 58",
 }
 
 PEAK_META_KEYS = {"canonical_full_inventory", "total"}
@@ -148,6 +156,12 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             fail(errors, f"{name}: migration_peak must be a non-negative integer")
         if migration_peak != 1:
             fail(errors, f"{name}: canonical migration_peak must be 1")
+        expected_physical_key = EXPECTED_PHYSICAL_KEYS.get(name)
+        if expected_physical_key is not None and physical_key != expected_physical_key:
+            fail(
+                errors,
+                f"{name}: physical_key must be {expected_physical_key!r}",
+            )
         if row.get("opens") == "always" and name in {
             "embedding_meta",
             "embedding_vectors",
@@ -259,6 +273,7 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
 
 
 REVIEW_PROJECTION_BEGIN = "dbi-review-projection-v1"
+BUDGET_CHECKPOINT_BEGIN = "dbi-budget-checkpoint-v1"
 REVIEW_FIELDS = ("name", "owner", "table_type", "opens", "sync", "physical_key", "migration_peak")
 
 
@@ -286,6 +301,27 @@ def review_projection_from_tz(path: Path) -> dict[str, dict]:
         row["physical_key"] = [] if row["physical_key"] == "-" else row["physical_key"].split(",")
         projection[name] = row
     return projection
+
+
+def budget_checkpoint_from_tz(path: Path) -> dict[str, int]:
+    text = path.read_text(encoding="utf-8")
+    start = text.find(BUDGET_CHECKPOINT_BEGIN)
+    if start < 0:
+        raise ValueError("cannot find dbi-budget-checkpoint-v1")
+    start = text.find("\n", start) + 1
+    end = text.find("```", start)
+    if end < 0:
+        raise ValueError("cannot find end of DBI budget checkpoint")
+
+    checkpoint: dict[str, int] = {}
+    for line in text[start:end].splitlines():
+        if not line:
+            continue
+        key, separator, value = line.partition("=")
+        if not separator or not key or key in checkpoint:
+            raise ValueError(f"invalid DBI budget checkpoint row: {line!r}")
+        checkpoint[key] = int(value)
+    return checkpoint
 
 
 def validate_review_projection(manifest: dict, projection: dict[str, dict], errors: list[str]) -> None:
@@ -316,9 +352,26 @@ def validate_review_projection(manifest: dict, projection: dict[str, dict], erro
                 )
 
 
+def validate_budget_checkpoint(manifest: dict, checkpoint: dict[str, int], errors: list[str]) -> None:
+    peak = manifest["expanded_peak_reference"]
+    expected = dict(peak)
+    headroom = manifest["max_dbs_default"] - peak["total"]
+    expected["headroom"] = headroom
+    expected["minimum_free_slots"] = manifest["minimum_free_slots"]
+    expected["headroom_above_minimum"] = headroom - manifest["minimum_free_slots"]
+
+    if checkpoint != expected:
+        fail(
+            errors,
+            f"TZ DBI budget checkpoint mismatch ({checkpoint!r} != {expected!r})",
+        )
+
+
 def validate_markdown(manifest: dict, tz_path: Path, errors: list[str]) -> None:
     projection = review_projection_from_tz(tz_path)
     validate_review_projection(manifest, projection, errors)
+    checkpoint = budget_checkpoint_from_tz(tz_path)
+    validate_budget_checkpoint(manifest, checkpoint, errors)
 
     text = tz_path.read_text(encoding="utf-8")
     for term in STALE_TERMS:
@@ -364,6 +417,13 @@ def run_self_test(manifest_path: Path) -> int:
     invalid_physical_key = copy.deepcopy(base)
     invalid_physical_key["canonical"][0]["physical_key"] = []
     cases.append(("empty physical key", invalid_physical_key, "physical_key must be a non-empty ordered list"))
+
+    missing_model_version = copy.deepcopy(base)
+    for row in missing_model_version["canonical"]:
+        if row["name"] == "embedding_vectors":
+            row["physical_key"].remove("ModelVersion")
+            break
+    cases.append(("embedding model version", missing_model_version, "embedding_vectors: physical_key must be"))
 
     unknown_runtime_ref = copy.deepcopy(base)
     unknown_runtime_ref["runtime_integration_mapping"]["sequence_filtering"] = "missing_dbi"
@@ -428,6 +488,18 @@ def run_self_test(manifest_path: Path) -> int:
     if not any("unit_projections.physical_key" in error for error in errors):
         print(
             "ERROR: negative fixture did not detect physical key ordering drift",
+            file=sys.stderr,
+        )
+        return 1
+
+    tz_path = manifest_path.parent / "mdbx-containers-extension-tz.md"
+    checkpoint = budget_checkpoint_from_tz(tz_path)
+    checkpoint["total"] += 1
+    errors = []
+    validate_budget_checkpoint(base, checkpoint, errors)
+    if not any("TZ DBI budget checkpoint mismatch" in error for error in errors):
+        print(
+            "ERROR: negative fixture did not detect DBI budget checkpoint drift",
             file=sys.stderr,
         )
         return 1

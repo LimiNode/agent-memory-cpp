@@ -37,8 +37,12 @@ namespace agent_memory {
         std::string m_value;
     };
 
-    /// \brief Provenance pointer for a structured fact.
-    struct SourceRef final {
+    /// \brief Legacy fact-local provenance pointer.
+    ///
+    /// This lightweight record intentionally does not model a source revision,
+    /// representation, or evidence anchor. The planned canonical `SourceRef`
+    /// contract is owned by the knowledge-unit/provenance domain.
+    struct FactSourceRef final {
         ResourceId resource_id;
         MemoryObjectId object_id;
         /// \brief Byte/char offset of the supporting span (0 when unknown).
@@ -60,7 +64,7 @@ namespace agent_memory {
         std::string metric;
         std::string value;
         std::string period;
-        SourceRef source;
+        FactSourceRef source;
         /// \brief Confidence in [0.0, 1.0]. Empty when not modelled.
         std::optional<float> confidence;
         Metadata metadata;

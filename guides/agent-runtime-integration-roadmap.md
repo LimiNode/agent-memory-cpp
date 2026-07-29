@@ -381,6 +381,15 @@ struct TaskStateComponent {
 events plus `TaskStateComponent`; they do not mutate the definition just to
 record runtime progress.
 
+The application layer owns this durable task-state machine: it validates the
+declared transition graph, compares `state_revision` with CAS semantics and
+persists transition provenance. Every accepted transition records its
+`RuntimeOriginComponent`, external receipt/revision and actor reference. The
+memory library does not schedule work, grant authority, invoke a capability or
+decide whether an external runtime should perform the transition; those remain
+runtime/operator responsibilities. `mdbx-containers` supplies only the generic
+transactional storage primitives used by this contract.
+
 ```cpp
 struct DecisionAlternative {
     std::string alternative_id;
@@ -466,6 +475,12 @@ struct ProcedureStatsComponent {
     std::optional<double> mean_utility;
 };
 ```
+
+`ProcedureStateComponent` follows the same rule: agent-memory-cpp owns durable
+state, CAS and transition-history validation for the stored procedure record,
+while the runtime owns execution, worker scheduling, capability invocation and
+authority policy. A state transition without durable runtime provenance is a
+validation error, not an invitation for the store to infer or execute work.
 
 Do not persist function pointers, closures or ADELIA node handles in
 `ProcedurePayload`.

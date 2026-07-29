@@ -18,7 +18,16 @@ namespace {
 
     class InMemoryDocumentStorage final : public agent_memory::IDocumentStorage {
     public:
+        void fail_next_upsert() noexcept {
+            m_fail_next_upsert = true;
+        }
+
         void upsert_document(agent_memory::DocumentSnapshot snapshot) override {
+            if(m_fail_next_upsert) {
+                m_fail_next_upsert = false;
+                throw std::runtime_error("simulated document storage failure");
+            }
+
             const bool removed_existing = erase_document(snapshot.document.id);
             (void)removed_existing;
 
@@ -82,6 +91,7 @@ namespace {
         }
 
     private:
+        bool m_fail_next_upsert = false;
         std::map<agent_memory::DocumentId, agent_memory::Document> m_documents;
         std::map<agent_memory::ChunkId, agent_memory::DocumentChunk> m_chunks;
         std::map<
@@ -244,6 +254,33 @@ int main() {
 
     if(!vector_index.find(old_chunk_id)) {
         return fail("resource indexer must upsert chunk vector record");
+    }
+
+    document_storage.fail_next_upsert();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            resource_id,
+            2,
+            agent_memory::DocumentId{"doc:indexer:failed"},
+            {
+                make_chunk(
+                    agent_memory::ChunkId{"chunk:indexer:failed"},
+                    agent_memory::DocumentId{"doc:indexer:failed"},
+                    0,
+                    "updated chunk"
+                )
+            }
+        ));
+        return fail("resource indexer must propagate document storage failures");
+    } catch(const std::runtime_error&) {
+    }
+
+    if(
+        !manifest_storage.find_manifest(resource_id)
+        || !document_storage.find_document(old_document_id)
+        || !vector_index.find(old_chunk_id)
+    ) {
+        return fail("failed reindex must preserve the previously published resource state");
     }
 
     const agent_memory::DocumentId new_document_id{"doc:indexer:new"};

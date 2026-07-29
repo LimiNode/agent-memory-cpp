@@ -39,6 +39,11 @@ The core exposes an optional adapter interface and stores derived metadata. The
 adapter may be implemented as an in-process C++ plugin, a subprocess, a Python
 sidecar or an external service.
 
+`CanonicalLanguageCode`, `DetectedLanguage`, `TranslationPolicy` and
+`QueryTranslationTrace` are common dependency-free domain contracts. This guide
+owns their encoding and validation; lexical, retrieval and ingestion roadmaps
+consume them by reference and must not define competing variants.
+
 ```cpp
 struct CanonicalLanguageCode {
     std::string bcp47; // canonical BCP-47, e.g. "en", "ru", "uk", "zh-Hant"

@@ -129,6 +129,7 @@ struct SourceRevision {
     std::optional<std::string> etag;
     std::optional<std::string> last_modified;
     BlobDigest snapshot_digest;
+    std::vector<SourceLocatorObservation> locator_observations;
     CatalogLifecycleState lifecycle;
     TypedMetadata metadata;
 };
@@ -137,7 +138,9 @@ struct SourceRevision {
 `snapshot_digest` describes the revision snapshot, not the logical source. A
 connector may record an unchanged fetch without creating a new revision only
 after proving that the canonical input bytes and relevant source metadata are
-unchanged.
+unchanged. Each observation is the portable location actually seen for this
+immutable revision, as defined in `resource-reindexing.md`; it is distinct from
+the mutable Source-level locator history used for navigation.
 
 ### 3.3 Artifact And ArtifactBinding
 
@@ -234,11 +237,49 @@ struct Representation {
     std::optional<std::string> model_id;
     BlobDigest parameters_digest;
     std::optional<double> confidence;
+    ExtractionReport extraction_report;
     std::uint64_t generated_at_ms = 0;
     CatalogLifecycleState lifecycle = CatalogLifecycleState::Active;
     TypedMetadata metadata;
 };
 ```
+
+```cpp
+enum class ExtractionStatus : std::uint8_t {
+    Complete,
+    Partial,
+    Failed
+};
+
+struct ExtractionCoverage {
+    std::uint64_t expected_items = 0;
+    std::uint64_t completed_items = 0;
+    std::vector<Locator> omitted_regions;
+};
+
+struct ExtractionIssue {
+    std::string code;
+    std::string message;
+    std::optional<Locator> locator;
+};
+
+struct ExtractionReport {
+    ExtractionStatus status = ExtractionStatus::Complete;
+    ExtractionCoverage coverage;
+    std::optional<double> reading_order_confidence;
+    std::optional<double> layout_confidence;
+    std::optional<double> alignment_confidence;
+    std::optional<std::string> detected_language;
+    std::vector<ExtractionIssue> issues;
+};
+```
+
+`ExtractionReport` is immutable processor output for one Representation. It
+lets admission, chunking and citation code distinguish complete extraction from
+partial OCR/ASR/layout results without hard-coding a parser or model runtime in
+the core. A failed representation has no retrieval-eligible SegmentSet; a
+partial one may be indexed only under an explicit policy and must retain its
+coverage and issue records in traces and citations.
 
 Changing processor version, model, relevant parameters or input artifact bytes
 creates a new representation. Translation projections defined in
@@ -504,6 +545,12 @@ public:
         const Representation& representation) = 0;
     virtual CatalogResult<SegmentSetId> record_segment_set(
         const SegmentSet& set, const std::vector<Segment>& segments) = 0;
+    virtual CatalogResult<EvidenceAnchorId> record_evidence_anchor(
+        const EvidenceAnchor& anchor) = 0;
+    virtual CatalogResult<EvidenceAnchor> find_evidence_anchor(
+        EvidenceAnchorId id) const = 0;
+    virtual CatalogStatusResult update_evidence_anchor_lifecycle(
+        EvidenceAnchorId id, CatalogLifecycleState lifecycle) = 0;
     virtual CatalogStatusResult activate_materialization(
         const SegmentMaterialization& materialization) = 0;
     virtual CatalogResult<Segment> find_segment(SegmentId id) const = 0;
@@ -566,6 +613,14 @@ aborted ingest retains no permanent catalog root. `record_segment_set` appends
 an immutable set; `activate_materialization` changes only the current retrieval
 view. A boolean existence API is deliberately forbidden because callers must
 distinguish missing bytes from policy denial, corruption and backend failure.
+
+`record_evidence_anchor` is create-or-validate over the immutable source
+revision, artifact and locator coordinates. `ISourceRefStore` owns the
+SourceRef-to-`EvidenceAnchorId` binding; `IArtifactCatalog` owns the anchor
+record, its lifecycle and its participation in liveness closure. Import records
+or validates every referenced anchor before publishing the SourceRefs and units
+that cite it. The physical catalog/anchor DBI layout is an explicit M2 profile
+implementation decision, never a hidden M0 table.
 
 Import/export serializes a versioned catalog manifest, including
 `ArtifactIdentityScheme`, before units that cite it:
@@ -669,6 +724,29 @@ Workspace backup set
   catalog backup + SourceOriginal and DerivedDurable artifact bytes +
   checksums, retention classes and processor manifests.
 ```
+
+```cpp
+struct BackupSetManifest {
+    std::string format_id = "agent_memory.backup_set";
+    std::uint32_t format_version = 1;
+    std::uint64_t captured_at_ms = 0;
+    BlobDigest catalog_root_digest;
+    ArtifactIdentityScheme artifact_identity_scheme;
+    std::optional<KnowledgeUnitIdentityScheme> unit_identity_scheme;
+    std::string profile_signature;
+    std::string codec_manifest_digest;
+    std::string encryption_descriptor;
+    std::vector<ArtifactId> required_artifact_ids;
+};
+```
+
+`BackupSetManifest` is the portable point-in-time restore contract, not merely
+a list of copied files. Restore stages catalog metadata and required durable
+artifacts, validates the manifest root, identity schemes, profile/codec and
+encryption descriptors, then publishes the restored workspace only after every
+retained `SourceRef` and `EvidenceAnchor` resolves. Rebuildable ANN/vector
+indexes remain outside the set and may be rebuilt only after this validation.
+Failed restore leaves the target workspace unpublished.
 
 Rebuildable caches, thumbnails, temporary clips and all ANN/vector index state
 are excluded from a complete workspace backup. They must be rebuildable from

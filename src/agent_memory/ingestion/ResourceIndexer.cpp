@@ -84,6 +84,22 @@ namespace agent_memory {
             return records;
         }
 
+        bool is_retained_by(
+            const DerivedRecordRef& old_record,
+            const ResourceManifest& new_manifest
+        ) {
+            for(const auto& new_record : new_manifest.records) {
+                if(
+                    old_record.kind == new_record.kind
+                    && old_record.chunk_id == new_record.chunk_id
+                    && old_record.key == new_record.key
+                ) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
     } // namespace
 
     IResourceIndexer::~IResourceIndexer() = default;
@@ -112,15 +128,15 @@ namespace agent_memory {
         const auto old_manifest = m_manifest_storage->find_manifest(
             snapshot.revision.resource_id
         );
-        if(old_manifest) {
-            erase_derived_records(*old_manifest);
-        }
-
         m_document_storage->upsert_document(std::move(snapshot.document_snapshot));
         for(auto& record : vector_records) {
             m_vector_index->upsert(std::move(record));
         }
-        m_manifest_storage->upsert_manifest(std::move(manifest));
+        m_manifest_storage->upsert_manifest(manifest);
+
+        if(old_manifest) {
+            reclaim_superseded_derived_records(*old_manifest, manifest);
+        }
     }
 
     bool ResourceIndexer::erase_resource(const ResourceId& resource_id) {
@@ -144,6 +160,20 @@ namespace agent_memory {
                 m_vector_index->erase(record.chunk_id);
             }
         }
+    }
+
+    void ResourceIndexer::reclaim_superseded_derived_records(
+        const ResourceManifest& old_manifest,
+        const ResourceManifest& new_manifest
+    ) {
+        ResourceManifest superseded;
+        superseded.revision = old_manifest.revision;
+        for(const auto& record : old_manifest.records) {
+            if(!is_retained_by(record, new_manifest)) {
+                superseded.records.push_back(record);
+            }
+        }
+        erase_derived_records(superseded);
     }
 
 } // namespace agent_memory

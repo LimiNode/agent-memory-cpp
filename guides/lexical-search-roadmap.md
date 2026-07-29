@@ -154,24 +154,9 @@ enum class FieldId : std::uint16_t {
     summary   = 10,
 };
 
-struct CanonicalLanguageCode {
-    std::string bcp47;
-};
-
-struct UnknownLanguage {};
-struct MixedLanguage {};
-
-using DetectedLanguage = std::variant<
-    CanonicalLanguageCode,
-    UnknownLanguage,
-    MixedLanguage>;
-
-struct QueryTranslationTrace final {
-    DetectedLanguage source_language;
-    CanonicalLanguageCode target_language;
-    std::vector<TranslationStepProvenance> steps;
-    std::uint64_t translated_at_ms = 0;
-};
+// CanonicalLanguageCode, DetectedLanguage and QueryTranslationTrace are common
+// dependency-free domain contracts owned by translation-adapters-roadmap.md.
+// Lexical retrieval consumes them and must not redeclare or re-encode them.
 
 struct ProjectionQueryVariant final {
     ProjectionKind projection_kind = ProjectionKind::Original;

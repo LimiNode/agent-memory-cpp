@@ -1027,9 +1027,9 @@ unit_projections                      KeyValueTable<CompositeKey<ScopeId, UnitId
                                       // определяется максимальным revision для (scope, unit, kind).
 
 // Embeddings — multi-projection, multi-model (ADR-007)
-embedding_meta                        KeyValueTable<CompositeKey<ScopeId, UnitId, ProjectionKind, ModelId, Version>,
+embedding_meta                        KeyValueTable<CompositeKey<ScopeId, ModelId, ModelVersion, ProjectionKind, UnitId>,
                                                             EmbeddingMeta>
-embedding_vectors                     KeyValueTable<CompositeKey<ScopeId, ModelId, ProjectionKind, UnitId>,
+embedding_vectors                     KeyValueTable<CompositeKey<ScopeId, ModelId, ModelVersion, ProjectionKind, UnitId>,
                                                             vector_blob>
                                       // порядок ключа выбран для cluster-friendly access при ANN-free exact scan.
 
@@ -1075,8 +1075,8 @@ compiled_article_payloads|compiled_wiki|KeyValueTable|CompiledArticles|kv_suppor
 chunk_payloads|ingestion|KeyValueTable|always|kv_supported|UnitId|1
 source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|UnitId|1
 unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|ScopeId,UnitId,ProjectionKind,Revision|1
-embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ProjectionKind,UnitId|1
-embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ProjectionKind,UnitId|1
+embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
+embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
 inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|ScopeId,TokenId,ProjectionKind,FieldId|1
 field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,ProjectionKind,FieldId,TokenId,UnitId|1
 lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,NormalizedTokenText|1
@@ -1111,7 +1111,7 @@ schema_info|schema|KeyValueTable|always|kv_supported|SchemaKey|1
 | `source_refs` | по capability `FullSourceRefs` (M1) | `agent_memory.source_ref.v1` | TBD | Full `SourceRef` vector by `UnitId`; inline summaries remain in envelope |
 | `unit_projections` | по selector `indexed_retrieval` (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections; TranslatedCanonical carries projection-level derivation metadata in the value |
 | `embedding_meta` | по capability `DenseVectors` | `agent_memory.embedding_meta.v1` | TBD | Версионированная мета (model_id, version, dim, encoder_id) |
-| `embedding_vectors` | по capability `DenseVectors` | `agent_memory.embedding_vector.v1` | TBD | Vector blob по `(scope, model_id, ProjectionKind, unit_id)` |
+| `embedding_vectors` | по capability `DenseVectors` | `agent_memory.embedding_vector.v1` | TBD | Versioned vector blob by `(scope, model_id, model_version, ProjectionKind, unit_id)` |
 | `inverted_token_to_unit` | по capability `LexicalIndex` | `agent_memory.inv_token.v1` | TBD | Scope-aware reverse index `(scope, token_id, projection, field) -> UnitId` |
 | `field_to_postings` | по capability `LexicalIndex` | `agent_memory.field_posting.v1` | TBD | Scope-aware posting stats by `(scope, projection, field, token, unit)` |
 | `lexical_token_by_text` | по capability `LexicalIndex` | `agent_memory.lex_token_text.v1` | TBD | Token dictionary `(scope, normalized_text) -> TokenId` |
@@ -1172,7 +1172,7 @@ follows:
 
 - `unit_projections` использует multi-version ключ `(scope_id, UnitId, ProjectionKind, revision)`. При write активной projection инкрементируется `revision`; old revisions remain until compaction purge. `TranslatedCanonical` also carries a `projection_generation` / derivation fingerprint in the value so model/package-only refresh can invalidate translated postings without changing `KnowledgeUnitEnvelope.revision`.
 - `embedding_meta` хранит версионированную мета-информацию (model_id + version), чтобы CompactionWorker мог удалять versions старше N дней при отсутствии ссылок (см. roadmap, open issue 17.3).
-- `embedding_vectors` упорядочен по `(scope_id, model_id, ProjectionKind, UnitId)` для cluster-friendly чтения при exact scan; для ANN-расширений порядок может быть пересмотрен в `guides/optimization-roadmap.md`.
+- `embedding_vectors` упорядочен по `(scope_id, model_id, model_version, ProjectionKind, UnitId)` для cluster-friendly чтения при exact scan; для ANN-расширений порядок может быть пересмотрен в `guides/optimization-roadmap.md`.
 - Все secondary/range indexes, которые должны обслуживать range-query или
   lookup внутри tenant/project/agent boundary, начинаются с `ScopeId`
   (ADR-012). Primary lookup by globally unique `UnitId` является явным
@@ -1220,15 +1220,39 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
+| Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned. |
+| Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV supported | `runtime_sequence_index`; A1 runtime-history acceleration. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, +6 opt-in | +6 | opt-in only | Not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
-| Planned expanded peak under current assumptions | profile-selected | 56 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + sync + reserve | within recommended ceiling | Leaves 40 DBI slots of headroom under `max_dbs = 96`; profiles that choose the legacy `64` ceiling must disable deltas until at least 16 free slots remain. |
+| Planned expanded peak under current assumptions | profile-selected | 58 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 38 DBI slots of headroom under `max_dbs = 96`, including 22 above the required 16 free slots; profiles that choose the legacy `64` ceiling must disable deltas until at least 16 free slots remain. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
 orientation, steady-state count, migration peak, and sync support status.
 Manual acceptance check: enumerate the §5.5 summary table rows, add only
 profile-selected deltas, then verify `steady + sync + migration_reserve <= max_dbs - minimum_free_slots`.
+
+The following machine-readable checkpoint is derived from
+[`dbi-manifest.yaml`](dbi-manifest.yaml) and checked by
+`tools/validate-dbi-manifest.py`:
+
+```text
+dbi-budget-checkpoint-v1
+canonical_full_inventory=29
+legacy_document_resource_adapter=4
+shared_runtime_queue=5
+compaction_handoff=1
+resource_body_chunked=2
+source_refs_by_resource=1
+global_unit_id_to_local_id=1
+runtime_sequence_index=1
+sync_system_8c76661d=6
+migration_dual_write_reserve=8
+total=58
+headroom=38
+minimum_free_slots=16
+headroom_above_minimum=22
+```
 
 ### 5.5.2. Operational limits for one MDBX environment
 
@@ -1567,7 +1591,7 @@ profile delta обязано обновить этот checkpoint. Verify, чт�
 
    Дополнительные соображения:
 
-   - **Budget impact.** Активация sync v0.1 добавляет 6 системных DBIs (`_mdbxc_meta`, `_mdbxc_changelog`, `_mdbxc_origins`, `_mdbxc_applied`, `_mdbxc_identity_index`, `_mdbxc_sync_schema`, см. §1.5.10) в `max_dbs` budget. Recommended ceiling — 96 (см. §5.5.1). Authoritative expanded peak с runtime queue, handoff, resource-body, source-ref reverse lookup and response-cache deltas равен 57 по §5.5.1. Любая новая capability обязана обновить §5.5.1 до adoption.
+   - **Budget impact.** Активация sync v0.1 добавляет 6 системных DBIs (`_mdbxc_meta`, `_mdbxc_changelog`, `_mdbxc_origins`, `_mdbxc_applied`, `_mdbxc_identity_index`, `_mdbxc_sync_schema`, см. §1.5.10) в `max_dbs` budget. Recommended ceiling — 96 (см. §5.5.1). Authoritative expanded peak с runtime queue, handoff, resource-body, source-ref reverse lookup, durable global identity and runtime-sequence deltas равен 58 по §5.5.1. Любая новая capability обязана обновить §5.5.1 до adoption.
    - **`IdentityIndexStore` write path deferred upstream.** Не все identity-mapping writes покрыты в v0.1; конкретные edges помечены в upstream `SyncEngine.hpp` TODO-комментариями. Это влияет на dedup state, но не блокирует базовый pull/push.
    - **HTTP/WebSocket transport seams.** GitHub PR #104 и #105 уже merged in the older upstream snapshot; `8c76661d` additionally contains logical schema registry and logical adapter primary DBI validation. This removes the old "no HTTP seam" blocker, but transport pull/push still remains raw-DBI oriented, so sync v0.1 is not a ready distributed profile for `agent-memory-cpp`.
    - **Wire-format byte cost.** 6 sync DBIs суммарно хранят metadata/changelog/origins/applied/identity/schema registry. Полная on-disk cost-модель (включая compression overhead) — отдельная задача, не решается в этом TZ; ссылка на общий принцип raw-code vs end-to-end storage footprint — §1.5.10 note.

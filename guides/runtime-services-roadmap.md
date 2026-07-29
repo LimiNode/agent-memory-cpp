@@ -60,295 +60,12 @@ metadata, response-cache invalidation and all stale/tool-call semantics. It may
 not write generated responses into canonical memory without an explicit normal
 write/curation path.
 
-### 3.1. Purpose and Split Rationale
-
-Кэширование в LLM-приложениях объединяет два РАЗНЫХ механизма с разными consistency guarantees:
-
-1. **Provider-side prompt prefix cache** — `cache_control: ephemeral` (Anthropic), `prompt_cache_key` (OpenAI), и аналоги. Провайдер САМ кэширует prefix на своей стороне и возвращает метрики `cache_read_input_tokens` / `cache_write_input_tokens`. Семантически безопасен: провайдер контролирует consistency, нам нужно только эмитить `cache_control` metadata.
-
-2. **Local response cache** — локальное кэширование ПОЛНОГО `response_text` на нашей стороне. Семантически рискованно: для динамических агентов (изменяемый контекст, tool calls, time-sensitive вопросы) может вернуть **stale answer** вместо актуального.
-
-Семантический bug unified дизайна: смешиваются два механизма с разными consistency guarantees и разными failure modes. Решение — два независимых интерфейса:
-
-- `IPromptPrefixCache` — provider-side, **всегда вызывается** при LLM call (cheap, провайдер гарантирует).
-- `IResponseCache` — local, **opt-in, default OFF** (для безопасности по умолчанию).
-
-Per `concepts/llm-research/Управление контекстом LLM-агента - стратегии снижения стоимости.md` (ai-agent-playbook): cache hit rate > 70% — основная цель (для обоих механизмов).
-
-### 3.2. IPromptPrefixCache (Provider-Side)
-
-```cpp
-class IPromptPrefixCache {
-public:
-    virtual ~IPromptPrefixCache() = default;
-
-    // Возвращает cache_key для нормализованного prompt prefix.
-    // Используется для cache_control: ephemeral метаданных в API calls.
-    virtual std::string compute_cache_key(
-        const std::string& provider_id,        // "anthropic", "openai"
-        const std::string& model_id,
-        const std::string& prompt_prefix) = 0;
-
-    // Метрики провайдер-кэша (cache_read_input_tokens, cache_write_input_tokens).
-    virtual PromptPrefixCacheMetrics metrics() const = 0;
-};
-
-struct PromptPrefixCacheMetrics {
-    uint64_t cache_read_input_tokens = 0;
-    uint64_t cache_write_input_tokens = 0;
-    uint64_t cache_creation_input_tokens = 0;
-};
-```
-
-### 3.3. IResponseCache (Local, Opt-In)
-
-```cpp
-class IResponseCache {
-public:
-    virtual ~IResponseCache() = default;
-
-    virtual std::optional<CachedResponse> lookup(
-        const ResponseCacheKey& key) = 0;
-
-    virtual void store(
-        const ResponseCacheKey& key,
-        const CachedResponse& response) = 0;
-
-    virtual void invalidate(const ResponseCacheKey& key) = 0;
-    virtual void invalidate_scope(ScopeId scope) = 0;
-
-    virtual ResponseCacheMetrics metrics() const = 0;
-};
-
-struct ResponseCacheKey {
-    uint32_t schema_version = 1;
-    ScopeId scope_id;
-    std::string provider_id;
-    std::string model_id;
-    std::string request_hash;    // hash(canonical prompt + tools + params)
-    std::optional<std::string> suffix;
-};
-
-struct CachedResponse {
-    std::string response_text;
-    uint64_t input_tokens;
-    uint64_t output_tokens;
-    uint64_t created_at_ms;
-    std::chrono::seconds ttl{3600};
-};
-
-struct ResponseCacheMetrics {
-    uint64_t hits = 0;
-    uint64_t misses = 0;
-
-    double hit_rate() const {
-        auto total = hits + misses;
-        return total > 0 ? double(hits) / double(total) : 0.0;
-    }
-};
-```
-
-### 3.4. PromptPrefixCache (LRU Implementation)
-
-LRU-таблица дедупликации `compute_cache_key` для нормализованных prompt prefix (не хранит response — провайдер делает caching):
-
-```cpp
-class PromptPrefixCache : public IPromptPrefixCache {
-public:
-    explicit PromptPrefixCache(size_t max_keys = 10000);
-
-    std::string compute_cache_key(
-        const std::string& provider_id,
-        const std::string& model_id,
-        const std::string& prompt_prefix) override;
-
-    PromptPrefixCacheMetrics metrics() const override;
-
-private:
-    std::list<std::string> m_lru;  // front = most recent
-    std::unordered_map<std::string, std::list<std::string>::iterator> m_index;
-    size_t m_max_keys;
-    mutable std::shared_mutex m_mutex;
-    PromptPrefixCacheMetrics m_metrics;
-};
-```
-
-LRU eviction по количеству ключей (`max_keys`). Ключи детерминированно вычисляются из `(provider_id, model_id, prompt_prefix)` — persistence не требуется.
-
-### 3.5. Adapters
-
-```cpp
-// AnthropicCacheControlAdapter — translates IPromptPrefixCache to API metadata
-class AnthropicCacheControlAdapter : public IPromptPrefixCache {
-    // compute_cache_key возвращает cache_id для prompt prefix.
-    // Используется в requests как cache_control: {type: ephemeral}.
-    // Метрики провайдера (cache_read/cache_write_input_tokens) приходят из response.
-    // Обновляет m_metrics после каждого API call.
-};
-
-// NoOpAdapter — для профилей без prompt cache
-class NoOpPromptPrefixCache : public IPromptPrefixCache {
-    // compute_cache_key возвращает пустую строку; provider не использует cache.
-    // metrics() возвращает нули.
-};
-```
-
-### 3.6. ResponseCache (LRU Implementation) and Persistence
-
-`ResponseCache` — LRU-реализация `IResponseCache` для хранения `CachedResponse`:
-
-```cpp
-class ResponseCache : public IResponseCache {
-public:
-    explicit ResponseCache(
-        size_t max_entries = 10000,
-        size_t max_bytes = 100 * 1024 * 1024);  // 100 MB
-
-    std::optional<CachedResponse> lookup(const ResponseCacheKey& key) override;
-    void store(const ResponseCacheKey& key, const CachedResponse& response) override;
-    void invalidate(const ResponseCacheKey& key) override;
-    void invalidate_scope(ScopeId scope) override;
-    ResponseCacheMetrics metrics() const override;
-
-private:
-    struct Entry {
-        ResponseCacheKey key;
-        CachedResponse response;
-        uint64_t last_access_ms;
-        size_t size_bytes;
-    };
-
-    std::list<Entry> m_lru;  // front = most recent
-    std::unordered_map<ResponseCacheKey, std::list<Entry>::iterator> m_index;
-    size_t m_max_entries;
-    size_t m_max_bytes;
-    size_t m_current_bytes = 0;
-    mutable std::shared_mutex m_mutex;
-    ResponseCacheMetrics m_metrics;
-};
-```
-
-LRU eviction по `size_bytes` (когда превышен `max_bytes`) и по age (TTL на каждую запись).
-
-**Persistence (M2+, опционально):** `IResponseCache` может персистить в MDBX DBI:
-
-```
-response_cache
-  key = ResponseCacheStorageKey → CachedResponse
-
-ResponseCacheStorageKey =
-  CompositeKey<ScopeId, ProviderId, ModelId, RequestHash, SuffixBytes, SchemaVersion>
-```
-
-`ResponseCacheStorageKey` is semantically equivalent to `ResponseCacheKey`.
-`SuffixBytes` uses canonical encoding where empty optional suffix and empty
-string suffix are distinct. If the hash recipe or canonical request encoding
-changes, `schema_version` changes and old entries are ignored or migrated.
-
-`response_cache_storage` controls local response-cache persistence:
-
-- `Disabled`: no lookup/store calls and no DBI.
-- `MemoryOnly`: per-process cache, no DBI, lost on restart.
-- `Mdbx`: load from `response_cache` on `MemoryStack::open()`; eviction deletes
-  from DBI; survives restart.
-
-`IPromptPrefixCache` **НЕ персистится**: ключи детерминированно вычисляются через хэш-функцию, persistence не нужна.
-
-Для M0/M1 — `IResponseCache` отсутствует (только `IPromptPrefixCache`).
-
-### 3.7. Default Behavior
-
-- `IPromptPrefixCache`: opt-in через `enable_prompt_cache=true`. Default **ON** для профилей с hybrid retrieval (BasicRag, AgentLTM, QAKnowledgeBase) — provider-side кэш даёт прямую экономию токенов без consistency рисков.
-- `IResponseCache`: opt-in через `response_cache_storage != Disabled`. Default
-  **OFF везде** — для безопасности (см. §3.1 rationale).
-
-### 3.8. Validation Rules
-
-- `IPromptPrefixCache.compute_cache_key()` вызывается при каждом LLM call (cheap, O(1) lookup).
-- `IResponseCache.lookup()` вызывается ТОЛЬКО если
-  `spec.response_cache_storage != Disabled` (default не вызывается).
-- scope-aware keys: разные `scope_id` имеют разные cache entries.
-- TTL для `IResponseCache`: default 1 час, configurable per provider.
-
-## 3.9. CAG (Cache-Augmented Generation) and ContextCache Layer
-
-### Sources
-
-- arXiv:2412.15605 — "Don't Do RAG: When Cache-Augmented Generation is All You Need for Knowledge Tasks".
-- arXiv:2404.12457 — "RAGCache: Efficient Knowledge Caching for Retrieval-Augmented Generation".
-
-### What
-
-Two related but distinct ideas:
-
-- **CAG (Cache-Augmented Generation):** pre-load the entire relevant corpus into the model's context cache (KV-cache or extended context window). At query time skip retrieval and answer from cached knowledge.
-- **RAGCache:** cache intermediate states of an existing RAG pipeline (retrieved chunks, plans, KV-states) to accelerate RAG inference without changing the retrieval contract.
-
-The two paths differ in whether retrieval is bypassed (CAG) or retained and accelerated (RAGCache). They are not the same architecture and must not be conflated.
-
-### 3.9.1 CAG path (bypasses retrieval)
-
-```text
-Compiled knowledge pack (e.g. CompiledContextPack derived from CompiledWikiProfile)
-  -> pre-loaded into model context (KV-cache or extended context window)
-  -> query
-  -> generation
-```
-
-Suitable when corpus is small/stable enough to fit in context.
-
-### 3.9.2 RAGCache path (caches retrieval intermediates)
-
-```text
-query
-  -> retrieval
-  -> retrieved knowledge
-  -> cached inference states
-  -> generation
-```
-
-Suitable when corpus is too large for context or updates frequently.
-
-### 3.9.3 Decision rule
-
-Use CAG path when corpus fits in context, updates infrequently, query volume justifies pre-loading cost.
-Use RAGCache path when corpus overflows context or retrieval latency dominates.
-
-### 3.9.4 Storage tiers
-
-- `CompiledContextPack` (text/structured knowledge, stable across model versions): stored in MDBX as part of the profile / compiled pack.
-- `ProviderKVHandle` (runtime model KV-cache, model-specific and dtype-specific): NOT stored in MDBX; lives in GPU/host inference memory only.
-- `SerializedKVCache` (optional, backend-specific): some inference backends permit serialisation to disk; compatibility is conditional on model version, layer count, and dtype. Not a default capability; document per-backend.
-
-### 3.9.5 Integration candidates (tagged per path)
-
-CAG-side (CompiledContextPack layer):
-
-- `CompiledWikiProfile` → derived `CompiledContextPack` — prime CAG candidate (stable, compact, project-scoped). Pre-loaded into model context.
-
-RAGCache-side (intermediate result cache):
-
-- `SummaryTreeJob` — generated summaries cached and re-used across queries as retrieval-state intermediates.
-
-Related but distinct (post-generation):
-
-- `ResponseCache` (post-generation cache — complementary to both CAG and RAGCache; NOT an intermediate retrieval-pipeline state). Stores final LLM responses (memoization of completed generations); sits AFTER the generation step, not within the retrieval pipeline. См. §3.3 / §3.6.
-
-Both paths:
-
-- `PromptPrefixCache` (§3.2, always on for hybrid profiles) — agent-level prompt caching; both paths reuse the provider-side prefix mechanism.
-
-### 3.9.6 Relationship to existing PromptCache
-
-`IPromptPrefixCache` (§3.2) provides provider-side prefix caching. CAG extends it from "prompt prefix caching" to "context caching of compiled knowledge". The same provider-side prefix mechanism is reused; CAG adds agent-side context assembly and a `ContextCache` layer over compiled knowledge packs.
-
-### 3.9.7 Status
-
-Conceptual design for the M2 layer. No PR planned yet. Depends on stable `ContextBuilder` output (Layer 3 per `memory-stacks-roadmap.md`).
-
-### 3.9.8 Cross-reference
-
-See [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) §5.5 for the candidate DBI shape (compiled-context-pack storage, capability-gated).
+### Historical Note
+
+Detailed provider-cache, response-cache and cache-augmented-generation designs
+belong exclusively to the host integration guide. They are intentionally absent
+from this runtime roadmap so no core API, DBI, capability, lifecycle step,
+implementation milestone or CLI command can be inferred from them.
 
 ## 4. AsyncIndexer
 
@@ -1004,187 +721,42 @@ returning a shallow executable plan.
 
 ## 6. Service Lifecycle
 
-All cache-specific rows, lifecycle prose, read-path calls, observability
-examples, CLI examples, milestones and open issues below are historical host
-notes superseded by `host-llm-cache-integration.md`. They must not be read as a
-library contract or added to the canonical DBI budget.
-
-### 6.1. Опциональность
-
-Каждый сервис — opt-in через MemoryProfileSpec:
-
-| Service | Capability | Default |
-|---|---|---|
-| PromptPrefixCache | `enable_prompt_cache = true` | opt-in (default ON для hybrid retrieval профилей) |
-| ResponseCache | `response_cache_storage != Disabled` | opt-in, default **OFF** (для безопасности) |
-| AsyncIndexer | `enable_async_indexer = true` or required by an async-only index policy | optional; rebuild/backfill/heavy async jobs |
-| WriteGate | (always on if WritePolicy set) | conditional |
-| CompactionWorker | `enable_compaction = true` | opt-in |
-| MemoryAwareContextPlanner | `enable_context_planner = true` | opt-in |
-
-Уточнение по defaults:
-- `PromptPrefixCache` default **ON** для профилей с hybrid retrieval (BasicRag, AgentLTM, QAKnowledgeBase) — provider-side кэш даёт прямую экономию токенов без consistency рисков.
-- `ResponseCache` default **OFF везде** — opt-in через явное
-  `response_cache_storage != Disabled` в spec (см. §3.1 rationale).
-
-### 6.2. Инициализация
-
-При MemoryStack::open(spec):
-1. Создаются DBI по capabilities.
-2. Инициализируются runtime-сервисы:
-   - `IPromptPrefixCache` — если `enable_prompt_cache=true` (default ON для hybrid retrieval профилей).
-   - `IResponseCache` — только если `response_cache_storage != Disabled` (default OFF).
-   - `AsyncIndexer` — если `enable_async_indexer=true` или выбран profile с
-     async-only indexing policy.
-   - `WriteGate` — если `spec.write_policy` задан.
-   - `CompactionWorker` — если `enable_compaction=true`.
-   - `IMemoryAwareContextPlanner` — если `enable_context_planner=true`.
-3. Lifecycle ordering: `IPromptPrefixCache` создаётся ДО первого LLM call; `IResponseCache` создаётся как singleton (даже если выключен) с no-op stub.
-
-### 6.3. Shutdown
-
-При MemoryStack::close():
-1. Stop accepting new requests.
-2. AsyncIndexer.flush() — finish pending batches.
-3. CompactionWorker.stop() — finish current job, then exit.
-4. `IResponseCache` — persist to DBI (`response_cache`) only when
-   `response_cache_storage == Mdbx`; `MemoryOnly` keeps no DBI state and
-   `Disabled` uses the no-op stub. Physical storage costs +1 opt-in profile
-   delta in `mdbx-containers-extension-tz.md` §5.5.1 only for `Mdbx`.
-5. `IPromptPrefixCache` — persistence не требуется (ключи детерминированно вычисляются).
-6. Освобождение handles.
-
-### 6.4. Graceful degradation
-
-Если runtime-сервис не может стартовать (например, MDBX не хватает места):
-- Log error.
-- MemoryStack продолжает работать в degraded mode (без этого сервиса).
-- Service выбрасывает `RuntimeServiceUnavailable` при обращении.
+`MemoryStack` lifecycle covers only library-owned services: WriteGate,
+AsyncIndexer, CompactionWorker and the provider-neutral context planner. It
+opens the profile-selected storage, starts enabled local workers after storage
+validation, flushes or checkpoints owned work on close, and exposes degraded
+status for a failed local service. It neither initializes an LLM client nor
+performs provider-cache or response-cache operations.
 
 ## 7. Interaction Patterns
 
-### 7.1. Write path
-
-```
-Application
-  ↓ stack.create_or_get_unit(request)
-  ↓
-WriteGate.evaluate(request)
-  ↓
-  ├── Accept → MultiTableWriter (primary + critical indexes) and optional durable IndexUpdateJob for async-only indexes
-  ├── Buffer → wait for trigger
-  ├── Deduplicate → return existing unit_id
-  ├── Supersede → mark old as Superseded, write new
-  ├── Merge → combine with existing
-  └── Skip → return Skip decision
-```
-
-### 7.2. Read path
-
-```
-Application
-  ↓ stack.retrieve(plan)
-  ↓
-IResponseCache.lookup(response_cache_key)  // ТОЛЬКО если opt-in (default OFF)
-  ├── hit → return cached response_text
-  └── miss (или выключен) → continue
-  ↓
-MemoryAwareContextPlanner.plan(input)  // if opt-in: sets tier/depth/risk plan
-  ↓
-HybridRetriever.retrieve(plan)
-  ├── LexicalRetriever (per lexical-search-roadmap.md)
-  ├── DenseRetriever (per optimization-roadmap.md)
-  ├── ...
-  ↓
-RRF fusion
-  ↓
-ContextBuilder
-  ↓
-IPromptPrefixCache.compute_cache_key(provider_id, model_id, prompt_prefix)  // ВСЕГДА (cheap, O(1))
-  ↓
-LLM call с cache_control: ephemeral metadata (Anthropic) / prompt_cache_key (OpenAI)
-  ↓
-IResponseCache.store(response_cache_key, response)  // ТОЛЬКО если opt-in
-  ↓
-IPromptPrefixCache.metrics().cache_read_input_tokens += response.usage.cache_read  // обновление провайдер-метрик
-```
-
-**Provider-side vs local cache split:**
-- `IPromptPrefixCache.compute_cache_key()` вызывается при каждом LLM call (cheap, no-op если ключ не меняется).
-- `IResponseCache.lookup()` вызывается **ТОЛЬКО** если
-  `spec.response_cache_storage != Disabled`. По умолчанию — не вызывается.
-- Это даёт чёткое разделение provider-side (always) и local response (opt-in).
-
-### 7.3. Background path
-
-```
-CompactionWorker
-  ↓
-ICompactionJob.run()
-  ├── DecayJob → uses UsageStatsComponent
-  ├── DedupeJob → uses EmbeddingStore + scope
-  ├── ArchiveColdJob → uses Lifecycle FSM
-  ├── ...
-  ↓
-MultiTableWriter (atomic per job)
-```
+The core write path is `WriteGate -> MultiTableWriter -> optional IndexUpdateJob`;
+the retrieval path is `MemoryAwareContextPlanner -> retrievers -> ContextBuilder`.
+`ContextBuilder` returns context, citations and optional
+`MaterializationInstruction` values to the host. Any LLM request,
+provider-specific cache metadata, tool call and generated response is outside
+this path.
 
 ## 8. Observability
 
-### 8.1. Метрики (per service)
-
-Каждый сервис экспортирует свои метрики (см. секции выше). Все метрики доступны через:
-
-```cpp
-auto stats = stack.stats();
-// stats.prompt_prefix_cache, stats.response_cache, stats.async_indexer, stats.compaction, stats.write_gate
-```
-
-Отдельные accessors для split-кэша:
-```cpp
-auto pp = stack.prompt_prefix_cache()->metrics();   // cache_read_input_tokens, cache_write_input_tokens
-auto rc = stack.response_cache()->metrics();         // hits, misses, hit_rate
-```
-
-### 8.2. RetrievalTrace integration
-
-Per knowledge-base-roadmap.md: `RetrievalTrace.trace` содержит:
-- `cache_hit` (true/false).
-- `cache_key` (если hit).
-- `async_indexer_queue_size` (snapshot при retrieval).
-- `compaction_active_jobs` (snapshot).
-
-### 8.3. CLI integration
-
-```
-agent-memory-cli prompt-cache stats                 # IPromptPrefixCache (cache_read/cache_write_input_tokens)
-agent-memory-cli response-cache stats              # IResponseCache (hits, misses, hit_rate)
-agent-memory-cli response-cache clear [--scope <scope_id>]
-agent-memory-cli indexer status
-agent-memory-cli indexer flush
-```
+Runtime-service metrics cover local queue depth, worker health, write decisions,
+index freshness, compaction state and retrieval/context traces. Host cache
+metrics remain host telemetry and must not be surfaced as `MemoryStack`
+statistics or CLI commands.
 
 ## 9. Implementation Order
 
-Per memory-stacks-roadmap.md секция 16, конкретизация:
-
-| Шаг | Что |
-|---|---|
-| 11.1 | WriteGate (impl WritePolicy logic) |
-| 11.2 | AsyncIndexer (background thread + batch processing) |
-| 12.5 | `IPromptPrefixCache` (in-memory LRU key dedup) + `AnthropicCacheControlAdapter` |
-| 12.6 | `IResponseCache` stub (default OFF, no-op implementation для safe by default) |
-| M2.x | `IResponseCache` full implementation with `MemoryOnly` and `Mdbx` modes (`response_cache` DBI only for `Mdbx`, +1 opt-in profile delta in `mdbx-containers-extension-tz.md` §5.5.1) |
-| M2.x | `IMemoryAwareContextPlanner` + urgency/recall/risk-aware context policy |
+1. WriteGate and atomic critical-index writes.
+2. AsyncIndexer plus bounded durable job handling where a selected profile needs it.
+3. Compaction worker/checkpoint handoff.
+4. Provider-neutral context planner and trace contracts.
 
 ## 10. Open Issues
 
-- PromptCache invalidation при обновлении knowledge (когда unit перезаписан, cache entries могут быть stale). Решение: scope-based invalidation при bulk update.
-- **ResponseCache correctness при tool/function calls: если LLM вызывает tools, response зависит не только от prompt, но и от tool results. Решение: хэшировать полный conversation context (prompt + tool definitions + tool call history + tool results), не только prompt. Альтернатива: opt-out response cache для turns с tool calls.**
-- AsyncIndexer backpressure: если worker медленнее producer (writes), durable queue растёт. Решение: bounded durable depth, producer throttle/reject for async-only indexes, metrics/alerts and `fail_dead` for exhausted retries; no silent drop.
-- WriteGate flush trigger: на скольких units считать "OnSizeThreshold" — bytes или count?
-- Multi-stack coordination: если несколько MemoryStack разделяют scope, runtime services не координируются. M2+.
-- ResponseCache staleness при live data: cache TTL 1 час может вернуть устать данные для time-sensitive запросов. Опции: (a) короткий TTL, (b) invalidation при записи в KnowledgeUnit, (c) включение timestamp в key (но это убивает hit rate).
+- AsyncIndexer backpressure, retry exhaustion and operator diagnostics.
+- WriteGate batch thresholds and policy observability.
+- Multi-stack coordination for shared scopes.
+- Planner policy evolution without weakening required-tier guarantees.
 
 ## 11. References
 

@@ -667,6 +667,7 @@ struct RetrievalPlan {
     RetrievalMode mode = RetrievalMode::Hybrid;
 
     std::vector<RetrieverSpec> retrievers;
+    std::optional<BoundedQueryPlan> bounded_query_plan; // M2 decomposition
 
     std::vector<KnowledgeUnitKind> kinds;
     std::optional<TemporalWindow> temporal_window;

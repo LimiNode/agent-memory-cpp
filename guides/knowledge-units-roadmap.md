@@ -172,6 +172,12 @@ struct KnowledgeUnitRef {
 struct GlobalIdentityComponent {
     GlobalKnowledgeUnitId global_id;
 };
+
+struct KnowledgeUnitIdentityScheme {
+    std::string scheme_id;
+    std::uint32_t scheme_version = 1;
+    std::string occurrence_id_derivation;
+};
 ```
 
 `GlobalKnowledgeUnitId` is occurrence identity, not a content hash. It may be
@@ -184,6 +190,13 @@ not enable this mapping may use local `KnowledgeUnitId` handles, but must not
 emit a durable `KnowledgeUnitRef` as locally resolvable. When a local id is
 present, it must resolve to the same global id; import validates or creates the
 mapping atomically with the unit and its provenance records.
+
+`KnowledgeUnitIdentityScheme` is declared by every workspace/export manifest
+that enables `DurableGlobalIdentity`. Import accepts only an identical scheme or
+an explicit registered migration, and otherwise fails closed before it writes a
+global-to-local binding. The first generic profile capability is independent of
+the A-lane; ADELIA is one consumer of it, alongside provenance and ordinary
+cross-environment import/export.
 
 ### SourceRef (M0 compatibility contract)
 
@@ -234,7 +247,7 @@ struct DerivedTextProvenance {
 
 struct SourceRefSummary {
     ResourceId resource_id;          // обязательно
-    std::optional<ResourceRevisionRef> resource_revision;
+    std::optional<ResourceRevisionRef> resource_revision;  // absent only for legacy preview-only refs
     std::string uri;                 // обязательно (для citations)
     TextRange excerpt;               // обязательно для quote-based refs
     std::array<uint8_t, 16> quote_hash;  // обязательно: SHA1(prefix(excerpt))[:16]
@@ -261,8 +274,8 @@ struct SourceRef {
   identify the retained body revision from which `excerpt` was measured. A
   legacy migration may leave it absent only for an explicitly `preview-only`
   citation; such a citation cannot re-read or materialize its original range.
-- `DerivedExtraction` requires `DerivedTextProvenance` on the observed resource
-  and full reference. It is rendered as derived text and never as a direct
+- `DerivedExtraction` requires `DerivedTextProvenance` during ingestion and on
+  a full reference when one is materialized. It is rendered as derived text and never as a direct
   original PDF, image, audio or video quotation.
 
 - `resource_id` — обязателен для reverse lookup по ресурсу.
@@ -303,7 +316,7 @@ struct SourceRef {
 
 ```cpp
 SourceRefSummary summary;
-summary.resource_id = ResourceId::from_uri("https://docs.example.com/spec");
+summary.resource_id = imported_resource.resource_id;  // allocated by IResourceImporter
 summary.resource_revision = ResourceRevisionRef{
     summary.resource_id,
     /*generation=*/7,
@@ -329,7 +342,7 @@ auto env = env_builder.build();
 
 Content-addressing (дедупликация, миграция, idempotent upsert) выполняется через **отдельный** `KnowledgeUnitKey` (kind + scope + `ContentHash`). Это разделяет два разных понятия:
 
-- **ID** = runtime identity, opaque handle для map key, cross-reference и supersedence chains. Меняется при erase/recreate. Monotonic uint64_t.
+- **ID** = local storage/occurrence handle inside one storage environment; an opaque handle for map keys, cross-references and supersedence chains. It is never reused after erase. Monotonic uint64_t.
 - **Key** = content-addressing handle, детерминированно вычисляется из payload. Один и тот же content → один и тот же key. Используется для dedupe (две записи одного контента), миграции и bulk import.
 
 `KnowledgeUnitKey` is immutable for an existing `KnowledgeUnitId`: changing
@@ -511,10 +524,11 @@ Stable field-tag order:
 
 | Kind | Field tags in order |
 |---|---|
-| `Chunk` | `0x0001 resource_body_digest`, `0x0002 span_start`, `0x0003 span_end`, `0x0004 normalized_chunk_text_digest` |
+| `Chunk` | `0x0001 resource_revision_identity`, `0x0002 resource_body_digest`, `0x0003 span_start`, `0x0004 span_end`, `0x0005 normalized_chunk_text_digest` |
 | `QAPair` | `0x0101 normalized_question`, `0x0102 normalized_answer`, `0x0103 identity_metadata_map` |
 | `Fact` | `0x0201 subject`, `0x0202 predicate`, `0x0203 object`, `0x0204 valid_time`, `0x0205 observed_time` |
-| `ConversationEpisode`, `CompiledArticle`, `Note`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
+| imported `Note` | `0x0301 resource_revision_identity`, `0x0302 canonical_text_digest`, `0x0303 resource_body_digest`, `0x0304 title_identity` |
+| `ConversationEpisode`, `CompiledArticle`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
 | `Task`, `Decision` | `0x0351 stable_runtime_identity`, `0x0352 runtime_origin_digest`, `0x0353 declared_payload_digest` |
 | `Event`, `Entity`, `Relation`, `Summary`, `Custom` | `0x0401 primary_identity_text`, `0x0402 declared_identity_metadata_map`, `0x0403 declared_payload_digest` |
 
@@ -549,10 +563,11 @@ Identity vs mutable fields:
 
 | Kind | Identity fields | Mutable fields (`revision++`) |
 |---|---|---|
-| `Chunk` | `resource_body_digest`, span/offset identity, normalized chunk text digest | display text, source summaries, retrieval projections, lifecycle |
+| `Chunk` | `ResourceRevisionRef`, resource body digest, span/offset identity, normalized chunk text digest | display text, source summaries, retrieval projections, lifecycle |
 | `QAPair` | normalized question/answer identity fields | display text, source summaries, usage/ranking metadata, projections, lifecycle |
 | `Fact` | subject/predicate/object/time identity | confidence, display text, non-identity source summaries, projections, lifecycle |
-| `ConversationEpisode`, `CompiledArticle`, `Note`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | canonical payload text or stable `ResourceBody` digest | title/display summaries, source summaries, domains/facets/intents/agent_roles, activation rules, projections, lifecycle, outcome statistics |
+| imported `Note` | `ResourceRevisionRef`, canonical payload text, stable `ResourceBody` digest | title/display summaries, source summaries, projections, lifecycle |
+| `ConversationEpisode`, `CompiledArticle`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | canonical payload text or stable `ResourceBody` digest | title/display summaries, source summaries, domains/facets/intents/agent_roles, activation rules, projections, lifecycle, outcome statistics |
 | `Task`, `Decision` | stable runtime identity + declared payload digest | status, assigned runtime refs, rationale summary, produced units, projections, lifecycle |
 | `Event`, `Entity`, `Relation`, `Summary`, `Custom` | canonical primary identity text plus declared identity metadata/payload bytes | display summaries, non-identity metadata, projections, lifecycle |
 
@@ -622,6 +637,15 @@ return connection.multi_write([&](Transaction& txn) -> CreateOrGetResult {
 This path is create/dedupe only. If an existing mapping is found, the function
 returns `ExistingUnit` and MUST NOT update envelope, payload,
 components, projections or indexes of the existing unit.
+
+For imported raw `Chunk` and `Note` units, the canonical identity input includes
+the immutable `ResourceRevisionRef` as well as body/span/text material. Thus a
+repeated import of one observed source revision is idempotent, while two
+independent sources containing identical bytes receive distinct raw units and
+retain independent citation, retention and deletion lifecycles. Byte-level
+deduplication remains the responsibility of the artifact/body store, not the
+knowledge-unit key. Curated Facts, QAPairs and application-native Notes retain
+their semantic content-deduplication rules.
 
 Mutable update is a separate revision-guarded operation:
 
@@ -1224,7 +1248,7 @@ components for the same unit cannot overwrite each other. Per-kind payloads —
 2. По capability флагам создаются дополнительные DBI (см. таблицу 8.1).
 3. При drift detected (см. `memory-stacks-roadmap.md` секция 14): error или auto-migrate (per ADR-003, ADR-004).
 
-DBI budget target follows the shared manifest: canonical count 29, expanded peak 57,
+DBI budget target follows the shared manifest: canonical count 29, expanded peak 58,
 `Config::max_dbs = 96` by default, and at least 16 free DBI slots reserved for
 future profiles.
 

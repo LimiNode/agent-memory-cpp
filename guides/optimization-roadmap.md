@@ -39,14 +39,15 @@ See [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadm
 - Treat binary signatures as candidate filters, not as final ranking truth.
 - Measure approximate search quality by recall and latency against an exact
   float baseline.
-- Dense vector storage is keyed by `(scope_id, model_id, projection_kind,
-  unit_id)`; binary bucket keys by `(scope_id, projection_kind, short_key)`
+- Dense vector storage is keyed by `(scope_id, model_id, model_version,
+  projection_kind, unit_id)`; binary bucket keys by `(scope_id,
+  projection_kind, short_key)`
   when DenseVectors is enabled. If only BM25F without dense vectors is used,
   the projection_kind component is optional and keys may collapse to scope-only.
 - All secondary indexes are scope-aware: every key begins with `scope_id`.
 - Multi-projection and multi-model embeddings live side by side in the same
-  `embedding_vectors` DBI, addressed by `projection_kind` and `model_id`
-  respectively.
+  `embedding_vectors` DBI, addressed by `projection_kind`, `model_id`, and
+  immutable `model_version` respectively.
 
 ## Near-Term Tasks
 
@@ -445,7 +446,7 @@ The `embedding_vectors` DBI is keyed accordingly:
 
 ```text
 embedding_vectors
-    key   = (scope_id, model_id, ProjectionKind, UnitId)
+    key   = (scope_id, model_id, model_version, ProjectionKind, UnitId)
     value = vector_blob  (float32, optionally compressed)
 ```
 
@@ -586,6 +587,7 @@ for each (unit_id, projection_kind) in scope:
     embed it with the target model
     write new embedding_meta row with version = new_version, is_active = true
     write new embedding_vectors row keyed by (scope_id, target_model_id,
+                                              target_model_version,
                                               projection_kind, unit_id)
 ```
 
@@ -819,7 +821,7 @@ binary_bucket_index:
               };
 
 embedding_store:
-    key   = (scope_id, model_id, projection_kind, unit_id)
+    key   = (scope_id, model_id, model_version, projection_kind, unit_id)
     value = float32 vector blob or encoded vector blob
 
 unit_store:
@@ -867,7 +869,8 @@ query text
     -> decode/decompress posting lists
     -> full-signature Hamming filter
     -> unique unit ids
-    -> batch fetch float embeddings for the requested (model_id, projection_kind)
+    -> batch fetch float embeddings for the requested
+       (model_id, model_version, projection_kind)
     -> optional cross-model RRF
     -> exact rerank
     -> fetch unit text
@@ -1411,7 +1414,7 @@ embedding_meta:                          // if EmbeddingMeta or EmbeddingMigrati
     used by:  projection/model selection at retrieval time
 
 embedding_vectors:                       // if DenseVectors
-    key   = (scope_id, model_id, projection_kind, unit_id)
+    key   = (scope_id, model_id, model_version, projection_kind, unit_id)
     value = vector_blob
     used by:  IDenseIndex::search, IDenseIndex::search_multi_model
 ```
@@ -1726,7 +1729,7 @@ add projection-aware benchmarks.
 5. Dependency-free binary signature value types and Hamming distance, with
    `projection_kind` recorded in `BinarySignatureInfo`.
 6. Random-hyperplane binary encoder keyed by
-   `(model_id, projection_kind, dim, seed)`. Compressed float storage
+   `(model_id, model_version, projection_kind, dim, seed)`. Compressed float storage
    benchmark for embedding blobs.
 
 ### Steps 7-9: Binary signature, bucket, and projection layout
@@ -1736,7 +1739,7 @@ add projection-aware benchmarks.
 8. In-memory binary bucket index prototype with scope-aware and
    projection-aware buckets.
 9. Recall/latency benchmark against exact float search, run per
-   `(model_id, projection_kind)` slice.
+   `(model_id, model_version, projection_kind)` slice.
    - Keep early binary-code health diagnostics deterministic so regressions are
      reproducible.
    - Add statistical pairwise-distance estimates later, after large dense
@@ -1747,7 +1750,7 @@ add projection-aware benchmarks.
 
 10. Resource manifest contracts for targeted reindexing, scope-aware.
 11. MDBX-backed two-stage bucket storage with
-    `embedding_vectors: (scope_id, model_id, projection_kind, unit_id)` and
+    `embedding_vectors: (scope_id, model_id, model_version, projection_kind, unit_id)` and
     `binary_bucket_index: (scope_id, projection_kind, short_key)`.
 12. Bucket compression benchmarks and bucket diagnostics.
     - Separate deterministic diagnostics from statistical estimates; do not
@@ -1758,7 +1761,7 @@ add projection-aware benchmarks.
 ### Steps 14-15: Projection-aware benchmarks and one-stage variants
 
 14. Optional Eigen rerank/scoring adapter, applied per
-    `(model_id, projection_kind)` candidate list.
+    `(model_id, model_version, projection_kind)` candidate list.
 15. One-stage bucket benchmark variant, projection-aware matrix, and
     cross-model RRF benchmark when at least two models are present.
 
@@ -1956,8 +1959,8 @@ storage estimates, quality targets и per-stack defaults).
 - Do not add product quantization before simpler float16/int8/binary
   experiments and exact baselines exist.
 - Do not collapse multi-projection embeddings into a single `(scope_id,
-  unit_id)` key: ADR-007 requires `(scope_id, model_id, projection_kind,
-  unit_id)`.
+  unit_id)` key: ADR-007 requires `(scope_id, model_id, model_version,
+  projection_kind, unit_id)`.
 - Do not skip `scope_id` in any secondary index: ADR-012 mandates
   scope-awareness for multi-tenancy.
 - Do not silently mix embeddings across `projection_kind` values during

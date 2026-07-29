@@ -88,14 +88,14 @@ canonical:
     table_type: KeyValueTable
     opens: DenseVectors
     sync: kv_supported
-    physical_key: [ScopeId, ModelId, ProjectionKind, UnitId]
+    physical_key: [ScopeId, ModelId, ModelVersion, ProjectionKind, UnitId]
     migration_peak: 1
   - name: embedding_vectors
     owner: embeddings
     table_type: KeyValueTable
     opens: DenseVectors
     sync: kv_supported
-    physical_key: [ScopeId, ModelId, ProjectionKind, UnitId]
+    physical_key: [ScopeId, ModelId, ModelVersion, ProjectionKind, UnitId]
     migration_peak: 1
   - name: inverted_token_to_unit
     owner: lexical
@@ -240,8 +240,9 @@ profile_deltas:
     migration_peak: 1
     default: false
     names: [global_unit_id_to_local_id]
-    milestone: A0
-    note: Common GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId) profile; identity is unique across one storage environment and is not runtime-lane-owned.
+    capability: DurableGlobalIdentity
+    milestone: M1
+    note: Common GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId) profile; identity is unique across one storage environment and is not runtime-lane-owned. A0 consumes this capability.
   - name: runtime_sequence_index
     dbis: 1
     migration_peak: 1
