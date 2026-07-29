@@ -40,10 +40,10 @@ Required capabilities:
 
 | Capability | Required API | Required DBI | Required tests | Deferred dependencies | Owner |
 |---|---|---|---|---|---|
-| Raw resource ingest | `IResourceStore`, `ResourceManifest`, `ResourceBodyStore` | `resource_bodies` profile delta if MDBX-backed | import UTF-8 `.md`/`.txt`/logs, stable logical ResourceId across an update, re-open | chunked body store optional | `resource-reindexing.md`, `mdbx-containers-extension-tz.md` |
+| Raw resource ingest | `IResourceStore`, `ResourceManifest`, `ResourceBodyStore` | `resource_bodies` profile delta if MDBX-backed | import UTF-8 `.md`/`.txt`/logs, stable logical ResourceId across an update, re-open, reject derived text without extractor provenance | chunked body store optional | `resource-reindexing.md`, `mdbx-containers-extension-tz.md` |
 | Chunk/Note units | `IKnowledgeUnitStore::create_or_get_unit` | `knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind`, `chunk_payloads` | create/get/reopen, duplicate content dedupe | Fact/QA rich payloads | `knowledge-base-roadmap.md` |
 | Immutable identity | `KnowledgeUnitKey`, `supersede_unit`, `update_mutable_fields` | `content_key_to_unit_id` | identity-field update rejected, mutable patch accepted | merge policy | `knowledge-units-roadmap.md` |
-| Source summaries | `SourceRefSummary` inline in envelope | `knowledge_units` | imported raw unit always carries a citation preview that survives reopen | full `source_refs` DBI | `knowledge-base-roadmap.md` |
+| Source summaries | `SourceRefSummary` inline in envelope | `knowledge_units` | imported raw unit carries a revision-bound citation preview that survives reopen and resource update | full `source_refs` DBI | `knowledge-base-roadmap.md` |
 | Original projection | `IProjectionStore` | `unit_projections` | stale revision skipped, projection regenerated | QA/Summary projections | `knowledge-base-roadmap.md` |
 | Lexical retrieval | `ILexicalIndex`, `LexicalRetriever` | lexical dictionary/stats/postings from TZ | BM25F over `Original`, p95 target fixture | dense, learned sparse | `lexical-search-roadmap.md` |
 | Scope isolation | `ScopeId` in every secondary/range key | all secondary DBIs | cross-scope leakage tests | distributed scope routing | `memory-stacks-roadmap.md` |

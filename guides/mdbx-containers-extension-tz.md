@@ -565,10 +565,12 @@ enum class ComponentKind : std::uint16_t {
 `GlobalIdentity` is a persisted registry tag, not a prose-only alias. Its
 numeric value is `18` and it participates in the profile signature. The
 global-id lookup is owned by the `global_unit_id_to_local_id` profile delta
-described in `agent-runtime-integration-roadmap.md`; it has physical key
+described in `knowledge-units-roadmap.md`; it has physical key
 `GlobalKnowledgeUnitId` and value `(ScopeId, KnowledgeUnitId)`. This supersedes
 the older scope-local `metadata_filters` wording in this section: a global
-identity must be unique across the entire storage environment.
+identity must be unique across the entire storage environment. The contract is
+common provenance/knowledge infrastructure; runtime integrations only consume
+it.
 
 Registry governance:
 
@@ -585,6 +587,11 @@ Use cases:
 
 - `unit_components` (Layer B, см. ADR-001 в `guides/memory-stacks-roadmap.md`): `ComponentKind` tag ∈ {`UsageStats`, `Speaker`, `Temporal`, `EmbeddingMeta`, `CompactionMeta`, `ActivationMetadata`, `GlobalIdentity`, runtime-integration tags}, logical key — `UnitId`, physical key — `(ComponentKind, UnitId)`, value — typed component bytes for operational, activation, durable global-identity, cognitive-trace and task/decision/procedure payload components. `GlobalIdentity` is globally unique through the profile-owned `global_unit_id_to_local_id` mapping documented in `agent-runtime-integration-roadmap.md`; it is not a second primary key or a scope-local metadata filter. Operational components are lazy-read by retrieval layer. Loading all components for one unit is implemented as bounded point reads over known component kinds unless a future profile adds a second orientation.
 - per-kind payload-компоненты (`QAPayload`, `FactPayload`, `ConversationEpisodePayload`, `CompiledArticlePayload`, `ChunkPayload`) — при необходимости выносятся в отдельные DBI; canonical names listed in §5.5.
+
+The canonical `GlobalIdentity` contract and profile mapping are defined in
+[`knowledge-units-roadmap.md`](knowledge-units-roadmap.md#common-durable-knowledge-unit-identity).
+The runtime-integration roadmap is a consumer of that common identity, not its
+owner.
 
 ### 3.5 `CompositeKey<Parts...>` и хелперы
 

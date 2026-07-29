@@ -49,10 +49,12 @@ maps to one `SourceId`; each local `ResourceRevision` maps to exactly one
 must retain and validate the source/revision identities and their manifest.
 
 `ResourceRevision`
-: A local current-version/reindex record for a `ResourceId`. The first
-implementation can model this as `resource_id`, `generation`, an uncompressed
-content hash, and a pipeline configuration hash. It adapts to, rather than
-replaces, immutable `SourceRevisionId` in artifact-aware profiles.
+: An immutable local observed/reindex record for a `ResourceId`. The active
+manifest selects its current generation; older cited revisions remain
+addressable until retention can safely remove them. The first implementation
+can model a revision as `resource_id`, `generation`, an uncompressed content
+hash, and a pipeline configuration hash. It adapts to, rather than replaces,
+immutable `SourceRevisionId` in artifact-aware profiles.
 
 `SourceLocator`
 : A portable, mutable observation of where a logical resource was seen. It is
@@ -127,6 +129,17 @@ struct ResourceManifest final {
 This is not a final API. It documents the intended contract shape before code is
 introduced.
 
+`ResourceRevisionRef` is the local durable citation binding. It identifies the
+exact retained body revision from which a byte range was measured, while
+`ResourceId` remains the stable identity of the changing logical source. An
+artifact-aware profile maps this reference to its immutable `SourceRevisionId`.
+Every non-preview-only quote keeps that referenced body revision live: a later
+update may make a newer generation active for retrieval, but must not overwrite
+the older bytes while a `SourceRefSummary` still materializes them. An
+implementation may use immutable versioned entries in `ResourceBodyStore` or an
+artifact BlobStore; the current `ResourceManifest` is an active-view pointer,
+not permission to discard cited generations.
+
 `ResourceId` is never recomputed from `content_hash`, `pipeline_config_hash`,
 path or URI. A connector may discover a rename through a stable provider/file
 identity, an explicit application mapping, or an operator-confirmed match, then
@@ -181,6 +194,10 @@ resources:
 resource_manifests:
     key   = resource_id
     value = list of derived record references for the current generation
+
+resource_bodies:
+    key   = (resource_id, generation, content_hash)
+    value = immutable source bytes or an addressable body/blob reference
 
 chunks:
     key   = chunk_id
@@ -284,6 +301,8 @@ struct ObservedResource {
     SourceLocator locator;
     std::string content_type;
     std::vector<std::uint8_t> utf8_body;
+    SourceTextOrigin text_origin;
+    std::optional<DerivedTextProvenance> derived_text_provenance;
     TypedMetadata metadata;
 };
 
@@ -321,6 +340,19 @@ previous manifest/generation visible, or writes a new generation that becomes
 active only after all required units and projections exist. `ICuratedUnitNormalizer`
 is M1b: it may create Facts, QAPairs, concepts or cards with provenance, but
 never replaces, mutates away or impersonates the raw source.
+
+`text_origin` is mandatory. `OriginalText` must not carry extraction metadata.
+`DerivedExtraction` must carry non-empty source media type, extractor id and
+extractor version; otherwise the importer rejects the observation. It persists
+that provenance with the `ResourceRevision`, sets the resulting
+`SourceRefSummary::text_origin` to `DerivedExtraction`, and never emits an
+original-media citation from the derived text alone.
+
+Every newly created quote-based `SourceRefSummary` binds the committed
+`ResourceRevisionRef` before publication. A failed import leaves both the prior
+active manifest and its cited body revisions materializable. A retention job may
+remove an old body only after every remaining reference is explicitly
+`preview-only` or has been migrated to another durable evidence anchor.
 
 These are roadmap contracts, not an assertion that the current C++ prototype
 already implements them. Connector-specific filesystem walking, `--knowledge-path`
@@ -390,6 +422,10 @@ Future PRs should add focused tests for:
 - repeated reindex of the same resource is idempotent;
 - two resources cannot conflict through reused chunk ids.
 - changed content keeps the same ResourceId and creates a newer revision;
+- an old quote remains materializable from its bound body revision after a
+  newer resource generation becomes active;
+- a derived extraction without complete extractor provenance is rejected, and a
+  valid derived extraction never renders as an original-media quotation;
 - rename/move preserves locator history only after stable connector identity or
   explicit application confirmation, never merely because bytes match;
 - export/import may remap ResourceId but preserves SourceId/SourceRevisionId
@@ -405,7 +441,7 @@ Future PRs should add focused tests for:
 4. Add MDBX-backed resource manifest storage.
 5. Add resource-aware document/chunk metadata helpers.
 6. Add lexical-first `IResourceImporter` conformance tests for update, failure
-   publication and mandatory SourceRefSummary.
+   publication, revision-bound SourceRefSummary, and derived-text origin.
 7. Add a small dense `ResourceIndexer` composition test with `IDocumentStorage`,
    `IEmbedder`, and `IVectorIndex` as an optional derived-index path.
 8. Add targeted reindexing for exact vector search.

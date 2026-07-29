@@ -136,48 +136,12 @@ object.
 ## Replicated Identity And Runtime Time
 
 `KnowledgeUnitId` remains the compact local MDBX key. It is valid only inside
-one physical database/environment. Cross-database references, import/export,
-causal records and reconciliation use globally stable identities:
-
-```cpp
-struct GlobalKnowledgeUnitId {
-    std::array<std::uint8_t, 16> value;
-};
-
-struct KnowledgeUnitRef {
-    GlobalKnowledgeUnitId global_id;
-    std::optional<KnowledgeUnitId> local_id;
-};
-
-struct GlobalIdentityComponent {
-    GlobalKnowledgeUnitId global_id;
-};
-```
-
-`GlobalKnowledgeUnitId` is occurrence identity, not content identity. It may be
-a random 128-bit id or a hash over occurrence material such as
-`(origin_replica, origin_sequence, provenance, nonce)`. It must not be a pure
-content hash: two equal messages or observations at different times are allowed
-to be distinct units. Content identity and dedupe use `KnowledgeUnitKey` /
-`ContentHash` separately. Local import may remap `KnowledgeUnitId`; it must not
-rewrite global ids.
-
-The A0 durable-global-identity profile stores `GlobalIdentityComponent` in
-`unit_components` and allocates the explicit
-`global_unit_id_to_local_id` profile delta. Its physical key is the global id:
-`GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId)`. The mapping is unique in
-the entire storage environment, not merely inside one scope. Creation, import
-and reopen validation must reject a second binding of the same global id in any
-scope. Scope access control applies after resolution; it does not weaken global
-identity. Import writes or validates this mapping in the same transaction as
-its envelope, components and provenance manifest; a local `KnowledgeUnitId` may
-change, but the global id never does. Profiles that do not enable this component
-must not emit a durable `KnowledgeUnitRef` as though it were locally resolvable.
-
-When `KnowledgeUnitRef::local_id` is present, resolving it in the current
-database must yield the same `global_id`. A missing or mismatched local binding
-is a validation error; callers that cannot establish the binding must omit
-`local_id` and retain the globally stable reference only.
+one physical database/environment. The common `GlobalKnowledgeUnitId`,
+`KnowledgeUnitRef`, and `GlobalIdentityComponent` contract is owned by the
+[knowledge-unit roadmap](knowledge-units-roadmap.md#common-durable-knowledge-unit-identity),
+not by this optional runtime integration. ADELIA adapters reuse that common
+occurrence identity for causal records, import/export, and reconciliation; they
+do not define a competing runtime-specific identity type.
 
 Runtime log positions are origin-scoped:
 

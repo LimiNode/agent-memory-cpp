@@ -149,7 +149,43 @@ and emits typed evidence locators. An application may import externally
 extracted text into M0, but it must label it as derived text and must not claim
 an original PDF/page/media citation that the M0 contract cannot validate.
 
-## 3. SourceRef (M0 compatibility contract)
+## 3. Common Identity And SourceRef
+
+### Common Durable Knowledge-Unit Identity
+
+`GlobalKnowledgeUnitId` and `KnowledgeUnitRef` are common knowledge-layer
+primitives. They are not owned by an ADELIA adapter or any other runtime lane:
+provenance, lifecycle, activation, import/export and runtime integrations all
+use the same contract when a profile enables durable cross-environment unit
+identity.
+
+```cpp
+struct GlobalKnowledgeUnitId {
+    std::array<std::uint8_t, 16> value;
+};
+
+struct KnowledgeUnitRef {
+    GlobalKnowledgeUnitId global_id;
+    std::optional<KnowledgeUnitId> local_id;
+};
+
+struct GlobalIdentityComponent {
+    GlobalKnowledgeUnitId global_id;
+};
+```
+
+`GlobalKnowledgeUnitId` is occurrence identity, not a content hash. It may be
+a random 128-bit id or a hash over immutable occurrence material such as
+`(origin_replica, origin_sequence, provenance, nonce)`; content dedupe remains
+the separate responsibility of `KnowledgeUnitKey` / `ContentHash`. The optional
+`global_unit_id_to_local_id` profile delta maps it uniquely to
+`(ScopeId, KnowledgeUnitId)` in one storage environment. A profile that does
+not enable this mapping may use local `KnowledgeUnitId` handles, but must not
+emit a durable `KnowledgeUnitRef` as locally resolvable. When a local id is
+present, it must resolve to the same global id; import validates or creates the
+mapping atomically with the unit and its provenance records.
+
+### SourceRef (M0 compatibility contract)
 
 > **Artifact-aware extension.** The M0 text-only layout below remains the
 > compact compatibility subset. Before any public source connector or
@@ -178,12 +214,32 @@ struct TextRange {
     uint64_t byte_length;
 };
 
+struct ResourceRevisionRef {
+    ResourceId resource_id;
+    uint64_t generation;
+    uint64_t content_hash;
+};
+
+enum class SourceTextOrigin : uint8_t {
+    OriginalText,
+    DerivedExtraction
+};
+
+struct DerivedTextProvenance {
+    std::string source_media_type;
+    std::string extractor_id;
+    std::string extractor_version;
+    std::optional<std::string> upstream_locator;
+};
+
 struct SourceRefSummary {
     ResourceId resource_id;          // обязательно
+    std::optional<ResourceRevisionRef> resource_revision;
     std::string uri;                 // обязательно (для citations)
     TextRange excerpt;               // обязательно для quote-based refs
     std::array<uint8_t, 16> quote_hash;  // обязательно: SHA1(prefix(excerpt))[:16]
     double confidence;               // [0.0, 1.0]
+    SourceTextOrigin text_origin = SourceTextOrigin::OriginalText;
     std::optional<KnowledgeUnitRef> anchor_unit;    // durable parent-unit binding
     std::optional<uint64_t> observed_at_ms;
     std::string preview;             // inline excerpt, ≤256 байт
@@ -193,11 +249,21 @@ struct SourceRef {
     SourceRefId id;
     SourceRefSummary summary;        // обязательно: ссылка на inline summary
     std::string excerpt_text;        // полный текст цитаты (verbatim UTF-8)
+    std::optional<DerivedTextProvenance> derived_text_provenance;
     std::vector<EvidenceAnchorId> evidence_anchor_ids;
 };
 ```
 
-### 3.1. Обязательные поля и инварианты
+### 3.1. Required Fields And Invariants
+
+- `resource_revision` is required for every newly imported quote-based summary.
+  Its resource id must equal `resource_id`, and its generation/content hash must
+  identify the retained body revision from which `excerpt` was measured. A
+  legacy migration may leave it absent only for an explicitly `preview-only`
+  citation; such a citation cannot re-read or materialize its original range.
+- `DerivedExtraction` requires `DerivedTextProvenance` on the observed resource
+  and full reference. It is rendered as derived text and never as a direct
+  original PDF, image, audio or video quotation.
 
 - `resource_id` — обязателен для reverse lookup по ресурсу.
 - `uri` — обязателен для citation fidelity (`preview + uri` = stable short citation; `excerpt_text + uri` = stable full citation).
@@ -238,6 +304,11 @@ struct SourceRef {
 ```cpp
 SourceRefSummary summary;
 summary.resource_id = ResourceId::from_uri("https://docs.example.com/spec");
+summary.resource_revision = ResourceRevisionRef{
+    summary.resource_id,
+    /*generation=*/7,
+    /*content_hash=*/0x7c91a2d4
+};
 summary.uri = "https://docs.example.com/spec#section-3";
 summary.excerpt = TextRange{/*byte_offset=*/1024, /*byte_length=*/512};
 summary.preview = "first ~256 bytes of the excerpt...";
@@ -1201,6 +1272,14 @@ struct OldSourceRef {
 // - anchor_unit adds a durable KnowledgeUnitRef (default = nullopt)
 // - observed_at_ms добавляется (default = nullopt)
 ```
+
+The migration resolves a `ResourceRevisionRef` only when the historical
+resource catalog can prove the exact retained generation and content hash. If it
+cannot, the migrated summary is explicitly `preview-only`: it preserves its
+inline preview and full stored excerpt where available, but does not claim that
+the old byte range can still be materialized. A later verified import may bind
+that legacy citation to a retained revision; it must never guess from the
+current body of the logical resource.
 
 Migration strategy:
 

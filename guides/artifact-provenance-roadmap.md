@@ -263,6 +263,13 @@ struct SegmentSet {
     CatalogLifecycleState lifecycle = CatalogLifecycleState::Active;
 };
 
+struct FigureContext {
+    ArtifactId figure_artifact_id;
+    std::vector<SegmentId> caption_segments;
+    std::vector<SegmentId> adjacent_text_segments;
+    std::optional<std::string> author_alt_text;
+};
+
 struct Segment {
     SegmentId id;
     SegmentSetId segment_set_id;
@@ -270,11 +277,20 @@ struct Segment {
     std::string text;
     std::vector<Locator> locators;
     std::optional<SegmentId> parent_segment_id;
+    std::optional<FigureContext> figure_context;
     std::optional<std::string> language;
     std::optional<std::uint64_t> token_count;
     TypedMetadata metadata;
 };
 ```
+
+`FigureContext` is structural representation metadata: it relates an embedded
+image or figure to its caption, author-provided alt text, and neighboring text
+segments without inventing a semantic graph edge. Caption and adjacent segment
+ids must belong to the same immutable source revision; missing or stale ids are
+validation errors. OCR text and a vision description remain separately labeled
+derived representations or segments, not silently merged into the original
+caption or alt text.
 
 A retrieval-eligible segment materializes as exactly one
 `KnowledgeUnitKind::Chunk` for one immutable `SegmentSetId` and one explicit
@@ -331,6 +347,10 @@ struct FrameRegionLocator {
     std::optional<NormalizedBox> box;
 };
 
+struct ImageRegionLocator {
+    NormalizedBox box;
+};
+
 struct SlideLocator {
     std::uint32_t slide_index = 0;
     std::vector<std::string> shape_ids;
@@ -350,7 +370,7 @@ struct WebLocator {
 
 using Locator = std::variant<WholeArtifactLocator, TextLocator,
                              PageRegionLocator, TimeRangeLocator,
-                             FrameRegionLocator, SlideLocator,
+                             FrameRegionLocator, ImageRegionLocator, SlideLocator,
                              SpreadsheetLocator, WebLocator>;
 
 struct AlignmentProvenance {
@@ -396,6 +416,9 @@ struct MaterializationInstruction {
 or image is rendered at a different DPI. `TimeRangeLocator` uses integer
 milliseconds. `start_ms <= end_ms`, boxes must be ordered and in range, and a
 locator must be meaningful for the anchored media type.
+`ImageRegionLocator` is for a still image and always carries a meaningful box;
+`FrameRegionLocator` is reserved for time-addressed video frames. A whole image
+uses `WholeArtifactLocator`, never a synthetic timestamp.
 
 `SourceRefSummary` remains the compact M0 citation preview. In artifact-aware
 profiles, a full `SourceRef` carries one or more `EvidenceAnchor` values:
@@ -698,7 +721,8 @@ location.
 
 Minimum evaluation gates are:
 
-- citation/locator correctness for text, page and timestamp fixtures;
+- citation/locator correctness for text, page, image-region and timestamp
+  fixtures, including figure caption/context links;
 - no stale segment or projection after a source revision changes;
 - original-versus-derived representation labeling in context and traces;
 - retention and backup/restore reachability checks, including binding roots and
