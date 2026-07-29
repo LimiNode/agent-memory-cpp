@@ -11,6 +11,7 @@
 
 #include <exception>
 #include <mutex>
+#include <optional>
 #include <stdexcept>
 #include <vector>
 
@@ -30,9 +31,17 @@ namespace agent_memory {
         DocumentRestore
     };
 
+    enum class ResourceIndexRecoveryOperation : std::uint8_t {
+        UpsertPrevious,
+        EraseAttempted
+    };
+
     /// \brief One failed best-effort recovery operation.
     struct ResourceIndexRecoveryFailure final {
         ResourceIndexRecoveryStage stage = ResourceIndexRecoveryStage::VectorRestore;
+        ResourceIndexRecoveryOperation operation = ResourceIndexRecoveryOperation::EraseAttempted;
+        std::optional<DocumentId> document_id;
+        std::optional<ChunkId> chunk_id;
         std::exception_ptr failure;
     };
 
@@ -94,6 +103,8 @@ namespace agent_memory {
 
         /// \brief Inserts or replaces all derived records for one resource.
         /// \pre `snapshot.revision.resource_id` must not be empty.
+        /// \pre `snapshot.document_snapshot.document.id` is globally unique and is
+        /// never reused by a different resource revision.
         /// \pre Each chunk in `snapshot.document_snapshot` must belong to its document.
         virtual void reindex_resource(ResourceIndexSnapshot snapshot) = 0;
 
@@ -124,11 +135,9 @@ namespace agent_memory {
         [[nodiscard]] bool erase_resource(const ResourceId& resource_id) override;
 
     private:
+        void erase_derived_record(const DerivedRecordRef& record);
         void erase_derived_records(const ResourceManifest& manifest);
-        void reclaim_superseded_derived_records(
-            const ResourceManifest& old_manifest,
-            const ResourceManifest& new_manifest
-        );
+        void drain_pending_reclaim_records(ResourceManifest& manifest);
 
         IDocumentStorage* m_document_storage = nullptr;
         IResourceManifestStorage* m_manifest_storage = nullptr;

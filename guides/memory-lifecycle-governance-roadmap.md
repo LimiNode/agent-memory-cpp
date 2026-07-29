@@ -154,6 +154,13 @@ For imported or reconciled occurrences, `KnownAtSequence` uses append-only
 `KnowledgeVisibilityReceipt` records for the querying origin; a producer's
 sequence never implies visibility at another replica.
 
+For ordinary context construction, the same origin-scoped replay frontier also
+excludes a unit when an invalidation, reconciliation, or superseding transition
+was visible at or before the requested sequence. A transition after the cutoff
+does not rewrite the historical answer. Audit mode may return the historical
+unit with the transition evidence; it must not present that historical result as
+currently active knowledge.
+
 `TemporalQuery` is the retrieval-plan representation of these forms. Validation
 requires exactly the fields named by its tag: `ActiveAt` needs `valid_time_ms`,
 `KnownAt` needs `recorded_cutoff_ms`, `ActiveAtKnownAt` needs both,
@@ -169,6 +176,8 @@ Storage implications:
 
 - add scope-aware range indexes over `valid_from_ms`, `valid_until_ms`,
   `recorded_at_ms` and `invalidated_at_ms`;
+- use the A1 `runtime_sequence_index` discriminator rows for both producer
+  sequences and `KnowledgeVisibilityReceipt` lookups;
 - keep temporal semantics in `agent-memory-cpp`;
 - use generic MDBX range-index primitives rather than a Graphiti-specific
   graph schema.

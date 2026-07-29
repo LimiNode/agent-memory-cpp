@@ -544,6 +544,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     target_link_libraries(agent_memory_mdbx_resource_manifest_storage_test
         PRIVATE
             agent_memory::agent_memory
+            mdbx_containers::mdbx_containers
     )
 
     add_test(

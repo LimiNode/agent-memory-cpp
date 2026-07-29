@@ -101,6 +101,13 @@ namespace agent_memory {
             return false;
         }
 
+        ResourceManifest make_unreclaimed_manifest(const ResourceManifest& manifest) {
+            ResourceManifest unreclaimed;
+            unreclaimed.revision = manifest.revision;
+            unreclaimed.records = manifest.pending_reclaim_records;
+            return unreclaimed;
+        }
+
         bool revisions_have_matching_hashes(
             const ResourceRevision& left,
             const ResourceRevision& right
@@ -171,6 +178,11 @@ namespace agent_memory {
                 } catch(...) {
                     recovery_failures.push_back(ResourceIndexRecoveryFailure{
                         ResourceIndexRecoveryStage::VectorRestore,
+                        previous[index_position]
+                            ? ResourceIndexRecoveryOperation::UpsertPrevious
+                            : ResourceIndexRecoveryOperation::EraseAttempted,
+                        std::nullopt,
+                        attempted[index_position].chunk_id,
                         std::current_exception()
                     });
                 }
@@ -250,7 +262,7 @@ namespace agent_memory {
             throw std::invalid_argument("ResourceIndexSnapshot produced invalid manifest");
         }
 
-        const auto old_manifest = m_manifest_storage->find_manifest(
+        auto old_manifest = m_manifest_storage->find_manifest(
             snapshot.revision.resource_id
         );
         if(old_manifest) {
@@ -258,6 +270,18 @@ namespace agent_memory {
                 throw std::logic_error(
                     "ResourceIndexSnapshot cannot replace a resource with erase-pending cleanup"
                 );
+            }
+
+            if(!old_manifest->pending_reclaim_records.empty()) {
+                try {
+                    drain_pending_reclaim_records(*old_manifest);
+                } catch(...) {
+                    throw ResourceIndexReclaimError(
+                        *old_manifest,
+                        make_unreclaimed_manifest(*old_manifest),
+                        std::current_exception()
+                    );
+                }
             }
 
             if(snapshot.revision.generation < old_manifest->revision.generation) {
@@ -291,6 +315,13 @@ namespace agent_memory {
             for(const auto& record : vector_records) {
                 m_vector_index->upsert(record);
             }
+            if(old_manifest) {
+                for(const auto& record : old_manifest->records) {
+                    if(!is_retained_by(record, manifest)) {
+                        manifest.pending_reclaim_records.push_back(record);
+                    }
+                }
+            }
             m_manifest_storage->upsert_manifest(manifest);
         } catch(...) {
             const auto original_failure = std::current_exception();
@@ -308,6 +339,11 @@ namespace agent_memory {
             } catch(...) {
                 recovery_failures.push_back(ResourceIndexRecoveryFailure{
                     ResourceIndexRecoveryStage::DocumentRestore,
+                    previous_document
+                        ? ResourceIndexRecoveryOperation::UpsertPrevious
+                        : ResourceIndexRecoveryOperation::EraseAttempted,
+                    document_id,
+                    std::nullopt,
                     std::current_exception()
                 });
             }
@@ -322,20 +358,13 @@ namespace agent_memory {
             std::rethrow_exception(original_failure);
         }
 
-        if(old_manifest) {
+        if(old_manifest && !manifest.pending_reclaim_records.empty()) {
             try {
-                reclaim_superseded_derived_records(*old_manifest, manifest);
+                drain_pending_reclaim_records(manifest);
             } catch(...) {
-                ResourceManifest unreclaimed_manifest;
-                unreclaimed_manifest.revision = old_manifest->revision;
-                for(const auto& record : old_manifest->records) {
-                    if(!is_retained_by(record, manifest)) {
-                        unreclaimed_manifest.records.push_back(record);
-                    }
-                }
                 throw ResourceIndexReclaimError(
-                    std::move(manifest),
-                    std::move(unreclaimed_manifest),
+                    manifest,
+                    make_unreclaimed_manifest(manifest),
                     std::current_exception()
                 );
             }
@@ -349,41 +378,43 @@ namespace agent_memory {
             return false;
         }
 
-        if(is_active_resource_manifest(*manifest)) {
-            auto erase_pending = *manifest;
+        auto erase_pending = *manifest;
+        if(is_active_resource_manifest(erase_pending)) {
             erase_pending.state = ResourceManifestState::ErasePending;
-            m_manifest_storage->upsert_manifest(std::move(erase_pending));
+            m_manifest_storage->upsert_manifest(erase_pending);
         }
 
-        erase_derived_records(*manifest);
+        erase_derived_records(erase_pending);
         m_manifest_storage->erase_manifest(resource_id);
         return true;
     }
 
-    void ResourceIndexer::erase_derived_records(const ResourceManifest& manifest) {
-        for(const auto& record : manifest.records) {
-            if(record.kind == DerivedRecordKind::Document && !record.key.empty()) {
-                m_document_storage->erase_document(DocumentId{record.key});
-            }
+    void ResourceIndexer::erase_derived_record(const DerivedRecordRef& record) {
+        if(record.kind == DerivedRecordKind::Document && !record.key.empty()) {
+            m_document_storage->erase_document(DocumentId{record.key});
+        }
 
-            if(record.kind == DerivedRecordKind::VectorRecord && !record.chunk_id.empty()) {
-                m_vector_index->erase(record.chunk_id);
-            }
+        if(record.kind == DerivedRecordKind::VectorRecord && !record.chunk_id.empty()) {
+            m_vector_index->erase(record.chunk_id);
         }
     }
 
-    void ResourceIndexer::reclaim_superseded_derived_records(
-        const ResourceManifest& old_manifest,
-        const ResourceManifest& new_manifest
-    ) {
-        ResourceManifest superseded;
-        superseded.revision = old_manifest.revision;
-        for(const auto& record : old_manifest.records) {
-            if(!is_retained_by(record, new_manifest)) {
-                superseded.records.push_back(record);
-            }
+    void ResourceIndexer::erase_derived_records(const ResourceManifest& manifest) {
+        for(const auto& record : manifest.records) {
+            erase_derived_record(record);
         }
-        erase_derived_records(superseded);
+
+        for(const auto& record : manifest.pending_reclaim_records) {
+            erase_derived_record(record);
+        }
+    }
+
+    void ResourceIndexer::drain_pending_reclaim_records(ResourceManifest& manifest) {
+        while(!manifest.pending_reclaim_records.empty()) {
+            erase_derived_record(manifest.pending_reclaim_records.front());
+            manifest.pending_reclaim_records.erase(manifest.pending_reclaim_records.begin());
+            m_manifest_storage->upsert_manifest(manifest);
+        }
     }
 
 } // namespace agent_memory

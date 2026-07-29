@@ -27,6 +27,11 @@ namespace agent_memory {
         std::array<std::uint8_t, 32> bytes{};
     };
 
+    /// \brief Returns whether a resource-body digest uses a supported algorithm.
+    [[nodiscard]] bool is_valid_resource_body_digest(
+        const ResourceBodyDigest& digest
+    ) noexcept;
+
     /// \brief Current revision identity for an original source resource.
     struct ResourceRevision final {
         ResourceId resource_id;
@@ -77,6 +82,8 @@ namespace agent_memory {
         ResourceRevision revision;
         std::vector<DerivedRecordRef> records;
         ResourceManifestState state = ResourceManifestState::Active;
+        /// \brief Superseded records retained until durable reclamation completes.
+        std::vector<DerivedRecordRef> pending_reclaim_records;
     };
 
     /// \brief Returns stable lowercase derived-record kind name.

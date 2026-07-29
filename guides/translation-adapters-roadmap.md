@@ -78,9 +78,8 @@ struct UnitSourceToken {
 };
 
 struct ResourceSourceToken {
-    ResourceId resource_id;
-    std::uint64_t resource_generation = 0;
-    std::array<std::uint8_t, 32> body_digest;
+    // Exact retained original from which the translated text was produced.
+    ResourceRevisionRef resource_revision;
 };
 
 using TranslationSource = std::variant<UnitSourceToken, ResourceSourceToken>;
@@ -162,6 +161,7 @@ using ProjectionDerivationId = ProjectionVersionRef;
 
 struct TranslationProjectionMeta {
     ProjectionDerivationId derivation_id;
+    TranslationSource source;
     DetectedLanguage original_language;
     CanonicalLanguageCode canonical_language;
     std::vector<TranslationStepProvenance> steps;
@@ -176,6 +176,10 @@ Rules:
 - `TranslatedCanonical` is built only when `TranslationProjection` is enabled.
 - `TranslationProjectionMeta.derivation_id.unit_revision_at_build` must match
   the source unit revision used to generate the projection.
+- A resource-backed `TranslationProjectionMeta.source` must contain the exact
+  `ResourceRevisionRef`, including its algorithm-tagged full body digest. The
+  projection becomes stale when that revision, digest, or its retained source
+  body changes; a resource id or generation alone is not sufficient evidence.
 - Changing canonical language, provider, model, package fingerprint or policy
   fingerprint creates a new `ProjectionVersionRef.derivation_generation` and makes only
   `TranslatedCanonical` stale.

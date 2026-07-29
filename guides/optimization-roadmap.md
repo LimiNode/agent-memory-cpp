@@ -1349,8 +1349,8 @@ class ApproximateVectorIndex final : public IDenseIndex {
 
 // 5. HNSW graph ANN. Mainline M2+ backend.
 class HnswVectorIndex final : public IDenseIndex {
-    // M-level proximity graph, greedy traversal на верхних уровнях,
-    // beam search на нижних. O(log N) average search complexity.
+    // M-level proximity graph, greedy traversal on upper levels,
+    // beam search on lower levels. Query cost is benchmarked, not guaranteed.
     // Storage: graph edges adjacency + nodes array.
 };
 ```
@@ -1512,6 +1512,18 @@ struct RetrievalPlan {
 Override полезен для A/B evaluation, миграций, debug queries, per-query
 fallback paths.
 
+### SIMD And Bucket Promotion Rule
+
+The preceding bucket and SIMD descriptions are implementation candidates, not
+complexity or throughput guarantees. Any earlier `O(log N)` notation describes
+only an ideal key lookup and not end-to-end candidate retrieval. A bucket lookup
+is only sublinear when its selected key layout, probe policy, and skew
+distribution demonstrate a bounded candidate set on the target workload.
+AVX2/AVX-512 speedup is measured against
+the scalar baseline on each supported CPU and code width; it must include
+dispatch overhead, memory bandwidth, and top-K maintenance. Promotion records
+the measured result rather than carrying forward a fixed multiplier.
+
 ### HNSW Vector Index (M2+ experimental)
 
 Reference: arXiv:1603.09320 — "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs".
@@ -1520,7 +1532,7 @@ Reference: arXiv:1603.09320 — "Efficient and robust approximate nearest neighb
   - M-level proximity graph (обычно M=16, M_max=32 для in-memory).
   - Greedy traversal на верхних уровнях, beam search на нижних.
   - efConstruction (build-time) и efSearch (query-time) параметры.
-  - O(log N) average search complexity.
+  - Sublinear search behavior is a workload hypothesis, not an API guarantee.
 
 Реализация:
   - Custom HnswVectorIndex : IDenseIndex (если есть время и ресурсы).
@@ -1539,6 +1551,16 @@ Tradeoff vs BinaryCandidateFilter is workload-dependent: HNSW's random graph
 reads may lose on filter-heavy or cold-storage workloads, while BinaryCF may
 lose recall at the same latency. Both are benchmark candidates, not universal
 quality/storage guarantees.
+
+HNSW is a derived, rebuildable projection over active vector records, never the
+canonical owner of embeddings or lifecycle. An update writes a new
+projection-generation node and tombstones the prior node; delete tombstones all
+nodes for the retired projection. Search filters tombstoned or stale-generation
+nodes before ranking and final canonical hydration revalidates lifecycle,
+revision, scope and authority. A profile defines a dead-node/update-churn
+threshold that triggers rebuild from active projections. Promotion requires
+update/delete/rebuild and post-restart benchmarks in addition to recall and
+latency, so a fast build-only graph is not accepted as a production backend.
 
 See [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md) for binary embeddings (extending PR #29 binary signatures to general semantic-preserving quantizers; XOR + POPCNT SIMD distance; quality vs storage tradeoff at 64/128/256/512 bits per dim).
 
@@ -2109,9 +2131,10 @@ add projection-aware benchmarks.
     index, the lexical field postings, the embedding store, and the binary
     bucket index in a single transaction. The golden dataset
     (`memory-stacks-roadmap.md` Section 13 ship-it criteria) is run
-    end-to-end and the hybrid lift target (Recall@10 hybrid >= 1.20x
-    BM25-only) is asserted, including the projection-aware and
-    cross-model slices.
+    end-to-end and the profile-specific hybrid non-regression gate against
+    `max(BM25-only, exact-dense)` is asserted, including projection-aware and
+    cross-model slices. Any numerical lift target is reported as a separately
+    approved hypothesis rather than a global acceptance rule.
 
 ### Step 22: Encoder Registry + Autoencoder Binary Encoder (M2 experimental)
 
@@ -2199,6 +2222,9 @@ storage estimates, quality targets и per-stack defaults).
       reference vector, dispatch path selection per detected CPU.
 
 27. **Step 27 (M2/M3): HammingTopK kernel.**
+    - SIMD throughput and bucket selectivity are benchmark outputs, not fixed
+      release claims. The report includes the scalar baseline, CPU features,
+      code width, candidate count, memory layout and top-K size.
     - Bucket prefilter → linear Hamming scan → top-K binary heap.
     - AVX2 dispatch: 4-way XOR + popcount (scalar `__builtin_popcountll`
       per lane ИЛИ nibble LUT через `_mm256_shuffle_epi8 + _mm256_sad_epu8`),
@@ -2241,7 +2267,9 @@ storage estimates, quality targets и per-stack defaults).
 29. **Step 29 (M2): HNSW Vector Index (HnswVectorIndex or hnswlib adapter).**
     - 5-й `IDenseIndex` mode (см. §"HNSW Vector Index" выше).
     - Per-stack параметры (M, efConstruction, efSearch) — см. таблицу.
-    - Benchmark vs Exact и BinaryCandidateFilter: Recall@10 ≥ 0.97, latency reduction.
+    - Benchmark versus Exact and BinaryCandidateFilter: recall/nDCG,
+      latency, update/delete churn, tombstone ratio, rebuild cost and restart
+      recovery; thresholds are profile-specific.
     - Tradeoff: graph storage overhead ~20% vs random access latency.
 
 30. **Step 30 (M2): MatryoshkaTruncationCodec.**

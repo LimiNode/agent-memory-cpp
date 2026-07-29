@@ -517,8 +517,16 @@ int main() {
             || error.recovery_failures().size() != 2
             || error.recovery_failures()[0].stage
                 != agent_memory::ResourceIndexRecoveryStage::VectorRestore
+            || error.recovery_failures()[0].operation
+                != agent_memory::ResourceIndexRecoveryOperation::EraseAttempted
+            || !error.recovery_failures()[0].chunk_id
+            || *error.recovery_failures()[0].chunk_id != rollback_failed_first_chunk_id
             || error.recovery_failures()[1].stage
                 != agent_memory::ResourceIndexRecoveryStage::DocumentRestore
+            || error.recovery_failures()[1].operation
+                != agent_memory::ResourceIndexRecoveryOperation::EraseAttempted
+            || !error.recovery_failures()[1].document_id
+            || *error.recovery_failures()[1].document_id != rollback_failed_document_id
         ) {
             return fail("rollback failure must retain both original and rollback diagnostics");
         }
@@ -705,7 +713,6 @@ int main() {
     } catch(const agent_memory::ResourceIndexReclaimError& error) {
         if(
             error.published_manifest().revision.generation != 4
-            || error.unreclaimed_manifest().revision.generation != 3
             || error.unreclaimed_manifest().records.empty()
             || !error.reclaim_failure()
         ) {
@@ -717,6 +724,7 @@ int main() {
     if(
         !reclaim_manifest
         || reclaim_manifest->revision.generation != 4
+        || reclaim_manifest->pending_reclaim_records.empty()
         || !document_storage.find_document(reclaim_document_id)
         || !document_storage.find_document(newest_document_id)
         || !vector_index.find(reclaim_chunk_id)
@@ -725,14 +733,36 @@ int main() {
         return fail("failed reclaim must preserve the newly published active generation");
     }
 
-    const bool repaired_reclaim_document = document_storage.erase_document(newest_document_id);
-    (void)repaired_reclaim_document;
-    const bool repaired_reclaim_vector = vector_index.erase(newest_chunk_id);
-    (void)repaired_reclaim_vector;
+    agent_memory::ResourceIndexer restarted_indexer{
+        document_storage,
+        manifest_storage,
+        embedder,
+        vector_index
+    };
+    embedder.reset_call_count();
+    restarted_indexer.reindex_resource(make_snapshot(
+        resource_id,
+        4,
+        reclaim_document_id,
+        {
+            make_chunk(reclaim_chunk_id, reclaim_document_id, 0, "reclaim chunk")
+        }
+    ));
+
+    const auto reclaimed_manifest = manifest_storage.find_manifest(resource_id);
+    if(
+        !reclaimed_manifest
+        || !reclaimed_manifest->pending_reclaim_records.empty()
+        || document_storage.find_document(newest_document_id)
+        || vector_index.find(newest_chunk_id)
+        || embedder.call_count() != 0
+    ) {
+        return fail("restart retry must drain reclaim backlog before idempotent return");
+    }
 
     vector_index.fail_next_erase();
     try {
-        const bool erased = indexer.erase_resource(resource_id);
+        const bool erased = restarted_indexer.erase_resource(resource_id);
         (void)erased;
         return fail("resource erase must propagate derived cleanup failures");
     } catch(const std::runtime_error&) {
@@ -747,7 +777,36 @@ int main() {
         return fail("failed resource cleanup must retain an inactive manifest for retry");
     }
 
-    if(!indexer.erase_resource(resource_id)) {
+    embedder.reset_call_count();
+    try {
+        restarted_indexer.reindex_resource(make_snapshot(
+            resource_id,
+            5,
+            agent_memory::DocumentId{"doc:indexer:blocked-by-pending"},
+            {
+                make_chunk(
+                    agent_memory::ChunkId{"chunk:indexer:blocked-by-pending"},
+                    agent_memory::DocumentId{"doc:indexer:blocked-by-pending"},
+                    0,
+                    "blocked by pending cleanup"
+                )
+            }
+        ));
+        return fail("reindex must reject an erase-pending resource");
+    } catch(const std::logic_error&) {
+    }
+
+    const auto pending_after_reindex_attempt = manifest_storage.find_manifest(resource_id);
+    if(
+        embedder.call_count() != 0 ||
+        !pending_after_reindex_attempt ||
+        pending_after_reindex_attempt->revision.generation != 4 ||
+        agent_memory::is_active_resource_manifest(*pending_after_reindex_attempt)
+    ) {
+        return fail("reindex over erase-pending cleanup must not publish or embed");
+    }
+
+    if(!restarted_indexer.erase_resource(resource_id)) {
         return fail("resource erase must report removed resource state");
     }
 
@@ -763,8 +822,46 @@ int main() {
         return fail("resource erase must remove current vector record");
     }
 
-    if(indexer.erase_resource(resource_id)) {
+    if(restarted_indexer.erase_resource(resource_id)) {
         return fail("resource erase of missing resource must report false");
+    }
+
+    const agent_memory::ResourceId manifest_erase_resource_id{"resource:indexer:manifest-erase"};
+    const agent_memory::DocumentId manifest_erase_document_id{"doc:indexer:manifest-erase"};
+    const agent_memory::ChunkId manifest_erase_chunk_id{"chunk:indexer:manifest-erase"};
+    restarted_indexer.reindex_resource(make_snapshot(
+        manifest_erase_resource_id,
+        1,
+        manifest_erase_document_id,
+        {
+            make_chunk(
+                manifest_erase_chunk_id,
+                manifest_erase_document_id,
+                0,
+                "manifest erase retry"
+            )
+        }
+    ));
+
+    manifest_storage.fail_next_erase();
+    try {
+        (void)restarted_indexer.erase_resource(manifest_erase_resource_id);
+        return fail("resource erase must surface manifest erase failures");
+    } catch(const std::runtime_error&) {
+    }
+
+    const auto manifest_erase_pending = manifest_storage.find_manifest(manifest_erase_resource_id);
+    if(
+        !manifest_erase_pending ||
+        agent_memory::is_active_resource_manifest(*manifest_erase_pending) ||
+        document_storage.find_document(manifest_erase_document_id) ||
+        vector_index.find(manifest_erase_chunk_id)
+    ) {
+        return fail("manifest erase failure must retain a retryable pending manifest");
+    }
+
+    if(!restarted_indexer.erase_resource(manifest_erase_resource_id)) {
+        return fail("retry must remove a manifest left pending by manifest erase failure");
     }
 
     try {

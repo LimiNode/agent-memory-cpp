@@ -271,7 +271,7 @@ System DBI budget привязан к pinned upstream snapshot-у, а не к ч
 | `_mdbxc_applied` | Last contiguous applied `seq` per origin; primary replay/skip state |
 | `_mdbxc_identity_index` | Declared identity map для opaque app keys ↔ storage identity; write path deferred в v0.1 |
 | `_mdbxc_sync_schema` | Persistent logical schema registry used by `SchemaRegistryStore` and logical table adapters |
-| `_mdbxc_logical_delivery` | Persisted logical-delivery deduplication/watermarks |
+| `_mdbxc_logical_delivery` | Persisted logical-delivery deduplication markers |
 | `_mdbxc_logical_delivery_order` | Ordered logical-delivery state |
 | `_mdbxc_logical_outbox` | Durable logical-delivery outbox with cumulative acknowledgement |
 | `_mdbxc_logical_delivery_watermarks` | Optional lazy per-origin pruning watermark; opened only by `prune_logical_delivery_markers()` |
@@ -2592,7 +2592,8 @@ backend merely because it uses fewer bytes.
 
 Recommended upstream sequencing:
 
-1. `TableSequence` as a small independent primitive.
+1. `TableSequence` is already available in the pinned snapshot; use it as the
+   existing transactional table-local sequence primitive.
 2. Benchmark-backed vector-only contiguous scan/SIMD kernel and collection
    descriptor, without application payloads.
 3. Blocked vector store plus binary bucket postings, optional generic columnar

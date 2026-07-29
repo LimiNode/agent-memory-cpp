@@ -457,6 +457,16 @@ class ArchiveColdJob : public ICompactionJob {
 
 Физическое удаление vs logical (lifecycle = Erased) — выбор зависит от требований auditability. По умолчанию используется logical (audit-safe).
 
+`physical_erase` is not a direct DBI deletion recipe. Before removing any unit,
+the job must compute an artifact/evidence liveness closure over inbound
+derivations, `EvidenceAnchor`/`SourceRef` bindings, retained source revisions,
+and non-preview citations. It may physically erase bytes only when every such
+reference is already erased, preview-only, or migrated to another durable anchor.
+The same coordinated retention operation writes an erasure receipt containing the
+unit identity, policy version, reason, time, and closure decision before indexes
+and payloads are reclaimed. A raw note that still anchors a QAPair, summary, or
+other derived unit therefore remains materializable even when it is cold.
+
 ### 4.5. SummaryPromotionJob
 
 Промоция частей в `CompiledArticle` (для wiki-maintainer). Анализирует часто-retrieved facts, генерирует summary, создаёт `CompiledArticlePayload`.

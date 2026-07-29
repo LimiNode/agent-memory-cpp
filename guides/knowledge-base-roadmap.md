@@ -535,7 +535,7 @@ struct RuntimeRetrievalFilters {
     std::vector<RuntimeObjectRef> observer_filter;
     std::vector<RuntimeObjectRef> character_filter;
     std::vector<RuntimeObjectRef> producer_node_filter;
-    std::vector<std::string> trace_ids;
+    std::vector<RuntimeTraceRef> trace_filter;
     std::vector<RuntimeSequenceRange> sequence_ranges;
     std::vector<EpistemicLayer> epistemic_layers;
     bool require_evidence = false;
@@ -916,8 +916,7 @@ struct ContextBlockTrace {
 
 struct RetrievalTrace {
     std::string trace_id;
-    std::string runtime_trace_id;
-    std::string runtime_span_id;
+    std::optional<RuntimeTraceRef> runtime_trace;
     RetrievalPlan plan;
     std::vector<QueryBranchTrace> query_branches;
     std::vector<ContextBlockTrace> context_block_lineage;
@@ -1013,9 +1012,15 @@ growth, privacy/deletion correctness and entity-resolution quality
 (merge precision/recall, ambiguous-rate, false-merge rate). They extend the M1
 retrieval gate; they do not replace it.
 
-### 9.5. Hybrid Lift Target
+### 9.5. Hybrid Release Gate
 
-CI gate: `Recall@10(hybrid) >= 1.20 * Recall@10(BM25-only)`, `NoAnswerAccuracy(hybrid) >= NoAnswerAccuracy(BM25-only)`, `p95 latency(hybrid) <= 2x p95 latency(BM25-only)`. Failing lift — release blocker.
+For each locked profile and query class, CI requires hybrid retrieval to meet the
+configured non-regression tolerance against `max(BM25-only, exact-dense)` on the
+same qrels, filters, candidate depth and I/O mode. It must also preserve
+`NoAnswerAccuracy` and meet that profile's latency budget. A numerical lift
+target, including 20 percent, is a profile-specific hypothesis rather than a
+global release blocker: it may be promoted only after a representative benchmark
+and must name its corpus, query slice, hardware and confidence interval.
 
 ### 9.6. Intent-class-specific test cases (M1)
 
@@ -1068,7 +1073,8 @@ Reporting:
 - Per query-type breakdown (table).
 - Per stack (`BasicRag` vs `AgentLTM` vs etc.).
 - Per mode (`Exact` vs `HNSW` vs `BinaryCF` vs `BinaryOnly`).
-- Hybrid lift target: `Recall@10(hybrid) >= 1.20 * max(BM25, dense)`.
+- Hybrid result versus `max(BM25, exact-dense)`, with the profile-specific
+  non-regression tolerance and any separately approved lift hypothesis.
 
 ## 10. Cross-Module Risks
 

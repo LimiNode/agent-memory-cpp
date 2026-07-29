@@ -13,6 +13,7 @@
 namespace agent_memory {
 
     /// \brief Complete persisted state of a document and its derived chunks.
+    /// \pre `document.id` is globally unique within the storage backend.
     /// \pre Each chunk must have `document_id == document.id`.
     /// \pre Each chunk id must be globally unique within the storage backend.
     struct DocumentSnapshot final {
@@ -27,6 +28,7 @@ namespace agent_memory {
 
         /// \brief Inserts or replaces a document and all chunks derived from it.
         /// \param snapshot Complete document state to persist.
+        /// \pre `snapshot.document.id` must not be reused by a different resource revision.
         /// \pre Each chunk in `snapshot.chunks` must belong to `snapshot.document`.
         /// \pre Chunk ids must not be reused across different documents.
         virtual void upsert_document(DocumentSnapshot snapshot) = 0;

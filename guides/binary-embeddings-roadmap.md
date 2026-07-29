@@ -611,7 +611,9 @@ This guide treats M0 as the starting point of the roadmap.
 
 ### M2: Hybrid Binary + Dense Indexes
 
-- `DenseIndexMode::Hnsw` (`HnswVectorIndex`) — mainline M2+ backend, optionally combined with `BinaryCandidateFilter` for hybrid.
+- `DenseIndexMode::Hnsw` (`HnswVectorIndex`) — an M2+ benchmark candidate,
+  optionally combined with `BinaryCandidateFilter` for hybrid; it is not a
+  default backend until it passes the profile lifecycle and quality gates.
 - Hybrid retrieval: binary filter produces candidate set (Recall@10 ≈ 0.95 — hypothesis, see §6), HNSW ranks within candidate set, dense rerank on top.
 - Adaptive per-query mode selection via `RetrievalPlan::dense_index_mode_override`.
 - Multi-encoder hybrid: binary embeddings + PQ codes for finer rerank (asymmetric ADC distance).

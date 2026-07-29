@@ -111,6 +111,14 @@ namespace agent_memory {
         return false;
     }
 
+    bool is_valid_resource_body_digest(const ResourceBodyDigest& digest) noexcept {
+        switch(digest.algorithm) {
+        case ResourceBodyDigestAlgorithm::Sha256:
+            return true;
+        }
+        return false;
+    }
+
     bool is_valid_resource_manifest(const ResourceManifest& manifest) noexcept {
         if(manifest.revision.resource_id.empty()) {
             return false;
@@ -123,7 +131,20 @@ namespace agent_memory {
             return false;
         }
 
+        if(
+            manifest.revision.body_digest &&
+            !is_valid_resource_body_digest(*manifest.revision.body_digest)
+        ) {
+            return false;
+        }
+
         for(const auto& record : manifest.records) {
+            if(!is_valid_derived_record_ref(record)) {
+                return false;
+            }
+        }
+
+        for(const auto& record : manifest.pending_reclaim_records) {
             if(!is_valid_derived_record_ref(record)) {
                 return false;
             }

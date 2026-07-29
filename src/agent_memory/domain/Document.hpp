@@ -25,6 +25,7 @@ namespace agent_memory {
     };
 
     /// \brief Source document before chunking and indexing.
+    /// \note `id` is globally unique within its storage backend.
     struct Document final {
         DocumentId id;
         SourceKind kind = SourceKind::Unknown;

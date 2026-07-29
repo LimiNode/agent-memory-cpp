@@ -64,7 +64,8 @@ runtime integration lane is cross-listed there as ADR-019..ADR-025.
    runtime instance, replica or partition.
 2. `Character`, `Observer` and `Authority` are separate runtime object roles.
 3. Introspection is an observation produced by a node, not privileged truth.
-4. Runtime traces and retrieval traces link through `trace_id`/`span_id`.
+4. Runtime traces and retrieval traces link through origin-qualified trace/span
+   references.
 5. Causal relations are not inferred only from timestamps.
 6. `Hypothesis` is not returned as `ValidatedClaim` without explicit policy.
 7. Raw evidence is append-only except explicit erase policy.
@@ -169,6 +170,12 @@ struct RuntimeSequenceRange {
     std::optional<std::uint64_t> from;
     std::optional<std::uint64_t> until;
 };
+
+struct RuntimeTraceRef {
+    RuntimeOriginKey origin;
+    std::string trace_id;
+    std::optional<std::string> span_id;
+};
 ```
 
 `RuntimeSequenceRange` is the inclusive interval `[from, until]`. An absent
@@ -177,6 +184,10 @@ means all sequence values for the validated origin. When both bounds are
 present, `from <= until` is required. Sequence values may be compared
 numerically only when their `RuntimeOriginKey` values match; cross-origin order
 requires causal edges or a separate vector-clock/HLC contract.
+
+`RuntimeTraceRef` is an exact stable-identity reference. `trace_id` and
+`span_id` are not globally unique strings: their equality and index encoding
+always include `origin`.
 
 ```cpp
 struct KnowledgeVisibilityReceipt {
@@ -195,6 +206,26 @@ applicable receipt has `visible_at_sequence <= cutoff`; unknown origin-local
 visibility is excluded. A producer sequence is not substituted for another
 replica's receipt.
 
+The A1 `runtime_sequence_index` is also the required physical path for these
+receipts. Its key carries an explicit discriminator:
+
+```text
+(scope_id, VisibilityReceipt, encoded_origin, visible_at_sequence,
+ GlobalKnowledgeUnitId) -> KnowledgeVisibilityReceipt
+```
+
+Producer event rows use the same range substrate with the `ProducerEvent`
+discriminator. A profile without this index must reject `KnownAtSequence` as an
+indexed query; it may expose a separately named scan-only experiment, but must
+not silently claim bounded replay.
+
+For normal replay, a unit is visible at a cutoff only if a receipt for that
+origin is at or before the cutoff and no invalidation, reconciliation, or
+superseding transition visible to the same origin is at or before that cutoff.
+Later transitions do not alter an earlier replay. Audit mode may return the
+historical unit together with its visible invalidation/reconciliation evidence;
+ordinary context construction excludes it after the transition.
+
 ## Components
 
 All A0-A2 components use the existing `unit_components`
@@ -209,8 +240,7 @@ struct RuntimeOriginComponent {
     std::optional<RuntimeObjectRef> producer_node;
 
     std::string run_id;
-    std::string trace_id;
-    std::string span_id;
+    std::optional<RuntimeTraceRef> trace;
 
     std::optional<RuntimeSequence> event_sequence;
     std::optional<RuntimeOriginKey> sequence_origin;
@@ -233,6 +263,8 @@ runtime_instance_id, replica_id)` origin tuple; optional revisions are observed
 state and never participate in equality. `RuntimeSequence` and
 `RuntimeSequenceRange` use the same tuple. A cross-origin reference is explicit
 causal evidence, not a valid local origin field.
+When present, `RuntimeOriginComponent.trace.origin` must equal this normalized
+origin.
 
 ### CausalContextComponent
 
@@ -632,7 +664,7 @@ struct RuntimeRetrievalFilters {
     std::vector<RuntimeObjectRef> observer_filter;
     std::vector<RuntimeObjectRef> character_filter;
     std::vector<RuntimeObjectRef> producer_node_filter;
-    std::vector<std::string> trace_ids;
+    std::vector<RuntimeTraceRef> trace_filter;
 
     std::vector<RuntimeSequenceRange> sequence_ranges;
 
@@ -654,7 +686,7 @@ Physical index mapping:
 
 | Filter field | Canonical substrate | Logical key shape |
 |---|---|---|
-| `trace_id` | `metadata_filters` | `(scope_id, RuntimeTraceId, trace_id) -> UnitId` |
+| `trace_filter` | `metadata_filters` | `(scope_id, RuntimeTrace, encoded_origin, trace_id, span_id) -> UnitId` |
 | `runtime_instance` | `metadata_filters` | `(scope_id, RuntimeInstance, encoded_runtime_ref) -> UnitId` |
 | `producer_node` | `metadata_filters` | `(scope_id, RuntimeProducer, encoded_runtime_ref) -> UnitId` |
 | `observer` | `metadata_filters` | `(scope_id, RuntimeObserver, encoded_runtime_ref) -> UnitId` |
@@ -662,11 +694,12 @@ Physical index mapping:
 | `epistemic_layer` | `metadata_filters` | `(scope_id, EpistemicLayer, layer) -> UnitId` |
 | `procedure_status` | `metadata_filters` | `(scope_id, ProcedureStatus, status) -> UnitId` |
 | `replica` | `metadata_filters` | `(scope_id, RuntimeReplica, encoded_runtime_ref) -> UnitId` |
-| `event_sequence` | `runtime_sequence_index` profile delta | `(scope_id, encoded_runtime_identity, encoded_replica_identity, sequence, UnitId)` |
+| `event_sequence` | `runtime_sequence_index` profile delta | `(scope_id, ProducerEvent, encoded_origin, sequence, UnitId)` |
+| visibility receipt | `runtime_sequence_index` profile delta | `(scope_id, VisibilityReceipt, encoded_origin, sequence, GlobalKnowledgeUnitId)` |
 
 The metadata rows are generic secondary keys, not per-component DBIs.
-`event_sequence` is different: the A1 `runtime_sequence_index` profile delta
-owns its range key, because neither metadata filtering nor temporal wall-clock
+Sequence rows are different: the A1 `runtime_sequence_index` profile delta owns
+their range keys, because neither metadata filtering nor temporal wall-clock
 indexes can implement origin-scoped sequence ranges. A profile without that
 delta may not advertise `KnowledgeAtSequence` as indexed or latency-bounded; it
 must reject the filter or document a deliberately scan-backed experimental path.
@@ -842,7 +875,7 @@ A0-A2 use existing substrate:
 | epistemic status | `unit_components` |
 | focus context | `unit_components` |
 | task/decision/procedure payloads | `unit_components` initially |
-| sequence filtering | `runtime_sequence_index` profile delta |
+| sequence filtering and visibility receipts | `runtime_sequence_index` profile delta |
 | raw event payload | `ResourceBodyStore` |
 | causal relations | `graph_edges_by_src` / `graph_edges_by_dst` |
 | conflicts | units + graph relations |

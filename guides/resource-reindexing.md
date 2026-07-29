@@ -163,6 +163,13 @@ bytes alone must not silently merge two independently imported documents.
 absolute machine path; export preserves root-relative paths and aliases where
 retention policy permits.
 
+`DocumentId` is a globally unique storage identity, not a local per-resource
+counter. A `ResourceIndexer` caller must derive a fresh `DocumentId` for every
+distinct `ResourceRevisionRef` and must never reuse it for a different
+`ResourceId` or generation. This is a scoped prototype precondition rather than
+an ownership DBI: enforcing a cross-store claim with rollback belongs to the
+future transaction-aware importer.
+
 `SourceLocator` is mutable source-level history for navigation and rename
 tracking. `SourceLocatorObservation` is the immutable portable location seen by
 one `ResourceRevision`; every imported revision records at least one
@@ -389,8 +396,10 @@ serializes calls through one instance, rejects an older generation, treats an
 equal generation with equal hashes as idempotent, and rejects an equal generation
 with conflicting hashes. If an in-process document, vector, or manifest write
 throws, it restores the document/vector records touched by that attempt and leaves
-the prior manifest active. An interruption during reclamation can leave harmless
-stale derived records, never remove the published replacement. The independent
+the prior manifest active. After publication, superseded record references remain
+in the replacement manifest's durable `pending_reclaim_records` list until each
+idempotent erase succeeds. A later retry therefore drains them after restart
+instead of treating stale records as harmless. The independent
 prototype backends cannot make this a cross-store crash transaction or coordinate
 independently constructed indexers, so applications must not treat it as the
 generic M0 import API or as crash-atomic reindexing. In particular, a raw
