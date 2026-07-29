@@ -18,6 +18,15 @@
 
 ## 1. Цели и non-goals
 
+> **Ownership lock.** Цели этого раздела описывают потребности и downstream
+> storage patterns `agent-memory-cpp`, а не автоматический backlog для public
+> API `mdbx-containers`. `ReverseIndexTable`, `RangeIndexTable`,
+> `TypeDiscriminatedTable`, composite-key codecs и multi-table recipes остаются
+> application-local до появления самостоятельного generic design и независимого
+> consumer-а. В reference snapshot-е upstream уже реализован только
+> `TableSequence`; vector primitives из §12.11 требуют отдельных
+> benchmark-backed предложений.
+
 ### Цели
 
 Расширить `external/mdbx-containers/include/mdbx_containers/` набором классов и утилит, необходимых для следующих направлений `agent-memory-cpp`:
@@ -53,9 +62,15 @@
    Addressable Compression / Progressive Disclosure без переноса доменных
    enum-ов памяти агента в `mdbx-containers`.
 
-### Non-goals
+### Constraints
 
 - **Backward compatibility** — не ломать публичный API существующих классов.
+- **Transaction ownership** — один transaction принадлежит одному потоку и
+  последовательно передаётся операциям нескольких table wrappers. Он не
+  является shared object для одновременного использования несколькими потоками.
+
+### Non-goals
+
 - **ANN / HNSW / approximate vector search** — не входит в scope. Существующий
   `vector::VectorStore` остаётся exact baseline; SIMD kernels and alternative
   vector backends require a separate benchmark-backed upstream proposal.
@@ -71,7 +86,10 @@
   writer per collection. Multi-writer vector replication является отдельной
   M2+ distributed-workspace задачей, а не свойством текущего local `uint64_t`
   allocator-а; см. §12.10.
-- **Per-thread transaction model** сохраняется как primary design constraint (см. `common/Connection.hpp`); multi-table write обеспечивается одним `Transaction`-объектом, разделяемым между таблицами, а не координацией отдельных транзакций (см. `guides/memory-stacks-roadmap.md`, open issue 17.9).
+- **Cross-thread transaction sharing** не входит в scope. Multi-table write
+  использует один transaction одного потока, последовательно передаваемый
+  table wrappers, а не координацию отдельных транзакций (см.
+  `guides/memory-stacks-roadmap.md`, open issue 17.9).
 
 ### 1.5. Upstream sync subsystem (informational)
 
@@ -176,9 +194,17 @@ Stopped -> Starting -> Idle -> Pulling -> Applying -> Idle
 - `Backoff → Idle` — backoff timer истёк, повторная попытка; задержка растёт от `initial_backoff` до `max_backoff`.
 - Любое состояние → `Stopping` — user сигнал (`stop()` / shutdown).
 - `Stopping → Stopped` — текущая операция отменена через `CancellationToken` (см. §1.5.3).
+- `Pulling` / `Applying` → `Failed` — classified permanent transport failure,
+  если opt-in `SyncWorkerPermanentFailurePolicy::StopWorker`; default
+  `KeepRetrying` оставляет такую ошибку в обычном backoff loop.
 - `* → Failed` — unexpected exception вышел из основного worker loop.
 
-В `SyncWorkerOptions` нет `max_consecutive_failures`: background worker продолжает retry loop с bounded backoff. Foreground `run_once()` имеет другую семантику: обычный неуспешный round возвращает result с `ok=false` и переводит worker в `Failed`, потому что одноразовый вызов не имеет фонового retry loop.
+В `SyncWorkerOptions` нет `max_consecutive_failures`: default background worker
+продолжает retry loop с bounded backoff. `StopWorker` применяется только к
+available non-retryable transport hint, а не к обычным sync-level response
+errors. Foreground `run_once()` имеет другую семантику: обычный неуспешный
+round возвращает result с `ok=false` и переводит worker в `Failed`, потому что
+одноразовый вызов не имеет фонового retry loop.
 
 #### 1.5.7 Conflict reasons (по `SyncEngine.hpp`)
 
@@ -198,11 +224,16 @@ Stopped -> Starting -> Idle -> Pulling -> Applying -> Idle
 | `InconsistentBatchDbiFlags` | Внутри одного batch-а DBI flags противоречат друг другу (mixed read-only / read-write в одной txn) |
 | `ExistingDbiFlagsMismatch` | DBI на локальном узле имеет flags, несовместимые с incoming batch (например, `MDBX_DUPSORT` mismatch) |
 
-В background worker такие round failures приводят к `Backoff` и новой попытке. Переход в `Failed` не привязан к счётчику recoverable failures; он означает unexpected exception в основном worker loop или неуспешный foreground `run_once()`.
+В background worker такие round failures приводят к `Backoff` и новой попытке.
+Переход в `Failed` не привязан к счётчику recoverable failures; он означает
+unexpected exception, неуспешный foreground `run_once()` или opt-in
+`StopWorker` для classified permanent transport failure.
 
-#### 1.5.8 Merged PRs since local checkout
+#### 1.5.8 Historical, incomplete PR reference
 
-Upstream PR-ы, появившиеся после submodule-pointer-а `e9e9f2f` и затрагивающие sync subsystem (или напрямую предшествующие sync-work):
+Неполная историческая справка о ранних upstream PR-ах после
+submodule-pointer-а `e9e9f2f`. Это не полный changelog и не source of truth;
+при adoption проверяются pinned source snapshot и `DESIGN.md`.
 
 | GitHub PR # | Направление | Связь с sync v0.1 |
 |---|---|---|
@@ -213,7 +244,8 @@ Upstream PR-ы, появившиеся после submodule-pointer-а `e9e9f2f`
 
 Расхождения с roadmap-label «PR #N» в `guides/memory-stacks-roadmap.md` §14 / open issues не предполагаются; при синтаксической коллизии (например, внутренний roadmap-link «PR #95») приоритет — фактический upstream PR #95, и в этом ТЗ ссылка даётся явно: «GitHub PR #95» или «roadmap-label PR #95».
 
-Точный per-PR breakdown отложен до формальной adoption (§11.7); в этом разделе фиксируется диапазон для accounting-а.
+Точный per-PR breakdown отложен до формальной adoption (§11.7); этот раздел
+сохраняет только исторический контекст.
 
 #### 1.5.9 Transport status after PR #104–#105
 
@@ -266,14 +298,16 @@ subsystem не активирован и не открывается M0/M1/M2-п
 - `ValueTable<V>` — одиночный value по фиксированному имени.
 - `SequenceTable<V>` — appendable table with stable uint64 indices. It is not
   the required atomic allocator for `KnowledgeUnitId`, `JobId`, or queue
-  ordering; `TableSequence` in §12.5 defines that downstream contract.
+  ordering; upstream `TableSequence` in §4 supplies the table-bound allocator.
 - `AnyValueTable<K, Options>` — heterogeneous typed values с runtime type info.
 
 Инфраструктура (см. `external/mdbx-containers/common/`):
 
 - `Connection` — RAII handle на MDBX env, per-thread transaction model.
 - `Config` — env parameters (`max_dbs`, `max_dupsort_value_size`, path, flags).
-- `Transaction` — RAII обёртка над `MDBX_txn`, базовые `get`/`put`/`commit`/`abort`.
+- `Transaction` — RAII lifecycle wrapper над `MDBX_txn`; table wrappers
+  выполняют data `get`/`put`, а transaction управляет begin/commit/abort и
+  предоставляет validated raw handle.
 - `detail::utils.hpp` — `to_bytes`/`from_bytes` хелперы, `popcount64` fallback.
 
 ### Что расширяется и что добавляется
@@ -283,8 +317,9 @@ subsystem не активирован и не открывается M0/M1/M2-п
   tables from older roadmaps and existing adapters. Они не являются
   требованиями на создание таблиц и не добавляются к canonical manifest без
   явного `MemoryProfileSpec` delta.
-- Единственный текущий кандидат на отдельный upstream PR — `TableSequence`
-  поверх `mdbx_dbi_sequence` (секция 4). Reverse/range/relation indexes,
+- В reference snapshot-е уже есть upstream `TableSequence` поверх
+  `mdbx_dbi_sequence` (секция 4); его использование downstream требует
+  отдельного dependency pin/update. Reverse/range/relation indexes,
   tagged application records, composite-key codecs, pagination recipes and
   multi-table write orchestration сначала реализуются downstream поверх
   существующих таблиц и `Connection::transaction()`.
@@ -300,7 +335,7 @@ reconciliation, а не параллельная physical schema.
 1. **Header-only, C++11 baseline с C++17 guarded features.** Новые фичи используют те же guards, что и существующий код (см. `external/mdbx-containers/include/mdbx_containers/detail/utils.hpp:12-16`).
 2. **ABI compatibility.** Существующие сигнатуры публичных методов не меняются. Новые методы добавляются без переупорядочивания vtable или изменения layout.
 3. **Death-of-the-author** (`external/mdbx-containers/PHILOSOPHY.md`). Библиотека оценивается по техническим качествам; `include/` остаётся первичным source of truth.
-4. **Per-thread transaction model.** Каждый поток владеет не более чем одной активной транзакцией (см. `common/Connection.hpp`). Multi-table write обеспечивается одним `Transaction` объектом, разделяемым между таблицами, а не координацией отдельных транзакций. Отдельный generic `MultiTableWriter` не нужен, пока второй независимый consumer не докажет, что одного transaction lifecycle недостаточно.
+4. **Per-thread transaction model.** Каждый поток владеет не более чем одной активной транзакцией (см. `common/Connection.hpp`). Multi-table write использует один transaction, принадлежащий этому потоку и последовательно передаваемый нескольким table wrappers, а не координацию отдельных транзакций. Отдельный generic `MultiTableWriter` не нужен, пока второй независимый consumer не докажет, что одного transaction lifecycle недостаточно.
 5. **DRY через композицию.** Не дублировать логику existing классов. Новые классы строятся поверх existing table primitives when their durable semantics fit. Persisted polymorphic data must use stable application-owned tags and an explicit physical key layout; default `AnyValueTable` type tags are not acceptable for canonical storage.
 6. **Naming conventions.** PascalCase для классов и публичных методов, `m_` prefix для private полей, snake_case для free functions в `detail::` namespace.
 7. **Include guards** — `MDBX_CONTAINERS_HEADER_<PATH>_<FILE>_<EXT>_INCLUDED` (см. `external/mdbx-containers/AGENTS.md`).
@@ -308,7 +343,7 @@ reconciliation, а не параллельная physical schema.
 
 ## 3. Downstream storage patterns
 
-Если ниже явно не сказано `upstream candidate`, sketch является рецептом для
+Если ниже явно не сказано `upstream-bound`, sketch является рецептом для
 `agent-memory-cpp`, а не требованием добавить public class в
 `mdbx-containers`. В частности, `ReverseIndexTable`, `RangeIndexTable`,
 `TypeDiscriminatedTable`, `CompositeKey` и `MultiTableWriter` не должны быть
@@ -942,20 +977,25 @@ inline std::vector<std::uint8_t> from_hex_string(const std::string& hex);
 
 **`SequenceTable<V>`:** `reserve(begin, end) → vector<id>`, `append_if_absent(value) → optional<id>`.
 
-**`TableSequence` (upstream candidate):** transactional sequence bound to an
-existing table/DBI:
+**`TableSequence` (available in reference upstream snapshot):** transactional
+sequence bound to an existing table/DBI:
 
 ```cpp
 class TableSequence {
 public:
-    explicit TableSequence(BaseTable& table);
+    explicit TableSequence(const BaseTable& table);
 
-    std::uint64_t next(Transaction& txn);
-    std::uint64_t reserve(std::uint64_t count, Transaction& txn);
+    std::uint64_t current(const Transaction& txn) const;
+    std::uint64_t next(const Transaction& txn) const;
+    std::uint64_t reserve(std::uint64_t count, const Transaction& txn) const;
+
+    std::uint64_t current(MDBX_txn* txn) const;
+    std::uint64_t next(MDBX_txn* txn) const;
+    std::uint64_t reserve(std::uint64_t count, MDBX_txn* txn) const;
 };
 ```
 
-`TableSequence` is the proposed generic allocator for callers such as
+`TableSequence` is the available generic allocator for callers such as
 `knowledge_units` and `jobs_by_id`. It uses the existing MDBX DBI sequence facility
 (`mdbx_dbi_sequence`) bound to the owning table, creates no extra DBI, advances
 inside the caller's write transaction and rolls back on transaction abort.
@@ -1395,7 +1435,11 @@ budget автоматически; они считаются только при
 | legacy `resource_kinds` | `TypeDiscriminatedTable<DerivedRecordKind, ResourceId, payload>` через `AnyValueTable` (§5.3) | **NOT supported** | Legacy `AnyValueTable` alias |
 | `agent_memory_documents`, `agent_memory_chunks`, `agent_memory_document_chunks`, `agent_memory_resource_manifests` | `KeyValueTable<...>` (§5.4) | Supported | KV infrastructure |
 
-Эта таблица — **best-effort projection на момент написания TZ**. Статус для каждого DBI может измениться после `RangeIndexTable` upstream-уточнения (`KeyValueTable` vs `KeyMultiValueTable` основа) и после `KeyMultiValueTable` sync coverage, который формально запланирован на v0.2 (см. §11.7).
+Эта таблица — **best-effort projection на момент написания TZ**. Статус для
+каждого DBI может измениться после `RangeIndexTable` upstream-уточнения
+(`KeyValueTable` vs `KeyMultiValueTable` основа) и после появления
+реализованного upstream wire-format-а и round-trip coverage для
+`KeyMultiValueTable`; срок или версия не обещаны.
 
 Sync role map:
 
@@ -1434,9 +1478,21 @@ adapter registration before they can be treated as sync-covered.
 
 #### 5.6.3 Implication для agent-memory-cpp
 
-До тех пор, пока upstream не выпустит v0.2 с `KeyMultiValueTable` wire-format-ом, **lexical inverted candidate index и DUPSORT scope-aware secondary indexes не могут быть синхронизированы между узлами**. Это напрямую влияет на multi-host scenario в `guides/memory-stacks-roadmap.md` §13.2/13.3 (Distributed scope routing). `unit_components` не зависит от `AnyValueTable`: его downstream KV-backed adapter требует profile-level codec/layout tests, но не нового upstream `TypeDiscriminatedTable`.
+До тех пор, пока upstream не реализует и не покроет round-trip тестами
+`KeyMultiValueTable` wire format, **lexical inverted candidate index и DUPSORT
+scope-aware secondary indexes не могут быть синхронизированы между узлами**.
+Это напрямую влияет на multi-host scenario в
+`guides/memory-stacks-roadmap.md` §13.2/13.3 (Distributed scope routing).
+`unit_components` не зависит от `AnyValueTable`: его downstream KV-backed
+adapter требует profile-level codec/layout tests, но не нового upstream
+`TypeDiscriminatedTable`.
 
-**Промежуточное решение** для проекта: defer sync adoption для путей `KeyMultiValueTable` / `AnyValueTable` до v0.2. KV-derived пути (`knowledge_units`, `unit_projections`, `embedding_*`, `schema_info`, per-kind payloads) технически покрыты, но включать их в v0.1 single-host конфигурации смысла нет (single-writer per env остаётся правилом M0/M1/M2, см. §1 non-goals).
+**Промежуточное решение** для проекта: defer sync adoption для путей
+`KeyMultiValueTable` / `AnyValueTable` до появления такого upstream
+wire-format-а и coverage. KV-derived пути (`knowledge_units`,
+`unit_projections`, `embedding_*`, `schema_info`, per-kind payloads)
+технически покрыты, но включать их в v0.1 single-host конфигурации смысла нет
+(single-writer per env остаётся правилом M0/M1/M2, см. §1 non-goals).
 
 Конкретное решение о formal adoption (включая budget reallocation для
 snapshot-derived sync system DBIs) фиксируется в §11.7.
@@ -1444,7 +1500,8 @@ snapshot-derived sync system DBIs) фиксируется в §11.7.
 ## 6. Downstream implementation ordering
 
 Этот порядок описывает работу в `agent-memory-cpp`; это не backlog для
-`mdbx-containers`, кроме явно помеченного `TableSequence` upstream candidate.
+`mdbx-containers`. `TableSequence` уже доступен в reference upstream snapshot,
+но требует dependency pin/update перед downstream adoption.
 
 **P0 (блокер для knowledge units):**
 - application transaction recipe over `Connection::transaction()`
@@ -1681,7 +1738,10 @@ profile delta обязано обновить этот checkpoint. Verify, чт�
 
    **Decision deadline** привязан к двум внешним триггерам и одному readiness-check:
 
-   - (a) **Upstream v0.2** ship-ит `KeyMultiValueTable` wire format. Без этого блокируется lexical inverted index sync; см. §5.6.2.
+   - (a) Upstream реализует `KeyMultiValueTable` wire format с round-trip
+     coverage и документированными conflict semantics. Без этого блокируется
+     lexical inverted index sync; срок или release version не предполагаются;
+     см. §5.6.2.
    - (b) **agent-memory-cpp** достигает multi-host scope routing (см. `guides/memory-stacks-roadmap.md` §13.2 / §13.3, headings `Distributed scope routing`). До этого момента single-host остаётся правилом M0/M1/M2.
    - (c) **Transport readiness-check** для выбранного deployment-а: подтвердить, что framework-neutral HTTP/WebSocket seam из upstream достаточно закрывает нужный transport boundary, или добавить adapter-local bridge / concrete binding вне core library.
 
@@ -2020,8 +2080,9 @@ void RuntimeQueueStorage::move_job_index(const JobIndexKeys& old_keys,
 ```
 
 `RuntimeQueueStorage` является adapter-local `agent-memory-cpp` abstraction.
-`mdbx-containers` предоставляет только `KeyValueTable`, `RangeIndexTable`,
-`ReverseIndexTable` и atomic transaction mechanics из §12.5.
+`mdbx-containers` предоставляет существующие table wrappers, transaction
+lifecycle и `TableSequence`; queue indexes, relation/range adapters и их
+state-machine semantics остаются downstream.
 
 ### 12.8 Downstream addressable compression pattern (informational)
 
