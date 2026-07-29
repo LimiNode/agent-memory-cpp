@@ -387,7 +387,10 @@ the prior manifest active. An interruption during reclamation can leave harmless
 stale derived records, never remove the published replacement. The independent
 prototype backends cannot make this a cross-store crash transaction or coordinate
 independently constructed indexers, so applications must not treat it as the
-generic M0 import API or as crash-atomic reindexing.
+generic M0 import API or as crash-atomic reindexing. In particular, a raw
+`IVectorIndex` reader can observe a just-written record while a reindex call is
+still in flight; public retrieval must use the future M0 transactional importer
+and active-manifest validation rather than this prototype path.
 
 ### Legacy Public API Boundary
 

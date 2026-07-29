@@ -521,6 +521,12 @@ Causal and runtime relations use application-owned `EdgeKind` values and
 typed graph edge payloads. Important semantics must not live only in
 `primary_text = "A caused B"`.
 
+Every application graph edge also carries the common `RelationClass` declared
+by `memory-lifecycle-governance-roadmap.md`. The runtime relation vocabulary
+below is `Semantic` unless a caller explicitly records an evidence,
+supersession or technical-lineage relation; ordinary graph expansion therefore
+cannot cross those non-semantic classes by accident.
+
 Recommended relation vocabulary:
 
 ```text

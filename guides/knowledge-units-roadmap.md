@@ -1030,8 +1030,10 @@ perspective and causal contracts.
 
 `Custom` is a versioned experimental proposal schema, not an ungoverned
 production extension point. It must declare an owner, stable schema id and
-schema version in typed metadata, and canonical production profiles reject it
-unless that exact schema is explicitly enabled by their capability manifest.
+schema version, plus its introducing milestone/profile, in typed metadata. Its
+introducing milestone is normally A0 or an explicitly named experimental lane;
+canonical production profiles reject it unless that exact schema is explicitly
+enabled by their capability manifest.
 Promotion to a dedicated kind or component requires a migration and validation
 fixtures; unknown `Custom` payloads fail closed on import/export.
 
