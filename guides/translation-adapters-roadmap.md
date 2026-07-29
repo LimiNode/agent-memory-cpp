@@ -44,6 +44,11 @@ sidecar or an external service.
 owns their encoding and validation; lexical, retrieval and ingestion roadmaps
 consume them by reference and must not define competing variants.
 
+`BlobDigest` is the common dependency-free M1b byte-identity contract defined
+by `artifact-provenance-roadmap.md`. Translation consumes it for immutable
+package/model fingerprints; the M2 catalog and blob-store profile adds storage
+operations later but does not own a competing digest type.
+
 ```cpp
 struct CanonicalLanguageCode {
     std::string bcp47; // canonical BCP-47, e.g. "en", "ru", "uk", "zh-Hant"

@@ -183,6 +183,8 @@ struct ArtifactBinding {
 ```
 
 ```cpp
+// Common dependency-free M1b value contract. M2 artifact profiles add catalog
+// and body-store operations but must not redefine this byte identity.
 enum class BlobDigestAlgorithm : std::uint8_t { Sha256 = 1 };
 
 struct BlobDigest {
@@ -191,7 +193,8 @@ struct BlobDigest {
 };
 ```
 
-`BlobDigest` is a full, algorithm-tagged byte digest. It is intentionally not
+`BlobDigest` is a common dependency-free M1b value contract and a full,
+algorithm-tagged byte digest. It is intentionally not
 the existing 16-byte `ContentHash` used by `KnowledgeUnitKey`; the latter is a
 unit-content/dedup contract and must not be reused for artifact identity.
 `Artifact` stores only byte-intrinsic identity and size. MIME type, filename,
@@ -558,7 +561,7 @@ public:
 
 enum class BlobStatus : std::uint8_t {
     Ok, NotFound, AccessDenied, RangeUnsupported, DigestMismatch,
-    Corrupt, LimitExceeded, BackendUnavailable
+    Corrupt, LimitExceeded, BackendUnavailable, ArtifactUnavailable
 };
 
 template <typename T>
@@ -580,6 +583,14 @@ struct BlobIngestLease {
     std::string owner_id;
 };
 
+struct FinalizedBlobReceipt {
+    std::string receipt_id;
+    std::string lease_id;
+    ArtifactId artifact_id;
+    BlobDigest verified_digest;
+    std::uint64_t size_bytes = 0;
+};
+
 class IBlobStore {
 public:
     virtual ~IBlobStore() = default;
@@ -587,13 +598,28 @@ public:
     virtual BlobResult<BlobIngestLease> begin_ingest(const BlobWriteRequest& request) = 0;
     virtual BlobResult<ArtifactId> put_immutable(
         const BlobWriteRequest& request, const BlobIngestLease& lease) = 0;
-    virtual BlobResult<ArtifactId> finalize_ingest(const BlobIngestLease& lease) = 0;
+    virtual BlobResult<FinalizedBlobReceipt> finalize_ingest(
+        const BlobIngestLease& lease) = 0;
     virtual BlobStatusResult abort_ingest(const BlobIngestLease& lease) = 0;
     virtual BlobResult<BlobMetadata> probe(ArtifactId id) const = 0;
     virtual BlobResult<BlobReadHandle> open(ArtifactId id, const BlobReadRange& range) = 0;
     virtual BlobResult<MaterializedArtifact> materialize(
         ArtifactId id,
         const MaterializationRequest& request) = 0;
+};
+
+struct ArtifactPublicationRequest {
+    Artifact artifact;
+    std::vector<ArtifactBinding> bindings;
+    FinalizedBlobReceipt receipt;
+};
+
+class IArtifactPublicationCoordinator {
+public:
+    virtual ~IArtifactPublicationCoordinator() = default;
+
+    virtual CatalogResult<ArtifactId> publish_finalized_artifact(
+        const ArtifactPublicationRequest& request) = 0;
 };
 ```
 
@@ -606,11 +632,17 @@ different record for the same id returns `Conflict` or `IntegrityViolation`.
 
 `BlobIngestLease` is a durable, expiring liveness root created before bytes are
 written. It contains an opaque lease id, intended digest, expiry and ingest
-owner. `record_artifact` records verified metadata only after
-`IBlobStore::finalize_ingest` has established byte identity; catalog publication
-then consumes the lease atomically with bindings. A crashed or explicitly
-aborted ingest retains no permanent catalog root. `record_segment_set` appends
-an immutable set; `activate_materialization` changes only the current retrieval
+owner. `IBlobStore::finalize_ingest` returns one immutable
+`FinalizedBlobReceipt`; retrying finalization of the same completed lease must
+return that same receipt or a byte-identical equivalent. The application-level
+`IArtifactPublicationCoordinator` verifies that receipt against the requested
+artifact and bindings, then consumes the lease atomically with catalog
+publication. Retrying the same receipt is create-or-validate, never a second
+binding or a conflicting metadata overwrite. A crash after finalization but
+before publication leaves a recoverable finalized lease; a reaper may abort an
+expired unfinalized lease but may not erase a finalized body until publication
+or an explicit recovery/retention decision. `record_segment_set` appends an
+immutable set; `activate_materialization` changes only the current retrieval
 view. A boolean existence API is deliberately forbidden because callers must
 distinguish missing bytes from policy denial, corruption and backend failure.
 
@@ -654,6 +686,16 @@ All backends expose the same artifact identity. Compression, encryption and
 chunking are storage codecs declared in the artifact/body descriptor; they do
 not alter `ArtifactId`, which is based on the original immutable byte stream.
 
+`ArtifactUnavailable` means that the catalog still resolves a durable artifact
+identity and its evidence anchors, but an authorized retention policy has
+removed the materializable body. `probe`, `open`, and `materialize` return this
+status for that state. `NotFound` means no matching artifact is known to the
+selected blob backend, `AccessDenied` means the body may exist but is not
+readable to the caller, and `Corrupt` means a body was found but failed its
+integrity checks. Callers preserve the anchor metadata when they receive
+`ArtifactUnavailable` and render the citation as retained metadata with an
+unavailable original, rather than as a broken or fabricated citation.
+
 ## 6. Indexing And Context Assembly
 
 The library's own lexical and dense indexes are the primary retrieval path.
@@ -670,6 +712,14 @@ and dense stores. Before the M2 artifact profile, an M1a profile may
 optionally use an external vector service such as Qdrant only for a text-only
 derived projection corpus. This supports incremental migration and fair
 quality/latency benchmarks without creating a second knowledge base.
+
+**ADR: external vector adapter boundary.** The native MDBX profile owns
+canonical units, resource manifests, provenance, lifecycle and deletion. A
+Qdrant-compatible adapter owns only rebuildable derived vectors and optional
+candidate ranking. It receives no artifact bytes or authority-bearing metadata;
+every returned candidate is hydrated and validated by the native profile before
+use. Adapter loss, drift or rebuild must not change canonical retrieval
+correctness, citation resolution, backup closure or retention behavior.
 
 The text-only adapter receives only `SearchProjection::Original` text, local
 unit id, stable local ResourceId, ResourceRevision/generation, projection

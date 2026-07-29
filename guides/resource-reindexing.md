@@ -378,14 +378,27 @@ CLI UX, frontmatter parsing and PDF/OCR adapters remain outside the core.
 `src/agent_memory/ingestion/ResourceIndexer` is a pre-chunked dense/vector
 prototype. It requires `IEmbedder` and `IVectorIndex`. It now writes replacement
 document/vector records and publishes the replacement manifest before it performs
-best-effort reclamation of records that belong only to the old manifest. Thus a
-write failure before manifest publication leaves the previous manifest reachable;
-an interruption during reclamation can leave harmless stale derived records, never
-remove the published replacement. The independent prototype backends cannot make
-this a cross-store transaction, so applications must not treat it as the generic
-M0 import API or as failure-atomic reindexing.
+best-effort reclamation of records that belong only to the old manifest. It
+serializes calls through one instance, rejects an older generation, treats an
+equal generation with equal hashes as idempotent, and rejects an equal generation
+with conflicting hashes. If an in-process document, vector, or manifest write
+throws, it restores the document/vector records touched by that attempt and leaves
+the prior manifest active. An interruption during reclamation can leave harmless
+stale derived records, never remove the published replacement. The independent
+prototype backends cannot make this a cross-store crash transaction or coordinate
+independently constructed indexers, so applications must not treat it as the
+generic M0 import API or as crash-atomic reindexing.
 
 ### Legacy Public API Boundary
+
+`SourceRef` was intentionally renamed to `FactSourceRef` before the first
+stable public release. This is a source-breaking pre-1.0 migration, not a
+deprecated alias: keeping an alias would reserve the canonical `SourceRef`
+name for the incompatible legacy fact pointer. Consumers rename their include
+and type references, then migrate durable provenance to canonical
+`SourceRefSummary` / `SourceRef` through the importer. Serialized legacy fact
+records retain their versioned decoder only for explicit migration tooling; new
+public APIs must not write them as canonical citations.
 
 The current `Document`, `DocumentChunk`, `RetrievedChunk`, and structured-fact
 records predate the M0 provenance contract. `Document::TextRange` is only a

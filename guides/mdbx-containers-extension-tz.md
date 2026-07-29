@@ -31,6 +31,10 @@
    атомарное ведение явно названных outgoing/incoming orientations и
    bounded/paginated storage reads. `NodeKind`, `EdgeKind` и
    traversal/expansion policy остаются в `agent-memory-cpp`.
+   When an application distinguishes semantic, technical-lineage, evidence or
+   supersession relations, its stable relation-class discriminator belongs in
+   the caller-owned edge payload/tag. `mdbx-containers` neither interprets that
+   discriminator nor selects traversal classes.
 4. **QA Knowledge Base** — `QAPair` с полями `valid`, `last_verified`, `priority`, `freq`, `supersedes`. Inverted index по `question` tokens.
 5. **Temporal index** — range queries по timestamp (`valid_from`, `valid_until`, `recorded_at`) с inclusive/exclusive bounds.
 6. **Metadata filters** — поддержка `(metadata_key, metadata_value) -> ResourceId` reverse index для pre-filter.
@@ -755,9 +759,9 @@ Implementing this as unconditional `put` is forbidden for identity mappings.
    SearchProjection>`).
 11. Embedding metadata + vectors (`embedding_meta`, `embedding_vectors`) only
     when the selected profile marks dense writes as synchronous; heavy
-    recompute/HNSW/backfill jobs may be delegated to AsyncIndexer with a durable
-    revision-guarded `IndexUpdateJob(unit_id, unit_revision, projection_kind,
-    index_kind)`.
+recompute/HNSW/backfill jobs may be delegated to AsyncIndexer with a durable
+revision-guarded `IndexUpdateJob(unit_id, unit_revision, projection_kind,
+projection_generation, index_kind)`.
 12. Все scope-aware secondary/range indexes, относящиеся к данной write:
     `inverted_token_to_unit` (candidate index по каждой projection),
     `field_to_postings` (KV posting stats by full posting identity),
@@ -779,7 +783,7 @@ revision. Async eventual mode is allowed only for indexes explicitly marked
 `eventually_consistent=true` by their owning roadmap (for example heavy dense
 embedding recompute, HNSW rebuild, bulk lexical backfill). In async mode
 `create_or_get_unit` / `update_unit` commit a durable `IndexUpdateJob(unit_id, unit_revision,
-projection_kind, index_kind)`; workers must be idempotent, skip stale revisions,
+projection_kind, projection_generation, index_kind)`; workers must be idempotent, skip stale revisions and projection generations,
 replay after crash, and tolerate delete/update before older jobs run.
 
 `ContentHash` recipe is versioned and kind-specific. The recipe input MUST be

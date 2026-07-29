@@ -88,7 +88,8 @@ Default M0/M1 consistency mode:
 Async eventual mode is allowed only as explicit profile policy for indexes that
 declare `eventually_consistent=true` (for example heavy embedding recompute,
 HNSW graph rebuild, bulk lexical backfill). In that mode create/update must enqueue
-a durable `IndexUpdateJob(unit_id, unit_revision, projection_kind, index_kind)`
+a durable `IndexUpdateJob(unit_id, unit_revision, projection_kind,
+projection_generation, index_kind)`
 and readers must respect revision/generation guards documented by the owning
 roadmap.
 
@@ -122,8 +123,15 @@ struct IndexUpdateJob {
     KnowledgeUnitId unit_id;
     uint64_t unit_revision;
     ProjectionKind projection_kind;
+    uint64_t projection_generation = 0;
     IndexKind index_kind;
 };
+
+Before applying an `IndexUpdateJob`, a worker compares both `unit_revision` and
+`projection_generation` with the active projection. A mismatch is a successful
+stale no-op, never a write that revives an older lexical, vector or translated
+projection. `projection_generation = 0` is valid only for projections whose
+owner declares that no independent projection refresh exists.
 
 struct AsyncIndexerStats {
     uint64_t jobs_enqueued = 0;

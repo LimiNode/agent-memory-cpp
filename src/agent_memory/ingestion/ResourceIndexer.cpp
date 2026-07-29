@@ -3,6 +3,7 @@
 #include <agent_memory/embedding/IEmbedder.hpp>
 #include <agent_memory/index/IVectorIndex.hpp>
 
+#include <optional>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -100,6 +101,66 @@ namespace agent_memory {
             return false;
         }
 
+        bool revisions_have_matching_hashes(
+            const ResourceRevision& left,
+            const ResourceRevision& right
+        ) noexcept {
+            return matches_revision_hashes(
+                left,
+                right.content_hash,
+                right.pipeline_config_hash
+            );
+        }
+
+        std::optional<DocumentSnapshot> load_document_snapshot(
+            IDocumentStorage& storage,
+            const DocumentId& document_id
+        ) {
+            const auto document = storage.find_document(document_id);
+            if(!document) {
+                return std::nullopt;
+            }
+
+            return DocumentSnapshot{
+                *document,
+                storage.list_chunks(document_id)
+            };
+        }
+
+        void restore_document_snapshot(
+            IDocumentStorage& storage,
+            const DocumentId& document_id,
+            const std::optional<DocumentSnapshot>& previous
+        ) noexcept {
+            try {
+                if(previous) {
+                    storage.upsert_document(*previous);
+                } else {
+                    const bool removed = storage.erase_document(document_id);
+                    (void)removed;
+                }
+            } catch(...) {
+            }
+        }
+
+        void restore_vector_records(
+            IVectorIndex& index,
+            const std::vector<std::optional<VectorRecord>>& previous,
+            const std::vector<VectorRecord>& attempted
+        ) noexcept {
+            for(std::size_t index_position = 0; index_position < attempted.size(); ++index_position) {
+                try {
+                    if(previous[index_position]) {
+                        index.upsert(*previous[index_position]);
+                    } else {
+                        const bool removed = index.erase(attempted[index_position].chunk_id);
+                        (void)removed;
+                    }
+                } catch(...) {
+                }
+            }
+        }
+
     } // namespace
 
     IResourceIndexer::~IResourceIndexer() = default;
@@ -116,6 +177,7 @@ namespace agent_memory {
         , m_vector_index(&vector_index) {}
 
     void ResourceIndexer::reindex_resource(ResourceIndexSnapshot snapshot) {
+        std::lock_guard<std::mutex> lock(m_mutex);
         validate_resource_index_snapshot(snapshot);
 
         auto manifest = make_manifest(snapshot);
@@ -128,25 +190,63 @@ namespace agent_memory {
         const auto old_manifest = m_manifest_storage->find_manifest(
             snapshot.revision.resource_id
         );
-        m_document_storage->upsert_document(std::move(snapshot.document_snapshot));
-        for(auto& record : vector_records) {
-            m_vector_index->upsert(std::move(record));
+        if(old_manifest) {
+            if(snapshot.revision.generation < old_manifest->revision.generation) {
+                throw std::logic_error("ResourceIndexSnapshot generation is stale");
+            }
+
+            if(snapshot.revision.generation == old_manifest->revision.generation) {
+                if(revisions_have_matching_hashes(snapshot.revision, old_manifest->revision)) {
+                    return;
+                }
+                throw std::logic_error("ResourceIndexSnapshot generation conflicts with active manifest");
+            }
         }
-        m_manifest_storage->upsert_manifest(manifest);
+
+        const auto previous_document = load_document_snapshot(
+            *m_document_storage,
+            snapshot.document_snapshot.document.id
+        );
+
+        std::vector<std::optional<VectorRecord>> previous_vectors;
+        previous_vectors.reserve(vector_records.size());
+        for(const auto& record : vector_records) {
+            previous_vectors.push_back(m_vector_index->find(record.chunk_id));
+        }
+
+        const auto document_id = snapshot.document_snapshot.document.id;
+        try {
+            m_document_storage->upsert_document(std::move(snapshot.document_snapshot));
+            for(const auto& record : vector_records) {
+                m_vector_index->upsert(record);
+            }
+            m_manifest_storage->upsert_manifest(manifest);
+        } catch(...) {
+            restore_vector_records(*m_vector_index, previous_vectors, vector_records);
+            restore_document_snapshot(*m_document_storage, document_id, previous_document);
+            throw;
+        }
 
         if(old_manifest) {
-            reclaim_superseded_derived_records(*old_manifest, manifest);
+            try {
+                reclaim_superseded_derived_records(*old_manifest, manifest);
+            } catch(...) {
+            }
         }
     }
 
     bool ResourceIndexer::erase_resource(const ResourceId& resource_id) {
+        std::lock_guard<std::mutex> lock(m_mutex);
         const auto manifest = m_manifest_storage->find_manifest(resource_id);
         if(!manifest) {
             return false;
         }
 
-        erase_derived_records(*manifest);
         m_manifest_storage->erase_manifest(resource_id);
+        try {
+            erase_derived_records(*manifest);
+        } catch(...) {
+        }
         return true;
     }
 

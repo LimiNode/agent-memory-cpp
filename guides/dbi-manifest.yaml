@@ -241,8 +241,8 @@ profile_deltas:
     default: false
     names: [global_unit_id_to_local_id]
     capability: DurableGlobalIdentity
-    milestone: M1
-    note: Common GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId) profile; identity is unique across one storage environment and is not runtime-lane-owned. A0 consumes this capability.
+    milestone: M1b
+    note: Common GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId) profile; identity is unique across one storage environment and is not runtime-lane-owned. M1b structured knowledge/import-export profiles consume it; A0 may reuse it.
   - name: runtime_sequence_index
     dbis: 1
     migration_peak: 1

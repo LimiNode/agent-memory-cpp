@@ -481,7 +481,7 @@ struct RetrievalHit {
     double score = 0.0;
     uint32_t rank = 0;
     std::string source;                   // retriever name
-    std::vector<SourceRef> source_refs;
+    std::vector<CitationHandle> citations;
     std::string snippet;
     std::optional<ProjectionKind> projection_kind;
     std::optional<DetailLevel> detail_level;
@@ -635,7 +635,7 @@ public:
 5. Graph expansion (entities/relations only, no raw text).
 6. Evidence blocks (quotes + ranges) inline с parent block, count against parent's budget.
 
-Citations обязательны: каждый `ContextBlock` имеет `source_refs`. Без citations — block rejected, logged as warning. Final context logging через `IRetrievalTrace` (см. секцию 9.1) — обязательно, не side channel.
+Citations обязательны: каждый `ContextBlock` имеет `citations`. Без citations — block rejected, logged as warning. Final context logging через `IRetrievalTrace` (см. секцию 9.1) — обязательно, не side channel.
 
 ### 8.3. ContextBlock и Context
 
@@ -643,7 +643,7 @@ Citations обязательны: каждый `ContextBlock` имеет `source
 struct ContextBlock {
     BlockType block_type;                 // QA | Chunk | Summary | Graph | Evidence | Task | Decision | Procedure | Episode | Perspective | Conflict | CausalPath
     std::string content;
-    std::vector<SourceRefSummary> sources; // inline summaries; полный SourceRef с excerpt_text — через source_refs DBI (M1)
+    std::vector<CitationHandle> citations; // M0 summary; M1 full ref/anchor handles
     double score;
     size_t token_count;
     std::vector<KnowledgeUnitId> unit_ids;
@@ -661,11 +661,11 @@ struct Context {
 ```
 
 `materialization_instructions` is empty for text-only contexts. Every entry
-must name an `EvidenceAnchorId` reachable from a SourceRef in `blocks`; it is a
+must name an `EvidenceAnchorId` reachable from a `CitationHandle` in `blocks`; it is a
 typed, authorization-gated request handle and never an implicit binary payload.
 
-For artifact-aware sources, `SourceRefSummary` remains the text/citation path.
-The associated full reference may carry an `EvidenceAnchor` with a typed page,
+For artifact-aware sources, `CitationHandle.summary` remains the compact
+text/citation path. The associated full reference may carry an `EvidenceAnchor` with a typed page,
 region, time or other media locator as specified in
 [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md). Context does
 not implicitly include binary bytes: a host may request an explicit
@@ -673,6 +673,12 @@ materialization of a cited page, frame, crop or clip when its downstream model
 can consume it.
 
 Determinism: given the same plan/hits/budget → same `Context`. Это делает retrieval traces reproducible.
+
+Retrievers hydrate and validate `CitationHandle` values against the canonical
+unit/source-revision state before a hit becomes visible. `ContextBuilder` may
+drop a handle whose full reference or anchor no longer resolves, but it must
+then label the block `provenance-incomplete`; it must not retain a detached
+`MaterializationInstruction` or silently substitute a same-path newer revision.
 
 Perspective-safe context assembly must not collapse local interpretations into
 omniscient facts. Blocks should use labels such as `User stated`,

@@ -121,8 +121,12 @@ never part of equality, ordering, a persisted key, a filter encoding, or an
 origin comparison. `replica_id` is required when `opaque_id` is only
 replica-local. If an adapter omits `replica_id`, it must guarantee that
 `opaque_id` is globally unique within the runtime instance for that kind.
-For `RuntimeObjectKind::Replica`, `opaque_id` is the replica identifier;
-`replica_id` may be absent or equal to `opaque_id`.
+For `RuntimeObjectKind::Replica`, `opaque_id` is the replica identifier and
+`replica_id` is always absent. A containing runtime object carries that replica
+identifier in its `replica_id` field. This gives every replica exactly one
+stable tuple and byte encoding; adapters normalize or reject the redundant
+legacy form where `replica_id == opaque_id` before equality, persistence or
+import/export validation.
 
 Adapters must reject an empty `adapter_id`, `runtime_instance_id` or
 `opaque_id`. A `RuntimeSequence` or `RuntimeSequenceRange` validates that its
@@ -362,7 +366,7 @@ struct TaskPayload {
     std::optional<RuntimeObjectRef> requested_by;
     std::optional<RuntimeObjectRef> parent_task;
 
-    std::vector<RuntimeObjectRef> required_capabilities;
+    std::vector<CapabilityRef> required_capabilities;
     std::vector<KnowledgeUnitRef> constraints;
 
     std::optional<std::int64_t> deadline_ms;
@@ -381,14 +385,39 @@ struct TaskStateComponent {
 events plus `TaskStateComponent`; they do not mutate the definition just to
 record runtime progress.
 
-The application layer owns this durable task-state machine: it validates the
-declared transition graph, compares `state_revision` with CAS semantics and
-persists transition provenance. Every accepted transition records its
-`RuntimeOriginComponent`, external receipt/revision and actor reference. The
-memory library does not schedule work, grant authority, invoke a capability or
-decide whether an external runtime should perform the transition; those remain
-runtime/operator responsibilities. `mdbx-containers` supplies only the generic
-transactional storage primitives used by this contract.
+```cpp
+enum class StateMachineSubjectKind : std::uint8_t { Task, Procedure };
+
+struct DurableStateTransition {
+    KnowledgeUnitRef transition;
+    KnowledgeUnitRef subject;
+    StateMachineSubjectKind subject_kind = StateMachineSubjectKind::Task;
+    std::uint64_t expected_state_revision = 0;
+    std::uint64_t resulting_state_revision = 0;
+    std::uint16_t from_status = 0;
+    std::uint16_t to_status = 0;
+    RuntimeObjectRef actor;
+    RuntimeOriginComponent origin;
+    std::optional<std::string> external_receipt;
+    std::optional<std::string> external_state_revision;
+    std::vector<KnowledgeUnitRef> evidence;
+};
+```
+
+The application/profile layer owns this durable task/procedure state-machine
+contract: it validates the declared transition graph, compares
+`expected_state_revision` with CAS semantics, and persists transition
+provenance. It atomically appends `DurableStateTransition`, advances the
+subject state component to `resulting_state_revision`, and updates
+`last_transition`; a CAS conflict appends nothing. The transition's `subject`
+must resolve to the same occurrence as the mutated task/procedure record, and
+`resulting_state_revision == expected_state_revision + 1`. Every accepted
+transition records durable runtime origin, actor, and any available external
+receipt/revision. The memory library does not schedule work, grant authority,
+invoke a capability or decide whether an external runtime should perform the
+transition; those remain runtime/operator responsibilities.
+`mdbx-containers` supplies only the generic transactional storage primitives
+used by this application-owned contract.
 
 ```cpp
 struct DecisionAlternative {
@@ -451,7 +480,7 @@ struct ProcedurePayload {
 
     std::uint64_t version = 1;
 
-    std::vector<RuntimeObjectRef> required_capabilities;
+    std::vector<CapabilityRef> required_capabilities;
     std::vector<KnowledgeUnitRef> preconditions;
 
     std::string workflow_format;
@@ -476,9 +505,10 @@ struct ProcedureStatsComponent {
 };
 ```
 
-`ProcedureStateComponent` follows the same rule: agent-memory-cpp owns durable
-state, CAS and transition-history validation for the stored procedure record,
-while the runtime owns execution, worker scheduling, capability invocation and
+`ProcedureStateComponent` uses the same `DurableStateTransition` protocol with
+`subject_kind = Procedure`. The application/profile layer owns durable state,
+CAS and transition-history validation for the stored procedure record, while
+the runtime owns execution, worker scheduling, capability invocation and
 authority policy. A state transition without durable runtime provenance is a
 validation error, not an invitation for the store to infer or execute work.
 

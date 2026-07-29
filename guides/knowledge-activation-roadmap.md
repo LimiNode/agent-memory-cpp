@@ -289,14 +289,15 @@ struct ProcedureActivationCandidate {
     double context_relevance = 0.0;
 
     std::vector<KnowledgeUnitRef> supporting_units;
-    std::vector<RuntimeObjectRef> missing_capabilities;
+    std::vector<CapabilityRef> missing_capabilities;
 
     bool requires_validation = false;
 };
 ```
 
-The runtime integration roadmap maps `missing_capabilities` to its neutral
-runtime-object adapter contract and never turns a candidate into execution.
+An optional runtime adapter may enrich a missing `CapabilityRef` with the
+runtime object that could provide it, but that adapter-only detail is not part
+of this canonical M1b candidate and never turns it into execution.
 
 `CapabilityRegistry` stores capability id, version, declarative input/output
 schema, safety metadata and procedure requirements. Runtime adapters own

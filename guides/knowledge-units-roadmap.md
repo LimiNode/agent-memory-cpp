@@ -250,7 +250,9 @@ struct SourceRefSummary {
     std::optional<ResourceRevisionRef> resource_revision;  // absent only for legacy preview-only refs
     std::string uri;                 // обязательно (для citations)
     TextRange excerpt;               // обязательно для quote-based refs
-    std::array<uint8_t, 16> quote_hash;  // обязательно: SHA1(prefix(excerpt))[:16]
+    std::array<uint8_t, 16> quote_hash;  // first 16 raw bytes of SHA-256(preview UTF-8)
+    // Exactly the first 16 raw bytes of SHA-256(preview UTF-8).
+    // The field name is retained for M0 wire compatibility.
     double confidence;               // [0.0, 1.0]
     SourceTextOrigin text_origin = SourceTextOrigin::OriginalText;
     std::optional<KnowledgeUnitRef> anchor_unit;    // durable parent-unit binding
@@ -262,7 +264,14 @@ struct SourceRef {
     SourceRefId id;
     SourceRefSummary summary;        // обязательно: ссылка на inline summary
     std::string excerpt_text;        // полный текст цитаты (verbatim UTF-8)
+    std::array<uint8_t, 32> excerpt_hash; // SHA-256(excerpt_text UTF-8)
     std::optional<DerivedTextProvenance> derived_text_provenance;
+    std::vector<EvidenceAnchorId> evidence_anchor_ids;
+};
+
+struct CitationHandle {
+    SourceRefSummary summary;
+    std::optional<SourceRefId> full_source_ref_id;
     std::vector<EvidenceAnchorId> evidence_anchor_ids;
 };
 ```
@@ -278,9 +287,16 @@ struct SourceRef {
   a full reference when one is materialized. It is rendered as derived text and never as a direct
   original PDF, image, audio or video quotation.
 
+**Canonical quote-hash rule:** `SourceRefSummary::quote_hash` is exactly the
+first 16 raw bytes of SHA-256 over the UTF-8 `preview`. It is neither hex text
+nor a hash of an arbitrary excerpt prefix. `SourceRef::excerpt_hash` is the
+full 32 raw bytes of SHA-256 over the exact UTF-8 `excerpt_text`. The two fields
+serve different purposes and are never substituted for one another. This rule
+supersedes older SHA-1/hex wording in legacy migration notes.
+
 - `resource_id` — обязателен для reverse lookup по ресурсу.
 - `uri` — обязателен для citation fidelity (`preview + uri` = stable short citation; `excerpt_text + uri` = stable full citation).
-- `quote_hash` — обязателен: 16-byte hex of SHA1(`prefix(preview)`) для summary, либо SHA1(`prefix(excerpt_text)`) для полной SourceRef. Обеспечивает детерминированную идентификацию цитат без хранения полного текста в каждом индексе.
+- `quote_hash` is required in every summary and follows the canonical raw-byte preview-hash rule above. `excerpt_hash` is required in every materialized full reference and covers the exact full excerpt.
 - `preview` (≤256 байт) — обязателен в summary; используется в UI, short citations, projection и не требует обращения к `source_refs` DBI.
 - Imported raw `Note`/`Chunk` units must have at least one inline summary. A
   `ContextBuilder` must reject such a raw block when its required summary is
@@ -291,6 +307,11 @@ struct SourceRef {
   artifact-aware full reference, `SourceRefId` is durable and every listed
   `EvidenceAnchorId` resolves through the artifact catalog without rewriting its
   source/revision/locator coordinates.
+- `CitationHandle` is the retrieval/context transport form. M0 carries the
+  inline summary only. M1 carries `full_source_ref_id` when the detail exists.
+  Artifact-aware profiles copy only the durable anchor ids already bound by
+  that full reference. A handle must not synthesize an anchor or bind a summary
+  to a different source revision.
 
 ### 3.2. Storage
 
@@ -1006,6 +1027,13 @@ perspective and causal contracts.
 ```
 
 Используется для экспериментальных типов до добавления dedicated payload. Custom unit обязан нести `KnowledgeUnitId`, `KnowledgeUnitKind`, `SourceRef[]`, lifecycle fields и проходит стандартные validation rules. Custom payload хранится в `metadata_typed["payload"]` через typed value (variant).
+
+`Custom` is a versioned experimental proposal schema, not an ungoverned
+production extension point. It must declare an owner, stable schema id and
+schema version in typed metadata, and canonical production profiles reject it
+unless that exact schema is explicitly enabled by their capability manifest.
+Promotion to a dedicated kind or component requires a migration and validation
+fixtures; unknown `Custom` payloads fail closed on import/export.
 
 The affective-memory roadmap uses this `Custom` escape hatch for E0
 experiments with appraisal, affect snapshots, goal impacts, action outcomes,

@@ -91,6 +91,7 @@ Required capabilities:
 | Full source refs | `ISourceRefStore` | `source_refs` | detail citation lookup | source reverse lookup | `knowledge-base-roadmap.md` |
 | Single-axis temporal validity | `TemporalComponent` | `temporal_unit_index` | valid-at lookup, stale fact exclusion | AM-13 bi-temporal | `memory-lifecycle-governance-roadmap.md` |
 | Knowledge activation metadata | `ActivationMetadataComponent` or equivalent payload fields | existing `metadata_filters`, `graph_edges_by_*`, `unit_projections` | domain/intent/playbook activation fixtures | learned planner | `knowledge-activation-roadmap.md` |
+| Durable global identity (optional) | `GlobalKnowledgeUnitId`, `KnowledgeUnitRef`, identity-scheme declaration | `global_unit_id_to_local_id` profile delta | import/export binding and incompatible-scheme rejection | cross-workspace federation | `knowledge-units-roadmap.md`, `dbi-manifest.yaml` |
 | Persisted translation projection (optional) | adapter-owned `TranslationPolicy`, `TranslatedCanonical` projection and provenance | existing `unit_projections` | original citation, adapter fingerprint drift, deterministic fake translator | query routing/pivoting | `translation-adapters-roadmap.md` |
 
 M1b may add domain maps and playbooks as `KnowledgeUnitKind` values, but they

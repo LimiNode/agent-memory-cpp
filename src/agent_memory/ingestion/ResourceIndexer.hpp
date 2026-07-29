@@ -9,6 +9,8 @@
 #include <agent_memory/storage/IDocumentStorage.hpp>
 #include <agent_memory/storage/IResourceManifestStorage.hpp>
 
+#include <mutex>
+
 namespace agent_memory {
 
     class IEmbedder;
@@ -23,10 +25,11 @@ namespace agent_memory {
     /// \brief Pre-chunked dense/vector prototype for targeted resource indexing.
     ///
     /// This is not the lexical-first public M0 resource importer contract.
-    /// New records are published through their manifest before best-effort
-    /// reclamation of superseded derived records. Dependency interfaces do not
-    /// provide a cross-store transaction, so callers still need the M0 importer
-    /// for failure-atomic resource publication.
+    /// The prototype serializes calls made through one instance, rejects stale
+    /// generations, and compensates records written by a throwing in-process
+    /// attempt. Dependency interfaces do not provide a cross-store transaction,
+    /// so callers still need the M0 importer for crash-atomic publication across
+    /// processes or independently constructed indexers.
     class IResourceIndexer {
     public:
         virtual ~IResourceIndexer();
@@ -66,6 +69,7 @@ namespace agent_memory {
         IResourceManifestStorage* m_manifest_storage = nullptr;
         IEmbedder* m_embedder = nullptr;
         IVectorIndex* m_vector_index = nullptr;
+        std::mutex m_mutex;
     };
 
 } // namespace agent_memory

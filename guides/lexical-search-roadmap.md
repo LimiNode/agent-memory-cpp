@@ -160,11 +160,16 @@ enum class FieldId : std::uint16_t {
 
 struct ProjectionQueryVariant final {
     ProjectionKind projection_kind = ProjectionKind::Original;
-    CanonicalLanguageCode query_language;
+    DetectedLanguage query_language = UnknownLanguage{};
     std::string text;
     std::optional<ProjectionDerivationId> target_projection_derivation;
     std::optional<QueryTranslationTrace> query_translation;
 };
+
+`query_language` records detection, not an asserted target language. A caller
+without a detector uses `UnknownLanguage`; a mixed natural-language/code query
+uses `MixedLanguage`. Neither variant is serialized as a fake BCP-47 value or
+used as a target for persisted translation without an explicit routing policy.
 
 struct LexicalPosting final {
     TokenId token_id = 0;
@@ -453,7 +458,7 @@ inverted_token_to_unit:          // DUPSORT secondary index
 
 field_to_postings:                 // KV posting stats by full posting identity
     key   = (scope_id, projection_kind, field_id, token_id, unit_id)
-    value = PostingStats { tf, positions_count, generation, resource_id }
+    value = PostingStats { tf, positions_count, resource_generation, projection_generation, resource_id }
 
 lexical_token_by_text:
     key   = (scope_id, normalized token)
@@ -672,7 +677,7 @@ inverted_token_to_unit:
 
 field_to_postings:                 // KV posting stats by full posting identity
     key   = (scope_id, projection_kind, field_id, token_id, unit_id)
-    value = PostingStats { tf, positions_count, generation, resource_id }
+    value = PostingStats { tf, positions_count, resource_generation, projection_generation, resource_id }
 ```
 
 A `unit_id` may appear multiple times for the same token — once per
@@ -802,7 +807,7 @@ embedded in the projection value. If the source revision, canonical language,
 translation policy fingerprint or package/model fingerprint changes, only the
 translated projection gets a new `projection_generation`; `Original` postings
 remain valid. Translated projection postings store that generation in
-`PostingStats.generation`, and stale-check compares it with the active
+`PostingStats.projection_generation`, and stale-check compares it with the active
 projection generation, not only with `KnowledgeUnitEnvelope.revision`. See
 [`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
 

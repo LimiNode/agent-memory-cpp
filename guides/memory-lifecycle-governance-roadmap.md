@@ -208,6 +208,13 @@ similarity. M2+ should introduce an explicit relation vocabulary for causal and
 consistency links:
 
 ```cpp
+enum class RelationClass : uint8_t {
+    Semantic,
+    TechnicalLineage,
+    Evidence,
+    Supersession
+};
+
 enum class MemoryRelationKind : uint8_t {
     CausedBy,
     EnabledBy,
@@ -220,7 +227,13 @@ enum class MemoryRelationKind : uint8_t {
 ```
 
 These are application-level relation semantics stored on top of generic
-relation indexes. Retrieval may use bounded expansion over these links when
+relation indexes. Every relation record carries one `RelationClass`; physical
+`graph_edges_by_src` / `graph_edges_by_dst` storage may be shared, but a normal
+semantic graph expansion includes only `Semantic` relations. Technical lineage,
+evidence and supersession traversal require an explicit retrieval-plan channel
+and separate fan-out budget. `ArtifactCatalog::artifact_relations` remains
+technical lineage outside the semantic graph unless an application records an
+explicit cross-reference. Retrieval may use bounded semantic expansion when
 `MemoryReadPlan::require_causal_evidence` or a similar query intent is set.
 
 ## 6. AM-16: Progressive Retrieval
