@@ -557,8 +557,18 @@ enum class ComponentKind : std::uint16_t {
     TaskState = 15,
     ProcedureState = 16,
     ProcedureStats = 17,
+    GlobalIdentity = 18,
+    DecisionSelection = 19,
 };
 ```
+
+`GlobalIdentity` is a persisted registry tag, not a prose-only alias. Its
+numeric value is `18` and it participates in the profile signature. The
+global-id lookup is owned by the `global_unit_id_to_local_id` profile delta
+described in `agent-runtime-integration-roadmap.md`; it has physical key
+`GlobalKnowledgeUnitId` and value `(ScopeId, KnowledgeUnitId)`. This supersedes
+the older scope-local `metadata_filters` wording in this section: a global
+identity must be unique across the entire storage environment.
 
 Registry governance:
 
@@ -573,7 +583,7 @@ Registry governance:
 
 Use cases:
 
-- `unit_components` (Layer B, см. ADR-001 в `guides/memory-stacks-roadmap.md`): `ComponentKind` tag ∈ {`UsageStats`, `Speaker`, `Temporal`, `EmbeddingMeta`, `CompactionMeta`, `ActivationMetadata`, `GlobalIdentity`, runtime-integration tags}, logical key — `UnitId`, physical key — `(ComponentKind, UnitId)`, value — typed component bytes for operational, activation, durable global-identity, cognitive-trace and task/decision/procedure payload components. `GlobalIdentity` is unique per scope through the `metadata_filters` mapping documented in `agent-runtime-integration-roadmap.md`; it is not a second primary key. Operational components are lazy-read by retrieval layer. Loading all components for one unit is implemented as bounded point reads over known component kinds unless a future profile adds a second orientation.
+- `unit_components` (Layer B, см. ADR-001 в `guides/memory-stacks-roadmap.md`): `ComponentKind` tag ∈ {`UsageStats`, `Speaker`, `Temporal`, `EmbeddingMeta`, `CompactionMeta`, `ActivationMetadata`, `GlobalIdentity`, runtime-integration tags}, logical key — `UnitId`, physical key — `(ComponentKind, UnitId)`, value — typed component bytes for operational, activation, durable global-identity, cognitive-trace and task/decision/procedure payload components. `GlobalIdentity` is globally unique through the profile-owned `global_unit_id_to_local_id` mapping documented in `agent-runtime-integration-roadmap.md`; it is not a second primary key or a scope-local metadata filter. Operational components are lazy-read by retrieval layer. Loading all components for one unit is implemented as bounded point reads over known component kinds unless a future profile adds a second orientation.
 - per-kind payload-компоненты (`QAPayload`, `FactPayload`, `ConversationEpisodePayload`, `CompiledArticlePayload`, `ChunkPayload`) — при необходимости выносятся в отдельные DBI; canonical names listed in §5.5.
 
 ### 3.5 `CompositeKey<Parts...>` и хелперы
@@ -1047,35 +1057,35 @@ migration peak. The following derived review projection is checked by
 ```text
 dbi-review-projection-v1
 # name|owner|table_type|opens|sync|physical_key|migration_peak
-knowledge_units|core|KeyValueTable|always|kv_supported|-|1
-content_key_to_unit_id|core|KeyValueTable|always|kv_supported|-|1
-knowledge_units_by_kind|core|ReverseIndexTable|always|dupsort_not_supported|-|1
+knowledge_units|core|KeyValueTable|always|kv_supported|UnitId|1
+content_key_to_unit_id|core|KeyValueTable|always|kv_supported|KnowledgeUnitKey|1
+knowledge_units_by_kind|core|ReverseIndexTable|always|dupsort_not_supported|ScopeId,KnowledgeUnitKind|1
 unit_components|core|TypeDiscriminatedTable|component_profile|kv_supported_if_type_discriminated_is_kv_backed|ComponentKind,UnitId|1
-qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|-|1
-fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|-|1
-conversation_episode_payloads|chat|KeyValueTable|ConversationMemory|kv_supported|-|1
-compiled_article_payloads|compiled_wiki|KeyValueTable|CompiledArticles|kv_supported|-|1
-chunk_payloads|ingestion|KeyValueTable|always|kv_supported|-|1
-source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|-|1
-unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|-|1
-embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|-|1
-embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|-|1
-inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|-|1
-field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
-lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
-lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
-lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
-lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
-lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
-metadata_filters|metadata|ReverseIndexTable|lightweight_prefilter|dupsort_not_supported|-|1
-graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|-|1
-graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|-|1
-temporal_unit_index|temporal|RangeIndexTable|TemporalIndex|kv_supported_if_range_is_kv_backed|-|1
-speaker_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|-|1
-session_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|-|1
-usage_by_last_access|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|-|1
-usage_by_cooldown|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|-|1
-schema_info|schema|KeyValueTable|always|kv_supported|-|1
+qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|UnitId|1
+fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|UnitId|1
+conversation_episode_payloads|chat|KeyValueTable|ConversationMemory|kv_supported|UnitId|1
+compiled_article_payloads|compiled_wiki|KeyValueTable|CompiledArticles|kv_supported|UnitId|1
+chunk_payloads|ingestion|KeyValueTable|always|kv_supported|UnitId|1
+source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|UnitId|1
+unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|ScopeId,UnitId,ProjectionKind,Revision|1
+embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ProjectionKind,UnitId|1
+embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ProjectionKind,UnitId|1
+inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|ScopeId,TokenId,ProjectionKind,FieldId|1
+field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,ProjectionKind,FieldId,TokenId,UnitId|1
+lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,NormalizedTokenText|1
+lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,TokenId|1
+lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,UnitId,ProjectionKind|1
+lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,ProjectionKind,TokenId|1
+lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,ProjectionKind|1
+metadata_filters|metadata|ReverseIndexTable|lightweight_prefilter|dupsort_not_supported|ScopeId,MetadataKey,MetadataValue|1
+graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|ScopeId,FromUnitId,EdgeKind|1
+graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|ScopeId,ToUnitId,EdgeKind|1
+temporal_unit_index|temporal|RangeIndexTable|TemporalIndex|kv_supported_if_range_is_kv_backed|ScopeId,Timestamp,UnitId|1
+speaker_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|ScopeId,SpeakerId|1
+session_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|ScopeId,SessionId|1
+usage_by_last_access|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|ScopeId,LastUsedAtMs,UnitId|1
+usage_by_cooldown|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|ScopeId,CooldownUntilMs,UnitId|1
+schema_info|schema|KeyValueTable|always|kv_supported|SchemaKey|1
 ```
 
 Сводная таблица DBI секции 5.5 (для быстрого чтения владельца PR и capability-зависимости; explanatory projection of the checked data):

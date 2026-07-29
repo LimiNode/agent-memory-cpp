@@ -163,15 +163,16 @@ to be distinct units. Content identity and dedupe use `KnowledgeUnitKey` /
 rewrite global ids.
 
 The A0 durable-global-identity profile stores `GlobalIdentityComponent` in
-`unit_components` and maintains a unique lookup through the existing
-`metadata_filters` substrate:
-`(scope_id, ComponentKind::GlobalIdentity, encoded_global_id) -> KnowledgeUnitId`.
-Creation, import and reopen validation must reject a second binding of the same
-global id in one scope. Import writes or validates this mapping in the same
-transaction as its envelope, components and provenance manifest; a local
-`KnowledgeUnitId` may change, but the global id never does. Profiles that do
-not enable this component must not emit a durable `KnowledgeUnitRef` as though
-it were locally resolvable.
+`unit_components` and allocates the explicit
+`global_unit_id_to_local_id` profile delta. Its physical key is the global id:
+`GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId)`. The mapping is unique in
+the entire storage environment, not merely inside one scope. Creation, import
+and reopen validation must reject a second binding of the same global id in any
+scope. Scope access control applies after resolution; it does not weaken global
+identity. Import writes or validates this mapping in the same transaction as
+its envelope, components and provenance manifest; a local `KnowledgeUnitId` may
+change, but the global id never does. Profiles that do not enable this component
+must not emit a durable `KnowledgeUnitRef` as though it were locally resolvable.
 
 When `KnowledgeUnitRef::local_id` is present, resolving it in the current
 database must yield the same `global_id`. A missing or mismatched local binding
@@ -311,7 +312,7 @@ enum class EpistemicLayer : std::uint8_t {
 
 struct EpistemicStatusComponent {
     EpistemicLayer layer = EpistemicLayer::RawObservation;
-    double confidence = 1.0;
+    std::optional<double> confidence;
 
     std::string producer_model_id;
     std::string producer_model_version;
@@ -330,13 +331,13 @@ projection. Validation is fail-closed before persistence:
 
 | Record/layer | Required validation |
 |---|---|
-| Every A-lane cognitive record | `RuntimeOriginComponent` with a valid producer origin; finite `confidence` and coverage values in `[0, 1]` |
-| `LocalPresentation`, `Interpretation`, `Hypothesis`, `NarrativeSummary` | `PerspectiveComponent`; non-empty producer id/version; at least one durable evidence or provenance reference |
+| Every A-lane cognitive record | `RuntimeOriginComponent` with a valid producer origin; every supplied confidence and coverage value is finite and in `[0, 1]` |
+| `LocalPresentation`, `Interpretation`, `Hypothesis`, `NarrativeSummary` | `PerspectiveComponent`; non-empty producer id/version; at least one durable evidence or provenance reference; derived layers require supplied confidence |
 | `SelfModel` / `OtherModel` perspective | `observer` and `represented_subject` are stored separately; they may not be inferred to be the same object |
 | `ValidatedClaim` | non-empty validation policy id/version plus durable validation evidence; a hypothesis is not promoted merely by confidence |
 | `SystemReconstruction` | remains a perspective-bound reconstruction and cannot auto-promote to `ValidatedClaim` |
 
-Absent evidence never implies `confidence = 1.0`. A record that cannot satisfy
+Absent confidence or evidence never implies `confidence = 1.0`. A record that cannot satisfy
 its required row is rejected or retained only as explicitly marked raw
 ingestion data; it must not be persisted as a validated cognitive claim.
 
@@ -395,12 +396,10 @@ struct TaskPayload {
     std::string goal_text;
 
     std::optional<RuntimeObjectRef> requested_by;
-    std::optional<RuntimeObjectRef> assigned_to;
     std::optional<RuntimeObjectRef> parent_task;
 
     std::vector<RuntimeObjectRef> required_capabilities;
     std::vector<KnowledgeUnitRef> constraints;
-    std::vector<KnowledgeUnitRef> produced_units;
 
     std::optional<std::int64_t> deadline_ms;
 };
@@ -408,6 +407,8 @@ struct TaskPayload {
 struct TaskStateComponent {
     TaskStatus current_status = TaskStatus::Proposed;
     std::uint64_t state_revision = 0;
+    std::optional<RuntimeObjectRef> assigned_to;
+    std::vector<KnowledgeUnitRef> produced_units;
     std::optional<KnowledgeUnitRef> last_transition;
 };
 ```
@@ -430,20 +431,27 @@ struct DecisionAlternative {
 
 struct DecisionPayload {
     std::vector<DecisionAlternative> alternatives;
-    std::string selected_alternative_id;
+};
 
+struct DecisionSelectionComponent {
+    std::string selected_alternative_id;
     std::string rationale_summary;
-    double confidence = 0.0;
+    std::optional<double> confidence;
 
     std::optional<RuntimeObjectRef> committed_by;
     std::optional<AuthorityEvidenceRef> authority_evidence;
-
     std::vector<RuntimeObjectRef> resulting_actions;  // kind = Action or Event
 };
 ```
 
-LLM-generated rationale is not a complete causal explanation. Canonical causes
-come from `CausalContextComponent` and supporting units.
+`TaskPayload` and `DecisionPayload` are immutable definitions. Assignment,
+status, produced units, selected alternative, rationale, committer and resulting
+actions are mutable observed state and therefore live in `TaskStateComponent` or
+`DecisionSelectionComponent` with append-only transition evidence. Identity and
+content-digest recipes include only the immutable definition, envelope identity
+and declared immutable references; they exclude state revisions and all mutable
+components. LLM-generated rationale is not a complete causal explanation.
+Canonical causes come from `CausalContextComponent` and supporting units.
 
 `Procedure` is distinct from `Playbook`:
 
@@ -559,11 +567,14 @@ Physical index mapping:
 | `epistemic_layer` | `metadata_filters` | `(scope_id, EpistemicLayer, layer) -> UnitId` |
 | `procedure_status` | `metadata_filters` | `(scope_id, ProcedureStatus, status) -> UnitId` |
 | `replica` | `metadata_filters` | `(scope_id, RuntimeReplica, encoded_runtime_ref) -> UnitId` |
-| `event_sequence` | range substrate | `(scope_id, runtime_instance, replica, sequence) -> UnitId` |
+| `event_sequence` | `runtime_sequence_index` profile delta | `(scope_id, encoded_runtime_identity, encoded_replica_identity, sequence, UnitId)` |
 
-These are generic secondary keys, not per-component DBIs. If a profile cannot
-materialize a listed key, the corresponding filter must be documented as
-scan-backed and excluded from latency guarantees.
+The metadata rows are generic secondary keys, not per-component DBIs.
+`event_sequence` is different: the A1 `runtime_sequence_index` profile delta
+owns its range key, because neither metadata filtering nor temporal wall-clock
+indexes can implement origin-scoped sequence ranges. A profile without that
+delta may not advertise `KnowledgeAtSequence` as indexed or latency-bounded; it
+must reject the filter or document a deliberately scan-backed experimental path.
 
 New query classes:
 
@@ -720,16 +731,19 @@ A0-A2 use existing substrate:
 | epistemic status | `unit_components` |
 | focus context | `unit_components` |
 | task/decision/procedure payloads | `unit_components` initially |
-| sequence filtering | existing range/metadata substrate |
+| sequence filtering | `runtime_sequence_index` profile delta |
 | raw event payload | `ResourceBodyStore` |
 | causal relations | `graph_edges_by_src` / `graph_edges_by_dst` |
 | conflicts | units + graph relations |
-| global knowledge-unit identity | `unit_components` + `metadata_filters` |
+| global knowledge-unit identity | `unit_components` + `global_unit_id_to_local_id` profile delta |
 
-Do not add `runtime_event_index` or revive `temporal_event_index` for A-lane
-M1/M2 readiness. If partition support later needs materialized DBIs,
-`replica_frontiers` and `reconciliation_jobs` are the first candidates, but
-they are not in the canonical or expanded budget until a concrete
+Do not add a separate `runtime_event_index` or revive `temporal_event_index`:
+the only A-lane materialized range key is the explicitly budgeted
+`runtime_sequence_index` profile delta. `global_unit_id_to_local_id` is likewise
+an explicitly budgeted A0 profile delta, rather than an overloading of a
+scope-local metadata index. If partition support later needs more materialized
+DBIs, `replica_frontiers` and `reconciliation_jobs` are the first candidates,
+but they are not in the canonical or expanded budget until a concrete
 implementation task updates `dbi-manifest.yaml`.
 
 ## Evaluation

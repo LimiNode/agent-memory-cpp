@@ -28,6 +28,12 @@ Runtime-сервисы доступны из любого layer, но сами �
 
 ## 3. Host LLM Cache Boundary (Not Core API)
 
+The normative host boundary is now
+[`host-llm-cache-integration.md`](host-llm-cache-integration.md). The detailed
+cache sketches retained in this historical section are non-normative research
+notes only: they do not define core interfaces, `MemoryStack` services, DBIs,
+capabilities, CLI commands, defaults or implementation milestones.
+
 `agent-memory-cpp` does not call an LLM, construct provider requests, store
 provider response caches, own `response_cache` DBIs, or expose Anthropic/OpenAI
 types. A host may implement the historical sketches below in its own integration
@@ -997,6 +1003,11 @@ constraints, it must set `ContextPlanDecision::error` instead of silently
 returning a shallow executable plan.
 
 ## 6. Service Lifecycle
+
+All cache-specific rows, lifecycle prose, read-path calls, observability
+examples, CLI examples, milestones and open issues below are historical host
+notes superseded by `host-llm-cache-integration.md`. They must not be read as a
+library contract or added to the canonical DBI budget.
 
 ### 6.1. Опциональность
 

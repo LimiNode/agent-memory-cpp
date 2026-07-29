@@ -60,6 +60,20 @@ be random occurrence ids or deterministic identities over their declared
 immutable inputs, but a codec must document which. `KnowledgeUnitId` and
 `ResourceId` remain local handles and are never substituted for these ids.
 
+Every catalog manifest and workspace backup set declares the identity scheme
+that produced its durable ids. Import accepts only an identical scheme or an
+explicit registered migration; it must otherwise fail closed before rewriting
+or publishing any catalog record.
+
+```cpp
+struct ArtifactIdentityScheme {
+    std::string scheme_id;          // e.g. "agent_memory.artifact_ids"
+    std::uint32_t scheme_version = 1;
+    std::string artifact_id_derivation;  // e.g. "blob_digest/v1"
+    std::string digest_algorithm;  // e.g. "sha256"
+};
+```
+
 ```text
 Source
   -> SourceRevision
@@ -104,6 +118,8 @@ Fetching a changed web page or importing a changed local file creates a new
 revision, rather than overwriting a source and losing old citations.
 
 ```cpp
+enum class CatalogLifecycleState : std::uint8_t;
+
 struct SourceRevision {
     SourceRevisionId id;
     SourceId source_id;
@@ -113,6 +129,7 @@ struct SourceRevision {
     std::optional<std::string> etag;
     std::optional<std::string> last_modified;
     BlobDigest snapshot_digest;
+    CatalogLifecycleState lifecycle;
     TypedMetadata metadata;
 };
 ```
@@ -134,6 +151,14 @@ enum class ArtifactRetentionClass : std::uint8_t {
     SourceOriginal,
     DerivedDurable,
     RebuildableCache
+};
+
+enum class CatalogLifecycleState : std::uint8_t {
+    Active,
+    Retained,
+    Superseded,
+    Tombstoned,
+    Erased
 };
 
 struct Artifact {
@@ -180,6 +205,14 @@ Each SourceRevision has exactly one retained binding with role
 is retained because rebuilding it would be expensive, nondeterministic or
 would lose provenance. `RebuildableCache` may be evicted and regenerated.
 
+Source revisions, representations and segment sets carry a lifecycle state and
+retention policy even though their immutable identity never changes. `Active`
+is eligible for current retrieval, `Retained` remains addressable for evidence
+or backup, `Superseded` is no longer the active view, `Tombstoned` preserves
+only the metadata/erasure receipt, and `Erased` has no materializable bytes.
+An authorized erasure may leave an evidence anchor resolvable as tombstoned
+metadata, but it must never leave an unbounded liveness root.
+
 ### 3.4 Representation
 
 A representation is a versioned interpretation of one or more artifacts:
@@ -202,6 +235,7 @@ struct Representation {
     BlobDigest parameters_digest;
     std::optional<double> confidence;
     std::uint64_t generated_at_ms = 0;
+    CatalogLifecycleState lifecycle = CatalogLifecycleState::Active;
     TypedMetadata metadata;
 };
 ```
@@ -226,6 +260,7 @@ struct SegmentSet {
     std::string segmenter_version;
     BlobDigest parameters_digest;
     std::uint64_t generated_at_ms = 0;
+    CatalogLifecycleState lifecycle = CatalogLifecycleState::Active;
 };
 
 struct Segment {
@@ -428,22 +463,27 @@ struct CatalogResult {
     std::string diagnostic;
 };
 
+struct CatalogStatusResult {
+    CatalogStatus status = CatalogStatus::Ok;
+    std::string diagnostic;
+};
+
 class IArtifactCatalog {
 public:
     virtual ~IArtifactCatalog() = default;
 
-    virtual SourceId create_source(const CreateSourceRequest& request) = 0;
-    virtual SourceRevisionId append_revision(
+    virtual CatalogResult<SourceId> create_source(const CreateSourceRequest& request) = 0;
+    virtual CatalogResult<SourceRevisionId> append_revision(
         const AppendSourceRevisionRequest& request) = 0;
     virtual CatalogResult<ArtifactId> record_artifact(const Artifact& artifact) = 0;
-    virtual CatalogResult<void> bind_artifact(const ArtifactBinding& binding) = 0;
-    virtual RepresentationId record_representation(
+    virtual CatalogStatusResult bind_artifact(const ArtifactBinding& binding) = 0;
+    virtual CatalogResult<RepresentationId> record_representation(
         const Representation& representation) = 0;
     virtual CatalogResult<SegmentSetId> record_segment_set(
         const SegmentSet& set, const std::vector<Segment>& segments) = 0;
-    virtual CatalogResult<void> activate_materialization(
+    virtual CatalogStatusResult activate_materialization(
         const SegmentMaterialization& materialization) = 0;
-    virtual CatalogResult<std::optional<Segment>> find_segment(SegmentId id) const = 0;
+    virtual CatalogResult<Segment> find_segment(SegmentId id) const = 0;
 };
 
 enum class BlobStatus : std::uint8_t {
@@ -458,11 +498,27 @@ struct BlobResult {
     std::string diagnostic;
 };
 
+struct BlobStatusResult {
+    BlobStatus status = BlobStatus::Ok;
+    std::string diagnostic;
+};
+
+struct BlobIngestLease {
+    std::string lease_id;
+    BlobDigest intended_digest;
+    std::uint64_t expires_at_ms = 0;
+    std::string owner_id;
+};
+
 class IBlobStore {
 public:
     virtual ~IBlobStore() = default;
 
-    virtual BlobResult<ArtifactId> put_immutable(const BlobWriteRequest& request) = 0;
+    virtual BlobResult<BlobIngestLease> begin_ingest(const BlobWriteRequest& request) = 0;
+    virtual BlobResult<ArtifactId> put_immutable(
+        const BlobWriteRequest& request, const BlobIngestLease& lease) = 0;
+    virtual BlobResult<ArtifactId> finalize_ingest(const BlobIngestLease& lease) = 0;
+    virtual BlobStatusResult abort_ingest(const BlobIngestLease& lease) = 0;
     virtual BlobResult<BlobMetadata> probe(ArtifactId id) const = 0;
     virtual BlobResult<BlobReadHandle> open(ArtifactId id, const BlobReadRange& range) = 0;
     virtual BlobResult<MaterializedArtifact> materialize(
@@ -471,13 +527,25 @@ public:
 };
 ```
 
-`record_artifact` records verified metadata after `IBlobStore::put_immutable`
-has established byte identity. `record_segment_set` appends an immutable set;
-`activate_materialization` changes only the current retrieval view. A boolean
-existence API is deliberately forbidden because callers must distinguish missing
-bytes from policy denial, corruption and backend failure.
+`CatalogResult<T>` is used only when a successful or idempotent operation has a
+durable value to return. Mutations without a value use `CatalogStatusResult`;
+`CatalogResult<void>` is forbidden. `find_segment` returns `NotFound` rather
+than a nested optional. Create and record operations are create-or-validate:
+equal immutable input returns `AlreadyExists` plus the canonical id, while a
+different record for the same id returns `Conflict` or `IntegrityViolation`.
 
-Import/export serializes a versioned catalog manifest before units that cite it:
+`BlobIngestLease` is a durable, expiring liveness root created before bytes are
+written. It contains an opaque lease id, intended digest, expiry and ingest
+owner. `record_artifact` records verified metadata only after
+`IBlobStore::finalize_ingest` has established byte identity; catalog publication
+then consumes the lease atomically with bindings. A crashed or explicitly
+aborted ingest retains no permanent catalog root. `record_segment_set` appends
+an immutable set; `activate_materialization` changes only the current retrieval
+view. A boolean existence API is deliberately forbidden because callers must
+distinguish missing bytes from policy denial, corruption and backend failure.
+
+Import/export serializes a versioned catalog manifest, including
+`ArtifactIdentityScheme`, before units that cite it:
 SourceId, SourceRevisionId, ArtifactId/BlobDigest, RepresentationId,
 SegmentSetId, SegmentId, SourceRefId and EvidenceAnchorId are durable and are
 never rewritten. The destination may map SourceId to a different local
@@ -485,9 +553,9 @@ ResourceId and global unit ids to different local unit ids. It validates or
 creates the manifest, global-to-local identity mappings, bindings and anchors
 in the same atomic import unit as the KnowledgeUnit records that reference
 them; a failed transaction publishes neither dangling units nor a half-visible
-catalog. A backend that cannot atomically cover its blob store records a
-durable pending-import lease and exposes no units until the final catalog
-commit verifies all declared BlobDigests.
+catalog. A backend that cannot atomically cover its blob store records durable
+ingest leases and exposes no units until the final catalog commit verifies all
+declared BlobDigests and consumes those leases.
 
 `ArtifactCatalog` is not a semantic graph. Its `artifact_relations` record
 technical facts such as `derived_from`, `embedded_in`, `extracted_audio_from`,
@@ -587,10 +655,13 @@ The liveness closure is evaluated by the same catalog backend that executes
 deletion. Its roots include retained `ArtifactBinding` records with
 `SourceOriginal` or `DerivedDurable` retention, all retained source revisions,
 representations, segment sets, segments, evidence anchors, full source refs,
-knowledge units, backup snapshots/leases, import/export transactions and
-in-flight materializations. It follows catalog lineage and binding edges before
-deleting any blob. A missing or inconsistent catalog edge is fail-closed: it
-keeps the artifact and reports an integrity error rather than collecting it.
+knowledge units, backup snapshots/leases, import/export transactions,
+unexpired `BlobIngestLease` records and in-flight materializations. It follows
+catalog lineage and binding edges before deleting any blob. An orphan sweep may
+collect only an expired, unfinalized ingest lease after verifying that no catalog
+binding, backup or transaction references it. A missing or inconsistent catalog
+edge is fail-closed: it keeps the artifact and reports an integrity error rather
+than collecting it.
 
 ## 8. Delivery Order And Acceptance Gates
 

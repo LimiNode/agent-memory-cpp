@@ -81,8 +81,8 @@ later in the roadmap; stable ids are more important than grouping.
 | Playbook | (no specific payload in M1b) | activation metadata + graph edges | procedure with triggers, prerequisites, steps, outputs |
 | DomainMap | CompiledArticlePayload initially | graph edges + activation metadata | materialized domain view for context planning |
 | CapabilityMap | (no specific payload in M1b) | activation metadata | compact registry of tools/playbook families |
-| Task | TaskPayload component initially | runtime origin + causal/perspective components | durable task memory, not scheduler |
-| Decision | DecisionPayload component initially | alternatives + causal/evidence links | decision recall and causal why |
+| Task | immutable `TaskPayload` + `TaskStateComponent` | runtime origin + causal/perspective components | durable task memory, not scheduler |
+| Decision | immutable `DecisionPayload` + `DecisionSelectionComponent` | alternatives + causal/evidence links | decision recall and causal why |
 | Custom | metadata_typed["payload"] | — | escape hatch через JSON-like value |
 | Procedure | ProcedurePayload component initially | activation metadata + outcome stats | learned/imported versioned procedure |
 
@@ -100,8 +100,9 @@ deltas.
 [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
 They store durable cognitive records and procedure knowledge; they do not
 execute tasks, actions or procedures. Their first storage mapping is
-`unit_components` with stable component tags (`TaskPayload`, `DecisionPayload`,
-`ProcedurePayload`) so no dedicated DBI is added to the default profile.
+`unit_components` with stable component tags (`TaskPayload`, `TaskState`,
+`DecisionPayload`, `DecisionSelection`, `ProcedurePayload`) so no dedicated DBI
+is added to the default profile.
 
 Introspection snapshots, unresolved problems and reconciliation conflicts start
 as `Custom` prototypes until their fields stabilize.
@@ -673,9 +674,9 @@ capability flag and is not created dynamically on first write.
 
 Payload для `KnowledgeUnitKind::QAPair`. Используется в QAKnowledgeBase stack и FullResearch stack.
 
-Контракт разделён на два уровня зрелости: M0 (минимальный, достаточный для QAKnowledgeBaseStack через QALookup slot) и M1+ (расширенный, с variants, frequency ranking и форматом ответа).
+Контракт разделён на два уровня зрелости: M1b (минимальный, достаточный для QAKnowledgeBaseStack через QALookup slot) и M2+ (расширенный, с variants, frequency ranking и форматом ответа).
 
-#### 5.2.1. QAPayload минимальный (M0)
+#### 5.2.1. QAPayload минимальный (M1b)
 
 Минимальный QAPayload для QAKnowledgeBaseStack:
 
@@ -690,7 +691,7 @@ struct QAPayload {
 
 Достаточно для прямого QA matching через QALookup slot и basic storage. Без variants, без frequency ranking, без temporal validity.
 
-#### 5.2.2. QAPayload расширенный (M1+)
+#### 5.2.2. QAPayload расширенный (M2+)
 
 Полный QAPayload для advanced use-cases:
 
@@ -1076,6 +1077,8 @@ enum class DerivedRecordKind : uint32_t {
     TaskStateComponent = 138,
     ProcedureStateComponent = 139,
     ProcedureStatsComponent = 140,
+    DecisionSelectionComponent = 141,
+    GlobalIdentityComponent = 142,
     // NB: KnowledgeUnitRevision НЕ существует как отдельный manifest record —
     // revision — это поле KnowledgeUnitEnvelope.revision, не отдельный kind.
     // Per-record stale-check живёт в LexicalPosting.unit_revision и
@@ -1117,10 +1120,12 @@ enum class DerivedRecordKind : uint32_t {
 | FocusContextComponent | `unit_components` (tag=FocusContext) | CognitiveTrace=true |
 | TaskPayload | `unit_components` (tag=TaskPayload) | CognitiveTrace=true |
 | DecisionPayload | `unit_components` (tag=DecisionPayload) | CognitiveTrace=true |
+| DecisionSelectionComponent | `unit_components` (tag=DecisionSelection) | CognitiveTrace=true |
 | ProcedurePayload | `unit_components` (tag=ProcedurePayload) | ProceduralActivation=true |
 | TaskStateComponent | `unit_components` (tag=TaskState) | CognitiveTrace=true |
 | ProcedureStateComponent | `unit_components` (tag=ProcedureState) | ProceduralActivation=true |
 | ProcedureStatsComponent | `unit_components` (tag=ProcedureStats) | ProceduralActivation=true |
+| GlobalIdentityComponent | `unit_components` (tag=GlobalIdentity) | durable-global-identity profile |
 | QAPayload | `qa_payloads` | QAPairs=true (enable_qa_payload) |
 | FactPayload | `fact_payloads` | enable_fact_payload=true |
 | ChunkPayload | `chunk_payloads` | Chunk kind (default, всегда) |

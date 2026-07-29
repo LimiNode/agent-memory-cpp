@@ -70,7 +70,7 @@ struct MemoryWriteDecision {
     bool create_atomic_units = false;
     bool schedule_consolidation = false;
     double importance = 0.0;
-    double confidence = 1.0;
+    std::optional<double> confidence;
     RetentionClass retention;
 };
 
@@ -171,7 +171,7 @@ struct DerivationComponent {
     std::vector<RuntimeObjectRef> runtime_sources;
     std::string producer_id;
     std::string producer_version;
-    double confidence = 1.0;
+    std::optional<double> confidence;
 };
 ```
 
@@ -196,8 +196,9 @@ Episode
   -> Scenario / Profile / Skill / Model
 ```
 
-For `agent-memory-cpp`, episodes are ground-truth source records; facts and
-relations are derived interpretations. Sensitive or psychological model records
+For `agent-memory-cpp`, episodes are canonical evidence records of observations
+or reports, not privileged world truth; facts and relations are derived
+interpretations. Sensitive or psychological model records
 must not exist without evidence and producer metadata.
 
 ## 5. AM-15: Causal Memory Relations
@@ -351,7 +352,7 @@ struct MemoryEditIntent {
     MemoryEditOperation operation;
     TypedPayload proposed_value;
     std::vector<EvidenceRef> evidence;
-    double confidence = 1.0;
+    std::optional<double> confidence;
 };
 ```
 

@@ -11,18 +11,21 @@ canonical:
     table_type: KeyValueTable
     opens: always
     sync: kv_supported
+    physical_key: [UnitId]
     migration_peak: 1
   - name: content_key_to_unit_id
     owner: core
     table_type: KeyValueTable
     opens: always
     sync: kv_supported
+    physical_key: [KnowledgeUnitKey]
     migration_peak: 1
   - name: knowledge_units_by_kind
     owner: core
     table_type: ReverseIndexTable
     opens: always
     sync: dupsort_not_supported
+    physical_key: [ScopeId, KnowledgeUnitKind]
     migration_peak: 1
   - name: unit_components
     owner: core
@@ -36,150 +39,175 @@ canonical:
     table_type: KeyValueTable
     opens: QAPairs
     sync: kv_supported
+    physical_key: [UnitId]
     migration_peak: 1
   - name: fact_payloads
     owner: facts
     table_type: KeyValueTable
     opens: TemporalFact
     sync: kv_supported
+    physical_key: [UnitId]
     migration_peak: 1
   - name: conversation_episode_payloads
     owner: chat
     table_type: KeyValueTable
     opens: ConversationMemory
     sync: kv_supported
+    physical_key: [UnitId]
     migration_peak: 1
   - name: compiled_article_payloads
     owner: compiled_wiki
     table_type: KeyValueTable
     opens: CompiledArticles
     sync: kv_supported
+    physical_key: [UnitId]
     migration_peak: 1
   - name: chunk_payloads
     owner: ingestion
     table_type: KeyValueTable
     opens: always
     sync: kv_supported
+    physical_key: [UnitId]
     migration_peak: 1
   - name: source_refs
     owner: provenance
     table_type: KeyValueTable
     opens: FullSourceRefs
     sync: kv_supported
+    physical_key: [UnitId]
     migration_peak: 1
   - name: unit_projections
     owner: retrieval
     table_type: KeyValueTable
     opens: indexed_retrieval
     sync: kv_supported
+    physical_key: [ScopeId, UnitId, ProjectionKind, Revision]
     migration_peak: 1
   - name: embedding_meta
     owner: embeddings
     table_type: KeyValueTable
     opens: DenseVectors
     sync: kv_supported
+    physical_key: [ScopeId, ModelId, ProjectionKind, UnitId]
     migration_peak: 1
   - name: embedding_vectors
     owner: embeddings
     table_type: KeyValueTable
     opens: DenseVectors
     sync: kv_supported
+    physical_key: [ScopeId, ModelId, ProjectionKind, UnitId]
     migration_peak: 1
   - name: inverted_token_to_unit
     owner: lexical
     table_type: ReverseIndexTable
     opens: LexicalIndex
     sync: dupsort_not_supported
+    physical_key: [ScopeId, TokenId, ProjectionKind, FieldId]
     migration_peak: 1
   - name: field_to_postings
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
     sync: kv_supported
+    physical_key: [ScopeId, ProjectionKind, FieldId, TokenId, UnitId]
     migration_peak: 1
   - name: lexical_token_by_text
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
     sync: kv_supported
+    physical_key: [ScopeId, NormalizedTokenText]
     migration_peak: 1
   - name: lexical_token_by_id
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
     sync: kv_supported
+    physical_key: [ScopeId, TokenId]
     migration_peak: 1
   - name: lexical_chunk_stats
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
     sync: kv_supported
+    physical_key: [ScopeId, UnitId, ProjectionKind]
     migration_peak: 1
   - name: lexical_token_stats
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
     sync: kv_supported
+    physical_key: [ScopeId, ProjectionKind, TokenId]
     migration_peak: 1
   - name: lexical_collection_stats
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
     sync: kv_supported
+    physical_key: [ScopeId, ProjectionKind]
     migration_peak: 1
   - name: metadata_filters
     owner: metadata
     table_type: ReverseIndexTable
     opens: lightweight_prefilter
     sync: dupsort_not_supported
+    physical_key: [ScopeId, MetadataKey, MetadataValue]
     migration_peak: 1
   - name: graph_edges_by_src
     owner: graph
     table_type: ReverseIndexTable
     opens: GraphIndex
     sync: dupsort_not_supported
+    physical_key: [ScopeId, FromUnitId, EdgeKind]
     migration_peak: 1
   - name: graph_edges_by_dst
     owner: graph
     table_type: ReverseIndexTable
     opens: GraphIndex
     sync: dupsort_not_supported
+    physical_key: [ScopeId, ToUnitId, EdgeKind]
     migration_peak: 1
   - name: temporal_unit_index
     owner: temporal
     table_type: RangeIndexTable
     opens: TemporalIndex
     sync: kv_supported_if_range_is_kv_backed
+    physical_key: [ScopeId, Timestamp, UnitId]
     migration_peak: 1
   - name: speaker_to_units
     owner: speaker
     table_type: ReverseIndexTable
     opens: SpeakerAttribution
     sync: dupsort_not_supported
+    physical_key: [ScopeId, SpeakerId]
     migration_peak: 1
   - name: session_to_units
     owner: speaker
     table_type: ReverseIndexTable
     opens: SpeakerAttribution
     sync: dupsort_not_supported
+    physical_key: [ScopeId, SessionId]
     migration_peak: 1
   - name: usage_by_last_access
     owner: usage
     table_type: RangeIndexTable
     opens: UsageTracking
     sync: kv_supported_if_range_is_kv_backed
+    physical_key: [ScopeId, LastUsedAtMs, UnitId]
     migration_peak: 1
   - name: usage_by_cooldown
     owner: usage
     table_type: RangeIndexTable
     opens: UsageTracking
     sync: kv_supported_if_range_is_kv_backed
+    physical_key: [ScopeId, CooldownUntilMs, UnitId]
     migration_peak: 1
   - name: schema_info
     owner: schema
     table_type: KeyValueTable
     opens: always
     sync: kv_supported
+    physical_key: [SchemaKey]
     migration_peak: 1
 
 profile_deltas:
@@ -207,6 +235,20 @@ profile_deltas:
     dbis: 1
     migration_peak: 1
     default: false
+  - name: global_unit_id_to_local_id
+    dbis: 1
+    migration_peak: 1
+    default: false
+    names: [global_unit_id_to_local_id]
+    milestone: A0
+    note: GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId); global identity is unique across one storage environment.
+  - name: runtime_sequence_index
+    dbis: 1
+    migration_peak: 1
+    default: false
+    names: [runtime_sequence_index]
+    milestone: A1
+    note: Range key (ScopeId, encoded runtime identity, encoded replica identity, sequence, UnitId) for KnowledgeAtSequence.
   - name: event_record_index
     dbis: 1
     migration_peak: 1
@@ -236,20 +278,24 @@ expanded_peak_reference:
   compaction_handoff: 1
   resource_body_chunked: 2
   source_refs_by_resource: 1
+  global_unit_id_to_local_id: 1
+  runtime_sequence_index: 1
   sync_system_8c76661d: 6
   migration_dual_write_reserve: 8
-  total: 56
+  total: 58
 
 runtime_integration_mapping:
-  a0_a2_new_dbis: 0
+  a0_a2_default_new_dbis: 0
   cognitive_trace_components: unit_components
   task_decision_procedure_payloads: unit_components
   causal_relations: [graph_edges_by_src, graph_edges_by_dst]
   raw_event_payloads: resource_body_profile_delta
-  sequence_filtering: [metadata_filters, temporal_unit_index]
+  global_identity_lookup: global_unit_id_to_local_id
+  sequence_filtering: runtime_sequence_index
   future_partition_candidates:
     - replica_frontiers
     - reconciliation_jobs
   notes:
-    - A0-A2 do not add runtime_event_index or temporal_event_index.
+    - A0 and A1 profile deltas above are opt-in; the default profile adds no A-lane DBIs.
+    - A0-A2 do not add a separate runtime_event_index or temporal_event_index.
     - Future partition DBIs are not budgeted until a concrete implementation task updates profile_deltas.

@@ -200,25 +200,36 @@ one resource without scanning unrelated resources.
 
 ## Reindex Algorithm
 
-The normal replace flow should be:
+The normal replace flow is two-phase. It must not hold a write transaction while
+parsing a document, calling an embedder, or rebuilding a large derived index:
 
 ```text
-1. Begin writable transaction where the backend supports it.
-2. Load the old manifest by resource_id.
-3. Remove or invalidate old derived records listed in the manifest.
-4. Store the new resource metadata, content hash, generation, and, when the
-   artifact profile is enabled, the validated SourceId/SourceRevisionId mapping.
-5. Chunk the new resource.
-6. Generate embeddings for the new chunks.
-7. Build any signatures, postings, or graph records needed by enabled indexes.
-8. Store new chunks, embeddings, and index entries.
-9. Store the new manifest.
-10. Commit.
+1. Read the current manifest and prepare immutable source/body bytes, parsed
+   text, chunks, projections and a candidate next generation outside a write
+   transaction. Heavy embedding, ANN and bulk backfill work is revision-guarded
+   derived work, not part of publication.
+2. In a short write transaction, compare the expected current generation,
+   write the new resource revision, raw units, required lexical projections and
+   manifest, then publish the next generation as active. A conflict restarts
+   preparation from the newly observed generation.
+3. Mark the former generation stale only after the active-generation swap.
+   Readers resolve the manifest/current generation first and therefore keep
+   seeing the prior complete revision until publication succeeds.
+4. Enqueue optional dense, ANN, signature or graph work as idempotent jobs
+   carrying `(resource_id, generation, pipeline_config_hash)`. Workers reject
+   stale generations before making a derived view visible.
 ```
 
 If content hash and ingestion settings did not change, the reindex operation may
 skip expensive work. The skip check must compare both `content_hash` and
 `pipeline_config_hash`.
+
+The M0 lexical-first importer requires the source body, raw units, mandatory
+provenance summaries, `Original` projections and lexical indexes before it may
+publish a new active generation. Dense/vector projections can be synchronous
+only for a deliberately small profile; otherwise they remain revision-guarded
+eventual work and retrieval revalidates every derived hit against the active
+manifest. `ResourceIndexer` does not yet implement this protocol.
 
 ## Tombstones And Compaction
 

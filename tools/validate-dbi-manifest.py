@@ -60,6 +60,7 @@ REQUIRED_CANONICAL_FIELDS = {
     "table_type",
     "opens",
     "sync",
+    "physical_key",
     "migration_peak",
 }
 
@@ -86,6 +87,7 @@ RUNTIME_MAPPING_REFERENCE_KEYS = {
     "cognitive_trace_components",
     "task_decision_procedure_payloads",
     "causal_relations",
+    "global_identity_lookup",
     "sequence_filtering",
 }
 
@@ -136,6 +138,11 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             fail(errors, f"{name}: unknown opens selector {row.get('opens')!r}")
         if row.get("sync") not in ALLOWED_SYNC:
             fail(errors, f"{name}: unknown sync mode {row.get('sync')!r}")
+        physical_key = row.get("physical_key")
+        if not isinstance(physical_key, list) or not physical_key:
+            fail(errors, f"{name}: physical_key must be a non-empty ordered list")
+        elif any(not isinstance(part, str) or not part for part in physical_key):
+            fail(errors, f"{name}: physical_key entries must be non-empty strings")
         migration_peak = row.get("migration_peak")
         if not isinstance(migration_peak, int) or migration_peak < 0:
             fail(errors, f"{name}: migration_peak must be a non-negative integer")
@@ -217,7 +224,7 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         if delta is None:
             fail(errors, f"expanded peak references unknown profile delta: {key}")
             continue
-        expected_value = delta.get("migration_peak") if delta.get("dbis") == 0 else delta.get("dbis")
+        expected_value = delta.get("migration_peak")
         if peak.get(key) != expected_value:
             fail(
                 errors,
@@ -240,9 +247,9 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         if not isinstance(runtime_mapping, dict):
             fail(errors, "runtime_integration_mapping must be a mapping")
         else:
-            if runtime_mapping.get("a0_a2_new_dbis") != 0:
-                fail(errors, "runtime_integration_mapping.a0_a2_new_dbis must be 0")
-            allowed_refs = set(names) | {"resource_body_profile_delta"}
+            if runtime_mapping.get("a0_a2_default_new_dbis") != 0:
+                fail(errors, "runtime_integration_mapping.a0_a2_default_new_dbis must be 0")
+            allowed_refs = set(names) | set(delta_names) | {"resource_body_profile_delta"}
             for key in RUNTIME_MAPPING_REFERENCE_KEYS:
                 value = runtime_mapping.get(key)
                 refs = value if isinstance(value, list) else [value]
@@ -347,11 +354,19 @@ def run_self_test(manifest_path: Path) -> int:
     cases.append(("peak exceeds max_dbs", peak_too_large, "expanded peak exceeds max_dbs_default"))
 
     delta_mismatch = copy.deepcopy(base)
-    delta_mismatch["profile_deltas"][0]["dbis"] += 1
+    delta_mismatch["profile_deltas"][0]["migration_peak"] += 1
     cases.append(("delta/reference mismatch", delta_mismatch, "expanded peak legacy_document_resource_adapter mismatch"))
 
+    missing_physical_key = copy.deepcopy(base)
+    del missing_physical_key["canonical"][0]["physical_key"]
+    cases.append(("missing physical key", missing_physical_key, "missing fields: ['physical_key']"))
+
+    invalid_physical_key = copy.deepcopy(base)
+    invalid_physical_key["canonical"][0]["physical_key"] = []
+    cases.append(("empty physical key", invalid_physical_key, "physical_key must be a non-empty ordered list"))
+
     unknown_runtime_ref = copy.deepcopy(base)
-    unknown_runtime_ref["runtime_integration_mapping"]["sequence_filtering"].append("missing_dbi")
+    unknown_runtime_ref["runtime_integration_mapping"]["sequence_filtering"] = "missing_dbi"
     cases.append(("unknown runtime mapping ref", unknown_runtime_ref, "unknown DBI ref"))
 
     failed = False
@@ -400,6 +415,22 @@ def run_self_test(manifest_path: Path) -> int:
                 file=sys.stderr,
             )
             return 1
+
+    reordered_projection = copy.deepcopy(projection)
+    reordered_projection["unit_projections"]["physical_key"] = [
+        "UnitId",
+        "ScopeId",
+        "ProjectionKind",
+        "Revision",
+    ]
+    errors = []
+    validate_review_projection(base, reordered_projection, errors)
+    if not any("unit_projections.physical_key" in error for error in errors):
+        print(
+            "ERROR: negative fixture did not detect physical key ordering drift",
+            file=sys.stderr,
+        )
+        return 1
 
     print("dbi manifest self-test ok")
     return 0

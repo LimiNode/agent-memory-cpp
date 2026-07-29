@@ -1228,17 +1228,17 @@ scope conflict.
 - KnowledgeUnitId монотонный, opaque (`uint64_t`). `KnowledgeUnitKey = (kind, ScopeId, ContentHash)` и content-key secondary index (`content_key_to_unit_id`) — для dedupe/supersedence готов с M0.
 - SearchProjection::Original создаётся с самого начала (минимальный: unit_id → primary_text). BM25F работает через projection model с M0 (не flat fallback).
 - Lifecycle FSM с состояниями Active / Superseded / Deprecated / Erased (4 durable states). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.
-- Минимальный QAPayload (только canonical_question + answer + optional category + last_verified_at_ms) для QAKnowledgeBaseStack с M0.
-- Расширенный QAPayload (question_variants, frequency ranking) — M1b.
+- Минимальный QAPayload (только canonical_question + answer + optional category + last_verified_at_ms) для QAKnowledgeBaseStack с M1b.
+- Расширенный QAPayload (question_variants, frequency ranking) — M2+.
   Bi-temporal history is M2+ and belongs to AM-13.
 - ChunkPayload (minimal) для BasicRagStack с M0. Остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload) — M1.
-- BasicRagStack, QAKnowledgeBaseStack.
+- BasicRagStack; QAKnowledgeBaseStack enters at M1b with `QAPairs`.
 - Чтение через ILexicalIndex, запись через простой write API.
 - `scope_id` обязателен во всех secondary/range keys, которые обслуживают
   tenant/project/agent-scoped lookup или range query. Primary lookup by globally
   unique `UnitId` является явным исключением.
 
-Не включено (M1+): Components, расширенные QAPayload (variants/frequency) и остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, full SourceRef DBI (в M0 — только inline summary), bi-temporal history. Provider-specific LLM caching is outside this library at every maturity level.
+Не включено (M1+): Components, QAPayload/QAKnowledgeBaseStack, остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, full SourceRef DBI (в M0 — только inline summary), bi-temporal history. Provider-specific LLM caching is outside this library at every maturity level.
 
 Ship-it критерии:
 
@@ -1490,7 +1490,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `GraphEdgePayload` struct + EdgeKind enum.
 - DBI: `graph_edges_by_src`, `graph_edges_by_dst`.
 - Bounded graph expansion (max_depth, max_edges, budget_tokens).
-- TemporalComponent + DBI: `temporal_unit_index` only for M1. A separate
+- Single-axis TemporalComponent + DBI: `temporal_unit_index` for M1b; the
+  M2+ bi-temporal range indexes remain owned by AM-13. A separate
   event range index requires a future authoritative `EventRecord` entity.
 - `floating subgraph` как retrieval view.
 
