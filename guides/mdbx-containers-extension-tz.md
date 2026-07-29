@@ -2282,11 +2282,15 @@ performs exact linear scoring; it is an appropriate baseline and a benchmark
 oracle, not an ANN or distributed identity service.
 
 `agent-memory-cpp` keeps canonical question/answer bytes, revisions,
-provenance, lifecycle and policy in its own `QAPairEnvelope`/knowledge-unit
-records. A vector projection refers to a stable application-owned projection
-identity and model/codec/version. It may use `VectorStore` or another vector
+provenance, lifecycle and policy in the composition of `KnowledgeUnitEnvelope`
+plus `QAPayload`, components and SourceRef/evidence records; there is no
+separate upstream `QAPairEnvelope` type. A vector projection uses the existing
+application-owned `(scope, unit, projection kind, model, model version)`
+identity and model/codec metadata. It may use `VectorStore` or another vector
 backend as a rebuildable derived index, but it MUST NOT expose the backend's
-local `uint64_t` id as a durable application reference.
+local `uint64_t` id as a durable application reference. A vector hit is
+hydrated through the active unit/projection and stale-revision/provenance
+validation before it becomes retrieval context.
 
 The currently permitted deployment modes are:
 

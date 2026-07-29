@@ -179,6 +179,16 @@ struct TemporalComponent {
     int64_t recorded_in_session_ms;
 };
 
+struct VectorRef {
+    ScopeId scope_id;
+    KnowledgeUnitId unit_id;
+    ProjectionKind projection_kind;
+    std::string model_id;
+    std::string model_version;
+};
+
+// This is the durable application projection identity. It is not a
+// VectorStore local id, an ANN node id, or an ownership claim over vector bytes.
 struct EmbeddingMetaComponent {
     std::string model_id;             // e.g. "bge-small-en-v1.5"
     std::string model_version;
@@ -362,6 +372,15 @@ Backend — DBI `unit_projections`. Методы: `put`, `list(unit_id, kind_fil
 ### 6.4. IEmbeddingStore (если DenseVectors=true)
 
 Backend — `embedding_meta` + `embedding_vectors` DBI. Методы: `put_vector(model_id, kind, unit_id, vector)`, `get_vector(...)`, `get_meta(kind, unit_id)`. Multi-model — M2.
+
+`IEmbeddingStore` owns rebuildable projection bytes, not canonical knowledge
+payloads. Its durable lookup identity is `(scope_id, unit_id,
+projection_kind, model_id, model_version)`; a physical vector backend may map
+that identity to a local slot or block offset, but that mapping is private and
+rebuildable. `DenseRetriever` treats every backend result as a candidate and
+must hydrate the active unit/projection, verify
+`EmbeddingMetaComponent.unit_revision_at_compute`, and then apply lifecycle,
+scope, authority and provenance rules before returning a `RetrievalHit`.
 
 ### 6.5. Per-payload stores (по capability)
 

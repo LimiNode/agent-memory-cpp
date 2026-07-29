@@ -860,6 +860,39 @@ DBI `qa_payloads`. Включается через `enable_qa_payload=true`.
 
 QALookup slot — прямой lookup по `canonical_question` + variants до BM25F, для high-precision коротких запросов. Используется `QARetriever` (см. `knowledge-base-roadmap.md` секция 7.2).
 
+#### 5.2.8. Canonical QAPair and derived retrieval projections
+
+`QAPair` is not a separate `QAPairEnvelope` storage type. Its canonical
+record is the composition of `KnowledgeUnitEnvelope` (`kind = QAPair`), the
+`QAPayload` row keyed by the same `UnitId`, enabled components, and durable
+`SourceRef`/evidence records when the provenance profile is enabled. Question
+and answer bytes live only in that canonical record; a retrieval backend must
+not become their second source of truth.
+
+The existing projection layers have distinct ownership:
+
+```text
+qa_payloads(UnitId)                         canonical question/answer bytes
+unit_projections(..., QAQuestion, revision) lexical question + variants
+unit_projections(..., QAAnswer, revision)   lexical answer view
+embedding_vectors(scope, model, version,
+                  projection_kind, UnitId)  rebuildable dense projection
+embedding_meta(same logical projection)     model/codec and stale-revision metadata
+```
+
+A dense record is addressed by the application-owned projection tuple
+`(ScopeId, UnitId, ProjectionKind, model_id, model_version)`, never by a
+vector backend's local numeric id. `EmbeddingMetaComponent.unit_revision_at_compute`
+must equal the active envelope revision before a dense hit may be returned as
+current. A backend hit is only a candidate: the retriever hydrates the active
+`KnowledgeUnitEnvelope` + `QAPayload`, applies scope/authority/lifecycle
+filters, and resolves provenance before constructing context or a citation.
+
+When a QAPayload change affects question or answer text, the write transaction
+updates both QA lexical projections and marks affected dense projections stale
+or enqueues their regeneration. A stale vector may be retained as a rebuildable
+artifact but cannot be presented as the active projection for the changed unit.
+
 ### 5.3. FactPayload
 
 Payload для `KnowledgeUnitKind::Fact`. Используется в AgentLongTermMemory, TemporalFactStore, CompiledWiki и FullResearch stacks.
