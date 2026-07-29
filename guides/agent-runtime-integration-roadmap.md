@@ -323,6 +323,23 @@ struct EpistemicStatusComponent {
 
 Retrieval must not automatically mix `Hypothesis` and `ValidatedClaim`.
 
+### Epistemic Validation Matrix
+
+No A-lane cognitive record may create privileged truth from an unbound local
+projection. Validation is fail-closed before persistence:
+
+| Record/layer | Required validation |
+|---|---|
+| Every A-lane cognitive record | `RuntimeOriginComponent` with a valid producer origin; finite `confidence` and coverage values in `[0, 1]` |
+| `LocalPresentation`, `Interpretation`, `Hypothesis`, `NarrativeSummary` | `PerspectiveComponent`; non-empty producer id/version; at least one durable evidence or provenance reference |
+| `SelfModel` / `OtherModel` perspective | `observer` and `represented_subject` are stored separately; they may not be inferred to be the same object |
+| `ValidatedClaim` | non-empty validation policy id/version plus durable validation evidence; a hypothesis is not promoted merely by confidence |
+| `SystemReconstruction` | remains a perspective-bound reconstruction and cannot auto-promote to `ValidatedClaim` |
+
+Absent evidence never implies `confidence = 1.0`. A record that cannot satisfy
+its required row is rejected or retained only as explicitly marked raw
+ingestion data; it must not be persisted as a validated cognitive claim.
+
 ### BiTemporalComponent
 
 The canonical M2+ bi-temporal component lives in
@@ -601,23 +618,10 @@ Do not collapse these into one omniscient statement.
 ## Procedure Activation
 
 `ProcedureActivationCandidate` is a retrieval/planning artifact, not an
-execution request.
-
-```cpp
-struct ProcedureActivationCandidate {
-    KnowledgeUnitRef procedure;
-
-    double precondition_match = 0.0;
-    double capability_match = 0.0;
-    double historical_success = 0.0;
-    double context_relevance = 0.0;
-
-    std::vector<KnowledgeUnitRef> supporting_units;
-    std::vector<RuntimeObjectRef> missing_capabilities;
-
-    bool requires_validation = false;
-};
-```
+execution request. Its canonical value-type contract is owned by
+[`knowledge-activation-roadmap.md`](knowledge-activation-roadmap.md); this
+roadmap maps its `missing_capabilities` to neutral `RuntimeObjectRef` values and
+keeps execution outside memory.
 
 Memory stores capability id, version, declarative input/output schema, safety
 metadata and procedure requirements. The runtime owns callable implementation,

@@ -276,10 +276,27 @@ is a knowledge artifact with revision, provenance, trust, applicable domains,
 required capabilities and optional safety/approval metadata. The transition
 from retrieved playbook to tool execution belongs to the downstream runtime.
 
-Procedure activation uses the canonical `ProcedureActivationCandidate` contract
-from [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
-This activation roadmap owns deterministic routing inputs; it does not define a
-second candidate type.
+`ProcedureActivationCandidate` is a retrieval/planning artifact, not an
+execution request. This roadmap owns its canonical value-type contract:
+
+```cpp
+struct ProcedureActivationCandidate {
+    KnowledgeUnitRef procedure;
+
+    double precondition_match = 0.0;
+    double capability_match = 0.0;
+    double historical_success = 0.0;
+    double context_relevance = 0.0;
+
+    std::vector<KnowledgeUnitRef> supporting_units;
+    std::vector<RuntimeObjectRef> missing_capabilities;
+
+    bool requires_validation = false;
+};
+```
+
+The runtime integration roadmap maps `missing_capabilities` to its neutral
+runtime-object adapter contract and never turns a candidate into execution.
 
 `CapabilityRegistry` stores capability id, version, declarative input/output
 schema, safety metadata and procedure requirements. Runtime adapters own

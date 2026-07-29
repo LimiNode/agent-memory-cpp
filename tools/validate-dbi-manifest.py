@@ -381,12 +381,25 @@ def run_self_test(manifest_path: Path) -> int:
         }
         for row in base["canonical"]
     }
-    projection["knowledge_units"]["opens"] = "DenseVectors"
-    errors = []
-    validate_review_projection(base, projection, errors)
-    if not any("knowledge_units.opens" in error for error in errors):
-        print("ERROR: negative fixture did not detect review projection selector drift", file=sys.stderr)
-        return 1
+    drift_cases = {
+        "owner": "wrong_owner",
+        "table_type": "ReverseIndexTable",
+        "opens": "DenseVectors",
+        "sync": "dupsort_not_supported",
+        "physical_key": ["WrongKind", "WrongId"],
+        "migration_peak": 2,
+    }
+    for field, wrong_value in drift_cases.items():
+        drifted_projection = copy.deepcopy(projection)
+        drifted_projection["knowledge_units"][field] = wrong_value
+        errors = []
+        validate_review_projection(base, drifted_projection, errors)
+        if not any(f"knowledge_units.{field}" in error for error in errors):
+            print(
+                f"ERROR: negative fixture did not detect review projection {field} drift",
+                file=sys.stderr,
+            )
+            return 1
 
     print("dbi manifest self-test ok")
     return 0
