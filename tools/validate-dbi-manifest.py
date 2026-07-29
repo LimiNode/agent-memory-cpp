@@ -71,6 +71,9 @@ EXPECTED_SYNC_SYSTEM_DBIS = {
     "_mdbxc_applied",
     "_mdbxc_identity_index",
     "_mdbxc_sync_schema",
+    "_mdbxc_logical_delivery",
+    "_mdbxc_logical_delivery_order",
+    "_mdbxc_logical_outbox",
 }
 
 EXPECTED_PHYSICAL_KEYS = {
@@ -216,17 +219,17 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             explicit_dbi_names.add(explicit_name)
 
     sync_delta = next(
-        (row for row in deltas if isinstance(row, dict) and row.get("name") == "sync_system_8c76661d"),
+        (row for row in deltas if isinstance(row, dict) and row.get("name") == "sync_system_be72a2b"),
         None,
     )
     if not sync_delta:
-        fail(errors, "missing sync_system_8c76661d profile delta")
+        fail(errors, "missing sync_system_be72a2b profile delta")
     else:
         sync_names = set(sync_delta.get("names", []))
         if sync_names != EXPECTED_SYNC_SYSTEM_DBIS:
-            fail(errors, "sync_system_8c76661d names do not match expected system DBIs")
+            fail(errors, "sync_system_be72a2b names do not match expected system DBIs")
         if sync_delta.get("dbis") != len(EXPECTED_SYNC_SYSTEM_DBIS):
-            fail(errors, "sync_system_8c76661d dbis must be 6")
+            fail(errors, "sync_system_be72a2b dbis does not match expected system DBIs")
 
     for key, value in peak.items():
         if not isinstance(value, int) or value < 0:

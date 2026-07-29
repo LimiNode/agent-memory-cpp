@@ -256,9 +256,9 @@ profile_deltas:
     default: false
     milestone: M2+
     note: Future profile delta only if agent-memory introduces EventRecord as an entity separate from KnowledgeUnit.
-  - name: sync_system_8c76661d
-    dbis: 6
-    migration_peak: 6
+  - name: sync_system_be72a2b
+    dbis: 9
+    migration_peak: 9
     default: false
     names:
       - _mdbxc_meta
@@ -267,6 +267,9 @@ profile_deltas:
       - _mdbxc_applied
       - _mdbxc_identity_index
       - _mdbxc_sync_schema
+      - _mdbxc_logical_delivery
+      - _mdbxc_logical_delivery_order
+      - _mdbxc_logical_outbox
   - name: migration_dual_write_reserve
     dbis: 0
     migration_peak: 8
@@ -281,9 +284,9 @@ expanded_peak_reference:
   source_refs_by_resource: 1
   global_unit_id_to_local_id: 1
   runtime_sequence_index: 1
-  sync_system_8c76661d: 6
+  sync_system_be72a2b: 9
   migration_dual_write_reserve: 8
-  total: 58
+  total: 61
 
 runtime_integration_mapping:
   a0_a2_default_new_dbis: 0
