@@ -645,7 +645,7 @@ struct RuntimeRetrievalFilters {
 ```
 
 Every supplied runtime filter is an exact stable-identity predicate; optional
-revisions are ignored. `runtime_instance_filter`, `replica_filter` and each
+revisions are ignored. `runtime_instance_filter`, `origin_filter` and each
 `RuntimeSequenceRange` intersect, and a sequence range is valid only for the
 same runtime/replica origin selected by those filters. A plan that names
 incompatible origins is invalid rather than an empty best-effort query.
