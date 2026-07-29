@@ -851,6 +851,9 @@ qa.expected_format = std::string{"text"};
 - Original: question + answer (full).
 - QAQuestion: только `canonical_question` + variants (для matching).
 - QAAnswer: только `answer` (для retrieval когда question уже matched).
+- QACombined (M2+ experimental): a versioned, deterministic `Question + Answer`
+  text view for a separately calibrated dense route. It is never the only
+  retrieval representation of a QAPair.
 
 #### 5.2.6. Storage
 
@@ -892,6 +895,37 @@ When a QAPayload change affects question or answer text, the write transaction
 updates both QA lexical projections and marks affected dense projections stale
 or enqueues their regeneration. A stale vector may be retained as a rebuildable
 artifact but cannot be presented as the active projection for the changed unit.
+
+#### 5.2.9. QAPair dense retrieval and storage profile (M2+)
+
+The default dense route for a QAPair is `QAQuestion`: a user query normally
+matches the formulation of a question before the answer body is fetched. A
+retrieval plan may enable `QAAnswer` as a bounded second-stage rerank or as a
+separate candidate route when answer terminology is known to improve recall.
+`QACombined` is a third, experimental route for cases where the joint wording
+helps; it must be independently embedded, versioned, evaluated and budgeted.
+It must not replace `QAQuestion`, because a long answer can otherwise drown out
+the wording a user actually asks for.
+
+Every enabled route has its own `(scope, unit, projection kind, model,
+model-version)` identity, binary-signature descriptor and active-revision
+validation. The retrieval plan declares per-route candidate limits, whether an
+answer-vector fetch is permitted after the question stage, and the fusion rule
+(for example calibrated weighted score or RRF). It records those choices and
+their candidates in the retrieval trace. Default weights such as `0.7/0.3` are
+profile parameters to calibrate against a QA golden dataset, not universal
+constants embedded in a storage format.
+
+The canonical `QAPayload` remains the semantic owner of the question, answer,
+scope, lifecycle and evidence. A vector block or retrieval projection must not
+copy answer text as a second source of truth. `question_variants` are the first
+representation for paraphrases that share one answer assertion. Separate
+QAPairs with equal answer bytes may have different evidence, authority,
+retention or lifecycle; they therefore remain separate units. An optional
+storage codec may intern identical immutable answer bytes, and may share a
+derived answer-vector payload only when the projection bytes and full
+model/codec descriptor match exactly. Each unit still retains its own
+projection identity, metadata and evidence binding.
 
 ### 5.3. FactPayload
 

@@ -180,7 +180,7 @@ The old `DocumentChunk` / `MemoryObject` / `chat::Message` /
   `FactPayload`, `ChunkPayload`, `ConversationEpisodePayload`,
   `CompiledArticlePayload`. Stored separately from the envelope.
 - `SearchProjections` (multi-projection retrieval): `Original`,
-  `QAQuestion`, `QAAnswer`, `Summary`, `CodeSymbols`,
+  `QAQuestion`, `QAAnswer`, `QACombined`, `Summary`, `CodeSymbols`,
   `DenseContextual`, `Bm25Fields`. Each projection has its own
   payload and kind-specific indexer.
 - Component-based stores: `IKnowledgeUnitStore` (envelope),

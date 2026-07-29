@@ -139,6 +139,7 @@ enum class ProjectionKind : std::uint16_t {
     Summary         = 5,
     CodeSymbols     = 6,
     TranslatedCanonical = 7,
+    QACombined      = 8,  // M2+ dense-only Question + Answer experiment
 };
 
 enum class FieldId : std::uint16_t {

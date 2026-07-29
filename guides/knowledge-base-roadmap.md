@@ -279,6 +279,7 @@ enum class ProjectionKind : uint16_t {
     Original,           // исходный текст unit (BM25F input)
     QAQuestion,         // canonical + variants (QAPair)
     QAAnswer,           // answer (QAPair)
+    QACombined,         // M2+: versioned "Question + Answer" dense experiment
     Summary,            // short summary
     CodeSymbols,        // extracted symbols (Chunk)
     DenseContextual,    // M2: contextual header для dense
@@ -310,17 +311,17 @@ Sparse storage: хранятся только сгенерированные pro
 
 ### 5.2. Per-kind generation rules
 
-| Kind | Original | QAQuestion | QAAnswer | Summary | CodeSymbols |
-|---|---|---|---|---|---|
-| Chunk | full body | — | — | — | extracted symbols |
-| QAPair | question + answer | canonical + variants | answer | — | — |
-| Fact | subject predicate object | — | — | — | — |
-| Summary | full text | — | — | redundant | — |
-| CompiledArticle | title + body | — | — | short | — |
-| ConversationEpisode | flattened | — | — | — | — |
-| Event | description | — | — | — | — |
-| Entity | name + type + aliases | — | — | — | — |
-| Relation | from → edge → to | — | — | — | — |
+| Kind | Original | QAQuestion | QAAnswer | QACombined | Summary | CodeSymbols |
+|---|---|---|---|---|---|---|
+| Chunk | full body | — | — | — | — | extracted symbols |
+| QAPair | question + answer | canonical + variants | answer | M2+ versioned question + answer | — | — |
+| Fact | subject predicate object | — | — | — | — | — |
+| Summary | full text | — | — | — | redundant | — |
+| CompiledArticle | title + body | — | — | — | short | — |
+| ConversationEpisode | flattened | — | — | — | — | — |
+| Event | description | — | — | — | — | — |
+| Entity | name + type + aliases | — | — | — | — | — |
+| Relation | from → edge → to | — | — | — | — | — |
 
 Generation rules детерминированы: given the same unit + components, the same projections are emitted.
 

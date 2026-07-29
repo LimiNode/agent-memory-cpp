@@ -29,7 +29,8 @@
 
 ### Цели
 
-Расширить `external/mdbx-containers/include/mdbx_containers/` набором классов и утилит, необходимых для следующих направлений `agent-memory-cpp`:
+Описать необходимые storage capabilities и downstream patterns
+`agent-memory-cpp` для следующих направлений:
 
 1. **Knowledge Units** — все kinds имеют общий `KnowledgeUnitEnvelope` в
    `knowledge_units`; kind-specific и operational data хранятся в
@@ -2393,6 +2394,13 @@ The following are candidate generic `mdbx-containers` capabilities. They do
 not introduce `QAPair`, `ChunkId`, `KnowledgeUnit` or application metadata into
 the upstream API:
 
+The downstream `BinaryBucketIndexDescriptor`, `BinaryBucketSearchBudget`,
+canonical hydration rules, profile defaults, and resource/unit lifecycle are
+owned by [`optimization-roadmap.md`](optimization-roadmap.md) §"Binary Bucket
+Index Tasks". This section specifies only the possible generic collection,
+block and candidate-index primitives; it is not an upstream implementation
+backlog or an alternative application-level retrieval contract.
+
 1. **Vector collection descriptor.** Persist and validate collection schema:
    stable collection id, descriptor version, dimension, metric,
    normalization rule, vector codec/quantizer identity and version, binary
@@ -2418,6 +2426,62 @@ the upstream API:
    tombstone/active-generation rule and compaction reclaims unreachable blocks.
    The primary vector payload is stored once, not duplicated in every
    multi-probe bucket.
+5. **Columnar block layout and codec registry.** Immutable vector blocks may
+   use a generic column directory rather than an opaque compressed blob. The
+   format is owned by the vector layer and must be independent of any
+   application record schema. A versioned `VectorBlockLayoutDescriptor` must
+   bind the collection descriptor, vector dimension, record count, stable
+   record-ID encoding, and an ordered list of `VectorBlockColumnDescriptor`s.
+   Each column descriptor must record its role, codec ID and version, transform
+   chain identity, encoded and decoded byte counts, offset, alignment, and an
+   integrity digest. If a trained compression dictionary is used, its immutable
+   digest and codec-compatible dictionary format/version are also mandatory.
+   Decoder validation must reject overlapping or out-of-range columns, unknown
+   codecs or dictionaries, inconsistent record counts or dimensions, invalid
+   alignment, and every configured allocation or decoded-size cap breach.
+
+   The initial neutral column roles are `StableRecordIds`, `CandidateKeys`,
+   `VectorPayload`, and opaque `Auxiliary`. They deliberately do not encode
+   `KnowledgeUnit`, `QAPair`, provenance, lifecycle, or any downstream
+   metadata schema. `StableRecordIds` may use a base plus bounded deltas only
+   with a lossless 64-bit fallback (for example VByte); a narrow delta encoding
+   must never truncate an ID. `CandidateKeys` may remain raw aligned words when
+   a Hamming/XOR/popcount kernel needs direct access. `Auxiliary` is opaque to
+   the generic vector layer and is not a substitute for application-owned
+   records.
+
+   `VectorPayload` codecs may include raw `float32`/`float16`, fixed-width
+   quantized values, product quantization, and an experimental
+   frame-of-reference residual layout (base or centroid, group scales, then
+   packed residual groups). A residual layout is a numeric storage transform,
+   not an assertion that records placed in one bucket have small coordinate-wise
+   residuals. It is therefore benchmark-gated against raw quantized and PQ
+   alternatives for the actual corpus. An optional
+   `transpose -> byte/bitshuffle -> Zstd` transform is likewise cold-block-only
+   until it demonstrates an end-to-end win; it must not be the default format
+   for a latency-sensitive exact scan.
+
+   The public contract must not require a particular implementation library or
+   expose a third-party packed wire format. SIMD-BP128, Stream VByte, FastPFOR,
+   and similar libraries are acceptable optional implementation candidates for
+   integer columns after a separate compatibility and benchmark decision.
+   Required coverage includes deterministic round trips for full and tail
+   blocks, random/coherent/heterogeneous value distributions, lossless
+   wide-delta fallback, malformed directory/offset/size/dictionary rejection,
+   and scalar/SIMD equivalence for exact scoring. Benchmarks must report
+   per-column bytes, build and decode throughput, p50/p95/p99 query latency,
+   decoded bytes per query, recall against exact baseline, write amplification,
+   compaction cost, reopen time, and peak memory.
+
+   The downstream application remains responsible for deciding which records
+   share a block or hash bucket, for canonical record ownership and hydration,
+   and for evaluating retrieval, provenance, and lifecycle correctness.
+   A caller-provided locality or packing hint may affect only write-time block
+   placement; it is opaque to the generic layer and must not become an implicit
+   query filter, a semantic equality claim, or a durable record identity.
+   `mdbx-containers` may provide the neutral block, codec, and validation
+   primitives only; it does not infer semantic co-location or own durable
+   application identifiers.
 
 The intended query path is bounded and deterministic:
 
@@ -2447,16 +2511,18 @@ postings only. This gives sequential reads and amortizes one block decode
 across many candidates, without asserting that the bucket is lossless or that
 all equal-signature vectors are equal.
 
-`Quantization -> optional Zstd` is an allowed block codec pipeline, not a
-default promise. Quantization (`float16`, `int8`, PQ or another versioned
-codec) occurs before optional block compression. Zstd acts on a complete
-bounded immutable block and is decoded once into a contiguous temporary buffer;
-it is not applied per vector and is not on the hot full-corpus scan path.
-Compression is accepted only when measured on representative embeddings:
-high-entropy float or quantized bytes may have negligible Zstd savings. The
-block header records codec ids/versions, per-block quantization parameters,
-record count, decoded/encoded byte sizes, digest and a strict decoded-size
-limit. Corrupt, oversized or descriptor-incompatible blocks fail closed.
+`Quantization -> optional per-column transform -> optional Zstd` is an allowed
+block codec pipeline, not a default promise. Quantization (`float16`, `int8`,
+PQ or another versioned codec) occurs before optional block compression. Zstd
+acts on a complete bounded cold block or column and is decoded once into a
+contiguous temporary buffer; it is not applied per vector and is not on the hot
+full-corpus scan path. Compression is accepted only when measured on
+representative embeddings: high-entropy float or quantized bytes may have
+negligible Zstd savings. The block header records codec ids/versions, per-block
+quantization parameters, record count, decoded/encoded byte sizes, digest and
+a strict decoded-size limit. Corrupt, oversized or descriptor-incompatible
+blocks fail closed. Hot candidate keys and fixed-width binary signatures may
+remain raw aligned words instead of becoming opaque to the scan kernel.
 
 The proposed acceptance suite must report exact-oracle recall, final reranked
 quality, p50/p95/p99 latency, candidate count, bucket/posting visits, decoded
@@ -2471,7 +2537,8 @@ Recommended upstream sequencing:
 1. `TableSequence` as a small independent primitive.
 2. Benchmark-backed vector-only contiguous scan/SIMD kernel and collection
    descriptor, without application payloads.
-3. Blocked vector store plus binary bucket postings and lifecycle tests.
+3. Blocked vector store plus binary bucket postings, optional generic columnar
+   block layout/codec validators, and lifecycle tests.
 4. HNSW/other ANN only after the blocked candidate path has stable ids,
    descriptor validation, update/delete semantics and benchmark evidence.
 

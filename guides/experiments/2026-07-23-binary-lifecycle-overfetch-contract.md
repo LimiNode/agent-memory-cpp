@@ -52,7 +52,11 @@ max(minimum_candidate_count, returned_candidate_limit * candidate_multiplier)
 ```
 
 The next quality-grid PR should add an explicit probe/candidate budget if we
-want output overfetch and bucket-search depth to vary independently.
+want output overfetch and bucket-search depth to vary independently. The
+roadmap contract is now named `BinaryBucketSearchBudget` in
+[`optimization-roadmap.md`](../optimization-roadmap.md) and must bound bucket
+probes, posting visits, decoded bytes, unique candidates and exact-rerank
+candidates independently of `returned_candidate_limit`.
 
 Commands:
 
@@ -104,7 +108,7 @@ Interpretation:
 Next checks:
 
 - Add explicit multi-probe probe/candidate budget independent from
-  `returned_candidate_limit`.
+  `returned_candidate_limit`, using `BinaryBucketSearchBudget`.
 - Run a bit/candidate grid with fixed `oracle_k = 10` and candidate limits such
   as `32`, `64`, `128`, `256`, and `512`.
 - Add exact rerank timing over returned binary candidates.

@@ -113,7 +113,7 @@ Layer B: Components (operational + per-kind payloads)
 
 Layer C: SearchProjections (retrieval-specific text views)
   Original, DenseContextual, Bm25Body/Title/Heading/Symbols,
-  QAQuestion, QAAnswer, Summary, CodeSymbols, TranslatedCanonical
+  QAQuestion, QAAnswer, QACombined, Summary, CodeSymbols, TranslatedCanonical
 ```
 
 Каждый слой имеет собственные logical stores и обновляется независимо (но
@@ -867,6 +867,13 @@ inline MemoryProfileSpec QAKnowledgeBase() {
 }
 ```
 
+The default dense projection for this profile is `QAQuestion`; `QAAnswer` is a
+bounded M2+ rerank/candidate opt-in and `QACombined` is an experiment enabled
+only after calibration. The profile never treats a vector block as the source
+of question or answer bytes. Its detailed per-route candidate budgets and
+fusion policy live in the retrieval plan, so an answer-heavy route cannot
+silently turn a short FAQ lookup into a full double-index scan.
+
 ### 8.3. AgentLongTermMemoryStack
 
 ```cpp
@@ -1454,9 +1461,16 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
   - `ApproximateVectorIndex` (M2+, experimental, decoder support для binary → approx vector → rerank).
   - `HnswVectorIndex` (M2+ experimental, 5th mode — mainline ANN backend; см. optimization-roadmap.md §"HNSW Vector Index").
 - Mode-specific DBI creation в `MemoryStack::open(spec, mode)` с capability-aware логикой (см. §12.7).
+- `BinaryCandidateFilter` may become a profile default only after its
+  application-owned `BinaryBucketIndexDescriptor`, `BinaryBucketSearchBudget`,
+  active-generation publication and stale-hydration checks are present. The
+  baseline starts with one short-key table; multi-index hashing is a separately
+  benchmarked M2+ option, not an automatic profile expansion.
 - `RetrievalPlan.dense_index_mode_override` для runtime override (см. §7.3).
 - Storage tradeoffs и capacity estimates документированы (см. §17.12).
-- Quality benchmarks per mode на golden dataset (Recall@10, p95 latency).
+- Quality benchmarks per mode на golden dataset: exact-oracle/candidate/reranked
+  recall, p50/p95/p99 latency, posting probes/visits, decoded bytes, RSS,
+  on-disk bytes, and targeted update/delete/compaction cost.
 - Per-stack default в `MemoryProfiles::*` фабриках (см. §8).
 
 ### Шаг 5: Component infrastructure
