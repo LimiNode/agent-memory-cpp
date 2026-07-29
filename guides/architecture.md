@@ -260,7 +260,9 @@ provider SDKs, package managers and model runtimes do not.
 The default retrieval/storage route is the library's own stores and indexes.
 An external vector database, when selected by an adapter, is a derived segment
 index only and does not own canonical artifact bytes, evidence anchors or
-backup truth.
+backup truth. The library's MDBX path remains the default; a text-only external
+adapter is optional for M1a migration/benchmark comparison and must hydrate and
+revalidate every candidate from canonical local storage.
 
 The canonical, currently normative specification of the data model,
 profiles, stacks, capability matrix, validation rules, and maturity lives in

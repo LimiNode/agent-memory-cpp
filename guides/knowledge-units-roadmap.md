@@ -113,22 +113,24 @@ treated as ordinary source chunks.
 
 ### 2.3. Generic raw document units
 
-Raw files do not have to arrive as curated cards. For `.md`, `.txt`,
-extracted `.pdf`, transcript and log imports, the importer creates a minimal
-generic unit when no stronger domain mapping is available:
+Raw files do not have to arrive as curated cards. M0 import accepts UTF-8 text
+resources such as `.md`, `.txt` and logs. It creates a minimal generic unit
+when no stronger domain mapping is available:
 
 - `kind = KnowledgeUnitKind::Note` for one document-level unit, or
   `kind = KnowledgeUnitKind::Chunk` when the importer materializes each chunk
   as a separate retrieval unit;
-- `ResourceId` is derived from stable URI/path plus content hash or from an
-  application-provided identity;
+- `ResourceId` is allocated from a stable application-provided logical identity
+  or a connector-owned locator registry; path/URI and content hash never form
+  its identity. They belong to `SourceLocator` and `ResourceRevision`;
 - `title` comes from metadata, H1, first meaningful heading, or filename;
 - `trust_level` defaults to profile policy (`C`/`D`) unless supplied by source
   metadata;
 - tags come from frontmatter/sidecar metadata when available;
 - original language is detected when possible and stored on the payload or
   translation metadata;
-- `SourceRef` points back to the raw resource and byte/text range;
+- every imported raw `Note`/`Chunk` carries an inline `SourceRefSummary` back
+  to the raw resource and byte/text range;
 - `SearchProjection::Original` is generated from extracted text immediately;
 - `SearchProjection::TranslatedCanonical` may be generated later when the
   `TranslationProjection` capability is enabled;
@@ -139,6 +141,12 @@ This is intentionally different from a curated card. A generic raw document
 unit is searchable and citeable, but carries weaker semantics. It should not be
 forced to pretend to be `Fact`, `QAPair`, `CompiledArticle` or any other
 curated kind until an explicit normalizer/extractor produces those units.
+
+Native PDF/DOCX/image/audio/video ingestion, OCR and ASR are not M0 text
+fallbacks. They begin with the M2 artifact profile, which retains original bytes
+and emits typed evidence locators. An application may import externally
+extracted text into M0, but it must label it as derived text and must not claim
+an original PDF/page/media citation that the M0 contract cannot validate.
 
 ## 3. SourceRef (M0 compatibility contract)
 
@@ -155,7 +163,11 @@ curated kind until an explicit normalizer/extractor produces those units.
 > `SourceId` and immutable `SourceRevisionId`; they do not redefine M0
 > `ResourceId`.
 
-`SourceRef` — first-class provenance для всех retrieval-eligible units. Обязателен для Fact, QAPair, Relation, Event, и любого GraphNode, доступного через expansion. Рекомендуется для Chunk и CompiledArticle.
+`SourceRef` — first-class provenance для всех retrieval-eligible units. It is
+required for Fact, QAPair, Relation, Event, every GraphNode available through
+expansion, and every `Note`/`Chunk` imported from a `ResourceBodyStore` or
+connector. It remains optional only for application-native units whose policy
+explicitly records no external source.
 
 В M0 contract разделяется на два слоя: `SourceRefSummary` (inline, ≤256 байт preview, всегда присутствует в envelope) и полная `SourceRef` (с `excerpt_text`, хранится в отдельной `source_refs` DBI, появляется в M1).
 
@@ -171,7 +183,7 @@ struct SourceRefSummary {
     TextRange excerpt;               // обязательно для quote-based refs
     std::array<uint8_t, 16> quote_hash;  // обязательно: SHA1(prefix(excerpt))[:16]
     double confidence;               // [0.0, 1.0]
-    std::optional<KnowledgeUnitId> anchor_unit_id;  // связь на parent unit
+    std::optional<KnowledgeUnitRef> anchor_unit;    // durable parent-unit binding
     std::optional<uint64_t> observed_at_ms;
     std::string preview;             // inline excerpt, ≤256 байт
 };
@@ -190,6 +202,11 @@ struct SourceRef {
 - `uri` — обязателен для citation fidelity (`preview + uri` = stable short citation; `excerpt_text + uri` = stable full citation).
 - `quote_hash` — обязателен: 16-byte hex of SHA1(`prefix(preview)`) для summary, либо SHA1(`prefix(excerpt_text)`) для полной SourceRef. Обеспечивает детерминированную идентификацию цитат без хранения полного текста в каждом индексе.
 - `preview` (≤256 байт) — обязателен в summary; используется в UI, short citations, projection и не требует обращения к `source_refs` DBI.
+- Imported raw `Note`/`Chunk` units must have at least one inline summary. A
+  `ContextBuilder` must reject such a raw block when its required summary is
+  absent, or emit it only with the explicit `provenance-incomplete` label under
+  a caller-selected diagnostic policy; it must not present the block as cited
+  source material.
 - `id` and `evidence_anchor_ids` are optional only for M0 compatibility. In an
   artifact-aware full reference, `SourceRefId` is durable and every listed
   `EvidenceAnchorId` resolves through the artifact catalog without rewriting its
@@ -590,12 +607,16 @@ identity input for idempotent upsert.
    - Аллоцировать новый monotonic `KnowledgeUnitId`.
    - Перезаписать envelope с новым id в `knowledge_units`.
    - Записать `KnowledgeUnitKey → KnowledgeUnitId` в `content_key_to_unit_id`.
-3. Обновить все cross-reference (`anchor_unit_id`, `superseded_by`, `derived_from`) — старые ID заменяются на новые через lookup-таблицу.
+3. Rebind local handles in all cross-references (`anchor_unit.local_id`,
+   `superseded_by`, `derived_from`) through the lookup table; a durable
+   `anchor_unit.global_id` is not rewritten.
 4. Перестроить `inverted_token_to_unit`, `field_to_postings`, secondary indexes.
 
 Migration запускается отдельной утилитой (`agent-memory-cli migrate-ku-id-scheme`), не часть core API. Round-trip test обязателен.
 
-`KnowledgeUnitId` обязателен для map key, `envelope.id`, `projection.unit_id`, `RetrievalHit.unit_id` и любых cross-reference (anchor_unit_id, superseded_by, derived_from).
+`KnowledgeUnitId` обязателен для map key, `envelope.id`, `projection.unit_id`,
+`RetrievalHit.unit_id` и local portions of cross-references
+(`anchor_unit.local_id`, `superseded_by`, `derived_from`).
 
 See [`usage-llm-wiki.md`](usage-llm-wiki.md) for how KnowledgeUnit storage can back an LLM Wiki's `raw/` and `wiki/` partitions.
 
@@ -1172,7 +1193,7 @@ struct OldSourceRef {
 // - excerpt (full) → SourceRef.excerpt_text (в source_refs DBI)
 // - quote_hash (optional) → SourceRefSummary.quote_hash (required, вычисляется из preview если missing)
 // - ResourceId добавляется через reverse lookup по uri
-// - anchor_unit_id добавляется (default = nullopt)
+// - anchor_unit adds a durable KnowledgeUnitRef (default = nullopt)
 // - observed_at_ms добавляется (default = nullopt)
 ```
 
@@ -1202,7 +1223,9 @@ Migration strategy:
 2. Аллоцировать новый monotonic `KnowledgeUnitId` для каждого уникального key.
 3. Перезаписать envelope с новым id в `knowledge_units`.
 4. Записать `KnowledgeUnitKey → KnowledgeUnitId` в `content_key_to_unit_id`.
-5. Обновить все cross-reference (`anchor_unit_id`, `superseded_by`, `derived_from`) через lookup-таблицу.
+5. Rebind local portions of all cross-references (`anchor_unit.local_id`,
+   `superseded_by`, `derived_from`) through the lookup table without rewriting
+   durable anchor global ids.
 6. Перестроить `inverted_token_to_unit`, `field_to_postings`, secondary indexes.
 
 Запускается через `agent-memory-cli migrate-ku-id-scheme`.

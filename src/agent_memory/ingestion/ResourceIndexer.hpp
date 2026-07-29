@@ -20,7 +20,9 @@ namespace agent_memory {
         DocumentSnapshot document_snapshot;
     };
 
-    /// \brief Dependency-free contract for targeted resource indexing.
+    /// \brief Pre-chunked dense/vector prototype for targeted resource indexing.
+    ///
+    /// This is not the lexical-first public M0 resource importer contract.
     class IResourceIndexer {
     public:
         virtual ~IResourceIndexer();
@@ -35,7 +37,7 @@ namespace agent_memory {
         [[nodiscard]] virtual bool erase_resource(const ResourceId& resource_id) = 0;
     };
 
-    /// \brief Basic resource indexer composed from dependency-free contracts.
+    /// \brief Basic pre-chunked dense/vector indexer prototype.
     class ResourceIndexer final : public IResourceIndexer {
     public:
         ResourceIndexer(

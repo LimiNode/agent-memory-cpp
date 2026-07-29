@@ -232,8 +232,12 @@ filters, and keeps result ordering deterministic by chunk id when scores tie.
 Resource indexing lives in `src/agent_memory/ingestion/` and composes
 dependency-free contracts. `ResourceIndexer` currently accepts pre-chunked
 resource snapshots, writes document state, embeds chunks, upserts vector records,
-and stores resource manifests. It does not own parsing, chunking policy, MDBX
-details, or retrieval ranking.
+and stores resource manifests. It is a dense/vector prototype, not the M0
+lexical-first public importer: its current replacement flow is not declared
+failure-atomic. The planned `IResourceImporter` contract in
+[`resource-reindexing.md`](resource-reindexing.md) owns connector observations,
+revision publication and mandatory raw provenance. `ResourceIndexer` does not
+own parsing, chunking policy, MDBX details, or retrieval ranking.
 
 ## Lexical Contracts
 

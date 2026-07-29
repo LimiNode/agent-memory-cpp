@@ -54,6 +54,12 @@ implementation can model this as `resource_id`, `generation`, an uncompressed
 content hash, and a pipeline configuration hash. It adapts to, rather than
 replaces, immutable `SourceRevisionId` in artifact-aware profiles.
 
+`SourceLocator`
+: A portable, mutable observation of where a logical resource was seen. It is
+not identity and may change while `ResourceId` remains stable. A source can
+retain active and historical aliases so export may reconstruct a useful folder
+tree without making a filesystem path part of identity.
+
 `ResourceManifest`
 : The list of derived keys created from the current resource revision.
 
@@ -74,6 +80,24 @@ struct ResourceRevision final {
     std::uint64_t generation = 0;
     std::uint64_t content_hash = 0;
     std::uint64_t pipeline_config_hash = 0;
+};
+
+enum class SourceLocatorKind : uint8_t {
+    WorkspaceRelativePath,
+    CanonicalUri,
+    ImportedArchivePath,
+    ApplicationAlias
+};
+
+enum class SourceLocatorStatus : uint8_t { Active, Alias, Retired };
+
+struct SourceLocator final {
+    std::string workspace_root_id;
+    SourceLocatorKind kind = SourceLocatorKind::WorkspaceRelativePath;
+    std::string normalized_relative_path;
+    std::uint64_t first_seen_at_ms = 0;
+    std::uint64_t last_seen_at_ms = 0;
+    SourceLocatorStatus status = SourceLocatorStatus::Active;
 };
 
 enum class DerivedRecordKind {
@@ -102,6 +126,15 @@ struct ResourceManifest final {
 
 This is not a final API. It documents the intended contract shape before code is
 introduced.
+
+`ResourceId` is never recomputed from `content_hash`, `pipeline_config_hash`,
+path or URI. A connector may discover a rename through a stable provider/file
+identity, an explicit application mapping, or an operator-confirmed match, then
+append/update a `SourceLocator` while retaining the logical ResourceId. Equal
+bytes alone must not silently merge two independently imported documents.
+`workspace_root_id` is an application-defined portable root label, not an
+absolute machine path; export preserves root-relative paths and aliases where
+retention policy permits.
 
 `pipeline_config_hash` should cover settings that change derived records even
 when source text is unchanged. Examples include chunking settings, parser
@@ -226,7 +259,71 @@ The note update path is then just a small resource reindex. It removes the old
 embedding and index entries for that one note, writes the new derived records,
 and updates the manifest.
 
-## Future Contracts
+## M0 Import Contracts
+
+The public M0 write path is lexical-first and does not require an embedder or a
+vector index. It is owned by ingestion, not by an application CLI. Concrete
+connectors remain adapters, but every adapter publishes the same observed-source
+shape:
+
+```cpp
+struct ObservedResource {
+    std::optional<ResourceId> known_local_id;
+    std::optional<SourceId> durable_source_id;
+    SourceLocator locator;
+    std::string content_type;
+    std::vector<std::uint8_t> utf8_body;
+    TypedMetadata metadata;
+};
+
+struct ResourceImportResult {
+    ResourceId resource_id;
+    ResourceRevision revision;
+    std::vector<KnowledgeUnitId> raw_units;
+};
+
+class IResourceConnector {
+public:
+    virtual ~IResourceConnector() = default;
+    virtual std::vector<ObservedResource> observe() = 0;
+};
+
+class IResourceImporter {
+public:
+    virtual ~IResourceImporter() = default;
+    virtual ResourceImportResult import(ObservedResource resource) = 0;
+};
+
+class ICuratedUnitNormalizer {
+public:
+    virtual ~ICuratedUnitNormalizer() = default;
+    virtual std::vector<KnowledgeUnitRef> normalize(
+        const ResourceImportResult& imported) = 0;
+};
+```
+
+`IResourceImporter` resolves/allocates the stable ResourceId, appends the
+ResourceRevision and locator history, writes body/manifest, creates raw
+`Note`/`Chunk` units with required inline SourceRefSummary, then publishes
+`Original` projections. Publication is coordinated: a failed import leaves the
+previous manifest/generation visible, or writes a new generation that becomes
+active only after all required units and projections exist. `ICuratedUnitNormalizer`
+is M1b: it may create Facts, QAPairs, concepts or cards with provenance, but
+never replaces, mutates away or impersonates the raw source.
+
+These are roadmap contracts, not an assertion that the current C++ prototype
+already implements them. Connector-specific filesystem walking, `--knowledge-path`
+CLI UX, frontmatter parsing and PDF/OCR adapters remain outside the core.
+
+## Existing Dense Prototype And Future Contracts
+
+`src/agent_memory/ingestion/ResourceIndexer` is a pre-chunked dense/vector
+prototype. It requires `IEmbedder` and `IVectorIndex`, and its current
+delete-then-write flow is not the M0 importer publication contract above. It is
+useful for targeted vector-index experiments, but applications must not treat it
+as the generic import API or as failure-atomic reindexing. A later implementation
+PR may replace or adapt it only together with lexical-first and generation/transaction
+conformance tests.
 
 Possible dependency-free contracts:
 
@@ -264,8 +361,9 @@ public:
 ```
 
 The exact names can change when implementation starts. The important boundary is
-that resource indexing composes storage, embedding, and index contracts rather
-than hiding them behind a single large facade.
+that M0 importing composes canonical resource/unit/projection storage before
+optional embedding and index work, rather than hiding every stage behind one
+large facade.
 
 ## Test Expectations
 
@@ -280,6 +378,11 @@ Future PRs should add focused tests for:
 - compaction removes stale bucket entries without changing query results;
 - repeated reindex of the same resource is idempotent;
 - two resources cannot conflict through reused chunk ids.
+- changed content keeps the same ResourceId and creates a newer revision;
+- rename/move preserves locator history only after stable connector identity or
+  explicit application confirmation, never merely because bytes match;
+- export/import may remap ResourceId but preserves SourceId/SourceRevisionId
+  and root-relative locator history.
 
 ## Recommended Implementation Order
 
@@ -290,8 +393,10 @@ Future PRs should add focused tests for:
 3. Add an in-memory manifest storage or fake for contract tests.
 4. Add MDBX-backed resource manifest storage.
 5. Add resource-aware document/chunk metadata helpers.
-6. Add a small `ResourceIndexer` composition test with `IDocumentStorage`,
-   `IEmbedder`, and `IVectorIndex`.
-7. Add targeted reindexing for exact vector search.
-8. Add generation-aware stale filtering for binary bucket indexes.
-9. Add compaction tasks for compressed bucket lists.
+6. Add lexical-first `IResourceImporter` conformance tests for update, failure
+   publication and mandatory SourceRefSummary.
+7. Add a small dense `ResourceIndexer` composition test with `IDocumentStorage`,
+   `IEmbedder`, and `IVectorIndex` as an optional derived-index path.
+8. Add targeted reindexing for exact vector search.
+9. Add generation-aware stale filtering for binary bucket indexes.
+10. Add compaction tasks for compressed bucket lists.

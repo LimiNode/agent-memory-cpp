@@ -81,6 +81,7 @@ struct Source {
     std::optional<std::string> canonical_uri;
     std::string connector_id;
     std::optional<std::string> external_id;
+    std::vector<SourceLocator> locators;
     TypedMetadata metadata;
 };
 ```
@@ -90,6 +91,11 @@ logical source. A local `ResourceRevision`/generation maps to an immutable
 `SourceRevisionId`; `SourceId` is the durable cross-environment counterpart of
 the local `ResourceId`. Import may allocate a different local `ResourceId`, but
 must retain and validate the SourceId/SourceRevisionId mapping.
+
+`SourceLocator` is defined by `resource-reindexing.md`: an active or historical
+root-relative path/URI observation, never a source identity. Artifact-aware
+export retains locator history where policy allows. Content equality may suggest
+a rename to a connector, but cannot silently merge two independent sources.
 
 ### 3.2 SourceRevision
 
@@ -511,6 +517,27 @@ projection plus identifiers and filter metadata. It must not accept canonical
 artifact bytes as a payload and must never become the source of truth for
 citations, deletion, retention or backup.
 
+### Text-Only External Index Adapter
+
+The default and preferred path remains the library's own MDBX-backed lexical
+and dense stores. Before the M2 artifact profile, an M1a profile may
+optionally use an external vector service such as Qdrant only for a text-only
+derived projection corpus. This supports incremental migration and fair
+quality/latency benchmarks without creating a second knowledge base.
+
+The text-only adapter receives only `SearchProjection::Original` text, local
+unit id, stable local ResourceId, ResourceRevision/generation, projection
+revision, scope and permitted filter metadata. A candidate returned by the
+service is always hydrated and revalidated from the canonical local unit and
+resource manifest before it becomes a `RetrievalHit` or context block. Deletion,
+reindex and stale revision checks originate in the canonical store; the adapter
+may lag and is rebuildable.
+
+This admission does not authorize non-text ingestion. PDF/OCR/ASR/media
+adapters, page/frame citations, artifact bytes and EvidenceAnchors still require
+the M2 artifact profile. The external adapter is never a catalog, BlobStore,
+backup authority or provenance authority.
+
 Multimodal segments may expose independent projections, for example transcript
 text, OCR text, visual description and image embedding input. Fusion happens
 through the existing retrieval composition layer, not by pretending that all
@@ -567,10 +594,10 @@ keeps the artifact and reports an integrity error rather than collecting it.
 
 ## 8. Delivery Order And Acceptance Gates
 
-### Artifact contracts before connectors
+### Artifact Contracts Before Non-Text Connectors
 
-Before a public source connector, document parser or external vector adapter is
-released, implement and test:
+Before a public non-text source connector, document parser or media external
+vector adapter is released, implement and test:
 
 1. opaque IDs and the Source/SourceRevision/Artifact/Representation/SegmentSet/Segment
    catalog model;
@@ -580,6 +607,10 @@ released, implement and test:
    conformance fixtures;
 5. retention, reachability and backup-manifest behavior;
 6. segment-to-Chunk materialization and source-revision reindexing.
+
+The M1a text-only external-index admission in section 6 is explicitly exempt
+from this gate, but must prove canonical-hit hydration, stale-revision rejection,
+delete propagation and benchmark parity against the library-owned baseline.
 
 ### Vertical slices after contracts
 

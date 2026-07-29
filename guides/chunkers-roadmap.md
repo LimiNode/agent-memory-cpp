@@ -39,9 +39,9 @@ Related roadmaps:
 2. **Map to our substrate.** Показать, как эти паттерны ложатся на наш `IResourceAdapter` + `ChunkPayload` + `SearchProjection` + `envelope.revision` contract'ы.
 3. **Document enrichment strategies.** Context-enrichment на индексации (Anthropic-style contextualization, late chunking, reverse Q-A generation) — это слой **поверх** chunking, не замена.
 4. **Implementation ladder.** Что в M0 (baseline), что в M1 (production), что в M2+ (advanced optional).
-5. **Raw document path.** Зафиксировать, что обычные `.md`, `.txt`,
-   extracted `.pdf`, transcripts and logs могут индексироваться без
-   предварительной curated-card нормализации.
+5. **Raw document path.** Зафиксировать, что обычные UTF-8 `.md`, `.txt` и
+   logs могут индексироваться без предварительной curated-card нормализации;
+   extracted PDF/transcript text is M0 only when explicitly labeled derived.
 
 Non-goals:
 
@@ -65,14 +65,18 @@ IResourceAdapter
   -> optional later normalizer: Fact / QAPair / Summary / CompiledArticle
 ```
 
-For document, image, audio and video ingestion, this is the text-only view of
-the normative artifact pipeline in
+For M2 document, image, audio and video ingestion, this is the text-only view
+of the normative artifact pipeline in
 [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md). A raw
 resource binds to a `SourceRevision` and immutable `Artifact`; extractors emit
 versioned `Representation` records and addressable `Segment` records before
 segment-backed `Chunk` units are indexed. A concrete parser remains an
 `IResourceAdapter`; it must not make its private extraction JSON the core
 provenance model.
+
+M0 accepts only already-available UTF-8 text. It may index externally extracted
+text as a derived resource, but it cannot present that result as an original
+PDF/page/image/audio/video citation without the artifact profile.
 
 If a source already provides curated metadata, the importer may create a
 specific `KnowledgeUnitKind` immediately. If it does not, the importer creates

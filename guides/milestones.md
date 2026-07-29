@@ -40,10 +40,10 @@ Required capabilities:
 
 | Capability | Required API | Required DBI | Required tests | Deferred dependencies | Owner |
 |---|---|---|---|---|---|
-| Raw resource ingest | `IResourceStore`, `ResourceManifest`, `ResourceBodyStore` | `resource_bodies` profile delta if MDBX-backed | import `.md`/`.txt`, stable content hash, re-open | chunked body store optional | `resource-reindexing.md`, `mdbx-containers-extension-tz.md` |
+| Raw resource ingest | `IResourceStore`, `ResourceManifest`, `ResourceBodyStore` | `resource_bodies` profile delta if MDBX-backed | import UTF-8 `.md`/`.txt`/logs, stable logical ResourceId across an update, re-open | chunked body store optional | `resource-reindexing.md`, `mdbx-containers-extension-tz.md` |
 | Chunk/Note units | `IKnowledgeUnitStore::create_or_get_unit` | `knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind`, `chunk_payloads` | create/get/reopen, duplicate content dedupe | Fact/QA rich payloads | `knowledge-base-roadmap.md` |
 | Immutable identity | `KnowledgeUnitKey`, `supersede_unit`, `update_mutable_fields` | `content_key_to_unit_id` | identity-field update rejected, mutable patch accepted | merge policy | `knowledge-units-roadmap.md` |
-| Source summaries | `SourceRefSummary` inline in envelope | `knowledge_units` | citation preview survives reopen | full `source_refs` DBI | `knowledge-base-roadmap.md` |
+| Source summaries | `SourceRefSummary` inline in envelope | `knowledge_units` | imported raw unit always carries a citation preview that survives reopen | full `source_refs` DBI | `knowledge-base-roadmap.md` |
 | Original projection | `IProjectionStore` | `unit_projections` | stale revision skipped, projection regenerated | QA/Summary projections | `knowledge-base-roadmap.md` |
 | Lexical retrieval | `ILexicalIndex`, `LexicalRetriever` | lexical dictionary/stats/postings from TZ | BM25F over `Original`, p95 target fixture | dense, learned sparse | `lexical-search-roadmap.md` |
 | Scope isolation | `ScopeId` in every secondary/range key | all secondary DBIs | cross-scope leakage tests | distributed scope routing | `memory-stacks-roadmap.md` |
@@ -52,6 +52,11 @@ Required capabilities:
 M0 must not require `IEmbedder`, graph expansion, persistent runtime queue,
 compaction jobs, sync, translation, bi-temporal storage, speaker memory, or
 compiled wiki profiles.
+
+M0 is text-only: it does not natively ingest PDF/DOCX/image/audio/video, run
+OCR/ASR, or claim original page/frame/media citations. An externally extracted
+UTF-8 text may be imported only as explicitly derived text. Non-text connectors
+must use the M2 artifact provenance profile.
 
 ### M1a - Hybrid Retrieval
 
@@ -65,6 +70,7 @@ Required capabilities:
 | Embedder registration | `IEmbedder` / profile validation | none | fail-fast when dense requested without embedder | bundled model runtime | `embedding.md` |
 | Exact vector baseline | `IEmbeddingStore`, exact vector index | `embedding_meta`, `embedding_vectors` | recall parity with in-memory exact baseline | ANN/HNSW | `optimization-roadmap.md` |
 | Hybrid fusion | `HybridRetriever`, RRF | none | hybrid Recall@10 gate vs lexical baseline | learned fusion | `knowledge-base-roadmap.md` |
+| Optional text-only external vector adapter | derived projection adapter with canonical-hit hydration | none in canonical MDBX manifest | stale revision, delete propagation and quality/latency comparison against library-owned baseline | non-text/media sources | `artifact-provenance-roadmap.md` |
 | Benchmark harness | eval runner fixture schema | none | reproducible warm/cold run JSON | external comparisons | `build-and-test.md` |
 
 `BasicLexicalRag()` is the default factory. `BasicHybridRag(IEmbedder&)` or an
@@ -188,7 +194,7 @@ and guarantees are actually comparable.
 | `architecture.md` | Normative, except duplicated milestone summaries | High-level boundaries |
 | `memory-stacks-roadmap.md` | Normative for profiles and ADRs; milestone split delegated here | Capability model |
 | `knowledge-base-roadmap.md` | Normative for retrieval/store contracts | Must follow this file for M0/M1 scope |
-| `artifact-provenance-roadmap.md` | Normative for M2 artifact profiles | Required before public non-text connectors or external derived-index adapters |
+| `artifact-provenance-roadmap.md` | Normative for M2 artifact profiles | Required before public non-text connectors; defines a narrow M1a text-only derived-index exception |
 | `knowledge-activation-roadmap.md` | Normative for activation/planning concepts; implementation staged by this file | Domain maps, playbooks, soft routing |
 | `agent-runtime-integration-roadmap.md` | Proposal / A-lane | Cognitive runtime integration without core execution |
 | `mdbx-containers-extension-tz.md` | Normative for physical DBI manifest and upstream primitive contracts | Must track exact upstream compatibility snapshots |
