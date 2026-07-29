@@ -115,12 +115,23 @@ native node identifier -> RuntimeObjectRef{"adelia", runtime_id, replica_id, Nod
 
 The mapping lives in the adapter, not in core headers.
 
-Object identity is `(adapter_id, runtime_instance_id, replica_id, kind,
-opaque_id, revision?)`. `replica_id` is required when `opaque_id` is only
+Stable object identity is `(adapter_id, runtime_instance_id, replica_id, kind,
+opaque_id)`. `revision` is an optional observed-version/freshness value and is
+never part of equality, ordering, a persisted key, a filter encoding, or an
+origin comparison. `replica_id` is required when `opaque_id` is only
 replica-local. If an adapter omits `replica_id`, it must guarantee that
 `opaque_id` is globally unique within the runtime instance for that kind.
 For `RuntimeObjectKind::Replica`, `opaque_id` is the replica identifier;
 `replica_id` may be absent or equal to `opaque_id`.
+
+Adapters must reject an empty `adapter_id`, `runtime_instance_id` or
+`opaque_id`. A `RuntimeSequence` or `RuntimeSequenceRange` validates that its
+`runtime_instance.kind == Runtime` and `replica.kind == Replica`; the pair must
+have the same `adapter_id` and `runtime_instance_id`. Implementations encode
+the stable tuple above once and reuse that encoding for equality, keys and
+filter comparisons. The optional revision may be exposed to callers for stale
+observation detection, but changing it must not make a different runtime
+object.
 
 ## Replicated Identity And Runtime Time
 
@@ -137,6 +148,10 @@ struct KnowledgeUnitRef {
     GlobalKnowledgeUnitId global_id;
     std::optional<KnowledgeUnitId> local_id;
 };
+
+struct GlobalIdentityComponent {
+    GlobalKnowledgeUnitId global_id;
+};
 ```
 
 `GlobalKnowledgeUnitId` is occurrence identity, not content identity. It may be
@@ -146,6 +161,17 @@ content hash: two equal messages or observations at different times are allowed
 to be distinct units. Content identity and dedupe use `KnowledgeUnitKey` /
 `ContentHash` separately. Local import may remap `KnowledgeUnitId`; it must not
 rewrite global ids.
+
+The A0 durable-global-identity profile stores `GlobalIdentityComponent` in
+`unit_components` and maintains a unique lookup through the existing
+`metadata_filters` substrate:
+`(scope_id, ComponentKind::GlobalIdentity, encoded_global_id) -> KnowledgeUnitId`.
+Creation, import and reopen validation must reject a second binding of the same
+global id in one scope. Import writes or validates this mapping in the same
+transaction as its envelope, components and provenance manifest; a local
+`KnowledgeUnitId` may change, but the global id never does. Profiles that do
+not enable this component must not emit a durable `KnowledgeUnitRef` as though
+it were locally resolvable.
 
 When `KnowledgeUnitRef::local_id` is present, resolving it in the current
 database must yield the same `global_id`. A missing or mismatched local binding
@@ -169,8 +195,12 @@ struct RuntimeSequenceRange {
 };
 ```
 
-Sequence values may be compared numerically only when `runtime_instance` and
-`replica` match. Ordering across different origins requires explicit causal
+`RuntimeSequenceRange` is the inclusive interval `[from, until]`. An absent
+`from` is unbounded below, an absent `until` is unbounded above, and both absent
+means all sequence values for the validated origin. When both bounds are
+present, `from <= until` is required. Sequence values may be compared
+numerically only when the stable identities of `runtime_instance` and `replica`
+match (their optional revisions are ignored). Ordering across different origins requires explicit causal
 edges, a hybrid logical timestamp/vector clock supplied by the runtime, or must
 remain partially ordered.
 
@@ -690,6 +720,7 @@ A0-A2 use existing substrate:
 | raw event payload | `ResourceBodyStore` |
 | causal relations | `graph_edges_by_src` / `graph_edges_by_dst` |
 | conflicts | units + graph relations |
+| global knowledge-unit identity | `unit_components` + `metadata_filters` |
 
 Do not add `runtime_event_index` or revive `temporal_event_index` for A-lane
 M1/M2 readiness. If partition support later needs materialized DBIs,

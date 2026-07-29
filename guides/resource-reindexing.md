@@ -36,13 +36,23 @@ resource, not only discovered by scanning the whole database.
 ## Terms
 
 `ResourceId`
-: Stable identity of an original source item. A markdown file, web page, code
-symbol, conversation note, profile fact, or memory note can all be resources.
+: Stable **local** identity of an original logical source item in one storage
+environment. A markdown file, web page, code symbol, conversation note, profile
+fact, or memory note can all be resources. It is stable across revisions and
+reindexing in that environment.
+
+`SourceId` / `SourceRevisionId`
+: The artifact-provenance profile's durable cross-environment identities for the
+same logical source and its immutable observed snapshot. One local `ResourceId`
+maps to one `SourceId`; each local `ResourceRevision` maps to exactly one
+`SourceRevisionId`. Import may allocate a different local `ResourceId`, but it
+must retain and validate the source/revision identities and their manifest.
 
 `ResourceRevision`
-: The current version of a resource. The first implementation can model this as
-`resource_id`, `generation`, an uncompressed content hash, and a pipeline
-configuration hash.
+: A local current-version/reindex record for a `ResourceId`. The first
+implementation can model this as `resource_id`, `generation`, an uncompressed
+content hash, and a pipeline configuration hash. It adapts to, rather than
+replaces, immutable `SourceRevisionId` in artifact-aware profiles.
 
 `ResourceManifest`
 : The list of derived keys created from the current resource revision.
@@ -59,6 +69,8 @@ storage contracts.
 ```cpp
 struct ResourceRevision final {
     ResourceId resource_id;
+    std::optional<SourceId> source_id;
+    std::optional<SourceRevisionId> source_revision_id;
     std::uint64_t generation = 0;
     std::uint64_t content_hash = 0;
     std::uint64_t pipeline_config_hash = 0;
@@ -161,7 +173,8 @@ The normal replace flow should be:
 1. Begin writable transaction where the backend supports it.
 2. Load the old manifest by resource_id.
 3. Remove or invalidate old derived records listed in the manifest.
-4. Store the new resource metadata, content hash, and generation.
+4. Store the new resource metadata, content hash, generation, and, when the
+   artifact profile is enabled, the validated SourceId/SourceRevisionId mapping.
 5. Chunk the new resource.
 6. Generate embeddings for the new chunks.
 7. Build any signatures, postings, or graph records needed by enabled indexes.
@@ -271,7 +284,8 @@ Future PRs should add focused tests for:
 ## Recommended Implementation Order
 
 1. Add dependency-free `ResourceId`, `ResourceRevision`, and manifest value
-   types.
+   types, then add the optional artifact-profile SourceId/SourceRevisionId
+   bridge without changing the M0 meaning of `ResourceId`.
 2. Add resource manifest storage contracts and tests.
 3. Add an in-memory manifest storage or fake for contract tests.
 4. Add MDBX-backed resource manifest storage.

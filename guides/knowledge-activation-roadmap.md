@@ -57,7 +57,7 @@ application stage. The canonical axes are independent:
 
 | Axis | Meaning | Examples |
 |---|---|---|
-| `knowledge_kind` | What the object is | `source`, `evidence`, `concept`, `playbook`, `framework`, `checklist`, `case`, `tool`, `policy`, `risk`, `metric`, `domain_map`, `capability_map` |
+| `semantic_class` | Domain taxonomy used for activation, distinct from persisted `KnowledgeUnitKind` | `source`, `evidence`, `concept`, `framework`, `checklist`, `case`, `tool`, `policy`, `risk`, `metric` |
 | `domains` | What areas it belongs to | `ai`, `software_engineering`, `traffic_acquisition`, `business`, `creator_economy` |
 | `facets` | When or where it applies | lifecycle, activity, audience, platform, artifact |
 | `intents` | Which user/task intents activate it | `launch_virtual_influencer`, `review_code`, `diagnose_campaign` |
@@ -66,6 +66,13 @@ application stage. The canonical axes are independent:
 
 These axes are domain-level metadata in `agent-memory-cpp`; concrete
 application taxonomies own the actual string/id vocabularies.
+
+`KnowledgeUnitKind` remains the storage/payload discriminator (`Chunk`,
+`Playbook`, `DomainMap`, `CapabilityMap`, and so on). `semantic_class` must not
+repeat or override it: a `KnowledgeUnitKind::Playbook` may be semantically a
+`framework` or `checklist`, but validation records both axes explicitly. This
+keeps activation taxonomy extensible without creating a second competing kind
+enum.
 
 ## 3. Canonical Objects
 
@@ -129,7 +136,7 @@ Minimal metadata for a canonical node:
 ```yaml
 schema: agent-memory/knowledge-node-v1
 id: concept.ai_influencer
-knowledge_kind: concept
+semantic_class: concept
 title: "AI influencer"
 summary: "..."
 
@@ -269,23 +276,10 @@ is a knowledge artifact with revision, provenance, trust, applicable domains,
 required capabilities and optional safety/approval metadata. The transition
 from retrieved playbook to tool execution belongs to the downstream runtime.
 
-Procedure activation:
-
-```cpp
-struct ProcedureActivationCandidate {
-    KnowledgeUnitRef procedure;
-
-    double precondition_match = 0.0;
-    double capability_match = 0.0;
-    double historical_success = 0.0;
-    double context_relevance = 0.0;
-
-    std::vector<KnowledgeUnitRef> supporting_units;
-    std::vector<RuntimeObjectRef> missing_capabilities;
-
-    bool requires_validation = false;
-};
-```
+Procedure activation uses the canonical `ProcedureActivationCandidate` contract
+from [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+This activation roadmap owns deterministic routing inputs; it does not define a
+second candidate type.
 
 `CapabilityRegistry` stores capability id, version, declarative input/output
 schema, safety metadata and procedure requirements. Runtime adapters own
@@ -309,11 +303,28 @@ policy or an operator decides promotion to active procedure.
 
 ## 8. Lifecycle
 
-Canonical knowledge objects use a stricter lifecycle than raw chunks:
+Canonical knowledge objects use a curation workflow that is independent from
+the durable record lifecycle:
 
 ```text
 raw -> candidate -> reviewed -> canonical -> deprecated
 ```
+
+```cpp
+enum class CurationState : uint8_t {
+    Raw,
+    Candidate,
+    Reviewed,
+    Canonical
+};
+```
+
+`CurationState` is owned by `ActivationMetadataComponent`. It answers whether
+the content is ready for activation/curation. `KnowledgeUnitEnvelope` lifecycle
+remains `Active`, `Superseded`, `Deprecated`, or `Erased`; a unit may be
+`Canonical + Active`, `Reviewed + Deprecated`, or any other valid combination.
+The arrow above is therefore a curation promotion path, not a replacement for
+the lifecycle FSM and not an implicit erase/deprecation operation.
 
 Invariants:
 

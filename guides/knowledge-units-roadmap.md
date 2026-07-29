@@ -149,8 +149,11 @@ curated kind until an explicit normalizer/extractor produces those units.
 > `Source -> SourceRevision -> Artifact -> Representation -> Segment`, with
 > typed `EvidenceAnchor` locators. `TextRange` maps to `TextLocator`; it is not
 > a sufficient universal locator for pages, images, audio, video, slides or
-> spreadsheets. `ResourceId` is the local handle of a concrete source revision,
-> not the identity of a changing logical source.
+> spreadsheets. `ResourceId` is the stable local identity of a changing logical
+> source in one environment. Its local `ResourceRevision`/generation identifies
+> the current indexed version. Artifact-aware profiles map this pair to durable
+> `SourceId` and immutable `SourceRevisionId`; they do not redefine M0
+> `ResourceId`.
 
 `SourceRef` — first-class provenance для всех retrieval-eligible units. Обязателен для Fact, QAPair, Relation, Event, и любого GraphNode, доступного через expansion. Рекомендуется для Chunk и CompiledArticle.
 
@@ -174,8 +177,10 @@ struct SourceRefSummary {
 };
 
 struct SourceRef {
+    SourceRefId id;
     SourceRefSummary summary;        // обязательно: ссылка на inline summary
     std::string excerpt_text;        // полный текст цитаты (verbatim UTF-8)
+    std::vector<EvidenceAnchorId> evidence_anchor_ids;
 };
 ```
 
@@ -185,6 +190,10 @@ struct SourceRef {
 - `uri` — обязателен для citation fidelity (`preview + uri` = stable short citation; `excerpt_text + uri` = stable full citation).
 - `quote_hash` — обязателен: 16-byte hex of SHA1(`prefix(preview)`) для summary, либо SHA1(`prefix(excerpt_text)`) для полной SourceRef. Обеспечивает детерминированную идентификацию цитат без хранения полного текста в каждом индексе.
 - `preview` (≤256 байт) — обязателен в summary; используется в UI, short citations, projection и не требует обращения к `source_refs` DBI.
+- `id` and `evidence_anchor_ids` are optional only for M0 compatibility. In an
+  artifact-aware full reference, `SourceRefId` is durable and every listed
+  `EvidenceAnchorId` resolves through the artifact catalog without rewriting its
+  source/revision/locator coordinates.
 
 ### 3.2. Storage
 

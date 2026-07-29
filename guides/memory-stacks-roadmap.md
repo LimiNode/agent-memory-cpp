@@ -50,7 +50,7 @@ Non-goals документа:
 | ADR-010 | MDBX environment | Один env, много DBI. Multi-env — только при обоснованной потребности |
 | ADR-011 | Lifecycle FSM | 4 durable states: Active / Superseded / Deprecated / Erased (SoftSuppressed — runtime state в UsageStatsComponent.cooldown_until_ms) |
 | ADR-012 | Multi-tenancy | Все secondary indexes — scope-aware |
-| ADR-013 | Runtime services | PromptPrefixCache + optional ResponseCache, CompactionWorker, WriteGate, AsyncIndexer — отдельный слой |
+| ADR-013 | Runtime services | CompactionWorker, WriteGate and AsyncIndexer are core-adjacent runtime services; LLM caches are host integrations |
 | ADR-014 | CLI | Отдельный target `agent-memory-cli`, не core library |
 | ADR-015 | Maturity Levels | M0 (MVP) / M1 (Production) / M2 (Advanced) с ship-it критериями |
 | ADR-016 | Raw resources vs normalized units | Raw ResourceBody first-class; card-like KnowledgeUnits are curated derivatives, not mandatory input format |
@@ -292,13 +292,11 @@ enum class MemoryCapability : uint64_t {
     Decay              = 1ull << 5,
     SpeakerAttribution = 1ull << 6,
     Compaction         = 1ull << 7,
-    PromptCache        = 1ull << 8,
     GraphRelations     = 1ull << 9,
     EmbeddingMigration = 1ull << 10,
     CompiledArticles   = 1ull << 11,
     ConversationMemory = 1ull << 12,
     FullSourceRefs     = 1ull << 13,
-    ResponseCache      = 1ull << 14,
     TranslationProjection = 1ull << 15,
     KnowledgeActivation = 1ull << 16,
     CognitiveTrace = 1ull << 17,
@@ -390,21 +388,6 @@ struct SpeakerScopePolicy {
 
 enum class RetrievalMode { Associative, Targeted, Hybrid, Disabled };
 enum class FusionStrategy { RRF, WeightedMax, Learned, Planner };
-enum class ResponseCacheStorageMode : uint8_t { Disabled, MemoryOnly, Mdbx };
-enum class TranslationBackendMode : uint8_t { Disabled, OfflineAdapter, ExternalService };
-enum class TranslationProjectionMode : uint8_t { Disabled, Persisted };
-
-struct CanonicalLanguageCode {
-    std::string bcp47 = "en";
-};
-
-struct TranslationPolicy {
-    TranslationProjectionMode projection_mode = TranslationProjectionMode::Disabled;
-    TranslationBackendMode backend_mode = TranslationBackendMode::Disabled;
-    CanonicalLanguageCode canonical_language;
-    bool allow_pivot = true;
-};
-
 struct HybridRetrievalConfig {
     FusionStrategy fusion = FusionStrategy::RRF;
     double rrf_k_constant = 60.0;
@@ -446,7 +429,7 @@ struct ContextTierPolicy {
 
 enum class DenseIndexMode : uint8_t {
     Exact = 0,                      // brute-force float cosine, ground truth
-    BinaryCandidateFilter = 1,      // binary filter + float rerank (M1 default)
+    BinaryCandidateFilter = 1,      // optional M1 experiment; binary filter + float rerank
     BinaryOnly = 2,                 // binary only, Hamming ranking (M2 experimental/compact)
     ApproximateVector = 3,          // binary + decoder → approx vector → rerank (M2 experimental)
     Hnsw = 4,                       // M2+ experimental ANN backend
@@ -513,9 +496,6 @@ struct MemoryProfileSpec {
     bool enable_embedding_meta = false;
     bool enable_compaction = false;
     bool enable_async_indexer = false;
-    bool enable_prompt_cache = false;
-    ResponseCacheStorageMode response_cache_storage =
-        ResponseCacheStorageMode::Disabled;
     bool enable_context_planner = false;
     bool enable_knowledge_activation = false;
     bool enable_cognitive_trace = false;
@@ -531,7 +511,6 @@ struct MemoryProfileSpec {
     std::optional<RetrievalMode> default_retrieval_mode;
     std::optional<DenseIndexConfig> dense_index_config;
     std::optional<EncryptionPolicy> encryption_policy;
-    std::optional<TranslationPolicy> translation_policy;
 
     uint32_t envelope_schema_version = 1;
     uint32_t component_schema_versions[kNumComponentKinds] = {};
@@ -597,12 +576,6 @@ public:
 
     CompactionWorker& compaction();
     bool has_compaction() const;
-
-    PromptPrefixCache& prompt_prefix_cache();
-    bool has_prompt_prefix_cache() const;
-
-    std::optional<ResponseCache> response_cache();
-    bool has_response_cache() const;
 
     StackStats stats() const;
     SchemaInfo schema_info() const;
@@ -1105,26 +1078,22 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | Decay | no | no | yes | no | no | no | yes |
 | SpeakerAttribution | no | no | no | yes | no | no | yes |
 | Compaction | no | no | yes | no | yes | no | yes |
-| PromptCache | opt | opt | opt | opt | opt | opt | opt |
 | GraphRelations | no | no | yes | no | no | yes | yes |
 | EmbeddingMigration | no | no | yes | no | yes | no | yes |
 | CompiledArticles | no | no | no | no | yes | no | yes |
 | ConversationMemory | no | no | no | yes | no | no | yes |
 | FullSourceRefs | no | opt | opt | opt | yes | opt | yes |
-| ResponseCache | opt | opt | opt | opt | opt | opt | opt |
 | TranslationProjection | opt | opt | opt | opt | opt | opt | opt |
 | KnowledgeActivation | no | opt | yes | opt | yes | opt | yes |
 | ArtifactProvenance | no | no | no | no | opt | no | yes |
 
 `opt` — capability не включена по умолчанию, но может быть добавлена через minor in-place migration.
-`ResponseCache` capability is present iff `response_cache_storage != Disabled`;
-`MemoryOnly` enables the runtime service without DBI, while `Mdbx` also opens
-the `response_cache` profile delta.
-`TranslationProjection` capability is present iff
-`translation_policy.projection_mode == Persisted`. Query-time-only translation
-without persisted translated projections is deferred until the retrieval planner
-has a corpus-language routing contract. The normalized `TranslationPolicy`
-participates in `profile_signature`.
+`TranslationProjection` is present only when the translation adapter contract
+creates a persisted `TranslatedCanonical` projection with complete provenance.
+Its value types, policy normalization and profile-signature contribution are
+owned exclusively by `translation-adapters-roadmap.md`. Query-time language
+routing/pivoting is a separate M2 planner capability, not a signal to persist
+translated text.
 `KnowledgeActivation` capability is present iff
 `enable_knowledge_activation == true`; it uses existing canonical storage until
 a profile-specific DBI delta is added to the physical manifest.
@@ -1159,7 +1128,7 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | WritePolicy: flush_interval_ms > 0 (если trigger == OnTimer) | "Invalid WritePolicy" |
 | ContextBudget: сумма per-block <= total_tokens | "ContextBudget overflow" |
 | HybridRetrievalConfig: retriever_weights.size() == number of retrievers | "Weights size mismatch" |
-| `translation_policy.projection_mode == Persisted` требует capability `TranslationProjection`, `backend_mode != Disabled`, canonical BCP-47 language и persisted projection schema | "Persisted translation requires active TranslationPolicy" |
+| Persisted translation requires a valid adapter-owned policy, canonical BCP-47 language and projection provenance | "Persisted translation requires active TranslationPolicy" |
 | envelope_schema_version в spec соответствует сохранённому | "Schema version mismatch (migration required)" |
 
 Дополнительно: `profile_signature` (hash от spec) сохраняется в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с текущим и диагностируется drift.
@@ -1185,7 +1154,7 @@ Layer 1: Storage Primitives (storage/)
   RangeIndexTable, TypeDiscriminatedTable, CompositeKey
 
 Cross-cutting Runtime Services (runtime/) — orthogonal
-  PromptCache, CompactionWorker, WriteGate, AsyncIndexer
+  CompactionWorker, WriteGate, AsyncIndexer
   Используют Layer 1 + Layer 2 через интерфейсы
 ```
 
@@ -1223,8 +1192,7 @@ authoritative DBI budget checkpoint — в §5.5.1 того же TZ.
 `MemoryProfileSpec` выбирает logical capabilities: QAPairs, TemporalFact,
 ConversationMemory, CompiledArticles, FullSourceRefs,
 DenseVectors, LexicalBm25F, GraphRelations, TemporalValidity,
-SpeakerAttribution, UsageStats, Compaction, PromptPrefixCache and opt-in
-ResponseCache. `chunk_payloads` is a canonical always-open DBI, and
+SpeakerAttribution, UsageStats, and Compaction. `chunk_payloads` is a canonical always-open DBI, and
 `ChunkPayload` is required when writing `KnowledgeUnitKind::Chunk`; it is not a
 separate capability selector and does not require an additional kind selector.
 Concrete DBI names and table types for these capabilities are enumerated in TZ
@@ -1237,8 +1205,8 @@ Compaction uses downstream `TaskQueue`/`JobStore` from
 `mdbx-containers-extension-tz.md` §12.5 and currently costs +5 queue DBI per
 persistent queue plus +1 `compaction_handoffs` DBI when compaction is enabled.
 
-PromptPrefixCache, opt-in ResponseCache, raw `ResourceBodyStore`, HNSW,
-binary bucket indexes and other mode-specific dense indexes are not part of
+Host-owned LLM request/response caches, raw `ResourceBodyStore`, HNSW, binary
+bucket indexes and other mode-specific dense indexes are not part of
 the baseline physical manifest unless their owning roadmap adds an explicit
 profile-delta row to TZ §5.5.1.
 
@@ -1270,7 +1238,7 @@ scope conflict.
   tenant/project/agent-scoped lookup или range query. Primary lookup by globally
   unique `UnitId` является явным исключением.
 
-Не включено (M1+): Components, расширенные QAPayload (variants/frequency) и остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, PromptPrefixCache + ResponseCache, full SourceRef DBI (в M0 — только inline summary), bi-temporal history.
+Не включено (M1+): Components, расширенные QAPayload (variants/frequency) и остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, full SourceRef DBI (в M0 — только inline summary), bi-temporal history. Provider-specific LLM caching is outside this library at every maturity level.
 
 Ship-it критерии:
 
@@ -1297,7 +1265,8 @@ implements and tests.
 - DecayPolicy + WritePolicy + SpeakerScopePolicy.
 - MemoryStacks: AgentLongTermMemoryStack, SpeakerAwareChatStack, CompiledWikiStack, TemporalFactStoreStack, FullResearchMemoryStack.
 - CompactionWorker с базовыми job types: DecayJob, DedupeJob, ArchiveColdJob.
-- PromptCache (LRU + AnthropicCacheControlAdapter).
+- Provider-neutral `ContextFingerprint` / `PromptPrefixDescriptor` output for
+  host-side LLM cache adapters; no provider cache implementation in core.
 - IRetrievalTrace с метриками cache_hit_rate, anti_loop_skip_rate, decay_score_distribution.
 - Knowledge activation metadata for deterministic DomainMap/Playbook routing
   when `KnowledgeActivation` is enabled.
@@ -1411,7 +1380,7 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `guides/mdbx-stack-boundaries.md` — границы ответственности между agent-memory-cpp и external/mdbx-containers/.
 - `policies-roadmap.md` — детальная спецификация DecayPolicy/WritePolicy/SpeakerScopePolicy с диапазонами и defaults.
 - `compaction-roadmap.md` — CompactionWorker, job types, handoff structure.
-- `runtime-services-roadmap.md` — PromptCache, AsyncIndexer, WriteGate.
+- `runtime-services-roadmap.md` — AsyncIndexer, WriteGate and host-boundary context planning.
 - `cli-roadmap.md` — agent-memory-cli target.
 - `guides/related-projects.md` — ландшафтная карта (mem0 / Cognee / Zep / Graphiti для direct competitors, FAISS / hnswlib / USearch / sqlite-vec для sister libraries) и cross-project benchmark plan.
 - `memory-lifecycle-governance-roadmap.md` — M2+ lifecycle governance:
@@ -1479,7 +1448,7 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `DenseIndexConfig` (см. §6.2) и `DenseIndexMode` enum (5 значений: Exact, BinaryCandidateFilter, BinaryOnly, ApproximateVector, Hnsw) как часть MemoryProfileSpec.
 - 4 base backends + HNSW M2+:
   - `ExactVectorIndex` (M0+, baseline, brute-force float).
-  - `BinaryCandidateFilterIndex` (M1+, default production: binary filter + float rerank).
+  - `BinaryCandidateFilterIndex` (optional M1 experiment: binary filter + float rerank).
   - `BinaryOnlyIndex` (M2+, experimental/compact, Hamming ranking).
   - `ApproximateVectorIndex` (M2+, experimental, decoder support для binary → approx vector → rerank).
   - `HnswVectorIndex` (M2+ experimental, 5th mode — mainline ANN backend; см. optimization-roadmap.md §"HNSW Vector Index").
@@ -1681,9 +1650,12 @@ double apply_filters(
 - Синхронизация с on-write operations (MultiTableWriter)?
 - Решение: один worker thread, write/compaction используют одну транзакцию через MultiTableWriter (compaction jobs ждут в очереди).
 
-### 17.7. PromptCache scope
+### 17.7. Host LLM cache scope
 
-- PromptCache хранит по prompt_prefix_hash → response. Должен ли он быть scope-aware?
+- Provider request/response caches are host-owned. Core emits only a stable
+  `ContextFingerprint` / `PromptPrefixDescriptor`; the host decides whether a
+  provider cache key is scope-aware and may never treat a cached response as
+  canonical memory.
 - Решение: да, scope_id входит в cache_key, чтобы разные пользователи не видели чужие responses.
 
 ### 17.8. Embedding model migration
@@ -1722,7 +1694,7 @@ Baseline (без dense index):
 Exact mode (DenseIndexMode::Exact):
   embedding_vectors: 1M × 768 × 4 bytes ≈ 3 GB.
 
-BinaryCandidateFilter (default production):
+BinaryCandidateFilter (optional M1 experiment; production choice only after evaluation):
   embedding_vectors: ~3 GB.
   binary_bucket_index (128-bit): 1M × 16 bytes ≈ 16 MB.
 
@@ -1760,7 +1732,7 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
 - **LifecycleState** — durable state of a KnowledgeUnit. Values: Active, Superseded, Deprecated, Erased. Changes increment envelope.revision. SoftSuppressed/cooldown НЕ является LifecycleState value — хранится в UsageStatsComponent.cooldown_until_ms.
 - **Component** — optional typed payload, прикреплённый к unit (operational или per-kind).
 - **SearchProjection** — отдельное текстовое представление unit для конкретного retrieval method.
-- **DenseIndexMode** — backend selection для dense vector retrieval (см. §6.2). Values: `Exact` (brute-force float, ground truth), `BinaryCandidateFilter` (binary filter + float rerank, default production), `BinaryOnly` (binary only, Hamming ranking, experimental/compact), `ApproximateVector` (binary + decoder → approx vector → rerank, experimental). Default per stack и mode-aware DBI mapping — см. §8 и §12.7.
+- **DenseIndexMode** — backend selection для dense vector retrieval (см. §6.2). Values: `Exact` (brute-force float, required M1a baseline and ground truth), `BinaryCandidateFilter` (optional M1 experiment: binary filter + float rerank), `BinaryOnly` (binary only, Hamming ranking, experimental/compact), `ApproximateVector` (binary + decoder → approx vector → rerank, experimental). Default per stack and mode-aware DBI mapping follow measured evaluation, not a M1a ship gate.
 - **MemoryProfileSpec** — декларативная спецификация capabilities + policies.
 - **MemoryStack** — runtime-объект, открытый через `MemoryStack::open(path, spec)`.
 - **ScopeId** — namespace identifier для multi-tenancy.
@@ -1771,6 +1743,7 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
 - **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и per-record metadata (`LexicalPosting.resource_generation`, `EmbeddingMetaComponent.unit_revision_at_compute`). Envelope-level versioning — это `revision`, не `generation`.
 - **Stale filter** — per-record check: `LexicalPosting.unit_revision < envelope.revision` → skip; `EmbeddingMetaComponent.unit_revision_at_compute < envelope.revision` → recompute или skip. M0: inline в retrieval pipeline; M2: `unit_revision_index` DBI для batch reindex (см. §17.11).
 - **Profile signature** — hash от full `MemoryProfileSpec`, including
-  capabilities, selectors and storage modes such as `response_cache_storage`;
+  core capabilities and selectors; host LLM cache settings are deliberately
+  excluded;
   используется для drift detection.
 - **ADR** — Architecture Decision Record, раздел в этом документе с фиксированным решением.

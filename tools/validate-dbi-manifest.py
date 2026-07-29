@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Validate the roadmap DBI manifest against the canonical markdown table.
+"""Validate the roadmap DBI manifest against its markdown review projection.
 
 This checker intentionally covers the documentation contract, not runtime DBI
-creation. It keeps the machine-readable manifest from becoming a third manual
-copy of the same inventory.
+creation. YAML is the sole normative source; the checked markdown projection
+makes the human-facing TZ inventory auditable without granting it authority.
 """
 
 from __future__ import annotations
@@ -251,32 +251,67 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
                         fail(errors, f"runtime_integration_mapping.{key} unknown DBI ref: {ref}")
 
 
-def canonical_names_from_tz(path: Path) -> set[str]:
+REVIEW_PROJECTION_BEGIN = "dbi-review-projection-v1"
+REVIEW_FIELDS = ("name", "owner", "table_type", "opens", "sync", "physical_key", "migration_peak")
+
+
+def review_projection_from_tz(path: Path) -> dict[str, dict]:
     text = path.read_text(encoding="utf-8")
-    marker = "| DBI имя |"
-    start = text.find(marker)
+    start = text.find(REVIEW_PROJECTION_BEGIN)
     if start < 0:
-        raise ValueError("cannot find section 5.5 summary table")
-    end = text.find("Capability labels", start)
+        raise ValueError("cannot find dbi-review-projection-v1")
+    start = text.find("\n", start) + 1
+    end = text.find("```", start)
     if end < 0:
-        raise ValueError("cannot find end of section 5.5 summary table")
-    names = set()
+        raise ValueError("cannot find end of DBI review projection")
+    projection: dict[str, dict] = {}
     for line in text[start:end].splitlines():
-        match = re.match(r"\|\s*`([^`]+)`\s*\|", line)
-        if match:
-            names.add(match.group(1))
-    return names
+        if not line or line.startswith("#"):
+            continue
+        parts = line.split("|")
+        if len(parts) != len(REVIEW_FIELDS):
+            raise ValueError(f"invalid DBI review projection row: {line!r}")
+        row = dict(zip(REVIEW_FIELDS, parts))
+        name = row["name"]
+        if not name or name in projection:
+            raise ValueError(f"duplicate or empty DBI review projection name: {name!r}")
+        row["migration_peak"] = int(row["migration_peak"])
+        row["physical_key"] = [] if row["physical_key"] == "-" else row["physical_key"].split(",")
+        projection[name] = row
+    return projection
 
 
-def validate_markdown(manifest: dict, tz_path: Path, errors: list[str]) -> None:
+def validate_review_projection(manifest: dict, projection: dict[str, dict], errors: list[str]) -> None:
     manifest_names = {row["name"] for row in manifest.get("canonical", []) if isinstance(row, dict) and "name" in row}
-    table_names = canonical_names_from_tz(tz_path)
-    missing_from_markdown = manifest_names - table_names
-    missing_from_manifest = table_names - manifest_names
+    projection_names = set(projection)
+    missing_from_markdown = manifest_names - projection_names
+    missing_from_manifest = projection_names - manifest_names
     if missing_from_markdown:
         fail(errors, f"canonical manifest names missing from TZ table: {sorted(missing_from_markdown)}")
     if missing_from_manifest:
-        fail(errors, f"TZ table names missing from manifest: {sorted(missing_from_manifest)}")
+        fail(errors, f"TZ review projection names missing from manifest: {sorted(missing_from_manifest)}")
+
+    for manifest_row in manifest.get("canonical", []):
+        if not isinstance(manifest_row, dict) or "name" not in manifest_row:
+            continue
+        name = manifest_row["name"]
+        review_row = projection.get(name)
+        if review_row is None:
+            continue
+        for field in REVIEW_FIELDS[1:]:
+            expected = manifest_row.get(field, [] if field == "physical_key" else None)
+            actual = review_row[field]
+            if actual != expected:
+                fail(
+                    errors,
+                    f"TZ review projection mismatch for {name}.{field} "
+                    f"({actual!r} != {expected!r})",
+                )
+
+
+def validate_markdown(manifest: dict, tz_path: Path, errors: list[str]) -> None:
+    projection = review_projection_from_tz(tz_path)
+    validate_review_projection(manifest, projection, errors)
 
     text = tz_path.read_text(encoding="utf-8")
     for term in STALE_TERMS:
@@ -333,6 +368,26 @@ def run_self_test(manifest_path: Path) -> int:
 
     if failed:
         return 1
+
+    projection = {
+        row["name"]: {
+            "name": row["name"],
+            "owner": row["owner"],
+            "table_type": row["table_type"],
+            "opens": row["opens"],
+            "sync": row["sync"],
+            "physical_key": row.get("physical_key", []),
+            "migration_peak": row["migration_peak"],
+        }
+        for row in base["canonical"]
+    }
+    projection["knowledge_units"]["opens"] = "DenseVectors"
+    errors = []
+    validate_review_projection(base, projection, errors)
+    if not any("knowledge_units.opens" in error for error in errors):
+        print("ERROR: negative fixture did not detect review projection selector drift", file=sys.stderr)
+        return 1
+
     print("dbi manifest self-test ok")
     return 0
 

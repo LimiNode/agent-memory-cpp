@@ -36,7 +36,7 @@ Rules:
   public retrieval contracts.
 - Context assembly consumes retrieval results and memory policies; it should not
   perform storage-specific queries directly.
-- Runtime services (PromptPrefixCache + optional ResponseCache, CompactionWorker, WriteGate, AsyncIndexer)
+- Runtime services (CompactionWorker, WriteGate, AsyncIndexer)
   are instance-owned by a `MemoryStack` when enabled, but depend only on narrow
   Layer 1 + Layer 2 facades such as `IRuntimeStorageFacade`,
   `IRuntimeProfileView` and `ICompactionWriteContext`; they never reach into a
@@ -97,7 +97,7 @@ Layer 1: Storage Primitives (storage/)
   RangeIndexTable, TypeDiscriminatedTable, CompositeKey
 
 Cross-cutting Runtime Services (runtime/) — orthogonal
-  PromptPrefixCache + optional ResponseCache, CompactionWorker, WriteGate, AsyncIndexer
+  CompactionWorker, WriteGate, AsyncIndexer
   Use Layer 1 + Layer 2 through interfaces
 ```
 
@@ -135,9 +135,12 @@ must not define memory strategy, retrieval ranking, or embedding behavior.
 ## Planned Resource Reindexing Direction
 
 Ingestion should eventually track resource ownership for all derived records.
-Each original source item should have a stable `ResourceId`, a current revision
-or generation, and a manifest of chunks, embeddings, vector records, binary
-bucket postings, lexical postings, or graph records derived from it.
+Each original source item should have a stable local `ResourceId`, a current
+local revision or generation, and a manifest of chunks, embeddings, vector
+records, binary bucket postings, lexical postings, or graph records derived
+from it. Artifact-aware profiles additionally map that local identity to a
+durable `SourceId` and immutable `SourceRevisionId`; imports may remap local
+ids but never rewrite those provenance identities.
 
 This lets the system replace one markdown file, note, profile fact, or other
 resource without rebuilding unrelated indexes. Resource reindexing should
@@ -353,12 +356,9 @@ Per
 и секция 11. Ортогональны profile: одна и та же реализация сервиса
 обслуживает любой `MemoryStack` через интерфейсы Layer 1 и Layer 2.
 
-- **PromptPrefixCache** (LRU + AnthropicCacheControlAdapter) — кэширует
-  prompt-prefix → cached-prefix id. Экономия 60-90% токенов при стабильном system
-  prompt. Scope-aware ключ (cache key включает `scope_id`).
-- **ResponseCache** (opt-in) — кэширует полный prompt → response. Полезен для
-  детерминированных retrieval-сценариев. По умолчанию выключен, чтобы не
-  маскировать галлюцинации/стохастичность модели.
+- **Host LLM cache adapter** — outside this library. Core may return a
+  provider-neutral `ContextFingerprint` / `PromptPrefixDescriptor`, while the
+  host owns provider metadata, response cache safety and LLM calls.
 - **CompactionWorker** (async) — выполняет `ICompactionJob`-ы:
   Decay, Dedupe, ArchiveCold (M1); Merge, SummaryPromotion,
   EmbeddingRecompute (M2). Хранит состояние jobs в downstream `TaskQueue`
@@ -371,8 +371,7 @@ Per
   importance threshold, dedupe distance, supersede/merge/episode-compaction
   разрешения, flush trigger.
 
-Доступны через интерфейсы (`IPromptPrefixCache`, `IResponseCache`,
-`ICompactionWorker`, `IAsyncIndexer`, `IWriteGate`). Сервисы не зависят от конкретного
+Доступны через интерфейсы (`ICompactionWorker`, `IAsyncIndexer`, `IWriteGate`). Сервисы не зависят от конкретного
 `MemoryStack` и не имеют права лезть в profile-specific state напрямую —
 только через публичные контракты.
 
@@ -398,7 +397,7 @@ matrix и validation rules.
   `TemporalFactStoreStack`, `FullResearchMemoryStack`.
 - Policies: DecayPolicy, WritePolicy, SpeakerScopePolicy, HybridRetrievalConfig.
 - Capability matrix (LexicalBm25F / DenseVectors / QAPairs / TemporalValidity /
-  UsageStats / Decay / SpeakerAttribution / Compaction / PromptPrefixCache + opt. ResponseCache /
+  UsageStats / Decay / SpeakerAttribution / Compaction /
   GraphRelations / EmbeddingMigration / CompiledArticles / ConversationMemory).
 - Validation rules при `MemoryStack::open()` (Decay → UsageStats и т.д.).
 
@@ -414,7 +413,7 @@ Decay / Write / Speaker policies: см.
 [`guides/policies-roadmap.md`](policies-roadmap.md).
 `CompactionWorker` (job types, handoff): см.
 [`guides/compaction-roadmap.md`](compaction-roadmap.md).
-Runtime services (PromptPrefixCache + ResponseCache / AsyncIndexer / WriteGate):
+Runtime services (AsyncIndexer / WriteGate; host LLM cache boundary):
 см. [`guides/runtime-services-roadmap.md`](runtime-services-roadmap.md).
 
 See [`usage-memory-models.md`](usage-memory-models.md) for practitioner guidance on memory model choice; see [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md) for the underlying comparison framework.
@@ -558,7 +557,7 @@ CMake flags (planned):
 - [`guides/compaction-roadmap.md`](compaction-roadmap.md) (future) —
   `CompactionWorker`, job types, handoff structure.
 - [`guides/runtime-services-roadmap.md`](runtime-services-roadmap.md) (future) —
-  PromptPrefixCache + optional ResponseCache, AsyncIndexer, WriteGate.
+  AsyncIndexer, WriteGate and the host LLM cache boundary.
 - [`guides/cli-roadmap.md`](cli-roadmap.md) (future) —
   `agent-memory-cli` target (inspect / stats / check / vacuum / reindex /
   profile-info / profile-migrate).

@@ -561,20 +561,17 @@ on-demand.
 
 ### §6.9. Prompt caching for synthesis
 
-Synthesis prompts (raw → article) are large and repetitive. Use
-`PromptPrefixCache` (planned; see
-[`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §13 runtime
-services) to cache the system-prompt prefix across synthesis calls:
+Synthesis prompts (raw → article) are large and repetitive. A host-owned LLM
+integration may cache the system-prompt prefix across synthesis calls; the core
+returns only a provider-neutral context fingerprint/descriptor:
 
 ```text
 cache_key = sha256(system_prompt_prefix + model_id + scope_id)
-hit       = cache_key in prompt_prefix_cache_meta DBI
+hit       = host/provider cache entry
 miss      = full system prompt; cache_key → response_prefix
 ```
 
-`PromptPrefixCache` is scope-aware: cache key includes `scope_id` so two
-projects don't share each other's prompts (see open issue 17.7 in
-[`memory-stacks-roadmap.md`](memory-stacks-roadmap.md)).
+The host cache key must include `scope_id` so two projects do not share prompts.
 
 ### §6.10. Audit log (separate from job queue)
 
@@ -753,7 +750,7 @@ inherit them.
   false` switches to extractive mode (planned; see
   [`compaction-roadmap.md`](compaction-roadmap.md) §4.5).
 - Reduce synthesis cadence: 6h → 24h → weekly.
-- Prompt caching (planned; `PromptPrefixCache`) cuts the per-article
+- Host/provider prompt caching cuts the per-article
   cost by amortising the system-prompt prefix.
 
 ## §8. References

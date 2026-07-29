@@ -573,7 +573,7 @@ Registry governance:
 
 Use cases:
 
-- `unit_components` (Layer B, см. ADR-001 в `guides/memory-stacks-roadmap.md`): `ComponentKind` tag ∈ {`UsageStats`, `Speaker`, `Temporal`, `EmbeddingMeta`, `CompactionMeta`, `ActivationMetadata`, runtime-integration tags}, logical key — `UnitId`, physical key — `(ComponentKind, UnitId)`, value — typed component bytes for operational, activation, cognitive-trace and task/decision/procedure payload components. Operational components are lazy-read by retrieval layer. Loading all components for one unit is implemented as bounded point reads over known component kinds unless a future profile adds a second orientation.
+- `unit_components` (Layer B, см. ADR-001 в `guides/memory-stacks-roadmap.md`): `ComponentKind` tag ∈ {`UsageStats`, `Speaker`, `Temporal`, `EmbeddingMeta`, `CompactionMeta`, `ActivationMetadata`, `GlobalIdentity`, runtime-integration tags}, logical key — `UnitId`, physical key — `(ComponentKind, UnitId)`, value — typed component bytes for operational, activation, durable global-identity, cognitive-trace and task/decision/procedure payload components. `GlobalIdentity` is unique per scope through the `metadata_filters` mapping documented in `agent-runtime-integration-roadmap.md`; it is not a second primary key. Operational components are lazy-read by retrieval layer. Loading all components for one unit is implemented as bounded point reads over known component kinds unless a future profile adds a second orientation.
 - per-kind payload-компоненты (`QAPayload`, `FactPayload`, `ConversationEpisodePayload`, `CompiledArticlePayload`, `ChunkPayload`) — при необходимости выносятся в отдельные DBI; canonical names listed in §5.5.
 
 ### 3.5 `CompositeKey<Parts...>` и хелперы
@@ -1039,21 +1039,60 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для дополнительных Layer-1 primitives under consideration (Patterns 3, 4, 6): coverage shadow graph (новый §5.7 — `coverage_units`, `coverage_files`, `coverage_regions`), `TableSequence` as the normative atomic table-bound ID generator, team-shared graph artifact (offline snapshot format — proposed job, not yet in `compaction-roadmap.md`).
 
-Сводная таблица DBI секции 5.5 (для быстрого чтения владельца PR и capability-зависимости):
+YAML [`dbi-manifest.yaml`](dbi-manifest.yaml) is the sole normative source for
+DBI name, owner, table type, open selector, sync mode, physical key and
+migration peak. The following derived review projection is checked by
+`tools/validate-dbi-manifest.py`; do not edit it independently of YAML.
+
+```text
+dbi-review-projection-v1
+# name|owner|table_type|opens|sync|physical_key|migration_peak
+knowledge_units|core|KeyValueTable|always|kv_supported|-|1
+content_key_to_unit_id|core|KeyValueTable|always|kv_supported|-|1
+knowledge_units_by_kind|core|ReverseIndexTable|always|dupsort_not_supported|-|1
+unit_components|core|TypeDiscriminatedTable|component_profile|kv_supported_if_type_discriminated_is_kv_backed|ComponentKind,UnitId|1
+qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|-|1
+fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|-|1
+conversation_episode_payloads|chat|KeyValueTable|ConversationMemory|kv_supported|-|1
+compiled_article_payloads|compiled_wiki|KeyValueTable|CompiledArticles|kv_supported|-|1
+chunk_payloads|ingestion|KeyValueTable|always|kv_supported|-|1
+source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|-|1
+unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|-|1
+embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|-|1
+embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|-|1
+inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|-|1
+field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
+lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
+lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
+lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
+lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
+lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|-|1
+metadata_filters|metadata|ReverseIndexTable|lightweight_prefilter|dupsort_not_supported|-|1
+graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|-|1
+graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|-|1
+temporal_unit_index|temporal|RangeIndexTable|TemporalIndex|kv_supported_if_range_is_kv_backed|-|1
+speaker_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|-|1
+session_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|-|1
+usage_by_last_access|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|-|1
+usage_by_cooldown|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|-|1
+schema_info|schema|KeyValueTable|always|kv_supported|-|1
+```
+
+Сводная таблица DBI секции 5.5 (для быстрого чтения владельца PR и capability-зависимости; explanatory projection of the checked data):
 
 | DBI имя | Открывается по умолчанию | Версия payload | Owner PR | Назначение |
 |---|---|---|---|---|
 | `knowledge_units` | да (Layer A envelope hot path) | `agent_memory.knowledge_unit.v1` | TBD | Primary envelope storage по `UnitId` |
 | `content_key_to_unit_id` | да (Layer A dedupe/migration) | `agent_memory.content_key.v1` | TBD | Content-addressed lookup `KnowledgeUnitKey -> UnitId` |
 | `knowledge_units_by_kind` | да (Layer A, DUPSORT) | `agent_memory.unit_by_kind.v1` | TBD | Scope-aware reverse index `(ScopeId, KnowledgeUnitKind) -> UnitId[]` |
-| `unit_components` | да (Layer B operational) | `agent_memory.component.v1` | TBD | Typed components by physical key `(ComponentKind, UnitId)` |
+| `unit_components` | по selector `component_profile` (Layer B operational) | `agent_memory.component.v1` | TBD | Typed components by physical key `(ComponentKind, UnitId)` |
 | `qa_payloads` | по capability `QAPairs` | `agent_memory.qa.v1` | TBD | Per-kind payload для `QAPair` units |
 | `fact_payloads` | по capability `TemporalFact` | `agent_memory.fact.v1` | TBD | Per-kind payload для `Fact` units |
 | `conversation_episode_payloads` | по capability `ConversationMemory` | `agent_memory.episode.v1` | TBD | Per-kind payload для `ConversationEpisode` units |
 | `compiled_article_payloads` | по capability `CompiledArticles` | `agent_memory.compiled_article.v1` | TBD | Per-kind payload для `CompiledArticle` units |
 | `chunk_payloads` | да (canonical always-open) | `agent_memory.chunk.v1` | TBD | Per-kind payload для `Chunk` units; required when writing `KnowledgeUnitKind::Chunk` |
 | `source_refs` | по capability `FullSourceRefs` (M1) | `agent_memory.source_ref.v1` | TBD | Full `SourceRef` vector by `UnitId`; inline summaries remain in envelope |
-| `unit_projections` | да (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections; TranslatedCanonical carries projection-level derivation metadata in the value |
+| `unit_projections` | по selector `indexed_retrieval` (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections; TranslatedCanonical carries projection-level derivation metadata in the value |
 | `embedding_meta` | по capability `DenseVectors` | `agent_memory.embedding_meta.v1` | TBD | Версионированная мета (model_id, version, dim, encoder_id) |
 | `embedding_vectors` | по capability `DenseVectors` | `agent_memory.embedding_vector.v1` | TBD | Vector blob по `(scope, model_id, ProjectionKind, unit_id)` |
 | `inverted_token_to_unit` | по capability `LexicalIndex` | `agent_memory.inv_token.v1` | TBD | Scope-aware reverse index `(scope, token_id, projection, field) -> UnitId` |
@@ -1063,7 +1102,7 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 | `lexical_chunk_stats` | по capability `LexicalIndex` | `agent_memory.lex_chunk_stats.v1` | TBD | BM25F chunk/unit stats by `(scope, unit, projection)` |
 | `lexical_token_stats` | по capability `LexicalIndex` | `agent_memory.lex_token_stats.v1` | TBD | Token corpus stats by `(scope, projection, token)` |
 | `lexical_collection_stats` | по capability `LexicalIndex` | `agent_memory.lex_collection_stats.v1` | TBD | Collection-level BM25F stats by `(scope, projection)` |
-| `metadata_filters` | да (lightweight pre-filter) | `agent_memory.metadata_filter.v1` | TBD | Reverse index `(scope, metadata_key, metadata_value) -> UnitId` |
+| `metadata_filters` | по selector `lightweight_prefilter` | `agent_memory.metadata_filter.v1` | TBD | Reverse index `(scope, metadata_key, metadata_value) -> UnitId` |
 | `graph_edges_by_src` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Scope-aware outgoing edges with value `RelationValue<ToUnitId, EdgePayload>` |
 | `graph_edges_by_dst` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Scope-aware incoming edges with value `RelationValue<FromUnitId, EdgePayload>` |
 | `temporal_unit_index` | по capability `TemporalIndex` | `agent_memory.unit_ts.v1` | TBD | Scope-aware range index `(scope, timestamp, unit_id) -> UnitId` |
@@ -1111,8 +1150,6 @@ follows:
 | `ConversationMemory` | `enable_conversation_episode` / `MemoryCapability::ConversationMemory` |
 | `CompiledArticles` | `enable_compiled_article` / `MemoryCapability::CompiledArticles` |
 | `FullSourceRefs` | `enable_full_source_refs` / `MemoryCapability::FullSourceRefs` |
-| `ResponseCache` | `response_cache_storage != Disabled` / `MemoryCapability::ResponseCache`; DBI opens only when `response_cache_storage == Mdbx` |
-| `PromptPrefixCache` | `enable_prompt_cache` / `MemoryCapability::PromptCache`; provider-side cache, no canonical DBI by default |
 
 Замечания:
 
@@ -1166,10 +1203,9 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
-| Opt-in response cache delta | 0 by default, +1 if `response_cache_storage == Mdbx` | +1 | KV supported | `response_cache` keyed by `ResponseCacheStorageKey = (scope, provider, model, request_hash, suffix, schema_version)`; runtime-services-roadmap.md owns policy and safety defaults. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, +6 opt-in | +6 | opt-in only | Not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
-| Planned expanded peak under current assumptions | profile-selected | 57 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + response cache + sync + reserve | within recommended ceiling | Leaves 39 DBI slots of headroom under `max_dbs = 96`; profiles that choose the legacy `64` ceiling must disable deltas until at least 16 free slots remain. |
+| Planned expanded peak under current assumptions | profile-selected | 56 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + sync + reserve | within recommended ceiling | Leaves 40 DBI slots of headroom under `max_dbs = 96`; profiles that choose the legacy `64` ceiling must disable deltas until at least 16 free slots remain. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
@@ -1247,7 +1283,7 @@ budget автоматически; они считаются только при
 | `speaker_to_units`, `session_to_units` | `ReverseIndexTable` поверх `KeyMultiValueTable` | **NOT supported** | DUPSORT |
 | `usage_by_last_access`, `usage_by_cooldown` | `RangeIndexTable<CompositeKey<ScopeId, Timestamp, UnitId>, Empty>` over `KeyValueTable` (§5.5) | Supported if implemented as KV range indexes | Serves decay/archive/cooldown range scans; not a component duplicate |
 | `schema_info` | `KeyValueTable<string, SchemaInfo>` (§5.5) | Supported | KV |
-| `source_refs_by_resource`, `response_cache` | `ReverseIndexTable` / `KeyValueTable` profile deltas (§5.5.1) | Mixed | `source_refs_by_resource` is DUPSORT and not sync v0.1; `response_cache` is KV |
+| `source_refs_by_resource` | `ReverseIndexTable` profile delta (§5.5.1) | DUPSORT not supported | Optional provenance reverse lookup is not sync v0.1 |
 | legacy `lexical_token_by_text`, `lexical_token_by_id`, `lexical_chunk_stats`, `lexical_token_stats` | `KeyValueTable<...>` (§5.1) | Supported | Legacy lexical aliases; canonical names live in §5.5 |
 | legacy `lexical_postings`, `lexical_field_postings` | `KeyMultiValueTable<...>` / `ReverseIndexTable` (§5.1, §3.2) | **NOT supported** | Legacy DUPSORT postings — critical gap for BM25 sync |
 | `binary_bucket_index`, `embedding_store`, `chunk_store` | `RangeIndexTable` / `KeyValueTable` (§5.2) | Supported (KV) *или* **NOT supported** (если `RangeIndexTable` через `KeyMultiValueTable`) | Зависит от impl-а, см. `temporal_unit_index` выше |
@@ -1264,7 +1300,7 @@ Sync role map:
 |---|---|---|
 | authoritative logical state | `knowledge_units`, `content_key_to_unit_id`, `unit_components`, per-kind payload DBIs, `source_refs`, `schema_info`, MDBX-backed `resource_bodies` deltas | Require stable codec/layout and logical adapter before multi-host sync |
 | derived/rebuildable indexes | `unit_projections`, lexical dictionary/stats/postings, `metadata_filters`, `graph_edges_by_*`, `temporal_unit_index`, `speaker_to_units`, `session_to_units`, `usage_by_*`, `embedding_vectors` | May be rebuilt from authoritative state; raw sync is optional and must not be the only recovery path |
-| runtime operational state | runtime queue DBIs, `compaction_handoffs`, `response_cache` | Sync is profile-specific; single-host profiles do not enable it |
+| runtime operational state | runtime queue DBIs, `compaction_handoffs` | Sync is profile-specific; single-host profiles do not enable it |
 | upstream system state | `_mdbxc_meta`, `_mdbxc_changelog`, `_mdbxc_origins`, `_mdbxc_applied`, `_mdbxc_identity_index`, `_mdbxc_sync_schema` | Open only when sync is explicitly adopted |
 
 Composition over a supported `KeyValueTable` is not automatically
@@ -1342,7 +1378,7 @@ adapter registration before they can be treated as sync-covered.
 - **Include guards:** новые файлы используют `MDBX_CONTAINERS_HEADER_<PATH>_<FILE>_HPP_INCLUDED`.
 - **Doxygen:** все новые публичные API документированы на английском (см. `external/mdbx-containers/guides/coding-style.md`).
 - **Application schema versioning:** версии payload-ов остаются на стороне `agent-memory-cpp` через `schema_info` (`envelope_schema_version`, `component_schema_versions[]`, `profile_signature`, `migration_phase`). `mdbx-containers` не мигрирует и не интерпретирует application payload schema.
-- **Canonical `profile_signature`:** детерминированный hash от application-level profile manifest-а: `envelope_schema_version`, отсортированный список `component_schema_versions`, DBI manifest (`dbi_name`, table type, MDBX flags, key/value layout ids), index layout versions, capability set, profile selectors/policies (including `response_cache_storage`) и `migration_phase`. Термин `schema checksum` в этом ТЗ не используется как отдельное поле; если он появится позже, он должен быть явно mapped к `profile_signature` или заменён им.
+- **Canonical `profile_signature`:** детерминированный hash от application-level profile manifest-а: `envelope_schema_version`, отсортированный список `component_schema_versions`, DBI manifest (`dbi_name`, table type, MDBX flags, key/value layout ids), index layout versions, core capability set, profile selectors/policies и `migration_phase`. Host-owned LLM cache settings are excluded. Термин `schema checksum` в этом ТЗ не используется как отдельное поле; если он появится позже, он должен быть явно mapped к `profile_signature` или заменён им.
 - **Sync schema compatibility (opt-in):** если §11.7 когда-либо разрешит включить upstream sync subsystem из §1.5, `agent-memory-cpp` предоставляет application-level compatibility guard до запуска upstream sync / до передачи user DBI batches в `SyncEngine`. `mdbx-containers` не читает `schema_info`, не знает `profile_signature` и не выполняет application schema validation.
 
 Минимальный контракт для будущего sync adoption:

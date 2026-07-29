@@ -50,12 +50,22 @@ This guide extends, rather than replaces:
 
 ## 3. Identity Model
 
+`SourceId`, `SourceRevisionId`, `ArtifactId`, `RepresentationId`,
+`SegmentSetId`, `SegmentId`, `SourceRefId` and `EvidenceAnchorId` are opaque,
+versioned durable identifiers. Their concrete codec is an application-owned
+artifact-profile decision; it must have canonical byte encoding, equality,
+import/export round-trip fixtures and no dependence on a local MDBX sequence.
+`ArtifactId` is deterministically derived from `BlobDigest`; the other ids may
+be random occurrence ids or deterministic identities over their declared
+immutable inputs, but a codec must document which. `KnowledgeUnitId` and
+`ResourceId` remain local handles and are never substituted for these ids.
+
 ```text
 Source
   -> SourceRevision
        -> ArtifactBinding -> Artifact
        -> Representation
-            -> Segment -> KnowledgeUnitKind::Chunk -> SearchProjection/index
+            -> SegmentSet -> Segment -> KnowledgeUnitKind::Chunk -> SearchProjection/index
 ```
 
 ### 3.1 Source
@@ -75,9 +85,11 @@ struct Source {
 };
 ```
 
-`ResourceId` remains the existing local storage-facing handle. New APIs bind
-one `ResourceId` to one `SourceRevisionId`; it must not be used as the stable
-identity of a changing logical source.
+`ResourceId` remains the existing stable local storage-facing identity of the
+logical source. A local `ResourceRevision`/generation maps to an immutable
+`SourceRevisionId`; `SourceId` is the durable cross-environment counterpart of
+the local `ResourceId`. Import may allocate a different local `ResourceId`, but
+must retain and validate the SourceId/SourceRevisionId mapping.
 
 ### 3.2 SourceRevision
 
@@ -94,13 +106,12 @@ struct SourceRevision {
     std::optional<std::uint64_t> externally_updated_at_ms;
     std::optional<std::string> etag;
     std::optional<std::string> last_modified;
-    ContentHash content_hash;
-    std::optional<ArtifactId> primary_artifact_id;
+    BlobDigest snapshot_digest;
     TypedMetadata metadata;
 };
 ```
 
-`content_hash` describes the revision snapshot, not the logical source. A
+`snapshot_digest` describes the revision snapshot, not the logical source. A
 connector may record an unchanged fetch without creating a new revision only
 after proving that the canonical input bytes and relevant source metadata are
 unchanged.
@@ -121,21 +132,43 @@ enum class ArtifactRetentionClass : std::uint8_t {
 
 struct Artifact {
     ArtifactId id;
-    ContentHash content_hash;
-    std::string media_type;
+    BlobDigest digest;
     std::uint64_t size_bytes = 0;
-    std::optional<std::string> original_name;
-    std::uint64_t created_at_ms = 0;
-    TypedMetadata metadata;
 };
 
 struct ArtifactBinding {
     SourceRevisionId source_revision_id;
     ArtifactId artifact_id;
-    std::string role;  // e.g. original, extracted_audio, page_render
+    std::string role;  // e.g. primary_source_original, extracted_audio, page_render
     ArtifactRetentionClass retention;
+    std::optional<std::string> media_type;
+    std::optional<std::string> original_name;
+    std::uint64_t bound_at_ms = 0;
+    TypedMetadata source_metadata;
 };
 ```
+
+```cpp
+enum class BlobDigestAlgorithm : std::uint8_t { Sha256 = 1 };
+
+struct BlobDigest {
+    BlobDigestAlgorithm algorithm = BlobDigestAlgorithm::Sha256;
+    std::array<std::uint8_t, 32> value;
+};
+```
+
+`BlobDigest` is a full, algorithm-tagged byte digest. It is intentionally not
+the existing 16-byte `ContentHash` used by `KnowledgeUnitKey`; the latter is a
+unit-content/dedup contract and must not be reused for artifact identity.
+`Artifact` stores only byte-intrinsic identity and size. MIME type, filename,
+observation time, source metadata, retention and role are binding facts because
+the same bytes can be imported into different sources under different policies.
+`record_artifact` is idempotent only when `id`, digest and size agree; a
+conflicting record is a validation error, not a metadata overwrite.
+
+Each SourceRevision has exactly one retained binding with role
+`primary_source_original`; it replaces the former ambiguous
+`primary_artifact_id` field. Additional bindings are allowed and explicit.
 
 `SourceOriginal` must be retained or reported as unavailable. `DerivedDurable`
 is retained because rebuilding it would be expensive, nondeterministic or
@@ -160,7 +193,7 @@ struct Representation {
     std::string processor_id;
     std::string processor_version;
     std::optional<std::string> model_id;
-    ContentHash parameters_hash;
+    BlobDigest parameters_digest;
     std::optional<double> confidence;
     std::uint64_t generated_at_ms = 0;
     TypedMetadata metadata;
@@ -173,16 +206,25 @@ creates a new representation. Translation projections defined in
 specialized representation/projection path and retain their existing package
 provenance requirements.
 
-### 3.5 Segment And Knowledge Units
+### 3.5 Segment Sets And Knowledge Units
 
 A `Segment` is an addressable part of a representation: a paragraph, heading,
 PDF page block, table, image caption, transcript interval, scene or OCR region.
 It is the source-media coordinate from which retrieval units are created.
 
 ```cpp
+struct SegmentSet {
+    SegmentSetId id;
+    RepresentationId representation_id;
+    std::string segmenter_id;
+    std::string segmenter_version;
+    BlobDigest parameters_digest;
+    std::uint64_t generated_at_ms = 0;
+};
+
 struct Segment {
     SegmentId id;
-    RepresentationId representation_id;
+    SegmentSetId segment_set_id;
     std::uint64_t sequence = 0;
     std::string text;
     std::vector<Locator> locators;
@@ -194,12 +236,19 @@ struct Segment {
 ```
 
 A retrieval-eligible segment materializes as exactly one
-`KnowledgeUnitKind::Chunk` for a given source-revision/representation policy.
-`SegmentId` is the stable provenance coordinate; `KnowledgeUnitId` remains the
-local primary key used by stores and indexes. A segment-to-unit mapping records
-the current materialization and is replaced when a revision is reindexed.
-This avoids a second competing retrieval model while allowing one source
-segment to be rebuilt or projected in more than one way.
+`KnowledgeUnitKind::Chunk` for one immutable `SegmentSetId` and one explicit
+materialization policy. `SegmentId` is a deterministic stable provenance
+coordinate derived from `(segment_set_id, sequence, structural locator)`;
+`KnowledgeUnitId` remains the local primary key used by stores and indexes.
+Changing a segmenter, processor, inputs, parameters or chunk policy creates a
+new SegmentSet and new mapping; it never mutates or replaces cited segments.
+
+The catalog keeps `SegmentMaterialization` separately as an active-view mapping
+from `(segment_set_id, MaterializationPolicyId)` to local Chunk/KnowledgeUnit
+ids. It may switch which immutable set is active for retrieval, while old sets
+remain reachable for evidence, export and reproducibility. Fixtures must cover
+same bytes with changed chunk policy, changed processor, and a retained old
+anchor; none may silently acquire a new `SegmentId` or locator.
 
 ## 4. Typed Locators And Evidence Anchors
 
@@ -262,6 +311,44 @@ using Locator = std::variant<WholeArtifactLocator, TextLocator,
                              PageRegionLocator, TimeRangeLocator,
                              FrameRegionLocator, SlideLocator,
                              SpreadsheetLocator, WebLocator>;
+
+struct AlignmentProvenance {
+    std::string processor_id;
+    std::string processor_version;
+    std::string method;
+    std::optional<double> confidence;
+};
+
+enum class MaterializationOperation : std::uint8_t {
+    OriginalRange,
+    RenderPage,
+    RenderRegion,
+    ExtractFrame,
+    ExtractClip
+};
+
+struct MaterializationLimits {
+    std::uint64_t max_output_bytes = 0;
+    std::optional<std::uint64_t> max_duration_ms;
+    std::optional<std::uint32_t> max_pixel_dimension;
+};
+
+enum class MaterializationAccessOutcome : std::uint8_t {
+    Allowed,
+    Denied,
+    RequiresHostAuthorization
+};
+
+struct MaterializationInstruction {
+    EvidenceAnchorId anchor_id;
+    SourceRevisionId source_revision_id;
+    ArtifactId original_artifact_id;
+    Locator original_locator;
+    MaterializationOperation operation = MaterializationOperation::OriginalRange;
+    MaterializationLimits limits;
+    MaterializationAccessOutcome access =
+        MaterializationAccessOutcome::RequiresHostAuthorization;
+};
 ```
 
 `NormalizedBox` coordinates are in `[0, 1]`; they remain stable when a PDF page
@@ -274,12 +361,15 @@ profiles, a full `SourceRef` carries one or more `EvidenceAnchor` values:
 
 ```cpp
 struct EvidenceAnchor {
+    EvidenceAnchorId id;
     SourceId source_id;
     SourceRevisionId source_revision_id;
     ArtifactId original_artifact_id;
+    Locator original_locator;
     std::optional<RepresentationId> representation_id;
     std::optional<SegmentId> segment_id;
-    Locator locator;
+    std::optional<Locator> representation_locator;
+    std::optional<AlignmentProvenance> alignment;
     std::string excerpt;
 };
 ```
@@ -287,9 +377,13 @@ struct EvidenceAnchor {
 The anchor's `original_artifact_id` is the durable citation target. A
 transcript, OCR result or vision description can be named as a representation
 that helped find the result, but it cannot be presented as an unqualified
-original observation. If an original artifact has been deleted under an
-authorized retention policy, the anchor remains resolvable as metadata and
-materialization reports `ARTIFACT_UNAVAILABLE`.
+original observation. `original_locator` is mandatory and coordinates the
+original artifact. `representation_locator` coordinates a derived artifact only
+when `representation_id` and an `AlignmentProvenance` (processor/version,
+alignment method and optional confidence) are present. A context excerpt based
+on derived text is labeled as derived. If an original artifact has been deleted
+under an authorized retention policy, the anchor remains resolvable as metadata
+and materialization reports `ArtifactUnavailable`.
 
 ## 5. Catalog, Blob And Lineage Boundaries
 
@@ -298,7 +392,7 @@ The application-level ports are intentionally separate:
 ```text
 ArtifactCatalog
   owns Source, SourceRevision, Artifact, ArtifactBinding, Representation,
-  Segment and artifact-processing lineage metadata.
+  SegmentSet, Segment, materialization and artifact-processing lineage metadata.
 
 BlobStore
   owns immutable artifact bytes, digest verification, range reads and
@@ -316,6 +410,18 @@ not leak a file path, an MDBX transaction type or an object-store SDK into
 public APIs:
 
 ```cpp
+enum class CatalogStatus : std::uint8_t {
+    Ok, AlreadyExists, NotFound, Conflict, InvalidArgument,
+    IntegrityViolation, BackendUnavailable
+};
+
+template <typename T>
+struct CatalogResult {
+    CatalogStatus status = CatalogStatus::Ok;
+    std::optional<T> value;
+    std::string diagnostic;
+};
+
 class IArtifactCatalog {
 public:
     virtual ~IArtifactCatalog() = default;
@@ -323,34 +429,59 @@ public:
     virtual SourceId create_source(const CreateSourceRequest& request) = 0;
     virtual SourceRevisionId append_revision(
         const AppendSourceRevisionRequest& request) = 0;
-    virtual ArtifactId record_artifact(const Artifact& artifact) = 0;
-    virtual void bind_artifact(const ArtifactBinding& binding) = 0;
+    virtual CatalogResult<ArtifactId> record_artifact(const Artifact& artifact) = 0;
+    virtual CatalogResult<void> bind_artifact(const ArtifactBinding& binding) = 0;
     virtual RepresentationId record_representation(
         const Representation& representation) = 0;
-    virtual void replace_segments(
-        SourceRevisionId revision_id,
-        RepresentationId representation_id,
-        const std::vector<Segment>& segments) = 0;
-    virtual std::optional<Segment> find_segment(SegmentId id) const = 0;
+    virtual CatalogResult<SegmentSetId> record_segment_set(
+        const SegmentSet& set, const std::vector<Segment>& segments) = 0;
+    virtual CatalogResult<void> activate_materialization(
+        const SegmentMaterialization& materialization) = 0;
+    virtual CatalogResult<std::optional<Segment>> find_segment(SegmentId id) const = 0;
+};
+
+enum class BlobStatus : std::uint8_t {
+    Ok, NotFound, AccessDenied, RangeUnsupported, DigestMismatch,
+    Corrupt, LimitExceeded, BackendUnavailable
+};
+
+template <typename T>
+struct BlobResult {
+    BlobStatus status = BlobStatus::Ok;
+    std::optional<T> value;
+    std::string diagnostic;
 };
 
 class IBlobStore {
 public:
     virtual ~IBlobStore() = default;
 
-    virtual ArtifactId put_immutable(const BlobWriteRequest& request) = 0;
-    virtual bool exists(ArtifactId id) const = 0;
-    virtual BlobReadHandle open(ArtifactId id, const BlobReadRange& range) = 0;
-    virtual MaterializedArtifact materialize(
+    virtual BlobResult<ArtifactId> put_immutable(const BlobWriteRequest& request) = 0;
+    virtual BlobResult<BlobMetadata> probe(ArtifactId id) const = 0;
+    virtual BlobResult<BlobReadHandle> open(ArtifactId id, const BlobReadRange& range) = 0;
+    virtual BlobResult<MaterializedArtifact> materialize(
         ArtifactId id,
         const MaterializationRequest& request) = 0;
 };
 ```
 
 `record_artifact` records verified metadata after `IBlobStore::put_immutable`
-has established byte identity. `replace_segments` is atomic with the
-representation's active segment set; old segments remain reachable only while
-their revision/representation is retained for citations or reproducibility.
+has established byte identity. `record_segment_set` appends an immutable set;
+`activate_materialization` changes only the current retrieval view. A boolean
+existence API is deliberately forbidden because callers must distinguish missing
+bytes from policy denial, corruption and backend failure.
+
+Import/export serializes a versioned catalog manifest before units that cite it:
+SourceId, SourceRevisionId, ArtifactId/BlobDigest, RepresentationId,
+SegmentSetId, SegmentId, SourceRefId and EvidenceAnchorId are durable and are
+never rewritten. The destination may map SourceId to a different local
+ResourceId and global unit ids to different local unit ids. It validates or
+creates the manifest, global-to-local identity mappings, bindings and anchors
+in the same atomic import unit as the KnowledgeUnit records that reference
+them; a failed transaction publishes neither dangling units nor a half-visible
+catalog. A backend that cannot atomically cover its blob store records a
+durable pending-import lease and exposes no units until the final catalog
+commit verifies all declared BlobDigests.
 
 `ArtifactCatalog` is not a semantic graph. Its `artifact_relations` record
 technical facts such as `derived_from`, `embedded_in`, `extracted_audio_from`,
@@ -385,19 +516,14 @@ text, OCR text, visual description and image embedding input. Fusion happens
 through the existing retrieval composition layer, not by pretending that all
 modalities are one text field.
 
-`Context` carries text and citations by default. A future artifact-aware context
-extension may additionally return materialization instructions such as:
-
-```text
-materialize page 17
-materialize image crop [0.10, 0.33, 0.91, 0.58]
-materialize video frame at 00:44:03.500
-materialize clip from 00:43:41 to 00:44:18
-```
-
-Those instructions are references, not implicit byte attachments. A text-only
-consumer receives excerpt, transcript/OCR text and a citation; a multimodal
-consumer may explicitly request the corresponding page, frame, crop or clip.
+`Context` carries text, `SourceRefSummary`, and typed
+`MaterializationInstruction` values by default. An instruction names its stable
+anchor, source revision, original artifact and original locator, and constrains
+the requested operation, output and authorization outcome. It is a reference,
+not an implicit byte attachment. A text-only consumer receives excerpt and a
+citation; a multimodal consumer may explicitly request the corresponding page,
+frame, crop or clip. A transcript/OCR-derived excerpt must carry its derived
+representation label and never masquerade as a direct original quote.
 
 ## 7. Persistence, Retention And Backup
 
@@ -411,8 +537,8 @@ The existing `ResourceBodyStore` rules remain in force:
 
 - raw bytes appear only in primary body/blob storage, never reverse indexes;
 - chunked bodies write chunks before a complete descriptor;
-- body replacement creates a new revision and bounded GC removes only bodies
-  no longer reachable from retained anchors or units;
+- body replacement creates a new revision and bounded GC removes only bytes
+  absent from the catalog's complete liveness closure;
 - descriptor codecs, limits, checksums and encryption policy are explicit.
 
 Backups have two levels:
@@ -430,6 +556,15 @@ Rebuildable caches, thumbnails, temporary clips and all ANN/vector index state
 are excluded from a complete workspace backup. They must be rebuildable from
 the retained catalog and artifact set.
 
+The liveness closure is evaluated by the same catalog backend that executes
+deletion. Its roots include retained `ArtifactBinding` records with
+`SourceOriginal` or `DerivedDurable` retention, all retained source revisions,
+representations, segment sets, segments, evidence anchors, full source refs,
+knowledge units, backup snapshots/leases, import/export transactions and
+in-flight materializations. It follows catalog lineage and binding edges before
+deleting any blob. A missing or inconsistent catalog edge is fail-closed: it
+keeps the artifact and reports an integrity error rather than collecting it.
+
 ## 8. Delivery Order And Acceptance Gates
 
 ### Artifact contracts before connectors
@@ -437,7 +572,7 @@ the retained catalog and artifact set.
 Before a public source connector, document parser or external vector adapter is
 released, implement and test:
 
-1. opaque IDs and the Source/SourceRevision/Artifact/Representation/Segment
+1. opaque IDs and the Source/SourceRevision/Artifact/Representation/SegmentSet/Segment
    catalog model;
 2. typed locator serialization, validation and display rendering;
 3. `EvidenceAnchor` integration with SourceRef and citation output;
@@ -464,8 +599,10 @@ Minimum evaluation gates are:
 - citation/locator correctness for text, page and timestamp fixtures;
 - no stale segment or projection after a source revision changes;
 - original-versus-derived representation labeling in context and traces;
-- retention and backup/restore reachability checks;
-- bounded read amplification for compressed/chunked artifacts;
+- retention and backup/restore reachability checks, including binding roots and
+  interrupted import/export/materialization fixtures;
+- bounded read amplification and explicit `BlobStatus` results for
+  compressed/chunked artifacts;
 - retrieval quality and latency reported separately for each modality and
   fusion policy.
 

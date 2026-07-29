@@ -207,10 +207,6 @@ profile_deltas:
     dbis: 1
     migration_peak: 1
     default: false
-  - name: response_cache_mdbx
-    dbis: 1
-    migration_peak: 1
-    default: false
   - name: event_record_index
     dbis: 1
     migration_peak: 1
@@ -240,10 +236,9 @@ expanded_peak_reference:
   compaction_handoff: 1
   resource_body_chunked: 2
   source_refs_by_resource: 1
-  response_cache_mdbx: 1
   sync_system_8c76661d: 6
   migration_dual_write_reserve: 8
-  total: 57
+  total: 56
 
 runtime_integration_mapping:
   a0_a2_new_dbis: 0

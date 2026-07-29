@@ -75,7 +75,6 @@ struct ResourceSourceToken {
 
 using TranslationSource = std::variant<UnitSourceToken, ResourceSourceToken>;
 
-enum class HashAlgorithm : uint8_t { Sha256 };
 enum class FingerprintSubject : uint8_t {
     PackageArchive,
     ModelBundle,
@@ -84,9 +83,8 @@ enum class FingerprintSubject : uint8_t {
 };
 
 struct ArtifactFingerprint {
-    HashAlgorithm algorithm = HashAlgorithm::Sha256;
     FingerprintSubject subject = FingerprintSubject::PackageArchive;
-    std::array<std::uint8_t, 32> bytes{};
+    BlobDigest digest;
 };
 
 struct TranslationRequest {
@@ -206,7 +204,8 @@ The manifest is adapter-owned in M1. A future shared registry may be added only
 if multiple adapters need common package discovery. Storage is ordinary metadata
 or an adapter-local table; no new `mdbx-containers` primitive is required.
 
-For Argos, `fingerprint` is SHA-256 over the exact downloaded `.argosmodel`
+`ArtifactFingerprint` reuses the artifact profile's full algorithm-tagged
+`BlobDigest`; it is not a third hash value type. For Argos, `fingerprint` is SHA-256 over the exact downloaded `.argosmodel`
 archive bytes before unpacking (`subject = PackageArchive`). For external
 services, reproducible provenance requires an immutable provider revision
 (`subject = RemoteModelRevision`); otherwise the step is explicitly
@@ -238,10 +237,10 @@ Query-time flow:
 6. Build final context from original source excerpts unless the caller requests
    translated snippets.
 
-Query-time-only translation without persisted `TranslatedCanonical` projections
-is deferred until the retrieval planner has an explicit corpus-language routing
-contract. M1 uses query translation only as the matching query side for
-persisted translated projections.
+M1b may translate a query only as the direct matching query side for a
+persisted `TranslatedCanonical` projection. General query-time-only translation,
+corpus-language routing, pivot selection and cross-language stream fusion are
+M2 planner contracts; they must not be implied merely by storing translations.
 
 ```cpp
 struct QueryTranslationTrace {
@@ -313,7 +312,7 @@ M0:
 - No translation dependency.
 - Preserve `ChunkPayload.detected_language` where importers can provide it.
 
-M1:
+M1b:
 
 - Add `TranslationProjection` capability and `TranslationPolicy`.
 - Add `ProjectionKind::TranslatedCanonical`.
@@ -323,7 +322,8 @@ M1:
 
 M2:
 
-- Query-time language routing.
+- Query-time language routing, query-time-only translation and explicit pivot
+  selection.
 - Cross-lingual retrieval eval set.
 - Optional package registry helper for offline adapters.
 - Translation drift report in `agent-memory-cli inspect/check`.

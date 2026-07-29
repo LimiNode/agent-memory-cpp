@@ -15,6 +15,34 @@ and model-training opt-out. These are tracked in
 [`affective-memory-roadmap.md`](affective-memory-roadmap.md) ADR-A07 and should
 not be folded into `priority_weight` or ordinary usage statistics.
 
+## 1.2. AccessPolicy And Retrieval Enforcement (planned)
+
+`AccessPolicy` is the normative owner for strict retrieval filters. It is not
+an activation taxonomy and does not grant authority to execute a retrieved
+procedure.
+
+```cpp
+enum class Visibility : uint8_t { Private, Scope, Shared, Public };
+
+struct AccessPolicy {
+    std::vector<std::string> allowed_principals;
+    std::vector<std::string> allowed_roles;
+    Visibility visibility = Visibility::Private;
+    std::vector<std::string> jurisdictions;
+    std::optional<double> minimum_trust;
+};
+```
+
+An absent policy is deny-by-default outside the record's owning scope. The
+retriever applies scope/access/status/language/jurisdiction/trust constraints
+before candidate creation and repeats the authorization check after fusion and
+before context materialization. `RetrievalTrace` records policy version and
+allow/deny counts without exposing denied content. Initial mappings use typed
+metadata in existing `metadata_filters`; a new DBI is forbidden until a measured
+query pattern requires one. Required fixtures cover cross-scope access denial,
+role changes, jurisdiction/trust exclusions, post-fusion leakage, and a soft
+domain-routing fallback that never bypasses a strict deny.
+
 ## 1.1. EncryptionPolicy (planned)
 
 `EncryptionPolicy` is an opt-in storage/security policy for local memory stacks.

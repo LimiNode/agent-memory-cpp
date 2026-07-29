@@ -987,7 +987,7 @@ See [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) for den
 ```cpp
 enum class DenseIndexMode : uint8_t {
     Exact = 0,                      // brute-force float cosine, ground truth
-    BinaryCandidateFilter = 1,      // binary filter + float rerank (M1 default)
+    BinaryCandidateFilter = 1,      // optional M1 experiment; binary filter + float rerank
     BinaryOnly = 2,                 // binary only, Hamming ranking (M2 experimental/compact)
     ApproximateVector = 3,          // binary + decoder → approx vector → rerank (M2 experimental)
     Hnsw = 4,                       // M2+ experimental ANN backend
@@ -1088,7 +1088,7 @@ encoder registry. Полная таблица sizes — см. §"Eigen и SIMD �
 Значения нормированы против `Recall@10(ExactVectorIndex) = 1.00`:
 
 ```text
-ExactVectorIndex:                            = 1.00 (baseline).
+ExactVectorIndex:                            = 1.00 (M1a required baseline and ground truth).
 
 BinaryCandidateFilter + RH-64:               >= 0.85 of Exact.
 BinaryCandidateFilter + RH-128:              >= 0.90 of Exact.

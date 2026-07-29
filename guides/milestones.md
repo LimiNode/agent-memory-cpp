@@ -85,6 +85,7 @@ Required capabilities:
 | Full source refs | `ISourceRefStore` | `source_refs` | detail citation lookup | source reverse lookup | `knowledge-base-roadmap.md` |
 | Single-axis temporal validity | `TemporalComponent` | `temporal_unit_index` | valid-at lookup, stale fact exclusion | AM-13 bi-temporal | `memory-lifecycle-governance-roadmap.md` |
 | Knowledge activation metadata | `ActivationMetadataComponent` or equivalent payload fields | existing `metadata_filters`, `graph_edges_by_*`, `unit_projections` | domain/intent/playbook activation fixtures | learned planner | `knowledge-activation-roadmap.md` |
+| Persisted translation projection (optional) | adapter-owned `TranslationPolicy`, `TranslatedCanonical` projection and provenance | existing `unit_projections` | original citation, adapter fingerprint drift, deterministic fake translator | query routing/pivoting | `translation-adapters-roadmap.md` |
 
 M1b may add domain maps and playbooks as `KnowledgeUnitKind` values, but they
 must be canonical, versioned objects that cite evidence; they are not just
@@ -116,8 +117,8 @@ rebuild inside one transaction.
 
 Goal: broaden from the stable M1 substrate to advanced memory systems.
 
-M2 may include graph expansion, speaker-aware chat, compiled wiki, translation
-projections, richer context planning, CLI, migration tools, ANN backends,
+M2 may include graph expansion, speaker-aware chat, compiled wiki, query-time
+multilingual routing/pivoting and evaluation, richer context planning, CLI, migration tools, ANN backends,
 advanced mutation policies, artifact provenance profiles, and profile-specific
 golden datasets. An artifact provenance profile adds stable Source/Revision
 identity, immutable original bytes, versioned representations, typed evidence
@@ -163,7 +164,9 @@ scheduling, authority and execution.
   write transaction.
 - Derived search/vector/graph indexes are rebuildable from canonical storage.
 - Strict filters may exclude results only for safety or tenancy: scope, access,
-  status, language, jurisdiction, trust threshold. Domain, role, stage, topic,
+  status, language, jurisdiction, trust threshold. They use the deny-by-default
+  `AccessPolicy` enforcement contract in `policies-roadmap.md` before candidate
+  creation and again before context materialization. Domain, role, stage, topic,
   platform, and audience are soft routing signals by default.
 
 ## Reproducible Benchmark Contract

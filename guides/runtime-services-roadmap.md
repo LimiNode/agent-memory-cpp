@@ -2,11 +2,11 @@
 
 Спецификация cross-cutting runtime сервисов (PromptCache, AsyncIndexer, WriteGate) для подсистемы памяти `agent-memory-cpp`. Документ конкретизирует ADR-013 (Runtime services) из `guides/memory-stacks-roadmap.md` секции 11.
 
-> **C++17 compliance:** кодовые сниппеты используют `const std::vector<T>&` вместо `std::span<T>` и явные конструкторы вместо designated initializers. PromptCache split на `IPromptPrefixCache` (provider-side, всегда) и `IResponseCache` (local response, opt-in default OFF для безопасности).
+> **C++17 compliance:** кодовые сниппеты используют `const std::vector<T>&` вместо `std::span<T>` и явные конструкторы вместо designated initializers. Provider-specific prompt/response caching is a host integration, not an `agent-memory-cpp` runtime service or DBI contract.
 
 ## 1. Purpose
 
-- Что описывает: PromptCache split (`IPromptPrefixCache` provider-side + `IResponseCache` local opt-in), AnthropicCacheControlAdapter, AsyncIndexer (batch вставки в lexical/vector индексы), WriteGate (применяет WritePolicy). Все сервисы ортогональны profile (доступны через интерфейсы, не зависят от конкретного MemoryStack).
+- Что описывает: AsyncIndexer (batch вставки в lexical/vector индексы), WriteGate (применяет WritePolicy), bounded queues and the host boundary for context fingerprints. Provider-specific cache adapters remain in the host application.
 - Cross-references: memory-stacks-roadmap.md (ADR-013, секции 7, 11, 16), knowledge-base-roadmap.md (RetrievalTrace), policies-roadmap.md (WritePolicy), compaction-roadmap.md (job submission), mdbx-containers-extension-tz.md (§12.5 storage recipe, §5.5.1 DBI budget).
 
 ## 2. Layer Architecture Review
@@ -20,13 +20,39 @@ Layer 3: Memory Stacks
 Layer 4: Applications
 
 Cross-cutting Runtime Services (orthogonal):
-  PromptCache, CompactionWorker, WriteGate, AsyncIndexer
+  CompactionWorker, WriteGate, AsyncIndexer
   Используют Layer 1 + Layer 2 через интерфейсы
 ```
 
 Runtime-сервисы доступны из любого layer, но сами не зависят от конкретного MemoryStack. Каждый сервис — singleton per MemoryStack (если включён в spec).
 
-## 3. PromptCache (Split: Provider-Side Prefix + Local Response)
+## 3. Host LLM Cache Boundary (Not Core API)
+
+`agent-memory-cpp` does not call an LLM, construct provider requests, store
+provider response caches, own `response_cache` DBIs, or expose Anthropic/OpenAI
+types. A host may implement the historical sketches below in its own integration
+package, but they are explicitly non-normative for this library.
+
+The only core-side handoff is provider-neutral metadata derived from a finished
+context:
+
+```cpp
+struct ContextFingerprint {
+    std::array<std::uint8_t, 32> value;
+    std::uint32_t schema_version = 1;
+};
+
+struct PromptPrefixDescriptor {
+    ContextFingerprint context_fingerprint;
+    std::vector<KnowledgeUnitRef> included_units;
+    std::vector<SourceRefId> included_source_refs;
+};
+```
+
+The host is responsible for permission-aware key construction, provider cache
+metadata, response-cache invalidation and all stale/tool-call semantics. It may
+not write generated responses into canonical memory without an explicit normal
+write/curation path.
 
 ### 3.1. Purpose and Split Rationale
 

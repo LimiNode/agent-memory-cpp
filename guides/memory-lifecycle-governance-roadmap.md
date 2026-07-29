@@ -323,6 +323,28 @@ Agent/runtime layers may propose edits, but the core should validate revision,
 evidence and policy before applying them:
 
 ```cpp
+using MemoryRecordRef = KnowledgeUnitRef;
+using StateRevision = std::uint64_t;
+
+enum class MemoryEditOperation : uint8_t {
+    Supersede,
+    Merge,
+    PatchMutableFields,
+    Deprecate,
+    Erase
+};
+
+struct TypedPayload {
+    KnowledgeUnitKind kind;
+    std::vector<std::uint8_t> encoded_value;
+    std::uint32_t schema_version = 1;
+};
+
+struct EvidenceRef {
+    KnowledgeUnitRef unit;
+    std::optional<EvidenceAnchorId> anchor_id;
+};
+
 struct MemoryEditIntent {
     MemoryRecordRef target;
     StateRevision expected_revision;
@@ -333,8 +355,14 @@ struct MemoryEditIntent {
 };
 ```
 
-This prevents an agent loop from overwriting durable memory without CAS-style
-revision checks and explicit provenance.
+`MemoryRecordRef` and durable evidence always use `KnowledgeUnitRef`, never a
+bare local `KnowledgeUnitId`. Applying an intent is a compare-and-swap: in one
+write transaction the store resolves `target`, checks that its current envelope
+revision exactly equals `expected_revision`, validates all evidence bindings,
+then applies the policy-allowed operation and increments the retrieval-visible
+revision. A missing target, stale expected revision, mismatched local/global
+binding, invalid payload kind, or forbidden operation returns a non-applied
+conflict result; it must not silently merge or overwrite durable memory.
 
 ## 10. AM-19: Deterministic-First Entity Resolution
 
