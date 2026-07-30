@@ -922,6 +922,10 @@ Golden scenarios:
 | `ProcedureDegradation` | Repeated failures degrade procedure without deleting history |
 | `PartitionAppendMerge` | Independent observations survive merge |
 | `PartitionConflictPreserved` | Contradictory claims remain visible |
+| `ImportLocalIdCollision` | Same local IDs from different workspaces bind to their distinct global occurrence IDs |
+| `ImportLocalIdRemap` | Import remaps a local ID without changing the referenced global occurrence ID |
+| `IdentitySchemeMismatch` | Incompatible identity scheme fails before reconciliation records are written |
+| `EqualContentDistinctOccurrences` | Equal content with distinct global occurrence IDs remains distinct after import |
 | `PerspectiveLeakage` | Local perspective does not leak without allowed projection |
 | `EvidenceDrillDown` | Summary opens to structured record, then raw evidence |
 | `DerivedErasePropagation` | Sensitive-source erase marks derived units stale/erased by policy |
@@ -937,7 +941,7 @@ lock in `milestones.md`.
 | A0 | Adapter prototype | `Custom` units, typed metadata, example adapter | M0 raw/resource/projection substrate |
 | A1 | Cognitive trace contracts | runtime origin, causal, perspective, epistemic components, sequence filters | M1b components and graph substrate; M2+ for bi-temporal |
 | A2 | Task, Decision and Procedure | formal payloads, procedure activation, capability refs, outcome stats | M1b + activation metadata; M1c for background validation jobs |
-| A3 | Partition and reconciliation | replica stamps, import/export, semantic conflicts, merge tests | M1b DurableGlobalIdentity and identity-scheme validation; M2/M2+ lifecycle governance |
+| A3 | Partition and reconciliation | replica stamps, import/export, semantic conflicts, merge tests, identity/remap fixtures | M1b DurableGlobalIdentity and identity-scheme validation; M2/M2+ lifecycle governance |
 | A4 | Plasticity support | procedure mining, topology mutation evidence, introspection snapshots, rollback records | external runtime policy; memory stores evidence only |
 
 ## ADELIA Reference Adapter

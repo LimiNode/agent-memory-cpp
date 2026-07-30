@@ -1,7 +1,7 @@
 # Machine-readable DBI manifest for agent-memory-cpp roadmap.
 # Keep this file in sync with guides/mdbx-containers-extension-tz.md section 5.5/5.5.1.
 
-version: agent_memory.dbi_manifest.v1
+version: agent_memory.dbi_manifest.v2
 max_dbs_default: 96
 minimum_free_slots: 16
 
@@ -215,26 +215,107 @@ profile_deltas:
     dbis: 4
     migration_peak: 4
     default: false
+    schema_status: capacity_reserve_only
   - name: shared_runtime_queue
     dbis: 5
     migration_peak: 5
     default: false
+    names: [jobs_by_id, jobs_scheduled, jobs_ready, jobs_by_lease, jobs_by_status]
+    dbi_entries:
+      - name: jobs_by_id
+        owner: runtime_services
+        table_type: KeyValueTable
+        opens: RuntimeQueue
+        sync: kv_supported
+        physical_key: [JobId]
+        migration_peak: 1
+      - name: jobs_scheduled
+        owner: runtime_services
+        table_type: RangeIndexTable
+        opens: RuntimeQueue
+        sync: kv_supported_if_range_is_kv_backed
+        physical_key: [RunAfterMs, JobId]
+        migration_peak: 1
+      - name: jobs_ready
+        owner: runtime_services
+        table_type: RangeIndexTable
+        opens: RuntimeQueue
+        sync: kv_supported_if_range_is_kv_backed
+        physical_key: [PriorityRank, JobId]
+        migration_peak: 1
+      - name: jobs_by_lease
+        owner: runtime_services
+        table_type: RangeIndexTable
+        opens: RuntimeQueue
+        sync: kv_supported_if_range_is_kv_backed
+        physical_key: [LeaseUntilMs, JobId]
+        migration_peak: 1
+      - name: jobs_by_status
+        owner: runtime_services
+        table_type: ReverseIndexTable
+        opens: RuntimeQueue
+        sync: dupsort_not_supported
+        physical_key: [JobStatus]
+        migration_peak: 1
   - name: compaction_handoff
     dbis: 1
     migration_peak: 1
     default: false
+    names: [compaction_handoffs]
+    dbi_entries:
+      - name: compaction_handoffs
+        owner: compaction
+        table_type: KeyValueTable
+        opens: Compaction
+        sync: kv_supported
+        physical_key: [JobId]
+        migration_peak: 1
   - name: resource_body_simple_kv
     dbis: 1
     migration_peak: 1
     default: false
+    names: [resource_bodies]
+    dbi_entries:
+      - name: resource_bodies
+        owner: provenance
+        table_type: KeyValueTable
+        opens: ResourceBodyStore
+        sync: kv_supported
+        physical_key: [ResourceId, BodyRevision, BodyDigest]
+        migration_peak: 1
   - name: resource_body_chunked
     dbis: 2
     migration_peak: 2
     default: false
+    names: [resource_body_manifest, resource_body_chunks]
+    dbi_entries:
+      - name: resource_body_manifest
+        owner: provenance
+        table_type: KeyValueTable
+        opens: ResourceBodyStore
+        sync: kv_supported
+        physical_key: [ResourceId, BodyRevision, BodyDigest]
+        migration_peak: 1
+      - name: resource_body_chunks
+        owner: provenance
+        table_type: KeyValueTable
+        opens: ResourceBodyStore
+        sync: kv_supported
+        physical_key: [ResourceId, BodyRevision, ChunkIndex]
+        migration_peak: 1
   - name: source_refs_by_resource
     dbis: 1
     migration_peak: 1
     default: false
+    names: [source_refs_by_resource]
+    dbi_entries:
+      - name: source_refs_by_resource
+        owner: provenance
+        table_type: ReverseIndexTable
+        opens: FullSourceRefs
+        sync: dupsort_not_supported
+        physical_key: [ResourceId]
+        migration_peak: 1
   - name: global_unit_id_to_local_id
     dbis: 1
     migration_peak: 1
@@ -243,6 +324,14 @@ profile_deltas:
     capability: DurableGlobalIdentity
     milestone: M1b
     note: Common GlobalKnowledgeUnitId -> (ScopeId, KnowledgeUnitId) profile; identity is unique across one storage environment and is not runtime-lane-owned. M1b structured knowledge/import-export profiles consume it; A0 may reuse it.
+    dbi_entries:
+      - name: global_unit_id_to_local_id
+        owner: knowledge_identity
+        table_type: KeyValueTable
+        opens: DurableGlobalIdentity
+        sync: kv_supported
+        physical_key: [GlobalKnowledgeUnitId]
+        migration_peak: 1
   - name: runtime_sequence_index
     dbis: 1
     migration_peak: 1
@@ -250,6 +339,14 @@ profile_deltas:
     names: [runtime_sequence_index]
     milestone: A1
     note: "Discriminated range keys: (ScopeId, ProducerEvent, encoded_origin, sequence, UnitId) for producer events and (ScopeId, VisibilityReceipt, encoded_origin, sequence, GlobalKnowledgeUnitId) for origin-local KnowledgeAtSequence."
+    dbi_entries:
+      - name: runtime_sequence_index
+        owner: runtime_integration
+        table_type: RangeIndexTable
+        opens: CognitiveTrace
+        sync: semantic_rebuild_only
+        physical_key: [ScopeId, RuntimeSequenceRowKind, EncodedOrigin, Sequence, StableId]
+        migration_peak: 1
   - name: lexical_posting_segments
     dbis: 1
     migration_peak: 1
@@ -258,6 +355,14 @@ profile_deltas:
     capability: LexicalIndex
     milestone: M2
     note: Immutable compressed lexical posting blocks with conservative skip and score-bound metadata; replaces neither canonical unit rows nor exhaustive BM25F baseline.
+    dbi_entries:
+      - name: lexical_posting_segments
+        owner: lexical
+        table_type: KeyValueTable
+        opens: LexicalIndex
+        sync: kv_supported
+        physical_key: [ScopeId, ProjectionKind, FieldId, TokenId, SegmentId]
+        migration_peak: 1
   - name: derived_vector_blob_dedup
     dbis: 1
     migration_peak: 1
@@ -266,12 +371,21 @@ profile_deltas:
     capability: DenseVectors
     milestone: M2
     note: Scope-local immutable encoded-vector payload deduplication; projection metadata and lifecycle remain per-unit.
+    dbi_entries:
+      - name: derived_vector_blobs
+        owner: embeddings
+        table_type: KeyValueTable
+        opens: DenseVectors
+        sync: kv_supported
+        physical_key: [ScopeId, VectorCodecId, BlobDigest]
+        migration_peak: 1
   - name: event_record_index
     dbis: 1
     migration_peak: 1
     default: false
     milestone: M2+
     note: Future profile delta only if agent-memory introduces EventRecord as an entity separate from KnowledgeUnit.
+    schema_status: capacity_reserve_only
   - name: sync_system_be72a2b
     dbis: 9
     migration_peak: 9
@@ -287,16 +401,89 @@ profile_deltas:
       - _mdbxc_logical_delivery_order
       - _mdbxc_logical_outbox
     note: Conservative max_dbs reserve. Normal SyncEngine initialization eagerly creates 7 DBIs; raw capture lazily creates _mdbxc_origins (+1), and _mdbxc_identity_index is a deferred direct-use-only path (+1).
+    dbi_entries:
+      - name: _mdbxc_meta
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_changelog
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_origins
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_applied
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_identity_index
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_sync_schema
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_logical_delivery
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_logical_delivery_order
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
+      - name: _mdbxc_logical_outbox
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
   - name: logical_delivery_watermark_pruning
     dbis: 1
     migration_peak: 1
     default: false
     names: [_mdbxc_logical_delivery_watermarks]
     note: Optional sync DBI created lazily by SyncEngine::prune_logical_delivery_markers(); later delivery/watermark reads open it only when it already exists. Profiles enabling marker pruning must reserve this delta in addition to sync_system_be72a2b.
+    dbi_entries:
+      - name: _mdbxc_logical_delivery_watermarks
+        owner: upstream_sync
+        table_type: UpstreamSystemDBI
+        opens: UpstreamSync
+        sync: upstream_managed
+        physical_key: [UpstreamInternal]
+        migration_peak: 1
   - name: migration_dual_write_reserve
     dbis: 0
     migration_peak: 8
     default: false
+    schema_status: capacity_reserve_only
 
 expanded_peak_reference:
   canonical_full_inventory: 29

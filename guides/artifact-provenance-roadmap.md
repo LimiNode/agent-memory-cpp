@@ -717,17 +717,23 @@ quality/latency benchmarks without creating a second knowledge base.
 canonical units, resource manifests, provenance, lifecycle and deletion. A
 Qdrant-compatible adapter owns only rebuildable derived vectors and optional
 candidate ranking. It receives no artifact bytes or authority-bearing metadata;
-every returned candidate is hydrated and validated by the native profile before
-use. Adapter loss, drift or rebuild must not change canonical retrieval
-correctness, citation resolution, backup closure or retention behavior.
+the native planner supplies an exact pre-ranking `ExternalCandidateConstraint`
+instead of grants or raw policy data. Every returned candidate is hydrated and
+validated by the native profile before use. Adapter loss, drift or rebuild must
+not change canonical retrieval correctness, citation resolution, backup closure
+or retention behavior.
 
 The text-only adapter receives only `SearchProjection::Original` text, local
 unit id, stable local ResourceId, ResourceRevision/generation, projection
-revision, scope and permitted filter metadata. A candidate returned by the
-service is always hydrated and revalidated from the canonical local unit and
-resource manifest before it becomes a `RetrievalHit` or context block. Deletion,
-reindex and stale revision checks originate in the canonical store; the adapter
-may lag and is rebuildable.
+revision, scope and the compiled constraint needed for an exact pre-ranking
+filter. It never receives `RetrievalAccessContext`, roles, jurisdictions,
+authority grants or raw policy claims. A service that cannot apply the exact
+constraint before its own top-K ranking is not eligible for a policy-aware
+route; the planner fails that route closed or uses native retrieval. A candidate
+returned by the service is always hydrated and revalidated from the canonical
+local unit and resource manifest before it becomes a `RetrievalHit` or context
+block. Deletion, reindex and stale revision checks originate in the canonical
+store; the adapter may lag and is rebuildable.
 
 This admission does not authorize non-text ingestion. PDF/OCR/ASR/media
 adapters, page/frame citations, artifact bytes and EvidenceAnchors still require

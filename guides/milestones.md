@@ -163,7 +163,7 @@ memory profiles.
 | A0 | Adapter prototype | `Custom` units, typed metadata, neutral runtime refs, example adapter | M0 raw/resource/projection substrate |
 | A1 | Cognitive trace contracts | runtime origin, causal, perspective, epistemic components, sequence filters | M1b components and graph substrate; M2+ for bi-temporal |
 | A2 | Task, Decision and Procedure | formal payloads, procedure activation, capability refs, outcome stats | M1b + activation metadata; M1c for background validation jobs |
-| A3 | Partition and reconciliation | replica stamps, import/export, semantic conflicts, merge tests | M2/M2+ lifecycle governance |
+| A3 | Partition and reconciliation | replica stamps, import/export, semantic conflicts, merge tests, local-ID remap/collision and identity-scheme rejection tests | M1b DurableGlobalIdentity and identity-scheme validation; M2/M2+ lifecycle governance |
 | A4 | Plasticity support | procedure mining, topology mutation evidence, introspection snapshots, rollback records | external runtime policy; memory stores evidence only |
 
 ADELIA integration is a reference adapter, not a core dependency. Core stores

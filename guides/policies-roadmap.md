@@ -50,6 +50,14 @@ pattern requires one. Required fixtures cover cross-scope access denial, role
 changes, jurisdiction/trust exclusions, post-fusion leakage, and a soft
 domain-routing fallback that never bypasses a strict deny.
 
+The same pre-candidate rule applies to external derived indexes. The native
+planner may issue an `ExternalCandidateConstraint` containing only the exact
+eligible canonical-unit set, read frontier and policy fingerprint. It must not
+send `RetrievalAccessContext`, grants, roles, jurisdictions or policy claims to
+the adapter. An adapter that cannot enforce that constraint before its own
+top-K ranking is unavailable for policy-aware retrieval; canonical hydration is
+still the mandatory second authorization check.
+
 The existing `IRetrievalEngine::RetrievalRequest` is an M0 lexical compatibility
 surface and does not claim to enforce this planned access contract. A public
 policy-aware retrieval entry point is introduced only together with

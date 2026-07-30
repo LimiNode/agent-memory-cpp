@@ -517,6 +517,32 @@ must be evaluated against authoritative `RetrievalAccessContext`/policy data at
 the same frontier, never a stale allow/deny cache. The trace records the
 CandidateSet representation, source generation and read frontier.
 
+An external derived-index route receives an immutable, locally compiled
+`ExternalCandidateConstraint`, never host grants or raw `AccessPolicy` data:
+
+```cpp
+// Opaque identifier for one canonical storage read snapshot.
+struct ReadFrontier {
+    std::string snapshot_id;
+};
+
+struct ExternalCandidateConstraint {
+    CandidateSet eligible_units;
+    ReadFrontier frontier;
+    std::string policy_fingerprint;
+};
+```
+
+The native planner constructs this constraint after all strict checks at the
+same `ReadFrontier`. An external adapter must apply the exact eligible-unit
+constraint before its own top-K ranking. A backend that cannot express the
+constraint as an exact allowlist or equivalent exact pre-ranking filter is not
+available for policy-aware retrieval: the route fails closed or the plan uses a
+native route. Final canonical hydration remains mandatory and rechecks policy,
+lifecycle, revision and provenance. `RetrievalTrace` records the constraint
+fingerprint and aggregate pre-ranking eligible count, never denied unit ids or
+policy claims.
+
 `RetrievalIoBudget` (defined in `memory-stacks-roadmap.md` Section 7.3) is a
 runtime limit shared by lexical, dense, graph and temporal routes. All enabled
 fields are nonzero hard caps; the effective budget is the field-wise minimum of
@@ -875,6 +901,8 @@ struct ProjectionRouteTrace {
     std::string execution_id;
     std::uint32_t input_candidate_count = 0;
     std::uint32_t output_candidate_count = 0;
+    std::optional<std::string> external_constraint_fingerprint;
+    std::uint32_t external_pre_ranking_eligible_count = 0;
     std::string outcome;  // used, missing, recompute_scheduled, fallback, budget_exhausted, dropped
     std::optional<std::string> fallback_route_id;
     RetrievalIoCounters io_counters;

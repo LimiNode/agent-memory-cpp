@@ -883,9 +883,15 @@ projection_version, index_kind)`.
     `graph_edges_by_src`/`graph_edges_by_dst`, `metadata_filters`.
 13. Optional/profile-gated writes, если профиль их включает:
     `source_refs.replace_for_unit(unit_id, refs)` for `enable_full_source_refs`,
-    runtime queue writes, response cache invalidation или другие
-    profile-specific indexes. Эти DBI обязаны быть перечислены в canonical
+    runtime queue writes или другие profile-specific indexes. Эти DBI обязаны
+    быть перечислены в canonical
     §5.5 manifest или учтены как profile delta в §5.5.1.
+
+After a successful canonical commit, the library may emit a revision-change
+notification for host integrations. Host response-cache invalidation is
+non-transactional deployment work: it is outside the MDBX atomic group,
+profile signature, DBI manifest and canonical backup contract. A failed or
+delayed host notification must not roll back or delay the canonical commit.
 
 Default M0/M1 consistency mode is synchronous for primary data and critical
 retrieval indexes: readers never observe a committed unit without its
@@ -1194,6 +1200,15 @@ DBI name, owner, table type, open selector, sync mode, physical key and
 migration peak. The following derived review projection is checked by
 `tools/validate-dbi-manifest.py`; do not edit it independently of YAML.
 
+The projection below renders the canonical inventory. A profile delta that
+declares concrete DBIs must define matching `names` and a complete
+`dbi_entries` descriptor for every DBI in YAML; the validator checks the same
+owner/table/open/sync/key/peak fields and rejects count or name drift. Only an
+explicit `schema_status: capacity_reserve_only` delta may reserve capacity
+without claiming a physical DBI schema. In particular,
+`runtime_sequence_index` is `semantic_rebuild_only`: its local-ID rows are
+rebuilt after global-identity remapping and are not raw-syncable state.
+
 ```text
 dbi-review-projection-v1
 # name|owner|table_type|opens|sync|physical_key|migration_peak
@@ -1354,7 +1369,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned. |
-| Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV supported | `runtime_sequence_index`; A1 runtime-history acceleration. |
+| Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | semantic rebuild only | `runtime_sequence_index`; A1 runtime-history acceleration. Local-ID rows are rebuilt after identity remapping, not raw-synced. |
 | Compressed lexical posting-segment delta | 0 by default, +1 when M2 lexical segments are enabled | +1 | KV supported | `lexical_posting_segments`; derived BM25F block layout with conservative score bounds, not a replacement for canonical units or exhaustive baseline. |
 | Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, snapshot-derived opt-in | snapshot-derived | opt-in only | Count the enabled raw/logical store manifest at the pinned upstream SHA; not used by M0/M1/M2 while §11.7 is DEFER. |

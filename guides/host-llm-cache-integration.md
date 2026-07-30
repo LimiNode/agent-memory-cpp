@@ -35,6 +35,12 @@ separately includes it. A host must treat source/resource revision changes,
 authorization changes and tool output as invalidation inputs; TTL alone is not
 a correctness guarantee.
 
+After a successful canonical commit, a host integration may receive a
+revision-change notification and invalidate its own cache. Notification delivery
+and cache invalidation are non-transactional: they are outside the MDBX atomic
+write group, profile signature, DBI manifest and canonical backup. Their delay
+or failure must not roll back or postpone canonical memory visibility.
+
 ## Integration Boundary
 
 The host may receive a context fingerprint plus durable evidence identifiers

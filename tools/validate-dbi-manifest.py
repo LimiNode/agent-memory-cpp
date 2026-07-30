@@ -27,6 +27,7 @@ ALLOWED_TABLE_TYPES = {
     "ReverseIndexTable",
     "RangeIndexTable",
     "TypeDiscriminatedTable",
+    "UpstreamSystemDBI",
 }
 
 ALLOWED_SELECTORS = {
@@ -45,6 +46,12 @@ ALLOWED_SELECTORS = {
     "TemporalIndex",
     "SpeakerAttribution",
     "UsageTracking",
+    "RuntimeQueue",
+    "Compaction",
+    "ResourceBodyStore",
+    "DurableGlobalIdentity",
+    "CognitiveTrace",
+    "UpstreamSync",
 }
 
 ALLOWED_SYNC = {
@@ -52,6 +59,8 @@ ALLOWED_SYNC = {
     "dupsort_not_supported",
     "kv_supported_if_type_discriminated_is_kv_backed",
     "kv_supported_if_range_is_kv_backed",
+    "semantic_rebuild_only",
+    "upstream_managed",
 }
 
 REQUIRED_CANONICAL_FIELDS = {
@@ -63,6 +72,8 @@ REQUIRED_CANONICAL_FIELDS = {
     "physical_key",
     "migration_peak",
 }
+
+REQUIRED_DBI_DESCRIPTOR_FIELDS = REQUIRED_CANONICAL_FIELDS
 
 EXPECTED_SYNC_SYSTEM_DBIS = {
     "_mdbxc_meta",
@@ -117,7 +128,7 @@ def load_manifest(path: Path) -> dict:
 
 
 def validate_manifest(data: dict, errors: list[str]) -> None:
-    if data.get("version") != "agent_memory.dbi_manifest.v1":
+    if data.get("version") != "agent_memory.dbi_manifest.v2":
         fail(errors, "unexpected manifest version")
 
     for field in ("max_dbs_default", "minimum_free_slots"):
@@ -211,13 +222,68 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         for field in ("dbis", "migration_peak"):
             if not isinstance(row.get(field), int) or row.get(field) < 0:
                 fail(errors, f"{name}: {field} must be a non-negative integer")
-        for explicit_name in row.get("names", []) or []:
-            if not isinstance(explicit_name, str) or not explicit_name:
-                fail(errors, f"{name}: explicit DBI name must be a non-empty string")
+
+        entries = row.get("dbi_entries")
+        declared_names = row.get("names")
+        capacity_only = row.get("schema_status") == "capacity_reserve_only"
+        if entries is None:
+            if not capacity_only:
+                fail(errors, f"{name}: profile delta without dbi_entries must be capacity_reserve_only")
+            if declared_names:
+                fail(errors, f"{name}: capacity_reserve_only delta cannot declare DBI names")
+            continue
+        if capacity_only:
+            fail(errors, f"{name}: concrete dbi_entries cannot be capacity_reserve_only")
+        if not isinstance(entries, list) or not entries:
+            fail(errors, f"{name}: dbi_entries must be a non-empty list")
+            continue
+        if row.get("dbis") != len(entries):
+            fail(errors, f"{name}: dbis must match dbi_entries count")
+        if not isinstance(declared_names, list) or not declared_names:
+            fail(errors, f"{name}: concrete profile delta requires names")
+
+        entry_names: list[str] = []
+        entry_peak = 0
+        for entry_index, entry in enumerate(entries):
+            context = f"{name}.dbi_entries[{entry_index}]"
+            if not isinstance(entry, dict):
+                fail(errors, f"{context} must be a mapping")
                 continue
-            if explicit_name in explicit_dbi_names:
-                fail(errors, f"duplicate explicit DBI name across manifest: {explicit_name}")
-            explicit_dbi_names.add(explicit_name)
+            missing = REQUIRED_DBI_DESCRIPTOR_FIELDS - set(entry)
+            if missing:
+                fail(errors, f"{context} missing fields: {sorted(missing)}")
+            entry_name = entry.get("name")
+            if not isinstance(entry_name, str) or not entry_name:
+                fail(errors, f"{context} has invalid name")
+                continue
+            if entry_name in entry_names:
+                fail(errors, f"{name}: duplicate dbi_entries name: {entry_name}")
+            entry_names.append(entry_name)
+            if entry_name in explicit_dbi_names:
+                fail(errors, f"duplicate explicit DBI name across manifest: {entry_name}")
+            explicit_dbi_names.add(entry_name)
+            if entry.get("table_type") not in ALLOWED_TABLE_TYPES:
+                fail(errors, f"{context}: unknown table_type {entry.get('table_type')!r}")
+            if entry.get("opens") not in ALLOWED_SELECTORS:
+                fail(errors, f"{context}: unknown opens selector {entry.get('opens')!r}")
+            if entry.get("sync") not in ALLOWED_SYNC:
+                fail(errors, f"{context}: unknown sync mode {entry.get('sync')!r}")
+            physical_key = entry.get("physical_key")
+            if not isinstance(physical_key, list) or not physical_key:
+                fail(errors, f"{context}: physical_key must be a non-empty ordered list")
+            elif any(not isinstance(part, str) or not part for part in physical_key):
+                fail(errors, f"{context}: physical_key entries must be non-empty strings")
+            entry_migration_peak = entry.get("migration_peak")
+            if not isinstance(entry_migration_peak, int) or entry_migration_peak < 0:
+                fail(errors, f"{context}: migration_peak must be a non-negative integer")
+            else:
+                entry_peak += entry_migration_peak
+
+        if declared_names != entry_names:
+            fail(errors, f"{name}: names must match dbi_entries names in order")
+        if row.get("migration_peak") != entry_peak:
+            fail(errors, f"{name}: migration_peak must match dbi_entries peak sum")
+        delta_names.update(entry_names)
 
     sync_delta = next(
         (row for row in deltas if isinstance(row, dict) and row.get("name") == "sync_system_be72a2b"),
@@ -413,6 +479,39 @@ def run_self_test(manifest_path: Path) -> int:
     delta_mismatch = copy.deepcopy(base)
     delta_mismatch["profile_deltas"][0]["migration_peak"] += 1
     cases.append(("delta/reference mismatch", delta_mismatch, "expanded peak legacy_document_resource_adapter mismatch"))
+
+    missing_delta_descriptor_field = copy.deepcopy(base)
+    for row in missing_delta_descriptor_field["profile_deltas"]:
+        if row["name"] == "runtime_sequence_index":
+            del row["dbi_entries"][0]["sync"]
+            break
+    cases.append((
+        "missing profile-delta descriptor field",
+        missing_delta_descriptor_field,
+        "runtime_sequence_index.dbi_entries[0] missing fields: ['sync']",
+    ))
+
+    concrete_delta_without_entries = copy.deepcopy(base)
+    for row in concrete_delta_without_entries["profile_deltas"]:
+        if row["name"] == "global_unit_id_to_local_id":
+            del row["dbi_entries"]
+            break
+    cases.append((
+        "concrete profile delta without descriptors",
+        concrete_delta_without_entries,
+        "global_unit_id_to_local_id: profile delta without dbi_entries",
+    ))
+
+    profile_delta_name_drift = copy.deepcopy(base)
+    for row in profile_delta_name_drift["profile_deltas"]:
+        if row["name"] == "runtime_sequence_index":
+            row["names"] = ["wrong_runtime_sequence_index"]
+            break
+    cases.append((
+        "profile-delta names drift",
+        profile_delta_name_drift,
+        "runtime_sequence_index: names must match dbi_entries names in order",
+    ))
 
     missing_physical_key = copy.deepcopy(base)
     del missing_physical_key["canonical"][0]["physical_key"]

@@ -209,8 +209,16 @@ struct LexicalTokenStats final {
     std::uint64_t collection_frequency = 0;
 };
 
+// Identifies one atomically readable active-projection statistics view.
+struct LexicalStatisticsSnapshotRef final {
+    ScopeId scope_id;
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    std::uint64_t statistics_generation = 0;
+};
+
 struct LexicalCollectionStats final {
     ProjectionKind projection_kind = ProjectionKind::Original;
+    LexicalStatisticsSnapshotRef snapshot;
     std::uint64_t unit_count = 0;
     std::uint64_t total_token_count = 0;
 };
@@ -275,14 +283,32 @@ total_token_count:
     sum of token_count across indexed units in that projection_kind
 ```
 
-When a resource is reindexed, old token stats must be decremented before new
-stats are added, unless the backend uses projection-version and
-resource-generation stale filtering with delayed compaction.
+`ProjectionVersionRef` is mandatory for per-unit postings and stats, while a
+`LexicalStatisticsSnapshotRef` identifies one aggregate view across many live
+units. They are deliberately different: a collection cannot carry one
+`ProjectionVersionRef` because each member may have its own active projection
+version.
 
-A **token-level cache** keyed by `(scope_id, token_id, projection_kind)` keeps
-warm-up reads cheap: when a query term is reused across sessions or scopes, the
-postings and per-projection-kind stats are loaded once and reused for the
-duration of the lexical session.
+When a resource or one of its projections is reindexed, the indexing
+transaction removes the previous **active** contribution from
+`LexicalTokenStats` and `LexicalCollectionStats`, applies the replacement
+contribution, advances `statistics_generation`, and publishes the replacement
+lexical manifest together. Physical stale postings may remain until delayed
+compaction, but they must not remain in aggregate stats. Consequently `df`,
+`collection_frequency`, `unit_count`, `total_token_count`, and `avgdl` always
+describe the same active-projection set as the manifest visible in the read
+frontier.
+
+`LexicalTokenStats` rows are current members of the collection snapshot; they
+are not independently stamped or copied on every unrelated unit update. A
+query reads token rows, `LexicalCollectionStats`, and the active manifest from
+one storage read transaction/frontier. A token-stat cache is scoped to that
+frontier or `statistics_generation`; it must not combine token rows from one
+aggregate view with collection counters from another.
+
+A **token-level cache** keyed by `(scope_id, token_id, projection_kind,
+statistics_generation)` keeps warm-up reads cheap within a stable lexical
+session without mixing aggregate views.
 
 ## Tokenization
 
@@ -491,7 +517,7 @@ lexical_token_stats:
 
 lexical_collection_stats:
     key   = (scope_id, projection_kind)
-    value = { unit_count, total_token_count }
+    value = { statistics_generation, unit_count, total_token_count }
 ```
 
 The first implementation may collapse `field_to_postings` to a single
@@ -537,6 +563,13 @@ local dictionary or RLE. No particular third-party wire format is a public
 contract. A segment that cannot safely use a narrow delta representation must
 use a lossless wide fallback.
 
+Each compressed posting block that exposes WAND/BMW-style score bounds records
+the `statistics_generation` used to construct those bounds. A query may use a
+bound for pruning only when it matches the `LexicalCollectionStats.snapshot`
+read at the same frontier. On mismatch, the backend recomputes a conservative
+bound or disables bound-based pruning for that block and preserves exhaustive
+BM25/BM25F correctness.
+
 Dynamic pruning is introduced in stages: exhaustive DAAT BM25F baseline first,
 then MaxScore/WAND, then Block-Max WAND only after the per-block score upper
 bounds are proved conservative for the active BM25F formula, field weights and
@@ -569,8 +602,10 @@ When a unit is reindexed for a given `projection_kind`:
 5. Upsert token dictionary entries (shared across projection_kinds).
 6. Write `field_to_postings` KV entries and `inverted_token_to_unit`
    candidate-index entries.
-7. Update lexical_token_stats and lexical_chunk_stats per projection_kind.
-8. Update lexical_collection_stats per projection_kind.
+7. Remove the replaced active contribution, then update `lexical_token_stats`
+   and `lexical_chunk_stats` per projection_kind.
+8. Update `lexical_collection_stats` and advance its
+   `statistics_generation` for the replacement active-projection set.
 9. Write new lexical manifest refs with the active `projection_version` and
    applicable `resource_generation`.
 10. Commit through a backend transaction where available.
@@ -1320,12 +1355,15 @@ of that ordering; each substep is its own PR.
     `RetrievalTrace` per call, RRF contribution, and participation in
     `IContextBuilder` budgeted assembly.
 20. Add the token-level cache keyed by `(scope_id, token_id,
-    projection_kind)` for fast warm-up across sessions and scopes.
+    projection_kind, statistics_generation)` for fast warm-up within a stable
+    aggregate statistics view.
 
 ### L4. MDBX and secondary indexes (memory-stacks steps 3 cont. and 12.3)
 
-21. Add the MDBX-backed lexical index with simple posting-list blobs
-    (start from the flat-body path, then add the projection keys).
+21. Add the MDBX-backed lexical index with the full scope/projection-aware
+    key shape from the first schema, initially restricted to fixed
+    `ProjectionKind::Original` and `FieldId::body`; then enable additional
+    projection kinds and fields.
 22. Add segmented postings, tombstones, and compaction. Compaction must
     preserve projection-version and resource-generation filtering so BM25F and
     BM25 score over the same live-posting set.
