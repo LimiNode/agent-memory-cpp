@@ -915,13 +915,9 @@ struct RetrievalIoCounters {
     std::optional<std::string> first_exhausted_limit;
 };
 
-struct LexicalTokenPartitionRef {
-    ScopeId scope_id;
-    ProjectionKind projection_kind = ProjectionKind::Original;
-    std::uint64_t statistics_epoch = 0;
-    std::uint64_t statistics_generation = 0;
-    TokenId token_id;
-};
+// Reuse the sole LexicalTokenPartitionRef definition from
+// lexical-search-roadmap.md. Its statistics_epoch is the complete
+// 128-bit LexicalStatisticsEpoch, never a narrowed numeric surrogate.
 
 struct ProjectionRouteTrace {
     std::string branch_id;
@@ -979,7 +975,6 @@ struct RetrievalRouteHits {
     std::string branch_id;
     std::string route_id;
     std::string execution_id;
-    RetrievalRouteCompletion completion = RetrievalRouteCompletion::Complete;
     bool admitted_to_fusion = false;
     std::vector<RetrievalHit> hits;
 };
@@ -999,7 +994,7 @@ struct RetrievalTrace {
     RetrievalIoCounters io_counters;
     PolicyDecisionTrace policy_decision;
     std::vector<ProjectionRouteTrace> projection_route_events;
-    RetrievalRouteCompletion completion = RetrievalRouteCompletion::Complete;
+    RetrievalCompletion completion = RetrievalCompletion::Complete;
     std::vector<KnowledgeUnitRef> causal_path;
 };
 ```
@@ -1023,12 +1018,17 @@ and deterministic route execution identity. This makes fallback activation and
 candidate fan-out replayable without allowing the same fallback route to run
 twice for identical branch input.
 
-Every route hit is bound to its branch, route and execution identity through
-`RetrievalRouteHits`; fusion may consume only entries explicitly marked
-`admitted_to_fusion`. `RetrievalTrace.completion` is persisted directly rather
-than inferred from empty hit vectors. Lexical coverage is snapshot-qualified so
-an audit can distinguish one token id in different scope/projection/epoch
-partitions.
+`ProjectionRouteTrace` is the sole route-level completion source. Every
+`RetrievalRouteHits` entry must resolve to exactly one route event with the same
+`(branch_id, route_id, execution_id)`; it carries hits and fusion admission, not
+a second completion value. `Unavailable`, `Dropped`, and `RequiredRouteFailed`
+routes must have no hits and cannot be admitted to fusion. A `Partial` route may
+be admitted only when its route event records the explicit partial/fallback
+policy used. `RetrievalTrace.completion` uses the query-level
+`RetrievalCompletion` enum and must equal `RetrievalResult.completion`; it is
+derived once from the validated route events and persisted rather than inferred
+from empty hit vectors. Lexical coverage is snapshot-qualified so an audit can
+distinguish one token id in different scope/projection/epoch partitions.
 
 `ContextBlock.block_id` is deterministic for the validated block inputs. Every
 `QueryBranchTrace.context_block_ids` entry resolves to exactly one

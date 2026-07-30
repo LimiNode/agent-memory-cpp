@@ -1508,6 +1508,109 @@ int main() {
         return fail("foreign physical ownership must be rejected before every mutation");
     }
 
+    const agent_memory::ResourceId ownerless_resource_id{"resource:indexer:ownerless"};
+    const agent_memory::DocumentId ownerless_document_id{"doc:indexer:ownerless"};
+    const agent_memory::ChunkId ownerless_chunk_id{"chunk:indexer:ownerless"};
+    indexer.reindex_resource(make_snapshot(
+        ownerless_resource_id,
+        1,
+        ownerless_document_id,
+        {make_chunk(ownerless_chunk_id, ownerless_document_id, 0, "ownerless source")}
+    ));
+    const auto ownerless_manifest = manifest_storage.find_manifest(ownerless_resource_id);
+    if(!ownerless_manifest) {
+        return fail("ownerless fixture must publish its source manifest");
+    }
+    (void)owner_storage.erase_document_owner(ownerless_document_id);
+    (void)owner_storage.erase_chunk_owner(ownerless_chunk_id);
+
+    manifest_storage.reset_operation_counts();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            agent_memory::ResourceId{"resource:indexer:ownerless:collision"},
+            1,
+            ownerless_document_id,
+            {make_chunk(ownerless_chunk_id, ownerless_document_id, 0, "ownerless collision")}
+        ));
+        return fail("ownerless physical identities must not be claimed by a new resource");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+
+    auto ownerless_erase_pending = *ownerless_manifest;
+    ownerless_erase_pending.state = agent_memory::ResourceManifestState::ErasePending;
+    manifest_storage.inject_unchecked_manifest(std::move(ownerless_erase_pending));
+    try {
+        (void)indexer.erase_resource(ownerless_resource_id);
+        return fail("ownerless erase-pending records must prove physical absence");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+
+    if(
+        embedder.call_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        !document_storage.find_document(ownerless_document_id) ||
+        !document_storage.find_chunk(ownerless_chunk_id) ||
+        !vector_index.find(ownerless_chunk_id)
+    ) {
+        return fail("ownerless physical records must be rejected before mutation and cleanup");
+    }
+
+    const agent_memory::ResourceId retained_parent_resource_id{
+        "resource:indexer:retained-parent"
+    };
+    const agent_memory::DocumentId retained_parent_old_document_id{
+        "doc:indexer:retained-parent:old"
+    };
+    const agent_memory::DocumentId retained_parent_new_document_id{
+        "doc:indexer:retained-parent:new"
+    };
+    const agent_memory::ChunkId retained_parent_chunk_id{
+        "chunk:indexer:retained-parent"
+    };
+    indexer.reindex_resource(make_snapshot(
+        retained_parent_resource_id,
+        1,
+        retained_parent_old_document_id,
+        {make_chunk(
+            retained_parent_chunk_id,
+            retained_parent_old_document_id,
+            0,
+            "retained parent source"
+        )}
+    ));
+    manifest_storage.reset_operation_counts();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            retained_parent_resource_id,
+            2,
+            retained_parent_new_document_id,
+            {make_chunk(
+                retained_parent_chunk_id,
+                retained_parent_new_document_id,
+                0,
+                "retained parent replacement"
+            )}
+        ));
+        return fail("retained chunk must not move under a different document");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+
+    const auto retained_parent_chunk = document_storage.find_chunk(retained_parent_chunk_id);
+    if(
+        embedder.call_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        !document_storage.find_document(retained_parent_old_document_id) ||
+        document_storage.find_document(retained_parent_new_document_id) ||
+        !retained_parent_chunk ||
+        retained_parent_chunk->document_id != retained_parent_old_document_id ||
+        !vector_index.find(retained_parent_chunk_id)
+    ) {
+        return fail("retained chunk parent mismatch must be rejected before mutation");
+    }
+
     const agent_memory::ResourceId foreign_resource_id{"resource:indexer:foreign"};
     const agent_memory::DocumentId foreign_document_id{"doc:indexer:foreign"};
     const agent_memory::ChunkId foreign_chunk_id{"chunk:indexer:foreign"};

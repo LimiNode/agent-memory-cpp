@@ -201,13 +201,6 @@ namespace agent_memory {
         : m_impl(std::make_unique<Impl>(std::move(options))) {}
 
     MdbxResourceIndexRecordOwnerStorage::~MdbxResourceIndexRecordOwnerStorage() = default;
-    MdbxResourceIndexRecordOwnerStorage::MdbxResourceIndexRecordOwnerStorage(
-        MdbxResourceIndexRecordOwnerStorage&& other
-    ) noexcept = default;
-    MdbxResourceIndexRecordOwnerStorage& MdbxResourceIndexRecordOwnerStorage::operator=(
-        MdbxResourceIndexRecordOwnerStorage&& other
-    ) noexcept = default;
-
     std::optional<ResourceIndexRecordOwner>
     MdbxResourceIndexRecordOwnerStorage::find_document_owner(
         const DocumentId& document_id

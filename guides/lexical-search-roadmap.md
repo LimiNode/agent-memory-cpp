@@ -525,7 +525,7 @@ enum class LexicalUnavailableReason : std::uint8_t {
 struct LexicalTokenPartitionRef final {
     ScopeId scope_id;
     ProjectionKind projection_kind = ProjectionKind::Original;
-    std::uint64_t statistics_epoch = 0;
+    LexicalStatisticsEpoch statistics_epoch;
     std::uint64_t statistics_generation = 0;
     TokenId token_id;
 };

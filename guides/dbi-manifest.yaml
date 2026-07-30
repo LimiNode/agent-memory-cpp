@@ -252,7 +252,63 @@ profile_deltas:
     dbis: 6
     migration_peak: 6
     default: false
-    schema_status: capacity_reserve_only
+    names:
+      - agent_memory_documents
+      - agent_memory_chunks
+      - agent_memory_document_chunks
+      - agent_memory_resource_manifests
+      - agent_memory_resource_index_document_owners
+      - agent_memory_resource_index_chunk_owners
+    note: Adapter-local document/resource storage and ResourceIndexer ownership evidence. Prefixes are deployment-configured; these names use the default agent_memory prefix.
+    dbi_entries:
+      - name: agent_memory_documents
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: indexed_retrieval
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId]
+        migration_peak: 1
+      - name: agent_memory_chunks
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: indexed_retrieval
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ChunkId]
+        migration_peak: 1
+      - name: agent_memory_document_chunks
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: indexed_retrieval
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId]
+        migration_peak: 1
+      - name: agent_memory_resource_manifests
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: indexed_retrieval
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ResourceId]
+        migration_peak: 1
+      - name: agent_memory_resource_index_document_owners
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: indexed_retrieval
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId]
+        migration_peak: 1
+      - name: agent_memory_resource_index_chunk_owners
+        owner: ingestion
+        table_type: KeyValueTable
+        opens: indexed_retrieval
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [ChunkId]
+        migration_peak: 1
   - name: shared_runtime_queue
     dbis: 5
     migration_peak: 5

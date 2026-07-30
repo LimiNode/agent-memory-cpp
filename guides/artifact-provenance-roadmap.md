@@ -849,6 +849,26 @@ own digest. Acceptance fixtures cover a missing required set, wrong root digest,
 incompatible identity scheme, incompatible closure recipe, and golden bytes
 from an independent codec implementation.
 
+CodecV1 uses this exact framing for every digest preimage. A `string` is its
+NFC-normalized UTF-8 bytes preceded by an unsigned big-endian `uint64` byte
+length. A `bytes` value uses the same `uint64` byte length and then its raw
+bytes. Fixed-width integers use their declared unsigned big-endian width;
+enums use one unsigned byte. An optional value is encoded as `0x00` when absent
+or `0x01` followed immediately by its value when present; all other markers are
+invalid. Every vector begins with an unsigned big-endian `uint64` element count
+and then its elements in canonical order. `BlobDigest` is one algorithm byte,
+then a length-framed raw digest byte array. `KnowledgeUnitIdentityScheme` is,
+in order, its length-framed scheme id, unsigned big-endian scheme version, and
+length-framed `occurrence_id_derivation`.
+`BackupClosureRecipe` is its length-framed recipe id followed by its unsigned
+big-endian recipe version. `AuthoritativeLogicalRecordSet` is, in order:
+length-framed `record_kind`, length-framed `identity_scheme`, unsigned
+big-endian serialization version, framed `content_digest`, and unsigned
+big-endian `record_count`. These nested encodings, together with the existing
+top-level field order, are the entire CodecV1 byte grammar; a decoder rejects
+truncated data, unknown enum values, non-canonical text, duplicate sets and
+trailing bytes.
+
 The closure recipe selects at least the following authoritative sets:
 
 | Profile capability | Required workspace closure |

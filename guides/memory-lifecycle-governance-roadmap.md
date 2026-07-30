@@ -467,9 +467,9 @@ enum class EntityResolutionStatus : uint8_t {
 
 struct EntityResolutionResult {
     EntityResolutionStatus status;
-    std::optional<EntityId> resolved_id;
+    std::optional<KnowledgeUnitRef> resolved_entity;
     double confidence = 0.0;
-    std::vector<EntityId> candidates;
+    std::vector<KnowledgeUnitRef> candidates;
     std::vector<ScoreContribution> scores;
     bool requires_llm = false;
 };
@@ -515,12 +515,15 @@ struct EntityResolutionProposal {
 The proposal is immutable evidence. Applying it creates a regular
 `MemoryEditIntent` or a new Relation/Fact lineage with an expected revision;
 it never rewrites an existing entity, fact or graph edge in place. Policy may
-auto-apply only deterministic exact matches that meet its explicit threshold.
+auto-apply only deterministic exact matches that meet its explicit threshold
+and whose `KnowledgeUnitRef` bindings have passed the same local-to-global
+validation as a proposal.
 Every heuristic or LLM-assisted recommendation is auditable and may be
 accepted, rejected, or superseded without destroying the original episode.
 Application validates every local-to-global `KnowledgeUnitRef` binding for the
-subject, target, candidates, mention and evidence before applying the intent;
-an unresolved or mismatched binding fails closed.
+deterministic result's resolved entity/candidates and for a proposal's subject,
+target, candidates, mention and evidence before applying an intent; an
+unresolved or mismatched binding fails closed.
 
 Required M2+ fixtures cover exact alias resolution, same-name distinct
 entities, ambiguous candidates, an evidence-free rejection, a stale

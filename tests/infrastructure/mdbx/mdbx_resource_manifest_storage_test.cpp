@@ -11,6 +11,7 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -233,6 +234,13 @@ namespace {
 } // namespace
 
 int main() {
+    static_assert(!std::is_move_constructible<
+        agent_memory::MdbxResourceIndexRecordOwnerStorage
+    >::value);
+    static_assert(!std::is_move_assignable<
+        agent_memory::MdbxResourceIndexRecordOwnerStorage
+    >::value);
+
     const DatabaseFileCleanup database_file{test_database_path()};
     const auto& database_path = database_file.path();
     const agent_memory::ResourceId resource_id{"resource:mdbx"};

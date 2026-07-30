@@ -36,11 +36,11 @@ namespace agent_memory {
             const MdbxResourceIndexRecordOwnerStorage&
         ) = delete;
         MdbxResourceIndexRecordOwnerStorage(
-            MdbxResourceIndexRecordOwnerStorage&& other
-        ) noexcept;
+            MdbxResourceIndexRecordOwnerStorage&&
+        ) = delete;
         MdbxResourceIndexRecordOwnerStorage& operator=(
-            MdbxResourceIndexRecordOwnerStorage&& other
-        ) noexcept;
+            MdbxResourceIndexRecordOwnerStorage&&
+        ) = delete;
 
         [[nodiscard]] std::optional<ResourceIndexRecordOwner> find_document_owner(
             const DocumentId& document_id

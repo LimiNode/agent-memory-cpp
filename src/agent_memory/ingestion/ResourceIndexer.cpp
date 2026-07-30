@@ -726,7 +726,11 @@ namespace agent_memory {
             validate_manifest_record_ownership(*old_manifest);
         }
 
-        validate_requested_record_ownership(manifest, old_manifest);
+        validate_requested_record_ownership(
+            manifest,
+            old_manifest,
+            snapshot.document_snapshot.document.id
+        );
 
         if(old_manifest) {
             if(!is_active_resource_manifest(*old_manifest)) {
@@ -904,18 +908,32 @@ namespace agent_memory {
 
     void ResourceIndexer::erase_derived_record(const DerivedRecordRef& record) {
         switch(record.kind) {
-        case DerivedRecordKind::Document:
-            m_document_storage->erase_document(DocumentId{record.key});
+        case DerivedRecordKind::Document: {
+            const bool erased = m_document_storage->erase_document(DocumentId{record.key});
+            (void)erased;
+            if(!is_record_physically_absent(record)) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Document record remains after erase attempt: " + record_owner_label(record)
+                );
+            }
             erase_record_owner(*m_owner_storage, record);
             return;
+        }
         case DerivedRecordKind::Chunk:
         case DerivedRecordKind::Embedding:
             // This prototype has no separate physical chunk or embedding store.
             return;
-        case DerivedRecordKind::VectorRecord:
-            m_vector_index->erase(record.chunk_id);
+        case DerivedRecordKind::VectorRecord: {
+            const bool erased = m_vector_index->erase(record.chunk_id);
+            (void)erased;
+            if(!is_record_physically_absent(record)) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Chunk record remains after erase attempt: " + record_owner_label(record)
+                );
+            }
             erase_record_owner(*m_owner_storage, record);
             return;
+        }
         case DerivedRecordKind::BinaryBucketPosting:
         case DerivedRecordKind::LexicalPosting:
         case DerivedRecordKind::GraphRecord:
@@ -961,7 +979,10 @@ namespace agent_memory {
 
             const auto owner = find_record_owner(*m_owner_storage, record);
             if(!owner) {
-                if(manifest.state == ResourceManifestState::ErasePending) {
+                if(
+                    manifest.state == ResourceManifestState::ErasePending &&
+                    is_record_physically_absent(record)
+                ) {
                     continue;
                 }
                 throw ResourceIndexRecordOwnershipError(
@@ -1005,7 +1026,13 @@ namespace agent_memory {
 
             const auto owner = find_record_owner(*m_owner_storage, record);
             if(!owner) {
-                continue;
+                if(is_record_physically_absent(record)) {
+                    continue;
+                }
+                throw ResourceIndexRecordOwnershipError(
+                    "Pending resource record has no ownership binding but still exists: " +
+                    record_owner_label(record)
+                );
             }
 
             if(
@@ -1025,7 +1052,8 @@ namespace agent_memory {
 
     void ResourceIndexer::validate_requested_record_ownership(
         const ResourceManifest& manifest,
-        const std::optional<ResourceManifest>& active_manifest
+        const std::optional<ResourceManifest>& active_manifest,
+        const DocumentId& requested_document_id
     ) const {
         for(const auto& record : manifest.records) {
             if(record.kind != DerivedRecordKind::Document && record.kind != DerivedRecordKind::Chunk) {
@@ -1034,6 +1062,12 @@ namespace agent_memory {
 
             const auto owner = find_record_owner(*m_owner_storage, record);
             if(!owner) {
+                if(!is_record_physically_absent(record)) {
+                    throw ResourceIndexRecordOwnershipError(
+                        "Requested physical record has no ownership binding but already exists: " +
+                        record_owner_label(record)
+                    );
+                }
                 continue;
             }
 
@@ -1058,6 +1092,15 @@ namespace agent_memory {
                 owner->generation == active_manifest->revision.generation &&
                 is_retained_by(record, *active_manifest)
             ) {
+                if(record.kind == DerivedRecordKind::Chunk) {
+                    const auto stored_chunk = m_document_storage->find_chunk(record.chunk_id);
+                    if(!stored_chunk || stored_chunk->document_id != requested_document_id) {
+                        throw ResourceIndexRecordOwnershipError(
+                            "Retained chunk does not belong to the requested document: " +
+                            record_owner_label(record)
+                        );
+                    }
+                }
                 continue;
             }
 
@@ -1066,6 +1109,19 @@ namespace agent_memory {
                 record_owner_label(record)
             );
         }
+    }
+
+    bool ResourceIndexer::is_record_physically_absent(const DerivedRecordRef& record) const {
+        if(uses_document_owner(record)) {
+            const auto document_id = DocumentId{record.key};
+            return !m_document_storage->find_document(document_id) &&
+                m_document_storage->list_chunks(document_id).empty();
+        }
+        if(uses_chunk_owner(record)) {
+            return !m_document_storage->find_chunk(record.chunk_id) &&
+                !m_vector_index->find(record.chunk_id);
+        }
+        return true;
     }
 
     void ResourceIndexer::upsert_active_record_owners(const ResourceManifest& manifest) {

@@ -195,8 +195,10 @@ namespace agent_memory {
         void validate_manifest_record_ownership(const ResourceManifest& manifest) const;
         void validate_requested_record_ownership(
             const ResourceManifest& manifest,
-            const std::optional<ResourceManifest>& active_manifest
+            const std::optional<ResourceManifest>& active_manifest,
+            const DocumentId& requested_document_id
         ) const;
+        [[nodiscard]] bool is_record_physically_absent(const DerivedRecordRef& record) const;
         void upsert_active_record_owners(const ResourceManifest& manifest);
 
         IDocumentStorage* m_document_storage = nullptr;
