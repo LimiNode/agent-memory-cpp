@@ -274,7 +274,7 @@ System DBI budget привязан к pinned upstream snapshot-у, а не к ч
 | `_mdbxc_logical_delivery` | Persisted logical-delivery deduplication markers |
 | `_mdbxc_logical_delivery_order` | Ordered logical-delivery state |
 | `_mdbxc_logical_outbox` | Durable logical-delivery outbox with cumulative acknowledgement |
-| `_mdbxc_logical_delivery_watermarks` | Optional lazy per-origin pruning watermark; opened only by `prune_logical_delivery_markers()` |
+| `_mdbxc_logical_delivery_watermarks` | Optional per-origin pruning watermark; created lazily by `prune_logical_delivery_markers()`, then opened by delivery/watermark reads only when it already exists |
 
 `sync_system_be72a2b = 9` is a conservative `max_dbs` reserve, not a claim
 that a normal runtime eagerly opens nine DBIs. The accounting is:

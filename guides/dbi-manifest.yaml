@@ -249,7 +249,7 @@ profile_deltas:
     default: false
     names: [runtime_sequence_index]
     milestone: A1
-    note: Range key (ScopeId, encoded runtime identity, encoded replica identity, sequence, UnitId) for KnowledgeAtSequence.
+    note: "Discriminated range keys: (ScopeId, ProducerEvent, encoded_origin, sequence, UnitId) for producer events and (ScopeId, VisibilityReceipt, encoded_origin, sequence, GlobalKnowledgeUnitId) for origin-local KnowledgeAtSequence."
   - name: lexical_posting_segments
     dbis: 1
     migration_peak: 1
@@ -292,7 +292,7 @@ profile_deltas:
     migration_peak: 1
     default: false
     names: [_mdbxc_logical_delivery_watermarks]
-    note: Optional lazy sync DBI created only by SyncEngine::prune_logical_delivery_markers(); profiles enabling marker pruning must reserve this delta in addition to sync_system_be72a2b.
+    note: Optional sync DBI created lazily by SyncEngine::prune_logical_delivery_markers(); later delivery/watermark reads open it only when it already exists. Profiles enabling marker pruning must reserve this delta in addition to sync_system_be72a2b.
   - name: migration_dual_write_reserve
     dbis: 0
     migration_peak: 8
@@ -319,6 +319,7 @@ runtime_integration_mapping:
   raw_event_payloads: resource_body_profile_delta
   global_identity_lookup: global_unit_id_to_local_id
   sequence_filtering: runtime_sequence_index
+  visibility_receipts: runtime_sequence_index
   future_partition_candidates:
     - replica_frontiers
     - reconciliation_jobs

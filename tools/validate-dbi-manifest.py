@@ -100,6 +100,7 @@ RUNTIME_MAPPING_REFERENCE_KEYS = {
     "causal_relations",
     "global_identity_lookup",
     "sequence_filtering",
+    "visibility_receipts",
 }
 
 
@@ -431,6 +432,14 @@ def run_self_test(manifest_path: Path) -> int:
     unknown_runtime_ref = copy.deepcopy(base)
     unknown_runtime_ref["runtime_integration_mapping"]["sequence_filtering"] = "missing_dbi"
     cases.append(("unknown runtime mapping ref", unknown_runtime_ref, "unknown DBI ref"))
+
+    unknown_visibility_receipt_ref = copy.deepcopy(base)
+    unknown_visibility_receipt_ref["runtime_integration_mapping"]["visibility_receipts"] = "missing_dbi"
+    cases.append((
+        "unknown visibility receipt mapping ref",
+        unknown_visibility_receipt_ref,
+        "unknown DBI ref",
+    ))
 
     failed = False
     for name, fixture, expected in cases:
