@@ -49,8 +49,9 @@ adapters.
 - BM25F indexes `SearchProjection` records, not `envelope.primary_text`. The
   flat-body baseline is a special case where `projection_kind = Original` and
   the only active `field_id` is `body`.
-- Store `ResourceId` and generation with postings for targeted reindexing and
-  stale-entry filtering.
+- Store `ResourceId` and explicitly named `resource_generation` with postings
+  for targeted source reindexing, and the complete `ProjectionVersionRef` for
+  projection freshness.
 - Use `ResourceManifest` records for lexical postings so one resource can be
   reindexed without rebuilding the whole corpus.
 - Keep BM25 as the first ranked lexical scorer; BM25F is the fielded
@@ -128,6 +129,13 @@ fusion can disambiguate multi-projection sources.
 
 ### Value Types
 
+The following `LexicalPosting` and `ChunkLexicalStats` shapes are the M1+
+projection-aware persisted contract. The current C++ `agent_memory::LexicalPosting`
+in `src/agent_memory/lexical/Lexical.hpp` is an M0 chunk-only baseline carrying
+`ResourceRevision`; it does not yet claim `SearchProjection`, translation, or
+summary-projection freshness. The M1+ contract supersedes that baseline only
+when the projection layer is implemented.
+
 ```cpp
 using TokenId = std::uint64_t;
 
@@ -178,7 +186,8 @@ struct LexicalPosting final {
     ProjectionKind projection_kind = ProjectionKind::Original;
     FieldId field_id = FieldId::body;
     ResourceId resource_id;
-    std::uint64_t generation = 0;
+    std::uint64_t resource_generation = 0;
+    ProjectionVersionRef projection_version;
     std::uint32_t term_frequency = 0;
     std::vector<std::uint32_t> positions;
 };
@@ -186,7 +195,8 @@ struct LexicalPosting final {
 struct ChunkLexicalStats final {
     KnowledgeUnitId unit_id;
     ResourceId resource_id;
-    std::uint64_t generation = 0;
+    std::uint64_t resource_generation = 0;
+    ProjectionVersionRef projection_version;
     std::uint32_t token_count = 0;
     std::uint32_t unique_token_count = 0;
     std::array<std::uint32_t, 11> per_field_token_count{}; // index by FieldId
@@ -266,8 +276,8 @@ total_token_count:
 ```
 
 When a resource is reindexed, old token stats must be decremented before new
-stats are added, unless the backend uses unit_revision filtering (see Stale
-Filter via unit_revision) and delayed compaction.
+stats are added, unless the backend uses projection-version and
+resource-generation stale filtering with delayed compaction.
 
 A **token-level cache** keyed by `(scope_id, token_id, projection_kind)` keeps
 warm-up reads cheap: when a query term is reused across sessions or scopes, the
@@ -459,7 +469,7 @@ inverted_token_to_unit:          // DUPSORT secondary index
 
 field_to_postings:                 // KV posting stats by full posting identity
     key   = (scope_id, projection_kind, field_id, token_id, unit_id)
-    value = PostingStats { tf, positions_count, resource_generation, projection_generation, resource_id }
+    value = PostingStats { tf, positions_count, resource_generation, projection_version, resource_id }
 
 lexical_token_by_text:
     key   = (scope_id, normalized token)
@@ -472,7 +482,8 @@ lexical_token_by_id:
 lexical_chunk_stats:
     key   = (scope_id, unit_id, projection_kind)
     value = { token_count, unique_token_count,
-              per_field_token_count[11], resource_id, generation }
+              per_field_token_count[11], resource_id, resource_generation,
+              projection_version }
 
 lexical_token_stats:
     key   = (scope_id, projection_kind, token_id)
@@ -515,13 +526,13 @@ contain:
 [term frequencies and field statistics]
 [optional per-document delta-coded positions]
 [skip offsets]
-[revision/resource-generation data]
+[projection-version/resource-generation data]
 [optional conservative zone synopsis]
 ```
 
 Unit ids and positions are candidates for delta plus bounded integer packing
 (VByte, SIMD-BP128, Stream VByte, FastPFOR or an equivalent codec); term
-frequencies may use bit packing; repeated generation/source fields may use a
+frequencies may use bit packing; repeated projection-version/source fields may use a
 local dictionary or RLE. No particular third-party wire format is a public
 contract. A segment that cannot safely use a narrow delta representation must
 use a lossless wide fallback.
@@ -560,7 +571,8 @@ When a unit is reindexed for a given `projection_kind`:
    candidate-index entries.
 7. Update lexical_token_stats and lexical_chunk_stats per projection_kind.
 8. Update lexical_collection_stats per projection_kind.
-9. Write new lexical manifest refs and bump generation.
+9. Write new lexical manifest refs with the active `projection_version` and
+   applicable `resource_generation`.
 10. Commit through a backend transaction where available.
 ```
 
@@ -572,13 +584,15 @@ key  = (scope_id, projection_kind, field_id, token_id) or an encoded
        posting segment key
 ```
 
-The manifest does not need stable offsets into compressed posting blobs. Removal
-should filter by `unit_id`, `resource_id`, and generation.
+The manifest does not need stable offsets into compressed posting blobs. Source
+reclamation filters by `unit_id`, `resource_id`, and `resource_generation`.
 
-For mutable memory, a backend may leave stale postings in place and skip them at
-query time when their generation does not match the current resource generation.
-That path needs a cheap current-generation lookup or cache; otherwise stale
-filtering can turn lexical search into too many random reads.
+For mutable memory, a backend may leave stale postings in place. Query-time
+freshness first compares `posting.projection_version` with the active projection
+version, then checks `resource_generation` when the posting was derived from a
+resource-managed record. The resource-generation path needs a cheap current
+generation lookup or cache; otherwise stale filtering can turn lexical search
+into too many random reads.
 
 ### Stale Filter via ProjectionVersionRef
 
@@ -633,7 +647,11 @@ FileSystemResourceStore
     root_path
     include globs: *.md, *.txt, *.cpp, *.hpp
     exclude globs: .git, build, node_modules
-    stable resource id from relative path or configured id policy
+    stable ResourceId from connector/provider identity, persisted locator
+        registry, explicit application mapping, or operator-confirmed rename
+    first-seen files without provider identity receive a ResourceId from the
+        application registry, never from their relative path or content hash
+    relative path is recorded as a SourceLocator observation only
     content hash for change detection
 ```
 
@@ -1309,10 +1327,10 @@ of that ordering; each substep is its own PR.
 21. Add the MDBX-backed lexical index with simple posting-list blobs
     (start from the flat-body path, then add the projection keys).
 22. Add segmented postings, tombstones, and compaction. Compaction must
-    preserve unit_revision filtering (see Stale Filter via unit_revision) so
-    BM25F and BM25 score over the same live-posting set.
+    preserve projection-version and resource-generation filtering so BM25F and
+    BM25 score over the same live-posting set.
 23. Wire MDBX-backed secondary indexes for the lexical pipeline
-    (resource -> token set, metadata_key -> unit_id, unit_revision -> unit_id)
+    (resource -> token set, metadata_key -> unit_id, projection version -> unit id)
     so reindex and stale filtering stay fast. See
     [`optimization-roadmap.md`](optimization-roadmap.md) "Secondary
     Indexes" and `mdbx-containers-extension-tz.md` §5.5.
