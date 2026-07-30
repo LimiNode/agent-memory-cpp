@@ -1,4 +1,5 @@
 #include <agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.hpp>
+#include <agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.hpp>
 
 #include <mdbx_containers/KeyValueTable.hpp>
 
@@ -171,6 +172,45 @@ namespace {
         return payload;
     }
 
+    std::string make_raw_manifest_with_record_count(
+        std::string_view resource_id,
+        std::string_view count
+    ) {
+        std::string payload;
+        append_string(payload, "agent_memory.resource_manifest.v1");
+        append_string(payload, resource_id);
+        append_uint64(payload, 1);
+        append_uint64(payload, 0);
+        append_uint64(payload, 1);
+        append_string(payload, count);
+        return payload;
+    }
+
+    std::string make_raw_manifest_with_pending_record_count(
+        std::string_view resource_id,
+        std::string_view count
+    ) {
+        const agent_memory::DerivedRecordRef record{
+            agent_memory::DerivedRecordKind::Chunk,
+            agent_memory::ChunkId{"chunk:mdbx:pending-count"},
+            {},
+            0
+        };
+
+        std::string payload;
+        append_string(payload, "agent_memory.resource_manifest.v4");
+        append_string(payload, resource_id);
+        append_uint64(payload, 1);
+        append_uint64(payload, 0);
+        append_uint64(payload, 1);
+        append_string(payload, "none");
+        append_string(payload, "erase_pending");
+        append_size(payload, 1);
+        append_record(payload, record);
+        append_string(payload, count);
+        return payload;
+    }
+
     void write_raw_manifest(
         const std::filesystem::path& database_path,
         std::string key,
@@ -196,6 +236,45 @@ int main() {
     const DatabaseFileCleanup database_file{test_database_path()};
     const auto& database_path = database_file.path();
     const agent_memory::ResourceId resource_id{"resource:mdbx"};
+    const agent_memory::DocumentId owner_document_id{"doc:mdbx:owner"};
+    const agent_memory::ChunkId owner_chunk_id{"chunk:mdbx:owner"};
+
+    {
+        agent_memory::MdbxResourceIndexRecordOwnerStorage owner_storage(
+            agent_memory::MdbxResourceIndexRecordOwnerStorageOptions{
+                database_path.string(),
+                "agent_memory_test",
+                false
+            }
+        );
+        const agent_memory::ResourceIndexRecordOwner owner{
+            resource_id,
+            7,
+            agent_memory::ResourceManifestSchema{"agent_memory.resource_indexer", 1}
+        };
+        owner_storage.upsert_document_owner(owner_document_id, owner);
+        owner_storage.upsert_chunk_owner(owner_chunk_id, owner);
+        const auto stored_document_owner = owner_storage.find_document_owner(owner_document_id);
+        const auto stored_chunk_owner = owner_storage.find_chunk_owner(owner_chunk_id);
+        if(
+            !stored_document_owner ||
+            !stored_chunk_owner ||
+            stored_document_owner->resource_id != resource_id ||
+            stored_chunk_owner->generation != 7 ||
+            stored_chunk_owner->manifest_schema.schema_id != "agent_memory.resource_indexer"
+        ) {
+            return fail("MDBX record owner storage must persist document and chunk ownership");
+        }
+
+        if(
+            !owner_storage.erase_document_owner(owner_document_id) ||
+            !owner_storage.erase_chunk_owner(owner_chunk_id) ||
+            owner_storage.find_document_owner(owner_document_id) ||
+            owner_storage.find_chunk_owner(owner_chunk_id)
+        ) {
+            return fail("MDBX record owner storage must erase ownership bindings");
+        }
+    }
 
     {
         agent_memory::MdbxResourceManifestStorage storage(
@@ -284,8 +363,40 @@ int main() {
     );
     write_raw_manifest(
         database_path,
+        "resource:mdbx:v4:pending",
+        make_raw_manifest_payload(
+            "agent_memory.resource_manifest.v4",
+            "resource:mdbx:v4:pending",
+            agent_memory::ResourceManifestState::ErasePending,
+            make_body_digest(0x66U),
+            {agent_memory::DerivedRecordRef{
+                agent_memory::DerivedRecordKind::VectorRecord,
+                agent_memory::ChunkId{"chunk:mdbx:v4:pending"},
+                {},
+                0
+            }}
+        )
+    );
+    write_raw_manifest(
+        database_path,
         "resource:mdbx:wrong-key",
         make_raw_manifest_payload("agent_memory.resource_manifest.v1", "resource:mdbx:payload-owner")
+    );
+    write_raw_manifest(
+        database_path,
+        "resource:mdbx:malformed-record-count",
+        make_raw_manifest_with_record_count(
+            "resource:mdbx:malformed-record-count",
+            "18446744073709551615"
+        )
+    );
+    write_raw_manifest(
+        database_path,
+        "resource:mdbx:malformed-pending-record-count",
+        make_raw_manifest_with_pending_record_count(
+            "resource:mdbx:malformed-pending-record-count",
+            "18446744073709551615"
+        )
     );
 
     {
@@ -327,6 +438,9 @@ int main() {
             agent_memory::ResourceId{"resource:mdbx:v2:pending"}
         );
         const auto v3 = storage.find_manifest(agent_memory::ResourceId{"resource:mdbx:v3"});
+        const auto v4_pending = storage.find_manifest(
+            agent_memory::ResourceId{"resource:mdbx:v4:pending"}
+        );
         if(
             !v1 || v1->state != agent_memory::ResourceManifestState::Active ||
             v1->revision.body_digest ||
@@ -337,17 +451,41 @@ int main() {
             !v3 || !v3->revision.body_digest ||
             v3->revision.body_digest->algorithm != agent_memory::ResourceBodyDigestAlgorithm::Sha256 ||
             v3->revision.body_digest->bytes != make_body_digest(0x55U).bytes ||
+            !v4_pending ||
+            v4_pending->state != agent_memory::ResourceManifestState::ErasePending ||
+            !v4_pending->revision.body_digest ||
+            v4_pending->revision.body_digest->bytes != make_body_digest(0x66U).bytes ||
+            v4_pending->pending_reclaim_records.size() != 1 ||
+            v4_pending->pending_reclaim_records[0].kind !=
+                agent_memory::DerivedRecordKind::VectorRecord ||
             v1->payload_version != agent_memory::ResourceManifestPayloadVersion::V1 ||
             v2_active->payload_version != agent_memory::ResourceManifestPayloadVersion::V2 ||
             v2_pending->payload_version != agent_memory::ResourceManifestPayloadVersion::V2 ||
-            v3->payload_version != agent_memory::ResourceManifestPayloadVersion::V3
+            v3->payload_version != agent_memory::ResourceManifestPayloadVersion::V3 ||
+            v4_pending->payload_version != agent_memory::ResourceManifestPayloadVersion::V4
         ) {
-            return fail("MDBX manifest storage must preserve v1-v3 payload provenance");
+            return fail("MDBX manifest storage must preserve v1-v4 payload provenance");
         }
 
         try {
             (void)storage.find_manifest(agent_memory::ResourceId{"resource:mdbx:wrong-key"});
             return fail("MDBX manifest storage must reject a mismatched key and payload resource id");
+        } catch(const std::runtime_error&) {
+        }
+
+        try {
+            (void)storage.find_manifest(
+                agent_memory::ResourceId{"resource:mdbx:malformed-pending-record-count"}
+            );
+            return fail("MDBX manifest storage must reject a malformed pending record count");
+        } catch(const std::runtime_error&) {
+        }
+
+        try {
+            (void)storage.find_manifest(
+                agent_memory::ResourceId{"resource:mdbx:malformed-record-count"}
+            );
+            return fail("MDBX manifest storage must reject a malformed record count");
         } catch(const std::runtime_error&) {
         }
 

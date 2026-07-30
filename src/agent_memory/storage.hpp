@@ -8,6 +8,7 @@
 #include "domain.hpp"
 
 #include "storage/IDocumentStorage.hpp"
+#include "storage/IResourceIndexRecordOwnerStorage.hpp"
 #include "storage/IResourceManifestStorage.hpp"
 
 #endif

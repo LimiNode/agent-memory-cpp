@@ -915,6 +915,14 @@ struct RetrievalIoCounters {
     std::optional<std::string> first_exhausted_limit;
 };
 
+struct LexicalTokenPartitionRef {
+    ScopeId scope_id;
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    std::uint64_t statistics_epoch = 0;
+    std::uint64_t statistics_generation = 0;
+    TokenId token_id;
+};
+
 struct ProjectionRouteTrace {
     std::string branch_id;
     std::string route_id;
@@ -927,8 +935,8 @@ struct ProjectionRouteTrace {
     std::uint32_t external_pre_ranking_eligible_count = 0;
     RetrievalRouteCompletion completion = RetrievalRouteCompletion::Complete;
     std::optional<std::string> unavailable_reason;
-    std::vector<TokenId> covered_token_ids;
-    std::vector<TokenId> unavailable_token_ids;
+    std::vector<LexicalTokenPartitionRef> covered_token_partitions;
+    std::vector<LexicalTokenPartitionRef> unavailable_token_partitions;
     std::string route_action;  // used, partial, fallback, dropped, or recompute_scheduled
     std::optional<std::string> fallback_route_id;
     RetrievalIoCounters io_counters;
@@ -967,13 +975,22 @@ struct ContextBlockTrace {
     std::string selection_reason;
 };
 
+struct RetrievalRouteHits {
+    std::string branch_id;
+    std::string route_id;
+    std::string execution_id;
+    RetrievalRouteCompletion completion = RetrievalRouteCompletion::Complete;
+    bool admitted_to_fusion = false;
+    std::vector<RetrievalHit> hits;
+};
+
 struct RetrievalTrace {
     std::string trace_id;
     std::optional<RuntimeTraceRef> runtime_trace;
     RetrievalPlan plan;
     std::vector<QueryBranchTrace> query_branches;
     std::vector<ContextBlockTrace> context_block_lineage;
-    std::vector<std::vector<RetrievalHit>> per_retriever_hits;  // associative
+    std::vector<RetrievalRouteHits> route_hits;
     std::vector<RetrievalHit> targeted_hits;                     // targeted (QALookup)
     std::vector<RetrievalHit> fused_hits;
     Context final_context;
@@ -982,6 +999,7 @@ struct RetrievalTrace {
     RetrievalIoCounters io_counters;
     PolicyDecisionTrace policy_decision;
     std::vector<ProjectionRouteTrace> projection_route_events;
+    RetrievalRouteCompletion completion = RetrievalRouteCompletion::Complete;
     std::vector<KnowledgeUnitRef> causal_path;
 };
 ```
@@ -1004,6 +1022,13 @@ Every `ProjectionRouteTrace` names its branch, parent input where applicable,
 and deterministic route execution identity. This makes fallback activation and
 candidate fan-out replayable without allowing the same fallback route to run
 twice for identical branch input.
+
+Every route hit is bound to its branch, route and execution identity through
+`RetrievalRouteHits`; fusion may consume only entries explicitly marked
+`admitted_to_fusion`. `RetrievalTrace.completion` is persisted directly rather
+than inferred from empty hit vectors. Lexical coverage is snapshot-qualified so
+an audit can distinguish one token id in different scope/projection/epoch
+partitions.
 
 `ContextBlock.block_id` is deterministic for the validated block inputs. Every
 `QueryBranchTrace.context_block_ids` entry resolves to exactly one

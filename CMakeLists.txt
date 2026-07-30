@@ -82,6 +82,7 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/IRetriever.cpp
     src/agent_memory/retrieval/Retrieval.cpp
     src/agent_memory/storage/IDocumentStorage.cpp
+    src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
 )
 add_library(agent_memory::agent_memory ALIAS agent_memory)
@@ -116,6 +117,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     target_sources(agent_memory
         PRIVATE
             src/agent_memory/infrastructure/mdbx/MdbxDocumentStorage.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
     )
 

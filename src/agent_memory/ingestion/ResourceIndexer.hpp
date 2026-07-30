@@ -7,12 +7,14 @@
 
 #include <agent_memory/domain/Resource.hpp>
 #include <agent_memory/storage/IDocumentStorage.hpp>
+#include <agent_memory/storage/IResourceIndexRecordOwnerStorage.hpp>
 #include <agent_memory/storage/IResourceManifestStorage.hpp>
 
 #include <exception>
 #include <mutex>
 #include <optional>
 #include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace agent_memory {
@@ -40,6 +42,12 @@ namespace agent_memory {
         ResourceIndexManifestCompatibilityReason m_reason;
     };
 
+    /// \brief Reports a physical-record ownership mismatch before mutation or cleanup.
+    class ResourceIndexRecordOwnershipError final : public std::logic_error {
+    public:
+        explicit ResourceIndexRecordOwnershipError(std::string message);
+    };
+
     /// \brief Pre-chunked resource state ready to be indexed.
     struct ResourceIndexSnapshot final {
         ResourceRevision revision;
@@ -48,7 +56,8 @@ namespace agent_memory {
 
     enum class ResourceIndexRecoveryStage : std::uint8_t {
         VectorRestore,
-        DocumentRestore
+        DocumentRestore,
+        OwnerRestore
     };
 
     enum class ResourceIndexRecoveryOperation : std::uint8_t {
@@ -165,6 +174,7 @@ namespace agent_memory {
         ResourceIndexer(
             IDocumentStorage& document_storage,
             IResourceManifestStorage& manifest_storage,
+            IResourceIndexRecordOwnerStorage& owner_storage,
             IEmbedder& embedder,
             IVectorIndex& vector_index
         );
@@ -182,9 +192,16 @@ namespace agent_memory {
         void erase_derived_record(const DerivedRecordRef& record);
         void erase_derived_records(const ResourceManifest& manifest);
         void drain_pending_reclaim_records(ResourceManifest& manifest);
+        void validate_manifest_record_ownership(const ResourceManifest& manifest) const;
+        void validate_requested_record_ownership(
+            const ResourceManifest& manifest,
+            const std::optional<ResourceManifest>& active_manifest
+        ) const;
+        void upsert_active_record_owners(const ResourceManifest& manifest);
 
         IDocumentStorage* m_document_storage = nullptr;
         IResourceManifestStorage* m_manifest_storage = nullptr;
+        IResourceIndexRecordOwnerStorage* m_owner_storage = nullptr;
         IEmbedder* m_embedder = nullptr;
         IVectorIndex* m_vector_index = nullptr;
         std::mutex m_mutex;

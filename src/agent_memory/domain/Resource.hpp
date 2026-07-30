@@ -39,7 +39,7 @@ namespace agent_memory {
         /// \brief Prototype-local freshness hash, not portable evidence integrity.
         std::uint64_t content_hash = 0;
         std::uint64_t pipeline_config_hash = 0;
-        /// \brief Required by the future M0 importer; optional for this prototype.
+        /// \brief Optional for generic manifests; required by ResourceIndexer snapshots.
         std::optional<ResourceBodyDigest> body_digest;
     };
 

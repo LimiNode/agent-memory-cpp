@@ -295,7 +295,6 @@ namespace agent_memory {
             }
 
             const auto count = reader.read_size();
-            manifest.records.reserve(count);
             for(std::size_t i = 0; i < count; ++i) {
                 manifest.records.push_back(read_record(reader));
             }
@@ -304,7 +303,6 @@ namespace agent_memory {
                 version == RESOURCE_MANIFEST_PAYLOAD_VERSION_V5
             ) {
                 const auto pending_count = reader.read_size();
-                manifest.pending_reclaim_records.reserve(pending_count);
                 for(std::size_t i = 0; i < pending_count; ++i) {
                     manifest.pending_reclaim_records.push_back(read_record(reader));
                 }

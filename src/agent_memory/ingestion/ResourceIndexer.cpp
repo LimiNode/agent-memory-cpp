@@ -97,6 +97,9 @@ namespace agent_memory {
                 if(position == records.size()) {
                     return true;
                 }
+                if(resource_indexer_chunk_record_rank(records[position].kind) != 0) {
+                    return false;
+                }
             }
 
             int expected_rank = resource_indexer_chunk_record_rank(records[position].kind);
@@ -119,9 +122,16 @@ namespace agent_memory {
                 ++expected_rank;
                 if(expected_rank == 3) {
                     expected_rank = 0;
-                    ++expected_ordinal;
                     if(position + 1 < records.size()) {
-                        expected_chunk_id = records[position + 1].chunk_id;
+                        const auto& next_record = records[position + 1];
+                        if(
+                            resource_indexer_chunk_record_rank(next_record.kind) != 0 ||
+                            next_record.ordinal <= expected_ordinal
+                        ) {
+                            return false;
+                        }
+                        expected_ordinal = next_record.ordinal;
+                        expected_chunk_id = next_record.chunk_id;
                     }
                 }
             }
@@ -176,6 +186,21 @@ namespace agent_memory {
         void validate_resource_index_snapshot(const ResourceIndexSnapshot& snapshot) {
             if(snapshot.revision.resource_id.empty()) {
                 throw std::invalid_argument("ResourceIndexSnapshot resource id must not be empty");
+            }
+
+            if(
+                !snapshot.revision.body_digest ||
+                !is_valid_resource_body_digest(*snapshot.revision.body_digest)
+            ) {
+                throw std::invalid_argument(
+                    "ResourceIndexSnapshot body digest must use a supported algorithm"
+                );
+            }
+
+            if(snapshot.revision.pipeline_config_hash == 0) {
+                throw std::invalid_argument(
+                    "ResourceIndexSnapshot pipeline configuration hash must not be zero"
+                );
             }
 
             if(snapshot.document_snapshot.document.id.empty()) {
@@ -290,6 +315,130 @@ namespace agent_memory {
                 }
             }
             return false;
+        }
+
+        bool uses_document_owner(const DerivedRecordRef& record) noexcept {
+            return record.kind == DerivedRecordKind::Document;
+        }
+
+        bool uses_chunk_owner(const DerivedRecordRef& record) noexcept {
+            return record.kind == DerivedRecordKind::Chunk ||
+                record.kind == DerivedRecordKind::Embedding ||
+                record.kind == DerivedRecordKind::VectorRecord;
+        }
+
+        ResourceIndexRecordOwner make_record_owner(const ResourceManifest& manifest) {
+            return ResourceIndexRecordOwner{
+                manifest.revision.resource_id,
+                manifest.revision.generation,
+                manifest.schema
+            };
+        }
+
+        std::optional<ResourceIndexRecordOwner> find_record_owner(
+            const IResourceIndexRecordOwnerStorage& storage,
+            const DerivedRecordRef& record
+        ) {
+            if(uses_document_owner(record)) {
+                return storage.find_document_owner(DocumentId{record.key});
+            }
+            if(uses_chunk_owner(record)) {
+                return storage.find_chunk_owner(record.chunk_id);
+            }
+            return std::nullopt;
+        }
+
+        void upsert_record_owner(
+            IResourceIndexRecordOwnerStorage& storage,
+            const DerivedRecordRef& record,
+            ResourceIndexRecordOwner owner
+        ) {
+            if(uses_document_owner(record)) {
+                storage.upsert_document_owner(DocumentId{record.key}, std::move(owner));
+                return;
+            }
+            if(uses_chunk_owner(record)) {
+                storage.upsert_chunk_owner(record.chunk_id, std::move(owner));
+            }
+        }
+
+        void erase_record_owner(
+            IResourceIndexRecordOwnerStorage& storage,
+            const DerivedRecordRef& record
+        ) {
+            if(uses_document_owner(record)) {
+                const bool erased = storage.erase_document_owner(DocumentId{record.key});
+                (void)erased;
+                return;
+            }
+            if(record.kind == DerivedRecordKind::VectorRecord) {
+                const bool erased = storage.erase_chunk_owner(record.chunk_id);
+                (void)erased;
+            }
+        }
+
+        struct ResourceIndexRecordOwnerSnapshot final {
+            DerivedRecordRef record;
+            std::optional<ResourceIndexRecordOwner> owner;
+        };
+
+        std::vector<ResourceIndexRecordOwnerSnapshot> capture_active_record_owners(
+            const ResourceManifest& manifest,
+            const IResourceIndexRecordOwnerStorage& storage
+        ) {
+            std::vector<ResourceIndexRecordOwnerSnapshot> snapshots;
+            for(const auto& record : manifest.records) {
+                if(record.kind == DerivedRecordKind::Document || record.kind == DerivedRecordKind::Chunk) {
+                    snapshots.push_back(ResourceIndexRecordOwnerSnapshot{
+                        record,
+                        find_record_owner(storage, record)
+                    });
+                }
+            }
+            return snapshots;
+        }
+
+        void restore_active_record_owners(
+            IResourceIndexRecordOwnerStorage& storage,
+            const std::vector<ResourceIndexRecordOwnerSnapshot>& snapshots,
+            std::vector<ResourceIndexRecoveryFailure>& recovery_failures
+        ) {
+            for(const auto& snapshot : snapshots) {
+                try {
+                    if(snapshot.owner) {
+                        upsert_record_owner(storage, snapshot.record, *snapshot.owner);
+                    } else if(uses_document_owner(snapshot.record)) {
+                        const bool erased = storage.erase_document_owner(
+                            DocumentId{snapshot.record.key}
+                        );
+                        (void)erased;
+                    } else if(uses_chunk_owner(snapshot.record)) {
+                        const bool erased = storage.erase_chunk_owner(snapshot.record.chunk_id);
+                        (void)erased;
+                    }
+                } catch(...) {
+                    recovery_failures.push_back(ResourceIndexRecoveryFailure{
+                        ResourceIndexRecoveryStage::OwnerRestore,
+                        snapshot.owner
+                            ? ResourceIndexRecoveryOperation::UpsertPrevious
+                            : ResourceIndexRecoveryOperation::EraseAttempted,
+                        uses_document_owner(snapshot.record)
+                            ? std::optional<DocumentId>{DocumentId{snapshot.record.key}}
+                            : std::nullopt,
+                        uses_chunk_owner(snapshot.record)
+                            ? std::optional<ChunkId>{snapshot.record.chunk_id}
+                            : std::nullopt,
+                        std::current_exception()
+                    });
+                }
+            }
+        }
+
+        std::string record_owner_label(const DerivedRecordRef& record) {
+            if(uses_document_owner(record)) {
+                return "document '" + record.key + "'";
+            }
+            return "chunk '" + record.chunk_id.value() + "'";
         }
 
         ResourceManifest make_unreclaimed_manifest(const ResourceManifest& manifest) {
@@ -464,6 +613,11 @@ namespace agent_memory {
         return m_reason;
     }
 
+    ResourceIndexRecordOwnershipError::ResourceIndexRecordOwnershipError(
+        std::string message
+    )
+        : std::logic_error(std::move(message)) {}
+
     ResourceIndexRollbackError::ResourceIndexRollbackError(
         std::exception_ptr original_failure,
         std::vector<ResourceIndexRecoveryFailure> recovery_failures
@@ -542,11 +696,13 @@ namespace agent_memory {
     ResourceIndexer::ResourceIndexer(
         IDocumentStorage& document_storage,
         IResourceManifestStorage& manifest_storage,
+        IResourceIndexRecordOwnerStorage& owner_storage,
         IEmbedder& embedder,
         IVectorIndex& vector_index
     )
         : m_document_storage(&document_storage)
         , m_manifest_storage(&manifest_storage)
+        , m_owner_storage(&owner_storage)
         , m_embedder(&embedder)
         , m_vector_index(&vector_index) {}
 
@@ -567,7 +723,10 @@ namespace agent_memory {
                 *old_manifest,
                 snapshot.revision.resource_id
             );
+            validate_manifest_record_ownership(*old_manifest);
         }
+
+        validate_requested_record_ownership(manifest, old_manifest);
 
         if(old_manifest) {
             if(!is_active_resource_manifest(*old_manifest)) {
@@ -651,6 +810,8 @@ namespace agent_memory {
             previous_vectors.push_back(m_vector_index->find(record.chunk_id));
         }
 
+        const auto previous_owners = capture_active_record_owners(manifest, *m_owner_storage);
+
         const auto document_id = snapshot.document_snapshot.document.id;
         try {
             m_document_storage->upsert_document(std::move(snapshot.document_snapshot));
@@ -664,6 +825,7 @@ namespace agent_memory {
                     }
                 }
             }
+            upsert_active_record_owners(manifest);
             m_manifest_storage->upsert_manifest(manifest);
         } catch(...) {
             const auto original_failure = std::current_exception();
@@ -689,6 +851,12 @@ namespace agent_memory {
                     std::current_exception()
                 });
             }
+
+            restore_active_record_owners(
+                *m_owner_storage,
+                previous_owners,
+                recovery_failures
+            );
 
             if(!recovery_failures.empty()) {
                 throw ResourceIndexRollbackError(
@@ -721,6 +889,7 @@ namespace agent_memory {
         }
 
         validate_resource_indexer_manifest(*manifest, resource_id);
+        validate_manifest_record_ownership(*manifest);
 
         auto erase_pending = *manifest;
         if(is_active_resource_manifest(erase_pending)) {
@@ -737,6 +906,7 @@ namespace agent_memory {
         switch(record.kind) {
         case DerivedRecordKind::Document:
             m_document_storage->erase_document(DocumentId{record.key});
+            erase_record_owner(*m_owner_storage, record);
             return;
         case DerivedRecordKind::Chunk:
         case DerivedRecordKind::Embedding:
@@ -744,6 +914,7 @@ namespace agent_memory {
             return;
         case DerivedRecordKind::VectorRecord:
             m_vector_index->erase(record.chunk_id);
+            erase_record_owner(*m_owner_storage, record);
             return;
         case DerivedRecordKind::BinaryBucketPosting:
         case DerivedRecordKind::LexicalPosting:
@@ -777,6 +948,132 @@ namespace agent_memory {
             );
             m_manifest_storage->upsert_manifest(next_manifest);
             manifest = std::move(next_manifest);
+        }
+    }
+
+    void ResourceIndexer::validate_manifest_record_ownership(
+        const ResourceManifest& manifest
+    ) const {
+        for(const auto& record : manifest.records) {
+            if(!uses_document_owner(record) && !uses_chunk_owner(record)) {
+                continue;
+            }
+
+            const auto owner = find_record_owner(*m_owner_storage, record);
+            if(!owner) {
+                if(manifest.state == ResourceManifestState::ErasePending) {
+                    continue;
+                }
+                throw ResourceIndexRecordOwnershipError(
+                    "Active resource record has no ownership binding: " +
+                    record_owner_label(record)
+                );
+            }
+            if(!is_valid_resource_index_record_owner(*owner)) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Active resource record has an invalid ownership binding: " +
+                    record_owner_label(record)
+                );
+            }
+            if(owner->resource_id != manifest.revision.resource_id) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Active resource record belongs to another resource: " +
+                    record_owner_label(record)
+                );
+            }
+            if(owner->generation != manifest.revision.generation) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Active resource record has a mismatched generation: " +
+                    record_owner_label(record)
+                );
+            }
+            if(
+                owner->manifest_schema.schema_id != manifest.schema.schema_id ||
+                owner->manifest_schema.schema_version != manifest.schema.schema_version
+            ) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Active resource record has a mismatched owner schema: " +
+                    record_owner_label(record)
+                );
+            }
+        }
+
+        for(const auto& record : manifest.pending_reclaim_records) {
+            if(!uses_document_owner(record) && !uses_chunk_owner(record)) {
+                continue;
+            }
+
+            const auto owner = find_record_owner(*m_owner_storage, record);
+            if(!owner) {
+                continue;
+            }
+
+            if(
+                !is_valid_resource_index_record_owner(*owner) ||
+                owner->resource_id != manifest.revision.resource_id ||
+                owner->generation >= manifest.revision.generation ||
+                owner->manifest_schema.schema_id != manifest.schema.schema_id ||
+                owner->manifest_schema.schema_version != manifest.schema.schema_version
+            ) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Pending resource record is not owned by an older manifest revision: " +
+                    record_owner_label(record)
+                );
+            }
+        }
+    }
+
+    void ResourceIndexer::validate_requested_record_ownership(
+        const ResourceManifest& manifest,
+        const std::optional<ResourceManifest>& active_manifest
+    ) const {
+        for(const auto& record : manifest.records) {
+            if(record.kind != DerivedRecordKind::Document && record.kind != DerivedRecordKind::Chunk) {
+                continue;
+            }
+
+            const auto owner = find_record_owner(*m_owner_storage, record);
+            if(!owner) {
+                continue;
+            }
+
+            if(
+                !is_valid_resource_index_record_owner(*owner) ||
+                owner->resource_id != manifest.revision.resource_id ||
+                owner->manifest_schema.schema_id != manifest.schema.schema_id ||
+                owner->manifest_schema.schema_version != manifest.schema.schema_version
+            ) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Requested physical record belongs to another resource owner: " +
+                    record_owner_label(record)
+                );
+            }
+
+            if(owner->generation == manifest.revision.generation) {
+                continue;
+            }
+
+            if(
+                active_manifest &&
+                owner->generation == active_manifest->revision.generation &&
+                is_retained_by(record, *active_manifest)
+            ) {
+                continue;
+            }
+
+            throw ResourceIndexRecordOwnershipError(
+                "Requested physical record is not owned by the active resource revision: " +
+                record_owner_label(record)
+            );
+        }
+    }
+
+    void ResourceIndexer::upsert_active_record_owners(const ResourceManifest& manifest) {
+        const auto owner = make_record_owner(manifest);
+        for(const auto& record : manifest.records) {
+            if(record.kind == DerivedRecordKind::Document || record.kind == DerivedRecordKind::Chunk) {
+                upsert_record_owner(*m_owner_storage, record, owner);
+            }
         }
     }
 

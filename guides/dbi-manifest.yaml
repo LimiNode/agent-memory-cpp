@@ -249,8 +249,8 @@ canonical:
 
 profile_deltas:
   - name: legacy_document_resource_adapter
-    dbis: 4
-    migration_peak: 4
+    dbis: 6
+    migration_peak: 6
     default: false
     schema_status: capacity_reserve_only
   - name: shared_runtime_queue
@@ -548,7 +548,7 @@ profile_deltas:
 
 expanded_peak_reference:
   canonical_full_inventory: 30
-  legacy_document_resource_adapter: 4
+  legacy_document_resource_adapter: 6
   shared_runtime_queue: 5
   compaction_handoff: 1
   resource_body_chunked: 2
@@ -557,7 +557,7 @@ expanded_peak_reference:
   runtime_sequence_index: 1
   sync_system_be72a2b: 9
   migration_dual_write_reserve: 8
-  total: 62
+  total: 64
 
 runtime_integration_mapping:
   a0_a2_component_only_new_runtime_dbis: 0

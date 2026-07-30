@@ -500,8 +500,10 @@ enum class EntityResolutionRecommendation : uint8_t {
 
 struct EntityResolutionProposal {
     EntityResolutionRecommendation recommendation;
-    std::optional<EntityId> proposed_target;
-    std::vector<EntityId> considered_candidates;
+    KnowledgeUnitRef subject_entity;
+    std::optional<KnowledgeUnitRef> proposed_target;
+    std::vector<KnowledgeUnitRef> considered_candidates;
+    std::optional<KnowledgeUnitRef> source_mention;
     std::vector<KnowledgeUnitRef> evidence;
     std::string resolver_policy_id;
     std::uint32_t resolver_policy_version = 0;
@@ -516,6 +518,9 @@ it never rewrites an existing entity, fact or graph edge in place. Policy may
 auto-apply only deterministic exact matches that meet its explicit threshold.
 Every heuristic or LLM-assisted recommendation is auditable and may be
 accepted, rejected, or superseded without destroying the original episode.
+Application validates every local-to-global `KnowledgeUnitRef` binding for the
+subject, target, candidates, mention and evidence before applying the intent;
+an unresolved or mismatched binding fails closed.
 
 Required M2+ fixtures cover exact alias resolution, same-name distinct
 entities, ambiguous candidates, an evidence-free rejection, a stale
@@ -642,6 +647,12 @@ fact invalidation, preference change, cross-episode integration, conflicting
 perspectives, historical `KnownAt` query and evidence-anchor recovery. Native
 and external-baseline runs use the same golden expected answers and retain a
 `ComparisonParityManifest`.
+
+`ComparisonParityManifest.workload_contract_digest` is versioned and binds the
+alias/identity fixtures, resolver policy and thresholds, ontology registry,
+source-revision policy, temporal and contradiction policy, traversal limits,
+access policy, query/answer set and evaluation procedure. AM-22 acceptance
+rejects a comparison whose digest differs, even when the corpus name matches.
 
 ## 14. Deferred To ADELIA / Runtime
 

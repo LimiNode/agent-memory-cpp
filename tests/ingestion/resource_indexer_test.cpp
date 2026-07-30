@@ -205,6 +205,66 @@ namespace {
         std::map<agent_memory::ResourceId, agent_memory::ResourceManifest> m_manifests;
     };
 
+    class InMemoryResourceIndexRecordOwnerStorage final
+        : public agent_memory::IResourceIndexRecordOwnerStorage {
+    public:
+        [[nodiscard]] std::optional<agent_memory::ResourceIndexRecordOwner> find_document_owner(
+            const agent_memory::DocumentId& document_id
+        ) const override {
+            const auto it = m_document_owners.find(document_id);
+            if(it == m_document_owners.end()) {
+                return std::nullopt;
+            }
+            return it->second;
+        }
+
+        [[nodiscard]] std::optional<agent_memory::ResourceIndexRecordOwner> find_chunk_owner(
+            const agent_memory::ChunkId& chunk_id
+        ) const override {
+            const auto it = m_chunk_owners.find(chunk_id);
+            if(it == m_chunk_owners.end()) {
+                return std::nullopt;
+            }
+            return it->second;
+        }
+
+        void upsert_document_owner(
+            agent_memory::DocumentId document_id,
+            agent_memory::ResourceIndexRecordOwner owner
+        ) override {
+            if(!agent_memory::is_valid_resource_index_record_owner(owner)) {
+                throw std::invalid_argument("invalid document owner");
+            }
+            m_document_owners[std::move(document_id)] = std::move(owner);
+        }
+
+        void upsert_chunk_owner(
+            agent_memory::ChunkId chunk_id,
+            agent_memory::ResourceIndexRecordOwner owner
+        ) override {
+            if(!agent_memory::is_valid_resource_index_record_owner(owner)) {
+                throw std::invalid_argument("invalid chunk owner");
+            }
+            m_chunk_owners[std::move(chunk_id)] = std::move(owner);
+        }
+
+        [[nodiscard]] bool erase_document_owner(
+            const agent_memory::DocumentId& document_id
+        ) override {
+            return m_document_owners.erase(document_id) > 0;
+        }
+
+        [[nodiscard]] bool erase_chunk_owner(const agent_memory::ChunkId& chunk_id) override {
+            return m_chunk_owners.erase(chunk_id) > 0;
+        }
+
+    private:
+        std::map<agent_memory::DocumentId, agent_memory::ResourceIndexRecordOwner>
+            m_document_owners;
+        std::map<agent_memory::ChunkId, agent_memory::ResourceIndexRecordOwner>
+            m_chunk_owners;
+    };
+
     class FailingVectorIndex final : public agent_memory::IVectorIndex {
     public:
         explicit FailingVectorIndex(agent_memory::ExactVectorIndexOptions options)
@@ -381,6 +441,7 @@ int main() {
 
     InMemoryDocumentStorage document_storage;
     InMemoryResourceManifestStorage manifest_storage;
+    InMemoryResourceIndexRecordOwnerStorage owner_storage;
     FakeEmbedder embedder;
     FailingVectorIndex vector_index(agent_memory::ExactVectorIndexOptions{
         2,
@@ -390,6 +451,7 @@ int main() {
     agent_memory::ResourceIndexer indexer{
         document_storage,
         manifest_storage,
+        owner_storage,
         embedder,
         vector_index
     };
@@ -515,10 +577,12 @@ int main() {
         manifest_after_manifest_failure->revision.generation != 1 ||
         document_storage.find_document(manifest_failed_document_id) ||
         vector_index.find(manifest_failed_chunk_id) ||
+        owner_storage.find_document_owner(manifest_failed_document_id) ||
+        owner_storage.find_chunk_owner(manifest_failed_chunk_id) ||
         !document_storage.find_document(old_document_id) ||
         !vector_index.find(old_chunk_id)
     ) {
-        return fail("manifest failure must restore the previously published resource state");
+        return fail("manifest failure must restore records and ownership bindings");
     }
 
     const agent_memory::DocumentId rollback_failed_document_id{"doc:indexer:rollback-failed"};
@@ -904,10 +968,13 @@ int main() {
     }
 
     const auto reclaim_manifest = manifest_storage.find_manifest(resource_id);
+    const auto reclaim_document_owner = owner_storage.find_document_owner(reclaim_document_id);
     if(
         !reclaim_manifest
         || reclaim_manifest->revision.generation != 4
         || reclaim_manifest->pending_reclaim_records.empty()
+        || !reclaim_document_owner
+        || reclaim_document_owner->generation != 4
         || !document_storage.find_document(reclaim_document_id)
         || !document_storage.find_document(newest_document_id)
         || !vector_index.find(reclaim_chunk_id)
@@ -1034,6 +1101,7 @@ int main() {
     agent_memory::ResourceIndexer restarted_indexer{
         document_storage,
         manifest_storage,
+        owner_storage,
         embedder,
         vector_index
     };
@@ -1162,10 +1230,138 @@ int main() {
         return fail("retry must remove a manifest left pending by manifest erase failure");
     }
 
+    const agent_memory::ResourceId sparse_reclaim_resource_id{
+        "resource:indexer:sparse-reclaim"
+    };
+    const agent_memory::DocumentId sparse_reclaim_old_document_id{
+        "doc:indexer:sparse-reclaim:old"
+    };
+    const agent_memory::ChunkId sparse_reclaim_chunk_0{"chunk:indexer:sparse-reclaim:0"};
+    const agent_memory::ChunkId sparse_reclaim_chunk_1{"chunk:indexer:sparse-reclaim:1"};
+    const agent_memory::ChunkId sparse_reclaim_chunk_2{"chunk:indexer:sparse-reclaim:2"};
+    restarted_indexer.reindex_resource(make_snapshot(
+        sparse_reclaim_resource_id,
+        1,
+        sparse_reclaim_old_document_id,
+        {
+            make_chunk(sparse_reclaim_chunk_0, sparse_reclaim_old_document_id, 0, "old zero"),
+            make_chunk(sparse_reclaim_chunk_1, sparse_reclaim_old_document_id, 10, "old one"),
+            make_chunk(sparse_reclaim_chunk_2, sparse_reclaim_old_document_id, 20, "old two")
+        }
+    ));
+
+    const auto sparse_reclaim_replacement = make_snapshot(
+        sparse_reclaim_resource_id,
+        2,
+        sparse_reclaim_old_document_id,
+        {
+            make_chunk(sparse_reclaim_chunk_1, sparse_reclaim_old_document_id, 0, "retained one")
+        }
+    );
+    vector_index.fail_next_erase();
+    try {
+        restarted_indexer.reindex_resource(sparse_reclaim_replacement);
+        return fail("sparse reclaim fixture must fail its first cleanup attempt");
+    } catch(const agent_memory::ResourceIndexReclaimError&) {
+    }
+
+    const auto sparse_reclaim_pending = manifest_storage.find_manifest(
+        sparse_reclaim_resource_id
+    );
+    if(
+        !sparse_reclaim_pending ||
+        sparse_reclaim_pending->pending_reclaim_records.size() != 4 ||
+        sparse_reclaim_pending->pending_reclaim_records.front().kind !=
+            agent_memory::DerivedRecordKind::VectorRecord ||
+        sparse_reclaim_pending->pending_reclaim_records.front().ordinal != 0 ||
+        sparse_reclaim_pending->pending_reclaim_records.back().ordinal != 2 ||
+        !vector_index.find(sparse_reclaim_chunk_1)
+    ) {
+        return fail("partial sparse reclaim must persist a retryable ordered subsequence");
+    }
+
+    agent_memory::ResourceIndexer sparse_reclaim_restart{
+        document_storage,
+        manifest_storage,
+        owner_storage,
+        embedder,
+        vector_index
+    };
+    sparse_reclaim_restart.reindex_resource(sparse_reclaim_replacement);
+    const auto sparse_reclaim_recovered = manifest_storage.find_manifest(
+        sparse_reclaim_resource_id
+    );
+    if(
+        !sparse_reclaim_recovered ||
+        !sparse_reclaim_recovered->pending_reclaim_records.empty() ||
+        !vector_index.find(sparse_reclaim_chunk_1) ||
+        vector_index.find(sparse_reclaim_chunk_0) ||
+        vector_index.find(sparse_reclaim_chunk_2)
+    ) {
+        return fail("restart must drain a sparse partial reclaim queue without erasing retained data");
+    }
+
     try {
         indexer.reindex_resource(agent_memory::ResourceIndexSnapshot{});
         return fail("resource indexer must reject empty resource snapshot");
     } catch(const std::invalid_argument&) {
+    }
+
+    const agent_memory::ResourceId invalid_evidence_resource_id{
+        "resource:indexer:invalid-evidence"
+    };
+    const agent_memory::DocumentId invalid_evidence_document_id{
+        "doc:indexer:invalid-evidence"
+    };
+    const agent_memory::ChunkId invalid_evidence_chunk_id{"chunk:indexer:invalid-evidence"};
+    auto missing_digest_snapshot = make_snapshot(
+        invalid_evidence_resource_id,
+        1,
+        invalid_evidence_document_id,
+        {
+            make_chunk(
+                invalid_evidence_chunk_id,
+                invalid_evidence_document_id,
+                0,
+                "missing evidence"
+            )
+        }
+    );
+    missing_digest_snapshot.revision.body_digest.reset();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(std::move(missing_digest_snapshot));
+        return fail("resource indexer must reject a snapshot without a body digest");
+    } catch(const std::invalid_argument&) {
+    }
+
+    auto zero_pipeline_snapshot = make_snapshot(
+        invalid_evidence_resource_id,
+        1,
+        invalid_evidence_document_id,
+        {
+            make_chunk(
+                invalid_evidence_chunk_id,
+                invalid_evidence_document_id,
+                0,
+                "zero pipeline"
+            )
+        }
+    );
+    zero_pipeline_snapshot.revision.pipeline_config_hash = 0;
+    try {
+        indexer.reindex_resource(std::move(zero_pipeline_snapshot));
+        return fail("resource indexer must reject a zero pipeline hash");
+    } catch(const std::invalid_argument&) {
+    }
+
+    if(
+        embedder.call_count() != 0 ||
+        manifest_storage.find_manifest(invalid_evidence_resource_id) ||
+        document_storage.find_document(invalid_evidence_document_id) ||
+        vector_index.find(invalid_evidence_chunk_id)
+    ) {
+        return fail("invalid snapshot evidence must be rejected before all mutation");
     }
 
     const agent_memory::DocumentId duplicate_chunk_document_id{"doc:indexer:duplicate-chunk"};
@@ -1247,6 +1443,69 @@ int main() {
         !vector_index.find(legacy_chunk_id)
     ) {
         return fail("invalid stored manifest must not erase active derived state");
+    }
+
+    const agent_memory::ResourceId owner_resource_a_id{"resource:indexer:owner-a"};
+    const agent_memory::DocumentId owner_document_a_id{"doc:indexer:owner-a"};
+    const agent_memory::ChunkId owner_chunk_a_id{"chunk:indexer:owner-a"};
+    const agent_memory::ResourceId owner_resource_b_id{"resource:indexer:owner-b"};
+    const agent_memory::DocumentId owner_document_b_id{"doc:indexer:owner-b"};
+    const agent_memory::ChunkId owner_chunk_b_id{"chunk:indexer:owner-b"};
+    indexer.reindex_resource(make_snapshot(
+        owner_resource_a_id,
+        1,
+        owner_document_a_id,
+        {make_chunk(owner_chunk_a_id, owner_document_a_id, 0, "owner A")}
+    ));
+    indexer.reindex_resource(make_snapshot(
+        owner_resource_b_id,
+        1,
+        owner_document_b_id,
+        {make_chunk(owner_chunk_b_id, owner_document_b_id, 0, "owner B")}
+    ));
+    const auto owner_manifest_a = manifest_storage.find_manifest(owner_resource_a_id);
+    if(!owner_manifest_a) {
+        return fail("owner fixture must publish resource A");
+    }
+
+    auto swapped_owner_manifest = *owner_manifest_a;
+    for(auto& record : swapped_owner_manifest.records) {
+        if(record.kind == agent_memory::DerivedRecordKind::Document) {
+            record.key = owner_document_b_id.value();
+        } else {
+            record.chunk_id = owner_chunk_b_id;
+        }
+    }
+    if(!agent_memory::is_valid_resource_manifest(swapped_owner_manifest)) {
+        return fail("swapped-owner fixture must remain generically valid");
+    }
+    manifest_storage.inject_unchecked_manifest(std::move(swapped_owner_manifest));
+
+    manifest_storage.reset_operation_counts();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            owner_resource_a_id,
+            2,
+            agent_memory::DocumentId{"doc:indexer:owner-a:replacement"},
+            {}
+        ));
+        return fail("reindex must reject manifest records owned by another resource");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+    try {
+        (void)indexer.erase_resource(owner_resource_a_id);
+        return fail("erase must reject manifest records owned by another resource");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+    if(
+        embedder.call_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        !document_storage.find_document(owner_document_b_id) ||
+        !vector_index.find(owner_chunk_b_id)
+    ) {
+        return fail("foreign physical ownership must be rejected before every mutation");
     }
 
     const agent_memory::ResourceId foreign_resource_id{"resource:indexer:foreign"};

@@ -794,11 +794,17 @@ struct AuthoritativeLogicalRecordSet final {
     std::uint64_t record_count = 0;
 };
 
+struct BackupClosureRecipe final {
+    std::string recipe_id;       // e.g. "agent_memory.workspace_closure"
+    std::uint32_t recipe_version = 1;
+};
+
 struct WorkspaceBackupManifest {
     std::string format_id = "agent_memory.workspace_backup";
     std::uint32_t format_version = 1;
     std::uint64_t captured_at_ms = 0;
-    std::optional<KnowledgeUnitIdentityScheme> unit_identity_scheme;
+    KnowledgeUnitIdentityScheme unit_identity_scheme;
+    BackupClosureRecipe closure_recipe;
     std::string profile_signature;
     std::string codec_manifest_digest;
     std::string encryption_descriptor;
@@ -830,6 +836,31 @@ descriptors and the canonical ordered descriptors of every selected logical
 record set, excluding the root field itself. Unknown codec versions, missing
 required base sets, duplicate set identities or a root mismatch fail restore
 before publication.
+
+`WorkspaceBackupManifestCodecV1` is a portable byte contract, not an
+implementation hint: it writes the format id/version, capture timestamp,
+identity scheme, closure recipe, profile/codec/encryption descriptors and each
+logical-set descriptor in that order; text is NFC-normalized UTF-8; integers
+are unsigned big-endian; `BlobDigest` includes its algorithm tag and bytes; and
+logical sets are ordered by `(record_kind, identity_scheme,
+canonical_serialization_version)`. Optional values have an explicit presence
+byte and `captured_at_ms` is included. The root field itself is omitted from its
+own digest. Acceptance fixtures cover a missing required set, wrong root digest,
+incompatible identity scheme, incompatible closure recipe, and golden bytes
+from an independent codec implementation.
+
+The closure recipe selects at least the following authoritative sets:
+
+| Profile capability | Required workspace closure |
+| --- | --- |
+| Every portable profile | envelopes, selected canonical components/payloads, lifecycle and lineage records |
+| Raw-first M0 | `ResourceRevision` descriptors, body/chunk bytes, body digests, and locator/revision mappings |
+| `SequenceReplay` | complete `KnowledgeVisibilityReceipt` set |
+| `GraphRelations` | Relation-owned logical `GraphEdge` set |
+| `ArtifactProvenance` (M2) | the base closure plus the separate artifact backup extension |
+
+An application-local snapshot is a distinct non-portable format. It must not
+masquerade as `WorkspaceBackupManifest` or cross a workspace boundary.
 
 Restore validates reference closure after every selected set digest succeeds:
 each retained component, projection, lifecycle/lineage edge, SourceRef,

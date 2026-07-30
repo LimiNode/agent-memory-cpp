@@ -1135,6 +1135,8 @@ agent_memory_documents           KeyValueTable<DocumentId, string>
 agent_memory_chunks              KeyValueTable<ChunkId, string>
 agent_memory_document_chunks     KeyValueTable<DocumentId, string>
 agent_memory_resource_manifests  KeyValueTable<ResourceId, string>
+agent_memory_resource_index_document_owners  KeyValueTable<DocumentId, ResourceIndexRecordOwner>
+agent_memory_resource_index_chunk_owners     KeyValueTable<ChunkId, ResourceIndexRecordOwner>
 ```
 
 ### 5.5 Memory-stack layer (canonical physical manifest)
@@ -1417,7 +1419,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Bucket | Steady DBIs | Migration peak | Wire / replication status | Notes |
 |---|---:|---:|---|---|
 | Canonical memory-stack DBIs from §5.5 | up to 30 profile-selected | 30 full inventory | mixed | Count every row in the §5.5 summary table exactly once when full canonical inventory is enabled. |
-| Existing document/resource adapter DBIs from §5.4 | 0 by default, +4 if legacy adapter enabled | +4 | KV supported | Adapter-local; not part of canonical memory-stack layout. |
+| Existing document/resource adapter DBIs from §5.4 | 0 by default, +6 if legacy adapter enabled | +6 | KV supported | Adapter-local; includes the document/chunk physical-record owner registries used by `ResourceIndexer`; not part of canonical memory-stack layout. |
 | Runtime queue profile delta | 0 by default, +5 for the shared persistent queue | +5 | mixed | `jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`, `jobs_by_status`; owned by `runtime-services-roadmap.md`. |
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
@@ -1428,7 +1430,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported / derived rebuildable | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, snapshot-derived opt-in | snapshot-derived | opt-in only | Count the enabled raw/logical store manifest at the pinned upstream SHA; not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
-| Planned expanded peak under current assumptions | profile-selected | 62 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 34 DBI slots of headroom under `max_dbs = 96`, including 18 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
+| Planned expanded peak under current assumptions | profile-selected | 64 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 32 DBI slots of headroom under `max_dbs = 96`, including 16 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
@@ -1444,7 +1446,7 @@ The following machine-readable checkpoint is derived from
 ```text
 dbi-budget-checkpoint-v1
 canonical_full_inventory=30
-legacy_document_resource_adapter=4
+legacy_document_resource_adapter=6
 shared_runtime_queue=5
 compaction_handoff=1
 resource_body_chunked=2
@@ -1453,10 +1455,10 @@ global_unit_id_to_local_id=1
 runtime_sequence_index=1
 sync_system_be72a2b=9
 migration_dual_write_reserve=8
-total=62
-headroom=34
+total=64
+headroom=32
 minimum_free_slots=16
-headroom_above_minimum=18
+headroom_above_minimum=16
 ```
 
 ### 5.5.2. Operational limits for one MDBX environment
@@ -1840,7 +1842,7 @@ profile delta обязано обновить этот checkpoint. Verify, чт�
 
    Дополнительные соображения:
 
-   - **Budget impact.** Snapshot `be72a2b` reserves 9 named system DBIs from §1.5.10 in `max_dbs` budget, including logical-delivery stores and lazy/deferred names. Recommended ceiling — 96 (см. §5.5.1). Authoritative expanded peak с runtime queue, handoff, resource-body, source-ref reverse lookup, durable global identity and runtime-sequence deltas равен 61 по §5.5.1. Любая новая capability обязана обновить §5.5.1 до adoption.
+   - **Budget impact.** Snapshot `be72a2b` reserves 9 named system DBIs from §1.5.10 in `max_dbs` budget, including logical-delivery stores and lazy/deferred names. Recommended ceiling — 96 (см. §5.5.1). Authoritative expanded peak с runtime queue, handoff, resource-body, source-ref reverse lookup, durable global identity and runtime-sequence deltas равен 64 по §5.5.1. Любая новая capability обязана обновить §5.5.1 до adoption.
    - **`IdentityIndexStore` write path deferred upstream.** Не все identity-mapping writes покрыты в v0.1; конкретные edges помечены в upstream `SyncEngine.hpp` TODO-комментариями. Это влияет на dedup state, но не блокирует базовый pull/push.
    - **HTTP/WebSocket transport seams.** Snapshot `be72a2b` has logical schema marker, affected-DBI/primary-DBI validation and durable logical delivery seams. This removes the old "no HTTP seam" blocker, but it does not make raw `VectorStore` replication a multi-writer logical adapter.
    - **Wire-format byte cost.** The named raw and logical system DBIs store metadata, changelog, replay, schema and logical-delivery state. Полная on-disk cost-модель (включая compression overhead) — отдельная задача, не решается в этом TZ; ссылка на общий принцип raw-code vs end-to-end storage footprint — §1.5.10 note.

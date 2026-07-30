@@ -522,13 +522,21 @@ enum class LexicalUnavailableReason : std::uint8_t {
     RequiredFlatPostingMissing,
 };
 
+struct LexicalTokenPartitionRef final {
+    ScopeId scope_id;
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    std::uint64_t statistics_epoch = 0;
+    std::uint64_t statistics_generation = 0;
+    TokenId token_id;
+};
+
 struct LexicalSearchOutcome final {
     std::vector<LexicalSearchResult> hits;
     LexicalRouteCompletion completion = LexicalRouteCompletion::Exact;
     std::optional<LexicalUnavailableReason> unavailable_reason;
-    // Exact query-token coverage; a partial outcome names every omitted token.
-    std::vector<TokenId> covered_token_ids;
-    std::vector<TokenId> unavailable_token_ids;
+    // Exact query-token-partition coverage; a partial outcome names every omitted partition.
+    std::vector<LexicalTokenPartitionRef> covered_token_partitions;
+    std::vector<LexicalTokenPartitionRef> unavailable_token_partitions;
 };
 
 class ILexicalIndex {
@@ -572,14 +580,14 @@ use `search(RetrievalPlan)`.
 
 `LexicalSearchOutcome::Exact` means that every requested token partition was
 reconstructed and scored against one active snapshot. `Partial` contains only
-hits from the explicitly listed `covered_token_ids`; it must retain a non-empty
-`unavailable_token_ids` list and must never be silently converted to an exact
+hits from the explicitly listed `covered_token_partitions`; it must retain a non-empty
+`unavailable_token_partitions` list and must never be silently converted to an exact
 empty-or-nonempty result. `Unavailable` contains no candidates and names the
 reason. A stale compressed block without matching-generation flat postings or a
 complete generation-bound overlay contributes no candidates, including to a
 partial outcome. The retrieval executor maps these outcomes through the route
 completion policy: partial fusion is opt-in, while an unavailable route uses an
-explicit fallback or fails a required route. The outcome and token coverage are
+explicit fallback or fails a required route. The outcome and token-partition coverage are
 recorded in the per-route trace before fusion and context assembly.
 
 Exact method names can change during implementation. The important part is that
