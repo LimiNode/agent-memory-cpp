@@ -36,8 +36,12 @@ struct AccessPolicy {
 An absent policy is deny-by-default outside the record's owning scope. The
 retriever receives the immutable host-issued `RetrievalAccessContext` from the
 future `RetrievalPlan`; it never infers a principal, role or jurisdiction from
-ambient process state. `RetrievalPlan.scope_ids` must be a subset of the
-context's host-issued `authorized_scope_ids`; `ScopeId` remains namespace and
+ambient process state. Scope normalization is fail-closed: a non-empty
+`RetrievalPlan.scope_ids` is the exact requested set and must be a subset of
+the context's host-issued `authorized_scope_ids`; if it is empty, a granted
+`default_scope` requests exactly that one scope; if both are absent validation
+fails. A default accompanying a non-empty list must be an element of that list.
+An empty list never means all host grants. `ScopeId` remains namespace and
 ownership, not proof of authority. `Visibility::Scope` therefore requires the
 record scope to be both requested and granted. It applies
 scope/access/status/language/jurisdiction/trust constraints before candidate
@@ -46,17 +50,23 @@ materialization. A missing `trust_score` does not satisfy `minimum_trust`.
 `RetrievalTrace` records an applied policy fingerprint plus aggregate allow/deny
 counts without exposing denied content. Initial mappings use typed metadata in
 existing `metadata_filters`; a new DBI is forbidden until a measured query
-pattern requires one. Required fixtures cover cross-scope access denial, role
-changes, jurisdiction/trust exclusions, post-fusion leakage, and a soft
+pattern requires one. Required fixtures cover cross-scope access denial, an
+ungranted default scope, an empty request without default, no implicit
+all-grants expansion, role changes, jurisdiction/trust exclusions, post-fusion
+leakage, and a soft
 domain-routing fallback that never bypasses a strict deny.
 
 The same pre-candidate rule applies to external derived indexes. The native
 planner may issue an `ExternalCandidateConstraint` containing only the exact
 eligible canonical-unit set, read frontier and policy fingerprint. It must not
 send `RetrievalAccessContext`, grants, roles, jurisdictions or policy claims to
-the adapter. An adapter that cannot enforce that constraint before its own
-top-K ranking is unavailable for policy-aware retrieval; canonical hydration is
-still the mandatory second authorization check.
+the adapter. The constraint is nevertheless policy-derived sensitive metadata,
+not public routing data: it may be passed only to a backend in the same trusted
+security domain. An untrusted remote backend is unavailable for a
+policy-aware route unless a future separately approved opaque partition-handle
+contract replaces the raw allowlist. An adapter that cannot enforce the exact
+constraint before its own top-K ranking is likewise unavailable; canonical
+hydration is still the mandatory second authorization check.
 
 The existing `IRetrievalEngine::RetrievalRequest` is an M0 lexical compatibility
 surface and does not claim to enforce this planned access contract. A public

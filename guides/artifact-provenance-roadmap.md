@@ -716,12 +716,16 @@ quality/latency benchmarks without creating a second knowledge base.
 **ADR: external vector adapter boundary.** The native MDBX profile owns
 canonical units, resource manifests, provenance, lifecycle and deletion. A
 Qdrant-compatible adapter owns only rebuildable derived vectors and optional
-candidate ranking. It receives no artifact bytes or authority-bearing metadata;
-the native planner supplies an exact pre-ranking `ExternalCandidateConstraint`
-instead of grants or raw policy data. Every returned candidate is hydrated and
-validated by the native profile before use. Adapter loss, drift or rebuild must
-not change canonical retrieval correctness, citation resolution, backup closure
-or retention behavior.
+candidate ranking. It receives no artifact bytes, raw authority claims or
+grants; the native planner supplies an exact pre-ranking
+`ExternalCandidateConstraint` instead. That allowlist, read frontier and policy
+fingerprint are policy-derived sensitive metadata, so the adapter must run in
+the same trusted security domain. An untrusted remote backend is unavailable
+for policy-aware retrieval until a separately designed opaque partition-handle
+protocol exists. Every returned candidate is hydrated and validated by the
+native profile before use. Adapter loss, drift or rebuild must not change
+canonical retrieval correctness, citation resolution, backup closure or
+retention behavior.
 
 The text-only adapter receives only `SearchProjection::Original` text, local
 unit id, stable local ResourceId, ResourceRevision/generation, projection

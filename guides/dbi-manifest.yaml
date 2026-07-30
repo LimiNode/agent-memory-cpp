@@ -1,7 +1,7 @@
 # Machine-readable DBI manifest for agent-memory-cpp roadmap.
 # Keep this file in sync with guides/mdbx-containers-extension-tz.md section 5.5/5.5.1.
 
-version: agent_memory.dbi_manifest.v2
+version: agent_memory.dbi_manifest.v3
 max_dbs_default: 96
 minimum_free_slots: 16
 
@@ -10,21 +10,24 @@ canonical:
     owner: core
     table_type: KeyValueTable
     opens: always
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [UnitId]
     migration_peak: 1
   - name: content_key_to_unit_id
     owner: core
     table_type: KeyValueTable
     opens: always
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [KnowledgeUnitKey]
     migration_peak: 1
   - name: knowledge_units_by_kind
     owner: core
     table_type: ReverseIndexTable
     opens: always
-    sync: dupsort_not_supported
+    wire_sync_support: dupsort_not_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, KnowledgeUnitKind]
     migration_peak: 1
   - name: unit_components
@@ -32,181 +35,207 @@ canonical:
     table_type: TypeDiscriminatedTable
     physical_key: [ComponentKind, UnitId]
     opens: component_profile
-    sync: kv_supported_if_type_discriminated_is_kv_backed
+    wire_sync_support: kv_supported_if_type_discriminated_is_kv_backed
+    replication_semantics: logical_adapter_required
     migration_peak: 1
   - name: qa_payloads
     owner: qa
     table_type: KeyValueTable
     opens: QAPairs
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [UnitId]
     migration_peak: 1
   - name: fact_payloads
     owner: facts
     table_type: KeyValueTable
     opens: TemporalFact
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [UnitId]
     migration_peak: 1
   - name: conversation_episode_payloads
     owner: chat
     table_type: KeyValueTable
     opens: ConversationMemory
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [UnitId]
     migration_peak: 1
   - name: compiled_article_payloads
     owner: compiled_wiki
     table_type: KeyValueTable
     opens: CompiledArticles
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [UnitId]
     migration_peak: 1
   - name: chunk_payloads
     owner: ingestion
     table_type: KeyValueTable
     opens: always
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [UnitId]
     migration_peak: 1
   - name: source_refs
     owner: provenance
     table_type: KeyValueTable
     opens: FullSourceRefs
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [UnitId]
     migration_peak: 1
   - name: unit_projections
     owner: retrieval
     table_type: KeyValueTable
     opens: indexed_retrieval
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, UnitId, ProjectionKind, Revision]
     migration_peak: 1
   - name: embedding_meta
     owner: embeddings
     table_type: KeyValueTable
     opens: DenseVectors
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, ModelId, ModelVersion, ProjectionKind, UnitId]
     migration_peak: 1
   - name: embedding_vectors
     owner: embeddings
     table_type: KeyValueTable
     opens: DenseVectors
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, ModelId, ModelVersion, ProjectionKind, UnitId]
     migration_peak: 1
   - name: inverted_token_to_unit
     owner: lexical
     table_type: ReverseIndexTable
     opens: LexicalIndex
-    sync: dupsort_not_supported
+    wire_sync_support: dupsort_not_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, TokenId, ProjectionKind, FieldId]
     migration_peak: 1
   - name: field_to_postings
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, ProjectionKind, FieldId, TokenId, UnitId]
     migration_peak: 1
   - name: lexical_token_by_text
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, NormalizedTokenText]
     migration_peak: 1
   - name: lexical_token_by_id
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, TokenId]
     migration_peak: 1
   - name: lexical_chunk_stats
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, UnitId, ProjectionKind]
     migration_peak: 1
   - name: lexical_token_stats
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, ProjectionKind, TokenId]
     migration_peak: 1
   - name: lexical_collection_stats
     owner: lexical
     table_type: KeyValueTable
     opens: LexicalIndex
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, ProjectionKind]
     migration_peak: 1
   - name: metadata_filters
     owner: metadata
     table_type: ReverseIndexTable
     opens: lightweight_prefilter
-    sync: dupsort_not_supported
+    wire_sync_support: dupsort_not_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, MetadataKey, MetadataValue]
     migration_peak: 1
   - name: graph_edges_by_src
     owner: graph
     table_type: ReverseIndexTable
     opens: GraphIndex
-    sync: dupsort_not_supported
+    wire_sync_support: dupsort_not_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, FromUnitId, EdgeKind]
     migration_peak: 1
   - name: graph_edges_by_dst
     owner: graph
     table_type: ReverseIndexTable
     opens: GraphIndex
-    sync: dupsort_not_supported
+    wire_sync_support: dupsort_not_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, ToUnitId, EdgeKind]
     migration_peak: 1
   - name: temporal_unit_index
     owner: temporal
     table_type: RangeIndexTable
     opens: TemporalIndex
-    sync: kv_supported_if_range_is_kv_backed
+    wire_sync_support: kv_supported_if_range_is_kv_backed
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, Timestamp, UnitId]
     migration_peak: 1
   - name: speaker_to_units
     owner: speaker
     table_type: ReverseIndexTable
     opens: SpeakerAttribution
-    sync: dupsort_not_supported
+    wire_sync_support: dupsort_not_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, SpeakerId]
     migration_peak: 1
   - name: session_to_units
     owner: speaker
     table_type: ReverseIndexTable
     opens: SpeakerAttribution
-    sync: dupsort_not_supported
+    wire_sync_support: dupsort_not_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, SessionId]
     migration_peak: 1
   - name: usage_by_last_access
     owner: usage
     table_type: RangeIndexTable
     opens: UsageTracking
-    sync: kv_supported_if_range_is_kv_backed
+    wire_sync_support: kv_supported_if_range_is_kv_backed
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, LastUsedAtMs, UnitId]
     migration_peak: 1
   - name: usage_by_cooldown
     owner: usage
     table_type: RangeIndexTable
     opens: UsageTracking
-    sync: kv_supported_if_range_is_kv_backed
+    wire_sync_support: kv_supported_if_range_is_kv_backed
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, CooldownUntilMs, UnitId]
     migration_peak: 1
   - name: schema_info
     owner: schema
     table_type: KeyValueTable
     opens: always
-    sync: kv_supported
+    wire_sync_support: kv_supported
+    replication_semantics: logical_adapter_required
     physical_key: [SchemaKey]
     migration_peak: 1
 
@@ -226,35 +255,40 @@ profile_deltas:
         owner: runtime_services
         table_type: KeyValueTable
         opens: RuntimeQueue
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: raw_mirror_only
         physical_key: [JobId]
         migration_peak: 1
       - name: jobs_scheduled
         owner: runtime_services
         table_type: RangeIndexTable
         opens: RuntimeQueue
-        sync: kv_supported_if_range_is_kv_backed
+        wire_sync_support: kv_supported_if_range_is_kv_backed
+        replication_semantics: raw_mirror_only
         physical_key: [RunAfterMs, JobId]
         migration_peak: 1
       - name: jobs_ready
         owner: runtime_services
         table_type: RangeIndexTable
         opens: RuntimeQueue
-        sync: kv_supported_if_range_is_kv_backed
+        wire_sync_support: kv_supported_if_range_is_kv_backed
+        replication_semantics: raw_mirror_only
         physical_key: [PriorityRank, JobId]
         migration_peak: 1
       - name: jobs_by_lease
         owner: runtime_services
         table_type: RangeIndexTable
         opens: RuntimeQueue
-        sync: kv_supported_if_range_is_kv_backed
+        wire_sync_support: kv_supported_if_range_is_kv_backed
+        replication_semantics: raw_mirror_only
         physical_key: [LeaseUntilMs, JobId]
         migration_peak: 1
       - name: jobs_by_status
         owner: runtime_services
         table_type: ReverseIndexTable
         opens: RuntimeQueue
-        sync: dupsort_not_supported
+        wire_sync_support: dupsort_not_supported
+        replication_semantics: raw_mirror_only
         physical_key: [JobStatus]
         migration_peak: 1
   - name: compaction_handoff
@@ -267,7 +301,8 @@ profile_deltas:
         owner: compaction
         table_type: KeyValueTable
         opens: Compaction
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: raw_mirror_only
         physical_key: [JobId]
         migration_peak: 1
   - name: resource_body_simple_kv
@@ -280,7 +315,8 @@ profile_deltas:
         owner: provenance
         table_type: KeyValueTable
         opens: ResourceBodyStore
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
         physical_key: [ResourceId, BodyRevision, BodyDigest]
         migration_peak: 1
   - name: resource_body_chunked
@@ -293,14 +329,16 @@ profile_deltas:
         owner: provenance
         table_type: KeyValueTable
         opens: ResourceBodyStore
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
         physical_key: [ResourceId, BodyRevision, BodyDigest]
         migration_peak: 1
       - name: resource_body_chunks
         owner: provenance
         table_type: KeyValueTable
         opens: ResourceBodyStore
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
         physical_key: [ResourceId, BodyRevision, ChunkIndex]
         migration_peak: 1
   - name: source_refs_by_resource
@@ -313,7 +351,8 @@ profile_deltas:
         owner: provenance
         table_type: ReverseIndexTable
         opens: FullSourceRefs
-        sync: dupsort_not_supported
+        wire_sync_support: dupsort_not_supported
+        replication_semantics: derived_rebuildable
         physical_key: [ResourceId]
         migration_peak: 1
   - name: global_unit_id_to_local_id
@@ -329,7 +368,8 @@ profile_deltas:
         owner: knowledge_identity
         table_type: KeyValueTable
         opens: DurableGlobalIdentity
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
         physical_key: [GlobalKnowledgeUnitId]
         migration_peak: 1
   - name: runtime_sequence_index
@@ -344,7 +384,8 @@ profile_deltas:
         owner: runtime_integration
         table_type: RangeIndexTable
         opens: CognitiveTrace
-        sync: semantic_rebuild_only
+        wire_sync_support: kv_supported_if_range_is_kv_backed
+        replication_semantics: semantic_rebuild_only
         physical_key: [ScopeId, RuntimeSequenceRowKind, EncodedOrigin, Sequence, StableId]
         migration_peak: 1
   - name: lexical_posting_segments
@@ -360,7 +401,8 @@ profile_deltas:
         owner: lexical
         table_type: KeyValueTable
         opens: LexicalIndex
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: derived_rebuildable
         physical_key: [ScopeId, ProjectionKind, FieldId, TokenId, SegmentId]
         migration_peak: 1
   - name: derived_vector_blob_dedup
@@ -376,7 +418,8 @@ profile_deltas:
         owner: embeddings
         table_type: KeyValueTable
         opens: DenseVectors
-        sync: kv_supported
+        wire_sync_support: kv_supported
+        replication_semantics: derived_rebuildable
         physical_key: [ScopeId, VectorCodecId, BlobDigest]
         migration_peak: 1
   - name: event_record_index
@@ -406,63 +449,72 @@ profile_deltas:
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_changelog
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_origins
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_applied
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_identity_index
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_sync_schema
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_logical_delivery
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_logical_delivery_order
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
       - name: _mdbxc_logical_outbox
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
   - name: logical_delivery_watermark_pruning
@@ -476,7 +528,8 @@ profile_deltas:
         owner: upstream_sync
         table_type: UpstreamSystemDBI
         opens: UpstreamSync
-        sync: upstream_managed
+        wire_sync_support: upstream_managed
+        replication_semantics: upstream_managed
         physical_key: [UpstreamInternal]
         migration_peak: 1
   - name: migration_dual_write_reserve

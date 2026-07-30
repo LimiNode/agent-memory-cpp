@@ -303,6 +303,7 @@ enum class MemoryCapability : uint64_t {
     ProceduralActivation = 1ull << 18,
     ReplicaReconciliation = 1ull << 19,
     ArtifactProvenance = 1ull << 20,
+    DurableGlobalIdentity = 1ull << 21,
 };
 
 using CapabilitySet = std::underlying_type_t<MemoryCapability>;
@@ -345,9 +346,13 @@ profile explicitly adds `playbook_payloads`, `domain_map_payloads`, or
 
 `CognitiveTrace`, `ProceduralActivation` and `ReplicaReconciliation` are
 coarse-grained runtime-integration groups. They deliberately do not create a
-capability bit for each scalar component. A0-A2 use existing `unit_components`,
-graph edges, resource bodies and projections; partition-specific DBIs require a
-future manifest delta.
+capability bit for each scalar component. A0/A2 payload components use existing
+`unit_components`, graph edges, resource bodies and projections. The bounded
+`KnownAtSequence` form of `CognitiveTrace` additionally requires
+`DurableGlobalIdentity` plus the `runtime_sequence_index` profile delta;
+components-only adapters must reject that indexed query rather than claim it
+without the identity and sequence stores. Partition-specific DBIs beyond those
+two remain future manifest deltas.
 
 ### 6.2. Политики
 
@@ -506,6 +511,7 @@ struct MemoryProfileSpec {
     bool enable_async_indexer = false;
     bool enable_context_planner = false;
     bool enable_knowledge_activation = false;
+    bool enable_durable_global_identity = false;
     bool enable_cognitive_trace = false;
     bool enable_procedural_activation = false;
     bool enable_replica_reconciliation = false;
@@ -769,10 +775,22 @@ struct RetrievalResult {
 `RetrievalAccessContext` is issued by the embedding host after authentication
 and authorization. `authorized_scope_ids` is normalized, contains no empty or
 duplicate scope, and is the complete scope grant for this request. A validated
-plan requires `scope_ids` to be a subset of `authorized_scope_ids`; a caller
-cannot grant itself access by placing an arbitrary `ScopeId` in the plan.
-`Visibility::Scope` requires both a requested scope and the matching host grant.
-Missing `trust_score` fails a policy that specifies `minimum_trust`.
+plan first normalizes its requested scope set as follows:
+
+1. A non-empty `scope_ids` list is the exact requested set; it must contain no
+   empty or duplicate entries, every entry must be granted, and an optional
+   `default_scope` must be both granted and a member of that exact set.
+2. An empty `scope_ids` list with a present `default_scope` requests exactly
+   that one scope; the default must be granted.
+3. An empty `scope_ids` list without `default_scope` is a validation error.
+4. Normalization never expands an empty request to all `authorized_scope_ids`.
+
+A caller therefore cannot grant itself access by placing an arbitrary `ScopeId`
+in the plan. `Visibility::Scope` requires both a normalized requested scope and
+the matching host grant. Missing `trust_score` fails a policy that specifies
+`minimum_trust`. Required fixtures cover a cross-scope request, an ungranted
+default, an empty request without default, and the guarantee that an empty list
+does not fan out to every host grant.
 
 Dense route validation requires globally unique route IDs and one acyclic graph
 containing both `parent_route_id` and `fallback_route_id` edges. A root route
@@ -1182,6 +1200,7 @@ inline MemoryProfileSpec CognitiveRuntimeMemory() {
     s.name = "cognitive_runtime";
     s.enable_context_planner = true;
     s.enable_knowledge_activation = true;
+    s.enable_durable_global_identity = true;
     s.enable_cognitive_trace = true;
     s.enable_procedural_activation = true;
     s.enable_graph = true;
@@ -1192,9 +1211,12 @@ inline MemoryProfileSpec CognitiveRuntimeMemory() {
 }
 ```
 
-This profile opens no new DBI by default. A0-A2 runtime components use
-`unit_components`; causal and procedure relations use the existing graph DBIs;
-raw event/tool payloads use `ResourceBodyStore` when enabled.
+This profile selects two explicit opt-in DBI deltas: `global_unit_id_to_local_id`
+for `DurableGlobalIdentity` and `runtime_sequence_index` for bounded
+`KnownAtSequence`. A0/A2 runtime components still use `unit_components`; causal
+and procedure relations use the existing graph DBIs; raw event/tool payloads
+use `ResourceBodyStore` when enabled. Replica reconciliation remains A3 and is
+not selected by this profile.
 
 See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision guide on choosing between Karpathy 3-layer, A-MEM, lifemodel, NOUZ, Mem0/Letta/Zep, Блок фактов, and dual-layer patterns for your workload.
 
@@ -1232,6 +1254,10 @@ a profile-specific DBI delta is added to the physical manifest.
 `ArtifactProvenance` capability is present iff the profile declares an
 artifact catalog and BlobStore backend; it requires `FullSourceRefs` and the
 artifact-aware SourceRef/EvidenceAnchor schema.
+`DurableGlobalIdentity` capability is present iff
+`enable_durable_global_identity == true`; it selects the
+`global_unit_id_to_local_id` profile delta and supplies the portable occurrence
+identity required by bounded runtime sequence replay and import/export.
 `CognitiveTrace` capability is present iff `enable_cognitive_trace == true`.
 `ProceduralActivation` capability is present iff
 `enable_procedural_activation == true`. `ReplicaReconciliation` capability is
@@ -1251,7 +1277,7 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | CompiledArticles=true требует Compaction=true | "CompiledArticles requires Compaction" |
 | ConversationMemory=true требует SpeakerAttribution=true | "ConversationMemory requires SpeakerAttribution" |
 | KnowledgeActivation=true требует ContextPlanner=true | "KnowledgeActivation requires context planner" |
-| CognitiveTrace=true требует Components + FullSourceRefs | "CognitiveTrace requires components and source refs" |
+| CognitiveTrace=true требует Components + FullSourceRefs + DurableGlobalIdentity + `runtime_sequence_index` profile delta | "CognitiveTrace requires durable identity and runtime sequence index" |
 | ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
 | ReplicaReconciliation=true требует CognitiveTrace=true | "ReplicaReconciliation requires cognitive trace" |
 | EmbeddingMigration=true требует DenseVectors=true | "EmbeddingMigration requires DenseVectors" |

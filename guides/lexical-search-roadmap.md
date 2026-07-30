@@ -209,10 +209,16 @@ struct LexicalTokenStats final {
     std::uint64_t collection_frequency = 0;
 };
 
+// A durable non-reused identifier for one lexical-index incarnation.
+struct LexicalStatisticsEpoch final {
+    std::array<std::uint8_t, 16> bytes{};
+};
+
 // Identifies one atomically readable active-projection statistics view.
 struct LexicalStatisticsSnapshotRef final {
     ScopeId scope_id;
     ProjectionKind projection_kind = ProjectionKind::Original;
+    LexicalStatisticsEpoch statistics_epoch;
     std::uint64_t statistics_generation = 0;
 };
 
@@ -292,8 +298,9 @@ version.
 When a resource or one of its projections is reindexed, the indexing
 transaction removes the previous **active** contribution from
 `LexicalTokenStats` and `LexicalCollectionStats`, applies the replacement
-contribution, advances `statistics_generation`, and publishes the replacement
-lexical manifest together. Physical stale postings may remain until delayed
+contribution, advances `statistics_generation` within the current
+`statistics_epoch`, and publishes the replacement lexical manifest together.
+Physical stale postings may remain until delayed
 compaction, but they must not remain in aggregate stats. Consequently `df`,
 `collection_frequency`, `unit_count`, `total_token_count`, and `avgdl` always
 describe the same active-projection set as the manifest visible in the read
@@ -303,12 +310,23 @@ frontier.
 are not independently stamped or copied on every unrelated unit update. A
 query reads token rows, `LexicalCollectionStats`, and the active manifest from
 one storage read transaction/frontier. A token-stat cache is scoped to that
-frontier or `statistics_generation`; it must not combine token rows from one
+frontier or the full `LexicalStatisticsSnapshotRef`; it must not combine token rows from one
 aggregate view with collection counters from another.
 
 A **token-level cache** keyed by `(scope_id, token_id, projection_kind,
-statistics_generation)` keeps warm-up reads cheap within a stable lexical
+statistics_epoch, statistics_generation)` keeps warm-up reads cheap within a stable lexical
 session without mixing aggregate views.
+
+`statistics_epoch` is generated durably and never reused for a different
+lexical-index incarnation. A full rebuild, posting-block layout migration, or
+restore that replaces an existing derived lexical index must allocate a new
+epoch before publishing its manifest, even when its generation counter begins
+at zero. A backup that restores the exact same immutable derived index without
+coexisting stale blocks may preserve its epoch; any restore into a workspace
+that can retain older blocks must instead allocate a new epoch or delete those
+blocks before publication. Cache keys and block headers carry the full
+snapshot ref. An epoch mismatch disables/recomputes pruning bounds rather than
+allowing a coincidentally equal generation to reuse stale statistics.
 
 ## Tokenization
 
@@ -517,7 +535,8 @@ lexical_token_stats:
 
 lexical_collection_stats:
     key   = (scope_id, projection_kind)
-    value = { statistics_generation, unit_count, total_token_count }
+    value = { statistics_epoch, statistics_generation, unit_count,
+              total_token_count }
 ```
 
 The first implementation may collapse `field_to_postings` to a single
@@ -564,11 +583,12 @@ contract. A segment that cannot safely use a narrow delta representation must
 use a lossless wide fallback.
 
 Each compressed posting block that exposes WAND/BMW-style score bounds records
-the `statistics_generation` used to construct those bounds. A query may use a
-bound for pruning only when it matches the `LexicalCollectionStats.snapshot`
-read at the same frontier. On mismatch, the backend recomputes a conservative
-bound or disables bound-based pruning for that block and preserves exhaustive
-BM25/BM25F correctness.
+the full `LexicalStatisticsSnapshotRef` used to construct those bounds. A query
+may use a bound for pruning only when it exactly matches the
+`LexicalCollectionStats.snapshot` read at the same frontier. On epoch or
+generation mismatch, the backend recomputes a conservative bound or disables
+bound-based pruning for that block and preserves exhaustive BM25/BM25F
+correctness.
 
 Dynamic pruning is introduced in stages: exhaustive DAAT BM25F baseline first,
 then MaxScore/WAND, then Block-Max WAND only after the per-block score upper
@@ -605,7 +625,8 @@ When a unit is reindexed for a given `projection_kind`:
 7. Remove the replaced active contribution, then update `lexical_token_stats`
    and `lexical_chunk_stats` per projection_kind.
 8. Update `lexical_collection_stats` and advance its
-   `statistics_generation` for the replacement active-projection set.
+   `statistics_generation` within the active `statistics_epoch` for the
+   replacement active-projection set.
 9. Write new lexical manifest refs with the active `projection_version` and
    applicable `resource_generation`.
 10. Commit through a backend transaction where available.
@@ -1355,8 +1376,10 @@ of that ordering; each substep is its own PR.
     `RetrievalTrace` per call, RRF contribution, and participation in
     `IContextBuilder` budgeted assembly.
 20. Add the token-level cache keyed by `(scope_id, token_id,
-    projection_kind, statistics_generation)` for fast warm-up within a stable
-    aggregate statistics view.
+    projection_kind, statistics_epoch, statistics_generation)` for fast
+    warm-up within a stable aggregate statistics view; include a fixture where
+    an old block and a full rebuild share generation `0` but have different
+    epochs, proving that stale pruning cannot be reused.
 
 ### L4. MDBX and secondary indexes (memory-stacks steps 3 cont. and 12.3)
 

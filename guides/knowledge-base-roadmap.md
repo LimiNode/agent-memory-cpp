@@ -534,14 +534,21 @@ struct ExternalCandidateConstraint {
 ```
 
 The native planner constructs this constraint after all strict checks at the
-same `ReadFrontier`. An external adapter must apply the exact eligible-unit
+same `ReadFrontier`. It is policy-derived sensitive metadata even though it
+does not contain raw claims or grants. It may cross only a same-trust-domain
+adapter boundary; an untrusted remote backend is unavailable for this route.
+A future opaque partition-handle protocol is deferred and needs a separate
+security design before it can replace the exact allowlist. An external adapter
+must apply the exact eligible-unit
 constraint before its own top-K ranking. A backend that cannot express the
 constraint as an exact allowlist or equivalent exact pre-ranking filter is not
 available for policy-aware retrieval: the route fails closed or the plan uses a
 native route. Final canonical hydration remains mandatory and rechecks policy,
 lifecycle, revision and provenance. `RetrievalTrace` records the constraint
 fingerprint and aggregate pre-ranking eligible count, never denied unit ids or
-policy claims.
+policy claims. `ReadFrontier` and the policy fingerprint are handled with the
+same trusted-domain restriction because they are part of the derived policy
+decision.
 
 `RetrievalIoBudget` (defined in `memory-stacks-roadmap.md` Section 7.3) is a
 runtime limit shared by lexical, dense, graph and temporal routes. All enabled

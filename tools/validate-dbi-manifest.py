@@ -54,11 +54,18 @@ ALLOWED_SELECTORS = {
     "UpstreamSync",
 }
 
-ALLOWED_SYNC = {
+ALLOWED_WIRE_SYNC_SUPPORT = {
     "kv_supported",
     "dupsort_not_supported",
     "kv_supported_if_type_discriminated_is_kv_backed",
     "kv_supported_if_range_is_kv_backed",
+    "upstream_managed",
+}
+
+ALLOWED_REPLICATION_SEMANTICS = {
+    "raw_mirror_only",
+    "logical_adapter_required",
+    "derived_rebuildable",
     "semantic_rebuild_only",
     "upstream_managed",
 }
@@ -68,7 +75,8 @@ REQUIRED_CANONICAL_FIELDS = {
     "owner",
     "table_type",
     "opens",
-    "sync",
+    "wire_sync_support",
+    "replication_semantics",
     "physical_key",
     "migration_peak",
 }
@@ -114,6 +122,13 @@ RUNTIME_MAPPING_REFERENCE_KEYS = {
     "visibility_receipts",
 }
 
+EXPECTED_REPLICATION_SEMANTICS = {
+    "global_unit_id_to_local_id": "logical_adapter_required",
+    "runtime_sequence_index": "semantic_rebuild_only",
+    "lexical_posting_segments": "derived_rebuildable",
+    "derived_vector_blobs": "derived_rebuildable",
+}
+
 
 def fail(errors: list[str], message: str) -> None:
     errors.append(message)
@@ -128,7 +143,7 @@ def load_manifest(path: Path) -> dict:
 
 
 def validate_manifest(data: dict, errors: list[str]) -> None:
-    if data.get("version") != "agent_memory.dbi_manifest.v2":
+    if data.get("version") != "agent_memory.dbi_manifest.v3":
         fail(errors, "unexpected manifest version")
 
     for field in ("max_dbs_default", "minimum_free_slots"):
@@ -159,8 +174,18 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             fail(errors, f"{name}: unknown table_type {row.get('table_type')!r}")
         if row.get("opens") not in ALLOWED_SELECTORS:
             fail(errors, f"{name}: unknown opens selector {row.get('opens')!r}")
-        if row.get("sync") not in ALLOWED_SYNC:
-            fail(errors, f"{name}: unknown sync mode {row.get('sync')!r}")
+        if row.get("wire_sync_support") not in ALLOWED_WIRE_SYNC_SUPPORT:
+            fail(
+                errors,
+                f"{name}: unknown wire_sync_support "
+                f"{row.get('wire_sync_support')!r}",
+            )
+        if row.get("replication_semantics") not in ALLOWED_REPLICATION_SEMANTICS:
+            fail(
+                errors,
+                f"{name}: unknown replication_semantics "
+                f"{row.get('replication_semantics')!r}",
+            )
         physical_key = row.get("physical_key")
         if not isinstance(physical_key, list) or not physical_key:
             fail(errors, f"{name}: physical_key must be a non-empty ordered list")
@@ -266,8 +291,18 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
                 fail(errors, f"{context}: unknown table_type {entry.get('table_type')!r}")
             if entry.get("opens") not in ALLOWED_SELECTORS:
                 fail(errors, f"{context}: unknown opens selector {entry.get('opens')!r}")
-            if entry.get("sync") not in ALLOWED_SYNC:
-                fail(errors, f"{context}: unknown sync mode {entry.get('sync')!r}")
+            if entry.get("wire_sync_support") not in ALLOWED_WIRE_SYNC_SUPPORT:
+                fail(
+                    errors,
+                    f"{context}: unknown wire_sync_support "
+                    f"{entry.get('wire_sync_support')!r}",
+                )
+            if entry.get("replication_semantics") not in ALLOWED_REPLICATION_SEMANTICS:
+                fail(
+                    errors,
+                    f"{context}: unknown replication_semantics "
+                    f"{entry.get('replication_semantics')!r}",
+                )
             physical_key = entry.get("physical_key")
             if not isinstance(physical_key, list) or not physical_key:
                 fail(errors, f"{context}: physical_key must be a non-empty ordered list")
@@ -284,6 +319,17 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         if row.get("migration_peak") != entry_peak:
             fail(errors, f"{name}: migration_peak must match dbi_entries peak sum")
         delta_names.update(entry_names)
+
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            expected_semantics = EXPECTED_REPLICATION_SEMANTICS.get(entry.get("name"))
+            if expected_semantics and entry.get("replication_semantics") != expected_semantics:
+                fail(
+                    errors,
+                    f"{entry.get('name')}: replication_semantics must be "
+                    f"{expected_semantics}",
+                )
 
     sync_delta = next(
         (row for row in deltas if isinstance(row, dict) and row.get("name") == "sync_system_be72a2b"),
@@ -344,7 +390,16 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
 
 REVIEW_PROJECTION_BEGIN = "dbi-review-projection-v1"
 BUDGET_CHECKPOINT_BEGIN = "dbi-budget-checkpoint-v1"
-REVIEW_FIELDS = ("name", "owner", "table_type", "opens", "sync", "physical_key", "migration_peak")
+REVIEW_FIELDS = (
+    "name",
+    "owner",
+    "table_type",
+    "opens",
+    "wire_sync_support",
+    "replication_semantics",
+    "physical_key",
+    "migration_peak",
+)
 
 
 def review_projection_from_tz(path: Path) -> dict[str, dict]:
@@ -483,12 +538,12 @@ def run_self_test(manifest_path: Path) -> int:
     missing_delta_descriptor_field = copy.deepcopy(base)
     for row in missing_delta_descriptor_field["profile_deltas"]:
         if row["name"] == "runtime_sequence_index":
-            del row["dbi_entries"][0]["sync"]
+            del row["dbi_entries"][0]["wire_sync_support"]
             break
     cases.append((
         "missing profile-delta descriptor field",
         missing_delta_descriptor_field,
-        "runtime_sequence_index.dbi_entries[0] missing fields: ['sync']",
+        "runtime_sequence_index.dbi_entries[0] missing fields: ['wire_sync_support']",
     ))
 
     concrete_delta_without_entries = copy.deepcopy(base)
@@ -511,6 +566,17 @@ def run_self_test(manifest_path: Path) -> int:
         "profile-delta names drift",
         profile_delta_name_drift,
         "runtime_sequence_index: names must match dbi_entries names in order",
+    ))
+
+    local_identity_raw_mirror = copy.deepcopy(base)
+    for row in local_identity_raw_mirror["profile_deltas"]:
+        if row["name"] == "global_unit_id_to_local_id":
+            row["dbi_entries"][0]["replication_semantics"] = "raw_mirror_only"
+            break
+    cases.append((
+        "local identity map cannot be raw mirrored",
+        local_identity_raw_mirror,
+        "global_unit_id_to_local_id: replication_semantics must be logical_adapter_required",
     ))
 
     missing_physical_key = copy.deepcopy(base)
@@ -561,7 +627,8 @@ def run_self_test(manifest_path: Path) -> int:
             "owner": row["owner"],
             "table_type": row["table_type"],
             "opens": row["opens"],
-            "sync": row["sync"],
+            "wire_sync_support": row["wire_sync_support"],
+            "replication_semantics": row["replication_semantics"],
             "physical_key": row.get("physical_key", []),
             "migration_peak": row["migration_peak"],
         }
@@ -571,7 +638,8 @@ def run_self_test(manifest_path: Path) -> int:
         "owner": "wrong_owner",
         "table_type": "ReverseIndexTable",
         "opens": "DenseVectors",
-        "sync": "dupsort_not_supported",
+        "wire_sync_support": "dupsort_not_supported",
+        "replication_semantics": "derived_rebuildable",
         "physical_key": ["WrongKind", "WrongId"],
         "migration_peak": 2,
     }

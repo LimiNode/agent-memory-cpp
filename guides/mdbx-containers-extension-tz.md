@@ -1196,51 +1196,64 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для дополнительных Layer-1 primitives under consideration (Patterns 3, 4, 6): coverage shadow graph (новый §5.7 — `coverage_units`, `coverage_files`, `coverage_regions`), `TableSequence` as the normative atomic table-bound ID generator, team-shared graph artifact (offline snapshot format — proposed job, not yet in `compaction-roadmap.md`).
 
 YAML [`dbi-manifest.yaml`](dbi-manifest.yaml) is the sole normative source for
-DBI name, owner, table type, open selector, sync mode, physical key and
+DBI name, owner, table type, open selector, wire support, replication
+semantics, physical key and
 migration peak. The following derived review projection is checked by
 `tools/validate-dbi-manifest.py`; do not edit it independently of YAML.
 
 The projection below renders the canonical inventory. A profile delta that
 declares concrete DBIs must define matching `names` and a complete
 `dbi_entries` descriptor for every DBI in YAML; the validator checks the same
-owner/table/open/sync/key/peak fields and rejects count or name drift. Only an
+owner/table/open/wire/replication/key/peak fields and rejects count or name drift. Only an
 explicit `schema_status: capacity_reserve_only` delta may reserve capacity
 without claiming a physical DBI schema. In particular,
 `runtime_sequence_index` is `semantic_rebuild_only`: its local-ID rows are
 rebuilt after global-identity remapping and are not raw-syncable state.
 
+`wire_sync_support` answers the narrow upstream question of whether the pinned
+wire format can encode the physical table representation. It does **not** grant
+permission to replicate application meaning. `replication_semantics` is the
+separate application contract: `raw_mirror_only` is limited to a leader/follower
+or externally serialized deployment; `logical_adapter_required` requires a
+versioned application adapter and durable identity mapping; `derived_rebuildable`
+must be rebuilt from authoritative state; and `semantic_rebuild_only` is rebuilt
+only after application-level interpretation/remapping. In particular,
+`global_unit_id_to_local_id` is never raw-mirrored, while
+`runtime_sequence_index`, lexical blocks and vector blobs are not canonical
+replication state.
+
 ```text
 dbi-review-projection-v1
-# name|owner|table_type|opens|sync|physical_key|migration_peak
-knowledge_units|core|KeyValueTable|always|kv_supported|UnitId|1
-content_key_to_unit_id|core|KeyValueTable|always|kv_supported|KnowledgeUnitKey|1
-knowledge_units_by_kind|core|ReverseIndexTable|always|dupsort_not_supported|ScopeId,KnowledgeUnitKind|1
-unit_components|core|TypeDiscriminatedTable|component_profile|kv_supported_if_type_discriminated_is_kv_backed|ComponentKind,UnitId|1
-qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|UnitId|1
-fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|UnitId|1
-conversation_episode_payloads|chat|KeyValueTable|ConversationMemory|kv_supported|UnitId|1
-compiled_article_payloads|compiled_wiki|KeyValueTable|CompiledArticles|kv_supported|UnitId|1
-chunk_payloads|ingestion|KeyValueTable|always|kv_supported|UnitId|1
-source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|UnitId|1
-unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|ScopeId,UnitId,ProjectionKind,Revision|1
-embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
-embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
-inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|ScopeId,TokenId,ProjectionKind,FieldId|1
-field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,ProjectionKind,FieldId,TokenId,UnitId|1
-lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,NormalizedTokenText|1
-lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,TokenId|1
-lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,UnitId,ProjectionKind|1
-lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,ProjectionKind,TokenId|1
-lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|ScopeId,ProjectionKind|1
-metadata_filters|metadata|ReverseIndexTable|lightweight_prefilter|dupsort_not_supported|ScopeId,MetadataKey,MetadataValue|1
-graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|ScopeId,FromUnitId,EdgeKind|1
-graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|ScopeId,ToUnitId,EdgeKind|1
-temporal_unit_index|temporal|RangeIndexTable|TemporalIndex|kv_supported_if_range_is_kv_backed|ScopeId,Timestamp,UnitId|1
-speaker_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|ScopeId,SpeakerId|1
-session_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|ScopeId,SessionId|1
-usage_by_last_access|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|ScopeId,LastUsedAtMs,UnitId|1
-usage_by_cooldown|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|ScopeId,CooldownUntilMs,UnitId|1
-schema_info|schema|KeyValueTable|always|kv_supported|SchemaKey|1
+# name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
+knowledge_units|core|KeyValueTable|always|kv_supported|logical_adapter_required|UnitId|1
+content_key_to_unit_id|core|KeyValueTable|always|kv_supported|derived_rebuildable|KnowledgeUnitKey|1
+knowledge_units_by_kind|core|ReverseIndexTable|always|dupsort_not_supported|derived_rebuildable|ScopeId,KnowledgeUnitKind|1
+unit_components|core|TypeDiscriminatedTable|component_profile|kv_supported_if_type_discriminated_is_kv_backed|logical_adapter_required|ComponentKind,UnitId|1
+qa_payloads|qa|KeyValueTable|QAPairs|kv_supported|logical_adapter_required|UnitId|1
+fact_payloads|facts|KeyValueTable|TemporalFact|kv_supported|logical_adapter_required|UnitId|1
+conversation_episode_payloads|chat|KeyValueTable|ConversationMemory|kv_supported|logical_adapter_required|UnitId|1
+compiled_article_payloads|compiled_wiki|KeyValueTable|CompiledArticles|kv_supported|logical_adapter_required|UnitId|1
+chunk_payloads|ingestion|KeyValueTable|always|kv_supported|logical_adapter_required|UnitId|1
+source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|logical_adapter_required|UnitId|1
+unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|derived_rebuildable|ScopeId,UnitId,ProjectionKind,Revision|1
+embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|derived_rebuildable|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
+embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|derived_rebuildable|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
+inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|derived_rebuildable|ScopeId,TokenId,ProjectionKind,FieldId|1
+field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,FieldId,TokenId,UnitId|1
+lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,NormalizedTokenText|1
+lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,TokenId|1
+lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,UnitId,ProjectionKind|1
+lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,TokenId|1
+lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind|1
+metadata_filters|metadata|ReverseIndexTable|lightweight_prefilter|dupsort_not_supported|derived_rebuildable|ScopeId,MetadataKey,MetadataValue|1
+graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|derived_rebuildable|ScopeId,FromUnitId,EdgeKind|1
+graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|derived_rebuildable|ScopeId,ToUnitId,EdgeKind|1
+temporal_unit_index|temporal|RangeIndexTable|TemporalIndex|kv_supported_if_range_is_kv_backed|derived_rebuildable|ScopeId,Timestamp,UnitId|1
+speaker_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|derived_rebuildable|ScopeId,SpeakerId|1
+session_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|derived_rebuildable|ScopeId,SessionId|1
+usage_by_last_access|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|derived_rebuildable|ScopeId,LastUsedAtMs,UnitId|1
+usage_by_cooldown|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|derived_rebuildable|ScopeId,CooldownUntilMs,UnitId|1
+schema_info|schema|KeyValueTable|always|kv_supported|logical_adapter_required|SchemaKey|1
 ```
 
 Сводная таблица DBI секции 5.5 (для быстрого чтения владельца PR и capability-зависимости; explanatory projection of the checked data):
@@ -1351,7 +1364,7 @@ follows:
 `Config::max_dbs = 96` является recommended capacity ceiling, а не обещанием открыть 96
 named DBIs в каждом профиле. Machine-readable inventory in
 [`dbi-manifest.yaml`](dbi-manifest.yaml) is the normative source of truth for
-DBI names, selectors, sync modes and budget arithmetic. The §5.5 summary table
+DBI names, selectors, wire support, replication semantics and budget arithmetic. The §5.5 summary table
 and this checkpoint are review-friendly projections of that manifest and must
 be validated with `tools/validate-dbi-manifest.py` before merge. Canonical
 baseline берётся из manifest/§5.5; таблица ниже затем добавляет явные profile,
@@ -1360,7 +1373,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 каждая такая DBI должна попасть в конкретный `MemoryProfileSpec` manifest,
 прежде чем её можно учитывать в budget.
 
-| Bucket | Steady DBIs | Migration peak | Sync status | Notes |
+| Bucket | Steady DBIs | Migration peak | Wire / replication status | Notes |
 |---|---:|---:|---|---|
 | Canonical memory-stack DBIs from §5.5 | up to 29 profile-selected | 29 full inventory | mixed | Count every row in the §5.5 summary table exactly once when full canonical inventory is enabled. |
 | Existing document/resource adapter DBIs from §5.4 | 0 by default, +4 if legacy adapter enabled | +4 | KV supported | Adapter-local; not part of canonical memory-stack layout. |
@@ -1368,17 +1381,18 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
-| Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned. |
-| Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | semantic rebuild only | `runtime_sequence_index`; A1 runtime-history acceleration. Local-ID rows are rebuilt after identity remapping, not raw-synced. |
-| Compressed lexical posting-segment delta | 0 by default, +1 when M2 lexical segments are enabled | +1 | KV supported | `lexical_posting_segments`; derived BM25F block layout with conservative score bounds, not a replacement for canonical units or exhaustive baseline. |
-| Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
+| Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported / logical adapter required | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned; never raw-mirrored because its local target is environment-specific. |
+| Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV-range if backed / semantic rebuild only | `runtime_sequence_index`; A1 runtime-history acceleration. Local-ID rows are rebuilt after identity remapping, not raw-synced. |
+| Compressed lexical posting-segment delta | 0 by default, +1 when M2 lexical segments are enabled | +1 | KV supported / derived rebuildable | `lexical_posting_segments`; derived BM25F block layout with conservative score bounds, not a replacement for canonical units or exhaustive baseline. |
+| Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported / derived rebuildable | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, snapshot-derived opt-in | snapshot-derived | opt-in only | Count the enabled raw/logical store manifest at the pinned upstream SHA; not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
 | Planned expanded peak under current assumptions | profile-selected | 61 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 35 DBI slots of headroom under `max_dbs = 96`, including 19 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
-orientation, steady-state count, migration peak, and sync support status.
+orientation, steady-state count, migration peak, wire support and replication
+semantics.
 Manual acceptance check: enumerate the §5.5 summary table rows, add only
 profile-selected deltas, then verify `steady + sync + migration_reserve <= max_dbs - minimum_free_slots`.
 
