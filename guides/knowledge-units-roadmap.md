@@ -712,6 +712,13 @@ change `kind`, `scope_id`, `content_hash`, `content_hash_recipe_version` or the
 content-addressing identity material. Every update uses optimistic revision
 guarding; stale revision conflicts return without writes.
 
+The generic `MutableUnitPatch` has no `GraphEdge` field. A Relation's one edge
+encodes immutable endpoint identities, kind/class, payload and evidence, so it
+cannot be cleared or replaced through `update_unit`. A relation-specific update
+attempt (including one received from a legacy/widened API) returns
+`ImmutableIdentityChanged` before writes. The caller creates a new Relation unit
+and records supersede or erase lineage when the asserted relation changes.
+
 All authoritative reads used to build `CanonicalIdentityInput` MUST belong to the
 same transaction snapshot. MDBX-backed `ResourceBodyStore` reads receive `txn`.
 External body stores must provide an immutable digest/version token, and

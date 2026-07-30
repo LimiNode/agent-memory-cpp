@@ -641,7 +641,6 @@ struct MutableUnitPatch {
     std::optional<std::string> display_text;
     std::optional<std::vector<ComponentVariant>> components;
     std::optional<std::vector<SearchProjection>> projections;
-    std::optional<std::vector<GraphEdge>> graph_edges;
     std::optional<std::vector<SourceRef>> full_source_refs;
     std::optional<double> importance_score;
 };
@@ -687,13 +686,21 @@ must not own a graph edge. Relation lifecycle, supersede and erase transitions
 hide the edge from normal traversal; its evidence remains reachable for audit
 according to the ordinary lifecycle/provenance rules.
 
+`GraphEdge` is identity-bearing Relation payload, not a mutable collection.
+It intentionally has no `MutableUnitPatch` field. An endpoint, `EdgeKind`,
+`RelationClass`, payload, or evidence change creates a new Relation unit and a
+supersede or erase lineage; it never replaces or clears the existing edge. A
+legacy or future update API that tries to submit a Relation edge mutation must
+return `ImmutableIdentityChanged` before writing either physical orientation.
+
 `create_or_get_unit` is create/dedupe only. If the content key already exists it
 returns `ExistingUnit` and does not mutate the existing unit. Mutable updates
 use `update_unit` with `expected_revision`; stale revisions return
 `StaleUnitRevision` without writes. `MutableUnitPatch` collection fields use
 `nullopt` for "leave unchanged", an empty vector for "clear this collection" and
-a non-empty vector for "replace the whole collection". Fine-grained collection
-deltas are deferred until a future explicit `CollectionPatch<T>` contract.
+a non-empty vector for "replace the whole collection". This rule does not apply
+to the Relation-owned `GraphEdge`. Fine-grained collection deltas are deferred
+until a future explicit `CollectionPatch<T>` contract.
 `update_unit` may change only fields listed as mutable in
 `knowledge-units-roadmap.md` §4, increments envelope revision, regenerates
 affected projections and updates secondary indexes in one transaction.
@@ -1704,7 +1711,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
   only.
 - Acceptance gates: atomic two-orientation write and reopen, export/import with
   endpoint local-ID remap, relation/edge-ID mismatch or collision rejection,
-  and Relation lifecycle/provenance round-trip.
+  Relation lifecycle/provenance round-trip, mutable-edge-patch rejection, and
+  replacement through a new Relation plus supersede lineage.
 - Bounded graph expansion (max_depth, max_edges, budget_tokens).
 - Single-axis TemporalComponent + DBI: `temporal_unit_index` for M1b; the
   M2+ bi-temporal range indexes remain owned by AM-13. A separate

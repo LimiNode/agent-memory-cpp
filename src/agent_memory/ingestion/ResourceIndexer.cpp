@@ -108,29 +108,29 @@ namespace agent_memory {
             return unreclaimed;
         }
 
-        bool revisions_have_matching_hashes(
+        bool revisions_have_matching_idempotency_evidence(
             const ResourceRevision& left,
             const ResourceRevision& right
         ) noexcept {
-            if(left.body_digest.has_value() != right.body_digest.has_value()) {
-                return false;
-            }
-
             if(
-                left.body_digest &&
-                (
-                    left.body_digest->algorithm != right.body_digest->algorithm ||
-                    left.body_digest->bytes != right.body_digest->bytes
-                )
+                !left.body_digest ||
+                !right.body_digest ||
+                !is_valid_resource_body_digest(*left.body_digest) ||
+                !is_valid_resource_body_digest(*right.body_digest) ||
+                left.pipeline_config_hash == 0 ||
+                right.pipeline_config_hash == 0
             ) {
                 return false;
             }
 
-            return matches_revision_hashes(
-                left,
-                right.content_hash,
-                right.pipeline_config_hash
-            );
+            if(
+                left.body_digest->algorithm != right.body_digest->algorithm ||
+                left.body_digest->bytes != right.body_digest->bytes
+            ) {
+                return false;
+            }
+
+            return left.pipeline_config_hash == right.pipeline_config_hash;
         }
 
         std::optional<DocumentSnapshot> load_document_snapshot(
@@ -289,7 +289,10 @@ namespace agent_memory {
             }
 
             if(snapshot.revision.generation == old_manifest->revision.generation) {
-                if(revisions_have_matching_hashes(snapshot.revision, old_manifest->revision)) {
+                if(revisions_have_matching_idempotency_evidence(
+                    snapshot.revision,
+                    old_manifest->revision
+                )) {
                     return;
                 }
                 throw std::logic_error("ResourceIndexSnapshot generation conflicts with active manifest");

@@ -667,8 +667,11 @@ When a unit is reindexed for a given `projection_kind`:
 8. Update the epoch-keyed `lexical_collection_stats` row and advance its
    `statistics_generation` within the active `statistics_epoch` for the
    replacement active-projection set.
-9. Atomically update `lexical_active_snapshot` with the active
-   `projection_version`, `resource_generation`, epoch and generation.
+9. Atomically update the collection pointer `lexical_active_snapshot` with
+   `statistics_epoch`, `statistics_generation`, and `posting_layout_version`
+   only. The active `projection_version` and applicable
+   `resource_generation` remain in the per-unit posting/stat/manifest rows
+   written by this transaction.
 10. Commit through a backend transaction where available.
 ```
 

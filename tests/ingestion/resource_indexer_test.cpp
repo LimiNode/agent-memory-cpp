@@ -307,6 +307,12 @@ namespace {
         };
     }
 
+    agent_memory::ResourceBodyDigest make_body_digest(std::uint8_t value) {
+        agent_memory::ResourceBodyDigest digest;
+        digest.bytes.fill(value);
+        return digest;
+    }
+
     agent_memory::ResourceIndexSnapshot make_snapshot(
         agent_memory::ResourceId resource_id,
         std::uint64_t generation,
@@ -318,19 +324,14 @@ namespace {
                 std::move(resource_id),
                 generation,
                 0xAABBCCDDU + generation,
-                0x11223344U
+                0x11223344U,
+                make_body_digest(static_cast<std::uint8_t>(generation))
             },
             agent_memory::DocumentSnapshot{
                 make_document(document_id, "resource text generation " + std::to_string(generation)),
                 std::move(chunks)
             }
         };
-    }
-
-    agent_memory::ResourceBodyDigest make_body_digest(std::uint8_t value) {
-        agent_memory::ResourceBodyDigest digest;
-        digest.bytes.fill(value);
-        return digest;
     }
 
 } // namespace
@@ -585,14 +586,15 @@ int main() {
 
     const agent_memory::DocumentId newest_document_id{"doc:indexer:newest"};
     const agent_memory::ChunkId newest_chunk_id{"chunk:indexer:newest"};
-    indexer.reindex_resource(make_snapshot(
+    const auto newest_snapshot = make_snapshot(
         resource_id,
         3,
         newest_document_id,
         {
             make_chunk(newest_chunk_id, newest_document_id, 0, "newest chunk")
         }
-    ));
+    );
+    indexer.reindex_resource(newest_snapshot);
 
     embedder.reset_call_count();
     try {
@@ -618,22 +620,38 @@ int main() {
     }
 
     embedder.reset_call_count();
-    indexer.reindex_resource(make_snapshot(
-        resource_id,
-        3,
-        agent_memory::DocumentId{"doc:indexer:idempotent"},
-        {
-            make_chunk(
-                agent_memory::ChunkId{"chunk:indexer:idempotent"},
-                agent_memory::DocumentId{"doc:indexer:idempotent"},
-                0,
-                "idempotent chunk"
-            )
-        }
-    ));
+    indexer.reindex_resource(newest_snapshot);
 
     if(embedder.call_count() != 0) {
         return fail("idempotent generation must return before embedding");
+    }
+
+    const agent_memory::DocumentId ambiguous_document_id{"doc:indexer:ambiguous"};
+    auto ambiguous_same_generation = make_snapshot(
+        resource_id,
+        3,
+        ambiguous_document_id,
+        {
+            make_chunk(
+                agent_memory::ChunkId{"chunk:indexer:ambiguous"},
+                ambiguous_document_id,
+                0,
+                "ambiguous same-generation chunk"
+            )
+        }
+    );
+    ambiguous_same_generation.revision.content_hash = 0;
+    ambiguous_same_generation.revision.pipeline_config_hash = 0;
+    ambiguous_same_generation.revision.body_digest.reset();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(std::move(ambiguous_same_generation));
+        return fail("same-generation snapshots without identity evidence must conflict");
+    } catch(const std::logic_error&) {
+    }
+
+    if(embedder.call_count() != 0) {
+        return fail("ambiguous same-generation snapshot must be rejected before embedding");
     }
 
     auto conflicting_generation = make_snapshot(
@@ -649,7 +667,7 @@ int main() {
             )
         }
     );
-    ++conflicting_generation.revision.content_hash;
+    ++conflicting_generation.revision.pipeline_config_hash;
     embedder.reset_call_count();
     try {
         indexer.reindex_resource(std::move(conflicting_generation));
@@ -692,7 +710,7 @@ int main() {
         newest_manifest->revision.generation != 3 ||
         !document_storage.find_document(newest_document_id) ||
         !vector_index.find(newest_chunk_id) ||
-        document_storage.find_document(agent_memory::DocumentId{"doc:indexer:idempotent"})
+        document_storage.find_document(ambiguous_document_id)
     ) {
         return fail("stale, conflicting, or idempotent work must not replace the active generation");
     }

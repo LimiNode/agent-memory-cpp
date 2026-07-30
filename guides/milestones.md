@@ -135,9 +135,10 @@ public non-text source connector must not bypass this contract.
 
 Graph expansion may enter M2 only after its Relation-owned graph substrate
 passes atomic two-orientation write/reopen, endpoint remap, edge/global-ID
-mismatch rejection, and lifecycle/provenance round-trip fixtures. Packed
-adjacency remains an M2+ rebuildable optimization, not this substrate's source
-of truth.
+mismatch rejection, immutable-edge-patch rejection, replacement through a new
+Relation plus supersede lineage, and lifecycle/provenance round-trip fixtures.
+Packed adjacency remains an M2+ rebuildable optimization, not this substrate's
+source of truth.
 
 M2 retrieval engineering may add projection-exact fallback routes,
 `CandidateSet` filter pushdown, physical I/O budgets/tracing, tiered encoded
