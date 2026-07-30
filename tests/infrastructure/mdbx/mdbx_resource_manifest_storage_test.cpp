@@ -135,7 +135,8 @@ namespace {
         append_uint64(payload, 0xAABBCCDDU);
         append_uint64(payload, 0x11223344U);
         if(version == "agent_memory.resource_manifest.v3" ||
-           version == "agent_memory.resource_manifest.v4") {
+           version == "agent_memory.resource_manifest.v4" ||
+           version == "agent_memory.resource_manifest.v5") {
             if(body_digest) {
                 append_string(payload, "sha256");
                 std::string bytes;
@@ -156,11 +157,16 @@ namespace {
         }
         append_size(payload, 1);
         append_record(payload, record);
-        if(version == "agent_memory.resource_manifest.v4") {
+        if(version == "agent_memory.resource_manifest.v4" ||
+           version == "agent_memory.resource_manifest.v5") {
             append_size(payload, pending.size());
             for(const auto& pending_record : pending) {
                 append_record(payload, pending_record);
             }
+        }
+        if(version == "agent_memory.resource_manifest.v5") {
+            append_string(payload, {});
+            append_uint64(payload, 0);
         }
         return payload;
     }
@@ -304,8 +310,9 @@ int main() {
             persisted->revision.body_digest->bytes != make_body_digest(0x3CU).bytes ||
             persisted->state != agent_memory::ResourceManifestState::ErasePending ||
             persisted->pending_reclaim_records.size() != 1
+            || persisted->payload_version != agent_memory::ResourceManifestPayloadVersion::V5
         ) {
-            return fail("MDBX manifest storage must persist v4 manifest fields");
+            return fail("MDBX manifest storage must persist v5 manifest fields");
         }
 
         if(!agent_memory::is_valid_resource_manifest(*persisted)) {
@@ -329,9 +336,13 @@ int main() {
             v2_pending->revision.body_digest ||
             !v3 || !v3->revision.body_digest ||
             v3->revision.body_digest->algorithm != agent_memory::ResourceBodyDigestAlgorithm::Sha256 ||
-            v3->revision.body_digest->bytes != make_body_digest(0x55U).bytes
+            v3->revision.body_digest->bytes != make_body_digest(0x55U).bytes ||
+            v1->payload_version != agent_memory::ResourceManifestPayloadVersion::V1 ||
+            v2_active->payload_version != agent_memory::ResourceManifestPayloadVersion::V2 ||
+            v2_pending->payload_version != agent_memory::ResourceManifestPayloadVersion::V2 ||
+            v3->payload_version != agent_memory::ResourceManifestPayloadVersion::V3
         ) {
-            return fail("MDBX manifest storage must read v1-v3 compatibility payloads");
+            return fail("MDBX manifest storage must preserve v1-v3 payload provenance");
         }
 
         try {

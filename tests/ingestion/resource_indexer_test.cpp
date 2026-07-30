@@ -144,11 +144,25 @@ namespace {
             m_fail_next_erase = true;
         }
 
+        void reset_operation_counts() noexcept {
+            m_upsert_count = 0;
+            m_erase_count = 0;
+        }
+
+        [[nodiscard]] std::size_t upsert_count() const noexcept {
+            return m_upsert_count;
+        }
+
+        [[nodiscard]] std::size_t erase_count() const noexcept {
+            return m_erase_count;
+        }
+
         void inject_unchecked_manifest(agent_memory::ResourceManifest manifest) {
             m_manifests[manifest.revision.resource_id] = std::move(manifest);
         }
 
         void upsert_manifest(agent_memory::ResourceManifest manifest) override {
+            ++m_upsert_count;
             if(m_fail_next_upsert) {
                 m_fail_next_upsert = false;
                 throw std::runtime_error("simulated manifest storage failure");
@@ -175,6 +189,7 @@ namespace {
         [[nodiscard]] bool erase_manifest(
             const agent_memory::ResourceId& resource_id
         ) override {
+            ++m_erase_count;
             if(m_fail_next_erase) {
                 m_fail_next_erase = false;
                 throw std::runtime_error("simulated manifest erase failure");
@@ -185,6 +200,8 @@ namespace {
     private:
         bool m_fail_next_upsert = false;
         bool m_fail_next_erase = false;
+        std::size_t m_upsert_count = 0;
+        std::size_t m_erase_count = 0;
         std::map<agent_memory::ResourceId, agent_memory::ResourceManifest> m_manifests;
     };
 
@@ -1230,6 +1247,234 @@ int main() {
         !vector_index.find(legacy_chunk_id)
     ) {
         return fail("invalid stored manifest must not erase active derived state");
+    }
+
+    const agent_memory::ResourceId foreign_resource_id{"resource:indexer:foreign"};
+    const agent_memory::DocumentId foreign_document_id{"doc:indexer:foreign"};
+    const agent_memory::ChunkId foreign_chunk_id{"chunk:indexer:foreign"};
+    indexer.reindex_resource(make_snapshot(
+        foreign_resource_id,
+        1,
+        foreign_document_id,
+        {
+            make_chunk(foreign_chunk_id, foreign_document_id, 0, "foreign source chunk")
+        }
+    ));
+
+    const auto owned_foreign_manifest = manifest_storage.find_manifest(foreign_resource_id);
+    if(!owned_foreign_manifest) {
+        return fail("foreign manifest fixture must publish an owned baseline");
+    }
+
+    auto foreign_manifest = *owned_foreign_manifest;
+    foreign_manifest.records.push_back(agent_memory::DerivedRecordRef{
+        agent_memory::DerivedRecordKind::Document,
+        {},
+        "doc:indexer:unrelated",
+        99
+    });
+    foreign_manifest.records.push_back(agent_memory::DerivedRecordRef{
+        agent_memory::DerivedRecordKind::BinaryBucketPosting,
+        {},
+        "bucket:indexer:foreign",
+        99
+    });
+    foreign_manifest.records.push_back(agent_memory::DerivedRecordRef{
+        agent_memory::DerivedRecordKind::LexicalPosting,
+        {},
+        "lexical:indexer:foreign",
+        99
+    });
+    foreign_manifest.records.push_back(agent_memory::DerivedRecordRef{
+        agent_memory::DerivedRecordKind::GraphRecord,
+        {},
+        "graph:indexer:foreign",
+        99
+    });
+    foreign_manifest.records.push_back(agent_memory::DerivedRecordRef{
+        agent_memory::DerivedRecordKind::Custom,
+        {},
+        "custom:indexer:foreign",
+        99
+    });
+    if(!agent_memory::is_valid_resource_manifest(foreign_manifest)) {
+        return fail("foreign manifest fixture must remain generically valid");
+    }
+    manifest_storage.inject_unchecked_manifest(std::move(foreign_manifest));
+
+    manifest_storage.reset_operation_counts();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            foreign_resource_id,
+            2,
+            agent_memory::DocumentId{"doc:indexer:foreign:replacement"},
+            {}
+        ));
+        return fail("resource indexer must reject a generically valid foreign manifest");
+    } catch(const agent_memory::ResourceIndexManifestCompatibilityError& error) {
+        if(error.reason() != agent_memory::ResourceIndexManifestCompatibilityReason::InvalidTopology) {
+            return fail("foreign topology must report an invalid-topology compatibility error");
+        }
+    }
+
+    if(
+        embedder.call_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        !document_storage.find_document(foreign_document_id) ||
+        !vector_index.find(foreign_chunk_id)
+    ) {
+        return fail("foreign manifest reindex rejection must occur before storage mutation");
+    }
+
+    manifest_storage.reset_operation_counts();
+    try {
+        (void)indexer.erase_resource(foreign_resource_id);
+        return fail("resource indexer erase must reject a foreign manifest");
+    } catch(const agent_memory::ResourceIndexManifestCompatibilityError& error) {
+        if(error.reason() != agent_memory::ResourceIndexManifestCompatibilityReason::InvalidTopology) {
+            return fail("foreign erase must report an invalid-topology compatibility error");
+        }
+    }
+
+    if(
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        !document_storage.find_document(foreign_document_id) ||
+        !vector_index.find(foreign_chunk_id)
+    ) {
+        return fail("foreign manifest erase rejection must occur before storage mutation");
+    }
+
+    const agent_memory::ResourceId foreign_schema_resource_id{
+        "resource:indexer:foreign-schema"
+    };
+    const agent_memory::DocumentId foreign_schema_document_id{
+        "doc:indexer:foreign-schema"
+    };
+    const agent_memory::ChunkId foreign_schema_chunk_id{
+        "chunk:indexer:foreign-schema"
+    };
+    indexer.reindex_resource(make_snapshot(
+        foreign_schema_resource_id,
+        1,
+        foreign_schema_document_id,
+        {
+            make_chunk(
+                foreign_schema_chunk_id,
+                foreign_schema_document_id,
+                0,
+                "foreign schema chunk"
+            )
+        }
+    ));
+    const auto owned_foreign_schema_manifest = manifest_storage.find_manifest(
+        foreign_schema_resource_id
+    );
+    if(!owned_foreign_schema_manifest) {
+        return fail("foreign-schema fixture must publish an owned baseline");
+    }
+
+    auto foreign_schema_manifest = *owned_foreign_schema_manifest;
+    foreign_schema_manifest.schema = agent_memory::ResourceManifestSchema{
+        "third_party.resource_indexer",
+        1
+    };
+    if(!agent_memory::is_valid_resource_manifest(foreign_schema_manifest)) {
+        return fail("foreign-schema fixture must remain generically valid");
+    }
+    manifest_storage.inject_unchecked_manifest(std::move(foreign_schema_manifest));
+
+    manifest_storage.reset_operation_counts();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            foreign_schema_resource_id,
+            2,
+            agent_memory::DocumentId{"doc:indexer:foreign-schema:replacement"},
+            {}
+        ));
+        return fail("resource indexer must reject a V5 manifest owned by another indexer");
+    } catch(const agent_memory::ResourceIndexManifestCompatibilityError& error) {
+        if(error.reason() != agent_memory::ResourceIndexManifestCompatibilityReason::ForeignSchema) {
+            return fail("foreign owner schema must report a foreign-schema compatibility error");
+        }
+    }
+
+    try {
+        (void)indexer.erase_resource(foreign_schema_resource_id);
+        return fail("resource indexer erase must reject a V5 manifest owned by another indexer");
+    } catch(const agent_memory::ResourceIndexManifestCompatibilityError& error) {
+        if(error.reason() != agent_memory::ResourceIndexManifestCompatibilityReason::ForeignSchema) {
+            return fail("foreign owner schema erase must report a foreign-schema compatibility error");
+        }
+    }
+
+    if(
+        embedder.call_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        !document_storage.find_document(foreign_schema_document_id) ||
+        !vector_index.find(foreign_schema_chunk_id)
+    ) {
+        return fail("foreign owner schema must be rejected before storage mutation");
+    }
+
+    const agent_memory::ResourceId legacy_format_resource_id{"resource:indexer:legacy-format"};
+    const agent_memory::DocumentId legacy_format_document_id{"doc:indexer:legacy-format"};
+    const agent_memory::ChunkId legacy_format_chunk_id{"chunk:indexer:legacy-format"};
+    indexer.reindex_resource(make_snapshot(
+        legacy_format_resource_id,
+        1,
+        legacy_format_document_id,
+        {
+            make_chunk(legacy_format_chunk_id, legacy_format_document_id, 0, "legacy format chunk")
+        }
+    ));
+    const auto current_format_manifest = manifest_storage.find_manifest(legacy_format_resource_id);
+    if(!current_format_manifest) {
+        return fail("legacy-format fixture must publish an owned baseline");
+    }
+
+    auto legacy_format_manifest = *current_format_manifest;
+    legacy_format_manifest.payload_version = agent_memory::ResourceManifestPayloadVersion::V4;
+    legacy_format_manifest.schema = {};
+    manifest_storage.inject_unchecked_manifest(std::move(legacy_format_manifest));
+
+    manifest_storage.reset_operation_counts();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            legacy_format_resource_id,
+            2,
+            agent_memory::DocumentId{"doc:indexer:legacy-format:replacement"},
+            {}
+        ));
+        return fail("resource indexer must require migration for legacy payloads");
+    } catch(const agent_memory::ResourceIndexManifestCompatibilityError& error) {
+        if(error.reason() != agent_memory::ResourceIndexManifestCompatibilityReason::LegacyPayload) {
+            return fail("legacy payload must report a migration-required compatibility error");
+        }
+    }
+
+    try {
+        (void)indexer.erase_resource(legacy_format_resource_id);
+        return fail("resource indexer erase must require legacy payload migration");
+    } catch(const agent_memory::ResourceIndexManifestCompatibilityError& error) {
+        if(error.reason() != agent_memory::ResourceIndexManifestCompatibilityReason::LegacyPayload) {
+            return fail("legacy erase must report a migration-required compatibility error");
+        }
+    }
+
+    if(
+        embedder.call_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        !document_storage.find_document(legacy_format_document_id) ||
+        !vector_index.find(legacy_format_chunk_id)
+    ) {
+        return fail("legacy manifest rejection must occur before storage mutation");
     }
 
     return 0;

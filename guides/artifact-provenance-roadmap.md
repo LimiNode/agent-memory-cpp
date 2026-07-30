@@ -60,7 +60,7 @@ be random occurrence ids or deterministic identities over their declared
 immutable inputs, but a codec must document which. `KnowledgeUnitId` and
 `ResourceId` remain local handles and are never substituted for these ids.
 
-Every catalog manifest and workspace backup set declares the identity scheme
+Every catalog manifest and `WorkspaceBackupManifest` declares the identity scheme
 that produced its durable ids. Import accepts only an identical scheme or an
 explicit registered migration; it must otherwise fail closed before rewriting
 or publishing any catalog record.
@@ -777,12 +777,12 @@ The existing `ResourceBodyStore` rules remain in force:
 Backups have two levels:
 
 ```text
-Catalog backup
-  catalog metadata, unit/projection records, source and artifact manifests.
+Workspace backup
+  WorkspaceBackupManifest + the profile-selected canonical/logical record sets.
 
-Workspace backup set
-  catalog backup + SourceOriginal and DerivedDurable artifact bytes +
-  checksums, retention classes and processor manifests.
+Artifact backup set (M2 ArtifactProvenance only)
+  workspace backup + artifact catalog metadata + SourceOriginal and
+  DerivedDurable bytes + retention classes and processor manifests.
 ```
 
 ```cpp
@@ -804,12 +804,13 @@ struct WorkspaceBackupManifest {
     std::string encryption_descriptor;
     std::vector<AuthoritativeLogicalRecordSet>
         profile_selected_logical_record_sets;
+    BlobDigest workspace_root_digest;
 };
 
 // M2 artifact extension. It is present only for ArtifactProvenance profiles.
 struct BackupSetManifest {
     WorkspaceBackupManifest workspace;
-    BlobDigest catalog_root_digest;
+    BlobDigest artifact_catalog_root_digest;
     ArtifactIdentityScheme artifact_identity_scheme;
     std::vector<ArtifactId> required_artifact_ids;
 };
@@ -818,10 +819,26 @@ struct BackupSetManifest {
 `WorkspaceBackupManifest` is the profile-neutral portable point-in-time restore
 contract. It covers canonical workspace state selected by the profile, validates
 the unit identity scheme, profile/codec and encryption descriptors, and checks
-every profile-selected authoritative logical record set before publication.
+every profile-selected authoritative logical record set before publication. Each
+profile must select its base closure explicitly: KnowledgeUnit envelopes,
+selected canonical components/payloads, lifecycle and lineage records, and any
+canonical SourceRef or durable projection record set that its capabilities make
+authoritative. Rebuildable lexical, ANN/vector and cache state is never a base
+record set. `workspace_root_digest` is an algorithm-tagged digest over
+`WorkspaceBackupManifestCodecV1`: the format/profile/identity/codec/encryption
+descriptors and the canonical ordered descriptors of every selected logical
+record set, excluding the root field itself. Unknown codec versions, missing
+required base sets, duplicate set identities or a root mismatch fail restore
+before publication.
+
+Restore validates reference closure after every selected set digest succeeds:
+each retained component, projection, lifecycle/lineage edge, SourceRef,
+EvidenceAnchor, receipt and graph edge must resolve to the canonical record set
+that owns its durable target. A profile cannot omit a referenced unit from the
+workspace merely because an optional acceleration index could later rebuild it.
 `BackupSetManifest` extends that base only when `ArtifactProvenance` is active:
 restore then additionally stages catalog metadata and required durable artifacts,
-validates the catalog root and artifact identity scheme, and requires every
+validates the artifact catalog root and artifact identity scheme, and requires every
 retained `SourceRef` and `EvidenceAnchor` to resolve. Rebuildable ANN/vector
 indexes remain outside both manifests and may be rebuilt only after validation.
 Failed restore leaves the target workspace unpublished.
@@ -856,7 +873,9 @@ byte order, never physical DBI/range order. A receipt uses
 set uses the single Relation-owned edge. An unknown recipe/version, duplicate
 logical identity, incorrect count or digest mismatch fails restore before
 publication. Acceptance includes cross-implementation byte-order fixtures for
-receipts and graph edges.
+receipts and graph edges, a missing canonical KnowledgeUnit referenced by a
+receipt, and a modified canonical component/projection. Each case must fail the
+set or workspace root/closure validation before publication.
 
 Rebuildable caches, thumbnails, temporary clips and all ANN/vector index state
 are excluded from a complete workspace backup. An artifact-enabled workspace

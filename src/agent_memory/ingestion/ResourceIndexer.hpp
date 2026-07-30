@@ -20,6 +20,26 @@ namespace agent_memory {
     class IEmbedder;
     class IVectorIndex;
 
+    enum class ResourceIndexManifestCompatibilityReason : std::uint8_t {
+        LegacyPayload,
+        ForeignSchema,
+        InvalidTopology
+    };
+
+    /// \brief Reports that a stored manifest cannot safely drive indexer cleanup.
+    class ResourceIndexManifestCompatibilityError final : public std::logic_error {
+    public:
+        ResourceIndexManifestCompatibilityError(
+            ResourceIndexManifestCompatibilityReason reason,
+            const char* message
+        );
+
+        [[nodiscard]] ResourceIndexManifestCompatibilityReason reason() const noexcept;
+
+    private:
+        ResourceIndexManifestCompatibilityReason m_reason;
+    };
+
     /// \brief Pre-chunked resource state ready to be indexed.
     struct ResourceIndexSnapshot final {
         ResourceRevision revision;

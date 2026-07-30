@@ -37,7 +37,7 @@ Disclaimer:
 |---|---|---|---|
 | mem0 | Python SDK / server | Universal memory layer для AI agents. Multi-level memory, user/session/agent state, hybrid search, BM25, entity extraction, temporal reasoning. | agent-memory-cpp НЕ SDK; C++17 core. mem0 = продукт/обёртка, мы = primitive для embedding. |
 | Letta / MemGPT | Python платформа | Stateful agents с advanced memory + runtime + self-improve. | Letta = agent runtime platform. Мы = memory/retrieval core без agent loop. Потенциальный customer: наш core как storage backend для Letta. |
-| Graphiti / Zep | Python library | Temporal context graphs для AI agents. Bi-temporal facts, provenance/source data, episodes, incremental updates, hybrid retrieval, deterministic-first dedupe. | **Самый близкий конкурент по temporal+provenance части**. Python-only, не embedded. Наша ниша: embedded C++17; current M1 uses `TemporalComponent` + `GraphEdge`, while Graphiti-style bi-temporal semantics are tracked as M2+ AM-13 and entity-resolution/query-safety lessons are tracked as AM-19..AM-21. |
+| Graphiti / Zep | Python library | Temporal context graphs для AI agents. Bi-temporal facts, provenance/source data, episodes, incremental updates, hybrid retrieval, deterministic-first dedupe. | **Самый близкий конкурент по temporal+provenance части**. Python-only, не embedded. Наша ниша: embedded C++17; current M1 uses `TemporalComponent` + `GraphEdge`, while Graphiti-style bi-temporal semantics are tracked as M2+ AM-13, the optional `TemporalContextGraphMemory` profile is AM-22, and entity-resolution/query-safety lessons are tracked as AM-19..AM-21. |
 | Cognee | Python platform | Self-hosted AI memory platform с persistent long-term memory, knowledge graph, vector embeddings, graph reasoning, ontology generation. | Cognee = Python платформа с UI/ingestion. Мы = storage/retrieval core для embedding в C++ apps. |
 | A-MEM / AgenticMemory | Research prototype | Zettelkasten-style agentic memory: dynamic organization, notes, structured attributes, links, memory evolution. (arXiv:2502.12110) | Research-grade, не production. Inspirational для memory evolution (CompactionWorker + SummaryTreeJob). |
 | LightRAG | Python framework | Dual-level graph + vector RAG (EMNLP 2025). | LightRAG = document RAG framework, не typed agent memory. Совпадает по hybrid retrieval pattern (graph + vector + RRF). |
@@ -98,7 +98,7 @@ Disclaimer:
 
 ## 6. Architecture inspiration notes (что позаимствовать из каждого)
 
-- **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until), episodes as source evidence, deterministic-first entity/edge dedupe and hybrid semantic+keyword+graph retrieval. Current M1 design has single-axis `TemporalComponent` + `GraphEdge`; Graphiti-style valid-time/recorded-time semantics are planned in [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md) AM-13, with AM-19..AM-21 covering entity resolution, typed query/MCP safety and logical index separation.
+- **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until), episodes as source evidence, deterministic-first entity/edge dedupe and hybrid semantic+keyword+graph retrieval. Current M1 design has single-axis `TemporalComponent` + `GraphEdge`; Graphiti-style valid-time/recorded-time semantics are planned in [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md) AM-13, with AM-19..AM-22 covering entity resolution, typed query/MCP safety, logical index separation and the optional temporal-context-graph profile/evaluation lane.
 - **Cognee**: knowledge graph + community detection для "global questions". У нас CommunitySummaryJob (M2+, GraphRAG-style).
 - **mem0**: explicit fact extraction с slot-based QA retrieval. У нас QALookup slot в QAKB profile.
 - **Letta / MemGPT**: agent context block architecture (Persona + Memory + Recent). У нас ContextBlock / Context через ContextBuilder.
@@ -135,9 +135,9 @@ Disclaimer:
 - M2+: Lifecycle governance AM-13..AM-18 — map bi-temporal validity,
   derivation/causal relations, progressive retrieval and mutation policy to
   concrete profile deltas and DBI budget before implementation.
-- M2+: Graphiti/Zep follow-ups AM-19..AM-21 — entity-resolution fixtures,
-  typed MCP/tool filter tests and logical index separation benchmarks before
-  claiming Graphiti-style production readiness.
+- M2+: Graphiti/Zep follow-ups AM-19..AM-22 — entity-resolution fixtures,
+  typed MCP/tool filter tests, logical-index separation and temporal-context-
+  graph comparison parity before claiming Graphiti-style production readiness.
 - M2: Community detection (Leiden/Louvain) для CommunitySummaryJob — брать готовую C++ библиотеку или своя реализация? (deferred M2+)
 - M2: SPLADE / ColBERT adapters — пробовать интегрировать готовые реализации или LLM-distilled sparse vectors?
 - M3: Distributed scope routing — у mem0 и Zep это multi-tenant. У нас пока single-process. (out of scope, research)

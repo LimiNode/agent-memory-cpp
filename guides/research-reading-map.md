@@ -321,7 +321,7 @@ Phase 5a — playbook follow-ups:
 | doc2query / document expansion | chunkers-roadmap.md | M2+ materialized derived SearchProjection |
 | arXiv:2603.07670 (Agent memory survey) | memory-lifecycle-governance-roadmap.md | AM-13..AM-18 |
 | arXiv:2510.21903 / arXiv:2605.10306 (ToM / Mind Modeling) | memory-lifecycle-governance-roadmap.md | Out-of-core ADELIA/runtime boundary |
-| getzep/graphiti + Zep engineering notes | memory-lifecycle-governance-roadmap.md | AM-19..AM-21 |
+| getzep/graphiti + Zep engineering notes | memory-lifecycle-governance-roadmap.md | AM-19..AM-22 |
 | arXiv:2310.11511 (Self-RAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 | arXiv:2401.15884 (CRAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 

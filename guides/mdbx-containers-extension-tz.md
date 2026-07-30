@@ -1890,6 +1890,22 @@ Generic requirements:
 - `ReverseIndexTable::remove_all_for` and any future generic
   bidirectional-relation helper must leave no dangling reverse entries.
 
+`TemporalContextGraphMemory` (M2+ in
+`memory-lifecycle-governance-roadmap.md`) uses this same downstream pattern:
+one Relation-owned edge, two atomically maintained orientations, application
+payload for validity/provenance/evidence, scope-aware temporal candidate
+indexes, and bounded traversal pages. It does not require a Graphiti-specific
+database, ontology store, traversal engine or temporal-policy API in
+`mdbx-containers`.
+
+Reconsider a generic upstream relation helper only after two independent
+consumers have demonstrated the same non-domain-specific requirement and
+benchmarked it against the adapter-local two-orientation recipe. A proposal
+would need deterministic cursor pagination, atomic insert/update/remove of
+both orientations, explicit duplicate/idempotency semantics, a C++11-compatible
+surface, and no interpretation of node kinds, edge kinds, validity, evidence,
+lifecycle or traversal policy.
+
 ### 12.3 Temporal and source-attributed records
 
 `Event`, `occurred_at_ms`, `observed_at_ms`, `source_id` and freshness ranking

@@ -485,6 +485,43 @@ Rules:
 - Deterministic thresholds are project-owned constants and must carry
   provenance in docs/tests when copied from an external reference.
 
+The ambiguous path has a durable proposal boundary, rather than a special
+Graphiti-only write path:
+
+```cpp
+enum class EntityResolutionRecommendation : uint8_t {
+    CreateNew,
+    LinkAlias,
+    MergeIntoExisting,
+    KeepDistinct,
+    FlagContradiction,
+    Reject,
+};
+
+struct EntityResolutionProposal {
+    EntityResolutionRecommendation recommendation;
+    std::optional<EntityId> proposed_target;
+    std::vector<EntityId> considered_candidates;
+    std::vector<KnowledgeUnitRef> evidence;
+    std::string resolver_policy_id;
+    std::uint32_t resolver_policy_version = 0;
+    std::string resolver_fingerprint;
+    double confidence = 0.0;
+};
+```
+
+The proposal is immutable evidence. Applying it creates a regular
+`MemoryEditIntent` or a new Relation/Fact lineage with an expected revision;
+it never rewrites an existing entity, fact or graph edge in place. Policy may
+auto-apply only deterministic exact matches that meet its explicit threshold.
+Every heuristic or LLM-assisted recommendation is auditable and may be
+accepted, rejected, or superseded without destroying the original episode.
+
+Required M2+ fixtures cover exact alias resolution, same-name distinct
+entities, ambiguous candidates, an evidence-free rejection, a stale
+compare-and-swap application, and a later contradiction that keeps both claims
+retrieval-visible in audit mode.
+
 ## 11. AM-20: Typed Query And MCP Safety
 
 LLM-facing tools must never turn model output into storage syntax.
@@ -558,7 +595,55 @@ resolution, offline extraction, or final answer generation. Baseline retrieval
 must remain usable without an LLM call and must record all expansion/filtering
 steps in `IRetrievalTrace`.
 
-## 13. Deferred To ADELIA / Runtime
+## 13. AM-22: Temporal Context Graph Profile And Graphiti Evaluation
+
+`TemporalContextGraphMemory` is an M2+ profile assembled from existing
+canonical concepts, not a second graph database or a parallel source of truth:
+
+```text
+raw Episode / ConversationEpisode / Note
+  -> Entity, Fact and Relation units
+  -> BiTemporalComponent + DerivationComponent + ordinary lifecycle lineage
+  -> graph_edges_by_src / graph_edges_by_dst and temporal candidate indexes
+  -> bounded hybrid RetrievalPlan route + canonical hydration
+```
+
+Episodes remain immutable source evidence. Facts and Relation units are derived
+claims with validity, recorded/invalidated times, derivation evidence and
+policy-controlled supersedence. The profile may use prescribed entity/relation
+kinds or an approved learned ontology registry, but model-generated labels
+must first resolve through that typed registry. They never become backend graph
+labels or DBI names.
+
+Retrieval uses the existing CandidateSet, `RetrievalAccessContext`, temporal
+frontier and final hydration rules. It may combine lexical, dense, entity,
+temporal and bounded graph-expansion routes, but must use one shared lifecycle
+and authority check. A traversal cannot revive an inaccessible, invalidated or
+stale unit merely because a neighbouring edge still exists for audit.
+
+The profile creates no new upstream `mdbx-containers` abstraction. Its first
+implementation uses the existing downstream Relation-owned two-orientation
+edge recipe, scope-aware temporal indexes, transactions and bounded pages. Any
+additional physical DBI delta, graph traversal cache or service split needs an
+explicit profile manifest row, owner, benchmark and restore/rebuild contract.
+
+Graphiti is an optional external baseline and adapter experiment, not a linked
+runtime dependency. A fair comparison uses the same episode corpus, source
+revision policy, identity/alias fixtures, query set, access filter, embedding
+model and cold/warm procedure. Report entity-link precision/recall, fact and
+temporal-answer accuracy, citation/provenance fidelity, contradiction handling,
+update/delete latency, p50/p99 retrieval latency, ingest throughput, disk/RSS
+and any LLM token/cost. Feature coverage and semantics must be published beside
+performance numbers; no result may imply that the two systems share an
+identical storage model.
+
+Acceptance requires a revisioned fixture set with alias, same-name ambiguity,
+fact invalidation, preference change, cross-episode integration, conflicting
+perspectives, historical `KnownAt` query and evidence-anchor recovery. Native
+and external-baseline runs use the same golden expected answers and retain a
+`ComparisonParityManifest`.
+
+## 14. Deferred To ADELIA / Runtime
 
 The following proposals are valuable, but they are not core
 `agent-memory-cpp` roadmap items:
@@ -574,7 +659,7 @@ The following proposals are valuable, but they are not core
 
 They can consume the memory core through regular read/write/policy interfaces.
 
-## 14. Roadmap Placement
+## 15. Roadmap Placement
 
 Suggested maturity placement:
 
@@ -584,6 +669,7 @@ Suggested maturity placement:
   expanded evaluation metrics.
 - M2+: add abstraction/derivation graph, causal relation vocabulary and
   progressive retrieval; add deterministic-first entity resolution, typed
-  query/MCP safety and logical index separation.
+  query/MCP safety, logical index separation and the optional
+  `TemporalContextGraphMemory` profile/evaluation lane.
 - M3/research: application-level mind models and workflow orchestration in
   sibling projects, validated against the same memory trace/eval harness.

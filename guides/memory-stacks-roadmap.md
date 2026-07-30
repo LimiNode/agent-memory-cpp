@@ -502,6 +502,8 @@ struct ArtifactProvenanceBinding {
     std::string catalog_descriptor;
     std::string blob_store_descriptor;
     ArtifactIdentityScheme artifact_identity_scheme;
+    std::string binding_fingerprint_recipe_id =
+        "agent_memory.artifact_provenance_binding/v1";
     BlobDigest binding_fingerprint;
 };
 
@@ -743,6 +745,22 @@ enum class BudgetExhaustionAction : uint8_t {
     FailIfRequired,
 };
 
+enum class RetrievalRouteCompletion : uint8_t {
+    Complete,
+    Partial,
+    Unavailable,
+    BudgetExhausted,
+    Dropped,
+    RequiredRouteFailed,
+};
+
+enum class IncompleteRouteAction : uint8_t {
+    UseExplicitFallbackRoute,
+    ReturnPartial,
+    DropRoute,
+    FailIfRequired,
+};
+
 struct DenseProjectionRoute {
     std::string route_id;
     ProjectionRouteActivation activation = ProjectionRouteActivation::Root;
@@ -756,6 +774,7 @@ struct DenseProjectionRoute {
     FusionStrategy fusion_strategy = FusionStrategy::RRF;
     MissingProjectionPolicy on_missing = MissingProjectionPolicy::ReturnEmpty;
     std::optional<std::string> fallback_route_id;
+    IncompleteRouteAction on_incomplete = IncompleteRouteAction::UseExplicitFallbackRoute;
     std::optional<RetrievalIoBudget> io_budget;
     std::optional<TieredRerankBudget> rerank_budget;
     BudgetExhaustionAction on_budget_exhaustion = BudgetExhaustionAction::ReturnPartial;
@@ -775,6 +794,7 @@ struct RetrievalAccessContext {
 
 enum class RetrievalCompletion : uint8_t {
     Complete,
+    Partial,
     BudgetExhausted,
     RouteDropped,
     RequiredRouteFailed,
@@ -879,6 +899,20 @@ allowance remains available to later routes. `0` is invalid for an engaged cap;
 an absent optional budget means that level supplies no additional cap. A future
 parallel executor must reproduce this observable accounting until a separate
 fair-sharing contract is accepted.
+
+Every retrieval route has an exactness/completion result separate from its hit
+count. `Complete` means the route met its own exact corpus/snapshot contract;
+`Partial` names its covered and unavailable partitions in the route trace;
+`Unavailable` returns no candidates because that contract could not be met.
+`DenseProjectionRoute` shows the `on_incomplete` field explicitly; every
+lexical, graph or temporal route specification introduced later must carry the
+same `IncompleteRouteAction` and optional fallback-route reference. For an
+incomplete corpus result (for example lexical stale-block recovery), the route
+follows that declared action: explicit fallback, opt-in partial fusion, drop,
+or required-route failure. A partial route never becomes
+`RetrievalResult::Complete`; the query result is `Partial` unless a policy-
+approved fallback replaces it with an exact route. An unavailable route never
+masquerades as an empty exact route.
 
 On budget exhaustion, a route follows its declared `on_budget_exhaustion`.
 `ReturnPartial` may participate in fusion only with an explicit partial outcome;
@@ -1336,6 +1370,20 @@ requires their complete `ArtifactIdentityScheme` values to equal the binding,
 and verifies `binding_fingerprint` against the canonical versioned binding
 encoding. A scheme id, version, derivation rule, digest-algorithm or fingerprint
 mismatch fails closed before any catalog/blob handle is published.
+
+`agent_memory.artifact_provenance_binding/v1` is the required binding recipe
+until a separately named recipe is accepted. Its preimage begins with the ASCII
+domain tag `agent-memory.artifact-provenance-binding/v1`, then encodes in this
+exact order: recipe id, catalog descriptor, blob-store descriptor,
+`ArtifactIdentityScheme.scheme_id`, `scheme_version`,
+`artifact_id_derivation`, and `digest_algorithm`. Every string is well-formed
+UTF-8 normalized to NFC and is encoded as a big-endian `uint32` byte length
+followed by its bytes; `scheme_version` is a big-endian `uint32`. The output is
+a SHA-256 `BlobDigest` over that preimage. No delimiter concatenation, locale
+normalization, display label, secret, or resolved local handle participates.
+The recipe id and resulting digest both participate in `profile_signature`.
+Implementations reject a non-NFC descriptor, an unknown recipe, a non-SHA-256
+binding digest, or any digest that does not match this exact preimage.
 `DurableGlobalIdentity` capability is present iff
 `enable_durable_global_identity == true`; it selects the
 `global_unit_id_to_local_id` profile delta and supplies the portable occurrence
@@ -1378,14 +1426,18 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | envelope_schema_version в spec соответствует сохранённому | "Schema version mismatch (migration required)" |
 
 Дополнительно: `profile_signature` (hash от spec, включая
+`ArtifactProvenanceBinding.binding_fingerprint_recipe_id` и
 `ArtifactProvenanceBinding.binding_fingerprint`, когда binding задан) сохраняется
 в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с
 текущим и диагностируется drift.
 
 M2 artifact-binding acceptance includes incomplete binding, unresolved
 descriptor, catalog/blob identity-scheme mismatch and stale or non-canonical
-binding-fingerprint negative fixtures. Each must fail before the stack exposes
-an `ArtifactProvenance` capability or publishes a catalog/blob handle.
+binding-fingerprint negative fixtures. It also includes a cross-implementation
+golden V1 byte preimage and SHA-256 digest, a changed
+`artifact_id_derivation` negative fixture, and an invalid descriptor-normalization
+fixture. Each must fail before the stack exposes an `ArtifactProvenance`
+capability or publishes a catalog/blob handle.
 
 ## 11. Layer Architecture
 

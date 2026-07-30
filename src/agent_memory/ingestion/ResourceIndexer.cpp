@@ -14,6 +14,165 @@ namespace agent_memory {
 
     namespace {
 
+        constexpr char RESOURCE_INDEXER_MANIFEST_SCHEMA_ID[] =
+            "agent_memory.resource_indexer";
+        constexpr std::uint32_t RESOURCE_INDEXER_MANIFEST_SCHEMA_VERSION = 1;
+
+        bool is_resource_indexer_schema(const ResourceManifest& manifest) noexcept {
+            return manifest.payload_version == ResourceManifestPayloadVersion::V5 &&
+                manifest.schema.schema_id == RESOURCE_INDEXER_MANIFEST_SCHEMA_ID &&
+                manifest.schema.schema_version == RESOURCE_INDEXER_MANIFEST_SCHEMA_VERSION;
+        }
+
+        bool is_resource_indexer_active_record_sequence(
+            const std::vector<DerivedRecordRef>& records
+        ) noexcept {
+            if(
+                records.empty() ||
+                records.front().kind != DerivedRecordKind::Document ||
+                records.front().ordinal != 0
+            ) {
+                return false;
+            }
+
+            if((records.size() - 1) % 3 != 0) {
+                return false;
+            }
+
+            for(std::size_t record_index = 1, ordinal = 0;
+                record_index < records.size();
+                record_index += 3, ++ordinal) {
+                const auto& chunk = records[record_index];
+                const auto& embedding = records[record_index + 1];
+                const auto& vector = records[record_index + 2];
+                if(
+                    chunk.kind != DerivedRecordKind::Chunk ||
+                    embedding.kind != DerivedRecordKind::Embedding ||
+                    vector.kind != DerivedRecordKind::VectorRecord ||
+                    chunk.ordinal != ordinal ||
+                    embedding.ordinal != ordinal ||
+                    vector.ordinal != ordinal ||
+                    chunk.chunk_id.empty() ||
+                    chunk.chunk_id != embedding.chunk_id ||
+                    chunk.chunk_id != vector.chunk_id
+                ) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        int resource_indexer_chunk_record_rank(DerivedRecordKind kind) noexcept {
+            switch(kind) {
+            case DerivedRecordKind::Chunk:
+                return 0;
+            case DerivedRecordKind::Embedding:
+                return 1;
+            case DerivedRecordKind::VectorRecord:
+                return 2;
+            case DerivedRecordKind::Document:
+            case DerivedRecordKind::BinaryBucketPosting:
+            case DerivedRecordKind::LexicalPosting:
+            case DerivedRecordKind::GraphRecord:
+            case DerivedRecordKind::Custom:
+                return -1;
+            }
+            return -1;
+        }
+
+        bool is_resource_indexer_pending_reclaim_sequence(
+            const std::vector<DerivedRecordRef>& records
+        ) noexcept {
+            if(records.empty()) {
+                return true;
+            }
+
+            std::size_t position = 0;
+            if(records.front().kind == DerivedRecordKind::Document) {
+                if(records.front().ordinal != 0) {
+                    return false;
+                }
+                ++position;
+                if(position == records.size()) {
+                    return true;
+                }
+            }
+
+            int expected_rank = resource_indexer_chunk_record_rank(records[position].kind);
+            if(expected_rank < 0) {
+                return false;
+            }
+
+            std::uint32_t expected_ordinal = records[position].ordinal;
+            ChunkId expected_chunk_id = records[position].chunk_id;
+            for(; position < records.size(); ++position) {
+                const auto& record = records[position];
+                if(
+                    resource_indexer_chunk_record_rank(record.kind) != expected_rank ||
+                    record.ordinal != expected_ordinal ||
+                    record.chunk_id != expected_chunk_id
+                ) {
+                    return false;
+                }
+
+                ++expected_rank;
+                if(expected_rank == 3) {
+                    expected_rank = 0;
+                    ++expected_ordinal;
+                    if(position + 1 < records.size()) {
+                        expected_chunk_id = records[position + 1].chunk_id;
+                    }
+                }
+            }
+
+            return expected_rank == 0;
+        }
+
+        void validate_resource_indexer_manifest(
+            const ResourceManifest& manifest,
+            const ResourceId& expected_resource_id
+        ) {
+            if(
+                !is_valid_resource_manifest(manifest) ||
+                manifest.revision.resource_id != expected_resource_id
+            ) {
+                throw ResourceIndexManifestCompatibilityError(
+                    ResourceIndexManifestCompatibilityReason::InvalidTopology,
+                    "Stored resource manifest is invalid"
+                );
+            }
+
+            if(manifest.payload_version != ResourceManifestPayloadVersion::V5) {
+                throw ResourceIndexManifestCompatibilityError(
+                    ResourceIndexManifestCompatibilityReason::LegacyPayload,
+                    "Stored resource manifest requires explicit migration"
+                );
+            }
+
+            if(!is_resource_indexer_schema(manifest)) {
+                throw ResourceIndexManifestCompatibilityError(
+                    ResourceIndexManifestCompatibilityReason::ForeignSchema,
+                    "Stored resource manifest is not owned by ResourceIndexer"
+                );
+            }
+
+            if(
+                !manifest.revision.body_digest ||
+                !is_valid_resource_body_digest(*manifest.revision.body_digest) ||
+                manifest.revision.pipeline_config_hash == 0 ||
+                !is_resource_indexer_active_record_sequence(manifest.records) ||
+                !is_resource_indexer_pending_reclaim_sequence(
+                    manifest.pending_reclaim_records
+                )
+            ) {
+                throw ResourceIndexManifestCompatibilityError(
+                    ResourceIndexManifestCompatibilityReason::InvalidTopology,
+                    "Stored resource manifest is not compatible with ResourceIndexer"
+                );
+            }
+        }
+
         void validate_resource_index_snapshot(const ResourceIndexSnapshot& snapshot) {
             if(snapshot.revision.resource_id.empty()) {
                 throw std::invalid_argument("ResourceIndexSnapshot resource id must not be empty");
@@ -43,6 +202,11 @@ namespace agent_memory {
         ResourceManifest make_manifest(const ResourceIndexSnapshot& snapshot) {
             ResourceManifest manifest;
             manifest.revision = snapshot.revision;
+            manifest.schema = ResourceManifestSchema{
+                RESOURCE_INDEXER_MANIFEST_SCHEMA_ID,
+                RESOURCE_INDEXER_MANIFEST_SCHEMA_VERSION
+            };
+            manifest.payload_version = ResourceManifestPayloadVersion::V5;
             manifest.records.push_back(DerivedRecordRef{
                 DerivedRecordKind::Document,
                 {},
@@ -132,6 +296,8 @@ namespace agent_memory {
             ResourceManifest unreclaimed;
             unreclaimed.revision = manifest.revision;
             unreclaimed.records = manifest.pending_reclaim_records;
+            unreclaimed.schema = manifest.schema;
+            unreclaimed.payload_version = manifest.payload_version;
             return unreclaimed;
         }
 
@@ -286,6 +452,18 @@ namespace agent_memory {
 
     } // namespace
 
+    ResourceIndexManifestCompatibilityError::ResourceIndexManifestCompatibilityError(
+        ResourceIndexManifestCompatibilityReason reason,
+        const char* message
+    )
+        : std::logic_error(message)
+        , m_reason(reason) {}
+
+    ResourceIndexManifestCompatibilityReason
+    ResourceIndexManifestCompatibilityError::reason() const noexcept {
+        return m_reason;
+    }
+
     ResourceIndexRollbackError::ResourceIndexRollbackError(
         std::exception_ptr original_failure,
         std::vector<ResourceIndexRecoveryFailure> recovery_failures
@@ -384,14 +562,11 @@ namespace agent_memory {
         auto old_manifest = m_manifest_storage->find_manifest(
             snapshot.revision.resource_id
         );
-        if(
-            old_manifest &&
-            (
-                !is_valid_resource_manifest(*old_manifest) ||
-                old_manifest->revision.resource_id != snapshot.revision.resource_id
-            )
-        ) {
-            throw std::logic_error("Stored resource manifest is invalid");
+        if(old_manifest) {
+            validate_resource_indexer_manifest(
+                *old_manifest,
+                snapshot.revision.resource_id
+            );
         }
 
         if(old_manifest) {
@@ -545,12 +720,7 @@ namespace agent_memory {
             return false;
         }
 
-        if(
-            !is_valid_resource_manifest(*manifest) ||
-            manifest->revision.resource_id != resource_id
-        ) {
-            throw std::logic_error("Stored resource manifest is invalid");
-        }
+        validate_resource_indexer_manifest(*manifest, resource_id);
 
         auto erase_pending = *manifest;
         if(is_active_resource_manifest(erase_pending)) {
@@ -564,13 +734,27 @@ namespace agent_memory {
     }
 
     void ResourceIndexer::erase_derived_record(const DerivedRecordRef& record) {
-        if(record.kind == DerivedRecordKind::Document && !record.key.empty()) {
+        switch(record.kind) {
+        case DerivedRecordKind::Document:
             m_document_storage->erase_document(DocumentId{record.key});
+            return;
+        case DerivedRecordKind::Chunk:
+        case DerivedRecordKind::Embedding:
+            // This prototype has no separate physical chunk or embedding store.
+            return;
+        case DerivedRecordKind::VectorRecord:
+            m_vector_index->erase(record.chunk_id);
+            return;
+        case DerivedRecordKind::BinaryBucketPosting:
+        case DerivedRecordKind::LexicalPosting:
+        case DerivedRecordKind::GraphRecord:
+        case DerivedRecordKind::Custom:
+            throw std::logic_error(
+                "ResourceIndexer cannot reclaim a record it does not own"
+            );
         }
 
-        if(record.kind == DerivedRecordKind::VectorRecord && !record.chunk_id.empty()) {
-            m_vector_index->erase(record.chunk_id);
-        }
+        throw std::logic_error("ResourceIndexer encountered an unknown record kind");
     }
 
     void ResourceIndexer::erase_derived_records(const ResourceManifest& manifest) {

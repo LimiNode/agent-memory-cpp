@@ -150,9 +150,13 @@ truth.
 ### M2+ - Research / Optional
 
 Bi-temporal storage, abstraction graphs, causal relations, entity resolution,
-logical sync adoption, late interaction, learned sparse backends, and advanced
-binary document encoders live here until they receive DBI budget rows,
-acceptance tests, and explicit profile owners.
+the optional `TemporalContextGraphMemory` profile, logical sync adoption, late
+interaction, learned sparse backends, and advanced binary document encoders
+live here until they receive DBI budget rows, acceptance tests, and explicit
+profile owners. The temporal-context-graph lane must also pass the Graphiti
+comparison parity/evidence suite defined in
+`memory-lifecycle-governance-roadmap.md`; Graphiti remains an external
+benchmark, not a dependency.
 
 M2+ physical-profile experiments include time-partitioned temporal segments,
 packed graph adjacency, hierarchical episode blocks, and multi-vector

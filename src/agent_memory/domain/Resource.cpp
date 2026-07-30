@@ -157,6 +157,13 @@ namespace agent_memory {
             return false;
         }
 
+        if(
+            (manifest.schema.schema_id.empty() && manifest.schema.schema_version != 0) ||
+            (!manifest.schema.schema_id.empty() && manifest.schema.schema_version == 0)
+        ) {
+            return false;
+        }
+
         for(const auto& record : manifest.records) {
             if(!is_valid_derived_record_ref(record)) {
                 return false;

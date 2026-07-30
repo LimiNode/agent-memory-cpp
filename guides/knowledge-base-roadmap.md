@@ -925,10 +925,13 @@ struct ProjectionRouteTrace {
     std::uint32_t output_candidate_count = 0;
     std::optional<std::string> external_constraint_fingerprint;
     std::uint32_t external_pre_ranking_eligible_count = 0;
-    std::string outcome;  // used, missing, recompute_scheduled, fallback, budget_exhausted, dropped
+    RetrievalRouteCompletion completion = RetrievalRouteCompletion::Complete;
+    std::optional<std::string> unavailable_reason;
+    std::vector<TokenId> covered_token_ids;
+    std::vector<TokenId> unavailable_token_ids;
+    std::string route_action;  // used, partial, fallback, dropped, or recompute_scheduled
     std::optional<std::string> fallback_route_id;
     RetrievalIoCounters io_counters;
-    RetrievalCompletion completion = RetrievalCompletion::Complete;
 };
 
 struct PolicyDecisionTrace {
@@ -987,8 +990,8 @@ Latency per stage: tokenize, lexical, vector, qa, graph, temporal, fusion, build
 
 `RetrievalIoCounters` records segment reads, MDBX cursor seeks, encoded and
 decoded bytes, cache hits/misses when available, and the first exhausted I/O
-limit. `ProjectionRouteTrace` records exact route use, missing projections,
-scheduled recompute, and explicit fallback. These supplement the existing
+limit. `ProjectionRouteTrace` records exact, partial and unavailable route use,
+missing projections, scheduled recompute, and explicit fallback. These supplement the existing
 per-stage latency and channel metrics without turning optional page-fault data
 into a portability-sensitive correctness gate.
 

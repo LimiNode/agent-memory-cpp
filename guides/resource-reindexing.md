@@ -413,6 +413,19 @@ generic M0 import API or as crash-atomic reindexing. In particular, a raw
 still in flight; public retrieval must use the future M0 transactional importer
 and active-manifest validation rather than this prototype path.
 
+The prototype writes only its V5 `agent_memory.resource_indexer` manifest
+schema. Before any reindex, reclaim, erase-pending transition or physical erase,
+it validates the exact owner topology: one `Document` followed by one ordered
+`Chunk`/`Embedding`/`VectorRecord` triple per ordinal, plus only a valid suffix
+of those records in `pending_reclaim_records`. Generic manifests may legally
+describe lexical, graph, binary-bucket or custom records for their own owners;
+they are not valid input to this indexer. V1--V4 payloads remain readable for
+diagnostics and explicit migration tooling, but `ResourceIndexer` rejects them
+as migration-required before embedding or storage mutation. The current
+prototype deliberately has no implicit legacy migration: an operator-approved
+migrator must prove the old derived-record ownership and revision evidence
+before writing the V5 owner marker.
+
 ### Legacy Public API Boundary
 
 `SourceRef` was intentionally renamed to `FactSourceRef` before the first

@@ -77,6 +77,22 @@ namespace agent_memory {
         ErasePending
     };
 
+    /// \brief On-disk payload version observed by a manifest storage adapter.
+    enum class ResourceManifestPayloadVersion : std::uint8_t {
+        Unknown = 0,
+        V1 = 1,
+        V2 = 2,
+        V3 = 3,
+        V4 = 4,
+        V5 = 5
+    };
+
+    /// \brief Declares the writer-owned schema for a resource manifest.
+    struct ResourceManifestSchema final {
+        std::string schema_id;
+        std::uint32_t schema_version = 0;
+    };
+
     /// \brief Manifest of records derived from one resource revision.
     struct ResourceManifest final {
         ResourceRevision revision;
@@ -84,6 +100,10 @@ namespace agent_memory {
         ResourceManifestState state = ResourceManifestState::Active;
         /// \brief Superseded records retained until durable reclamation completes.
         std::vector<DerivedRecordRef> pending_reclaim_records;
+        /// \brief Schema that owns the derived-record topology, when declared.
+        ResourceManifestSchema schema;
+        /// \brief Payload version observed on load or emitted by the storage adapter.
+        ResourceManifestPayloadVersion payload_version = ResourceManifestPayloadVersion::Unknown;
     };
 
     /// \brief Returns stable lowercase derived-record kind name.
