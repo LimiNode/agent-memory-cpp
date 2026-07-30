@@ -126,8 +126,10 @@ namespace agent_memory {
         /// never reused by a different resource revision.
         /// \pre Each chunk in `snapshot.document_snapshot` must belong to its document.
         /// \note A same-generation retry is idempotent only when both revisions
-        /// carry the same valid body digest and a non-zero matching pipeline hash.
-        /// Missing identity evidence is rejected as a generation conflict.
+        /// carry the same valid body digest and a non-zero matching pipeline hash,
+        /// and the persisted document, manifest, and regenerated vector records match.
+        /// Missing identity evidence or derived-state mismatch is rejected as a
+        /// generation conflict.
         virtual void reindex_resource(ResourceIndexSnapshot snapshot) = 0;
 
         /// \brief Removes all known derived records for one resource.

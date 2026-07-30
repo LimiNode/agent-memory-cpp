@@ -232,13 +232,15 @@ index must reject `KnownAtSequence` as an indexed query; it may expose a
 separately named scan-only experiment, but must not silently claim bounded
 replay.
 
-When a profile selects `SequenceReplay`, backup/export carries every
-`KnowledgeVisibilityReceipt` as authoritative logical state, keyed by
+When a profile selects `SequenceReplay`, the profile-neutral
+`WorkspaceBackupManifest` backup/export carries every `KnowledgeVisibilityReceipt`
+as authoritative logical state, keyed by
 `(GlobalKnowledgeUnitId, RuntimeOriginKey)`. `ProducerEvent` rows are omitted
 from that closure because they are rebuildable accelerators after local unit
 rebinding. Restore/import validates the complete receipt set before publishing
 the workspace; a missing or incompatible receipt is fail-closed and cannot be
-reconstructed from a producer sequence.
+reconstructed from a producer sequence. This A1 backup path does not require
+the optional M2 `ArtifactProvenance` catalog or BlobStore binding.
 
 For normal replay, a unit is visible at a cutoff only if a receipt for that
 origin is at or before the cutoff and no invalidation, reconciliation, or

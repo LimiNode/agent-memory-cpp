@@ -366,6 +366,12 @@ generation-bound add/tombstone overlay that reconstructs the active membership;
 otherwise it returns an explicit unavailable/partial route outcome. Recomputing
 conservative bounds or disabling WAND/BMW pruning is permitted only after that
 membership condition is met; it cannot by itself make a stale block exact.
+For that overlay case only, the same-epoch stale block may be decoded as an
+unscored base. The overlay must name the same scope/projection/epoch/layout,
+bind `base_generation` to the block header and `target_generation` to the
+active snapshot, and account for every added, removed and replaced posting.
+The base block must never contribute candidates or scores before that complete
+membership reconstruction succeeds.
 
 ## Tokenization
 
@@ -637,12 +643,16 @@ use a lossless wide fallback.
 
 Each compressed posting block records the full
 `LexicalStatisticsSnapshotRef` and `layout_version` used to construct it. A
-query may decode or score it only when its epoch, generation and layout version
-match the active lexical manifest at the same frontier. An epoch or layout
-mismatch makes the entire block obsolete, not merely its WAND/BMW bound. For a
-same-epoch generation mismatch, the query must use matching-generation flat
-postings or a complete generation-bound add/tombstone overlay before scoring;
-disabling pruning alone does not repair changed membership.
+query may decode or score it when its epoch, generation and layout version match
+the active lexical manifest at the same frontier. An epoch or layout mismatch
+makes the entire block obsolete, not merely its WAND/BMW bound. A same-epoch
+generation mismatch may decode the block only as the explicitly bound unscored
+base of a complete add/tombstone overlay; it cannot be scored standalone. The
+overlay must bind its base generation to the block and its target generation to
+the active snapshot, reconstruct complete active membership, and preserve the
+same scope/projection/epoch/layout. Otherwise the query must use
+matching-generation flat postings or return unavailable/partial; disabling
+pruning alone does not repair changed membership.
 
 Dynamic pruning is introduced in stages: exhaustive DAAT BM25F baseline first,
 then MaxScore/WAND, then Block-Max WAND only after the per-block score upper
@@ -1453,7 +1463,10 @@ of that ordering; each substep is its own PR.
     scope/projection is rejected fail-closed. The fixture must also cover a
     same-epoch G10-to-G11 update that adds one posting and deletes another:
     the G10 compressed block is not an exact source for G11 unless the query
-    uses matching flat postings or a complete add/tombstone overlay.
+    uses matching flat postings or a complete add/tombstone overlay. The
+    overlay fixture must prove that G10 is decoded only as an unscored base,
+    binds `base_generation=G10` and `target_generation=G11`, and cannot admit
+    a candidate before applying every add/remove/replacement delta.
 
 ### L4. MDBX and secondary indexes (memory-stacks steps 3 cont. and 12.3)
 

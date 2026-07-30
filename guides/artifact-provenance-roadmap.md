@@ -789,38 +789,46 @@ Workspace backup set
 struct AuthoritativeLogicalRecordSet final {
     std::string record_kind;
     std::string identity_scheme;
-    std::string content_digest;
+    std::uint32_t canonical_serialization_version = 1;
+    BlobDigest content_digest;
     std::uint64_t record_count = 0;
 };
 
-struct BackupSetManifest {
-    std::string format_id = "agent_memory.backup_set";
+struct WorkspaceBackupManifest {
+    std::string format_id = "agent_memory.workspace_backup";
     std::uint32_t format_version = 1;
     std::uint64_t captured_at_ms = 0;
-    BlobDigest catalog_root_digest;
-    ArtifactIdentityScheme artifact_identity_scheme;
     std::optional<KnowledgeUnitIdentityScheme> unit_identity_scheme;
     std::string profile_signature;
     std::string codec_manifest_digest;
     std::string encryption_descriptor;
-    std::vector<ArtifactId> required_artifact_ids;
     std::vector<AuthoritativeLogicalRecordSet>
         profile_selected_logical_record_sets;
 };
+
+// M2 artifact extension. It is present only for ArtifactProvenance profiles.
+struct BackupSetManifest {
+    WorkspaceBackupManifest workspace;
+    BlobDigest catalog_root_digest;
+    ArtifactIdentityScheme artifact_identity_scheme;
+    std::vector<ArtifactId> required_artifact_ids;
+};
 ```
 
-`BackupSetManifest` is the portable point-in-time restore contract, not merely
-a list of copied files. Restore stages catalog metadata and required durable
-artifacts, validates the manifest root, identity schemes, profile/codec and
-encryption descriptors, then publishes the restored workspace only after every
-retained `SourceRef` and `EvidenceAnchor` resolves. It also validates every
-profile-selected authoritative logical record set against the captured profile
-signature before publication. Rebuildable ANN/vector indexes remain outside the
-set and may be rebuilt only after this validation. Failed restore leaves the
-target workspace unpublished.
+`WorkspaceBackupManifest` is the profile-neutral portable point-in-time restore
+contract. It covers canonical workspace state selected by the profile, validates
+the unit identity scheme, profile/codec and encryption descriptors, and checks
+every profile-selected authoritative logical record set before publication.
+`BackupSetManifest` extends that base only when `ArtifactProvenance` is active:
+restore then additionally stages catalog metadata and required durable artifacts,
+validates the catalog root and artifact identity scheme, and requires every
+retained `SourceRef` and `EvidenceAnchor` to resolve. Rebuildable ANN/vector
+indexes remain outside both manifests and may be rebuilt only after validation.
+Failed restore leaves the target workspace unpublished.
 
 `SequenceReplay` selects the complete `KnowledgeVisibilityReceipt` logical
-record set as authoritative backup state. The backup includes every receipt by
+record set in `WorkspaceBackupManifest` as authoritative backup state. The
+backup includes every receipt by
 `(GlobalKnowledgeUnitId, RuntimeOriginKey)`, including its first-visible
 sequence and immutable import/reconciliation evidence. Producer-event range
 rows are rebuildable accelerators and are not a substitute for receipts. A
@@ -831,9 +839,30 @@ The acceptance suite must restore a workspace with receipts from more than one
 origin and prove that `KnownAtSequence` gives the same answer before and after
 restore.
 
+`GraphRelations` selects one authoritative `GraphEdge` logical record set keyed
+by the Relation `GlobalKnowledgeUnitId`. The backup serializes one immutable
+edge with its endpoints, kind/class, payload and evidence, never the two
+physical `graph_edges_by_src`/`graph_edges_by_dst` orientations. Restore checks
+the Relation/edge global-id equality and evidence, remaps endpoint local ids
+through durable global identities, atomically recreates both orientations, then
+publishes the workspace. Packed adjacency remains rebuildable.
+
+An `AuthoritativeLogicalRecordSet` digest is an algorithm-tagged `BlobDigest`
+over canonical, versioned logical-record serialization. `record_kind` and
+`canonical_serialization_version` select the codec recipe recorded in the codec
+manifest; the serializer emits records in ascending canonical logical-identity
+byte order, never physical DBI/range order. A receipt uses
+`(GlobalKnowledgeUnitId, RuntimeOriginKey)` plus its immutable payload; a graph
+set uses the single Relation-owned edge. An unknown recipe/version, duplicate
+logical identity, incorrect count or digest mismatch fails restore before
+publication. Acceptance includes cross-implementation byte-order fixtures for
+receipts and graph edges.
+
 Rebuildable caches, thumbnails, temporary clips and all ANN/vector index state
-are excluded from a complete workspace backup. They must be rebuildable from
-the retained catalog and artifact set.
+are excluded from a complete workspace backup. An artifact-enabled workspace
+rebuilds them from the retained catalog and artifact set; a profile without
+`ArtifactProvenance` rebuilds them only from the canonical records its
+`WorkspaceBackupManifest` selected.
 
 The liveness closure is evaluated by the same catalog backend that executes
 deletion. Its roots include retained `ArtifactBinding` records with

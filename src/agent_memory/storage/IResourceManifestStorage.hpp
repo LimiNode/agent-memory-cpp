@@ -27,7 +27,7 @@ namespace agent_memory {
 
         /// \brief Finds a resource manifest by resource id.
         /// \param resource_id Resource id to look up.
-        /// \return Manifest copy when found.
+        /// \return A valid manifest copy whose revision has the requested resource id, when found.
         [[nodiscard]] virtual std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const = 0;

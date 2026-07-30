@@ -498,10 +498,11 @@ struct RetrievalIoBudget {
 
 // Host-resolved descriptors for one artifact-provenance deployment.
 struct ArtifactProvenanceBinding {
+    // Canonical non-secret host descriptors, resolved during MemoryStack::open.
     std::string catalog_descriptor;
     std::string blob_store_descriptor;
-    std::string artifact_identity_scheme;
-    std::string binding_fingerprint;
+    ArtifactIdentityScheme artifact_identity_scheme;
+    BlobDigest binding_fingerprint;
 };
 
 struct MemoryProfileSpec {
@@ -1287,6 +1288,9 @@ bounded `KnownAtSequence`. A0/A2 runtime components still use
 `unit_components`; causal and procedure relations use the existing graph DBIs;
 raw event/tool payloads use `ResourceBodyStore` when enabled. Replica
 reconciliation remains A3 and is not selected by this profile.
+`CognitiveRuntimeMemory()` without an artifact binding backs up bounded replay
+through the profile-neutral `WorkspaceBackupManifest`; it does not require an
+artifact catalog or BlobStore merely to preserve visibility receipts.
 
 See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision guide on choosing between Karpathy 3-layer, A-MEM, lifemodel, NOUZ, Mem0/Letta/Zep, Блок фактов, and dual-layer patterns for your workload.
 
@@ -1327,6 +1331,11 @@ backend; it requires `FullSourceRefs`, the artifact-aware
 SourceRef/EvidenceAnchor schema and a binding fingerprint included in the
 profile signature. A configured `FullResearchMemory(binding)` selects it;
 parameterless `FullResearchMemory()` does not.
+`MemoryStack::open` resolves both descriptors before setting that capability,
+requires their complete `ArtifactIdentityScheme` values to equal the binding,
+and verifies `binding_fingerprint` against the canonical versioned binding
+encoding. A scheme id, version, derivation rule, digest-algorithm or fingerprint
+mismatch fails closed before any catalog/blob handle is published.
 `DurableGlobalIdentity` capability is present iff
 `enable_durable_global_identity == true`; it selects the
 `global_unit_id_to_local_id` profile delta and supplies the portable occurrence
@@ -1360,7 +1369,7 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
 | ReplicaReconciliation=true требует SequenceReplay=true | "ReplicaReconciliation requires sequence replay" |
 | EmbeddingMigration=true требует DenseVectors=true | "EmbeddingMigration requires DenseVectors" |
-| ArtifactProvenance=true requires FullSourceRefs=true and a complete, profile-signed ArtifactProvenanceBinding whose catalog/blob descriptors resolve | "ArtifactProvenance requires source refs and artifact binding" |
+| ArtifactProvenance=true requires FullSourceRefs=true and a complete, profile-signed ArtifactProvenanceBinding whose catalog/blob descriptors resolve to its exact identity scheme and canonical fingerprint | "ArtifactProvenance requires source refs and compatible artifact binding" |
 | DecayPolicy: cooldown_ms >= 0, half_life_ms > 0 (если mode != None) | "Invalid DecayPolicy" |
 | WritePolicy: flush_interval_ms > 0 (если trigger == OnTimer) | "Invalid WritePolicy" |
 | ContextBudget: сумма per-block <= total_tokens | "ContextBudget overflow" |
@@ -1372,6 +1381,11 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 `ArtifactProvenanceBinding.binding_fingerprint`, когда binding задан) сохраняется
 в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с
 текущим и диагностируется drift.
+
+M2 artifact-binding acceptance includes incomplete binding, unresolved
+descriptor, catalog/blob identity-scheme mismatch and stale or non-canonical
+binding-fingerprint negative fixtures. Each must fail before the stack exposes
+an `ArtifactProvenance` capability or publishes a catalog/blob handle.
 
 ## 11. Layer Architecture
 
@@ -1744,7 +1758,12 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - Acceptance gates: atomic two-orientation write and reopen, export/import with
   endpoint local-ID remap, relation/edge-ID mismatch or collision rejection,
   Relation lifecycle/provenance round-trip, mutable-edge-patch rejection, and
-  replacement through a new Relation plus supersede lineage.
+  replacement through a new Relation plus supersede lineage. A profile selecting
+  `GraphRelations` backs up one authoritative logical `GraphEdge` record per
+  Relation `GlobalKnowledgeUnitId`, not its two physical orientations. Restore
+  validates the Relation/edge identity and evidence, remaps endpoint local IDs
+  through durable global identities, atomically recreates both orientations,
+  and only then publishes the workspace.
 - Bounded graph expansion (max_depth, max_edges, budget_tokens).
 - Single-axis TemporalComponent + DBI: `temporal_unit_index` for M1b; the
   M2+ bi-temporal range indexes remain owned by AM-13. A separate

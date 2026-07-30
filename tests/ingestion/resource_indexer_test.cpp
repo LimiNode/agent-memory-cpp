@@ -1,5 +1,6 @@
 #include <agent_memory.hpp>
 
+#include <algorithm>
 #include <iostream>
 #include <map>
 #include <optional>
@@ -26,6 +27,10 @@ namespace {
         void fail_on_nth_erase(std::size_t ordinal) noexcept {
             m_fail_on_erase_ordinal = ordinal;
             m_erase_count = 0;
+        }
+
+        void set_chunk_order_by_id(bool enabled) noexcept {
+            m_order_chunks_by_id = enabled;
         }
 
         void upsert_document(agent_memory::DocumentSnapshot snapshot) override {
@@ -81,6 +86,16 @@ namespace {
                     chunks.push_back(chunk_it->second);
                 }
             }
+            if(m_order_chunks_by_id) {
+                std::sort(
+                    chunks.begin(),
+                    chunks.end(),
+                    [](const agent_memory::DocumentChunk& left,
+                       const agent_memory::DocumentChunk& right) {
+                        return left.id < right.id;
+                    }
+                );
+            }
             return chunks;
         }
 
@@ -109,6 +124,7 @@ namespace {
         bool m_fail_next_upsert = false;
         std::size_t m_fail_on_erase_ordinal = 0;
         std::size_t m_erase_count = 0;
+        bool m_order_chunks_by_id = false;
         std::map<agent_memory::DocumentId, agent_memory::Document> m_documents;
         std::map<agent_memory::ChunkId, agent_memory::DocumentChunk> m_chunks;
         std::map<
@@ -126,6 +142,10 @@ namespace {
 
         void fail_next_erase() noexcept {
             m_fail_next_erase = true;
+        }
+
+        void inject_unchecked_manifest(agent_memory::ResourceManifest manifest) {
+            m_manifests[manifest.revision.resource_id] = std::move(manifest);
         }
 
         void upsert_manifest(agent_memory::ResourceManifest manifest) override {
@@ -622,9 +642,113 @@ int main() {
     embedder.reset_call_count();
     indexer.reindex_resource(newest_snapshot);
 
-    if(embedder.call_count() != 0) {
-        return fail("idempotent generation must return before embedding");
+    if(embedder.call_count() != 1) {
+        return fail("idempotent generation must verify its persisted vector");
     }
+
+    const agent_memory::ResourceId reordered_resource_id{"resource:indexer:reordered"};
+    const agent_memory::DocumentId reordered_document_id{"doc:indexer:reordered"};
+    const auto reordered_snapshot = make_snapshot(
+        reordered_resource_id,
+        1,
+        reordered_document_id,
+        {
+            make_chunk(
+                agent_memory::ChunkId{"chunk:indexer:z"},
+                reordered_document_id,
+                12,
+                "second chunk"
+            ),
+            make_chunk(
+                agent_memory::ChunkId{"chunk:indexer:a"},
+                reordered_document_id,
+                0,
+                "first chunk"
+            )
+        }
+    );
+    indexer.reindex_resource(reordered_snapshot);
+    document_storage.set_chunk_order_by_id(true);
+    embedder.reset_call_count();
+    indexer.reindex_resource(reordered_snapshot);
+    if(embedder.call_count() != 2) {
+        return fail("same-generation retry must not depend on storage chunk order");
+    }
+
+    const auto reordered_manifest = manifest_storage.find_manifest(reordered_resource_id);
+    if(!reordered_manifest) {
+        return fail("reordered fixture must persist a manifest");
+    }
+
+    auto ordinal_mismatch_manifest = *reordered_manifest;
+    for(auto& record : ordinal_mismatch_manifest.records) {
+        if(
+            record.kind == agent_memory::DerivedRecordKind::VectorRecord &&
+            record.chunk_id == agent_memory::ChunkId{"chunk:indexer:z"}
+        ) {
+            record.ordinal = 99;
+            break;
+        }
+    }
+    manifest_storage.inject_unchecked_manifest(std::move(ordinal_mismatch_manifest));
+    try {
+        indexer.reindex_resource(reordered_snapshot);
+        return fail("same-generation retry must reject an ordinal mismatch");
+    } catch(const std::logic_error&) {
+    }
+    document_storage.set_chunk_order_by_id(false);
+
+    const agent_memory::ResourceId vector_verify_resource_id{"resource:indexer:vector-verify"};
+    const agent_memory::DocumentId vector_verify_document_id{"doc:indexer:vector-verify"};
+    const agent_memory::ChunkId vector_verify_chunk_id{"chunk:indexer:vector-verify"};
+    const auto vector_verify_snapshot = make_snapshot(
+        vector_verify_resource_id,
+        1,
+        vector_verify_document_id,
+        {
+            make_chunk(
+                vector_verify_chunk_id,
+                vector_verify_document_id,
+                0,
+                "vector verification chunk"
+            )
+        }
+    );
+    indexer.reindex_resource(vector_verify_snapshot);
+    const auto original_vector = vector_index.find(vector_verify_chunk_id);
+    if(!original_vector) {
+        return fail("vector verification fixture must persist its vector");
+    }
+
+    const bool removed_vector = vector_index.erase(vector_verify_chunk_id);
+    (void)removed_vector;
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(vector_verify_snapshot);
+        return fail("same-generation retry must reject a missing active vector");
+    } catch(const std::logic_error&) {
+    }
+    if(
+        embedder.call_count() != 1 ||
+        !document_storage.find_document(vector_verify_document_id)
+    ) {
+        return fail("missing vector retry must fail without mutating the document");
+    }
+
+    vector_index.upsert(*original_vector);
+    auto altered_vector = *original_vector;
+    altered_vector.embedding.values[0] = -1.0F;
+    vector_index.upsert(altered_vector);
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(vector_verify_snapshot);
+        return fail("same-generation retry must reject an altered active vector");
+    } catch(const std::logic_error&) {
+    }
+    if(embedder.call_count() != 1) {
+        return fail("altered vector retry must validate with deterministic embedding");
+    }
+    vector_index.upsert(*original_vector);
 
     auto same_revision_different_snapshot = make_snapshot(
         resource_id,
@@ -842,6 +966,54 @@ int main() {
         return fail("blocked reclaim must not publish the requested replacement");
     }
 
+    manifest_storage.fail_next_upsert();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            resource_id,
+            4,
+            reclaim_document_id,
+            {
+                make_chunk(reclaim_chunk_id, reclaim_document_id, 0, "reclaim chunk")
+            }
+        ));
+        return fail("same-generation reclaim retry must surface post-publication failure");
+    } catch(const agent_memory::ResourceIndexReclaimError& error) {
+        const auto durable_manifest = manifest_storage.find_manifest(resource_id);
+        if(
+            error.published_manifest().revision.generation != 4 ||
+            !durable_manifest ||
+            error.published_manifest().pending_reclaim_records.size() !=
+                durable_manifest->pending_reclaim_records.size() ||
+            error.unreclaimed_manifest().records.size() !=
+                durable_manifest->pending_reclaim_records.size()
+        ) {
+            return fail("same-generation reclaim failure must report durable published state");
+        }
+    }
+
+    manifest_storage.fail_next_upsert();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            resource_id,
+            5,
+            agent_memory::DocumentId{"doc:indexer:blocked-manifest-save"},
+            {}
+        ));
+        return fail("pre-publication reclaim save failure must block replacement");
+    } catch(const agent_memory::ResourceIndexReclaimBlockedError& error) {
+        const auto durable_manifest = manifest_storage.find_manifest(resource_id);
+        if(
+            error.active_manifest().revision.generation != 4 ||
+            !durable_manifest ||
+            error.active_manifest().pending_reclaim_records.size() !=
+                durable_manifest->pending_reclaim_records.size() ||
+            error.unreclaimed_manifest().records.size() !=
+                durable_manifest->pending_reclaim_records.size()
+        ) {
+            return fail("blocked reclaim failure must report durable active state");
+        }
+    }
+
     agent_memory::ResourceIndexer restarted_indexer{
         document_storage,
         manifest_storage,
@@ -864,9 +1036,9 @@ int main() {
         || !reclaimed_manifest->pending_reclaim_records.empty()
         || document_storage.find_document(newest_document_id)
         || vector_index.find(newest_chunk_id)
-        || embedder.call_count() != 0
+        || embedder.call_count() != 1
     ) {
-        return fail("restart retry must drain reclaim backlog before idempotent return");
+        return fail("restart retry must verify vectors and drain reclaim backlog");
     }
 
     vector_index.fail_next_erase();
@@ -1002,6 +1174,62 @@ int main() {
         ));
         return fail("resource indexer must reject duplicate chunk ids");
     } catch(const std::invalid_argument&) {
+    }
+
+    const agent_memory::ResourceId legacy_resource_id{"resource:indexer:legacy-invalid"};
+    const agent_memory::DocumentId legacy_document_id{"doc:indexer:legacy-invalid"};
+    const agent_memory::ChunkId legacy_chunk_id{"chunk:indexer:legacy-invalid"};
+    const auto legacy_snapshot = make_snapshot(
+        legacy_resource_id,
+        1,
+        legacy_document_id,
+        {
+            make_chunk(legacy_chunk_id, legacy_document_id, 0, "legacy chunk")
+        }
+    );
+    indexer.reindex_resource(legacy_snapshot);
+
+    const auto valid_legacy_manifest = manifest_storage.find_manifest(legacy_resource_id);
+    if(!valid_legacy_manifest) {
+        return fail("legacy fixture must publish its initial manifest");
+    }
+
+    auto invalid_legacy_manifest = *valid_legacy_manifest;
+    for(const auto& record : invalid_legacy_manifest.records) {
+        if(record.kind == agent_memory::DerivedRecordKind::VectorRecord) {
+            invalid_legacy_manifest.pending_reclaim_records.push_back(record);
+            break;
+        }
+    }
+    manifest_storage.inject_unchecked_manifest(std::move(invalid_legacy_manifest));
+
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(legacy_snapshot);
+        return fail("invalid stored manifest must be rejected before reclaim");
+    } catch(const std::logic_error&) {
+    }
+
+    if(
+        embedder.call_count() != 0 ||
+        !document_storage.find_document(legacy_document_id) ||
+        !vector_index.find(legacy_chunk_id)
+    ) {
+        return fail("invalid stored manifest must not mutate active derived state");
+    }
+
+    try {
+        const bool erased = indexer.erase_resource(legacy_resource_id);
+        (void)erased;
+        return fail("erase must reject an invalid stored manifest before deletion");
+    } catch(const std::logic_error&) {
+    }
+
+    if(
+        !document_storage.find_document(legacy_document_id) ||
+        !vector_index.find(legacy_chunk_id)
+    ) {
+        return fail("invalid stored manifest must not erase active derived state");
     }
 
     return 0;

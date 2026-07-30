@@ -3,6 +3,8 @@
 #include <agent_memory/embedding/IEmbedder.hpp>
 #include <agent_memory/index/IVectorIndex.hpp>
 
+#include <algorithm>
+#include <map>
 #include <optional>
 #include <stdexcept>
 #include <utility>
@@ -93,6 +95,25 @@ namespace agent_memory {
             return records;
         }
 
+        bool vector_records_match_persisted_snapshot(
+            const std::vector<VectorRecord>& expected_records,
+            const IVectorIndex& index
+        ) {
+            for(const auto& expected : expected_records) {
+                const auto actual = index.find(expected.chunk_id);
+                if(
+                    !actual ||
+                    actual->chunk_id != expected.chunk_id ||
+                    actual->embedding.values != expected.embedding.values ||
+                    actual->metadata.values() != expected.metadata.values()
+                ) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         bool is_retained_by(
             const DerivedRecordRef& old_record,
             const ResourceManifest& new_manifest
@@ -169,11 +190,21 @@ namespace agent_memory {
                 return false;
             }
 
-            for(std::size_t index = 0; index < left.chunks.size(); ++index) {
-                const auto& left_chunk = left.chunks[index];
-                const auto& right_chunk = right.chunks[index];
+            std::map<ChunkId, const DocumentChunk*> right_chunks_by_id;
+            for(const auto& right_chunk : right.chunks) {
+                if(!right_chunks_by_id.emplace(right_chunk.id, &right_chunk).second) {
+                    return false;
+                }
+            }
+
+            for(const auto& left_chunk : left.chunks) {
+                const auto right_it = right_chunks_by_id.find(left_chunk.id);
+                if(right_it == right_chunks_by_id.end()) {
+                    return false;
+                }
+
+                const auto& right_chunk = *right_it->second;
                 if(
-                    left_chunk.id != right_chunk.id ||
                     left_chunk.document_id != right_chunk.document_id ||
                     left_chunk.source_range.offset != right_chunk.source_range.offset ||
                     left_chunk.source_range.length != right_chunk.source_range.length ||
@@ -195,8 +226,16 @@ namespace agent_memory {
                 return false;
             }
 
-            for(std::size_t index = 0; index < left.records.size(); ++index) {
-                if(!has_same_derived_record_identity(left.records[index], right.records[index])) {
+            for(const auto& left_record : left.records) {
+                const auto matching_record = std::find_if(
+                    right.records.begin(),
+                    right.records.end(),
+                    [&left_record](const DerivedRecordRef& right_record) {
+                        return has_same_derived_record_identity(left_record, right_record)
+                            && left_record.ordinal == right_record.ordinal;
+                    }
+                );
+                if(matching_record == right.records.end()) {
                     return false;
                 }
             }
@@ -345,6 +384,16 @@ namespace agent_memory {
         auto old_manifest = m_manifest_storage->find_manifest(
             snapshot.revision.resource_id
         );
+        if(
+            old_manifest &&
+            (
+                !is_valid_resource_manifest(*old_manifest) ||
+                old_manifest->revision.resource_id != snapshot.revision.resource_id
+            )
+        ) {
+            throw std::logic_error("Stored resource manifest is invalid");
+        }
+
         if(old_manifest) {
             if(!is_active_resource_manifest(*old_manifest)) {
                 throw std::logic_error(
@@ -376,16 +425,35 @@ namespace agent_memory {
                         "ResourceIndexSnapshot generation conflicts with active manifest"
                     );
                 }
+
+                const auto expected_vector_records = make_vector_records(
+                    snapshot.document_snapshot,
+                    *m_embedder
+                );
+                if(!vector_records_match_persisted_snapshot(expected_vector_records, *m_vector_index)) {
+                    throw std::logic_error(
+                        "ResourceIndexSnapshot generation conflicts with persisted vector records"
+                    );
+                }
             }
 
             if(!old_manifest->pending_reclaim_records.empty()) {
                 try {
                     drain_pending_reclaim_records(*old_manifest);
                 } catch(...) {
+                    const auto failure = std::current_exception();
+                    if(is_same_generation) {
+                        throw ResourceIndexReclaimError(
+                            *old_manifest,
+                            make_unreclaimed_manifest(*old_manifest),
+                            failure
+                        );
+                    }
+
                     throw ResourceIndexReclaimBlockedError(
                         *old_manifest,
                         make_unreclaimed_manifest(*old_manifest),
-                        std::current_exception()
+                        failure
                     );
                 }
             }
@@ -477,6 +545,13 @@ namespace agent_memory {
             return false;
         }
 
+        if(
+            !is_valid_resource_manifest(*manifest) ||
+            manifest->revision.resource_id != resource_id
+        ) {
+            throw std::logic_error("Stored resource manifest is invalid");
+        }
+
         auto erase_pending = *manifest;
         if(is_active_resource_manifest(erase_pending)) {
             erase_pending.state = ResourceManifestState::ErasePending;
@@ -511,8 +586,13 @@ namespace agent_memory {
     void ResourceIndexer::drain_pending_reclaim_records(ResourceManifest& manifest) {
         while(!manifest.pending_reclaim_records.empty()) {
             erase_derived_record(manifest.pending_reclaim_records.front());
-            manifest.pending_reclaim_records.erase(manifest.pending_reclaim_records.begin());
-            m_manifest_storage->upsert_manifest(manifest);
+
+            auto next_manifest = manifest;
+            next_manifest.pending_reclaim_records.erase(
+                next_manifest.pending_reclaim_records.begin()
+            );
+            m_manifest_storage->upsert_manifest(next_manifest);
+            manifest = std::move(next_manifest);
         }
     }
 

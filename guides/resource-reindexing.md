@@ -394,9 +394,12 @@ document/vector records and publishes the replacement manifest before it perform
 best-effort reclamation of records that belong only to the old manifest. It
 serializes calls through one instance, rejects an older generation, treats an
 equal generation as idempotent only when both revisions carry the same valid
-`ResourceBodyDigest` and an explicitly set matching `pipeline_config_hash`, and
-rejects every other equal-generation attempt as a conflict. The prototype-local
-`content_hash` remains a fast hint rather than proof of retry identity. If an
+`ResourceBodyDigest` and an explicitly set matching `pipeline_config_hash`, the
+persisted document/manifest matches the candidate, and regenerated deterministic
+vector records match the active vector index. It rejects every other
+equal-generation attempt as a conflict. This prototype validation may call the
+embedder but never publishes a write for an equal generation. The
+prototype-local `content_hash` remains a fast hint rather than proof of retry identity. If an
 in-process document, vector, or manifest write
 throws, it restores the document/vector records touched by that attempt and leaves
 the prior manifest active. After publication, superseded record references remain
