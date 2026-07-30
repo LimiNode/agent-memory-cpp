@@ -111,6 +111,12 @@ namespace agent_memory {
         const DerivedRecordRef& ref
     ) noexcept;
 
+    /// \brief Returns whether two derived-record references address one physical record.
+    [[nodiscard]] bool has_same_derived_record_identity(
+        const DerivedRecordRef& left,
+        const DerivedRecordRef& right
+    ) noexcept;
+
     /// \brief Returns true when a manifest can be persisted by storage backends.
     [[nodiscard]] bool is_valid_resource_manifest(
         const ResourceManifest& manifest

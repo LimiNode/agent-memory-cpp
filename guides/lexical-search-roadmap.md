@@ -229,12 +229,23 @@ struct LexicalCollectionStats final {
     std::uint64_t total_token_count = 0;
 };
 
-// Small mutable pointer; statistics themselves remain epoch-namespaced rows.
+// Small mutable value addressed by (scope_id, projection_kind).
+// The DBI key supplies scope and projection; they are never duplicated here.
 struct LexicalActiveSnapshot final {
-    LexicalStatisticsSnapshotRef snapshot;
+    LexicalStatisticsEpoch statistics_epoch;
+    std::uint64_t statistics_generation = 0;
     std::uint32_t posting_layout_version = 0;
 };
 ```
+
+`lexical_active_snapshot` is a collection-wide pointer, not a per-unit
+freshness record. Its DBI key `(scope_id, projection_kind)` is authoritative.
+After a read, the backend constructs the full
+`LexicalStatisticsSnapshotRef` from that key and this value's epoch and
+generation. A decoder must reject a legacy or alternate value encoding that
+carries duplicated scope/projection fields rather than choosing which copy to
+trust. `ProjectionVersionRef` and `resource_generation` remain exclusively in
+per-unit posting, stat and manifest rows.
 
 BM25F only needs per-field term frequency and per-field token count. Positions
 are included in the roadmap because phrase search, proximity search, snippets,
@@ -347,11 +358,14 @@ prevents a removed term's old `df`, denominator, or reassigned token id from
 being read or cached as E2 data.
 
 Cache keys and block headers carry the full snapshot ref. An epoch mismatch
-means that the whole block is obsolete: it must not be decoded or scored. The
-backend selects a block in the active epoch, falls back to the matching flat
-posting route, or returns an explicit unavailable/partial route outcome. Only a
-generation mismatch **within the same epoch** may recompute conservative bounds
-or disable bound-based pruning while preserving exact scoring.
+means that the whole block is obsolete: it must not be decoded or scored. A
+generation mismatch within the same epoch also means that the block cannot be
+scored as the exact active posting source: an update may have added or removed
+postings. The backend must use matching-generation flat postings, or a complete
+generation-bound add/tombstone overlay that reconstructs the active membership;
+otherwise it returns an explicit unavailable/partial route outcome. Recomputing
+conservative bounds or disabling WAND/BMW pruning is permitted only after that
+membership condition is met; it cannot by itself make a stale block exact.
 
 ## Tokenization
 
@@ -623,11 +637,12 @@ use a lossless wide fallback.
 
 Each compressed posting block records the full
 `LexicalStatisticsSnapshotRef` and `layout_version` used to construct it. A
-query may decode or score it only when its epoch and layout version match the
-active lexical manifest at the same frontier. An epoch or layout mismatch makes
-the entire block obsolete, not merely its WAND/BMW bound. A generation mismatch
-within the same epoch may recompute a conservative bound or disable bound-based
-pruning for that block while preserving exhaustive BM25/BM25F correctness.
+query may decode or score it only when its epoch, generation and layout version
+match the active lexical manifest at the same frontier. An epoch or layout
+mismatch makes the entire block obsolete, not merely its WAND/BMW bound. For a
+same-epoch generation mismatch, the query must use matching-generation flat
+postings or a complete generation-bound add/tombstone overlay before scoring;
+disabling pruning alone does not repair changed membership.
 
 Dynamic pruning is introduced in stages: exhaustive DAAT BM25F baseline first,
 then MaxScore/WAND, then Block-Max WAND only after the per-block score upper
@@ -1431,7 +1446,14 @@ of that ordering; each substep is its own PR.
     statistics_epoch, token_id, statistics_generation)` for fast
     warm-up within a stable aggregate statistics view; include a fixture where
     an old block and a full rebuild share generation `0` but have different
-    epochs, proving that stale pruning cannot be reused.
+    epochs, proving that stale pruning cannot be reused. Add a separate
+    active-snapshot codec fixture: its value round-trips only epoch,
+    generation and layout version; scope/projection are reconstructed solely
+    from the DBI key; an alternate value carrying conflicting duplicated
+    scope/projection is rejected fail-closed. The fixture must also cover a
+    same-epoch G10-to-G11 update that adds one posting and deletes another:
+    the G10 compressed block is not an exact source for G11 unless the query
+    uses matching flat postings or a complete add/tombstone overlay.
 
 ### L4. MDBX and secondary indexes (memory-stacks steps 3 cont. and 12.3)
 

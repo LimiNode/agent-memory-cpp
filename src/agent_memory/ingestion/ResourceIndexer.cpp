@@ -27,6 +27,14 @@ namespace agent_memory {
                         "ResourceIndexSnapshot chunks must belong to snapshot document"
                     );
                 }
+
+                for(const auto& other_chunk : snapshot.document_snapshot.chunks) {
+                    if(&chunk != &other_chunk && chunk.id == other_chunk.id) {
+                        throw std::invalid_argument(
+                            "ResourceIndexSnapshot chunk ids must be unique"
+                        );
+                    }
+                }
             }
         }
 
@@ -91,9 +99,7 @@ namespace agent_memory {
         ) {
             for(const auto& new_record : new_manifest.records) {
                 if(
-                    old_record.kind == new_record.kind
-                    && old_record.chunk_id == new_record.chunk_id
-                    && old_record.key == new_record.key
+                    has_same_derived_record_identity(old_record, new_record)
                 ) {
                     return true;
                 }
@@ -146,6 +152,56 @@ namespace agent_memory {
                 *document,
                 storage.list_chunks(document_id)
             };
+        }
+
+        bool snapshots_are_equal(
+            const DocumentSnapshot& left,
+            const DocumentSnapshot& right
+        ) {
+            if(
+                left.document.id != right.document.id ||
+                left.document.kind != right.document.kind ||
+                left.document.source_uri != right.document.source_uri ||
+                left.document.text != right.document.text ||
+                left.document.metadata.values() != right.document.metadata.values() ||
+                left.chunks.size() != right.chunks.size()
+            ) {
+                return false;
+            }
+
+            for(std::size_t index = 0; index < left.chunks.size(); ++index) {
+                const auto& left_chunk = left.chunks[index];
+                const auto& right_chunk = right.chunks[index];
+                if(
+                    left_chunk.id != right_chunk.id ||
+                    left_chunk.document_id != right_chunk.document_id ||
+                    left_chunk.source_range.offset != right_chunk.source_range.offset ||
+                    left_chunk.source_range.length != right_chunk.source_range.length ||
+                    left_chunk.text != right_chunk.text ||
+                    left_chunk.metadata.values() != right_chunk.metadata.values()
+                ) {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        bool manifests_have_matching_active_records(
+            const ResourceManifest& left,
+            const ResourceManifest& right
+        ) {
+            if(left.records.size() != right.records.size()) {
+                return false;
+            }
+
+            for(std::size_t index = 0; index < left.records.size(); ++index) {
+                if(!has_same_derived_record_identity(left.records[index], right.records[index])) {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         void restore_document_snapshot(
@@ -216,6 +272,30 @@ namespace agent_memory {
         return m_recovery_failures;
     }
 
+    ResourceIndexReclaimBlockedError::ResourceIndexReclaimBlockedError(
+        ResourceManifest active_manifest,
+        ResourceManifest unreclaimed_manifest,
+        std::exception_ptr reclaim_failure
+    )
+        : std::runtime_error(
+            "ResourceIndexer could not reclaim superseded records before publishing a replacement"
+        )
+        , m_active_manifest(std::move(active_manifest))
+        , m_unreclaimed_manifest(std::move(unreclaimed_manifest))
+        , m_reclaim_failure(std::move(reclaim_failure)) {}
+
+    const ResourceManifest& ResourceIndexReclaimBlockedError::active_manifest() const noexcept {
+        return m_active_manifest;
+    }
+
+    const ResourceManifest& ResourceIndexReclaimBlockedError::unreclaimed_manifest() const noexcept {
+        return m_unreclaimed_manifest;
+    }
+
+    const std::exception_ptr& ResourceIndexReclaimBlockedError::reclaim_failure() const noexcept {
+        return m_reclaim_failure;
+    }
+
     ResourceIndexReclaimError::ResourceIndexReclaimError(
         ResourceManifest published_manifest,
         ResourceManifest unreclaimed_manifest,
@@ -272,11 +352,37 @@ namespace agent_memory {
                 );
             }
 
+            if(snapshot.revision.generation < old_manifest->revision.generation) {
+                throw std::logic_error("ResourceIndexSnapshot generation is stale");
+            }
+
+            const bool is_same_generation =
+                snapshot.revision.generation == old_manifest->revision.generation;
+            if(is_same_generation) {
+                const auto active_snapshot = load_document_snapshot(
+                    *m_document_storage,
+                    snapshot.document_snapshot.document.id
+                );
+                if(
+                    !revisions_have_matching_idempotency_evidence(
+                        snapshot.revision,
+                        old_manifest->revision
+                    ) ||
+                    !manifests_have_matching_active_records(manifest, *old_manifest) ||
+                    !active_snapshot ||
+                    !snapshots_are_equal(snapshot.document_snapshot, *active_snapshot)
+                ) {
+                    throw std::logic_error(
+                        "ResourceIndexSnapshot generation conflicts with active manifest"
+                    );
+                }
+            }
+
             if(!old_manifest->pending_reclaim_records.empty()) {
                 try {
                     drain_pending_reclaim_records(*old_manifest);
                 } catch(...) {
-                    throw ResourceIndexReclaimError(
+                    throw ResourceIndexReclaimBlockedError(
                         *old_manifest,
                         make_unreclaimed_manifest(*old_manifest),
                         std::current_exception()
@@ -284,18 +390,8 @@ namespace agent_memory {
                 }
             }
 
-            if(snapshot.revision.generation < old_manifest->revision.generation) {
-                throw std::logic_error("ResourceIndexSnapshot generation is stale");
-            }
-
-            if(snapshot.revision.generation == old_manifest->revision.generation) {
-                if(revisions_have_matching_idempotency_evidence(
-                    snapshot.revision,
-                    old_manifest->revision
-                )) {
-                    return;
-                }
-                throw std::logic_error("ResourceIndexSnapshot generation conflicts with active manifest");
+            if(is_same_generation) {
+                return;
             }
         }
 

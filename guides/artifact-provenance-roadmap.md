@@ -786,6 +786,13 @@ Workspace backup set
 ```
 
 ```cpp
+struct AuthoritativeLogicalRecordSet final {
+    std::string record_kind;
+    std::string identity_scheme;
+    std::string content_digest;
+    std::uint64_t record_count = 0;
+};
+
 struct BackupSetManifest {
     std::string format_id = "agent_memory.backup_set";
     std::uint32_t format_version = 1;
@@ -797,6 +804,8 @@ struct BackupSetManifest {
     std::string codec_manifest_digest;
     std::string encryption_descriptor;
     std::vector<ArtifactId> required_artifact_ids;
+    std::vector<AuthoritativeLogicalRecordSet>
+        profile_selected_logical_record_sets;
 };
 ```
 
@@ -804,9 +813,23 @@ struct BackupSetManifest {
 a list of copied files. Restore stages catalog metadata and required durable
 artifacts, validates the manifest root, identity schemes, profile/codec and
 encryption descriptors, then publishes the restored workspace only after every
-retained `SourceRef` and `EvidenceAnchor` resolves. Rebuildable ANN/vector
-indexes remain outside the set and may be rebuilt only after this validation.
-Failed restore leaves the target workspace unpublished.
+retained `SourceRef` and `EvidenceAnchor` resolves. It also validates every
+profile-selected authoritative logical record set against the captured profile
+signature before publication. Rebuildable ANN/vector indexes remain outside the
+set and may be rebuilt only after this validation. Failed restore leaves the
+target workspace unpublished.
+
+`SequenceReplay` selects the complete `KnowledgeVisibilityReceipt` logical
+record set as authoritative backup state. The backup includes every receipt by
+`(GlobalKnowledgeUnitId, RuntimeOriginKey)`, including its first-visible
+sequence and immutable import/reconciliation evidence. Producer-event range
+rows are rebuildable accelerators and are not a substitute for receipts. A
+restore whose profile selects `SequenceReplay` must reject a missing,
+malformed, incomplete or identity-incompatible receipt set before publishing;
+it may rebuild producer-event rows only after global-to-local unit rebinding.
+The acceptance suite must restore a workspace with receipts from more than one
+origin and prove that `KnownAtSequence` gives the same answer before and after
+restore.
 
 Rebuildable caches, thumbnails, temporary clips and all ANN/vector index state
 are excluded from a complete workspace backup. They must be rebuildable from

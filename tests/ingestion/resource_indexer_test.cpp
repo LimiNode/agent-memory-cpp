@@ -626,6 +626,30 @@ int main() {
         return fail("idempotent generation must return before embedding");
     }
 
+    auto same_revision_different_snapshot = make_snapshot(
+        resource_id,
+        3,
+        agent_memory::DocumentId{"doc:indexer:same-revision-different-layout"},
+        {
+            make_chunk(
+                agent_memory::ChunkId{"chunk:indexer:same-revision-different-layout"},
+                agent_memory::DocumentId{"doc:indexer:same-revision-different-layout"},
+                0,
+                "same source revision with different derived layout"
+            )
+        }
+    );
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(std::move(same_revision_different_snapshot));
+        return fail("same revision with different derived snapshot must conflict");
+    } catch(const std::logic_error&) {
+    }
+
+    if(embedder.call_count() != 0) {
+        return fail("different same-generation snapshot must be rejected before embedding");
+    }
+
     const agent_memory::DocumentId ambiguous_document_id{"doc:indexer:ambiguous"};
     auto ambiguous_same_generation = make_snapshot(
         resource_id,
@@ -749,6 +773,73 @@ int main() {
         || !vector_index.find(newest_chunk_id)
     ) {
         return fail("failed reclaim must preserve the newly published active generation");
+    }
+
+    const auto pending_reclaim_count = reclaim_manifest->pending_reclaim_records.size();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            resource_id,
+            3,
+            agent_memory::DocumentId{"doc:indexer:stale-with-backlog"},
+            {}
+        ));
+        return fail("stale reindex must be rejected before reclaim cleanup");
+    } catch(const std::logic_error&) {
+    }
+
+    auto conflicting_with_backlog = make_snapshot(
+        resource_id,
+        4,
+        agent_memory::DocumentId{"doc:indexer:conflict-with-backlog"},
+        {}
+    );
+    conflicting_with_backlog.revision.body_digest = make_body_digest(0x44U);
+    try {
+        indexer.reindex_resource(std::move(conflicting_with_backlog));
+        return fail("conflicting reindex must be rejected before reclaim cleanup");
+    } catch(const std::logic_error&) {
+    }
+
+    const auto unchanged_backlog = manifest_storage.find_manifest(resource_id);
+    if(
+        embedder.call_count() != 0 ||
+        !unchanged_backlog ||
+        unchanged_backlog->pending_reclaim_records.size() != pending_reclaim_count ||
+        !document_storage.find_document(newest_document_id) ||
+        !vector_index.find(newest_chunk_id)
+    ) {
+        return fail("stale or conflicting reindex must not mutate reclaim backlog");
+    }
+
+    document_storage.fail_on_nth_erase(1);
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            resource_id,
+            5,
+            agent_memory::DocumentId{"doc:indexer:blocked-reclaim"},
+            {}
+        ));
+        return fail("pre-publication reclaim failure must block replacement publication");
+    } catch(const agent_memory::ResourceIndexReclaimBlockedError& error) {
+        if(
+            error.active_manifest().revision.generation != 4 ||
+            error.unreclaimed_manifest().records.empty() ||
+            !error.reclaim_failure()
+        ) {
+            return fail("blocked reclaim error must report the still-active manifest");
+        }
+    }
+
+    const auto blocked_manifest = manifest_storage.find_manifest(resource_id);
+    if(
+        embedder.call_count() != 0 ||
+        !blocked_manifest ||
+        blocked_manifest->revision.generation != 4 ||
+        blocked_manifest->pending_reclaim_records.size() != pending_reclaim_count
+    ) {
+        return fail("blocked reclaim must not publish the requested replacement");
     }
 
     agent_memory::ResourceIndexer restarted_indexer{
@@ -885,6 +976,31 @@ int main() {
     try {
         indexer.reindex_resource(agent_memory::ResourceIndexSnapshot{});
         return fail("resource indexer must reject empty resource snapshot");
+    } catch(const std::invalid_argument&) {
+    }
+
+    const agent_memory::DocumentId duplicate_chunk_document_id{"doc:indexer:duplicate-chunk"};
+    try {
+        indexer.reindex_resource(make_snapshot(
+            agent_memory::ResourceId{"resource:indexer:duplicate-chunk"},
+            1,
+            duplicate_chunk_document_id,
+            {
+                make_chunk(
+                    agent_memory::ChunkId{"chunk:indexer:duplicate"},
+                    duplicate_chunk_document_id,
+                    0,
+                    "first duplicate"
+                ),
+                make_chunk(
+                    agent_memory::ChunkId{"chunk:indexer:duplicate"},
+                    duplicate_chunk_document_id,
+                    16,
+                    "second duplicate"
+                )
+            }
+        ));
+        return fail("resource indexer must reject duplicate chunk ids");
     } catch(const std::invalid_argument&) {
     }
 

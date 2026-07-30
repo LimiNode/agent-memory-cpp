@@ -146,5 +146,24 @@ int main() {
         return fail("resource manifest must retain resource revision");
     }
 
+    auto duplicate_active = manifest;
+    duplicate_active.records.push_back(chunk_ref);
+    if(agent_memory::is_valid_resource_manifest(duplicate_active)) {
+        return fail("resource manifest must reject duplicate active record identities");
+    }
+
+    auto duplicate_reclaim = manifest;
+    duplicate_reclaim.pending_reclaim_records.push_back(bucket_ref);
+    duplicate_reclaim.pending_reclaim_records.push_back(bucket_ref);
+    if(agent_memory::is_valid_resource_manifest(duplicate_reclaim)) {
+        return fail("resource manifest must reject duplicate reclaim record identities");
+    }
+
+    auto overlapping_reclaim = manifest;
+    overlapping_reclaim.pending_reclaim_records.push_back(chunk_ref);
+    if(agent_memory::is_valid_resource_manifest(overlapping_reclaim)) {
+        return fail("resource manifest must reject active and reclaim identity overlap");
+    }
+
     return 0;
 }

@@ -66,6 +66,25 @@ namespace agent_memory {
         std::vector<ResourceIndexRecoveryFailure> m_recovery_failures;
     };
 
+    /// \brief Reports reclaim failure before a requested replacement was published.
+    class ResourceIndexReclaimBlockedError final : public std::runtime_error {
+    public:
+        ResourceIndexReclaimBlockedError(
+            ResourceManifest active_manifest,
+            ResourceManifest unreclaimed_manifest,
+            std::exception_ptr reclaim_failure
+        );
+
+        [[nodiscard]] const ResourceManifest& active_manifest() const noexcept;
+        [[nodiscard]] const ResourceManifest& unreclaimed_manifest() const noexcept;
+        [[nodiscard]] const std::exception_ptr& reclaim_failure() const noexcept;
+
+    private:
+        ResourceManifest m_active_manifest;
+        ResourceManifest m_unreclaimed_manifest;
+        std::exception_ptr m_reclaim_failure;
+    };
+
     /// \brief Reports cleanup failure after a replacement manifest was published.
     class ResourceIndexReclaimError final : public std::runtime_error {
     public:

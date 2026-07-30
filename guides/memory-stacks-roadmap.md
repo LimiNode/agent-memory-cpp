@@ -327,6 +327,9 @@ until their profile matrix and DBI budget deltas are specified.
 blob/retention contracts from
 [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md); concrete
 MDBX DBI deltas stay profile-owned and are not part of the baseline manifest.
+It is artifact-neutral until an application supplies an explicit catalog/blob
+binding in the profile; a capability bit alone never implies a usable artifact
+backend.
 
 Additional M2+ lifecycle candidates such as `EntityResolution`,
 `TypedToolFilters` and `LogicalIndexSeparation` are also tracked there until
@@ -493,6 +496,14 @@ struct RetrievalIoBudget {
     std::uint64_t max_io_time_us = 0;
 };
 
+// Host-resolved descriptors for one artifact-provenance deployment.
+struct ArtifactProvenanceBinding {
+    std::string catalog_descriptor;
+    std::string blob_store_descriptor;
+    std::string artifact_identity_scheme;
+    std::string binding_fingerprint;
+};
+
 struct MemoryProfileSpec {
     std::string name;
 
@@ -531,6 +542,7 @@ struct MemoryProfileSpec {
     std::optional<RetrievalMode> default_retrieval_mode;
     std::optional<DenseIndexConfig> dense_index_config;
     std::optional<EncryptionPolicy> encryption_policy;
+    std::optional<ArtifactProvenanceBinding> artifact_provenance_binding;
 
     uint32_t envelope_schema_version = 1;
     uint32_t component_schema_versions[kNumComponentKinds] = {};
@@ -1227,7 +1239,21 @@ inline MemoryProfileSpec FullResearchMemory() {
     // M2+: BinaryCandidateFilter or Hnsw is an explicit benchmark-gated override.
     return s;
 }
+
+// Enables artifact provenance only for a host-resolvable durable backend.
+inline MemoryProfileSpec FullResearchMemory(
+    ArtifactProvenanceBinding artifact_binding) {
+    MemoryProfileSpec s = FullResearchMemory();
+    s.enable_full_source_refs = true;
+    s.artifact_provenance_binding = std::move(artifact_binding);
+    return s;
+}
 ```
+
+The parameterless `FullResearchMemory()` is artifact-neutral: it retains the
+research retrieval/profile shape without claiming that a catalog or BlobStore
+has been configured. The overload selects `ArtifactProvenance` only when the
+binding is complete, host-resolvable and included in `profile_signature`.
 
 ### 8.8. CognitiveRuntimeMemory
 
@@ -1283,7 +1309,7 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | FullSourceRefs | no | opt | opt | opt | yes | opt | yes |
 | TranslationProjection | opt | opt | opt | opt | opt | opt | opt |
 | KnowledgeActivation | no | opt | yes | opt | yes | opt | yes |
-| ArtifactProvenance | no | no | no | no | opt | no | yes |
+| ArtifactProvenance | no | no | no | no | opt | no | opt |
 
 `opt` — capability не включена по умолчанию, но может быть добавлена через minor in-place migration.
 `TranslationProjection` is present only when the translation adapter contract
@@ -1295,9 +1321,12 @@ translated text.
 `KnowledgeActivation` capability is present iff
 `enable_knowledge_activation == true`; it uses existing canonical storage until
 a profile-specific DBI delta is added to the physical manifest.
-`ArtifactProvenance` capability is present iff the profile declares an
-artifact catalog and BlobStore backend; it requires `FullSourceRefs` and the
-artifact-aware SourceRef/EvidenceAnchor schema.
+`ArtifactProvenance` capability is present iff the profile declares a complete
+`ArtifactProvenanceBinding` for a host-resolvable artifact catalog and BlobStore
+backend; it requires `FullSourceRefs`, the artifact-aware
+SourceRef/EvidenceAnchor schema and a binding fingerprint included in the
+profile signature. A configured `FullResearchMemory(binding)` selects it;
+parameterless `FullResearchMemory()` does not.
 `DurableGlobalIdentity` capability is present iff
 `enable_durable_global_identity == true`; it selects the
 `global_unit_id_to_local_id` profile delta and supplies the portable occurrence
@@ -1331,7 +1360,7 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
 | ReplicaReconciliation=true требует SequenceReplay=true | "ReplicaReconciliation requires sequence replay" |
 | EmbeddingMigration=true требует DenseVectors=true | "EmbeddingMigration requires DenseVectors" |
-| ArtifactProvenance=true requires FullSourceRefs=true | "ArtifactProvenance requires full source refs" |
+| ArtifactProvenance=true requires FullSourceRefs=true and a complete, profile-signed ArtifactProvenanceBinding whose catalog/blob descriptors resolve | "ArtifactProvenance requires source refs and artifact binding" |
 | DecayPolicy: cooldown_ms >= 0, half_life_ms > 0 (если mode != None) | "Invalid DecayPolicy" |
 | WritePolicy: flush_interval_ms > 0 (если trigger == OnTimer) | "Invalid WritePolicy" |
 | ContextBudget: сумма per-block <= total_tokens | "ContextBudget overflow" |
@@ -1339,7 +1368,10 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | Persisted translation requires a valid adapter-owned policy, canonical BCP-47 language and projection provenance | "Persisted translation requires active TranslationPolicy" |
 | envelope_schema_version в spec соответствует сохранённому | "Schema version mismatch (migration required)" |
 
-Дополнительно: `profile_signature` (hash от spec) сохраняется в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с текущим и диагностируется drift.
+Дополнительно: `profile_signature` (hash от spec, включая
+`ArtifactProvenanceBinding.binding_fingerprint`, когда binding задан) сохраняется
+в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с
+текущим и диагностируется drift.
 
 ## 11. Layer Architecture
 
