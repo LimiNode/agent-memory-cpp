@@ -123,6 +123,16 @@ EXPECTED_PHYSICAL_KEYS = {
     "lexical_token_stats": [
         "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "TokenId",
     ],
+    "lexical_collection_stats": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch",
+    ],
+    "lexical_active_snapshot": [
+        "ScopeId", "ProjectionKind",
+    ],
+    "lexical_posting_segments": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "FieldId",
+        "TokenId", "SegmentId",
+    ],
 }
 
 STALE_TERMS = {
@@ -130,7 +140,7 @@ STALE_TERMS = {
     "TemporalPointLookup",
     "sync +5",
     "5 additional DBIs",
-    "canonical_full_inventory: 30",
+    "canonical_full_inventory: 29",
 }
 
 PEAK_META_KEYS = {"canonical_full_inventory", "total"}
@@ -337,6 +347,12 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
                 fail(errors, f"{context}: physical_key must be a non-empty ordered list")
             elif any(not isinstance(part, str) or not part for part in physical_key):
                 fail(errors, f"{context}: physical_key entries must be non-empty strings")
+            expected_physical_key = EXPECTED_PHYSICAL_KEYS.get(entry_name)
+            if expected_physical_key is not None and physical_key != expected_physical_key:
+                fail(
+                    errors,
+                    f"{entry_name}: physical_key must be {expected_physical_key!r}",
+                )
             entry_migration_peak = entry.get("migration_peak")
             if not isinstance(entry_migration_peak, int) or entry_migration_peak < 0:
                 fail(errors, f"{context}: migration_peak must be a non-negative integer")
@@ -422,6 +438,7 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
 
 
 REVIEW_PROJECTION_BEGIN = "dbi-review-projection-v1"
+PROFILE_DELTA_REVIEW_PROJECTION_BEGIN = "dbi-profile-delta-review-projection-v1"
 BUDGET_CHECKPOINT_BEGIN = "dbi-budget-checkpoint-v1"
 REVIEW_FIELDS = (
     "name",
@@ -435,11 +452,11 @@ REVIEW_FIELDS = (
 )
 
 
-def review_projection_from_tz(path: Path) -> dict[str, dict]:
+def review_projection_from_tz(path: Path, marker: str) -> dict[str, dict]:
     text = path.read_text(encoding="utf-8")
-    start = text.find(REVIEW_PROJECTION_BEGIN)
+    start = text.find(marker)
     if start < 0:
-        raise ValueError("cannot find dbi-review-projection-v1")
+        raise ValueError(f"cannot find {marker}")
     start = text.find("\n", start) + 1
     end = text.find("```", start)
     if end < 0:
@@ -510,6 +527,42 @@ def validate_review_projection(manifest: dict, projection: dict[str, dict], erro
                 )
 
 
+def validate_profile_delta_review_projection(
+    manifest: dict,
+    projection: dict[str, dict],
+    errors: list[str],
+) -> None:
+    entries = {
+        entry["name"]: entry
+        for delta in manifest.get("profile_deltas", [])
+        if isinstance(delta, dict)
+        for entry in delta.get("dbi_entries", [])
+        if isinstance(entry, dict) and "name" in entry
+    }
+    manifest_names = set(entries)
+    projection_names = set(projection)
+    missing_from_markdown = manifest_names - projection_names
+    missing_from_manifest = projection_names - manifest_names
+    if missing_from_markdown:
+        fail(errors, f"profile delta names missing from TZ table: {sorted(missing_from_markdown)}")
+    if missing_from_manifest:
+        fail(errors, f"TZ profile delta names missing from manifest: {sorted(missing_from_manifest)}")
+
+    for name, manifest_row in entries.items():
+        review_row = projection.get(name)
+        if review_row is None:
+            continue
+        for field in REVIEW_FIELDS[1:]:
+            expected = manifest_row.get(field, [] if field == "physical_key" else None)
+            actual = review_row[field]
+            if actual != expected:
+                fail(
+                    errors,
+                    f"TZ profile delta projection mismatch for {name}.{field} "
+                    f"({actual!r} != {expected!r})",
+                )
+
+
 def validate_budget_checkpoint(manifest: dict, checkpoint: dict[str, int], errors: list[str]) -> None:
     peak = manifest["expanded_peak_reference"]
     expected = dict(peak)
@@ -526,8 +579,13 @@ def validate_budget_checkpoint(manifest: dict, checkpoint: dict[str, int], error
 
 
 def validate_markdown(manifest: dict, tz_path: Path, errors: list[str]) -> None:
-    projection = review_projection_from_tz(tz_path)
+    projection = review_projection_from_tz(tz_path, REVIEW_PROJECTION_BEGIN)
     validate_review_projection(manifest, projection, errors)
+    profile_delta_projection = review_projection_from_tz(
+        tz_path,
+        PROFILE_DELTA_REVIEW_PROJECTION_BEGIN,
+    )
+    validate_profile_delta_review_projection(manifest, profile_delta_projection, errors)
     checkpoint = budget_checkpoint_from_tz(tz_path)
     validate_budget_checkpoint(manifest, checkpoint, errors)
 
@@ -647,6 +705,28 @@ def run_self_test(manifest_path: Path) -> int:
         "lexical statistics epoch",
         missing_lexical_epoch,
         "lexical_token_stats: physical_key must be",
+    ))
+
+    missing_collection_epoch = copy.deepcopy(base)
+    for row in missing_collection_epoch["canonical"]:
+        if row["name"] == "lexical_collection_stats":
+            row["physical_key"].remove("LexicalStatisticsEpoch")
+            break
+    cases.append((
+        "lexical collection statistics epoch",
+        missing_collection_epoch,
+        "lexical_collection_stats: physical_key must be",
+    ))
+
+    missing_segment_epoch = copy.deepcopy(base)
+    for delta in missing_segment_epoch["profile_deltas"]:
+        if delta["name"] == "lexical_posting_segments":
+            delta["dbi_entries"][0]["physical_key"].remove("LexicalStatisticsEpoch")
+            break
+    cases.append((
+        "lexical posting segment epoch",
+        missing_segment_epoch,
+        "lexical_posting_segments: physical_key must be",
     ))
 
     unknown_runtime_ref = copy.deepcopy(base)

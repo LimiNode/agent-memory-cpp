@@ -73,7 +73,7 @@ later in the roadmap; stable ids are more important than grouping.
 | Fact | FactPayload | — | для temporal/bi-temporal knowledge |
 | Event | (no specific payload) | Embedded в primary_text | lightweight, декларативный |
 | Entity | (no specific payload) | Embedded в primary_text | name + type |
-| Relation | `GraphEdge` is the canonical typed relation | Optional primary_text narration; graph edge endpoints, kind and evidence are authoritative | |
+| Relation | Relation `KnowledgeUnit` plus exactly one `GraphEdge` | Optional primary_text narration; the Relation occurrence owns lifecycle/provenance while its edge carries endpoints, kind and evidence | |
 | Summary | (no specific payload) | Embedded в primary_text | компрессированное представление |
 | CompiledArticle | CompiledArticlePayload | — | Karpathy-style wiki articles |
 | ConversationEpisode | ConversationEpisodePayload | — | multi-utterance bundle |
@@ -445,8 +445,12 @@ the current physical file path or importer-local location:
   not identity fields.
 - `Task`, `Decision`: stable task/decision identity metadata, runtime origin
   and declared payload digest; mutable status/outcome fields are not identity.
-- `Event`, `Entity`, `Relation`, `Summary`, `Custom`: canonical primary text
-  plus declared identity metadata/payload bytes.
+- `Event`, `Entity`, `Summary`, `Custom`: canonical primary text plus declared
+  identity metadata/payload bytes.
+- `Relation`: immutable endpoint occurrence identities, `EdgeKind`,
+  `RelationClass`, declared payload/evidence digests and relation identity
+  metadata. Its `GraphEdgeId` is the same 128-bit value as the Relation unit's
+  `GlobalKnowledgeUnitId`; it is not a second allocation domain.
 
 Changing recipe version without a migration preserving the old stored hash
 creates a new `KnowledgeUnitId` plus supersede/merge lineage.
@@ -552,7 +556,8 @@ Stable field-tag order:
 | imported `Note` | `0x0301 resource_revision_identity`, `0x0302 canonical_text_digest`, `0x0303 resource_body_digest`, `0x0304 title_identity` |
 | `ConversationEpisode`, `CompiledArticle`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
 | `Task`, `Decision` | `0x0351 stable_runtime_identity`, `0x0352 runtime_origin_digest`, `0x0353 declared_payload_digest` |
-| `Event`, `Entity`, `Relation`, `Summary`, `Custom` | `0x0401 primary_identity_text`, `0x0402 declared_identity_metadata_map`, `0x0403 declared_payload_digest` |
+| `Event`, `Entity`, `Summary`, `Custom` | `0x0401 primary_identity_text`, `0x0402 declared_identity_metadata_map`, `0x0403 declared_payload_digest` |
+| `Relation` | `0x0451 from_global_unit_id`, `0x0452 to_global_unit_id`, `0x0453 edge_kind`, `0x0454 relation_class`, `0x0455 declared_payload_digest`, `0x0456 evidence_digest` |
 
 Text normalization table for recipe v1:
 
@@ -591,7 +596,8 @@ Identity vs mutable fields:
 | imported `Note` | `ResourceRevisionRef`, canonical payload text, stable `ResourceBody` digest | title/display summaries, source summaries, projections, lifecycle |
 | `ConversationEpisode`, `CompiledArticle`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | canonical payload text or stable `ResourceBody` digest | title/display summaries, source summaries, domains/facets/intents/agent_roles, activation rules, projections, lifecycle, outcome statistics |
 | `Task`, `Decision` | stable runtime identity + declared payload digest | status, assigned runtime refs, rationale summary, produced units, projections, lifecycle |
-| `Event`, `Entity`, `Relation`, `Summary`, `Custom` | canonical primary identity text plus declared identity metadata/payload bytes | display summaries, non-identity metadata, projections, lifecycle |
+| `Event`, `Entity`, `Summary`, `Custom` | canonical primary identity text plus declared identity metadata/payload bytes | display summaries, non-identity metadata, projections, lifecycle |
+| `Relation` | immutable endpoint occurrence identities, edge kind/class, payload and evidence digests | display summaries, projections and lifecycle; lifecycle visibility also governs its GraphEdge |
 
 ### 4.1. Allocation и инварианты
 

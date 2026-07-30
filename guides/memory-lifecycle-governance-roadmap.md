@@ -152,7 +152,10 @@ They are useful for agent runtimes that have a durable event log and need
 deterministic replay or "what did component X know at decision Y?" audits.
 For imported or reconciled occurrences, `KnownAtSequence` uses append-only
 `KnowledgeVisibilityReceipt` records for the querying origin; a producer's
-sequence never implies visibility at another replica.
+sequence never implies visibility at another replica. One receipt exists for
+each `(GlobalKnowledgeUnitId, RuntimeOriginKey)` first-visible fact; a
+conflicting sequence or evidence is preserved as an import conflict for
+reconciliation, not accepted as a second visibility time.
 
 For ordinary context construction, the same origin-scoped replay frontier also
 excludes a unit when an invalidation, reconciliation, or superseding transition

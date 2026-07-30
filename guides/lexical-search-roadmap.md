@@ -4,7 +4,7 @@
 > [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md). BM25F operates on
 > the `SearchProjection` DBI (`unit_projections`) rather than on
 > `envelope.search_text`. All posting keys below are
-> `(scope_id, projection_kind, field_id, …)`-shaped to match the projection
+> `(scope_id, projection_kind, statistics_epoch, field_id, …)`-shaped to match the projection
 > model defined in ADR-001 / ADR-005 of the stacks roadmap.
 >
 > Related roadmaps:
@@ -223,10 +223,16 @@ struct LexicalStatisticsSnapshotRef final {
 };
 
 struct LexicalCollectionStats final {
-    ProjectionKind projection_kind = ProjectionKind::Original;
-    LexicalStatisticsSnapshotRef snapshot;
+    LexicalStatisticsEpoch statistics_epoch;
+    std::uint64_t statistics_generation = 0;
     std::uint64_t unit_count = 0;
     std::uint64_t total_token_count = 0;
+};
+
+// Small mutable pointer; statistics themselves remain epoch-namespaced rows.
+struct LexicalActiveSnapshot final {
+    LexicalStatisticsSnapshotRef snapshot;
+    std::uint32_t posting_layout_version = 0;
 };
 ```
 
@@ -299,7 +305,8 @@ When a resource or one of its projections is reindexed, the indexing
 transaction removes the previous **active** contribution from
 `LexicalTokenStats` and `LexicalCollectionStats`, applies the replacement
 contribution, advances `statistics_generation` within the current
-`statistics_epoch`, and publishes the replacement lexical manifest together.
+`statistics_epoch`, and atomically publishes the replacement
+`LexicalActiveSnapshot` together with the lexical manifest.
 Physical stale postings may remain until delayed
 compaction, but they must not remain in aggregate stats. Consequently `df`,
 `collection_frequency`, `unit_count`, `total_token_count`, and `avgdl` always
@@ -308,8 +315,10 @@ frontier.
 
 `LexicalTokenStats` rows are current members of the collection snapshot; they
 are not independently stamped or copied on every unrelated unit update. A
-query reads token rows, `LexicalCollectionStats`, and the active manifest from
-one storage read transaction/frontier. A token-stat cache is scoped to that
+query reads `LexicalActiveSnapshot`, then the exact epoch-keyed
+`LexicalCollectionStats` and token rows, from one storage read
+transaction/frontier. The stats row's epoch and generation must equal the
+active snapshot before scoring. A token-stat cache is scoped to that
 frontier or the full `LexicalStatisticsSnapshotRef`; it must not combine token rows from one
 aggregate view with collection counters from another.
 
@@ -326,14 +335,16 @@ coexisting stale blocks may preserve its epoch; any restore into a workspace
 that can retain older blocks must instead allocate a new epoch or delete those
 blocks before publication.
 
-Every derived lexical row whose interpretation includes `TokenId` is namespaced
-by `(scope_id, projection_kind, statistics_epoch)`. A rebuild writes the full
-new namespace first, then atomically publishes its active
-`LexicalStatisticsSnapshotRef` through `lexical_collection_stats`. Queries read
-that active snapshot before any dictionary, posting, segment or token-stat row,
-and use it as an exact key prefix. Old epoch rows can remain for delayed reclaim
-but are unreachable from the new incarnation. This prevents a removed term's
-old `df`, or a reassigned token id, from being read or cached as E2 data.
+Every derived lexical row whose interpretation includes `TokenId`, plus its
+collection aggregate statistics, is namespaced by
+`(scope_id, projection_kind, statistics_epoch)`. A rebuild writes the full new
+namespace and its `LexicalCollectionStats` row first, then atomically publishes
+the active `LexicalStatisticsSnapshotRef` through `lexical_active_snapshot`.
+Queries read that pointer before any collection-statistics, dictionary, posting,
+segment or token-stat row, and use it as an exact key prefix. Old epoch rows can
+remain for delayed reclaim but are unreachable from the new incarnation. This
+prevents a removed term's old `df`, denominator, or reassigned token id from
+being read or cached as E2 data.
 
 Cache keys and block headers carry the full snapshot ref. An epoch mismatch
 means that the whole block is obsolete: it must not be decoded or scored. The
@@ -556,15 +567,19 @@ lexical_token_stats:
     value = { document_frequency, collection_frequency }
 
 lexical_collection_stats:
+    key   = (scope_id, projection_kind, statistics_epoch)
+    value = { statistics_generation, unit_count, total_token_count }
+
+lexical_active_snapshot:
     key   = (scope_id, projection_kind)
-    value = { statistics_epoch, statistics_generation, unit_count,
-              total_token_count }
+    value = { statistics_epoch, statistics_generation, posting_layout_version }
 ```
 
 The first implementation may collapse `field_to_postings` to a single
-`(scope_id, Original, body, token_id, unit_id)` row while keeping the schema
-ready for the other projections and fields. That keeps the BM25-only path fast
-without locking the schema.
+`(scope_id, Original, statistics_epoch, body, token_id, unit_id)` row while
+keeping the schema ready for the other projections and fields. `Original` and
+`body` are fixed baseline values, not an exception to the epoch namespace. That
+keeps the BM25-only path fast without locking the schema.
 
 ### Posting Segments
 
@@ -649,11 +664,11 @@ When a unit is reindexed for a given `projection_kind`:
    candidate-index entries.
 7. Remove the replaced active contribution, then update `lexical_token_stats`
    and `lexical_chunk_stats` per projection_kind.
-8. Update `lexical_collection_stats` and advance its
+8. Update the epoch-keyed `lexical_collection_stats` row and advance its
    `statistics_generation` within the active `statistics_epoch` for the
    replacement active-projection set.
-9. Write new lexical manifest refs with the active `projection_version` and
-   applicable `resource_generation`.
+9. Atomically update `lexical_active_snapshot` with the active
+   `projection_version`, `resource_generation`, epoch and generation.
 10. Commit through a backend transaction where available.
 ```
 
@@ -1409,16 +1424,16 @@ of that ordering; each substep is its own PR.
 19. Wire the lexical index into the `RetrievalPlan` lifecycle: emission of
     `RetrievalTrace` per call, RRF contribution, and participation in
     `IContextBuilder` budgeted assembly.
-20. Add the token-level cache keyed by `(scope_id, token_id,
-    projection_kind, statistics_epoch, statistics_generation)` for fast
+20. Add the token-level cache keyed by `(scope_id, projection_kind,
+    statistics_epoch, token_id, statistics_generation)` for fast
     warm-up within a stable aggregate statistics view; include a fixture where
     an old block and a full rebuild share generation `0` but have different
     epochs, proving that stale pruning cannot be reused.
 
 ### L4. MDBX and secondary indexes (memory-stacks steps 3 cont. and 12.3)
 
-21. Add the MDBX-backed lexical index with the full scope/projection-aware
-    key shape from the first schema, initially restricted to fixed
+21. Add the MDBX-backed lexical index with the full
+    scope/projection/epoch-aware key shape from the first schema, initially restricted to fixed
     `ProjectionKind::Original` and `FieldId::body`; then enable additional
     projection kinds and fields.
 22. Add segmented postings, tombstones, and compaction. Compaction must

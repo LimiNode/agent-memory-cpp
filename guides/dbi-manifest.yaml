@@ -164,6 +164,14 @@ canonical:
     opens: LexicalIndex
     wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
+    physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch]
+    migration_peak: 1
+  - name: lexical_active_snapshot
+    owner: lexical
+    table_type: KeyValueTable
+    opens: LexicalIndex
+    wire_sync_support: kv_supported
+    replication_semantics: derived_rebuildable
     physical_key: [ScopeId, ProjectionKind]
     migration_peak: 1
   - name: metadata_filters
@@ -378,7 +386,7 @@ profile_deltas:
     default: false
     names: [runtime_sequence_index]
     milestone: A1
-    note: "Discriminated range keys: (ScopeId, ProducerEvent, encoded_origin, sequence, UnitId) for rebuildable producer events and (ScopeId, VisibilityReceipt, encoded_origin, sequence, GlobalKnowledgeUnitId) for durable origin-local KnowledgeAtSequence receipts."
+    note: "Discriminated range keys: (ScopeId, ProducerEvent, encoded_origin, sequence, UnitId) for rebuildable producer events and (ScopeId, VisibilityReceipt, encoded_origin, sequence, GlobalKnowledgeUnitId) for durable origin-local KnowledgeAtSequence receipts. The receipt logical identity excludes sequence: (GlobalKnowledgeUnitId, RuntimeOriginKey) is one immutable first-visible fact."
     dbi_entries:
       - name: runtime_sequence_index
         owner: runtime_integration
@@ -539,7 +547,7 @@ profile_deltas:
     schema_status: capacity_reserve_only
 
 expanded_peak_reference:
-  canonical_full_inventory: 29
+  canonical_full_inventory: 30
   legacy_document_resource_adapter: 4
   shared_runtime_queue: 5
   compaction_handoff: 1
@@ -549,7 +557,7 @@ expanded_peak_reference:
   runtime_sequence_index: 1
   sync_system_be72a2b: 9
   migration_dual_write_reserve: 8
-  total: 61
+  total: 62
 
 runtime_integration_mapping:
   a0_a2_component_only_new_runtime_dbis: 0

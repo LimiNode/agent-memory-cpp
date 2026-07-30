@@ -609,12 +609,13 @@ struct GraphEdgeId final {
     std::array<std::uint8_t, 16> bytes{};
 };
 
-// One authoritative semantic relation; storage writes two physical orientations.
+// The ID is byte-for-byte relation_unit.global_id.value; it is never allocated separately.
 struct GraphEdge final {
     GraphEdgeId edge_id;
     ScopeId scope_id;
-    KnowledgeUnitId from_unit_id;
-    KnowledgeUnitId to_unit_id;
+    KnowledgeUnitRef relation_unit;  // required; its local unit kind is Relation
+    KnowledgeUnitRef from;
+    KnowledgeUnitRef to;
     EdgeKind edge_kind;
     RelationClass relation_class = RelationClass::Semantic;
     GraphEdgePayload payload;
@@ -631,6 +632,7 @@ struct CreateUnitRequest {
     std::optional<std::vector<SourceRef>> full_source_refs; // requires enable_full_source_refs
     std::vector<ComponentVariant> components;
     std::vector<SearchProjection> projections;
+    // A Relation unit owns exactly one GraphEdge; graph edges are not independent units.
     std::vector<GraphEdge> graph_edges;
     std::optional<double> importance_score;
 };
@@ -676,6 +678,14 @@ using UpdateUnitResult = std::variant<
     StaleUnitRevision,
     ImmutableIdentityChanged>;
 ```
+
+For a `Relation` request, `graph_edges` contains exactly one edge. The write
+transaction allocates or validates the Relation unit's global identity first,
+requires `edge_id == relation_unit.global_id`, resolves endpoint local IDs from
+their durable refs, and writes both physical orientations. A non-Relation unit
+must not own a graph edge. Relation lifecycle, supersede and erase transitions
+hide the edge from normal traversal; its evidence remains reachable for audit
+according to the ordinary lifecycle/provenance rules.
 
 `create_or_get_unit` is create/dedupe only. If the content key already exists it
 returns `ExistingUnit` and does not mutate the existing unit. Mutable updates
@@ -1049,6 +1059,8 @@ inline MemoryProfileSpec AgentLongTermMemory() {
     s.enable_lexical_bm25f = true;
     s.enable_dense_vectors = true;
     s.enable_graph = true;
+    s.enable_durable_global_identity = true;
+    s.enable_full_source_refs = true;
     s.enable_usage_stats = true;
     s.enable_temporal_validity = true;
     s.enable_fact_payload = true;
@@ -1177,6 +1189,8 @@ inline MemoryProfileSpec TemporalFactStore() {
     s.enable_temporal_validity = true;
     s.enable_fact_payload = true;
     s.enable_graph = true;
+    s.enable_durable_global_identity = true;
+    s.enable_full_source_refs = true;
     s.context_budget = ContextBudget(
         /*total_tokens=*/3000,
         /*qa_tokens=*/0,
@@ -1304,6 +1318,7 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | CompiledArticles=true требует Compaction=true | "CompiledArticles requires Compaction" |
 | ConversationMemory=true требует SpeakerAttribution=true | "ConversationMemory requires SpeakerAttribution" |
 | KnowledgeActivation=true требует ContextPlanner=true | "KnowledgeActivation requires context planner" |
+| GraphRelations=true требует DurableGlobalIdentity + FullSourceRefs | "Graph relations require durable identity and source refs" |
 | CognitiveTraceComponents=true требует Components + FullSourceRefs | "Cognitive trace components require components and source refs" |
 | SequenceReplay=true требует CognitiveTraceComponents + DurableGlobalIdentity + `runtime_sequence_index` profile delta | "SequenceReplay requires durable identity and runtime sequence index" |
 | ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
@@ -1680,11 +1695,16 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 8: Graph + Temporal indexes
 
-- `GraphEdgeId`, `GraphEdgePayload` struct + EdgeKind enum. `GraphEdge` is the
-  authoritative logical relation, including endpoints, relation class, payload
-  and evidence.
+- `GraphEdgeId`, `GraphEdgePayload` struct + EdgeKind enum. A Relation
+  `KnowledgeUnit` is the authoritative occurrence/lifecycle/provenance owner;
+  its one `GraphEdge` has the same global identity and carries endpoints,
+  relation class, payload and evidence.
 - DBI: `graph_edges_by_src`, `graph_edges_by_dst` are two atomic physical
-  orientations of one logical edge; packed adjacency is rebuildable only.
+  orientations of that one Relation-owned edge; packed adjacency is rebuildable
+  only.
+- Acceptance gates: atomic two-orientation write and reopen, export/import with
+  endpoint local-ID remap, relation/edge-ID mismatch or collision rejection,
+  and Relation lifecycle/provenance round-trip.
 - Bounded graph expansion (max_depth, max_edges, budget_tokens).
 - Single-axis TemporalComponent + DBI: `temporal_unit_index` for M1b; the
   M2+ bi-temporal range indexes remain owned by AM-13. A separate

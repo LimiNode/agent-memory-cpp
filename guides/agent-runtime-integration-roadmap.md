@@ -199,12 +199,13 @@ struct KnowledgeVisibilityReceipt {
 };
 ```
 
-`KnowledgeVisibilityReceipt` is append-only and records when a concrete origin
-could first use an occurrence, including after semantic import or
-reconciliation. `KnownAtSequence(origin, cutoff)` includes a unit only when an
-applicable receipt has `visible_at_sequence <= cutoff`; unknown origin-local
-visibility is excluded. A producer sequence is not substituted for another
-replica's receipt.
+`KnowledgeVisibilityReceipt` is the one append-only first-visible fact for the
+logical identity `(GlobalKnowledgeUnitId, RuntimeOriginKey)`. Its
+`visible_at_sequence`, `recorded_at_ms` and import/reconciliation evidence are
+immutable payload, not additional identity. `KnownAtSequence(origin, cutoff)`
+includes a unit only when that receipt has `visible_at_sequence <= cutoff`;
+unknown origin-local visibility is excluded. A producer sequence is not
+substituted for another replica's receipt.
 
 The A1 `runtime_sequence_index` is also the required physical path for these
 receipts. Its key carries an explicit discriminator:
@@ -218,14 +219,18 @@ Producer event rows use the same range substrate with the `ProducerEvent`
 discriminator. The physical DBI is mixed: `VisibilityReceipt` rows are durable
 authoritative replay evidence, while `ProducerEvent` rows are rebuildable
 acceleration derived from canonical units/components. Its logical adapter
-exports and imports every receipt as an append-only record identified by
-`(GlobalKnowledgeUnitId, RuntimeOriginKey, visible_at_sequence)`, preserving
-`recorded_at_ms` and import/reconciliation evidence. During import the local
-`KnowledgeUnitRef` must rebind through `GlobalKnowledgeUnitId` and fail closed
-on an incompatible identity scheme or a conflicting duplicate receipt. It must
-not substitute a producer sequence for a receipt. A profile without this index
-must reject `KnownAtSequence` as an indexed query; it may expose a separately
-named scan-only experiment, but must not silently claim bounded replay.
+exports and imports every receipt by `(GlobalKnowledgeUnitId, RuntimeOriginKey)`,
+preserving `visible_at_sequence`, `recorded_at_ms` and
+import/reconciliation evidence. A byte- or semantic-equivalent reimport is
+idempotent. A receipt for the same logical pair with a different first-visible
+sequence or incompatible evidence is a fail-closed import conflict; any later
+resolution is a separate immutable reconciliation record, never a replacement
+receipt. During import the local `KnowledgeUnitRef` must rebind through
+`GlobalKnowledgeUnitId` and fail closed on an incompatible identity scheme. It
+must not substitute a producer sequence for a receipt. A profile without this
+index must reject `KnownAtSequence` as an indexed query; it may expose a
+separately named scan-only experiment, but must not silently claim bounded
+replay.
 
 For normal replay, a unit is visible at a cutoff only if a receipt for that
 origin is at or before the cutoff and no invalidation, reconciliation, or
@@ -632,11 +637,13 @@ Causal and runtime relations use application-owned `EdgeKind` values and
 typed graph edge payloads. Important semantics must not live only in
 `primary_text = "A caused B"`.
 
-The common `GraphEdge` record is authoritative: it has a stable edge ID,
-endpoints, kind, relation class, payload and evidence. The outgoing and incoming
-graph DBIs are two physical orientations of this one record. Import/export
-serializes one logical edge and reconstructs both orientations after global-ID
-remapping; packed adjacency is only a rebuildable traversal optimization.
+The common `GraphEdge` is the one typed graph projection of its required
+Relation `KnowledgeUnit`: `edge_id` equals `relation_unit.global_id`, whose
+occurrence identity, lifecycle and provenance are authoritative. The edge holds
+endpoint refs, kind, relation class, payload and evidence. The outgoing and
+incoming graph DBIs are two physical orientations of this Relation-owned record.
+Import/export carries the Relation unit and validates/remaps the edge with it;
+packed adjacency is only a rebuildable traversal optimization.
 
 Every application graph edge also carries the common `RelationClass` declared
 by `memory-lifecycle-governance-roadmap.md`. The runtime relation vocabulary
@@ -941,7 +948,11 @@ Golden scenarios:
 | `ImportLocalIdCollision` | Same local IDs from different workspaces bind to their distinct global occurrence IDs |
 | `ImportLocalIdRemap` | Import remaps a local ID without changing the referenced global occurrence ID |
 | `IdentitySchemeMismatch` | Incompatible identity scheme fails before reconciliation records are written |
-| `VisibilityReceiptRoundTrip` | Export/import preserves the origin-local receipt and `KnownAtSequence` cutoff; a producer event may not replace it |
+| `VisibilityReceiptRoundTrip` | Export/import preserves the one origin-local receipt and `KnownAtSequence` cutoff; a producer event may not replace it |
+| `VisibilityReceiptConflict` | Different first-visible sequences or incompatible evidence for one global unit/origin pair fail closed and preserve no replacement receipt |
+| `RelationEdgeRoundTrip` | Relation unit and its one edge survive export/import with endpoint remap, matching edge/global ID, source refs and evidence |
+| `RelationEdgeMismatch` | Edge ID, relation reference, endpoint or evidence mismatch fails before either physical orientation is published |
+| `RelationLifecyclePropagation` | Erase or supersede of a Relation unit removes its edge from normal traversal while retaining audit evidence per policy |
 | `EqualContentDistinctOccurrences` | Equal content with distinct global occurrence IDs remains distinct after import |
 | `PerspectiveLeakage` | Local perspective does not leak without allowed projection |
 | `EvidenceDrillDown` | Summary opens to structured record, then raw evidence |

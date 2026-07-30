@@ -1179,7 +1179,8 @@ lexical_token_by_text                 KeyValueTable<CompositeKey<ScopeId, Projec
 lexical_token_by_id                   KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId>, NormalizedTokenText>
 lexical_chunk_stats                   KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, UnitId>, ChunkLexicalStats>
 lexical_token_stats                   KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId>, LexicalTokenStats>
-lexical_collection_stats              KeyValueTable<CompositeKey<ScopeId, ProjectionKind>, LexicalCollectionStats>
+lexical_collection_stats              KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch>, LexicalCollectionStats>
+lexical_active_snapshot               KeyValueTable<CompositeKey<ScopeId, ProjectionKind>, LexicalActiveSnapshot>
 metadata_filters                      ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>
 graph_edges_by_src                    ReverseIndexTable<CompositeKey<ScopeId, FromUnitId, EdgeKind>, RelationValue<ToUnitId, GraphEdgePayload>>
 graph_edges_by_dst                    ReverseIndexTable<CompositeKey<ScopeId, ToUnitId, EdgeKind>, RelationValue<FromUnitId, GraphEdgePayload>>
@@ -1208,8 +1209,9 @@ owner/table/open/wire/replication/key/peak fields and rejects count or name drif
 explicit `schema_status: capacity_reserve_only` delta may reserve capacity
 without claiming a physical DBI schema. In particular,
 `runtime_sequence_index` is `logical_adapter_required`: its append-only
-visibility receipts are durable replay evidence that must be exported by global
-identity, while its producer-event rows are rebuilt after remapping and are not
+visibility receipts are durable replay evidence that must be exported by the
+unique `(GlobalKnowledgeUnitId, RuntimeOriginKey)` first-visible identity,
+while its producer-event rows are rebuilt after remapping and are not
 raw-syncable state.
 
 `wire_sync_support` answers the narrow upstream question of whether the pinned
@@ -1246,7 +1248,8 @@ lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_re
 lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,TokenId|1
 lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,UnitId|1
 lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,TokenId|1
-lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind|1
+lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch|1
+lexical_active_snapshot|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind|1
 metadata_filters|metadata|ReverseIndexTable|lightweight_prefilter|dupsort_not_supported|derived_rebuildable|ScopeId,MetadataKey,MetadataValue|1
 graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|logical_adapter_required|ScopeId,FromUnitId,EdgeKind|1
 graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|logical_adapter_required|ScopeId,ToUnitId,EdgeKind|1
@@ -1256,6 +1259,38 @@ session_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_suppor
 usage_by_last_access|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|derived_rebuildable|ScopeId,LastUsedAtMs,UnitId|1
 usage_by_cooldown|usage|RangeIndexTable|UsageTracking|kv_supported_if_range_is_kv_backed|derived_rebuildable|ScopeId,CooldownUntilMs,UnitId|1
 schema_info|schema|KeyValueTable|always|kv_supported|logical_adapter_required|SchemaKey|1
+```
+
+Concrete profile deltas have the same checked projection. Capacity-only
+reserves are intentionally absent because they declare no physical DBI:
+
+```text
+dbi-profile-delta-review-projection-v1
+# name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
+jobs_by_id|runtime_services|KeyValueTable|RuntimeQueue|kv_supported|raw_mirror_only|JobId|1
+jobs_scheduled|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|RunAfterMs,JobId|1
+jobs_ready|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|PriorityRank,JobId|1
+jobs_by_lease|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|LeaseUntilMs,JobId|1
+jobs_by_status|runtime_services|ReverseIndexTable|RuntimeQueue|dupsort_not_supported|raw_mirror_only|JobStatus|1
+compaction_handoffs|compaction|KeyValueTable|Compaction|kv_supported|raw_mirror_only|JobId|1
+resource_bodies|provenance|KeyValueTable|ResourceBodyStore|kv_supported|logical_adapter_required|ResourceId,BodyRevision,BodyDigest|1
+resource_body_manifest|provenance|KeyValueTable|ResourceBodyStore|kv_supported|logical_adapter_required|ResourceId,BodyRevision,BodyDigest|1
+resource_body_chunks|provenance|KeyValueTable|ResourceBodyStore|kv_supported|logical_adapter_required|ResourceId,BodyRevision,ChunkIndex|1
+source_refs_by_resource|provenance|ReverseIndexTable|FullSourceRefs|dupsort_not_supported|derived_rebuildable|ResourceId|1
+global_unit_id_to_local_id|knowledge_identity|KeyValueTable|DurableGlobalIdentity|kv_supported|logical_adapter_required|GlobalKnowledgeUnitId|1
+runtime_sequence_index|runtime_integration|RangeIndexTable|SequenceReplay|kv_supported_if_range_is_kv_backed|logical_adapter_required|ScopeId,RuntimeSequenceRowKind,EncodedOrigin,Sequence,StableId|1
+lexical_posting_segments|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,FieldId,TokenId,SegmentId|1
+derived_vector_blobs|embeddings|KeyValueTable|DenseVectors|kv_supported|derived_rebuildable|ScopeId,VectorCodecId,BlobDigest|1
+_mdbxc_meta|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_changelog|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_origins|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_applied|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_identity_index|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_sync_schema|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_logical_delivery|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_logical_delivery_order|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_logical_outbox|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
+_mdbxc_logical_delivery_watermarks|upstream_sync|UpstreamSystemDBI|UpstreamSync|upstream_managed|upstream_managed|UpstreamInternal|1
 ```
 
 Сводная таблица DBI секции 5.5 (для быстрого чтения владельца PR и capability-зависимости; explanatory projection of the checked data):
@@ -1281,10 +1316,11 @@ schema_info|schema|KeyValueTable|always|kv_supported|logical_adapter_required|Sc
 | `lexical_token_by_id` | по capability `LexicalIndex` | `agent_memory.lex_token_id.v1` | TBD | Token dictionary reverse lookup `(scope, projection, lexical epoch, token_id) -> normalized_text` |
 | `lexical_chunk_stats` | по capability `LexicalIndex` | `agent_memory.lex_chunk_stats.v1` | TBD | BM25F chunk/unit stats by `(scope, projection, lexical epoch, unit)` |
 | `lexical_token_stats` | по capability `LexicalIndex` | `agent_memory.lex_token_stats.v1` | TBD | Token corpus stats by `(scope, projection, lexical epoch, token)` |
-| `lexical_collection_stats` | по capability `LexicalIndex` | `agent_memory.lex_collection_stats.v1` | TBD | Collection-level BM25F stats by `(scope, projection)` |
+| `lexical_collection_stats` | по capability `LexicalIndex` | `agent_memory.lex_collection_stats.v1` | TBD | Epoch-specific collection BM25F stats by `(scope, projection, lexical epoch)` |
+| `lexical_active_snapshot` | по capability `LexicalIndex` | `agent_memory.lex_active_snapshot.v1` | TBD | Atomic active lexical epoch/generation and posting-layout pointer by `(scope, projection)` |
 | `metadata_filters` | по selector `lightweight_prefilter` | `agent_memory.metadata_filter.v1` | TBD | Reverse index `(scope, metadata_key, metadata_value) -> UnitId` |
-| `graph_edges_by_src` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Physical outgoing orientation of an authoritative `GraphEdge`, with `RelationValue<ToUnitId, GraphEdgePayload>` |
-| `graph_edges_by_dst` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Physical incoming orientation of the same authoritative `GraphEdge`, with `RelationValue<FromUnitId, GraphEdgePayload>` |
+| `graph_edges_by_src` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Physical outgoing orientation of a Relation-owned `GraphEdge`, with `RelationValue<ToUnitId, GraphEdgePayload>` |
+| `graph_edges_by_dst` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Physical incoming orientation of the same Relation-owned `GraphEdge`, with `RelationValue<FromUnitId, GraphEdgePayload>` |
 | `temporal_unit_index` | по capability `TemporalIndex` | `agent_memory.unit_ts.v1` | TBD | Scope-aware range index `(scope, timestamp, unit_id) -> UnitId` |
 | `speaker_to_units` | по capability `SpeakerAttribution` | `agent_memory.speaker.v1` | TBD | Reverse index `(scope, speaker_id) -> UnitId` |
 | `session_to_units` | по capability `SpeakerAttribution` | `agent_memory.session.v1` | TBD | Reverse index `(scope, session_id) -> UnitId` |
@@ -1343,15 +1379,15 @@ follows:
   обязательность `scope_id` для каждого write (см. roadmap, секция 10).
 - Derivation/evidence/drill-down semantics не получают отдельных DBI в
   `mdbx-containers`. Downstream `agent-memory-cpp` кодирует их через один
-  authoritative logical `GraphEdge` с application-owned `GraphEdgeId`,
-  `EdgeKind`, `RelationClass`, payload и evidence. `graph_edges_by_src` /
+  Relation-owned `GraphEdge` с `GraphEdgeId`, byte-for-byte равным
+  `relation_unit.global_id`, `EdgeKind`, `RelationClass`, payload и evidence.
+  Relation unit остаётся authoritative owner lifecycle/provenance. `graph_edges_by_src` /
   `graph_edges_by_dst` являются двумя атомарно записываемыми physical
   orientations этого одного record, а не двумя independently replicated edge
-  collections. Import/export serializes one logical edge and reconstructs both
-  orientations after global-ID remapping; packed adjacency remains rebuildable.
-  Generic relation helper assumes unique `(scope, source, target, tag)` only
-  when the application chooses that policy; distinct evidence relations use
-  explicit domain `GraphEdgeId` values.
+  collections. Import/export carries Relation unit and validates/remaps edge
+  with it; packed adjacency remains rebuildable. Generic relation helper assumes
+  unique `(scope, source, target, tag)` only when the application chooses that
+  policy; distinct evidence relations use distinct Relation occurrences.
 - Raw source identity принадлежит canonical `SourceRef` / `ResourceId`
   контракту `agent-memory-cpp` (см.
   [`knowledge-units-roadmap.md`](knowledge-units-roadmap.md) §3). Full
@@ -1380,7 +1416,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 
 | Bucket | Steady DBIs | Migration peak | Wire / replication status | Notes |
 |---|---:|---:|---|---|
-| Canonical memory-stack DBIs from §5.5 | up to 29 profile-selected | 29 full inventory | mixed | Count every row in the §5.5 summary table exactly once when full canonical inventory is enabled. |
+| Canonical memory-stack DBIs from §5.5 | up to 30 profile-selected | 30 full inventory | mixed | Count every row in the §5.5 summary table exactly once when full canonical inventory is enabled. |
 | Existing document/resource adapter DBIs from §5.4 | 0 by default, +4 if legacy adapter enabled | +4 | KV supported | Adapter-local; not part of canonical memory-stack layout. |
 | Runtime queue profile delta | 0 by default, +5 for the shared persistent queue | +5 | mixed | `jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`, `jobs_by_status`; owned by `runtime-services-roadmap.md`. |
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
@@ -1392,7 +1428,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported / derived rebuildable | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, snapshot-derived opt-in | snapshot-derived | opt-in only | Count the enabled raw/logical store manifest at the pinned upstream SHA; not used by M0/M1/M2 while §11.7 is DEFER. |
 | Migration / dual-write reserve | 0 | +8 | application-owned | Reserved for transitional tables during profile migrations. |
-| Planned expanded peak under current assumptions | profile-selected | 61 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 35 DBI slots of headroom under `max_dbs = 96`, including 19 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
+| Planned expanded peak under current assumptions | profile-selected | 62 with full canonical inventory + legacy adapter + one runtime queue + compaction handoff + chunked resource bodies + source reverse lookup + durable global identity + runtime sequence + sync + reserve | within recommended ceiling | Leaves 34 DBI slots of headroom under `max_dbs = 96`, including 18 above the required 16 free slots; optional M2 lexical/dedup deltas are budgeted in the manifest but not selected by this reference profile. |
 
 Any future addition must update this table with capability, default-open
 status, underlying MDBX table type, number of physical DBI, paired reverse
@@ -1407,7 +1443,7 @@ The following machine-readable checkpoint is derived from
 
 ```text
 dbi-budget-checkpoint-v1
-canonical_full_inventory=29
+canonical_full_inventory=30
 legacy_document_resource_adapter=4
 shared_runtime_queue=5
 compaction_handoff=1
@@ -1417,10 +1453,10 @@ global_unit_id_to_local_id=1
 runtime_sequence_index=1
 sync_system_be72a2b=9
 migration_dual_write_reserve=8
-total=61
-headroom=35
+total=62
+headroom=34
 minimum_free_slots=16
-headroom_above_minimum=19
+headroom_above_minimum=18
 ```
 
 ### 5.5.2. Operational limits for one MDBX environment
@@ -1486,7 +1522,7 @@ budget автоматически; они считаются только при
 | `embedding_meta`, `embedding_vectors` | `KeyValueTable<CompositeKey<...>, …>` (§5.5) | Supported | Canonical application-owned vector projections; a generic `VectorStore` remains an optional rebuildable backend, not their identity authority. |
 | `inverted_token_to_unit` | `ReverseIndexTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId, FieldId>, UnitId>` поверх `KeyMultiValueTable` (§3.2) | **NOT supported** | См. §5.6.2 — critical gap для lexical inverted index |
 | `field_to_postings` | `KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, FieldId, TokenId, UnitId>, PostingStats>` (§5.5) | Supported | Targeted posting update/delete by full posting identity |
-| `lexical_token_by_text`, `lexical_token_by_id`, `lexical_chunk_stats`, `lexical_token_stats`, `lexical_collection_stats` | `KeyValueTable<CompositeKey<...>, ...>` (§5.5) | Supported | Canonical lexical dictionary/stats DBI |
+| `lexical_token_by_text`, `lexical_token_by_id`, `lexical_chunk_stats`, `lexical_token_stats`, `lexical_collection_stats`, `lexical_active_snapshot` | `KeyValueTable<CompositeKey<...>, ...>` (§5.5) | Supported | Canonical lexical dictionary/stats DBI and atomic active-snapshot pointer |
 | `metadata_filters` | `ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>` поверх `KeyMultiValueTable` | **NOT supported** | Pre-filter indexes не синхронизируются в v0.1 |
 | `graph_edges_by_src`, `graph_edges_by_dst` | `ReverseIndexTable` поверх `KeyMultiValueTable` | **NOT supported** | Graph edges — DUPSORT-семантика, см. §3.2 + §5.5 |
 | `temporal_unit_index` | `RangeIndexTable<CompositeKey<ScopeId, Timestamp, UnitId>, UnitId>` поверх `KeyValueTable` или `KeyMultiValueTable` (§3.3) | Supported *или* **NOT supported** в зависимости от impl-а | Требует решения: если `RangeIndexTable` реализуется поверх `KeyMultiValueTable` (multi-payload per key), статус NOT supported; если поверх `KeyValueTable` (single payload), Supported |
@@ -1662,7 +1698,8 @@ snapshot-derived sync system DBIs) фиксируется в §11.7.
   `inverted_token_to_unit` / `field_to_postings` projections; старый
   `qa_knowledge` inventory из §5.3 не открывается в canonical profile.
 - `MdbxGraphStore` использует `graph_edges_by_src` и `graph_edges_by_dst` как
-  две явные physical orientations; traversal policy остаётся downstream.
+  две явные physical orientations of a Relation-owned edge; traversal policy
+  остаётся downstream.
 - `MdbxTemporalIndex` использует `temporal_unit_index` для range queries.
   M1 treats events as ordinary `KnowledgeUnit` records with `TemporalComponent`.
   A separate `temporal_event_index` is a future profile delta only if
@@ -2110,13 +2147,14 @@ void MdbxGraphIndex::add_edge(const GraphEdge& edge,
 }
 ```
 
-`GraphEdge` is the application-owned logical authority: its encoded payload
-contains the stable edge ID, relation class, application payload and evidence.
-Logical import/export serializes that record once and reconstructs both
-orientations; packed adjacency can be rebuilt from it. `EdgeKind`, expiration,
-contradiction/evidence tags and graph traversal policy belong to
-`agent-memory-cpp`; `MultiTableWriter` only guarantees that both physical
-orientations commit or roll back together.
+`GraphEdge` is the Relation unit's application-owned typed projection: its
+encoded payload contains the matching relation-unit reference, stable edge ID,
+relation class, application payload and evidence. Logical import/export carries
+the Relation unit and validates that this projection's IDs, lifecycle and
+provenance agree before reconstructing both orientations; packed adjacency can
+be rebuilt from it. `EdgeKind`, expiration, contradiction/evidence tags and
+graph traversal policy belong to `agent-memory-cpp`; `MultiTableWriter` only
+guarantees that both physical orientations commit or roll back together.
 
 #### 12.7.3 Runtime job storage recipe
 

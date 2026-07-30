@@ -1659,7 +1659,7 @@ the in-memory baseline.
 
 ```text
 inverted_token_to_unit:
-    key   = (scope_id, token_id, projection_kind, field_id)
+    key   = (scope_id, projection_kind, statistics_epoch, token_id, field_id)
     value = DUPSORT UnitId
     used by:  lexical search (pre-filter for phrase/proximity),
               lexical BM25F fallback when dense is unavailable
@@ -1671,18 +1671,21 @@ metadata_to_resource:
     used by:  MetadataFilter, MetadataInFilter, MetadataTagFilter
 
 field_to_postings:
-    key   = (scope_id, projection_kind, field_id, token_id, unit_id)
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             unit_id)
     value = PostingStats
     used by:  BM25F and fielded sparse retrieval
 
 graph_edges_by_src:
-    key   = (scope_id, from_unit_id, edge_kind, to_unit_id)
-    value = GraphEdgePayload (weight, reason, generation)
+    key   = (scope_id, from_unit_id, edge_kind)
+    value = RelationValue<ToUnitId, GraphEdgePayload> (Relation unit ref,
+            matching edge ID, weight, reason, evidence)
     used by:  IGraphStore::expand, outgoing lookup
 
 graph_edges_by_dst:
-    key   = (scope_id, to_unit_id, edge_kind, from_unit_id)
-    value = GraphEdgePayload (edge_kind, weight, reason, generation)
+    key   = (scope_id, to_unit_id, edge_kind)
+    value = RelationValue<FromUnitId, GraphEdgePayload> (Relation unit ref,
+            matching edge ID, weight, reason, evidence)
     used by:  IRelationStore::incoming, reverse expansion
 
 temporal_unit_index:

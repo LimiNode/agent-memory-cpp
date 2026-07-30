@@ -76,7 +76,9 @@ Hot path retrieval использует только `id`, `kind`, `scope_id`, `
 При создании `CreateUnitRequest` с пустым `primary_text` generation function заполняет поле:
 
 ```cpp
-std::string generate_primary_text(KnowledgeUnitKind kind, const ComponentView& components) {
+std::string generate_primary_text(KnowledgeUnitKind kind,
+                                  const ComponentView& components,
+                                  const GraphEdge* relation_edge) {
     switch (kind) {
         case KnowledgeUnitKind::Chunk:             // 500 символов body + heading
             return components.chunk.body.substr(0, 500) + " | " + components.chunk.heading_path;
@@ -89,7 +91,9 @@ std::string generate_primary_text(KnowledgeUnitKind kind, const ComponentView& c
         case KnowledgeUnitKind::ConversationEpisode: return components.episode.first_utterances(2);
         case KnowledgeUnitKind::Event:             return components.event.short_description;
         case KnowledgeUnitKind::Entity:            return components.entity.name + " (" + components.entity.type + ")";
-        case KnowledgeUnitKind::Relation:          return components.relation.from_kind + " -[" + components.relation.edge_kind + "]-> " + components.relation.to_kind;
+        case KnowledgeUnitKind::Relation:
+            if (relation_edge == nullptr) throw std::invalid_argument("Relation requires GraphEdge");
+            return format_relation(*relation_edge);
         default:                                   return "";  // Custom: caller provides
     }
 }
@@ -343,7 +347,7 @@ remain until compaction purge. A row is active only when its complete
 | ConversationEpisode | flattened | — | — | — | — | — |
 | Event | description | — | — | — | — | — |
 | Entity | name + type + aliases | — | — | — | — | — |
-| Relation | from → edge → to | — | — | — | — | — |
+| Relation | Relation-owned GraphEdge: from → edge → to | — | — | — | — | — |
 
 Generation rules детерминированы: given the same unit + components, the same projections are emitted.
 
@@ -712,12 +716,15 @@ hard traversal budgets. Benchmark against row-wise expansion on breadth,
 locality, update/compaction cost, decoded bytes and deterministic result order
 before promoting a packed adjacency layout.
 
-Each edge is one authoritative `GraphEdge` logical record with a stable
-`GraphEdgeId`, endpoints, `EdgeKind`, `RelationClass`, payload and evidence.
-The two DBI orientations are written atomically and are exported/imported once
-per logical edge, then reconstructed after global-ID remapping. A packed
-adjacency segment is derived and rebuildable; it is never the source for edge
-kind, confidence, causal explanation or provenance after restore.
+Each edge is the one typed graph projection of a canonical Relation
+`KnowledgeUnit`. `GraphEdgeId` is byte-for-byte that Relation occurrence's
+`GlobalKnowledgeUnitId`; the Relation unit owns lifecycle, `SourceRef` and
+import/export provenance. The edge carries endpoint refs, `EdgeKind`,
+`RelationClass`, payload and evidence. The two DBI orientations are written
+atomically and exported/imported with their Relation unit, then reconstructed
+after global-ID remapping. A packed adjacency segment is derived and rebuildable;
+it is never the source for edge kind, confidence, causal explanation or
+provenance after restore.
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это уточняет API shape `GraphStore` для будущих расширений (callbacks + early-stop visitor, schema introspection для diagnostics).
 

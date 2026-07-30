@@ -133,6 +133,12 @@ identity, immutable original bytes, versioned representations, typed evidence
 locators and segment-to-Chunk materialization. It is optional for M2, but a
 public non-text source connector must not bypass this contract.
 
+Graph expansion may enter M2 only after its Relation-owned graph substrate
+passes atomic two-orientation write/reopen, endpoint remap, edge/global-ID
+mismatch rejection, and lifecycle/provenance round-trip fixtures. Packed
+adjacency remains an M2+ rebuildable optimization, not this substrate's source
+of truth.
+
 M2 retrieval engineering may add projection-exact fallback routes,
 `CandidateSet` filter pushdown, physical I/O budgets/tracing, tiered encoded
 rerank, compressed lexical posting segments with conservative dynamic pruning,
