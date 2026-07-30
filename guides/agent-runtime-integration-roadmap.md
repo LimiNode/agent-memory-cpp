@@ -215,9 +215,17 @@ receipts. Its key carries an explicit discriminator:
 ```
 
 Producer event rows use the same range substrate with the `ProducerEvent`
-discriminator. A profile without this index must reject `KnownAtSequence` as an
-indexed query; it may expose a separately named scan-only experiment, but must
-not silently claim bounded replay.
+discriminator. The physical DBI is mixed: `VisibilityReceipt` rows are durable
+authoritative replay evidence, while `ProducerEvent` rows are rebuildable
+acceleration derived from canonical units/components. Its logical adapter
+exports and imports every receipt as an append-only record identified by
+`(GlobalKnowledgeUnitId, RuntimeOriginKey, visible_at_sequence)`, preserving
+`recorded_at_ms` and import/reconciliation evidence. During import the local
+`KnowledgeUnitRef` must rebind through `GlobalKnowledgeUnitId` and fail closed
+on an incompatible identity scheme or a conflicting duplicate receipt. It must
+not substitute a producer sequence for a receipt. A profile without this index
+must reject `KnownAtSequence` as an indexed query; it may expose a separately
+named scan-only experiment, but must not silently claim bounded replay.
 
 For normal replay, a unit is visible at a cutoff only if a receipt for that
 origin is at or before the cutoff and no invalidation, reconciliation, or
@@ -624,6 +632,12 @@ Causal and runtime relations use application-owned `EdgeKind` values and
 typed graph edge payloads. Important semantics must not live only in
 `primary_text = "A caused B"`.
 
+The common `GraphEdge` record is authoritative: it has a stable edge ID,
+endpoints, kind, relation class, payload and evidence. The outgoing and incoming
+graph DBIs are two physical orientations of this one record. Import/export
+serializes one logical edge and reconstructs both orientations after global-ID
+remapping; packed adjacency is only a rebuildable traversal optimization.
+
 Every application graph edge also carries the common `RelationClass` declared
 by `memory-lifecycle-governance-roadmap.md`. The runtime relation vocabulary
 below is `Semantic` unless a caller explicitly records an evidence,
@@ -700,9 +714,11 @@ Physical index mapping:
 The metadata rows are generic secondary keys, not per-component DBIs.
 Sequence rows are different: the A1 `runtime_sequence_index` profile delta owns
 their range keys, because neither metadata filtering nor temporal wall-clock
-indexes can implement origin-scoped sequence ranges. A profile without that
-delta may not advertise `KnowledgeAtSequence` as indexed or latency-bounded; it
-must reject the filter or document a deliberately scan-backed experimental path.
+indexes can implement origin-scoped sequence ranges. Its logical adapter treats
+visibility receipts as durable records and producer-event rows as rebuildable
+acceleration. A profile without that delta may not advertise
+`KnowledgeAtSequence` as indexed or latency-bounded; it must reject the filter
+or document a deliberately scan-backed experimental path.
 
 New query classes:
 
@@ -875,7 +891,7 @@ A0-A2 use existing substrate:
 | epistemic status | `unit_components` |
 | focus context | `unit_components` |
 | task/decision/procedure payloads | `unit_components` initially |
-| sequence filtering and visibility receipts | `runtime_sequence_index` profile delta |
+| sequence filtering and durable visibility receipts | `runtime_sequence_index` profile delta with logical adapter |
 | raw event payload | `ResourceBodyStore` |
 | causal relations | `graph_edges_by_src` / `graph_edges_by_dst` |
 | conflicts | units + graph relations |
@@ -925,6 +941,7 @@ Golden scenarios:
 | `ImportLocalIdCollision` | Same local IDs from different workspaces bind to their distinct global occurrence IDs |
 | `ImportLocalIdRemap` | Import remaps a local ID without changing the referenced global occurrence ID |
 | `IdentitySchemeMismatch` | Incompatible identity scheme fails before reconciliation records are written |
+| `VisibilityReceiptRoundTrip` | Export/import preserves the origin-local receipt and `KnownAtSequence` cutoff; a producer event may not replace it |
 | `EqualContentDistinctOccurrences` | Equal content with distinct global occurrence IDs remains distinct after import |
 | `PerspectiveLeakage` | Local perspective does not leak without allowed projection |
 | `EvidenceDrillDown` | Summary opens to structured record, then raw evidence |
@@ -939,7 +956,7 @@ lock in `milestones.md`.
 | Lane | Name | Scope | Prerequisites |
 |---|---|---|---|
 | A0 | Adapter prototype | `Custom` units, typed metadata, example adapter | M0 raw/resource/projection substrate |
-| A1 | Cognitive trace contracts | runtime origin, causal, perspective, epistemic components, sequence filters | M1b components, graph substrate, DurableGlobalIdentity and identity-scheme validation; M2+ for bi-temporal |
+| A1 | Cognitive trace contracts | runtime origin, causal, perspective, epistemic components, sequence filters | M1b components, FullSourceRefs, graph substrate, DurableGlobalIdentity and identity-scheme validation; M2+ for bi-temporal |
 | A2 | Task, Decision and Procedure | formal payloads, procedure activation, capability refs, outcome stats | M1b + activation metadata; M1c for background validation jobs |
 | A3 | Partition and reconciliation | replica stamps, import/export, semantic conflicts, merge tests, identity/remap fixtures | M1b DurableGlobalIdentity and identity-scheme validation; M2/M2+ lifecycle governance |
 | A4 | Plasticity support | procedure mining, topology mutation evidence, introspection snapshots, rollback records | external runtime policy; memory stores evidence only |

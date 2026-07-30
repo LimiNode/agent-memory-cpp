@@ -299,11 +299,12 @@ enum class MemoryCapability : uint64_t {
     FullSourceRefs     = 1ull << 13,
     TranslationProjection = 1ull << 15,
     KnowledgeActivation = 1ull << 16,
-    CognitiveTrace = 1ull << 17,
+    CognitiveTraceComponents = 1ull << 17,
     ProceduralActivation = 1ull << 18,
     ReplicaReconciliation = 1ull << 19,
     ArtifactProvenance = 1ull << 20,
     DurableGlobalIdentity = 1ull << 21,
+    SequenceReplay = 1ull << 22,
 };
 
 using CapabilitySet = std::underlying_type_t<MemoryCapability>;
@@ -344,15 +345,18 @@ uses the existing envelope/projection/metadata/graph substrate until a future
 profile explicitly adds `playbook_payloads`, `domain_map_payloads`, or
 `activation_rules` DBI deltas to `mdbx-containers-extension-tz.md`.
 
-`CognitiveTrace`, `ProceduralActivation` and `ReplicaReconciliation` are
+`CognitiveTraceComponents`, `SequenceReplay`, `ProceduralActivation` and
+`ReplicaReconciliation` are
 coarse-grained runtime-integration groups. They deliberately do not create a
-capability bit for each scalar component. A0/A2 payload components use existing
-`unit_components`, graph edges, resource bodies and projections. The bounded
-`KnownAtSequence` form of `CognitiveTrace` additionally requires
-`DurableGlobalIdentity` plus the `runtime_sequence_index` profile delta;
-components-only adapters must reject that indexed query rather than claim it
-without the identity and sequence stores. Partition-specific DBIs beyond those
-two remain future manifest deltas.
+capability bit for each scalar component. `CognitiveTraceComponents` uses
+existing `unit_components`, graph edges, resource bodies and projections, and
+requires `FullSourceRefs` for durable evidence. `SequenceReplay` is separate:
+it adds bounded `KnownAtSequence`, requires `CognitiveTraceComponents`,
+`DurableGlobalIdentity`, identity-scheme validation and the
+`runtime_sequence_index` profile delta. Components-only adapters must reject
+that indexed query rather than advertise replay without its identity and
+sequence stores. Partition-specific DBIs beyond those remain future manifest
+deltas.
 
 ### 6.2. Политики
 
@@ -512,7 +516,8 @@ struct MemoryProfileSpec {
     bool enable_context_planner = false;
     bool enable_knowledge_activation = false;
     bool enable_durable_global_identity = false;
-    bool enable_cognitive_trace = false;
+    bool enable_cognitive_trace_components = false;
+    bool enable_sequence_replay = false;
     bool enable_procedural_activation = false;
     bool enable_replica_reconciliation = false;
     bool enable_encrypted_storage = false;
@@ -600,6 +605,22 @@ public:
 ### 7.2. Запись unit
 
 ```cpp
+struct GraphEdgeId final {
+    std::array<std::uint8_t, 16> bytes{};
+};
+
+// One authoritative semantic relation; storage writes two physical orientations.
+struct GraphEdge final {
+    GraphEdgeId edge_id;
+    ScopeId scope_id;
+    KnowledgeUnitId from_unit_id;
+    KnowledgeUnitId to_unit_id;
+    EdgeKind edge_kind;
+    RelationClass relation_class = RelationClass::Semantic;
+    GraphEdgePayload payload;
+    std::vector<KnowledgeUnitRef> evidence;
+};
+
 struct CreateUnitRequest {
     KnowledgeUnitEnvelope envelope;   // envelope.sources: vector<SourceRefSummary>, max ~3 inline, <=256 байт excerpt preview каждый
     std::optional<QAPayload> qa_payload;
@@ -1201,7 +1222,8 @@ inline MemoryProfileSpec CognitiveRuntimeMemory() {
     s.enable_context_planner = true;
     s.enable_knowledge_activation = true;
     s.enable_durable_global_identity = true;
-    s.enable_cognitive_trace = true;
+    s.enable_cognitive_trace_components = true;
+    s.enable_sequence_replay = true;
     s.enable_procedural_activation = true;
     s.enable_graph = true;
     s.enable_full_source_refs = true;
@@ -1211,12 +1233,13 @@ inline MemoryProfileSpec CognitiveRuntimeMemory() {
 }
 ```
 
-This profile selects two explicit opt-in DBI deltas: `global_unit_id_to_local_id`
-for `DurableGlobalIdentity` and `runtime_sequence_index` for bounded
-`KnownAtSequence`. A0/A2 runtime components still use `unit_components`; causal
-and procedure relations use the existing graph DBIs; raw event/tool payloads
-use `ResourceBodyStore` when enabled. Replica reconciliation remains A3 and is
-not selected by this profile.
+This profile selects `FullSourceRefs` for component evidence plus two explicit
+opt-in DBI deltas: `global_unit_id_to_local_id` for
+`DurableGlobalIdentity` and `runtime_sequence_index` for `SequenceReplay` and
+bounded `KnownAtSequence`. A0/A2 runtime components still use
+`unit_components`; causal and procedure relations use the existing graph DBIs;
+raw event/tool payloads use `ResourceBodyStore` when enabled. Replica
+reconciliation remains A3 and is not selected by this profile.
 
 See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision guide on choosing between Karpathy 3-layer, A-MEM, lifemodel, NOUZ, Mem0/Letta/Zep, Блок фактов, and dual-layer patterns for your workload.
 
@@ -1258,7 +1281,11 @@ artifact-aware SourceRef/EvidenceAnchor schema.
 `enable_durable_global_identity == true`; it selects the
 `global_unit_id_to_local_id` profile delta and supplies the portable occurrence
 identity required by bounded runtime sequence replay and import/export.
-`CognitiveTrace` capability is present iff `enable_cognitive_trace == true`.
+`CognitiveTraceComponents` capability is present iff
+`enable_cognitive_trace_components == true`; it requires `FullSourceRefs` and
+does not by itself select a replay DBI. `SequenceReplay` capability is present
+iff `enable_sequence_replay == true`; it selects `runtime_sequence_index` and
+requires `CognitiveTraceComponents` plus `DurableGlobalIdentity`.
 `ProceduralActivation` capability is present iff
 `enable_procedural_activation == true`. `ReplicaReconciliation` capability is
 present iff `enable_replica_reconciliation == true`; it remains A3 and opens no
@@ -1277,9 +1304,10 @@ DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 | CompiledArticles=true требует Compaction=true | "CompiledArticles requires Compaction" |
 | ConversationMemory=true требует SpeakerAttribution=true | "ConversationMemory requires SpeakerAttribution" |
 | KnowledgeActivation=true требует ContextPlanner=true | "KnowledgeActivation requires context planner" |
-| CognitiveTrace=true требует Components + FullSourceRefs + DurableGlobalIdentity + `runtime_sequence_index` profile delta | "CognitiveTrace requires durable identity and runtime sequence index" |
+| CognitiveTraceComponents=true требует Components + FullSourceRefs | "Cognitive trace components require components and source refs" |
+| SequenceReplay=true требует CognitiveTraceComponents + DurableGlobalIdentity + `runtime_sequence_index` profile delta | "SequenceReplay requires durable identity and runtime sequence index" |
 | ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
-| ReplicaReconciliation=true требует CognitiveTrace=true | "ReplicaReconciliation requires cognitive trace" |
+| ReplicaReconciliation=true требует SequenceReplay=true | "ReplicaReconciliation requires sequence replay" |
 | EmbeddingMigration=true требует DenseVectors=true | "EmbeddingMigration requires DenseVectors" |
 | ArtifactProvenance=true requires FullSourceRefs=true | "ArtifactProvenance requires full source refs" |
 | DecayPolicy: cooldown_ms >= 0, half_life_ms > 0 (если mode != None) | "Invalid DecayPolicy" |
@@ -1652,8 +1680,11 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 8: Graph + Temporal indexes
 
-- `GraphEdgePayload` struct + EdgeKind enum.
-- DBI: `graph_edges_by_src`, `graph_edges_by_dst`.
+- `GraphEdgeId`, `GraphEdgePayload` struct + EdgeKind enum. `GraphEdge` is the
+  authoritative logical relation, including endpoints, relation class, payload
+  and evidence.
+- DBI: `graph_edges_by_src`, `graph_edges_by_dst` are two atomic physical
+  orientations of one logical edge; packed adjacency is rebuildable only.
 - Bounded graph expansion (max_depth, max_edges, budget_tokens).
 - Single-axis TemporalComponent + DBI: `temporal_unit_index` for M1b; the
   M2+ bi-temporal range indexes remain owned by AM-13. A separate

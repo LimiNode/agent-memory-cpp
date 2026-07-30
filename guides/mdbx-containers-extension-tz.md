@@ -511,7 +511,7 @@ Scope-aware варианты (ADR-012 в `guides/memory-stacks-roadmap.md`): `In
 - `(scope_id, speaker_id) -> UnitId` — `speaker_to_units` (capability `SpeakerAttribution`).
 - `(scope_id, session_id) -> UnitId` — `session_to_units` (capability `SpeakerAttribution`).
 - `(scope_id, metadata_key, metadata_value) -> UnitId` — `metadata_filters` (всегда открыт, lightweight pre-filter).
-- `(scope_id, token_id, projection_kind, field_id) -> UnitId` — `inverted_token_to_unit` candidate index.
+- `(scope_id, projection_kind, lexical_statistics_epoch, token_id, field_id) -> UnitId` — `inverted_token_to_unit` candidate index.
 
 `field_to_postings` is intentionally absent from `ReverseIndexTable` examples:
 it is a KV table keyed by full posting identity in §5.5.
@@ -1173,16 +1173,16 @@ embedding_vectors                     KeyValueTable<CompositeKey<ScopeId, ModelI
                                       // порядок ключа выбран для cluster-friendly access при ANN-free exact scan.
 
 // Secondary indexes — scope-aware (ADR-012)
-inverted_token_to_unit                ReverseIndexTable<CompositeKey<ScopeId, TokenId, ProjectionKind, FieldId>, UnitId>
-field_to_postings                     KeyValueTable<CompositeKey<ScopeId, ProjectionKind, FieldId, TokenId, UnitId>, PostingStats>
-lexical_token_by_text                 KeyValueTable<CompositeKey<ScopeId, NormalizedTokenText>, TokenId>
-lexical_token_by_id                   KeyValueTable<CompositeKey<ScopeId, TokenId>, NormalizedTokenText>
-lexical_chunk_stats                   KeyValueTable<CompositeKey<ScopeId, UnitId, ProjectionKind>, ChunkLexicalStats>
-lexical_token_stats                   KeyValueTable<CompositeKey<ScopeId, ProjectionKind, TokenId>, LexicalTokenStats>
+inverted_token_to_unit                ReverseIndexTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId, FieldId>, UnitId>
+field_to_postings                     KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, FieldId, TokenId, UnitId>, PostingStats>
+lexical_token_by_text                 KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, NormalizedTokenText>, TokenId>
+lexical_token_by_id                   KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId>, NormalizedTokenText>
+lexical_chunk_stats                   KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, UnitId>, ChunkLexicalStats>
+lexical_token_stats                   KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId>, LexicalTokenStats>
 lexical_collection_stats              KeyValueTable<CompositeKey<ScopeId, ProjectionKind>, LexicalCollectionStats>
 metadata_filters                      ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>
-graph_edges_by_src                    ReverseIndexTable<CompositeKey<ScopeId, FromUnitId, EdgeKind>, RelationValue<ToUnitId, EdgePayload>>
-graph_edges_by_dst                    ReverseIndexTable<CompositeKey<ScopeId, ToUnitId, EdgeKind>, RelationValue<FromUnitId, EdgePayload>>
+graph_edges_by_src                    ReverseIndexTable<CompositeKey<ScopeId, FromUnitId, EdgeKind>, RelationValue<ToUnitId, GraphEdgePayload>>
+graph_edges_by_dst                    ReverseIndexTable<CompositeKey<ScopeId, ToUnitId, EdgeKind>, RelationValue<FromUnitId, GraphEdgePayload>>
 temporal_unit_index                   RangeIndexTable<CompositeKey<ScopeId, Timestamp, UnitId>, UnitId>
 speaker_to_units                      ReverseIndexTable<CompositeKey<ScopeId, SpeakerId>, UnitId>
 session_to_units                      ReverseIndexTable<CompositeKey<ScopeId, SessionId>, UnitId>
@@ -1207,8 +1207,10 @@ declares concrete DBIs must define matching `names` and a complete
 owner/table/open/wire/replication/key/peak fields and rejects count or name drift. Only an
 explicit `schema_status: capacity_reserve_only` delta may reserve capacity
 without claiming a physical DBI schema. In particular,
-`runtime_sequence_index` is `semantic_rebuild_only`: its local-ID rows are
-rebuilt after global-identity remapping and are not raw-syncable state.
+`runtime_sequence_index` is `logical_adapter_required`: its append-only
+visibility receipts are durable replay evidence that must be exported by global
+identity, while its producer-event rows are rebuilt after remapping and are not
+raw-syncable state.
 
 `wire_sync_support` answers the narrow upstream question of whether the pinned
 wire format can encode the physical table representation. It does **not** grant
@@ -1218,9 +1220,9 @@ or externally serialized deployment; `logical_adapter_required` requires a
 versioned application adapter and durable identity mapping; `derived_rebuildable`
 must be rebuilt from authoritative state; and `semantic_rebuild_only` is rebuilt
 only after application-level interpretation/remapping. In particular,
-`global_unit_id_to_local_id` is never raw-mirrored, while
-`runtime_sequence_index`, lexical blocks and vector blobs are not canonical
-replication state.
+`global_unit_id_to_local_id` is never raw-mirrored. `runtime_sequence_index`
+exports durable visibility receipts through its logical adapter; lexical blocks
+and vector blobs remain derived rebuildable state.
 
 ```text
 dbi-review-projection-v1
@@ -1238,16 +1240,16 @@ source_refs|provenance|KeyValueTable|FullSourceRefs|kv_supported|logical_adapter
 unit_projections|retrieval|KeyValueTable|indexed_retrieval|kv_supported|derived_rebuildable|ScopeId,UnitId,ProjectionKind,Revision|1
 embedding_meta|embeddings|KeyValueTable|DenseVectors|kv_supported|derived_rebuildable|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
 embedding_vectors|embeddings|KeyValueTable|DenseVectors|kv_supported|derived_rebuildable|ScopeId,ModelId,ModelVersion,ProjectionKind,UnitId|1
-inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|derived_rebuildable|ScopeId,TokenId,ProjectionKind,FieldId|1
-field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,FieldId,TokenId,UnitId|1
-lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,NormalizedTokenText|1
-lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,TokenId|1
-lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,UnitId,ProjectionKind|1
-lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,TokenId|1
+inverted_token_to_unit|lexical|ReverseIndexTable|LexicalIndex|dupsort_not_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,TokenId,FieldId|1
+field_to_postings|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,FieldId,TokenId,UnitId|1
+lexical_token_by_text|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,NormalizedTokenText|1
+lexical_token_by_id|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,TokenId|1
+lexical_chunk_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,UnitId|1
+lexical_token_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind,LexicalStatisticsEpoch,TokenId|1
 lexical_collection_stats|lexical|KeyValueTable|LexicalIndex|kv_supported|derived_rebuildable|ScopeId,ProjectionKind|1
 metadata_filters|metadata|ReverseIndexTable|lightweight_prefilter|dupsort_not_supported|derived_rebuildable|ScopeId,MetadataKey,MetadataValue|1
-graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|derived_rebuildable|ScopeId,FromUnitId,EdgeKind|1
-graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|derived_rebuildable|ScopeId,ToUnitId,EdgeKind|1
+graph_edges_by_src|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|logical_adapter_required|ScopeId,FromUnitId,EdgeKind|1
+graph_edges_by_dst|graph|ReverseIndexTable|GraphIndex|dupsort_not_supported|logical_adapter_required|ScopeId,ToUnitId,EdgeKind|1
 temporal_unit_index|temporal|RangeIndexTable|TemporalIndex|kv_supported_if_range_is_kv_backed|derived_rebuildable|ScopeId,Timestamp,UnitId|1
 speaker_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|derived_rebuildable|ScopeId,SpeakerId|1
 session_to_units|speaker|ReverseIndexTable|SpeakerAttribution|dupsort_not_supported|derived_rebuildable|ScopeId,SessionId|1
@@ -1273,16 +1275,16 @@ schema_info|schema|KeyValueTable|always|kv_supported|logical_adapter_required|Sc
 | `unit_projections` | по selector `indexed_retrieval` (Layer C projections) | `agent_memory.projection.v1` | TBD | Multi-version `(scope, unit, ProjectionKind, revision)` projections; TranslatedCanonical carries projection-level derivation metadata in the value |
 | `embedding_meta` | по capability `DenseVectors` | `agent_memory.embedding_meta.v1` | TBD | Версионированная мета (model_id, version, dim, encoder_id) |
 | `embedding_vectors` | по capability `DenseVectors` | `agent_memory.embedding_vector.v1` | TBD | Versioned vector blob by `(scope, model_id, model_version, ProjectionKind, unit_id)` |
-| `inverted_token_to_unit` | по capability `LexicalIndex` | `agent_memory.inv_token.v1` | TBD | Scope-aware reverse index `(scope, token_id, projection, field) -> UnitId` |
-| `field_to_postings` | по capability `LexicalIndex` | `agent_memory.field_posting.v1` | TBD | Scope-aware posting stats by `(scope, projection, field, token, unit)` |
-| `lexical_token_by_text` | по capability `LexicalIndex` | `agent_memory.lex_token_text.v1` | TBD | Token dictionary `(scope, normalized_text) -> TokenId` |
-| `lexical_token_by_id` | по capability `LexicalIndex` | `agent_memory.lex_token_id.v1` | TBD | Token dictionary reverse lookup `(scope, token_id) -> normalized_text` |
-| `lexical_chunk_stats` | по capability `LexicalIndex` | `agent_memory.lex_chunk_stats.v1` | TBD | BM25F chunk/unit stats by `(scope, unit, projection)` |
-| `lexical_token_stats` | по capability `LexicalIndex` | `agent_memory.lex_token_stats.v1` | TBD | Token corpus stats by `(scope, projection, token)` |
+| `inverted_token_to_unit` | по capability `LexicalIndex` | `agent_memory.inv_token.v1` | TBD | Scope-aware reverse index `(scope, projection, lexical epoch, token, field) -> UnitId` |
+| `field_to_postings` | по capability `LexicalIndex` | `agent_memory.field_posting.v1` | TBD | Scope-aware posting stats by `(scope, projection, lexical epoch, field, token, unit)` |
+| `lexical_token_by_text` | по capability `LexicalIndex` | `agent_memory.lex_token_text.v1` | TBD | Token dictionary `(scope, projection, lexical epoch, normalized_text) -> TokenId` |
+| `lexical_token_by_id` | по capability `LexicalIndex` | `agent_memory.lex_token_id.v1` | TBD | Token dictionary reverse lookup `(scope, projection, lexical epoch, token_id) -> normalized_text` |
+| `lexical_chunk_stats` | по capability `LexicalIndex` | `agent_memory.lex_chunk_stats.v1` | TBD | BM25F chunk/unit stats by `(scope, projection, lexical epoch, unit)` |
+| `lexical_token_stats` | по capability `LexicalIndex` | `agent_memory.lex_token_stats.v1` | TBD | Token corpus stats by `(scope, projection, lexical epoch, token)` |
 | `lexical_collection_stats` | по capability `LexicalIndex` | `agent_memory.lex_collection_stats.v1` | TBD | Collection-level BM25F stats by `(scope, projection)` |
 | `metadata_filters` | по selector `lightweight_prefilter` | `agent_memory.metadata_filter.v1` | TBD | Reverse index `(scope, metadata_key, metadata_value) -> UnitId` |
-| `graph_edges_by_src` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Scope-aware outgoing edges with value `RelationValue<ToUnitId, EdgePayload>` |
-| `graph_edges_by_dst` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Scope-aware incoming edges with value `RelationValue<FromUnitId, EdgePayload>` |
+| `graph_edges_by_src` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Physical outgoing orientation of an authoritative `GraphEdge`, with `RelationValue<ToUnitId, GraphEdgePayload>` |
+| `graph_edges_by_dst` | по capability `GraphIndex` | `agent_memory.graph_edge.v1` | TBD | Physical incoming orientation of the same authoritative `GraphEdge`, with `RelationValue<FromUnitId, GraphEdgePayload>` |
 | `temporal_unit_index` | по capability `TemporalIndex` | `agent_memory.unit_ts.v1` | TBD | Scope-aware range index `(scope, timestamp, unit_id) -> UnitId` |
 | `speaker_to_units` | по capability `SpeakerAttribution` | `agent_memory.speaker.v1` | TBD | Reverse index `(scope, speaker_id) -> UnitId` |
 | `session_to_units` | по capability `SpeakerAttribution` | `agent_memory.session.v1` | TBD | Reverse index `(scope, session_id) -> UnitId` |
@@ -1340,13 +1342,16 @@ follows:
   исключением. Profile validation в `MemoryStack::open()` проверяет
   обязательность `scope_id` для каждого write (см. roadmap, секция 10).
 - Derivation/evidence/drill-down semantics не получают отдельных DBI в
-  `mdbx-containers`. Downstream `agent-memory-cpp` должен кодировать такие
-  отношения через уже существующую пару `graph_edges_by_src` /
-  `graph_edges_by_dst` с application-owned `EdgeKind` и opaque payload. Это
-  сохраняет две физические ориентации relation index без скрытых DBI. Generic
-  relation helper assumes unique `(scope, source, target, tag)`; multiple
-  evidence records for the same tuple must be aggregated in `EdgePayload` or
-  modeled downstream with an explicit domain relation id.
+  `mdbx-containers`. Downstream `agent-memory-cpp` кодирует их через один
+  authoritative logical `GraphEdge` с application-owned `GraphEdgeId`,
+  `EdgeKind`, `RelationClass`, payload и evidence. `graph_edges_by_src` /
+  `graph_edges_by_dst` являются двумя атомарно записываемыми physical
+  orientations этого одного record, а не двумя independently replicated edge
+  collections. Import/export serializes one logical edge and reconstructs both
+  orientations after global-ID remapping; packed adjacency remains rebuildable.
+  Generic relation helper assumes unique `(scope, source, target, tag)` only
+  when the application chooses that policy; distinct evidence relations use
+  explicit domain `GraphEdgeId` values.
 - Raw source identity принадлежит canonical `SourceRef` / `ResourceId`
   контракту `agent-memory-cpp` (см.
   [`knowledge-units-roadmap.md`](knowledge-units-roadmap.md) §3). Full
@@ -1382,7 +1387,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported / logical adapter required | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned; never raw-mirrored because its local target is environment-specific. |
-| Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV-range if backed / semantic rebuild only | `runtime_sequence_index`; A1 runtime-history acceleration. Local-ID rows are rebuilt after identity remapping, not raw-synced. |
+| Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV-range if backed / logical adapter required | `runtime_sequence_index`; exports durable visibility receipts by global identity while producer-event acceleration rows are rebuilt after remapping. |
 | Compressed lexical posting-segment delta | 0 by default, +1 when M2 lexical segments are enabled | +1 | KV supported / derived rebuildable | `lexical_posting_segments`; derived BM25F block layout with conservative score bounds, not a replacement for canonical units or exhaustive baseline. |
 | Derived vector-blob dedup delta | 0 by default, +1 when M2 dense dedup is enabled | +1 | KV supported / derived rebuildable | `derived_vector_blobs`; scope-local immutable encoded payloads only; per-unit metadata, lifecycle and provenance remain separate. |
 | Optional sync system DBIs from §1.5.10 | 0 by default, snapshot-derived opt-in | snapshot-derived | opt-in only | Count the enabled raw/logical store manifest at the pinned upstream SHA; not used by M0/M1/M2 while §11.7 is DEFER. |
@@ -1479,8 +1484,8 @@ budget автоматически; они считаются только при
 | `source_refs` | `KeyValueTable<UnitId, std::vector<SourceRef>>` (§5.5 Layer B) | Supported | Full source refs; M1 capability |
 | `unit_projections` | `KeyValueTable<CompositeKey<...>, SearchProjection>` (§5.5 Layer C) | Supported | Composite key — opaque bytes на wire (см. §1.5.5) |
 | `embedding_meta`, `embedding_vectors` | `KeyValueTable<CompositeKey<...>, …>` (§5.5) | Supported | Canonical application-owned vector projections; a generic `VectorStore` remains an optional rebuildable backend, not their identity authority. |
-| `inverted_token_to_unit` | `ReverseIndexTable<CompositeKey<ScopeId, TokenId, ProjectionKind, FieldId>, UnitId>` поверх `KeyMultiValueTable` (§3.2) | **NOT supported** | См. §5.6.2 — critical gap для lexical inverted index |
-| `field_to_postings` | `KeyValueTable<CompositeKey<ScopeId, ProjectionKind, FieldId, TokenId, UnitId>, PostingStats>` (§5.5) | Supported | Targeted posting update/delete by full posting identity |
+| `inverted_token_to_unit` | `ReverseIndexTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId, FieldId>, UnitId>` поверх `KeyMultiValueTable` (§3.2) | **NOT supported** | См. §5.6.2 — critical gap для lexical inverted index |
+| `field_to_postings` | `KeyValueTable<CompositeKey<ScopeId, ProjectionKind, LexicalStatisticsEpoch, FieldId, TokenId, UnitId>, PostingStats>` (§5.5) | Supported | Targeted posting update/delete by full posting identity |
 | `lexical_token_by_text`, `lexical_token_by_id`, `lexical_chunk_stats`, `lexical_token_stats`, `lexical_collection_stats` | `KeyValueTable<CompositeKey<...>, ...>` (§5.5) | Supported | Canonical lexical dictionary/stats DBI |
 | `metadata_filters` | `ReverseIndexTable<CompositeKey<ScopeId, MetadataKey, MetadataValue>, UnitId>` поверх `KeyMultiValueTable` | **NOT supported** | Pre-filter indexes не синхронизируются в v0.1 |
 | `graph_edges_by_src`, `graph_edges_by_dst` | `ReverseIndexTable` поверх `KeyMultiValueTable` | **NOT supported** | Graph edges — DUPSORT-семантика, см. §3.2 + §5.5 |
@@ -1507,8 +1512,8 @@ Sync role map:
 
 | Role | DBIs | Adoption rule |
 |---|---|---|
-| authoritative logical state | `knowledge_units`, `content_key_to_unit_id`, `unit_components`, per-kind payload DBIs, `source_refs`, `schema_info`, MDBX-backed `resource_bodies` deltas | Require stable codec/layout and logical adapter before multi-host sync |
-| derived/rebuildable indexes | `unit_projections`, lexical dictionary/stats/postings, `metadata_filters`, `graph_edges_by_*`, `temporal_unit_index`, `speaker_to_units`, `session_to_units`, `usage_by_*`, `embedding_vectors` | May be rebuilt from authoritative state; raw sync is optional and must not be the only recovery path |
+| authoritative logical state | `knowledge_units`, `content_key_to_unit_id`, `unit_components`, per-kind payload DBIs, `source_refs`, `schema_info`, MDBX-backed `resource_bodies` deltas, logical `GraphEdge` records in `graph_edges_by_*`, durable `VisibilityReceipt` records in `runtime_sequence_index` | Require stable codec/layout and logical adapter before multi-host sync |
+| derived/rebuildable indexes | `unit_projections`, lexical dictionary/stats/postings, `metadata_filters`, `temporal_unit_index`, `speaker_to_units`, `session_to_units`, `usage_by_*`, `embedding_vectors`, producer-event rows in `runtime_sequence_index` | May be rebuilt from authoritative state; raw sync is optional and must not be the only recovery path |
 | runtime operational state | runtime queue DBIs, `compaction_handoffs` | Sync is profile-specific; single-host profiles do not enable it |
 | upstream system state | raw stores plus `_mdbxc_logical_delivery`, `_mdbxc_logical_delivery_order`, `_mdbxc_logical_outbox` from §1.5.10 | Open only when sync is explicitly adopted; count the pinned manifest rather than a fixed six-DBI assumption |
 
@@ -2095,19 +2100,23 @@ reads.
 void MdbxGraphIndex::add_edge(const GraphEdge& edge,
                               const Transaction& txn) {
     graph_edges_by_src_.add(edge.src_key(),
-                            RelationValue<ToUnitId, EdgePayload>{
-                                edge.to, edge.payload()},
+                            RelationValue<ToUnitId, GraphEdgePayload>{
+                                edge.to, edge.payload_with_identity_and_evidence()},
                             txn);
     graph_edges_by_dst_.add(edge.dst_key(),
-                            RelationValue<FromUnitId, EdgePayload>{
-                                edge.from, edge.payload()},
+                            RelationValue<FromUnitId, GraphEdgePayload>{
+                                edge.from, edge.payload_with_identity_and_evidence()},
                             txn);
 }
 ```
 
-`EdgeKind`, expiration, contradiction/evidence tags and graph traversal policy
-belong to `agent-memory-cpp`; `MultiTableWriter` only guarantees that both
-physical orientations commit or roll back together.
+`GraphEdge` is the application-owned logical authority: its encoded payload
+contains the stable edge ID, relation class, application payload and evidence.
+Logical import/export serializes that record once and reconstructs both
+orientations; packed adjacency can be rebuilt from it. `EdgeKind`, expiration,
+contradiction/evidence tags and graph traversal policy belong to
+`agent-memory-cpp`; `MultiTableWriter` only guarantees that both physical
+orientations commit or roll back together.
 
 #### 12.7.3 Runtime job storage recipe
 
@@ -2205,7 +2214,7 @@ incoming:
 
 If the helper wraps existing `graph_edges_by_src` / `graph_edges_by_dst`, DBI
 delta is `+0` because the canonical graph value shape in §5.5 is already
-`RelationValue<OppositeEndpoint, EdgePayload>`. For caller-provided DBIs,
+`RelationValue<OppositeEndpoint, GraphEdgePayload>`. For caller-provided DBIs,
 `+0` is allowed only when their encoding is documented as compatible with
 `RelationValue<OppositeEndpoint, Payload>` and DUPSORT ordering. If the helper
 creates a new relation pair, profile delta is `+2` and §5.5.1 must be updated.

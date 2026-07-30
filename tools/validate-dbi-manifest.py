@@ -50,7 +50,7 @@ ALLOWED_SELECTORS = {
     "Compaction",
     "ResourceBodyStore",
     "DurableGlobalIdentity",
-    "CognitiveTrace",
+    "SequenceReplay",
     "UpstreamSync",
 }
 
@@ -102,6 +102,27 @@ EXPECTED_PHYSICAL_KEYS = {
     "embedding_vectors": [
         "ScopeId", "ModelId", "ModelVersion", "ProjectionKind", "UnitId",
     ],
+    "inverted_token_to_unit": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "TokenId",
+        "FieldId",
+    ],
+    "field_to_postings": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "FieldId",
+        "TokenId", "UnitId",
+    ],
+    "lexical_token_by_text": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch",
+        "NormalizedTokenText",
+    ],
+    "lexical_token_by_id": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "TokenId",
+    ],
+    "lexical_chunk_stats": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "UnitId",
+    ],
+    "lexical_token_stats": [
+        "ScopeId", "ProjectionKind", "LexicalStatisticsEpoch", "TokenId",
+    ],
 }
 
 STALE_TERMS = {
@@ -124,7 +145,9 @@ RUNTIME_MAPPING_REFERENCE_KEYS = {
 
 EXPECTED_REPLICATION_SEMANTICS = {
     "global_unit_id_to_local_id": "logical_adapter_required",
-    "runtime_sequence_index": "semantic_rebuild_only",
+    "runtime_sequence_index": "logical_adapter_required",
+    "graph_edges_by_src": "logical_adapter_required",
+    "graph_edges_by_dst": "logical_adapter_required",
     "lexical_posting_segments": "derived_rebuildable",
     "derived_vector_blobs": "derived_rebuildable",
 }
@@ -201,6 +224,12 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
             fail(
                 errors,
                 f"{name}: physical_key must be {expected_physical_key!r}",
+            )
+        expected_semantics = EXPECTED_REPLICATION_SEMANTICS.get(name)
+        if expected_semantics and row.get("replication_semantics") != expected_semantics:
+            fail(
+                errors,
+                f"{name}: replication_semantics must be {expected_semantics}",
             )
         if row.get("opens") == "always" and name in {
             "embedding_meta",
@@ -377,8 +406,12 @@ def validate_manifest(data: dict, errors: list[str]) -> None:
         if not isinstance(runtime_mapping, dict):
             fail(errors, "runtime_integration_mapping must be a mapping")
         else:
-            if runtime_mapping.get("a0_a2_default_new_dbis") != 0:
-                fail(errors, "runtime_integration_mapping.a0_a2_default_new_dbis must be 0")
+            if runtime_mapping.get("a0_a2_component_only_new_runtime_dbis") != 0:
+                fail(
+                    errors,
+                    "runtime_integration_mapping.a0_a2_component_only_new_runtime_dbis "
+                    "must be 0",
+                )
             allowed_refs = set(names) | set(delta_names) | {"resource_body_profile_delta"}
             for key in RUNTIME_MAPPING_REFERENCE_KEYS:
                 value = runtime_mapping.get(key)
@@ -579,6 +612,17 @@ def run_self_test(manifest_path: Path) -> int:
         "global_unit_id_to_local_id: replication_semantics must be logical_adapter_required",
     ))
 
+    graph_edges_rebuildable = copy.deepcopy(base)
+    for row in graph_edges_rebuildable["canonical"]:
+        if row["name"] == "graph_edges_by_src":
+            row["replication_semantics"] = "derived_rebuildable"
+            break
+    cases.append((
+        "graph edges require a logical adapter",
+        graph_edges_rebuildable,
+        "graph_edges_by_src: replication_semantics must be logical_adapter_required",
+    ))
+
     missing_physical_key = copy.deepcopy(base)
     del missing_physical_key["canonical"][0]["physical_key"]
     cases.append(("missing physical key", missing_physical_key, "missing fields: ['physical_key']"))
@@ -593,6 +637,17 @@ def run_self_test(manifest_path: Path) -> int:
             row["physical_key"].remove("ModelVersion")
             break
     cases.append(("embedding model version", missing_model_version, "embedding_vectors: physical_key must be"))
+
+    missing_lexical_epoch = copy.deepcopy(base)
+    for row in missing_lexical_epoch["canonical"]:
+        if row["name"] == "lexical_token_stats":
+            row["physical_key"].remove("LexicalStatisticsEpoch")
+            break
+    cases.append((
+        "lexical statistics epoch",
+        missing_lexical_epoch,
+        "lexical_token_stats: physical_key must be",
+    ))
 
     unknown_runtime_ref = copy.deepcopy(base)
     unknown_runtime_ref["runtime_integration_mapping"]["sequence_filtering"] = "missing_dbi"

@@ -73,7 +73,7 @@ later in the roadmap; stable ids are more important than grouping.
 | Fact | FactPayload | — | для temporal/bi-temporal knowledge |
 | Event | (no specific payload) | Embedded в primary_text | lightweight, декларативный |
 | Entity | (no specific payload) | Embedded в primary_text | name + type |
-| Relation | (no specific payload) | Embedded в primary_text, graph edges | |
+| Relation | `GraphEdge` is the canonical typed relation | Optional primary_text narration; graph edge endpoints, kind and evidence are authoritative | |
 | Summary | (no specific payload) | Embedded в primary_text | компрессированное представление |
 | CompiledArticle | CompiledArticlePayload | — | Karpathy-style wiki articles |
 | ConversationEpisode | ConversationEpisodePayload | — | multi-utterance bundle |
@@ -86,8 +86,8 @@ later in the roadmap; stable ids are more important than grouping.
 | Custom | metadata_typed["payload"] | — | escape hatch через JSON-like value |
 | Procedure | ProcedurePayload component initially | activation metadata + outcome stats | learned/imported versioned procedure |
 
-Примечание: для kinds без dedicated payload (Event, Entity, Relation, Summary,
-Note, Playbook, CapabilityMap) основная информация содержится в
+Примечание: для kinds без dedicated payload (Event, Entity, Summary, Note,
+Playbook, CapabilityMap) основная информация содержится в
 `envelope.primary_text`/`display_text`, activation metadata, graph edges and/or
 operational components (`SpeakerComponent`, `TemporalComponent` и т.д.).
 Dedicated `PlaybookPayload`, `DomainMapPayload` or `ActivationRules` DBIs are
@@ -1317,16 +1317,16 @@ enum class DerivedRecordKind : uint32_t {
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
 | CompactionMetaComponent | `unit_components` (tag=CompactionMeta) | Compaction=true |
 | ActivationMetadataComponent | `unit_components` (tag=ActivationMetadata) | KnowledgeActivation=true |
-| RuntimeOriginComponent | `unit_components` (tag=RuntimeOrigin) | CognitiveTrace=true |
-| CausalContextComponent | `unit_components` (tag=CausalContext) | CognitiveTrace=true |
-| PerspectiveComponent | `unit_components` (tag=Perspective) | CognitiveTrace=true |
-| EpistemicStatusComponent | `unit_components` (tag=EpistemicStatus) | CognitiveTrace=true |
-| FocusContextComponent | `unit_components` (tag=FocusContext) | CognitiveTrace=true |
-| TaskPayload | `unit_components` (tag=TaskPayload) | CognitiveTrace=true |
-| DecisionPayload | `unit_components` (tag=DecisionPayload) | CognitiveTrace=true |
-| DecisionSelectionComponent | `unit_components` (tag=DecisionSelection) | CognitiveTrace=true |
+| RuntimeOriginComponent | `unit_components` (tag=RuntimeOrigin) | CognitiveTraceComponents=true |
+| CausalContextComponent | `unit_components` (tag=CausalContext) | CognitiveTraceComponents=true |
+| PerspectiveComponent | `unit_components` (tag=Perspective) | CognitiveTraceComponents=true |
+| EpistemicStatusComponent | `unit_components` (tag=EpistemicStatus) | CognitiveTraceComponents=true |
+| FocusContextComponent | `unit_components` (tag=FocusContext) | CognitiveTraceComponents=true |
+| TaskPayload | `unit_components` (tag=TaskPayload) | CognitiveTraceComponents=true |
+| DecisionPayload | `unit_components` (tag=DecisionPayload) | CognitiveTraceComponents=true |
+| DecisionSelectionComponent | `unit_components` (tag=DecisionSelection) | CognitiveTraceComponents=true |
 | ProcedurePayload | `unit_components` (tag=ProcedurePayload) | ProceduralActivation=true |
-| TaskStateComponent | `unit_components` (tag=TaskState) | CognitiveTrace=true |
+| TaskStateComponent | `unit_components` (tag=TaskState) | CognitiveTraceComponents=true |
 | ProcedureStateComponent | `unit_components` (tag=ProcedureState) | ProceduralActivation=true |
 | ProcedureStatsComponent | `unit_components` (tag=ProcedureStats) | ProceduralActivation=true |
 | GlobalIdentityComponent | `unit_components` (tag=GlobalIdentity) | durable-global-identity profile |

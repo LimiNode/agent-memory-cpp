@@ -558,8 +558,9 @@ read/decode. `RetrievalResult.completion` and per-route trace outcomes expose
 budget exhaustion to callers; page-fault and cache metrics remain telemetry,
 never portability-sensitive correctness gates.
 
-Runtime-integration filters are optional and only active when
-`CognitiveTrace` is enabled:
+Runtime-integration metadata filters are optional and only active when
+`CognitiveTraceComponents` is enabled. A non-empty `sequence_ranges` filter
+additionally requires `SequenceReplay`:
 
 ```cpp
 struct RuntimeRetrievalFilters {
@@ -710,6 +711,13 @@ frontier and visited nodes, while the existing depth/edge/token limits remain
 hard traversal budgets. Benchmark against row-wise expansion on breadth,
 locality, update/compaction cost, decoded bytes and deterministic result order
 before promoting a packed adjacency layout.
+
+Each edge is one authoritative `GraphEdge` logical record with a stable
+`GraphEdgeId`, endpoints, `EdgeKind`, `RelationClass`, payload and evidence.
+The two DBI orientations are written atomically and are exported/imported once
+per logical edge, then reconstructed after global-ID remapping. A packed
+adjacency segment is derived and rebuildable; it is never the source for edge
+kind, confidence, causal explanation or provenance after restore.
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это уточняет API shape `GraphStore` для будущих расширений (callbacks + early-stop visitor, schema introspection для diagnostics).
 

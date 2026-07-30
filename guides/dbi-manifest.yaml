@@ -116,7 +116,7 @@ canonical:
     opens: LexicalIndex
     wire_sync_support: dupsort_not_supported
     replication_semantics: derived_rebuildable
-    physical_key: [ScopeId, TokenId, ProjectionKind, FieldId]
+    physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId, FieldId]
     migration_peak: 1
   - name: field_to_postings
     owner: lexical
@@ -124,7 +124,7 @@ canonical:
     opens: LexicalIndex
     wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
-    physical_key: [ScopeId, ProjectionKind, FieldId, TokenId, UnitId]
+    physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch, FieldId, TokenId, UnitId]
     migration_peak: 1
   - name: lexical_token_by_text
     owner: lexical
@@ -132,7 +132,7 @@ canonical:
     opens: LexicalIndex
     wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
-    physical_key: [ScopeId, NormalizedTokenText]
+    physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch, NormalizedTokenText]
     migration_peak: 1
   - name: lexical_token_by_id
     owner: lexical
@@ -140,7 +140,7 @@ canonical:
     opens: LexicalIndex
     wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
-    physical_key: [ScopeId, TokenId]
+    physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId]
     migration_peak: 1
   - name: lexical_chunk_stats
     owner: lexical
@@ -148,7 +148,7 @@ canonical:
     opens: LexicalIndex
     wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
-    physical_key: [ScopeId, UnitId, ProjectionKind]
+    physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch, UnitId]
     migration_peak: 1
   - name: lexical_token_stats
     owner: lexical
@@ -156,7 +156,7 @@ canonical:
     opens: LexicalIndex
     wire_sync_support: kv_supported
     replication_semantics: derived_rebuildable
-    physical_key: [ScopeId, ProjectionKind, TokenId]
+    physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch, TokenId]
     migration_peak: 1
   - name: lexical_collection_stats
     owner: lexical
@@ -179,7 +179,7 @@ canonical:
     table_type: ReverseIndexTable
     opens: GraphIndex
     wire_sync_support: dupsort_not_supported
-    replication_semantics: derived_rebuildable
+    replication_semantics: logical_adapter_required
     physical_key: [ScopeId, FromUnitId, EdgeKind]
     migration_peak: 1
   - name: graph_edges_by_dst
@@ -187,7 +187,7 @@ canonical:
     table_type: ReverseIndexTable
     opens: GraphIndex
     wire_sync_support: dupsort_not_supported
-    replication_semantics: derived_rebuildable
+    replication_semantics: logical_adapter_required
     physical_key: [ScopeId, ToUnitId, EdgeKind]
     migration_peak: 1
   - name: temporal_unit_index
@@ -378,14 +378,14 @@ profile_deltas:
     default: false
     names: [runtime_sequence_index]
     milestone: A1
-    note: "Discriminated range keys: (ScopeId, ProducerEvent, encoded_origin, sequence, UnitId) for producer events and (ScopeId, VisibilityReceipt, encoded_origin, sequence, GlobalKnowledgeUnitId) for origin-local KnowledgeAtSequence."
+    note: "Discriminated range keys: (ScopeId, ProducerEvent, encoded_origin, sequence, UnitId) for rebuildable producer events and (ScopeId, VisibilityReceipt, encoded_origin, sequence, GlobalKnowledgeUnitId) for durable origin-local KnowledgeAtSequence receipts."
     dbi_entries:
       - name: runtime_sequence_index
         owner: runtime_integration
         table_type: RangeIndexTable
-        opens: CognitiveTrace
+        opens: SequenceReplay
         wire_sync_support: kv_supported_if_range_is_kv_backed
-        replication_semantics: semantic_rebuild_only
+        replication_semantics: logical_adapter_required
         physical_key: [ScopeId, RuntimeSequenceRowKind, EncodedOrigin, Sequence, StableId]
         migration_peak: 1
   - name: lexical_posting_segments
@@ -403,7 +403,7 @@ profile_deltas:
         opens: LexicalIndex
         wire_sync_support: kv_supported
         replication_semantics: derived_rebuildable
-        physical_key: [ScopeId, ProjectionKind, FieldId, TokenId, SegmentId]
+        physical_key: [ScopeId, ProjectionKind, LexicalStatisticsEpoch, FieldId, TokenId, SegmentId]
         migration_peak: 1
   - name: derived_vector_blob_dedup
     dbis: 1
@@ -552,7 +552,7 @@ expanded_peak_reference:
   total: 61
 
 runtime_integration_mapping:
-  a0_a2_default_new_dbis: 0
+  a0_a2_component_only_new_runtime_dbis: 0
   cognitive_trace_components: unit_components
   task_decision_procedure_payloads: unit_components
   causal_relations: [graph_edges_by_src, graph_edges_by_dst]
@@ -564,6 +564,6 @@ runtime_integration_mapping:
     - replica_frontiers
     - reconciliation_jobs
   notes:
-    - A0 and A1 profile deltas above are opt-in; the default profile adds no A-lane DBIs.
+    - A0/A2 component-only profiles add no runtime-specific DBIs; SequenceReplay is an explicit A1 opt-in delta.
     - A0-A2 do not add a separate runtime_event_index or temporal_event_index.
     - Future partition DBIs are not budgeted until a concrete implementation task updates profile_deltas.

@@ -253,10 +253,10 @@ Token strings should be normalized before they receive ids:
 
 ```text
 lexical_token_by_text:
-    (scope_id, normalized_token) -> token_id
+    (scope_id, projection_kind, statistics_epoch, normalized_token) -> token_id
 
 lexical_token_by_id:
-    (scope_id, token_id) -> normalized_token
+    (scope_id, projection_kind, statistics_epoch, token_id) -> normalized_token
 ```
 
 The reverse dictionary is not required for scoring, but it is useful for
@@ -313,8 +313,8 @@ one storage read transaction/frontier. A token-stat cache is scoped to that
 frontier or the full `LexicalStatisticsSnapshotRef`; it must not combine token rows from one
 aggregate view with collection counters from another.
 
-A **token-level cache** keyed by `(scope_id, token_id, projection_kind,
-statistics_epoch, statistics_generation)` keeps warm-up reads cheap within a stable lexical
+A **token-level cache** keyed by `(scope_id, projection_kind, statistics_epoch,
+token_id, statistics_generation)` keeps warm-up reads cheap within a stable lexical
 session without mixing aggregate views.
 
 `statistics_epoch` is generated durably and never reused for a different
@@ -324,9 +324,23 @@ epoch before publishing its manifest, even when its generation counter begins
 at zero. A backup that restores the exact same immutable derived index without
 coexisting stale blocks may preserve its epoch; any restore into a workspace
 that can retain older blocks must instead allocate a new epoch or delete those
-blocks before publication. Cache keys and block headers carry the full
-snapshot ref. An epoch mismatch disables/recomputes pruning bounds rather than
-allowing a coincidentally equal generation to reuse stale statistics.
+blocks before publication.
+
+Every derived lexical row whose interpretation includes `TokenId` is namespaced
+by `(scope_id, projection_kind, statistics_epoch)`. A rebuild writes the full
+new namespace first, then atomically publishes its active
+`LexicalStatisticsSnapshotRef` through `lexical_collection_stats`. Queries read
+that active snapshot before any dictionary, posting, segment or token-stat row,
+and use it as an exact key prefix. Old epoch rows can remain for delayed reclaim
+but are unreachable from the new incarnation. This prevents a removed term's
+old `df`, or a reassigned token id, from being read or cached as E2 data.
+
+Cache keys and block headers carry the full snapshot ref. An epoch mismatch
+means that the whole block is obsolete: it must not be decoded or scored. The
+backend selects a block in the active epoch, falls back to the matching flat
+posting route, or returns an explicit unavailable/partial route outcome. Only a
+generation mismatch **within the same epoch** may recompute conservative bounds
+or disable bound-based pruning while preserving exact scoring.
 
 ## Tokenization
 
@@ -447,6 +461,7 @@ Planned dependency-free contracts:
 struct LexicalQuery final {
     std::string text;
     std::vector<ProjectionQueryVariant> query_variants;
+    // Required, non-empty, already-normalized exact scope set.
     std::vector<ScopeId> scope_ids;
     std::optional<ProjectionKind> pin_projection_kind; // nullopt = stack default
     std::size_t limit = 10;
@@ -494,8 +509,13 @@ The `search(RetrievalPlan)` overload participates in the unified retrieval
 pipeline from `memory-stacks-roadmap.md` section 7.3: it surfaces
 `retriever_name = "lexical"` on every hit for RRF, emits a `RetrievalTrace`
 segment per call, and applies the `RetrievalPlan.metadata_filter` and
-`scope_ids` constraints before scoring. The flat `LexicalQuery` overload stays
-for callers that want a standalone lexical lookup without a full plan.
+`scope_ids` constraints before scoring. The flat `LexicalQuery` overload is a
+trusted planner/storage-level API, not a policy-aware public retrieval entry
+point. Its `scope_ids` is required, non-empty, already normalized, and is the
+exact lookup set; empty, duplicate or empty `ScopeId` values are validation
+errors and must never mean an unrestricted scan. Callers that need host grants,
+CandidateSet construction, policy tracing or final canonical authorization must
+use `search(RetrievalPlan)`.
 
 Exact method names can change during implementation. The important part is that
 lexical indexing is unit-aware, projection-aware, and plan-aware.
@@ -509,28 +529,30 @@ payload shapes and explains the design.
 
 ```text
 inverted_token_to_unit:          // DUPSORT secondary index
-    key   = (scope_id, token_id, projection_kind, field_id) -> DUPSORT unit_id
+    key   = (scope_id, projection_kind, statistics_epoch, token_id, field_id)
+            -> DUPSORT unit_id
 
 field_to_postings:                 // KV posting stats by full posting identity
-    key   = (scope_id, projection_kind, field_id, token_id, unit_id)
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             unit_id)
     value = PostingStats { tf, positions_count, resource_generation, projection_version, resource_id }
 
 lexical_token_by_text:
-    key   = (scope_id, normalized token)
+    key   = (scope_id, projection_kind, statistics_epoch, normalized token)
     value = token_id
 
 lexical_token_by_id:
-    key   = (scope_id, token_id)
+    key   = (scope_id, projection_kind, statistics_epoch, token_id)
     value = normalized token
 
 lexical_chunk_stats:
-    key   = (scope_id, unit_id, projection_kind)
+    key   = (scope_id, projection_kind, statistics_epoch, unit_id)
     value = { token_count, unique_token_count,
               per_field_token_count[11], resource_id, resource_generation,
               projection_version }
 
 lexical_token_stats:
-    key   = (scope_id, projection_kind, token_id)
+    key   = (scope_id, projection_kind, statistics_epoch, token_id)
     value = { document_frequency, collection_frequency }
 
 lexical_collection_stats:
@@ -551,7 +573,8 @@ storage:
 
 ```text
 lexical_posting_segments:
-    key   = (scope_id, projection_kind, field_id, token_id, segment_id)
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             segment_id)
     value = posting segment blob
 ```
 
@@ -566,7 +589,8 @@ source of truth for a unit or its current lifecycle. Its versioned layout may
 contain:
 
 ```text
-[header: scoring/statistics generation, record count, safe upper bounds]
+[header: statistics_epoch, statistics_generation, layout_version,
+         record count, safe upper bounds]
 [delta-coded unit ids]
 [term frequencies and field statistics]
 [optional per-document delta-coded positions]
@@ -582,13 +606,13 @@ local dictionary or RLE. No particular third-party wire format is a public
 contract. A segment that cannot safely use a narrow delta representation must
 use a lossless wide fallback.
 
-Each compressed posting block that exposes WAND/BMW-style score bounds records
-the full `LexicalStatisticsSnapshotRef` used to construct those bounds. A query
-may use a bound for pruning only when it exactly matches the
-`LexicalCollectionStats.snapshot` read at the same frontier. On epoch or
-generation mismatch, the backend recomputes a conservative bound or disables
-bound-based pruning for that block and preserves exhaustive BM25/BM25F
-correctness.
+Each compressed posting block records the full
+`LexicalStatisticsSnapshotRef` and `layout_version` used to construct it. A
+query may decode or score it only when its epoch and layout version match the
+active lexical manifest at the same frontier. An epoch or layout mismatch makes
+the entire block obsolete, not merely its WAND/BMW bound. A generation mismatch
+within the same epoch may recompute a conservative bound or disable bound-based
+pruning for that block while preserving exhaustive BM25/BM25F correctness.
 
 Dynamic pruning is introduced in stages: exhaustive DAAT BM25F baseline first,
 then MaxScore/WAND, then Block-Max WAND only after the per-block score upper
@@ -619,7 +643,8 @@ When a unit is reindexed for a given `projection_kind`:
 2. Remove or invalidate lexical postings referenced by the old manifest.
 3. Load the new SearchProjection set for the unit.
 4. Tokenize each (projection_kind, field_id) text.
-5. Upsert token dictionary entries (shared across projection_kinds).
+5. Upsert token dictionary entries in the active `(scope, projection, epoch)`
+   namespace.
 6. Write `field_to_postings` KV entries and `inverted_token_to_unit`
    candidate-index entries.
 7. Remove the replaced active contribution, then update `lexical_token_stats`
@@ -632,12 +657,19 @@ When a unit is reindexed for a given `projection_kind`:
 10. Commit through a backend transaction where available.
 ```
 
+A full rebuild or layout migration does not use this incremental path. It
+allocates a new epoch, writes every dictionary/posting/segment/stat row under
+that epoch, and atomically switches the active collection snapshot only after
+the new namespace is complete. The acceptance fixture must retain an E1 token
+stat row for a term absent in E2, publish E2, and prove that neither lookup nor
+the token-stat cache can read the old `df` under the E2 snapshot.
+
 Lexical `DerivedRecordRef` entries can use:
 
 ```text
 kind = LexicalPosting
-key  = (scope_id, projection_kind, field_id, token_id) or an encoded
-       posting segment key
+key  = (scope_id, projection_kind, statistics_epoch, field_id, token_id) or an
+       encoded posting segment key in the same epoch namespace
 ```
 
 The manifest does not need stable offsets into compressed posting blobs. Source
@@ -790,11 +822,12 @@ weights and stats do not bleed across projection families or tenants:
 
 ```text
 inverted_token_to_unit:
-    key   = (scope_id, token_id, projection_kind, field_id)
+    key   = (scope_id, projection_kind, statistics_epoch, token_id, field_id)
     value = DUPSORT unit_id
 
 field_to_postings:                 // KV posting stats by full posting identity
-    key   = (scope_id, projection_kind, field_id, token_id, unit_id)
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             unit_id)
     value = PostingStats { tf, positions_count, resource_generation, projection_version, resource_id }
 ```
 
@@ -1346,15 +1379,16 @@ of that ordering; each substep is its own PR.
 
 10. Add the `SearchProjection` value type and the `unit_projections` DBI
     (`mdbx-containers-extension-tz.md` §5.5).
-11. Add `projection_kind` and `scope_id` to the `inverted_token_to_unit`
-    and `field_to_postings` keys (see MDBX Layout above).
+11. Add `scope_id`, `projection_kind` and active `statistics_epoch` to the
+    `inverted_token_to_unit` and `field_to_postings` keys (see MDBX Layout
+    above).
 12. Add projection build rules per `ProjectionKind` for `Original`, `QAQuestion`,
     `QAAnswer`, `Summary`, `CodeSymbols`, `DenseContextual`, and optional
     `TranslatedCanonical` (see Projection Build Rules Per ProjectionKind).
 13. Promote the MDBX layout so `field_to_postings` is keyed by
-    `(scope_id, projection_kind, field_id, token_id, unit_id)` and BM25F,
-    BM25, and future fielded sparse retrievers share the same posting
-    table.
+    `(scope_id, projection_kind, statistics_epoch, field_id, token_id,
+    unit_id)` and BM25F, BM25, and future fielded sparse retrievers share the
+    same posting table.
 14. Add the BM25F scorer over the fielded view with explicit per-field
     weights and the `LexicalFieldWeights` configuration.
 15. Extend `LexicalSearchResult` to carry `KnowledgeUnitId` and
