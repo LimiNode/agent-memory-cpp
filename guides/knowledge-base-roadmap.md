@@ -353,7 +353,7 @@ Generation rules детерминированы: given the same unit + component
 
 ## 6. Domain Stores (capability-aware)
 
-`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget follows `dbi-manifest.yaml`: logical expanded peak 61, configured `max_dbs` 96, reserved headroom 35, and minimum required headroom 16.
+`MemoryStack::open(path, spec)` создаёт только нужные DBI. Validation в `memory-stacks-roadmap.md` секция 10 гарантирует, что capabilities согласованы. DBI budget follows `dbi-manifest.yaml`: logical expanded peak 64, configured `max_dbs` 96, reserved headroom 32, and minimum required headroom 16.
 
 ### 6.1. IKnowledgeUnitStore (всегда открыт)
 
@@ -483,7 +483,8 @@ to match.
 `UseExplicitFallbackRoute` is valid only when `fallback_route_id` names another
 route in the same plan, has its own candidate budget, and does not create a
 cycle. The planner owns this semantic decision; storage owns only exact lookup.
-The trace records a missing projection, recompute request, or fallback route so
+The trace records the typed missing-projection policy and, when fallback is
+used, the exact `(branch_id, route_id, execution_id)` fallback event so
 evaluation can distinguish a true primary-route hit from a recovery path.
 
 ### 7.1.2. CandidateSet And Physical I/O Budget (M2)
@@ -933,8 +934,15 @@ struct ProjectionRouteTrace {
     std::optional<std::string> unavailable_reason;
     std::vector<LexicalTokenPartitionRef> covered_token_partitions;
     std::vector<LexicalTokenPartitionRef> unavailable_token_partitions;
-    std::string route_action;  // used, partial, fallback, dropped, or recompute_scheduled
-    std::optional<std::string> fallback_route_id;
+    std::optional<MissingProjectionPolicy> applied_missing_projection_policy;
+    std::optional<IncompleteRouteAction> applied_incomplete_action;
+    std::optional<BudgetExhaustionAction> applied_budget_action;
+    struct FallbackEventRef {
+        std::string branch_id;
+        std::string route_id;
+        std::string execution_id;
+    };
+    std::optional<FallbackEventRef> fallback_event;
     RetrievalIoCounters io_counters;
 };
 
@@ -1023,12 +1031,31 @@ twice for identical branch input.
 `(branch_id, route_id, execution_id)`; it carries hits and fusion admission, not
 a second completion value. `Unavailable`, `Dropped`, and `RequiredRouteFailed`
 routes must have no hits and cannot be admitted to fusion. A `Partial` route may
-be admitted only when its route event records the explicit partial/fallback
-policy used. `RetrievalTrace.completion` uses the query-level
+be admitted only when its typed applied action is `ReturnPartial`: either
+`applied_incomplete_action` or `applied_budget_action` must name it. An applied
+`UseExplicitFallbackRoute`, whether selected through incomplete-route handling
+or `MissingProjectionPolicy`, requires `admitted_to_fusion == false` for the
+parent and one complete `fallback_event` reference; only that fallback’s exact
+hits may make the query complete. At most one of
+`applied_missing_projection_policy`, `applied_incomplete_action`, and
+`applied_budget_action` is set for one event. `DropRoute`, `Unavailable`,
+`RequiredRouteFailed`, and standalone `BudgetExhausted` always have empty hits
+and `admitted_to_fusion == false`. Budget exhaustion with `ReturnPartial` is
+represented as `Partial` plus `applied_budget_action == ReturnPartial`, not as
+an admitted standalone `BudgetExhausted` route. `RetrievalTrace.completion` uses the query-level
 `RetrievalCompletion` enum and must equal `RetrievalResult.completion`; it is
 derived once from the validated route events and persisted rather than inferred
-from empty hit vectors. Lexical coverage is snapshot-qualified so an audit can
-distinguish one token id in different scope/projection/epoch partitions.
+from empty hit vectors. It cannot be `Complete` when any admitted partial route
+has not been replaced by an exact fallback. Lexical coverage is
+snapshot-qualified so an audit can distinguish one token id in different
+scope/projection/epoch partitions.
+
+The retrieval acceptance fixtures must cover: a partial parent with an exact
+fallback admitting only fallback hits; budget exhaustion with `ReturnPartial`
+recording typed budget evidence; rejection of an admitted `BudgetExhausted`
+route without `ReturnPartial`; a missing-projection fallback with a complete
+fallback event reference; and rejection of a complete query containing an
+unreplaced admitted partial route.
 
 `ContextBlock.block_id` is deterministic for the validated block inputs. Every
 `QueryBranchTrace.context_block_ids` entry resolves to exactly one

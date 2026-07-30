@@ -135,8 +135,11 @@ struct ResourceManifest final {
 };
 ```
 
-This is not a final API. It documents the intended contract shape before code is
-introduced.
+This is a historical pre-V5 sketch, retained to explain the original resource
+semantics. It is not the current `ResourceIndexer` storage contract. The
+implemented V5 manifest additionally carries its state, pending-reclaim records,
+schema identity, and payload version; its physical-record safety evidence is
+materialized in the owner registries described below.
 
 `ResourceRevisionRef` is the local durable citation binding. It identifies the
 exact retained body revision from which a byte range was measured, while
@@ -166,9 +169,15 @@ retention policy permits.
 `DocumentId` is a globally unique storage identity, not a local per-resource
 counter. A `ResourceIndexer` caller must derive a fresh `DocumentId` for every
 distinct `ResourceRevisionRef` and must never reuse it for a different
-`ResourceId` or generation. This is a scoped prototype precondition rather than
-an ownership DBI: enforcing a cross-store claim with rollback belongs to the
-future transaction-aware importer.
+`ResourceId` or generation. The current dense prototype additionally enforces
+the physical claim through application-local document and chunk owner registries.
+Each binding contains `ResourceId`, generation, and `ResourceManifestSchema`.
+The registries are consistency evidence for physical `DocumentId`/`ChunkId`
+records, not a second canonical source of resource semantics: the manifest and
+revision remain authoritative. A missing, foreign, malformed, or
+generation/schema-mismatched binding for a physically present record fails
+closed before reindex, reclaim, or erase. This does not make the independent
+stores crash-atomic; a future transaction-aware importer still owns that scope.
 
 `SourceLocator` is mutable source-level history for navigation and rename
 tracking. `SourceLocatorObservation` is the immutable portable location seen by
@@ -424,7 +433,14 @@ diagnostics and explicit migration tooling, but `ResourceIndexer` rejects them
 as migration-required before embedding or storage mutation. The current
 prototype deliberately has no implicit legacy migration: an operator-approved
 migrator must prove the old derived-record ownership and revision evidence
-before writing the V5 owner marker.
+before writing the V5 manifest and its document/chunk owner bindings. Those
+bindings live in the two profile-local owner registries, carry `ResourceId`,
+generation and manifest schema, and must be written together with the proven
+physical ownership evidence. A schema marker alone is insufficient. During an
+in-process rollback, an identity whose physical restoration is uncertain retains
+an attempted owner binding as fail-closed repair evidence; this is deliberately
+not a claim of cross-store crash recovery or a replacement for a migration
+framework.
 
 ### Legacy Public API Boundary
 

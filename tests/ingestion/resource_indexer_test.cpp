@@ -33,7 +33,29 @@ namespace {
             m_order_chunks_by_id = enabled;
         }
 
+        void reset_operation_counts() noexcept {
+            m_upsert_count = 0;
+            m_erase_count = 0;
+        }
+
+        [[nodiscard]] std::size_t upsert_count() const noexcept {
+            return m_upsert_count;
+        }
+
+        [[nodiscard]] std::size_t erase_count() const noexcept {
+            return m_erase_count;
+        }
+
+        void inject_unchecked_chunk(agent_memory::DocumentChunk chunk) {
+            if(!find_document(chunk.document_id)) {
+                throw std::invalid_argument("injected chunk requires an existing document");
+            }
+            m_chunk_ids_by_document[chunk.document_id].push_back(chunk.id);
+            m_chunks[chunk.id] = std::move(chunk);
+        }
+
         void upsert_document(agent_memory::DocumentSnapshot snapshot) override {
+            ++m_upsert_count;
             if(m_fail_next_upsert) {
                 m_fail_next_upsert = false;
                 throw std::runtime_error("simulated document storage failure");
@@ -122,6 +144,7 @@ namespace {
 
     private:
         bool m_fail_next_upsert = false;
+        std::size_t m_upsert_count = 0;
         std::size_t m_fail_on_erase_ordinal = 0;
         std::size_t m_erase_count = 0;
         bool m_order_chunks_by_id = false;
@@ -208,6 +231,18 @@ namespace {
     class InMemoryResourceIndexRecordOwnerStorage final
         : public agent_memory::IResourceIndexRecordOwnerStorage {
     public:
+        void reset_operation_counts() noexcept {
+            m_document_upsert_count = 0;
+            m_chunk_upsert_count = 0;
+            m_document_erase_count = 0;
+            m_chunk_erase_count = 0;
+        }
+
+        [[nodiscard]] std::size_t mutation_count() const noexcept {
+            return m_document_upsert_count + m_chunk_upsert_count +
+                m_document_erase_count + m_chunk_erase_count;
+        }
+
         [[nodiscard]] std::optional<agent_memory::ResourceIndexRecordOwner> find_document_owner(
             const agent_memory::DocumentId& document_id
         ) const override {
@@ -232,6 +267,7 @@ namespace {
             agent_memory::DocumentId document_id,
             agent_memory::ResourceIndexRecordOwner owner
         ) override {
+            ++m_document_upsert_count;
             if(!agent_memory::is_valid_resource_index_record_owner(owner)) {
                 throw std::invalid_argument("invalid document owner");
             }
@@ -242,6 +278,7 @@ namespace {
             agent_memory::ChunkId chunk_id,
             agent_memory::ResourceIndexRecordOwner owner
         ) override {
+            ++m_chunk_upsert_count;
             if(!agent_memory::is_valid_resource_index_record_owner(owner)) {
                 throw std::invalid_argument("invalid chunk owner");
             }
@@ -251,14 +288,20 @@ namespace {
         [[nodiscard]] bool erase_document_owner(
             const agent_memory::DocumentId& document_id
         ) override {
+            ++m_document_erase_count;
             return m_document_owners.erase(document_id) > 0;
         }
 
         [[nodiscard]] bool erase_chunk_owner(const agent_memory::ChunkId& chunk_id) override {
+            ++m_chunk_erase_count;
             return m_chunk_owners.erase(chunk_id) > 0;
         }
 
     private:
+        std::size_t m_document_upsert_count = 0;
+        std::size_t m_chunk_upsert_count = 0;
+        std::size_t m_document_erase_count = 0;
+        std::size_t m_chunk_erase_count = 0;
         std::map<agent_memory::DocumentId, agent_memory::ResourceIndexRecordOwner>
             m_document_owners;
         std::map<agent_memory::ChunkId, agent_memory::ResourceIndexRecordOwner>
@@ -277,6 +320,19 @@ namespace {
 
         void fail_next_erase() noexcept {
             m_fail_next_erase = true;
+        }
+
+        void reset_operation_counts() noexcept {
+            m_upsert_count = 0;
+            m_erase_count = 0;
+        }
+
+        [[nodiscard]] std::size_t upsert_count() const noexcept {
+            return m_upsert_count;
+        }
+
+        [[nodiscard]] std::size_t erase_count() const noexcept {
+            return m_erase_count;
         }
 
         [[nodiscard]] agent_memory::SimilarityMetric similarity_metric() const noexcept override {
@@ -316,6 +372,7 @@ namespace {
         }
 
         [[nodiscard]] bool erase(const agent_memory::ChunkId& chunk_id) override {
+            ++m_erase_count;
             if(m_fail_next_erase) {
                 m_fail_next_erase = false;
                 throw std::runtime_error("simulated vector erase failure");
@@ -331,6 +388,7 @@ namespace {
         agent_memory::ExactVectorIndex m_inner;
         std::size_t m_fail_on_upsert_ordinal = 0;
         std::size_t m_upsert_count = 0;
+        std::size_t m_erase_count = 0;
         bool m_fail_next_erase = false;
     };
 
@@ -584,6 +642,114 @@ int main() {
     ) {
         return fail("manifest failure must restore records and ownership bindings");
     }
+
+    const agent_memory::ResourceId owner_rollback_vector_resource_id{
+        "resource:indexer:owner-rollback-vector"
+    };
+    const agent_memory::DocumentId owner_rollback_vector_document_id{
+        "doc:indexer:owner-rollback-vector"
+    };
+    const agent_memory::ChunkId owner_rollback_vector_chunk_id{
+        "chunk:indexer:owner-rollback-vector"
+    };
+    manifest_storage.fail_next_upsert();
+    vector_index.fail_next_erase();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            owner_rollback_vector_resource_id,
+            1,
+            owner_rollback_vector_document_id,
+            {make_chunk(
+                owner_rollback_vector_chunk_id,
+                owner_rollback_vector_document_id,
+                0,
+                "owner rollback vector"
+            )}
+        ));
+        return fail("failed vector rollback after owner publication must be reported");
+    } catch(const agent_memory::ResourceIndexRollbackError& error) {
+        if(
+            error.recovery_failures().size() != 1 ||
+            error.recovery_failures().front().stage
+                != agent_memory::ResourceIndexRecoveryStage::VectorRestore
+        ) {
+            return fail("failed vector rollback must retain its recovery diagnostic");
+        }
+    }
+
+    const auto owner_rollback_vector_chunk_owner = owner_storage.find_chunk_owner(
+        owner_rollback_vector_chunk_id
+    );
+    if(
+        document_storage.find_document(owner_rollback_vector_document_id) ||
+        !vector_index.find(owner_rollback_vector_chunk_id) ||
+        owner_storage.find_document_owner(owner_rollback_vector_document_id) ||
+        !owner_rollback_vector_chunk_owner ||
+        owner_rollback_vector_chunk_owner->resource_id != owner_rollback_vector_resource_id ||
+        owner_rollback_vector_chunk_owner->generation != 1
+    ) {
+        return fail("failed vector rollback must retain an attempted chunk owner binding");
+    }
+    const bool repaired_owner_rollback_vector = vector_index.erase(
+        owner_rollback_vector_chunk_id
+    );
+    (void)repaired_owner_rollback_vector;
+
+    const agent_memory::ResourceId owner_rollback_document_resource_id{
+        "resource:indexer:owner-rollback-document"
+    };
+    const agent_memory::DocumentId owner_rollback_document_id{
+        "doc:indexer:owner-rollback-document"
+    };
+    const agent_memory::ChunkId owner_rollback_document_chunk_id{
+        "chunk:indexer:owner-rollback-document"
+    };
+    document_storage.fail_on_nth_erase(2);
+    manifest_storage.fail_next_upsert();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            owner_rollback_document_resource_id,
+            1,
+            owner_rollback_document_id,
+            {make_chunk(
+                owner_rollback_document_chunk_id,
+                owner_rollback_document_id,
+                0,
+                "owner rollback document"
+            )}
+        ));
+        return fail("failed document rollback after owner publication must be reported");
+    } catch(const agent_memory::ResourceIndexRollbackError& error) {
+        if(
+            error.recovery_failures().size() != 1 ||
+            error.recovery_failures().front().stage
+                != agent_memory::ResourceIndexRecoveryStage::DocumentRestore
+        ) {
+            return fail("failed document rollback must retain its recovery diagnostic");
+        }
+    }
+
+    const auto owner_rollback_document_owner = owner_storage.find_document_owner(
+        owner_rollback_document_id
+    );
+    const auto owner_rollback_document_chunk_owner = owner_storage.find_chunk_owner(
+        owner_rollback_document_chunk_id
+    );
+    if(
+        !document_storage.find_document(owner_rollback_document_id) ||
+        !document_storage.find_chunk(owner_rollback_document_chunk_id) ||
+        vector_index.find(owner_rollback_document_chunk_id) ||
+        !owner_rollback_document_owner ||
+        !owner_rollback_document_chunk_owner ||
+        owner_rollback_document_owner->generation != 1 ||
+        owner_rollback_document_chunk_owner->generation != 1
+    ) {
+        return fail("failed document rollback must retain attempted owner bindings");
+    }
+    const bool repaired_owner_rollback_document = document_storage.erase_document(
+        owner_rollback_document_id
+    );
+    (void)repaired_owner_rollback_document;
 
     const agent_memory::DocumentId rollback_failed_document_id{"doc:indexer:rollback-failed"};
     const agent_memory::ChunkId rollback_failed_first_chunk_id{"chunk:indexer:rollback-failed:first"};
@@ -1524,7 +1690,10 @@ int main() {
     (void)owner_storage.erase_document_owner(ownerless_document_id);
     (void)owner_storage.erase_chunk_owner(ownerless_chunk_id);
 
+    document_storage.reset_operation_counts();
     manifest_storage.reset_operation_counts();
+    owner_storage.reset_operation_counts();
+    vector_index.reset_operation_counts();
     embedder.reset_call_count();
     try {
         indexer.reindex_resource(make_snapshot(
@@ -1548,13 +1717,80 @@ int main() {
 
     if(
         embedder.call_count() != 0 ||
+        document_storage.upsert_count() != 0 ||
+        document_storage.erase_count() != 0 ||
         manifest_storage.upsert_count() != 0 ||
         manifest_storage.erase_count() != 0 ||
+        owner_storage.mutation_count() != 0 ||
+        vector_index.upsert_count() != 0 ||
+        vector_index.erase_count() != 0 ||
         !document_storage.find_document(ownerless_document_id) ||
         !document_storage.find_chunk(ownerless_chunk_id) ||
         !vector_index.find(ownerless_chunk_id)
     ) {
         return fail("ownerless physical records must be rejected before mutation and cleanup");
+    }
+
+    const agent_memory::ResourceId closure_resource_id{"resource:indexer:closure"};
+    const agent_memory::DocumentId closure_document_id{"doc:indexer:closure"};
+    const agent_memory::ChunkId closure_active_chunk_id{"chunk:indexer:closure:active"};
+    const agent_memory::ChunkId closure_extra_chunk_id{"chunk:indexer:closure:extra"};
+    indexer.reindex_resource(make_snapshot(
+        closure_resource_id,
+        1,
+        closure_document_id,
+        {make_chunk(closure_active_chunk_id, closure_document_id, 0, "closure active")}
+    ));
+    const auto closure_active_vector = vector_index.find(closure_active_chunk_id);
+    const auto closure_active_owner = owner_storage.find_chunk_owner(closure_active_chunk_id);
+    if(!closure_active_vector || !closure_active_owner) {
+        return fail("closure fixture must publish an owned active chunk");
+    }
+    document_storage.inject_unchecked_chunk(
+        make_chunk(closure_extra_chunk_id, closure_document_id, 20, "closure extra")
+    );
+    auto closure_extra_vector = *closure_active_vector;
+    closure_extra_vector.chunk_id = closure_extra_chunk_id;
+    vector_index.upsert(std::move(closure_extra_vector));
+
+    document_storage.reset_operation_counts();
+    manifest_storage.reset_operation_counts();
+    owner_storage.reset_operation_counts();
+    vector_index.reset_operation_counts();
+    embedder.reset_call_count();
+    try {
+        indexer.reindex_resource(make_snapshot(
+            closure_resource_id,
+            2,
+            closure_document_id,
+            {make_chunk(closure_active_chunk_id, closure_document_id, 0, "updated closure")}
+        ));
+        return fail("retained document closure must reject an ownerless child");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+
+    const auto closure_manifest = manifest_storage.find_manifest(closure_resource_id);
+    const auto closure_owner_after_rejection = owner_storage.find_chunk_owner(
+        closure_active_chunk_id
+    );
+    if(
+        embedder.call_count() != 0 ||
+        document_storage.upsert_count() != 0 ||
+        document_storage.erase_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        owner_storage.mutation_count() != 0 ||
+        vector_index.upsert_count() != 0 ||
+        vector_index.erase_count() != 0 ||
+        !closure_manifest ||
+        closure_manifest->revision.generation != 1 ||
+        !document_storage.find_chunk(closure_extra_chunk_id) ||
+        !vector_index.find(closure_extra_chunk_id) ||
+        owner_storage.find_chunk_owner(closure_extra_chunk_id) ||
+        !closure_owner_after_rejection ||
+        closure_owner_after_rejection->generation != closure_active_owner->generation
+    ) {
+        return fail("closure rejection must preserve every physical and owner state");
     }
 
     const agent_memory::ResourceId retained_parent_resource_id{
@@ -1580,7 +1816,14 @@ int main() {
             "retained parent source"
         )}
     ));
+    const auto retained_parent_owner = owner_storage.find_chunk_owner(retained_parent_chunk_id);
+    if(!retained_parent_owner) {
+        return fail("retained-parent fixture must publish a chunk owner");
+    }
+    document_storage.reset_operation_counts();
     manifest_storage.reset_operation_counts();
+    owner_storage.reset_operation_counts();
+    vector_index.reset_operation_counts();
     embedder.reset_call_count();
     try {
         indexer.reindex_resource(make_snapshot(
@@ -1599,14 +1842,25 @@ int main() {
     }
 
     const auto retained_parent_chunk = document_storage.find_chunk(retained_parent_chunk_id);
+    const auto retained_parent_owner_after_rejection = owner_storage.find_chunk_owner(
+        retained_parent_chunk_id
+    );
     if(
         embedder.call_count() != 0 ||
+        document_storage.upsert_count() != 0 ||
+        document_storage.erase_count() != 0 ||
         manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        owner_storage.mutation_count() != 0 ||
+        vector_index.upsert_count() != 0 ||
+        vector_index.erase_count() != 0 ||
         !document_storage.find_document(retained_parent_old_document_id) ||
         document_storage.find_document(retained_parent_new_document_id) ||
         !retained_parent_chunk ||
         retained_parent_chunk->document_id != retained_parent_old_document_id ||
-        !vector_index.find(retained_parent_chunk_id)
+        !vector_index.find(retained_parent_chunk_id) ||
+        !retained_parent_owner_after_rejection ||
+        retained_parent_owner_after_rejection->generation != retained_parent_owner->generation
     ) {
         return fail("retained chunk parent mismatch must be rejected before mutation");
     }

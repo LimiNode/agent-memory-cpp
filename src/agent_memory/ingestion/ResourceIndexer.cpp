@@ -327,6 +327,23 @@ namespace agent_memory {
                 record.kind == DerivedRecordKind::VectorRecord;
         }
 
+        bool record_is_physically_absent(
+            const IDocumentStorage& document_storage,
+            const IVectorIndex& vector_index,
+            const DerivedRecordRef& record
+        ) {
+            if(uses_document_owner(record)) {
+                const auto document_id = DocumentId{record.key};
+                return !document_storage.find_document(document_id) &&
+                    document_storage.list_chunks(document_id).empty();
+            }
+            if(uses_chunk_owner(record)) {
+                return !document_storage.find_chunk(record.chunk_id) &&
+                    !vector_index.find(record.chunk_id);
+            }
+            return true;
+        }
+
         ResourceIndexRecordOwner make_record_owner(const ResourceManifest& manifest) {
             return ResourceIndexRecordOwner{
                 manifest.revision.resource_id,
@@ -400,11 +417,40 @@ namespace agent_memory {
 
         void restore_active_record_owners(
             IResourceIndexRecordOwnerStorage& storage,
+            const IDocumentStorage& document_storage,
+            const IVectorIndex& vector_index,
             const std::vector<ResourceIndexRecordOwnerSnapshot>& snapshots,
+            const ResourceIndexRecordOwner& attempted_owner,
+            bool document_restore_succeeded,
+            const std::vector<ChunkId>& vector_restore_failures,
             std::vector<ResourceIndexRecoveryFailure>& recovery_failures
         ) {
             for(const auto& snapshot : snapshots) {
+                const bool physical_rollback_succeeded =
+                    document_restore_succeeded &&
+                    (
+                        !uses_chunk_owner(snapshot.record) ||
+                        std::find(
+                            vector_restore_failures.begin(),
+                            vector_restore_failures.end(),
+                            snapshot.record.chunk_id
+                        ) == vector_restore_failures.end()
+                    );
+                const bool safe_to_restore_previous_owner =
+                    physical_rollback_succeeded &&
+                    (
+                        snapshot.owner ||
+                        record_is_physically_absent(
+                            document_storage,
+                            vector_index,
+                            snapshot.record
+                        )
+                    );
                 try {
+                    if(!safe_to_restore_previous_owner) {
+                        upsert_record_owner(storage, snapshot.record, attempted_owner);
+                        continue;
+                    }
                     if(snapshot.owner) {
                         upsert_record_owner(storage, snapshot.record, *snapshot.owner);
                     } else if(uses_document_owner(snapshot.record)) {
@@ -419,9 +465,13 @@ namespace agent_memory {
                 } catch(...) {
                     recovery_failures.push_back(ResourceIndexRecoveryFailure{
                         ResourceIndexRecoveryStage::OwnerRestore,
-                        snapshot.owner
-                            ? ResourceIndexRecoveryOperation::UpsertPrevious
-                            : ResourceIndexRecoveryOperation::EraseAttempted,
+                        safe_to_restore_previous_owner
+                            ? (
+                                snapshot.owner
+                                    ? ResourceIndexRecoveryOperation::UpsertPrevious
+                                    : ResourceIndexRecoveryOperation::EraseAttempted
+                            )
+                            : ResourceIndexRecoveryOperation::UpsertAttempted,
                         uses_document_owner(snapshot.record)
                             ? std::optional<DocumentId>{DocumentId{snapshot.record.key}}
                             : std::nullopt,
@@ -571,12 +621,13 @@ namespace agent_memory {
             }
         }
 
-        void restore_vector_records(
+        std::vector<ChunkId> restore_vector_records(
             IVectorIndex& index,
             const std::vector<std::optional<VectorRecord>>& previous,
             const std::vector<VectorRecord>& attempted,
             std::vector<ResourceIndexRecoveryFailure>& recovery_failures
         ) {
+            std::vector<ChunkId> failed_chunk_ids;
             for(std::size_t index_position = 0; index_position < attempted.size(); ++index_position) {
                 try {
                     if(previous[index_position]) {
@@ -595,8 +646,34 @@ namespace agent_memory {
                         attempted[index_position].chunk_id,
                         std::current_exception()
                     });
+                    failed_chunk_ids.push_back(attempted[index_position].chunk_id);
                 }
             }
+            return failed_chunk_ids;
+        }
+
+        bool manifest_has_active_chunk_triple(
+            const ResourceManifest& manifest,
+            const ChunkId& chunk_id
+        ) {
+            for(std::size_t index = 1; index + 2 < manifest.records.size(); index += 3) {
+                const auto& chunk = manifest.records[index];
+                const auto& embedding = manifest.records[index + 1];
+                const auto& vector = manifest.records[index + 2];
+                if(
+                    chunk.kind == DerivedRecordKind::Chunk &&
+                    embedding.kind == DerivedRecordKind::Embedding &&
+                    vector.kind == DerivedRecordKind::VectorRecord &&
+                    chunk.chunk_id == chunk_id &&
+                    embedding.chunk_id == chunk_id &&
+                    vector.chunk_id == chunk_id &&
+                    chunk.ordinal == embedding.ordinal &&
+                    chunk.ordinal == vector.ordinal
+                ) {
+                    return true;
+                }
+            }
+            return false;
         }
 
     } // namespace
@@ -733,6 +810,13 @@ namespace agent_memory {
         );
 
         if(old_manifest) {
+            validate_existing_document_closure_ownership(
+                *old_manifest,
+                snapshot.document_snapshot.document.id
+            );
+        }
+
+        if(old_manifest) {
             if(!is_active_resource_manifest(*old_manifest)) {
                 throw std::logic_error(
                     "ResourceIndexSnapshot cannot replace a resource with erase-pending cleanup"
@@ -835,15 +919,17 @@ namespace agent_memory {
             const auto original_failure = std::current_exception();
             std::vector<ResourceIndexRecoveryFailure> recovery_failures;
 
-            restore_vector_records(
+            const auto vector_restore_failures = restore_vector_records(
                 *m_vector_index,
                 previous_vectors,
                 vector_records,
                 recovery_failures
             );
 
+            bool document_restore_succeeded = false;
             try {
                 restore_document_snapshot(*m_document_storage, document_id, previous_document);
+                document_restore_succeeded = true;
             } catch(...) {
                 recovery_failures.push_back(ResourceIndexRecoveryFailure{
                     ResourceIndexRecoveryStage::DocumentRestore,
@@ -858,7 +944,12 @@ namespace agent_memory {
 
             restore_active_record_owners(
                 *m_owner_storage,
+                *m_document_storage,
+                *m_vector_index,
                 previous_owners,
+                make_record_owner(manifest),
+                document_restore_succeeded,
+                vector_restore_failures,
                 recovery_failures
             );
 
@@ -1111,17 +1202,50 @@ namespace agent_memory {
         }
     }
 
+    void ResourceIndexer::validate_existing_document_closure_ownership(
+        const ResourceManifest& active_manifest,
+        const DocumentId& document_id
+    ) const {
+        const auto active_document = std::find_if(
+            active_manifest.records.begin(),
+            active_manifest.records.end(),
+            [&document_id](const DerivedRecordRef& record) {
+                return record.kind == DerivedRecordKind::Document &&
+                    record.key == document_id.value();
+            }
+        );
+        if(active_document == active_manifest.records.end()) {
+            return;
+        }
+
+        for(const auto& chunk : m_document_storage->list_chunks(document_id)) {
+            if(chunk.document_id != document_id) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Existing document closure contains a chunk with a mismatched parent: '" +
+                    chunk.id.value() + "'"
+                );
+            }
+
+            const auto owner = m_owner_storage->find_chunk_owner(chunk.id);
+            if(
+                !owner ||
+                !is_valid_resource_index_record_owner(*owner) ||
+                owner->resource_id != active_manifest.revision.resource_id ||
+                owner->generation != active_manifest.revision.generation ||
+                owner->manifest_schema.schema_id != active_manifest.schema.schema_id ||
+                owner->manifest_schema.schema_version != active_manifest.schema.schema_version ||
+                !manifest_has_active_chunk_triple(active_manifest, chunk.id)
+            ) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Existing document closure contains an unowned or undeclared chunk: '" +
+                    chunk.id.value() + "'"
+                );
+            }
+        }
+    }
+
     bool ResourceIndexer::is_record_physically_absent(const DerivedRecordRef& record) const {
-        if(uses_document_owner(record)) {
-            const auto document_id = DocumentId{record.key};
-            return !m_document_storage->find_document(document_id) &&
-                m_document_storage->list_chunks(document_id).empty();
-        }
-        if(uses_chunk_owner(record)) {
-            return !m_document_storage->find_chunk(record.chunk_id) &&
-                !m_vector_index->find(record.chunk_id);
-        }
-        return true;
+        return record_is_physically_absent(*m_document_storage, *m_vector_index, record);
     }
 
     void ResourceIndexer::upsert_active_record_owners(const ResourceManifest& manifest) {

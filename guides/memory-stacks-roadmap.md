@@ -908,17 +908,28 @@ count. `Complete` means the route met its own exact corpus/snapshot contract;
 lexical, graph or temporal route specification introduced later must carry the
 same `IncompleteRouteAction` and optional fallback-route reference. For an
 incomplete corpus result (for example lexical stale-block recovery), the route
-follows that declared action: explicit fallback, opt-in partial fusion, drop,
-or required-route failure. A partial route never becomes
-`RetrievalResult::Complete`; the query result is `Partial` unless a policy-
-approved fallback replaces it with an exact route. An unavailable route never
-masquerades as an empty exact route.
+follows exactly one declared action. Only `ReturnPartial` may produce a
+`Partial` event with hits admitted to fusion. `UseExplicitFallbackRoute` records
+one fallback route event and requires the incomplete parent to contribute no
+hits; an exact fallback may therefore produce a complete query without mixing in
+the parent’s non-exact candidates. `DropRoute` and `FailIfRequired` have no
+route hits and cannot be admitted. A partial route never becomes
+`RetrievalResult::Complete`; a query is `Partial` whenever it admits an
+unreplaced partial route. An unavailable route never masquerades as an empty
+exact route.
 
 On budget exhaustion, a route follows its declared `on_budget_exhaustion`.
-`ReturnPartial` may participate in fusion only with an explicit partial outcome;
-`DropRoute` contributes no hits; `FailIfRequired` makes the query result
-`RequiredRouteFailed`. No `BudgetExhausted` result may claim exhaustive top-K
-semantics.
+`ReturnPartial` maps to `Partial` with a typed budget-exhaustion reason and is
+the only budget outcome that may participate in fusion. `DropRoute` contributes
+no hits and `FailIfRequired` makes the query result `RequiredRouteFailed`.
+`BudgetExhausted` is a non-admitted diagnostic completion only: it has no hits
+and cannot claim exhaustive top-K semantics.
+
+`MissingProjectionPolicy::UseExplicitFallbackRoute` follows the same admission
+rule as incomplete-route fallback: the missing parent has no admitted hits and
+the trace identifies one exact fallback event. The trace records the typed
+missing, incomplete, or budget action actually applied; one route event does not
+combine those action categories.
 
 ## M2+ Retrieval Hooks
 

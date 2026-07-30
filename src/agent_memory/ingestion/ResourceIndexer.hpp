@@ -62,6 +62,7 @@ namespace agent_memory {
 
     enum class ResourceIndexRecoveryOperation : std::uint8_t {
         UpsertPrevious,
+        UpsertAttempted,
         EraseAttempted
     };
 
@@ -197,6 +198,10 @@ namespace agent_memory {
             const ResourceManifest& manifest,
             const std::optional<ResourceManifest>& active_manifest,
             const DocumentId& requested_document_id
+        ) const;
+        void validate_existing_document_closure_ownership(
+            const ResourceManifest& active_manifest,
+            const DocumentId& document_id
         ) const;
         [[nodiscard]] bool is_record_physically_absent(const DerivedRecordRef& record) const;
         void upsert_active_record_owners(const ResourceManifest& manifest);
