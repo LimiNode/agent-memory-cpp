@@ -133,6 +133,19 @@ Curated bibliography с маппингом paper → roadmap decision для `ag
 - **Roadmap decision**: AutoencoderBinarySignatureEncoder в `optimization-roadmap.md` (M2 experimental). IBinarySignatureEncoder interface.
 - **Зачем**: ~97% size reduction, ~2% accuracy loss, ~30x speedup. Training offline/Python, C++ inference only.
 
+### Multilingual evaluation datasets
+
+- **MIRACL**: [project repository](https://github.com/project-miracl/miracl).
+- **Roadmap decision**: Primary multilingual autoencoder study with balanced
+  document-only training and per-language monolingual evaluation. It is not a
+  cross-language benchmark.
+- **Mr. TyDi**: [project repository](https://github.com/castorini/mr.tydi).
+  External multilingual monolingual generalization check; a MIRACL-trained
+  artifact is evaluated without retraining.
+- **XOR QA**: [paper](https://aclanthology.org/2021.naacl-main.46/).
+  Separate cross-language preservation gate, only after the monolingual study.
+- **Details**: [multilingual autoencoder evaluation](multilingual-autoencoder-evaluation.md).
+
 ## 6. Graph Retrieval
 
 ### GraphRAG (Microsoft)
