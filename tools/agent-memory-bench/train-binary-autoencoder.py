@@ -14,6 +14,7 @@ import importlib.metadata
 import json
 import math
 import platform
+import random
 import struct
 import sys
 import tempfile
@@ -24,6 +25,8 @@ sys.dont_write_bytecode = True
 
 TRAINER_ID = "agent-memory-cpp:linear-binary-autoencoder-trainer"
 TRAINER_VERSION = "v1"
+MATERIALIZER_ID = "agent-memory-cpp:multilingual-e5-materializer"
+MATERIALIZER_VERSION = "v1"
 REQUIREMENTS_LOCK_FILE = "requirements-binary-autoencoder-trainer.txt"
 F32 = struct.Struct("<f")
 
@@ -56,10 +59,24 @@ def require_string(value: Any, field: str) -> str:
     return value
 
 
-def require_positive_int(value: int, field: str) -> int:
-    if value <= 0:
+def require_positive_int(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise TrainingError(f"{field} must be positive")
     return value
+
+
+def require_sha256(value: Any, field: str) -> str:
+    result = require_string(value, field)
+    if len(result) != 64 or any(character not in "0123456789abcdef" for character in result):
+        raise TrainingError(f"{field} must be a lowercase SHA-256 hex digest")
+    return result
+
+
+def resolve_plain_file(root: Path, value: Any, field: str) -> Path:
+    relative = Path(require_string(value, field))
+    if relative.is_absolute() or relative.name != str(relative) or str(relative) == ".":
+        raise TrainingError(f"{field} must be a plain file name")
+    return root / relative
 
 
 def parse_requirements_lock() -> tuple[str, dict[str, str]]:
@@ -109,6 +126,7 @@ def stable_split(identifier: str, seed: int, validation_fraction: float) -> bool
 
 def load_ids(path: Path) -> list[str]:
     ids: list[str] = []
+    seen_ids: set[str] = set()
     with path.open("r", encoding="utf-8", newline="") as handle:
         for line_number, line in enumerate(handle, start=1):
             try:
@@ -116,8 +134,9 @@ def load_ids(path: Path) -> list[str]:
             except json.JSONDecodeError as exc:
                 raise TrainingError(f"{path.name}:{line_number}: invalid JSON: {exc.msg}") from exc
             identifier = require_string(row.get("id"), f"{path.name}:{line_number}: id")
-            if identifier in ids:
+            if identifier in seen_ids:
                 raise TrainingError(f"{path.name}:{line_number}: duplicate id {identifier}")
+            seen_ids.add(identifier)
             ids.append(identifier)
     if not ids:
         raise TrainingError("training ids must not be empty")
@@ -131,18 +150,28 @@ def load_materialization(root: Path) -> tuple[list[str], Path, int, str]:
         raise TrainingError(f"cannot read materialization manifest: {exc}") from exc
     if manifest.get("schema_version") != 1:
         raise TrainingError("materialization manifest schema_version must equal 1")
+    materializer = require_mapping(manifest.get("materializer"), "manifest.materializer")
+    if (require_string(materializer.get("id"), "manifest.materializer.id") != MATERIALIZER_ID or
+            require_string(materializer.get("version"), "manifest.materializer.version") != MATERIALIZER_VERSION):
+        raise TrainingError("unsupported materializer identity")
+    require_sha256(materializer.get("source_hash"), "manifest.materializer.source_hash")
     vector_format = require_mapping(manifest.get("vector_format"), "manifest.vector_format")
+    if vector_format.get("dtype") != "float32_le" or vector_format.get("endianness") != "little":
+        raise TrainingError("materialization vector_format must be little-endian float32")
     dimension = vector_format.get("dimension")
     if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0:
         raise TrainingError("materialization dimension must be positive")
     outputs = require_mapping(manifest.get("outputs"), "manifest.outputs")
     ids_entry = require_mapping(outputs.get("train_ids"), "manifest.outputs.train_ids")
     vectors_entry = require_mapping(outputs.get("train_vectors"), "manifest.outputs.train_vectors")
-    ids_path = root / require_string(ids_entry.get("path"), "manifest.outputs.train_ids.path")
-    vectors_path = root / require_string(vectors_entry.get("path"), "manifest.outputs.train_vectors.path")
+    if vectors_entry.get("dtype") != "float32_le":
+        raise TrainingError("materialization train vectors must use float32_le")
+    ids_path = resolve_plain_file(root, ids_entry.get("path"), "manifest.outputs.train_ids.path")
+    vectors_path = resolve_plain_file(root, vectors_entry.get("path"), "manifest.outputs.train_vectors.path")
     if not ids_path.is_file() or not vectors_path.is_file():
         raise TrainingError("materialization train files are missing")
-    if ids_entry.get("sha256") != sha256_file(ids_path) or vectors_entry.get("sha256") != sha256_file(vectors_path):
+    if (require_sha256(ids_entry.get("sha256"), "manifest.outputs.train_ids.sha256") != sha256_file(ids_path) or
+            require_sha256(vectors_entry.get("sha256"), "manifest.outputs.train_vectors.sha256") != sha256_file(vectors_path)):
         raise TrainingError("materialization train output hash mismatch")
     ids = load_ids(ids_path)
     if vectors_entry.get("count") != len(ids) or vectors_entry.get("dimension") != dimension:
@@ -150,8 +179,18 @@ def load_materialization(root: Path) -> tuple[list[str], Path, int, str]:
     expected_bytes = len(ids) * dimension * F32.size
     if vectors_path.stat().st_size != expected_bytes:
         raise TrainingError("materialization vector file has an invalid byte size")
-    prepared_hash = require_string(manifest.get("prepared_study_manifest_sha256"), "prepared_study_manifest_sha256")
+    prepared_hash = require_sha256(manifest.get("prepared_study_manifest_sha256"), "prepared_study_manifest_sha256")
     return ids, vectors_path, dimension, prepared_hash
+
+
+def deterministic_epoch_permutation(indices: list[int], seed: int, epoch: int) -> list[int]:
+    """Returns a complete, reproducible Fisher-Yates order for one training epoch."""
+    derived_seed = hashlib.sha256(
+        f"{seed}\0linear-binary-autoencoder-shuffle-v1\0{epoch}".encode("utf-8")
+    ).digest()
+    result = list(indices)
+    random.Random(int.from_bytes(derived_seed[:16], byteorder="big")).shuffle(result)
+    return result
 
 
 def write_f32(path: Path, values: Any) -> None:
@@ -161,6 +200,81 @@ def write_f32(path: Path, values: Any) -> None:
             if not math.isfinite(narrowed):
                 raise TrainingError("trained weight is non-finite")
             handle.write(F32.pack(0.0 if narrowed == 0.0 else narrowed))
+
+
+def validate_autoencoder_artifact(root: Path) -> dict[str, Any]:
+    """Validates the dependency-free v1 wire contract consumed by C++ inference."""
+    artifact_path = root / "artifact.json"
+    try:
+        artifact = require_mapping(
+            json.loads(artifact_path.read_text(encoding="utf-8")),
+            "artifact",
+        )
+    except (OSError, json.JSONDecodeError) as exc:
+        raise TrainingError(f"cannot read autoencoder artifact: {exc}") from exc
+    if artifact.get("schema_version") != 1:
+        raise TrainingError("autoencoder artifact schema_version must equal 1")
+    trainer = require_mapping(artifact.get("trainer"), "artifact.trainer")
+    if (require_string(trainer.get("id"), "artifact.trainer.id") != TRAINER_ID or
+            require_string(trainer.get("version"), "artifact.trainer.version") != TRAINER_VERSION):
+        raise TrainingError("unsupported autoencoder artifact trainer identity")
+    require_sha256(trainer.get("source_hash"), "artifact.trainer.source_hash")
+    require_string(trainer.get("requirements_lock"), "artifact.trainer.requirements_lock")
+    require_sha256(
+        artifact.get("input_materialization_manifest_sha256"),
+        "artifact.input_materialization_manifest_sha256",
+    )
+    require_sha256(
+        artifact.get("prepared_study_manifest_sha256"),
+        "artifact.prepared_study_manifest_sha256",
+    )
+    architecture = require_mapping(artifact.get("architecture"), "artifact.architecture")
+    if (require_string(architecture.get("family"), "artifact.architecture.family") != "linear_binary_autoencoder_ste" or
+            require_string(architecture.get("encoder_activation"), "artifact.architecture.encoder_activation") != "tanh_sign_ste_v1" or
+            require_string(architecture.get("decoder"), "artifact.architecture.decoder") != "linear"):
+        raise TrainingError("unsupported autoencoder artifact architecture")
+    dimension = require_positive_int(architecture.get("input_dimension"), "artifact.architecture.input_dimension")
+    bit_count = require_positive_int(architecture.get("bit_count"), "artifact.architecture.bit_count")
+    training = require_mapping(artifact.get("training"), "artifact.training")
+    if isinstance(training.get("seed"), bool) or not isinstance(training.get("seed"), int) or training["seed"] < 0:
+        raise TrainingError("artifact.training.seed must be a non-negative integer")
+    shuffle_recipe = require_mapping(training.get("shuffle_recipe"), "artifact.training.shuffle_recipe")
+    if (require_string(shuffle_recipe.get("id"), "artifact.training.shuffle_recipe.id") != "python_fisher_yates_sha256_seed_v1" or
+            shuffle_recipe.get("per_epoch") is not True):
+        raise TrainingError("unsupported autoencoder artifact shuffle recipe")
+    weights = require_mapping(artifact.get("weights"), "artifact.weights")
+
+    def validate_weight(
+        name: str,
+        expected_shape: list[int],
+        expected_layout: str | None,
+    ) -> None:
+        entry = require_mapping(weights.get(name), f"artifact.weights.{name}")
+        if entry.get("dtype") != "float32_le":
+            raise TrainingError(f"artifact.weights.{name}.dtype must equal float32_le")
+        if expected_layout is not None and entry.get("layout") != expected_layout:
+            raise TrainingError(f"artifact.weights.{name}.layout mismatch")
+        if entry.get("shape") != expected_shape:
+            raise TrainingError(f"artifact.weights.{name}.shape mismatch")
+        path = resolve_plain_file(root, entry.get("path"), f"artifact.weights.{name}.path")
+        if not path.is_file():
+            raise TrainingError(f"artifact weight file is missing: {name}")
+        if require_sha256(entry.get("sha256"), f"artifact.weights.{name}.sha256") != sha256_file(path):
+            raise TrainingError(f"artifact weight hash mismatch: {name}")
+        element_count = math.prod(expected_shape)
+        if path.stat().st_size != element_count * F32.size:
+            raise TrainingError(f"artifact weight byte size mismatch: {name}")
+        with path.open("rb") as handle:
+            for index in range(element_count):
+                value = F32.unpack(handle.read(F32.size))[0]
+                if not math.isfinite(value):
+                    raise TrainingError(f"artifact weight is non-finite: {name}[{index}]")
+
+    validate_weight("encoder_weights", [bit_count, dimension], "row_major_out_by_in")
+    validate_weight("encoder_bias", [bit_count], None)
+    validate_weight("decoder_weights", [dimension, bit_count], "row_major_out_by_in")
+    validate_weight("decoder_bias", [dimension], None)
+    return artifact
 
 
 def train(
@@ -220,11 +334,12 @@ def train(
         balance_loss = torch.mean(torch.mean(soft_code, dim=0) ** 2)
         return reconstruction_loss + quantization_weight * quantization_loss + balance_weight * balance_loss
 
-    for _ in range(epochs):
+    for epoch in range(epochs):
         encoder.train()
         decoder.train()
-        for start in range(0, len(train_indices), batch_size):
-            values = batch_tensor(train_indices[start:start + batch_size])
+        epoch_indices = deterministic_epoch_permutation(train_indices, seed, epoch)
+        for start in range(0, len(epoch_indices), batch_size):
+            values = batch_tensor(epoch_indices[start:start + batch_size])
             optimizer.zero_grad(set_to_none=True)
             loss_for(values).backward()
             optimizer.step()
@@ -284,6 +399,10 @@ def train(
             "validation_fraction": validation_fraction,
             "quantization_weight": quantization_weight,
             "balance_weight": balance_weight,
+            "shuffle_recipe": {
+                "id": "python_fisher_yates_sha256_seed_v1",
+                "per_epoch": True,
+            },
             "train_vector_count": len(train_indices),
             "validation_vector_count": len(validation_indices),
             "best_document_only_validation_loss": best_loss,
@@ -296,7 +415,7 @@ def train(
         },
     }
     (output_root / "artifact.json").write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-    return artifact
+    return validate_autoencoder_artifact(output_root)
 
 
 def run_self_test() -> int:
@@ -308,11 +427,16 @@ def run_self_test() -> int:
         ids.write_text('{"id":"ru:a"}\n{"id":"en:b"}\n', encoding="utf-8", newline="\n")
         manifest = {
             "schema_version": 1,
+            "materializer": {
+                "id": MATERIALIZER_ID,
+                "version": MATERIALIZER_VERSION,
+                "source_hash": "b" * 64,
+            },
             "prepared_study_manifest_sha256": "a" * 64,
-            "vector_format": {"dimension": 2},
+            "vector_format": {"dtype": "float32_le", "endianness": "little", "dimension": 2},
             "outputs": {
                 "train_ids": {"path": ids.name, "sha256": sha256_file(ids), "count": 2},
-                "train_vectors": {"path": vectors.name, "sha256": sha256_file(vectors), "count": 2, "dimension": 2},
+                "train_vectors": {"path": vectors.name, "sha256": sha256_file(vectors), "count": 2, "dimension": 2, "dtype": "float32_le"},
             },
         }
         (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8", newline="\n")
@@ -320,6 +444,17 @@ def run_self_test() -> int:
         if loaded_ids != ["ru:a", "en:b"] or loaded_vectors != vectors or dimension != 2:
             print("self-test failed: materialization load contract", file=sys.stderr)
             return 1
+        manifest["vector_format"]["dtype"] = "float32_be"
+        (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8", newline="\n")
+        try:
+            load_materialization(root)
+        except TrainingError:
+            pass
+        else:
+            print("self-test failed: non-little-endian vector format was accepted", file=sys.stderr)
+            return 1
+        manifest["vector_format"]["dtype"] = "float32_le"
+        (root / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8", newline="\n")
         vectors.write_bytes(vectors.read_bytes() + F32.pack(0.0))
         try:
             load_materialization(root)
@@ -327,6 +462,53 @@ def run_self_test() -> int:
             pass
         else:
             print("self-test failed: malformed vector file was accepted", file=sys.stderr)
+            return 1
+
+        artifact_root = root / "artifact"
+        artifact_root.mkdir()
+        weight_values = {
+            "encoder_weights": [1.0, 0.0, 0.0, 1.0],
+            "encoder_bias": [0.0, 0.0],
+            "decoder_weights": [1.0, 0.0, 0.0, 1.0],
+            "decoder_bias": [0.0, 0.0],
+        }
+        paths = {
+            "encoder_weights": artifact_root / "encoder-weights.f32",
+            "encoder_bias": artifact_root / "encoder-bias.f32",
+            "decoder_weights": artifact_root / "decoder-weights.f32",
+            "decoder_bias": artifact_root / "decoder-bias.f32",
+        }
+        for name, values in weight_values.items():
+            paths[name].write_bytes(b"".join(F32.pack(value) for value in values))
+        artifact = {
+            "schema_version": 1,
+            "trainer": {"id": TRAINER_ID, "version": TRAINER_VERSION, "source_hash": "c" * 64, "requirements_lock": "test"},
+            "input_materialization_manifest_sha256": "d" * 64,
+            "prepared_study_manifest_sha256": "e" * 64,
+            "architecture": {"family": "linear_binary_autoencoder_ste", "input_dimension": 2, "bit_count": 2, "encoder_activation": "tanh_sign_ste_v1", "decoder": "linear"},
+            "training": {"seed": 42, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": True}},
+            "weights": {
+                "encoder_weights": {"path": paths["encoder_weights"].name, "sha256": sha256_file(paths["encoder_weights"]), "shape": [2, 2], "layout": "row_major_out_by_in", "dtype": "float32_le"},
+                "encoder_bias": {"path": paths["encoder_bias"].name, "sha256": sha256_file(paths["encoder_bias"]), "shape": [2], "dtype": "float32_le"},
+                "decoder_weights": {"path": paths["decoder_weights"].name, "sha256": sha256_file(paths["decoder_weights"]), "shape": [2, 2], "layout": "row_major_out_by_in", "dtype": "float32_le"},
+                "decoder_bias": {"path": paths["decoder_bias"].name, "sha256": sha256_file(paths["decoder_bias"]), "shape": [2], "dtype": "float32_le"},
+            },
+        }
+        (artifact_root / "artifact.json").write_text(json.dumps(artifact), encoding="utf-8", newline="\n")
+        validate_autoencoder_artifact(artifact_root)
+        paths["encoder_weights"].write_bytes(paths["encoder_weights"].read_bytes() + b"\x00")
+        try:
+            validate_autoencoder_artifact(artifact_root)
+        except TrainingError:
+            pass
+        else:
+            print("self-test failed: malformed autoencoder artifact was accepted", file=sys.stderr)
+            return 1
+        order = deterministic_epoch_permutation(list(range(64)), 42, 3)
+        if (order != deterministic_epoch_permutation(list(range(64)), 42, 3) or
+                order == deterministic_epoch_permutation(list(range(64)), 43, 3) or
+                sorted(order) != list(range(64))):
+            print("self-test failed: epoch shuffle contract", file=sys.stderr)
             return 1
     print("binary autoencoder trainer self-test ok")
     return 0

@@ -113,3 +113,10 @@ platform. `--thread-count` defaults to `1` for the most conservative local
 recipe; an explicit higher value is a throughput-oriented offline setting.
 These fields identify the generation environment but do not claim byte-identical
 E5 vectors across unrelated PyTorch or BLAS builds.
+
+Before every training epoch, the trainer applies a deterministic Fisher-Yates
+permutation derived from the training seed and epoch number. It prevents the
+language-block order emitted by the preparer from biasing the final optimizer
+updates. The exported artifact records this shuffle recipe, and its validator
+checks every declared float32-le weight file, shape, layout, digest, and finite
+value before C++ inference consumes it.
