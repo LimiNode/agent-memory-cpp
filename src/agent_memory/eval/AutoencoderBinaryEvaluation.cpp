@@ -17,6 +17,79 @@ namespace agent_memory {
             float score = 0.0F;
         };
 
+        class RunningStatistics final {
+        public:
+            void add(double value) noexcept {
+                if(m_count == 0) {
+                    m_minimum = value;
+                    m_maximum = value;
+                } else {
+                    m_minimum = std::min(m_minimum, value);
+                    m_maximum = std::max(m_maximum, value);
+                }
+                ++m_count;
+                const auto delta = value - m_mean;
+                m_mean += delta / static_cast<double>(m_count);
+                m_sum_squared_deviation += delta * (value - m_mean);
+            }
+
+            [[nodiscard]] AutoencoderBinaryDescriptiveStatistics result() const noexcept {
+                AutoencoderBinaryDescriptiveStatistics output;
+                output.sample_count = m_count;
+                output.mean = m_mean;
+                output.population_stddev = m_count == 0 ? 0.0 : std::sqrt(
+                    std::max(
+                        0.0,
+                        m_sum_squared_deviation / static_cast<double>(m_count)
+                    )
+                );
+                output.minimum = m_count == 0 ? 0.0 : m_minimum;
+                output.maximum = m_count == 0 ? 0.0 : m_maximum;
+                return output;
+            }
+
+        private:
+            std::size_t m_count = 0;
+            double m_mean = 0.0;
+            double m_sum_squared_deviation = 0.0;
+            double m_minimum = 0.0;
+            double m_maximum = 0.0;
+        };
+
+        class RunningPearsonCorrelation final {
+        public:
+            void add(double x, double y) noexcept {
+                ++m_count;
+                const auto x_delta = x - m_mean_x;
+                m_mean_x += x_delta / static_cast<double>(m_count);
+                const auto y_delta = y - m_mean_y;
+                m_mean_y += y_delta / static_cast<double>(m_count);
+                m_sum_squared_x += x_delta * (x - m_mean_x);
+                m_sum_squared_y += y_delta * (y - m_mean_y);
+                m_sum_cross_deviation += x_delta * (y - m_mean_y);
+            }
+
+            [[nodiscard]] bool defined() const noexcept {
+                return m_count > 1 && m_sum_squared_x > 0.0 && m_sum_squared_y > 0.0;
+            }
+
+            [[nodiscard]] double value() const noexcept {
+                if(!defined()) {
+                    return 0.0;
+                }
+                return m_sum_cross_deviation /
+                    std::sqrt(m_sum_squared_x * m_sum_squared_y);
+            }
+
+        private:
+            std::size_t m_count = 0;
+            double m_mean_x = 0.0;
+            double m_mean_y = 0.0;
+            double m_sum_squared_x = 0.0;
+            double m_sum_squared_y = 0.0;
+            double m_sum_cross_deviation = 0.0;
+        };
+
         [[nodiscard]] bool better_score(
             const ScoredPosition& lhs,
             const ScoredPosition& rhs
@@ -33,6 +106,27 @@ namespace agent_memory {
         ) noexcept {
             const auto squared_norm = similarity.squared_norm(embedding);
             return squared_norm > 0.0F ? 1.0F / std::sqrt(squared_norm) : 0.0F;
+        }
+
+        [[nodiscard]] float cosine_similarity(
+            const Embedding& lhs,
+            float lhs_inverse_norm,
+            const Embedding& rhs,
+            float rhs_inverse_norm,
+            const VectorSimilarityComputer& similarity
+        ) noexcept {
+            return similarity.dot_product_values(
+                lhs.values.data(),
+                rhs.values.data(),
+                lhs.dimension()
+            ) * lhs_inverse_norm * rhs_inverse_norm;
+        }
+
+        [[nodiscard]] double norm(
+            const Embedding& embedding,
+            const VectorSimilarityComputer& similarity
+        ) noexcept {
+            return std::sqrt(static_cast<double>(similarity.squared_norm(embedding)));
         }
 
         [[nodiscard]] std::vector<ScoredPosition> cosine_rank(
@@ -179,6 +273,7 @@ namespace agent_memory {
             document_inverse_norms.push_back(inverse_norm(vector, similarity));
         }
         const auto document_signatures = encoder.encode_batch(document_vectors);
+        const auto query_signatures = encoder.encode_batch(query_vectors);
         std::vector<Embedding> decoded_documents;
         decoded_documents.reserve(document_signatures.size());
         for(const auto& signature : document_signatures) {
@@ -195,7 +290,56 @@ namespace agent_memory {
         output.query_count = query_vectors.size();
         output.oracle_k = oracle_k;
         output.returned_candidate_limit = candidate_limit;
-        for(const auto& query : query_vectors) {
+        output.random_candidate_coverage_expectation =
+            static_cast<double>(candidate_limit) / static_cast<double>(document_vectors.size());
+        output.code_diagnostics.document_code_health = analyze_binary_code_health(
+            document_signatures
+        );
+        output.code_diagnostics.query_code_health = analyze_binary_code_health(query_signatures);
+        output.code_diagnostics.unique_document_code_count =
+            output.code_diagnostics.document_code_health.exact_signature_bucket_sizes.size();
+        output.code_diagnostics.unique_document_code_fraction =
+            static_cast<double>(output.code_diagnostics.unique_document_code_count) /
+            static_cast<double>(document_signatures.size());
+        output.code_diagnostics.unique_query_code_count =
+            output.code_diagnostics.query_code_health.exact_signature_bucket_sizes.size();
+        output.code_diagnostics.unique_query_code_fraction =
+            static_cast<double>(output.code_diagnostics.unique_query_code_count) /
+            static_cast<double>(query_signatures.size());
+
+        RunningStatistics reconstruction_cosines;
+        RunningStatistics decoded_norms;
+        RunningStatistics shuffled_decoder_cosines;
+        for(std::size_t document_index = 0;
+            document_index < document_vectors.size();
+            ++document_index) {
+            reconstruction_cosines.add(cosine_similarity(
+                document_vectors[document_index],
+                document_inverse_norms[document_index],
+                decoded_documents[document_index],
+                decoded_inverse_norms[document_index],
+                similarity
+            ));
+            decoded_norms.add(norm(decoded_documents[document_index], similarity));
+            if(document_vectors.size() > 1) {
+                const auto shuffled_index = (document_index + 1) % document_vectors.size();
+                shuffled_decoder_cosines.add(cosine_similarity(
+                    document_vectors[document_index],
+                    document_inverse_norms[document_index],
+                    decoded_documents[shuffled_index],
+                    decoded_inverse_norms[shuffled_index],
+                    similarity
+                ));
+            }
+        }
+        output.code_diagnostics.decoder_reconstruction_cosine = reconstruction_cosines.result();
+        output.code_diagnostics.decoded_document_norm = decoded_norms.result();
+        output.code_diagnostics.shuffled_decoder_cosine = shuffled_decoder_cosines.result();
+
+        RunningStatistics query_document_hamming_distances;
+        RunningPearsonCorrelation cosine_negative_hamming;
+        for(std::size_t query_index = 0; query_index < query_vectors.size(); ++query_index) {
+            const auto& query = query_vectors[query_index];
             const auto query_inverse_norm = inverse_norm(query, similarity);
             const auto oracle = cosine_rank(
                 query,
@@ -204,13 +348,28 @@ namespace agent_memory {
                 document_inverse_norms,
                 similarity
             );
-            const auto query_signature = encoder.encode(query);
+            const auto& query_signature = query_signatures[query_index];
             std::vector<ScoredPosition> hamming_rank;
             hamming_rank.reserve(document_signatures.size());
             for(std::size_t position = 0; position < document_signatures.size(); ++position) {
+                const auto hamming = hamming_distance(
+                    query_signature,
+                    document_signatures[position]
+                );
+                query_document_hamming_distances.add(static_cast<double>(hamming));
+                cosine_negative_hamming.add(
+                    cosine_similarity(
+                        query,
+                        query_inverse_norm,
+                        document_vectors[position],
+                        document_inverse_norms[position],
+                        similarity
+                    ),
+                    -static_cast<double>(hamming)
+                );
                 hamming_rank.push_back({
                     position,
-                    -static_cast<float>(hamming_distance(query_signature, document_signatures[position])),
+                    -static_cast<float>(hamming),
                 });
             }
             std::sort(hamming_rank.begin(), hamming_rank.end(), better_score);
@@ -260,6 +419,15 @@ namespace agent_memory {
         output.exact_top_k_candidate_coverage /= divisor;
         output.reranked_recall_at_k_vs_exact /= divisor;
         output.decoder_recall_at_k_vs_exact /= divisor;
+        output.candidate_coverage_lift_vs_random =
+            output.exact_top_k_candidate_coverage /
+            output.random_candidate_coverage_expectation;
+        output.code_diagnostics.query_document_hamming_distance =
+            query_document_hamming_distances.result();
+        output.code_diagnostics.cosine_negative_hamming_pearson_correlation =
+            cosine_negative_hamming.value();
+        output.code_diagnostics.cosine_negative_hamming_correlation_defined =
+            cosine_negative_hamming.defined();
         return output;
     }
 

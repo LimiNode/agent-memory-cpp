@@ -484,16 +484,36 @@ namespace agent_memory {
         const auto& trainer = require_field(root, "trainer");
         const auto trainer_id = require_string(trainer, "id");
         const auto trainer_version = require_string(trainer, "version");
-        if(trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
-           trainer_version != "v1") {
+        const auto& architecture = require_field(root, "architecture");
+        const auto family = require_string(architecture, "family");
+        const auto is_ste = family == "linear_binary_autoencoder_ste";
+        const auto is_nlb_paper = family == "nlb_paper_tied_v1";
+        if((is_ste && (trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
+                       trainer_version != "v1")) ||
+           (is_nlb_paper && (trainer_id != "agent-memory-cpp:nlb-tied-binary-autoencoder-trainer" ||
+                             trainer_version != "v1")) ||
+           (!is_ste && !is_nlb_paper)) {
             throw std::runtime_error("unsupported autoencoder artifact trainer identity");
         }
         (void)require_sha256(trainer, "source_hash");
-        const auto& architecture = require_field(root, "architecture");
-        if(require_string(architecture, "family") != "linear_binary_autoencoder_ste" ||
-           require_string(architecture, "encoder_activation") != "tanh_sign_ste_v1" ||
-           require_string(architecture, "decoder") != "linear") {
+        if((is_ste &&
+            (require_string(architecture, "encoder_activation") != "tanh_sign_ste_v1" ||
+             require_string(architecture, "decoder") != "linear")) ||
+           (is_nlb_paper &&
+            (require_string(architecture, "encoder_activation") != "hard_step_no_ste_v1" ||
+             require_string(architecture, "decoder") != "tied_transpose_tanh" ||
+             require_string(architecture, "code_value_encoding") != "zero_one" ||
+             require_string(architecture, "input_transform") != "clip_minus_one_one_v1"))) {
             throw std::runtime_error("unsupported autoencoder artifact architecture");
+        }
+        if(is_nlb_paper) {
+            const auto& regularizer = require_field(architecture, "regularizer");
+            if(require_string(regularizer, "id") != "paper_w_transpose_w_identity_v1" ||
+               !require_field(regularizer, "weight").is_number() ||
+               require_field(regularizer, "weight").get<double>() < 0.0 ||
+               !std::isfinite(require_field(regularizer, "weight").get<double>())) {
+                throw std::runtime_error("unsupported NLB-paper artifact regularizer");
+            }
         }
         const auto input_dimension = require_positive_size(architecture, "input_dimension");
         const auto bit_count = require_positive_size(architecture, "bit_count");
@@ -512,18 +532,35 @@ namespace agent_memory {
             {bit_count, input_dimension},
             "row_major_out_by_in"
         );
-        const auto encoder_bias = load_weight_file(
-            artifact_directory,
-            require_field(weights, "encoder_bias"),
-            {bit_count},
-            nullptr
-        );
-        const auto decoder_weights = load_weight_file(
-            artifact_directory,
-            require_field(weights, "decoder_weights"),
-            {input_dimension, bit_count},
-            "row_major_out_by_in"
-        );
+        std::vector<float> encoder_bias;
+        std::vector<float> decoder_weights;
+        if(is_ste) {
+            encoder_bias = load_weight_file(
+                artifact_directory,
+                require_field(weights, "encoder_bias"),
+                {bit_count},
+                nullptr
+            );
+            decoder_weights = load_weight_file(
+                artifact_directory,
+                require_field(weights, "decoder_weights"),
+                {input_dimension, bit_count},
+                "row_major_out_by_in"
+            );
+        } else {
+            encoder_bias.assign(bit_count, 0.0F);
+            decoder_weights.resize(checked_product(
+                input_dimension,
+                bit_count,
+                "tied autoencoder decoder"
+            ));
+            for(std::size_t bit = 0; bit < bit_count; ++bit) {
+                for(std::size_t dimension = 0; dimension < input_dimension; ++dimension) {
+                    decoder_weights[dimension * bit_count + bit] =
+                        encoder_weights[bit * input_dimension + dimension];
+                }
+            }
+        }
         const auto decoder_bias = load_weight_file(
             artifact_directory,
             require_field(weights, "decoder_bias"),
@@ -544,12 +581,20 @@ namespace agent_memory {
                 artifact_sha256,
                 encoder_weights,
                 encoder_bias,
+                is_ste ? "linear_binary_autoencoder_ste" : "nlb_paper_tied",
+                "v1",
+                is_ste ? AutoencoderBinaryInputTransform::Identity :
+                    AutoencoderBinaryInputTransform::ClipMinusOneToOne,
             }),
             AutoencoderBinaryDecoder({
                 input_dimension,
                 bit_count,
                 decoder_weights,
                 decoder_bias,
+                is_ste ? AutoencoderBinaryCodeValueEncoding::NegativeOneToOne :
+                    AutoencoderBinaryCodeValueEncoding::ZeroToOne,
+                is_ste ? AutoencoderBinaryDecoderActivation::Identity :
+                    AutoencoderBinaryDecoderActivation::HyperbolicTangent,
             }),
         };
     }

@@ -71,6 +71,31 @@ namespace {
 })";
     }
 
+    void write_nlb_paper_artifact(const std::filesystem::path& path) {
+        std::ofstream output(path, std::ios::binary);
+        output << R"({
+  "schema_version": 1,
+  "trainer": {"id": "agent-memory-cpp:nlb-tied-binary-autoencoder-trainer", "version": "v1", "source_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+  "input_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "prepared_study_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "architecture": {
+    "family": "nlb_paper_tied_v1",
+    "input_dimension": 2,
+    "bit_count": 2,
+    "encoder_activation": "hard_step_no_ste_v1",
+    "decoder": "tied_transpose_tanh",
+    "code_value_encoding": "zero_one",
+    "input_transform": "clip_minus_one_one_v1",
+    "regularizer": {"id": "paper_w_transpose_w_identity_v1", "weight": 1.0}
+  },
+  "training": {"seed": 42, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true}},
+  "weights": {
+    "encoder_weights": {"path": "encoder-weights.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "shape": [2, 2], "layout": "row_major_out_by_in", "dtype": "float32_le"},
+    "decoder_bias": {"path": "decoder-bias.f32", "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc", "shape": [2], "dtype": "float32_le"}
+  }
+})";
+    }
+
     void write_text(const std::filesystem::path& path, const char* text) {
         std::ofstream output(path, std::ios::binary);
         output << text;
@@ -120,6 +145,18 @@ int main() {
            std::fabs(reconstructed.values[1] - 2.0F) > 1.0e-6F) {
             return fail("decoder hard-code reconstruction contract");
         }
+        write_nlb_paper_artifact(root / "nlb-paper-artifact.json");
+        const auto nlb_artifact = agent_memory::load_autoencoder_binary_artifact(
+            root / "nlb-paper-artifact.json"
+        );
+        const auto nlb_signature = nlb_artifact.encoder.encode({{2.0F, -2.0F}});
+        const auto nlb_reconstructed = nlb_artifact.decoder.decode(nlb_signature);
+        if(nlb_artifact.encoder.info().encoder_id != "nlb_paper_tied" ||
+           !nlb_signature.bit(0) || nlb_signature.bit(1) ||
+           std::fabs(nlb_reconstructed.values[0] - std::tanh(1.0F)) > 1.0e-6F ||
+           std::fabs(nlb_reconstructed.values[1]) > 1.0e-6F) {
+            return fail("NLB-paper tied artifact contract");
+        }
         const auto metrics = agent_memory::evaluate_autoencoder_binary_retrieval(
             {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},
             {{{1.0F, 0.0F}}},
@@ -129,8 +166,30 @@ int main() {
         );
         if(metrics.exact_top_k_candidate_coverage != 1.0 ||
            metrics.reranked_recall_at_k_vs_exact != 1.0 ||
-           metrics.decoder_recall_at_k_vs_exact != 1.0) {
+           metrics.decoder_recall_at_k_vs_exact != 1.0 ||
+           metrics.random_candidate_coverage_expectation != 0.5 ||
+           metrics.candidate_coverage_lift_vs_random != 2.0) {
             return fail("three-mode retrieval evaluation contract");
+        }
+        const auto& diagnostics = metrics.code_diagnostics;
+        if(diagnostics.unique_document_code_count != 2 ||
+           diagnostics.unique_document_code_fraction != 1.0 ||
+           diagnostics.document_code_health.constant_bit_fraction != 0.5 ||
+           diagnostics.document_code_health.sampled_pair_count != 1 ||
+           diagnostics.document_code_health.sampled_min_pairwise_hamming_distance != 1 ||
+           diagnostics.document_code_health.sampled_max_pairwise_hamming_distance != 1 ||
+           diagnostics.document_code_health.sampled_pairwise_hamming_distance_stddev != 0.0 ||
+           diagnostics.query_document_hamming_distance.sample_count != 2 ||
+           std::fabs(diagnostics.query_document_hamming_distance.mean - 0.5) > 1.0e-9 ||
+           !diagnostics.cosine_negative_hamming_correlation_defined ||
+           std::fabs(
+               diagnostics.cosine_negative_hamming_pearson_correlation - 1.0
+           ) > 1.0e-9 ||
+           std::fabs(diagnostics.decoder_reconstruction_cosine.mean -
+                     (1.0 / std::sqrt(2.0))) > 1.0e-6 ||
+           std::fabs(diagnostics.decoded_document_norm.mean - std::sqrt(8.0)) > 1.0e-6 ||
+           diagnostics.shuffled_decoder_cosine.sample_count != 2) {
+            return fail("autoencoder code diagnostic contract");
         }
         const auto decoder_mismatch = agent_memory::evaluate_autoencoder_binary_retrieval(
             {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},

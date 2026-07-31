@@ -44,13 +44,16 @@ namespace agent_memory {
         AutoencoderBinaryDecoder decoder;
     };
 
-    /// \brief Loads and verifies a v1 `linear_binary_autoencoder_ste` artifact.
+    /// \brief Loads and verifies a supported v1 binary-autoencoder artifact.
     ///
     /// The loader validates the JSON schema, all declared SHA-256 weight-file
     /// digests, exact row-major float32-le byte sizes, finite weights, and the
-    /// encoder/decoder shapes. It returns the artifact JSON digest as stable
-    /// encoder identity input; changing any artifact metadata or weights creates
-    /// a distinct binary signature space.
+    /// encoder/decoder shapes. `linear_binary_autoencoder_ste` retains its
+    /// independent linear decoder; `nlb_paper_tied_v1` derives a zero/one,
+    /// `tanh` decoder from the verified transpose of its encoder matrix. It
+    /// returns the artifact JSON digest as stable encoder identity input;
+    /// changing any artifact metadata or weights creates a distinct binary
+    /// signature space.
     /// \throws std::runtime_error on missing, malformed, or integrity-invalid input.
     [[nodiscard]] AutoencoderBinaryArtifact load_autoencoder_binary_artifact(
         const std::filesystem::path& artifact_path

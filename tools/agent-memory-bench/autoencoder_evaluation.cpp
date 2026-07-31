@@ -48,6 +48,68 @@ namespace {
         };
     }
 
+    [[nodiscard]] nlohmann::json descriptive_statistics_json(
+        const agent_memory::AutoencoderBinaryDescriptiveStatistics& statistics
+    ) {
+        return {
+            {"sample_count", statistics.sample_count},
+            {"mean", statistics.mean},
+            {"population_stddev", statistics.population_stddev},
+            {"minimum", statistics.minimum},
+            {"maximum", statistics.maximum},
+        };
+    }
+
+    [[nodiscard]] nlohmann::json code_health_json(
+        const agent_memory::BinaryCodeHealthMetrics& health
+    ) {
+        return {
+            {"signature_count", health.signature_count},
+            {"bit_count", health.bit_count},
+            {"fraction_ones_per_bit", health.fraction_ones_per_bit},
+            {"constant_bit_fraction", health.constant_bit_fraction},
+            {"mean_bit_entropy", health.mean_bit_entropy},
+            {"min_bit_entropy", health.min_bit_entropy},
+            {"max_bit_entropy", health.max_bit_entropy},
+            {"duplicate_signature_rate", health.duplicate_signature_rate},
+            {"sampled_mean_pairwise_hamming_distance",
+             health.sampled_mean_pairwise_hamming_distance},
+            {"sampled_pairwise_hamming_distance_stddev",
+             health.sampled_pairwise_hamming_distance_stddev},
+            {"sampled_min_pairwise_hamming_distance",
+             health.sampled_min_pairwise_hamming_distance},
+            {"sampled_max_pairwise_hamming_distance",
+             health.sampled_max_pairwise_hamming_distance},
+            {"sampled_pair_count", health.sampled_pair_count},
+            {"exact_signature_bucket_sizes", health.exact_signature_bucket_sizes},
+        };
+    }
+
+    [[nodiscard]] nlohmann::json code_diagnostics_json(
+        const agent_memory::AutoencoderBinaryCodeDiagnostics& diagnostics
+    ) {
+        return {
+            {"document_code_health", code_health_json(diagnostics.document_code_health)},
+            {"query_code_health", code_health_json(diagnostics.query_code_health)},
+            {"unique_document_code_count", diagnostics.unique_document_code_count},
+            {"unique_document_code_fraction", diagnostics.unique_document_code_fraction},
+            {"unique_query_code_count", diagnostics.unique_query_code_count},
+            {"unique_query_code_fraction", diagnostics.unique_query_code_fraction},
+            {"query_document_hamming_distance",
+             descriptive_statistics_json(diagnostics.query_document_hamming_distance)},
+            {"cosine_negative_hamming_pearson_correlation",
+             diagnostics.cosine_negative_hamming_pearson_correlation},
+            {"cosine_negative_hamming_correlation_defined",
+             diagnostics.cosine_negative_hamming_correlation_defined},
+            {"decoder_reconstruction_cosine",
+             descriptive_statistics_json(diagnostics.decoder_reconstruction_cosine)},
+            {"decoded_document_norm",
+             descriptive_statistics_json(diagnostics.decoded_document_norm)},
+            {"shuffled_decoder_cosine",
+             descriptive_statistics_json(diagnostics.shuffled_decoder_cosine)},
+        };
+    }
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -110,6 +172,11 @@ int main(int argc, char* argv[]) {
             {"exact_top_k_candidate_coverage", evaluation.exact_agreement.exact_top_k_candidate_coverage},
             {"reranked_recall_at_k_vs_exact", evaluation.exact_agreement.reranked_recall_at_k_vs_exact},
             {"decoder_recall_at_k_vs_exact", evaluation.exact_agreement.decoder_recall_at_k_vs_exact},
+            {"random_candidate_coverage_expectation",
+             evaluation.exact_agreement.random_candidate_coverage_expectation},
+            {"candidate_coverage_lift_vs_random",
+             evaluation.exact_agreement.candidate_coverage_lift_vs_random},
+            {"code_diagnostics", code_diagnostics_json(evaluation.exact_agreement.code_diagnostics)},
             {"original_float", metrics_json(evaluation.original_float_metrics)},
             {"binary_candidates_exact_rerank", metrics_json(evaluation.binary_rerank_metrics)},
             {"decoder_approximation", metrics_json(evaluation.decoder_approximation_metrics)},

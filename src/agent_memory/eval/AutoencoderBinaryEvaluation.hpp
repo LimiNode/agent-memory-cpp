@@ -6,6 +6,7 @@
 /// \brief Comparable float, binary-rerank, and decoder retrieval evaluation.
 
 #include <agent_memory/index/AutoencoderBinaryEncoder.hpp>
+#include <agent_memory/index/BinarySignature.hpp>
 #include <agent_memory/eval/Evaluation.hpp>
 
 #include <cstddef>
@@ -22,6 +23,39 @@ namespace agent_memory {
         std::size_t returned_candidate_limit = 100;
     };
 
+    /// \brief Descriptive statistics emitted by a binary-code diagnostic pass.
+    struct AutoencoderBinaryDescriptiveStatistics final {
+        std::size_t sample_count = 0;
+        double mean = 0.0;
+        double population_stddev = 0.0;
+        double minimum = 0.0;
+        double maximum = 0.0;
+    };
+
+    /// \brief Evidence that an autoencoder code retains useful dense-space structure.
+    ///
+    /// The document and query code-health fields reveal collapsed bits and exact
+    /// collisions. Pair and reconstruction fields are diagnostic only; they do
+    /// not use qrels and must not be used as a substitute for held-out retrieval
+    /// metrics.
+    struct AutoencoderBinaryCodeDiagnostics final {
+        BinaryCodeHealthMetrics document_code_health;
+        BinaryCodeHealthMetrics query_code_health;
+        std::size_t unique_document_code_count = 0;
+        double unique_document_code_fraction = 0.0;
+        std::size_t unique_query_code_count = 0;
+        double unique_query_code_fraction = 0.0;
+        AutoencoderBinaryDescriptiveStatistics query_document_hamming_distance;
+        /// \brief Pearson correlation of float cosine with negative Hamming distance.
+        double cosine_negative_hamming_pearson_correlation = 0.0;
+        /// \brief Whether the Pearson correlation has nonzero variance in both variables.
+        bool cosine_negative_hamming_correlation_defined = false;
+        AutoencoderBinaryDescriptiveStatistics decoder_reconstruction_cosine;
+        AutoencoderBinaryDescriptiveStatistics decoded_document_norm;
+        /// \brief Deterministic cyclic mismatch control for decoder reconstruction cosine.
+        AutoencoderBinaryDescriptiveStatistics shuffled_decoder_cosine;
+    };
+
     /// \brief Mean agreement against original-float cosine rankings.
     struct AutoencoderBinaryEvaluationMetrics final {
         std::size_t document_count = 0;
@@ -34,6 +68,12 @@ namespace agent_memory {
         double reranked_recall_at_k_vs_exact = 0.0;
         /// \brief Mean exact-top-K recall from decoder-reconstructed document vectors.
         double decoder_recall_at_k_vs_exact = 0.0;
+        /// \brief Expected oracle coverage for uniformly random candidates of this size.
+        double random_candidate_coverage_expectation = 0.0;
+        /// \brief Observed candidate coverage divided by the random expectation.
+        double candidate_coverage_lift_vs_random = 0.0;
+        /// \brief Code and reconstruction diagnostics collected from the same inputs.
+        AutoencoderBinaryCodeDiagnostics code_diagnostics;
     };
 
     /// \brief Qrels-based quality of all three autoencoder retrieval modes.

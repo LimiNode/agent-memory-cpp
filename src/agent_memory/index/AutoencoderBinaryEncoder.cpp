@@ -1,5 +1,6 @@
 #include "AutoencoderBinaryEncoder.hpp"
 
+#include <algorithm>
 #include <array>
 #include <charconv>
 #include <cmath>
@@ -37,12 +38,18 @@ namespace agent_memory {
         [[nodiscard]] std::string make_fingerprint(
             const AutoencoderBinaryEncoderOptions& options
         ) {
-            std::string output = "linear_binary_autoencoder_ste_v1:sha256=";
+            std::string output = options.encoder_id;
+            output += "_";
+            output += options.encoder_version;
+            output += ":sha256=";
             output += options.artifact_sha256;
             output += ":dim=";
             append_integer(output, options.input_dimension);
             output += ":bits=";
             append_integer(output, options.bit_count);
+            if(options.input_transform == AutoencoderBinaryInputTransform::ClipMinusOneToOne) {
+                output += ":input=clip_minus_one_one";
+            }
             return output;
         }
 
@@ -71,6 +78,9 @@ namespace agent_memory {
         void validate_encoder_options(const AutoencoderBinaryEncoderOptions& options) {
             if(options.input_dimension == 0 || options.bit_count == 0) {
                 throw std::invalid_argument("autoencoder encoder dimensions must be positive");
+            }
+            if(options.encoder_id.empty() || options.encoder_version.empty()) {
+                throw std::invalid_argument("autoencoder encoder identity must not be empty");
             }
             validate_sha256(options.artifact_sha256);
             if(options.weights.size() != checked_value_count(
@@ -110,8 +120,8 @@ namespace agent_memory {
     AutoencoderBinaryEncoder::AutoencoderBinaryEncoder(AutoencoderBinaryEncoderOptions options)
         : m_options(std::move(options)) {
         validate_encoder_options(m_options);
-        m_info.encoder_id = "linear_binary_autoencoder_ste";
-        m_info.encoder_version = "v1";
+        m_info.encoder_id = m_options.encoder_id;
+        m_info.encoder_version = m_options.encoder_version;
         m_info.input_dimension = m_options.input_dimension;
         m_info.bit_count = m_options.bit_count;
         m_info.seed = m_options.seed;
@@ -155,11 +165,22 @@ namespace agent_memory {
     BinarySignature AutoencoderBinaryEncoder::encode_validated(const Embedding& vector) const {
         BinarySignature output(m_options.bit_count);
         for(std::size_t bit = 0; bit < m_options.bit_count; ++bit) {
-            const auto dot = m_similarity.dot_product_values(
-                vector.values.data(),
-                m_options.weights.data() + bit * m_options.input_dimension,
-                m_options.input_dimension
-            );
+            float dot = 0.0F;
+            const auto* weights = m_options.weights.data() + bit * m_options.input_dimension;
+            if(m_options.input_transform == AutoencoderBinaryInputTransform::Identity) {
+                dot = m_similarity.dot_product_values(
+                    vector.values.data(),
+                    weights,
+                    m_options.input_dimension
+                );
+            } else {
+                for(std::size_t dimension = 0;
+                    dimension < m_options.input_dimension;
+                    ++dimension) {
+                    dot += std::max(-1.0F, std::min(1.0F, vector.values[dimension])) *
+                        weights[dimension];
+                }
+            }
             output.set_bit(bit, dot + m_options.bias[bit] >= 0.0F);
         }
         return output;
@@ -183,9 +204,16 @@ namespace agent_memory {
             const auto* row =
                 m_options.weights.data() + output_dimension * m_options.bit_count;
             for(std::size_t bit = 0; bit < m_options.bit_count; ++bit) {
-                value += row[bit] * (signature.bit(bit) ? 1.0F : -1.0F);
+                const auto bit_value = m_options.code_value_encoding ==
+                    AutoencoderBinaryCodeValueEncoding::NegativeOneToOne
+                    ? (signature.bit(bit) ? 1.0F : -1.0F)
+                    : (signature.bit(bit) ? 1.0F : 0.0F);
+                value += row[bit] * bit_value;
             }
-            output.values[output_dimension] = value;
+            output.values[output_dimension] = m_options.activation ==
+                AutoencoderBinaryDecoderActivation::HyperbolicTangent
+                ? std::tanh(value)
+                : value;
         }
         return output;
     }

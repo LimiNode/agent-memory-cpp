@@ -16,6 +16,24 @@
 
 namespace agent_memory {
 
+    /// \brief Input preprocessing declared by a binary-autoencoder artifact.
+    enum class AutoencoderBinaryInputTransform {
+        Identity,
+        ClipMinusOneToOne
+    };
+
+    /// \brief Numeric values reconstructed from a packed binary signature.
+    enum class AutoencoderBinaryCodeValueEncoding {
+        NegativeOneToOne,
+        ZeroToOne
+    };
+
+    /// \brief Final activation used by a binary-autoencoder decoder.
+    enum class AutoencoderBinaryDecoderActivation {
+        Identity,
+        HyperbolicTangent
+    };
+
     /// \brief Immutable encoder weights exported by the offline autoencoder trainer.
     struct AutoencoderBinaryEncoderOptions final {
         /// \brief Dense input width accepted by the encoder.
@@ -30,13 +48,22 @@ namespace agent_memory {
         std::vector<float> weights;
         /// \brief One affine bias per output bit.
         std::vector<float> bias;
+        /// \brief Stable artifact-family identity for registry and persistence checks.
+        std::string encoder_id = "linear_binary_autoencoder_ste";
+        /// \brief Stable behavior version within the declared encoder family.
+        std::string encoder_version = "v1";
+        /// \brief Optional preprocessing that is part of the encoder contract.
+        AutoencoderBinaryInputTransform input_transform =
+            AutoencoderBinaryInputTransform::Identity;
     };
 
-    /// \brief Dependency-free inference encoder for `linear_binary_autoencoder_ste`.
+    /// \brief Dependency-free inference encoder for supported binary-autoencoder artifacts.
     ///
     /// A bit is set when `dot(weight_row, input) + bias >= 0`. This matches the
-    /// hard-code rule in `train-binary-autoencoder.py`; unlike its differentiable
-    /// training surrogate, C++ inference is strictly deterministic.
+    /// hard-code rule declared by the originating trainer; unlike a
+    /// differentiable training surrogate, C++ inference is strictly
+    /// deterministic. The optional clipping transform is part of the artifact
+    /// identity and is applied before the affine sign projection.
     class AutoencoderBinaryEncoder final : public IBinarySignatureEncoder {
     public:
         explicit AutoencoderBinaryEncoder(AutoencoderBinaryEncoderOptions options);
@@ -69,11 +96,19 @@ namespace agent_memory {
         std::vector<float> weights;
         /// \brief One affine bias per reconstructed dimension.
         std::vector<float> bias;
+        /// \brief Values assigned to cleared and set packed bits before decoding.
+        AutoencoderBinaryCodeValueEncoding code_value_encoding =
+            AutoencoderBinaryCodeValueEncoding::NegativeOneToOne;
+        /// \brief Optional output activation after the affine decoder.
+        AutoencoderBinaryDecoderActivation activation =
+            AutoencoderBinaryDecoderActivation::Identity;
     };
 
     /// \brief Reconstructs approximate dense vectors from packed binary signatures.
     ///
-    /// This is an experimental evaluation path. Production-safe retrieval keeps
+    /// The artifact declares whether bits decode as `-1/+1` or `0/1`, and
+    /// whether the affine output receives `tanh`. This is an experimental
+    /// evaluation path. Production-safe retrieval keeps
     /// original float vectors and uses binary signatures only for candidate
     /// selection followed by exact reranking.
     class AutoencoderBinaryDecoder final {
