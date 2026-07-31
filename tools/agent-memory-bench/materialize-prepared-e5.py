@@ -37,7 +37,7 @@ REQUIRED_PACKAGES = (
 F32 = struct.Struct("<f")
 EXECUTION_DEVICE = "cpu"
 COMPUTE_DTYPE = "float32"
-DETERMINISM_POLICY = "torch_cpu_single_thread_deterministic_inference_v1"
+DETERMINISM_POLICY = "torch_cpu_recorded_threads_deterministic_inference_v2"
 
 
 class MaterializationError(RuntimeError):
@@ -182,7 +182,10 @@ class E5Encoder:
         revision: str,
         cache_dir: Path | None,
         local_files_only: bool,
+        thread_count: int,
     ) -> None:
+        if thread_count <= 0:
+            raise MaterializationError("thread_count must be positive")
         verify_environment()
         try:
             import torch
@@ -192,7 +195,7 @@ class E5Encoder:
             raise MaterializationError(
                 f"E5 materialization requires packages from {REQUIREMENTS_LOCK_FILE}"
             ) from exc
-        torch.set_num_threads(1)
+        torch.set_num_threads(thread_count)
         torch.set_num_interop_threads(1)
         torch.use_deterministic_algorithms(True)
         options: dict[str, Any] = {"revision": revision, "local_files_only": local_files_only}
@@ -201,6 +204,7 @@ class E5Encoder:
         self._torch = torch
         self._functional = torch_functional
         self._device = torch.device(EXECUTION_DEVICE)
+        self._thread_count = thread_count
         self._tokenizer = AutoTokenizer.from_pretrained(model_id, **options)
         self._model = AutoModel.from_pretrained(model_id, **options).to(self._device)
         self._model.eval()
@@ -213,7 +217,7 @@ class E5Encoder:
             "device": EXECUTION_DEVICE,
             "compute_dtype": COMPUTE_DTYPE,
             "deterministic_algorithms": True,
-            "thread_count": 1,
+            "thread_count": self._thread_count,
             "backend": "pytorch_cpu",
             "platform": platform.platform(),
             "torch_version": self._torch.__version__,
@@ -309,10 +313,12 @@ def materialize(
         ("device", EXECUTION_DEVICE),
         ("compute_dtype", COMPUTE_DTYPE),
         ("deterministic_algorithms", True),
-        ("thread_count", 1),
     ):
         if execution.get(field) != expected:
             raise MaterializationError(f"execution.{field} does not satisfy the E5 recipe contract")
+    thread_count = execution.get("thread_count")
+    if isinstance(thread_count, bool) or not isinstance(thread_count, int) or thread_count <= 0:
+        raise MaterializationError("execution.thread_count must be positive")
     manifest = load_prepared_manifest(prepared_root)
     train_path = resolve_output(prepared_root, manifest, "train_documents")
     evaluation_path = resolve_output(prepared_root, manifest, "evaluation_documents")
@@ -420,7 +426,7 @@ def run_self_test() -> int:
             "device": "cpu",
             "compute_dtype": "float32",
             "deterministic_algorithms": True,
-            "thread_count": 1,
+            "thread_count": 3,
             "backend": "fake_encoder",
             "platform": "self-test",
             "torch_version": "not-applicable",
@@ -438,6 +444,19 @@ def run_self_test() -> int:
         if first["vector_format"]["dimension"] != 4 or first["outputs"]["train_vectors"]["count"] != 4:
             print("self-test failed: unexpected vector output shape", file=sys.stderr)
             return 1
+        try:
+            materialize(
+                prepared_root=prepared_root,
+                output_root=root / "invalid-thread-count",
+                batch_size=2,
+                encoder_factory=fake_encoder,
+                execution={**fake_execution, "thread_count": 0},
+            )
+        except MaterializationError:
+            pass
+        else:
+            print("self-test failed: accepted invalid execution thread count", file=sys.stderr)
+            return 1
     print("E5 materializer self-test ok")
     return 0
 
@@ -447,6 +466,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--prepared-root", type=Path)
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--thread-count", type=int, default=1)
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument("--self-test", action="store_true")
@@ -468,6 +488,7 @@ def main(argv: list[str]) -> int:
             revision=require_string(embedding["model_revision"], "embedding.model_revision"),
             cache_dir=args.cache_dir,
             local_files_only=args.local_files_only,
+            thread_count=args.thread_count,
         )
         output = materialize(
             prepared_root=args.prepared_root,
