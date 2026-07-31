@@ -7,6 +7,7 @@
 
 #include "domain/Document.hpp"
 #include "domain/Identifiers.hpp"
+#include "domain/KnowledgeUnit.hpp"
 #include "domain/Metadata.hpp"
 #include "domain/MetadataFilter.hpp"
 #include "domain/Resource.hpp"

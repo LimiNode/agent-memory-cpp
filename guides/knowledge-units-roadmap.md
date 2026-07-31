@@ -245,14 +245,18 @@ struct DerivedTextProvenance {
     std::optional<std::string> upstream_locator;
 };
 
+enum class SourceReferenceMode : uint8_t {
+    RevisionBoundQuote,
+    LegacyPreviewOnly
+};
+
 struct SourceRefSummary {
     ResourceId resource_id;          // обязательно
-    std::optional<ResourceRevisionRef> resource_revision;  // absent only for legacy preview-only refs
+    SourceReferenceMode reference_mode = SourceReferenceMode::RevisionBoundQuote;
+    std::optional<ResourceRevisionRef> resource_revision;
     std::string uri;                 // обязательно (для citations)
-    TextRange excerpt;               // обязательно для quote-based refs
-    std::array<uint8_t, 16> quote_hash;  // first 16 raw bytes of SHA-256(preview UTF-8)
-    // Exactly the first 16 raw bytes of SHA-256(preview UTF-8).
-    // The field name is retained for M0 wire compatibility.
+    TextRange excerpt;
+    std::array<uint8_t, 16> quote_hash;
     double confidence;               // [0.0, 1.0]
     SourceTextOrigin text_origin = SourceTextOrigin::OriginalText;
     std::optional<KnowledgeUnitRef> anchor_unit;    // durable parent-unit binding
@@ -278,6 +282,14 @@ struct CitationHandle {
 
 ### 3.1. Required Fields And Invariants
 
+`SourceReferenceMode` is a canonical wire field and must be serialized with
+the summary:
+
+| Mode | `resource_revision` | `excerpt` | `quote_hash` | Write policy |
+| --- | --- | --- | --- | --- |
+| `RevisionBoundQuote` | Required; resource ID and digest must validate | Non-empty range | First 16 raw bytes of SHA-256 over UTF-8 `preview` | Default for all new citation writes |
+| `LegacyPreviewOnly` | Absent | `offset == 0` and `length == 0` | All zero bytes | Only explicit compatibility import; never emitted by new importers |
+
 - `resource_revision` is required for every newly imported quote-based summary.
   Its resource id must equal `resource_id`, and its generation/body digest must
   identify the retained body revision from which `excerpt` was measured. A
@@ -287,16 +299,18 @@ struct CitationHandle {
   a full reference when one is materialized. It is rendered as derived text and never as a direct
   original PDF, image, audio or video quotation.
 
-**Canonical quote-hash rule:** `SourceRefSummary::quote_hash` is exactly the
-first 16 raw bytes of SHA-256 over the UTF-8 `preview`. It is neither hex text
-nor a hash of an arbitrary excerpt prefix. `SourceRef::excerpt_hash` is the
-full 32 raw bytes of SHA-256 over the exact UTF-8 `excerpt_text`. The two fields
-serve different purposes and are never substituted for one another. This rule
-supersedes older SHA-1/hex wording in legacy migration notes.
+**Canonical quote-hash rule:** for `RevisionBoundQuote`,
+`SourceRefSummary::quote_hash` is exactly the first 16 raw bytes of SHA-256
+over the UTF-8 `preview`. It is neither hex text nor a hash of an arbitrary
+excerpt prefix. `LegacyPreviewOnly` has an all-zero `quote_hash`, because it is
+not a quote. `SourceRef::excerpt_hash` is the full 32 raw bytes of SHA-256 over
+the exact UTF-8 `excerpt_text`. The two fields serve different purposes and are
+never substituted for one another. This rule supersedes older SHA-1/hex wording
+in legacy migration notes.
 
 - `resource_id` — обязателен для reverse lookup по ресурсу.
 - `uri` — обязателен для citation fidelity (`preview + uri` = stable short citation; `excerpt_text + uri` = stable full citation).
-- `quote_hash` is required in every summary and follows the canonical raw-byte preview-hash rule above. `excerpt_hash` is required in every materialized full reference and covers the exact full excerpt.
+- `quote_hash` follows the mode-specific canonical rule above. `excerpt_hash` is required in every materialized full reference and covers the exact full excerpt.
 - `preview` (≤256 байт) — обязателен в summary; используется в UI, short citations, projection и не требует обращения к `source_refs` DBI.
 - Imported raw `Note`/`Chunk` units must have at least one inline summary. A
   `ContextBuilder` must reject such a raw block when its required summary is

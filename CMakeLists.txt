@@ -28,6 +28,7 @@ add_library(agent_memory STATIC
     src/agent_memory/core/LibraryInfo.cpp
     src/agent_memory/domain/Document.cpp
     src/agent_memory/domain/Identifiers.cpp
+    src/agent_memory/domain/KnowledgeUnit.cpp
     src/agent_memory/domain/Metadata.cpp
     src/agent_memory/domain/MetadataFilter.cpp
     src/agent_memory/domain/Resource.cpp
