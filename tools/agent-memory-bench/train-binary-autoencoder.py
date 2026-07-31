@@ -159,9 +159,9 @@ def load_materialization(root: Path) -> tuple[list[str], Path, int, str]:
     if (require_positive_int(execution.get("batch_size"), "manifest.execution.batch_size") <= 0 or
             execution.get("device") != "cpu" or
             execution.get("compute_dtype") != "float32" or
-            execution.get("deterministic_algorithms") is not True or
-            execution.get("thread_count") != 1):
+            execution.get("deterministic_algorithms") is not True):
         raise TrainingError("materialization execution recipe is unsupported")
+    require_positive_int(execution.get("thread_count"), "manifest.execution.thread_count")
     for field in ("backend", "platform", "torch_version", "policy"):
         require_string(execution.get(field), f"manifest.execution.{field}")
     vector_format = require_mapping(manifest.get("vector_format"), "manifest.vector_format")
@@ -446,7 +446,7 @@ def run_self_test() -> int:
                 "device": "cpu",
                 "compute_dtype": "float32",
                 "deterministic_algorithms": True,
-                "thread_count": 1,
+                "thread_count": 3,
                 "backend": "self-test",
                 "platform": "self-test",
                 "torch_version": "not-applicable",
