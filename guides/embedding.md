@@ -48,6 +48,20 @@ Concrete backends should live behind adapter boundaries, for example:
 Each backend must keep its dependency wiring optional and must not leak backend
 types into dependency-free contracts.
 
+## Deferred Tokenizer Acceleration Research
+
+[`gigatoken`](https://github.com/marcelroed/gigatoken) is a potential future
+tool for optional offline BPE fixture generation or bulk pretokenization. It is
+not a core dependency and must not replace the project's lexical tokenizer:
+lexical retrieval needs normalized terms and source-aware token boundaries,
+not language-model token ids.
+
+Before considering an adapter, verify exact token compatibility, supported
+tokenizer family, Windows behavior, and end-to-end fixture-generation benefit
+for the target embedding model. Do not use it for a model whose tokenizer
+family it does not support. This is deferred until a measured offline
+preparation bottleneck exists.
+
 ## Vector Storage And Math
 
 Keep `Embedding::values` as `std::vector<float>`. It is the portable storage
