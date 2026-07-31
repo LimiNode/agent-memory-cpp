@@ -609,6 +609,40 @@ This guide treats M0 as the starting point of the roadmap.
 - `.bse` file format extension: optional `weights_WT_decoder` matrix.
 - Migration flow (write-new → read-both → bg-reindex → delete-old), as in `optimization-roadmap.md` §"Multi-encoder migration flow".
 
+### Autoencoder Evaluation Order
+
+The first autoencoder experiment must keep two questions separate:
+
+1. **Candidate-filter quality.** Train the encoder and decoder offline on
+   document embeddings only, but serve only `embedding -> binary signature`.
+   Candidate generation then retains the existing exact float reranker, so the
+   decoder is not on this hot path.
+2. **Approximate-vector quality.** Evaluate the persisted decoder separately
+   for `ApproximateVector` mode. Report reconstruction error and retrieval
+   quality separately for Safe (binary + float + decoder) and Compact (binary
+   + decoder only) storage. Compact mode must not be promoted solely because
+   its reconstruction loss looks good.
+
+The training artifact must record the source embedding artifact/model,
+document-only training split, loss/configuration/seed, encoder hash, optional
+decoder hash, and training duration. Query embeddings and qrels are evaluation
+input and must not enter unsupervised training. A small frozen fixture can
+exercise the inference and provenance contracts, but a meaningful autoencoder
+comparison requires a larger held-out document corpus.
+
+### Multilingual Fixture And Tokenizer Follow-up
+
+`intfloat/multilingual-e5-small` is a pinned external-model fixture for Russian
+and multilingual regression gates. Its document and query inputs
+must retain their distinct `passage:` and `query:` prefixes in provenance;
+omitting those prefixes changes the model contract rather than merely changing
+tokenization.
+
+High-throughput tokenizer projects such as `gigatoken` remain deferred,
+optional offline tooling. They may help BPE-compatible fixture generation only
+after an end-to-end measurement; they are neither a lexical-tokenizer
+replacement nor a required runtime dependency.
+
 ### M2: Hybrid Binary + Dense Indexes
 
 - `DenseIndexMode::Hnsw` (`HnswVectorIndex`) — an M2+ benchmark candidate,

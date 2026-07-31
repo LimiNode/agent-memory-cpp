@@ -1,0 +1,15 @@
+# Top-level environment pins for regenerating
+# precomputed-embedding-multilingual-e5-small.json.
+#
+# This is a regeneration contract, not a CI dependency list: CI verifies the
+# committed fixture and does not download or execute the model. The generator
+# parses this file and checks the Python/package versions before producing
+# vectors.
+# python-version: 3.12.13
+sentence-transformers==5.6.0
+transformers==5.13.0
+torch==2.12.1
+numpy==2.5.1
+tokenizers==0.22.2
+safetensors==0.8.0
+huggingface-hub==1.22.0

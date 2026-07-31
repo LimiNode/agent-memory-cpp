@@ -1,0 +1,14 @@
+{
+  "mode": "precomputed_embedding_binary_rerank_grid",
+  "benchmark_name": "precomputed_embedding_binary_rerank_grid_multilingual_e5_small",
+  "dataset_path": "tests/eval/fixtures/precomputed-embedding-multilingual-e5-small.json",
+  "output_path": "precomputed-embedding-binary-rerank-grid-multilingual-e5-small.json",
+  "result_limit": 6,
+  "bit_counts": [128, 256],
+  "rerank_candidate_limits": [6, 9, 12],
+  "encoder_families": [
+    "random_hyperplane_rademacher",
+    "randomized_hadamard_projection"
+  ],
+  "encoder_seeds": [42]
+}

@@ -324,6 +324,24 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/precomputed-embedding-minilm-l6-v2-large.json
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_benchmark_cli_precomputed_embedding_binary_rerank_grid_multilingual_e5_small
+            COMMAND
+                ${CMAKE_COMMAND}
+                -DAGENT_MEMORY_BENCH_EXE=$<TARGET_FILE:agent-memory-bench>
+                -DAGENT_MEMORY_BENCH_CONFIG=${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/precomputed-embedding-binary-rerank-grid-multilingual-e5-small.example.json
+                -DAGENT_MEMORY_BENCH_OUTPUT=${CMAKE_CURRENT_BINARY_DIR}/precomputed-embedding-binary-rerank-grid-multilingual-e5-small-ctest.json
+                -DAGENT_MEMORY_BENCH_WORKDIR=${CMAKE_CURRENT_SOURCE_DIR}
+                -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-precomputed-embedding-binary-rerank-multilingual-e5-small.cmake
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_precomputed_embedding_artifact_verify_multilingual_e5_small
+            COMMAND
+                $<TARGET_FILE:agent-memory-precomputed-artifact-verify>
+                ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/precomputed-embedding-multilingual-e5-small.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         if(Python3_Interpreter_FOUND)
             add_test(
                 NAME agent_memory_precomputed_embedding_external_hash_regeneration
@@ -356,6 +374,17 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/precomputed-embedding-minilm-l6-v2-large.json
                     --contract
                     ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/precomputed_fixture_large_contract.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_precomputed_embedding_content_contract_multilingual_e5_small
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/verify-precomputed-fixture-content-contract.py
+                    --fixture
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/precomputed-embedding-multilingual-e5-small.json
+                    --contract
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/precomputed_fixture_multilingual_e5_contract.py
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
             add_test(

@@ -625,3 +625,96 @@ PCA and ITQ are intentionally excluded from the PR #75 CI grid. Learned
 encoders need a larger train/evaluation split and their training cost should be
 measured in an offline or follow-up benchmark before they become part of a
 larger always-on CI gate.
+
+## 2026-07-31 — Multilingual E5 frozen fixture
+
+### What we checked
+
+This continuation adds a small reproducible external-model fixture for
+`intfloat/multilingual-e5-small`:
+
+- 12 bilingual Russian/English documents and 6 bilingual queries;
+- 12 graded relevance judgments, including a lower-grade translation for each
+  query;
+- model and tokenizer revision
+  `614241f622f53c4eeff9890bdc4f31cfecc418b3`;
+- model-default SentenceTransformers pooling and L2-normalized float32 vectors;
+- CPU-only execution with one Torch thread and deterministic-inference policy
+  `torch_cpu_single_thread_deterministic_inference_v1`;
+- explicit asymmetric E5 inputs: `passage:` for documents and `query:` for
+  queries;
+- generator source, content contract, environment lock, dataset, qrels,
+  configuration, and embedding-payload integrity checks.
+
+The third-party model is executed only by the offline generator. CTest verifies
+the frozen artifact, its bilingual content contract, and a compact binary
+candidate/rerank matrix without downloading a model.
+
+### Expected result
+
+The fixture should prove the artifact path can preserve an asymmetric,
+multilingual model contract. Full-corpus binary candidates must recover exact
+top-k and qrels coverage for both zero-training encoder families. It is too
+small to choose an encoder or to train an autoencoder.
+
+### Setup
+
+- fixture:
+  `tests/eval/fixtures/precomputed-embedding-multilingual-e5-small.json`;
+- corpus/query shape: 12 / 6;
+- source dimension: 384;
+- bit counts: 128 and 256;
+- candidate limits: 6, 9, and 12;
+- families: random hyperplane and randomized Hadamard; seed 42.
+
+Generation uses a cached local model and pinned environment manifest:
+
+```text
+requirements-multilingual-e5-small-fixture.txt
+generate-precomputed-multilingual-e5-small-fixture.py --local-files-only
+```
+
+The generator passes `device="cpu"` to SentenceTransformers and enables Torch
+deterministic algorithms. The artifact records the execution device, float32
+payload dtype, and deterministic-policy identifier; its generator revision is
+therefore a CPU-only regeneration contract, not a claim that CUDA would produce
+the same bytes.
+
+### Actual result
+
+The exact oracle reached Recall@10 = 1.000 and nDCG@10 = 1.000 on this
+deliberately compact bilingual fixture.
+
+| Encoder | Bits | Candidates | Exact top-k coverage | Qrels coverage | Reranked nDCG@10 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Random hyperplane | 128 | 6 | 0.6944 | 1.0000 | 1.0000 |
+| Random hyperplane | 256 | 9 | 0.9444 | 1.0000 | 1.0000 |
+| Randomized Hadamard | 128 | 6 | 0.7222 | 0.9167 | 0.8896 |
+| Randomized Hadamard | 256 | 9 | 0.9444 | 1.0000 | 1.0000 |
+| Any listed family | 128 / 256 | 12 | 1.0000 | 1.0000 | 1.0000 |
+
+### Interpretation
+
+The fixture establishes a multilingual, real-model regression boundary rather
+than a quality verdict. At this scale the small candidate set already preserves
+most judged relevance, while exact top-k candidate coverage still reveals that
+the binary order is lossy. This reinforces the current use of binary signatures
+as a candidate stage with exact float reranking.
+
+The fixture is intentionally unsuitable as autoencoder training evidence:
+12 document embeddings cannot estimate a general compression model. The first
+autoencoder experiment needs a larger document-only training split and a
+held-out E5 query/qrels evaluation. It should compare encoder-only candidate
+filtering with ITQ/PCA and evaluate decoder-backed approximate-vector retrieval
+as a separate question.
+
+### Limitations and next checks
+
+- Hand-authored bilingual content is a contract fixture, not a representative
+  Russian corpus.
+- One encoder seed and one local timing run are not stable performance evidence.
+- The next E5 work is a larger split with no query/qrels leakage into encoder
+  training, followed by the offline autoencoder trainer and versioned encoder
+  plus optional decoder artifact.
+- `gigatoken` remains deferred optional offline BPE tooling; assess it only
+  after fixture generation exposes a measured tokenization bottleneck.
