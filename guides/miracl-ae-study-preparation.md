@@ -79,12 +79,12 @@ balanced but differently selected train/evaluation split is rejected. The
 prepared manifest records both the configured `evaluation_qrels_split` and
 SHA-256 digests of the qrels-excluded and final evaluation document-ID sets.
 
-## E5 materialization throughput
+## E5 materialization and autoencoder training
 
-`materialize-prepared-e5.py` runs locally on CPU and records its complete
-execution recipe in the generated manifest. `--thread-count` defaults to `1`
-for the most conservative local recipe. A throughput-oriented offline run may
-set an explicit higher value, for example:
+Materialize the prepared records with the local, pinned E5 model before
+training. The materializer writes raw little-endian `float32` vectors rather
+than a large JSON matrix, so a multilingual document split remains practical to
+store and memory-map.
 
 ```powershell
 python tools/agent-memory-bench/materialize-prepared-e5.py `
@@ -93,9 +93,23 @@ python tools/agent-memory-bench/materialize-prepared-e5.py `
   --cache-dir data/hf-cache `
   --thread-count 8 `
   --local-files-only
+
+python tools/agent-memory-bench/train-binary-autoencoder.py `
+  --materialization-root data/miracl-e5-8lang `
+  --output-root data/miracl-ae-8lang-128bit `
+  --bit-count 128 --seed 42
 ```
 
-The selected CPU thread count, batch size, float32 dtype, deterministic
-algorithm policy, PyTorch version, and platform are part of provenance. They
-identify the generation environment but do not claim byte-identical E5 vectors
-across unrelated PyTorch or BLAS builds.
+The trainer's validation subset is selected only from training document IDs by
+a deterministic hash. It never receives MIRACL queries, qrels, relevance
+grades, or evaluation document vectors. The artifact includes a sign encoder
+and a linear decoder. The later C++ inference path consumes the encoder alone;
+the decoder is retained only to evaluate approximate-vector reconstruction as a
+separate retrieval mode.
+
+The materialization manifest records the selected CPU thread count, batch
+size, float32 dtype, deterministic algorithm policy, PyTorch version, and
+platform. `--thread-count` defaults to `1` for the most conservative local
+recipe; an explicit higher value is a throughput-oriented offline setting.
+These fields identify the generation environment but do not claim byte-identical
+E5 vectors across unrelated PyTorch or BLAS builds.
