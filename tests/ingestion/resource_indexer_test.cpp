@@ -213,8 +213,9 @@ namespace {
 
             const auto resource_id = manifest.revision.resource_id;
             m_manifests[resource_id] = std::move(manifest);
-            if(m_upsert_hook) {
-                auto hook = std::move(m_upsert_hook);
+            std::function<void()> hook;
+            hook.swap(m_upsert_hook);
+            if(hook) {
                 hook();
             }
         }
@@ -623,6 +624,26 @@ int main() {
     if(!first_manifest || first_manifest->records.size() != 4) {
         return fail("resource indexer must write document/chunk/embedding/vector manifest");
     }
+
+    std::size_t manifest_hook_call_count = 0;
+    manifest_storage.set_upsert_hook([&manifest_hook_call_count] {
+        ++manifest_hook_call_count;
+        throw std::runtime_error("simulated manifest hook failure");
+    });
+    try {
+        manifest_storage.upsert_manifest(*first_manifest);
+        return fail("manifest hook failure must be propagated");
+    } catch(const std::runtime_error&) {
+    }
+    try {
+        manifest_storage.upsert_manifest(*first_manifest);
+    } catch(...) {
+        return fail("manifest retry must not re-run a throwing one-shot hook");
+    }
+    if(manifest_hook_call_count != 1) {
+        return fail("manifest hook must run exactly once after its failure");
+    }
+    manifest_storage.reset_operation_counts();
 
     if(!document_storage.find_document(old_document_id)) {
         return fail("resource indexer must persist indexed document");
