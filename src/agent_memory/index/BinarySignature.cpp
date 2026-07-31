@@ -411,6 +411,27 @@ namespace agent_memory {
             return value + addend;
         }
 
+        [[nodiscard]] bool packed_bit(
+            const BinarySignature& signature,
+            std::size_t bit
+        ) noexcept {
+            return (signature.words()[bit / kBitsPerWord] &
+                    (std::uint64_t{1} << (bit % kBitsPerWord))) != 0;
+        }
+
+        [[nodiscard]] double sorted_quantile(
+            const std::vector<double>& sorted_values,
+            double fraction
+        ) noexcept {
+            if(sorted_values.empty()) {
+                return 0.0;
+            }
+            const auto position = static_cast<std::size_t>(std::floor(
+                fraction * static_cast<double>(sorted_values.size() - 1U)
+            ));
+            return sorted_values[position];
+        }
+
     } // namespace
 
     std::size_t binary_signature_word_count(std::size_t bit_count) noexcept {
@@ -610,7 +631,8 @@ namespace agent_memory {
             }
 
             std::size_t constant_bits = 0;
-            double entropy_sum = 0.0;
+            std::vector<double> bit_entropies;
+            bit_entropies.reserve(metrics.bit_count);
             metrics.min_bit_entropy = std::numeric_limits<double>::infinity();
             metrics.max_bit_entropy = 0.0;
 
@@ -620,14 +642,101 @@ namespace agent_memory {
                 }
 
                 const auto entropy = bit_entropy(fraction);
-                entropy_sum += entropy;
+                metrics.total_bit_entropy += entropy;
+                bit_entropies.push_back(entropy);
                 metrics.min_bit_entropy = std::min(metrics.min_bit_entropy, entropy);
                 metrics.max_bit_entropy = std::max(metrics.max_bit_entropy, entropy);
             }
 
             metrics.constant_bit_fraction =
                 static_cast<double>(constant_bits) / static_cast<double>(metrics.bit_count);
-            metrics.mean_bit_entropy = entropy_sum / static_cast<double>(metrics.bit_count);
+            metrics.mean_bit_entropy =
+                metrics.total_bit_entropy / static_cast<double>(metrics.bit_count);
+            std::sort(bit_entropies.begin(), bit_entropies.end());
+            metrics.p05_bit_entropy = sorted_quantile(bit_entropies, 0.05);
+            metrics.median_bit_entropy = sorted_quantile(bit_entropies, 0.5);
+            metrics.p95_bit_entropy = sorted_quantile(bit_entropies, 0.95);
+
+            const auto correlation_sample_count = std::min(
+                options.max_correlation_samples,
+                signatures.size()
+            );
+            if(correlation_sample_count >= 2U) {
+                std::vector<std::size_t> sample_indices;
+                sample_indices.reserve(correlation_sample_count);
+                for(std::size_t index = 0; index < correlation_sample_count; ++index) {
+                    sample_indices.push_back(
+                        (index * signatures.size()) / correlation_sample_count
+                    );
+                }
+                metrics.correlation_sample_count = sample_indices.size();
+                std::vector<double> sample_occupancies(metrics.bit_count, 0.0);
+                for(std::size_t bit = 0; bit < metrics.bit_count; ++bit) {
+                    std::size_t ones = 0;
+                    for(const auto index : sample_indices) {
+                        ones += packed_bit(signatures[index], bit) ? 1U : 0U;
+                    }
+                    sample_occupancies[bit] = static_cast<double>(ones) /
+                        static_cast<double>(sample_indices.size());
+                }
+                std::vector<double> absolute_correlations;
+                absolute_correlations.reserve(
+                    (metrics.bit_count * (metrics.bit_count - 1U)) / 2U
+                );
+                std::size_t nonconstant_bit_count = 0;
+                for(const auto occupancy : sample_occupancies) {
+                    nonconstant_bit_count += occupancy > 0.0 && occupancy < 1.0 ? 1U : 0U;
+                }
+                double squared_frobenius_norm = static_cast<double>(nonconstant_bit_count);
+                for(std::size_t lhs_bit = 0; lhs_bit < metrics.bit_count; ++lhs_bit) {
+                    const auto lhs_occupancy = sample_occupancies[lhs_bit];
+                    if(lhs_occupancy == 0.0 || lhs_occupancy == 1.0) {
+                        continue;
+                    }
+                    for(std::size_t rhs_bit = lhs_bit + 1U;
+                        rhs_bit < metrics.bit_count;
+                        ++rhs_bit) {
+                        const auto rhs_occupancy = sample_occupancies[rhs_bit];
+                        if(rhs_occupancy == 0.0 || rhs_occupancy == 1.0) {
+                            continue;
+                        }
+                        std::size_t joint_ones = 0;
+                        for(const auto index : sample_indices) {
+                            joint_ones += packed_bit(signatures[index], lhs_bit) &&
+                                packed_bit(signatures[index], rhs_bit) ? 1U : 0U;
+                        }
+                        const auto covariance =
+                            static_cast<double>(joint_ones) /
+                                static_cast<double>(sample_indices.size()) -
+                            lhs_occupancy * rhs_occupancy;
+                        const auto correlation = covariance / std::sqrt(
+                            lhs_occupancy * (1.0 - lhs_occupancy) *
+                            rhs_occupancy * (1.0 - rhs_occupancy)
+                        );
+                        const auto absolute_correlation = std::abs(correlation);
+                        absolute_correlations.push_back(absolute_correlation);
+                        squared_frobenius_norm += 2.0 * correlation * correlation;
+                    }
+                }
+                if(!absolute_correlations.empty()) {
+                    const auto correlation_sum = std::accumulate(
+                        absolute_correlations.begin(), absolute_correlations.end(), 0.0
+                    );
+                    metrics.mean_absolute_bit_correlation = correlation_sum /
+                        static_cast<double>(absolute_correlations.size());
+                    std::sort(absolute_correlations.begin(), absolute_correlations.end());
+                    metrics.p95_absolute_bit_correlation =
+                        sorted_quantile(absolute_correlations, 0.95);
+                    metrics.p99_absolute_bit_correlation =
+                        sorted_quantile(absolute_correlations, 0.99);
+                    metrics.max_absolute_bit_correlation = absolute_correlations.back();
+                }
+                if(nonconstant_bit_count != 0U && squared_frobenius_norm > 0.0) {
+                    const auto trace = static_cast<double>(nonconstant_bit_count);
+                    metrics.bit_correlation_participation_ratio =
+                        (trace * trace) / squared_frobenius_norm;
+                }
+            }
         }
 
         std::map<std::vector<std::uint64_t>, std::size_t> buckets;

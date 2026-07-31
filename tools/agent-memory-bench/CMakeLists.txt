@@ -18,6 +18,16 @@ target_link_libraries(agent-memory-autoencoder-eval
         agent_memory::json
 )
 
+add_executable(agent-memory-standard-binary-eval
+    standard_binary_encoder_evaluation.cpp
+)
+
+target_link_libraries(agent-memory-standard-binary-eval
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 if(WIN32)
     target_link_libraries(agent-memory-bench PRIVATE Psapi)
 endif()
