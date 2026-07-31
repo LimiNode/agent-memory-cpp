@@ -605,3 +605,43 @@ weights but materializing an explicit verified encoder-bias file from the
 document-only calibration split. Decoder-only quality is reported separately:
 the existing decoder was trained for zero-threshold codes and must not be
 assumed valid after threshold calibration.
+
+### Persisted `nlb_median_threshold_v1` result
+
+The diagnostic was then promoted to a distinct, self-contained artifact and
+evaluated through the C++ qrels evaluator. The calibrator verifies the frozen
+source NLB artifact and its weight digests, uses only the `23,801` stable
+document-only training IDs, asserts that they do not overlap the held-out
+evaluation-document IDs, and stores a per-bit `float32_le` bias equal to the
+negative projection median. Its artifact records the source-artifact hash,
+calibration policy, canonical calibration-ID-list hash, source manifest hashes,
+and the pinned Python `3.12.13` / NumPy `2.5.1` environment inherited from the
+NLB trainer lock.
+
+The resulting 128-bit artifact SHA-256 is
+`567bf125764d20adde5ef58155c8cfa4d9a8d83ece7c61b4feada1da4a211992`.
+Evaluation still uses the original held-out 22,607 RU documents, 1,252 queries,
+and 13,100 qrels; no query or qrel affects the calibration.
+
+| Candidates | Coverage | Lift vs random | Exact-rerank nDCG@10 | Retention of full E5 |
+| ---: | ---: | ---: | ---: | ---: |
+| 128 | 0.7580 | 133.8x | 0.7465 | 93.14% |
+| 512 | 0.8886 | 39.23x | 0.7826 | 97.65% |
+| 2,048 | 0.9671 | 10.68x | 0.7977 | 99.53% |
+
+At 512 candidates, calibration raises coverage from `0.6632` to `0.8886` and
+reranked nDCG@10 from `0.6894` to `0.7826`, while the full E5 oracle is
+`0.80145`. Document-code entropy rises from `69.90 / 128` to `127.59 / 128`;
+there are no constant held-out bits, code uniqueness remains `99.991%`, the
+sampled bit-correlation participation ratio is `88.0`, and E5-cosine versus
+negative-Hamming Pearson correlation is `0.410`. This confirms that threshold
+placement, rather than an absence of useful NLB projection geometry, was the
+dominant problem in the zero-threshold 128-bit artifact.
+
+The tied decoder improves but remains unsuitable for compact-only retrieval:
+decoder-only nDCG@10 is `0.1728`, far below the exact-rerank path. Thus this
+result validates the calibrated code only as a candidate-generation layer with
+retained float vectors. The next comparison must keep the median calibration
+separate from both an altered training objective and retrieval-aware fine-
+tuning: first run the same artifact family at 64/256/512 bits and compare it
+fairly with the standard binary baselines on this exact held-out fixture.
