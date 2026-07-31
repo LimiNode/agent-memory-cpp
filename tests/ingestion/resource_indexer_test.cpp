@@ -33,6 +33,11 @@ namespace {
             m_erase_count = 0;
         }
 
+        void clear_failure_injection() noexcept {
+            m_fail_next_upsert = false;
+            m_fail_on_erase_ordinal = 0;
+        }
+
         void set_chunk_order_by_id(bool enabled) noexcept {
             m_order_chunks_by_id = enabled;
         }
@@ -173,6 +178,12 @@ namespace {
 
         void set_upsert_hook(std::function<void()> hook) {
             m_upsert_hook = std::move(hook);
+        }
+
+        void clear_failure_injection() noexcept {
+            m_fail_next_upsert = false;
+            m_fail_next_erase = false;
+            m_upsert_hook = {};
         }
 
         void reset_operation_counts() noexcept {
@@ -594,6 +605,13 @@ int main() {
         owner_storage,
         embedder,
         vector_index
+    };
+
+    const auto clear_failure_injection = [&] {
+        document_storage.clear_failure_injection();
+        manifest_storage.clear_failure_injection();
+        owner_storage.clear_upsert_failure();
+        vector_index.clear_failure_injection();
     };
 
     const agent_memory::ResourceId resource_id{"resource:indexer"};
@@ -2655,6 +2673,7 @@ int main() {
     }
 
     test_phase = "absent pending document owner fixture";
+    clear_failure_injection();
     const agent_memory::ResourceId absent_document_owner_resource_id{
         "resource:indexer:absent-document-owner"
     };
@@ -2742,6 +2761,7 @@ int main() {
     }
 
     test_phase = "absent pending chunk owner fixture";
+    clear_failure_injection();
     const agent_memory::ResourceId absent_chunk_owner_resource_id{
         "resource:indexer:absent-chunk-owner"
     };
@@ -2849,6 +2869,7 @@ int main() {
     }
 
     test_phase = "pending owner without physical evidence fixture";
+    clear_failure_injection();
     const agent_memory::ResourceId no_proof_owner_resource_id{
         "resource:indexer:no-proof-owner"
     };
@@ -2924,6 +2945,7 @@ int main() {
     }
 
     test_phase = "post pending owner fixtures";
+    clear_failure_injection();
     const agent_memory::ResourceId retained_parent_resource_id{
         "resource:indexer:retained-parent"
     };
