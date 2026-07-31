@@ -379,6 +379,13 @@ namespace {
             m_upsert_failure_hook = std::move(hook);
         }
 
+        void clear_failure_injection() noexcept {
+            m_fail_on_upsert_ordinal = 0;
+            m_fail_next_upsert = false;
+            m_fail_next_erase = false;
+            m_upsert_failure_hook = {};
+        }
+
         void reset_operation_counts() noexcept {
             m_upsert_count = 0;
             m_erase_count = 0;
@@ -818,6 +825,8 @@ int main() {
         prebound_owner_first_chunk_id
     );
     (void)repaired_prebound_owner_vector;
+    vector_index.clear_failure_injection();
+    owner_storage.clear_upsert_failure();
 
     const agent_memory::ResourceId retained_prebound_resource_id{
         "resource:indexer:retained-prebound-owner"
@@ -831,6 +840,8 @@ int main() {
     const agent_memory::ChunkId retained_prebound_second_chunk_id{
         "chunk:indexer:retained-prebound-owner:second"
     };
+    vector_index.clear_failure_injection();
+    owner_storage.clear_upsert_failure();
     indexer.reindex_resource(make_snapshot(
         retained_prebound_resource_id,
         1,
@@ -889,6 +900,7 @@ int main() {
         return fail("retained failed rollback must not restore a previous chunk owner");
     }
     owner_storage.clear_upsert_failure();
+    vector_index.clear_failure_injection();
 
     const agent_memory::ResourceId owner_rollback_vector_resource_id{
         "resource:indexer:owner-rollback-vector"
@@ -2283,6 +2295,71 @@ int main() {
         return fail("foreign direct-erase rejection must not mutate any storage channel");
     }
 
+    const agent_memory::ResourceId closure_erase_post_publish_resource_id{
+        "resource:indexer:closure-erase-post-publish"
+    };
+    const agent_memory::DocumentId closure_erase_post_publish_document_id{
+        "doc:indexer:closure-erase-post-publish"
+    };
+    const agent_memory::ChunkId closure_erase_post_publish_chunk_id{
+        "chunk:indexer:closure-erase-post-publish"
+    };
+    indexer.reindex_resource(make_snapshot(
+        closure_erase_post_publish_resource_id,
+        1,
+        closure_erase_post_publish_document_id,
+        {make_chunk(
+            closure_erase_post_publish_chunk_id,
+            closure_erase_post_publish_document_id,
+            0,
+            "closure erase post-publish"
+        )}
+    ));
+    const auto closure_erase_post_publish_owner = owner_storage.find_document_owner(
+        closure_erase_post_publish_document_id
+    );
+    if(!closure_erase_post_publish_owner) {
+        return fail("post-publish erase fixture must publish a document owner");
+    }
+    auto foreign_post_publish_owner = *closure_erase_post_publish_owner;
+    foreign_post_publish_owner.resource_id = agent_memory::ResourceId{
+        "resource:indexer:closure-erase-post-publish:other"
+    };
+    manifest_storage.set_upsert_hook([&] {
+        owner_storage.upsert_document_owner(
+            closure_erase_post_publish_document_id,
+            foreign_post_publish_owner
+        );
+    });
+
+    document_storage.reset_operation_counts();
+    manifest_storage.reset_operation_counts();
+    owner_storage.reset_operation_counts();
+    vector_index.reset_operation_counts();
+    try {
+        (void)indexer.erase_resource(closure_erase_post_publish_resource_id);
+        return fail("direct erase must revalidate owners after erase-pending publication");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+    const auto post_publish_erase_manifest = manifest_storage.find_manifest(
+        closure_erase_post_publish_resource_id
+    );
+    const auto post_publish_erase_owner = owner_storage.find_document_owner(
+        closure_erase_post_publish_document_id
+    );
+    if(
+        document_storage.erase_count() != 0 ||
+        vector_index.erase_count() != 0 ||
+        !post_publish_erase_manifest ||
+        agent_memory::is_active_resource_manifest(*post_publish_erase_manifest) ||
+        !document_storage.find_document(closure_erase_post_publish_document_id) ||
+        !vector_index.find(closure_erase_post_publish_chunk_id) ||
+        !post_publish_erase_owner ||
+        post_publish_erase_owner->resource_id != foreign_post_publish_owner.resource_id
+    ) {
+        return fail("post-publish direct-erase rejection must preserve foreign ownership");
+    }
+
     const agent_memory::ResourceId closure_pending_resource_id{
         "resource:indexer:closure-pending"
     };
@@ -2428,6 +2505,145 @@ int main() {
         !vector_index.find(closure_drain_extra_chunk_id)
     ) {
         return fail("drain closure rejection must retain the published reclaim backlog");
+    }
+
+    const agent_memory::ResourceId closure_drain_owner_resource_id{
+        "resource:indexer:closure-drain-owner"
+    };
+    const agent_memory::DocumentId closure_drain_owner_old_document_id{
+        "doc:indexer:closure-drain-owner:old"
+    };
+    const agent_memory::DocumentId closure_drain_owner_new_document_id{
+        "doc:indexer:closure-drain-owner:new"
+    };
+    const agent_memory::ChunkId closure_drain_owner_old_chunk_id{
+        "chunk:indexer:closure-drain-owner:old"
+    };
+    indexer.reindex_resource(make_snapshot(
+        closure_drain_owner_resource_id,
+        1,
+        closure_drain_owner_old_document_id,
+        {make_chunk(
+            closure_drain_owner_old_chunk_id,
+            closure_drain_owner_old_document_id,
+            0,
+            "closure drain owner old"
+        )}
+    ));
+    const auto closure_drain_owner = owner_storage.find_document_owner(
+        closure_drain_owner_old_document_id
+    );
+    if(!closure_drain_owner) {
+        return fail("drain owner fixture must publish a document owner");
+    }
+    auto foreign_drain_owner = *closure_drain_owner;
+    foreign_drain_owner.resource_id = agent_memory::ResourceId{
+        "resource:indexer:closure-drain-owner:other"
+    };
+    manifest_storage.set_upsert_hook([&] {
+        owner_storage.upsert_document_owner(
+            closure_drain_owner_old_document_id,
+            foreign_drain_owner
+        );
+    });
+
+    try {
+        indexer.reindex_resource(make_snapshot(
+            closure_drain_owner_resource_id,
+            2,
+            closure_drain_owner_new_document_id,
+            {make_chunk(
+                agent_memory::ChunkId{"chunk:indexer:closure-drain-owner:new"},
+                closure_drain_owner_new_document_id,
+                0,
+                "closure drain owner new"
+            )}
+        ));
+        return fail("drain must revalidate owners after replacement publication");
+    } catch(const agent_memory::ResourceIndexReclaimError&) {
+    }
+    const auto closure_drain_owner_manifest = manifest_storage.find_manifest(
+        closure_drain_owner_resource_id
+    );
+    const auto closure_drain_owner_after = owner_storage.find_document_owner(
+        closure_drain_owner_old_document_id
+    );
+    if(
+        !closure_drain_owner_manifest ||
+        closure_drain_owner_manifest->revision.generation != 2 ||
+        closure_drain_owner_manifest->pending_reclaim_records.empty() ||
+        !document_storage.find_document(closure_drain_owner_old_document_id) ||
+        !vector_index.find(closure_drain_owner_old_chunk_id) ||
+        !closure_drain_owner_after ||
+        closure_drain_owner_after->resource_id != foreign_drain_owner.resource_id
+    ) {
+        return fail("post-publication drain rejection must preserve foreign ownership");
+    }
+
+    const agent_memory::ResourceId mixed_generation_reclaim_resource_id{
+        "resource:indexer:mixed-generation-reclaim"
+    };
+    const agent_memory::DocumentId mixed_generation_reclaim_old_document_id{
+        "doc:indexer:mixed-generation-reclaim:old"
+    };
+    const agent_memory::DocumentId mixed_generation_reclaim_new_document_id{
+        "doc:indexer:mixed-generation-reclaim:new"
+    };
+    const agent_memory::ChunkId mixed_generation_reclaim_old_chunk_id{
+        "chunk:indexer:mixed-generation-reclaim:old"
+    };
+    indexer.reindex_resource(make_snapshot(
+        mixed_generation_reclaim_resource_id,
+        2,
+        mixed_generation_reclaim_old_document_id,
+        {make_chunk(
+            mixed_generation_reclaim_old_chunk_id,
+            mixed_generation_reclaim_old_document_id,
+            0,
+            "mixed-generation reclaim old"
+        )}
+    ));
+    const auto mixed_generation_old_owner = owner_storage.find_chunk_owner(
+        mixed_generation_reclaim_old_chunk_id
+    );
+    if(!mixed_generation_old_owner) {
+        return fail("mixed-generation fixture must publish an old chunk owner");
+    }
+    auto mismatched_pending_chunk_owner = *mixed_generation_old_owner;
+    mismatched_pending_chunk_owner.generation = 1;
+    manifest_storage.set_upsert_hook([&] {
+        owner_storage.upsert_chunk_owner(
+            mixed_generation_reclaim_old_chunk_id,
+            mismatched_pending_chunk_owner
+        );
+    });
+
+    try {
+        indexer.reindex_resource(make_snapshot(
+            mixed_generation_reclaim_resource_id,
+            3,
+            mixed_generation_reclaim_new_document_id,
+            {make_chunk(
+                agent_memory::ChunkId{"chunk:indexer:mixed-generation-reclaim:new"},
+                mixed_generation_reclaim_new_document_id,
+                0,
+                "mixed-generation reclaim new"
+            )}
+        ));
+        return fail("drain must reject mixed-generation pending ownership");
+    } catch(const agent_memory::ResourceIndexReclaimError&) {
+    }
+    const auto mixed_generation_reclaim_manifest = manifest_storage.find_manifest(
+        mixed_generation_reclaim_resource_id
+    );
+    if(
+        !mixed_generation_reclaim_manifest ||
+        mixed_generation_reclaim_manifest->revision.generation != 3 ||
+        mixed_generation_reclaim_manifest->pending_reclaim_records.empty() ||
+        !document_storage.find_document(mixed_generation_reclaim_old_document_id) ||
+        !vector_index.find(mixed_generation_reclaim_old_chunk_id)
+    ) {
+        return fail("mixed-generation rejection must preserve pending physical records");
     }
 
     const agent_memory::ResourceId retained_parent_resource_id{

@@ -1030,8 +1030,7 @@ namespace agent_memory {
         }
 
         validate_resource_indexer_manifest(*manifest, resource_id);
-        validate_manifest_record_ownership(*manifest);
-        validate_document_closure_ownership(*manifest);
+        validate_manifest_cleanup_preflight(*manifest);
 
         auto erase_pending = *manifest;
         if(is_active_resource_manifest(erase_pending)) {
@@ -1039,6 +1038,7 @@ namespace agent_memory {
             m_manifest_storage->upsert_manifest(erase_pending);
         }
 
+        validate_manifest_cleanup_preflight(erase_pending);
         erase_derived_records(erase_pending);
         m_manifest_storage->erase_manifest(resource_id);
         return true;
@@ -1095,8 +1095,8 @@ namespace agent_memory {
     }
 
     void ResourceIndexer::drain_pending_reclaim_records(ResourceManifest& manifest) {
-        validate_document_closure_ownership(manifest);
         while(!manifest.pending_reclaim_records.empty()) {
+            validate_manifest_cleanup_preflight(manifest);
             erase_derived_record(manifest.pending_reclaim_records.front());
 
             auto next_manifest = manifest;
@@ -1106,6 +1106,13 @@ namespace agent_memory {
             m_manifest_storage->upsert_manifest(next_manifest);
             manifest = std::move(next_manifest);
         }
+    }
+
+    void ResourceIndexer::validate_manifest_cleanup_preflight(
+        const ResourceManifest& manifest
+    ) const {
+        validate_manifest_record_ownership(manifest);
+        validate_document_closure_ownership(manifest);
     }
 
     void ResourceIndexer::validate_manifest_record_ownership(
@@ -1158,6 +1165,7 @@ namespace agent_memory {
             }
         }
 
+        std::optional<std::uint64_t> pending_generation;
         for(const auto& record : manifest.pending_reclaim_records) {
             if(!uses_document_owner(record) && !uses_chunk_owner(record)) {
                 continue;
@@ -1185,6 +1193,19 @@ namespace agent_memory {
                     "Pending resource record is not owned by an older manifest revision: " +
                     record_owner_label(record)
                 );
+            }
+
+            if(!is_record_physically_absent(record)) {
+                if(
+                    pending_generation &&
+                    *pending_generation != owner->generation
+                ) {
+                    throw ResourceIndexRecordOwnershipError(
+                        "Pending resource records span multiple manifest generations: " +
+                        record_owner_label(record)
+                    );
+                }
+                pending_generation = owner->generation;
             }
         }
     }
@@ -1263,6 +1284,30 @@ namespace agent_memory {
                 }
 
                 const auto document_id = DocumentId{record.key};
+                std::uint64_t expected_generation = manifest.revision.generation;
+                if(
+                    is_pending_reclaim &&
+                    !is_record_physically_absent(record)
+                ) {
+                    const auto document_owner = m_owner_storage->find_document_owner(
+                        document_id
+                    );
+                    if(
+                        !document_owner ||
+                        !is_valid_resource_index_record_owner(*document_owner) ||
+                        document_owner->resource_id != manifest.revision.resource_id ||
+                        document_owner->generation >= manifest.revision.generation ||
+                        document_owner->manifest_schema.schema_id != manifest.schema.schema_id ||
+                        document_owner->manifest_schema.schema_version !=
+                            manifest.schema.schema_version
+                    ) {
+                        throw ResourceIndexRecordOwnershipError(
+                            "Pending document has no compatible ownership binding: '" +
+                            document_id.value() + "'"
+                        );
+                    }
+                    expected_generation = document_owner->generation;
+                }
                 for(const auto& chunk : m_document_storage->list_chunks(document_id)) {
                     if(chunk.document_id != document_id) {
                         throw ResourceIndexRecordOwnershipError(
@@ -1272,11 +1317,8 @@ namespace agent_memory {
                     }
 
                     const auto owner = m_owner_storage->find_chunk_owner(chunk.id);
-                    const bool matching_generation = owner && (
-                        is_pending_reclaim
-                            ? owner->generation < manifest.revision.generation
-                            : owner->generation == manifest.revision.generation
-                    );
+                    const bool matching_generation = owner &&
+                        owner->generation == expected_generation;
                     if(
                         !owner ||
                         !is_valid_resource_index_record_owner(*owner) ||

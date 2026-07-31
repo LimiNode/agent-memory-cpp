@@ -441,7 +441,12 @@ before writing the V5 manifest and its document/chunk owner bindings. Those
 bindings live in the two profile-local owner registries, carry `ResourceId`,
 generation and manifest schema, and must be written together with the proven
 physical ownership evidence. A schema marker alone is insufficient. The
-prototype prebinds attempted owners before the first document/vector mutation;
+cleanup path repeats both owner and closure validation after each manifest
+publication and immediately before the next physical reclaim operation. All
+physically present records in one pending-reclaim sequence must prove the same
+superseded generation; a pending document and each of its physical children
+must use that exact generation. The prototype prebinds attempted owners before
+the first document/vector mutation;
 if prebinding fails, it does not begin physical mutation. During an in-process
 rollback, an identity whose physical restoration is uncertain retains that
 prebound attempted owner as fail-closed repair evidence. This is deliberately

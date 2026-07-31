@@ -194,6 +194,7 @@ namespace agent_memory {
         void erase_derived_record(const DerivedRecordRef& record);
         void erase_derived_records(const ResourceManifest& manifest);
         void drain_pending_reclaim_records(ResourceManifest& manifest);
+        void validate_manifest_cleanup_preflight(const ResourceManifest& manifest) const;
         void validate_manifest_record_ownership(const ResourceManifest& manifest) const;
         void validate_requested_record_ownership(
             const ResourceManifest& manifest,
