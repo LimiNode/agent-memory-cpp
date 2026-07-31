@@ -1,0 +1,44 @@
+#pragma once
+#ifndef AGENT_MEMORY_HEADER_EVAL_AUTOENCODER_BINARY_ARTIFACT_HPP_INCLUDED
+#define AGENT_MEMORY_HEADER_EVAL_AUTOENCODER_BINARY_ARTIFACT_HPP_INCLUDED
+
+/// \file AutoencoderBinaryArtifact.hpp
+/// \brief Verified loader for offline linear binary autoencoder artifacts.
+
+#include <agent_memory/index/AutoencoderBinaryEncoder.hpp>
+
+#include <filesystem>
+#include <string>
+
+#if !defined(AGENT_MEMORY_ENABLE_JSON) || !AGENT_MEMORY_ENABLE_JSON
+#error "AutoencoderBinaryArtifact is unavailable: rebuild with -DAGENT_MEMORY_ENABLE_JSON=ON (nlohmann_json is required)."
+#endif
+
+namespace agent_memory {
+
+    /// \brief A verified trained artifact ready for C++ binary inference.
+    struct AutoencoderBinaryArtifact final {
+        std::string artifact_sha256;
+        std::string trainer_id;
+        std::string trainer_version;
+        std::string input_materialization_manifest_sha256;
+        std::string prepared_study_manifest_sha256;
+        AutoencoderBinaryEncoder encoder;
+        AutoencoderBinaryDecoder decoder;
+    };
+
+    /// \brief Loads and verifies a v1 `linear_binary_autoencoder_ste` artifact.
+    ///
+    /// The loader validates the JSON schema, all declared SHA-256 weight-file
+    /// digests, exact row-major float32-le byte sizes, finite weights, and the
+    /// encoder/decoder shapes. It returns the artifact JSON digest as stable
+    /// encoder identity input; changing any artifact metadata or weights creates
+    /// a distinct binary signature space.
+    /// \throws std::runtime_error on missing, malformed, or integrity-invalid input.
+    [[nodiscard]] AutoencoderBinaryArtifact load_autoencoder_binary_artifact(
+        const std::filesystem::path& artifact_path
+    );
+
+} // namespace agent_memory
+
+#endif

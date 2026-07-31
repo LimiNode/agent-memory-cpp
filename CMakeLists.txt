@@ -44,6 +44,7 @@ add_library(agent_memory STATIC
     src/agent_memory/facts/Fact.cpp
     src/agent_memory/ingestion/ResourceIndexer.cpp
     src/agent_memory/index/AggregateBinarySignature.cpp
+    src/agent_memory/index/AutoencoderBinaryEncoder.cpp
     src/agent_memory/index/BinarySignature.cpp
     src/agent_memory/index/BinarySignatureEncoderRegistry.cpp
     src/agent_memory/index/BinarySignatureInfo.cpp
@@ -133,6 +134,8 @@ agent_memory_provide_json(AGENT_MEMORY_JSON_TARGET)
 if(AGENT_MEMORY_ENABLE_JSON)
     target_sources(agent_memory
         PRIVATE
+            src/agent_memory/eval/AutoencoderBinaryArtifact.cpp
+            src/agent_memory/eval/AutoencoderBinaryEvaluation.cpp
             src/agent_memory/eval/DatasetLoader.cpp
             src/agent_memory/eval/PrecomputedEmbeddingDataset.cpp
     )

@@ -9,6 +9,7 @@
 #include "embedding.hpp"
 
 #include "index/AggregateBinarySignature.hpp"
+#include "index/AutoencoderBinaryEncoder.hpp"
 #include "index/BinarySignature.hpp"
 #include "index/BinarySignatureInfo.hpp"
 #include "index/BinarySignatureEncoderRegistry.hpp"
