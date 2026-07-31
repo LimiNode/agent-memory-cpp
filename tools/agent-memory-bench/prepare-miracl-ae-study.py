@@ -60,6 +60,7 @@ REQUIRED_CONFIG_KEYS = {
     "languages",
     "layout",
     "sampling",
+    "split",
     "embedding",
 }
 
@@ -75,6 +76,7 @@ class StudyConfig:
     corpus_template: str
     queries_template: str
     qrels_template: str
+    evaluation_qrels_split: str
     seed: int
     train_documents_per_language: int
     evaluation_distractors_per_language: int
@@ -109,6 +111,10 @@ def canonical_json(value: Any) -> str:
 
 def sha256_bytes(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()
+
+
+def sorted_id_set_sha256(ids: Iterable[str]) -> str:
+    return sha256_bytes(("\n".join(sorted(ids)) + "\n").encode("utf-8"))
 
 
 def sha256_file(path: Path) -> str:
@@ -156,6 +162,7 @@ def load_config(path: Path) -> StudyConfig:
     raw_dataset = require_mapping(root["dataset"], "dataset")
     layout = require_mapping(root["layout"], "layout")
     sampling = require_mapping(root["sampling"], "sampling")
+    split = require_mapping(root["split"], "split")
     embedding = require_mapping(root["embedding"], "embedding")
 
     raw_languages = root["languages"]
@@ -189,6 +196,10 @@ def load_config(path: Path) -> StudyConfig:
         corpus_template=non_empty_string(layout.get("corpus"), "layout.corpus"),
         queries_template=non_empty_string(layout.get("queries"), "layout.queries"),
         qrels_template=non_empty_string(layout.get("qrels"), "layout.qrels"),
+        evaluation_qrels_split=non_empty_string(
+            split.get("evaluation_qrels_split"),
+            "split.evaluation_qrels_split",
+        ),
         seed=non_negative_int(sampling.get("seed"), "sampling.seed"),
         train_documents_per_language=non_negative_int(
             sampling.get("train_documents_per_language"),
@@ -385,6 +396,7 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
 
     train_documents: list[Document] = []
     evaluation_documents: list[Document] = []
+    qrels_excluded_ids: list[str] = []
     output_queries: list[tuple[str, str, str]] = []
     output_qrels: list[tuple[str, str, int]] = []
     per_language: list[dict[str, Any]] = []
@@ -400,6 +412,7 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
         qrels_path = resolve_input_path(input_root, config.qrels_template, language)
         queries = load_queries(queries_path)
         qrels, qrel_document_ids = load_qrels(qrels_path, set(queries))
+        qrels_excluded_ids.extend(f"{language}:{document_id}" for document_id in qrel_document_ids)
 
         evaluation_by_id: dict[str, Document] = {}
         for document in iter_corpora(corpus_paths, language):
@@ -500,8 +513,13 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
         },
         "split": {
             "policy": "held_out_document_ids",
+            "evaluation_qrels_split": config.evaluation_qrels_split,
             "query_usage": "evaluation_only",
             "qrels_usage": "evaluation_only",
+            "qrels_excluded_document_ids_sha256": sorted_id_set_sha256(qrels_excluded_ids),
+            "evaluation_document_ids_sha256": sorted_id_set_sha256(
+                document.global_id for document in evaluation_documents
+            ),
         },
         "embedding": config.embedding,
         "input_config_hash": sha256_bytes(config.canonical_json.encode("utf-8")),
@@ -556,6 +574,7 @@ def write_test_input(root: Path) -> Path:
             "train_documents_per_language": 2,
             "evaluation_distractors_per_language": 1,
         },
+        "split": {"evaluation_qrels_split": "dev"},
         "embedding": {
             "model_id": "intfloat/multilingual-e5-small",
             "model_revision": "test-model-revision",

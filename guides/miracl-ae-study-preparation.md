@@ -71,3 +71,10 @@ The current validator verifies output hashes, counts, split disjointness, qrels
 closure, input configuration identity, and source-file hashes. It does not
 claim that the source materialization itself is hermetic: pin the two Hugging
 Face revisions and preserve the generated manifest with any benchmark report.
+
+When `--config` and `--source-root` are supplied, the validator additionally
+loads the local preparer, verifies its exact identity and source hash, and
+replays the `balanced_stable_hash` selections from the source shards. A merely
+balanced but differently selected train/evaluation split is rejected. The
+prepared manifest records both the configured `evaluation_qrels_split` and
+SHA-256 digests of the qrels-excluded and final evaluation document-ID sets.

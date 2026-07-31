@@ -31,6 +31,9 @@
     "train_documents_per_language": 25000,
     "evaluation_distractors_per_language": 10000
   },
+  "split": {
+    "evaluation_qrels_split": "dev"
+  },
   "embedding": {
     "model_id": "intfloat/multilingual-e5-small",
     "model_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",

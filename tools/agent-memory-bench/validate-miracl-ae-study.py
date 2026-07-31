@@ -177,7 +177,11 @@ def source_file_hashes(root: Path, paths: list[Path]) -> list[dict[str, str]]:
 
 
 def validate_source_provenance(
-    manifest: dict[str, Any], config_path: Path, source_root: Path
+    manifest: dict[str, Any],
+    config_path: Path,
+    source_root: Path,
+    actual_train_ids: set[str],
+    actual_evaluation_ids: set[str],
 ) -> None:
     config = load_json(config_path, "input config")
     input_hash = hashlib.sha256(canonical_json(config).encode("utf-8")).hexdigest()
@@ -191,11 +195,25 @@ def validate_source_provenance(
         raise ValidationError("manifest.sampling does not match the supplied config")
     if manifest.get("embedding") != config.get("embedding"):
         raise ValidationError("manifest.embedding does not match the supplied config")
+    config_split = require_mapping(config.get("split"), "config.split")
+    manifest_split = require_mapping(manifest.get("split"), "manifest.split")
+    if manifest_split.get("evaluation_qrels_split") != config_split.get("evaluation_qrels_split"):
+        raise ValidationError("manifest evaluation_qrels_split does not match the supplied config")
+
+    preparer = load_preparer_module()
+    preparer_info = require_mapping(manifest.get("preparer"), "manifest.preparer")
+    if preparer_info.get("id") != preparer.PREPARER_ID or preparer_info.get("version") != preparer.PREPARER_VERSION:
+        raise ValidationError("manifest preparer identity does not match the local preparer")
+    if preparer_info.get("source_hash") != preparer.sha256_file(Path(preparer.__file__)):
+        raise ValidationError("manifest preparer source_hash does not match the local preparer")
 
     layout = require_mapping(config.get("layout"), "config.layout")
     per_language = manifest.get("per_language")
     if not isinstance(per_language, list):
         raise ValidationError("manifest.per_language must be an array")
+    expected_train_ids: set[str] = set()
+    expected_evaluation_ids: set[str] = set()
+    expected_qrels_excluded_ids: set[str] = set()
     for row in per_language:
         record = require_mapping(row, "manifest.per_language entry")
         language = require_string(record.get("language"), "manifest language")
@@ -217,6 +235,59 @@ def validate_source_provenance(
             )[0]
             if hashes.get(kind) != sha256_file(path):
                 raise ValidationError(f"source hash mismatch for {language}:{kind}")
+
+        queries = preparer.load_queries(resolve_source_paths(
+            source_root,
+            require_string(layout.get("queries"), "config.layout.queries"),
+            language,
+            allow_glob=False,
+        )[0])
+        qrels, qrel_document_ids = preparer.load_qrels(resolve_source_paths(
+            source_root,
+            require_string(layout.get("qrels"), "config.layout.qrels"),
+            language,
+            allow_glob=False,
+        )[0], set(queries))
+        del qrels
+        documents_by_id = {
+            document.docid: document
+            for document in preparer.iter_corpora(corpus_paths, language)
+            if document.docid in qrel_document_ids
+        }
+        if set(documents_by_id) != qrel_document_ids:
+            raise ValidationError(f"source corpus does not close qrels for {language}")
+        selected_train = preparer.choose_lowest_ranked(
+            (document for document in preparer.iter_corpora(corpus_paths, language) if document.docid not in qrel_document_ids),
+            limit=config["sampling"]["train_documents_per_language"],
+            seed=config["sampling"]["seed"],
+            language=language,
+            purpose="train",
+        )
+        selected_train_ids = {document.docid for document in selected_train}
+        selected_distractors = preparer.choose_lowest_ranked(
+            (
+                document
+                for document in preparer.iter_corpora(corpus_paths, language)
+                if document.docid not in qrel_document_ids and document.docid not in selected_train_ids
+            ),
+            limit=config["sampling"]["evaluation_distractors_per_language"],
+            seed=config["sampling"]["seed"],
+            language=language,
+            purpose="evaluation-distractor",
+        )
+        expected_train_ids.update(document.global_id for document in selected_train)
+        expected_evaluation_ids.update(documents_by_id[document_id].global_id for document_id in qrel_document_ids)
+        expected_evaluation_ids.update(document.global_id for document in selected_distractors)
+        expected_qrels_excluded_ids.update(f"{language}:{document_id}" for document_id in qrel_document_ids)
+
+    if actual_train_ids != expected_train_ids:
+        raise ValidationError("train document IDs do not match balanced_stable_hash selection")
+    if actual_evaluation_ids != expected_evaluation_ids:
+        raise ValidationError("evaluation document IDs do not match balanced_stable_hash selection")
+    if manifest_split.get("qrels_excluded_document_ids_sha256") != preparer.sorted_id_set_sha256(expected_qrels_excluded_ids):
+        raise ValidationError("qrels excluded document ID digest is invalid")
+    if manifest_split.get("evaluation_document_ids_sha256") != preparer.sorted_id_set_sha256(expected_evaluation_ids):
+        raise ValidationError("evaluation document ID digest is invalid")
 
 
 def validate_prepared_study(
@@ -240,6 +311,13 @@ def validate_prepared_study(
     source_hash = require_string(preparer.get("source_hash"), "manifest.preparer.source_hash")
     if len(source_hash) != 64 or any(character not in "0123456789abcdef" for character in source_hash):
         raise ValidationError("manifest.preparer.source_hash must be a lowercase SHA-256 hash")
+    split = require_mapping(manifest.get("split"), "manifest.split")
+    require_string(split.get("policy"), "manifest.split.policy")
+    require_string(split.get("evaluation_qrels_split"), "manifest.split.evaluation_qrels_split")
+    for field in ("qrels_excluded_document_ids_sha256", "evaluation_document_ids_sha256"):
+        digest = require_string(split.get(field), f"manifest.split.{field}")
+        if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+            raise ValidationError(f"manifest.split.{field} must be a lowercase SHA-256 hash")
 
     outputs = require_mapping(manifest.get("outputs"), "manifest.outputs")
     files: dict[str, Path] = {}
@@ -305,7 +383,13 @@ def validate_prepared_study(
     if (config_path is None) != (source_root is None):
         raise ValidationError("--config and --source-root must be supplied together")
     if config_path is not None and source_root is not None:
-        validate_source_provenance(manifest, config_path, source_root)
+        validate_source_provenance(
+            manifest,
+            config_path,
+            source_root,
+            train_ids,
+            evaluation_ids,
+        )
 
 
 def load_preparer_module() -> Any:
@@ -329,14 +413,44 @@ def run_self_test() -> int:
         preparer.prepare_study(preparer.load_config(config_path), input_root, prepared_root)
         validate_prepared_study(prepared_root, config_path=config_path, source_root=input_root)
 
-        with (prepared_root / "evaluation-qrels.tsv").open("a", encoding="utf-8", newline="\n") as handle:
-            handle.write("ru:q1 Q0 ru:not-in-evaluation 1\n")
+        train_path = prepared_root / "train-documents.jsonl"
+        train_rows = [json.loads(line) for line in train_path.read_text(encoding="utf-8").splitlines()]
+        evaluation_path = prepared_root / "evaluation-documents.jsonl"
+        evaluation_rows = [json.loads(line) for line in evaluation_path.read_text(encoding="utf-8").splitlines()]
+        train_index = next(index for index, row in enumerate(train_rows) if row["id"].startswith("ru:"))
+        evaluation_index = next(
+            index
+            for index, row in enumerate(evaluation_rows)
+            if row["id"].startswith("ru:ru-") and row["source_id"] not in {"ru-1", "ru-2"}
+        )
+        train_rows[train_index], evaluation_rows[evaluation_index] = (
+            evaluation_rows[evaluation_index],
+            train_rows[train_index],
+        )
+        train_path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in train_rows),
+            encoding="utf-8",
+            newline="\n",
+        )
+        evaluation_path.write_text(
+            "".join(json.dumps(row, sort_keys=True) + "\n" for row in evaluation_rows),
+            encoding="utf-8",
+            newline="\n",
+        )
+        manifest_path = prepared_root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["outputs"]["train_documents"]["sha256"] = sha256_file(train_path)
+        manifest["outputs"]["evaluation_documents"]["sha256"] = sha256_file(evaluation_path)
+        manifest["split"]["evaluation_document_ids_sha256"] = preparer.sorted_id_set_sha256(
+            row["id"] for row in evaluation_rows
+        )
+        manifest_path.write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         try:
             validate_prepared_study(prepared_root, config_path=config_path, source_root=input_root)
         except ValidationError:
             pass
         else:
-            print("self-test failed: tampered output was accepted", file=sys.stderr)
+            print("self-test failed: alternate balanced split was accepted", file=sys.stderr)
             return 1
 
     print("MIRACL AE manifest validator self-test ok")
