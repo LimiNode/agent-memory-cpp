@@ -187,6 +187,7 @@ namespace agent_memory {
         case SourceReferenceMode::LegacyPreviewOnly:
             if(
                 summary.resource_revision
+                || summary.excerpt.offset != 0
                 || summary.excerpt.length != 0
                 || std::any_of(
                     summary.quote_hash.begin(),

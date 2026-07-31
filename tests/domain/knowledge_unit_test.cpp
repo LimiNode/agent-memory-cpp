@@ -144,6 +144,12 @@ int main() {
         return fail("explicit legacy preview-only source summaries must be accepted");
     }
 
+    auto legacy_preview_with_offset = legacy_preview;
+    legacy_preview_with_offset.excerpt.offset = 12345;
+    if(agent_memory::is_valid_source_ref_summary(legacy_preview_with_offset)) {
+        return fail("legacy preview-only source summaries must not carry a location");
+    }
+
     auto mismatched_revision = source;
     mismatched_revision.resource_revision->resource_id = agent_memory::ResourceId{"resource:other"};
     if(agent_memory::is_valid_source_ref_summary(mismatched_revision)) {
