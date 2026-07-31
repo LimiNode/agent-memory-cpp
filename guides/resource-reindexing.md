@@ -424,9 +424,13 @@ and active-manifest validation rather than this prototype path.
 
 The prototype writes only its V5 `agent_memory.resource_indexer` manifest
 schema. Before any reindex, reclaim, erase-pending transition or physical erase,
-it validates the exact owner topology: one `Document` followed by one ordered
+it validates the exact owner topology and every physical child closure of each
+document that may be replaced or erased: one `Document` followed by one ordered
 `Chunk`/`Embedding`/`VectorRecord` triple per ordinal, plus only a valid suffix
-of those records in `pending_reclaim_records`. Generic manifests may legally
+of those records in `pending_reclaim_records`. A physical child must have the
+matching declared triple and the expected document/chunk owner; ownerless,
+foreign, malformed, or undeclared children block the operation before document
+storage removes them. Generic manifests may legally
 describe lexical, graph, binary-bucket or custom records for their own owners;
 they are not valid input to this indexer. V1--V4 payloads remain readable for
 diagnostics and explicit migration tooling, but `ResourceIndexer` rejects them
@@ -436,9 +440,11 @@ migrator must prove the old derived-record ownership and revision evidence
 before writing the V5 manifest and its document/chunk owner bindings. Those
 bindings live in the two profile-local owner registries, carry `ResourceId`,
 generation and manifest schema, and must be written together with the proven
-physical ownership evidence. A schema marker alone is insufficient. During an
-in-process rollback, an identity whose physical restoration is uncertain retains
-an attempted owner binding as fail-closed repair evidence; this is deliberately
+physical ownership evidence. A schema marker alone is insufficient. The
+prototype prebinds attempted owners before the first document/vector mutation;
+if prebinding fails, it does not begin physical mutation. During an in-process
+rollback, an identity whose physical restoration is uncertain retains that
+prebound attempted owner as fail-closed repair evidence. This is deliberately
 not a claim of cross-store crash recovery or a replacement for a migration
 framework.
 

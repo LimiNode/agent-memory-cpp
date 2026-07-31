@@ -63,7 +63,8 @@ namespace agent_memory {
     enum class ResourceIndexRecoveryOperation : std::uint8_t {
         UpsertPrevious,
         UpsertAttempted,
-        EraseAttempted
+        EraseAttempted,
+        VerifyPhysicalAbsence
     };
 
     /// \brief One failed best-effort recovery operation.
@@ -199,10 +200,7 @@ namespace agent_memory {
             const std::optional<ResourceManifest>& active_manifest,
             const DocumentId& requested_document_id
         ) const;
-        void validate_existing_document_closure_ownership(
-            const ResourceManifest& active_manifest,
-            const DocumentId& document_id
-        ) const;
+        void validate_document_closure_ownership(const ResourceManifest& manifest) const;
         [[nodiscard]] bool is_record_physically_absent(const DerivedRecordRef& record) const;
         void upsert_active_record_owners(const ResourceManifest& manifest);
 
