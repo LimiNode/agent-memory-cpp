@@ -6,15 +6,32 @@
 /// \brief Verified loader for offline linear binary autoencoder artifacts.
 
 #include <agent_memory/index/AutoencoderBinaryEncoder.hpp>
+#include <agent_memory/eval/Evaluation.hpp>
 
 #include <filesystem>
 #include <string>
+#include <vector>
 
 #if !defined(AGENT_MEMORY_ENABLE_JSON) || !AGENT_MEMORY_ENABLE_JSON
 #error "AutoencoderBinaryArtifact is unavailable: rebuild with -DAGENT_MEMORY_ENABLE_JSON=ON (nlohmann_json is required)."
 #endif
 
 namespace agent_memory {
+
+    /// \brief ID-bearing float vector loaded from a materialized E5 study.
+    struct MaterializedEmbeddingRecord final {
+        std::string id;
+        Embedding embedding;
+    };
+
+    /// \brief Held-out E5 vectors and qrels from a verified materialization root.
+    struct MaterializedAutoencoderEvaluationDataset final {
+        std::string materialization_manifest_sha256;
+        std::string prepared_study_manifest_sha256;
+        std::vector<MaterializedEmbeddingRecord> document_embeddings;
+        std::vector<MaterializedEmbeddingRecord> query_embeddings;
+        std::vector<RelevanceJudgment> judgments;
+    };
 
     /// \brief A verified trained artifact ready for C++ binary inference.
     struct AutoencoderBinaryArtifact final {
@@ -37,6 +54,15 @@ namespace agent_memory {
     /// \throws std::runtime_error on missing, malformed, or integrity-invalid input.
     [[nodiscard]] AutoencoderBinaryArtifact load_autoencoder_binary_artifact(
         const std::filesystem::path& artifact_path
+    );
+
+    /// \brief Loads held-out vectors and qrels emitted by the E5 materializer.
+    ///
+    /// All selected output hashes, float32-le descriptors, counts, dimensions,
+    /// IDs, and qrels closure are verified before values become embeddings.
+    [[nodiscard]] MaterializedAutoencoderEvaluationDataset
+    load_materialized_autoencoder_evaluation_dataset(
+        const std::filesystem::path& materialization_root
     );
 
 } // namespace agent_memory

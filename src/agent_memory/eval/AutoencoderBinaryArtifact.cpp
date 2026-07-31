@@ -283,6 +283,172 @@ namespace agent_memory {
             return output;
         }
 
+        [[nodiscard]] std::filesystem::path resolve_plain_file(
+            const std::filesystem::path& root,
+            const nlohmann::json& entry,
+            const char* field_name
+        ) {
+            const auto relative = std::filesystem::path{require_string(entry, "path")};
+            if(relative.is_absolute() || relative.filename() != relative || relative.string() == ".") {
+                throw std::runtime_error(std::string{field_name} + " must be a plain file name");
+            }
+            return root / relative;
+        }
+
+        void require_output_hash(
+            const std::filesystem::path& path,
+            const nlohmann::json& entry,
+            const char* name
+        ) {
+            const auto bytes = read_file_bytes(path);
+            if(sha256_hex(bytes) != require_sha256(entry, "sha256")) {
+                throw std::runtime_error(std::string{"materialized output SHA-256 mismatch: "} + name);
+            }
+        }
+
+        [[nodiscard]] std::vector<std::string> load_record_ids(
+            const std::filesystem::path& root,
+            const nlohmann::json& entry,
+            const char* name
+        ) {
+            const auto path = resolve_plain_file(root, entry, name);
+            require_output_hash(path, entry, name);
+            const auto bytes = read_file_bytes(path);
+            std::vector<std::string> ids;
+            std::string line;
+            for(const auto byte : bytes) {
+                if(byte == '\n') {
+                    if(line.empty()) {
+                        throw std::runtime_error(std::string{"empty materialized ID row: "} + name);
+                    }
+                    try {
+                        const auto row = nlohmann::json::parse(line);
+                        ids.push_back(require_string(row, "id"));
+                    } catch(const nlohmann::json::exception& error) {
+                        throw std::runtime_error(
+                            std::string{"invalid materialized ID row: "} + error.what()
+                        );
+                    }
+                    line.clear();
+                } else if(byte != '\r') {
+                    line.push_back(static_cast<char>(byte));
+                }
+            }
+            if(!line.empty()) {
+                throw std::runtime_error(std::string{"materialized ID file must end with newline: "} + name);
+            }
+            if(!entry.contains("count") || !entry.at("count").is_number_unsigned() ||
+               entry.at("count").get<std::uint64_t>() != ids.size()) {
+                throw std::runtime_error(std::string{"materialized ID count mismatch: "} + name);
+            }
+            auto sorted_ids = ids;
+            std::sort(sorted_ids.begin(), sorted_ids.end());
+            if(std::adjacent_find(sorted_ids.begin(), sorted_ids.end()) != sorted_ids.end()) {
+                throw std::runtime_error(std::string{"duplicate materialized ID: "} + name);
+            }
+            return ids;
+        }
+
+        [[nodiscard]] std::vector<Embedding> load_embedding_rows(
+            const std::filesystem::path& root,
+            const nlohmann::json& entry,
+            std::size_t expected_count,
+            std::size_t dimension,
+            const char* name
+        ) {
+            if(require_string(entry, "dtype") != "float32_le" ||
+               !entry.contains("count") || !entry.at("count").is_number_unsigned() ||
+               entry.at("count").get<std::uint64_t>() != expected_count ||
+               !entry.contains("dimension") || !entry.at("dimension").is_number_unsigned() ||
+               entry.at("dimension").get<std::uint64_t>() != dimension) {
+                throw std::runtime_error(std::string{"materialized vector descriptor mismatch: "} + name);
+            }
+            const auto path = resolve_plain_file(root, entry, name);
+            const auto bytes = read_file_bytes(path);
+            if(sha256_hex(bytes) != require_sha256(entry, "sha256")) {
+                throw std::runtime_error(std::string{"materialized vector SHA-256 mismatch: "} + name);
+            }
+            const auto expected_bytes = checked_product(
+                checked_product(expected_count, dimension, "materialized vector"),
+                sizeof(float),
+                "materialized vector"
+            );
+            if(bytes.size() != expected_bytes) {
+                throw std::runtime_error(std::string{"materialized vector byte size mismatch: "} + name);
+            }
+            std::vector<Embedding> output(expected_count);
+            for(std::size_t row = 0; row < expected_count; ++row) {
+                auto& vector = output[row].values;
+                vector.resize(dimension);
+                for(std::size_t column = 0; column < dimension; ++column) {
+                    const auto offset = (row * dimension + column) * sizeof(float);
+                    const auto bits = static_cast<std::uint32_t>(bytes[offset]) |
+                        (static_cast<std::uint32_t>(bytes[offset + 1U]) << 8U) |
+                        (static_cast<std::uint32_t>(bytes[offset + 2U]) << 16U) |
+                        (static_cast<std::uint32_t>(bytes[offset + 3U]) << 24U);
+                    std::memcpy(&vector[column], &bits, sizeof(bits));
+                    if(!std::isfinite(vector[column])) {
+                        throw std::runtime_error(std::string{"non-finite materialized vector value: "} + name);
+                    }
+                }
+            }
+            return output;
+        }
+
+        [[nodiscard]] std::vector<RelevanceJudgment> load_qrels(
+            const std::filesystem::path& root,
+            const nlohmann::json& entry,
+            const std::vector<std::string>& query_ids,
+            const std::vector<std::string>& document_ids
+        ) {
+            const auto path = resolve_plain_file(root, entry, "evaluation_qrels");
+            require_output_hash(path, entry, "evaluation_qrels");
+            const auto bytes = read_file_bytes(path);
+            std::string line;
+            std::vector<RelevanceJudgment> output;
+            for(const auto byte : bytes) {
+                if(byte != '\n') {
+                    if(byte != '\r') {
+                        line.push_back(static_cast<char>(byte));
+                    }
+                    continue;
+                }
+                const auto first = line.find('\t');
+                const auto second = first == std::string::npos ? std::string::npos : line.find('\t', first + 1U);
+                if(first == std::string::npos || second == std::string::npos ||
+                   line.find('\t', second + 1U) != std::string::npos) {
+                    throw std::runtime_error("materialized qrels row must have three tab-separated fields");
+                }
+                const auto grade_text = line.substr(second + 1U);
+                std::size_t parsed = 0;
+                std::int32_t grade = 0;
+                try {
+                    grade = static_cast<std::int32_t>(std::stol(grade_text, &parsed));
+                } catch(const std::exception&) {
+                    throw std::runtime_error("materialized qrels grade must be an integer");
+                }
+                if(parsed != grade_text.size() || grade < 0) {
+                    throw std::runtime_error("materialized qrels grade must be non-negative");
+                }
+                output.push_back({line.substr(0, first), line.substr(first + 1U, second - first - 1U), grade});
+                line.clear();
+            }
+            if(!line.empty()) {
+                throw std::runtime_error("materialized qrels file must end with newline");
+            }
+            if(!entry.contains("count") || !entry.at("count").is_number_unsigned() ||
+               entry.at("count").get<std::uint64_t>() != output.size()) {
+                throw std::runtime_error("materialized qrels count mismatch");
+            }
+            for(const auto& judgment : output) {
+                if(!std::binary_search(query_ids.begin(), query_ids.end(), judgment.query_id) ||
+                   !std::binary_search(document_ids.begin(), document_ids.end(), judgment.item_id)) {
+                    throw std::runtime_error("materialized qrels is not closed over evaluation IDs");
+                }
+            }
+            return output;
+        }
+
     } // namespace
 
     AutoencoderBinaryArtifact load_autoencoder_binary_artifact(
@@ -316,6 +482,11 @@ namespace agent_memory {
         const auto bit_count = require_positive_size(architecture, "bit_count");
         const auto& training = require_field(root, "training");
         const auto seed = require_u64(training, "seed");
+        const auto& shuffle_recipe = require_field(training, "shuffle_recipe");
+        if(require_string(shuffle_recipe, "id") != "python_fisher_yates_sha256_seed_v1" ||
+           require_field(shuffle_recipe, "per_epoch") != true) {
+            throw std::runtime_error("unsupported autoencoder artifact shuffle recipe");
+        }
         const auto& weights = require_field(root, "weights");
         const auto artifact_directory = artifact_path.parent_path();
         const auto encoder_weights = load_weight_file(
@@ -364,6 +535,105 @@ namespace agent_memory {
                 decoder_bias,
             }),
         };
+    }
+
+    MaterializedAutoencoderEvaluationDataset
+    load_materialized_autoencoder_evaluation_dataset(
+        const std::filesystem::path& materialization_root
+    ) {
+        const auto manifest_path = materialization_root / "manifest.json";
+        const auto manifest_bytes = read_file_bytes(manifest_path);
+        nlohmann::json manifest;
+        try {
+            manifest = nlohmann::json::parse(manifest_bytes.begin(), manifest_bytes.end());
+        } catch(const nlohmann::json::exception& error) {
+            throw std::runtime_error(
+                std::string{"cannot parse materialization manifest JSON: "} + error.what()
+            );
+        }
+        if(!manifest.is_object() || require_field(manifest, "schema_version") != 1) {
+            throw std::runtime_error("materialization manifest schema_version must equal 1");
+        }
+        const auto& materializer = require_field(manifest, "materializer");
+        if(require_string(materializer, "id") != "agent-memory-cpp:multilingual-e5-materializer" ||
+           require_string(materializer, "version") != "v1") {
+            throw std::runtime_error("unsupported materialization producer identity");
+        }
+        (void)require_sha256(materializer, "source_hash");
+        const auto& vector_format = require_field(manifest, "vector_format");
+        if(require_string(vector_format, "dtype") != "float32_le" ||
+           require_string(vector_format, "endianness") != "little") {
+            throw std::runtime_error("materialization vector format must be float32_le little-endian");
+        }
+        const auto dimension = require_positive_size(vector_format, "dimension");
+        const auto& outputs = require_field(manifest, "outputs");
+        const auto document_ids = load_record_ids(
+            materialization_root,
+            require_field(outputs, "evaluation_document_ids"),
+            "evaluation_document_ids"
+        );
+        const auto document_vectors = load_embedding_rows(
+            materialization_root,
+            require_field(outputs, "evaluation_document_vectors"),
+            document_ids.size(),
+            dimension,
+            "evaluation_document_vectors"
+        );
+        const auto query_ids = load_record_ids(
+            materialization_root,
+            require_field(outputs, "evaluation_query_ids"),
+            "evaluation_query_ids"
+        );
+        const auto query_vectors = load_embedding_rows(
+            materialization_root,
+            require_field(outputs, "evaluation_query_vectors"),
+            query_ids.size(),
+            dimension,
+            "evaluation_query_vectors"
+        );
+        auto sorted_document_ids = document_ids;
+        auto sorted_query_ids = query_ids;
+        std::sort(sorted_document_ids.begin(), sorted_document_ids.end());
+        std::sort(sorted_query_ids.begin(), sorted_query_ids.end());
+        const auto judgments = load_qrels(
+            materialization_root,
+            require_field(outputs, "evaluation_qrels"),
+            sorted_query_ids,
+            sorted_document_ids
+        );
+        const auto& copied_prepared_manifest = require_field(outputs, "prepared_study_manifest");
+        const auto copied_prepared_manifest_path = resolve_plain_file(
+            materialization_root,
+            copied_prepared_manifest,
+            "prepared_study_manifest"
+        );
+        require_output_hash(
+            copied_prepared_manifest_path,
+            copied_prepared_manifest,
+            "prepared_study_manifest"
+        );
+        const auto prepared_study_manifest_sha256 = require_sha256(
+            manifest,
+            "prepared_study_manifest_sha256"
+        );
+        if(sha256_hex(read_file_bytes(copied_prepared_manifest_path)) !=
+           prepared_study_manifest_sha256) {
+            throw std::runtime_error("materialization copied prepared manifest hash mismatch");
+        }
+
+        MaterializedAutoencoderEvaluationDataset output;
+        output.materialization_manifest_sha256 = sha256_hex(manifest_bytes);
+        output.prepared_study_manifest_sha256 = prepared_study_manifest_sha256;
+        output.judgments = judgments;
+        output.document_embeddings.reserve(document_ids.size());
+        for(std::size_t index = 0; index < document_ids.size(); ++index) {
+            output.document_embeddings.push_back({document_ids[index], document_vectors[index]});
+        }
+        output.query_embeddings.reserve(query_ids.size());
+        for(std::size_t index = 0; index < query_ids.size(); ++index) {
+            output.query_embeddings.push_back({query_ids[index], query_vectors[index]});
+        }
+        return output;
     }
 
 } // namespace agent_memory

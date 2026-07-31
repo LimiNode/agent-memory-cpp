@@ -6,8 +6,10 @@
 /// \brief Comparable float, binary-rerank, and decoder retrieval evaluation.
 
 #include <agent_memory/index/AutoencoderBinaryEncoder.hpp>
+#include <agent_memory/eval/Evaluation.hpp>
 
 #include <cstddef>
+#include <string>
 #include <vector>
 
 namespace agent_memory {
@@ -34,6 +36,14 @@ namespace agent_memory {
         double decoder_recall_at_k_vs_exact = 0.0;
     };
 
+    /// \brief Qrels-based quality of all three autoencoder retrieval modes.
+    struct AutoencoderBinaryRetrievalEvaluation final {
+        AutoencoderBinaryEvaluationMetrics exact_agreement;
+        RetrievalMetrics original_float_metrics;
+        RetrievalMetrics binary_rerank_metrics;
+        RetrievalMetrics decoder_approximation_metrics;
+    };
+
     /// \brief Evaluates the three retrieval modes over common dense inputs.
     ///
     /// The original-float cosine ranking is the oracle. Binary candidates are
@@ -46,6 +56,25 @@ namespace agent_memory {
         const AutoencoderBinaryEncoder& encoder,
         const AutoencoderBinaryDecoder& decoder,
         AutoencoderBinaryEvaluationOptions options = {}
+    );
+
+    /// \brief Evaluates original float, binary-reranked, and decoder runs against qrels.
+    ///
+    /// `document_ids` and `query_ids` must have the same order as their vector
+    /// arrays. The binary candidate stage itself is also reported through
+    /// `exact_agreement`, while the three RetrievalMetrics values measure real
+    /// graded relevance against the supplied held-out judgments.
+    [[nodiscard]] AutoencoderBinaryRetrievalEvaluation
+    evaluate_autoencoder_binary_retrieval_with_qrels(
+        const std::vector<std::string>& document_ids,
+        const std::vector<Embedding>& document_vectors,
+        const std::vector<std::string>& query_ids,
+        const std::vector<Embedding>& query_vectors,
+        const std::vector<RelevanceJudgment>& judgments,
+        const AutoencoderBinaryEncoder& encoder,
+        const AutoencoderBinaryDecoder& decoder,
+        AutoencoderBinaryEvaluationOptions binary_options = {},
+        RetrievalEvaluationOptions retrieval_options = {}
     );
 
 } // namespace agent_memory

@@ -94,6 +94,61 @@ namespace agent_memory {
             }
         }
 
+        void validate_ids(
+            const std::vector<std::string>& ids,
+            std::size_t expected_count,
+            const char* description
+        ) {
+            if(ids.size() != expected_count) {
+                throw std::invalid_argument(std::string{description} + " count mismatch");
+            }
+            auto sorted = ids;
+            for(const auto& id : sorted) {
+                if(id.empty()) {
+                    throw std::invalid_argument(std::string{description} + " must not contain empty IDs");
+                }
+            }
+            std::sort(sorted.begin(), sorted.end());
+            if(std::adjacent_find(sorted.begin(), sorted.end()) != sorted.end()) {
+                throw std::invalid_argument(std::string{description} + " must not contain duplicate IDs");
+            }
+        }
+
+        [[nodiscard]] RetrievalEvalDataset make_eval_dataset(
+            const std::vector<std::string>& document_ids,
+            const std::vector<std::string>& query_ids,
+            const std::vector<RelevanceJudgment>& judgments
+        ) {
+            RetrievalEvalDataset dataset;
+            dataset.name = "materialized-autoencoder-evaluation";
+            dataset.judgments = judgments;
+            for(const auto& id : document_ids) {
+                dataset.corpus.push_back({id, {}, {}, {}});
+            }
+            for(const auto& id : query_ids) {
+                dataset.queries.push_back({id, "materialized embedding", {}, 10, {}, EvalQueryAnswerMode::JudgedRetrieval});
+            }
+            validate_retrieval_eval_dataset(dataset);
+            return dataset;
+        }
+
+        [[nodiscard]] RetrievalQueryRun make_query_run(
+            const std::string& query_id,
+            const std::vector<ScoredPosition>& ranking,
+            const std::vector<std::string>& document_ids,
+            const char* retriever_name
+        ) {
+            RetrievalQueryRun output;
+            output.query_id = query_id;
+            output.hits.reserve(ranking.size());
+            for(const auto& entry : ranking) {
+                output.hits.push_back({
+                    document_ids[entry.position], entry.score, 0, retriever_name
+                });
+            }
+            return output;
+        }
+
     } // namespace
 
     AutoencoderBinaryEvaluationMetrics evaluate_autoencoder_binary_retrieval(
@@ -192,6 +247,107 @@ namespace agent_memory {
         output.exact_top_k_candidate_coverage /= divisor;
         output.reranked_recall_at_k_vs_exact /= divisor;
         output.decoder_recall_at_k_vs_exact /= divisor;
+        return output;
+    }
+
+    AutoencoderBinaryRetrievalEvaluation
+    evaluate_autoencoder_binary_retrieval_with_qrels(
+        const std::vector<std::string>& document_ids,
+        const std::vector<Embedding>& document_vectors,
+        const std::vector<std::string>& query_ids,
+        const std::vector<Embedding>& query_vectors,
+        const std::vector<RelevanceJudgment>& judgments,
+        const AutoencoderBinaryEncoder& encoder,
+        const AutoencoderBinaryDecoder& decoder,
+        AutoencoderBinaryEvaluationOptions binary_options,
+        RetrievalEvaluationOptions retrieval_options
+    ) {
+        validate_ids(document_ids, document_vectors.size(), "autoencoder evaluation document IDs");
+        validate_ids(query_ids, query_vectors.size(), "autoencoder evaluation query IDs");
+        AutoencoderBinaryRetrievalEvaluation output;
+        output.exact_agreement = evaluate_autoencoder_binary_retrieval(
+            document_vectors,
+            query_vectors,
+            encoder,
+            decoder,
+            binary_options
+        );
+        const auto dataset = make_eval_dataset(document_ids, query_ids, judgments);
+        const auto dimension = encoder.info().input_dimension;
+        const auto candidate_limit = std::min(
+            binary_options.returned_candidate_limit,
+            document_vectors.size()
+        );
+        const VectorSimilarityComputer similarity;
+        std::vector<float> document_inverse_norms;
+        document_inverse_norms.reserve(document_vectors.size());
+        for(const auto& vector : document_vectors) {
+            document_inverse_norms.push_back(inverse_norm(vector, similarity));
+        }
+        const auto document_signatures = encoder.encode_batch(document_vectors);
+        std::vector<Embedding> decoded_documents;
+        decoded_documents.reserve(document_signatures.size());
+        for(const auto& signature : document_signatures) {
+            decoded_documents.push_back(decoder.decode(signature));
+        }
+        std::vector<float> decoded_inverse_norms;
+        decoded_inverse_norms.reserve(decoded_documents.size());
+        for(const auto& vector : decoded_documents) {
+            decoded_inverse_norms.push_back(inverse_norm(vector, similarity));
+        }
+
+        RetrievalRun original_run{"original_float", {}};
+        RetrievalRun rerank_run{"binary_candidates_exact_rerank", {}};
+        RetrievalRun decoder_run{"decoder_approximation", {}};
+        for(std::size_t query_index = 0; query_index < query_vectors.size(); ++query_index) {
+            const auto& query = query_vectors[query_index];
+            const auto query_inverse_norm = inverse_norm(query, similarity);
+            const auto original = cosine_rank(
+                query,
+                query_inverse_norm,
+                document_vectors,
+                document_inverse_norms,
+                similarity
+            );
+            const auto query_signature = encoder.encode(query);
+            std::vector<ScoredPosition> candidates;
+            candidates.reserve(document_signatures.size());
+            for(std::size_t position = 0; position < document_signatures.size(); ++position) {
+                candidates.push_back({
+                    position,
+                    -static_cast<float>(hamming_distance(query_signature, document_signatures[position])),
+                });
+            }
+            std::sort(candidates.begin(), candidates.end(), better_score);
+            candidates.resize(candidate_limit);
+            for(auto& candidate : candidates) {
+                candidate.score = similarity.dot_product_values(
+                    query.values.data(),
+                    document_vectors[candidate.position].values.data(),
+                    dimension
+                ) * query_inverse_norm * document_inverse_norms[candidate.position];
+            }
+            std::sort(candidates.begin(), candidates.end(), better_score);
+            const auto decoded = cosine_rank(
+                query,
+                query_inverse_norm,
+                decoded_documents,
+                decoded_inverse_norms,
+                similarity
+            );
+            original_run.queries.push_back(
+                make_query_run(query_ids[query_index], original, document_ids, "original_float")
+            );
+            rerank_run.queries.push_back(
+                make_query_run(query_ids[query_index], candidates, document_ids, "binary_exact_rerank")
+            );
+            decoder_run.queries.push_back(
+                make_query_run(query_ids[query_index], decoded, document_ids, "decoder_approximation")
+            );
+        }
+        output.original_float_metrics = evaluate_retrieval(dataset, original_run, retrieval_options);
+        output.binary_rerank_metrics = evaluate_retrieval(dataset, rerank_run, retrieval_options);
+        output.decoder_approximation_metrics = evaluate_retrieval(dataset, decoder_run, retrieval_options);
         return output;
     }
 
