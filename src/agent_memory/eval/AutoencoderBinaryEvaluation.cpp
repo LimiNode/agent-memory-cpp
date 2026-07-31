@@ -61,11 +61,13 @@ namespace agent_memory {
         [[nodiscard]] double overlap_fraction(
             const std::vector<ScoredPosition>& oracle,
             const std::vector<ScoredPosition>& actual,
-            std::size_t oracle_k
+            std::size_t oracle_k,
+            std::size_t actual_limit
         ) {
             std::vector<bool> actual_positions(oracle.size(), false);
-            for(const auto entry : actual) {
-                actual_positions[entry.position] = true;
+            const auto actual_k = std::min(actual_limit, actual.size());
+            for(std::size_t index = 0; index < actual_k; ++index) {
+                actual_positions[actual[index].position] = true;
             }
             std::size_t overlap = 0;
             for(std::size_t index = 0; index < oracle_k; ++index) {
@@ -216,7 +218,8 @@ namespace agent_memory {
             output.exact_top_k_candidate_coverage += overlap_fraction(
                 oracle,
                 hamming_rank,
-                oracle_k
+                oracle_k,
+                hamming_rank.size()
             );
 
             std::vector<ScoredPosition> reranked;
@@ -232,7 +235,12 @@ namespace agent_memory {
                 });
             }
             std::sort(reranked.begin(), reranked.end(), better_score);
-            output.reranked_recall_at_k_vs_exact += overlap_fraction(oracle, reranked, oracle_k);
+            output.reranked_recall_at_k_vs_exact += overlap_fraction(
+                oracle,
+                reranked,
+                oracle_k,
+                oracle_k
+            );
 
             const auto decoded = cosine_rank(
                 query,
@@ -241,7 +249,12 @@ namespace agent_memory {
                 decoded_inverse_norms,
                 similarity
             );
-            output.decoder_recall_at_k_vs_exact += overlap_fraction(oracle, decoded, oracle_k);
+            output.decoder_recall_at_k_vs_exact += overlap_fraction(
+                oracle,
+                decoded,
+                oracle_k,
+                oracle_k
+            );
         }
         const auto divisor = static_cast<double>(query_vectors.size());
         output.exact_top_k_candidate_coverage /= divisor;

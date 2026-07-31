@@ -132,6 +132,18 @@ int main() {
            metrics.decoder_recall_at_k_vs_exact != 1.0) {
             return fail("three-mode retrieval evaluation contract");
         }
+        const auto decoder_mismatch = agent_memory::evaluate_autoencoder_binary_retrieval(
+            {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},
+            {{{0.0F, 1.0F}}},
+            artifact.encoder,
+            artifact.decoder,
+            {1, 1}
+        );
+        if(decoder_mismatch.exact_top_k_candidate_coverage != 1.0 ||
+           decoder_mismatch.reranked_recall_at_k_vs_exact != 1.0 ||
+           decoder_mismatch.decoder_recall_at_k_vs_exact != 0.0) {
+            return fail("decoder agreement must use only its top-K results");
+        }
         const auto materialization_root = root / "materialization";
         std::filesystem::create_directories(materialization_root);
         write_text(materialization_root / "evaluation-document-ids.jsonl", "{\"id\":\"d0\"}\n{\"id\":\"d1\"}\n");
