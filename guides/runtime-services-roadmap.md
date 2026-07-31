@@ -2,12 +2,12 @@
 
 Спецификация cross-cutting runtime сервисов (PromptCache, AsyncIndexer, WriteGate) для подсистемы памяти `agent-memory-cpp`. Документ конкретизирует ADR-013 (Runtime services) из `guides/memory-stacks-roadmap.md` секции 11.
 
-> **C++17 compliance:** кодовые сниппеты используют `const std::vector<T>&` вместо `std::span<T>` и явные конструкторы вместо designated initializers. PromptCache split на `IPromptPrefixCache` (provider-side, всегда) и `IResponseCache` (local response, opt-in default OFF для безопасности).
+> **C++17 compliance:** кодовые сниппеты используют `const std::vector<T>&` вместо `std::span<T>` и явные конструкторы вместо designated initializers. Provider-specific prompt/response caching is a host integration, not an `agent-memory-cpp` runtime service or DBI contract.
 
 ## 1. Purpose
 
-- Что описывает: PromptCache split (`IPromptPrefixCache` provider-side + `IResponseCache` local opt-in), AnthropicCacheControlAdapter, AsyncIndexer (batch вставки в lexical/vector индексы), WriteGate (применяет WritePolicy). Все сервисы ортогональны profile (доступны через интерфейсы, не зависят от конкретного MemoryStack).
-- Cross-references: memory-stacks-roadmap.md (ADR-013, секции 7, 12.4), knowledge-base-roadmap.md (RetrievalTrace), policies-roadmap.md (WritePolicy), compaction-roadmap.md (job submission).
+- Что описывает: AsyncIndexer (batch вставки в lexical/vector индексы), WriteGate (применяет WritePolicy), bounded queues and the host boundary for context fingerprints. Provider-specific cache adapters remain in the host application.
+- Cross-references: memory-stacks-roadmap.md (ADR-013, секции 7, 11, 16), knowledge-base-roadmap.md (RetrievalTrace), policies-roadmap.md (WritePolicy), compaction-roadmap.md (job submission), mdbx-containers-extension-tz.md (§12.5 storage recipe, §5.5.1 DBI budget).
 
 ## 2. Layer Architecture Review
 
@@ -20,293 +20,77 @@ Layer 3: Memory Stacks
 Layer 4: Applications
 
 Cross-cutting Runtime Services (orthogonal):
-  PromptCache, CompactionWorker, WriteGate, AsyncIndexer
+  CompactionWorker, WriteGate, AsyncIndexer
   Используют Layer 1 + Layer 2 через интерфейсы
 ```
 
 Runtime-сервисы доступны из любого layer, но сами не зависят от конкретного MemoryStack. Каждый сервис — singleton per MemoryStack (если включён в spec).
 
-## 3. PromptCache (Split: Provider-Side Prefix + Local Response)
+## 3. Host LLM Cache Boundary (Not Core API)
 
-### 3.1. Purpose and Split Rationale
+The normative host boundary is now
+[`host-llm-cache-integration.md`](host-llm-cache-integration.md). The detailed
+cache sketches retained in this historical section are non-normative research
+notes only: they do not define core interfaces, `MemoryStack` services, DBIs,
+capabilities, CLI commands, defaults or implementation milestones.
 
-Кэширование в LLM-приложениях объединяет два РАЗНЫХ механизма с разными consistency guarantees:
+`agent-memory-cpp` does not call an LLM, construct provider requests, store
+provider response caches, own `response_cache` DBIs, or expose Anthropic/OpenAI
+types. A host may implement the historical sketches below in its own integration
+package, but they are explicitly non-normative for this library.
 
-1. **Provider-side prompt prefix cache** — `cache_control: ephemeral` (Anthropic), `prompt_cache_key` (OpenAI), и аналоги. Провайдер САМ кэширует prefix на своей стороне и возвращает метрики `cache_read_input_tokens` / `cache_write_input_tokens`. Семантически безопасен: провайдер контролирует consistency, нам нужно только эмитить `cache_control` metadata.
-
-2. **Local response cache** — локальное кэширование ПОЛНОГО `response_text` на нашей стороне. Семантически рискованно: для динамических агентов (изменяемый контекст, tool calls, time-sensitive вопросы) может вернуть **stale answer** вместо актуального.
-
-Семантический bug unified дизайна: смешиваются два механизма с разными consistency guarantees и разными failure modes. Решение — два независимых интерфейса:
-
-- `IPromptPrefixCache` — provider-side, **всегда вызывается** при LLM call (cheap, провайдер гарантирует).
-- `IResponseCache` — local, **opt-in, default OFF** (для безопасности по умолчанию).
-
-Per `concepts/llm-research/Управление контекстом LLM-агента - стратегии снижения стоимости.md` (ai-agent-playbook): cache hit rate > 70% — основная цель (для обоих механизмов).
-
-### 3.2. IPromptPrefixCache (Provider-Side)
+The only core-side handoff is provider-neutral metadata derived from a finished
+context:
 
 ```cpp
-class IPromptPrefixCache {
-public:
-    virtual ~IPromptPrefixCache() = default;
-
-    // Возвращает cache_key для нормализованного prompt prefix.
-    // Используется для cache_control: ephemeral метаданных в API calls.
-    virtual std::string compute_cache_key(
-        const std::string& provider_id,        // "anthropic", "openai"
-        const std::string& model_id,
-        const std::string& prompt_prefix) = 0;
-
-    // Метрики провайдер-кэша (cache_read_input_tokens, cache_write_input_tokens).
-    virtual PromptPrefixCacheMetrics metrics() const = 0;
+struct ContextFingerprint {
+    std::array<std::uint8_t, 32> value;
+    std::uint32_t schema_version = 1;
 };
 
-struct PromptPrefixCacheMetrics {
-    uint64_t cache_read_input_tokens = 0;
-    uint64_t cache_write_input_tokens = 0;
-    uint64_t cache_creation_input_tokens = 0;
+struct PromptPrefixDescriptor {
+    ContextFingerprint context_fingerprint;
+    std::vector<KnowledgeUnitRef> included_units;
+    std::vector<SourceRefId> included_source_refs;
 };
 ```
 
-### 3.3. IResponseCache (Local, Opt-In)
-
-```cpp
-class IResponseCache {
-public:
-    virtual ~IResponseCache() = default;
-
-    virtual std::optional<CachedResponse> lookup(
-        const ResponseCacheKey& key) = 0;
-
-    virtual void store(
-        const ResponseCacheKey& key,
-        const CachedResponse& response) = 0;
-
-    virtual void invalidate(const ResponseCacheKey& key) = 0;
-    virtual void invalidate_scope(ScopeId scope) = 0;
-
-    virtual ResponseCacheMetrics metrics() const = 0;
-};
-
-struct ResponseCacheKey {
-    ScopeId scope_id;
-    std::string provider_id;
-    std::string model_id;
-    std::string prompt_hash;     // hash(prompt + tools + temperature)
-    std::optional<std::string> suffix;
-};
-
-struct CachedResponse {
-    std::string response_text;
-    uint64_t input_tokens;
-    uint64_t output_tokens;
-    uint64_t created_at_ms;
-    std::chrono::seconds ttl{3600};
-};
-
-struct ResponseCacheMetrics {
-    uint64_t hits = 0;
-    uint64_t misses = 0;
-
-    double hit_rate() const {
-        auto total = hits + misses;
-        return total > 0 ? double(hits) / double(total) : 0.0;
-    }
-};
-```
-
-### 3.4. PromptPrefixCache (LRU Implementation)
-
-LRU-таблица дедупликации `compute_cache_key` для нормализованных prompt prefix (не хранит response — провайдер делает caching):
-
-```cpp
-class PromptPrefixCache : public IPromptPrefixCache {
-public:
-    explicit PromptPrefixCache(size_t max_keys = 10000);
-
-    std::string compute_cache_key(
-        const std::string& provider_id,
-        const std::string& model_id,
-        const std::string& prompt_prefix) override;
-
-    PromptPrefixCacheMetrics metrics() const override;
-
-private:
-    std::list<std::string> m_lru;  // front = most recent
-    std::unordered_map<std::string, std::list<std::string>::iterator> m_index;
-    size_t m_max_keys;
-    mutable std::shared_mutex m_mutex;
-    PromptPrefixCacheMetrics m_metrics;
-};
-```
-
-LRU eviction по количеству ключей (`max_keys`). Ключи детерминированно вычисляются из `(provider_id, model_id, prompt_prefix)` — persistence не требуется.
-
-### 3.5. Adapters
-
-```cpp
-// AnthropicCacheControlAdapter — translates IPromptPrefixCache to API metadata
-class AnthropicCacheControlAdapter : public IPromptPrefixCache {
-    // compute_cache_key возвращает cache_id для prompt prefix.
-    // Используется в requests как cache_control: {type: ephemeral}.
-    // Метрики провайдера (cache_read/cache_write_input_tokens) приходят из response.
-    // Обновляет m_metrics после каждого API call.
-};
-
-// NoOpAdapter — для профилей без prompt cache
-class NoOpPromptPrefixCache : public IPromptPrefixCache {
-    // compute_cache_key возвращает пустую строку; provider не использует cache.
-    // metrics() возвращает нули.
-};
-```
-
-### 3.6. ResponseCache (LRU Implementation) and Persistence
-
-`ResponseCache` — LRU-реализация `IResponseCache` для хранения `CachedResponse`:
-
-```cpp
-class ResponseCache : public IResponseCache {
-public:
-    explicit ResponseCache(
-        size_t max_entries = 10000,
-        size_t max_bytes = 100 * 1024 * 1024);  // 100 MB
-
-    std::optional<CachedResponse> lookup(const ResponseCacheKey& key) override;
-    void store(const ResponseCacheKey& key, const CachedResponse& response) override;
-    void invalidate(const ResponseCacheKey& key) override;
-    void invalidate_scope(ScopeId scope) override;
-    ResponseCacheMetrics metrics() const override;
-
-private:
-    struct Entry {
-        ResponseCacheKey key;
-        CachedResponse response;
-        uint64_t last_access_ms;
-        size_t size_bytes;
-    };
-
-    std::list<Entry> m_lru;  // front = most recent
-    std::unordered_map<ResponseCacheKey, std::list<Entry>::iterator> m_index;
-    size_t m_max_entries;
-    size_t m_max_bytes;
-    size_t m_current_bytes = 0;
-    mutable std::shared_mutex m_mutex;
-    ResponseCacheMetrics m_metrics;
-};
-```
-
-LRU eviction по `size_bytes` (когда превышен `max_bytes`) и по age (TTL на каждую запись).
-
-**Persistence (M2+, опционально):** `IResponseCache` может персистить в MDBX DBI:
-
-```
-response_cache
-  key = (scope_id, prompt_hash) → CachedResponse
-```
-
-При `MemoryStack::open()` — загрузить из DBI. На eviction (LRU in-memory) — удалить из DBI. Переживает restart.
-
-`IPromptPrefixCache` **НЕ персистится**: ключи детерминированно вычисляются через хэш-функцию, persistence не нужна.
-
-Для M0/M1 — `IResponseCache` отсутствует (только `IPromptPrefixCache`).
-
-### 3.7. Default Behavior
-
-- `IPromptPrefixCache`: opt-in через `enable_prompt_cache=true`. Default **ON** для профилей с hybrid retrieval (BasicRag, AgentLTM, QAKnowledgeBase) — provider-side кэш даёт прямую экономию токенов без consistency рисков.
-- `IResponseCache`: opt-in через `enable_response_cache=true`. Default **OFF везде** — для безопасности (см. §3.1 rationale).
-
-### 3.8. Validation Rules
-
-- `IPromptPrefixCache.compute_cache_key()` вызывается при каждом LLM call (cheap, O(1) lookup).
-- `IResponseCache.lookup()` вызывается ТОЛЬКО если spec.enable_response_cache=true (default не вызывается).
-- scope-aware keys: разные `scope_id` имеют разные cache entries.
-- TTL для `IResponseCache`: default 1 час, configurable per provider.
-
-## 3.9. CAG (Cache-Augmented Generation) and ContextCache Layer
-
-### Sources
-
-- arXiv:2412.15605 — "Don't Do RAG: When Cache-Augmented Generation is All You Need for Knowledge Tasks".
-- arXiv:2404.12457 — "RAGCache: Efficient Knowledge Caching for Retrieval-Augmented Generation".
-
-### What
-
-Two related but distinct ideas:
-
-- **CAG (Cache-Augmented Generation):** pre-load the entire relevant corpus into the model's context cache (KV-cache or extended context window). At query time skip retrieval and answer from cached knowledge.
-- **RAGCache:** cache intermediate states of an existing RAG pipeline (retrieved chunks, plans, KV-states) to accelerate RAG inference without changing the retrieval contract.
-
-The two paths differ in whether retrieval is bypassed (CAG) or retained and accelerated (RAGCache). They are not the same architecture and must not be conflated.
-
-### 3.9.1 CAG path (bypasses retrieval)
-
-```text
-Compiled knowledge pack (e.g. CompiledContextPack derived from CompiledWikiProfile)
-  -> pre-loaded into model context (KV-cache or extended context window)
-  -> query
-  -> generation
-```
-
-Suitable when corpus is small/stable enough to fit in context.
-
-### 3.9.2 RAGCache path (caches retrieval intermediates)
-
-```text
-query
-  -> retrieval
-  -> retrieved knowledge
-  -> cached inference states
-  -> generation
-```
-
-Suitable when corpus is too large for context or updates frequently.
-
-### 3.9.3 Decision rule
-
-Use CAG path when corpus fits in context, updates infrequently, query volume justifies pre-loading cost.
-Use RAGCache path when corpus overflows context or retrieval latency dominates.
-
-### 3.9.4 Storage tiers
-
-- `CompiledContextPack` (text/structured knowledge, stable across model versions): stored in MDBX as part of the profile / compiled pack.
-- `ProviderKVHandle` (runtime model KV-cache, model-specific and dtype-specific): NOT stored in MDBX; lives in GPU/host inference memory only.
-- `SerializedKVCache` (optional, backend-specific): some inference backends permit serialisation to disk; compatibility is conditional on model version, layer count, and dtype. Not a default capability; document per-backend.
-
-### 3.9.5 Integration candidates (tagged per path)
-
-CAG-side (CompiledContextPack layer):
-
-- `CompiledWikiProfile` → derived `CompiledContextPack` — prime CAG candidate (stable, compact, project-scoped). Pre-loaded into model context.
-
-RAGCache-side (intermediate result cache):
-
-- `SummaryTreeJob` — generated summaries cached and re-used across queries as retrieval-state intermediates.
-
-Related but distinct (post-generation):
-
-- `ResponseCache` (post-generation cache — complementary to both CAG and RAGCache; NOT an intermediate retrieval-pipeline state). Stores final LLM responses (memoization of completed generations); sits AFTER the generation step, not within the retrieval pipeline. См. §3.3 / §3.6.
-
-Both paths:
-
-- `PromptPrefixCache` (§3.2, always on for hybrid profiles) — agent-level prompt caching; both paths reuse the provider-side prefix mechanism.
-
-### 3.9.6 Relationship to existing PromptCache
-
-`IPromptPrefixCache` (§3.2) provides provider-side prefix caching. CAG extends it from "prompt prefix caching" to "context caching of compiled knowledge". The same provider-side prefix mechanism is reused; CAG adds agent-side context assembly and a `ContextCache` layer over compiled knowledge packs.
-
-### 3.9.7 Status
-
-Conceptual design for the M2 layer. No PR planned yet. Depends on stable `ContextBuilder` output (Layer 3 per `memory-stacks-roadmap.md`).
-
-### 3.9.8 Cross-reference
-
-See [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) §5.5 for the candidate DBI shape (compiled-context-pack storage, capability-gated).
+The host is responsible for permission-aware key construction, provider cache
+metadata, response-cache invalidation and all stale/tool-call semantics. It may
+not write generated responses into canonical memory without an explicit normal
+write/curation path.
+
+### Historical Note
+
+Detailed provider-cache, response-cache and cache-augmented-generation designs
+belong exclusively to the host integration guide. They are intentionally absent
+from this runtime roadmap so no core API, DBI, capability, lifecycle step,
+implementation milestone or CLI command can be inferred from them.
 
 ## 4. AsyncIndexer
 
 ### 4.1. Purpose
 
-Батчинг вставок в lexical/vector индексы для уменьшения write latency. Пишет в MemoryStack немедленно, но propagation в secondary indexes (inverted_token_to_unit, embedding_vectors) — async через очередь.
+AsyncIndexer выполняет rebuild/backfill и тяжёлые или explicitly
+eventually-consistent indexing jobs. Он **не** является владельцем default
+write visibility для critical retrieval indexes.
+
+Default M0/M1 consistency mode:
+
+- `MemoryStack::create_or_get_unit` / `update_unit` commits envelope, components, projections,
+  content-key/by-kind indexes, lexical candidate/stat indexes needed by active
+  retrieval, metadata filters and selected lightweight secondary indexes in one
+  `MultiTableWriter` transaction.
+- AsyncIndexer may rebuild those indexes from authoritative unit revisions, but
+  it must not be required for a newly committed unit to become retrievable in
+  the same profile.
+
+Async eventual mode is allowed only as explicit profile policy for indexes that
+declare `eventually_consistent=true` (for example heavy embedding recompute,
+HNSW graph rebuild, bulk lexical backfill). In that mode create/update must enqueue
+a durable `IndexUpdateJob(unit_id, projection_kind, projection_version, index_kind)`
+and readers must respect revision/generation guards documented by the owning
+roadmap.
 
 ### 4.2. Interface
 
@@ -315,8 +99,8 @@ class IAsyncIndexer {
 public:
     virtual ~IAsyncIndexer() = default;
 
-    // Enqueue indexing job
-    virtual void enqueue(IndexJob job) = 0;
+    // Atomically enqueue an async index update in the caller's write transaction.
+    virtual JobId enqueue(IndexUpdateJob job, Transaction& txn) = 0;
 
     // Force flush (для admin/test)
     virtual void flush() = 0;
@@ -325,13 +109,27 @@ public:
     virtual AsyncIndexerStats stats() const = 0;
 };
 
-struct IndexJob {
+enum class IndexKind : uint8_t {
+    LexicalBackfill,
+    EmbeddingRecompute,
+    HnswRebuild,
+    Maintenance,
+};
+
+struct IndexUpdateJob {
     enum class Op { Upsert, Erase };
     Op op;
     KnowledgeUnitId unit_id;
-    std::vector<SearchProjection> projections;
-    std::vector<EmbeddingWriteRequest> embeddings;
+    ProjectionKind projection_kind;
+    ProjectionVersionRef projection_version;
+    IndexKind index_kind;
 };
+
+Before applying an `IndexUpdateJob`, a worker compares its complete
+`projection_version` with the active projection. A mismatch is a successful
+stale no-op, never a write that revives an older lexical, vector or translated
+projection. `derivation_generation = 0` is valid only for projections whose
+owner declares that no independent projection refresh exists.
 
 struct AsyncIndexerStats {
     uint64_t jobs_enqueued = 0;
@@ -349,32 +147,52 @@ struct AsyncIndexerStats {
 class BackgroundIndexer : public IAsyncIndexer {
 public:
     explicit BackgroundIndexer(
-        MemoryStack& stack,
+        IRuntimeStorageFacade& storage,
+        JobDispatcher& dispatcher,
         size_t batch_size = 1000,
         size_t max_bytes = 50 * 1024 * 1024);
 
-    void enqueue(IndexJob job) override;
+    JobId enqueue(IndexUpdateJob job, Transaction& txn) override;
     void flush() override;
     AsyncIndexerStats stats() const override;
 
 private:
-    void worker_loop();
-    void process_batch(std::vector<IndexJob>& batch);
+    // Called by the bounded AsyncIndex executor after dispatcher claim.
+    void process_batch(std::vector<ClaimedJob>& batch);
 
-    MemoryStack& m_stack;
+    IRuntimeStorageFacade& m_storage;
+    JobDispatcher& m_dispatcher;
     size_t m_batch_size;
     size_t m_max_bytes;
 
-    std::queue<IndexJob> m_queue;
-    std::mutex m_mutex;
-    std::condition_variable m_cv;
-    std::thread m_worker;
-    std::atomic<bool> m_running{true};
     AsyncIndexerStats m_stats;
 };
 ```
 
-Worker thread батчит до batch_size или max_bytes, потом flushes через MultiTableWriter. На stop — flushes остаток.
+`IRuntimeStorageFacade` is a narrow Layer 1/Layer 2 surface: unit/projection
+reads, derived-index writes and transaction creation. It is not a concrete
+`MemoryStack` and does not expose mutable profile internals. The executor
+receives typed durable `AsyncIndex` jobs from the shared `JobDispatcher` (§4.6)
+and may batch accepted records up to `batch_size` or `max_bytes` before writing
+derived indexes through `MultiTableWriter`. The in-memory batch is volatile only
+after a durable claim and successful executor acceptance; there is no
+process-only `std::queue` as the source of truth.
+
+Jobs are idempotent and guarded by `(unit_id, projection_kind, projection_version)`.
+The payload never embeds stale `SearchProjection` or embedding vectors. Before
+writing derived indexes, the worker loads the authoritative unit envelope,
+selected projection and payload/body state from storage:
+
+- if the unit is missing or erased, the worker applies the erase path or marks
+  the job `Done` when no derived rows remain;
+- if the active projection version differs from `job.projection_version`, the job is stale and is marked
+  `Done` without writes;
+- otherwise the worker regenerates the requested `IndexKind` from authoritative
+  data and commits derived index updates atomically.
+
+Crash recovery relies on queue leases: crash after enqueue leaves `Pending`,
+crash after claim returns the job to ready after lease expiry, and stale
+revision/delete races are handled by the checks above.
 
 ### 4.4. Batch triggers
 
@@ -385,16 +203,345 @@ Worker thread батчит до batch_size или max_bytes, потом flushes 
 ### 4.5. Failure handling
 
 При ошибке в batch:
-- Save checkpoint (последний успешный job).
-- Re-enqueue failed jobs.
-- Increment stats.jobs_failed.
-- Если retry > 3 — log error и drop.
+- Successful claimed jobs call `complete(token, now_ms, result)` in the same
+  transaction that commits derived index writes.
+- Executor execution errors call `fail_retry(token, now_ms, backoff, last_error)`
+  while attempts remain; the queue updates status, lease and ready/scheduled
+  indexes.
+- Exhausted retries call `fail_dead(token, now_ms, last_error, result)` and remain inspectable
+  through `jobs_by_status = Dead`.
+- No async index job is silently dropped.
+
+### 4.6. Persistent Runtime Queue
+
+`TaskQueue` / `JobStore` является downstream runtime abstraction
+`agent-memory-cpp`, а не public API `mdbx-containers`. Он владеет job lifecycle:
+`Pending`, `Running`, `Done`, `Dead`, `Cancelled`, retry/backoff policy, worker
+leases, attempts, stale-worker recovery, priority/FIFO ordering и cancellation.
+Retryable failures return to `Pending` with backoff; exhausted or unrecoverable
+failures become inspectable terminal `Dead`. There is no durable `Failed`
+state in the canonical queue.
+
+Persistent MDBX implementation uses generic storage primitives only:
+
+```text
+jobs_by_id:
+  KeyValueTable<JobId, JobRecord>
+
+jobs_scheduled:
+  RangeIndexTable<ScheduleKey, JobId>
+
+jobs_ready:
+  RangeIndexTable<ReadyOrderKey, JobId>
+
+jobs_by_lease:
+  RangeIndexTable<LeaseUntilKey, JobId>
+
+jobs_by_status:
+  ReverseIndexTable<JobStatus, JobId>
+```
+
+Default topology is one shared persistent queue per `MemoryStack`. `JobRecord.kind`
+distinguishes `Compaction`, `AsyncIndex`, maintenance and future workers; the DBI
+budget in `mdbx-containers-extension-tz.md` §5.5.1 counts this single +5 queue
+delta once. A separate physical queue for AsyncIndexer would require another +5
+profile delta and an updated budget checkpoint.
+
+`JobDispatcher` is the only component allowed to claim from the shared queue.
+The dispatcher owns the claim loop and submits typed claimed jobs to bounded
+per-kind executors:
+
+```cpp
+enum class SubmitRejectionReason { Saturated, ShuttingDown, Unsupported };
+
+struct ClaimToken {
+    JobId job_id;
+    WorkerId worker_id;
+    uint64_t lease_epoch;
+    int64_t lease_until_ms;
+};
+
+struct ClaimedJob {
+    ClaimToken token;
+    JobRecord record;
+};
+
+struct ResultPayload {
+    uint16_t codec_version = 0;
+    std::vector<uint8_t> bytes;
+};
+
+struct MaintenanceJobPayload {
+    uint16_t codec_version = 0;
+    std::vector<uint8_t> bytes;
+};
+
+template<class Payload>
+struct TypedClaimedJob {
+    ClaimToken token;
+    JobId job_id;
+    Payload payload;
+};
+
+using AnyTypedClaimedJob = std::variant<
+    TypedClaimedJob<CompactionJobPayload>,
+    TypedClaimedJob<IndexUpdateJob>,
+    TypedClaimedJob<MaintenanceJobPayload>>;
+
+struct AcceptedSubmission {};
+
+struct RejectedTypedJob {
+    SubmitRejectionReason reason = SubmitRejectionReason::Unsupported;
+    AnyTypedClaimedJob unaccepted_job;
+};
+
+using SubmitOutcome = std::variant<AcceptedSubmission, RejectedTypedJob>;
+
+class IJobExecutor {
+public:
+    virtual ~IJobExecutor() = default;
+    virtual SubmitOutcome try_submit(AnyTypedClaimedJob job) = 0;
+};
+
+class JobDispatcher {
+public:
+    void register_async_index_executor(IJobExecutor& executor);
+    void register_compaction_executor(IJobExecutor& executor);
+
+    std::optional<DispatchResult> run_once(
+        int64_t now_ms,
+        std::chrono::milliseconds lease_duration);
+};
+```
+
+Dispatcher policy keeps the queue physical layout global but the dispatch
+contract kind-aware: dispatcher claims the first ready job, decodes
+`JobRecord.kind` and codec version centrally, and routes only typed payloads to
+registered bounded executors. Workers do not call `claim_next`, do not scan for
+their own kind, do not leave unsupported jobs at the head of ready, and do not
+claim payload codecs they cannot decode. Token ownership stays with the
+dispatcher until `try_submit()` returns `AcceptedSubmission`; after acceptance the
+executor is responsible for lease renewal, terminal/retry transition and
+cooperative shutdown. `ClaimedJob`/`TypedClaimedJob` are move-only. Executors
+never receive opaque `JobRecord` bytes. If `try_submit()` returns
+`RejectedTypedJob`, it must include the unchanged typed job with the original
+token/job id; dispatcher immediately calls
+`release_unhandled(token, now_ms, backoff, reason)` so the claim does not
+disappear into a volatile queue. `SubmitOutcome` is a closed variant: accepted
+submissions carry no unaccepted job, and rejected submissions always carry one.
+If no executor supports the kind/version, dispatcher applies the
+unavailable-executor path below.
+
+Unavailable executor path:
+
+- unknown `JobRecord.kind` or unsupported codec version is unrecoverable and
+  transitions to `Dead` with `last_error`;
+- temporarily unavailable executor/capability calls
+  `release_unhandled(token, now_ms, backoff, reason)`, returns the job to scheduled
+  `Pending` without incrementing execution `attempts`;
+- executor execution failure calls `fail_retry(token, now_ms, backoff, last_error)`
+  and increments `attempts`; exhausted attempts call
+  `fail_dead(token, now_ms, last_error, std::nullopt)`.
+
+`JobRecord` хранит как минимум `job_id`, `kind`, codec/versioned immutable input
+`payload_bytes`, `status`, `priority`, `created_at_ms`, `run_after_ms`,
+`attempts`, `max_attempts`, `lease_owner`, `lease_epoch`, `lease_until_ms`,
+`cancel_requested`, optional `started_at_ms`, `completed_at_ms`, `last_error`,
+optional `result_codec_version` and `result_bytes`.
+
+`payload_bytes` is immutable after enqueue. `result_bytes` is written only by a
+terminal transition (`Done`, `Cancelled` with outcome, or `Dead` with terminal
+diagnostics when the job kind defines one). Retention/pruning of result bytes is
+the same as the owning `JobRecord`; admin views decode input and result payloads
+separately.
+
+`ScheduleKey = (run_after_ms, job_id)` используется только для delayed
+promotion. `ReadyOrderKey = (priority_rank, job_id)`, где меньший ключ
+выбирается раньше; `priority_rank` нормализуется так, чтобы higher logical
+priority сортировался раньше. `LeaseUntilKey = (lease_until_ms, job_id)`.
+`JobId` является durable monotonic sequence внутри queue и тем самым
+обеспечивает FIFO для одинаковой priority без отдельной sequence/meta DBI.
+Allocation uses `TableSequence(jobs_by_id)`; it is advanced inside
+the same enqueue transaction and is never derived from `max(job_id) + 1`.
+Pruning terminal jobs does not reset or reuse the sequence.
+
+`claim_next(now, worker_id, lease_duration)` is only called by
+`JobDispatcher`. It performs atomic compare/claim in a write transaction and
+returns `ClaimedJob`:
+
+1. `promote_due(now)` переносит все `jobs_scheduled` entries с
+   `run_after_ms <= now` в `jobs_ready`. Implementation may process bounded
+   pages, but it must repeatedly read the first due page (`offset = 0`) or use
+   cursor pagination after each mutation, and it must not claim from ready until
+   the due prefix for `now` is drained; otherwise high-priority due jobs could
+   be hidden behind older low-priority jobs.
+2. bounded read первого ready key (`limit = 1`), перечитать primary job record,
+   проверить application predicate (`Pending`, not cancelled, attempts <
+   max), перевести job в `Running`, increment `lease_epoch`, записать lease,
+   обновить primary record and ready/status/lease indexes, затем commit.
+
+Реализация не делает unbounded materialization очереди; large due backlogs
+обрабатываются page loop-ом с продолжением по cursor.
+
+Index membership is state-dependent:
+
+```cpp
+struct JobIndexKeys {
+    std::optional<ScheduleKey> scheduled;  // Pending delayed
+    std::optional<ReadyOrderKey> ready;    // Pending ready
+    JobStatus status;                      // every durable state
+    std::optional<LeaseUntilKey> lease;    // Running only
+};
+```
+
+State transitions:
+
+- `enqueue` создает `Pending` record и scheduled либо ready/status index entries.
+  It allocates `JobId` from `TableSequence(jobs_by_id)` in the same write
+  transaction; concurrent enqueue and restart must preserve monotonicity.
+- `claim_next` переводит `Pending -> Running`, снимает ready entry и ставит
+  lease/status entries.
+- `renew_lease` обновляет `lease_until_ms` и `jobs_by_lease`, returning an
+  updated `ClaimToken`.
+- `complete` переводит `Running -> Done`, удаляет lease entry и обновляет
+  status.
+- `fail_retry` переводит `Running -> Pending`, увеличивает attempts,
+  применяет backoff в `run_after_ms` и возвращает scheduled или ready entry.
+- `fail_dead` переводит `Running -> Dead`, когда retry budget исчерпан.
+- `release_unhandled` переводит `Running -> Pending` with backoff when the
+  dispatcher cannot currently route a known job kind/version; it does not
+  increment execution attempts.
+- `request_cancel` переводит `Pending -> Cancelled`; для `Running` ставит
+  `cancel_requested`, после чего worker завершает cooperative cancel либо
+  lease recovery переводит record в terminal/cancellable state.
+- `ack_cancel` переводит `Running -> Cancelled`, удаляет lease entry и
+  выставляет `completed_at_ms`.
+- `recover_expired_leases(now_ms)` bounded-scan-ит `jobs_by_lease` по
+  `lease_until_ms <= now_ms`; если `cancel_requested = true`, job переходит в
+  `Cancelled`, иначе idempotent jobs возвращаются в `Pending`, а
+  non-idempotent jobs помечаются как `Dead` with inspectable `last_error`.
+
+The transition names above are shorthand. Normative owner-sensitive signatures
+are:
+
+```cpp
+ClaimToken renew_lease(
+    const ClaimToken& token,
+    int64_t now_ms,
+    int64_t new_deadline_ms);
+
+void complete(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::optional<ResultPayload> result);
+
+void fail_retry(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::chrono::milliseconds backoff,
+    std::string last_error);
+
+void release_unhandled(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::chrono::milliseconds backoff,
+    std::string reason);
+
+void fail_dead(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::string last_error,
+    std::optional<ResultPayload> result);
+
+void ack_cancel(
+    const ClaimToken& token,
+    int64_t now_ms,
+    std::optional<ResultPayload> result);
+```
+
+Each successful claim and each lease recovery increments `lease_epoch`; stale
+workers cannot reuse an old token. Ordinary renewal does not increment
+`lease_epoch`, but it returns a new token carrying the updated
+`lease_until_ms`; callers must replace their old token before scheduling the
+next heartbeat.
+
+All owner-sensitive transitions MUST accept `ClaimToken` and, in the same
+transaction as any derived writes or terminal transition, verify:
+
+```text
+status == Running
+lease_owner == token.worker_id
+lease_epoch == token.lease_epoch
+now_ms < lease_until_ms
+```
+
+If any predicate fails, the worker's write/transition is rejected as stale.
+Acceptance case: A claims -> lease expires -> B claims -> A resumes => A's
+derived write and `complete(token, now_ms, result)` are rejected. Long-running
+batches must heartbeat with `renew_lease(token, now_ms, new_deadline)` before
+the previous lease expires. Recovery is eligible when
+`lease_until_ms <= now_ms`; owner-sensitive transitions are valid only when
+`now_ms < lease_until_ms`, using the same caller-provided `now_ms` value for the
+whole transaction.
+
+#### 4.6.1 Typed transition pattern
+
+`TaskQueue` should avoid one large open-coded `switch(JobStatus)` for owner
+sensitive transitions. Model each durable state as a typed transition surface
+that consumes the current persisted `JobRecord` snapshot plus any required
+`ClaimToken`, validates the allowed transition, and returns:
+
+- the next `JobRecord`;
+- index delta for `jobs_ready`, `jobs_scheduled`, `jobs_by_lease` and
+  `jobs_by_status`;
+- optional executor payload delta such as compaction handoff update.
+
+This is a local C++ pattern, not a dependency on a state-machine framework. It
+is inspired by the `Automaton` / `Mode` / `Family` split in `andrewtc/mode`:
+state-specific code owns its allowed transitions, a family exposes the common
+interface, and transition code can explicitly transfer only the state it is
+allowed to carry forward. For this roadmap, the concrete family is
+`JobLifecycle`, with state surfaces such as `PendingJob`, `RunningJob`,
+`CancelledJob`, `DeadJob` and `DoneJob`.
+
+Acceptance checks:
+
+- every durable transition has one typed function and one table-driven test
+  case;
+- invalid transitions are rejected before index mutation;
+- owner-sensitive transitions require `ClaimToken`;
+- transition functions produce both primary-record and secondary-index deltas,
+  so `JobRecord` and queue indexes cannot drift.
+
+Queue storage acceptance cases:
+
+- concurrent enqueue transactions allocate distinct increasing `JobId` values;
+- after process restart, the next enqueue continues from the durable MDBX
+  sequence;
+- after pruning terminal jobs, including the current maximum `JobId`, the next
+  enqueue still allocates a greater id and never reuses a deleted id.
+- saturated executor submit returns the move-only `ClaimedJob` to dispatcher,
+  and dispatcher calls `release_unhandled` for the same `job_id`, `worker_id`
+  and `lease_epoch` before returning from `run_once`;
+- process shutdown after claim but before executor acceptance requeues through
+  `release_unhandled` or lease recovery; no token remains only in memory;
+- `CompactionExecutor` enforces `max_concurrency = 1` per stack/scope while
+  `AsyncIndexExecutor` may use bounded parallelism;
+- unsupported kind/version never blocks the ready head indefinitely.
+
+Compaction handoff recovery uses the same `JobId`: `compaction_handoffs`
+stores checkpoint payload for the running job, while queue lease recovery is
+the only owner allowed to requeue or terminalize expired work. `CompactionWorker`
+must not enqueue a second resume job for the same handoff.
+
+`mdbx-containers` отвечает только за generic tables and transaction
+atomicity; runtime semantics остаются здесь.
 
 ## 5. WriteGate
 
 ### 5.1. Purpose
 
-Применяет WritePolicy из spec к каждой WriteRequest. Реализует importance threshold, dedupe, supersede, flush triggers.
+Применяет WritePolicy из spec к create/update requests. Реализует importance threshold, dedupe, supersede, flush triggers.
 
 ### 5.2. Interface
 
@@ -403,7 +550,7 @@ class IWriteGate {
 public:
     virtual ~IWriteGate() = default;
 
-    virtual GateDecision evaluate(const WriteRequest& req) = 0;
+    virtual GateDecision evaluate(const CreateUnitRequest& req) = 0;
 
     // Manual flush (для тестов)
     virtual void flush() = 0;
@@ -431,16 +578,16 @@ struct GateDecision {
 class DefaultWriteGate : public IWriteGate {
 public:
     explicit DefaultWriteGate(
-        MemoryStack& stack,
+        IRuntimeProfileView& profile,
         WritePolicy policy);
 
-    GateDecision evaluate(const WriteRequest& req) override;
+    GateDecision evaluate(const CreateUnitRequest& req) override;
     void flush() override;
 
 private:
-    MemoryStack& m_stack;
+    IRuntimeProfileView& m_profile;
     WritePolicy m_policy;
-    std::vector<WriteRequest> m_buffer;
+    std::vector<CreateUnitRequest> m_buffer;
     std::mutex m_mutex;
     std::chrono::steady_clock::time_point m_last_flush;
 };
@@ -580,180 +727,47 @@ returning a shallow executable plan.
 
 ## 6. Service Lifecycle
 
-### 6.1. Опциональность
-
-Каждый сервис — opt-in через MemoryProfileSpec:
-
-| Service | Capability | Default |
-|---|---|---|
-| PromptPrefixCache | `enable_prompt_cache = true` | opt-in (default ON для hybrid retrieval профилей) |
-| ResponseCache | `enable_response_cache = true` | opt-in, default **OFF** (для безопасности) |
-| AsyncIndexer | (always on for write perf) | always |
-| WriteGate | (always on if WritePolicy set) | conditional |
-| CompactionWorker | `enable_compaction = true` | opt-in |
-| MemoryAwareContextPlanner | `enable_context_planner = true` | opt-in |
-
-Уточнение по defaults:
-- `PromptPrefixCache` default **ON** для профилей с hybrid retrieval (BasicRag, AgentLTM, QAKnowledgeBase) — provider-side кэш даёт прямую экономию токенов без consistency рисков.
-- `ResponseCache` default **OFF везде** — opt-in через явное `enable_response_cache=true` в spec (см. §3.1 rationale).
-
-### 6.2. Инициализация
-
-При MemoryStack::open(spec):
-1. Создаются DBI по capabilities.
-2. Инициализируются runtime-сервисы:
-   - `IPromptPrefixCache` — если `enable_prompt_cache=true` (default ON для hybrid retrieval профилей).
-   - `IResponseCache` — только если `enable_response_cache=true` (default OFF).
-   - `AsyncIndexer` — всегда.
-   - `WriteGate` — если `spec.write_policy` задан.
-   - `CompactionWorker` — если `enable_compaction=true`.
-   - `IMemoryAwareContextPlanner` — если `enable_context_planner=true`.
-3. Lifecycle ordering: `IPromptPrefixCache` создаётся ДО первого LLM call; `IResponseCache` создаётся как singleton (даже если выключен) с no-op stub.
-
-### 6.3. Shutdown
-
-При MemoryStack::close():
-1. Stop accepting new requests.
-2. AsyncIndexer.flush() — finish pending batches.
-3. CompactionWorker.stop() — finish current job, then exit.
-4. `IResponseCache` — опционально persist to DBI (`response_cache`).
-5. `IPromptPrefixCache` — persistence не требуется (ключи детерминированно вычисляются).
-6. Освобождение handles.
-
-### 6.4. Graceful degradation
-
-Если runtime-сервис не может стартовать (например, MDBX не хватает места):
-- Log error.
-- MemoryStack продолжает работать в degraded mode (без этого сервиса).
-- Service выбрасывает `RuntimeServiceUnavailable` при обращении.
+`MemoryStack` lifecycle covers only library-owned services: WriteGate,
+AsyncIndexer, CompactionWorker and the provider-neutral context planner. It
+opens the profile-selected storage, starts enabled local workers after storage
+validation, flushes or checkpoints owned work on close, and exposes degraded
+status for a failed local service. It neither initializes an LLM client nor
+performs provider-cache or response-cache operations.
 
 ## 7. Interaction Patterns
 
-### 7.1. Write path
-
-```
-Application
-  ↓ stack.write_unit(request)
-  ↓
-WriteGate.evaluate(request)
-  ↓
-  ├── Accept → Enqueue to AsyncIndexer + MultiTableWriter (envelope + components + projections)
-  ├── Buffer → wait for trigger
-  ├── Deduplicate → return existing unit_id
-  ├── Supersede → mark old as Superseded, write new
-  ├── Merge → combine with existing
-  └── Skip → return Skip decision
-```
-
-### 7.2. Read path
-
-```
-Application
-  ↓ stack.retrieve(plan)
-  ↓
-IResponseCache.lookup(response_cache_key)  // ТОЛЬКО если opt-in (default OFF)
-  ├── hit → return cached response_text
-  └── miss (или выключен) → continue
-  ↓
-MemoryAwareContextPlanner.plan(input)  // if opt-in: sets tier/depth/risk plan
-  ↓
-HybridRetriever.retrieve(plan)
-  ├── LexicalRetriever (per lexical-search-roadmap.md)
-  ├── DenseRetriever (per optimization-roadmap.md)
-  ├── ...
-  ↓
-RRF fusion
-  ↓
-ContextBuilder
-  ↓
-IPromptPrefixCache.compute_cache_key(provider_id, model_id, prompt_prefix)  // ВСЕГДА (cheap, O(1))
-  ↓
-LLM call с cache_control: ephemeral metadata (Anthropic) / prompt_cache_key (OpenAI)
-  ↓
-IResponseCache.store(response_cache_key, response)  // ТОЛЬКО если opt-in
-  ↓
-IPromptPrefixCache.metrics().cache_read_input_tokens += response.usage.cache_read  // обновление провайдер-метрик
-```
-
-**Provider-side vs local cache split:**
-- `IPromptPrefixCache.compute_cache_key()` вызывается при каждом LLM call (cheap, no-op если ключ не меняется).
-- `IResponseCache.lookup()` вызывается **ТОЛЬКО** если spec.enable_response_cache=true. По умолчанию — не вызывается.
-- Это даёт чёткое разделение provider-side (always) и local response (opt-in).
-
-### 7.3. Background path
-
-```
-CompactionWorker
-  ↓
-ICompactionJob.run()
-  ├── DecayJob → uses UsageStatsComponent
-  ├── DedupeJob → uses EmbeddingStore + scope
-  ├── ArchiveColdJob → uses Lifecycle FSM
-  ├── ...
-  ↓
-MultiTableWriter (atomic per job)
-```
+The core write path is `WriteGate -> MultiTableWriter -> optional IndexUpdateJob`;
+the retrieval path is `MemoryAwareContextPlanner -> retrievers -> ContextBuilder`.
+`ContextBuilder` returns context, citations and optional
+`MaterializationInstruction` values to the host. Any LLM request,
+provider-specific cache metadata, tool call and generated response is outside
+this path.
 
 ## 8. Observability
 
-### 8.1. Метрики (per service)
-
-Каждый сервис экспортирует свои метрики (см. секции выше). Все метрики доступны через:
-
-```cpp
-auto stats = stack.stats();
-// stats.prompt_prefix_cache, stats.response_cache, stats.async_indexer, stats.compaction, stats.write_gate
-```
-
-Отдельные accessors для split-кэша:
-```cpp
-auto pp = stack.prompt_prefix_cache()->metrics();   // cache_read_input_tokens, cache_write_input_tokens
-auto rc = stack.response_cache()->metrics();         // hits, misses, hit_rate
-```
-
-### 8.2. RetrievalTrace integration
-
-Per knowledge-base-roadmap.md: `RetrievalTrace.trace` содержит:
-- `cache_hit` (true/false).
-- `cache_key` (если hit).
-- `async_indexer_queue_size` (snapshot при retrieval).
-- `compaction_active_jobs` (snapshot).
-
-### 8.3. CLI integration
-
-```
-agent-memory-cli prompt-cache stats                 # IPromptPrefixCache (cache_read/cache_write_input_tokens)
-agent-memory-cli response-cache stats              # IResponseCache (hits, misses, hit_rate)
-agent-memory-cli response-cache clear [--scope <scope_id>]
-agent-memory-cli indexer status
-agent-memory-cli indexer flush
-```
+Runtime-service metrics cover local queue depth, worker health, write decisions,
+index freshness, compaction state and retrieval/context traces. Host cache
+metrics remain host telemetry and must not be surfaced as `MemoryStack`
+statistics or CLI commands.
 
 ## 9. Implementation Order
 
-Per memory-stacks-roadmap.md секция 16, конкретизация:
-
-| Шаг | Что |
-|---|---|
-| 11.1 | WriteGate (impl WritePolicy logic) |
-| 11.2 | AsyncIndexer (background thread + batch processing) |
-| 12.5 | `IPromptPrefixCache` (in-memory LRU key dedup) + `AnthropicCacheControlAdapter` |
-| 12.6 | `IResponseCache` stub (default OFF, no-op implementation для safe by default) |
-| M2.x | `IResponseCache` full implementation + MDBX persistence (`response_cache` DBI) |
-| M2.x | `IMemoryAwareContextPlanner` + urgency/recall/risk-aware context policy |
+1. WriteGate and atomic critical-index writes.
+2. AsyncIndexer plus bounded durable job handling where a selected profile needs it.
+3. Compaction worker/checkpoint handoff.
+4. Provider-neutral context planner and trace contracts.
 
 ## 10. Open Issues
 
-- PromptCache invalidation при обновлении knowledge (когда unit перезаписан, cache entries могут быть stale). Решение: scope-based invalidation при bulk update.
-- **ResponseCache correctness при tool/function calls: если LLM вызывает tools, response зависит не только от prompt, но и от tool results. Решение: хэшировать полный conversation context (prompt + tool definitions + tool call history + tool results), не только prompt. Альтернатива: opt-out response cache для turns с tool calls.**
-- AsyncIndexer backpressure: если consumer (retrieval) медленнее producer (writes), queue растёт. Решение: bounded queue + drop policy.
-- WriteGate flush trigger: на скольких units считать "OnSizeThreshold" — bytes или count?
-- Multi-stack coordination: если несколько MemoryStack разделяют scope, runtime services не координируются. M2+.
-- ResponseCache staleness при live data: cache TTL 1 час может вернуть устать данные для time-sensitive запросов. Опции: (a) короткий TTL, (b) invalidation при записи в KnowledgeUnit, (c) включение timestamp в key (но это убивает hit rate).
+- AsyncIndexer backpressure, retry exhaustion and operator diagnostics.
+- WriteGate batch thresholds and policy observability.
+- Multi-stack coordination for shared scopes.
+- Planner policy evolution without weakening required-tier guarantees.
 
 ## 11. References
 
-- `guides/memory-stacks-roadmap.md` — секции 7, 11, 12.4, 16.
+- `guides/memory-stacks-roadmap.md` — секции 7, 11, 16; ADR-013.
+- `guides/mdbx-containers-extension-tz.md` — §12.5 runtime queue storage recipe and §5.5.1 DBI budget.
 - `guides/knowledge-base-roadmap.md` — RetrievalTrace интеграция.
 - `guides/policies-roadmap.md` — WritePolicy.
 - `guides/compaction-roadmap.md` — CompactionWorker.

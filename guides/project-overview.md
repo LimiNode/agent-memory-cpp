@@ -6,6 +6,25 @@
 retrieval systems for AI agents. It should provide deterministic, inspectable
 local components rather than a hosted service or a generic agent framework.
 
+## Why Local Retrieval Engineering Matters
+
+The project is not trying to save a few gigabytes from a small RAG corpus for
+its own sake. A plain float-vector index is often the right answer when the
+working set fits in RAM and hosted/vector-service infrastructure is acceptable.
+
+This library exists for the different case: an evidence-bearing local workspace
+or agent memory must remain portable, inspectable and usable in one process
+with MDBX, bounded RAM, ordinary SSD storage, no required vector-database
+service, and resource-level updates. At that point the physical shape of
+derived indexes affects cold-start time, page faults, backup/restore cost,
+update cost and p99 retrieval latency as much as their nominal byte size.
+
+Compression, quantization, binary routing and segment layouts are therefore
+optional capacity tools. They must improve a measured resource or operational
+constraint while preserving canonical text/artifacts, provenance and retrieval
+quality; they are never a default substitute for a simpler exact or HNSW
+baseline that already meets the deployment budget.
+
 ## Current Status
 
 The repository is in the project-skeleton stage. The current code provides:
@@ -52,6 +71,10 @@ The library scope is limited to:
 - embedding interfaces and adapters;
 - exact and approximate indexes;
 - retrieval and ranking;
+- knowledge activation/planning contracts for domain maps and playbooks;
+- durable cognitive-runtime integration records such as origin, perspective,
+  causal context, task/decision/procedure payloads, and reconciliation
+  metadata;
 - context assembly for downstream agents or LLM calls.
 
 ## Non-Goals
@@ -59,6 +82,8 @@ The library scope is limited to:
 Do not add these to the core library:
 
 - autonomous-agent orchestration;
+- live cognition, scheduling, focus arbitration, authority enforcement, action
+  execution, topology mutation, distributed transport, or consensus;
 - browser automation;
 - participant simulation;
 - TTS/ASR pipelines;
@@ -94,14 +119,24 @@ placeholder layers unless a PR needs them.
 ## Optimization Backlog
 
 Detailed follow-up tasks for compression, optional Eigen/SIMD scoring, vector
-encoding, binary signatures, MDBX bucket indexes, and recall/latency benchmarks
-are tracked in `guides/optimization-roadmap.md`.
+encoding, binary signatures, MDBX bucket indexes, and capacity-aware
+recall/latency/operability benchmarks are tracked in
+`guides/optimization-roadmap.md`.
 
 ## Reindexing Backlog
 
 Resource manifests, source revision tracking, targeted reindexing, tombstones,
 and compaction for mutable memory are tracked in
 `guides/resource-reindexing.md`.
+
+## Artifact And Provenance Backlog
+
+Stable source revisions, immutable artifact bytes, versioned extraction
+representations, typed evidence locators, multimodal segments, retention and
+backup boundaries are tracked in
+[`guides/artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md).
+The default path is the library's own catalog, blob storage and indexes; any
+external vector database remains an optional derived-index adapter.
 
 ## Lexical Search Backlog
 

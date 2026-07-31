@@ -7,6 +7,7 @@
 
 #include <agent_memory/domain/Resource.hpp>
 
+#include <exception>
 #include <optional>
 
 namespace agent_memory {
@@ -18,11 +19,15 @@ namespace agent_memory {
 
         /// \brief Inserts or replaces a resource manifest.
         /// \pre `is_valid_resource_manifest(manifest)` must be true.
+        /// \exception Any implementation-defined storage exception.
+        /// \post If this function throws, the previously visible manifest for
+        /// the resource remains visible. Implementations must provide the
+        /// strong exception guarantee for one manifest replacement.
         virtual void upsert_manifest(ResourceManifest manifest) = 0;
 
         /// \brief Finds a resource manifest by resource id.
         /// \param resource_id Resource id to look up.
-        /// \return Manifest copy when found.
+        /// \return A valid manifest copy whose revision has the requested resource id, when found.
         [[nodiscard]] virtual std::optional<ResourceManifest> find_manifest(
             const ResourceId& resource_id
         ) const = 0;
@@ -30,6 +35,9 @@ namespace agent_memory {
         /// \brief Removes a resource manifest.
         /// \param resource_id Resource id to remove.
         /// \return True when a manifest was removed.
+        /// \post If this function throws, the previously visible manifest for
+        /// the resource remains visible. Implementations must provide the
+        /// strong exception guarantee for one manifest removal.
         [[nodiscard]] virtual bool erase_manifest(
             const ResourceId& resource_id
         ) = 0;

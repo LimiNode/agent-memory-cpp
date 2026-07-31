@@ -32,7 +32,11 @@ namespace agent_memory {
         [[nodiscard]] bool has_embedding() const noexcept;
     };
 
-    /// \brief Chunk returned by a retriever with a comparable score.
+    /// \brief Legacy chunk returned by a retriever with a comparable score.
+    ///
+    /// This pre-M0 result cannot express a revision-bound citation. Public
+    /// artifact-aware retrieval must return the canonical provenance summary
+    /// and hydrate full SourceRef/EvidenceAnchor details on demand.
     struct RetrievedChunk final {
         DocumentChunk chunk;
         /// \brief Comparable retrieval score where higher is always better.

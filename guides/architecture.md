@@ -36,9 +36,11 @@ Rules:
   public retrieval contracts.
 - Context assembly consumes retrieval results and memory policies; it should not
   perform storage-specific queries directly.
-- Runtime services (PromptPrefixCache + optional ResponseCache, CompactionWorker, WriteGate, AsyncIndexer)
-  depend only on Layer 1 + Layer 2 contracts; they never reach into a concrete
-  MemoryStack to read profile-specific state.
+- Runtime services (CompactionWorker, WriteGate, AsyncIndexer)
+  are instance-owned by a `MemoryStack` when enabled, but depend only on narrow
+  Layer 1 + Layer 2 facades such as `IRuntimeStorageFacade`,
+  `IRuntimeProfileView` and `ICompactionWriteContext`; they never reach into a
+  concrete `MemoryStack` to read mutable profile-specific internals.
 
 ## Static Library Bias
 
@@ -56,6 +58,19 @@ types, templates, and trivial inline helpers.
 - Avoid one large facade that hides all behavior.
 - Avoid speculative plugin systems before at least two real implementations
   require the same extension point.
+
+## Agent Runtime Integration
+
+`agent-memory-cpp` may store durable cognitive records for external runtimes:
+runtime origin, local perspective, causal context, task/decision/procedure
+payloads, outcomes, introspection observations and reconciliation metadata.
+The external runtime owns live cognition, scheduling, focus, authority, tool
+execution, topology mutation, transport and consensus.
+
+The neutral contracts live in
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+Reference integrations such as ADELIA map their native ids to
+`RuntimeObjectRef` in adapters; core headers must not include ADELIA types.
 
 ## Layer Architecture
 
@@ -82,7 +97,7 @@ Layer 1: Storage Primitives (storage/)
   RangeIndexTable, TypeDiscriminatedTable, CompositeKey
 
 Cross-cutting Runtime Services (runtime/) — orthogonal
-  PromptPrefixCache + optional ResponseCache, CompactionWorker, WriteGate, AsyncIndexer
+  CompactionWorker, WriteGate, AsyncIndexer
   Use Layer 1 + Layer 2 through interfaces
 ```
 
@@ -91,8 +106,10 @@ Invariants:
 - Layer 4 does not depend on Layer 1 (only through Layer 2 and Layer 3).
 - Layer 3 does not depend on Layer 4.
 - Layer 2 does not depend on Layer 3 (can be used directly).
-- Runtime services may be invoked from any layer, but they do not depend on a
-  specific `MemoryStack` instance.
+- Runtime services may be invoked from any layer. They may be owned by a
+  specific `MemoryStack` instance, but their implementation talks to
+  `MemoryStackRuntimeFacade` / Layer 1 + Layer 2 contracts rather than concrete
+  stack internals.
 
 The layering reinforces the DDD dependency direction above: lower layers know
 nothing about upper layers, and the application boundary never reaches past
@@ -118,9 +135,12 @@ must not define memory strategy, retrieval ranking, or embedding behavior.
 ## Planned Resource Reindexing Direction
 
 Ingestion should eventually track resource ownership for all derived records.
-Each original source item should have a stable `ResourceId`, a current revision
-or generation, and a manifest of chunks, embeddings, vector records, binary
-bucket postings, lexical postings, or graph records derived from it.
+Each original source item should have a stable local `ResourceId`, a current
+local revision or generation, and a manifest of chunks, embeddings, vector
+records, binary bucket postings, lexical postings, or graph records derived
+from it. Artifact-aware profiles additionally map that local identity to a
+durable `SourceId` and immutable `SourceRevisionId`; imports may remap local
+ids but never rewrite those provenance identities.
 
 This lets the system replace one markdown file, note, profile fact, or other
 resource without rebuilding unrelated indexes. Resource reindexing should
@@ -151,7 +171,7 @@ The old `DocumentChunk` / `MemoryObject` / `chat::Message` /
 
 - A lean `KnowledgeUnitEnvelope` (~16-field hot-path struct): id, kind,
   scope_id, primary_text, display_text, lifecycle_state, sources,
-  timestamps, generation, priority_weight, supersedes/superseded_by.
+  timestamps, revision, priority_weight, supersedes/superseded_by.
   See [`guides/knowledge-units-roadmap.md`](knowledge-units-roadmap.md)
   for per-kind specifications and migration helpers.
 - Typed components (operational + per-kind payloads): operational
@@ -160,7 +180,7 @@ The old `DocumentChunk` / `MemoryObject` / `chat::Message` /
   `FactPayload`, `ChunkPayload`, `ConversationEpisodePayload`,
   `CompiledArticlePayload`. Stored separately from the envelope.
 - `SearchProjections` (multi-projection retrieval): `Original`,
-  `QAQuestion`, `QAAnswer`, `Summary`, `CodeSymbols`,
+  `QAQuestion`, `QAAnswer`, `QACombined`, `Summary`, `CodeSymbols`,
   `DenseContextual`, `Bm25Fields`. Each projection has its own
   payload and kind-specific indexer.
 - Component-based stores: `IKnowledgeUnitStore` (envelope),
@@ -182,7 +202,10 @@ Cross-cutting contracts:
 - A `SourceRef` first-class provenance value type lifted into the
   domain layer. Every component / projection that needs citation,
   every `RetrievalHit`, and every retrieval trace entry references
-  `SourceRef`.
+  `SourceRef`. Artifact-aware ingestion extends this with stable source and
+  revision identities, immutable artifacts, versioned representations,
+  segment-backed Chunk units and typed evidence locators; see
+  [`guides/artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md).
 - A retriever graph built on `RetrievalPlan`, `IUnitRetriever`, and
   `RetrievalHit` with `KnowledgeUnitId` as the unified key. `ChunkId`
   is one of many unit kinds, not the only key.
@@ -198,7 +221,7 @@ Cross-cutting contracts:
 > reused). Separate `KnowledgeUnitKey` struct for content-addressing
 > (dedupe, migration, supersedence).
 
-Detailed contracts, MDBX layouts, per-kind field blocks, the QA
+Detailed contracts, data-model shape, per-kind field blocks, the QA
 knowledge base, the temporal index, the typed graph, the typed
 metadata, and the cross-encoder / HyDE / corrective RAG adapter
 slots are all tracked in
@@ -225,16 +248,28 @@ does not replace them:
   local persistence, and urgency-aware context planning can be added while
   keeping live affect dynamics in a sibling runtime controller.
 
-LLM contextualization, cross-encoder rerank, hybrid chunkers, ASR,
-VLM document parsing, hosted vector databases, Python bindings, and
-agent framework bridges stay in `adapters/` and `examples/`. They do
-not enter the core contract.
+LLM contextualization engines, cross-encoder rerank engines, concrete
+translation engines, hybrid chunker implementations, ASR, VLM document parsing,
+hosted vector databases, Python bindings, and agent framework bridges stay in
+`adapters/` and `examples/`. Dependency-free SPI/value types such as
+`ITranslationAdapter`, `CanonicalLanguageCode`, `DetectedLanguage`,
+`TranslationPolicy` and
+translation provenance metadata may live in the core/domain contract; concrete
+provider SDKs, package managers and model runtimes do not.
+
+The default retrieval/storage route is the library's own stores and indexes.
+An external vector database, when selected by an adapter, is a derived segment
+index only and does not own canonical artifact bytes, evidence anchors or
+backup truth. The library's MDBX path remains the default; a text-only external
+adapter is optional for M1a migration/benchmark comparison and must hydrate and
+revalidate every candidate from canonical local storage.
 
 The canonical, currently normative specification of the data model,
-profiles, stacks, capability matrix, validation rules, and MDBX
-layout lives in
-[`guides/memory-stacks-roadmap.md`](memory-stacks-roadmap.md). See
-also the short cross-reference in "Knowledge Base Direction
+profiles, stacks, capability matrix, validation rules, and maturity lives in
+[`guides/memory-stacks-roadmap.md`](memory-stacks-roadmap.md). The sole
+canonical physical MDBX manifest and DBI budget live in
+[`guides/mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md)
+§5.5/§5.5.1. See also the short cross-reference in "Knowledge Base Direction
 (cross-reference)" below.
 
 ## Planned Embedding Direction
@@ -261,51 +296,41 @@ and acts as the deterministic baseline for tests and small local workloads.
 
 ## Maturity Levels (M0/M1/M2)
 
-Краткое описание уровней зрелости из
-[`guides/memory-stacks-roadmap.md`](memory-stacks-roadmap.md) секция 13. Каждый
-уровень определяет набор включённых возможностей и явные ship-it критерии;
-прогресс между ними additive.
+Normative scope lives in [`milestones.md`](milestones.md). This section is a
+short orientation summary only; if it conflicts with `milestones.md`, the
+milestone manifest wins.
 
-### M0 — MVP
+### M0 — Lexical Document Memory
 
-- Lean envelope (~16 полей) + scope-aware keys + BM25F + lifecycle FSM
-  (Active / SoftSuppressed / Superseded / Deprecated / Erased).
-- Готовые стеки: `BasicRagStack`, `QAKnowledgeBaseStack`.
-- Один MDBX env, ~10-15 DBI. In-memory prompt cache (M0 opt).
-- Без Components, Payloads per kind, SearchProjections, Decay/Write Policy,
-  Compaction.
+- Raw resource ingest, `ResourceBodyStore`, Chunk/Note units, immutable
+  content identity, inline source summaries, `SearchProjection::Original`,
+  scope-aware BM25F, and a minimal retrieval trace.
+- Default factory is lexical. Dense vectors, graph, compaction, sync,
+  translation, speaker/chat/wiki profiles, and bi-temporal storage are not M0.
 
 Ship-it:
 
 - `BasicRag` retrieve+write на 10k units с p95 latency ≤ 50 ms.
 - Все unit-тесты на envelope serialization проходят.
-- Lifecycle FSM покрыт тестами для всех 5 состояний.
+- Lifecycle FSM покрыт тестами для 4 durable states.
 
-### M1 — Production
+### M1 — Staged Production
 
-- Все components (UsageStats, Speaker, Temporal, EmbeddingMeta,
-  CompactionMeta) + все payload-компоненты (QA, Fact, ConversationEpisode,
-  CompiledArticle, Chunk).
-- SearchProjections DBI с 4 стандартными kinds: Original, QAQuestion,
-  QAAnswer, Summary.
-- BM25F по projections (projection_kind в posting keys).
-- DecayPolicy + WritePolicy + SpeakerScopePolicy.
-- 7 готовых MemoryStacks (BasicRag, QAKB, AgentLTM, SpeakerChat,
-  CompiledWiki, TemporalFact, FullResearch).
-- `CompactionWorker` (async): Decay, Dedupe, ArchiveCold + handoff.
-- `PromptPrefixCache` + optional `ResponseCache` (LRU + AnthropicCacheControlAdapter aware).
-- Eval pipeline с golden dataset.
+- M1a: optional dense retrieval, exact vector baseline, explicit embedder
+  registration, hybrid/RRF, and reproducible benchmark harness.
+- M1b: QA/fact payloads, operational components, full source refs,
+  single-axis temporal validity, and deterministic knowledge activation
+  metadata.
+- M1c: persistent runtime queue, bounded async indexer, basic compaction,
+  usage range indexes, and write transaction limits.
 
 Ship-it:
 
-- Все 7 MemoryStacks открываются и проходят round-trip write/read.
-- `AgentLongTermMemory` retrieve с decay: Recall@10(hybrid) ≥
-  1.20 × Recall@10(BM25-only) на golden dataset.
-- Cooldown-фильтр работает (fact не возвращается в течение `cooldown_ms`
-  после retrieval).
-- Compaction worker crash-safe (write-ahead job state).
-- Anti-loop подсвинок (`self_echo_suppression`) применяется в
-  `DecayAwareRetriever`.
+- Each M1 stage has profile-specific open/create/reopen tests.
+- Hybrid profiles fail fast when dense is requested without an embedder.
+- Temporal M1 tests cover single-axis validity and supersedence, not
+  bi-temporal history.
+- Runtime jobs are bounded and crash-safe before compaction is declared ready.
 
 ### M2 — Advanced
 
@@ -320,8 +345,7 @@ Ship-it:
 
 Ship-it:
 
-- 50+ golden test cases покрывают все intent-классы (TemporalPointLookup,
-  SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff).
+- 50+ golden test cases покрывают все enabled intent/activation classes.
 - p95 latency ≤ 2× baseline BM25 для всех профилей.
 - Migration script `basic_rag → agent_ltm` работает без потери данных.
 - CLI tool покрывает inspect / stats / check / vacuum / reindex /
@@ -334,24 +358,22 @@ Per
 и секция 11. Ортогональны profile: одна и та же реализация сервиса
 обслуживает любой `MemoryStack` через интерфейсы Layer 1 и Layer 2.
 
-- **PromptPrefixCache** (LRU + AnthropicCacheControlAdapter) — кэширует
-  prompt-prefix → cached-prefix id. Экономия 60-90% токенов при стабильном system
-  prompt. Scope-aware ключ (cache key включает `scope_id`).
-- **ResponseCache** (opt-in) — кэширует полный prompt → response. Полезен для
-  детерминированных retrieval-сценариев. По умолчанию выключен, чтобы не
-  маскировать галлюцинации/стохастичность модели.
+- **Host LLM cache adapter** — outside this library. Core may return a
+  provider-neutral `ContextFingerprint` / `PromptPrefixDescriptor`, while the
+  host owns provider metadata, response cache safety and LLM calls.
 - **CompactionWorker** (async) — выполняет `ICompactionJob`-ы:
   Decay, Dedupe, ArchiveCold (M1); Merge, SummaryPromotion,
-  EmbeddingRecompute (M2). Хранит состояние jobs и handoff в
-  `compaction_jobs` / `compaction_handoffs` DBI.
+  EmbeddingRecompute (M2). Хранит состояние jobs в downstream `TaskQueue`
+  DBI (`jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`,
+  `jobs_by_status`) with `JobRecord.kind = Compaction`; handoff state lives in
+  `compaction_handoffs`.
 - **AsyncIndexer** (background) — батчит inserts в lexical / vector /
   projection индексы. Default: 1000 units или 50 MB, whichever first.
 - **WriteGate** — применяет `WritePolicy` к входящим записям:
   importance threshold, dedupe distance, supersede/merge/episode-compaction
   разрешения, flush trigger.
 
-Доступны через интерфейсы (`IPromptPrefixCache`, `IResponseCache`,
-`ICompactionWorker`, `IAsyncIndexer`, `IWriteGate`). Сервисы не зависят от конкретного
+Доступны через интерфейсы (`ICompactionWorker`, `IAsyncIndexer`, `IWriteGate`). Сервисы не зависят от конкретного
 `MemoryStack` и не имеют права лезть в profile-specific state напрямую —
 только через публичные контракты.
 
@@ -364,7 +386,7 @@ matrix и validation rules.
 Состав knowledge base:
 
 - `KnowledgeUnitEnvelope` (~16 полей lean): id, kind, scope_id, primary_text,
-  display_text, lifecycle_state, sources, timestamps, generation,
+  display_text, lifecycle_state, sources, timestamps, revision,
   priority_weight, supersedes/superseded_by.
 - Components (operational + per-kind payloads): UsageStats, Speaker,
   Temporal, EmbeddingMeta, CompactionMeta + QAPayload, FactPayload,
@@ -377,7 +399,7 @@ matrix и validation rules.
   `TemporalFactStoreStack`, `FullResearchMemoryStack`.
 - Policies: DecayPolicy, WritePolicy, SpeakerScopePolicy, HybridRetrievalConfig.
 - Capability matrix (LexicalBm25F / DenseVectors / QAPairs / TemporalValidity /
-  UsageStats / Decay / SpeakerAttribution / Compaction / PromptPrefixCache + opt. ResponseCache /
+  UsageStats / Decay / SpeakerAttribution / Compaction /
   GraphRelations / EmbeddingMigration / CompiledArticles / ConversationMemory).
 - Validation rules при `MemoryStack::open()` (Decay → UsageStats и т.д.).
 
@@ -393,7 +415,7 @@ Decay / Write / Speaker policies: см.
 [`guides/policies-roadmap.md`](policies-roadmap.md).
 `CompactionWorker` (job types, handoff): см.
 [`guides/compaction-roadmap.md`](compaction-roadmap.md).
-Runtime services (PromptPrefixCache + ResponseCache / AsyncIndexer / WriteGate):
+Runtime services (AsyncIndexer / WriteGate; host LLM cache boundary):
 см. [`guides/runtime-services-roadmap.md`](runtime-services-roadmap.md).
 
 See [`usage-memory-models.md`](usage-memory-models.md) for practitioner guidance on memory model choice; see [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md) for the underlying comparison framework.
@@ -515,7 +537,7 @@ CMake flags (planned):
 - [`guides/memory-stacks-roadmap.md`](memory-stacks-roadmap.md) —
   центральный манифест: ADR'ы, Envelope/Components/Projections,
   `MemoryProfileSpec`, `MemoryStack`, default profiles, capability matrix,
-  validation rules, MDBX layout, Maturity Levels (M0/M1/M2), Profile
+  validation rules, Maturity Levels (M0/M1/M2), Profile
   Migration.
 - [`guides/knowledge-base-roadmap.md`](knowledge-base-roadmap.md) —
   retrieval flow, ContextBuilder, evaluation pipeline, cross-stack contracts.
@@ -524,17 +546,20 @@ CMake flags (planned):
   CompiledArticle, Chunk), lifecycle FSM.
 - [`guides/lexical-search-roadmap.md`](lexical-search-roadmap.md) —
   BM25F, postings, tokenization.
+- [`guides/translation-adapters-roadmap.md`](translation-adapters-roadmap.md) —
+  optional cross-lingual projections and translation adapter provenance.
 - [`guides/optimization-roadmap.md`](optimization-roadmap.md) —
   vector/binary storage, scope-aware secondary indexes, compression.
 - [`guides/mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) —
-  TypeDiscriminatedTable, MultiTableWriter, ReverseIndexTable.
+  canonical physical MDBX manifest, DBI budget, TypeDiscriminatedTable,
+  MultiTableWriter, ReverseIndexTable.
 - [`guides/policies-roadmap.md`](policies-roadmap.md) (future) —
   детальная спецификация DecayPolicy / WritePolicy / SpeakerScopePolicy
   с диапазонами и defaults.
 - [`guides/compaction-roadmap.md`](compaction-roadmap.md) (future) —
   `CompactionWorker`, job types, handoff structure.
 - [`guides/runtime-services-roadmap.md`](runtime-services-roadmap.md) (future) —
-  PromptPrefixCache + optional ResponseCache, AsyncIndexer, WriteGate.
+  AsyncIndexer, WriteGate and the host LLM cache boundary.
 - [`guides/cli-roadmap.md`](cli-roadmap.md) (future) —
   `agent-memory-cli` target (inspect / stats / check / vacuum / reindex /
   profile-info / profile-migrate).

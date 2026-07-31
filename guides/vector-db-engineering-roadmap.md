@@ -281,6 +281,7 @@ Decision sub-matrix внутри §8:
 - [`optimization-roadmap.md`](optimization-roadmap.md) — vector math baseline, optional Eigen adapter, SIMD dispatch (SSE4.2 / AVX2 / AVX-512), `HammingTopK` kernel, encoder registry, `DenseIndexMode` (Exact / BinaryCandidateFilter / BinaryOnly / ApproximateVector / Hnsw).
 - [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) — typology of retrieval techniques (Naive / Advanced / Hybrid / Contextual / Graph / Fusion / Adaptive / Agentic / RLM); какой retriever поверх какого vector store.
 - [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md) — binarisation landscape (sign / autoencoder / LSH / PQ), SIMD-accelerated distance, hybrid binary + dense, composite compression (MRL + INT8 / PQ / binary).
-- [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §6 — capability matrix; `DenseVectors` capability, `BinaryCandidateFilter` / `Hnsw` mode selection; capability-aware MDBX layout.
+- [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §6 — capability matrix; `DenseVectors` capability, `BinaryCandidateFilter` / `Hnsw` mode selection.
+- [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) §5.5/§5.5.1 — capability-aware physical MDBX manifest and DBI budget.
 - [`related-projects.md`](related-projects.md) — внешние сравнения Vector Store и benchmark suites (если есть).
 - [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadmap.md) — conceptual backbone (prediction ↔ compression equivalence, "7 check-questions for compression quality", "operational > general"); см. §4 «For RAG» и §6 application matrix для понимания, что Vector Store отвечает и за что не отвечает.

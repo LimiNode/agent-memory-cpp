@@ -275,7 +275,7 @@ the source tree, it is tagged as planned.
 | **Raw notes** | §4.1 `raw/`, §4.2 `daily-logs/` | `Note` / `Fact` / `Chunk` units (see `KnowledgeUnitKind` enum in [`knowledge-units-roadmap.md`](knowledge-units-roadmap.md) §2) |
 | **Synthesized wiki** | §4.1 `wiki/`, §4.2 `concepts/`, §4.3 `shared/` + `agent-name/` | `CompiledArticle` kind + `CompiledArticlePayload` |
 | **Index** | All variants | `HybridRetrievalEngine` query; `index.md` is computed from `CompiledArticlePayload.title` + `keywords` projection |
-| **Log + audit** | §4.1 `log.md`, §4.3 `COMPACT-LOG.md` | `wiki_audit_log` DBI (append-only, see §6.10) + `compaction_jobs` DBI (operational state, separate) |
+| **Log + audit** | §4.1 `log.md`, §4.3 `COMPACT-LOG.md` | `wiki_audit_log` DBI (append-only, see §6.10) + shared runtime `jobs_*` DBIs for compaction operational state |
 | **Maintainer cron** | §4.2 daily flush, §4.3 6h cron, §4.4 GitHub Actions | `CompactionWorker` running `SummaryPromotionJob` |
 | **Anti-mусор mechanics** | §4.3 `injection_count` + 60-day archive, weekly compact | `CompiledArticlePayload.injection_count` + `LifecycleState::Deprecated` transition via `ArchiveColdJob` |
 | **Frontmatter `keywords`** | §4.3 | `CompiledArticlePayload.keywords` + `SearchProjection::tags` (see [`lexical-search-roadmap.md`](lexical-search-roadmap.md) §"Projection Build Rules Per ProjectionKind" — `Original.tags`, `Summary.tag`) |
@@ -322,7 +322,8 @@ is a `CompactionWorker` (planned) running jobs:
 
 ```text
 [Daily tick]
-  1. CompactionWorker reads compaction_jobs queue (planned: persistent FIFO).
+  1. CompactionWorker reads the compaction queue (planned: persistent FIFO
+     with priority and leases).
   2. SummaryPromotionJob runs (planned):
        - Find candidate units: usage_count >= threshold, last_decay_score >= threshold.
        - Cluster candidates (by embeddings or fixed N).
@@ -429,8 +430,9 @@ enable_embedding_meta      = true   // track embedding provenance
 enable_compaction          = true   // SummaryPromotionJob requires Compaction
 context_budget             = total_tokens=6000, qa=0, chunk=2000,
                             graph=0, summary=2000, evidence=512
-dense_index_config.mode    = BinaryCandidateFilter  # planned candidate mode
-                            or Hnsw for >100k units
+dense_index_config.mode    = Exact  # required baseline
+                            # BinaryCandidateFilter or Hnsw is an explicit,
+                            # profile-specific override after the exact-baseline gate
 ```
 
 `enable_compaction = true` is a hard requirement: validation rule
@@ -438,7 +440,7 @@ dense_index_config.mode    = BinaryCandidateFilter  # planned candidate mode
 [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §10 row 7) blocks
 `enable_compiled_article = true` if compaction is off.
 
-**Note:** `BinaryCandidateFilter`, `RandomHyperplaneLSH` bucket wiring, and `binary_bucket_index` (MDBX) are NOT yet implemented. `BinarySignature`, `IBinarySignatureEncoder`, and the scalar `RandomHyperplaneBinaryEncoder` baseline exist as lower-level primitives, but this full configuration block is still forward-looking and will fail until dense-index integration lands. Subject to implementation gates per `binary-embeddings-roadmap.md`.
+**Note:** `BinaryCandidateFilter`, `RandomHyperplaneLSH` bucket wiring, and `binary_bucket_index` (MDBX) are NOT yet implemented. `BinarySignature`, `IBinarySignatureEncoder`, and the scalar `RandomHyperplaneBinaryEncoder` baseline exist as lower-level primitives, but this full configuration block is still forward-looking and will fail until dense-index integration lands. A binary or HNSW override is never selected merely by corpus size; it is subject to the profile-specific exact-baseline gate in `binary-embeddings-roadmap.md`.
 
 ### §6.3. Folder / DBI layout
 
@@ -457,7 +459,7 @@ index.md (computed) → generated from CompiledArticlePayload.title + keywords
                      + metadata_filters DBI reverse index on title/keywords
 
 log.md (audit)      → wiki_audit_log DBI (append-only, see §6.10)
-                     + compaction_jobs DBI (operational state, separate)
+                     + shared runtime jobs_* DBIs (compaction operational state)
 
 CLAUDE.md / AGENTS.md → not stored in MDBX; lives in repo or vault
 ```
@@ -474,7 +476,7 @@ When a new raw resource arrives:
 2. IResourceStore adapter ingests raw bytes (see architecture.md
    "Planned Resource Reindexing Direction").
 3. Chunkers split into Chunk units (see chunkers-roadmap.md).
-4. Write units via stack.write_unit(WriteRequest):
+4. Create units via stack.create_or_get_unit(CreateUnitRequest):
      - envelope.kind = Chunk
      - payload = ChunkPayload
      - projections = Original projection
@@ -483,7 +485,9 @@ When a new raw resource arrives:
      - Schema validation
      - LifecycleState = Active
      - CompactionMetaComponent.dirty_decay = true
-     - knowledge_units_by_kind update
+     - content_key_to_unit_id update
+     - scope-aware knowledge_units_by_kind update
+     - source_refs update if FullSourceRefs profile is enabled
      - If dirty threshold reached → enqueue DecayJob
 6. MultiTableWriter commits atomically.
 ```
@@ -558,26 +562,26 @@ on-demand.
 
 ### §6.9. Prompt caching for synthesis
 
-Synthesis prompts (raw → article) are large and repetitive. Use
-`PromptPrefixCache` (planned; see
-[`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §13 runtime
-services) to cache the system-prompt prefix across synthesis calls:
+Synthesis prompts (raw → article) are large and repetitive. A host-owned LLM
+integration may cache the system-prompt prefix across synthesis calls; the core
+returns only a provider-neutral context fingerprint/descriptor:
 
 ```text
 cache_key = sha256(system_prompt_prefix + model_id + scope_id)
-hit       = cache_key in prompt_prefix_cache_meta DBI
+hit       = host/provider cache entry
 miss      = full system prompt; cache_key → response_prefix
 ```
 
-`PromptPrefixCache` is scope-aware: cache key includes `scope_id` so two
-projects don't share each other's prompts (see open issue 17.7 in
-[`memory-stacks-roadmap.md`](memory-stacks-roadmap.md)).
+The host cache key must include `scope_id` so two projects do not share prompts.
 
 ### §6.10. Audit log (separate from job queue)
 
 Job queues and audit logs are DIFFERENT substrates:
 
-- **compaction_jobs DBI**: per-job state (queued → running → done → failed). MAY be deleted after retention window. Mutable.
+- **shared runtime `jobs_*` DBIs**: per-job state and ordering for compaction
+  and other runtime workers (`jobs_by_id`, `jobs_scheduled`, `jobs_ready`,
+  `jobs_by_lease`, `jobs_by_status`). Terminal records MAY be pruned after
+  retention window. Mutable.
 - **compaction_handoffs DBI**: technical completion records (which worker, when, what version). Mutable.
 
 For human-reviewable LLM Wiki, **the audit log must be append-only** with:
@@ -652,8 +656,8 @@ the old version. Caused by missing or stale index entries.
   Reindexing Per Projection Kind").
 - Stale-filter via `unit_revision` (planned; see
   [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §17.11):
-  `LexicalPosting.unit_revision < envelope.revision` → skip posting at
-  retrieval time.
+  `LexicalPosting.projection_version != active ProjectionVersionRef` → skip
+  posting at retrieval time.
 
 ### §7.3. Wiki drift / bloat
 
@@ -730,7 +734,7 @@ inherit them.
 
 - This is the same concern Cole Medin flags in his playbook checklist
   ("Настроить PII-фильтрацию (опционально, но рекомендуется)").
-  PII filtering happens upstream of `write_unit`.
+  PII filtering happens upstream of `create_or_get_unit` / `update_unit`.
 - `CompiledArticlePayload.readers` (planned; see
   [`knowledge-units-roadmap.md`](knowledge-units-roadmap.md) §5.6) lets
   you tag articles with audience constraints; downstream retrieval can
@@ -747,7 +751,7 @@ inherit them.
   false` switches to extractive mode (planned; see
   [`compaction-roadmap.md`](compaction-roadmap.md) §4.5).
 - Reduce synthesis cadence: 6h → 24h → weekly.
-- Prompt caching (planned; `PromptPrefixCache`) cuts the per-article
+- Host/provider prompt caching cuts the per-article
   cost by amortising the system-prompt prefix.
 
 ## §8. References

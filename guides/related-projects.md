@@ -8,7 +8,7 @@ agent-memory-cpp — embedded C++17 memory/retrieval engine для AI agents с:
   - MDBX storage.
   - Typed KnowledgeUnits (Chunk / QAPair / Fact / Entity / Relation / Event / Summary / ConversationEpisode / CompiledArticle / Task / Decision).
   - Capability-aware MemoryProfileSpec (BasicRag / AgentLTM / CompiledWiki и др.) с per-stack DBIs.
-  - MDBX-based revision-safe indexes (LexicalPosting.unit_revision).
+  - MDBX-based projection-version-safe indexes (`LexicalPosting.projection_version`).
   - BM25/vector/graph/temporal retrieval с multi-mode dense index (Exact / BinaryCandidateFilter / BinaryOnly / ApproximateVector / Hnsw).
   - Optional encoders (RandomHyperplaneLSH / AutoencoderBinarizer).
   - CompactionWorker с 9 job types.
@@ -37,7 +37,7 @@ Disclaimer:
 |---|---|---|---|
 | mem0 | Python SDK / server | Universal memory layer для AI agents. Multi-level memory, user/session/agent state, hybrid search, BM25, entity extraction, temporal reasoning. | agent-memory-cpp НЕ SDK; C++17 core. mem0 = продукт/обёртка, мы = primitive для embedding. |
 | Letta / MemGPT | Python платформа | Stateful agents с advanced memory + runtime + self-improve. | Letta = agent runtime platform. Мы = memory/retrieval core без agent loop. Потенциальный customer: наш core как storage backend для Letta. |
-| Graphiti / Zep | Python library | Temporal context graphs для AI agents. Bi-temporal facts, provenance/source data, incremental updates, hybrid retrieval. | **Самый близкий конкурент по temporal+provenance части**. Python-only, не embedded. Наша ниша: embedded C++17 с теми же свойствами (TemporalComponent + GraphEdge). |
+| Graphiti / Zep | Python library | Temporal context graphs для AI agents. Bi-temporal facts, provenance/source data, episodes, incremental updates, hybrid retrieval, deterministic-first dedupe. | **Самый близкий конкурент по temporal+provenance части**. Python-only, не embedded. Наша ниша: embedded C++17; current M1 uses `TemporalComponent` + `GraphEdge`, while Graphiti-style bi-temporal semantics are tracked as M2+ AM-13, the optional `TemporalContextGraphMemory` profile is AM-22, and entity-resolution/query-safety lessons are tracked as AM-19..AM-21. |
 | Cognee | Python platform | Self-hosted AI memory platform с persistent long-term memory, knowledge graph, vector embeddings, graph reasoning, ontology generation. | Cognee = Python платформа с UI/ingestion. Мы = storage/retrieval core для embedding в C++ apps. |
 | A-MEM / AgenticMemory | Research prototype | Zettelkasten-style agentic memory: dynamic organization, notes, structured attributes, links, memory evolution. (arXiv:2502.12110) | Research-grade, не production. Inspirational для memory evolution (CompactionWorker + SummaryTreeJob). |
 | LightRAG | Python framework | Dual-level graph + vector RAG (EMNLP 2025). | LightRAG = document RAG framework, не typed agent memory. Совпадает по hybrid retrieval pattern (graph + vector + RRF). |
@@ -45,7 +45,7 @@ Disclaimer:
 | LlamaIndex | Python framework | Document agent + OCR + indices/graphs/retrievers/query engines/reranking. | LlamaIndex = огромный application framework. Совпадает по retriever interface pattern (IRetriever, HybridRetriever). Не конкуренты, разные abstraction levels. |
 | codebase-memory-mcp (research source / pattern donor, не direct competitor) | C static-binary MCP server | Code intelligence через tree-sitter + Hybrid LSP + SQLite-graph (14 MCP tools, ~162 KB pure C). | НЕ direct competitor (different scope: code intelligence, не agent memory). Изучен как pattern donor — 9 конкретных engineering patterns (MinHash + LSH, RotSQ quantization, coverage shadow graph, atomic shared ID, bounded BFS, team-shared artifact, Cypher subset, AC-over-LZ4, adaptive-poll watcher). См. детали и приоритеты в [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md). License: MIT. |
 
-## 3. Sister library references (C++ engineering inspiration)
+## 3. Sister library / adapter references
 
 | Project | Что у нас похожего | Что можно позаимствовать |
 |---|---|---|
@@ -54,6 +54,8 @@ Disclaimer:
 | USearch | IDenseIndex + binary signatures + SIMD HammingTopK strategy. | C++ HNSW + SIMD opt + binary Tanimoto/Sørensen similarities. Reference для Eigen/SIMD стратегии (AVX2/AVX-512 POPCNT). Disk-backed index experiments. |
 | sqlite-vec | Embedded-C++ static library + vector search. Pure C, no deps, float/int8/binary. | Reference для embedded-архитектуры: vector search без external DB server. |
 | Tantivy (Rust) | BM25 search, embedded-first. | Tokenization design, BM25 scoring. Cross-implementation reference для BM25 correctness. |
+| Argos Translate | Optional cross-lingual ingestion/retrieval adapter. | Offline package identity, model digest provenance and pivot path tracking for `TranslatedCanonical` projections. No Python dependency in core. |
+| Gigatoken | High-throughput language-model tokenization and raw file tokenization pipeline. | Pattern donor for tokenizer-aware ingestion: file/bytes sources, compression, document boundaries, safe chunk splitting, persistent worker caches, and ingestion throughput benchmarks. No Rust/Python dependency in core. |
 
 ## 4. C++ embeddable memory stores (architectural reference)
 
@@ -96,7 +98,7 @@ Disclaimer:
 
 ## 6. Architecture inspiration notes (что позаимствовать из каждого)
 
-- **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until). Мы уже делаем через TemporalComponent + GraphEdge с weight/last_used_at/valid_until_ms.
+- **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until), episodes as source evidence, deterministic-first entity/edge dedupe and hybrid semantic+keyword+graph retrieval. Current M1 design has single-axis `TemporalComponent` + `GraphEdge`; Graphiti-style valid-time/recorded-time semantics are planned in [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md) AM-13, with AM-19..AM-22 covering entity resolution, typed query/MCP safety, logical index separation and the optional temporal-context-graph profile/evaluation lane.
 - **Cognee**: knowledge graph + community detection для "global questions". У нас CommunitySummaryJob (M2+, GraphRAG-style).
 - **mem0**: explicit fact extraction с slot-based QA retrieval. У нас QALookup slot в QAKB profile.
 - **Letta / MemGPT**: agent context block architecture (Persona + Memory + Recent). У нас ContextBlock / Context через ContextBuilder.
@@ -107,11 +109,35 @@ Disclaimer:
 - **USearch**: SIMD-first design для binary embeddings (HammingTopK kernel).
 - **DuckDB / SQLite-vec**: "single-file DB as library" deployment model — мы тоже.
 - **Tantivy**: BM25 tokenization edge-cases (Cyrillic, CJK, identifiers in code).
+- **Argos Translate**: offline translation package/pivot semantics for optional
+  `ITranslationAdapter` and `TranslationProjectionMeta`; see
+  [`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
+- **Gigatoken**: tokenizer-aware raw ingestion pipeline and benchmark hygiene;
+  see [`chunkers-roadmap.md`](chunkers-roadmap.md) §10 and
+  [`experiments/2026-07-27-gigatoken-tokenization-reference.md`](experiments/2026-07-27-gigatoken-tokenization-reference.md).
+- **Memory for Autonomous LLM Agents survey**: write/manage/read lifecycle,
+  contradiction handling, privacy/deletion correctness and evaluation beyond
+  static Recall@K; see
+  [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md).
+- **Mem0**: entity linking, multi-signal retrieval, temporal retrieval and
+  memory benchmark axes; useful as a comparison target, but its ADD-only public
+  direction becomes a selectable `MemoryMutationPolicy`, not our universal
+  storage rule.
+- **ToM-SWE / Mind Modeling / MetaMind / Archon-style workflow sources**:
+  useful for ADELIA and runtime layers; core `agent-memory-cpp` stores
+  evidence and derived units, not application-owned mental models or workflow
+  engines.
 
 ## 7. Open questions / roadmap items (из конкурентного анализа)
 
 - M1: как наши MemoryStacks сравниваются с mem0/Cognee/Zep real-world performance на их test datasets?
 - M2: Bi-temporal knowledge graph (Graphiti-style edge-level TTL) — нужен ли отдельный edge-level TTL job? (deferred M2+)
+- M2+: Lifecycle governance AM-13..AM-18 — map bi-temporal validity,
+  derivation/causal relations, progressive retrieval and mutation policy to
+  concrete profile deltas and DBI budget before implementation.
+- M2+: Graphiti/Zep follow-ups AM-19..AM-22 — entity-resolution fixtures,
+  typed MCP/tool filter tests, logical-index separation and temporal-context-
+  graph comparison parity before claiming Graphiti-style production readiness.
 - M2: Community detection (Leiden/Louvain) для CommunitySummaryJob — брать готовую C++ библиотеку или своя реализация? (deferred M2+)
 - M2: SPLADE / ColBERT adapters — пробовать интегрировать готовые реализации или LLM-distilled sparse vectors?
 - M3: Distributed scope routing — у mem0 и Zep это multi-tenant. У нас пока single-process. (out of scope, research)
@@ -125,6 +151,9 @@ Disclaimer:
 - guides/optimization-roadmap.md — retrieval/index engineering.
 - guides/knowledge-base-roadmap.md — retrieval + eval pipeline.
 - guides/lexical-search-roadmap.md — BM25F + projections + Cyrillic morphology.
+- guides/translation-adapters-roadmap.md — optional cross-lingual projections.
+- guides/memory-lifecycle-governance-roadmap.md — Graphiti-inspired temporal
+  context graph, entity resolution and typed query safety roadmap.
 - ai-agent-playbook/concepts/ — общий агентский knowledge base (СВИНОПАС, Anna_AI, GraphRAG и др.).
 
 ## 9. External references
@@ -155,3 +184,5 @@ Disclaimer:
 
 ### Research source / pattern donor (not a direct competitor):
 - codebase-memory-mcp: https://github.com/DeusData/codebase-memory-mcp (MIT; 9 patterns extracted in [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md))
+- Argos Translate: https://github.com/argosopentech/argos-translate
+- Gigatoken: https://github.com/marcelroed/gigatoken

@@ -10,7 +10,8 @@ primitives in `agent-memory-cpp`. It concretizes **Layer 2** of
 [`guides/memory-stacks-roadmap.md`](memory-stacks-roadmap.md), defining how the
 storage-shape primitives used by retrieval (dense vectors, binary signatures,
 reverse indexes) are organized under the component architecture
-(Envelope + Components + SearchProjections), the capability-aware MDBX layout,
+(Envelope + Components + SearchProjections), the capability-aware physical MDBX
+manifest from [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md),
 the multi-projection / multi-model embedding model (ADR-007), and the
 scope-aware multi-tenancy rule (ADR-012).
 
@@ -26,6 +27,30 @@ Non-goals of this document:
 
 See [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadmap.md) for the conceptual backbone (prediction ↔ compression, "7 check-questions for compression quality", why operational details > general patterns) and [`vector-db-engineering-roadmap.md`](vector-db-engineering-roadmap.md) for the operational decision matrix (Chroma / Qdrant / Milvus / Pinecone / Weaviate across 8 attributes).
 
+## Optimization Decision
+
+Optimization is justified by a measured deployment constraint, not by a
+preference for compact formats. The relevant constraints are corpus size versus
+available RAM, cold-start time, page-fault/read amplification, SSD and backup
+budget, p99 retrieval latency, ingestion/update churn, and the operational cost
+of requiring an external vector service.
+
+For a small corpus whose float or HNSW working set fits comfortably in RAM, the
+baseline wins unless a benchmark proves otherwise. Compressed bucket segments
+are for the local-first, disk-conscious case: a large mostly-read corpus,
+targeted resource updates, bounded candidate/rerank work, and a need to retain
+canonical provenance in the same portable workspace. They are deliberately a
+poor fit for unbounded random graph traversal or a highly write-churned
+collection.
+
+Every proposed codec/index mode must compare against the simplest viable
+baseline on the same corpus and hardware. Promotion requires a documented
+improvement in at least one deployment constraint without unacceptable loss of
+final reranked quality or update/recovery behavior. `float32 -> Zstd` alone is
+not a storage strategy: vector compression begins with a versioned numeric or
+binary codec and applies block compression only when representative data shows
+that it helps.
+
 ## Core Rules
 
 - Keep `Embedding` as `std::vector<float>` in the public contract.
@@ -38,14 +63,15 @@ See [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadm
 - Treat binary signatures as candidate filters, not as final ranking truth.
 - Measure approximate search quality by recall and latency against an exact
   float baseline.
-- Dense vector storage is keyed by `(scope_id, model_id, projection_kind,
-  unit_id)`; binary bucket keys by `(scope_id, projection_kind, short_key)`
-  when DenseVectors is enabled. If only BM25F without dense vectors is used,
-  the projection_kind component is optional and keys may collapse to scope-only.
+- Dense vector storage is keyed by `(scope_id, model_id, model_version,
+  projection_kind, unit_id)`; a binary bucket key is descriptor-scoped by
+  `(scope_id, model_id, model_version, projection_kind,
+  descriptor_fingerprint, key_projection_id, short_key)`. A BM25F-only profile
+  does not open a binary bucket index.
 - All secondary indexes are scope-aware: every key begins with `scope_id`.
 - Multi-projection and multi-model embeddings live side by side in the same
-  `embedding_vectors` DBI, addressed by `projection_kind` and `model_id`
-  respectively.
+  `embedding_vectors` DBI, addressed by `projection_kind`, `model_id`, and
+  immutable `model_version` respectively.
 
 ## Near-Term Tasks
 
@@ -311,6 +337,39 @@ AGENT_MEMORY_HAS_ZSTD
 - Add tests that verify round-trip content, uncompressed hash, codec metadata,
   and missing-dictionary failures.
 
+### Raw Resource Body Compression
+
+Raw resources (`.md`, `.txt`, extracted `.pdf`, transcripts, logs) are a
+separate compression domain from embeddings, postings and generated summaries.
+The roadmap target is to support both:
+
+- MDBX-backed `ResourceBodyStore`, where body chunks live in primary blob/body
+  tables and are referenced by `ResourceId` / `SourceRef`;
+- file-pack storage, where the original folder layout can be preserved and
+  files are replaced or mirrored by compressed container artifacts that require
+  an application viewer/exporter.
+
+Resource-body compression contract:
+
+- compression unit is a bounded body chunk, not the entire corpus;
+- each body or chunk records `codec`, `codec_level`, `dictionary_id`,
+  `uncompressed_size`, `uncompressed_hash`, content type and source revision;
+- chunk boundaries should align with ingestion/chunking offsets when feasible
+  so citation drill-down does not decompress unrelated text;
+- reverse indexes, posting lists and relation indexes store ids/ranges only,
+  never inline body bytes;
+- raw body storage is optional profile delta and must be accounted for in
+  `mdbx-containers-extension-tz.md` §5.5.1 when MDBX-backed.
+
+Benchmarks before enabling compression by default:
+
+- compression ratio by source type (`md`, `txt`, extracted `pdf`, transcript,
+  logs);
+- random chunk read latency;
+- full resource restore/export latency;
+- write amplification during replace/revision updates;
+- dictionary training benefit vs operational complexity.
+
 ## Vector Encoding Tasks
 
 ### Canonical Float Storage
@@ -397,7 +456,11 @@ class ProductQuantizationCodec final : public IEmbeddingCodec {
 Storage: 768 × 4 bytes → 8 × 1 byte = ~96x compression.
 Distance: asymmetric ADC (approximate distance computation).
 
-Применение: cold storage tier (архивные embeddings), не hot retrieval.
+PQ has three distinct planned uses: archival payload storage, direct ADC
+scoring for a bounded intermediate rerank, and a future IVF-PQ candidate mode.
+They have different latency/recall contracts and must not be collapsed into one
+generic "PQ enabled" switch. The first direct-ADC use remains M2+ and is
+benchmark-gated against raw quantized and exact-float rerank.
 
 ## Projection-Aware Vector Storage
 
@@ -411,7 +474,7 @@ The `embedding_vectors` DBI is keyed accordingly:
 
 ```text
 embedding_vectors
-    key   = (scope_id, model_id, ProjectionKind, UnitId)
+    key   = (scope_id, model_id, model_version, ProjectionKind, UnitId)
     value = vector_blob  (float32, optionally compressed)
 ```
 
@@ -420,11 +483,37 @@ compaction state:
 
 ```text
 embedding_meta
-    key   = (scope_id, UnitId, ProjectionKind, model_id, version)
-    value = EmbeddingMetaComponent
-            { model_id, version, dim, encoder_id, seed,
-              written_at_ms, is_active, superseded_by_revision }
+    key   = (scope_id, model_id, model_version, ProjectionKind, UnitId)
+    value = EmbeddingProjectionMeta
+            { projection_version, model_descriptor_fingerprint,
+              vector_codec_descriptor_fingerprint, dim, encoder_id,
+              written_at_ms, is_active }
 ```
+
+### Immutable Derived Vector Blob Deduplication (M2)
+
+M1 may store `vector_blob` inline in `embedding_vectors`. M2 may replace the
+value with an immutable `DerivedVectorBlobRef` and store the encoded bytes once:
+
+```text
+derived_vector_blobs
+    key   = (dedup_namespace, projection_bytes_digest,
+             preprocessing_descriptor_digest, model_descriptor_digest,
+             metric, dimension, vector_codec_descriptor_digest)
+    value = immutable encoded vector payload
+
+embedding_vectors
+    key   = (scope_id, model_id, model_version, ProjectionKind, UnitId)
+    value = DerivedVectorBlobRef or inline vector_blob
+```
+
+The default `dedup_namespace` is scope-local; sharing across scopes requires an
+explicit trusted-workspace policy so equality of private content is not exposed
+as a side channel. A shared blob is only a rebuildable byte optimisation. Each
+projection keeps its own `EmbeddingProjectionMeta`, active revision, lifecycle,
+authority and provenance binding. Compaction reclaims a blob only after no
+active, retained-revision, export, or in-flight manifest reference can resolve
+it; mutable reference counts are advisory rather than the source of truth.
 
 ### Multi-Projection Example
 
@@ -483,22 +572,27 @@ The RRF fusion (or weighted alternative) is implemented in the retrieval layer
 (`retrieval/`) over per-(model, projection) candidate lists produced by
 `IEmbeddingStore`.
 
-### EmbeddingMeta Component
+### Embedding Projection Metadata
 
-`EmbeddingMetaComponent` (per `memory-stacks-roadmap.md` Section 12.2) carries
-metadata that lets the retrieval layer pick the right embedding at query time:
+`EmbeddingProjectionMeta` is defined canonically in
+[`knowledge-base-roadmap.md`](knowledge-base-roadmap.md). It is the sole
+authoritative dense metadata row for one exact projection/model tuple, not a
+unit component. This storage view adds physical vector details only:
 
 ```text
-EmbeddingMetaComponent {
+EmbeddingProjectionMeta {
+    ProjectionVersionRef projection_version;
     ProjectionKind projection_kind;
     std::string    model_id;
-    std::string    version;
+    std::string    model_version;
     std::uint32_t  dim;
     std::string    encoder_id;
     std::uint64_t  seed;
+    std::string    model_descriptor_fingerprint;
+    std::string    vector_codec_descriptor_fingerprint;
     std::int64_t   written_at_ms;
     bool           is_active;             // false during migration
-    std::uint32_t  superseded_by_revision; // 0 if active
+    std::uint32_t  superseded_by_projection_revision; // 0 if active
 }
 ```
 
@@ -510,9 +604,12 @@ Two embeddings with the same `(scope_id, unit_id)` but different
 - For a given `(scope_id, unit_id, projection_kind)`, at most one row per
   `model_id` has `is_active == true`. Older revisions may persist until
   compaction purge.
-- A read that requests a `projection_kind` with no `is_active` row falls back
-  to the most recent `is_active` sibling of the same unit, or returns an empty
-  vector if none exists.
+- A read for an exact `(scope_id, model_id, model_version, projection_kind,
+  unit_id)`
+  returns that active row or `NotFound`. It never falls back to
+  another projection kind or model sibling. Explicit recovery routes use
+  `DenseProjectionRoute` in `RetrievalPlan` and are recorded in
+  `RetrievalTrace`.
 - Cross-model fusion requires at least two `is_active` rows from different
   `model_id` values within the same `(scope_id, projection_kind)`.
 
@@ -538,7 +635,7 @@ struct EmbeddingRecomputeJob final {
 ```
 
 Progress is reported through `compaction_handoffs` (see
-`memory-stacks-roadmap.md` Section 12.4 and `compaction-roadmap.md`). The
+`mdbx-containers-extension-tz.md` §5.5.1 and `compaction-roadmap.md`). The
 handoff payload includes the recomputed `(unit_id, projection_kind)` count, the
 target `version`, and a recovery token for crash-safe resume.
 
@@ -550,8 +647,10 @@ The job recomputes one embedding per `(unit_id, projection_kind)` it owns:
 for each (unit_id, projection_kind) in scope:
     fetch SearchProjection[projection_kind] for unit_id
     embed it with the target model
-    write new embedding_meta row with version = new_version, is_active = true
+    write new embedding_meta row with model version = new_version, fresh unit/
+        projection tokens, and is_active = true
     write new embedding_vectors row keyed by (scope_id, target_model_id,
+                                              target_model_version,
                                               projection_kind, unit_id)
 ```
 
@@ -563,8 +662,8 @@ other projections. Migration cost scales with the chosen subset.
 Old rows remain in `embedding_meta` and `embedding_vectors` until compaction
 purge. Their state is:
 
-- `EmbeddingMetaComponent::is_active = false`.
-- `EmbeddingMetaComponent::superseded_by_revision = new_version`.
+- `EmbeddingProjectionMeta::is_active = false`.
+- `EmbeddingProjectionMeta::superseded_by_revision = new_version`.
 
 The retrieval layer still sees them, but with `is_active = false` they are not
 fused into the primary candidate list unless explicitly requested (for A/B
@@ -756,6 +855,88 @@ mixed bits
 
 See [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) for MinHash near-clone detection (Pattern 1) and RaBitQ-style RotSQ (Pattern 2) borrowed from codebase-memory-mcp — these augment, not replace, the Hamming-based binary bucket index defined below.
 
+### Ownership and Stable Contract
+
+`agent-memory-cpp` owns the binary bucket index as a derived retrieval
+projection. Its canonical record is a `KnowledgeUnit` projection and its
+canonical vector identity remains `(scope_id, unit_id, projection_kind,
+model_id, model_version)`. A bucket posting, vector-backend record id, block
+slot, short key, or full binary signature is never a durable application
+identity and never replaces provenance, lifecycle, or active-revision checks.
+
+The persistent application-level index must have one versioned descriptor per
+logical dense collection. It is written before a generation is published and
+is validated before a writer or reader uses its buckets:
+
+```cpp
+// Proposed application contract -- not implemented.
+struct BinaryBucketKeyProjectionDescriptor {
+    std::string projection_id;
+    std::string projection_config_fingerprint;
+    uint32_t short_key_bit_count = 0;
+};
+
+struct BinaryBucketIndexDescriptor {
+    uint32_t schema_version = 1;
+    std::string descriptor_fingerprint;
+
+    std::string model_id;
+    std::string model_version;
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    std::string similarity_metric;
+    std::string normalization_rule;
+    std::string vector_codec_id;
+    uint32_t vector_codec_version = 1;
+    std::string vector_codec_config_digest;
+    std::string block_compression_codec_id;
+    uint32_t block_compression_codec_version = 1;
+    std::string block_compression_dictionary_digest;
+
+    std::string encoder_id;
+    std::string encoder_config_fingerprint;
+    uint32_t full_signature_bit_count = 0;
+    std::vector<BinaryBucketKeyProjectionDescriptor> key_tables;
+    uint32_t posting_layout_version = 1;
+    uint32_t block_layout_version = 1;
+};
+
+struct BinaryBucketSearchBudget {
+    uint32_t max_bucket_probes = 0;
+    uint32_t max_posting_visits = 0;
+    uint32_t max_unique_candidates = 0;
+    uint32_t max_exact_rerank_candidates = 0;
+};
+```
+
+Every search-budget field is required and must be nonzero for an enabled
+backend; `max_exact_rerank_candidates <= max_unique_candidates <=
+max_posting_visits` is also required. They are hard validation limits, not
+tuning hints. Physical `segment_reads`, cursor seeks, encoded bytes and decoded
+bytes are capped by the shared `RetrievalIoBudget` in
+[`knowledge-base-roadmap.md`](knowledge-base-roadmap.md), so one global I/O
+contract rather than a vector-only duplicate governs a hybrid query.
+The query trace records the actual probe, posting, decode, deduplication and
+rerank counts plus the first exhausted limit. A planner may select a smaller
+budget, but it must not silently exceed the profile maximum. This deliberately
+separates bucket-search depth from `returned_candidate_limit`: the latter is
+the public candidate/output contract, while the former limits the work needed
+to obtain it.
+
+`vector_codec_config_digest` is a digest of the canonical codec configuration:
+for PQ/IVF-PQ it includes trained codebooks, rotation and quantization
+scales/zero-points; for other codecs it includes every score-affecting parameter.
+It participates in `descriptor_fingerprint`. Reader or writer descriptor
+mismatch fails closed: encoded payloads must never be scored against a different
+trained artifact merely because a human-readable codec id/version coincides.
+
+The first durable layout uses exactly one `key_tables` entry. Multiple entries
+are a later multi-index-hashing mode, not an implicit consequence of
+multi-probe: each table has a distinct projection id and config fingerprint;
+candidates are unioned, deduplicated by canonical projection identity, then
+subject to the same global budget. It may be enabled only after a benchmark
+shows its recall gain justifies duplicated postings, write amplification and
+candidate deduplication.
+
 ### In-Memory Prototype
 
 - Build the first binary bucket index in memory, without MDBX and without Zstd.
@@ -774,9 +955,10 @@ See [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) for MinHash n
 
 ```text
 binary_bucket_index:
-    key   = (scope_id, projection_kind, short signature key)
+    key   = (scope_id, model_id, model_version, projection_kind,
+             descriptor_fingerprint, key_projection_id, short signature key)
     value = compressed or uncompressed posting list
-            vector<BinaryBucketPosting> per (scope_id, projection_kind, short_key):
+            vector<BinaryBucketPosting> per descriptor-scoped table/key:
               struct BinaryBucketPosting {
                   KnowledgeUnitId unit_id;          // monotonic uint64_t
                   BinarySignature full_signature;   // 64/128/256 bits
@@ -785,7 +967,7 @@ binary_bucket_index:
               };
 
 embedding_store:
-    key   = (scope_id, model_id, projection_kind, unit_id)
+    key   = (scope_id, model_id, model_version, projection_kind, unit_id)
     value = float32 vector blob or encoded vector blob
 
 unit_store:
@@ -794,17 +976,108 @@ unit_store:
 ```
 
 - Store bucket values as compact posting lists of `BinaryBucketPosting`
-  (`{unit_id, full_signature, unit_revision, optional resource_generation}`).
-  Filter на stale: `skip if posting.unit_revision < envelope.revision`.
+  (`{unit_id, full_signature, projection_version, optional resource_generation}`).
+  Filter on stale: skip unless `posting.projection_version` equals the active version.
 - Keep one-stage bucket values with embedded float vectors as an experimental
   benchmark variant.
 - Prefer sparse MDBX key-value lookup for 64-bit short keys.
 - Treat dense direct-address directories as possible only for small key sizes
   and only after measuring memory cost.
-- When `DenseVectors` is not enabled (BM25F-only profiles), the
-  `projection_kind` component may be omitted from the bucket key, collapsing
-  it to `(scope_id, short signature key)`. This keeps legacy lexical-only
-  stacks on the simpler layout.
+- A binary bucket collection is always model-, projection-, descriptor- and
+  key-projection-specific. A BM25F-only profile does not open this derived
+  dense index rather than weakening its key and risking incompatible encoder
+  or model postings in one bucket.
+
+### Immutable Segment Publication and Compaction
+
+The first durable implementation must not mutate an arbitrary record inside a
+compressed bucket value. It publishes a new immutable delta segment or block,
+then atomically swaps an application-owned active-generation manifest. A
+manifest names the descriptor fingerprint, active generation, immutable
+segment/block ids, and the source/resource generations it covers. The old
+manifest stays readable until the new one is fully published.
+
+```text
+write/reindex projection
+    -> write new derived vector record and bucket delta segments
+    -> validate descriptor and bounded encoded sizes
+    -> atomically publish active-generation manifest
+    -> readers validate unit/resource revision during hydration
+    -> later compaction merges reachable segments and reclaims tombstones
+```
+
+Deletion and reindexing append a revision-aware tombstone or publish a newer
+generation; they do not require an in-place deletion from a compressed block.
+Interrupted writes may leave unreachable derived segments, but must never make
+an unpublished generation visible. Compaction may reclaim only segments that
+are unreachable from the active manifest and no longer protected by a retained
+revision/export snapshot. This is application lifecycle logic, not a generic
+`mdbx-containers` API requirement.
+
+### Columnar Segment Codec Candidates (M2+ Experimental)
+
+An immutable bucket segment may have different codecs for different columns.
+It is not a single opaque `Zstd(bucket)` blob. The application-owned segment
+header records the layout version, record count, per-column codec ids/versions,
+encoded and decoded sizes, descriptor fingerprint, optional dictionary digest,
+and a digest of the decoded logical contents. All size arithmetic is checked;
+unknown codecs, missing dictionaries, excessive decoded sizes and corrupt
+column offsets fail closed.
+
+```text
+[segment header]
+[canonical projection ids / local-id map]
+[unit/resource revision and locator metadata]
+[fixed-width full binary signatures]
+[optional quantized or PQ vector payload]
+```
+
+The planned column rules are deliberately asymmetric:
+
+- Sorted local record ids may use `uint64` base + bounded `uint32` deltas,
+  then delta/bit packing. A block that cannot safely use the narrow delta
+  representation uses a versioned 64-bit or VByte fallback; compression must
+  never truncate a durable id.
+- Repeated resource ids, revisions, flags, token counts and text offsets are
+  candidates for a local dictionary, RLE, delta coding and bounded integer
+  packing. A record order is chosen per segment; if sorting by id would destroy
+  useful vector locality, the local-id map is a separate compressed column
+  rather than a reason to silently reorder payload semantics.
+- Full binary signatures remain raw fixed-width words, aligned for XOR/popcount
+  scans. General integer/Zstd codecs are not applied to the Hamming hot path.
+- Quantized payloads use their native representation first: raw `int8`,
+  fixed-width packed `int4`/`int6`, or PQ codes. Applying a generic integer
+  compressor after an already full-range `int8` payload is not presumed useful.
+
+`FrameOfReferenceResidual` is a separate experimental payload codec: for a
+bounded, coherent segment it stores a centroid or base, scale groups and
+columnar quantized residuals. A SIMD-BP128/FastPFOR-style kernel may then pack
+fixed-size residual groups. LSH/binary-bucket co-membership does **not** prove
+small per-coordinate residuals, so this codec is selected only after measuring
+residual-width histograms and final retrieval quality on representative data.
+It competes with fixed-width int4/int6 and PQ; it is not an automatic second
+compression pass after int8 quantization.
+
+`transpose -> byte/bit shuffle -> Zstd` is allowed only as a cold-block variant
+for typed numeric columns when its descriptor records the transform and the
+benchmark proves an end-to-end benefit. It may improve compression of similar
+floating-point/residual bytes, but it introduces decode work and is not the
+default hot rerank format. A trained Zstd dictionary is likewise optional: its
+content digest is part of the descriptor, it is suitable only for stable,
+repetitive serialized data, and it must be compared with no-dictionary Zstd.
+
+The first implementation can use a small dependency-free codec or an optional
+adapter around a proven integer-packing library. `simdcomp` is a useful
+reference for 128-value integer blocks and tail handling, but it is not a core
+dependency or a promise that one external layout defines our durable format.
+
+Acceptance requires a corpus with random, coherent and deliberately
+heterogeneous buckets. Report per-column and total encoded bytes, compression
+and decode throughput, p50/p95/p99 end-to-end query latency, decoded bytes,
+candidate/reranked recall, residual-width distribution, write amplification,
+compaction cost, cold reopen and corrupt-header/dictionary-negative tests.
+The codec is promoted only if it improves the measured deployment frontier over
+plain int8, fixed-width packed quantization and PQ on the same hardware.
 
 ### Mutable Bucket Updates
 
@@ -827,19 +1100,104 @@ query text
     -> query embedding
     -> projection_kind filter (Original, DenseContextual, ...)
     -> full binary signature
-    -> short key
-    -> neighbor keys by short Hamming radius
-    -> bucket lookups (scope_id, projection_kind, short_key)
-    -> decode/decompress posting lists
+    -> descriptor compatibility validation
+    -> one short key per enabled table
+    -> bounded neighbor-key probes by BinaryBucketSearchBudget
+    -> descriptor/table-scoped bucket and segment lookups
+    -> bounded decode/decompression of posting lists
     -> full-signature Hamming filter
-    -> unique unit ids
-    -> batch fetch float embeddings for the requested (model_id, projection_kind)
+    -> intersect pushdown-safe CandidateSet
+    -> unique canonical projection ids
+    -> optional direct score over encoded int8/PQ/RotSQ payloads
+    -> bounded lossless float32 exact rerank for the requested
+       (model_id, model_version, projection_kind)
     -> optional cross-model RRF
-    -> exact rerank
-    -> fetch unit text
+    -> canonical hydration, active-revision and provenance validation
+    -> optional host-owned model rerank over validated snippets
+    -> fetch context text
 ```
 
-Float rerank remains mandatory for quality-sensitive retrieval.
+Float32 or another lossless canonical vector representation is the only
+ground-truth `exact` rerank. A full scan over float16 is useful, but is an
+encoded approximate rerank and must be traced and benchmarked as
+`full_stored_vector_rerank`, not as exact parity. `BinaryOnly` and other
+compact-only modes must explicitly opt into their lower-quality contract rather
+than silently inheriting the quality-sensitive profile.
+
+### Tiered Encoded Rerank (M2)
+
+```cpp
+struct TieredRerankBudget {
+    std::uint32_t max_binary_candidates = 0;
+    std::uint32_t max_quantized_candidates = 0;
+    std::uint32_t max_exact_candidates = 0;
+    std::uint32_t max_host_model_rerank_candidates = 0;
+};
+```
+
+The required ordering is `host-model <= exact <= quantized <= binary`; each
+nonzero stage is bounded by its preceding stage and by `CandidateSet` plus
+`RetrievalIoBudget`. An encoded vector codec may advertise direct batch scoring
+only when it can score the configured metric from its payload without silently
+materializing one full `Embedding` per candidate. The capability records metric,
+normalization, codec/version and score semantics; unsupported codecs skip this
+stage and proceed to exact rerank. PQ ADC, int8 dot/cosine, and RotSQ-style
+scores are competing candidates, not a mandatory codec chain.
+
+The optional final model rerank is a host-provided adapter over already
+hydrated, policy-valid snippets. The core validates its budget and traces its
+input/output but neither embeds a cross-encoder nor makes external inference a
+library dependency. Benchmarks compare every enabled tier with the exact
+per-projection baseline and report stage survivor counts, direct-score time,
+decoded bytes, recall and final answer/citation quality.
+
+The returned `VectorHit` remains only a candidate. The retrieval engine
+hydrates the active envelope/payload, validates scope, lifecycle, authority,
+`unit_revision`, optional resource generation, and provenance before context
+construction. A stale or inaccessible canonical record is dropped rather than
+being surfaced because its derived bucket posting was fast to read.
+
+### QAPair Projection Blocks (M2+ Experimental)
+
+QAPair acceleration is projection-first, not a special vector-record schema.
+The primary collection/block slice is `QAQuestion`; it holds question
+signatures and quantized/full vectors keyed by the existing canonical
+projection identity. `QAAnswer` may have a separate collection for an explicit
+candidate route or remain a cold second-stage payload read only for the bounded
+question candidates. `QACombined` is a third, separately benchmarked slice;
+it is not a replacement for the question slice.
+
+The physical layout follows the existing columnar segment contract:
+
+```text
+[projection-id or local-id map]
+[unit revision and optional resource-generation metadata]
+[question/answer/combined signature column]
+[corresponding quantized or exact vector payload]
+[optional compact locator/answer-body reference]
+```
+
+Blocks are compatible only within one `(scope, model, model version,
+projection kind, descriptor fingerprint)` slice. A write-time locality key such
+as language, source, topic cluster or embedding model may improve packing,
+dictionary/RLE effectiveness and cold reads, but is never an implicit query
+filter or a durable semantic identity. An explicit user/profile filter remains
+part of the retrieval plan and is applied independently of physical placement.
+
+Question, answer and combined binary routes may each have one or more
+descriptor-scoped bucket indexes, but their postings refer to the same
+application-owned projection identities. They do not create extra canonical
+QAPair records or three mandatory copies of an embedding. Exact answer-vector
+sharing is an optional storage optimisation only when the derived projection
+bytes and complete model/codec descriptor are identical; provenance and
+lifecycle checks still happen per QAPair during hydration.
+
+The QA benchmark matrix must compare question-only, question plus bounded
+answer rerank, and any enabled combined route against exact per-projection
+baselines. It reports answer-vector reads, decoded bytes, p50/p95/p99 latency,
+recall, final QA answer quality, citation fidelity, and disk/write amplification
+alongside the general vector metrics. A more compact block format is not a
+promotion criterion when it harms the calibrated QA retrieval frontier.
 
 ### Encoder Registry и Versioning
 
@@ -953,7 +1311,7 @@ See [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) for den
 ```cpp
 enum class DenseIndexMode : uint8_t {
     Exact = 0,                      // brute-force float cosine, ground truth
-    BinaryCandidateFilter = 1,      // binary filter + float rerank (M1 default)
+    BinaryCandidateFilter = 1,      // optional M1 experiment; binary filter + float rerank
     BinaryOnly = 2,                 // binary only, Hamming ranking (M2 experimental/compact)
     ApproximateVector = 3,          // binary + decoder → approx vector → rerank (M2 experimental)
     Hnsw = 4,                       // M2+ experimental ANN backend
@@ -991,8 +1349,8 @@ class ApproximateVectorIndex final : public IDenseIndex {
 
 // 5. HNSW graph ANN. Mainline M2+ backend.
 class HnswVectorIndex final : public IDenseIndex {
-    // M-level proximity graph, greedy traversal на верхних уровнях,
-    // beam search на нижних. O(log N) average search complexity.
+    // M-level proximity graph, greedy traversal on upper levels,
+    // beam search on lower levels. Query cost is benchmarked, not guaranteed.
     // Storage: graph edges adjacency + nodes array.
 };
 ```
@@ -1054,7 +1412,7 @@ encoder registry. Полная таблица sizes — см. §"Eigen и SIMD �
 Значения нормированы против `Recall@10(ExactVectorIndex) = 1.00`:
 
 ```text
-ExactVectorIndex:                            = 1.00 (baseline).
+ExactVectorIndex:                            = 1.00 (M1a required baseline and ground truth).
 
 BinaryCandidateFilter + RH-64:               >= 0.85 of Exact.
 BinaryCandidateFilter + RH-128:              >= 0.90 of Exact.
@@ -1083,12 +1441,12 @@ Registry и Versioning" остаётся для обратной совмест�
 
 ```text
 BasicRag:           Exact (encoder n/a)
-QAKnowledgeBase:    Exact или BinaryCandidateFilter (RH-128)
-AgentLTM:           BinaryCandidateFilter (AE-128)   // production default
+QAKnowledgeBase:    Exact (BinaryCandidateFilter after benchmark gate)
+AgentLTM:           Exact (BinaryCandidateFilter after benchmark gate)
 SpeakerAwareChat:   Exact (n/a)                       // keyword-heavy
-CompiledWiki:       BinaryCandidateFilter (AE-256)    // quality
+CompiledWiki:       Exact (BinaryCandidateFilter after benchmark gate)
 TemporalFactStore:  Exact (n/a)
-FullResearch:       BinaryCandidateFilter (AE-128)
+FullResearch:       Exact (BinaryCandidateFilter after benchmark gate)
 ```
 
 ### Per-Stack Default Mode: M1 vs M2 Production Candidate
@@ -1098,34 +1456,20 @@ FullResearch:       BinaryCandidateFilter (AE-128)
 | Stack | M1 default | M2 production candidate | Selection criteria |
 |---|---|---|---|
 | BasicRag | Exact | Exact | Small corpus, keyword-heavy, M2 не меняется |
-| QAKnowledgeBase | Exact или BinaryCandidateFilter (RH-128) | HNSW (если corpus > 50k) | Corpus size + filter usage |
-| AgentLTM | BinaryCandidateFilter (AE-128) | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
+| QAKnowledgeBase | Exact | benchmark-selected ANN or BinaryCF | Measured corpus/I/O/filter frontier |
+| AgentLTM | Exact | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
 | SpeakerAwareChat | Exact | Exact | Keyword-heavy, не semantic-heavy |
-| CompiledWiki | BinaryCandidateFilter (AE-256) | HNSW или BinaryCF (AE-256) | Quality priority |
+| CompiledWiki | Exact | HNSW или BinaryCF (AE-256) | Quality priority |
 | TemporalFactStore | Exact | Exact | Smaller corpus, recency-based |
-| FullResearch | BinaryCandidateFilter (AE-128) | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
+| FullResearch | Exact | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
 
-Decision logic (M2):
-  - Filter-heavy query (>50% queries use metadata filter): BinaryCF preferred.
-  - Latency-critical (< 50ms p95): HNSW preferred.
-  - Storage-critical (memory-constrained): BinaryOnly preferred.
-  - Default: HNSW если corpus > 100k units, иначе BinaryCF.
-
-Benchmark-driven choice: profile different stacks per use case через golden dataset.
-
-Решение принимается на основании: corpus size, recall target, hardware
-budget, latency budget. См. §"Quality Targets Per Mode" выше для production
-target values.
-
-Production dense index modes (после M2):
-  Default для AgentLTM/FullResearch: HNSW или BinaryCandidateFilter + AE-128.
-  Default для CompiledWiki: HNSW или BinaryCandidateFilter + AE-256.
-  Default для BasicRag: Exact (small corpus).
-  
-Production trade-off:
-  - HNSW: best quality (>0.97 Recall@10), но graph storage ~20% от vector size.
-  - BinaryCF: ~95% от HNSW quality, меньше storage, лучше для filtered query.
-  - Exact: ground truth, но O(N) latency.
+The table contains bootstrap hypotheses, not automatic production defaults.
+Promotion of HNSW, BinaryCandidateFilter, BinaryOnly or a future ANN backend is
+benchmark-gated per profile against the exact baseline with identical qrels,
+filters, candidate depth, cold/warm I/O mode, hardware, update/delete and
+compaction workload. Reports include recall/nDCG, p50/p95/p99, encoded bytes,
+seeks, RSS, disk footprint and write amplification. Corpus size, a latency goal
+or a generic recall percentage alone never selects a backend.
 
 ### Multi-Mode Migration
 
@@ -1168,6 +1512,18 @@ struct RetrievalPlan {
 Override полезен для A/B evaluation, миграций, debug queries, per-query
 fallback paths.
 
+### SIMD And Bucket Promotion Rule
+
+The preceding bucket and SIMD descriptions are implementation candidates, not
+complexity or throughput guarantees. Any earlier `O(log N)` notation describes
+only an ideal key lookup and not end-to-end candidate retrieval. A bucket lookup
+is only sublinear when its selected key layout, probe policy, and skew
+distribution demonstrate a bounded candidate set on the target workload.
+AVX2/AVX-512 speedup is measured against
+the scalar baseline on each supported CPU and code width; it must include
+dispatch overhead, memory bandwidth, and top-K maintenance. Promotion records
+the measured result rather than carrying forward a fixed multiplier.
+
 ### HNSW Vector Index (M2+ experimental)
 
 Reference: arXiv:1603.09320 — "Efficient and robust approximate nearest neighbor search using Hierarchical Navigable Small World graphs".
@@ -1176,7 +1532,7 @@ Reference: arXiv:1603.09320 — "Efficient and robust approximate nearest neighb
   - M-level proximity graph (обычно M=16, M_max=32 для in-memory).
   - Greedy traversal на верхних уровнях, beam search на нижних.
   - efConstruction (build-time) и efSearch (query-time) параметры.
-  - O(log N) average search complexity.
+  - Sublinear search behavior is a workload hypothesis, not an API guarantee.
 
 Реализация:
   - Custom HnswVectorIndex : IDenseIndex (если есть время и ресурсы).
@@ -1184,19 +1540,27 @@ Reference: arXiv:1603.09320 — "Efficient and robust approximate nearest neighb
   - Storage: edges в adjacency list, nodes в flat array.
 
 Параметры per stack:
-  BasicRag:       usually Exact; HNSW только если corpus > 100k units AND dense retrieval enabled.
-                  Default params (когда используется): HNSW (M=16, efConstruction=100, efSearch=50).
-  AgentLTM:       HNSW (M=32, efConstruction=200, efSearch=100) — quality
-  CompiledWiki:   HNSW (M=32, efConstruction=200, efSearch=100)
-  FullResearch:   HNSW (M=32, efConstruction=200, efSearch=100)
+   All profiles:   optional bootstrap parameters are selected only for a locked
+                   benchmark candidate; no corpus-size threshold enables HNSW.
 
 Storage estimate:
   - 1M units × 768-dim float32: 3 GB (vector) + ~600 MB (graph edges)
   - С quantized vectors: меньше.
 
-Tradeoff vs BinaryCandidateFilter:
-  - HNSW: лучше quality для high-recall (>0.97), random access slow.
-  - BinaryCF: лучше для batch rerank + structured filtering.
+Tradeoff vs BinaryCandidateFilter is workload-dependent: HNSW's random graph
+reads may lose on filter-heavy or cold-storage workloads, while BinaryCF may
+lose recall at the same latency. Both are benchmark candidates, not universal
+quality/storage guarantees.
+
+HNSW is a derived, rebuildable projection over active vector records, never the
+canonical owner of embeddings or lifecycle. An update writes a new
+projection-generation node and tombstones the prior node; delete tombstones all
+nodes for the retired projection. Search filters tombstoned or stale-generation
+nodes before ranking and final canonical hydration revalidates lifecycle,
+revision, scope and authority. A profile defines a dead-node/update-churn
+threshold that triggers rebuild from active projections. Promotion requires
+update/delete/rebuild and post-restart benchmarks in addition to recall and
+latency, so a fast build-only graph is not accepted as a production backend.
 
 See [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md) for binary embeddings (extending PR #29 binary signatures to general semantic-preserving quantizers; XOR + POPCNT SIMD distance; quality vs storage tradeoff at 64/128/256/512 bits per dim).
 
@@ -1295,7 +1659,7 @@ the in-memory baseline.
 
 ```text
 inverted_token_to_unit:
-    key   = (scope_id, token_id, projection_kind, field_id)
+    key   = (scope_id, projection_kind, statistics_epoch, token_id, field_id)
     value = DUPSORT UnitId
     used by:  lexical search (pre-filter for phrase/proximity),
               lexical BM25F fallback when dense is unavailable
@@ -1307,29 +1671,30 @@ metadata_to_resource:
     used by:  MetadataFilter, MetadataInFilter, MetadataTagFilter
 
 field_to_postings:
-    key   = (scope_id, projection_kind, field_id, token_id, unit_id)
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             unit_id)
     value = PostingStats
     used by:  BM25F and fielded sparse retrieval
 
 graph_edges_by_src:
-    key   = (scope_id, from_unit_id, edge_kind, to_unit_id)
-    value = GraphEdgePayload (weight, reason, generation)
+    key   = (scope_id, from_unit_id, edge_kind)
+    value = RelationValue<ToUnitId, GraphEdgePayload> (Relation unit ref,
+            matching edge ID, weight, reason, evidence)
     used by:  IGraphStore::expand, outgoing lookup
 
 graph_edges_by_dst:
-    key   = (scope_id, to_unit_id, edge_kind, from_unit_id)
-    value = GraphEdgePayload (edge_kind, weight, reason, generation)
+    key   = (scope_id, to_unit_id, edge_kind)
+    value = RelationValue<FromUnitId, GraphEdgePayload> (Relation unit ref,
+            matching edge ID, weight, reason, evidence)
     used by:  IRelationStore::incoming, reverse expansion
 
-temporal_event_index:
-    key   = (scope_id, valid_from_ms, valid_until_ms, unit_id)
-    value = empty
+temporal_unit_index:
+    key   = (scope_id, valid_from_ms, unit_id)
+    value = valid_until_ms / compact validity payload
     used by:  ITemporalIndex::range, ITemporalIndex::at
 
-temporal_unit_index:
-    key   = (scope_id, observed_at_ms, unit_id)
-    value = empty
-    used by:  ITemporalIndex::at, observed-at lookup
+Recorded/observed-time indexing is M2+ bi-temporal scope, not part of the M1
+single-axis temporal contract.
 
 speaker_to_units:
     key   = (scope_id, speaker_id, unit_id)
@@ -1341,9 +1706,15 @@ session_to_units:
     value = empty
     used by:  session-scoped retrieval
 
-usage_stats_index:
-    key   = (scope_id, unit_id)
-    value = UsageStatsComponent (copy for fast ranking)
+usage_by_last_access:
+    key   = (scope_id, last_used_at_ms, unit_id)
+    value = empty
+    used by: decay/archive scans
+
+usage_by_cooldown:
+    key   = (scope_id, cooldown_until_ms, unit_id)
+    value = empty
+    used by: cooldown expiry scans
 
 unit_revision_index: optional, M2+
     key   = (scope_id, unit_id, revision)
@@ -1360,20 +1731,21 @@ M0/M1: индексы не создаются; per-posting `unit_revision` check
 M2+: опциональные индексы для batch reindex / debugging.
 
 binary_bucket_index:                     // if DenseVectors
-    key   = (scope_id, projection_kind, short_key)
+    key   = (scope_id, model_id, model_version, projection_kind,
+             descriptor_fingerprint, key_projection_id, short_key)
     value = posting list
             vector<BinaryBucketPosting>:
-              { unit_id, full_signature, unit_revision,
+              { unit_id, full_signature, projection_version,
                 optional resource_generation }
     used by:  binary signature candidate filter
 
-embedding_meta:                          // if EmbeddingMeta or EmbeddingMigration
-    key   = (scope_id, unit_id, projection_kind, model_id, version)
-    value = EmbeddingMetaComponent
+embedding_meta:                          // if DenseVectors or EmbeddingMigration
+    key   = (scope_id, model_id, model_version, projection_kind, unit_id)
+    value = EmbeddingProjectionMeta
     used by:  projection/model selection at retrieval time
 
 embedding_vectors:                       // if DenseVectors
-    key   = (scope_id, model_id, projection_kind, unit_id)
+    key   = (scope_id, model_id, model_version, projection_kind, unit_id)
     value = vector_blob
     used by:  IDenseIndex::search, IDenseIndex::search_multi_model
 ```
@@ -1440,7 +1812,7 @@ Revision filtering (cheap stale-removal) — primary path через
 unit_id matches secondary index lookup (binary_bucket_index, edge indexes, ...)
     -> batch load current envelopes (по KnowledgeUnitId)
     -> для каждого candidate:
-        skip if posting.unit_revision < envelope.revision  // stale signature
+        skip unless posting.projection_version equals the active projection version
         (rare) skip if posting.resource_generation
                 && ResourceManifest.generation differs      // derived record
         else: accept (compute Hamming / score / rank)
@@ -1688,17 +2060,18 @@ add projection-aware benchmarks.
 5. Dependency-free binary signature value types and Hamming distance, with
    `projection_kind` recorded in `BinarySignatureInfo`.
 6. Random-hyperplane binary encoder keyed by
-   `(model_id, projection_kind, dim, seed)`. Compressed float storage
+   `(model_id, model_version, projection_kind, dim, seed)`. Compressed float storage
    benchmark for embedding blobs.
 
 ### Steps 7-9: Binary signature, bucket, and projection layout
 
-7. Short-key generation and Hamming neighbor masks. Bucket key layout is
-   `(scope_id, projection_kind, short_key)`.
+7. Short-key generation and Hamming neighbor masks. Bucket keys are scoped by
+   `(scope_id, model_id, model_version, projection_kind,
+   descriptor_fingerprint, key_projection_id, short_key)`.
 8. In-memory binary bucket index prototype with scope-aware and
    projection-aware buckets.
 9. Recall/latency benchmark against exact float search, run per
-   `(model_id, projection_kind)` slice.
+   `(model_id, model_version, projection_kind)` slice.
    - Keep early binary-code health diagnostics deterministic so regressions are
      reproducible.
    - Add statistical pairwise-distance estimates later, after large dense
@@ -1709,8 +2082,9 @@ add projection-aware benchmarks.
 
 10. Resource manifest contracts for targeted reindexing, scope-aware.
 11. MDBX-backed two-stage bucket storage with
-    `embedding_vectors: (scope_id, model_id, projection_kind, unit_id)` and
-    `binary_bucket_index: (scope_id, projection_kind, short_key)`.
+     `embedding_vectors: (scope_id, model_id, model_version, projection_kind, unit_id)` and
+     descriptor-scoped `binary_bucket_index` keys from §"Binary Bucket Index
+     Tasks", one key projection table initially.
 12. Bucket compression benchmarks and bucket diagnostics.
     - Separate deterministic diagnostics from statistical estimates; do not
       treat a fixed sampled health metric as a confidence-bounded benchmark
@@ -1720,7 +2094,7 @@ add projection-aware benchmarks.
 ### Steps 14-15: Projection-aware benchmarks and one-stage variants
 
 14. Optional Eigen rerank/scoring adapter, applied per
-    `(model_id, projection_kind)` candidate list.
+    `(model_id, model_version, projection_kind)` candidate list.
 15. One-stage bucket benchmark variant, projection-aware matrix, and
     cross-model RRF benchmark when at least two models are present.
 
@@ -1760,9 +2134,10 @@ add projection-aware benchmarks.
     index, the lexical field postings, the embedding store, and the binary
     bucket index in a single transaction. The golden dataset
     (`memory-stacks-roadmap.md` Section 13 ship-it criteria) is run
-    end-to-end and the hybrid lift target (Recall@10 hybrid >= 1.20x
-    BM25-only) is asserted, including the projection-aware and
-    cross-model slices.
+    end-to-end and the profile-specific hybrid non-regression gate against
+    `max(BM25-only, exact-dense)` is asserted, including projection-aware and
+    cross-model slices. Any numerical lift target is reported as a separately
+    approved hypothesis rather than a global acceptance rule.
 
 ### Step 22: Encoder Registry + Autoencoder Binary Encoder (M2 experimental)
 
@@ -1783,7 +2158,7 @@ add projection-aware benchmarks.
 (см. §"Dense Index Modes (Backend Selection)" выше для интерфейсов,
 storage estimates, quality targets и per-stack defaults).
 
-23. **Step 23: BinaryCandidateFilter mode (default production).**
+23. **Step 23: benchmark-gated BinaryCandidateFilter mode.**
     - `IDenseIndex` interface + `DenseIndexMode` enum + `DenseIndexConfig` в
       `MemoryProfileSpec`.
     - `ExactVectorIndex` (brute-force float cosine) реализация + benchmarks
@@ -1850,6 +2225,9 @@ storage estimates, quality targets и per-stack defaults).
       reference vector, dispatch path selection per detected CPU.
 
 27. **Step 27 (M2/M3): HammingTopK kernel.**
+    - SIMD throughput and bucket selectivity are benchmark outputs, not fixed
+      release claims. The report includes the scalar baseline, CPU features,
+      code width, candidate count, memory layout and top-K size.
     - Bucket prefilter → linear Hamming scan → top-K binary heap.
     - AVX2 dispatch: 4-way XOR + popcount (scalar `__builtin_popcountll`
       per lane ИЛИ nibble LUT через `_mm256_shuffle_epi8 + _mm256_sad_epu8`),
@@ -1892,7 +2270,9 @@ storage estimates, quality targets и per-stack defaults).
 29. **Step 29 (M2): HNSW Vector Index (HnswVectorIndex or hnswlib adapter).**
     - 5-й `IDenseIndex` mode (см. §"HNSW Vector Index" выше).
     - Per-stack параметры (M, efConstruction, efSearch) — см. таблицу.
-    - Benchmark vs Exact и BinaryCandidateFilter: Recall@10 ≥ 0.97, latency reduction.
+    - Benchmark versus Exact and BinaryCandidateFilter: recall/nDCG,
+      latency, update/delete churn, tombstone ratio, rebuild cost and restart
+      recovery; thresholds are profile-specific.
     - Tradeoff: graph storage overhead ~20% vs random access latency.
 
 30. **Step 30 (M2): MatryoshkaTruncationCodec.**
@@ -1918,8 +2298,8 @@ storage estimates, quality targets и per-stack defaults).
 - Do not add product quantization before simpler float16/int8/binary
   experiments and exact baselines exist.
 - Do not collapse multi-projection embeddings into a single `(scope_id,
-  unit_id)` key: ADR-007 requires `(scope_id, model_id, projection_kind,
-  unit_id)`.
+  unit_id)` key: ADR-007 requires `(scope_id, model_id, model_version,
+  projection_kind, unit_id)`.
 - Do not skip `scope_id` in any secondary index: ADR-012 mandates
   scope-awareness for multi-tenancy.
 - Do not silently mix embeddings across `projection_kind` values during
@@ -1929,9 +2309,11 @@ storage estimates, quality targets и per-stack defaults).
 
 - [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) — Layer 2 context,
   ADR-007 (multi-projection embeddings), ADR-012 (scope-aware secondary
-  indexes), capability matrix, MDBX layout (Section 12), implementation
+  indexes), capability matrix, implementation
   order (Section 16), open issues (Section 17, especially 17.8 for
   embedding migration).
+- [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) —
+  canonical physical MDBX manifest and DBI budget (§5.5/§5.5.1).
 - [`knowledge-base-roadmap.md`](knowledge-base-roadmap.md) — Envelope +
   retrieval flow that this optimization layer serves.
 - [`lexical-search-roadmap.md`](lexical-search-roadmap.md) — BM25F over

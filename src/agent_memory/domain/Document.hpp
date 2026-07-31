@@ -9,18 +9,23 @@
 #include "Metadata.hpp"
 #include "SourceKind.hpp"
 
-#include <cstddef>
+#include <cstdint>
 #include <string>
 
 namespace agent_memory {
 
-    /// \brief Byte range in the original source text.
+    /// \brief Byte range in legacy document text.
+    ///
+    /// A canonical provenance `SourceRef` additionally binds this primitive to
+    /// a resource revision and evidence anchor. This type remains a reusable
+    /// locational value object for the pre-M0 document API.
     struct TextRange final {
-        std::size_t offset = 0;
-        std::size_t length = 0;
+        std::uint64_t offset = 0;
+        std::uint64_t length = 0;
     };
 
     /// \brief Source document before chunking and indexing.
+    /// \note `id` is globally unique within its storage backend.
     struct Document final {
         DocumentId id;
         SourceKind kind = SourceKind::Unknown;

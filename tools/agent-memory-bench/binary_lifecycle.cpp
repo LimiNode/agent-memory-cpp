@@ -988,9 +988,14 @@ namespace {
             config.returned_candidate_limit
         );
         agent_memory::VectorSimilarityComputer rerank_similarity;
+        const auto rerank_prepare_start = Clock::now();
         const auto document_inverse_norms = make_document_inverse_norms(
             dataset.documents,
             rerank_similarity
+        );
+        const auto rerank_prepare_ms = elapsed_ms(
+            rerank_prepare_start,
+            Clock::now()
         );
 
         agent_memory::ExactVectorIndex exact({
@@ -1151,7 +1156,8 @@ namespace {
         report["query_noise_seed"] = config.query_noise_seed;
         report["timing_ms"] = {
             {"data_generation", data_generation_ms},
-            {"binary_chunk_and_query_encoding", binary_encoding_ms}
+            {"binary_chunk_and_query_encoding", binary_encoding_ms},
+            {"rerank_prepare_ms", rerank_prepare_ms}
         };
         report["exact_vector"] = {
             {"build_ms", exact_build_ms},

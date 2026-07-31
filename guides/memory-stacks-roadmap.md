@@ -2,7 +2,7 @@
 
 > Все C++ сниппеты в этом документе — illustrative C++17 (не designated initializers, не std::span, не std::strong_ordering). Компилируемые примеры — отдельная задача `examples/` при старте реализации.
 
-Центральная спецификация архитектуры памяти `agent-memory-cpp`. Определяет модель данных (envelope + components + projections), декларативную спецификацию профилей, runtime-стек, capability matrix, валидационные правила и MDBX layout. Документ supersede'ит компонент-агностичные части `knowledge-base-roadmap.md` и `knowledge-units-roadmap.md` для разделов, относящихся к profiles/stacks.
+Центральная спецификация архитектуры памяти `agent-memory-cpp`. Определяет модель данных (envelope + components + projections), декларативную спецификацию профилей, runtime-стек, capability matrix, валидационные правила и maturity levels. Единственный canonical physical MDBX manifest и DBI budget живут в `guides/mdbx-containers-extension-tz.md` §5.5/§5.5.1. Документ supersede'ит компонент-агностичные части `knowledge-base-roadmap.md` и `knowledge-units-roadmap.md` для разделов, относящихся к profiles/stacks.
 
 > Research background for the M2+ retrieval-hook contracts
 > (`IQueryTransformer`, `IRetrievalEvaluator`) and for dense-retrieval
@@ -19,6 +19,10 @@
 - Как MDBX environment раскладывается по DBI в зависимости от профиля.
 - Какие уровни зрелости (M0/M1/M2) определяют ship-it критерии.
 - Какие cross-cutting runtime-сервисы ортогональны профилям.
+- Как raw resources (`.md`, `.txt`, extracted `.pdf`, transcripts, logs) живут
+  рядом с normalized/card-like knowledge units.
+- Как optional translation adapters создают canonical-language projections без
+  добавления Python/ML зависимости в C++ core.
 
 Non-goals документа:
 
@@ -46,13 +50,49 @@ Non-goals документа:
 | ADR-010 | MDBX environment | Один env, много DBI. Multi-env — только при обоснованной потребности |
 | ADR-011 | Lifecycle FSM | 4 durable states: Active / Superseded / Deprecated / Erased (SoftSuppressed — runtime state в UsageStatsComponent.cooldown_until_ms) |
 | ADR-012 | Multi-tenancy | Все secondary indexes — scope-aware |
-| ADR-013 | Runtime services | PromptPrefixCache + optional ResponseCache, CompactionWorker, WriteGate, AsyncIndexer — отдельный слой |
+| ADR-013 | Runtime services | CompactionWorker, WriteGate and AsyncIndexer are core-adjacent runtime services; LLM caches are host integrations |
 | ADR-014 | CLI | Отдельный target `agent-memory-cli`, не core library |
 | ADR-015 | Maturity Levels | M0 (MVP) / M1 (Production) / M2 (Advanced) с ship-it критериями |
+| ADR-016 | Raw resources vs normalized units | Raw ResourceBody first-class; card-like KnowledgeUnits are curated derivatives, not mandatory input format |
+| ADR-017 | Translation projections | Original text stays authoritative; translated canonical-language text is an optional derived SearchProjection |
+| ADR-018 | Knowledge activation | One logical corpus with domain maps, playbooks, activation metadata, soft routing, and budgeted context planning |
+| ADR-019 | Agent runtime integration boundary | Memory stores durable cognitive records; runtime owns live cognition and execution |
+| ADR-020 | Perspective orthogonal to Scope | Scope is namespace/ownership; observer/character/authority/partition are components |
+| ADR-021 | Introspection as observation | Node self-report is persisted evidence, not privileged truth |
+| ADR-022 | Causal history first-class | Decisions/actions/outcomes carry direct causes, trace ids and evidence |
+| ADR-023 | Bi-temporal agent knowledge | World validity and runtime knowledge time are distinct M2+/A-lane axes |
+| ADR-024 | Monotonic evidence | Raw observations/events are append-only except explicit erase policy |
+| ADR-025 | Semantic replication | Memory exports/imports records and conflicts; it does not replicate MDBX pages |
+| ADR-026 | Artifact provenance | Source/Revision/Artifact/Representation/Segment, typed evidence anchors, own catalog/blob truth and derived external-vector adapters |
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это extension candidate для `GraphStore` (расширяет capability flag `GraphRelations` поверх substrate из ADR-006 GraphStorage; storage substrate и capability flag — отдельные сущности, не синонимы).
 
 See [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md) for a comparison of 13+ external memory architectures (Karpathy / A-MEM / lifemodel / СВИНОПАС / NOUZ / Self-Evolving / Vault Audit AI / Mem0 / Letta / Zep / Memoria) and their applicability to the in-house stack patterns.
+
+See [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+for M2+ lifecycle governance items: bi-temporal knowledge, abstraction and
+derivation graph, causal relations, progressive retrieval, expanded memory
+evaluation, policy-selectable mutation, deterministic-first entity resolution,
+typed query/MCP safety and logical index separation.
+
+See [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md) for the
+artifact-aware extension of ADR-016: source revisions, immutable original
+bytes, versioned derived representations, typed evidence locations and the
+separate artifact-processing lineage graph.
+
+See [`milestones.md`](milestones.md) for the normative M0/M1/M2 scope lock.
+This roadmap keeps architectural details, but milestone ownership and ship-it
+requirements are resolved by the milestone manifest.
+
+See [`knowledge-activation-roadmap.md`](knowledge-activation-roadmap.md) for
+the knowledge-planning layer: DomainMap, Playbook, CapabilityRegistry, strict
+filters versus soft routing, and activation-specific eval classes.
+
+See [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md)
+for the optional A0-A4 cognitive-runtime integration lane. That lane stores
+durable runtime origin, perspective, causal, task/decision/procedure and
+reconciliation records without adding live scheduling, action execution or
+ADELIA headers to core.
 
 ## 3. ADR-001: Memory Data Model
 
@@ -67,16 +107,18 @@ Layer A: KnowledgeUnitEnvelope (lookup-critical, hot path)
 
 Layer B: Components (operational + per-kind payloads)
   UsageStatsComponent, SpeakerComponent, TemporalComponent,
-  EmbeddingMetaComponent, CompactionMetaComponent,
+  CompactionMetaComponent,
   QAPayload, FactPayload, ConversationEpisodePayload,
   CompiledArticlePayload, ChunkPayload
 
 Layer C: SearchProjections (retrieval-specific text views)
   Original, DenseContextual, Bm25Body/Title/Heading/Symbols,
-  QAQuestion, QAAnswer, Summary, CodeSymbols
+  QAQuestion, QAAnswer, QACombined, Summary, CodeSymbols, TranslatedCanonical
 ```
 
-Каждый слой имеет собственный MDBX layout и обновляется независимо (но атомарно через MultiTableWriter при coordinated writes).
+Каждый слой имеет собственные logical stores и обновляется независимо (но
+атомарно через MultiTableWriter при coordinated writes). Physical MDBX DBI
+names and key shapes закреплены в `mdbx-containers-extension-tz.md` §5.5.
 
 ### 3.2. Обоснование
 
@@ -89,6 +131,101 @@ Layer C: SearchProjections (retrieval-specific text views)
 - Монолитный KnowledgeUnit с 50 optional полями. Отклонён: нарушает инварианты, раздувает I/O.
 - Полностью отдельные storage типы для каждого use-case. Отклонён: дублирование кода, невозможность RRF fusion, нет единого API.
 - JSON-value envelope с произвольными полями. Отклонён: теряем строгие типы C++, schema validation, индексы по typed fields.
+
+## 3A. ADR-016: Raw Resources vs Normalized Units
+
+### 3A.1. Решение
+
+Raw resources являются first-class input/storage layer, а card-like
+`KnowledgeUnit` — normalized/curated layer поверх них. Импорт `.md`, `.txt`,
+extracted `.pdf`, transcript, log или playbook не требует предварительной
+ручной конвертации в карточку. Если вход не содержит curated schema, importer
+создаёт минимальный generic document unit и связывает его с raw body через
+`ResourceId`/`SourceRef`.
+
+```text
+RawResource / ResourceBody
+  original bytes or extracted text, revisions, codec, content hash
+
+KnowledgeUnitEnvelope + Components
+  normalized semantic unit: Fact, QAPair, Note, Chunk, Summary, ...
+
+SearchProjection
+  retrieval-facing text derived from raw body or normalized payload
+```
+
+Card-like units полезны для curated knowledge: trust, tags, outdated flags,
+lifecycle, facts, QA, summaries, decisions and graph relations. Они не являются
+единственным допустимым ingestion format.
+
+### 3A.2. Обоснование
+
+Агенты часто начинают с сырой базы знаний: Obsidian vault, playbooks, markdown
+notes, `.txt` logs, PDF extracts. Требование сначала привести всё к curated
+card schema делает early RAG слишком хрупким. При этом нормализованные units
+нужны для фильтров, trust policy, lifecycle, compaction, graph relations and
+evaluation. Поэтому система поддерживает оба уровня:
+
+- raw resources обеспечивают faithful citation, export, re-chunking and
+  drill-down;
+- normalized units дают controlled semantics and policy hooks;
+- compaction/summarization может позже вывести curated facts/cards/summaries
+  из raw document units.
+
+### 3A.3. Storage boundary
+
+Raw body bytes не хранятся в envelope, `unit_components`,
+`unit_projections` или reverse indexes. Они живут в `ResourceBodyStore`
+(MDBX-backed или file-pack backend), а search indexes хранят ids, compact
+postings, projections and source ranges. См. `mdbx-containers-extension-tz.md`
+§12.9 and `optimization-roadmap.md` §"Raw Resource Body Compression".
+
+## 3B. ADR-017: Translation Projections
+
+### 3B.1. Решение
+
+Перевод является optional derived layer поверх ingestion/retrieval, а не
+обязательным форматом хранения. Оригинальный resource body и
+`SearchProjection::Original` остаются authoritative для цитирования,
+re-chunking, export и forensic review. Если profile включает
+`TranslationProjection`, adapter может создать дополнительную
+`SearchProjection::TranslatedCanonical` в canonical language профиля.
+
+```text
+RawResource / ResourceBody
+  original bytes or extracted text, original language, content hash
+
+SearchProjection::Original
+  original-language retrieval view
+
+SearchProjection::TranslatedCanonical
+  optional canonical-language retrieval view, generated by ITranslationAdapter
+
+TranslationProjectionMeta
+  provider/model/package fingerprint, detected source language, pivot path,
+  source revision, projection generation and quality hint
+```
+
+Детальный контракт находится в
+[`translation-adapters-roadmap.md`](translation-adapters-roadmap.md). Argos
+Translate используется как pattern donor для offline package/pivot semantics,
+но не становится dependency `agent-memory-cpp`.
+
+### 3B.2. Обоснование
+
+Raw notes, playbooks, transcripts and PDFs may arrive in Russian, English or a
+mixed corpus. Cross-lingual retrieval needs a stable way to search by canonical
+language without losing the original text. A translated projection gives:
+
+- BM25/vector indexing over a normalized language view;
+- deterministic invalidation when the source revision or translation package
+  changes;
+- audit metadata for pivot translation and model drift;
+- lower coupling than embedding a translation runtime into the static library.
+
+The projection is lossy by definition. Retrieval may use it for recall, but
+final context should prefer source-language excerpts when exact citation
+matters.
 
 ## 4. ADR-002: MemoryStack vs MemoryProfileSpec
 
@@ -119,15 +256,15 @@ Profile (через `MemoryStack`) и Scope — независимые оси: P
 // Один стек, много scopes
 auto stack = MemoryStack::open("agent.mdbx", MemoryProfiles::AgentLongTermMemory());
 
-WriteRequest req_a;
+CreateUnitRequest req_a;
 req_a.envelope = make_envelope(...).with_scope("user:yaroslav");
 req_a.payload = ...;
-stack.write_unit(req_a);
+stack.create_or_get_unit(req_a);
 
-WriteRequest req_b;
+CreateUnitRequest req_b;
 req_b.envelope = make_envelope(...).with_scope("agent:nika");
 req_b.payload = ...;
-stack.write_unit(req_b);
+stack.create_or_get_unit(req_b);
 
 // Retrieval с фильтром
 RetrievalPlan plan;
@@ -155,11 +292,19 @@ enum class MemoryCapability : uint64_t {
     Decay              = 1ull << 5,
     SpeakerAttribution = 1ull << 6,
     Compaction         = 1ull << 7,
-    PromptCache        = 1ull << 8,
     GraphRelations     = 1ull << 9,
     EmbeddingMigration = 1ull << 10,
     CompiledArticles   = 1ull << 11,
     ConversationMemory = 1ull << 12,
+    FullSourceRefs     = 1ull << 13,
+    TranslationProjection = 1ull << 15,
+    KnowledgeActivation = 1ull << 16,
+    CognitiveTraceComponents = 1ull << 17,
+    ProceduralActivation = 1ull << 18,
+    ReplicaReconciliation = 1ull << 19,
+    ArtifactProvenance = 1ull << 20,
+    DurableGlobalIdentity = 1ull << 21,
+    SequenceReplay = 1ull << 22,
 };
 
 using CapabilitySet = std::underlying_type_t<MemoryCapability>;
@@ -171,11 +316,50 @@ baseline above. They are tracked separately in
 `AgentLongTermMemory`: `AffectiveEpisodes`, `GoalAttribution`,
 `OutcomeTracking`, `RelationshipState`, and `SensitiveInferencePolicy`.
 
+Future lifecycle-governance capabilities are intentionally not added to the M1
+capability enum yet. `BiTemporalValidity`, `AbstractionGraph`,
+`CausalRelations`, `ProgressiveRetrieval`, `MemoryGovernance` and
+`MutationPolicy` are tracked in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+until their profile matrix and DBI budget deltas are specified.
+
+`ArtifactProvenance` is an optional M2 capability. It enables the catalog and
+blob/retention contracts from
+[`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md); concrete
+MDBX DBI deltas stay profile-owned and are not part of the baseline manifest.
+It is artifact-neutral until an application supplies an explicit catalog/blob
+binding in the profile; a capability bit alone never implies a usable artifact
+backend.
+
+Additional M2+ lifecycle candidates such as `EntityResolution`,
+`TypedToolFilters` and `LogicalIndexSeparation` are also tracked there until
+their profile deltas and test gates are defined.
+
 General cross-cutting opt-ins such as encrypted local storage and context
 planning are not affective capabilities. They are represented by
 `enable_encrypted_storage`/`EncryptionPolicy` and
 `enable_context_planner`/`ContextTierPolicy` in `MemoryProfileSpec` because
 ordinary RAG and agent-memory profiles may use them too.
+
+`KnowledgeActivation` is a domain-planning capability, not a new physical
+database by itself. It enables deterministic activation metadata, DomainMap and
+Playbook handling, soft domain routing, and activation eval fixtures. Storage
+uses the existing envelope/projection/metadata/graph substrate until a future
+profile explicitly adds `playbook_payloads`, `domain_map_payloads`, or
+`activation_rules` DBI deltas to `mdbx-containers-extension-tz.md`.
+
+`CognitiveTraceComponents`, `SequenceReplay`, `ProceduralActivation` and
+`ReplicaReconciliation` are
+coarse-grained runtime-integration groups. They deliberately do not create a
+capability bit for each scalar component. `CognitiveTraceComponents` uses
+existing `unit_components`, graph edges, resource bodies and projections, and
+requires `FullSourceRefs` for durable evidence. `SequenceReplay` is separate:
+it adds bounded `KnownAtSequence`, requires `CognitiveTraceComponents`,
+`DurableGlobalIdentity`, identity-scheme validation and the
+`runtime_sequence_index` profile delta. Components-only adapters must reject
+that indexed query rather than advertise replay without its identity and
+sequence stores. Partition-specific DBIs beyond those remain future manifest
+deltas.
 
 ### 6.2. Политики
 
@@ -216,7 +400,6 @@ struct SpeakerScopePolicy {
 
 enum class RetrievalMode { Associative, Targeted, Hybrid, Disabled };
 enum class FusionStrategy { RRF, WeightedMax, Learned, Planner };
-
 struct HybridRetrievalConfig {
     FusionStrategy fusion = FusionStrategy::RRF;
     double rrf_k_constant = 60.0;
@@ -258,7 +441,7 @@ struct ContextTierPolicy {
 
 enum class DenseIndexMode : uint8_t {
     Exact = 0,                      // brute-force float cosine, ground truth
-    BinaryCandidateFilter = 1,      // binary filter + float rerank (M1 default)
+    BinaryCandidateFilter = 1,      // optional M1 experiment; binary filter + float rerank
     BinaryOnly = 2,                 // binary only, Hamming ranking (M2 experimental/compact)
     ApproximateVector = 3,          // binary + decoder → approx vector → rerank (M2 experimental)
     Hnsw = 4,                       // M2+ experimental ANN backend
@@ -305,6 +488,25 @@ struct DenseIndexConfig {
 ### 6.3. Полная спецификация
 
 ```cpp
+struct RetrievalIoBudget {
+    std::uint32_t max_segment_reads = 0;
+    std::uint32_t max_mdbx_cursor_seeks = 0;
+    std::uint64_t max_encoded_bytes_read = 0;
+    std::uint64_t max_decoded_bytes = 0;
+    std::uint64_t max_io_time_us = 0;
+};
+
+// Host-resolved descriptors for one artifact-provenance deployment.
+struct ArtifactProvenanceBinding {
+    // Canonical non-secret host descriptors, resolved during MemoryStack::open.
+    std::string catalog_descriptor;
+    std::string blob_store_descriptor;
+    ArtifactIdentityScheme artifact_identity_scheme;
+    std::string binding_fingerprint_recipe_id =
+        "agent_memory.artifact_provenance_binding/v1";
+    BlobDigest binding_fingerprint;
+};
+
 struct MemoryProfileSpec {
     std::string name;
 
@@ -321,21 +523,29 @@ struct MemoryProfileSpec {
     bool enable_fact_payload = false;
     bool enable_conversation_episode = false;
     bool enable_compiled_article = false;
-    bool enable_embedding_meta = false;
+    bool enable_full_source_refs = false;
+    bool enable_embedding_meta = false; // opens dedicated embedding_meta, not unit_components
     bool enable_compaction = false;
-    bool enable_prompt_cache = false;
+    bool enable_async_indexer = false;
     bool enable_context_planner = false;
+    bool enable_knowledge_activation = false;
+    bool enable_durable_global_identity = false;
+    bool enable_cognitive_trace_components = false;
+    bool enable_sequence_replay = false;
+    bool enable_procedural_activation = false;
+    bool enable_replica_reconciliation = false;
     bool enable_encrypted_storage = false;
-
     std::optional<DecayPolicy> decay_policy;
     std::optional<WritePolicy> write_policy;
     std::optional<SpeakerScopePolicy> speaker_policy;
     std::optional<HybridRetrievalConfig> hybrid_config;
+    std::optional<RetrievalIoBudget> retrieval_io_budget;
     std::optional<ContextBudget> context_budget;
     std::optional<ContextTierPolicy> context_tier_policy;
     std::optional<RetrievalMode> default_retrieval_mode;
     std::optional<DenseIndexConfig> dense_index_config;
     std::optional<EncryptionPolicy> encryption_policy;
+    std::optional<ArtifactProvenanceBinding> artifact_provenance_binding;
 
     uint32_t envelope_schema_version = 1;
     uint32_t component_schema_versions[kNumComponentKinds] = {};
@@ -391,17 +601,16 @@ public:
     IEmbeddingStore& embeddings();
 
     RetrievalResult retrieve(const RetrievalPlan& plan);
-    WriteResult write_unit(const WriteRequest& request);
-    BulkWriteResult write_units(const std::vector<WriteRequest>& requests);
+    CreateOrGetResult create_or_get_unit(const CreateUnitRequest& request);
+    UpdateUnitResult update_unit(
+        KnowledgeUnitId unit_id,
+        std::uint64_t expected_revision,
+        const MutableUnitPatch& patch);
+    BulkCreateOrGetResult create_or_get_units(
+        const std::vector<CreateUnitRequest>& requests);
 
     CompactionWorker& compaction();
     bool has_compaction() const;
-
-    PromptPrefixCache& prompt_prefix_cache();
-    bool has_prompt_prefix_cache() const;
-
-    std::optional<ResponseCache> response_cache();
-    bool has_response_cache() const;
 
     StackStats stats() const;
     SchemaInfo schema_info() const;
@@ -411,44 +620,205 @@ public:
 ### 7.2. Запись unit
 
 ```cpp
-struct WriteRequest {
+struct GraphEdgeId final {
+    std::array<std::uint8_t, 16> bytes{};
+};
+
+// The ID is byte-for-byte relation_unit.global_id.value; it is never allocated separately.
+struct GraphEdge final {
+    GraphEdgeId edge_id;
+    ScopeId scope_id;
+    KnowledgeUnitRef relation_unit;  // required; its local unit kind is Relation
+    KnowledgeUnitRef from;
+    KnowledgeUnitRef to;
+    EdgeKind edge_kind;
+    RelationClass relation_class = RelationClass::Semantic;
+    GraphEdgePayload payload;
+    std::vector<KnowledgeUnitRef> evidence;
+};
+
+struct CreateUnitRequest {
     KnowledgeUnitEnvelope envelope;   // envelope.sources: vector<SourceRefSummary>, max ~3 inline, <=256 байт excerpt preview каждый
     std::optional<QAPayload> qa_payload;
     std::optional<FactPayload> fact_payload;
     std::optional<ChunkPayload> chunk_payload;
     std::optional<ConversationEpisodePayload> episode_payload;
     std::optional<CompiledArticlePayload> article_payload;
+    std::optional<std::vector<SourceRef>> full_source_refs; // requires enable_full_source_refs
     std::vector<ComponentVariant> components;
     std::vector<SearchProjection> projections;
+    // A Relation unit owns exactly one GraphEdge; graph edges are not independent units.
     std::vector<GraphEdge> graph_edges;
     std::optional<double> importance_score;
 };
 
-struct WriteResult {
+struct MutableUnitPatch {
+    std::optional<std::string> display_text;
+    std::optional<std::vector<ComponentVariant>> components;
+    std::optional<std::vector<SearchProjection>> projections;
+    std::optional<std::vector<SourceRef>> full_source_refs;
+    std::optional<double> importance_score;
+};
+
+struct CreatedUnit {
     KnowledgeUnitId unit_id;
-    bool deduplicated = false;
-    std::optional<KnowledgeUnitId> merged_into;
     std::vector<JobId> enqueued_jobs;
 };
+
+struct ExistingUnit {
+    KnowledgeUnitId unit_id;
+};
+
+using CreateOrGetResult = std::variant<CreatedUnit, ExistingUnit>;
+
+struct UpdatedUnit {
+    KnowledgeUnitId unit_id;
+    std::uint64_t new_revision = 0;
+    std::vector<JobId> enqueued_jobs;
+};
+
+struct UnitNotFound {};
+
+struct StaleUnitRevision {
+    std::uint64_t expected_revision = 0;
+    std::uint64_t actual_revision = 0;
+};
+
+struct ImmutableIdentityChanged {};
+
+using UpdateUnitResult = std::variant<
+    UpdatedUnit,
+    UnitNotFound,
+    StaleUnitRevision,
+    ImmutableIdentityChanged>;
 ```
+
+For a `Relation` request, `graph_edges` contains exactly one edge. The write
+transaction allocates or validates the Relation unit's global identity first,
+requires `edge_id == relation_unit.global_id`, resolves endpoint local IDs from
+their durable refs, and writes both physical orientations. A non-Relation unit
+must not own a graph edge. Relation lifecycle, supersede and erase transitions
+hide the edge from normal traversal; its evidence remains reachable for audit
+according to the ordinary lifecycle/provenance rules.
+
+`GraphEdge` is identity-bearing Relation payload, not a mutable collection.
+It intentionally has no `MutableUnitPatch` field. An endpoint, `EdgeKind`,
+`RelationClass`, payload, or evidence change creates a new Relation unit and a
+supersede or erase lineage; it never replaces or clears the existing edge. A
+legacy or future update API that tries to submit a Relation edge mutation must
+return `ImmutableIdentityChanged` before writing either physical orientation.
+
+`create_or_get_unit` is create/dedupe only. If the content key already exists it
+returns `ExistingUnit` and does not mutate the existing unit. Mutable updates
+use `update_unit` with `expected_revision`; stale revisions return
+`StaleUnitRevision` without writes. `MutableUnitPatch` collection fields use
+`nullopt` for "leave unchanged", an empty vector for "clear this collection" and
+a non-empty vector for "replace the whole collection". This rule does not apply
+to the Relation-owned `GraphEdge`. Fine-grained collection deltas are deferred
+until a future explicit `CollectionPatch<T>` contract.
+`update_unit` may change only fields listed as mutable in
+`knowledge-units-roadmap.md` §4, increments envelope revision, regenerates
+affected projections and updates secondary indexes in one transaction.
 
 ### 7.3. Retrieval
 
 ```cpp
+enum class MissingProjectionPolicy : uint8_t {
+    ReturnEmpty,
+    ScheduleRecompute,
+    UseExplicitFallbackRoute,
+};
+
+enum class ProjectionRouteInputKind : uint8_t {
+    Corpus,
+    PriorRouteCandidates,
+};
+
+enum class ProjectionRouteActivation : uint8_t {
+    Root,
+    FallbackOnly,
+};
+
+enum class BudgetExhaustionAction : uint8_t {
+    ReturnPartial,
+    DropRoute,
+    FailIfRequired,
+};
+
+enum class RetrievalRouteCompletion : uint8_t {
+    Complete,
+    Partial,
+    Unavailable,
+    BudgetExhausted,
+    Dropped,
+    RequiredRouteFailed,
+};
+
+enum class IncompleteRouteAction : uint8_t {
+    UseExplicitFallbackRoute,
+    ReturnPartial,
+    DropRoute,
+    FailIfRequired,
+};
+
+struct DenseProjectionRoute {
+    std::string route_id;
+    ProjectionRouteActivation activation = ProjectionRouteActivation::Root;
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    std::string model_id;
+    std::string model_version;
+    std::size_t candidate_limit = 0;
+    ProjectionRouteInputKind input_kind = ProjectionRouteInputKind::Corpus;
+    std::optional<std::string> parent_route_id;
+    std::size_t input_candidate_limit = 0;
+    FusionStrategy fusion_strategy = FusionStrategy::RRF;
+    MissingProjectionPolicy on_missing = MissingProjectionPolicy::ReturnEmpty;
+    std::optional<std::string> fallback_route_id;
+    IncompleteRouteAction on_incomplete = IncompleteRouteAction::UseExplicitFallbackRoute;
+    std::optional<RetrievalIoBudget> io_budget;
+    std::optional<TieredRerankBudget> rerank_budget;
+    BudgetExhaustionAction on_budget_exhaustion = BudgetExhaustionAction::ReturnPartial;
+};
+
+struct RetrievalAccessContext {
+    // Immutable normalized grants issued by the host, never caller-selected plan input.
+    std::string principal_id;
+    std::vector<std::string> role_ids;
+    std::vector<std::string> jurisdictions;
+    std::vector<ScopeId> authorized_scope_ids;
+    std::optional<double> trust_score;
+    std::vector<std::string> policy_claims;
+    std::string issuer_id;
+    std::string claims_version;
+};
+
+enum class RetrievalCompletion : uint8_t {
+    Complete,
+    Partial,
+    BudgetExhausted,
+    RouteDropped,
+    RequiredRouteFailed,
+};
+
 struct RetrievalPlan {
     std::string raw_query;
+    std::vector<ProjectionQueryVariant> query_variants;
     QueryType query_type = QueryType::Unknown;
 
     std::vector<ScopeId> scope_ids;
     std::optional<ScopeId> default_scope;
+    RetrievalAccessContext access_context;
 
     std::vector<MemoryTier> tiers = {MemoryTier::Hot, MemoryTier::Warm};
     RetrievalMode mode = RetrievalMode::Hybrid;
 
     std::vector<RetrieverSpec> retrievers;
+    std::vector<DenseProjectionRoute> dense_routes;  // M2 exact projection routes
+    std::optional<BoundedQueryPlan> bounded_query_plan; // M2 decomposition
 
     std::vector<KnowledgeUnitKind> kinds;
-    std::optional<TemporalWindow> temporal_window;
+    std::optional<TemporalWindow> temporal_window;  // M1 single-axis compatibility
+    std::optional<TemporalQuery> temporal_query;    // M2+ tagged bi-temporal frontier
     std::optional<SpeakerScopePolicy> speaker_filter;
     std::optional<TypedMetadataFilter> metadata_filter;
 
@@ -457,6 +827,7 @@ struct RetrievalPlan {
 
     size_t candidate_pool_size = 200;
     size_t limit = 32;
+    std::optional<RetrievalIoBudget> io_budget;  // M2 physical read/decode cap
     std::optional<ContextBudget> context_budget;
 
     std::optional<DecayPolicy> decay_policy_override;
@@ -468,8 +839,97 @@ struct RetrievalResult {
     std::vector<RetrievalHit> hits;
     std::optional<Context> assembled_context;
     RetrievalTrace trace;
+    RetrievalCompletion completion = RetrievalCompletion::Complete;
 };
 ```
+
+`RetrievalAccessContext` is issued by the embedding host after authentication
+and authorization. `authorized_scope_ids` is normalized, contains no empty or
+duplicate scope, and is the complete scope grant for this request. A validated
+plan first normalizes its requested scope set as follows:
+
+1. A non-empty `scope_ids` list is the exact requested set; it must contain no
+   empty or duplicate entries, every entry must be granted, and an optional
+   `default_scope` must be both granted and a member of that exact set.
+2. An empty `scope_ids` list with a present `default_scope` requests exactly
+   that one scope; the default must be granted.
+3. An empty `scope_ids` list without `default_scope` is a validation error.
+4. Normalization never expands an empty request to all `authorized_scope_ids`.
+
+A caller therefore cannot grant itself access by placing an arbitrary `ScopeId`
+in the plan. `Visibility::Scope` requires both a normalized requested scope and
+the matching host grant. Missing `trust_score` fails a policy that specifies
+`minimum_trust`. Required fixtures cover a cross-scope request, an ungranted
+default, an empty request without default, and the guarantee that an empty list
+does not fan out to every host grant.
+
+Dense route validation requires globally unique route IDs and one acyclic graph
+containing both `parent_route_id` and `fallback_route_id` edges. A root route
+may read the corpus. A `PriorRouteCandidates` route must name a parent and has
+an explicit bounded `input_candidate_limit`. A `FallbackOnly` route is never
+scheduled as a root: it runs only when its parent selected
+`UseExplicitFallbackRoute` because the requested projection is absent or
+incompatible. The executor runs a route at most once for one
+`(branch_id, route_id, input-candidate-set identity)` tuple; repeated fallback
+edges reuse the existing outcome rather than duplicate I/O or candidates.
+
+`RetrievalAccessContext` is immutable input from the embedding application. The
+host authenticates its principal and issues role, jurisdiction and other
+policy-relevant claims; the memory library neither authenticates identities nor
+consults hidden host-global state. `AccessPolicy` evaluates this context before
+candidate creation and again before materialization.
+
+`MissingProjectionPolicy` is a route-availability policy: `missing` means the
+requested collection or descriptor is absent or incompatible. Sparse per-unit
+coverage, an empty search result, a stale row and budget exhaustion are separate
+outcomes and must not trigger an implicit whole-query fallback.
+
+`PriorRouteCandidates` requires a non-empty `parent_route_id` and a nonzero
+`input_candidate_limit`; `Corpus` requires neither. The planner validates the
+route DAG, parent order and bounds before execution. The default QAPair profile
+uses `QAQuestion` from `Corpus`; `QAAnswer` is a bounded
+`PriorRouteCandidates` rerank. Corpus-wide answer search is explicit,
+benchmark-gated opt-in.
+
+The profile, branch and route budgets are hard maxima. A route's effective cap
+is the field-wise minimum of all enabled levels. The plan order is the
+deterministic admission order: every known-cost read/decode is admitted only
+when it fits both the route allowance and shared query counter, and unused
+allowance remains available to later routes. `0` is invalid for an engaged cap;
+an absent optional budget means that level supplies no additional cap. A future
+parallel executor must reproduce this observable accounting until a separate
+fair-sharing contract is accepted.
+
+Every retrieval route has an exactness/completion result separate from its hit
+count. `Complete` means the route met its own exact corpus/snapshot contract;
+`Partial` names its covered and unavailable partitions in the route trace;
+`Unavailable` returns no candidates because that contract could not be met.
+`DenseProjectionRoute` shows the `on_incomplete` field explicitly; every
+lexical, graph or temporal route specification introduced later must carry the
+same `IncompleteRouteAction` and optional fallback-route reference. For an
+incomplete corpus result (for example lexical stale-block recovery), the route
+follows exactly one declared action. Only `ReturnPartial` may produce a
+`Partial` event with hits admitted to fusion. `UseExplicitFallbackRoute` records
+one fallback route event and requires the incomplete parent to contribute no
+hits; an exact fallback may therefore produce a complete query without mixing in
+the parent’s non-exact candidates. `DropRoute` and `FailIfRequired` have no
+route hits and cannot be admitted. A partial route never becomes
+`RetrievalResult::Complete`; a query is `Partial` whenever it admits an
+unreplaced partial route. An unavailable route never masquerades as an empty
+exact route.
+
+On budget exhaustion, a route follows its declared `on_budget_exhaustion`.
+`ReturnPartial` maps to `Partial` with a typed budget-exhaustion reason and is
+the only budget outcome that may participate in fusion. `DropRoute` contributes
+no hits and `FailIfRequired` makes the query result `RequiredRouteFailed`.
+`BudgetExhausted` is a non-admitted diagnostic completion only: it has no hits
+and cannot claim exhaustive top-K semantics.
+
+`MissingProjectionPolicy::UseExplicitFallbackRoute` follows the same admission
+rule as incomplete-route fallback: the missing parent has no admitted hits and
+the trace identifies one exact fallback event. The trace records the typed
+missing, incomplete, or budget action actually applied; one route event does not
+combine those action categories.
 
 ## M2+ Retrieval Hooks
 
@@ -496,13 +956,13 @@ public:
         std::size_t max_generated_variants = 5;
         std::size_t max_history_tokens = 0;
     };
-    
+
     struct QueryVariant {
         std::string text;
         std::string transformer_id;  // "hyde", "rewrite", "self_rag"
         double weight = 1.0;
     };
-    
+
     virtual std::vector<QueryVariant> transform(
         const QueryTransformationContext& context) = 0;
 };
@@ -557,14 +1017,14 @@ Post-retrieval оценка качества candidates. Может trigger corr
 class IRetrievalEvaluator {
 public:
     virtual ~IRetrievalEvaluator() = default;
-    
+
     struct RetrievalDecision {
         enum class Action { Accept, Reject, CorrectiveSearch, FallbackToLLM };
         Action action;
         std::optional<std::string> corrective_query;
         double confidence;
     };
-    
+
     virtual RetrievalDecision evaluate(
         const Query& q,
         const std::vector<RetrievalHit>& hits) = 0;
@@ -573,7 +1033,10 @@ public:
 // CRAG implementation:
 class CragRetrievalEvaluator final : public IRetrievalEvaluator {
 public:
-    RetrievalDecision evaluate(const Query& q, const auto& hits) override {
+    RetrievalDecision evaluate(
+        const Query& q,
+        const std::vector<RetrievalHit>& hits
+    ) override {
         // Lightweight evaluator (fine-tuned T5 или rule-based).
         // Confidence < threshold → CorrectiveSearch с web fallback.
     }
@@ -597,7 +1060,7 @@ inline MemoryProfileSpec BasicRag() {
     s.name = "basic_rag";
     s.envelope_schema_version = 1;
     s.enable_lexical_bm25f = true;
-    s.enable_dense_vectors = true;
+    s.enable_dense_vectors = false;
     s.enable_graph = false;
     s.enable_usage_stats = false;
     s.enable_qa_payload = false;
@@ -613,9 +1076,9 @@ inline MemoryProfileSpec BasicRag() {
     s.hybrid_config = HybridRetrievalConfig(
         FusionStrategy::RRF,
         /*rrf_k_constant=*/60.0,
-        /*retriever_weights=*/std::vector<double>{1.0, 1.0},
+        /*retriever_weights=*/std::vector<double>{1.0},
         /*candidate_pool_size=*/200);
-    // dense_index_config: not set (default DenseIndexMode::Exact).
+    // BasicHybridRag(IEmbedder&) is the explicit dense opt-in variant.
     return s;
 }
 ```
@@ -645,6 +1108,13 @@ inline MemoryProfileSpec QAKnowledgeBase() {
 }
 ```
 
+The default dense projection for this profile is `QAQuestion`; `QAAnswer` is a
+bounded M2+ rerank/candidate opt-in and `QACombined` is an experiment enabled
+only after calibration. The profile never treats a vector block as the source
+of question or answer bytes. Its detailed per-route candidate budgets and
+fusion policy live in the retrieval plan, so an answer-heavy route cannot
+silently turn a short FAQ lookup into a full double-index scan.
+
 ### 8.3. AgentLongTermMemoryStack
 
 ```cpp
@@ -654,11 +1124,15 @@ inline MemoryProfileSpec AgentLongTermMemory() {
     s.enable_lexical_bm25f = true;
     s.enable_dense_vectors = true;
     s.enable_graph = true;
+    s.enable_durable_global_identity = true;
+    s.enable_full_source_refs = true;
     s.enable_usage_stats = true;
     s.enable_temporal_validity = true;
     s.enable_fact_payload = true;
     s.enable_embedding_meta = true;
     s.enable_compaction = true;
+    s.enable_context_planner = true;
+    s.enable_knowledge_activation = true;
     s.context_budget = ContextBudget(
         /*total_tokens=*/4096,
         /*qa_tokens=*/512,
@@ -692,11 +1166,10 @@ inline MemoryProfileSpec AgentLongTermMemory() {
         /*candidate_pool_size=*/200);
     s.default_retrieval_mode = RetrievalMode::Hybrid;
     s.dense_index_config = DenseIndexConfig(
-        DenseIndexMode::BinaryCandidateFilter,
-        /*bit_count=*/128,
-        /*encoder_id=*/"autoencoder_binarizer_v1");
-    // M2+ alternative: DenseIndexMode::Hnsw + HnswConfig{m=32, ef_construction=200, ef_search=100}
-    // for better Recall@10 at corpus > 100k units.
+        DenseIndexMode::Exact,
+        /*bit_count=*/0,
+        /*encoder_id=*/"");
+    // M2+: BinaryCandidateFilter or Hnsw is an explicit benchmark-gated override.
     return s;
 }
 ```
@@ -752,6 +1225,8 @@ inline MemoryProfileSpec CompiledWiki() {
     s.enable_fact_payload = true;
     s.enable_embedding_meta = true;
     s.enable_compaction = true;
+    s.enable_context_planner = true;
+    s.enable_knowledge_activation = true;
     s.context_budget = ContextBudget(
         /*total_tokens=*/6000,
         /*qa_tokens=*/0,
@@ -760,11 +1235,10 @@ inline MemoryProfileSpec CompiledWiki() {
         /*summary_tokens=*/2000,
         /*evidence_tokens=*/512);
     s.dense_index_config = DenseIndexConfig(
-        DenseIndexMode::BinaryCandidateFilter,
-        /*bit_count=*/256,
-        /*encoder_id=*/"autoencoder_binarizer_v1");
-    // M2+ alternative: DenseIndexMode::Hnsw + HnswConfig{m=32, ef_construction=200, ef_search=100}
-    // for better Recall@10 at corpus > 100k units.
+        DenseIndexMode::Exact,
+        /*bit_count=*/0,
+        /*encoder_id=*/"");
+    // M2+: BinaryCandidateFilter or Hnsw is an explicit benchmark-gated override.
     return s;
 }
 ```
@@ -780,6 +1254,8 @@ inline MemoryProfileSpec TemporalFactStore() {
     s.enable_temporal_validity = true;
     s.enable_fact_payload = true;
     s.enable_graph = true;
+    s.enable_durable_global_identity = true;
+    s.enable_full_source_refs = true;
     s.context_budget = ContextBudget(
         /*total_tokens=*/3000,
         /*qa_tokens=*/0,
@@ -803,14 +1279,63 @@ inline MemoryProfileSpec FullResearchMemory() {
     s.enable_conversation_episode = true;
     s.enable_compiled_article = true;
     s.dense_index_config = DenseIndexConfig(
-        DenseIndexMode::BinaryCandidateFilter,
-        /*bit_count=*/128,
-        /*encoder_id=*/"autoencoder_binarizer_v1");
-    // M2+ alternative: DenseIndexMode::Hnsw + HnswConfig{m=32, ef_construction=200, ef_search=100}
-    // for better Recall@10 at corpus > 100k units.
+        DenseIndexMode::Exact,
+        /*bit_count=*/0,
+        /*encoder_id=*/"");
+    // M2+: BinaryCandidateFilter or Hnsw is an explicit benchmark-gated override.
+    return s;
+}
+
+// Enables artifact provenance only for a host-resolvable durable backend.
+inline MemoryProfileSpec FullResearchMemory(
+    ArtifactProvenanceBinding artifact_binding) {
+    MemoryProfileSpec s = FullResearchMemory();
+    s.enable_full_source_refs = true;
+    s.artifact_provenance_binding = std::move(artifact_binding);
     return s;
 }
 ```
+
+The parameterless `FullResearchMemory()` is artifact-neutral: it retains the
+research retrieval/profile shape without claiming that a catalog or BlobStore
+has been configured. The overload selects `ArtifactProvenance` only when the
+binding is complete, host-resolvable and included in `profile_signature`.
+
+### 8.8. CognitiveRuntimeMemory
+
+Optional overlay for ADELIA-like cognitive runtimes. It stores durable runtime
+origin, perspective, causal context, task/decision/procedure records and
+progressive-disclosure hints. It does not execute actions, schedule nodes or
+own runtime authority.
+
+```cpp
+inline MemoryProfileSpec CognitiveRuntimeMemory() {
+    MemoryProfileSpec s = AgentLongTermMemory();
+    s.name = "cognitive_runtime";
+    s.enable_context_planner = true;
+    s.enable_knowledge_activation = true;
+    s.enable_durable_global_identity = true;
+    s.enable_cognitive_trace_components = true;
+    s.enable_sequence_replay = true;
+    s.enable_procedural_activation = true;
+    s.enable_graph = true;
+    s.enable_full_source_refs = true;
+    // Replica reconciliation is A3 and remains opt-in.
+    s.enable_replica_reconciliation = false;
+    return s;
+}
+```
+
+This profile selects `FullSourceRefs` for component evidence plus two explicit
+opt-in DBI deltas: `global_unit_id_to_local_id` for
+`DurableGlobalIdentity` and `runtime_sequence_index` for `SequenceReplay` and
+bounded `KnownAtSequence`. A0/A2 runtime components still use
+`unit_components`; causal and procedure relations use the existing graph DBIs;
+raw event/tool payloads use `ResourceBodyStore` when enabled. Replica
+reconciliation remains A3 and is not selected by this profile.
+`CognitiveRuntimeMemory()` without an artifact binding backs up bounded replay
+through the profile-neutral `WorkspaceBackupManifest`; it does not require an
+artifact catalog or BlobStore merely to preserve visibility receipts.
 
 See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision guide on choosing between Karpathy 3-layer, A-MEM, lifemodel, NOUZ, Mem0/Letta/Zep, Блок фактов, and dual-layer patterns for your workload.
 
@@ -819,20 +1344,70 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | Capability | BasicRag | QAKB | AgentLTM | SpeakerChat | CompiledWiki | TemporalFact | FullResearch |
 |---|---|---|---|---|---|---|---|
 | LexicalBm25F | yes | yes | yes | yes | yes | yes | yes |
-| DenseVectors | yes | yes | yes | no | yes | no | yes |
+| DenseVectors | no | yes | yes | no | yes | no | yes |
 | QAPairs | no | yes | no | no | no | no | yes |
 | TemporalValidity | no | yes | yes | yes | no | yes | yes |
 | UsageStats | no | yes | yes | yes | no | no | yes |
 | Decay | no | no | yes | no | no | no | yes |
 | SpeakerAttribution | no | no | no | yes | no | no | yes |
 | Compaction | no | no | yes | no | yes | no | yes |
-| PromptCache | opt | opt | opt | opt | opt | opt | opt |
 | GraphRelations | no | no | yes | no | no | yes | yes |
 | EmbeddingMigration | no | no | yes | no | yes | no | yes |
 | CompiledArticles | no | no | no | no | yes | no | yes |
 | ConversationMemory | no | no | no | yes | no | no | yes |
+| FullSourceRefs | no | opt | opt | opt | yes | opt | yes |
+| TranslationProjection | opt | opt | opt | opt | opt | opt | opt |
+| KnowledgeActivation | no | opt | yes | opt | yes | opt | yes |
+| ArtifactProvenance | no | no | no | no | opt | no | opt |
 
 `opt` — capability не включена по умолчанию, но может быть добавлена через minor in-place migration.
+`TranslationProjection` is present only when the translation adapter contract
+creates a persisted `TranslatedCanonical` projection with complete provenance.
+Its value types, policy normalization and profile-signature contribution are
+owned exclusively by `translation-adapters-roadmap.md`. Query-time language
+routing/pivoting is a separate M2 planner capability, not a signal to persist
+translated text.
+`KnowledgeActivation` capability is present iff
+`enable_knowledge_activation == true`; it uses existing canonical storage until
+a profile-specific DBI delta is added to the physical manifest.
+`ArtifactProvenance` capability is present iff the profile declares a complete
+`ArtifactProvenanceBinding` for a host-resolvable artifact catalog and BlobStore
+backend; it requires `FullSourceRefs`, the artifact-aware
+SourceRef/EvidenceAnchor schema and a binding fingerprint included in the
+profile signature. A configured `FullResearchMemory(binding)` selects it;
+parameterless `FullResearchMemory()` does not.
+`MemoryStack::open` resolves both descriptors before setting that capability,
+requires their complete `ArtifactIdentityScheme` values to equal the binding,
+and verifies `binding_fingerprint` against the canonical versioned binding
+encoding. A scheme id, version, derivation rule, digest-algorithm or fingerprint
+mismatch fails closed before any catalog/blob handle is published.
+
+`agent_memory.artifact_provenance_binding/v1` is the required binding recipe
+until a separately named recipe is accepted. Its preimage begins with the ASCII
+domain tag `agent-memory.artifact-provenance-binding/v1`, then encodes in this
+exact order: recipe id, catalog descriptor, blob-store descriptor,
+`ArtifactIdentityScheme.scheme_id`, `scheme_version`,
+`artifact_id_derivation`, and `digest_algorithm`. Every string is well-formed
+UTF-8 normalized to NFC and is encoded as a big-endian `uint32` byte length
+followed by its bytes; `scheme_version` is a big-endian `uint32`. The output is
+a SHA-256 `BlobDigest` over that preimage. No delimiter concatenation, locale
+normalization, display label, secret, or resolved local handle participates.
+The recipe id and resulting digest both participate in `profile_signature`.
+Implementations reject a non-NFC descriptor, an unknown recipe, a non-SHA-256
+binding digest, or any digest that does not match this exact preimage.
+`DurableGlobalIdentity` capability is present iff
+`enable_durable_global_identity == true`; it selects the
+`global_unit_id_to_local_id` profile delta and supplies the portable occurrence
+identity required by bounded runtime sequence replay and import/export.
+`CognitiveTraceComponents` capability is present iff
+`enable_cognitive_trace_components == true`; it requires `FullSourceRefs` and
+does not by itself select a replay DBI. `SequenceReplay` capability is present
+iff `enable_sequence_replay == true`; it selects `runtime_sequence_index` and
+requires `CognitiveTraceComponents` plus `DurableGlobalIdentity`.
+`ProceduralActivation` capability is present iff
+`enable_procedural_activation == true`. `ReplicaReconciliation` capability is
+present iff `enable_replica_reconciliation == true`; it remains A3 and opens no
+DBI until `dbi-manifest.yaml` adds a concrete partition delta.
 
 ## 10. Validation Rules
 
@@ -846,14 +1421,34 @@ See [`usage-memory-models.md`](usage-memory-models.md) for an operator decision 
 | Compaction=true требует UsageStats=true | "Compaction requires UsageStats" |
 | CompiledArticles=true требует Compaction=true | "CompiledArticles requires Compaction" |
 | ConversationMemory=true требует SpeakerAttribution=true | "ConversationMemory requires SpeakerAttribution" |
+| KnowledgeActivation=true требует ContextPlanner=true | "KnowledgeActivation requires context planner" |
+| GraphRelations=true требует DurableGlobalIdentity + FullSourceRefs | "Graph relations require durable identity and source refs" |
+| CognitiveTraceComponents=true требует Components + FullSourceRefs | "Cognitive trace components require components and source refs" |
+| SequenceReplay=true требует CognitiveTraceComponents + DurableGlobalIdentity + `runtime_sequence_index` profile delta | "SequenceReplay requires durable identity and runtime sequence index" |
+| ProceduralActivation=true требует KnowledgeActivation=true и GraphRelations=true | "ProceduralActivation requires knowledge activation and graph relations" |
+| ReplicaReconciliation=true требует SequenceReplay=true | "ReplicaReconciliation requires sequence replay" |
 | EmbeddingMigration=true требует DenseVectors=true | "EmbeddingMigration requires DenseVectors" |
+| ArtifactProvenance=true requires FullSourceRefs=true and a complete, profile-signed ArtifactProvenanceBinding whose catalog/blob descriptors resolve to its exact identity scheme and canonical fingerprint | "ArtifactProvenance requires source refs and compatible artifact binding" |
 | DecayPolicy: cooldown_ms >= 0, half_life_ms > 0 (если mode != None) | "Invalid DecayPolicy" |
 | WritePolicy: flush_interval_ms > 0 (если trigger == OnTimer) | "Invalid WritePolicy" |
 | ContextBudget: сумма per-block <= total_tokens | "ContextBudget overflow" |
 | HybridRetrievalConfig: retriever_weights.size() == number of retrievers | "Weights size mismatch" |
+| Persisted translation requires a valid adapter-owned policy, canonical BCP-47 language and projection provenance | "Persisted translation requires active TranslationPolicy" |
 | envelope_schema_version в spec соответствует сохранённому | "Schema version mismatch (migration required)" |
 
-Дополнительно: `profile_signature` (hash от spec) сохраняется в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с текущим и диагностируется drift.
+Дополнительно: `profile_signature` (hash от spec, включая
+`ArtifactProvenanceBinding.binding_fingerprint_recipe_id` и
+`ArtifactProvenanceBinding.binding_fingerprint`, когда binding задан) сохраняется
+в `schema_info` DBI. При `open_existing()` без `expected_spec` сравнивается с
+текущим и диагностируется drift.
+
+M2 artifact-binding acceptance includes incomplete binding, unresolved
+descriptor, catalog/blob identity-scheme mismatch and stale or non-canonical
+binding-fingerprint negative fixtures. It also includes a cross-implementation
+golden V1 byte preimage and SHA-256 digest, a changed
+`artifact_id_derivation` negative fixture, and an invalid descriptor-normalization
+fixture. Each must fail before the stack exposes an `ArtifactProvenance`
+capability or publishes a catalog/blob handle.
 
 ## 11. Layer Architecture
 
@@ -876,7 +1471,7 @@ Layer 1: Storage Primitives (storage/)
   RangeIndexTable, TypeDiscriminatedTable, CompositeKey
 
 Cross-cutting Runtime Services (runtime/) — orthogonal
-  PromptCache, CompactionWorker, WriteGate, AsyncIndexer
+  CompactionWorker, WriteGate, AsyncIndexer
   Используют Layer 1 + Layer 2 через интерфейсы
 ```
 
@@ -887,160 +1482,57 @@ Cross-cutting Runtime Services (runtime/) — orthogonal
 - Layer 2 не зависит от Layer 3 (можно использовать напрямую).
 - Runtime services могут вызываться из любого layer, но сами не зависят от конкретного MemoryStack.
 
-## 12. MDBX Storage Layout
+## 12. MDBX Storage Layout Ownership
 
-Один MDBX environment, набор DBI в зависимости от профиля.
+Этот документ является canonical source для data model, profiles,
+capabilities and `MemoryStack::open(spec)` validation. Единственный canonical
+physical MDBX manifest живёт в
+[`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) §5.5, а
+authoritative DBI budget checkpoint — в §5.5.1 того же TZ.
 
-### 12.1. Всегда открываются (core DBI)
+Следствия:
 
-```
-unit_id_to_envelope
-  key = KnowledgeUnitId → KnowledgeUnitEnvelope (msgpack/flat binary)
-  // KnowledgeUnitId — монотонный opaque uint64_t, никогда не reused.
+- новые physical DBI names добавляются сначала в TZ §5.5/§5.5.1;
+- этот roadmap может ссылаться на capabilities and logical stores, но не
+  дублирует key/value layout таблиц;
+- `content_key_to_unit_id` является частью canonical manifest TZ §5.5 и
+  используется для `KnowledgeUnitKey -> KnowledgeUnitId` dedupe/migration
+  lookup;
+- runtime queues, compaction handoffs, resource bodies, persistent caches and
+  mode-specific dense indexes учитываются как explicit profile deltas в TZ
+  §5.5.1 or in the owning roadmap before implementation;
+- если разделы расходятся, physical manifest из TZ побеждает, а этот документ
+  должен быть обновлён как stale reference.
 
-content_key_to_unit_id
-  key = KnowledgeUnitKey → KnowledgeUnitId
-  // KnowledgeUnitKey = (KnowledgeUnitKind, ScopeId, ContentHash);
-  // secondary index для dedupe / supersedence / migration.
+### 12.1. Capability-to-Storage Mapping
 
-knowledge_units_by_kind
-  key = (kind, UnitId) → empty
-  [DUPSORT secondary index]
-```
+`MemoryProfileSpec` выбирает logical capabilities: QAPairs, TemporalFact,
+ConversationMemory, CompiledArticles, FullSourceRefs,
+DenseVectors, LexicalBm25F, GraphRelations, TemporalValidity,
+SpeakerAttribution, UsageStats, and Compaction. `chunk_payloads` is a canonical always-open DBI, and
+`ChunkPayload` is required when writing `KnowledgeUnitKind::Chunk`; it is not a
+separate capability selector and does not require an additional kind selector.
+Concrete DBI names and table types for these capabilities are enumerated in TZ
+§5.5.
 
-### 12.2. Открываются по capability
+### 12.2. Runtime and Mode-Specific Deltas
 
-```
-unit_components                         // если любой компонент включён
-  key = (ComponentKind tag, UnitId) → ValueVariant<UsageStats | Speaker | Temporal | EmbeddingMeta | CompactionMeta>
-  [TypeDiscriminatedTable из mdbx-containers]
+Compaction uses downstream `TaskQueue`/`JobStore` from
+`runtime-services-roadmap.md` §4.6. Its MDBX recipe is
+`mdbx-containers-extension-tz.md` §12.5 and currently costs +5 queue DBI per
+persistent queue plus +1 `compaction_handoffs` DBI when compaction is enabled.
 
-qa_payloads                             // если QAPayload включён
-  key = UnitId → QAPayload
-
-fact_payloads                           // если FactPayload включён
-  key = UnitId → FactPayload
-
-conversation_episode_payloads           // если ConversationEpisode включён
-  key = UnitId → ConversationEpisodePayload
-
-compiled_article_payloads               // если CompiledArticle включён
-  key = UnitId → CompiledArticlePayload
-
-chunk_payloads                          // всегда для Chunk kind
-  key = UnitId → ChunkPayload
-
-unit_projections                        // всегда для indexed retrieval
-  key = (scope_id, UnitId, ProjectionKind, revision) → SearchProjection
-
-embedding_meta                          // если EmbeddingMetaComponent или EmbeddingMigration
-  key = (scope_id, UnitId, ProjectionKind, model_id, version) → EmbeddingMeta
-
-embedding_vectors                       // если DenseVectors
-  key = (scope_id, model_id, ProjectionKind, UnitId) → vector_blob
-```
-
-### 12.3. Secondary indexes (по capability)
-
-```
-inverted_token_to_unit                  // если LexicalBm25F
-  key = (scope_id, token_id, projection_kind, field_id) → DUPSORT unit_id
-
-field_to_postings                       // если LexicalBm25F
-  key = (scope_id, projection_kind, field_id, token_id, unit_id) → PostingStats
-
-metadata_filters                        // всегда (lightweight metadata)
-  key = (scope_id, metadata_key, metadata_value, unit_id) → empty
-  [ReverseIndexTable]
-
-graph_edges_by_src                      // если GraphRelations
-  key = (scope_id, from_unit_id, edge_kind, to_unit_id) → GraphEdgePayload
-
-graph_edges_by_dst                      // если GraphRelations
-  key = (scope_id, to_unit_id, edge_kind, from_unit_id) → GraphEdgePayload
-
-temporal_event_index                    // если TemporalValidity
-  key = (scope_id, valid_from_ms, valid_until_ms, unit_id) → empty
-
-temporal_unit_index                     // если TemporalValidity
-  key = (scope_id, observed_at_ms, unit_id) → empty
-
-speaker_to_units                        // если SpeakerAttribution
-  key = (scope_id, speaker_id, unit_id) → empty
-
-session_to_units                        // если SpeakerAttribution
-  key = (scope_id, session_id, unit_id) → empty
-
-usage_stats_index                       // если UsageStats
-  key = (scope_id, unit_id) → UsageStatsComponent (копия для быстрого ranking)
-```
-
-### 12.4. Compaction / runtime
-
-```
-compaction_jobs                         // если Compaction
-  key = JobId → JobState
-
-compaction_handoffs                     // если Compaction
-  key = SessionId → HandoffRecord
-
-// УДАЛЕНО: generation_index (replaced by per-posting unit_revision check).
-// Stale-filter через LexicalPosting.unit_revision < envelope.revision
-// (см. §17.11 Stale-filter pattern).
-
-prompt_prefix_cache_meta                // если PromptPrefixCache включён
-  key = (scope_id, provider_id, model_id, prefix_hash) → PromptPrefixCacheMetadata
-
-response_cache                          // если opt-in ResponseCache capability включена (default OFF)
-  key = ResponseCacheKey → CachedResponse
-```
-
-### 12.5. Schema metadata
-
-```
-schema_info
-  key = "schema" → SchemaInfo{envelope_version, component_versions[NUM_KINDS], profile_signature}
-```
-
-### 12.6. DBI budget
-
-Целевой максимум — 64 DBI на один MemoryStack (расширение `max_dbs` 16→64 в `mdbx-containers`). При M1-профилях типичный usage — 18-22 DBI. При FullResearch — до 30 DBI. Headroom есть.
-
-### 12.7. Mode-aware DBI creation (DenseIndexConfig → DBI set)
-
-Выбор `DenseIndexConfig.mode` напрямую определяет набор обязательных DB dense-индексов. Capability-aware логика в `MemoryStack::open(spec)`:
-
-```
-Exact mode (DenseIndexConfig.mode == Exact):
-  embedding_vectors DBI — обязательна.
-
-BinaryCandidateFilter (BinaryCandidateFilter):
-  embedding_vectors DBI + binary_bucket_index DBI.
-
-BinaryOnly (BinaryOnly):
-  только binary_bucket_index DBI (embedding_vectors НЕ открывается).
-
-ApproximateVector Safe (ApproximateVector + store_float_fallback == true):
-  embedding_vectors + binary_bucket_index + decoder (в registry, не DBI).
-
-ApproximateVector Compact (ApproximateVector + store_float_fallback == false):
-  binary_bucket_index + decoder (embedding_vectors НЕ открывается).
-
-Hnsw mode (DenseIndexMode::Hnsw):
-  - embedding_vectors DBI (для float storage и rerank если mode hybrid).
-  - hnsw_graph_index DBI (M-level proximity graph adjacency list).
-  - graph_node_storage DBI (vector IDs + levels + neighbors).
-
-Storage estimate (1M units × 768-dim float32):
-  embedding_vectors: ~3 GB.
-  hnsw_graph_index: ~600 MB (avg M=32 edges per node × 8 bytes).
-  graph_node_storage: ~80 MB (1M units × 16-byte neighbor level header).
-  Total: ~3.7 GB (без учёта PR-curve overhead).
-```
-
-Таким образом выбор `mode` сужает или расширяет dense-набор DBI. `MemoryStack::open()` валидирует согласованность между `enable_dense_vectors` capability и `dense_index_config.mode` (например, `mode == BinaryOnly` с `enable_dense_vectors == false` допустим, но log-warn: float index будет lazy-built при первом Exact-mode retrieval).
+Host-owned LLM request/response caches, raw `ResourceBodyStore`, HNSW, binary
+bucket indexes and other mode-specific dense indexes are not part of
+the baseline physical manifest unless their owning roadmap adds an explicit
+profile-delta row to TZ §5.5.1.
 
 ## 13. Maturity Levels
+
+Normative scope lives in [`milestones.md`](milestones.md). The subsections
+below remain as a detailed architectural orientation, but the staged split
+`M0`, `M1a`, `M1b`, `M1c`, `M2`, and `M2+` in `milestones.md` wins on any
+scope conflict.
 
 ### 13.1. M0 — MVP
 
@@ -1048,41 +1540,53 @@ Storage estimate (1M units × 768-dim float32):
 
 Включено:
 
-- KnowledgeUnitEnvelope (lean hot-path envelope, ~16 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, lineage fields, priority_weight).
+- KnowledgeUnitEnvelope (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
 - primary_text + display_text в envelope; sources — inline `vector<SourceRefSummary>` (max ~3 на unit, <=256 байт excerpt preview каждый).
 - KnowledgeUnitId монотонный, opaque (`uint64_t`). `KnowledgeUnitKey = (kind, ScopeId, ContentHash)` и content-key secondary index (`content_key_to_unit_id`) — для dedupe/supersedence готов с M0.
 - SearchProjection::Original создаётся с самого начала (минимальный: unit_id → primary_text). BM25F работает через projection model с M0 (не flat fallback).
 - Lifecycle FSM с состояниями Active / Superseded / Deprecated / Erased (4 durable states). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.
-- Минимальный QAPayload (только canonical_question + answer + optional category + last_verified_at_ms) для QAKnowledgeBaseStack с M0.
-- Расширенный QAPayload (question_variants, frequency ranking, bi-temporal) — M1.
+- Минимальный QAPayload (только canonical_question + answer + optional category + last_verified_at_ms) для QAKnowledgeBaseStack с M1b.
+- Расширенный QAPayload (question_variants, frequency ranking) — M2+.
+  Bi-temporal history is M2+ and belongs to AM-13.
 - ChunkPayload (minimal) для BasicRagStack с M0. Остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload) — M1.
-- BasicRagStack, QAKnowledgeBaseStack.
+- BasicRagStack; QAKnowledgeBaseStack enters at M1b with `QAPairs`.
 - Чтение через ILexicalIndex, запись через простой write API.
-- scope_id во всех DBI keys (multi-tenancy с самого начала).
+- `scope_id` обязателен во всех secondary/range keys, которые обслуживают
+  tenant/project/agent-scoped lookup или range query. Primary lookup by globally
+  unique `UnitId` является явным исключением.
 
-Не включено (M1+): Components, расширенные QAPayload (variants/frequency/bi-temporal) и остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, PromptPrefixCache + ResponseCache, full SourceRef DBI (в M0 — только inline summary).
+Не включено (M1+): Components, QAPayload/QAKnowledgeBaseStack, остальные per-kind payloads (FactPayload, ConversationEpisodePayload, CompiledArticlePayload), дополнительные SearchProjections (QAQuestion/QAAnswer/Summary), DecayPolicy/WritePolicy, Compaction, full SourceRef DBI (в M0 — только inline summary), bi-temporal history. Provider-specific LLM caching is outside this library at every maturity level.
 
 Ship-it критерии:
 
-- BasicRag retrieve+write на 10k unit работает с p95 latency ≤ 50 ms.
+- BasicRag retrieve+write на 10k unit работает с p95 latency ≤ 50 ms under
+  the reproducible benchmark contract in `milestones.md`.
 - Все unit-тесты на envelope serialization проходят.
 - Lifecycle FSM покрыт тестами для всех 4 durable states.
 
 ### 13.2. M1 — Production
 
+M1 is staged by `milestones.md`: M1a hybrid retrieval, M1b structured
+knowledge, M1c runtime maintenance. A profile may only claim the part it
+implements and tests.
+
 Цель: полноценные профили для реальных use-cases.
 
 Включено (поверх M0):
 
-- Все компоненты (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta).
+- Все компоненты (UsageStats, Speaker, Temporal, EmbeddingMeta,
+  CompactionMeta, ActivationMetadata).
 - Все payload-компоненты (QAPayload, FactPayload, ConversationEpisodePayload, CompiledArticlePayload, ChunkPayload).
 - SearchProjections DBI с 4 стандартными kind: Original, QAQuestion, QAAnswer, Summary.
 - BM25F по projections (projection_kind в posting keys).
 - DecayPolicy + WritePolicy + SpeakerScopePolicy.
 - MemoryStacks: AgentLongTermMemoryStack, SpeakerAwareChatStack, CompiledWikiStack, TemporalFactStoreStack, FullResearchMemoryStack.
 - CompactionWorker с базовыми job types: DecayJob, DedupeJob, ArchiveColdJob.
-- PromptCache (LRU + AnthropicCacheControlAdapter).
+- Provider-neutral `ContextFingerprint` / `PromptPrefixDescriptor` output for
+  host-side LLM cache adapters; no provider cache implementation in core.
 - IRetrievalTrace с метриками cache_hit_rate, anti_loop_skip_rate, decay_score_distribution.
+- Knowledge activation metadata for deterministic DomainMap/Playbook routing
+  when `KnowledgeActivation` is enabled.
 
 Не включено (M2+):
 
@@ -1092,6 +1596,7 @@ Ship-it критерии:
 - CLI tool.
 - Distributed scope routing.
 - Eval pipeline с intent-класс-специфичными golden datasets.
+- Bi-temporal storage and true bi-temporal eval.
 
 Ship-it критерии:
 
@@ -1111,7 +1616,7 @@ Ship-it критерии:
 - Multi-vector embeddings (multi-model, multi-projection) с cross-model RRF.
 - Compaction: MergeJob, SummaryPromotionJob, EmbeddingRecomputeJob.
 - CLI tool (`agent-memory-cli`).
-- Eval pipeline с intent-классами: TemporalPointLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff.
+- Eval pipeline с intent-классами: TemporalValidityLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff, CrossDomainCoverage, ProcedureActivation.
 - Distributed scope routing (multi-process / multi-host scope namespaces).
 - Compaction metrics и self-tuning.
 - Embedding recompute migration с progress tracking.
@@ -1119,7 +1624,8 @@ Ship-it критерии:
 Ship-it критерии:
 
 - 50+ golden test cases покрывают все intent-классы.
-- p95 latency ≤ 2x baseline BM25 для всех профилей.
+- p95 latency ≤ 2x baseline BM25 для всех профилей under the reproducible
+  benchmark contract in `milestones.md`.
 - Migration script `basic_rag → agent_ltm` работает без потери данных.
 - CLI tool покрывает inspect/stats/check/vacuum/reindex/profile-info/profile-migrate.
 
@@ -1137,15 +1643,19 @@ new_spec.enable_usage_stats = true;
 new_spec.decay_policy = MemoryProfiles::DefaultAgentDecay();
 
 // migration in-place:
-// 1. Создать usage_stats_index DBI (если не существует)
+// 1. Создать unit_components, usage_by_last_access and usage_by_cooldown DBIs
+//    (если не существуют)
 // 2. Заполнить нулевыми UsageStatsComponent для всех существующих units
+//    and write bounded range-index entries for last access / cooldown
 // 3. Обновить profile_signature в schema_info
 // 4. Vacuum (опционально)
 ```
 
 Это additive: новая DBI создаётся, существующие данные не трогаются. `profile_signature` обновляется.
 
-Content-key index (`content_key_to_unit_id`) — additive, можно добавить в M0 или позже.
+Content-key index (`content_key_to_unit_id`) входит в canonical physical
+manifest; legacy DBs without it require additive profile-signature migration
+before enabling content-addressed dedupe.
 
 ### 14.2. Major migration (новая БД)
 
@@ -1156,11 +1666,11 @@ Content-key index (`content_key_to_unit_id`) — additive, можно добав
 auto source = MemoryStack::open("old.mdbx", MemoryProfiles::BasicRag());
 auto target = MemoryStack::open("new.mdbx", MemoryProfiles::AgentLongTermMemory());
 for (auto& unit : source.units().scan_all()) {
-    WriteRequest req;
+    CreateUnitRequest req;
     req.envelope = unit.envelope();
     req.components = derive_components_from_envelope(unit.envelope());
     req.projections = generate_default_projections(unit);
-    target.write_unit(req);
+    target.create_or_get_unit(req);
 }
 ```
 
@@ -1187,9 +1697,13 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `guides/mdbx-stack-boundaries.md` — границы ответственности между agent-memory-cpp и external/mdbx-containers/.
 - `policies-roadmap.md` — детальная спецификация DecayPolicy/WritePolicy/SpeakerScopePolicy с диапазонами и defaults.
 - `compaction-roadmap.md` — CompactionWorker, job types, handoff structure.
-- `runtime-services-roadmap.md` — PromptCache, AsyncIndexer, WriteGate.
+- `runtime-services-roadmap.md` — AsyncIndexer, WriteGate and host-boundary context planning.
 - `cli-roadmap.md` — agent-memory-cli target.
 - `guides/related-projects.md` — ландшафтная карта (mem0 / Cognee / Zep / Graphiti для direct competitors, FAISS / hnswlib / USearch / sqlite-vec для sister libraries) и cross-project benchmark plan.
+- `memory-lifecycle-governance-roadmap.md` — M2+ lifecycle governance:
+  bi-temporal knowledge, derivation graph, causal relations, progressive
+  retrieval, expanded memory evaluation, mutation policy, entity resolution
+  and typed query/MCP safety.
 
 ## 16. Recommended Implementation Order
 
@@ -1197,18 +1711,29 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 1: Envelope + базовые DBI
 
-- Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~16 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, lineage fields, priority_weight).
-- MDBX DBI: `knowledge_units`, `knowledge_units_by_kind`, `schema_info`.
+- Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
+- MDBX DBI: default-open physical set from
+  `mdbx-containers-extension-tz.md` §5.5, including identity DBI
+  `knowledge_units`, `content_key_to_unit_id`, `knowledge_units_by_kind` and
+  `schema_info`.
 - Сериализация envelope через flat binary (msgpack или custom).
 - `MemoryStack::open()` для пустой spec (только envelope + lexical).
 - Lifecycle FSM с 4 durable states (Active, Superseded, Deprecated, Erased). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.
 
 ### Шаг 1.5: Revision semantics + stale-filter
 
-- Определить revision++ правила (на content-bearing changes: primary_text, display_text (если retrieval-relevant), sources, payload, projections regeneration, lifecycle_state (только durable transitions)). НЕ инкрементить на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown. Explicit list durable lifecycle transitions, инкрементящих revision: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated.
-- `LexicalPosting` хранит `unit_revision` (envelope.revision на момент постинга).
-- `EmbeddingMetaComponent` хранит `unit_revision_at_compute`.
-- Retrieval-time: skip posting if `posting.unit_revision < envelope.revision`; recompute/skip embedding if `embedding.unit_revision_at_compute < envelope.revision`.
+- Определить revision++ правила: инкремент только на mutable retrieval-view
+  changes, которые сохраняют stored `content_hash` (`primary_text`,
+  `display_text` если retrieval-relevant, non-identity source summaries,
+  projections regeneration, lifecycle_state только durable transitions).
+  Identity hash material changes (`kind`, `scope_id`, canonical payload/body
+  identity, hash recipe without preserving migration) create a new `UnitId` plus
+  supersede/merge lineage. НЕ инкрементить на UsageStats / Decay /
+  priority_weight / embedding metadata / soft suppression / cooldown. Explicit list
+  durable lifecycle transitions, инкрементящих revision: Active→Superseded,
+  Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated.
+- `LexicalPosting` and `EmbeddingProjectionMeta` carry the same `ProjectionVersionRef`.
+- Retrieval-time: skip a posting or dense row unless its complete projection version equals the active canonical projection version.
 - Подробности — §17.11 Stale-filter pattern.
 
 ### Шаг 2: Scope-aware keys + metadata filters
@@ -1239,21 +1764,31 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 - `DenseIndexConfig` (см. §6.2) и `DenseIndexMode` enum (5 значений: Exact, BinaryCandidateFilter, BinaryOnly, ApproximateVector, Hnsw) как часть MemoryProfileSpec.
 - 4 base backends + HNSW M2+:
   - `ExactVectorIndex` (M0+, baseline, brute-force float).
-  - `BinaryCandidateFilterIndex` (M1+, default production: binary filter + float rerank).
+  - `BinaryCandidateFilterIndex` (optional M1 experiment: binary filter + float rerank).
   - `BinaryOnlyIndex` (M2+, experimental/compact, Hamming ranking).
   - `ApproximateVectorIndex` (M2+, experimental, decoder support для binary → approx vector → rerank).
   - `HnswVectorIndex` (M2+ experimental, 5th mode — mainline ANN backend; см. optimization-roadmap.md §"HNSW Vector Index").
 - Mode-specific DBI creation в `MemoryStack::open(spec, mode)` с capability-aware логикой (см. §12.7).
+- `BinaryCandidateFilter` may become a profile default only after its
+  application-owned `BinaryBucketIndexDescriptor`, `BinaryBucketSearchBudget`,
+  active-generation publication and stale-hydration checks are present **and**
+  that profile passes the documented exact-baseline benchmark gate. The
+  baseline starts with one short-key table; multi-index hashing is a separately
+  benchmarked M2+ option, not an automatic profile expansion.
 - `RetrievalPlan.dense_index_mode_override` для runtime override (см. §7.3).
 - Storage tradeoffs и capacity estimates документированы (см. §17.12).
-- Quality benchmarks per mode на golden dataset (Recall@10, p95 latency).
+- Quality benchmarks per mode на golden dataset: exact-oracle/candidate/reranked
+  recall, p50/p95/p99 latency, posting probes/visits, decoded bytes, RSS,
+  on-disk bytes, and targeted update/delete/compaction cost.
 - Per-stack default в `MemoryProfiles::*` фабриках (см. §8).
 
 ### Шаг 5: Component infrastructure
 
 - `TypeDiscriminatedTable` в mdbx-containers (если ещё не реализован).
 - `ComponentStore` (CRUD с tag-prefix).
-- Компоненты: UsageStatsComponent, SpeakerComponent, TemporalComponent, EmbeddingMetaComponent, CompactionMetaComponent.
+- Компоненты: UsageStatsComponent, SpeakerComponent, TemporalComponent,
+  CompactionMetaComponent,
+  ActivationMetadataComponent.
 - DBI: `unit_components` (TypeDiscriminatedTable).
 - Валидация инвариантов (Decay требует UsageStats и т.д.).
 
@@ -1270,15 +1805,32 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 - `SearchProjection` struct.
 - DBI: `unit_projections` (scope, unit, kind, revision).
-- Generation rules per kind: Original, QAQuestion, QAAnswer, Summary.
+- Generation rules per kind: Original, QAQuestion, QAAnswer, Summary,
+  optional TranslatedCanonical.
 - BM25F индексирует projections (projection_kind в posting keys).
 
 ### Шаг 8: Graph + Temporal indexes
 
-- `GraphEdgePayload` struct + EdgeKind enum.
-- DBI: `graph_edges_by_src`, `graph_edges_by_dst`.
+- `GraphEdgeId`, `GraphEdgePayload` struct + EdgeKind enum. A Relation
+  `KnowledgeUnit` is the authoritative occurrence/lifecycle/provenance owner;
+  its one `GraphEdge` has the same global identity and carries endpoints,
+  relation class, payload and evidence.
+- DBI: `graph_edges_by_src`, `graph_edges_by_dst` are two atomic physical
+  orientations of that one Relation-owned edge; packed adjacency is rebuildable
+  only.
+- Acceptance gates: atomic two-orientation write and reopen, export/import with
+  endpoint local-ID remap, relation/edge-ID mismatch or collision rejection,
+  Relation lifecycle/provenance round-trip, mutable-edge-patch rejection, and
+  replacement through a new Relation plus supersede lineage. A profile selecting
+  `GraphRelations` backs up one authoritative logical `GraphEdge` record per
+  Relation `GlobalKnowledgeUnitId`, not its two physical orientations. Restore
+  validates the Relation/edge identity and evidence, remaps endpoint local IDs
+  through durable global identities, atomically recreates both orientations,
+  and only then publishes the workspace.
 - Bounded graph expansion (max_depth, max_edges, budget_tokens).
-- TemporalComponent + DBI: `temporal_event_index`, `temporal_unit_index`.
+- Single-axis TemporalComponent + DBI: `temporal_unit_index` for M1b; the
+  M2+ bi-temporal range indexes remain owned by AM-13. A separate
+  event range index requires a future authoritative `EventRecord` entity.
 - `floating subgraph` как retrieval view.
 
 ### Шаг 9: Speaker + Session indexes
@@ -1352,7 +1904,12 @@ double apply_filters(
 
 - ICompactionJob interface.
 - Job types: DecayJob, DedupeJob, ArchiveColdJob.
-- TaskQueue из mdbx-containers TZ.
+- Downstream `TaskQueue`/`JobStore` из `runtime-services-roadmap.md` §4.6;
+  MDBX storage recipe — `mdbx-containers-extension-tz.md` §12.5.
+- Job lifecycle transitions use the typed transition pattern from
+  `runtime-services-roadmap.md` §4.6.1: state-specific transition functions
+  consume persisted `JobRecord` + `ClaimToken` when required and return both
+  primary-record and queue-index deltas.
 - CompactionHandoff structure.
 - Async worker thread.
 
@@ -1361,6 +1918,24 @@ double apply_filters(
 - Golden dataset: ≥50 test cases, ≥3 интента.
 - RetrievalMetrics: Recall@K, MRR, NDCG@K, ContextPrecision, NoAnswerAccuracy, CitationFidelity, Latency p50/p95/p99.
 - HybridLiftTarget: Recall@10(hybrid) ≥ 1.20 * Recall@10(BM25-only).
+
+### Шаг 15.5: Memory lifecycle governance (M2+)
+
+- BiTemporalComponent and range indexes for valid-time vs recorded-time
+  queries.
+- MemoryMutationPolicy for append-only, supersede, merge, mutable, immutable
+  and operator-confirmed profiles.
+- AbstractionComponent and relation indexes for derivation/support/contradiction
+  links.
+- MemoryRelationKind for causal and consistency-aware retrieval.
+- Progressive retrieval traces from high-level models/summaries down to raw
+  evidence.
+- Expanded memory-eval metrics from
+  `memory-lifecycle-governance-roadmap.md` AM-17.
+- Deterministic-first entity resolution (AM-19) with LLM fallback only as an
+  auditable proposal.
+- Typed query/tool filters (AM-20) so LLM output never becomes schema syntax.
+- Logical index separation and an LLM-free baseline read path (AM-21).
 
 ### Шаг 16: CLI tool (M2, отложен)
 
@@ -1399,7 +1974,7 @@ double apply_filters(
 ### 17.4. Search projection regeneration
 
 - Когда SearchProjection регенерируется? На write? На compaction tick? По требованию?
-- Решение: на write (для active revision), если projection kind включён в WriteRequest. Старые revisions остаются до compaction purge.
+- Решение: на create/update (для active revision), если projection kind включён в `CreateUnitRequest` / `MutableUnitPatch`. Старые revisions остаются до compaction purge.
 - Projections создаются для каждого unit'а в момент write (Original — всегда; QAQuestion/QAAnswer — только для QAPair; Summary — только для Summary/CompiledArticle).
 
 ### 17.5. Cyrillic morphology
@@ -1414,9 +1989,12 @@ double apply_filters(
 - Синхронизация с on-write operations (MultiTableWriter)?
 - Решение: один worker thread, write/compaction используют одну транзакцию через MultiTableWriter (compaction jobs ждут в очереди).
 
-### 17.7. PromptCache scope
+### 17.7. Host LLM cache scope
 
-- PromptCache хранит по prompt_prefix_hash → response. Должен ли он быть scope-aware?
+- Provider request/response caches are host-owned. Core emits only a stable
+  `ContextFingerprint` / `PromptPrefixDescriptor`; the host decides whether a
+  provider cache key is scope-aware and may never treat a cached response as
+  canonical memory.
 - Решение: да, scope_id входит в cache_key, чтобы разные пользователи не видели чужие responses.
 
 ### 17.8. Embedding model migration
@@ -1437,8 +2015,8 @@ double apply_filters(
 
 ### 17.11. Stale-filter pattern — revision-based per-record check
 
-- `LexicalPosting.unit_revision < envelope.revision` → skip posting (defer to async reindex).
-- `EmbeddingMetaComponent.unit_revision_at_compute < envelope.revision` → recompute or skip.
+- `LexicalPosting.projection_version != active ProjectionVersionRef` → skip posting (defer to async reindex).
+- `EmbeddingProjectionMeta.projection_version` mismatch → recompute or skip.
 - Постинг может быть stale даже если unit не удалён (например, payload изменился, и в BM25F-индексе застрял старый term frequency).
 - Реализация M0: per-posting check inline в retrieval pipeline.
 - Реализация M2 (при >1M units): `unit_revision_index` DBI для batch reindex.
@@ -1455,7 +2033,7 @@ Baseline (без dense index):
 Exact mode (DenseIndexMode::Exact):
   embedding_vectors: 1M × 768 × 4 bytes ≈ 3 GB.
 
-BinaryCandidateFilter (default production):
+BinaryCandidateFilter (optional M1 experiment; production choice only after evaluation):
   embedding_vectors: ~3 GB.
   binary_bucket_index (128-bit): 1M × 16 bytes ≈ 16 MB.
 
@@ -1493,15 +2071,18 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
 - **LifecycleState** — durable state of a KnowledgeUnit. Values: Active, Superseded, Deprecated, Erased. Changes increment envelope.revision. SoftSuppressed/cooldown НЕ является LifecycleState value — хранится в UsageStatsComponent.cooldown_until_ms.
 - **Component** — optional typed payload, прикреплённый к unit (operational или per-kind).
 - **SearchProjection** — отдельное текстовое представление unit для конкретного retrieval method.
-- **DenseIndexMode** — backend selection для dense vector retrieval (см. §6.2). Values: `Exact` (brute-force float, ground truth), `BinaryCandidateFilter` (binary filter + float rerank, default production), `BinaryOnly` (binary only, Hamming ranking, experimental/compact), `ApproximateVector` (binary + decoder → approx vector → rerank, experimental). Default per stack и mode-aware DBI mapping — см. §8 и §12.7.
+- **DenseIndexMode** — backend selection для dense vector retrieval (см. §6.2). Values: `Exact` (brute-force float, required M1a baseline and ground truth), `BinaryCandidateFilter` (optional M1 experiment: binary filter + float rerank), `BinaryOnly` (binary only, Hamming ranking, experimental/compact), `ApproximateVector` (binary + decoder → approx vector → rerank, experimental). Default per stack and mode-aware DBI mapping follow measured evaluation, not a M1a ship gate.
 - **MemoryProfileSpec** — декларативная спецификация capabilities + policies.
 - **MemoryStack** — runtime-объект, открытый через `MemoryStack::open(path, spec)`.
 - **ScopeId** — namespace identifier для multi-tenancy.
 - **Profile** — см. MemoryProfileSpec.
 - **Stack** — см. MemoryStack.
 - **Maturity Level** — M0/M1/M2, определяет ship-it критерии и scope функциональности.
-- **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на content-bearing changes: primary_text, display_text (если retrieval-relevant), sources, payload, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated). НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
-- **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и per-record metadata (`LexicalPosting.resource_generation`, `EmbeddingMetaComponent.unit_revision_at_compute`). Envelope-level versioning — это `revision`, не `generation`.
-- **Stale filter** — per-record check: `LexicalPosting.unit_revision < envelope.revision` → skip; `EmbeddingMetaComponent.unit_revision_at_compute < envelope.revision` → recompute или skip. M0: inline в retrieval pipeline; M2: `unit_revision_index` DBI для batch reindex (см. §17.11).
-- **Profile signature** — hash от MemoryProfileSpec, используется для drift detection.
+- **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на mutable retrieval-view changes that preserve stored `content_hash`: `primary_text`, `display_text` если retrieval-relevant, non-identity source summaries, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated). Смена identity hash material создаёт новый `UnitId` plus supersede/merge lineage. НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
+- **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и projection metadata. Envelope-level versioning — это `revision`, не `generation`.
+- **Stale filter** — per-record check: a lexical posting and dense row require a complete matching `ProjectionVersionRef`. M0: inline в retrieval pipeline; M2: projection-version indexes for batch reindex (см. §17.11).
+- **Profile signature** — hash от full `MemoryProfileSpec`, including
+  core capabilities and selectors; host LLM cache settings are deliberately
+  excluded;
+  используется для drift detection.
 - **ADR** — Architecture Decision Record, раздел в этом документе с фиксированным решением.

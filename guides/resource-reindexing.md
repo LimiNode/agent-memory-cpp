@@ -36,13 +36,31 @@ resource, not only discovered by scanning the whole database.
 ## Terms
 
 `ResourceId`
-: Stable identity of an original source item. A markdown file, web page, code
-symbol, conversation note, profile fact, or memory note can all be resources.
+: Stable **local** identity of an original logical source item in one storage
+environment. A markdown file, web page, code symbol, conversation note, profile
+fact, or memory note can all be resources. It is stable across revisions and
+reindexing in that environment.
+
+`SourceId` / `SourceRevisionId`
+: The artifact-provenance profile's durable cross-environment identities for the
+same logical source and its immutable observed snapshot. One local `ResourceId`
+maps to one `SourceId`; each local `ResourceRevision` maps to exactly one
+`SourceRevisionId`. Import may allocate a different local `ResourceId`, but it
+must retain and validate the source/revision identities and their manifest.
 
 `ResourceRevision`
-: The current version of a resource. The first implementation can model this as
-`resource_id`, `generation`, an uncompressed content hash, and a pipeline
-configuration hash.
+: An immutable local observed/reindex record for a `ResourceId`. The active
+manifest selects its current generation; older cited revisions remain
+addressable until retention can safely remove them. The first implementation
+can model a revision as `resource_id`, `generation`, an uncompressed content
+hash, and a pipeline configuration hash. It adapts to, rather than replaces,
+immutable `SourceRevisionId` in artifact-aware profiles.
+
+`SourceLocator`
+: A portable, mutable observation of where a logical resource was seen. It is
+not identity and may change while `ResourceId` remains stable. A source can
+retain active and historical aliases so export may reconstruct a useful folder
+tree without making a filesystem path part of identity.
 
 `ResourceManifest`
 : The list of derived keys created from the current resource revision.
@@ -57,11 +75,40 @@ The first value types should stay dependency-free and live near the domain or
 storage contracts.
 
 ```cpp
+enum class SourceLocatorKind : uint8_t {
+    WorkspaceRelativePath,
+    CanonicalUri,
+    ImportedArchivePath,
+    ApplicationAlias
+};
+
+struct SourceLocatorObservation final {
+    std::string workspace_root_id;
+    SourceLocatorKind kind = SourceLocatorKind::WorkspaceRelativePath;
+    std::string normalized_relative_path;
+    std::uint64_t observed_at_ms = 0;
+};
+
 struct ResourceRevision final {
     ResourceId resource_id;
+    std::optional<SourceId> source_id;
+    std::optional<SourceRevisionId> source_revision_id;
     std::uint64_t generation = 0;
-    std::uint64_t content_hash = 0;
+    ResourceBodyDigest body_digest;  // SHA-256 baseline over immutable source bytes
+    std::uint64_t content_hash = 0;  // optional local fast freshness hash, never citation integrity
     std::uint64_t pipeline_config_hash = 0;
+    std::vector<SourceLocatorObservation> locator_observations;
+};
+
+enum class SourceLocatorStatus : uint8_t { Active, Alias, Retired };
+
+struct SourceLocator final {
+    std::string workspace_root_id;
+    SourceLocatorKind kind = SourceLocatorKind::WorkspaceRelativePath;
+    std::string normalized_relative_path;
+    std::uint64_t first_seen_at_ms = 0;
+    std::uint64_t last_seen_at_ms = 0;
+    SourceLocatorStatus status = SourceLocatorStatus::Active;
 };
 
 enum class DerivedRecordKind {
@@ -88,13 +135,70 @@ struct ResourceManifest final {
 };
 ```
 
-This is not a final API. It documents the intended contract shape before code is
-introduced.
+This is a historical pre-V5 sketch, retained to explain the original resource
+semantics. It is not the current `ResourceIndexer` storage contract. The
+implemented V5 manifest additionally carries its state, pending-reclaim records,
+schema identity, and payload version; its physical-record safety evidence is
+materialized in the owner registries described below.
+
+`ResourceRevisionRef` is the local durable citation binding. It identifies the
+exact retained body revision from which a byte range was measured, while
+`ResourceId` remains the stable identity of the changing logical source. An
+artifact-aware profile maps this reference to its immutable `SourceRevisionId`.
+Every non-preview-only quote keeps that referenced body revision live: a later
+update may make a newer generation active for retrieval, but must not overwrite
+the older bytes while a `SourceRefSummary` still materializes them. An
+implementation may use immutable versioned entries in `ResourceBodyStore` or an
+artifact BlobStore; the current `ResourceManifest` is an active-view pointer,
+not permission to discard cited generations.
+
+`ResourceBodyDigest` is algorithm-tagged and uses SHA-256 as the M0 baseline.
+It is part of every newly imported `ResourceRevisionRef`, `ResourceBodyStore`
+descriptor, retained-body lookup and reopen/backup fixture. `content_hash` is a
+prototype-local fast freshness hint only; it has no cross-build collision,
+encoding, or citation-integrity contract. `ResourceId` is never recomputed from
+`content_hash`, `pipeline_config_hash`,
+path or URI. A connector may discover a rename through a stable provider/file
+identity, an explicit application mapping, or an operator-confirmed match, then
+append/update a `SourceLocator` while retaining the logical ResourceId. Equal
+bytes alone must not silently merge two independently imported documents.
+`workspace_root_id` is an application-defined portable root label, not an
+absolute machine path; export preserves root-relative paths and aliases where
+retention policy permits.
+
+`DocumentId` is a globally unique storage identity, not a local per-resource
+counter. A `ResourceIndexer` caller must derive a fresh `DocumentId` for every
+distinct `ResourceRevisionRef` and must never reuse it for a different
+`ResourceId` or generation. The current dense prototype additionally enforces
+the physical claim through application-local document and chunk owner registries.
+Each binding contains `ResourceId`, generation, and `ResourceManifestSchema`.
+The registries are consistency evidence for physical `DocumentId`/`ChunkId`
+records, not a second canonical source of resource semantics: the manifest and
+revision remain authoritative. A missing, foreign, malformed, or
+generation/schema-mismatched binding for a physically present record fails
+closed before reindex, reclaim, or erase. This does not make the independent
+stores crash-atomic; a future transaction-aware importer still owns that scope.
+
+`SourceLocator` is mutable source-level history for navigation and rename
+tracking. `SourceLocatorObservation` is the immutable portable location seen by
+one `ResourceRevision`; every imported revision records at least one
+observation. A later document may reuse a retired path without changing the
+older revision's observed location. Artifact-aware profiles carry the same
+observations on the corresponding `SourceRevision` and include them in export.
 
 `pipeline_config_hash` should cover settings that change derived records even
 when source text is unchanged. Examples include chunking settings, parser
 version, embedding model id, normalization policy, signature encoder config,
-and index-specific encoding settings.
+index-specific encoding settings, raw source format, compression framing,
+document boundary policy, tokenizer id, token budget, overlap, and safe-boundary
+policy.
+
+Tokenizer-aware ingestion treats source bytes, decompression, document
+boundaries, parser/extractor output, token-budgeted chunking and index
+projection generation as separate reproducible stages. This follows the
+Gigatoken-style pipeline lesson captured in
+[`chunkers-roadmap.md`](chunkers-roadmap.md) §10, without making Gigatoken or
+any Rust/Python tokenizer a core dependency.
 
 `DerivedRecordRef` is intentionally broad at the roadmap stage, but concrete
 code should define field usage precisely. Chunk, embedding, and vector records
@@ -128,6 +232,10 @@ resource_manifests:
     key   = resource_id
     value = list of derived record references for the current generation
 
+resource_bodies:
+    key   = (resource_id, generation, body_digest)
+    value = immutable source bytes or an addressable body/blob reference
+
 chunks:
     key   = chunk_id
     value = chunk text, metadata, resource_id, generation, chunk_index
@@ -146,24 +254,36 @@ one resource without scanning unrelated resources.
 
 ## Reindex Algorithm
 
-The normal replace flow should be:
+The normal replace flow is two-phase. It must not hold a write transaction while
+parsing a document, calling an embedder, or rebuilding a large derived index:
 
 ```text
-1. Begin writable transaction where the backend supports it.
-2. Load the old manifest by resource_id.
-3. Remove or invalidate old derived records listed in the manifest.
-4. Store the new resource metadata, content hash, and generation.
-5. Chunk the new resource.
-6. Generate embeddings for the new chunks.
-7. Build any signatures, postings, or graph records needed by enabled indexes.
-8. Store new chunks, embeddings, and index entries.
-9. Store the new manifest.
-10. Commit.
+1. Read the current manifest and prepare immutable source/body bytes, parsed
+   text, chunks, projections and a candidate next generation outside a write
+   transaction. Heavy embedding, ANN and bulk backfill work is revision-guarded
+   derived work, not part of publication.
+2. In a short write transaction, compare the expected current generation,
+   write the new resource revision, raw units, required lexical projections and
+   manifest, then publish the next generation as active. A conflict restarts
+   preparation from the newly observed generation.
+3. Mark the former generation stale only after the active-generation swap.
+   Readers resolve the manifest/current generation first and therefore keep
+   seeing the prior complete revision until publication succeeds.
+4. Enqueue optional dense, ANN, signature or graph work as idempotent jobs
+   carrying `(resource_id, generation, pipeline_config_hash)`. Workers reject
+   stale generations before making a derived view visible.
 ```
 
-If content hash and ingestion settings did not change, the reindex operation may
-skip expensive work. The skip check must compare both `content_hash` and
+If the body digest and ingestion settings did not change, the reindex operation may
+skip expensive work. The skip check must compare both `body_digest` and
 `pipeline_config_hash`.
+
+The M0 lexical-first importer requires the source body, raw units, mandatory
+provenance summaries, `Original` projections and lexical indexes before it may
+publish a new active generation. Dense/vector projections can be synchronous
+only for a deliberately small profile; otherwise they remain revision-guarded
+eventual work and retrieval revalidates every derived hit against the active
+manifest. `ResourceIndexer` does not yet implement this protocol.
 
 ## Tombstones And Compaction
 
@@ -204,7 +324,164 @@ The note update path is then just a small resource reindex. It removes the old
 embedding and index entries for that one note, writes the new derived records,
 and updates the manifest.
 
-## Future Contracts
+## M0 Import Contracts
+
+The public M0 write path is lexical-first and does not require an embedder or a
+vector index. It is owned by ingestion, not by an application CLI. Concrete
+connectors remain adapters, but every adapter publishes the same observed-source
+shape:
+
+```cpp
+struct ObservedResource {
+    std::optional<ResourceId> known_local_id;
+    std::optional<SourceId> durable_source_id;
+    SourceLocator locator;
+    std::string content_type;
+    std::vector<std::uint8_t> utf8_body;
+    SourceTextOrigin text_origin;
+    std::optional<DerivedTextProvenance> derived_text_provenance;
+    TypedMetadata metadata;
+};
+
+struct ResourceImportResult {
+    ResourceId resource_id;
+    ResourceRevision revision;
+    std::vector<KnowledgeUnitId> raw_units;
+};
+
+class IResourceConnector {
+public:
+    virtual ~IResourceConnector() = default;
+    virtual std::vector<ObservedResource> observe() = 0;
+};
+
+class IResourceImporter {
+public:
+    virtual ~IResourceImporter() = default;
+    virtual ResourceImportResult import(ObservedResource resource) = 0;
+};
+
+class ICuratedUnitNormalizer {
+public:
+    virtual ~ICuratedUnitNormalizer() = default;
+    virtual std::vector<KnowledgeUnitRef> normalize(
+        const ResourceImportResult& imported) = 0;
+};
+```
+
+`IResourceImporter` resolves/allocates the stable ResourceId, appends the
+ResourceRevision and locator history, writes body/manifest, creates raw
+`Note`/`Chunk` units with required inline SourceRefSummary, then publishes
+`Original` projections. Publication is coordinated: a failed import leaves the
+previous manifest/generation visible, or writes a new generation that becomes
+active only after all required units and projections exist. `ICuratedUnitNormalizer`
+is M1b: it may create Facts, QAPairs, concepts or cards with provenance, but
+never replaces, mutates away or impersonates the raw source.
+
+`text_origin` is mandatory. `OriginalText` must not carry extraction metadata.
+`DerivedExtraction` must carry non-empty source media type, extractor id and
+extractor version; otherwise the importer rejects the observation. It persists
+that provenance with the `ResourceRevision`, sets the resulting
+`SourceRefSummary::text_origin` to `DerivedExtraction`, and never emits an
+original-media citation from the derived text alone.
+
+Every newly created quote-based `SourceRefSummary` binds the committed
+`ResourceRevisionRef` before publication. A failed import leaves both the prior
+active manifest and its cited body revisions materializable. A retention job may
+remove an old body only after every remaining reference is explicitly
+`preview-only` or has been migrated to another durable evidence anchor.
+
+These are roadmap contracts, not an assertion that the current C++ prototype
+already implements them. Connector-specific filesystem walking, `--knowledge-path`
+CLI UX, frontmatter parsing and PDF/OCR adapters remain outside the core.
+
+## Existing Dense Prototype And Future Contracts
+
+`src/agent_memory/ingestion/ResourceIndexer` is a pre-chunked dense/vector
+prototype. It requires `IEmbedder` and `IVectorIndex`. It now writes replacement
+document/vector records and publishes the replacement manifest before it performs
+best-effort reclamation of records that belong only to the old manifest. It
+serializes calls through one instance, rejects an older generation, treats an
+equal generation as idempotent only when both revisions carry the same valid
+`ResourceBodyDigest` and an explicitly set matching `pipeline_config_hash`, the
+persisted document/manifest matches the candidate, and regenerated deterministic
+vector records match the active vector index. It rejects every other
+equal-generation attempt as a conflict. This prototype validation may call the
+embedder but never publishes a write for an equal generation. The
+prototype-local `content_hash` remains a fast hint rather than proof of retry identity. If an
+in-process document, vector, or manifest write
+throws, it restores the document/vector records touched by that attempt and leaves
+the prior manifest active. After publication, superseded record references remain
+in the replacement manifest's durable `pending_reclaim_records` list until each
+idempotent erase succeeds. A later retry therefore drains them after restart
+instead of treating stale records as harmless. The independent
+prototype backends cannot make this a cross-store crash transaction or coordinate
+independently constructed indexers, so applications must not treat it as the
+generic M0 import API or as crash-atomic reindexing. In particular, a raw
+`IVectorIndex` reader can observe a just-written record while a reindex call is
+still in flight; public retrieval must use the future M0 transactional importer
+and active-manifest validation rather than this prototype path.
+
+The prototype writes only its V5 `agent_memory.resource_indexer` manifest
+schema. Before any reindex, reclaim, erase-pending transition or physical erase,
+it validates the exact owner topology and every physical child closure of each
+document that may be replaced or erased: one `Document` followed by one ordered
+`Chunk`/`Embedding`/`VectorRecord` triple per ordinal, plus only a valid suffix
+of those records in `pending_reclaim_records`. A physical child must have the
+matching declared triple and the expected document/chunk owner; ownerless,
+foreign, malformed, or undeclared children block the operation before document
+storage removes them. Generic manifests may legally
+describe lexical, graph, binary-bucket or custom records for their own owners;
+they are not valid input to this indexer. V1--V4 payloads remain readable for
+diagnostics and explicit migration tooling, but `ResourceIndexer` rejects them
+as migration-required before embedding or storage mutation. The current
+prototype deliberately has no implicit legacy migration: an operator-approved
+migrator must prove the old derived-record ownership and revision evidence
+before writing the V5 manifest and its document/chunk owner bindings. Those
+bindings live in the two profile-local owner registries, carry `ResourceId`,
+generation and manifest schema, and must be written together with the proven
+physical ownership evidence. A schema marker alone is insufficient. The
+cleanup path repeats both owner and closure validation after each manifest
+publication and immediately before the next physical reclaim operation. All
+physically present records in one pending-reclaim sequence must prove the same
+superseded generation; a pending document and each of its physical children
+must use that exact generation. An absent pending identity may have no owner
+binding, but an owner that remains must match the generation proven by the
+physical pending records; without such physical evidence, cleanup leaves that
+owner for explicit repair. The prototype prebinds attempted owners before the
+first document/vector mutation;
+if prebinding fails, it does not begin physical mutation. During an in-process
+rollback, an identity whose physical restoration is uncertain retains that
+prebound attempted owner as fail-closed repair evidence. This is deliberately
+not a claim of cross-store crash recovery or a replacement for a migration
+framework.
+
+### Legacy Public API Boundary
+
+`SourceRef` was intentionally renamed to `FactSourceRef` before the first
+stable public release. This is a source-breaking pre-1.0 migration, not a
+deprecated alias: keeping an alias would reserve the canonical `SourceRef`
+name for the incompatible legacy fact pointer. Consumers rename their include
+and type references, then migrate durable provenance to canonical
+`SourceRefSummary` / `SourceRef` through the importer. Serialized legacy fact
+records retain their versioned decoder only for explicit migration tooling; new
+public APIs must not write them as canonical citations.
+
+The current `Document`, `DocumentChunk`, `RetrievedChunk`, and structured-fact
+records predate the M0 provenance contract. `Document::TextRange` is only a
+byte-coordinate primitive; it has no resource revision or representation
+binding. `RetrievedChunk` cannot carry a revision-bound citation. The former
+fact-local `SourceRef` has been renamed `FactSourceRef` so it cannot be confused
+with the canonical provenance `SourceRef` described in
+`knowledge-units-roadmap.md`.
+
+New source connectors and public artifact-aware retrieval must use the canonical
+`SourceRefSummary`/full `SourceRef` contract and return a hydration handle for
+its `EvidenceAnchor`. A temporary adapter may project a canonical reference into
+`FactSourceRef` or `Document::TextRange` for legacy consumers, but never the
+other way around. The first public M0 importer/retrieval API introduces the
+canonical domain header; no adapter may expose the legacy types as its durable
+provenance model.
 
 Possible dependency-free contracts:
 
@@ -242,8 +519,9 @@ public:
 ```
 
 The exact names can change when implementation starts. The important boundary is
-that resource indexing composes storage, embedding, and index contracts rather
-than hiding them behind a single large facade.
+that M0 importing composes canonical resource/unit/projection storage before
+optional embedding and index work, rather than hiding every stage behind one
+large facade.
 
 ## Test Expectations
 
@@ -258,17 +536,29 @@ Future PRs should add focused tests for:
 - compaction removes stale bucket entries without changing query results;
 - repeated reindex of the same resource is idempotent;
 - two resources cannot conflict through reused chunk ids.
+- changed content keeps the same ResourceId and creates a newer revision;
+- an old quote remains materializable from its bound body revision after a
+  newer resource generation becomes active;
+- a derived extraction without complete extractor provenance is rejected, and a
+  valid derived extraction never renders as an original-media quotation;
+- rename/move preserves locator history only after stable connector identity or
+  explicit application confirmation, never merely because bytes match;
+- export/import may remap ResourceId but preserves SourceId/SourceRevisionId
+  and root-relative locator history.
 
 ## Recommended Implementation Order
 
 1. Add dependency-free `ResourceId`, `ResourceRevision`, and manifest value
-   types.
+   types, then add the optional artifact-profile SourceId/SourceRevisionId
+   bridge without changing the M0 meaning of `ResourceId`.
 2. Add resource manifest storage contracts and tests.
 3. Add an in-memory manifest storage or fake for contract tests.
 4. Add MDBX-backed resource manifest storage.
 5. Add resource-aware document/chunk metadata helpers.
-6. Add a small `ResourceIndexer` composition test with `IDocumentStorage`,
-   `IEmbedder`, and `IVectorIndex`.
-7. Add targeted reindexing for exact vector search.
-8. Add generation-aware stale filtering for binary bucket indexes.
-9. Add compaction tasks for compressed bucket lists.
+6. Add lexical-first `IResourceImporter` conformance tests for update, failure
+   publication, revision-bound SourceRefSummary, and derived-text origin.
+7. Add a small dense `ResourceIndexer` composition test with `IDocumentStorage`,
+   `IEmbedder`, and `IVectorIndex` as an optional derived-index path.
+8. Add targeted reindexing for exact vector search.
+9. Add generation-aware stale filtering for binary bucket indexes.
+10. Add compaction tasks for compressed bucket lists.

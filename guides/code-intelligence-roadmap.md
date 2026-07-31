@@ -350,8 +350,8 @@ typedef enum cbm_artifact_quality_e {
   to be added to [`compaction-roadmap.md`](compaction-roadmap.md)
   (currently no such job exists there — `compaction-roadmap.md` covers
   DecayJob / DedupeJob / MergeJob / ArchiveColdJob /
-  SummaryPromotionJob / EmbeddingRecomputeJob / CompactionHandoffJob
-  / SummaryTreeJob / CommunitySummaryJob). The team-shared artifact
+  SummaryPromotionJob / EmbeddingRecomputeJob / SummaryTreeJob /
+  CommunitySummaryJob). The team-shared artifact
   reuses the zstd compression contract already documented in
   [`optimization-roadmap.md`](optimization-roadmap.md) §"Compression
   Contracts" (§"Optional Zstd Adapter"). The

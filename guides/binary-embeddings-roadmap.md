@@ -450,11 +450,11 @@ Planned binary signatures vs planned binary embeddings — two sides of the same
 | Aspect | Planned Binary Signatures | Planned Binary Embeddings |
 |---|---|---|
 | **Purpose** | Cache-friendly fingerprints (bucket prefilter) | Semantic-preserving quantizers (general compression) |
-| **Storage** | `(scope_id, projection_kind, short_key)` bucket index | Optional embedding storage tier (binary only / binary + decoder) |
+| **Storage** | Descriptor-scoped bucket index: `(scope, model, model version, projection, descriptor, key projection, short key)` | Optional embedding storage tier (binary only / binary + decoder) |
 | **Encoder** | `RandomHyperplaneLSH` baseline + `AutoencoderBinarizer` M2+ | Multiple encoders (sign, LSH, autoencoder, PQ, RotSQ) |
 | **Reconstruction** | None (fingerprint only) | Optional decoder for `ApproximateVector` mode |
 | **Quality hypothesis** | Coarse filter: Recall@10 ≈ 0.95 (binary + float rerank, hypothesis) | Standalone: Recall@10 ≈ 0.95 (256+ bits, hypothesis); binary-only: ≈ 0.85 (hypothesis) |
-| **Use in `DenseIndexMode`** | `BinaryCandidateFilter` (planned default) | `BinaryCandidateFilter` / `BinaryOnly` / `ApproximateVector` |
+| **Use in `DenseIndexMode`** | `BinaryCandidateFilter` (benchmark-gated candidate) | `BinaryCandidateFilter` / `BinaryOnly` / `ApproximateVector` |
 
 The binary-signatures roadmap is **the first slice** of the binary embeddings roadmap. It plans to establish the encoder registry, signature value types, and bucket index. Binary embeddings roadmap **extends** that into:
 
@@ -519,7 +519,13 @@ Binary embeddings slot into the planned `optimization-roadmap.md` binary-signatu
 
 ### 7.1. Planned Bucket
 
-Planned binary-signatures bucket (roadmap, **not yet implemented**): `binary_bucket_index` keyed by `(scope_id, projection_kind, short_key)`, posting lists of `BinaryBucketPosting { unit_id, full_signature, unit_revision, resource_generation }`. Planned encoder registry: `BinarySignatureEncoderRegistry` with `.bse` file format.
+Planned binary-signatures bucket (roadmap, **not yet implemented**):
+`binary_bucket_index` keyed by `(scope_id, model_id, model_version,
+projection_kind, descriptor_fingerprint, key_projection_id, short_key)`, with
+posting lists of `BinaryBucketPosting { unit_id, full_signature, unit_revision,
+resource_generation }`. The descriptor carries the encoder/config identity and
+the first implementation has one key projection table. Planned encoder registry:
+`BinarySignatureEncoderRegistry` with `.bse` file format.
 
 ### 7.2. Quantizer Section
 
@@ -576,7 +582,16 @@ M0 scope:
 - `MultiProbeHammingIndex` bounded in-memory bucket prototype (implemented, experimental; no worst-case sub-linear guarantee).
 - Persisted `RandomHyperplaneLSH` / production Hamming ANN wiring (Planned API).
 - `binary_bucket_index` MDBX layout (Planned API).
-- `DenseIndexMode::BinaryCandidateFilter` default candidate-filter mode (Planned API).
+- `DenseIndexMode::BinaryCandidateFilter` benchmark-gated candidate-filter mode (Planned API).
+
+The in-memory multi-probe prototype is intentionally not the persistence
+contract. A durable candidate-filter implementation first adopts the
+application-owned `BinaryBucketIndexDescriptor` and
+`BinaryBucketSearchBudget` from
+[`optimization-roadmap.md`](optimization-roadmap.md) §"Binary Bucket Index
+Tasks": descriptor compatibility, explicit probe/posting/decode/rerank limits,
+active-generation publication and canonical hydration are required before a
+bucket hit can contribute to retrieval.
 
 This guide treats M0 as the starting point of the roadmap.
 
@@ -596,10 +611,24 @@ This guide treats M0 as the starting point of the roadmap.
 
 ### M2: Hybrid Binary + Dense Indexes
 
-- `DenseIndexMode::Hnsw` (`HnswVectorIndex`) — mainline M2+ backend, optionally combined with `BinaryCandidateFilter` for hybrid.
+- `DenseIndexMode::Hnsw` (`HnswVectorIndex`) — an M2+ benchmark candidate,
+  optionally combined with `BinaryCandidateFilter` for hybrid; it is not a
+  default backend until it passes the profile lifecycle and quality gates.
 - Hybrid retrieval: binary filter produces candidate set (Recall@10 ≈ 0.95 — hypothesis, see §6), HNSW ranks within candidate set, dense rerank on top.
 - Adaptive per-query mode selection via `RetrievalPlan::dense_index_mode_override`.
 - Multi-encoder hybrid: binary embeddings + PQ codes for finer rerank (asymmetric ADC distance).
+- Multi-index hashing is M2+ experimental: begin with a single short-key table,
+  then add independently versioned key projections only when a locked
+  benchmark improves the recall/latency/storage frontier under the same global
+  `BinaryBucketSearchBudget`. It must report duplicate-posting bytes,
+  deduplication work, update amplification and candidate recall separately
+  from final reranked quality.
+- Columnar bucket segments are M2+ experimental: delta/packed posting columns,
+  raw fixed-width signatures, and either fixed-width quantized vectors, PQ, or
+  a benchmarked frame-of-reference residual codec. See
+  [`optimization-roadmap.md`](optimization-roadmap.md) §"Columnar Segment Codec
+  Candidates"; generic Zstd is not assumed to improve already packed hot
+  vector columns.
 
 ## §9. Open Questions
 
@@ -724,4 +753,5 @@ Baseline — 768-dim float32 embedding (3,072 bytes per vector).
 - [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) — typology of retrieval techniques; binary embeddings filter candidates, retrieval still ranks.
 - [`memory-routing-roadmap.md`](memory-routing-roadmap.md) — pre-retrieval routing sits "до" binary embedding filter; both layers are cheap pre-filters in series.
 - [`knowledge-base-roadmap.md`](knowledge-base-roadmap.md) — `HybridRetrievalEngine` (existing), `IQueryTransformer` (planned), `IRetrievalEvaluator` (planned) — binary embeddings integrate as candidate filter inside retrieval.
-- [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) — `MemoryProfileSpec`, `DenseIndexConfig`, `DenseIndexMode`, MDBX layout, capability flags, embedding migration workflow (`EmbeddingRecomputeJob`).
+- [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) — `MemoryProfileSpec`, `DenseIndexConfig`, `DenseIndexMode`, capability flags, embedding migration workflow (`EmbeddingRecomputeJob`).
+- [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) — canonical physical MDBX manifest and DBI budget.

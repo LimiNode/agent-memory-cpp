@@ -20,6 +20,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
       - name: Configure
         run: >
           cmake -S . -B build
@@ -40,6 +43,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
 
       - name: Init flat MDBX submodules
         run: git submodule update --init external/libmdbx external/mdbx-containers

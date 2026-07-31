@@ -13,6 +13,9 @@
 - `KnowledgeUnitKind` (canonical enum) и kind → payload mapping (какой kind использует какой payload).
 - Per-kind правила генерации `primary_text` и `SearchProjection`.
 - `SourceRef` contract и migration mapping.
+- Generic raw document import: как `.md`, `.txt`, extracted `.pdf`,
+  transcripts and logs становятся searchable units без предварительной
+  curated-card конвертации.
 - `KnowledgeUnitId` monotonic-uint64 scheme (opaque, никогда не reused; content-addressing через отдельный `KnowledgeUnitKey`).
 - Lifecycle FSM (4 durable states: Active / Superseded / Deprecated / Erased) и anti-loop подсвинок через `UsageStatsComponent.cooldown_until_ms`.
 - Manifest integration через `DerivedRecordKind`.
@@ -21,7 +24,7 @@
 
 Cross-references:
 
-- `guides/memory-stacks-roadmap.md` — ADR-001 (envelope + components), `MemoryProfileSpec`, `MemoryStack`, MDBX layout, maturity levels.
+- `guides/memory-stacks-roadmap.md` — ADR-001 (envelope + components), `MemoryProfileSpec`, `MemoryStack`, physical manifest ownership, maturity levels.
 - `guides/knowledge-base-roadmap.md` — envelope shape, retrieval flow, decay-aware scoring, evaluation pipeline.
 - `guides/lexical-search-roadmap.md` — BM25F по `SearchProjection`s, field-weighted indexing.
 - `guides/optimization-roadmap.md` — vector/binary storage, multi-projection embeddings.
@@ -44,16 +47,24 @@ enum class KnowledgeUnitKind : uint16_t {
     CompiledArticle = 7,
     ConversationEpisode = 8,
     Note = 9,
-    Task = 10,        // reserved
-    Decision = 11,    // reserved
+    Task = 10,
+    Decision = 11,
     Custom = 12,      // escape hatch через metadata_typed["payload"]
-    // NUM_KINDS = 13
+    Playbook = 13,
+    DomainMap = 14,
+    CapabilityMap = 15,
+    Procedure = 16,
+    // NUM_KINDS = 17
 };
 ```
 
 Ссылка на `memory-stacks-roadmap.md` секцию 6.3 для размещения `kind` в envelope.
 
 ### 2.1. Kind → Payload mapping
+
+Numeric kind values are append-only wire ids. `Custom = 12` is preserved even
+though `Playbook`, `DomainMap`, `CapabilityMap` and `Procedure` are specified
+later in the roadmap; stable ids are more important than grouping.
 
 | Kind | Primary payload | Optional additional | Notes |
 |---|---|---|---|
@@ -62,24 +73,151 @@ enum class KnowledgeUnitKind : uint16_t {
 | Fact | FactPayload | — | для temporal/bi-temporal knowledge |
 | Event | (no specific payload) | Embedded в primary_text | lightweight, декларативный |
 | Entity | (no specific payload) | Embedded в primary_text | name + type |
-| Relation | (no specific payload) | Embedded в primary_text, graph edges | |
+| Relation | Relation `KnowledgeUnit` plus exactly one `GraphEdge` | Optional primary_text narration; the Relation occurrence owns lifecycle/provenance while its edge carries endpoints, kind and evidence | |
 | Summary | (no specific payload) | Embedded в primary_text | компрессированное представление |
 | CompiledArticle | CompiledArticlePayload | — | Karpathy-style wiki articles |
 | ConversationEpisode | ConversationEpisodePayload | — | multi-utterance bundle |
-| Note | (no specific payload) | Embedded в primary_text | generic free-form |
-| Task | (reserved) | — | для future handoff structure |
-| Decision | (reserved) | — | для future handoff structure |
+| Note | (no specific payload) | Embedded в primary_text, `ResourceBodyStore` source | generic free-form / raw document entrypoint |
+| Playbook | (no specific payload in M1b) | activation metadata + graph edges | procedure with triggers, prerequisites, steps, outputs |
+| DomainMap | CompiledArticlePayload initially | graph edges + activation metadata | materialized domain view for context planning |
+| CapabilityMap | (no specific payload in M1b) | activation metadata | compact registry of tools/playbook families |
+| Task | immutable `TaskPayload` + `TaskStateComponent` | runtime origin + causal/perspective components | durable task memory, not scheduler |
+| Decision | immutable `DecisionPayload` + `DecisionSelectionComponent` | alternatives + causal/evidence links | decision recall and causal why |
 | Custom | metadata_typed["payload"] | — | escape hatch через JSON-like value |
+| Procedure | ProcedurePayload component initially | activation metadata + outcome stats | learned/imported versioned procedure |
 
-Примечание: для kinds без dedicated payload (Event, Entity, Relation, Summary, Note) основная информация содержится в `envelope.primary_text`/`display_text` и/или operational components (`SpeakerComponent`, `TemporalComponent` и т.д.).
+Примечание: для kinds без dedicated payload (Event, Entity, Summary, Note,
+Playbook, CapabilityMap) основная информация содержится в
+`envelope.primary_text`/`display_text`, activation metadata, graph edges and/or
+operational components (`SpeakerComponent`, `TemporalComponent` и т.д.).
+Dedicated `PlaybookPayload`, `DomainMapPayload` or `ActivationRules` DBIs are
+not canonical until `mdbx-containers-extension-tz.md` adds explicit profile
+deltas.
 
-### 2.2. Reserved kinds
+### 2.2. Runtime integration kinds
 
-`Task` (handoff records) и `Decision` (decision points в agent reasoning) зарезервированы для follow-up. Контракты будут определены, когда соответствующие use-cases материализуются (M2+).
+`Task`, `Decision` and `Procedure` are specified by
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+They store durable cognitive records and procedure knowledge; they do not
+execute tasks, actions or procedures. Their first storage mapping is
+`unit_components` with stable component tags (`TaskPayload`, `TaskState`,
+`DecisionPayload`, `DecisionSelection`, `ProcedurePayload`) so no dedicated DBI
+is added to the default profile.
 
-## 3. SourceRef (canonical contract)
+Introspection snapshots, unresolved problems and reconciliation conflicts start
+as `Custom` prototypes until their fields stabilize.
 
-`SourceRef` — first-class provenance для всех retrieval-eligible units. Обязателен для Fact, QAPair, Relation, Event, и любого GraphNode, доступного через expansion. Рекомендуется для Chunk и CompiledArticle.
+`Playbook`, `DomainMap` and `CapabilityMap` are specified by
+[`knowledge-activation-roadmap.md`](knowledge-activation-roadmap.md). They are
+canonical, versioned knowledge objects that cite evidence; they must not be
+treated as ordinary source chunks.
+
+### 2.3. Generic raw document units
+
+Raw files do not have to arrive as curated cards. M0 import accepts UTF-8 text
+resources such as `.md`, `.txt` and logs. It creates a minimal generic unit
+when no stronger domain mapping is available:
+
+- `kind = KnowledgeUnitKind::Note` for one document-level unit, or
+  `kind = KnowledgeUnitKind::Chunk` when the importer materializes each chunk
+  as a separate retrieval unit;
+- `ResourceId` is allocated from a stable application-provided logical identity
+  or a connector-owned locator registry; path/URI and content hash never form
+  its identity. They belong to `SourceLocator` and `ResourceRevision`;
+- `title` comes from metadata, H1, first meaningful heading, or filename;
+- `trust_level` defaults to profile policy (`C`/`D`) unless supplied by source
+  metadata;
+- tags come from frontmatter/sidecar metadata when available;
+- original language is detected when possible and stored on the payload or
+  translation metadata;
+- every imported raw `Note`/`Chunk` carries an inline `SourceRefSummary` back
+  to the raw resource and byte/text range;
+- `SearchProjection::Original` is generated from extracted text immediately;
+- `SearchProjection::TranslatedCanonical` may be generated later when the
+  `TranslationProjection` capability is enabled;
+- curated Facts/QAPairs/Summaries may be derived later by compaction or
+  application normalizers.
+
+This is intentionally different from a curated card. A generic raw document
+unit is searchable and citeable, but carries weaker semantics. It should not be
+forced to pretend to be `Fact`, `QAPair`, `CompiledArticle` or any other
+curated kind until an explicit normalizer/extractor produces those units.
+
+Native PDF/DOCX/image/audio/video ingestion, OCR and ASR are not M0 text
+fallbacks. They begin with the M2 artifact profile, which retains original bytes
+and emits typed evidence locators. An application may import externally
+extracted text into M0, but it must label it as derived text and must not claim
+an original PDF/page/media citation that the M0 contract cannot validate.
+
+## 3. Common Identity And SourceRef
+
+### Common Durable Knowledge-Unit Identity
+
+`GlobalKnowledgeUnitId` and `KnowledgeUnitRef` are common knowledge-layer
+primitives. They are not owned by an ADELIA adapter or any other runtime lane:
+provenance, lifecycle, activation, import/export and runtime integrations all
+use the same contract when a profile enables durable cross-environment unit
+identity.
+
+```cpp
+struct GlobalKnowledgeUnitId {
+    std::array<std::uint8_t, 16> value;
+};
+
+struct KnowledgeUnitRef {
+    GlobalKnowledgeUnitId global_id;
+    std::optional<KnowledgeUnitId> local_id;
+};
+
+struct GlobalIdentityComponent {
+    GlobalKnowledgeUnitId global_id;
+};
+
+struct KnowledgeUnitIdentityScheme {
+    std::string scheme_id;
+    std::uint32_t scheme_version = 1;
+    std::string occurrence_id_derivation;
+};
+```
+
+`GlobalKnowledgeUnitId` is occurrence identity, not a content hash. It may be
+a random 128-bit id or a hash over immutable occurrence material such as
+`(origin_replica, origin_sequence, provenance, nonce)`; content dedupe remains
+the separate responsibility of `KnowledgeUnitKey` / `ContentHash`. The optional
+`global_unit_id_to_local_id` profile delta maps it uniquely to
+`(ScopeId, KnowledgeUnitId)` in one storage environment. A profile that does
+not enable this mapping may use local `KnowledgeUnitId` handles, but must not
+emit a durable `KnowledgeUnitRef` as locally resolvable. When a local id is
+present, it must resolve to the same global id; import validates or creates the
+mapping atomically with the unit and its provenance records.
+
+`KnowledgeUnitIdentityScheme` is declared by every workspace/export manifest
+that enables `DurableGlobalIdentity`. Import accepts only an identical scheme or
+an explicit registered migration, and otherwise fails closed before it writes a
+global-to-local binding. The first generic profile capability is independent of
+the A-lane; ADELIA is one consumer of it, alongside provenance and ordinary
+cross-environment import/export.
+
+### SourceRef (M0 compatibility contract)
+
+> **Artifact-aware extension.** The M0 text-only layout below remains the
+> compact compatibility subset. Before any public source connector or
+> non-text ingestion API is released, the normative source model is
+> [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md):
+> `Source -> SourceRevision -> Artifact -> Representation -> Segment`, with
+> typed `EvidenceAnchor` locators. `TextRange` maps to `TextLocator`; it is not
+> a sufficient universal locator for pages, images, audio, video, slides or
+> spreadsheets. `ResourceId` is the stable local identity of a changing logical
+> source in one environment. Its local `ResourceRevision`/generation identifies
+> the current indexed version. Artifact-aware profiles map this pair to durable
+> `SourceId` and immutable `SourceRevisionId`; they do not redefine M0
+> `ResourceId`.
+
+`SourceRef` — first-class provenance для всех retrieval-eligible units. It is
+required for Fact, QAPair, Relation, Event, every GraphNode available through
+expansion, and every `Note`/`Chunk` imported from a `ResourceBodyStore` or
+connector. It remains optional only for application-native units whose policy
+explicitly records no external source.
 
 В M0 contract разделяется на два слоя: `SourceRefSummary` (inline, ≤256 байт preview, всегда присутствует в envelope) и полная `SourceRef` (с `excerpt_text`, хранится в отдельной `source_refs` DBI, появляется в M1).
 
@@ -89,29 +227,91 @@ struct TextRange {
     uint64_t byte_length;
 };
 
+struct ResourceRevisionRef {
+    ResourceId resource_id;
+    uint64_t generation;
+    ResourceBodyDigest body_digest;  // SHA-256 baseline over the full retained body
+};
+
+enum class SourceTextOrigin : uint8_t {
+    OriginalText,
+    DerivedExtraction
+};
+
+struct DerivedTextProvenance {
+    std::string source_media_type;
+    std::string extractor_id;
+    std::string extractor_version;
+    std::optional<std::string> upstream_locator;
+};
+
 struct SourceRefSummary {
     ResourceId resource_id;          // обязательно
+    std::optional<ResourceRevisionRef> resource_revision;  // absent only for legacy preview-only refs
     std::string uri;                 // обязательно (для citations)
     TextRange excerpt;               // обязательно для quote-based refs
-    std::array<uint8_t, 16> quote_hash;  // обязательно: SHA1(prefix(excerpt))[:16]
+    std::array<uint8_t, 16> quote_hash;  // first 16 raw bytes of SHA-256(preview UTF-8)
+    // Exactly the first 16 raw bytes of SHA-256(preview UTF-8).
+    // The field name is retained for M0 wire compatibility.
     double confidence;               // [0.0, 1.0]
-    std::optional<KnowledgeUnitId> anchor_unit_id;  // связь на parent unit
+    SourceTextOrigin text_origin = SourceTextOrigin::OriginalText;
+    std::optional<KnowledgeUnitRef> anchor_unit;    // durable parent-unit binding
     std::optional<uint64_t> observed_at_ms;
     std::string preview;             // inline excerpt, ≤256 байт
 };
 
 struct SourceRef {
+    SourceRefId id;
     SourceRefSummary summary;        // обязательно: ссылка на inline summary
     std::string excerpt_text;        // полный текст цитаты (verbatim UTF-8)
+    std::array<uint8_t, 32> excerpt_hash; // SHA-256(excerpt_text UTF-8)
+    std::optional<DerivedTextProvenance> derived_text_provenance;
+    std::vector<EvidenceAnchorId> evidence_anchor_ids;
+};
+
+struct CitationHandle {
+    SourceRefSummary summary;
+    std::optional<SourceRefId> full_source_ref_id;
+    std::vector<EvidenceAnchorId> evidence_anchor_ids;
 };
 ```
 
-### 3.1. Обязательные поля и инварианты
+### 3.1. Required Fields And Invariants
+
+- `resource_revision` is required for every newly imported quote-based summary.
+  Its resource id must equal `resource_id`, and its generation/body digest must
+  identify the retained body revision from which `excerpt` was measured. A
+  legacy migration may leave it absent only for an explicitly `preview-only`
+  citation; such a citation cannot re-read or materialize its original range.
+- `DerivedExtraction` requires `DerivedTextProvenance` during ingestion and on
+  a full reference when one is materialized. It is rendered as derived text and never as a direct
+  original PDF, image, audio or video quotation.
+
+**Canonical quote-hash rule:** `SourceRefSummary::quote_hash` is exactly the
+first 16 raw bytes of SHA-256 over the UTF-8 `preview`. It is neither hex text
+nor a hash of an arbitrary excerpt prefix. `SourceRef::excerpt_hash` is the
+full 32 raw bytes of SHA-256 over the exact UTF-8 `excerpt_text`. The two fields
+serve different purposes and are never substituted for one another. This rule
+supersedes older SHA-1/hex wording in legacy migration notes.
 
 - `resource_id` — обязателен для reverse lookup по ресурсу.
 - `uri` — обязателен для citation fidelity (`preview + uri` = stable short citation; `excerpt_text + uri` = stable full citation).
-- `quote_hash` — обязателен: 16-byte hex of SHA1(`prefix(preview)`) для summary, либо SHA1(`prefix(excerpt_text)`) для полной SourceRef. Обеспечивает детерминированную идентификацию цитат без хранения полного текста в каждом индексе.
+- `quote_hash` is required in every summary and follows the canonical raw-byte preview-hash rule above. `excerpt_hash` is required in every materialized full reference and covers the exact full excerpt.
 - `preview` (≤256 байт) — обязателен в summary; используется в UI, short citations, projection и не требует обращения к `source_refs` DBI.
+- Imported raw `Note`/`Chunk` units must have at least one inline summary. A
+  `ContextBuilder` must reject such a raw block when its required summary is
+  absent, or emit it only with the explicit `provenance-incomplete` label under
+  a caller-selected diagnostic policy; it must not present the block as cited
+  source material.
+- `id` and `evidence_anchor_ids` are optional only for M0 compatibility. In an
+  artifact-aware full reference, `SourceRefId` is durable and every listed
+  `EvidenceAnchorId` resolves through the artifact catalog without rewriting its
+  source/revision/locator coordinates.
+- `CitationHandle` is the retrieval/context transport form. M0 carries the
+  inline summary only. M1 carries `full_source_ref_id` when the detail exists.
+  Artifact-aware profiles copy only the durable anchor ids already bound by
+  that full reference. A handle must not synthesize an anchor or bind a summary
+  to a different source revision.
 
 ### 3.2. Storage
 
@@ -122,14 +322,28 @@ struct SourceRef {
 **M1 (добавление `source_refs` DBI):**
 - В envelope остаётся `vector<SourceRefSummary>` (≤3).
 - Полные `SourceRef` с `excerpt_text` хранятся в отдельной `source_refs` DBI (key = `KnowledgeUnitId` → `vector<SourceRef>`).
-- Reverse lookup по `resource_id` строится через `metadata_filters` (DBI) — см. `memory-stacks-roadmap.md` секция 12.3.
-- При необходимости быстрого reverse lookup добавляется отдельный DBI `source_refs_by_resource` (опционально, не в M1 budget).
+- Public create/update path: `CreateUnitRequest::full_source_refs` /
+  `MutableUnitPatch::full_source_refs` writes full refs
+  atomically with the unit when `enable_full_source_refs=true`. Migration/admin
+  tools may also call `SourceRefStore::replace_for_unit(unit_id, refs, txn)`;
+  this API replaces the entire vector for that unit and must be used in the
+  same transaction as envelope summary updates when both change.
+- Reverse lookup по `resource_id` строится через `metadata_filters` (DBI) — см. canonical physical manifest `mdbx-containers-extension-tz.md` §5.5.
+- При необходимости быстрого reverse lookup добавляется отдельный DBI
+  `source_refs_by_resource` (опциональный +1 profile delta; см.
+  `mdbx-containers-extension-tz.md` §5.5.1).
 
 Пример создания envelope с inline summary (M0):
 
 ```cpp
 SourceRefSummary summary;
-summary.resource_id = ResourceId::from_uri("https://docs.example.com/spec");
+summary.resource_id = imported_resource.resource_id;  // allocated by IResourceImporter
+summary.resource_revision = ResourceRevisionRef{
+    summary.resource_id,
+    /*generation=*/7,
+    /*body_digest=*/ResourceBodyDigest{/*algorithm=*/ResourceBodyDigestAlgorithm::Sha256,
+                                       /*bytes=*/sha256_of_retained_body}
+};
 summary.uri = "https://docs.example.com/spec#section-3";
 summary.excerpt = TextRange{/*byte_offset=*/1024, /*byte_length=*/512};
 summary.preview = "first ~256 bytes of the excerpt...";
@@ -137,7 +351,7 @@ summary.quote_hash = compute_quote_hash(summary.preview);
 summary.confidence = 0.92;
 
 KnowledgeUnitEnvelopeBuilder env_builder;
-env_builder.set_id(KnowledgeUnitId::allocate());
+// id is assigned by storage inside the create_or_get transaction
 env_builder.set_kind(KnowledgeUnitKind::Fact);
 env_builder.set_scope(ScopeId::global());
 env_builder.add_source_summary(summary);  // inline, ≤3 на unit
@@ -150,15 +364,19 @@ auto env = env_builder.build();
 
 Content-addressing (дедупликация, миграция, idempotent upsert) выполняется через **отдельный** `KnowledgeUnitKey` (kind + scope + `ContentHash`). Это разделяет два разных понятия:
 
-- **ID** = runtime identity, opaque handle для map key, cross-reference и supersedence chains. Меняется при erase/recreate. Monotonic uint64_t.
+- **ID** = local storage/occurrence handle inside one storage environment; an opaque handle for map keys, cross-references and supersedence chains. It is never reused after erase. Monotonic uint64_t.
 - **Key** = content-addressing handle, детерминированно вычисляется из payload. Один и тот же content → один и тот же key. Используется для dedupe (две записи одного контента), миграции и bulk import.
+
+`KnowledgeUnitKey` is immutable for an existing `KnowledgeUnitId`: changing
+`kind`, `scope` or content hash creates a new unit id and records
+supersede/merge lineage instead of mutating the old id. Mutable updates may
+change envelope metadata, lifecycle, summaries, components and projections, but
+must preserve the original content-addressing key.
 
 ```cpp
 class KnowledgeUnitId {
     uint64_t m_value;
 public:
-    static KnowledgeUnitId allocate();  // монотонно, opaque, никогда не reused
-
     uint64_t value() const noexcept;
 
     bool operator==(const KnowledgeUnitId& rhs) const noexcept {
@@ -211,12 +429,185 @@ public:
 };
 ```
 
+`ContentHash` stored in `KnowledgeUnitEnvelope` is computed with a versioned,
+kind-specific `ContentHashRecipeVersion`. Recipe input is canonical bytes, not
+the current physical file path or importer-local location:
+
+- `Chunk`: `ResourceBody` digest, chunk span/offset identity and normalized
+  chunk text digest. If raw body storage is external, the stable body digest
+  participates in identity; transient source path does not.
+- `QAPair`: normalized question/answer payload fields and declared identity
+  metadata.
+- `Fact`: canonical subject/predicate/object/time identity.
+- `ConversationEpisode`, `CompiledArticle`, `Note`, `Playbook`, `DomainMap`,
+  `CapabilityMap`, `Procedure`: canonical payload text or a stable
+  `ResourceBody` digest for large bodies. File path and domain membership are
+  not identity fields.
+- `Task`, `Decision`: stable task/decision identity metadata, runtime origin
+  and declared payload digest; mutable status/outcome fields are not identity.
+- `Event`, `Entity`, `Summary`, `Custom`: canonical primary text plus declared
+  identity metadata/payload bytes.
+- `Relation`: immutable endpoint occurrence identities, `EdgeKind`,
+  `RelationClass`, declared payload/evidence digests and relation identity
+  metadata. Its `GraphEdgeId` is the same 128-bit value as the Relation unit's
+  `GlobalKnowledgeUnitId`; it is not a second allocation domain.
+
+Changing recipe version without a migration preserving the old stored hash
+creates a new `KnowledgeUnitId` plus supersede/merge lineage.
+
+The normative computation entrypoint is:
+
+```cpp
+struct ContentHashResult {
+    ContentHash hash;
+    uint16_t recipe_version;
+};
+
+struct CanonicalIdentityInput {
+    KnowledgeUnitKind kind;
+    ScopeId scope;
+    std::optional<ResourceDigest> resource_body_digest;
+    std::optional<ChunkSpan> chunk_span;
+    std::optional<ContentDigest> normalized_chunk_text_digest;
+    std::optional<QAPairIdentity> qa_pair;
+    std::optional<FactIdentity> fact;
+    std::optional<TextBodyIdentity> text_body;
+    std::optional<DeclaredMetadataIdentity> declared_metadata;
+};
+
+ContentHashResult compute_content_hash(
+    KnowledgeUnitKind kind,
+    const CanonicalIdentityInput& input);
+```
+
+`compute_content_hash` owns the algorithm/domain prefix, field order,
+normalization and truncation rule. `kind` argument and `input.kind` MUST match.
+Current recipe: encode `agent-memory.content-hash.v1`, `kind`, `scope`, then
+recipe-defined identity fields; compute SHA-256 over those canonical bytes;
+store the first 16 bytes as `ContentHash`. Legacy
+`<kind>:<scope>:<sha256(content)>` databases migrate by decoding the 32-byte
+SHA-256 from the old id, keeping the leftmost 16 bytes as `ContentHash`, and
+writing `content_hash_recipe_version = 0` before any v1 re-hash migration.
+
+Canonical wire grammar v1:
+
+```text
+stream        = domain kind scope fields
+domain        = u16be byte_len + UTF-8 bytes "agent-memory.content-hash.v1"
+kind          = u16be stable KnowledgeUnitKind value
+scope         = u32be byte_len + normalized UTF-8 bytes
+fields        = every field tag from the per-kind table, exactly once,
+                strictly in the table order
+field         = u16be field_tag + u8 presence + u32be byte_len + payload?
+presence      = 0 absent, 1 present-empty, 2 present-non-empty
+integer       = fixed-width big-endian two's-complement or unsigned
+timestamp     = i64be milliseconds since Unix epoch
+digest        = raw bytes with fixed length declared by the field tag
+string        = UTF-8 NFC bytes after recipe normalization
+value         = u8 type_tag + type-specific payload
+list          = u32be item_count + value*
+map           = u32be item_count + (normalized string key + value)*,
+                sorted by encoded key
+```
+
+Absent optional and present-empty optional are distinct through `presence`:
+
+- absent: `presence = 0`, `byte_len = 0`, payload absent;
+- present-empty: `presence = 1`, `byte_len = 0`, payload absent;
+- present-non-empty: `presence = 2`, `byte_len > 0`, payload present.
+
+Duplicate, unknown or out-of-order field tags are encoding errors. Skipping an
+absent field tag is also an encoding error; every tag in the per-kind table is
+emitted exactly once. For fixed-width integers and digests, `byte_len` MUST
+match the field's declared width. For maps, keys are normalized before sorting;
+if two keys become equal after normalization, encoding fails instead of picking
+one value. Concatenating raw strings is forbidden; all fields use tag +
+presence + length framing. Unicode normalization and whitespace classes use
+Unicode 15.1.0 for recipe v1; changing Unicode data version requires a new
+recipe version.
+
+`ScopeId::canonical_bytes()` is `UTF-8 NFC`, CRLF/CR -> LF, trim outer Unicode
+whitespace, ASCII lower-case for `[A-Z]`, and forbids empty result, NUL bytes
+and path traversal tokens (`..`, `.` as full path segment). Scope aliases must
+be resolved before hashing; unresolved aliases are encoding errors.
+
+Typed metadata value encoding:
+
+| Type tag | Type | Payload |
+|---:|---|---|
+| `0x00` | null | empty |
+| `0x01` | bool false | empty |
+| `0x02` | bool true | empty |
+| `0x03` | i64 | i64be |
+| `0x04` | u64 | u64be |
+| `0x05` | f64 | IEEE-754 binary64 big-endian; NaN forbidden |
+| `0x06` | string | normalized string bytes |
+| `0x07` | bytes | raw bytes |
+| `0x08` | list | recursive `list` |
+| `0x09` | map | recursive `map` |
+
+Stable field-tag order:
+
+| Kind | Field tags in order |
+|---|---|
+| `Chunk` | `0x0001 resource_revision_identity`, `0x0002 resource_body_digest`, `0x0003 span_start`, `0x0004 span_end`, `0x0005 normalized_chunk_text_digest` |
+| `QAPair` | `0x0101 normalized_question`, `0x0102 normalized_answer`, `0x0103 identity_metadata_map` |
+| `Fact` | `0x0201 subject`, `0x0202 predicate`, `0x0203 object`, `0x0204 valid_time`, `0x0205 observed_time` |
+| imported `Note` | `0x0301 resource_revision_identity`, `0x0302 canonical_text_digest`, `0x0303 resource_body_digest`, `0x0304 title_identity` |
+| `ConversationEpisode`, `CompiledArticle`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | `0x0301 canonical_text_digest`, `0x0302 resource_body_digest`, `0x0303 title_identity` |
+| `Task`, `Decision` | `0x0351 stable_runtime_identity`, `0x0352 runtime_origin_digest`, `0x0353 declared_payload_digest` |
+| `Event`, `Entity`, `Summary`, `Custom` | `0x0401 primary_identity_text`, `0x0402 declared_identity_metadata_map`, `0x0403 declared_payload_digest` |
+| `Relation` | `0x0451 from_global_unit_id`, `0x0452 to_global_unit_id`, `0x0453 edge_kind`, `0x0454 relation_class`, `0x0455 declared_payload_digest`, `0x0456 evidence_digest` |
+
+Text normalization table for recipe v1:
+
+| Field family | Normalization |
+|---|---|
+| `normalized_question` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
+| `normalized_answer` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, preserve internal whitespace except line-ending normalization, case preserved |
+| `subject`, `predicate`, `object` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
+| `canonical_text_digest` source text | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim trailing whitespace on each line, trim outer blank lines, case preserved, then digest the normalized bytes |
+| `title_identity` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
+| `primary_identity_text` | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer Unicode whitespace, collapse internal Unicode whitespace runs to one ASCII space, case preserved |
+| metadata keys | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer whitespace, ASCII lower-case for `[A-Z]`, collapse internal whitespace runs to one ASCII space |
+| metadata string values | UTF-8 decode, Unicode NFC, CRLF/CR -> LF, trim outer whitespace, preserve case |
+| tags used as identity metadata | same as metadata string values; tag identity is not translated |
+| digests, timestamps, integer spans | no text normalization; encode fixed-width binary payloads |
+
+Per-kind typed encoders build these fields inside the library. Callers provide
+typed identity inputs or authoritative body digests, not opaque canonical byte
+buffers. Golden vectors are part of the implementation gate, not optional test
+coverage: for every kind family the repository must contain typed logical input,
+exact canonical byte stream in hex, full SHA-256 and stored 16-byte
+`ContentHash`. The minimum vector set covers every kind family in the field-tag
+table, absent vs present-empty vs present-non-empty, Unicode NFC/NFD
+equivalence, duplicate metadata keys after normalization, boundary
+integer/timestamp values, legacy recipe v0 and C++11/C++17 cross-platform
+equality. Implementations must refuse to enable v1 dedupe migration until those
+vectors pass.
+
+Identity vs mutable fields:
+
+| Kind | Identity fields | Mutable fields (`revision++`) |
+|---|---|---|
+| `Chunk` | `ResourceRevisionRef`, resource body digest, span/offset identity, normalized chunk text digest | display text, source summaries, retrieval projections, lifecycle |
+| `QAPair` | normalized question/answer identity fields | display text, source summaries, usage/ranking metadata, projections, lifecycle |
+| `Fact` | subject/predicate/object/time identity | confidence, display text, non-identity source summaries, projections, lifecycle |
+| imported `Note` | `ResourceRevisionRef`, canonical payload text, stable `ResourceBody` digest | title/display summaries, source summaries, projections, lifecycle |
+| `ConversationEpisode`, `CompiledArticle`, `Playbook`, `DomainMap`, `CapabilityMap`, `Procedure` | canonical payload text or stable `ResourceBody` digest | title/display summaries, source summaries, domains/facets/intents/agent_roles, activation rules, projections, lifecycle, outcome statistics |
+| `Task`, `Decision` | stable runtime identity + declared payload digest | status, assigned runtime refs, rationale summary, produced units, projections, lifecycle |
+| `Event`, `Entity`, `Summary`, `Custom` | canonical primary identity text plus declared identity metadata/payload bytes | display summaries, non-identity metadata, projections, lifecycle |
+| `Relation` | immutable endpoint occurrence identities, edge kind/class, payload and evidence digests | display summaries, projections and lifecycle; lifecycle visibility also governs its GraphEdge |
+
 ### 4.1. Allocation и инварианты
 
-- `KnowledgeUnitId::allocate()` выдаёт монотонно возрастающий `uint64_t` per backend (per-MDBX-env atomic counter). Не зависит от content.
+- `KnowledgeUnitId` allocation is storage-owned. MDBX-backed storage obtains it
+  from `TableSequence(knowledge_units).next(txn)` inside the same write transaction
+  that installs the content-key mapping. There is no public
+  static allocation API in the canonical path.
 - Reuse id после erase запрещён (даже если соответствующий unit удалён).
 - `KnowledgeUnitId` opaque для storage layer; не парсится ни во что.
-- При экспорте в логи/traces допускается hex-форма `to_string()` (32 hex chars), но не должно влиять на routing.
+- При экспорте в логи/traces допускается hex-форма `to_string()` (16 lowercase hex chars, zero-padded), но не должно влиять на routing.
 - Strong typedef: нет implicit conversion в `std::string`, `ChunkId` или арифметические типы.
 
 ### 4.2. DBI mapping
@@ -225,33 +616,114 @@ Storage использует **два** DBI для разделения identity
 
 | DBI | Key | Value | Назначение |
 |---|---|---|---|
-| `unit_id_to_envelope` | `KnowledgeUnitId` | `KnowledgeUnitEnvelope` | primary storage; O(1) lookup по id |
+| `knowledge_units` | `KnowledgeUnitId` | `KnowledgeUnitEnvelope` | primary storage; O(1) lookup по id |
 | `content_key_to_unit_id` | `KnowledgeUnitKey` | `KnowledgeUnitId` | dedupe/migration; O(1) "есть ли уже unit с таким content?" |
 
-Идемпотентный upsert через `content_key_to_unit_id`:
+Идемпотентный create-or-get через `content_key_to_unit_id`:
 
 ```cpp
-// 1. Вычислить key из payload.
-KnowledgeUnitKey key{
-    unit.kind,
-    unit.scope,
-    ContentHash::compute(serialize_payload(unit.payload))
-};
+return connection.multi_write([&](Transaction& txn) -> CreateOrGetResult {
+    // 1. Build canonical identity input from authoritative fields/stores using
+    // the same transaction snapshot as the later dedupe and write.
+    CanonicalIdentityInput input =
+        build_identity_input(unit, resource_body_store, txn);
+    ContentHashResult identity = compute_content_hash(unit.kind, input);
 
-// 2. Проверить наличие существующего unit.
-auto existing = content_key_to_unit_id.find(key);
-if (existing) {
-    return UpsertResult::Existed{existing->unit_id};  // dedupe
-}
+    unit.envelope.content_hash = identity.hash;
+    unit.envelope.content_hash_recipe_version = identity.recipe_version;
 
-// 3. Аллоцировать новый monotonic id и записать обе записи в одной транзакции.
-auto new_id = KnowledgeUnitId::allocate();
-unit.id = new_id;
-MultiTableWriter writer;
-writer.put(unit_id_to_envelope, new_id, unit);
-writer.put(content_key_to_unit_id, key, new_id);
-writer.commit();
+    KnowledgeUnitKey key{
+        unit.kind,
+        unit.scope,
+        identity.hash
+    };
+
+    // 2. Dedupe check and no-overwrite insert are both inside the write txn.
+    if (auto existing = content_key_to_unit_id.find(key, txn)) {
+        return ExistingUnit{*existing};
+    }
+
+    auto new_id = TableSequence(knowledge_units).next(txn);
+    unit.id = new_id;
+    unit.envelope.id = new_id;
+
+    auto cas = content_key_to_unit_id.insert_if_absent(key, new_id, txn);
+    if (!cas.inserted) {
+        return ExistingUnit{
+            *cas.existing_value
+        };
+    }
+
+    knowledge_units.put(new_id, unit.envelope, txn);
+    write_payload_and_indexes(unit, txn);
+    std::vector<JobId> enqueued_jobs =
+        enqueue_post_write_jobs(unit.envelope, txn);
+    return CreatedUnit{new_id, enqueued_jobs};
+});
 ```
+
+This path is create/dedupe only. If an existing mapping is found, the function
+returns `ExistingUnit` and MUST NOT update envelope, payload,
+components, projections or indexes of the existing unit.
+
+For imported raw `Chunk` and `Note` units, the canonical identity input includes
+the immutable `ResourceRevisionRef` as well as body/span/text material. Thus a
+repeated import of one observed source revision is idempotent, while two
+independent sources containing identical bytes receive distinct raw units and
+retain independent citation, retention and deletion lifecycles. Byte-level
+deduplication remains the responsibility of the artifact/body store, not the
+knowledge-unit key. Curated Facts, QAPairs and application-native Notes retain
+their semantic content-deduplication rules.
+
+Mutable update is a separate revision-guarded operation:
+
+```cpp
+return connection.multi_write([&](Transaction& txn) -> UpdateUnitResult {
+    auto old = knowledge_units.get(unit_id, txn);
+    if (!old) {
+        return UnitNotFound{};
+    }
+    if (old->revision != expected_revision) {
+        return StaleUnitRevision{expected_revision, old->revision};
+    }
+
+    CanonicalIdentityInput input =
+        build_identity_input_from_existing_identity(*old, txn);
+    ContentHashResult identity = compute_content_hash(old->kind, input);
+    KnowledgeUnitKey old_key{old->kind, old->scope_id, old->content_hash};
+    KnowledgeUnitKey checked_key{old->kind, old->scope_id, identity.hash};
+    if (old_key != checked_key ||
+        old->content_hash_recipe_version != identity.recipe_version) {
+        return ImmutableIdentityChanged{};
+    }
+
+    auto next = apply_mutable_patch(*old, patch);
+    next.revision = old->revision + 1;
+    knowledge_units.put(unit_id, next, txn);
+    update_mutable_components_projections_and_indexes(unit_id, next, patch, txn);
+    std::vector<JobId> enqueued_jobs =
+        enqueue_post_update_jobs(unit_id, next.revision, patch, txn);
+    return UpdatedUnit{unit_id, next.revision, enqueued_jobs};
+});
+```
+
+`update_unit` may change only the mutable fields listed below. It must not
+change `kind`, `scope_id`, `content_hash`, `content_hash_recipe_version` or the
+content-addressing identity material. Every update uses optimistic revision
+guarding; stale revision conflicts return without writes.
+
+The generic `MutableUnitPatch` has no `GraphEdge` field. A Relation's one edge
+encodes immutable endpoint identities, kind/class, payload and evidence, so it
+cannot be cleared or replaced through `update_unit`. A relation-specific update
+attempt (including one received from a legacy/widened API) returns
+`ImmutableIdentityChanged` before writes. The caller creates a new Relation unit
+and records supersede or erase lineage when the asserted relation changes.
+
+All authoritative reads used to build `CanonicalIdentityInput` MUST belong to the
+same transaction snapshot. MDBX-backed `ResourceBodyStore` reads receive `txn`.
+External body stores must provide an immutable digest/version token, and
+`create_or_get_unit` verifies that token before commit; otherwise the body is not valid
+identity input for idempotent upsert.
 
 ### 4.3. Миграция с hash-based scheme
 
@@ -259,16 +731,23 @@ writer.commit();
 
 1. Прочитать все envelope из старой БД.
 2. Для каждого envelope:
-   - Извлечь `(kind, scope, content_hash)` из старого ID.
+   - Прочитать `(kind, scope, content_hash, content_hash_recipe_version)` из
+     envelope. Для legacy DB без persisted hash выполнить одноразовый recompute
+     по legacy recipe и записать hash в envelope перед включением immutable-key
+     enforcement.
    - Аллоцировать новый monotonic `KnowledgeUnitId`.
-   - Перезаписать envelope с новым id в `unit_id_to_envelope`.
+   - Перезаписать envelope с новым id в `knowledge_units`.
    - Записать `KnowledgeUnitKey → KnowledgeUnitId` в `content_key_to_unit_id`.
-3. Обновить все cross-reference (`anchor_unit_id`, `superseded_by`, `derived_from`) — старые ID заменяются на новые через lookup-таблицу.
+3. Rebind local handles in all cross-references (`anchor_unit.local_id`,
+   `superseded_by`, `derived_from`) through the lookup table; a durable
+   `anchor_unit.global_id` is not rewritten.
 4. Перестроить `inverted_token_to_unit`, `field_to_postings`, secondary indexes.
 
 Migration запускается отдельной утилитой (`agent-memory-cli migrate-ku-id-scheme`), не часть core API. Round-trip test обязателен.
 
-`KnowledgeUnitId` обязателен для map key, `envelope.id`, `projection.unit_id`, `RetrievalHit.unit_id` и любых cross-reference (anchor_unit_id, superseded_by, derived_from).
+`KnowledgeUnitId` обязателен для map key, `envelope.id`, `projection.unit_id`,
+`RetrievalHit.unit_id` и local portions of cross-references
+(`anchor_unit.local_id`, `superseded_by`, `derived_from`).
 
 See [`usage-llm-wiki.md`](usage-llm-wiki.md) for how KnowledgeUnit storage can back an LLM Wiki's `raw/` and `wiki/` partitions.
 
@@ -316,15 +795,18 @@ chunk.detected_language = std::string{"cpp"};
 
 #### 5.1.3. Storage
 
-DBI `chunk_payloads` (key = UnitId). `ChunkPayload` всегда присутствует для Chunk kind (в отличие от optional payloads для других kinds). Включается автоматически при `kind == Chunk`, не требует capability flag.
+DBI `chunk_payloads` (key = UnitId) is canonical always-open. `ChunkPayload`
+всегда присутствует для Chunk kind (в отличие от optional payloads для других
+kinds). Write validation requires it when `kind == Chunk`; it does not require a
+capability flag and is not created dynamically on first write.
 
 ### 5.2. QAPayload
 
 Payload для `KnowledgeUnitKind::QAPair`. Используется в QAKnowledgeBase stack и FullResearch stack.
 
-Контракт разделён на два уровня зрелости: M0 (минимальный, достаточный для QAKnowledgeBaseStack через QALookup slot) и M1+ (расширенный, с variants, frequency ranking и форматом ответа).
+Контракт разделён на два уровня зрелости: M1b (минимальный, достаточный для QAKnowledgeBaseStack через QALookup slot) и M2+ (расширенный, с variants, frequency ranking и форматом ответа).
 
-#### 5.2.1. QAPayload минимальный (M0)
+#### 5.2.1. QAPayload минимальный (M1b)
 
 Минимальный QAPayload для QAKnowledgeBaseStack:
 
@@ -339,7 +821,7 @@ struct QAPayload {
 
 Достаточно для прямого QA matching через QALookup slot и basic storage. Без variants, без frequency ranking, без temporal validity.
 
-#### 5.2.2. QAPayload расширенный (M1+)
+#### 5.2.2. QAPayload расширенный (M2+)
 
 Полный QAPayload для advanced use-cases:
 
@@ -367,7 +849,7 @@ M1 добавляет поверх M0:
 QAPayload qa;
 qa.canonical_question = "How does the KnowledgeUnitId allocator work?";
 qa.question_variants = {"KU id allocation", "monotonic unit id"};
-qa.answer = "KnowledgeUnitId::allocate() returns a monotonic uint64_t ...";
+qa.answer = "KnowledgeUnitId is allocated from the storage sequence inside the write transaction ...";
 qa.category = "architecture";
 qa.last_verified_at_ms = 1700000000000;
 qa.frequency = 0;
@@ -383,6 +865,9 @@ qa.expected_format = std::string{"text"};
 - Original: question + answer (full).
 - QAQuestion: только `canonical_question` + variants (для matching).
 - QAAnswer: только `answer` (для retrieval когда question уже matched).
+- QACombined (M2+ experimental): a versioned, deterministic `Question + Answer`
+  text view for a separately calibrated dense route. It is never the only
+  retrieval representation of a QAPair.
 
 #### 5.2.6. Storage
 
@@ -391,6 +876,71 @@ DBI `qa_payloads`. Включается через `enable_qa_payload=true`.
 #### 5.2.7. Retrieval shortcut
 
 QALookup slot — прямой lookup по `canonical_question` + variants до BM25F, для high-precision коротких запросов. Используется `QARetriever` (см. `knowledge-base-roadmap.md` секция 7.2).
+
+#### 5.2.8. Canonical QAPair and derived retrieval projections
+
+`QAPair` is not a separate `QAPairEnvelope` storage type. Its canonical
+record is the composition of `KnowledgeUnitEnvelope` (`kind = QAPair`), the
+`QAPayload` row keyed by the same `UnitId`, enabled components, and durable
+`SourceRef`/evidence records when the provenance profile is enabled. Question
+and answer bytes live only in that canonical record; a retrieval backend must
+not become their second source of truth.
+
+The existing projection layers have distinct ownership:
+
+```text
+qa_payloads(UnitId)                         canonical question/answer bytes
+unit_projections(..., QAQuestion, revision) lexical question + variants
+unit_projections(..., QAAnswer, revision)   lexical answer view
+embedding_vectors(scope, model, version,
+                  projection_kind, UnitId)  rebuildable dense projection
+embedding_meta(same logical projection)     model/codec and complete projection freshness metadata
+```
+
+A dense record is addressed by the application-owned projection tuple
+`(ScopeId, model_id, model_version, ProjectionKind, UnitId)`, never by a
+vector backend's local numeric id. Its `EmbeddingProjectionMeta.projection_version`
+must equal the active `ProjectionVersionRef` before a dense hit may be returned
+as current. A backend hit is only a candidate: the retriever hydrates the active
+`KnowledgeUnitEnvelope` + `QAPayload`, applies scope/authority/lifecycle
+filters, and resolves provenance before constructing context or a citation.
+
+When a QAPayload change affects question or answer text, the write transaction
+updates both QA lexical projections and marks affected dense projections stale
+or enqueues their regeneration. A stale vector may be retained as a rebuildable
+artifact but cannot be presented as the active projection for the changed unit.
+
+#### 5.2.9. QAPair dense retrieval and storage profile (M2+)
+
+The default dense route for a QAPair is `QAQuestion`: a user query normally
+matches the formulation of a question before the answer body is fetched. A
+retrieval plan enables `QAAnswer` as a bounded second-stage rerank over
+`QAQuestion` candidates by default. Corpus-wide `QAAnswer` search is a separate
+explicit, benchmark-gated route; it is never inferred from a route name.
+`QACombined` is a third, experimental route for cases where the joint wording
+helps; it must be independently embedded, versioned, evaluated and budgeted.
+It must not replace `QAQuestion`, because a long answer can otherwise drown out
+the wording a user actually asks for.
+
+Every enabled route has its own `(scope, unit, projection kind, model,
+model-version)` identity, binary-signature descriptor and active-revision
+validation. The retrieval plan declares corpus or parent-route input, bounded
+input/output candidate limits, and the fusion rule
+(for example calibrated weighted score or RRF). It records those choices and
+their candidates in the retrieval trace. Default weights such as `0.7/0.3` are
+profile parameters to calibrate against a QA golden dataset, not universal
+constants embedded in a storage format.
+
+The canonical `QAPayload` remains the semantic owner of the question, answer,
+scope, lifecycle and evidence. A vector block or retrieval projection must not
+copy answer text as a second source of truth. `question_variants` are the first
+representation for paraphrases that share one answer assertion. Separate
+QAPairs with equal answer bytes may have different evidence, authority,
+retention or lifecycle; they therefore remain separate units. An optional
+storage codec may intern identical immutable answer bytes, and may share a
+derived answer-vector payload only when the projection bytes and full
+model/codec descriptor match exactly. Each unit still retains its own
+projection identity, metadata and evidence binding.
 
 ### 5.3. FactPayload
 
@@ -431,9 +981,14 @@ fact.aliases = {"Albert Einstein", "Альберт Эйнштейн"};
 
 DBI `fact_payloads`. Включается через `enable_fact_payload=true`.
 
-#### 5.3.4. Temporal bi-temporal
+#### 5.3.4. Temporal validity
 
-Facts используют `TemporalComponent.valid_from_ms` / `valid_until_ms` для supersedence chains. Устаревший fact помечается `Superseded` через Lifecycle FSM; новый становится `Active`. Retrieval возвращает только `Active` (если не указан bi-temporal query).
+Facts используют M1 `TemporalComponent.valid_from_ms` / `valid_until_ms` для
+validity and supersedence chains. Устаревший fact помечается `Superseded`
+через Lifecycle FSM; новый становится `Active`. Retrieval возвращает только
+`Active` unless an explicit historical/temporal filter asks for older records.
+Full valid-time vs recorded-time bi-temporal semantics are M2+ AM-13 in
+`guides/memory-lifecycle-governance-roadmap.md`.
 
 ### 5.4. EventPayload (опциональный)
 
@@ -483,6 +1038,18 @@ DBI `conversation_episode_payloads`. Включается через `enable_con
 
 `episode_compaction` job (см. `compaction-roadmap.md`, future) сливает N соседних episodes в один SuperEpisode при превышении context budget или по retention policy.
 
+#### 5.5.5. Hierarchical Episode Retrieval And Packing (M2+)
+
+Episode retrieval first ranks summary/episode projections, then hydrates only
+the selected utterance range; it does not treat every message as an independent
+dense unit by default. A future immutable episode payload block may pack
+utterance-id and timestamp deltas, speaker run-lengths, participant dictionary,
+token offsets and compressed text bodies. `episode -> SuperEpisode -> summary`
+is a retrieval hierarchy, not permission to drop source utterances or their
+locators. Promotion requires recall/context-fidelity, segment-read, decoded
+byte, p50/p95/p99, append/update and compaction benchmarks against the current
+row-oriented payload.
+
 ### 5.6. CompiledArticlePayload
 
 Payload для `KnowledgeUnitKind::CompiledArticle`. Используется в CompiledWikiStack и FullResearch stack.
@@ -518,22 +1085,31 @@ DBI `compiled_article_payloads`. Включается через `enable_compile
 
 `status` field управляет lifecycle transitions: `draft` → `published` → `archived`. `archived` соответствует `Deprecated` lifecycle state; retrieval фильтрует по умолчанию.
 
-### 5.7. Reserved Kinds (Task, Decision)
+### 5.7. Task, Decision and Procedure
 
-```cpp
-// TODO: определить структуру в M2.
-// Сейчас зарезервированы для follow-up:
-// - Task: handoff records (operational handoff structure)
-// - Decision: ссылки на decision points в agent reasoning
-```
+`Task`, `Decision` and `Procedure` are formal A-lane kinds. Their payloads are
+stored as typed components first; dedicated DBIs are deferred until measured
+access patterns justify them.
 
-Контракты будут определены, когда соответствующие use-cases материализуются (M2+).
+Primary text rules:
 
-`Decision` also becomes relevant for affective-agent memory once action,
-coping, outcome, and prediction-error payloads stabilize. See
-[`affective-memory-roadmap.md`](affective-memory-roadmap.md) for the optional
-`ActionOutcomeComponent` direction; it is not part of the base KnowledgeUnit
-contract yet.
+- `Task`: title, current status and short goal summary.
+- `Decision`: selected alternative, rationale summary and confidence.
+- `Procedure`: name, status, version and short capability/precondition summary.
+
+Projection rules:
+
+- `Original`: perspective-safe one-paragraph summary.
+- `Summary`: compact body for context assembly.
+- `Structured`: future progressive-disclosure projection for typed fields.
+
+Context rendering must keep perspective labels such as `User stated`,
+`Planner believed`, `RiskNode inferred` or `System reconstruction estimates`.
+Memory retrieval of a task/procedure never executes it.
+
+See [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md)
+for `TaskPayload`, `DecisionPayload`, `ProcedurePayload`, runtime origin,
+perspective and causal contracts.
 
 ### 5.8. Custom (escape hatch)
 
@@ -545,6 +1121,15 @@ contract yet.
 ```
 
 Используется для экспериментальных типов до добавления dedicated payload. Custom unit обязан нести `KnowledgeUnitId`, `KnowledgeUnitKind`, `SourceRef[]`, lifecycle fields и проходит стандартные validation rules. Custom payload хранится в `metadata_typed["payload"]` через typed value (variant).
+
+`Custom` is a versioned experimental proposal schema, not an ungoverned
+production extension point. It must declare an owner, stable schema id and
+schema version, plus its introducing milestone/profile, in typed metadata. Its
+introducing milestone is normally A0 or an explicitly named experimental lane;
+canonical production profiles reject it unless that exact schema is explicitly
+enabled by their capability manifest.
+Promotion to a dedicated kind or component requires a migration and validation
+fixtures; unknown `Custom` payloads fail closed on import/export.
 
 The affective-memory roadmap uses this `Custom` escape hatch for E0
 experiments with appraisal, affect snapshots, goal impacts, action outcomes,
@@ -577,7 +1162,7 @@ enum class LifecycleState : uint8_t {
 |---|---|---|---|
 | (new) | Active | write | initial state |
 | Active | Superseded | supersede operation (newer unit supersedes older) | старый unit помечается Superseded, новый становится Active |
-| Active | Deprecated | manual deprecation | авторский сигнал через WriteRequest |
+| Active | Deprecated | manual deprecation | авторский сигнал через `MutableUnitPatch` |
 | Active | Erased | manual erase | физическое удаление или logical remove (single-shot, минует Deprecated) |
 | Superseded | Deprecated | compaction review | после N дней в Superseded |
 | Superseded | Erased | compaction cleanup | cleanup Superseded chains (без Deprecated stage) |
@@ -688,7 +1273,6 @@ enum class DerivedRecordKind : uint32_t {
     UsageStatsComponent = 101,
     SpeakerComponent = 102,
     TemporalComponent = 103,
-    EmbeddingMetaComponent = 104,
     CompactionMetaComponent = 105,
     QAPayload = 110,
     FactPayload = 111,
@@ -699,14 +1283,28 @@ enum class DerivedRecordKind : uint32_t {
     KnowledgeUnitKey = 121,
     SourceRefSummary = 122,
     SourceRef = 123,
+    ActivationMetadataComponent = 124,
+    RuntimeOriginComponent = 130,
+    CausalContextComponent = 131,
+    PerspectiveComponent = 132,
+    EpistemicStatusComponent = 133,
+    FocusContextComponent = 134,
+    TaskPayload = 135,
+    DecisionPayload = 136,
+    ProcedurePayload = 137,
+    TaskStateComponent = 138,
+    ProcedureStateComponent = 139,
+    ProcedureStatsComponent = 140,
+    DecisionSelectionComponent = 141,
+    GlobalIdentityComponent = 142,
     // NB: KnowledgeUnitRevision НЕ существует как отдельный manifest record —
     // revision — это поле KnowledgeUnitEnvelope.revision, не отдельный kind.
-    // Per-record stale-check живёт в LexicalPosting.unit_revision и
-    // EmbeddingMetaComponent.unit_revision_at_compute.
+    // Per-record stale-check lives in LexicalPosting.projection_version and
+    // the dedicated EmbeddingProjectionMeta store.
 };
 ```
 
-Значения 100-120 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
+Значения 100-140 зарезервированы для новых типов. Расширение additive; старые manifests остаются валидными.
 
 ### 7.2. Resource Manifest Records
 
@@ -726,30 +1324,55 @@ enum class DerivedRecordKind : uint32_t {
 | Component / Payload | DBI имя | Open when |
 |---|---|---|
 | KnowledgeUnitEnvelope | `knowledge_units` | always |
-| KnowledgeUnit by kind | `knowledge_units_by_kind` | always (DUPSORT) |
+| KnowledgeUnit by kind | `knowledge_units_by_kind` | always (scope-aware DUPSORT) |
 | UsageStatsComponent | `unit_components` (tag=UsageStats) | UsageStats=true |
 | SpeakerComponent | `unit_components` (tag=Speaker) | SpeakerAttribution=true |
 | TemporalComponent | `unit_components` (tag=Temporal) | TemporalValidity=true |
-| EmbeddingMetaComponent | `unit_components` (tag=EmbeddingMeta) | EmbeddingMeta=true |
 | CompactionMetaComponent | `unit_components` (tag=CompactionMeta) | Compaction=true |
+| ActivationMetadataComponent | `unit_components` (tag=ActivationMetadata) | KnowledgeActivation=true |
+| RuntimeOriginComponent | `unit_components` (tag=RuntimeOrigin) | CognitiveTraceComponents=true |
+| CausalContextComponent | `unit_components` (tag=CausalContext) | CognitiveTraceComponents=true |
+| PerspectiveComponent | `unit_components` (tag=Perspective) | CognitiveTraceComponents=true |
+| EpistemicStatusComponent | `unit_components` (tag=EpistemicStatus) | CognitiveTraceComponents=true |
+| FocusContextComponent | `unit_components` (tag=FocusContext) | CognitiveTraceComponents=true |
+| TaskPayload | `unit_components` (tag=TaskPayload) | CognitiveTraceComponents=true |
+| DecisionPayload | `unit_components` (tag=DecisionPayload) | CognitiveTraceComponents=true |
+| DecisionSelectionComponent | `unit_components` (tag=DecisionSelection) | CognitiveTraceComponents=true |
+| ProcedurePayload | `unit_components` (tag=ProcedurePayload) | ProceduralActivation=true |
+| TaskStateComponent | `unit_components` (tag=TaskState) | CognitiveTraceComponents=true |
+| ProcedureStateComponent | `unit_components` (tag=ProcedureState) | ProceduralActivation=true |
+| ProcedureStatsComponent | `unit_components` (tag=ProcedureStats) | ProceduralActivation=true |
+| GlobalIdentityComponent | `unit_components` (tag=GlobalIdentity) | durable-global-identity profile |
 | QAPayload | `qa_payloads` | QAPairs=true (enable_qa_payload) |
 | FactPayload | `fact_payloads` | enable_fact_payload=true |
 | ChunkPayload | `chunk_payloads` | Chunk kind (default, всегда) |
 | ConversationEpisodePayload | `conversation_episode_payloads` | ConversationMemory=true |
 | CompiledArticlePayload | `compiled_article_payloads` | CompiledArticles=true |
+| Full SourceRef vector | `source_refs` | `enable_full_source_refs=true` (M1) |
 | SearchProjections | `unit_projections` | indexed retrieval (always для BasicRag+) |
 
-Operational components живут в единой `unit_components` DBI через `TypeDiscriminatedTable` (из `mdbx-containers-extension-tz.md`). Per-kind payloads — отдельные таблицы для изоляции schema и быстрого scan по kind.
+Operational components живут в единой `unit_components` DBI через
+`TypeDiscriminatedTable` (из `mdbx-containers-extension-tz.md`) with physical
+key `(ComponentKind, UnitId)`. The tag is part of the key, so several
+components for the same unit cannot overwrite each other. Per-kind payloads —
+отдельные таблицы для изоляции schema и быстрого scan по kind.
 
 ### 8.2. Capability-aware DBI Creation
 
 При `MemoryStack::open(spec)`:
 
-1. Всегда создаются core DBI: `knowledge_units`, `knowledge_units_by_kind`, `schema_info`.
+1. Core/default DBI берутся из canonical manifest
+   `mdbx-containers-extension-tz.md` §5.5. Для knowledge-unit identity path это
+   включает `knowledge_units`, `content_key_to_unit_id`,
+   `knowledge_units_by_kind`, `unit_components`, `unit_projections`,
+   `metadata_filters` и `schema_info`; capability DBI вроде `source_refs`
+   открываются по профилю.
 2. По capability флагам создаются дополнительные DBI (см. таблицу 8.1).
 3. При drift detected (см. `memory-stacks-roadmap.md` секция 14): error или auto-migrate (per ADR-003, ADR-004).
 
-DBI budget target ≤ 64 (расширение `max_dbs` 16→64 в `mdbx-containers`). Typical M1 stack: 18-22 DBI. Headroom есть.
+DBI budget target follows the shared manifest: canonical count 29, expanded peak 61,
+`Config::max_dbs = 96` by default, and at least 16 free DBI slots reserved for
+future profiles.
 
 ### 8.3. Multi-Component Writes
 
@@ -792,9 +1415,17 @@ struct OldSourceRef {
 // - excerpt (full) → SourceRef.excerpt_text (в source_refs DBI)
 // - quote_hash (optional) → SourceRefSummary.quote_hash (required, вычисляется из preview если missing)
 // - ResourceId добавляется через reverse lookup по uri
-// - anchor_unit_id добавляется (default = nullopt)
+// - anchor_unit adds a durable KnowledgeUnitRef (default = nullopt)
 // - observed_at_ms добавляется (default = nullopt)
 ```
+
+The migration resolves a `ResourceRevisionRef` only when the historical
+resource catalog can prove the exact retained generation and content hash. If it
+cannot, the migrated summary is explicitly `preview-only`: it preserves its
+inline preview and full stored excerpt where available, but does not claim that
+the old byte range can still be materialized. A later verified import may bind
+that legacy citation to a retained revision; it must never guess from the
+current body of the logical resource.
 
 Migration strategy:
 
@@ -815,11 +1446,16 @@ Migration strategy:
 
 Детальная процедура описана в секции 4.3 (DBI mapping → migration). Краткое summary:
 
-1. Построить lookup-таблицу `old_id → new_id` через чтение всех envelope и вычисление `KnowledgeUnitKey` (kind, scope, content_hash из старого ID).
+1. Построить lookup-таблицу `old_id → new_id` через чтение всех envelope и
+   persisted `KnowledgeUnitKey` (`kind`, `scope`, stored `content_hash`,
+   `content_hash_recipe_version`). Для legacy DB без persisted hash сначала
+   выполнить одноразовый recompute/backfill по legacy recipe.
 2. Аллоцировать новый monotonic `KnowledgeUnitId` для каждого уникального key.
-3. Перезаписать envelope с новым id в `unit_id_to_envelope`.
+3. Перезаписать envelope с новым id в `knowledge_units`.
 4. Записать `KnowledgeUnitKey → KnowledgeUnitId` в `content_key_to_unit_id`.
-5. Обновить все cross-reference (`anchor_unit_id`, `superseded_by`, `derived_from`) через lookup-таблицу.
+5. Rebind local portions of all cross-references (`anchor_unit.local_id`,
+   `superseded_by`, `derived_from`) through the lookup table without rewriting
+   durable anchor global ids.
 6. Перестроить `inverted_token_to_unit`, `field_to_postings`, secondary indexes.
 
 Запускается через `agent-memory-cli migrate-ku-id-scheme`.
@@ -844,21 +1480,22 @@ Round-trip test обязателен: `basic_rag` → `agent_ltm` → `basic_rag
 | Шаг | Что добавляется | Payload/component |
 |---|---|---|
 | 1 | KnowledgeUnitEnvelope + базовые DBI | envelope только |
-| 5 | Component infrastructure | operational components (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta) |
-| 5.5 | KnowledgeUnitKey DBI | `content_key_to_unit_id` DBI + `KnowledgeUnitKey`/`ContentHash` structs + monotonic `KnowledgeUnitId::allocate()` (см. секцию 4) |
+| 5 | Component infrastructure | operational components (UsageStats, Speaker, Temporal, EmbeddingMeta, CompactionMeta, ActivationMetadata, runtime-integration components) |
+| 5.5 | KnowledgeUnitKey DBI | `content_key_to_unit_id` DBI + `KnowledgeUnitKey`/`ContentHash` structs + storage-owned monotonic `KnowledgeUnitId` sequence (см. секцию 4) |
 | 5.6 | SourceRefSummary inline + source_refs DBI (M1) | `SourceRefSummary` в envelope (≤3 на unit) + `source_refs` DBI для полных цитат (см. секцию 3) |
 | 6 | Payload components per kind | QAPayload, FactPayload, ChunkPayload, ConversationEpisodePayload, CompiledArticlePayload |
 | 9 | Lifecycle FSM (4 durable states) | Active / Superseded / Deprecated / Erased; lifecycle extension с anti-loop подсвинком через `UsageStatsComponent.cooldown_until_ms` (см. секцию 6) |
 | 9.1 | Anti-loop подсвинок | self_echo_suppression в DecayAwareRetriever + AntiLoopCooldown фильтр; cooldown/soft_suppression хранятся в UsageStatsComponent (НЕ LifecycleState, НЕ инкрементит revision) |
 | 12 | Round-trip тесты для default stacks | все payloads (write → close → reopen → verify) |
 
-Дополнительные шаги (M2+): EventPayload (если потребуется), Task/Decision payloads.
+Дополнительные шаги (M2+): EventPayload (если потребуется), dedicated
+Task/Decision/Procedure payload DBIs if measured access patterns justify them.
 
 ## 11. References
 
 Внутренние документы:
 
-- `guides/memory-stacks-roadmap.md` — ADR-001 (envelope + components), ADR-003 (profile/scope), ADR-004 (KnowledgeUnit миграция), ADR-005 (search text), ADR-008 (decay/anti-loop), ADR-011 (lifecycle FSM). `MemoryProfileSpec`, `MemoryStack`, MDBX layout, maturity levels.
+- `guides/memory-stacks-roadmap.md` — ADR-001 (envelope + components), ADR-003 (profile/scope), ADR-004 (KnowledgeUnit миграция), ADR-005 (search text), ADR-008 (decay/anti-loop), ADR-011 (lifecycle FSM). `MemoryProfileSpec`, `MemoryStack`, physical manifest ownership, maturity levels.
 - `guides/knowledge-base-roadmap.md` — `KnowledgeUnitEnvelope` contract, retrieval flow, `IComponentStore`/`IProjectionStore`, `SearchProjection` generation rules, `DecayAwareRetriever`, evaluation pipeline.
 - `guides/lexical-search-roadmap.md` — BM25F по projections, field-weighted indexing, postings structure.
 - `guides/optimization-roadmap.md` — vector storage per `(model_id, projection_kind)`, binary signature indexes, scope-aware secondary indexes.

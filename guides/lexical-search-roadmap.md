@@ -4,12 +4,12 @@
 > [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md). BM25F operates on
 > the `SearchProjection` DBI (`unit_projections`) rather than on
 > `envelope.search_text`. All posting keys below are
-> `(scope_id, projection_kind, field_id, …)`-shaped to match the projection
+> `(scope_id, projection_kind, statistics_epoch, field_id, …)`-shaped to match the projection
 > model defined in ADR-001 / ADR-005 of the stacks roadmap.
 >
 > Related roadmaps:
 > - [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) — envelopes, components,
->   projections, profile/stack model, MDBX layout.
+>   projections, profile/stack model, physical manifest ownership.
 > - [`knowledge-base-roadmap.md`](knowledge-base-roadmap.md) — knowledge units,
 >   `KnowledgeUnitId`, retrieval flow contracts.
 > - [`knowledge-units-roadmap.md`](knowledge-units-roadmap.md) — per-kind payload
@@ -49,8 +49,9 @@ adapters.
 - BM25F indexes `SearchProjection` records, not `envelope.primary_text`. The
   flat-body baseline is a special case where `projection_kind = Original` and
   the only active `field_id` is `body`.
-- Store `ResourceId` and generation with postings for targeted reindexing and
-  stale-entry filtering.
+- Store `ResourceId` and explicitly named `resource_generation` with postings
+  for targeted source reindexing, and the complete `ProjectionVersionRef` for
+  projection freshness.
 - Use `ResourceManifest` records for lexical postings so one resource can be
   reindexed without rebuilding the whole corpus.
 - Keep BM25 as the first ranked lexical scorer; BM25F is the fielded
@@ -128,6 +129,13 @@ fusion can disambiguate multi-projection sources.
 
 ### Value Types
 
+The following `LexicalPosting` and `ChunkLexicalStats` shapes are the M1+
+projection-aware persisted contract. The current C++ `agent_memory::LexicalPosting`
+in `src/agent_memory/lexical/Lexical.hpp` is an M0 chunk-only baseline carrying
+`ResourceRevision`; it does not yet claim `SearchProjection`, translation, or
+summary-projection freshness. The M1+ contract supersedes that baseline only
+when the projection layer is implemented.
+
 ```cpp
 using TokenId = std::uint64_t;
 
@@ -138,6 +146,8 @@ enum class ProjectionKind : std::uint16_t {
     QAAnswer        = 4,
     Summary         = 5,
     CodeSymbols     = 6,
+    TranslatedCanonical = 7,
+    QACombined      = 8,  // M2+ dense-only Question + Answer experiment
 };
 
 enum class FieldId : std::uint16_t {
@@ -153,13 +163,31 @@ enum class FieldId : std::uint16_t {
     summary   = 10,
 };
 
+// CanonicalLanguageCode, DetectedLanguage and QueryTranslationTrace are common
+// dependency-free domain contracts owned by translation-adapters-roadmap.md.
+// Lexical retrieval consumes them and must not redeclare or re-encode them.
+
+struct ProjectionQueryVariant final {
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    DetectedLanguage query_language = UnknownLanguage{};
+    std::string text;
+    std::optional<ProjectionDerivationId> target_projection_derivation;
+    std::optional<QueryTranslationTrace> query_translation;
+};
+
+`query_language` records detection, not an asserted target language. A caller
+without a detector uses `UnknownLanguage`; a mixed natural-language/code query
+uses `MixedLanguage`. Neither variant is serialized as a fake BCP-47 value or
+used as a target for persisted translation without an explicit routing policy.
+
 struct LexicalPosting final {
     TokenId token_id = 0;
     KnowledgeUnitId unit_id;
     ProjectionKind projection_kind = ProjectionKind::Original;
     FieldId field_id = FieldId::body;
     ResourceId resource_id;
-    std::uint64_t generation = 0;
+    std::uint64_t resource_generation = 0;
+    ProjectionVersionRef projection_version;
     std::uint32_t term_frequency = 0;
     std::vector<std::uint32_t> positions;
 };
@@ -167,7 +195,8 @@ struct LexicalPosting final {
 struct ChunkLexicalStats final {
     KnowledgeUnitId unit_id;
     ResourceId resource_id;
-    std::uint64_t generation = 0;
+    std::uint64_t resource_generation = 0;
+    ProjectionVersionRef projection_version;
     std::uint32_t token_count = 0;
     std::uint32_t unique_token_count = 0;
     std::array<std::uint32_t, 11> per_field_token_count{}; // index by FieldId
@@ -180,12 +209,43 @@ struct LexicalTokenStats final {
     std::uint64_t collection_frequency = 0;
 };
 
-struct LexicalCollectionStats final {
+// A durable non-reused identifier for one lexical-index incarnation.
+struct LexicalStatisticsEpoch final {
+    std::array<std::uint8_t, 16> bytes{};
+};
+
+// Identifies one atomically readable active-projection statistics view.
+struct LexicalStatisticsSnapshotRef final {
+    ScopeId scope_id;
     ProjectionKind projection_kind = ProjectionKind::Original;
+    LexicalStatisticsEpoch statistics_epoch;
+    std::uint64_t statistics_generation = 0;
+};
+
+struct LexicalCollectionStats final {
+    LexicalStatisticsEpoch statistics_epoch;
+    std::uint64_t statistics_generation = 0;
     std::uint64_t unit_count = 0;
     std::uint64_t total_token_count = 0;
 };
+
+// Small mutable value addressed by (scope_id, projection_kind).
+// The DBI key supplies scope and projection; they are never duplicated here.
+struct LexicalActiveSnapshot final {
+    LexicalStatisticsEpoch statistics_epoch;
+    std::uint64_t statistics_generation = 0;
+    std::uint32_t posting_layout_version = 0;
+};
 ```
+
+`lexical_active_snapshot` is a collection-wide pointer, not a per-unit
+freshness record. Its DBI key `(scope_id, projection_kind)` is authoritative.
+After a read, the backend constructs the full
+`LexicalStatisticsSnapshotRef` from that key and this value's epoch and
+generation. A decoder must reject a legacy or alternate value encoding that
+carries duplicated scope/projection fields rather than choosing which copy to
+trust. `ProjectionVersionRef` and `resource_generation` remain exclusively in
+per-unit posting, stat and manifest rows.
 
 BM25F only needs per-field term frequency and per-field token count. Positions
 are included in the roadmap because phrase search, proximity search, snippets,
@@ -210,10 +270,10 @@ Token strings should be normalized before they receive ids:
 
 ```text
 lexical_token_by_text:
-    normalized_token -> token_id
+    (scope_id, projection_kind, statistics_epoch, normalized_token) -> token_id
 
 lexical_token_by_id:
-    token_id -> normalized_token
+    (scope_id, projection_kind, statistics_epoch, token_id) -> normalized_token
 ```
 
 The reverse dictionary is not required for scoring, but it is useful for
@@ -246,14 +306,72 @@ total_token_count:
     sum of token_count across indexed units in that projection_kind
 ```
 
-When a resource is reindexed, old token stats must be decremented before new
-stats are added, unless the backend uses unit_revision filtering (see Stale
-Filter via unit_revision) and delayed compaction.
+`ProjectionVersionRef` is mandatory for per-unit postings and stats, while a
+`LexicalStatisticsSnapshotRef` identifies one aggregate view across many live
+units. They are deliberately different: a collection cannot carry one
+`ProjectionVersionRef` because each member may have its own active projection
+version.
 
-A **token-level cache** keyed by `(scope_id, token_id, projection_kind)` keeps
-warm-up reads cheap: when a query term is reused across sessions or scopes, the
-postings and per-projection-kind stats are loaded once and reused for the
-duration of the lexical session.
+When a resource or one of its projections is reindexed, the indexing
+transaction removes the previous **active** contribution from
+`LexicalTokenStats` and `LexicalCollectionStats`, applies the replacement
+contribution, advances `statistics_generation` within the current
+`statistics_epoch`, and atomically publishes the replacement
+`LexicalActiveSnapshot` together with the lexical manifest.
+Physical stale postings may remain until delayed
+compaction, but they must not remain in aggregate stats. Consequently `df`,
+`collection_frequency`, `unit_count`, `total_token_count`, and `avgdl` always
+describe the same active-projection set as the manifest visible in the read
+frontier.
+
+`LexicalTokenStats` rows are current members of the collection snapshot; they
+are not independently stamped or copied on every unrelated unit update. A
+query reads `LexicalActiveSnapshot`, then the exact epoch-keyed
+`LexicalCollectionStats` and token rows, from one storage read
+transaction/frontier. The stats row's epoch and generation must equal the
+active snapshot before scoring. A token-stat cache is scoped to that
+frontier or the full `LexicalStatisticsSnapshotRef`; it must not combine token rows from one
+aggregate view with collection counters from another.
+
+A **token-level cache** keyed by `(scope_id, projection_kind, statistics_epoch,
+token_id, statistics_generation)` keeps warm-up reads cheap within a stable lexical
+session without mixing aggregate views.
+
+`statistics_epoch` is generated durably and never reused for a different
+lexical-index incarnation. A full rebuild, posting-block layout migration, or
+restore that replaces an existing derived lexical index must allocate a new
+epoch before publishing its manifest, even when its generation counter begins
+at zero. A backup that restores the exact same immutable derived index without
+coexisting stale blocks may preserve its epoch; any restore into a workspace
+that can retain older blocks must instead allocate a new epoch or delete those
+blocks before publication.
+
+Every derived lexical row whose interpretation includes `TokenId`, plus its
+collection aggregate statistics, is namespaced by
+`(scope_id, projection_kind, statistics_epoch)`. A rebuild writes the full new
+namespace and its `LexicalCollectionStats` row first, then atomically publishes
+the active `LexicalStatisticsSnapshotRef` through `lexical_active_snapshot`.
+Queries read that pointer before any collection-statistics, dictionary, posting,
+segment or token-stat row, and use it as an exact key prefix. Old epoch rows can
+remain for delayed reclaim but are unreachable from the new incarnation. This
+prevents a removed term's old `df`, denominator, or reassigned token id from
+being read or cached as E2 data.
+
+Cache keys and block headers carry the full snapshot ref. An epoch mismatch
+means that the whole block is obsolete: it must not be decoded or scored. A
+generation mismatch within the same epoch also means that the block cannot be
+scored as the exact active posting source: an update may have added or removed
+postings. The backend must use matching-generation flat postings, or a complete
+generation-bound add/tombstone overlay that reconstructs the active membership;
+otherwise it returns an explicit `Partial` or `Unavailable` route outcome. Recomputing
+conservative bounds or disabling WAND/BMW pruning is permitted only after that
+membership condition is met; it cannot by itself make a stale block exact.
+For that overlay case only, the same-epoch stale block may be decoded as an
+unscored base. The overlay must name the same scope/projection/epoch/layout,
+bind `base_generation` to the block header and `target_generation` to the
+active snapshot, and account for every added, removed and replaced posting.
+The base block must never contribute candidates or scores before that complete
+membership reconstruction succeeds.
 
 ## Tokenization
 
@@ -373,6 +491,8 @@ Planned dependency-free contracts:
 ```cpp
 struct LexicalQuery final {
     std::string text;
+    std::vector<ProjectionQueryVariant> query_variants;
+    // Required, non-empty, already-normalized exact scope set.
     std::vector<ScopeId> scope_ids;
     std::optional<ProjectionKind> pin_projection_kind; // nullopt = stack default
     std::size_t limit = 10;
@@ -389,6 +509,36 @@ struct LexicalSearchResult final {
     Metadata metadata;
 };
 
+enum class LexicalRouteCompletion : std::uint8_t {
+    Exact,
+    Partial,
+    Unavailable,
+};
+
+enum class LexicalUnavailableReason : std::uint8_t {
+    ActiveSnapshotMissing,
+    EpochOrLayoutMismatch,
+    ActiveMembershipNotReconstructed,
+    RequiredFlatPostingMissing,
+};
+
+struct LexicalTokenPartitionRef final {
+    ScopeId scope_id;
+    ProjectionKind projection_kind = ProjectionKind::Original;
+    LexicalStatisticsEpoch statistics_epoch;
+    std::uint64_t statistics_generation = 0;
+    TokenId token_id;
+};
+
+struct LexicalSearchOutcome final {
+    std::vector<LexicalSearchResult> hits;
+    LexicalRouteCompletion completion = LexicalRouteCompletion::Exact;
+    std::optional<LexicalUnavailableReason> unavailable_reason;
+    // Exact query-token-partition coverage; a partial outcome names every omitted partition.
+    std::vector<LexicalTokenPartitionRef> covered_token_partitions;
+    std::vector<LexicalTokenPartitionRef> unavailable_token_partitions;
+};
+
 class ILexicalIndex {
 public:
     virtual ~ILexicalIndex();
@@ -400,11 +550,11 @@ public:
         const std::vector<SearchProjection>& projections
     ) = 0;
 
-    [[nodiscard]] virtual std::vector<LexicalSearchResult> search(
+    [[nodiscard]] virtual LexicalSearchOutcome search(
         const LexicalQuery& query
     ) const = 0;
 
-    [[nodiscard]] virtual std::vector<LexicalSearchResult> search(
+    [[nodiscard]] virtual LexicalSearchOutcome search(
         const RetrievalPlan& plan
     ) const = 0;
 
@@ -420,8 +570,25 @@ The `search(RetrievalPlan)` overload participates in the unified retrieval
 pipeline from `memory-stacks-roadmap.md` section 7.3: it surfaces
 `retriever_name = "lexical"` on every hit for RRF, emits a `RetrievalTrace`
 segment per call, and applies the `RetrievalPlan.metadata_filter` and
-`scope_ids` constraints before scoring. The flat `LexicalQuery` overload stays
-for callers that want a standalone lexical lookup without a full plan.
+`scope_ids` constraints before scoring. The flat `LexicalQuery` overload is a
+trusted planner/storage-level API, not a policy-aware public retrieval entry
+point. Its `scope_ids` is required, non-empty, already normalized, and is the
+exact lookup set; empty, duplicate or empty `ScopeId` values are validation
+errors and must never mean an unrestricted scan. Callers that need host grants,
+CandidateSet construction, policy tracing or final canonical authorization must
+use `search(RetrievalPlan)`.
+
+`LexicalSearchOutcome::Exact` means that every requested token partition was
+reconstructed and scored against one active snapshot. `Partial` contains only
+hits from the explicitly listed `covered_token_partitions`; it must retain a non-empty
+`unavailable_token_partitions` list and must never be silently converted to an exact
+empty-or-nonempty result. `Unavailable` contains no candidates and names the
+reason. A stale compressed block without matching-generation flat postings or a
+complete generation-bound overlay contributes no candidates, including to a
+partial outcome. The retrieval executor maps these outcomes through the route
+completion policy: partial fusion is opt-in, while an unavailable route uses an
+explicit fallback or fails a required route. The outcome and token-partition coverage are
+recorded in the per-route trace before fusion and context assembly.
 
 Exact method names can change during implementation. The important part is that
 lexical indexing is unit-aware, projection-aware, and plan-aware.
@@ -429,44 +596,52 @@ lexical indexing is unit-aware, projection-aware, and plan-aware.
 ## MDBX Layout
 
 The lexical DBI set is part of the stack-wide layout described in
-[`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) section 12.3. The DBI
+[`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) §5.5. The DBI
 names and key shapes from that section are normative; this section adds the
 payload shapes and explains the design.
 
 ```text
 inverted_token_to_unit:          // DUPSORT secondary index
-    key   = (scope_id, token_id, projection_kind, field_id) -> DUPSORT unit_id
+    key   = (scope_id, projection_kind, statistics_epoch, token_id, field_id)
+            -> DUPSORT unit_id
 
-field_to_postings:
-    key   = (scope_id, projection_kind, field_id, token_id, unit_id)
-    value = PostingStats { tf, positions_count, generation, resource_id }
+field_to_postings:                 // KV posting stats by full posting identity
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             unit_id)
+    value = PostingStats { tf, positions_count, resource_generation, projection_version, resource_id }
 
 lexical_token_by_text:
-    key   = normalized token
+    key   = (scope_id, projection_kind, statistics_epoch, normalized token)
     value = token_id
 
 lexical_token_by_id:
-    key   = token_id
+    key   = (scope_id, projection_kind, statistics_epoch, token_id)
     value = normalized token
 
 lexical_chunk_stats:
-    key   = (scope_id, unit_id, projection_kind)
+    key   = (scope_id, projection_kind, statistics_epoch, unit_id)
     value = { token_count, unique_token_count,
-              per_field_token_count[11], resource_id, generation }
+              per_field_token_count[11], resource_id, resource_generation,
+              projection_version }
 
 lexical_token_stats:
-    key   = (scope_id, projection_kind, token_id)
+    key   = (scope_id, projection_kind, statistics_epoch, token_id)
     value = { document_frequency, collection_frequency }
 
 lexical_collection_stats:
+    key   = (scope_id, projection_kind, statistics_epoch)
+    value = { statistics_generation, unit_count, total_token_count }
+
+lexical_active_snapshot:
     key   = (scope_id, projection_kind)
-    value = { unit_count, total_token_count }
+    value = { statistics_epoch, statistics_generation, posting_layout_version }
 ```
 
 The first implementation may collapse `field_to_postings` to a single
-`(scope_id, Original, body, token_id, unit_id)` row while keeping the schema
-ready for the other projections and fields. That keeps the BM25-only path fast
-without locking the schema.
+`(scope_id, Original, statistics_epoch, body, token_id, unit_id)` row while
+keeping the schema ready for the other projections and fields. `Original` and
+`body` are fixed baseline values, not an exception to the epoch namespace. That
+keeps the BM25-only path fast without locking the schema.
 
 ### Posting Segments
 
@@ -475,13 +650,71 @@ storage:
 
 ```text
 lexical_posting_segments:
-    key   = (scope_id, projection_kind, field_id, token_id, segment_id)
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             segment_id)
     value = posting segment blob
 ```
 
 Segments allow resource updates to touch fewer bytes and make tombstone cleanup
 more incremental. The simple blob layout is still the right first backend
 because it is easier to test against the in-memory BM25F baseline.
+
+### Compressed Posting Blocks And Dynamic Pruning (M2)
+
+The M2 physical segment remains a derived lexical representation, not a second
+source of truth for a unit or its current lifecycle. Its versioned layout may
+contain:
+
+```text
+[header: statistics_epoch, statistics_generation, layout_version,
+         record count, safe upper bounds]
+[delta-coded unit ids]
+[term frequencies and field statistics]
+[optional per-document delta-coded positions]
+[skip offsets]
+[projection-version/resource-generation data]
+[optional conservative zone synopsis]
+```
+
+Unit ids and positions are candidates for delta plus bounded integer packing
+(VByte, SIMD-BP128, Stream VByte, FastPFOR or an equivalent codec); term
+frequencies may use bit packing; repeated projection-version/source fields may use a
+local dictionary or RLE. No particular third-party wire format is a public
+contract. A segment that cannot safely use a narrow delta representation must
+use a lossless wide fallback.
+
+Each compressed posting block records the full
+`LexicalStatisticsSnapshotRef` and `layout_version` used to construct it. A
+query may decode or score it when its epoch, generation and layout version match
+the active lexical manifest at the same frontier. An epoch or layout mismatch
+makes the entire block obsolete, not merely its WAND/BMW bound. A same-epoch
+generation mismatch may decode the block only as the explicitly bound unscored
+base of a complete add/tombstone overlay; it cannot be scored standalone. The
+overlay must bind its base generation to the block and its target generation to
+the active snapshot, reconstruct complete active membership, and preserve the
+same scope/projection/epoch/layout. Otherwise the query must use
+matching-generation flat postings or return `Partial` or `Unavailable`; disabling
+pruning alone does not repair changed membership.
+
+Dynamic pruning is introduced in stages: exhaustive DAAT BM25F baseline first,
+then MaxScore/WAND, then Block-Max WAND only after the per-block score upper
+bounds are proved conservative for the active BM25F formula, field weights and
+collection-statistics generation. A stale bound may reduce pruning efficiency,
+but it must never discard a document that exhaustive BM25F could return in
+top-K. Segment zone synopses may skip a block only for immutable or
+generation-bound predicates; mutable lifecycle/authority/revision decisions
+continue through `CandidateSet` and final canonical validation.
+
+Before scoring or position decode, lexical candidates intersect the same
+execution-local `CandidateSet` used by dense, graph and temporal routes. This
+pushes exact scope/authority/lifecycle/time/source filters ahead of expensive
+work without treating the set as a substitute for stale-posting checks.
+
+Acceptance compares each mode with exhaustive BM25F on identical corpus and
+filters. It reports nDCG/Recall, decoded posting integers and position bytes per
+query, posting blocks touched, documents fully scored, CandidateSet filtering
+rate, encoded/decoded I/O, p50/p95/p99 latency, update/delete/compaction cost,
+and corrupt/obsolete-statistics negative cases.
 
 ## Targeted Reindexing
 
@@ -492,42 +725,61 @@ When a unit is reindexed for a given `projection_kind`:
 2. Remove or invalidate lexical postings referenced by the old manifest.
 3. Load the new SearchProjection set for the unit.
 4. Tokenize each (projection_kind, field_id) text.
-5. Upsert token dictionary entries (shared across projection_kinds).
-6. Write field_to_postings and inverted_token_to_unit entries.
-7. Update lexical_token_stats and lexical_chunk_stats per projection_kind.
-8. Update lexical_collection_stats per projection_kind.
-9. Write new lexical manifest refs and bump generation.
+5. Upsert token dictionary entries in the active `(scope, projection, epoch)`
+   namespace.
+6. Write `field_to_postings` KV entries and `inverted_token_to_unit`
+   candidate-index entries.
+7. Remove the replaced active contribution, then update `lexical_token_stats`
+   and `lexical_chunk_stats` per projection_kind.
+8. Update the epoch-keyed `lexical_collection_stats` row and advance its
+   `statistics_generation` within the active `statistics_epoch` for the
+   replacement active-projection set.
+9. Atomically update the collection pointer `lexical_active_snapshot` with
+   `statistics_epoch`, `statistics_generation`, and `posting_layout_version`
+   only. The active `projection_version` and applicable
+   `resource_generation` remain in the per-unit posting/stat/manifest rows
+   written by this transaction.
 10. Commit through a backend transaction where available.
 ```
+
+A full rebuild or layout migration does not use this incremental path. It
+allocates a new epoch, writes every dictionary/posting/segment/stat row under
+that epoch, and atomically switches the active collection snapshot only after
+the new namespace is complete. The acceptance fixture must retain an E1 token
+stat row for a term absent in E2, publish E2, and prove that neither lookup nor
+the token-stat cache can read the old `df` under the E2 snapshot.
 
 Lexical `DerivedRecordRef` entries can use:
 
 ```text
 kind = LexicalPosting
-key  = (scope_id, projection_kind, field_id, token_id) or an encoded
-       posting segment key
+key  = (scope_id, projection_kind, statistics_epoch, field_id, token_id) or an
+       encoded posting segment key in the same epoch namespace
 ```
 
-The manifest does not need stable offsets into compressed posting blobs. Removal
-should filter by `unit_id`, `resource_id`, and generation.
+The manifest does not need stable offsets into compressed posting blobs. Source
+reclamation filters by `unit_id`, `resource_id`, and `resource_generation`.
 
-For mutable memory, a backend may leave stale postings in place and skip them at
-query time when their generation does not match the current resource generation.
-That path needs a cheap current-generation lookup or cache; otherwise stale
-filtering can turn lexical search into too many random reads.
+For mutable memory, a backend may leave stale postings in place. Query-time
+freshness first compares `posting.projection_version` with the active projection
+version, then checks `resource_generation` when the posting was derived from a
+resource-managed record. The resource-generation path needs a cheap current
+generation lookup or cache; otherwise stale filtering can turn lexical search
+into too many random reads.
 
-### Stale Filter via unit_revision
+### Stale Filter via ProjectionVersionRef
 
-LexicalPosting хранит unit_revision (envelope.revision на момент индексации).
+LexicalPosting stores the complete `ProjectionVersionRef` captured at indexing.
 Retrieval-time stale-filter:
   1. Posting lookup → candidates.
   2. Bulk load current envelopes.
-  3. Skip if posting.unit_revision < envelope.revision.
+  3. Skip unless `posting.projection_version` equals the active projection version.
 
 См. также: ResourceManifest.generation filtering только для derived records от source resource (M2+).
 
-unit_revision-based filtering — это per-posting check, не отдельная DBI.
-unit_revision_index (optional, M2+) — отдельная DBI для batch validation / debugging.
+Projection-version filtering is a per-posting check, not a separate DBI.
+`projection_version_index` (optional, M2+) is a separate DBI for batch
+validation and debugging.
 
 The reindex path is **projection-aware**: an update that only changes a
 `Summary` projection does not invalidate `Original`, `QAQuestion`, or
@@ -568,7 +820,11 @@ FileSystemResourceStore
     root_path
     include globs: *.md, *.txt, *.cpp, *.hpp
     exclude globs: .git, build, node_modules
-    stable resource id from relative path or configured id policy
+    stable ResourceId from connector/provider identity, persisted locator
+        registry, explicit application mapping, or operator-confirmed rename
+    first-seen files without provider identity receive a ResourceId from the
+        application registry, never from their relative path or content hash
+    relative path is recorded as a SourceLocator observation only
     content hash for change detection
 ```
 
@@ -602,7 +858,7 @@ struct SearchProjection final {
     ScopeId scope_id;
     KnowledgeUnitId unit_id;
     ProjectionKind kind = ProjectionKind::Original;
-    std::uint64_t revision = 0;
+    ProjectionVersionRef version;
 
     // Canonical fielded text. Empty fields are skipped at index time.
     std::string title;
@@ -615,11 +871,12 @@ struct SearchProjection final {
     std::string qa_question;   // populated when kind = QAQuestion
     std::string qa_answer;     // populated when kind = QAAnswer
     std::string summary;       // populated when kind = Summary
+    std::optional<TranslationProjectionMeta> translation_meta; // TranslatedCanonical only
 };
 ```
 
 The projection is persisted in `unit_projections`
-(`memory-stacks-roadmap.md` section 12.2). The flat-body BM25 baseline is the
+(`mdbx-containers-extension-tz.md` §5.5). The flat-body BM25 baseline is the
 special case where `kind = Original` and only `body` is non-empty; BM25F
 generalises it by reading additional fields from the same projection.
 
@@ -637,6 +894,7 @@ retrieval path.
 | QAAnswer         | qa_a (w_qa_a), body (w_body)                                                    |
 | Summary          | summary (w_summary), tag (w_tag), title (w_title)                               |
 | CodeSymbols      | symbol (w_symbol), code (w_code)                                                |
+| TranslatedCanonical | body (w_body), tag (w_tag), meta (w_meta) |
 
 `DenseContextual` is consumed by the dense retriever; BM25F still indexes the
 projection so secondary lexical retrieval can fall back to it after fusion.
@@ -649,17 +907,20 @@ weights and stats do not bleed across projection families or tenants:
 
 ```text
 inverted_token_to_unit:
-    key   = (scope_id, token_id, projection_kind, field_id)
+    key   = (scope_id, projection_kind, statistics_epoch, token_id, field_id)
     value = DUPSORT unit_id
 
-field_to_postings:
-    key   = (scope_id, projection_kind, field_id, token_id, unit_id)
-    value = PostingStats { tf, positions_count, generation, resource_id }
+field_to_postings:                 // KV posting stats by full posting identity
+    key   = (scope_id, projection_kind, statistics_epoch, field_id, token_id,
+             unit_id)
+    value = PostingStats { tf, positions_count, resource_generation, projection_version, resource_id }
 ```
 
 A `unit_id` may appear multiple times for the same token — once per
 projection_kind/field_id combination that contains it. The scorer joins these
-postings at query time using the per-field weights defined below.
+postings at query time using the per-field weights defined below. Targeted
+update/delete of one posting uses the full `(scope_id, projection_kind,
+field_id, token_id, unit_id)` key; `PostingStats` never carries identity.
 
 ### Projection-Weighted BM25F Scoring
 
@@ -675,8 +936,8 @@ score(u, q) = sum over query terms t:
 
 where:
     idf(t)              = log(1 + (N - df(t) + 0.5) / (df(t) + 0.5))
-    df(t)               = units containing t (Original projection stats)
-    N                   = unit_count (Original projection)
+    df(t)               = units containing t in the active projection_kind stats
+    N                   = unit_count for the active projection_kind
     tf_sat(t, u, f)     = tf(t, u, f) * (k1 + 1) /
                           (tf(t, u, f) + k1 *
                            (1 - b + b * len_f(u) / avg_len_f))
@@ -768,7 +1029,23 @@ DenseContextual:
     body    = envelope.primary_text
     meta    = envelope.metadata_typed
     summary = nearest Summary projection if present, else empty
+
+TranslatedCanonical:
+    body    = translated extracted text or chunk body
+    tags    = language-neutral tags only
+    meta    = canonical_language + translation derivation fingerprint
 ```
+
+`TranslatedCanonical` is generated only when the profile enables
+`TranslationProjection` and supplies a `TranslationPolicy`. Its source of
+truth is the original resource/unit revision plus `TranslationProjectionMeta`
+embedded in the projection value. If the source revision, canonical language,
+translation policy fingerprint or package/model fingerprint changes, only the
+translated projection gets a new `ProjectionVersionRef.derivation_generation`;
+`Original` postings remain valid. Translated projection postings store the full
+version in `PostingStats.projection_version`, and stale-check compares it with
+the active projection version, not only with `KnowledgeUnitEnvelope.revision`. See
+[`translation-adapters-roadmap.md`](translation-adapters-roadmap.md).
 
 Open question 17.4 from `memory-stacks-roadmap.md` (`When does a SearchProjection
 regenerate?`) is resolved for the lexical path: projections regenerate on
@@ -844,7 +1121,7 @@ Graph retrieval is likely needed earlier than learned sparse or late-interaction
 methods for agent assistants and expert-system style workflows. It should expand
 from retrieved units/resources to related symbols, concepts, people, tasks, and
 dependencies. Graph retrieval operates on `graph_edges_by_src` /
-`graph_edges_by_dst` from `memory-stacks-roadmap.md` section 12.3 and joins
+`graph_edges_by_dst` from `mdbx-containers-extension-tz.md` §5.5 and joins
 its hits into the RRF stream with `retriever_name = "graph"`.
 
 ### SPLADE-v2 Learned Sparse Adapter (M2+)
@@ -898,6 +1175,15 @@ Storage estimate: 1M units × 32 tokens × 128 dim float32 = ~16 GB (raw).
 
 Status: M2+ optional, дорого по памяти. Для high-precision use cases.
 
+The M2+ storage contract is a `VectorSetProjection`: canonical unit/projection
+identity, embedding-space and modality descriptor, pooling rule,
+`max_vectors_per_unit`, encoded vector-set payload, and token/sentence/patch
+locators. Coarse unit retrieval precedes bounded MaxSim over the selected vector
+sets. Equal dimension is not sufficient compatibility: embedding space,
+preprocessing, pooling and vector-set layout must match. Residual compression
+and late-interaction ANN remain optional adapters evaluated against a
+single-vector exact baseline and the global `RetrievalIoBudget`.
+
 ## Hybrid Retrieval
 
 The first hybrid pipeline should be:
@@ -920,6 +1206,19 @@ BM25F active projection_kinds  = { Original, QAQuestion, QAAnswer, Summary }
 vector active projection_kinds = { Original, DenseContextual }
 graph  active projection_kinds  = { Original }
 ```
+
+When `TranslationProjection` is enabled, planners may add
+`TranslatedCanonical` to BM25F/vector projection sets for cross-lingual recall,
+but lexical search must use a translated `ProjectionQueryVariant` for that
+projection. The original query is searched against `Original`; the translated
+query is searched against `TranslatedCanonical`; RRF fuses the two result
+streams. The default result context still carries `SourceRef` to the original
+resource; translated snippets are auxiliary unless the caller explicitly asks
+for a translated answer surface.
+`ProjectionQueryVariant::target_projection_derivation` is set only when the
+planner pins the query to a known persisted translated projection generation.
+`query_translation` records query-side provenance and must not be copied into
+stored projection metadata.
 
 Secondary retrieval (post-fusion) may load `CodeSymbols` or `DenseContextual`
 if RRF confidence is below a threshold or if the query parser hints at code
@@ -1164,16 +1463,17 @@ of that ordering; each substep is its own PR.
 ### L2. SearchProjections and projection-aware BM25F (memory-stacks step 7)
 
 10. Add the `SearchProjection` value type and the `unit_projections` DBI
-    (`memory-stacks-roadmap.md` section 12.2).
-11. Add `projection_kind` and `scope_id` to the `inverted_token_to_unit`
-    and `field_to_postings` keys (see MDBX Layout above).
+    (`mdbx-containers-extension-tz.md` §5.5).
+11. Add `scope_id`, `projection_kind` and active `statistics_epoch` to the
+    `inverted_token_to_unit` and `field_to_postings` keys (see MDBX Layout
+    above).
 12. Add projection build rules per `ProjectionKind` for `Original`, `QAQuestion`,
-    `QAAnswer`, `Summary`, and `CodeSymbols` (see Projection Build Rules
-    Per ProjectionKind).
+    `QAAnswer`, `Summary`, `CodeSymbols`, `DenseContextual`, and optional
+    `TranslatedCanonical` (see Projection Build Rules Per ProjectionKind).
 13. Promote the MDBX layout so `field_to_postings` is keyed by
-    `(scope_id, projection_kind, field_id, token_id, unit_id)` and BM25F,
-    BM25, and future fielded sparse retrievers share the same posting
-    table.
+    `(scope_id, projection_kind, statistics_epoch, field_id, token_id,
+    unit_id)` and BM25F, BM25, and future fielded sparse retrievers share the
+    same posting table.
 14. Add the BM25F scorer over the fielded view with explicit per-field
     weights and the `LexicalFieldWeights` configuration.
 15. Extend `LexicalSearchResult` to carry `KnowledgeUnitId` and
@@ -1194,25 +1494,45 @@ of that ordering; each substep is its own PR.
 19. Wire the lexical index into the `RetrievalPlan` lifecycle: emission of
     `RetrievalTrace` per call, RRF contribution, and participation in
     `IContextBuilder` budgeted assembly.
-20. Add the token-level cache keyed by `(scope_id, token_id,
-    projection_kind)` for fast warm-up across sessions and scopes.
+20. Add the token-level cache keyed by `(scope_id, projection_kind,
+    statistics_epoch, token_id, statistics_generation)` for fast
+    warm-up within a stable aggregate statistics view; include a fixture where
+    an old block and a full rebuild share generation `0` but have different
+    epochs, proving that stale pruning cannot be reused. Add a separate
+    active-snapshot codec fixture: its value round-trips only epoch,
+    generation and layout version; scope/projection are reconstructed solely
+    from the DBI key; an alternate value carrying conflicting duplicated
+    scope/projection is rejected fail-closed. The fixture must also cover a
+    same-epoch G10-to-G11 update that adds one posting and deletes another:
+    the G10 compressed block is not an exact source for G11 unless the query
+    uses matching flat postings or a complete add/tombstone overlay. The
+    overlay fixture must prove that G10 is decoded only as an unscored base,
+    binds `base_generation=G10` and `target_generation=G11`, and cannot admit
+    a candidate before applying every add/remove/replacement delta.
+    A mixed-token fixture must leave one requested token fully reconstructed at
+    G11 and another available only through an incomplete G10-to-G11 path. The
+    executor must either use a named exact flat fallback or return an explicit
+    `Partial`/`Unavailable` `LexicalSearchOutcome`; it must never fuse the
+    surviving token hits as a complete lexical route.
 
 ### L4. MDBX and secondary indexes (memory-stacks steps 3 cont. and 12.3)
 
-21. Add the MDBX-backed lexical index with simple posting-list blobs
-    (start from the flat-body path, then add the projection keys).
+21. Add the MDBX-backed lexical index with the full
+    scope/projection/epoch-aware key shape from the first schema, initially restricted to fixed
+    `ProjectionKind::Original` and `FieldId::body`; then enable additional
+    projection kinds and fields.
 22. Add segmented postings, tombstones, and compaction. Compaction must
-    preserve unit_revision filtering (see Stale Filter via unit_revision) so
-    BM25F and BM25 score over the same live-posting set.
+    preserve projection-version and resource-generation filtering so BM25F and
+    BM25 score over the same live-posting set.
 23. Wire MDBX-backed secondary indexes for the lexical pipeline
-    (resource -> token set, metadata_key -> unit_id, unit_revision -> unit_id)
+    (resource -> token set, metadata_key -> unit_id, projection version -> unit id)
     so reindex and stale filtering stay fast. See
     [`optimization-roadmap.md`](optimization-roadmap.md) "Secondary
-    Indexes" and `memory-stacks-roadmap.md` section 12.3.
+    Indexes" and `mdbx-containers-extension-tz.md` §5.5.
 
-unit_id <-> envelope.revision:
-  - LexicalPosting.unit_revision = envelope.revision на момент индексации.
-  - Не путать с ResourceManifest.generation (resource-level version).
+unit_id <-> ProjectionVersionRef:
+  - LexicalPosting stores the active projection version at indexing time.
+  - Do not confuse it with ResourceManifest.generation (resource-level version).
 
 ### L5. Morphology, raw stores, and later layers
 

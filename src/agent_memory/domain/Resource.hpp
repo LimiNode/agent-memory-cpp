@@ -7,19 +7,40 @@
 
 #include "Identifiers.hpp"
 
+#include <array>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
 namespace agent_memory {
 
+    /// \brief Algorithm identifier for a portable resource-body digest.
+    enum class ResourceBodyDigestAlgorithm : std::uint8_t {
+        Sha256
+    };
+
+    /// \brief Algorithm-tagged digest of immutable source bytes.
+    struct ResourceBodyDigest final {
+        ResourceBodyDigestAlgorithm algorithm = ResourceBodyDigestAlgorithm::Sha256;
+        std::array<std::uint8_t, 32> bytes{};
+    };
+
+    /// \brief Returns whether a resource-body digest uses a supported algorithm.
+    [[nodiscard]] bool is_valid_resource_body_digest(
+        const ResourceBodyDigest& digest
+    ) noexcept;
+
     /// \brief Current revision identity for an original source resource.
     struct ResourceRevision final {
         ResourceId resource_id;
         std::uint64_t generation = 0;
+        /// \brief Prototype-local freshness hash, not portable evidence integrity.
         std::uint64_t content_hash = 0;
         std::uint64_t pipeline_config_hash = 0;
+        /// \brief Optional for generic manifests; required by ResourceIndexer snapshots.
+        std::optional<ResourceBodyDigest> body_digest;
     };
 
     /// \brief Kind of derived record created from a resource revision.
@@ -50,10 +71,39 @@ namespace agent_memory {
         std::uint32_t ordinal = 0;
     };
 
+    /// \brief Publication state of a resource-owned derived-record manifest.
+    enum class ResourceManifestState : std::uint8_t {
+        Active,
+        ErasePending
+    };
+
+    /// \brief On-disk payload version observed by a manifest storage adapter.
+    enum class ResourceManifestPayloadVersion : std::uint8_t {
+        Unknown = 0,
+        V1 = 1,
+        V2 = 2,
+        V3 = 3,
+        V4 = 4,
+        V5 = 5
+    };
+
+    /// \brief Declares the writer-owned schema for a resource manifest.
+    struct ResourceManifestSchema final {
+        std::string schema_id;
+        std::uint32_t schema_version = 0;
+    };
+
     /// \brief Manifest of records derived from one resource revision.
     struct ResourceManifest final {
         ResourceRevision revision;
         std::vector<DerivedRecordRef> records;
+        ResourceManifestState state = ResourceManifestState::Active;
+        /// \brief Superseded records retained until durable reclamation completes.
+        std::vector<DerivedRecordRef> pending_reclaim_records;
+        /// \brief Schema that owns the derived-record topology, when declared.
+        ResourceManifestSchema schema;
+        /// \brief Payload version observed on load or emitted by the storage adapter.
+        ResourceManifestPayloadVersion payload_version = ResourceManifestPayloadVersion::Unknown;
     };
 
     /// \brief Returns stable lowercase derived-record kind name.
@@ -81,8 +131,19 @@ namespace agent_memory {
         const DerivedRecordRef& ref
     ) noexcept;
 
+    /// \brief Returns whether two derived-record references address one physical record.
+    [[nodiscard]] bool has_same_derived_record_identity(
+        const DerivedRecordRef& left,
+        const DerivedRecordRef& right
+    ) noexcept;
+
     /// \brief Returns true when a manifest can be persisted by storage backends.
     [[nodiscard]] bool is_valid_resource_manifest(
+        const ResourceManifest& manifest
+    ) noexcept;
+
+    /// \brief Returns whether a manifest is eligible for active retrieval.
+    [[nodiscard]] bool is_active_resource_manifest(
         const ResourceManifest& manifest
     ) noexcept;
 

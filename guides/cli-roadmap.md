@@ -15,7 +15,7 @@
 
 Cross-references:
 
-- `guides/memory-stacks-roadmap.md` — MemoryStack API (секция 7), MDBX Layout (секция 12), Maturity Levels (секция 13), Profile Migration (секция 14).
+- `guides/memory-stacks-roadmap.md` — MemoryStack API (секция 7), physical manifest ownership (секция 12), Maturity Levels (секция 13), Profile Migration (секция 14).
 - `guides/compaction-roadmap.md` — Admin Operations (секция 9).
 - `guides/runtime-services-roadmap.md` (future) — Observability / CLI integration (секция 8).
 - `guides/knowledge-base-roadmap.md` — Eval pipeline (golden dataset, Recall@K, HybridLiftTarget).
@@ -137,20 +137,20 @@ Capabilities:
 Schema:
   Envelope version:    1
   Component versions:  UsageStats=1, Speaker=0, Temporal=1, EmbeddingMeta=1, CompactionMeta=1
-  Generation:          42
+  Resource generation: 42
 
 Statistics:
   Total units:         128,539
   Active:              124,102
-  SoftSuppressed:      1,247
   Superseded:          2,890
   Deprecated:          300
   Erased:              0
+  Usage cooldown:      1,247
   Components:          128,539 envelopes + 128,539 UsageStats + 89,234 Temporal
   Projections:         342,118 (Original 128,539, QAQuestion 45,221, QAAnswer 40,901, Summary 127,457)
   Embeddings:          128,539 (1 model, 1 projection)
   Compaction jobs:     3 active, 142 completed, 0 failed
-  DBI count:           22 of 64
+  DBI count:           22 of 96 (expanded peak 61, reserved headroom 35)
   MDBX size:           487 MB
 ```
 
@@ -185,16 +185,18 @@ JSON вариант (через `--json`):
       "embedding_meta": 1,
       "compaction_meta": 1
     },
-    "generation": 42
+    "resource_generation": 42
   },
   "stats": {
     "total_units": 128539,
     "lifecycle": {
       "active": 124102,
-      "soft_suppressed": 1247,
       "superseded": 2890,
       "deprecated": 300,
       "erased": 0
+    },
+    "usage": {
+      "cooldown": 1247
     },
     "components": {
       "envelopes": 128539,
@@ -221,7 +223,10 @@ JSON вариант (через `--json`):
       "failed_jobs": 0
     },
     "dbi_count": 22,
-    "dbi_max": 64,
+    "dbi_max": 96,
+    "dbi_expanded_peak": 61,
+    "dbi_reserved_headroom": 35,
+    "dbi_minimum_free_slots": 16,
     "mdbx_size_bytes": 510707712
   }
 }
@@ -288,7 +293,7 @@ Checking /data/agent_memory.mdbx...
 MDBX env: OK
 Schema versions: OK
 Profile signature: OK (matches agent_ltm)
-DBI count: 22 (within 64 limit)
+DBI count: 22 (within configured 96 limit; expanded peak 61)
 Orphan components: 0
 Orphan projections: 0
 Index consistency: OK
@@ -303,7 +308,7 @@ Checking /data/agent_memory.mdbx...
 MDBX env: OK
 Schema versions: OK
 Profile signature: OK (matches agent_ltm)
-DBI count: 22 (within 64 limit)
+DBI count: 22 (within configured 96 limit; expanded peak 61)
 Orphan components: 3 found
   Rebuilding metadata_filters...
   Rebuilt 3 entries.
@@ -324,7 +329,7 @@ agent-memory-cli vacuum [--path <path>] [--aggressive]
 
 Параметры:
 
-- `--aggressive`: расширенный режим (также удаляет SoftSuppressed > 30 days и Superseded > 90 days).
+- `--aggressive`: расширенный режим (также архивирует units in usage cooldown > 30 days и удаляет Superseded > 90 days).
 
 Примеры:
 
@@ -343,7 +348,7 @@ Aggressive mode:
 Before: 487 MB
 After:  412 MB (15.4% reduction)
 Erased units removed: 0
-SoftSuppressed expired: 1,247
+Usage cooldown archived: 1,247
 Superseded expired: 1,820
 Time: 4.2 sec
 ```
@@ -369,7 +374,7 @@ Index names:
 - `bm25`: перестроить `inverted_token_to_unit`, `field_to_postings`.
 - `dense`: перестроить `embedding_vectors` (используя указанный `--model`).
 - `graph`: перестроить `graph_edges_by_src`, `graph_edges_by_dst`.
-- `temporal`: перестроить `temporal_event_index`, `temporal_unit_index`.
+- `temporal`: перестроить `temporal_unit_index`.
 - `metadata`: перестроить `metadata_filters`.
 - `all`: все indexes (default).
 
@@ -481,7 +486,7 @@ agent-memory-cli profile-migrate \
 1. Открыть source stack с source profile (auto-detect через `schema_info`).
 2. Открыть target stack с target profile (создаёт новый env).
 3. Scan all units в source через `source.units().scan_all()`.
-4. Для каждого unit: derive components (capability-aware), generate default projections (Original, QAQuestion/QAAnswer/Summary per kind), write to target через `target.write_unit(WriteRequest{...})`.
+4. Для каждого unit: derive components (capability-aware), generate default projections (Original, QAQuestion/QAAnswer/Summary per kind), create in target через `target.create_or_get_unit(CreateUnitRequest{...})`.
 5. Verify golden dataset на target (если `--validate`).
 6. Atomic swap (rename файлов) при `--auto-swap`.
 
@@ -523,7 +528,7 @@ Rolling back (removing /data/new.mdbx)...
 Exit code: 1
 ```
 
-См. `memory-stacks-roadmap.md` секция 14.2 для conceptual алгоритма. Детальная реализация — на базе `MemoryStack::scan_all()` + `write_unit()` в loop.
+См. `memory-stacks-roadmap.md` секция 14.2 для conceptual алгоритма. Детальная реализация — на базе `MemoryStack::scan_all()` + `create_or_get_unit()` в loop.
 
 ### 4.8. dump-unit / dump-components
 
@@ -592,7 +597,7 @@ agent-memory-cli run-eval \
 - `--path <path>`: путь к MDBX environment для evaluation.
 - `--dataset <path>`: путь к golden dataset (YAML формат).
 - `--report <output>`: путь к output report (HTML или JSON).
-- `--intent <intent_class>`: запустить только для указанного intent class (QALookup, FactLookup, GraphLookup, NoAnswer, TemporalPointLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff).
+- `--intent <intent_class>`: запустить только для указанного intent class (QALookup, FactLookup, GraphLookup, NoAnswer, TemporalValidityLookup, SupersedenceChain, CooldownRespect, SpeakerFilter, CompactionHandoff, CrossDomainCoverage, ProcedureActivation, SameEventDifferentPerspectives, KnowledgeAtSequence, CausalWhy, DecisionAlternatives, ProcedureDegradation, PartitionAppendMerge, PartitionConflictPreserved, PerspectiveLeakage, EvidenceDrillDown, DerivedErasePropagation, ReplayDeterminism).
 - `--threshold <hybrid_lift>`: target HybridLift ratio (default 1.20).
 
 Пример:
@@ -652,12 +657,12 @@ Compaction admin operations (детали в `compaction-roadmap.md` секци�
 ```bash
 agent-memory-cli compaction status
 agent-memory-cli compaction enqueue <kind> [--scope <scope_id>] [--params <json>]
-agent-memory-cli compaction list [--limit N] [--status <pending|running|done|failed>]
+agent-memory-cli compaction list [--limit N] [--status <pending|running|done|dead|cancelled>]
 agent-memory-cli compaction cancel <job_id>
 agent-memory-cli compaction retry <job_id>
 agent-memory-cli compaction stats
 agent-memory-cli compaction handoff list
-agent-memory-cli compaction handoff inspect <session_id>
+agent-memory-cli compaction handoff inspect <job_id>
 ```
 
 Описание:
@@ -669,7 +674,7 @@ agent-memory-cli compaction handoff inspect <session_id>
 - `compaction retry <job_id>`: re-enqueue Dead job.
 - `compaction stats`: snapshot `CompactionStats`.
 - `compaction handoff list`: список handoff records.
-- `compaction handoff inspect <session_id>`: полная dump `CompactionHandoff` (goal, plan_steps, constraints, progress).
+- `compaction handoff inspect <job_id>`: полная dump `CompactionHandoff` (goal, plan_steps, constraints, progress).
 
 Пример:
 
@@ -939,7 +944,7 @@ Per `memory-stacks-roadmap.md` секция 16:
 
 Internal documents:
 
-- `guides/memory-stacks-roadmap.md` — секция 7 (MemoryStack API), 12 (MDBX Layout), 13 (Maturity Levels), 14 (Profile Migration Strategy), 16 (Implementation Order, шаг 16); ADR-014 (CLI как отдельный target).
+- `guides/memory-stacks-roadmap.md` — секция 7 (MemoryStack API), 12 (physical manifest ownership), 13 (Maturity Levels), 14 (Profile Migration Strategy), 16 (Implementation Order, шаг 16); ADR-014 (CLI как отдельный target).
 - `guides/compaction-roadmap.md` — секция 9 (Admin Operations через CLI).
 - `guides/knowledge-base-roadmap.md` — eval pipeline (golden dataset, metrics, HybridLiftTarget).
 - `guides/runtime-services-roadmap.md` (future) — секция 8 (Observability / CLI integration для PromptCache, AsyncIndexer).

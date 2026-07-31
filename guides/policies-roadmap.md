@@ -7,13 +7,71 @@
 ## 1. Purpose
 
 - Что описывает: DecayPolicy (anti-loop, забывание, soft-suppression), WritePolicy (trigger, dedupe, importance), SpeakerScopePolicy (multi-user фильтрация), RetrievalMode (associative/targeted/hybrid), HybridRetrievalConfig (RRF/weighted/learned).
-- Cross-references: memory-stacks-roadmap.md (ADR-008, ADR-009), knowledge-units-roadmap.md (SoftSuppressed lifecycle), knowledge-base-roadmap.md (DecayAwareRetriever, AntiLoopCooldown).
+- Cross-references: memory-stacks-roadmap.md (ADR-008, ADR-009), knowledge-units-roadmap.md (durable lifecycle), knowledge-base-roadmap.md (DecayAwareRetriever, AntiLoopCooldown).
 
 Sensitive affective inferences add policy requirements beyond generic
 decay/write rules: provenance, confidence, retention, personalization consent,
 and model-training opt-out. These are tracked in
 [`affective-memory-roadmap.md`](affective-memory-roadmap.md) ADR-A07 and should
 not be folded into `priority_weight` or ordinary usage statistics.
+
+## 1.2. AccessPolicy And Retrieval Enforcement (planned)
+
+`AccessPolicy` is the normative owner for strict retrieval filters. It is not
+an activation taxonomy and does not grant authority to execute a retrieved
+procedure.
+
+```cpp
+enum class Visibility : uint8_t { Private, Scope, Shared, Public };
+
+struct AccessPolicy {
+    std::vector<std::string> allowed_principals;
+    std::vector<std::string> allowed_roles;
+    Visibility visibility = Visibility::Private;
+    std::vector<std::string> jurisdictions;
+    std::optional<double> minimum_trust;
+};
+```
+
+An absent policy is deny-by-default outside the record's owning scope. The
+retriever receives the immutable host-issued `RetrievalAccessContext` from the
+future `RetrievalPlan`; it never infers a principal, role or jurisdiction from
+ambient process state. Scope normalization is fail-closed: a non-empty
+`RetrievalPlan.scope_ids` is the exact requested set and must be a subset of
+the context's host-issued `authorized_scope_ids`; if it is empty, a granted
+`default_scope` requests exactly that one scope; if both are absent validation
+fails. A default accompanying a non-empty list must be an element of that list.
+An empty list never means all host grants. `ScopeId` remains namespace and
+ownership, not proof of authority. `Visibility::Scope` therefore requires the
+record scope to be both requested and granted. It applies
+scope/access/status/language/jurisdiction/trust constraints before candidate
+creation and repeats the authorization check after fusion and before context
+materialization. A missing `trust_score` does not satisfy `minimum_trust`.
+`RetrievalTrace` records an applied policy fingerprint plus aggregate allow/deny
+counts without exposing denied content. Initial mappings use typed metadata in
+existing `metadata_filters`; a new DBI is forbidden until a measured query
+pattern requires one. Required fixtures cover cross-scope access denial, an
+ungranted default scope, an empty request without default, no implicit
+all-grants expansion, role changes, jurisdiction/trust exclusions, post-fusion
+leakage, and a soft
+domain-routing fallback that never bypasses a strict deny.
+
+The same pre-candidate rule applies to external derived indexes. The native
+planner may issue an `ExternalCandidateConstraint` containing only the exact
+eligible canonical-unit set, read frontier and policy fingerprint. It must not
+send `RetrievalAccessContext`, grants, roles, jurisdictions or policy claims to
+the adapter. The constraint is nevertheless policy-derived sensitive metadata,
+not public routing data: it may be passed only to a backend in the same trusted
+security domain. An untrusted remote backend is unavailable for a
+policy-aware route unless a future separately approved opaque partition-handle
+contract replaces the raw allowlist. An adapter that cannot enforce the exact
+constraint before its own top-K ranking is likewise unavailable; canonical
+hydration is still the mandatory second authorization check.
+
+The existing `IRetrievalEngine::RetrievalRequest` is an M0 lexical compatibility
+surface and does not claim to enforce this planned access contract. A public
+policy-aware retrieval entry point is introduced only together with
+`RetrievalAccessContext` and pre-candidate enforcement.
 
 ## 1.1. EncryptionPolicy (planned)
 
@@ -296,11 +354,44 @@ enum class WriteFlushTrigger {
 | allow_merge | bool | — | true | разрешить merge similar units |
 | allow_episode_compaction | bool | — | true | разрешить episode compaction |
 
+### 3.2.1. MemoryMutationPolicy (M2+)
+
+`WritePolicy` answers mechanical questions: when to flush, which importance
+threshold to use, how close is "duplicate enough", and whether supersede/merge
+operations are allowed. It should not be the only semantic mutation contract.
+
+M2+ profiles should add an explicit mutation policy:
+
+```cpp
+enum class MemoryMutationPolicy : uint8_t {
+    AppendOnly,
+    Supersede,
+    Merge,
+    Mutable,
+    Immutable,
+    OperatorConfirmed
+};
+```
+
+Default guidance:
+
+- raw resources, episodes and audit logs: `AppendOnly`;
+- factual claims and temporal facts: `Supersede`;
+- near-duplicate derived notes or summaries: `Merge`;
+- curated cards or high-risk model records: `OperatorConfirmed`;
+- compliance/audit records: `Immutable`;
+- application-owned low-risk state: `Mutable`, with normal
+  `KnowledgeUnitEnvelope::revision` increments for retrieval-visible changes.
+
+The detailed lifecycle-governance contract is in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md)
+AM-18.
+
 ### 3.3. WriteGate behavior
 
 ```cpp
 class WriteGate {
-    GateDecision evaluate(const WriteRequest& req);
+    GateDecision evaluate(const CreateUnitRequest& req);
 
     // 1. importance threshold check
     if (req.importance_score < policy.importance_threshold)
@@ -516,7 +607,7 @@ See [`memory-routing-roadmap.md`](memory-routing-roadmap.md) for two routing par
 ## 9. References
 
 - `guides/memory-stacks-roadmap.md` — секции 6.2, 6.3, 8 (defaults per stack).
-- `guides/knowledge-units-roadmap.md` — SoftSuppressed lifecycle state.
+- `guides/knowledge-units-roadmap.md` — durable lifecycle states; cooldown/soft suppression is usage policy state.
 - `guides/knowledge-base-roadmap.md` — DecayAwareRetriever, AntiLoopCooldown.
 - `guides/compaction-roadmap.md` — как политики взаимодействуют с compaction jobs.
 - ai-agent-playbook: concepts/rag-knowledge/Внешняя память LLM-агентов — система СВИНОПАС.md — anti-loop / cooldown / подсвинок.

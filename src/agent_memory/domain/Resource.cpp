@@ -111,8 +111,56 @@ namespace agent_memory {
         return false;
     }
 
+    bool has_same_derived_record_identity(
+        const DerivedRecordRef& left,
+        const DerivedRecordRef& right
+    ) noexcept {
+        if(left.kind != right.kind) {
+            return false;
+        }
+
+        if(derived_record_kind_uses_chunk_id(left.kind)) {
+            return left.chunk_id == right.chunk_id;
+        }
+
+        if(derived_record_kind_uses_key(left.kind)) {
+            return left.key == right.key;
+        }
+
+        return false;
+    }
+
+    bool is_valid_resource_body_digest(const ResourceBodyDigest& digest) noexcept {
+        switch(digest.algorithm) {
+        case ResourceBodyDigestAlgorithm::Sha256:
+            return true;
+        }
+        return false;
+    }
+
     bool is_valid_resource_manifest(const ResourceManifest& manifest) noexcept {
         if(manifest.revision.resource_id.empty()) {
+            return false;
+        }
+
+        if(
+            manifest.state != ResourceManifestState::Active
+            && manifest.state != ResourceManifestState::ErasePending
+        ) {
+            return false;
+        }
+
+        if(
+            manifest.revision.body_digest &&
+            !is_valid_resource_body_digest(*manifest.revision.body_digest)
+        ) {
+            return false;
+        }
+
+        if(
+            (manifest.schema.schema_id.empty() && manifest.schema.schema_version != 0) ||
+            (!manifest.schema.schema_id.empty() && manifest.schema.schema_version == 0)
+        ) {
             return false;
         }
 
@@ -122,7 +170,43 @@ namespace agent_memory {
             }
         }
 
+        for(const auto& record : manifest.pending_reclaim_records) {
+            if(!is_valid_derived_record_ref(record)) {
+                return false;
+            }
+        }
+
+        const auto contains_duplicate_identity = [](const std::vector<DerivedRecordRef>& records) {
+            for(std::size_t left = 0; left < records.size(); ++left) {
+                for(std::size_t right = left + 1; right < records.size(); ++right) {
+                    if(has_same_derived_record_identity(records[left], records[right])) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+
+        if(
+            contains_duplicate_identity(manifest.records) ||
+            contains_duplicate_identity(manifest.pending_reclaim_records)
+        ) {
+            return false;
+        }
+
+        for(const auto& active_record : manifest.records) {
+            for(const auto& reclaim_record : manifest.pending_reclaim_records) {
+                if(has_same_derived_record_identity(active_record, reclaim_record)) {
+                    return false;
+                }
+            }
+        }
+
         return true;
+    }
+
+    bool is_active_resource_manifest(const ResourceManifest& manifest) noexcept {
+        return manifest.state == ResourceManifestState::Active;
     }
 
     bool matches_revision_hashes(

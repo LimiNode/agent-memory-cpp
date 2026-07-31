@@ -3,7 +3,9 @@
 > Operator-level decision guide. This is **not** a roadmap: the canonical
 > architectural decisions live in [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md)
 > (in-house ADR-001 through ADR-015, `MemoryProfileSpec`, `MemoryStack`,
-> capability matrix, MDBX layout, M0/M1/M2 maturity) and the external landscape
+> capability matrix, validation, M0/M1/M2 maturity), the canonical physical
+> MDBX manifest and DBI budget live in
+> [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md), and the external landscape
 > comparison lives in [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md)
 > (13+ external architectures, citation framework, design-pattern mining).
 >
@@ -898,8 +900,10 @@ RLM-style exploration. Pure runtime extension; no changes to the C++ stack.
 ### §9.3. In-house guides
 
 - [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) — ADR-001 through
-  ADR-015, `MemoryProfileSpec`, `MemoryStack`, capability matrix, MDBX layout,
+  ADR-015, `MemoryProfileSpec`, `MemoryStack`, capability matrix, validation,
   M0/M1/M2 maturity, runtime services.
+- [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) —
+  canonical physical MDBX manifest and DBI budget.
 - [`memory-architectures-roadmap.md`](memory-architectures-roadmap.md) —
   comparison framework, adoption ladder, design-pattern mining.
 - [`knowledge-base-roadmap.md`](knowledge-base-roadmap.md) — retrieval flow,

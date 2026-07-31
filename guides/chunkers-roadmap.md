@@ -39,6 +39,9 @@ Related roadmaps:
 2. **Map to our substrate.** Показать, как эти паттерны ложатся на наш `IResourceAdapter` + `ChunkPayload` + `SearchProjection` + `envelope.revision` contract'ы.
 3. **Document enrichment strategies.** Context-enrichment на индексации (Anthropic-style contextualization, late chunking, reverse Q-A generation) — это слой **поверх** chunking, не замена.
 4. **Implementation ladder.** Что в M0 (baseline), что в M1 (production), что в M2+ (advanced optional).
+5. **Raw document path.** Зафиксировать, что обычные UTF-8 `.md`, `.txt` и
+   logs могут индексироваться без предварительной curated-card нормализации;
+   extracted PDF/transcript text is M0 only when explicitly labeled derived.
 
 Non-goals:
 
@@ -47,6 +50,39 @@ Non-goals:
 - Не описывать vector storage — это в `optimization-roadmap.md`.
 
 ## §2. Default Chunker
+
+### §2.0. Raw Resource Ingestion Path
+
+Chunking starts from raw resources, not only from curated cards. The minimal
+path for generic documents is:
+
+```text
+IResourceAdapter
+  -> RawResource{ResourceId, uri/path, content_type, revision, body/extracted_text}
+  -> optional ResourceBodyStore write (compressed or plain)
+  -> ChunkPayload records with SourceRef byte/text ranges
+  -> SearchProjection::Original for retrieval
+  -> optional later normalizer: Fact / QAPair / Summary / CompiledArticle
+```
+
+For M2 document, image, audio and video ingestion, this is the text-only view
+of the normative artifact pipeline in
+[`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md). A raw
+resource binds to a `SourceRevision` and immutable `Artifact`; extractors emit
+versioned `Representation` records and addressable `Segment` records before
+segment-backed `Chunk` units are indexed. A concrete parser remains an
+`IResourceAdapter`; it must not make its private extraction JSON the core
+provenance model.
+
+M0 accepts only already-available UTF-8 text. It may index externally extracted
+text as a derived resource, but it cannot present that result as an original
+PDF/page/image/audio/video citation without the artifact profile.
+
+If a source already provides curated metadata, the importer may create a
+specific `KnowledgeUnitKind` immediately. If it does not, the importer creates
+a weaker generic `Note`/`Chunk` unit that is still searchable and citeable.
+This keeps early RAG usable for raw vaults/playbooks while preserving the
+curated card-like layer for trust, lifecycle, graph relations and compaction.
 
 Default chunker — length-based sliding window. ЮMoney production case использует:
 
@@ -622,3 +658,112 @@ Content edits создают новую identity. Стабилен при пов
 - [`memory-stacks-roadmap.md`](memory-stacks-roadmap.md) §16 — Recommended Implementation Order.
 - [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) — что эти chunks индексируют и как.
 - [`research-reading-map.md`](research-reading-map.md) — research references backing this project.
+
+## §10. Tokenizer-Aware Raw Input Pipeline
+
+Large raw corpora need a source pipeline before semantic chunkers run. Borrow
+the pattern from `marcelroed/gigatoken`: keep input source, compression,
+document boundary policy and tokenizer budget separate. Gigatoken is a Rust/PyO3
+tokenizer and is not a core dependency; the useful local idea is the pipeline
+shape.
+
+[Source: marcelroed/gigatoken README and design doc, inspected at
+`34a1599f0c0ae7d7cd0d1c530e6522320158b360` on 2026-07-27.]
+
+```cpp
+enum class RawInputFormat : uint8_t {
+    PlainText,
+    Markdown,
+    JsonLines,
+    Parquet,
+    ExtractedPdfText,
+    Transcript,
+    OpaqueBytes
+};
+
+enum class RawCompressionKind : uint8_t {
+    None,
+    Gzip,
+    Zstd
+};
+
+enum class DocumentBoundaryMode : uint8_t {
+    WholeResource,
+    Separator,
+    JsonLine,
+    ParquetRow,
+    StructuralHeading,
+    AdapterDefined
+};
+
+struct RawDocumentSourceSpec {
+    RawInputFormat format = RawInputFormat::PlainText;
+    RawCompressionKind compression = RawCompressionKind::None;
+    DocumentBoundaryMode boundary_mode = DocumentBoundaryMode::WholeResource;
+    std::string separator;
+    std::string text_field;
+    std::string parser_id;
+    std::string parser_version;
+};
+
+struct TokenBudgetPolicy {
+    std::string tokenizer_id;
+    std::uint32_t target_tokens = 1024;
+    std::uint32_t overlap_tokens = 200;
+    bool require_safe_boundaries = true;
+};
+```
+
+Rules:
+
+- Compression is storage/input framing, not document semantics. `.jsonl.zst`
+  is still JSONL after decompression.
+- `DocumentBoundaryMode` determines where independent documents start before
+  chunking. For example, JSONL line boundaries and Parquet rows are document
+  boundaries; Markdown headings are structural chunk boundaries.
+- Token-counted chunking requires a tokenizer adapter identity. If an exact
+  model tokenizer is unavailable, the chunker may use an estimator, but must
+  record that fact in metadata and benchmark it separately.
+- Oversized documents may be split internally only at UTF-8-safe and
+  tokenizer-safe boundaries. A tokenizer-safe split must not change the token
+  sequence relative to encoding the full document, except for explicitly
+  documented separator/special-token policy.
+- `ResourceRevision::pipeline_config_hash` includes source format, compression,
+  boundary policy, parser version, tokenizer id, token budget, overlap and
+  normalization policy.
+
+The C++ core owns the dependency-free contracts above. Concrete high-throughput
+tokenizers, SIMD pretokenizers, Python/Rust bridges, Parquet readers and PDF
+extractors remain optional adapters or tools.
+
+### 10.1. Chunk metadata additions
+
+Tokenizer-aware chunkers SHOULD record:
+
+| Field | Where | Purpose |
+|---|---|---|
+| `tokenizer_id` | metadata_typed / `ChunkPayload` extension | Tokenizer or estimator identity used for chunk sizing. |
+| `token_count` | metadata_typed / `ChunkPayload` extension | Count used by context budgeting and ingestion evaluation. |
+| `source_format` | `ResourceRevision` / metadata_typed | Format after compression detection, before parser-specific transforms. |
+| `boundary_mode` | `ResourceRevision` / metadata_typed | Reproducible document split policy. |
+| `safe_boundary_policy` | metadata_typed | Whether splits are tokenizer-exact, UTF-8-only, structural-only or estimator-based. |
+
+These fields do not replace `SourceRef` byte/text ranges. They explain how the
+chunk was produced and when it must be regenerated.
+
+### 10.2. Ingestion benchmark gates
+
+M1 ingestion benchmarks SHOULD report:
+
+- raw input read/decompression throughput;
+- parser/extractor throughput;
+- tokenization throughput, split by exact tokenizer vs estimator;
+- chunk materialization throughput;
+- lexical projection/index build throughput;
+- peak RSS and output bytes per source byte;
+- correctness checks: UTF-8 validity, source citation ranges, token-budget
+  bound, and parity between whole-document tokenization and chunked tokenization
+  for tokenizer-safe split modes.
+
+Gigatoken-style numbers are a useful upper-bound reference for tokenization
+throughput, not a target guarantee for the whole agent-memory ingestion path.

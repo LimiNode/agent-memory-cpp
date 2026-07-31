@@ -148,8 +148,19 @@ if(NOT query_noise_seed EQUAL 11400714819323198527)
     message(FATAL_ERROR "query_noise_seed must stay derived from seed 42")
 endif()
 
-function(require_nonnegative_path label)
+function(require_json_number out_var label)
+    require_json(value_type TYPE ${ARGN})
+    if(NOT value_type STREQUAL "NUMBER")
+        message(FATAL_ERROR
+            "${label} must be a JSON number, got ${value_type}"
+        )
+    endif()
     require_json(value GET ${ARGN})
+    set(${out_var} "${value}" PARENT_SCOPE)
+endfunction()
+
+function(require_nonnegative_path label)
+    require_json_number(value "${label}" ${ARGN})
     require_nonnegative(${value} "${label}")
 endfunction()
 
@@ -158,6 +169,11 @@ require_nonnegative_path(
     "timing_ms.binary_chunk_and_query_encoding"
     timing_ms
     binary_chunk_and_query_encoding
+)
+require_nonnegative_path(
+    "timing_ms.rerank_prepare_ms"
+    timing_ms
+    rerank_prepare_ms
 )
 require_nonnegative_path("exact_vector.build_ms" exact_vector build_ms)
 require_nonnegative_path("exact_vector.query_total_ms" exact_vector query_total_ms)
@@ -416,7 +432,9 @@ function(require_rerank_grid backend_label)
 
     set(previous_flat_coverage -1)
     foreach(row_index RANGE 0 2)
-        require_json(candidate_limit GET ${ARGN} rerank ${row_index} candidate_limit)
+        require_json_number(candidate_limit
+            "${backend_label}.rerank[${row_index}].candidate_limit"
+            ${ARGN} rerank ${row_index} candidate_limit)
         if(row_index EQUAL 0)
             set(expected_limit 16)
         elseif(row_index EQUAL 1)
@@ -431,26 +449,36 @@ function(require_rerank_grid backend_label)
             )
         endif()
 
-        require_json(binary_search_total_ms
-            GET ${ARGN} rerank ${row_index} binary_search_total_ms)
-        require_json(binary_search_mean_ms
-            GET ${ARGN} rerank ${row_index} binary_search_mean_ms)
-        require_json(binary_mean_result_count
-            GET ${ARGN} rerank ${row_index} binary_mean_result_count)
-        require_json(candidate_coverage
-            GET ${ARGN} rerank ${row_index} exact_top_k_candidate_coverage)
-        require_json(exact_rerank_total_ms
-            GET ${ARGN} rerank ${row_index} exact_rerank_total_ms)
-        require_json(exact_rerank_mean_ms
-            GET ${ARGN} rerank ${row_index} exact_rerank_mean_ms)
-        require_json(reranked_recall
-            GET ${ARGN} rerank ${row_index} reranked_recall_at_k_vs_exact)
-        require_json(reranked_top1
-            GET ${ARGN} rerank ${row_index} reranked_top1_agreement)
-        require_json(end_to_end_total_ms
-            GET ${ARGN} rerank ${row_index} end_to_end_total_ms)
-        require_json(end_to_end_mean_ms
-            GET ${ARGN} rerank ${row_index} end_to_end_mean_ms)
+        require_json_number(binary_search_total_ms
+            "${backend_label}.rerank[${row_index}].binary_search_total_ms"
+            ${ARGN} rerank ${row_index} binary_search_total_ms)
+        require_json_number(binary_search_mean_ms
+            "${backend_label}.rerank[${row_index}].binary_search_mean_ms"
+            ${ARGN} rerank ${row_index} binary_search_mean_ms)
+        require_json_number(binary_mean_result_count
+            "${backend_label}.rerank[${row_index}].binary_mean_result_count"
+            ${ARGN} rerank ${row_index} binary_mean_result_count)
+        require_json_number(candidate_coverage
+            "${backend_label}.rerank[${row_index}].exact_top_k_candidate_coverage"
+            ${ARGN} rerank ${row_index} exact_top_k_candidate_coverage)
+        require_json_number(exact_rerank_total_ms
+            "${backend_label}.rerank[${row_index}].exact_rerank_total_ms"
+            ${ARGN} rerank ${row_index} exact_rerank_total_ms)
+        require_json_number(exact_rerank_mean_ms
+            "${backend_label}.rerank[${row_index}].exact_rerank_mean_ms"
+            ${ARGN} rerank ${row_index} exact_rerank_mean_ms)
+        require_json_number(reranked_recall
+            "${backend_label}.rerank[${row_index}].reranked_recall_at_k_vs_exact"
+            ${ARGN} rerank ${row_index} reranked_recall_at_k_vs_exact)
+        require_json_number(reranked_top1
+            "${backend_label}.rerank[${row_index}].reranked_top1_agreement"
+            ${ARGN} rerank ${row_index} reranked_top1_agreement)
+        require_json_number(end_to_end_total_ms
+            "${backend_label}.rerank[${row_index}].end_to_end_total_ms"
+            ${ARGN} rerank ${row_index} end_to_end_total_ms)
+        require_json_number(end_to_end_mean_ms
+            "${backend_label}.rerank[${row_index}].end_to_end_mean_ms"
+            ${ARGN} rerank ${row_index} end_to_end_mean_ms)
 
         require_nonnegative(${binary_search_total_ms}
             "${backend_label}.rerank[${row_index}].binary_search_total_ms")
@@ -502,12 +530,15 @@ function(require_rerank_grid backend_label)
             endif()
             set(previous_flat_coverage ${candidate_coverage})
         else()
-            require_json(mean_candidate_count
-                GET ${ARGN} rerank ${row_index} mean_candidate_count)
-            require_json(mean_probed_bucket_count
-                GET ${ARGN} rerank ${row_index} mean_probed_bucket_count)
-            require_json(mean_visited_posting_count
-                GET ${ARGN} rerank ${row_index} mean_visited_posting_count)
+            require_json_number(mean_candidate_count
+                "${backend_label}.rerank[${row_index}].mean_candidate_count"
+                ${ARGN} rerank ${row_index} mean_candidate_count)
+            require_json_number(mean_probed_bucket_count
+                "${backend_label}.rerank[${row_index}].mean_probed_bucket_count"
+                ${ARGN} rerank ${row_index} mean_probed_bucket_count)
+            require_json_number(mean_visited_posting_count
+                "${backend_label}.rerank[${row_index}].mean_visited_posting_count"
+                ${ARGN} rerank ${row_index} mean_visited_posting_count)
             if(NOT mean_candidate_count GREATER 0)
                 message(FATAL_ERROR
                     "${backend_label}.rerank[${row_index}].mean_candidate_count "

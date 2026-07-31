@@ -17,9 +17,22 @@ namespace {
     class InMemoryResourceManifestStorage final
         : public agent_memory::IResourceManifestStorage {
     public:
+        void fail_next_valid_replacement() noexcept {
+            m_fail_next_valid_replacement = true;
+        }
+
+        void fail_next_erase() noexcept {
+            m_fail_next_erase = true;
+        }
+
         void upsert_manifest(agent_memory::ResourceManifest manifest) override {
             if(!agent_memory::is_valid_resource_manifest(manifest)) {
                 throw std::invalid_argument("invalid resource manifest");
+            }
+
+            if(m_fail_next_valid_replacement) {
+                m_fail_next_valid_replacement = false;
+                throw std::runtime_error("simulated valid replacement failure");
             }
 
             const agent_memory::ResourceId resource_id = manifest.revision.resource_id;
@@ -39,10 +52,16 @@ namespace {
         [[nodiscard]] bool erase_manifest(
             const agent_memory::ResourceId& resource_id
         ) override {
+            if(m_fail_next_erase) {
+                m_fail_next_erase = false;
+                throw std::runtime_error("simulated manifest erase failure");
+            }
             return m_manifests.erase(resource_id) > 0;
         }
 
     private:
+        bool m_fail_next_valid_replacement = false;
+        bool m_fail_next_erase = false;
         std::map<agent_memory::ResourceId, agent_memory::ResourceManifest> m_manifests;
     };
 
@@ -121,6 +140,22 @@ int main() {
         return fail("stored manifest must satisfy strict validation");
     }
 
+    storage.fail_next_valid_replacement();
+    try {
+        storage.upsert_manifest(make_manifest(resource_id, 3, "bucket:24:failed"));
+        return fail("storage must surface a valid replacement failure");
+    } catch(const std::runtime_error&) {
+    }
+
+    const auto after_valid_replacement_failure = storage.find_manifest(resource_id);
+    if(
+        !after_valid_replacement_failure
+        || after_valid_replacement_failure->revision.generation != 2
+        || after_valid_replacement_failure->records[1].key != "bucket:24:beta"
+    ) {
+        return fail("valid replacement failure must preserve the visible manifest");
+    }
+
     auto invalid_empty_resource = make_manifest({}, 3, "bucket:24:invalid");
     if(agent_memory::is_valid_resource_manifest(invalid_empty_resource)) {
         return fail("manifest with empty resource id must be invalid");
@@ -131,7 +166,7 @@ int main() {
     }
 
     auto invalid_extra_key = make_manifest(
-        agent_memory::ResourceId{"resource:invalid-key"},
+        resource_id,
         4,
         "bucket:24:invalid"
     );
@@ -147,6 +182,31 @@ int main() {
 
     if(!rejects_manifest(storage, std::move(invalid_extra_key))) {
         return fail("storage must reject manifest with extra ref fields");
+    }
+
+    const auto after_rejected_replacement = storage.find_manifest(resource_id);
+    if(
+        !after_rejected_replacement
+        || after_rejected_replacement->revision.generation != 2
+        || after_rejected_replacement->records[1].key != "bucket:24:beta"
+    ) {
+        return fail("throwing manifest replacement must preserve the visible manifest");
+    }
+
+    storage.fail_next_erase();
+    try {
+        (void)storage.erase_manifest(resource_id);
+        return fail("manifest storage must surface erase failures");
+    } catch(const std::runtime_error&) {
+    }
+
+    const auto after_erase_failure = storage.find_manifest(resource_id);
+    if(
+        !after_erase_failure ||
+        after_erase_failure->revision.generation != 2 ||
+        after_erase_failure->records[1].key != "bucket:24:beta"
+    ) {
+        return fail("throwing manifest erase must preserve the visible manifest");
     }
 
     auto invalid_missing_key = make_manifest(

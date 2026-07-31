@@ -25,7 +25,9 @@ namespace agent_memory {
         std::string m_value;
     };
 
-    /// \brief Stable identifier of an ingested source document.
+    /// \brief Stable globally unique identifier of an ingested source document.
+    /// \note A document identifier must never be reused for a different resource
+    /// revision within one storage backend.
     class DocumentId final {
     public:
         DocumentId() = default;
