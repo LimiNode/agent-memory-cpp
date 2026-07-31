@@ -35,6 +35,9 @@ REQUIRED_PACKAGES = (
     "huggingface-hub",
 )
 F32 = struct.Struct("<f")
+EXECUTION_DEVICE = "cpu"
+COMPUTE_DTYPE = "float32"
+DETERMINISM_POLICY = "torch_cpu_single_thread_deterministic_inference_v1"
 
 
 class MaterializationError(RuntimeError):
@@ -190,14 +193,32 @@ class E5Encoder:
                 f"E5 materialization requires packages from {REQUIREMENTS_LOCK_FILE}"
             ) from exc
         torch.set_num_threads(1)
+        torch.set_num_interop_threads(1)
+        torch.use_deterministic_algorithms(True)
         options: dict[str, Any] = {"revision": revision, "local_files_only": local_files_only}
         if cache_dir is not None:
             options["cache_dir"] = str(cache_dir)
         self._torch = torch
         self._functional = torch_functional
+        self._device = torch.device(EXECUTION_DEVICE)
         self._tokenizer = AutoTokenizer.from_pretrained(model_id, **options)
-        self._model = AutoModel.from_pretrained(model_id, **options)
+        self._model = AutoModel.from_pretrained(model_id, **options).to(self._device)
         self._model.eval()
+        if next(self._model.parameters()).dtype != torch.float32:
+            raise MaterializationError("E5 materialization requires float32 model weights")
+
+    def execution_metadata(self, batch_size: int) -> dict[str, Any]:
+        return {
+            "batch_size": batch_size,
+            "device": EXECUTION_DEVICE,
+            "compute_dtype": COMPUTE_DTYPE,
+            "deterministic_algorithms": True,
+            "thread_count": 1,
+            "backend": "pytorch_cpu",
+            "platform": platform.platform(),
+            "torch_version": self._torch.__version__,
+            "policy": DETERMINISM_POLICY,
+        }
 
     def encode(self, texts: list[str]) -> list[list[float]]:
         if not texts:
@@ -210,6 +231,7 @@ class E5Encoder:
                 max_length=512,
                 return_tensors="pt",
             )
+            encoded = {name: value.to(self._device) for name, value in encoded.items()}
             outputs = self._model(**encoded)
             token_embeddings = outputs.last_hidden_state
             mask = encoded["attention_mask"].unsqueeze(-1).to(token_embeddings.dtype)
@@ -275,11 +297,22 @@ def materialize(
     output_root: Path,
     batch_size: int,
     encoder_factory: Callable[[dict[str, Any]], Callable[[list[str]], list[list[float]]]],
+    execution: dict[str, Any],
 ) -> dict[str, Any]:
     if output_root.exists():
         raise MaterializationError(f"output directory already exists: {output_root}")
     if batch_size <= 0:
         raise MaterializationError("batch_size must be positive")
+    if execution.get("batch_size") != batch_size:
+        raise MaterializationError("execution.batch_size must match materialization batch_size")
+    for field, expected in (
+        ("device", EXECUTION_DEVICE),
+        ("compute_dtype", COMPUTE_DTYPE),
+        ("deterministic_algorithms", True),
+        ("thread_count", 1),
+    ):
+        if execution.get(field) != expected:
+            raise MaterializationError(f"execution.{field} does not satisfy the E5 recipe contract")
     manifest = load_prepared_manifest(prepared_root)
     train_path = resolve_output(prepared_root, manifest, "train_documents")
     evaluation_path = resolve_output(prepared_root, manifest, "evaluation_documents")
@@ -333,6 +366,7 @@ def materialize(
         },
         "prepared_study_manifest_sha256": sha256_file(prepared_root / "manifest.json"),
         "embedding": embedding,
+        "execution": execution,
         "vector_format": {"dtype": "float32_le", "endianness": "little", "dimension": dimension},
         "outputs": {
             "train_ids": output_descriptor(output_root / "train-document-ids.jsonl", train_count),
@@ -381,10 +415,25 @@ def run_self_test() -> int:
         config_path = preparer.write_test_input(input_root)
         prepared_root = root / "prepared"
         preparer.prepare_study(preparer.load_config(config_path), input_root, prepared_root)
-        first = materialize(prepared_root=prepared_root, output_root=root / "first", batch_size=2, encoder_factory=fake_encoder)
-        second = materialize(prepared_root=prepared_root, output_root=root / "second", batch_size=3, encoder_factory=fake_encoder)
+        fake_execution = {
+            "batch_size": 2,
+            "device": "cpu",
+            "compute_dtype": "float32",
+            "deterministic_algorithms": True,
+            "thread_count": 1,
+            "backend": "fake_encoder",
+            "platform": "self-test",
+            "torch_version": "not-applicable",
+            "policy": "writer_batch_partitioning_v1",
+        }
+        first = materialize(prepared_root=prepared_root, output_root=root / "first", batch_size=2, encoder_factory=fake_encoder, execution=fake_execution)
+        second_execution = {**fake_execution, "batch_size": 3}
+        second = materialize(prepared_root=prepared_root, output_root=root / "second", batch_size=3, encoder_factory=fake_encoder, execution=second_execution)
         if first["outputs"] != second["outputs"]:
-            print("self-test failed: batch-size changed materialized output", file=sys.stderr)
+            print("self-test failed: writer changed output across batch partitions", file=sys.stderr)
+            return 1
+        if first["execution"]["batch_size"] != 2 or second["execution"]["batch_size"] != 3:
+            print("self-test failed: execution provenance", file=sys.stderr)
             return 1
         if first["vector_format"]["dimension"] != 4 or first["outputs"]["train_vectors"]["count"] != 4:
             print("self-test failed: unexpected vector output shape", file=sys.stderr)
@@ -409,16 +458,23 @@ def main(argv: list[str]) -> int:
     if args.prepared_root is None or args.output_root is None:
         parser.error("--prepared-root and --output-root are required")
     try:
+        prepared_manifest = load_prepared_manifest(args.prepared_root)
+        embedding = require_mapping(
+            prepared_manifest["embedding"],
+            "prepared manifest.embedding",
+        )
+        encoder = E5Encoder(
+            model_id=require_string(embedding["model_id"], "embedding.model_id"),
+            revision=require_string(embedding["model_revision"], "embedding.model_revision"),
+            cache_dir=args.cache_dir,
+            local_files_only=args.local_files_only,
+        )
         output = materialize(
             prepared_root=args.prepared_root,
             output_root=args.output_root,
             batch_size=args.batch_size,
-            encoder_factory=lambda embedding: E5Encoder(
-                model_id=require_string(embedding["model_id"], "embedding.model_id"),
-                revision=require_string(embedding["model_revision"], "embedding.model_revision"),
-                cache_dir=args.cache_dir,
-                local_files_only=args.local_files_only,
-            ).encode,
+            encoder_factory=lambda _: encoder.encode,
+            execution=encoder.execution_metadata(args.batch_size),
         )
     except MaterializationError as exc:
         print(f"materialize-prepared-e5: {exc}", file=sys.stderr)
