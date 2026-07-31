@@ -445,8 +445,11 @@ cleanup path repeats both owner and closure validation after each manifest
 publication and immediately before the next physical reclaim operation. All
 physically present records in one pending-reclaim sequence must prove the same
 superseded generation; a pending document and each of its physical children
-must use that exact generation. The prototype prebinds attempted owners before
-the first document/vector mutation;
+must use that exact generation. An absent pending identity may have no owner
+binding, but an owner that remains must match the generation proven by the
+physical pending records; without such physical evidence, cleanup leaves that
+owner for explicit repair. The prototype prebinds attempted owners before the
+first document/vector mutation;
 if prebinding fails, it does not begin physical mutation. During an in-process
 rollback, an identity whose physical restoration is uncertain retains that
 prebound attempted owner as fail-closed repair evidence. This is deliberately

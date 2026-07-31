@@ -2646,6 +2646,272 @@ int main() {
         return fail("mixed-generation rejection must preserve pending physical records");
     }
 
+    const agent_memory::ResourceId absent_document_owner_resource_id{
+        "resource:indexer:absent-document-owner"
+    };
+    const agent_memory::DocumentId absent_document_owner_old_document_id{
+        "doc:indexer:absent-document-owner:old"
+    };
+    const agent_memory::DocumentId absent_document_owner_new_document_id{
+        "doc:indexer:absent-document-owner:new"
+    };
+    const agent_memory::ChunkId absent_document_owner_old_chunk_id{
+        "chunk:indexer:absent-document-owner:old"
+    };
+    const agent_memory::ChunkId absent_document_owner_new_chunk_id{
+        "chunk:indexer:absent-document-owner:new"
+    };
+    indexer.reindex_resource(make_snapshot(
+        absent_document_owner_resource_id,
+        4,
+        absent_document_owner_old_document_id,
+        {make_chunk(
+            absent_document_owner_old_chunk_id,
+            absent_document_owner_old_document_id,
+            0,
+            "absent document owner old"
+        )}
+    ));
+    const auto absent_document_owner_old_chunk_owner = owner_storage.find_chunk_owner(
+        absent_document_owner_old_chunk_id
+    );
+    if(!absent_document_owner_old_chunk_owner) {
+        return fail("absent-document fixture must publish an old chunk owner");
+    }
+    auto absent_document_owner_retry = make_snapshot(
+        absent_document_owner_resource_id,
+        5,
+        absent_document_owner_new_document_id,
+        {make_chunk(
+            absent_document_owner_new_chunk_id,
+            absent_document_owner_new_document_id,
+            0,
+            "absent document owner new"
+        )}
+    );
+    manifest_storage.set_upsert_hook([&manifest_storage] {
+        manifest_storage.fail_next_upsert();
+    });
+    try {
+        indexer.reindex_resource(absent_document_owner_retry);
+        return fail("fixture must retain a pending document after manifest-save failure");
+    } catch(const agent_memory::ResourceIndexReclaimError&) {
+    }
+    auto stale_absent_document_owner = *absent_document_owner_old_chunk_owner;
+    stale_absent_document_owner.generation = 3;
+    owner_storage.upsert_document_owner(
+        absent_document_owner_old_document_id,
+        stale_absent_document_owner
+    );
+
+    document_storage.reset_operation_counts();
+    manifest_storage.reset_operation_counts();
+    owner_storage.reset_operation_counts();
+    vector_index.reset_operation_counts();
+    try {
+        indexer.reindex_resource(absent_document_owner_retry);
+        return fail("retry must reject a stale owner for an absent pending document");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+    const auto stale_absent_document_owner_after = owner_storage.find_document_owner(
+        absent_document_owner_old_document_id
+    );
+    if(
+        document_storage.upsert_count() != 0 ||
+        document_storage.erase_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        owner_storage.mutation_count() != 0 ||
+        vector_index.upsert_count() != 0 ||
+        vector_index.erase_count() != 0 ||
+        document_storage.find_document(absent_document_owner_old_document_id) ||
+        !vector_index.find(absent_document_owner_old_chunk_id) ||
+        !stale_absent_document_owner_after ||
+        stale_absent_document_owner_after->generation != 3
+    ) {
+        return fail("absent pending document must retain its mismatched owner binding");
+    }
+
+    const agent_memory::ResourceId absent_chunk_owner_resource_id{
+        "resource:indexer:absent-chunk-owner"
+    };
+    const agent_memory::DocumentId absent_chunk_owner_old_document_id{
+        "doc:indexer:absent-chunk-owner:old"
+    };
+    const agent_memory::DocumentId absent_chunk_owner_new_document_id{
+        "doc:indexer:absent-chunk-owner:new"
+    };
+    const agent_memory::ChunkId absent_chunk_owner_first_chunk_id{
+        "chunk:indexer:absent-chunk-owner:first"
+    };
+    const agent_memory::ChunkId absent_chunk_owner_second_chunk_id{
+        "chunk:indexer:absent-chunk-owner:second"
+    };
+    indexer.reindex_resource(make_snapshot(
+        absent_chunk_owner_resource_id,
+        4,
+        absent_chunk_owner_old_document_id,
+        {
+            make_chunk(
+                absent_chunk_owner_first_chunk_id,
+                absent_chunk_owner_old_document_id,
+                0,
+                "absent chunk owner first"
+            ),
+            make_chunk(
+                absent_chunk_owner_second_chunk_id,
+                absent_chunk_owner_old_document_id,
+                20,
+                "absent chunk owner second"
+            )
+        }
+    ));
+    const auto absent_chunk_owner_second_owner = owner_storage.find_chunk_owner(
+        absent_chunk_owner_second_chunk_id
+    );
+    if(!absent_chunk_owner_second_owner) {
+        return fail("absent-chunk fixture must publish a second chunk owner");
+    }
+    auto absent_chunk_owner_retry = make_snapshot(
+        absent_chunk_owner_resource_id,
+        5,
+        absent_chunk_owner_new_document_id,
+        {make_chunk(
+            agent_memory::ChunkId{"chunk:indexer:absent-chunk-owner:new"},
+            absent_chunk_owner_new_document_id,
+            0,
+            "absent chunk owner new"
+        )}
+    );
+    document_storage.fail_on_nth_erase(2);
+    try {
+        indexer.reindex_resource(absent_chunk_owner_retry);
+        return fail("fixture must retain a pending document before physical erase");
+    } catch(const agent_memory::ResourceIndexReclaimError&) {
+    }
+    document_storage.upsert_document(agent_memory::DocumentSnapshot{
+        make_document(absent_chunk_owner_old_document_id, "absent chunk owner retained"),
+        {make_chunk(
+            absent_chunk_owner_first_chunk_id,
+            absent_chunk_owner_old_document_id,
+            0,
+            "absent chunk owner first"
+        )}
+    });
+    const bool erased_absent_chunk_owner_vector = vector_index.erase(
+        absent_chunk_owner_second_chunk_id
+    );
+    (void)erased_absent_chunk_owner_vector;
+    auto stale_absent_chunk_owner = *absent_chunk_owner_second_owner;
+    stale_absent_chunk_owner.generation = 3;
+    owner_storage.upsert_chunk_owner(
+        absent_chunk_owner_second_chunk_id,
+        stale_absent_chunk_owner
+    );
+
+    document_storage.reset_operation_counts();
+    manifest_storage.reset_operation_counts();
+    owner_storage.reset_operation_counts();
+    vector_index.reset_operation_counts();
+    try {
+        indexer.reindex_resource(absent_chunk_owner_retry);
+        return fail("retry must reject a stale owner for an absent pending chunk");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+    const auto stale_absent_chunk_owner_after = owner_storage.find_chunk_owner(
+        absent_chunk_owner_second_chunk_id
+    );
+    if(
+        document_storage.upsert_count() != 0 ||
+        document_storage.erase_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        owner_storage.mutation_count() != 0 ||
+        vector_index.upsert_count() != 0 ||
+        vector_index.erase_count() != 0 ||
+        !document_storage.find_document(absent_chunk_owner_old_document_id) ||
+        !document_storage.find_chunk(absent_chunk_owner_first_chunk_id) ||
+        vector_index.find(absent_chunk_owner_second_chunk_id) ||
+        !stale_absent_chunk_owner_after ||
+        stale_absent_chunk_owner_after->generation != 3
+    ) {
+        return fail("absent pending chunk must retain its mismatched owner binding");
+    }
+
+    const agent_memory::ResourceId no_proof_owner_resource_id{
+        "resource:indexer:no-proof-owner"
+    };
+    const agent_memory::DocumentId no_proof_owner_old_document_id{
+        "doc:indexer:no-proof-owner:old"
+    };
+    const agent_memory::DocumentId no_proof_owner_new_document_id{
+        "doc:indexer:no-proof-owner:new"
+    };
+    const agent_memory::ChunkId no_proof_owner_old_chunk_id{
+        "chunk:indexer:no-proof-owner:old"
+    };
+    indexer.reindex_resource(make_snapshot(
+        no_proof_owner_resource_id,
+        4,
+        no_proof_owner_old_document_id,
+        {make_chunk(
+            no_proof_owner_old_chunk_id,
+            no_proof_owner_old_document_id,
+            0,
+            "no proof owner old"
+        )}
+    ));
+    const auto no_proof_owner = owner_storage.find_chunk_owner(no_proof_owner_old_chunk_id);
+    if(!no_proof_owner) {
+        return fail("no-proof fixture must publish a chunk owner");
+    }
+    auto no_proof_owner_retry = make_snapshot(
+        no_proof_owner_resource_id,
+        5,
+        no_proof_owner_new_document_id,
+        {make_chunk(
+            agent_memory::ChunkId{"chunk:indexer:no-proof-owner:new"},
+            no_proof_owner_new_document_id,
+            0,
+            "no proof owner new"
+        )}
+    );
+    vector_index.fail_next_erase();
+    try {
+        indexer.reindex_resource(no_proof_owner_retry);
+        return fail("fixture must retain a vector-only pending reclaim record");
+    } catch(const agent_memory::ResourceIndexReclaimError&) {
+    }
+    const bool erased_no_proof_vector = vector_index.erase(no_proof_owner_old_chunk_id);
+    (void)erased_no_proof_vector;
+
+    document_storage.reset_operation_counts();
+    manifest_storage.reset_operation_counts();
+    owner_storage.reset_operation_counts();
+    vector_index.reset_operation_counts();
+    try {
+        indexer.reindex_resource(no_proof_owner_retry);
+        return fail("retry must reject an owner without physical generation evidence");
+    } catch(const agent_memory::ResourceIndexRecordOwnershipError&) {
+    }
+    const auto no_proof_owner_after = owner_storage.find_chunk_owner(
+        no_proof_owner_old_chunk_id
+    );
+    if(
+        document_storage.upsert_count() != 0 ||
+        document_storage.erase_count() != 0 ||
+        manifest_storage.upsert_count() != 0 ||
+        manifest_storage.erase_count() != 0 ||
+        owner_storage.mutation_count() != 0 ||
+        vector_index.upsert_count() != 0 ||
+        vector_index.erase_count() != 0 ||
+        vector_index.find(no_proof_owner_old_chunk_id) ||
+        !no_proof_owner_after ||
+        no_proof_owner_after->generation != no_proof_owner->generation
+    ) {
+        return fail("owner without physical evidence must remain for explicit repair");
+    }
+
     const agent_memory::ResourceId retained_parent_resource_id{
         "resource:indexer:retained-parent"
     };

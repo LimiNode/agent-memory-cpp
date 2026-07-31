@@ -1208,6 +1208,29 @@ namespace agent_memory {
                 pending_generation = owner->generation;
             }
         }
+
+        for(const auto& record : manifest.pending_reclaim_records) {
+            if(!uses_document_owner(record) && !uses_chunk_owner(record)) {
+                continue;
+            }
+
+            const auto owner = find_record_owner(*m_owner_storage, record);
+            if(!owner) {
+                continue;
+            }
+            if(!pending_generation) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Pending owner generation cannot be proven from physical records: " +
+                    record_owner_label(record)
+                );
+            }
+            if(owner->generation != *pending_generation) {
+                throw ResourceIndexRecordOwnershipError(
+                    "Pending owner has a generation different from physical reclaim evidence: " +
+                    record_owner_label(record)
+                );
+            }
+        }
     }
 
     void ResourceIndexer::validate_requested_record_ownership(
