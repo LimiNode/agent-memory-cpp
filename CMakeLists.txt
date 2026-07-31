@@ -154,6 +154,22 @@ if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME agent_memory_miracl_ae_preparer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/prepare-miracl-ae-study.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_miracl_ae_manifest_validator_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-miracl-ae-study.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         execute_process(
             COMMAND ${Python3_EXECUTABLE} -c "import yaml"
             RESULT_VARIABLE AGENT_MEMORY_PYYAML_IMPORT_RESULT
