@@ -21,7 +21,8 @@ The input layout is configured with relative path templates, for example:
     "strategy": "balanced_stable_hash",
     "seed": 42,
     "train_documents_per_language": 25000,
-    "evaluation_distractors_per_language": 10000
+    "evaluation_distractors_per_language": 10000,
+    "evaluation_queries_per_language": 0
   },
   "embedding": {
     "model_id": "intfloat/multilingual-e5-small",
@@ -80,6 +81,7 @@ class StudyConfig:
     seed: int
     train_documents_per_language: int
     evaluation_distractors_per_language: int
+    evaluation_queries_per_language: int
     embedding: dict[str, Any]
     canonical_json: str
 
@@ -161,7 +163,7 @@ def load_config(path: Path) -> StudyConfig:
 
     raw_dataset = require_mapping(root["dataset"], "dataset")
     layout = require_mapping(root["layout"], "layout")
-    sampling = require_mapping(root["sampling"], "sampling")
+    sampling = dict(require_mapping(root["sampling"], "sampling"))
     split = require_mapping(root["split"], "split")
     embedding = require_mapping(root["embedding"], "embedding")
 
@@ -173,6 +175,7 @@ def load_config(path: Path) -> StudyConfig:
         raise PreparationError("languages must not contain duplicates")
     if sampling.get("strategy") != "balanced_stable_hash":
         raise PreparationError("sampling.strategy must equal balanced_stable_hash")
+    sampling.setdefault("evaluation_queries_per_language", 0)
 
     dataset: dict[str, dict[str, str]] = {}
     for source_name in ("corpus", "judgments"):
@@ -210,8 +213,12 @@ def load_config(path: Path) -> StudyConfig:
             sampling.get("evaluation_distractors_per_language"),
             "sampling.evaluation_distractors_per_language",
         ),
+        evaluation_queries_per_language=non_negative_int(
+            sampling.get("evaluation_queries_per_language", 0),
+            "sampling.evaluation_queries_per_language",
+        ),
         embedding=embedding,
-        canonical_json=canonical_json(root),
+        canonical_json=canonical_json({**root, "sampling": sampling}),
     )
 
 
@@ -357,6 +364,30 @@ def stable_rank(seed: int, language: str, document_id: str, purpose: str) -> int
     return int.from_bytes(hashlib.sha256(payload).digest()[:16], byteorder="big")
 
 
+def choose_evaluation_queries(
+    queries: dict[str, str],
+    *,
+    limit: int,
+    seed: int,
+    language: str,
+) -> dict[str, str]:
+    """Returns all queries or a deterministic, qrels-safe subset of them."""
+    if limit == 0:
+        return queries
+    if limit > len(queries):
+        raise PreparationError(
+            f"{language}: found only {len(queries)} queries; need {limit}"
+        )
+    selected_ids = sorted(
+        queries,
+        key=lambda query_id: (
+            stable_rank(seed, language, query_id, "evaluation-query"),
+            query_id,
+        ),
+    )[:limit]
+    return {query_id: queries[query_id] for query_id in selected_ids}
+
+
 def choose_lowest_ranked(
     records: Iterable[Document],
     *,
@@ -397,6 +428,7 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
     train_documents: list[Document] = []
     evaluation_documents: list[Document] = []
     qrels_excluded_ids: list[str] = []
+    evaluation_query_ids: list[str] = []
     output_queries: list[tuple[str, str, str]] = []
     output_qrels: list[tuple[str, str, int]] = []
     per_language: list[dict[str, Any]] = []
@@ -410,9 +442,20 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
         )
         queries_path = resolve_input_path(input_root, config.queries_template, language)
         qrels_path = resolve_input_path(input_root, config.qrels_template, language)
-        queries = load_queries(queries_path)
-        qrels, qrel_document_ids = load_qrels(qrels_path, set(queries))
+        all_queries = load_queries(queries_path)
+        all_qrels, _ = load_qrels(qrels_path, set(all_queries))
+        queries = choose_evaluation_queries(
+            all_queries,
+            limit=config.evaluation_queries_per_language,
+            seed=config.seed,
+            language=language,
+        )
+        qrels = [row for row in all_qrels if row[0] in queries]
+        qrel_document_ids = {document_id for _, document_id, _ in qrels}
+        if not qrels:
+            raise PreparationError(f"{language}: selected evaluation queries have no qrels")
         qrels_excluded_ids.extend(f"{language}:{document_id}" for document_id in qrel_document_ids)
+        evaluation_query_ids.extend(f"{language}:{query_id}" for query_id in queries)
 
         evaluation_by_id: dict[str, Document] = {}
         for document in iter_corpora(corpus_paths, language):
@@ -474,6 +517,9 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
                 "qrels_document_count": len(evaluation_by_id),
                 "evaluation_distractor_count": len(selected_distractors),
                 "query_count": len(queries),
+                "evaluation_query_ids_sha256": sorted_id_set_sha256(
+                    f"{language}:{query_id}" for query_id in queries
+                ),
                 "qrels_count": len(qrels),
                 "source_hashes": {
                     "corpus": source_file_hashes(input_root, corpus_paths),
@@ -510,6 +556,7 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
             "seed": config.seed,
             "train_documents_per_language": config.train_documents_per_language,
             "evaluation_distractors_per_language": config.evaluation_distractors_per_language,
+            "evaluation_queries_per_language": config.evaluation_queries_per_language,
         },
         "split": {
             "policy": "held_out_document_ids",
@@ -517,6 +564,7 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
             "query_usage": "evaluation_only",
             "qrels_usage": "evaluation_only",
             "qrels_excluded_document_ids_sha256": sorted_id_set_sha256(qrels_excluded_ids),
+            "evaluation_query_ids_sha256": sorted_id_set_sha256(evaluation_query_ids),
             "evaluation_document_ids_sha256": sorted_id_set_sha256(
                 document.global_id for document in evaluation_documents
             ),
@@ -573,6 +621,7 @@ def write_test_input(root: Path) -> Path:
             "seed": 42,
             "train_documents_per_language": 2,
             "evaluation_distractors_per_language": 1,
+            "evaluation_queries_per_language": 0,
         },
         "split": {"evaluation_qrels_split": "dev"},
         "embedding": {
@@ -641,6 +690,23 @@ def run_self_test() -> int:
         }
         if train_ids & evaluation_ids:
             print("self-test failed: train and evaluation documents overlap", file=sys.stderr)
+            return 1
+
+        query_limited = json.loads(config_path.read_text(encoding="utf-8"))
+        query_limited["sampling"]["evaluation_queries_per_language"] = 1
+        query_limited_path = root / "query-limited.json"
+        query_limited_path.write_text(
+            json.dumps(query_limited), encoding="utf-8", newline="\n"
+        )
+        query_limited_manifest = prepare_study(
+            load_config(query_limited_path), root / "input", root / "query-limited"
+        )
+        if query_limited_manifest["outputs"]["evaluation_queries"]["count"] != 2:
+            print("self-test failed: deterministic query limit was not applied", file=sys.stderr)
+            return 1
+        if ("evaluation_query_ids_sha256" not in query_limited_manifest["split"] or
+                query_limited_manifest["outputs"]["evaluation_qrels"]["count"] != 4):
+            print("self-test failed: query-limited qrels provenance", file=sys.stderr)
             return 1
 
         invalid = json.loads(config_path.read_text(encoding="utf-8"))

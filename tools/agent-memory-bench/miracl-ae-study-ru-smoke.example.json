@@ -10,16 +10,7 @@
       "revision": "5be20db9509754dadad47689368639fcec739c00"
     }
   },
-  "languages": [
-    "ru",
-    "en",
-    "de",
-    "fr",
-    "es",
-    "ar",
-    "zh",
-    "ja"
-  ],
+  "languages": ["ru"],
   "layout": {
     "corpus": "miracl-corpus-v1.0-{language}/docs-*.jsonl.gz",
     "queries": "miracl-v1.0-{language}/topics/topics.miracl-v1.0-{language}-dev.tsv",
@@ -28,9 +19,9 @@
   "sampling": {
     "strategy": "balanced_stable_hash",
     "seed": 42,
-    "train_documents_per_language": 25000,
-    "evaluation_distractors_per_language": 10000,
-    "evaluation_queries_per_language": 0
+    "train_documents_per_language": 512,
+    "evaluation_distractors_per_language": 512,
+    "evaluation_queries_per_language": 64
   },
   "split": {
     "evaluation_qrels_split": "dev"

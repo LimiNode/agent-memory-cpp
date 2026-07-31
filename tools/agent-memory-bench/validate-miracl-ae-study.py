@@ -63,6 +63,13 @@ def load_json(path: Path, label: str) -> dict[str, Any]:
         raise ValidationError(f"cannot read {label}: {exc}") from exc
 
 
+def normalized_input_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Adds explicit defaults before comparing a manifest with legacy input."""
+    sampling = dict(require_mapping(config.get("sampling"), "config.sampling"))
+    sampling.setdefault("evaluation_queries_per_language", 0)
+    return {**config, "sampling": sampling}
+
+
 def resolve_output_path(root: Path, raw_path: Any, label: str) -> Path:
     relative = Path(require_string(raw_path, label))
     if relative.is_absolute() or relative.name != str(relative):
@@ -182,8 +189,9 @@ def validate_source_provenance(
     source_root: Path,
     actual_train_ids: set[str],
     actual_evaluation_ids: set[str],
+    actual_query_ids: set[str],
 ) -> None:
-    config = load_json(config_path, "input config")
+    config = normalized_input_config(load_json(config_path, "input config"))
     input_hash = hashlib.sha256(canonical_json(config).encode("utf-8")).hexdigest()
     if manifest.get("input_config_hash") != input_hash:
         raise ValidationError("input_config_hash does not match the supplied config")
@@ -214,6 +222,7 @@ def validate_source_provenance(
     expected_train_ids: set[str] = set()
     expected_evaluation_ids: set[str] = set()
     expected_qrels_excluded_ids: set[str] = set()
+    expected_query_ids: set[str] = set()
     for row in per_language:
         record = require_mapping(row, "manifest.per_language entry")
         language = require_string(record.get("language"), "manifest language")
@@ -236,19 +245,26 @@ def validate_source_provenance(
             if hashes.get(kind) != sha256_file(path):
                 raise ValidationError(f"source hash mismatch for {language}:{kind}")
 
-        queries = preparer.load_queries(resolve_source_paths(
+        all_queries = preparer.load_queries(resolve_source_paths(
             source_root,
             require_string(layout.get("queries"), "config.layout.queries"),
             language,
             allow_glob=False,
         )[0])
-        qrels, qrel_document_ids = preparer.load_qrels(resolve_source_paths(
+        all_qrels, _ = preparer.load_qrels(resolve_source_paths(
             source_root,
             require_string(layout.get("qrels"), "config.layout.qrels"),
             language,
             allow_glob=False,
-        )[0], set(queries))
-        del qrels
+        )[0], set(all_queries))
+        queries = preparer.choose_evaluation_queries(
+            all_queries,
+            limit=config["sampling"].get("evaluation_queries_per_language", 0),
+            seed=config["sampling"]["seed"],
+            language=language,
+        )
+        qrels = [row for row in all_qrels if row[0] in queries]
+        qrel_document_ids = {document_id for _, document_id, _ in qrels}
         documents_by_id = {
             document.docid: document
             for document in preparer.iter_corpora(corpus_paths, language)
@@ -279,13 +295,18 @@ def validate_source_provenance(
         expected_evaluation_ids.update(documents_by_id[document_id].global_id for document_id in qrel_document_ids)
         expected_evaluation_ids.update(document.global_id for document in selected_distractors)
         expected_qrels_excluded_ids.update(f"{language}:{document_id}" for document_id in qrel_document_ids)
+        expected_query_ids.update(f"{language}:{query_id}" for query_id in queries)
 
     if actual_train_ids != expected_train_ids:
         raise ValidationError("train document IDs do not match balanced_stable_hash selection")
     if actual_evaluation_ids != expected_evaluation_ids:
         raise ValidationError("evaluation document IDs do not match balanced_stable_hash selection")
+    if actual_query_ids != expected_query_ids:
+        raise ValidationError("evaluation query IDs do not match deterministic selection")
     if manifest_split.get("qrels_excluded_document_ids_sha256") != preparer.sorted_id_set_sha256(expected_qrels_excluded_ids):
         raise ValidationError("qrels excluded document ID digest is invalid")
+    if manifest_split.get("evaluation_query_ids_sha256") != preparer.sorted_id_set_sha256(expected_query_ids):
+        raise ValidationError("evaluation query ID digest is invalid")
     if manifest_split.get("evaluation_document_ids_sha256") != preparer.sorted_id_set_sha256(expected_evaluation_ids):
         raise ValidationError("evaluation document ID digest is invalid")
 
@@ -314,7 +335,11 @@ def validate_prepared_study(
     split = require_mapping(manifest.get("split"), "manifest.split")
     require_string(split.get("policy"), "manifest.split.policy")
     require_string(split.get("evaluation_qrels_split"), "manifest.split.evaluation_qrels_split")
-    for field in ("qrels_excluded_document_ids_sha256", "evaluation_document_ids_sha256"):
+    for field in (
+        "qrels_excluded_document_ids_sha256",
+        "evaluation_document_ids_sha256",
+        "evaluation_query_ids_sha256",
+    ):
         digest = require_string(split.get(field), f"manifest.split.{field}")
         if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
             raise ValidationError(f"manifest.split.{field} must be a lowercase SHA-256 hash")
@@ -336,6 +361,11 @@ def validate_prepared_study(
         raise ValidationError("training and evaluation document IDs overlap")
     query_ids = read_query_ids(files["evaluation_queries"])
     read_qrels(files["evaluation_qrels"], query_ids, evaluation_ids)
+    actual_query_digest = hashlib.sha256(
+        ("\n".join(sorted(query_ids)) + "\n").encode("utf-8")
+    ).hexdigest()
+    if split.get("evaluation_query_ids_sha256") != actual_query_digest:
+        raise ValidationError("evaluation query ID digest does not match output")
 
     counts = {
         "train_documents": len(train_ids),
@@ -389,6 +419,7 @@ def validate_prepared_study(
             source_root,
             train_ids,
             evaluation_ids,
+            query_ids,
         )
 
 
