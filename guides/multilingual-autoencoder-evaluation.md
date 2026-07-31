@@ -54,32 +54,45 @@ Every manifest must contain at least:
 ```json
 {
   "schema_version": 1,
-  "dataset": "miracl",
-  "dataset_revision": "<resolved immutable revision>",
+  "dataset": {
+    "corpus": {
+      "id": "miracl/miracl-corpus",
+      "revision": "<caller-pinned immutable revision>"
+    },
+    "judgments": {
+      "id": "miracl/miracl",
+      "revision": "<caller-pinned immutable revision>"
+    }
+  },
   "languages": ["ru", "en", "de", "fr", "es", "ar", "zh", "ja"],
   "sampling": {
     "strategy": "balanced_stable_hash",
     "seed": 42,
-    "train_documents_per_language": 25000
+    "train_documents_per_language": 25000,
+    "evaluation_distractors_per_language": 10000
   },
   "split": {
     "policy": "held_out_document_ids",
     "evaluation_qrels_split": "dev",
-    "excluded_evaluation_document_ids_hash": "<sha256>"
+    "qrels_excluded_document_ids_sha256": "<sha256 of sorted language-prefixed qrels doc IDs>",
+    "evaluation_document_ids_sha256": "<sha256 of sorted final evaluation doc IDs>"
   },
   "embedding": {
     "model_id": "intfloat/multilingual-e5-small",
     "model_revision": "<resolved immutable revision>",
     "document_prefix": "passage: ",
     "query_prefix": "query: ",
-    "normalization": true
+    "normalized": true
   }
 }
 ```
 
-The preparation tool resolves the dataset revision and verifies which languages
-are present before materializing a run. A configuration called `all-18` is
-invalid unless the selected revision provides every requested language.
+The caller supplies immutable source revisions when materializing the selected
+language files. The preparation tool verifies source-file hashes, qrels closure,
+and the requested languages in that materialization; it deliberately does not
+perform remote revision resolution. A configuration called `all-18` is invalid
+unless the caller materializes every requested language from the declared
+revisions.
 
 ## Split and leakage policy
 
