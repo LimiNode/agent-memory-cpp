@@ -645,3 +645,51 @@ retained float vectors. The next comparison must keep the median calibration
 separate from both an altered training objective and retrieval-aware fine-
 tuning: first run the same artifact family at 64/256/512 bits and compare it
 fairly with the standard binary baselines on this exact held-out fixture.
+
+### Median-calibrated NLB bit grid
+
+The same calibrator was applied independently to the frozen 64-, 256-, and
+512-bit `nlb_paper_tied_v1` artifacts. Every artifact uses the same 23,801
+document-only stable training IDs and the same held-out 22,607-document RU
+evaluation root. The reported metrics are from the C++ exact-rerank evaluator;
+the random candidate expectations are still `0.00566`, `0.02265`, and
+`0.09059` for 128, 512, and 2,048 candidates.
+
+| Bits | Candidates | Coverage | Lift vs random | Exact-rerank nDCG@10 | Retention of full E5 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 | 128 | 0.5014 | 88.56x | 0.6084 | 75.91% |
+| 64 | 512 | 0.6894 | 30.44x | 0.7141 | 89.10% |
+| 64 | 2,048 | 0.8689 | 9.59x | 0.7737 | 96.53% |
+| 128 | 128 | 0.7580 | 133.80x | 0.7465 | 93.14% |
+| 128 | 512 | 0.8886 | 39.23x | 0.7826 | 97.65% |
+| 128 | 2,048 | 0.9671 | 10.68x | 0.7977 | 99.53% |
+| 256 | 128 | 0.9356 | 165.25x | 0.7981 | 99.58% |
+| 256 | 512 | 0.9827 | 43.39x | 0.8012 | 99.97% |
+| 256 | 2,048 | 0.9973 | 11.01x | 0.8015 | 100.00% |
+| 512 | 128 | 0.9852 | 174.01x | 0.8017 | 100.03% |
+| 512 | 512 | 0.9982 | 44.07x | 0.8014 | 99.99% |
+| 512 | 2,048 | 0.9998 | 11.04x | 0.8015 | 100.00% |
+
+This removes the earlier ambiguity about whether the 128-bit result was an
+isolated threshold effect. Calibration produces near-maximal marginal entropy
+at every width: `63.81 / 64`, `127.59 / 128`, `255.05 / 256`, and
+`509.87 / 512`. The cosine-to-negative-Hamming correlation rises from `0.316`
+at 64 bits to `0.538` at 256 and `0.669` at 512; the corresponding correlation
+participation ratios are `52.6`, `135.1`, and `174.3`.
+
+The practical frontier on this one RU fixture is therefore sharper than the
+zero-threshold result suggested: 128 bits is a strong reduction with a small
+but measurable quality gap, 256 bits already reaches 99.58% full-E5 nDCG@10
+at 128 candidates, and 512 bits reaches the full-E5 result within measurement
+noise at the same budget. This is evidence for a calibrated NLB candidate
+filter, not an argument to discard float vectors or to call the result
+multilingual.
+
+The previous PCA/ITQ table remains an intentionally **unfair preliminary
+control** because those encoders used their 2,048-vector training cap while
+NLB used 23,801 document vectors. The next comparison must first materialize a
+canonical deterministic 2,048-document training-ID subset. NLB, PCA+sign,
+ITQ, random hyperplanes, and optional pair-difference projection will all use
+that exact ID list, while the held-out documents, queries, and qrels remain
+unchanged. The reports must include the subset ID hash and selected count; no
+winner claim is allowed until this common-budget control exists.
