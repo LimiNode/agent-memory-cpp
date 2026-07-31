@@ -802,6 +802,14 @@ Training data dependency: autoencoder обучен на sample embeddings из
 конкретного корпуса. Если корпус сильно меняется (новые домены) — encoder
 нужно ретренировать. Operational consideration, не bug.
 
+Multilingual autoencoder training must not use a proportional union of
+Wikipedia-sized corpora. The planned MIRACL protocol uses fixed per-language
+quotas, document-only training, disjoint train/evaluation document IDs, and
+per-language retention reporting. See
+[`multilingual-autoencoder-evaluation.md`](multilingual-autoencoder-evaluation.md)
+for the RU-only / RU+EN / balanced multilingual study, external Mr. TyDi
+validation, and the separate XOR-Retrieve cross-language gate.
+
 ### Experimental Encoder
 
 - Add a Haar-like encoder only after the random-hyperplane baseline:

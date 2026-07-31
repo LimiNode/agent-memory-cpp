@@ -35,6 +35,8 @@ agent framework.
   optional dependency wiring.
 - [Embeddings](guides/embedding.md) - embedding contracts and backend adapter
   direction.
+- [Multilingual autoencoder evaluation](guides/multilingual-autoencoder-evaluation.md) -
+  external-data protocol and evidence ladder for learned binary encoders.
 - [Coding style](guides/coding-style.md) - naming, file layout, comments, and
   include guards.
 - [Commit conventions](guides/commit-conventions.md) - commit format when the
