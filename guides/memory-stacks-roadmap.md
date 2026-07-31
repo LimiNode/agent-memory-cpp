@@ -1711,6 +1711,12 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
 
 ### Шаг 1: Envelope + базовые DBI
 
+> **Status.** The dependency-free value layer (`KnowledgeUnitEnvelope`, its
+> identity key, bounded inline source summaries, and lifecycle transition
+> rules) is implemented. Monotonic allocation, canonical content-hash
+> computation, serialization, MDBX DBIs, and `MemoryStack::open()` remain
+> separate follow-up PRs.
+
 - Создать `KnowledgeUnitEnvelope` struct (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
 - MDBX DBI: default-open physical set from
   `mdbx-containers-extension-tz.md` §5.5, including identity DBI
