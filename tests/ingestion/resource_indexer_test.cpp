@@ -1,7 +1,6 @@
 #include <agent_memory.hpp>
 
 #include <algorithm>
-#include <exception>
 #include <functional>
 #include <iostream>
 #include <map>
@@ -14,8 +13,6 @@
 #include <vector>
 
 namespace {
-
-    const char* test_phase = "initial setup";
 
     int fail(std::string_view message) {
         std::cerr << message << '\n';
@@ -580,11 +577,6 @@ namespace {
 } // namespace
 
 int main() {
-    std::set_terminate([] {
-        std::cerr << "resource_indexer_test terminated during: " << test_phase << '\n';
-        std::abort();
-    });
-
     static_assert(!std::is_copy_constructible<agent_memory::ResourceIndexer>::value);
     static_assert(!std::is_copy_assignable<agent_memory::ResourceIndexer>::value);
     static_assert(!std::is_move_constructible<agent_memory::ResourceIndexer>::value);
@@ -2672,7 +2664,6 @@ int main() {
         return fail("mixed-generation rejection must preserve pending physical records");
     }
 
-    test_phase = "absent pending document owner fixture";
     clear_failure_injection();
     const agent_memory::ResourceId absent_document_owner_resource_id{
         "resource:indexer:absent-document-owner"
@@ -2760,7 +2751,6 @@ int main() {
         return fail("absent pending document must retain its mismatched owner binding");
     }
 
-    test_phase = "absent pending chunk owner fixture";
     clear_failure_injection();
     const agent_memory::ResourceId absent_chunk_owner_resource_id{
         "resource:indexer:absent-chunk-owner"
@@ -2868,7 +2858,6 @@ int main() {
         return fail("absent pending chunk must retain its mismatched owner binding");
     }
 
-    test_phase = "pending owner without physical evidence fixture";
     clear_failure_injection();
     const agent_memory::ResourceId no_proof_owner_resource_id{
         "resource:indexer:no-proof-owner"
@@ -2944,7 +2933,6 @@ int main() {
         return fail("owner without physical evidence must remain for explicit repair");
     }
 
-    test_phase = "post pending owner fixtures";
     clear_failure_injection();
     const agent_memory::ResourceId retained_parent_resource_id{
         "resource:indexer:retained-parent"
