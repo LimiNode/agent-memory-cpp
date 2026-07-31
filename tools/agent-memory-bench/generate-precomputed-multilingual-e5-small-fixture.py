@@ -21,7 +21,7 @@ import precomputed_fixture_contract as hash_contract
 import precomputed_fixture_multilingual_e5_contract as content_contract
 
 
-GENERATOR_REVISION = "agent-memory-cpp:multilingual-e5-small-fixture-v1"
+GENERATOR_REVISION = "agent-memory-cpp:multilingual-e5-small-fixture-v2-cpu-deterministic"
 GENERATOR_COMMAND = (
     "python tools/agent-memory-bench/generate-precomputed-multilingual-e5-small-fixture.py "
     "--output tests/eval/fixtures/precomputed-embedding-multilingual-e5-small.json"
@@ -92,6 +92,8 @@ def build_fixture(*, cache_dir: Path | None, local_files_only: bool) -> dict[str
             "projection_kind": e5_common.PROJECTION_KIND,
             "normalization": "l2",
             "dtype": "float32",
+            "execution_device": e5_common.EXECUTION_DEVICE,
+            "determinism_policy": e5_common.DETERMINISM_POLICY,
             "hash_algorithm": "sha256",
             "config_hash": "",
             "dataset_hash": "",

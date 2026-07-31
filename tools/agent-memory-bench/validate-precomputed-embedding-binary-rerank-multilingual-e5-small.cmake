@@ -75,7 +75,7 @@ string(JSON artifact_projection GET "${report_json}" embedding_artifact projecti
 if(NOT artifact_generator STREQUAL "agent-memory.tools.multilingual-e5-precomputed-embedding"
    OR NOT artifact_version STREQUAL "v1"
    OR NOT artifact_dataset_revision STREQUAL "agent-memory-multilingual-e5-small-fixture:2026-07-31"
-   OR NOT artifact_generator_revision STREQUAL "agent-memory-cpp:multilingual-e5-small-fixture-v1"
+   OR NOT artifact_generator_revision STREQUAL "agent-memory-cpp:multilingual-e5-small-fixture-v2-cpu-deterministic"
    OR NOT artifact_model_revision STREQUAL "614241f622f53c4eeff9890bdc4f31cfecc418b3"
    OR NOT artifact_tokenizer_revision STREQUAL "614241f622f53c4eeff9890bdc4f31cfecc418b3"
    OR NOT artifact_document_prompt STREQUAL "e5-passage-prefix-title-plus-text-v1"

@@ -639,6 +639,8 @@ This continuation adds a small reproducible external-model fixture for
 - model and tokenizer revision
   `614241f622f53c4eeff9890bdc4f31cfecc418b3`;
 - model-default SentenceTransformers pooling and L2-normalized float32 vectors;
+- CPU-only execution with one Torch thread and deterministic-inference policy
+  `torch_cpu_single_thread_deterministic_inference_v1`;
 - explicit asymmetric E5 inputs: `passage:` for documents and `query:` for
   queries;
 - generator source, content contract, environment lock, dataset, qrels,
@@ -671,6 +673,12 @@ Generation uses a cached local model and pinned environment manifest:
 requirements-multilingual-e5-small-fixture.txt
 generate-precomputed-multilingual-e5-small-fixture.py --local-files-only
 ```
+
+The generator passes `device="cpu"` to SentenceTransformers and enables Torch
+deterministic algorithms. The artifact records the execution device, float32
+payload dtype, and deterministic-policy identifier; its generator revision is
+therefore a CPU-only regeneration contract, not a claim that CUDA would produce
+the same bytes.
 
 ### Actual result
 

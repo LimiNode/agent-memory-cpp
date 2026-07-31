@@ -27,6 +27,8 @@ REQUIRED_PACKAGE_PINS = (
 DOCUMENT_PROMPT_ID = "e5-passage-prefix-title-plus-text-v1"
 QUERY_PROMPT_ID = "e5-query-prefix-query-text-v1"
 PROJECTION_KIND = "multilingual_e5_small_sentence_transformers_normalized"
+EXECUTION_DEVICE = "cpu"
+DETERMINISM_POLICY = "torch_cpu_single_thread_deterministic_inference_v1"
 
 
 def script_dir() -> Path:
@@ -144,13 +146,15 @@ def encode_texts(
         ) from exc
 
     torch.set_num_threads(1)
+    torch.set_num_interop_threads(1)
+    torch.use_deterministic_algorithms(True)
     model_kwargs: dict[str, object] = {
         "revision": MODEL_REVISION,
         "local_files_only": local_files_only,
     }
     if cache_dir is not None:
         model_kwargs["cache_folder"] = str(cache_dir)
-    model = SentenceTransformer(MODEL_ID, **model_kwargs)
+    model = SentenceTransformer(MODEL_ID, device=EXECUTION_DEVICE, **model_kwargs)
     vectors = model.encode(
         texts,
         normalize_embeddings=True,

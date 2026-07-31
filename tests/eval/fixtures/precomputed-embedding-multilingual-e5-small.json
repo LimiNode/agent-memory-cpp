@@ -12,8 +12,8 @@
     "generator_id": "agent-memory.tools.multilingual-e5-precomputed-embedding",
     "generator_version": "v1",
     "dataset_revision": "agent-memory-multilingual-e5-small-fixture:2026-07-31",
-    "generator_revision": "agent-memory-cpp:multilingual-e5-small-fixture-v1",
-    "generator_source_hash": "acbf8d949d90249214150d00fcfb7a5ae57eb7d8755316aa9d604587c19c4ea9",
+    "generator_revision": "agent-memory-cpp:multilingual-e5-small-fixture-v2-cpu-deterministic",
+    "generator_source_hash": "499d6565b069fe0a865574aeaed80718e24327c329b0f85c822b6322c24562a3",
     "generator_contract_source_hash": "d67af21b27b358ce32f99e281320d6d15009a297f1d1bdf1cedaff2d87073377",
     "generator_command": "python tools/agent-memory-bench/generate-precomputed-multilingual-e5-small-fixture.py --output tests/eval/fixtures/precomputed-embedding-multilingual-e5-small.json",
     "generator_requirements_lock": "tools/agent-memory-bench/requirements-multilingual-e5-small-fixture.txt;sha256=4d07391136f33c47378638343ddb7229c64060d0c2282db7f0fd0775f4d2a45b",
@@ -26,10 +26,12 @@
     "normalization": "l2",
     "dtype": "float32",
     "hash_algorithm": "sha256",
-    "config_hash": "7de6efa6695cdcbecaae06ed783f236da03338df2b803b1a8ec97f6091d87d6f",
+    "config_hash": "c9dd065a42f381b0158d83762effe48c583f4de30004cc13693c2375b6ff1447",
     "dataset_hash": "6af2a2f9be0368ec7e05cc90716ce46c709b522bf6d18afb27ca80a2b05e4f4b",
     "qrels_hash": "c2441e1b94637fc50d44bdb350d3d4cac84110dcdf681ee7f59488d673e5ca33",
-    "artifact_hash": "5b9512521a2126cc6e5aeac41e1c531b2acf1ca943c4ee773e99587b28ffe522"
+    "artifact_hash": "5b9512521a2126cc6e5aeac41e1c531b2acf1ca943c4ee773e99587b28ffe522",
+    "execution_device": "cpu",
+    "determinism_policy": "torch_cpu_single_thread_deterministic_inference_v1"
   },
   "corpus": [
     {
