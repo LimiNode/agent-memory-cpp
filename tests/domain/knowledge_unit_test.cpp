@@ -55,6 +55,7 @@ int main() {
     using agent_memory::KnowledgeUnitKind;
     using agent_memory::KnowledgeUnitLifecycleState;
     using agent_memory::ScopeId;
+    using agent_memory::SourceReferenceMode;
 
     const auto global_scope = ScopeId::global();
     if(global_scope.value() != "global" || global_scope.empty()) {
@@ -73,6 +74,10 @@ int main() {
         || agent_memory::parse_knowledge_unit_kind("unknown", parsed_kind)
     ) {
         return fail("knowledge unit kind names must be stable and parse case-insensitively");
+    }
+
+    if(!agent_memory::to_string(static_cast<KnowledgeUnitKind>(99)).empty()) {
+        return fail("unknown knowledge unit kinds must not stringify as custom");
     }
 
     ContentHash first_hash;
@@ -103,6 +108,10 @@ int main() {
             KnowledgeUnitLifecycleState::Active,
             KnowledgeUnitLifecycleState::Superseded
         )
+        || !agent_memory::is_valid_knowledge_unit_lifecycle_transition(
+            KnowledgeUnitLifecycleState::Deprecated,
+            KnowledgeUnitLifecycleState::Erased
+        )
         || agent_memory::is_valid_knowledge_unit_lifecycle_transition(
             KnowledgeUnitLifecycleState::Deprecated,
             KnowledgeUnitLifecycleState::Active
@@ -118,6 +127,21 @@ int main() {
     const auto source = make_source_summary();
     if(!agent_memory::is_valid_source_ref_summary(source)) {
         return fail("complete source summary must be valid");
+    }
+
+    auto missing_revision = source;
+    missing_revision.resource_revision.reset();
+    if(agent_memory::is_valid_source_ref_summary(missing_revision)) {
+        return fail("revision-bound source summaries must require a revision");
+    }
+
+    auto legacy_preview = source;
+    legacy_preview.reference_mode = SourceReferenceMode::LegacyPreviewOnly;
+    legacy_preview.resource_revision.reset();
+    legacy_preview.excerpt = agent_memory::TextRange{};
+    legacy_preview.quote_hash = {};
+    if(!agent_memory::is_valid_source_ref_summary(legacy_preview)) {
+        return fail("explicit legacy preview-only source summaries must be accepted");
     }
 
     auto mismatched_revision = source;
@@ -165,6 +189,13 @@ int main() {
     self_supersedes.supersedes.push_back(self_supersedes.id);
     if(agent_memory::is_valid_knowledge_unit_envelope(self_supersedes)) {
         return fail("knowledge unit envelope must reject self lineage");
+    }
+
+    auto directly_cyclic_lineage = envelope;
+    directly_cyclic_lineage.supersedes.push_back(KnowledgeUnitId{41});
+    directly_cyclic_lineage.superseded_by = KnowledgeUnitId{41};
+    if(agent_memory::is_valid_knowledge_unit_envelope(directly_cyclic_lineage)) {
+        return fail("knowledge unit envelope must reject directly cyclic lineage");
     }
 
     auto invalid_kind = envelope;

@@ -113,11 +113,22 @@ namespace agent_memory {
         DerivedExtraction
     };
 
+    /// \brief Declares the provenance guarantees carried by a source summary.
+    enum class SourceReferenceMode : std::uint8_t {
+        /// A quote located in one immutable resource revision.
+        RevisionBoundQuote,
+        /// An explicitly unanchored preview retained for legacy compatibility.
+        LegacyPreviewOnly
+    };
+
     /// \brief Inline, bounded citation summary retained with an M0 envelope.
+    /// \note Revision-bound quotes are the default. Legacy preview-only entries
+    ///       must opt in explicitly and cannot carry quote-location fields.
     /// \note Durable cross-environment anchor binding belongs to the optional
     ///       global-identity profile and is intentionally not carried here.
     struct SourceRefSummary final {
         ResourceId resource_id;
+        SourceReferenceMode reference_mode = SourceReferenceMode::RevisionBoundQuote;
         std::optional<ResourceRevisionRef> resource_revision;
         std::string uri;
         TextRange excerpt;
@@ -149,7 +160,8 @@ namespace agent_memory {
         std::optional<KnowledgeUnitId> derived_from;
     };
 
-    /// \brief Returns the stable lowercase name of a knowledge-unit kind.
+    /// \brief Returns the stable lowercase name of a defined knowledge-unit kind.
+    /// \return An empty view when \p kind is not a defined wire value.
     [[nodiscard]] std::string_view to_string(KnowledgeUnitKind kind) noexcept;
 
     /// \brief Parses a lowercase or mixed-case knowledge-unit kind name.

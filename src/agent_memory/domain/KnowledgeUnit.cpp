@@ -66,6 +66,13 @@ namespace agent_memory {
             return false;
         }
 
+        bool contains_reference(
+            const std::vector<KnowledgeUnitId>& ids,
+            const KnowledgeUnitId id
+        ) noexcept {
+            return std::find(ids.begin(), ids.end(), id) != ids.end();
+        }
+
     } // namespace
 
     ScopeId::ScopeId(std::string value)
@@ -89,7 +96,7 @@ namespace agent_memory {
                 return item.name;
             }
         }
-        return "custom";
+        return {};
     }
 
     bool parse_knowledge_unit_kind(std::string_view text, KnowledgeUnitKind& kind) {
@@ -137,6 +144,7 @@ namespace agent_memory {
             return to == KnowledgeUnitLifecycleState::Deprecated
                 || to == KnowledgeUnitLifecycleState::Erased;
         case KnowledgeUnitLifecycleState::Deprecated:
+            return to == KnowledgeUnitLifecycleState::Erased;
         case KnowledgeUnitLifecycleState::Erased:
             return false;
         }
@@ -164,14 +172,32 @@ namespace agent_memory {
             return false;
         }
 
-        if(
-            summary.resource_revision
-            && (
-                summary.resource_revision->resource_id.empty()
+        switch(summary.reference_mode) {
+        case SourceReferenceMode::RevisionBoundQuote:
+            if(
+                !summary.resource_revision
+                || summary.excerpt.length == 0
+                || summary.resource_revision->resource_id.empty()
                 || summary.resource_revision->resource_id != summary.resource_id
                 || !is_valid_resource_body_digest(summary.resource_revision->body_digest)
-            )
-        ) {
+            ) {
+                return false;
+            }
+            break;
+        case SourceReferenceMode::LegacyPreviewOnly:
+            if(
+                summary.resource_revision
+                || summary.excerpt.length != 0
+                || std::any_of(
+                    summary.quote_hash.begin(),
+                    summary.quote_hash.end(),
+                    [](const std::uint8_t byte) { return byte != 0; }
+                )
+            ) {
+                return false;
+            }
+            break;
+        default:
             return false;
         }
 
@@ -199,7 +225,9 @@ namespace agent_memory {
 
         if(
             (envelope.superseded_by && (
-                envelope.superseded_by->empty() || *envelope.superseded_by == envelope.id
+                envelope.superseded_by->empty()
+                || *envelope.superseded_by == envelope.id
+                || contains_reference(envelope.supersedes, *envelope.superseded_by)
             ))
             || (envelope.derived_from && (
                 envelope.derived_from->empty() || *envelope.derived_from == envelope.id

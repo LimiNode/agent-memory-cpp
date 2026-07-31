@@ -1541,7 +1541,7 @@ scope conflict.
 Включено:
 
 - KnowledgeUnitEnvelope (lean hot-path envelope, ~18 полей: id, kind, scope_id, primary_text, display_text, lifecycle_state, sources, timestamps, revision, content_hash, content_hash_recipe_version, lineage fields, priority_weight).
-- primary_text + display_text в envelope; sources — inline `vector<SourceRefSummary>` (max ~3 на unit, <=256 байт excerpt preview каждый).
+- primary_text + display_text в envelope; sources — inline `vector<SourceRefSummary>` (max ~3 на unit, <=256 байт excerpt preview каждый). Default source mode is revision-bound quote; an unanchored legacy preview requires an explicit preview-only mode and carries no quote location.
 - KnowledgeUnitId монотонный, opaque (`uint64_t`). `KnowledgeUnitKey = (kind, ScopeId, ContentHash)` и content-key secondary index (`content_key_to_unit_id`) — для dedupe/supersedence готов с M0.
 - SearchProjection::Original создаётся с самого начала (минимальный: unit_id → primary_text). BM25F работает через projection model с M0 (не flat fallback).
 - Lifecycle FSM с состояниями Active / Superseded / Deprecated / Erased (4 durable states). SoftSuppressed/cooldown — runtime state в UsageStatsComponent, не durable lifecycle.
@@ -1737,7 +1737,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
   supersede/merge lineage. НЕ инкрементить на UsageStats / Decay /
   priority_weight / embedding metadata / soft suppression / cooldown. Explicit list
   durable lifecycle transitions, инкрементящих revision: Active→Superseded,
-  Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated.
+  Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated,
+  Deprecated→Erased.
 - `LexicalPosting` and `EmbeddingProjectionMeta` carry the same `ProjectionVersionRef`.
 - Retrieval-time: skip a posting or dense row unless its complete projection version equals the active canonical projection version.
 - Подробности — §17.11 Stale-filter pattern.
@@ -2084,7 +2085,7 @@ Per-mode подробные таблицы см. в `optimization-roadmap.md` с
 - **Profile** — см. MemoryProfileSpec.
 - **Stack** — см. MemoryStack.
 - **Maturity Level** — M0/M1/M2, определяет ship-it критерии и scope функциональности.
-- **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на mutable retrieval-view changes that preserve stored `content_hash`: `primary_text`, `display_text` если retrieval-relevant, non-identity source summaries, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated). Смена identity hash material создаёт новый `UnitId` plus supersede/merge lineage. НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
+- **Revision** — per-unit version, monotonically increasing per UnitId. Поле `KnowledgeUnitEnvelope.revision` (`uint64_t`). Инкрементится на mutable retrieval-view changes that preserve stored `content_hash`: `primary_text`, `display_text` если retrieval-relevant, non-identity source summaries, projections regeneration, lifecycle_state changed (только durable transitions: Active→Superseded, Active→Deprecated, Active→Erased, Superseded→Erased, Superseded→Deprecated, Deprecated→Erased). Смена identity hash material создаёт новый `UnitId` plus supersede/merge lineage. НЕ инкрементится на UsageStats / Decay / priority_weight / EmbeddingMeta / soft suppression / cooldown.
 - **Generation** — per-resource / per-derived-record version, НЕ часть `KnowledgeUnitEnvelope`. Живёт в `ResourceManifest.generation` и projection metadata. Envelope-level versioning — это `revision`, не `generation`.
 - **Stale filter** — per-record check: a lexical posting and dense row require a complete matching `ProjectionVersionRef`. M0: inline в retrieval pipeline; M2: projection-version indexes for batch reindex (см. §17.11).
 - **Profile signature** — hash от full `MemoryProfileSpec`, including
