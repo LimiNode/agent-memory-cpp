@@ -572,3 +572,36 @@ The next experiments are intentionally ordered:
 Raw JSON reports remain local under `tmp/`; this note records the
 materialization provenance and compact values needed to reproduce the research
 decision.
+
+### Post-hoc median-threshold diagnostic
+
+Before changing the NLB training objective, the existing frozen NLB-128 weight
+matrix was evaluated with one document-only calibration change:
+
+```text
+bit_j(x) = 1[W_j x - median_train(W_j x) >= 0]
+```
+
+The median was calculated only from the same `23,801` stable training document
+IDs used by the artifact; held-out documents, queries, and qrels did not enter
+the calibration. This is not yet a persisted artifact family or a decoder
+result. It is a temporary NumPy diagnostic designed to isolate thresholding.
+
+| NLB-128 threshold | Total document entropy | Unique held-out document codes | Exact top-10 coverage@512 |
+| --- | ---: | ---: | ---: |
+| Existing zero threshold | 69.90 / 128 | 99.996% | 0.6634 |
+| Per-bit document-only median | 127.59 / 128 | 99.991% | 0.8883 |
+
+This is decisive evidence that the zero-threshold paper baseline is poorly
+matched to anisotropic E5 vectors. Its fixed projection weights are already
+useful; the uncalibrated affine decision boundary wastes much of the available
+code capacity. The result does **not** license changing `nlb_paper_tied_v1`:
+the calibrated encoder is a new project adaptation, must have a new artifact
+family and provenance, and must be evaluated in the C++ exact-rerank path.
+
+The next implementation PR therefore starts with
+`nlb_median_threshold_v1`, preserving the trained matrix and tied-decoder
+weights but materializing an explicit verified encoder-bias file from the
+document-only calibration split. Decoder-only quality is reported separately:
+the existing decoder was trained for zero-threshold codes and must not be
+assumed valid after threshold calibration.
