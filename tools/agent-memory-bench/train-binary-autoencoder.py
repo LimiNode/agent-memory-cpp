@@ -155,6 +155,15 @@ def load_materialization(root: Path) -> tuple[list[str], Path, int, str]:
             require_string(materializer.get("version"), "manifest.materializer.version") != MATERIALIZER_VERSION):
         raise TrainingError("unsupported materializer identity")
     require_sha256(materializer.get("source_hash"), "manifest.materializer.source_hash")
+    execution = require_mapping(manifest.get("execution"), "manifest.execution")
+    if (require_positive_int(execution.get("batch_size"), "manifest.execution.batch_size") <= 0 or
+            execution.get("device") != "cpu" or
+            execution.get("compute_dtype") != "float32" or
+            execution.get("deterministic_algorithms") is not True or
+            execution.get("thread_count") != 1):
+        raise TrainingError("materialization execution recipe is unsupported")
+    for field in ("backend", "platform", "torch_version", "policy"):
+        require_string(execution.get(field), f"manifest.execution.{field}")
     vector_format = require_mapping(manifest.get("vector_format"), "manifest.vector_format")
     if vector_format.get("dtype") != "float32_le" or vector_format.get("endianness") != "little":
         raise TrainingError("materialization vector_format must be little-endian float32")
@@ -431,6 +440,17 @@ def run_self_test() -> int:
                 "id": MATERIALIZER_ID,
                 "version": MATERIALIZER_VERSION,
                 "source_hash": "b" * 64,
+            },
+            "execution": {
+                "batch_size": 2,
+                "device": "cpu",
+                "compute_dtype": "float32",
+                "deterministic_algorithms": True,
+                "thread_count": 1,
+                "backend": "self-test",
+                "platform": "self-test",
+                "torch_version": "not-applicable",
+                "policy": "self-test",
             },
             "prepared_study_manifest_sha256": "a" * 64,
             "vector_format": {"dtype": "float32_le", "endianness": "little", "dimension": 2},
