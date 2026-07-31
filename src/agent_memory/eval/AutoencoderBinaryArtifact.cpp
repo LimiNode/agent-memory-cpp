@@ -9,6 +9,7 @@
 #include <fstream>
 #include <iterator>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 #include <string_view>
 #include <utility>
@@ -413,13 +414,29 @@ namespace agent_memory {
                     }
                     continue;
                 }
-                const auto first = line.find('\t');
-                const auto second = first == std::string::npos ? std::string::npos : line.find('\t', first + 1U);
-                if(first == std::string::npos || second == std::string::npos ||
-                   line.find('\t', second + 1U) != std::string::npos) {
-                    throw std::runtime_error("materialized qrels row must have three tab-separated fields");
+                std::string query_id;
+                std::string document_id;
+                std::string grade_text;
+                const auto first_tab = line.find('\t');
+                if(first_tab != std::string::npos) {
+                    const auto second_tab = line.find('\t', first_tab + 1U);
+                    if(second_tab == std::string::npos ||
+                       line.find('\t', second_tab + 1U) != std::string::npos) {
+                        throw std::runtime_error("materialized qrels row must have three tab-separated fields");
+                    }
+                    query_id = line.substr(0, first_tab);
+                    document_id = line.substr(first_tab + 1U, second_tab - first_tab - 1U);
+                    grade_text = line.substr(second_tab + 1U);
+                } else {
+                    std::istringstream fields(line);
+                    std::string iteration;
+                    if(!(fields >> query_id >> iteration >> document_id >> grade_text) ||
+                       iteration != "Q0" || (fields >> iteration)) {
+                        throw std::runtime_error(
+                            "materialized qrels row must have query, Q0, document, and grade fields"
+                        );
+                    }
                 }
-                const auto grade_text = line.substr(second + 1U);
                 std::size_t parsed = 0;
                 std::int32_t grade = 0;
                 try {
@@ -430,7 +447,7 @@ namespace agent_memory {
                 if(parsed != grade_text.size() || grade < 0) {
                     throw std::runtime_error("materialized qrels grade must be non-negative");
                 }
-                output.push_back({line.substr(0, first), line.substr(first + 1U, second - first - 1U), grade});
+                output.push_back({query_id, document_id, grade});
                 line.clear();
             }
             if(!line.empty()) {

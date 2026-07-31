@@ -87,7 +87,7 @@ namespace {
     "evaluation_document_vectors": {"path": "evaluation-document-vectors.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "count": 2, "dimension": 2, "dtype": "float32_le"},
     "evaluation_query_ids": {"path": "evaluation-query-ids.jsonl", "sha256": "8549672b4c462771e4d8447ada71e66a04caf49137b453f84ce513b2b2b9c522", "count": 1},
     "evaluation_query_vectors": {"path": "evaluation-query-vectors.f32", "sha256": "434b26042aff3fb844a4c4c6be0d81a079b0ce84cfb8190679024404e5dc4822", "count": 1, "dimension": 2, "dtype": "float32_le"},
-    "evaluation_qrels": {"path": "evaluation-qrels.tsv", "sha256": "429585cc3fb7af7520536fab26be456312198ba88c62aeeb481461acf0fed71e", "count": 1},
+    "evaluation_qrels": {"path": "evaluation-qrels.tsv", "sha256": "bb75672eaca6b3cc5b5ffe05bde25ee9aa1a6fdac0bd3dd5244bc67bf850a870", "count": 1},
     "prepared_study_manifest": {"path": "prepared-study-manifest.json", "sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a", "count": 1}
   }
 })");
@@ -138,7 +138,7 @@ int main() {
         write_floats(materialization_root / "evaluation-document-vectors.f32", {1.0F, 0.0F, 0.0F, 1.0F});
         write_text(materialization_root / "evaluation-query-ids.jsonl", "{\"id\":\"q0\"}\n");
         write_floats(materialization_root / "evaluation-query-vectors.f32", {1.0F, 0.0F});
-        write_text(materialization_root / "evaluation-qrels.tsv", "q0\td0\t1\n");
+        write_text(materialization_root / "evaluation-qrels.tsv", "q0 Q0 d0 1\n");
         write_text(materialization_root / "prepared-study-manifest.json", "{}");
         write_materialization_manifest(materialization_root / "manifest.json");
         const auto materialization = agent_memory::load_materialized_autoencoder_evaluation_dataset(
