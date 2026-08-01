@@ -693,3 +693,40 @@ ITQ, random hyperplanes, and optional pair-difference projection will all use
 that exact ID list, while the held-out documents, queries, and qrels remain
 unchanged. The reports must include the subset ID hash and selected count; no
 winner claim is allowed until this common-budget control exists.
+
+### Common-budget 128-bit learning curve
+
+The common-budget control was expanded into nested canonical document-only
+training subsets of 512, 2,048, 8,192, and 23,801 IDs. Each list is a prefix
+of one stable SHA-256 ID ordering, so a larger point adds rows without changing
+the smaller point. PCA+sign, ITQ, and NLB receive exactly the same train IDs at
+each size. NLB uses a separate fixed 1,199-document validation list for
+checkpoint selection; its median threshold is calculated from its train list
+only. This is therefore a production-like train-budget comparison, not a
+strict total-accessible-data budget comparison.
+
+All rows use the same held-out RU corpus, queries, qrels, 128-bit signatures,
+and 512 binary candidates followed by exact float reranking.
+
+| Train IDs | PCA coverage | PCA nDCG@10 | ITQ coverage | ITQ nDCG@10 | Median NLB coverage | Median NLB nDCG@10 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 0.9204 | 0.7926 | 0.9293 | 0.7930 | 0.8883 | 0.7834 |
+| 2,048 | 0.9317 | 0.7954 | 0.9350 | 0.7925 | 0.8893 | 0.7855 |
+| 8,192 | 0.9332 | 0.7934 | 0.9387 | 0.7929 | 0.8886 | 0.7836 |
+| 23,801 | 0.9350 | 0.7972 | 0.9365 | 0.7895 | 0.8891 | 0.7833 |
+
+The curve rejects the hypothesis that NLB-128 will catch up merely through
+more document-only reconstruction training under the current objective. Its
+coverage is stable around `0.889` and nDCG@10 around `0.783--0.786`; PCA+sign
+is stronger at every budget and reaches `0.7972` at 23,801 documents. ITQ is
+statistically too close to PCA at the small budgets to claim a distinct win,
+and is lower at the largest point in this single-seed run.
+
+This is not a failure of calibrated NLB as a candidate filter: it retains about
+97.7--98.0% of full-E5 nDCG@10 at 512 candidates. It is evidence that the
+remaining gap is not primarily median estimation or raw train-row count. The
+next training changes should target code correlation and local E5 geometry:
+learnable median-initialized bias, decorrelation, and document-only neighbour
+or margin distillation. Before declaring a small PCA/ITQ difference, run at
+least two additional seeds and query-bootstrap confidence intervals. A strict
+total-data-budget 512 control remains a separate future ablation.
