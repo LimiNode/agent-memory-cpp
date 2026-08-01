@@ -74,12 +74,23 @@ namespace agent_memory {
             const std::vector<Embedding>& vectors
         ) const override;
 
+        /// \brief Returns the pre-threshold affine projection for each output bit.
+        ///
+        /// The returned value at bit `j` is `dot(weight_j, transformed_input) +
+        /// bias_j`; its sign is the corresponding result of `encode()`. This is
+        /// an artifact-bound experimental primitive for asymmetric query scoring.
+        /// It does not alter the persisted binary signature contract.
+        [[nodiscard]] std::vector<float> affine_projections(const Embedding& vector) const;
+
         /// \brief SIMD backend selected for affine projection dot products.
         [[nodiscard]] VectorSimilarityBackend similarity_backend() const noexcept;
 
     private:
         void validate_input(const Embedding& vector) const;
         [[nodiscard]] BinarySignature encode_validated(const Embedding& vector) const;
+        [[nodiscard]] std::vector<float> affine_projections_validated(
+            const Embedding& vector
+        ) const;
 
         AutoencoderBinaryEncoderOptions m_options;
         BinarySignatureEncoderInfo m_info;

@@ -26,6 +26,29 @@ namespace {
         }
     }
 
+    [[nodiscard]] agent_memory::AutoencoderBinaryCandidateScoring parse_candidate_scoring(
+        const char* text
+    ) {
+        const auto value = std::string{text};
+        if(value == "hamming") {
+            return agent_memory::AutoencoderBinaryCandidateScoring::HammingDistance;
+        }
+        if(value == "asymmetric-affine-dot") {
+            return agent_memory::AutoencoderBinaryCandidateScoring::AsymmetricAffineDot;
+        }
+        throw std::invalid_argument(
+            "candidate-scoring must be hamming or asymmetric-affine-dot"
+        );
+    }
+
+    [[nodiscard]] const char* candidate_scoring_name(
+        agent_memory::AutoencoderBinaryCandidateScoring scoring
+    ) noexcept {
+        return scoring == agent_memory::AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
+            ? "asymmetric_affine_dot_v1"
+            : "hamming_distance_v1";
+    }
+
     [[nodiscard]] nlohmann::json metric_values(
         const std::vector<agent_memory::MetricAtK>& values
     ) {
@@ -132,8 +155,8 @@ namespace {
 } // namespace
 
 int main(int argc, char* argv[]) {
-    if(argc < 4 || argc > 6) {
-        std::cerr << "usage: agent-memory-autoencoder-eval <materialization-root> <artifact.json> <report.json> [oracle-k] [candidate-limit]\n";
+    if(argc < 4 || argc > 7) {
+        std::cerr << "usage: agent-memory-autoencoder-eval <materialization-root> <artifact.json> <report.json> [oracle-k] [candidate-limit] [candidate-scoring]\n";
         return 2;
     }
     try {
@@ -167,6 +190,8 @@ int main(int argc, char* argv[]) {
         const agent_memory::AutoencoderBinaryEvaluationOptions binary_options{
             argc >= 5 ? parse_positive_size(argv[4], "oracle-k") : 10U,
             argc >= 6 ? parse_positive_size(argv[5], "candidate-limit") : 100U,
+            argc >= 7 ? parse_candidate_scoring(argv[6]) :
+                agent_memory::AutoencoderBinaryCandidateScoring::HammingDistance,
         };
         const auto evaluation = agent_memory::evaluate_autoencoder_binary_retrieval_with_qrels(
             document_ids,
@@ -188,6 +213,7 @@ int main(int argc, char* argv[]) {
             {"query_count", materialization.query_embeddings.size()},
             {"oracle_k", evaluation.exact_agreement.oracle_k},
             {"returned_candidate_limit", evaluation.exact_agreement.returned_candidate_limit},
+            {"candidate_scoring", candidate_scoring_name(binary_options.candidate_scoring)},
             {"exact_top_k_candidate_coverage", evaluation.exact_agreement.exact_top_k_candidate_coverage},
             {"reranked_recall_at_k_vs_exact", evaluation.exact_agreement.reranked_recall_at_k_vs_exact},
             {"decoder_recall_at_k_vs_exact", evaluation.exact_agreement.decoder_recall_at_k_vs_exact},

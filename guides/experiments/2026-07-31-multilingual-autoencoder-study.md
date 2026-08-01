@@ -776,3 +776,44 @@ the hypothesis that a large asymmetric threshold alone resolves the remaining
 future document-only calibration studies. The next experiment therefore keeps
 the document codes and artifacts fixed and evaluates asymmetric continuous-query
 scoring as a distinct candidate-search policy.
+
+### Asymmetric continuous-query scoring
+
+The next post-hoc control keeps the canonical 128-bit median-calibrated NLB
+artifact and every document code fixed. Hamming assigns every disagreeing bit
+the same cost. The asymmetric alternative retains a document's packed bits but
+uses the query's continuous pre-threshold affine projections:
+
+```text
+score(q, d) = sum_j sign(bit_j(d)) * (W_j * transform(q) + bias_j)
+```
+
+where a set document bit has sign `+1` and a cleared bit has sign `-1`. Thus a
+document agreement on a high-confidence query projection counts more than an
+agreement close to the threshold. This is a query-time scoring change only:
+the query encoder, document artifact, calibration split, held-out RU corpus,
+and exact float reranker are otherwise identical. No query, qrel, or relevance
+loss is used to train or tune the artifact.
+
+| Candidates | Hamming coverage | Asymmetric coverage | Hamming nDCG@10 | Asymmetric nDCG@10 |
+| ---: | ---: | ---: | ---: | ---: |
+| 128 | 0.7580 | 0.8873 | 0.7465 | 0.7916 |
+| 512 | 0.8886 | 0.9596 | 0.7826 | 0.7986 |
+| 2,048 | 0.9671 | 0.9924 | 0.7977 | 0.8011 |
+
+At 512 candidates, continuous query evidence recovers an additional 7.10
+percentage points of the original E5 top-10 and raises exact-rerank nDCG@10 to
+99.65% of the full-E5 `0.80145` score. At 128 candidates it delivers a much
+larger candidate-stage gain (12.93 points), showing that a binary document code
+does retain more information than symmetric Hamming ranking can exploit.
+
+This is not yet a production search result. The implementation is an in-memory
+full scan that accumulates one float contribution per document bit, whereas the
+Hamming path uses packed XOR plus popcount. It is therefore a quality upper
+bound for a future cascade, not evidence that affine scoring should replace a
+band/MDBX Hamming prefilter. A plausible serving design is: band or Hamming
+coarse shortlist, asymmetric affine scoring over that bounded shortlist, then
+exact float reranking. The next index experiment must measure that cascade's
+quality/latency frontier. Before then, robustness work should compare seeds and
+query-bootstrap intervals and test whether query-logit scaling changes this
+result without qrels-based tuning.
