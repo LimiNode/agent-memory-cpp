@@ -730,3 +730,49 @@ learnable median-initialized bias, decorrelation, and document-only neighbour
 or margin distillation. Before declaring a small PCA/ITQ difference, run at
 least two additional seeds and query-bootstrap confidence intervals. A strict
 total-data-budget 512 control remains a separate future ablation.
+
+### Post-hoc NLB quantile-threshold sweep
+
+The median result raises a narrower question: whether the document median is
+also the best fixed threshold, or merely a useful way to restore bit balance.
+Without changing the frozen `nlb_paper_tied_v1` matrix, a calibrated artifact
+was materialized for each per-bit document-only projection quantile. Non-median
+policies are persisted as the separate `nlb_quantile_threshold_v1` family and
+record both the selected quantile and its calibration-ID provenance. The
+existing `nlb_median_threshold_v1` identity remains reserved for exactly
+`q = 0.5`.
+
+All seven artifacts use the same 23,801 training documents, the same held-out
+22,607-document RU corpus, 1,252 queries, 13,100 qrels, 128-bit codes, and
+512 binary candidates followed by exact float reranking. No query, qrel, or
+held-out document contributes to threshold construction. As a compatibility
+check, the new calibrator's `q = 0.5` encoder-bias file has the same SHA-256 as
+the earlier median artifact:
+`73282662bb8e4267e6ce35ab9f5374df8e8f9dc60815583fdfbf72e89ac700b0`.
+
+| Train quantile | Coverage@512 | Exact-rerank nDCG@10 | Held-out entropy / 128 | Cosine vs. -Hamming correlation |
+| ---: | ---: | ---: | ---: | ---: |
+| 0.25 | 0.7837 | 0.7468 | 102.74 | 0.3559 |
+| 0.35 | 0.8533 | 0.7755 | 118.66 | 0.3888 |
+| 0.45 | 0.8839 | 0.7824 | 126.50 | 0.4062 |
+| 0.50 (median) | 0.8886 | 0.7826 | 127.60 | 0.4100 |
+| 0.55 | 0.8899 | 0.7854 | 126.84 | 0.4123 |
+| 0.65 | 0.8612 | 0.7747 | 119.54 | 0.4045 |
+| 0.75 | 0.7931 | 0.7555 | 103.94 | 0.3899 |
+
+The broad conclusion is robust: moving the threshold far from the document
+median damages code capacity and retrieval locality even though code uniqueness
+stays above 99.99%. The narrow `0.45--0.55` region is comparatively stable.
+The single best observed row is `q = 0.55`, but this is a descriptive
+held-out-qrels observation, not a selection rule or a production default.
+Choosing a non-median fixed threshold from these scores would overfit this one
+RU evaluation fixture. Median remains the canonical no-query calibration; a
+separate query-aware evaluation must decide whether continuous query evidence
+can improve candidate selection without changing the document artifact.
+
+This sweep changes neither the NLB objective nor decoder training. It rules out
+the hypothesis that a large asymmetric threshold alone resolves the remaining
+128-bit gap to PCA+sign, while leaving a small near-median operating region for
+future document-only calibration studies. The next experiment therefore keeps
+the document codes and artifacts fixed and evaluates asymmetric continuous-query
+scoring as a distinct candidate-search policy.

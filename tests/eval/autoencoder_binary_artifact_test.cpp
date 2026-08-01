@@ -123,6 +123,33 @@ namespace {
 })";
     }
 
+    void write_nlb_quantile_threshold_artifact(const std::filesystem::path& path) {
+        std::ofstream output(path, std::ios::binary);
+        output << R"({
+  "schema_version": 1,
+  "trainer": {"id": "agent-memory-cpp:nlb-median-threshold-calibrator", "version": "v1", "source_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"},
+  "input_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "prepared_study_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "source_encoder_artifact_sha256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+  "architecture": {
+    "family": "nlb_quantile_threshold_v1",
+    "input_dimension": 2,
+    "bit_count": 2,
+    "encoder_activation": "affine_hard_step_quantile_threshold_v1",
+    "decoder": "tied_transpose_tanh",
+    "code_value_encoding": "zero_one",
+    "input_transform": "clip_minus_one_one_v1"
+  },
+  "training": {"seed": 42, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true}},
+  "calibration": {"policy": "per_bit_projection_quantile_v1", "quantile": 0.75, "split_id": "stable_document_only_train_v1", "document_count": 2, "document_ids_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "weights": {
+    "encoder_weights": {"path": "encoder-weights.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "shape": [2, 2], "layout": "row_major_out_by_in", "dtype": "float32_le"},
+    "encoder_bias": {"path": "encoder-bias.f32", "sha256": "1dc7fbfac33e9a09c59d17f9ff8c27e3de8d248f2b7488fbee7768e307abdd33", "shape": [2], "dtype": "float32_le"},
+    "decoder_bias": {"path": "decoder-bias.f32", "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc", "shape": [2], "dtype": "float32_le"}
+  }
+})";
+    }
+
     void write_text(const std::filesystem::path& path, const char* text) {
         std::ofstream output(path, std::ios::binary);
         output << text;
@@ -199,6 +226,14 @@ int main() {
            std::fabs(nlb_median_reconstructed.values[0]) > 1.0e-6F ||
            std::fabs(nlb_median_reconstructed.values[1] - std::tanh(1.0F)) > 1.0e-6F) {
             return fail("NLB median-threshold artifact contract");
+        }
+        write_nlb_quantile_threshold_artifact(root / "nlb-quantile-threshold-artifact.json");
+        const auto nlb_quantile_artifact = agent_memory::load_autoencoder_binary_artifact(
+            root / "nlb-quantile-threshold-artifact.json"
+        );
+        if(nlb_quantile_artifact.encoder.info().encoder_id != "nlb_quantile_threshold" ||
+           nlb_quantile_artifact.encoder.encode({{0.25F, 0.25F}}).bit(0)) {
+            return fail("NLB quantile-threshold artifact contract");
         }
         const auto metrics = agent_memory::evaluate_autoencoder_binary_retrieval(
             {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},

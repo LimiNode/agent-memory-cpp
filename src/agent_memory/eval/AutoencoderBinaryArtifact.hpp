@@ -56,10 +56,11 @@ namespace agent_memory {
     /// digests, exact row-major float32-le byte sizes, finite weights, and the
     /// encoder/decoder shapes. `linear_binary_autoencoder_ste` retains its
     /// independent linear decoder; `nlb_paper_tied_v1` and
-    /// `nlb_median_threshold_v1` derive a zero/one, `tanh` decoder from the
-    /// verified transpose of their encoder matrix. The median-threshold variant
-    /// additionally requires its declared document-only calibration provenance
-    /// and uses its persisted per-bit encoder bias. The loader returns the
+    /// `nlb_median_threshold_v1`, and `nlb_quantile_threshold_v1` derive a
+    /// zero/one, `tanh` decoder from the verified transpose of their encoder
+    /// matrix. The threshold-calibrated variants additionally require their
+    /// declared document-only calibration provenance and persisted per-bit
+    /// encoder bias. The loader returns the
     /// artifact JSON digest as stable encoder identity input;
     /// changing any artifact metadata or weights creates a distinct binary
     /// signature space.
