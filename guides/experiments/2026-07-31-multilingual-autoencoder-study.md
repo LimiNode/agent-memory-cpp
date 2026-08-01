@@ -1022,3 +1022,24 @@ improve it materially. These are still one seed and one held-out RU fixture;
 the next gate is a local-neighbour/margin objective and then a separately
 declared qrels-aware experiment, not promotion of this artifact as a production
 default.
+
+### Document-only local-neighbour margin control
+
+The full soft-code cosine distillation above was too global and unstable. This
+control uses the same median-preserving ITQ setup, but within each document
+batch takes the teacher's nearest non-self clipped-E5 neighbour as positive and
+its rank-8 neighbour as negative. It minimizes a soft margin between their
+normalized soft-code cosine scores. The teacher vectors are document vectors
+only; no query or qrel enters this objective.
+
+| Local-margin weight | Coverage@512 | Reranked nDCG@10 | cosine/-Hamming correlation | Total bit entropy |
+| ---: | ---: | ---: | ---: | ---: |
+| `0` (median-preserving reconstruction control) | 0.9439 | 0.7945 | 0.5580 | 127.23 |
+| `0.01` | 0.9439 | 0.7947 | 0.5582 | 127.23 |
+| `0.05` | 0.9442 | 0.7949 | 0.5595 | 127.23 |
+
+The effect is small but directionally positive at `0.05`, without reducing bit
+entropy. It is not yet a robust winner: one seed, one margin and one in-batch
+neighbour definition cannot establish a general training recipe. The remaining
+separate experiment may use labeled MIRACL query--document pairs and hard
+negatives, with a disjoint train query/qrel split and untouched dev evaluation.
