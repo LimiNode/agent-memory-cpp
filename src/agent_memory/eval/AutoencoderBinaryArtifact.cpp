@@ -665,6 +665,10 @@ namespace agent_memory {
         };
     }
 
+    std::string sha256_file_hex(const std::filesystem::path& path) {
+        return sha256_hex(read_file_bytes(path));
+    }
+
     MaterializedAutoencoderEvaluationDataset
     load_materialized_autoencoder_evaluation_dataset(
         const std::filesystem::path& materialization_root
@@ -764,6 +768,9 @@ namespace agent_memory {
         MaterializedAutoencoderEvaluationDataset output;
         output.materialization_manifest_sha256 = sha256_hex(manifest_bytes);
         output.prepared_study_manifest_sha256 = prepared_study_manifest_sha256;
+        output.training_document_ids_sha256 = require_sha256(
+            require_field(outputs, "train_ids"), "sha256"
+        );
         output.evaluation_document_ids_sha256 = require_sha256(
             require_field(outputs, "evaluation_document_ids"), "sha256"
         );

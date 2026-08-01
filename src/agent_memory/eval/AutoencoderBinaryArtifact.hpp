@@ -18,6 +18,10 @@
 
 namespace agent_memory {
 
+    /// \brief Returns the lowercase SHA-256 digest of a complete regular file.
+    /// \throws std::runtime_error when the file cannot be read.
+    [[nodiscard]] std::string sha256_file_hex(const std::filesystem::path& path);
+
     /// \brief ID-bearing float vector loaded from a materialized E5 study.
     struct MaterializedEmbeddingRecord final {
         std::string id;
@@ -28,6 +32,7 @@ namespace agent_memory {
     struct MaterializedAutoencoderEvaluationDataset final {
         std::string materialization_manifest_sha256;
         std::string prepared_study_manifest_sha256;
+        std::string training_document_ids_sha256;
         std::string evaluation_document_ids_sha256;
         std::string evaluation_query_ids_sha256;
         std::string evaluation_qrels_sha256;

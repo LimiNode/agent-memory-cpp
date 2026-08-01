@@ -1,5 +1,6 @@
 #include <agent_memory/eval/AutoencoderBinaryArtifact.hpp>
 #include <agent_memory/eval/AutoencoderBinaryEvaluation.hpp>
+#include <agent_memory/index/VectorSimilarityComputer.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -251,6 +252,11 @@ int main(int argc, char* argv[]) {
             {"evaluation_query_ids_sha256", materialization.evaluation_query_ids_sha256},
             {"evaluation_qrels_sha256", materialization.evaluation_qrels_sha256},
             {"tie_break_policy", "score_desc_document_id_asc_v1"},
+            {"evaluator_id", "agent-memory-autoencoder-eval"},
+            {"evaluator_version", "v1"},
+            {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
+                agent_memory::VectorSimilarityComputer{}.backend()
+            )},
             {"evaluation_protocol", "miracl_monolingual_per_language_v1"},
             {"language_ids", language_ids},
             {"document_count", materialization.document_embeddings.size()},

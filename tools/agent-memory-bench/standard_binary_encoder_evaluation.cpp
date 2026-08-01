@@ -22,6 +22,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <string_view>
+#include <set>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -32,6 +34,7 @@ namespace {
     struct ScoredPosition final {
         std::size_t position = 0;
         float score = 0.0F;
+        std::string_view document_id;
     };
 
     struct EncoderReport final {
@@ -50,7 +53,7 @@ namespace {
     };
 
     [[nodiscard]] bool better_score(const ScoredPosition& lhs, const ScoredPosition& rhs) noexcept {
-        return lhs.score == rhs.score ? lhs.position < rhs.position : lhs.score > rhs.score;
+        return lhs.score == rhs.score ? lhs.document_id < rhs.document_id : lhs.score > rhs.score;
     }
 
     [[nodiscard]] std::size_t parse_positive_size(const char* text, const char* name) {
@@ -93,6 +96,32 @@ namespace {
         return output;
     }
 
+    [[nodiscard]] std::string language_id_from_record_id(const std::string& record_id) {
+        const auto separator = record_id.find(':');
+        if(separator == std::string::npos || separator == 0U) {
+            throw std::runtime_error("MIRACL record ID must begin with a language prefix");
+        }
+        return record_id.substr(0U, separator);
+    }
+
+    [[nodiscard]] std::vector<std::string> evaluation_language_ids(
+        const std::vector<std::string>& document_ids,
+        const std::vector<std::string>& query_ids
+    ) {
+        std::set<std::string> document_languages;
+        std::set<std::string> query_languages;
+        for(const auto& id : document_ids) {
+            document_languages.insert(language_id_from_record_id(id));
+        }
+        for(const auto& id : query_ids) {
+            query_languages.insert(language_id_from_record_id(id));
+        }
+        if(document_languages.size() != 1U || document_languages != query_languages) {
+            throw std::runtime_error("mixed-language MIRACL evaluation requires per-language corpus filtering");
+        }
+        return {document_languages.begin(), document_languages.end()};
+    }
+
     [[nodiscard]] float inverse_norm(
         const agent_memory::Embedding& embedding,
         const agent_memory::VectorSimilarityComputer& similarity
@@ -105,6 +134,7 @@ namespace {
         const agent_memory::Embedding& query,
         float query_inverse_norm,
         const std::vector<agent_memory::Embedding>& documents,
+        const std::vector<std::string>& document_ids,
         const std::vector<float>& document_inverse_norms,
         const agent_memory::VectorSimilarityComputer& similarity
     ) {
@@ -116,6 +146,7 @@ namespace {
                 similarity.dot_product_values(
                     query.values.data(), documents[position].values.data(), query.dimension()
                 ) * query_inverse_norm * document_inverse_norms[position],
+                document_ids[position],
             });
         }
         std::sort(output.begin(), output.end(), better_score);
@@ -218,7 +249,8 @@ namespace {
             const auto& query = query_vectors[query_index];
             const auto query_inverse_norm = inverse_norm(query, similarity);
             const auto oracle = cosine_rank(
-                query, query_inverse_norm, document_vectors, document_inverse_norms, similarity
+                query, query_inverse_norm, document_vectors, document_ids,
+                document_inverse_norms, similarity
             );
             original_run.queries.push_back(make_query_run(
                 query_ids[query_index], oracle, document_ids, "original_float"
@@ -247,6 +279,7 @@ namespace {
                     -static_cast<float>(agent_memory::hamming_distance(
                         query_signature, document_signatures[position]
                     )),
+                    document_ids[position],
                 });
             }
             std::sort(candidates.begin(), candidates.end(), better_score);
@@ -261,6 +294,7 @@ namespace {
                 candidate.score = similarity.dot_product_values(
                     query.values.data(), document_vectors[candidate.position].values.data(), query.dimension()
                 ) * query_inverse_norm * document_inverse_norms[candidate.position];
+                candidate.document_id = document_ids[candidate.position];
             }
             std::sort(candidates.begin(), candidates.end(), better_score);
             binary_run.queries.push_back(make_query_run(
@@ -361,13 +395,24 @@ namespace {
 
 int main(int argc, char* argv[]) {
     if(argc == 2 && std::string{argv[1]} == "--self-test") {
-        const std::vector<ScoredPosition> oracle{{0U, 1.0F}, {1U, 0.5F}};
+        const std::vector<ScoredPosition> oracle{{0U, 1.0F, "a"}, {1U, 0.5F, "b"}};
         const std::vector<ScoredPosition> candidates{
-            {0U, 1.0F}, {2U, 0.9F}, {1U, 0.8F}
+            {0U, 1.0F, "a"}, {2U, 0.9F, "c"}, {1U, 0.8F, "b"}
         };
         if(overlap_fraction(oracle, candidates, 2U, 1U) != 0.5 ||
            overlap_fraction(oracle, candidates, 2U, 3U) != 1.0) {
             std::cerr << "standard binary encoder evaluator candidate coverage self-test failed\n";
+            return 1;
+        }
+        std::vector<ScoredPosition> tie_first{{0U, -1.0F, "document-b"},
+                                              {1U, -1.0F, "document-a"}};
+        std::vector<ScoredPosition> tie_permuted{{0U, -1.0F, "document-a"},
+                                                 {1U, -1.0F, "document-b"}};
+        std::sort(tie_first.begin(), tie_first.end(), better_score);
+        std::sort(tie_permuted.begin(), tie_permuted.end(), better_score);
+        if(tie_first.front().document_id != "document-a" ||
+           tie_permuted.front().document_id != "document-a") {
+            std::cerr << "standard binary encoder evaluator tie-break self-test failed\n";
             return 1;
         }
         return 0;
@@ -396,6 +441,7 @@ int main(int argc, char* argv[]) {
         }
         std::vector<agent_memory::Embedding> training_vectors;
         std::string training_id_list_path;
+        std::string training_id_list_sha256 = materialization.training_document_ids_sha256;
         if(argc == 7) {
             const auto selected_ids = load_training_ids(argv[6]);
             std::unordered_map<std::string, const agent_memory::Embedding*> available;
@@ -412,6 +458,7 @@ int main(int argc, char* argv[]) {
                 training_vectors.push_back(*existing->second);
             }
             training_id_list_path = argv[6];
+            training_id_list_sha256 = agent_memory::sha256_file_hex(argv[6]);
         } else {
             training_vectors.reserve(materialization.training_embeddings.size());
             for(const auto& record : materialization.training_embeddings) {
@@ -419,6 +466,7 @@ int main(int argc, char* argv[]) {
             }
         }
         const auto dimension = document_vectors.front().dimension();
+        const auto language_ids = evaluation_language_ids(document_ids, query_ids);
         const auto dataset = make_dataset(document_ids, query_ids, materialization.judgments);
         std::vector<EncoderReport> reports;
         const auto append = [&](const char* family, std::size_t training_count,
@@ -462,10 +510,23 @@ int main(int argc, char* argv[]) {
             {"schema_version", 1},
             {"materialization_manifest_sha256", materialization.materialization_manifest_sha256},
             {"prepared_study_manifest_sha256", materialization.prepared_study_manifest_sha256},
+            {"training_document_ids_sha256", materialization.training_document_ids_sha256},
+            {"evaluation_document_ids_sha256", materialization.evaluation_document_ids_sha256},
+            {"evaluation_query_ids_sha256", materialization.evaluation_query_ids_sha256},
+            {"evaluation_qrels_sha256", materialization.evaluation_qrels_sha256},
+            {"evaluation_protocol", "miracl_monolingual_per_language_v1"},
+            {"language_ids", language_ids},
+            {"tie_break_policy", "score_desc_document_id_asc_v1"},
+            {"evaluator_id", "agent-memory-standard-binary-eval"},
+            {"evaluator_version", "v1"},
+            {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
+                agent_memory::VectorSimilarityComputer{}.backend()
+            )},
             {"document_count", document_vectors.size()},
             {"query_count", query_vectors.size()},
             {"training_document_count", training_vectors.size()},
             {"training_id_list_path", training_id_list_path},
+            {"training_document_ids_sha256", training_id_list_sha256},
             {"oracle_k", 10},
             {"returned_candidate_limit", candidate_limit},
             {"seed", seed},
