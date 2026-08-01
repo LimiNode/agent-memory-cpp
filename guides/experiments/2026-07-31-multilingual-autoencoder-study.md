@@ -895,3 +895,75 @@ exact float reranking. The next index experiment must measure that cascade's
 quality/latency frontier. Before then, robustness work should compare seeds and
 query-bootstrap intervals and test whether query-logit scaling changes this
 result without qrels-based tuning.
+
+### 2026-08-01 — Current-contract reproduction of Hamming and asymmetric scoring
+
+#### Question
+
+Do the prior Hamming-versus-asymmetric conclusions survive the final evaluator
+integrity and build-provenance contract, without retraining or changing the
+frozen document-code artifact?
+
+#### Setup
+
+The same held-out RU materialization and canonical 128-bit
+`nlb_median_threshold_v1` artifact were evaluated with the current C++
+evaluator for both candidate orderings at 128, 512, and 2,048 candidates.
+Training, median calibration, document codes, query vectors, qrels, and exact
+float reranking were unchanged. Each run recomputed the full float oracle and
+qrels metrics; raw reports remain local under `tmp/pr101-nlb-median-128-*.json`.
+
+All six reports carry schema version 2 and agree on the following identity:
+
+| Identity field | Value |
+| --- | --- |
+| Artifact SHA-256 | `3e8c5194c74164163a7ea2dfd47d24af3b174ccd4abcd9ba91594fe94fe9516d` |
+| Evaluator source manifest SHA-256 | `82483a14edc6065c7494dc42b1434c69ee6fcbdd74773e61909141aa046b243f` |
+| Materialization manifest SHA-256 | `cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86` |
+| Prepared-study manifest SHA-256 | `9b8eb34f0edf6acaa8e7e58597a18bcb10709f78dcfa707f33ca064f22189200` |
+| Build configuration | Release, GNU 15.2.0, C++17, MinGW Makefiles, Windows AMD64 |
+| Build-environment SHA-256 | `8619fad1466eeed5b815e055bdb7b5556ace53b9accc06b088251d1035b19041` |
+
+The final report contract fixes stable-ID tie handling, scalar reference
+similarity, streaming qrels aggregation, evaluator implementation identity,
+and build-environment provenance. It is therefore the first comparison that
+can support a new selection decision after the methodology follow-up.
+
+#### Expected result
+
+The historical numbers should be reproduced to ordinary floating-point
+rounding. Asymmetric continuous-query scoring should retain its substantial
+candidate-quality advantage, but must still be treated as a full-scan quality
+upper bound rather than a serving-latency result.
+
+#### Result
+
+| Candidates | Hamming coverage | Asymmetric coverage | Hamming nDCG@10 | Asymmetric nDCG@10 | Full E5 nDCG@10 |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 128 | 0.7581 | 0.8873 | 0.7465 | 0.7916 | 0.8015 |
+| 512 | 0.8886 | 0.9596 | 0.7826 | 0.7986 | 0.8015 |
+| 2,048 | 0.9670 | 0.9924 | 0.7977 | 0.8011 | 0.8015 |
+
+The reported values match the historical table at the shown precision. At 512
+candidates, asymmetric scoring retains 99.65% of full-E5 nDCG@10 and recovers
+7.10 percentage points more of the exact E5 top-10 than Hamming. At 2,048 it
+retains 99.96%, but its full-corpus scan is not the intended production path.
+
+#### Interpretation and next checks
+
+The earlier quality conclusion is confirmed: continuous query projections
+contain useful confidence information that symmetric Hamming discards. The
+remaining practical question is no longer whether asymmetric scoring improves
+quality, but whether a Hamming-first cascade can present it a sufficiently
+small shortlist at an acceptable quality/latency/bytes-read frontier.
+
+The next two steps are deliberately separate:
+
+1. implement a score- and ranking-parity-tested byte-LUT weighted-Hamming
+   backend for asymmetric scoring;
+2. evaluate `Hamming K1 -> asymmetric K2 -> exact float rerank` with explicit
+   per-stage candidate counts, timings, and payload-read accounting.
+
+This run is one release build and one held-out RU fixture, so it does not
+establish cross-platform timing or multilingual generalization. It also does
+not tune a threshold, loss, or query policy from these qrels.
