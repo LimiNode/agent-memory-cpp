@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize a provenance-bound per-bit median threshold for a frozen NLB artifact."""
+"""Materialize a provenance-bound per-bit quantile threshold for a frozen NLB artifact."""
 
 from __future__ import annotations
 
@@ -18,6 +18,8 @@ CALIBRATOR_ID = "agent-memory-cpp:nlb-median-threshold-calibrator"
 CALIBRATOR_VERSION = "v1"
 FAMILY = "nlb_median_threshold_v1"
 POLICY = "per_bit_projection_median_v1"
+QUANTILE_FAMILY = "nlb_quantile_threshold_v1"
+QUANTILE_POLICY = "per_bit_projection_quantile_v1"
 
 
 class CalibrationError(RuntimeError):
@@ -93,6 +95,24 @@ def require_nonnegative_int(value: Any, field: str) -> int:
     return value
 
 
+def require_quantile(value: float) -> float:
+    """Returns a finite open-interval quantile used only with training documents."""
+    if not 0.0 < value < 1.0:
+        raise CalibrationError("quantile must be strictly between 0 and 1")
+    return value
+
+
+def calibration_contract(quantile: float) -> tuple[str, str, str]:
+    """Keeps legacy median artifacts distinct from non-median threshold artifacts."""
+    if quantile == 0.5:
+        return FAMILY, POLICY, "affine_hard_step_median_threshold_v1"
+    return (
+        QUANTILE_FAMILY,
+        QUANTILE_POLICY,
+        "affine_hard_step_quantile_threshold_v1",
+    )
+
+
 def verify_calibration_is_held_out(
     trainer: Any,
     materialization_root: Path,
@@ -153,6 +173,7 @@ def calibrate(
     materialization_root: Path,
     output_root: Path,
     train_ids_path: Path | None,
+    quantile: float,
 ) -> None:
     if output_root.exists():
         raise CalibrationError(f"output root already exists: {output_root}")
@@ -220,8 +241,16 @@ def calibrate(
     matrix = numpy.fromfile(weight_path, dtype="<f4").reshape(bit_count, dimension)
     vectors = numpy.memmap(vectors_path, dtype="<f4", mode="r", shape=(len(ids), dimension))
     projections = numpy.asarray(vectors[calibration_indices], dtype=numpy.float32) @ matrix.T
-    medians = numpy.median(projections, axis=0).astype(numpy.float32)
-    if not numpy.isfinite(medians).all():
+    if quantile == 0.5:
+        thresholds = numpy.median(projections, axis=0).astype(numpy.float32)
+    else:
+        thresholds = numpy.quantile(
+            projections,
+            quantile,
+            axis=0,
+            method="linear",
+        ).astype(numpy.float32)
+    if not numpy.isfinite(thresholds).all():
         raise CalibrationError("calibration produced a non-finite encoder bias")
     output_root.mkdir(parents=True)
     copied_weights = {
@@ -229,17 +258,20 @@ def calibrate(
         "decoder_bias": copy_verified_weight(source_root, output_root, weights, "decoder_bias"),
     }
     bias_path = output_root / "encoder-bias.f32"
-    (-medians).astype("<f4").tofile(bias_path)
+    (-thresholds).astype("<f4").tofile(bias_path)
     copied_weights["encoder_bias"] = {
         "path": bias_path.name, "sha256": sha256_file(bias_path),
         "shape": [bit_count], "dtype": "float32_le",
     }
+    family, policy, encoder_activation = calibration_contract(quantile)
     calibration = {
-        "policy": POLICY,
+        "policy": policy,
         "split_id": split_id,
         "document_count": len(calibration_ids),
         "document_ids_sha256": canonical_ids_sha256(calibration_ids),
     }
+    if quantile != 0.5:
+        calibration["quantile"] = quantile
     artifact = {
         "schema_version": 1,
         "trainer": {
@@ -251,8 +283,8 @@ def calibrate(
         "prepared_study_manifest_sha256": prepared_manifest_hash,
         "source_encoder_artifact_sha256": sha256_file(source_artifact_path),
         "architecture": {
-            "family": FAMILY, "input_dimension": dimension, "bit_count": bit_count,
-            "encoder_activation": "affine_hard_step_median_threshold_v1",
+            "family": family, "input_dimension": dimension, "bit_count": bit_count,
+            "encoder_activation": encoder_activation,
             "decoder": "tied_transpose_tanh", "code_value_encoding": "zero_one",
             "input_transform": "clip_minus_one_one_v1",
         },
@@ -280,6 +312,20 @@ def run_self_test() -> int:
         else:
             print("self-test failed: unsupported source family was accepted", file=sys.stderr)
             return 1
+    try:
+        require_quantile(0.0)
+    except CalibrationError:
+        pass
+    else:
+        print("self-test failed: zero quantile was accepted", file=sys.stderr)
+        return 1
+    if calibration_contract(0.5) != (
+        FAMILY,
+        POLICY,
+        "affine_hard_step_median_threshold_v1",
+    ) or calibration_contract(0.75)[0] != QUANTILE_FAMILY:
+        print("self-test failed: threshold artifact families are unstable", file=sys.stderr)
+        return 1
     print("NLB median-threshold calibrator self-test ok")
     return 0
 
@@ -290,6 +336,12 @@ def main(argv: list[str]) -> int:
     parser.add_argument("materialization_root", type=Path, nargs="?")
     parser.add_argument("output_root", type=Path, nargs="?")
     parser.add_argument("--train-ids", type=Path)
+    parser.add_argument(
+        "--quantile",
+        type=float,
+        default=0.5,
+        help="Per-bit document-only projection quantile (default: 0.5, the median).",
+    )
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
     if args.self_test:
@@ -299,7 +351,13 @@ def main(argv: list[str]) -> int:
     if not args.source_artifact or not args.materialization_root or not args.output_root:
         parser.error("source_artifact, materialization_root, and output_root are required")
     try:
-        calibrate(args.source_artifact, args.materialization_root, args.output_root, args.train_ids)
+        calibrate(
+            args.source_artifact,
+            args.materialization_root,
+            args.output_root,
+            args.train_ids,
+            require_quantile(args.quantile),
+        )
     except CalibrationError as exc:
         print(f"calibrate-nlb-median-threshold: {exc}", file=sys.stderr)
         return 1

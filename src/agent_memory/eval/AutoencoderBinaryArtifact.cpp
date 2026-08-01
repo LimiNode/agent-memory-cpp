@@ -489,13 +489,16 @@ namespace agent_memory {
         const auto is_ste = family == "linear_binary_autoencoder_ste";
         const auto is_nlb_paper = family == "nlb_paper_tied_v1";
         const auto is_nlb_median = family == "nlb_median_threshold_v1";
+        const auto is_nlb_quantile = family == "nlb_quantile_threshold_v1";
         if((is_ste && (trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
                        trainer_version != "v1")) ||
            (is_nlb_paper && (trainer_id != "agent-memory-cpp:nlb-tied-binary-autoencoder-trainer" ||
                              trainer_version != "v1")) ||
            (is_nlb_median && (trainer_id != "agent-memory-cpp:nlb-median-threshold-calibrator" ||
                               trainer_version != "v1")) ||
-           (!is_ste && !is_nlb_paper && !is_nlb_median)) {
+           (is_nlb_quantile && (trainer_id != "agent-memory-cpp:nlb-median-threshold-calibrator" ||
+                                trainer_version != "v1")) ||
+           (!is_ste && !is_nlb_paper && !is_nlb_median && !is_nlb_quantile)) {
             throw std::runtime_error("unsupported autoencoder artifact trainer identity");
         }
         (void)require_sha256(trainer, "source_hash");
@@ -511,6 +514,11 @@ namespace agent_memory {
             (require_string(architecture, "encoder_activation") != "affine_hard_step_median_threshold_v1" ||
              require_string(architecture, "decoder") != "tied_transpose_tanh" ||
              require_string(architecture, "code_value_encoding") != "zero_one" ||
+             require_string(architecture, "input_transform") != "clip_minus_one_one_v1")) ||
+           (is_nlb_quantile &&
+            (require_string(architecture, "encoder_activation") != "affine_hard_step_quantile_threshold_v1" ||
+             require_string(architecture, "decoder") != "tied_transpose_tanh" ||
+             require_string(architecture, "code_value_encoding") != "zero_one" ||
              require_string(architecture, "input_transform") != "clip_minus_one_one_v1"))) {
             throw std::runtime_error("unsupported autoencoder artifact architecture");
         }
@@ -523,17 +531,26 @@ namespace agent_memory {
                 throw std::runtime_error("unsupported NLB-paper artifact regularizer");
             }
         }
-        if(is_nlb_median) {
+        if(is_nlb_median || is_nlb_quantile) {
             (void)require_sha256(root, "source_encoder_artifact_sha256");
             const auto& calibration = require_field(root, "calibration");
             const auto calibration_split_id = require_string(calibration, "split_id");
-            if(require_string(calibration, "policy") != "per_bit_projection_median_v1" ||
+            const auto expected_policy = is_nlb_median ?
+                "per_bit_projection_median_v1" : "per_bit_projection_quantile_v1";
+            if(require_string(calibration, "policy") != expected_policy ||
                (calibration_split_id != "stable_document_only_train_v1" &&
                 calibration_split_id != "external_canonical_id_lists_v1") ||
                require_positive_size(calibration, "document_count") == 0U) {
-                throw std::runtime_error("unsupported NLB median-threshold calibration");
+                throw std::runtime_error("unsupported NLB threshold calibration");
             }
             (void)require_sha256(calibration, "document_ids_sha256");
+            if(is_nlb_quantile) {
+                const auto& quantile = require_field(calibration, "quantile");
+                if(!quantile.is_number() || !std::isfinite(quantile.get<double>()) ||
+                   quantile.get<double>() <= 0.0 || quantile.get<double>() >= 1.0) {
+                    throw std::runtime_error("unsupported NLB quantile-threshold calibration");
+                }
+            }
         }
         const auto input_dimension = require_positive_size(architecture, "input_dimension");
         const auto bit_count = require_positive_size(architecture, "bit_count");
@@ -553,7 +570,7 @@ namespace agent_memory {
             "row_major_out_by_in"
         );
         std::vector<float> encoder_bias;
-        if(is_ste || is_nlb_median) {
+        if(is_ste || is_nlb_median || is_nlb_quantile) {
             encoder_bias = load_weight_file(
                 artifact_directory,
                 require_field(weights, "encoder_bias"),
@@ -605,7 +622,8 @@ namespace agent_memory {
                 encoder_weights,
                 encoder_bias,
                 is_ste ? "linear_binary_autoencoder_ste" :
-                    (is_nlb_median ? "nlb_median_threshold" : "nlb_paper_tied"),
+                    (is_nlb_median ? "nlb_median_threshold" :
+                        (is_nlb_quantile ? "nlb_quantile_threshold" : "nlb_paper_tied")),
                 "v1",
                 is_ste ? AutoencoderBinaryInputTransform::Identity :
                     AutoencoderBinaryInputTransform::ClipMinusOneToOne,
