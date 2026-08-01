@@ -69,7 +69,8 @@ Every manifest must contain at least:
     "strategy": "balanced_stable_hash",
     "seed": 42,
     "train_documents_per_language": 25000,
-    "evaluation_distractors_per_language": 10000
+    "evaluation_distractors_per_language": 10000,
+    "evaluation_queries_per_language": 0
   },
   "split": {
     "policy": "held_out_document_ids",
@@ -93,6 +94,11 @@ and the requested languages in that materialization; it deliberately does not
 perform remote revision resolution. A configuration called `all-18` is invalid
 unless the caller materializes every requested language from the declared
 revisions.
+
+`evaluation_queries_per_language = 0` retains every dev query and is mandatory
+for a comparable MIRACL quality result. A positive value creates a deterministic
+qrels-closed pipeline smoke only; its selected query-ID digest is part of the
+prepared manifest and its metrics must not be compared with the full-dev study.
 
 ## Split and leakage policy
 

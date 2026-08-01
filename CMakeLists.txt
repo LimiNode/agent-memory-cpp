@@ -44,6 +44,7 @@ add_library(agent_memory STATIC
     src/agent_memory/facts/Fact.cpp
     src/agent_memory/ingestion/ResourceIndexer.cpp
     src/agent_memory/index/AggregateBinarySignature.cpp
+    src/agent_memory/index/AutoencoderBinaryEncoder.cpp
     src/agent_memory/index/BinarySignature.cpp
     src/agent_memory/index/BinarySignatureEncoderRegistry.cpp
     src/agent_memory/index/BinarySignatureInfo.cpp
@@ -133,6 +134,8 @@ agent_memory_provide_json(AGENT_MEMORY_JSON_TARGET)
 if(AGENT_MEMORY_ENABLE_JSON)
     target_sources(agent_memory
         PRIVATE
+            src/agent_memory/eval/AutoencoderBinaryArtifact.cpp
+            src/agent_memory/eval/AutoencoderBinaryEvaluation.cpp
             src/agent_memory/eval/DatasetLoader.cpp
             src/agent_memory/eval/PrecomputedEmbeddingDataset.cpp
     )
@@ -183,6 +186,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND
                 ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-binary-autoencoder.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_nlb_pilot_gate_validator_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-nlb-pilot-gates.py
                 --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )

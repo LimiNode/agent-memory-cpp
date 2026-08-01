@@ -67,6 +67,14 @@ are retained in evaluation, including documents with non-positive labels, so
 the qrels file remains closed over the evaluation corpus. Queries and qrels are
 evaluation-only and never enter the AE training split.
 
+`sampling.evaluation_queries_per_language` optionally bounds the held-out
+query count per language through a deterministic SHA-256 ranking. `0` means
+all queries, which is the only setting for the primary quality study. A bounded
+value is useful solely for a small end-to-end smoke: the preparer retains every
+qrels-referenced document for the selected queries and records the selected
+query-ID digest in the manifest. It must not be used to report a comparable
+MIRACL quality number.
+
 The current validator verifies output hashes, counts, split disjointness, qrels
 closure, input configuration identity, and source-file hashes. It does not
 claim that the source materialization itself is hermetic: pin the two Hugging

@@ -306,23 +306,46 @@ b_i = H(x_i)
 
 ### 3.2. Autoencoder-Binarization (Tissier 2018)
 
-The Tissier et al. 2018 approach uses a learned autoencoder with weight tying:
+The Tissier, Gravier, and Habrard (AAAI 2019; arXiv 2018) approach uses a
+learned autoencoder with weight tying:
 
 ```text
 Encoder:  b = H(W · x),   W ∈ R^{m × d}
 Decoder:  x_hat = tanh(W^T · b + c)
-Loss:     L = MSE(x, x_hat) + lambda · Σ_{i<j} corr(b_i, b_j)^2
+Loss:     L = MSE(x, x_hat) + lambda · 0.5 · ||W^T W - I||²
 ```
 
 Weight tying is forced: `H` is non-differentiable, so the encoder does not receive a direct gradient. The gradient flows only through the decoder; `W` is updated by the decoder signal.
 
 > **Gradient flow (tied weights):** With weight tying `W = W_decoder^T`, encoder weights `W` are updated indirectly through the decoder path during training. The binary encoder `H(Wx)` is non-differentiable; gradient does NOT pass through `H`. This is NOT a straight-through estimator (STE) — STE would require an artificial non-zero derivative at `H` during backward pass, which is not used here. The autoencoder instead learns useful `W` representations through decoder-side updates.
 
-**Decorrelation regulariser** penalises pairwise correlations between code bits. Without it, the autoencoder learns to reconstruct numbers well (decoder MSE), but poorly preserves semantics — the encoder gradient is absent, and `W` discards semantic information in favour of numerical accuracy. The regulariser forces code bits to carry independent semantic information.
+The authors motivate the regulariser as preventing redundant latent features:
+reconstruction alone can give good numeric reconstructions but poor semantic
+binary codes. The matrix orientation matters for an implementation. With the
+paper's `W ∈ R^(bits×dimension)`, the stated `W^T W` term is a
+`dimension×dimension` Gram matrix and cannot equal identity when
+`bits < dimension`. It is therefore a paper-faithful low-rank penalty in that
+regime, not a literal row-orthogonality guarantee for code bits.
+
+For this project, do not silently substitute a different regulariser and still
+call it a reproduction. The experiment ladder has two separately identified
+variants:
+
+- **NLB-paper baseline:** tied `W^T` decoder, 0/1 hard step, `tanh` decoder
+  output, stopped encoder gradient, and the paper-stated `W^T W` penalty.
+- **Project orthogonal/tight-frame adaptation:** `W W^T` row decorrelation
+  when `bits <= dimension`, or an explicitly scaled tight-frame objective when
+  `bits > dimension`.
+
+Both require code-health and held-out locality gates; neither inherits the
+paper's word-embedding result for E5 retrieval.
 
 [Source: arXiv:1803.09065 — Tissier, Gravier, Habrard 2018] <br>[Source: internal note — no public source available. Path: ai-agent-playbook/concepts/llm-research/Бинаризация эмбеддингов для экономии памяти и ускорения retrieval.md]
 
-> **Reference implementation note.** Code (MIT-licensed) is available at <https://github.com/tca19/near-lossless-binarization>. The reference is a small CLI/training pipeline, not a reusable SDK — port the encoder/decoder classes to our dependency-free contract; do not copy verbatim.
+> **Reference implementation note.** Code is available under GPL-3.0 at
+> <https://github.com/tca19/near-lossless-binarization>. The reference is a
+> small CLI/training pipeline, not a reusable SDK. Reimplement the published
+> mathematical contract independently; do not copy source code.
 
 Results on word-level embeddings (2018, GloVe 300-dim):
 
@@ -526,6 +549,33 @@ posting lists of `BinaryBucketPosting { unit_id, full_signature, unit_revision,
 resource_generation }`. The descriptor carries the encoder/config identity and
 the first implementation has one key projection table. Planned encoder registry:
 `BinarySignatureEncoderRegistry` with `.bse` file format.
+
+#### Deferred MIH-style banding and MDBX study
+
+> **Research-only, not an implementation commitment.** The full code is not a
+> useful equality key for Hamming-neighbour search. Before changing the planned
+> `binary_bucket_index` layout, evaluate Multi-Index Hashing (MIH)-style
+> substring bands in memory on the same learned-code artifact that is later
+> Hamming-scored. The authoritative protocol and current evidence are recorded
+> in [`experiments/2026-07-31-multilingual-autoencoder-study.md`](experiments/2026-07-31-multilingual-autoencoder-study.md#deferred-mih-style-band-study).
+
+- A band index is an OR-union of postings sharing one or more substrings, then
+  a full-code Hamming ranking. It is not conventional random-hyperplane LSH;
+  learned-code substring collision probabilities must be measured rather than
+  assumed.
+- Test code quality before testing a band policy: include bit entropy,
+  pairwise dependence, local-neighbour preservation, actual bucket skew,
+  candidate union/deduplication, and reranked qrels quality.
+- The recorded first matrix covers NLB widths 64/128/256/512 with 16-bit exact
+  and radius-1 bands, alternative partitions, and selected bands. It explicitly
+  does not require indexing every band of a 512-bit code.
+- Only a repeatable in-memory quality/latency/storage improvement may promote
+  this to an MDBX prototype. Then verify current MDBX key/duplicate semantics
+  and define physical key packing, generation, update/delete, and migration
+  contracts from measured requirements rather than from a speculative schema.
+
+Reference: Norouzi, Punjani, and Fleet, *Fast Exact Search in Hamming Space
+with Multi-Index Hashing* (2014), <https://norouzi.github.io/research/mih/>.
 
 ### 7.2. Quantizer Section
 

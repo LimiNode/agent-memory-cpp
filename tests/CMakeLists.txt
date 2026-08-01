@@ -153,6 +153,21 @@ target_link_libraries(agent_memory_retriever_adapter_test
 add_test(NAME agent_memory_retriever_adapter_test COMMAND agent_memory_retriever_adapter_test)
 
 if(AGENT_MEMORY_ENABLE_JSON)
+    add_executable(agent_memory_autoencoder_binary_artifact_test
+        eval/autoencoder_binary_artifact_test.cpp
+    )
+
+    target_link_libraries(agent_memory_autoencoder_binary_artifact_test
+        PRIVATE
+            agent_memory::agent_memory
+            agent_memory::json
+    )
+
+    add_test(
+        NAME agent_memory_autoencoder_binary_artifact_test
+        COMMAND agent_memory_autoencoder_binary_artifact_test
+    )
+
     add_executable(agent_memory_dataset_loader_test
         eval/loader_test.cpp
     )

@@ -10,16 +10,7 @@
       "revision": "5be20db9509754dadad47689368639fcec739c00"
     }
   },
-  "languages": [
-    "ru",
-    "en",
-    "de",
-    "fr",
-    "es",
-    "ar",
-    "zh",
-    "ja"
-  ],
+  "languages": ["ru"],
   "layout": {
     "corpus": "miracl-corpus-v1.0-{language}/docs-*.jsonl.gz",
     "queries": "miracl-v1.0-{language}/topics/topics.miracl-v1.0-{language}-dev.tsv",

@@ -5,6 +5,16 @@ add_executable(agent-memory-bench
 target_link_libraries(agent-memory-bench
     PRIVATE
         agent_memory::agent_memory
+    agent_memory::json
+)
+
+add_executable(agent-memory-autoencoder-eval
+    autoencoder_evaluation.cpp
+)
+
+target_link_libraries(agent-memory-autoencoder-eval
+    PRIVATE
+        agent_memory::agent_memory
         agent_memory::json
 )
 

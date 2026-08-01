@@ -655,12 +655,33 @@ namespace agent_memory {
             return metrics;
         }
 
-        std::size_t distance_sum = 0;
+        double distance_sum = 0.0;
+        double distance_squared_sum = 0.0;
+        const auto add_distance = [&metrics, &distance_sum, &distance_squared_sum](
+            std::size_t distance
+        ) {
+            distance_sum += static_cast<double>(distance);
+            distance_squared_sum += static_cast<double>(distance) *
+                static_cast<double>(distance);
+            if(metrics.sampled_pair_count == 0) {
+                metrics.sampled_min_pairwise_hamming_distance = distance;
+                metrics.sampled_max_pairwise_hamming_distance = distance;
+            } else {
+                metrics.sampled_min_pairwise_hamming_distance = std::min(
+                    metrics.sampled_min_pairwise_hamming_distance,
+                    distance
+                );
+                metrics.sampled_max_pairwise_hamming_distance = std::max(
+                    metrics.sampled_max_pairwise_hamming_distance,
+                    distance
+                );
+            }
+            ++metrics.sampled_pair_count;
+        };
         if(all_pairs <= options.max_pairwise_samples) {
             for(std::size_t i = 0; i < signatures.size(); ++i) {
                 for(std::size_t j = i + 1; j < signatures.size(); ++j) {
-                    distance_sum += hamming_distance(signatures[i], signatures[j]);
-                    ++metrics.sampled_pair_count;
+                    add_distance(hamming_distance(signatures[i], signatures[j]));
                 }
             }
         } else {
@@ -670,14 +691,20 @@ namespace agent_memory {
                 const auto pair = decode_pair_ordinal(ordinal, signatures.size());
                 const auto i = pair.first;
                 const auto j = pair.second;
-                distance_sum += hamming_distance(signatures[i], signatures[j]);
-                ++metrics.sampled_pair_count;
+                add_distance(hamming_distance(signatures[i], signatures[j]));
                 ordinal = add_mod(ordinal, stride, all_pairs);
             }
         }
 
         metrics.sampled_mean_pairwise_hamming_distance =
-            static_cast<double>(distance_sum) / static_cast<double>(metrics.sampled_pair_count);
+            distance_sum / static_cast<double>(metrics.sampled_pair_count);
+        const auto mean_square = distance_squared_sum /
+            static_cast<double>(metrics.sampled_pair_count);
+        metrics.sampled_pairwise_hamming_distance_stddev = std::sqrt(std::max(
+            0.0,
+            mean_square - metrics.sampled_mean_pairwise_hamming_distance *
+                metrics.sampled_mean_pairwise_hamming_distance
+        ));
         return metrics;
     }
 

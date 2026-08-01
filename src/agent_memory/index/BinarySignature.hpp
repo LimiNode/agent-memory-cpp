@@ -165,6 +165,12 @@ namespace agent_memory {
         double duplicate_signature_rate = 0.0;
         /// \brief Mean Hamming distance across all pairs or a deterministic sample.
         double sampled_mean_pairwise_hamming_distance = 0.0;
+        /// \brief Population standard deviation of sampled pairwise Hamming distances.
+        double sampled_pairwise_hamming_distance_stddev = 0.0;
+        /// \brief Smallest Hamming distance observed in the sampled pairs.
+        std::size_t sampled_min_pairwise_hamming_distance = 0;
+        /// \brief Largest Hamming distance observed in the sampled pairs.
+        std::size_t sampled_max_pairwise_hamming_distance = 0;
         /// \brief Number of pairs used for sampled_mean_pairwise_hamming_distance.
         std::size_t sampled_pair_count = 0;
         /// \brief Descending sizes of exact-signature buckets.
