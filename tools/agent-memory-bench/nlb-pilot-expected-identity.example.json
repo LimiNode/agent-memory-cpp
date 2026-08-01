@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "artifact_sha256": "replace-with-exact-artifact-sha256",
   "artifact_family": "nlb_median_threshold_v1",
   "bit_count": 128,
@@ -19,5 +19,5 @@
   "evaluator_id": "agent-memory-autoencoder-eval",
   "evaluator_version": "v1",
   "evaluator_source_manifest_sha256": "replace-with-exact-evaluator-source-manifest-sha256",
-  "vector_similarity_backend": "scalar"
+  "ranking_similarity_backend": "scalar"
 }

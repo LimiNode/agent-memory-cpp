@@ -45,7 +45,7 @@ IDENTITY_LITERAL_FIELDS = {
     "tie_break_policy": "score_desc_document_id_asc_v1",
     "evaluator_id": "agent-memory-autoencoder-eval",
     "evaluator_version": "v1",
-    "vector_similarity_backend": "scalar",
+    "ranking_similarity_backend": "scalar",
 }
 
 
@@ -81,6 +81,49 @@ def require_sha256(value: Any, field: str) -> str:
     return value
 
 
+def require_nonempty_string(value: Any, field: str) -> str:
+    if not isinstance(value, str) or not value:
+        raise GateError(f"{field} must be a non-empty string")
+    return value
+
+
+def validate_build_environment(report: dict[str, Any], path: Path) -> dict[str, Any]:
+    environment = require_mapping(
+        report.get("evaluator_build_environment"),
+        f"{path}: evaluator_build_environment",
+    )
+    require_sha256(
+        environment.get("configured_environment_sha256"),
+        f"{path}: evaluator_build_environment.configured_environment_sha256",
+    )
+    for field in (
+        "compiler_id",
+        "compiler_version",
+        "generator",
+        "build_configuration",
+        "system_name",
+        "system_processor",
+    ):
+        require_nonempty_string(
+            environment.get(field), f"{path}: evaluator_build_environment.{field}"
+        )
+    if environment.get("cxx_standard") != 17:
+        raise GateError(f"{path}: evaluator build must use C++17")
+    if not isinstance(environment.get("cxx_extensions"), bool):
+        raise GateError(f"{path}: evaluator_build_environment.cxx_extensions must be boolean")
+    if environment.get("pointer_bits") not in (32, 64):
+        raise GateError(f"{path}: evaluator_build_environment.pointer_bits must equal 32 or 64")
+    require_sha256(
+        environment.get("base_cxx_flags_sha256"),
+        f"{path}: evaluator_build_environment.base_cxx_flags_sha256",
+    )
+    require_sha256(
+        environment.get("active_configuration_flags_sha256"),
+        f"{path}: evaluator_build_environment.active_configuration_flags_sha256",
+    )
+    return environment
+
+
 def metric_at_10(report: dict[str, Any], field: str) -> float:
     metrics = require_mapping(report.get(field), field)
     values = require_mapping(metrics.get("ndcg_at"), f"{field}.ndcg_at")
@@ -96,8 +139,8 @@ def load_report(path: Path) -> dict[str, Any]:
 
 def load_expected_identity(path: Path) -> dict[str, Any]:
     identity = load_report(path)
-    if identity.get("schema_version") != 1:
-        raise GateError("expected identity schema_version must equal 1")
+    if identity.get("schema_version") != 2:
+        raise GateError("expected identity schema_version must equal 2")
     for field, expected in IDENTITY_LITERAL_FIELDS.items():
         if identity.get(field) != expected:
             raise GateError(f"expected identity {field} must equal {expected!r}")
@@ -108,20 +151,30 @@ def load_expected_identity(path: Path) -> dict[str, Any]:
 
 def validate_report_identity(
     report: dict[str, Any], expected_identity: dict[str, Any], path: Path
-) -> None:
-    if report.get("schema_version") != 1:
-        raise GateError(f"{path}: schema_version must equal 1")
+) -> dict[str, Any]:
+    if report.get("schema_version") != 2:
+        raise GateError(f"{path}: schema_version must equal 2")
+    environment = validate_build_environment(report, path)
     for field in (*IDENTITY_LITERAL_FIELDS, *IDENTITY_SHA256_FIELDS):
         if report.get(field) != expected_identity[field]:
             raise GateError(f"{path}: {field} does not match expected experiment identity")
+    return environment
 
 
 def validate_reports(paths: list[Path], expected_identity: dict[str, Any]) -> None:
     """Requires the two predeclared 128-bit RU candidate budgets to pass."""
     reports: dict[int, dict[str, Any]] = {}
+    reference_environment: dict[str, Any] | None = None
     for path in paths:
         report = load_report(path)
-        validate_report_identity(report, expected_identity, path)
+        environment = validate_report_identity(report, expected_identity, path)
+        if reference_environment is None:
+            reference_environment = environment
+        elif environment != reference_environment:
+            raise GateError(
+                f"{path}: evaluator build environment differs from the other reports "
+                "in this gate decision"
+            )
         candidate_limit = require_positive_int(
             report.get("returned_candidate_limit"), f"{path}: returned_candidate_limit"
         )
@@ -181,7 +234,7 @@ def validate_reports(paths: list[Path], expected_identity: dict[str, Any]) -> No
 
 def representative_report(candidate_limit: int) -> dict[str, Any]:
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact_sha256": "a" * 64,
         "materialization_manifest_sha256": "b" * 64,
         "prepared_study_manifest_sha256": "c" * 64,
@@ -192,6 +245,20 @@ def representative_report(candidate_limit: int) -> dict[str, Any]:
         "evaluation_query_ids_sha256": "2" * 64,
         "evaluation_qrels_sha256": "3" * 64,
         "evaluator_source_manifest_sha256": "4" * 64,
+        "evaluator_build_environment": {
+            "configured_environment_sha256": "5" * 64,
+            "compiler_id": "test-compiler",
+            "compiler_version": "1.0",
+            "cxx_standard": 17,
+            "cxx_extensions": False,
+            "generator": "test-generator",
+            "build_configuration": "Release",
+            "system_name": "test-system",
+            "system_processor": "test-processor",
+            "pointer_bits": 64,
+            "base_cxx_flags_sha256": "6" * 64,
+            "active_configuration_flags_sha256": "7" * 64,
+        },
         "returned_candidate_limit": candidate_limit,
         "exact_top_k_candidate_coverage": 0.50 if candidate_limit == 512 else 0.75,
         "original_float": {"ndcg_at": {"10": 0.80}},
@@ -246,7 +313,7 @@ def run_self_test() -> int:
         for field, wrong_value in (
             ("evaluator_source_manifest_sha256", "5" * 64),
             ("evaluator_id", "different-evaluator"),
-            ("vector_similarity_backend", "avx2_simd"),
+            ("ranking_similarity_backend", "avx2_simd"),
         ):
             paths[1].write_text(json.dumps(representative_report(2048)), encoding="utf-8")
             bad_identity_report = representative_report(512)
@@ -259,6 +326,44 @@ def run_self_test() -> int:
             else:
                 print(f"self-test failed: mismatched {field} passed", file=sys.stderr)
                 return 1
+        for description, mutate in (
+            ("missing build environment", lambda report: report.pop("evaluator_build_environment")),
+            ("invalid build-environment hash", lambda report: report["evaluator_build_environment"].update(
+                {"configured_environment_sha256": "not-a-sha256"})),
+            ("empty compiler id", lambda report: report["evaluator_build_environment"].update(
+                {"compiler_id": ""})),
+            ("wrong C++ standard", lambda report: report["evaluator_build_environment"].update(
+                {"cxx_standard": 14})),
+            ("invalid pointer width", lambda report: report["evaluator_build_environment"].update(
+                {"pointer_bits": 0})),
+        ):
+            paths[1].write_text(json.dumps(representative_report(2048)), encoding="utf-8")
+            bad_environment_report = representative_report(512)
+            mutate(bad_environment_report)
+            paths[0].write_text(json.dumps(bad_environment_report), encoding="utf-8")
+            try:
+                validate_reports(paths, expected_identity)
+            except GateError:
+                pass
+            else:
+                print(f"self-test failed: {description} passed", file=sys.stderr)
+                return 1
+        paths[0].write_text(json.dumps(representative_report(512)), encoding="utf-8")
+        mixed_environment_report = representative_report(2048)
+        mixed_environment_report["evaluator_build_environment"].update(
+            {
+                "build_configuration": "Debug",
+                "active_configuration_flags_sha256": "8" * 64,
+            }
+        )
+        paths[1].write_text(json.dumps(mixed_environment_report), encoding="utf-8")
+        try:
+            validate_reports(paths, expected_identity)
+        except GateError:
+            pass
+        else:
+            print("self-test failed: mixed build environments passed", file=sys.stderr)
+            return 1
     print("NLB pilot gate validator self-test ok")
     return 0
 

@@ -420,6 +420,26 @@ namespace {
         };
     }
 
+    [[nodiscard]] nlohmann::json evaluator_build_environment_json() {
+        const std::string build_configuration = AGENT_MEMORY_EVALUATOR_BUILD_CONFIGURATION;
+        return {
+            {"configured_environment_sha256", AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256},
+            {"compiler_id", AGENT_MEMORY_EVALUATOR_COMPILER_ID},
+            {"compiler_version", AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
+            {"cxx_standard", AGENT_MEMORY_EVALUATOR_CXX_STANDARD},
+            {"cxx_extensions", AGENT_MEMORY_EVALUATOR_CXX_EXTENSIONS != 0},
+            {"generator", AGENT_MEMORY_EVALUATOR_GENERATOR},
+            {"build_configuration",
+             build_configuration.empty() ? "unspecified" : build_configuration},
+            {"system_name", AGENT_MEMORY_EVALUATOR_SYSTEM_NAME},
+            {"system_processor", AGENT_MEMORY_EVALUATOR_SYSTEM_PROCESSOR},
+            {"pointer_bits", AGENT_MEMORY_EVALUATOR_POINTER_BITS},
+            {"base_cxx_flags_sha256", AGENT_MEMORY_EVALUATOR_BASE_CXX_FLAGS_SHA256},
+            {"active_configuration_flags_sha256",
+             AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256},
+        };
+    }
+
     [[nodiscard]] nlohmann::json report_json(const EncoderReport& report) {
         return {
             {"encoder_family", report.family},
@@ -465,6 +485,21 @@ namespace {
 
 int main(int argc, char* argv[]) {
     if(argc == 2 && std::string{argv[1]} == "--self-test") {
+        const auto build_environment = evaluator_build_environment_json();
+        const auto manifest = build_environment.value("configured_environment_sha256", std::string{});
+        if(manifest.size() != 64U ||
+           build_environment.value("cxx_standard", 0) != 17 ||
+           !build_environment.contains("cxx_extensions") ||
+           !build_environment.at("cxx_extensions").is_boolean() ||
+           build_environment.value("build_configuration", std::string{}).empty() ||
+           build_environment.value("base_cxx_flags_sha256", std::string{}).size() != 64U ||
+           build_environment.value("active_configuration_flags_sha256", std::string{}).size() != 64U ||
+           build_environment.value("pointer_bits", 0) != static_cast<int>(sizeof(void*) * 8U) ||
+           build_environment.value("compiler_id", std::string{}).empty() ||
+           build_environment.value("system_name", std::string{}).empty()) {
+            std::cerr << "standard binary encoder evaluator build-environment self-test failed\n";
+            return 1;
+        }
         const std::vector<ScoredPosition> oracle{{0U, 1.0F, "a"}, {1U, 0.5F, "b"}};
         const std::vector<ScoredPosition> candidates{
             {0U, 1.0F, "a"}, {2U, 0.9F, "c"}, {1U, 0.8F, "b"}
@@ -644,7 +679,7 @@ int main(int argc, char* argv[]) {
         }
 
         nlohmann::json output{
-            {"schema_version", 1},
+            {"schema_version", 2},
             {"materialization_manifest_sha256", materialization.materialization_manifest_sha256},
             {"prepared_study_manifest_sha256", materialization.prepared_study_manifest_sha256},
             {"materialized_training_document_ids_sha256", materialization.training_document_ids_sha256},
@@ -657,9 +692,10 @@ int main(int argc, char* argv[]) {
             {"evaluator_id", "agent-memory-standard-binary-eval"},
             {"evaluator_version", "v1"},
             {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
-            {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
+            {"ranking_similarity_backend", agent_memory::vector_similarity_backend_name(
                 agent_memory::VectorSimilarityComputer(agent_memory::VectorSimilarityBackend::Scalar).backend()
             )},
+            {"evaluator_build_environment", evaluator_build_environment_json()},
             {"document_count", document_vectors.size()},
             {"query_count", query_vectors.size()},
             {"training_document_count", training_vectors.size()},
