@@ -254,9 +254,9 @@ int main(int argc, char* argv[]) {
             {"tie_break_policy", "score_desc_document_id_asc_v1"},
             {"evaluator_id", "agent-memory-autoencoder-eval"},
             {"evaluator_version", "v1"},
-            {"evaluator_source_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_SHA256},
+            {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
             {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
-                agent_memory::VectorSimilarityComputer{}.backend()
+                agent_memory::VectorSimilarityComputer(agent_memory::VectorSimilarityBackend::Scalar).backend()
             )},
             {"evaluation_protocol", "miracl_monolingual_per_language_v1"},
             {"language_ids", language_ids},

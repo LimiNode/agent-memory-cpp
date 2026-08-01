@@ -386,7 +386,7 @@ namespace agent_memory {
         validate_embeddings(query_vectors, dimension, "autoencoder evaluation queries");
         const auto oracle_k = std::min(options.oracle_k, document_vectors.size());
         const auto candidate_limit = std::min(options.returned_candidate_limit, document_vectors.size());
-        const VectorSimilarityComputer similarity;
+        const VectorSimilarityComputer similarity(VectorSimilarityBackend::Scalar);
         std::vector<float> document_inverse_norms;
         document_inverse_norms.reserve(document_vectors.size());
         for(const auto& vector : document_vectors) {
@@ -617,7 +617,7 @@ namespace agent_memory {
             binary_options.returned_candidate_limit,
             document_vectors.size()
         );
-        const VectorSimilarityComputer similarity;
+        const VectorSimilarityComputer similarity(VectorSimilarityBackend::Scalar);
         std::vector<float> document_inverse_norms;
         document_inverse_norms.reserve(document_vectors.size());
         for(const auto& vector : document_vectors) {

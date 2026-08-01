@@ -751,6 +751,14 @@ change and are historical observations only; the common RU Hamming baselines,
 quantile sweep, and Hamming-versus-asymmetric comparison must be rerun before
 they are used for a new selection decision.
 
+The current evaluator contract also pins an evaluator ID/version, a scalar
+similarity backend, and a SHA-256 manifest of the project-owned C++ source
+units that load the artifact, produce binary codes, rank candidates, and
+aggregate qrels metrics. CMake regenerates that manifest when one of those
+units changes. The standard baseline evaluator uses the same scalar reference
+backend and streams per-query qrels metrics too, so its future comparison
+reports do not retain corpus-sized rankings for every query.
+
 `tools/agent-memory-bench/nlb-pilot-expected-identity.example.json` documents
 the required manifest shape. A concrete manifest belongs beside the curated
 result table for its particular run; the placeholder file is deliberately not

@@ -210,6 +210,71 @@ namespace {
         return output;
     }
 
+    [[nodiscard]] agent_memory::RetrievalEvalDataset single_query_dataset(
+        const agent_memory::RetrievalEvalDataset& dataset,
+        std::size_t query_index
+    ) {
+        agent_memory::RetrievalEvalDataset output;
+        output.queries.push_back(dataset.queries.at(query_index));
+        for(const auto& judgment : dataset.judgments) {
+            if(judgment.query_id == output.queries.front().id) {
+                output.judgments.push_back(judgment);
+            }
+        }
+        return output;
+    }
+
+    void accumulate_metrics(
+        agent_memory::RetrievalMetrics& total,
+        const agent_memory::RetrievalMetrics& query_metrics
+    ) {
+        if(total.recall_at.empty() && total.ndcg_at.empty() && total.query_count == 0U) {
+            total.recall_at = query_metrics.recall_at;
+            total.ndcg_at = query_metrics.ndcg_at;
+            for(auto& metric : total.recall_at) { metric.value = 0.0; }
+            for(auto& metric : total.ndcg_at) { metric.value = 0.0; }
+        }
+        if(total.recall_at.size() != query_metrics.recall_at.size() ||
+           total.ndcg_at.size() != query_metrics.ndcg_at.size()) {
+            throw std::logic_error("inconsistent per-query retrieval metric cutoffs");
+        }
+        const auto judged = static_cast<double>(query_metrics.judged_query_count);
+        const auto no_answer = static_cast<double>(query_metrics.no_answer_query_count);
+        for(std::size_t index = 0; index < total.recall_at.size(); ++index) {
+            total.recall_at[index].value += query_metrics.recall_at[index].value * judged;
+        }
+        for(std::size_t index = 0; index < total.ndcg_at.size(); ++index) {
+            total.ndcg_at[index].value += query_metrics.ndcg_at[index].value * judged;
+        }
+        total.mrr += query_metrics.mrr * judged;
+        total.no_answer_accuracy += query_metrics.no_answer_accuracy * no_answer;
+        total.query_count += query_metrics.query_count;
+        total.judged_query_count += query_metrics.judged_query_count;
+        total.no_answer_query_count += query_metrics.no_answer_query_count;
+        total.ignored_query_count += query_metrics.ignored_query_count;
+        total.evaluated_query_count += query_metrics.evaluated_query_count;
+        total.evaluated_query_run_count += query_metrics.evaluated_query_run_count;
+        total.evaluated_query_latency_count += query_metrics.evaluated_query_latency_count;
+        total.ignored_query_run_count += query_metrics.ignored_query_run_count;
+        total.empty_result_count += query_metrics.empty_result_count;
+    }
+
+    void finalize_metrics(agent_memory::RetrievalMetrics& metrics) noexcept {
+        if(metrics.judged_query_count != 0U) {
+            const auto judged = static_cast<double>(metrics.judged_query_count);
+            for(auto& metric : metrics.recall_at) { metric.value /= judged; }
+            for(auto& metric : metrics.ndcg_at) { metric.value /= judged; }
+            metrics.mrr /= judged;
+        }
+        if(metrics.no_answer_query_count != 0U) {
+            metrics.no_answer_accuracy /= static_cast<double>(metrics.no_answer_query_count);
+        }
+        if(metrics.evaluated_query_count != 0U) {
+            metrics.empty_result_fraction = static_cast<double>(metrics.empty_result_count) /
+                static_cast<double>(metrics.evaluated_query_count);
+        }
+    }
+
     [[nodiscard]] EncoderReport evaluate_encoder(
         const std::string& family,
         std::size_t training_vector_count,
@@ -228,7 +293,9 @@ namespace {
         }
         const auto effective_oracle_k = std::min(oracle_k, document_vectors.size());
         const auto effective_candidate_limit = std::min(candidate_limit, document_vectors.size());
-        const agent_memory::VectorSimilarityComputer similarity;
+        const agent_memory::VectorSimilarityComputer similarity(
+            agent_memory::VectorSimilarityBackend::Scalar
+        );
         std::vector<float> document_inverse_norms;
         document_inverse_norms.reserve(document_vectors.size());
         for(const auto& document : document_vectors) {
@@ -238,8 +305,8 @@ namespace {
         if(document_signatures.size() != document_vectors.size()) {
             throw std::logic_error("encoder batch result count mismatch");
         }
-        agent_memory::RetrievalRun original_run{"original_float", {}};
-        agent_memory::RetrievalRun binary_run{"binary_candidates_exact_rerank", {}};
+        agent_memory::RetrievalMetrics original_metrics;
+        agent_memory::RetrievalMetrics binary_metrics;
         double coverage_sum = 0.0;
         double dense_nearest_hamming_sum = 0.0;
         double dense_rank_100_hamming_sum = 0.0;
@@ -252,8 +319,11 @@ namespace {
                 query, query_inverse_norm, document_vectors, document_ids,
                 document_inverse_norms, similarity
             );
-            original_run.queries.push_back(make_query_run(
-                query_ids[query_index], oracle, document_ids, "original_float"
+            const auto query_dataset = single_query_dataset(dataset, query_index);
+            accumulate_metrics(original_metrics, agent_memory::evaluate_retrieval(
+                query_dataset, {"original_float", {
+                    make_query_run(query_ids[query_index], oracle, document_ids, "original_float")
+                }}, {{1U, 5U, 10U, 100U}, {10U}}
             ));
             const auto query_signature = encoder.encode(query);
             const auto dense_nearest_hamming = agent_memory::hamming_distance(
@@ -297,8 +367,10 @@ namespace {
                 candidate.document_id = document_ids[candidate.position];
             }
             std::sort(candidates.begin(), candidates.end(), better_score);
-            binary_run.queries.push_back(make_query_run(
-                query_ids[query_index], candidates, document_ids, "binary_exact_rerank"
+            accumulate_metrics(binary_metrics, agent_memory::evaluate_retrieval(
+                query_dataset, {"binary_candidates_exact_rerank", {
+                    make_query_run(query_ids[query_index], candidates, document_ids, "binary_exact_rerank")
+                }}, {{1U, 5U, 10U, 100U}, {10U}}
             ));
         }
         EncoderReport output;
@@ -320,12 +392,10 @@ namespace {
             output.exact_top_k_candidate_coverage /
             (static_cast<double>(effective_candidate_limit) /
              static_cast<double>(document_vectors.size()));
-        output.original_float_metrics = agent_memory::evaluate_retrieval(
-            dataset, original_run, {{1U, 5U, 10U, 100U}, {10U}}
-        );
-        output.binary_rerank_metrics = agent_memory::evaluate_retrieval(
-            dataset, binary_run, {{1U, 5U, 10U, 100U}, {10U}}
-        );
+        finalize_metrics(original_metrics);
+        finalize_metrics(binary_metrics);
+        output.original_float_metrics = std::move(original_metrics);
+        output.binary_rerank_metrics = std::move(binary_metrics);
         output.document_code_health = agent_memory::analyze_binary_code_health(document_signatures);
         return output;
     }
@@ -413,6 +483,73 @@ int main(int argc, char* argv[]) {
         if(tie_first.front().document_id != "document-a" ||
            tie_permuted.front().document_id != "document-a") {
             std::cerr << "standard binary encoder evaluator tie-break self-test failed\n";
+            return 1;
+        }
+        const std::vector<std::string> test_document_ids{"document-a", "document-b"};
+        const std::vector<std::string> test_query_ids{"query-a", "query-b"};
+        const auto test_dataset = make_dataset(
+            test_document_ids,
+            test_query_ids,
+            {
+                {"query-a", "document-a", 1},
+                {"query-b", "document-b", 1},
+            }
+        );
+        const std::vector<ScoredPosition> first_query_ranking{
+            {0U, 1.0F, "document-a"}, {1U, 0.5F, "document-b"}
+        };
+        const std::vector<ScoredPosition> second_query_ranking{
+            {0U, 1.0F, "document-a"}, {1U, 0.5F, "document-b"}
+        };
+        const agent_memory::RetrievalEvaluationOptions options{{1U, 5U, 10U}, {10U}};
+        const auto retained_metrics = agent_memory::evaluate_retrieval(
+            test_dataset,
+            {"retained", {
+                make_query_run("query-a", first_query_ranking, test_document_ids, "retained"),
+                make_query_run("query-b", second_query_ranking, test_document_ids, "retained"),
+            }},
+            options
+        );
+        agent_memory::RetrievalMetrics streaming_metrics;
+        for(std::size_t query_index = 0; query_index < test_query_ids.size(); ++query_index) {
+            const auto& ranking = query_index == 0U ? first_query_ranking : second_query_ranking;
+            accumulate_metrics(streaming_metrics, agent_memory::evaluate_retrieval(
+                single_query_dataset(test_dataset, query_index),
+                {"streaming", {
+                    make_query_run(test_query_ids[query_index], ranking, test_document_ids, "streaming")
+                }},
+                options
+            ));
+        }
+        finalize_metrics(streaming_metrics);
+        const auto metrics_match = [](const agent_memory::RetrievalMetrics& lhs,
+                                      const agent_memory::RetrievalMetrics& rhs) {
+            if(lhs.query_count != rhs.query_count ||
+               lhs.judged_query_count != rhs.judged_query_count ||
+               lhs.evaluated_query_count != rhs.evaluated_query_count ||
+               lhs.empty_result_count != rhs.empty_result_count ||
+               lhs.recall_at.size() != rhs.recall_at.size() ||
+               lhs.ndcg_at.size() != rhs.ndcg_at.size() ||
+               std::fabs(lhs.mrr - rhs.mrr) > 1.0e-12 ||
+               std::fabs(lhs.empty_result_fraction - rhs.empty_result_fraction) > 1.0e-12) {
+                return false;
+            }
+            for(std::size_t index = 0; index < lhs.recall_at.size(); ++index) {
+                if(lhs.recall_at[index].k != rhs.recall_at[index].k ||
+                   std::fabs(lhs.recall_at[index].value - rhs.recall_at[index].value) > 1.0e-12) {
+                    return false;
+                }
+            }
+            for(std::size_t index = 0; index < lhs.ndcg_at.size(); ++index) {
+                if(lhs.ndcg_at[index].k != rhs.ndcg_at[index].k ||
+                   std::fabs(lhs.ndcg_at[index].value - rhs.ndcg_at[index].value) > 1.0e-12) {
+                    return false;
+                }
+            }
+            return true;
+        };
+        if(!metrics_match(retained_metrics, streaming_metrics)) {
+            std::cerr << "standard binary encoder evaluator streaming parity self-test failed\n";
             return 1;
         }
         return 0;
@@ -510,7 +647,7 @@ int main(int argc, char* argv[]) {
             {"schema_version", 1},
             {"materialization_manifest_sha256", materialization.materialization_manifest_sha256},
             {"prepared_study_manifest_sha256", materialization.prepared_study_manifest_sha256},
-            {"training_document_ids_sha256", materialization.training_document_ids_sha256},
+            {"materialized_training_document_ids_sha256", materialization.training_document_ids_sha256},
             {"evaluation_document_ids_sha256", materialization.evaluation_document_ids_sha256},
             {"evaluation_query_ids_sha256", materialization.evaluation_query_ids_sha256},
             {"evaluation_qrels_sha256", materialization.evaluation_qrels_sha256},
@@ -519,9 +656,9 @@ int main(int argc, char* argv[]) {
             {"tie_break_policy", "score_desc_document_id_asc_v1"},
             {"evaluator_id", "agent-memory-standard-binary-eval"},
             {"evaluator_version", "v1"},
-            {"evaluator_source_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_SHA256},
+            {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
             {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
-                agent_memory::VectorSimilarityComputer{}.backend()
+                agent_memory::VectorSimilarityComputer(agent_memory::VectorSimilarityBackend::Scalar).backend()
             )},
             {"document_count", document_vectors.size()},
             {"query_count", query_vectors.size()},

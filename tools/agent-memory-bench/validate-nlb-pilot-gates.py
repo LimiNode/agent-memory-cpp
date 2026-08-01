@@ -32,6 +32,7 @@ IDENTITY_SHA256_FIELDS = (
     "evaluation_document_ids_sha256",
     "evaluation_query_ids_sha256",
     "evaluation_qrels_sha256",
+    "evaluator_source_manifest_sha256",
 )
 
 IDENTITY_LITERAL_FIELDS = {
@@ -42,6 +43,9 @@ IDENTITY_LITERAL_FIELDS = {
     "oracle_k": 10,
     "candidate_scoring": "hamming_distance_v1",
     "tie_break_policy": "score_desc_document_id_asc_v1",
+    "evaluator_id": "agent-memory-autoencoder-eval",
+    "evaluator_version": "v1",
+    "vector_similarity_backend": "scalar",
 }
 
 
@@ -187,6 +191,7 @@ def representative_report(candidate_limit: int) -> dict[str, Any]:
         "evaluation_document_ids_sha256": "1" * 64,
         "evaluation_query_ids_sha256": "2" * 64,
         "evaluation_qrels_sha256": "3" * 64,
+        "evaluator_source_manifest_sha256": "4" * 64,
         "returned_candidate_limit": candidate_limit,
         "exact_top_k_candidate_coverage": 0.50 if candidate_limit == 512 else 0.75,
         "original_float": {"ndcg_at": {"10": 0.80}},
@@ -238,6 +243,22 @@ def run_self_test() -> int:
         else:
             print("self-test failed: mismatched qrels identity passed", file=sys.stderr)
             return 1
+        for field, wrong_value in (
+            ("evaluator_source_manifest_sha256", "5" * 64),
+            ("evaluator_id", "different-evaluator"),
+            ("vector_similarity_backend", "avx2_simd"),
+        ):
+            paths[1].write_text(json.dumps(representative_report(2048)), encoding="utf-8")
+            bad_identity_report = representative_report(512)
+            bad_identity_report[field] = wrong_value
+            paths[0].write_text(json.dumps(bad_identity_report), encoding="utf-8")
+            try:
+                validate_reports(paths, expected_identity)
+            except GateError:
+                pass
+            else:
+                print(f"self-test failed: mismatched {field} passed", file=sys.stderr)
+                return 1
     print("NLB pilot gate validator self-test ok")
     return 0
 
