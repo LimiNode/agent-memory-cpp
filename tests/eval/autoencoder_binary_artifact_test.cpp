@@ -192,8 +192,13 @@ int main() {
             root / "artifact.json"
         );
         const auto signature = artifact.encoder.encode({{0.25F, 0.25F}});
+        const auto projections = artifact.encoder.affine_projections({{0.25F, 0.25F}});
         if(signature.bit_count() != 2 || signature.bit(0) || !signature.bit(1)) {
             return fail("encoder hard-sign contract");
+        }
+        if(projections.size() != 2 || std::fabs(projections[0] + 0.25F) > 1.0e-6F ||
+           std::fabs(projections[1] - 0.5F) > 1.0e-6F) {
+            return fail("encoder affine projection contract");
         }
         const auto reconstructed = artifact.decoder.decode(signature);
         if(reconstructed.dimension() != 2 ||
@@ -248,6 +253,17 @@ int main() {
            metrics.random_candidate_coverage_expectation != 0.5 ||
            metrics.candidate_coverage_lift_vs_random != 2.0) {
             return fail("three-mode retrieval evaluation contract");
+        }
+        const auto asymmetric_metrics = agent_memory::evaluate_autoencoder_binary_retrieval(
+            {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},
+            {{{1.0F, 0.0F}}},
+            artifact.encoder,
+            artifact.decoder,
+            {1, 1, agent_memory::AutoencoderBinaryCandidateScoring::AsymmetricAffineDot}
+        );
+        if(asymmetric_metrics.exact_top_k_candidate_coverage != 1.0 ||
+           asymmetric_metrics.reranked_recall_at_k_vs_exact != 1.0) {
+            return fail("asymmetric affine candidate evaluation contract");
         }
         const auto& diagnostics = metrics.code_diagnostics;
         if(diagnostics.unique_document_code_count != 2 ||

@@ -15,12 +15,23 @@
 
 namespace agent_memory {
 
+    /// \brief Candidate ordering used before exact float reranking.
+    enum class AutoencoderBinaryCandidateScoring {
+        /// \brief Symmetric Hamming distance between packed query and document codes.
+        HammingDistance,
+        /// \brief Continuous query affine projections scored against packed document bits.
+        AsymmetricAffineDot,
+    };
+
     /// \brief Candidate and oracle limits for autoencoder retrieval comparison.
     struct AutoencoderBinaryEvaluationOptions final {
         /// \brief Number of original-float neighbours treated as the oracle top-K.
         std::size_t oracle_k = 10;
         /// \brief Number of Hamming-ranked documents passed to exact reranking.
         std::size_t returned_candidate_limit = 100;
+        /// \brief Candidate ordering evaluated before the exact float reranker.
+        AutoencoderBinaryCandidateScoring candidate_scoring =
+            AutoencoderBinaryCandidateScoring::HammingDistance;
     };
 
     /// \brief Descriptive statistics emitted by a binary-code diagnostic pass.

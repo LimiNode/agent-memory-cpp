@@ -152,6 +152,46 @@ namespace agent_memory {
             return ranked;
         }
 
+        [[nodiscard]] float asymmetric_affine_dot(
+            const std::vector<float>& query_affine_projections,
+            const BinarySignature& document_signature
+        ) {
+            if(query_affine_projections.size() != document_signature.bit_count()) {
+                throw std::invalid_argument("asymmetric query projection width mismatch");
+            }
+            float score = 0.0F;
+            for(std::size_t bit = 0; bit < document_signature.bit_count(); ++bit) {
+                score += document_signature.bit(bit)
+                    ? query_affine_projections[bit]
+                    : -query_affine_projections[bit];
+            }
+            return score;
+        }
+
+        [[nodiscard]] std::vector<ScoredPosition> binary_candidate_rank(
+            const BinarySignature& query_signature,
+            const std::vector<BinarySignature>& document_signatures,
+            std::size_t candidate_limit,
+            AutoencoderBinaryCandidateScoring scoring,
+            const std::vector<float>* query_affine_projections
+        ) {
+            if(scoring == AutoencoderBinaryCandidateScoring::AsymmetricAffineDot &&
+               query_affine_projections == nullptr) {
+                throw std::invalid_argument("asymmetric candidate scoring requires query projections");
+            }
+            std::vector<ScoredPosition> output;
+            output.reserve(document_signatures.size());
+            for(std::size_t position = 0; position < document_signatures.size(); ++position) {
+                const auto score = scoring == AutoencoderBinaryCandidateScoring::HammingDistance
+                    ? -static_cast<float>(hamming_distance(query_signature, document_signatures[position]))
+                    : asymmetric_affine_dot(*query_affine_projections, document_signatures[position]);
+                output.push_back({position, score});
+            }
+            std::sort(output.begin(), output.end(), better_score);
+            output.resize(candidate_limit);
+            return output;
+        }
+
         [[nodiscard]] double overlap_fraction(
             const std::vector<ScoredPosition>& oracle,
             const std::vector<ScoredPosition>& actual,
@@ -353,6 +393,10 @@ namespace agent_memory {
                 similarity
             );
             const auto& query_signature = query_signatures[query_index];
+            const auto query_affine_projections =
+                options.candidate_scoring == AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
+                ? encoder.affine_projections(query)
+                : std::vector<float>{};
             const auto dense_nearest_hamming = hamming_distance(
                 query_signature, document_signatures[oracle.front().position]
             );
@@ -386,13 +430,14 @@ namespace agent_memory {
                     ),
                     -static_cast<double>(hamming)
                 );
-                hamming_rank.push_back({
-                    position,
-                    -static_cast<float>(hamming),
-                });
             }
-            std::sort(hamming_rank.begin(), hamming_rank.end(), better_score);
-            hamming_rank.resize(candidate_limit);
+            hamming_rank = binary_candidate_rank(
+                query_signature,
+                document_signatures,
+                candidate_limit,
+                options.candidate_scoring,
+                query_affine_projections.empty() ? nullptr : &query_affine_projections
+            );
             output.exact_top_k_candidate_coverage += overlap_fraction(
                 oracle,
                 hamming_rank,
@@ -519,16 +564,18 @@ namespace agent_memory {
                 similarity
             );
             const auto query_signature = encoder.encode(query);
-            std::vector<ScoredPosition> candidates;
-            candidates.reserve(document_signatures.size());
-            for(std::size_t position = 0; position < document_signatures.size(); ++position) {
-                candidates.push_back({
-                    position,
-                    -static_cast<float>(hamming_distance(query_signature, document_signatures[position])),
-                });
-            }
-            std::sort(candidates.begin(), candidates.end(), better_score);
-            candidates.resize(candidate_limit);
+            const auto query_affine_projections =
+                binary_options.candidate_scoring ==
+                    AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
+                ? encoder.affine_projections(query)
+                : std::vector<float>{};
+            auto candidates = binary_candidate_rank(
+                query_signature,
+                document_signatures,
+                candidate_limit,
+                binary_options.candidate_scoring,
+                query_affine_projections.empty() ? nullptr : &query_affine_projections
+            );
             for(auto& candidate : candidates) {
                 candidate.score = similarity.dot_product_values(
                     query.values.data(),
@@ -548,7 +595,15 @@ namespace agent_memory {
                 make_query_run(query_ids[query_index], original, document_ids, "original_float")
             );
             rerank_run.queries.push_back(
-                make_query_run(query_ids[query_index], candidates, document_ids, "binary_exact_rerank")
+                make_query_run(
+                    query_ids[query_index],
+                    candidates,
+                    document_ids,
+                    binary_options.candidate_scoring ==
+                        AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
+                    ? "binary_asymmetric_affine_exact_rerank"
+                    : "binary_exact_rerank"
+                )
             );
             decoder_run.queries.push_back(
                 make_query_run(query_ids[query_index], decoded, document_ids, "decoder_approximation")

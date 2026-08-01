@@ -151,6 +151,13 @@ namespace agent_memory {
         return output;
     }
 
+    std::vector<float> AutoencoderBinaryEncoder::affine_projections(
+        const Embedding& vector
+    ) const {
+        validate_input(vector);
+        return affine_projections_validated(vector);
+    }
+
     VectorSimilarityBackend AutoencoderBinaryEncoder::similarity_backend() const noexcept {
         return m_similarity.backend();
     }
@@ -164,6 +171,17 @@ namespace agent_memory {
 
     BinarySignature AutoencoderBinaryEncoder::encode_validated(const Embedding& vector) const {
         BinarySignature output(m_options.bit_count);
+        const auto projections = affine_projections_validated(vector);
+        for(std::size_t bit = 0; bit < m_options.bit_count; ++bit) {
+            output.set_bit(bit, projections[bit] >= 0.0F);
+        }
+        return output;
+    }
+
+    std::vector<float> AutoencoderBinaryEncoder::affine_projections_validated(
+        const Embedding& vector
+    ) const {
+        std::vector<float> output(m_options.bit_count);
         for(std::size_t bit = 0; bit < m_options.bit_count; ++bit) {
             float dot = 0.0F;
             const auto* weights = m_options.weights.data() + bit * m_options.input_dimension;
@@ -181,7 +199,7 @@ namespace agent_memory {
                         weights[dimension];
                 }
             }
-            output.set_bit(bit, dot + m_options.bias[bit] >= 0.0F);
+            output[bit] = dot + m_options.bias[bit];
         }
         return output;
     }
