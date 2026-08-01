@@ -78,3 +78,24 @@ replays the `balanced_stable_hash` selections from the source shards. A merely
 balanced but differently selected train/evaluation split is rejected. The
 prepared manifest records both the configured `evaluation_qrels_split` and
 SHA-256 digests of the qrels-excluded and final evaluation document-ID sets.
+
+## E5 materialization throughput
+
+`materialize-prepared-e5.py` runs locally on CPU and records its complete
+execution recipe in the generated manifest. `--thread-count` defaults to `1`
+for the most conservative local recipe. A throughput-oriented offline run may
+set an explicit higher value, for example:
+
+```powershell
+python tools/agent-memory-bench/materialize-prepared-e5.py `
+  --prepared-root data/miracl-ae-8lang `
+  --output-root data/miracl-e5-8lang `
+  --cache-dir data/hf-cache `
+  --thread-count 8 `
+  --local-files-only
+```
+
+The selected CPU thread count, batch size, float32 dtype, deterministic
+algorithm policy, PyTorch version, and platform are part of provenance. They
+identify the generation environment but do not claim byte-identical E5 vectors
+across unrelated PyTorch or BLAS builds.

@@ -1,0 +1,9 @@
+# Regeneration environment for the external multilingual-E5 materializer.
+# This is deliberately not a CI dependency list.
+# python-version: 3.12.13
+transformers==4.44.2
+torch==2.8.0
+numpy==2.5.1
+tokenizers==0.19.1
+safetensors==0.4.5
+huggingface-hub==0.24.6
