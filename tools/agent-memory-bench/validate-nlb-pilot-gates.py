@@ -45,7 +45,7 @@ IDENTITY_LITERAL_FIELDS = {
     "tie_break_policy": "score_desc_document_id_asc_v1",
     "evaluator_id": "agent-memory-autoencoder-eval",
     "evaluator_version": "v1",
-    "vector_similarity_backend": "scalar",
+    "ranking_similarity_backend": "scalar",
 }
 
 
@@ -96,8 +96,8 @@ def load_report(path: Path) -> dict[str, Any]:
 
 def load_expected_identity(path: Path) -> dict[str, Any]:
     identity = load_report(path)
-    if identity.get("schema_version") != 1:
-        raise GateError("expected identity schema_version must equal 1")
+    if identity.get("schema_version") != 2:
+        raise GateError("expected identity schema_version must equal 2")
     for field, expected in IDENTITY_LITERAL_FIELDS.items():
         if identity.get(field) != expected:
             raise GateError(f"expected identity {field} must equal {expected!r}")
@@ -109,8 +109,8 @@ def load_expected_identity(path: Path) -> dict[str, Any]:
 def validate_report_identity(
     report: dict[str, Any], expected_identity: dict[str, Any], path: Path
 ) -> None:
-    if report.get("schema_version") != 1:
-        raise GateError(f"{path}: schema_version must equal 1")
+    if report.get("schema_version") != 2:
+        raise GateError(f"{path}: schema_version must equal 2")
     for field in (*IDENTITY_LITERAL_FIELDS, *IDENTITY_SHA256_FIELDS):
         if report.get(field) != expected_identity[field]:
             raise GateError(f"{path}: {field} does not match expected experiment identity")
@@ -181,7 +181,7 @@ def validate_reports(paths: list[Path], expected_identity: dict[str, Any]) -> No
 
 def representative_report(candidate_limit: int) -> dict[str, Any]:
     report = {
-        "schema_version": 1,
+        "schema_version": 2,
         "artifact_sha256": "a" * 64,
         "materialization_manifest_sha256": "b" * 64,
         "prepared_study_manifest_sha256": "c" * 64,
@@ -246,7 +246,7 @@ def run_self_test() -> int:
         for field, wrong_value in (
             ("evaluator_source_manifest_sha256", "5" * 64),
             ("evaluator_id", "different-evaluator"),
-            ("vector_similarity_backend", "avx2_simd"),
+            ("ranking_similarity_backend", "avx2_simd"),
         ):
             paths[1].write_text(json.dumps(representative_report(2048)), encoding="utf-8")
             bad_identity_report = representative_report(512)

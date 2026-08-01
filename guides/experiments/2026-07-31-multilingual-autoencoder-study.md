@@ -752,12 +752,21 @@ quantile sweep, and Hamming-versus-asymmetric comparison must be rerun before
 they are used for a new selection decision.
 
 The current evaluator contract also pins an evaluator ID/version, a scalar
-similarity backend, and a SHA-256 manifest of the project-owned C++ source
+ranking-similarity backend, and a SHA-256 manifest of the project-owned C++ source
 units that load the artifact, produce binary codes, rank candidates, and
 aggregate qrels metrics. CMake regenerates that manifest when one of those
 units changes. The standard baseline evaluator uses the same scalar reference
 backend and streams per-query qrels metrics too, so its future comparison
 reports do not retain corpus-sized rankings for every query.
+
+Evaluation report schema v2 additionally records an `evaluator_build_environment`
+object: its deterministic fingerprint covers the configured compiler identity,
+C++ language mode, generator, platform, pointer width, and C++ flag families;
+the object exposes the human-readable subset needed to diagnose a cross-machine
+difference. It is provenance, not a promise that two independently built
+binaries are bit-identical. The NLB quality gate deliberately does not require
+this object to match, because its current role is to validate a declared result
+on the producing machine rather than make a cross-toolchain equivalence claim.
 
 `tools/agent-memory-bench/nlb-pilot-expected-identity.example.json` documents
 the required manifest shape. A concrete manifest belongs beside the curated

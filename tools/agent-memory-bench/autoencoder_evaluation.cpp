@@ -180,6 +180,20 @@ namespace {
         };
     }
 
+    [[nodiscard]] nlohmann::json evaluator_build_environment_json() {
+        return {
+            {"manifest_sha256", AGENT_MEMORY_EVALUATOR_BUILD_ENVIRONMENT_SHA256},
+            {"compiler_id", AGENT_MEMORY_EVALUATOR_COMPILER_ID},
+            {"compiler_version", AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
+            {"cxx_standard", AGENT_MEMORY_EVALUATOR_CXX_STANDARD},
+            {"generator", AGENT_MEMORY_EVALUATOR_GENERATOR},
+            {"build_type", AGENT_MEMORY_EVALUATOR_BUILD_TYPE},
+            {"system_name", AGENT_MEMORY_EVALUATOR_SYSTEM_NAME},
+            {"system_processor", AGENT_MEMORY_EVALUATOR_SYSTEM_PROCESSOR},
+            {"pointer_bits", AGENT_MEMORY_EVALUATOR_POINTER_BITS},
+        };
+    }
+
 } // namespace
 
 int main(int argc, char* argv[]) {
@@ -239,7 +253,7 @@ int main(int argc, char* argv[]) {
             );
         }
         const nlohmann::json report{
-            {"schema_version", 1},
+            {"schema_version", 2},
             {"artifact_sha256", artifact.artifact_sha256},
             {"artifact_family", artifact.artifact_family},
             {"bit_count", artifact.encoder.info().bit_count},
@@ -255,9 +269,10 @@ int main(int argc, char* argv[]) {
             {"evaluator_id", "agent-memory-autoencoder-eval"},
             {"evaluator_version", "v1"},
             {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
-            {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
+            {"ranking_similarity_backend", agent_memory::vector_similarity_backend_name(
                 agent_memory::VectorSimilarityComputer(agent_memory::VectorSimilarityBackend::Scalar).backend()
             )},
+            {"evaluator_build_environment", evaluator_build_environment_json()},
             {"evaluation_protocol", "miracl_monolingual_per_language_v1"},
             {"language_ids", language_ids},
             {"document_count", materialization.document_embeddings.size()},
