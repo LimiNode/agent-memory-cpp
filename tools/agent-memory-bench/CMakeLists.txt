@@ -12,6 +12,12 @@ add_executable(agent-memory-autoencoder-eval
     autoencoder_evaluation.cpp
 )
 
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/autoencoder_evaluation.cpp"
+    AGENT_MEMORY_AUTOENCODER_EVALUATOR_SOURCE_SHA256)
+target_compile_definitions(agent-memory-autoencoder-eval PRIVATE
+    AGENT_MEMORY_EVALUATOR_SOURCE_SHA256="${AGENT_MEMORY_AUTOENCODER_EVALUATOR_SOURCE_SHA256}"
+)
+
 target_link_libraries(agent-memory-autoencoder-eval
     PRIVATE
         agent_memory::agent_memory
@@ -20,6 +26,12 @@ target_link_libraries(agent-memory-autoencoder-eval
 
 add_executable(agent-memory-standard-binary-eval
     standard_binary_encoder_evaluation.cpp
+)
+
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/standard_binary_encoder_evaluation.cpp"
+    AGENT_MEMORY_STANDARD_EVALUATOR_SOURCE_SHA256)
+target_compile_definitions(agent-memory-standard-binary-eval PRIVATE
+    AGENT_MEMORY_EVALUATOR_SOURCE_SHA256="${AGENT_MEMORY_STANDARD_EVALUATOR_SOURCE_SHA256}"
 )
 
 target_link_libraries(agent-memory-standard-binary-eval

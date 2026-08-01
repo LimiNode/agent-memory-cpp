@@ -404,6 +404,57 @@ int main() {
         if(!reranked_recall || *reranked_recall != 1.0) {
             return fail("qrels retrieval evaluation contract");
         }
+        const std::vector<std::string> parity_query_ids{"q0", "q1"};
+        const std::vector<agent_memory::Embedding> parity_query_embeddings{
+            {{1.0F, 0.0F}}, {{0.0F, 1.0F}}
+        };
+        const std::vector<agent_memory::RelevanceJudgment> parity_judgments{
+            {"q0", "d0", 1}, {"q1", "d0", 1}
+        };
+        const auto streamed_parity =
+            agent_memory::evaluate_autoencoder_binary_retrieval_with_qrels(
+                document_ids,
+                document_embeddings,
+                parity_query_ids,
+                parity_query_embeddings,
+                parity_judgments,
+                artifact.encoder,
+                artifact.decoder,
+                {1, 1},
+                {{1}, {1}}
+            );
+        agent_memory::RetrievalEvalDataset full_dataset;
+        full_dataset.queries = {
+            {"q0", "q0", {}, 1, {}, agent_memory::EvalQueryAnswerMode::JudgedRetrieval},
+            {"q1", "q1", {}, 1, {}, agent_memory::EvalQueryAnswerMode::JudgedRetrieval},
+        };
+        full_dataset.judgments = parity_judgments;
+        const agent_memory::RetrievalRun full_run{"original", {
+            {"q0", {{"d0", 1.0F, 0, "original"}, {"d1", 0.0F, 0, "original"}}},
+            {"q1", {{"d1", 1.0F, 0, "original"}, {"d0", 0.0F, 0, "original"}}},
+        }};
+        const auto retained_parity = agent_memory::evaluate_retrieval(
+            full_dataset, full_run, {{1}, {1}}
+        );
+        const auto streamed_recall = agent_memory::metric_value_at(
+            streamed_parity.original_float_metrics.recall_at, 1
+        );
+        const auto retained_recall = agent_memory::metric_value_at(
+            retained_parity.recall_at, 1
+        );
+        const auto streamed_ndcg = agent_memory::metric_value_at(
+            streamed_parity.original_float_metrics.ndcg_at, 1
+        );
+        const auto retained_ndcg = agent_memory::metric_value_at(retained_parity.ndcg_at, 1);
+        if(!streamed_recall || !retained_recall || !streamed_ndcg || !retained_ndcg ||
+           *streamed_recall != *retained_recall || *streamed_ndcg != *retained_ndcg ||
+           streamed_parity.original_float_metrics.mrr != retained_parity.mrr ||
+           streamed_parity.original_float_metrics.evaluated_query_count !=
+               retained_parity.evaluated_query_count ||
+           streamed_parity.original_float_metrics.empty_result_fraction !=
+               retained_parity.empty_result_fraction) {
+            return fail("streaming qrels metrics must match retained full-run metrics");
+        }
         if(!throws_runtime_error([&] {
                auto bytes = std::fstream(
                    root / "encoder-weights.f32",

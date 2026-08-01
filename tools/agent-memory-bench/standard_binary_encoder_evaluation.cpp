@@ -519,6 +519,7 @@ int main(int argc, char* argv[]) {
             {"tie_break_policy", "score_desc_document_id_asc_v1"},
             {"evaluator_id", "agent-memory-standard-binary-eval"},
             {"evaluator_version", "v1"},
+            {"evaluator_source_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_SHA256},
             {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
                 agent_memory::VectorSimilarityComputer{}.backend()
             )},
