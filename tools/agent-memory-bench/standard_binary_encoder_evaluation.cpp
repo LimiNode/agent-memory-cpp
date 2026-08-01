@@ -16,11 +16,14 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -61,6 +64,33 @@ namespace {
         } catch(const std::exception&) {
             throw std::invalid_argument(std::string{name} + " must be a positive integer");
         }
+    }
+
+    [[nodiscard]] std::vector<std::string> load_training_ids(
+        const std::filesystem::path& path
+    ) {
+        std::ifstream input(path, std::ios::binary);
+        if(!input) {
+            throw std::runtime_error("cannot open canonical training ID list");
+        }
+        std::vector<std::string> output;
+        std::unordered_set<std::string> seen;
+        std::string line;
+        while(std::getline(input, line)) {
+            const auto row = nlohmann::json::parse(line);
+            if(!row.is_object() || !row.contains("id") || !row.at("id").is_string()) {
+                throw std::runtime_error("canonical training ID list row must contain string id");
+            }
+            const auto id = row.at("id").get<std::string>();
+            if(id.empty() || !seen.insert(id).second) {
+                throw std::runtime_error("canonical training ID list contains empty or duplicate id");
+            }
+            output.push_back(id);
+        }
+        if(output.empty()) {
+            throw std::runtime_error("canonical training ID list is empty");
+        }
+        return output;
     }
 
     [[nodiscard]] float inverse_norm(
@@ -342,8 +372,8 @@ int main(int argc, char* argv[]) {
         }
         return 0;
     }
-    if(argc != 6) {
-        std::cerr << "usage: agent-memory-standard-binary-eval <materialization-root> <report.json> <bit-count> <candidate-limit> <seed>\n";
+    if(argc != 6 && argc != 7) {
+        std::cerr << "usage: agent-memory-standard-binary-eval <materialization-root> <report.json> <bit-count> <candidate-limit> <seed> [train-ids.jsonl]\n";
         return 2;
     }
     try {
@@ -365,9 +395,28 @@ int main(int argc, char* argv[]) {
             query_vectors.push_back(record.embedding);
         }
         std::vector<agent_memory::Embedding> training_vectors;
-        training_vectors.reserve(materialization.training_embeddings.size());
-        for(const auto& record : materialization.training_embeddings) {
-            training_vectors.push_back(record.embedding);
+        std::string training_id_list_path;
+        if(argc == 7) {
+            const auto selected_ids = load_training_ids(argv[6]);
+            std::unordered_map<std::string, const agent_memory::Embedding*> available;
+            available.reserve(materialization.training_embeddings.size());
+            for(const auto& record : materialization.training_embeddings) {
+                available.emplace(record.id, &record.embedding);
+            }
+            training_vectors.reserve(selected_ids.size());
+            for(const auto& id : selected_ids) {
+                const auto existing = available.find(id);
+                if(existing == available.end()) {
+                    throw std::runtime_error("canonical training ID is absent from materialization");
+                }
+                training_vectors.push_back(*existing->second);
+            }
+            training_id_list_path = argv[6];
+        } else {
+            training_vectors.reserve(materialization.training_embeddings.size());
+            for(const auto& record : materialization.training_embeddings) {
+                training_vectors.push_back(record.embedding);
+            }
         }
         const auto dimension = document_vectors.front().dimension();
         const auto dataset = make_dataset(document_ids, query_ids, materialization.judgments);
@@ -386,23 +435,23 @@ int main(int argc, char* argv[]) {
         append("randomized_hadamard", 0U, randomized_hadamard);
         agent_memory::LearnedProjectionBinaryEncoder learned(
             agent_memory::train_learned_projection_encoder(
-                training_vectors, {dimension, bit_count, seed, 2048U}
+                training_vectors, {dimension, bit_count, seed, training_vectors.size()}
             )
         );
-        append("pair_difference_projection", 2048U, learned);
+        append("pair_difference_projection", training_vectors.size(), learned);
         if(bit_count <= dimension) {
             agent_memory::PcaProjectionBinaryEncoder pca(
                 agent_memory::train_pca_projection_encoder(
-                    training_vectors, {dimension, bit_count, seed, 24U, 2048U}
+                    training_vectors, {dimension, bit_count, seed, 24U, training_vectors.size()}
                 )
             );
-            append("pca_sign", 2048U, pca);
+            append("pca_sign", training_vectors.size(), pca);
             agent_memory::ItqRotationBinaryEncoder itq(
                 agent_memory::train_itq_rotation_encoder(
-                    training_vectors, {dimension, bit_count, seed, 24U, 16U, 2048U}
+                    training_vectors, {dimension, bit_count, seed, 24U, 16U, training_vectors.size()}
                 )
             );
-            append("itq_rotation", 2048U, itq);
+            append("itq_rotation", training_vectors.size(), itq);
         }
         if(bit_count == dimension) {
             agent_memory::CoordinateSignBinaryEncoder coordinate_sign({dimension});
@@ -416,6 +465,7 @@ int main(int argc, char* argv[]) {
             {"document_count", document_vectors.size()},
             {"query_count", query_vectors.size()},
             {"training_document_count", training_vectors.size()},
+            {"training_id_list_path", training_id_list_path},
             {"oracle_k", 10},
             {"returned_candidate_limit", candidate_limit},
             {"seed", seed},
