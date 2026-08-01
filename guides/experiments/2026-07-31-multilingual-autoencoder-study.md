@@ -477,3 +477,98 @@ evaluated together.
 
 Reference: Norouzi, Punjani, and Fleet, *Fast Exact Search in Hamming Space
 with Multi-Index Hashing* (2014), <https://norouzi.github.io/research/mih/>.
+
+## 2026-07-31 — Code-capacity diagnostic and standard-baseline control
+
+### Status
+
+Completed as a diagnostic continuation of the fresh RU 25k NLB grid. The new
+metrics are descriptive evidence for choosing the next training experiments;
+they are not an acceptance gate and do not make the current standard-baseline
+comparison training-budget fair.
+
+### Question
+
+Does the relatively weak 64--256-bit NLB frontier arise from an absence of
+useful binary capacity, redundant bits, or merely a failure to preserve local
+dense-space order?
+
+### Method
+
+`BinaryCodeHealthMetrics` now reports, in addition to occupancy and sampled
+Hamming distance:
+
+- total, p05, median, and p95 per-bit binary entropy;
+- mean/p95/p99/max absolute off-diagonal bit correlation on a deterministic
+  512-document sample;
+- a stable-rank-style participation ratio of that sampled correlation matrix.
+
+The autoencoder evaluation also reports the Hamming distance from each dev
+query to its dense rank-1 and dense rank-100 documents, plus their difference.
+The rank-100 item is a teacher-geometry control, not a qrels negative label.
+
+### NLB results at 512 candidates
+
+| Bits | Total bit entropy | Fraction of nominal width | Correlation participation ratio | Cosine vs -Hamming | Coverage@512 | Reranked nDCG@10 |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 64 | 25.75 | 40.2% | 46.8 | 0.275 | 0.304 | 0.407 |
+| 128 | 69.90 | 54.6% | 90.4 | 0.375 | 0.663 | 0.689 |
+| 256 | 137.23 | 53.6% | 149.3 | 0.502 | 0.859 | 0.778 |
+| 512 | 293.16 | 57.3% | 203.9 | 0.643 | 0.974 | 0.799 |
+
+NLB-128 has no completely constant held-out bits, but that does not mean that
+all bits are informative: its entropy p05 is `0.004`, median is `0.620`, and
+only `69.90` independent-bit-equivalent entropy units are present before any
+bit correlation is considered. Its sampled correlation participation ratio is
+`90.4` rather than 128. The 64-bit code is more constrained still.
+
+For NLB-128, the mean query-to-dense-rank-1 Hamming distance is `19.56`; the
+mean dense-rank-100 distance is `28.11`; and their mean margin is `8.55` bits.
+Only `8.15%` of queries have a nonpositive rank-1/rank-100 margin. Thus the
+code does retain local ordering, but it does so with materially less effective
+capacity than its nominal width suggests.
+
+### Preliminary 128-bit standard-baseline control
+
+The same held-out RU evaluation at 512 candidates was also run for existing
+encoders. PCA and ITQ currently use their deterministic 2,048-vector training
+cap, while NLB uses its 23,801-vector document-only split. Therefore this is a
+useful diagnosis, not a winner declaration.
+
+| Encoder | Train vectors | Total bit entropy | Participation ratio | Rank-1 to rank-100 margin | Coverage@512 | Reranked nDCG@10 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Random hyperplanes | 0 | 63.5 | 89.7 | 7.64 | 0.592 | 0.655 |
+| Randomized Hadamard | 0 | 68.3 | 91.0 | 8.15 | 0.627 | 0.671 |
+| Pair-difference projection | 2,048 | 126.1 | 22.7 | 13.02 | 0.549 | 0.619 |
+| PCA + sign | 2,048 | 127.6 | 99.6 | 19.53 | 0.931 | 0.793 |
+| ITQ rotation | 2,048 | 127.1 | 77.9 | 17.14 | 0.934 | 0.790 |
+| NLB-paper tied | 23,801 | 69.9 | 90.4 | 8.55 | 0.663 | 0.689 |
+
+The result supports the capacity hypothesis: PCA+sign has nearly saturated
+per-bit entropy and low observed correlation while NLB-128 does not. It also
+shows that plain reconstruction is not automatically a better binary-retrieval
+objective than a PCA/ITQ geometry baseline.
+
+### Interpretation and next checks
+
+The evidence is sufficient to reject the assumption that `constant_bit_fraction
+== 0` proves a healthy code. It does **not** yet identify a training defect in
+NLB, and it does not prove that PCA/ITQ will remain superior after a fair
+same-document/same-budget comparison.
+
+The next experiments are intentionally ordered:
+
+1. Select one deterministic 2,048-document subset from the NLB stable training
+   split and train NLB on exactly those IDs; compare it with PCA and ITQ trained
+   on the same IDs.
+2. Add the same local-margin diagnostics to every standard encoder report and
+   measure 64/128/256/512 on the common fixture.
+3. Evaluate post-hoc median thresholds as a separately versioned calibration
+   artifact. This tests bit balance without conflating it with a new loss.
+4. Only then test ITQ warm-start, balance/decorrelation losses, and finally
+   retrieval-aware query--document distillation using a separate retrieval
+   training split. RU dev queries and qrels remain final held-out evaluation.
+
+Raw JSON reports remain local under `tmp/`; this note records the
+materialization provenance and compact values needed to reproduce the research
+decision.

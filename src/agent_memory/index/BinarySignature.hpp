@@ -143,6 +143,11 @@ namespace agent_memory {
     struct BinaryCodeHealthOptions final {
         /// \brief Maximum deterministic pair samples used for pairwise Hamming.
         std::size_t max_pairwise_samples = 4096;
+        /// \brief Maximum deterministic signature sample used for bit correlation.
+        ///
+        /// Correlation is quadratic in the code width. The sample bounds diagnostic
+        /// cost while leaving occupancy and entropy computed over all signatures.
+        std::size_t max_correlation_samples = 512;
     };
 
     /// \brief Diagnostics that reveal degenerate or unbalanced binary codes.
@@ -157,10 +162,33 @@ namespace agent_memory {
         double constant_bit_fraction = 0.0;
         /// \brief Mean normalized binary entropy across bit positions.
         double mean_bit_entropy = 0.0;
+        /// \brief Sum of normalized binary entropy across bit positions.
+        double total_bit_entropy = 0.0;
         /// \brief Minimum normalized binary entropy across bit positions.
         double min_bit_entropy = 0.0;
+        /// \brief Fifth percentile of normalized binary entropy across bit positions.
+        double p05_bit_entropy = 0.0;
+        /// \brief Median normalized binary entropy across bit positions.
+        double median_bit_entropy = 0.0;
+        /// \brief Ninety-fifth percentile of normalized binary entropy across bit positions.
+        double p95_bit_entropy = 0.0;
         /// \brief Maximum normalized binary entropy across bit positions.
         double max_bit_entropy = 0.0;
+        /// \brief Number of signatures used for the deterministic bit-correlation sample.
+        std::size_t correlation_sample_count = 0;
+        /// \brief Mean absolute off-diagonal Pearson correlation between nonconstant bits.
+        double mean_absolute_bit_correlation = 0.0;
+        /// \brief Ninety-fifth percentile of absolute off-diagonal bit correlation.
+        double p95_absolute_bit_correlation = 0.0;
+        /// \brief Ninety-ninth percentile of absolute off-diagonal bit correlation.
+        double p99_absolute_bit_correlation = 0.0;
+        /// \brief Largest absolute off-diagonal bit correlation.
+        double max_absolute_bit_correlation = 0.0;
+        /// \brief Stable-rank-style participation ratio of the sampled bit correlation matrix.
+        ///
+        /// The value is at most the number of nonconstant sampled bits. A much
+        /// smaller value indicates redundant correlated code dimensions.
+        double bit_correlation_participation_ratio = 0.0;
         /// \brief Fraction of signatures beyond the unique-signature count.
         double duplicate_signature_rate = 0.0;
         /// \brief Mean Hamming distance across all pairs or a deterministic sample.

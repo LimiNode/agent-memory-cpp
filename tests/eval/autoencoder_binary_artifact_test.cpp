@@ -108,6 +108,8 @@ namespace {
   "prepared_study_manifest_sha256": "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
   "vector_format": {"dtype": "float32_le", "endianness": "little", "dimension": 2},
   "outputs": {
+    "train_ids": {"path": "train-ids.jsonl", "sha256": "140ba51a53b80e6ecff1266a9c07bb25f430fa5714ae4d57b4a6be63caf5c61e", "count": 2},
+    "train_vectors": {"path": "train-vectors.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "count": 2, "dimension": 2, "dtype": "float32_le"},
     "evaluation_document_ids": {"path": "evaluation-document-ids.jsonl", "sha256": "5cf5c698207e8b94589039eb93110df0e6a02fcbdba751c2318d66ded450103c", "count": 2},
     "evaluation_document_vectors": {"path": "evaluation-document-vectors.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "count": 2, "dimension": 2, "dtype": "float32_le"},
     "evaluation_query_ids": {"path": "evaluation-query-ids.jsonl", "sha256": "8549672b4c462771e4d8447ada71e66a04caf49137b453f84ce513b2b2b9c522", "count": 1},
@@ -181,6 +183,11 @@ int main() {
            diagnostics.document_code_health.sampled_pairwise_hamming_distance_stddev != 0.0 ||
            diagnostics.query_document_hamming_distance.sample_count != 2 ||
            std::fabs(diagnostics.query_document_hamming_distance.mean - 0.5) > 1.0e-9 ||
+           diagnostics.dense_nearest_hamming_distance.sample_count != 1 ||
+           diagnostics.dense_rank_100_hamming_distance.sample_count != 1 ||
+           diagnostics.dense_neighbour_hamming_margin.sample_count != 1 ||
+           std::fabs(diagnostics.dense_neighbour_hamming_margin.mean - 1.0) > 1.0e-9 ||
+           diagnostics.nonpositive_dense_neighbour_hamming_margin_fraction != 0.0 ||
            !diagnostics.cosine_negative_hamming_correlation_defined ||
            std::fabs(
                diagnostics.cosine_negative_hamming_pearson_correlation - 1.0
@@ -205,6 +212,8 @@ int main() {
         }
         const auto materialization_root = root / "materialization";
         std::filesystem::create_directories(materialization_root);
+        write_text(materialization_root / "train-ids.jsonl", "{\"id\":\"t0\"}\n{\"id\":\"t1\"}\n");
+        write_floats(materialization_root / "train-vectors.f32", {1.0F, 0.0F, 0.0F, 1.0F});
         write_text(materialization_root / "evaluation-document-ids.jsonl", "{\"id\":\"d0\"}\n{\"id\":\"d1\"}\n");
         write_floats(materialization_root / "evaluation-document-vectors.f32", {1.0F, 0.0F, 0.0F, 1.0F});
         write_text(materialization_root / "evaluation-query-ids.jsonl", "{\"id\":\"q0\"}\n");
@@ -215,7 +224,8 @@ int main() {
         const auto materialization = agent_memory::load_materialized_autoencoder_evaluation_dataset(
             materialization_root
         );
-        if(materialization.document_embeddings.size() != 2 ||
+        if(materialization.training_embeddings.size() != 2 ||
+           materialization.document_embeddings.size() != 2 ||
            materialization.query_embeddings.size() != 1 ||
            materialization.judgments.size() != 1 ||
            materialization.judgments.front().item_id != "d0") {

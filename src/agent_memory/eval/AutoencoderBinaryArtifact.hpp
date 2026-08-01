@@ -28,6 +28,12 @@ namespace agent_memory {
     struct MaterializedAutoencoderEvaluationDataset final {
         std::string materialization_manifest_sha256;
         std::string prepared_study_manifest_sha256;
+        /// \brief Document-only rows available for offline encoder training.
+        ///
+        /// These IDs are verified against the materialization manifest. Callers
+        /// must not mix them with held-out evaluation documents, queries, or
+        /// qrels when reporting an encoder-comparison result.
+        std::vector<MaterializedEmbeddingRecord> training_embeddings;
         std::vector<MaterializedEmbeddingRecord> document_embeddings;
         std::vector<MaterializedEmbeddingRecord> query_embeddings;
         std::vector<RelevanceJudgment> judgments;

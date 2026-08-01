@@ -46,6 +46,16 @@ namespace agent_memory {
         std::size_t unique_query_code_count = 0;
         double unique_query_code_fraction = 0.0;
         AutoencoderBinaryDescriptiveStatistics query_document_hamming_distance;
+        /// \brief Hamming distance from each query to its closest dense-space document.
+        AutoencoderBinaryDescriptiveStatistics dense_nearest_hamming_distance;
+        /// \brief Hamming distance from each query to its dense rank-100 document.
+        ///
+        /// This is a teacher-geometry control, not a relevance-negative label.
+        AutoencoderBinaryDescriptiveStatistics dense_rank_100_hamming_distance;
+        /// \brief Dense rank-100 Hamming distance minus the dense-nearest distance.
+        AutoencoderBinaryDescriptiveStatistics dense_neighbour_hamming_margin;
+        /// \brief Fraction of queries whose dense-neighbour Hamming margin is nonpositive.
+        double nonpositive_dense_neighbour_hamming_margin_fraction = 0.0;
         /// \brief Pearson correlation of float cosine with negative Hamming distance.
         double cosine_negative_hamming_pearson_correlation = 0.0;
         /// \brief Whether the Pearson correlation has nonzero variance in both variables.

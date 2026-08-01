@@ -629,6 +629,18 @@ namespace agent_memory {
         }
         const auto dimension = require_positive_size(vector_format, "dimension");
         const auto& outputs = require_field(manifest, "outputs");
+        const auto training_ids = load_record_ids(
+            materialization_root,
+            require_field(outputs, "train_ids"),
+            "train_ids"
+        );
+        const auto training_vectors = load_embedding_rows(
+            materialization_root,
+            require_field(outputs, "train_vectors"),
+            training_ids.size(),
+            dimension,
+            "train_vectors"
+        );
         const auto document_ids = load_record_ids(
             materialization_root,
             require_field(outputs, "evaluation_document_ids"),
@@ -687,6 +699,10 @@ namespace agent_memory {
         output.materialization_manifest_sha256 = sha256_hex(manifest_bytes);
         output.prepared_study_manifest_sha256 = prepared_study_manifest_sha256;
         output.judgments = judgments;
+        output.training_embeddings.reserve(training_ids.size());
+        for(std::size_t index = 0; index < training_ids.size(); ++index) {
+            output.training_embeddings.push_back({training_ids[index], training_vectors[index]});
+        }
         output.document_embeddings.reserve(document_ids.size());
         for(std::size_t index = 0; index < document_ids.size(); ++index) {
             output.document_embeddings.push_back({document_ids[index], document_vectors[index]});

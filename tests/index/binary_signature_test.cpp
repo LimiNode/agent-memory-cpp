@@ -293,6 +293,18 @@ int main() {
     if(!(health.min_bit_entropy > 0.0 && health.max_bit_entropy <= 1.0)) {
         return fail("health metrics must compute entropy in the normalized binary range");
     }
+    if(!near(health.total_bit_entropy, 2.0 + 2.0 * 0.8112781244591328) ||
+       !near(health.p05_bit_entropy, 0.8112781244591328) ||
+       !near(health.median_bit_entropy, 0.8112781244591328) ||
+       !near(health.p95_bit_entropy, 1.0)) {
+        return fail("health metrics must summarize per-bit entropy distribution");
+    }
+    if(health.correlation_sample_count != 4 ||
+       !(health.max_absolute_bit_correlation >= 0.999999) ||
+       !(health.bit_correlation_participation_ratio > 0.0 &&
+         health.bit_correlation_participation_ratio < 4.0)) {
+        return fail("health metrics must reveal correlated effective code dimensions");
+    }
     if(!near(health.duplicate_signature_rate, 0.25)) {
         return fail("health metrics must compute duplicate-signature rate");
     }

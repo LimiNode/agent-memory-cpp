@@ -337,6 +337,10 @@ namespace agent_memory {
         output.code_diagnostics.shuffled_decoder_cosine = shuffled_decoder_cosines.result();
 
         RunningStatistics query_document_hamming_distances;
+        RunningStatistics dense_nearest_hamming_distances;
+        RunningStatistics dense_rank_100_hamming_distances;
+        RunningStatistics dense_neighbour_hamming_margins;
+        std::size_t nonpositive_dense_neighbour_hamming_margins = 0;
         RunningPearsonCorrelation cosine_negative_hamming;
         for(std::size_t query_index = 0; query_index < query_vectors.size(); ++query_index) {
             const auto& query = query_vectors[query_index];
@@ -349,6 +353,21 @@ namespace agent_memory {
                 similarity
             );
             const auto& query_signature = query_signatures[query_index];
+            const auto dense_nearest_hamming = hamming_distance(
+                query_signature, document_signatures[oracle.front().position]
+            );
+            const auto dense_rank_100_hamming = hamming_distance(
+                query_signature,
+                document_signatures[oracle[std::min<std::size_t>(99U, oracle.size() - 1U)].position]
+            );
+            const auto dense_neighbour_hamming_margin =
+                static_cast<double>(dense_rank_100_hamming) -
+                static_cast<double>(dense_nearest_hamming);
+            dense_nearest_hamming_distances.add(static_cast<double>(dense_nearest_hamming));
+            dense_rank_100_hamming_distances.add(static_cast<double>(dense_rank_100_hamming));
+            dense_neighbour_hamming_margins.add(dense_neighbour_hamming_margin);
+            nonpositive_dense_neighbour_hamming_margins +=
+                dense_neighbour_hamming_margin <= 0.0 ? 1U : 0U;
             std::vector<ScoredPosition> hamming_rank;
             hamming_rank.reserve(document_signatures.size());
             for(std::size_t position = 0; position < document_signatures.size(); ++position) {
@@ -424,6 +443,15 @@ namespace agent_memory {
             output.random_candidate_coverage_expectation;
         output.code_diagnostics.query_document_hamming_distance =
             query_document_hamming_distances.result();
+        output.code_diagnostics.dense_nearest_hamming_distance =
+            dense_nearest_hamming_distances.result();
+        output.code_diagnostics.dense_rank_100_hamming_distance =
+            dense_rank_100_hamming_distances.result();
+        output.code_diagnostics.dense_neighbour_hamming_margin =
+            dense_neighbour_hamming_margins.result();
+        output.code_diagnostics.nonpositive_dense_neighbour_hamming_margin_fraction =
+            static_cast<double>(nonpositive_dense_neighbour_hamming_margins) /
+            static_cast<double>(query_vectors.size());
         output.code_diagnostics.cosine_negative_hamming_pearson_correlation =
             cosine_negative_hamming.value();
         output.code_diagnostics.cosine_negative_hamming_correlation_defined =

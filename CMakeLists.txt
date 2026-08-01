@@ -155,6 +155,12 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    if(AGENT_MEMORY_BUILD_BENCHMARKS)
+        add_test(
+            NAME agent_memory_standard_binary_encoder_evaluator_self_test
+            COMMAND agent-memory-standard-binary-eval --self-test
+        )
+    endif()
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
         add_test(
