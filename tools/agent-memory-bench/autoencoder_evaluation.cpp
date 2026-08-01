@@ -181,16 +181,22 @@ namespace {
     }
 
     [[nodiscard]] nlohmann::json evaluator_build_environment_json() {
+        const std::string build_configuration = AGENT_MEMORY_EVALUATOR_BUILD_CONFIGURATION;
         return {
-            {"manifest_sha256", AGENT_MEMORY_EVALUATOR_BUILD_ENVIRONMENT_SHA256},
+            {"configured_environment_sha256", AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256},
             {"compiler_id", AGENT_MEMORY_EVALUATOR_COMPILER_ID},
             {"compiler_version", AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
             {"cxx_standard", AGENT_MEMORY_EVALUATOR_CXX_STANDARD},
+            {"cxx_extensions", AGENT_MEMORY_EVALUATOR_CXX_EXTENSIONS != 0},
             {"generator", AGENT_MEMORY_EVALUATOR_GENERATOR},
-            {"build_type", AGENT_MEMORY_EVALUATOR_BUILD_TYPE},
+            {"build_configuration",
+             build_configuration.empty() ? "unspecified" : build_configuration},
             {"system_name", AGENT_MEMORY_EVALUATOR_SYSTEM_NAME},
             {"system_processor", AGENT_MEMORY_EVALUATOR_SYSTEM_PROCESSOR},
             {"pointer_bits", AGENT_MEMORY_EVALUATOR_POINTER_BITS},
+            {"base_cxx_flags_sha256", AGENT_MEMORY_EVALUATOR_BASE_CXX_FLAGS_SHA256},
+            {"active_configuration_flags_sha256",
+             AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256},
         };
     }
 

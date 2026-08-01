@@ -759,14 +759,18 @@ units changes. The standard baseline evaluator uses the same scalar reference
 backend and streams per-query qrels metrics too, so its future comparison
 reports do not retain corpus-sized rankings for every query.
 
-Evaluation report schema v2 additionally records an `evaluator_build_environment`
-object: its deterministic fingerprint covers the configured compiler identity,
-C++ language mode, generator, platform, pointer width, and C++ flag families;
-the object exposes the human-readable subset needed to diagnose a cross-machine
-difference. It is provenance, not a promise that two independently built
-binaries are bit-identical. The NLB quality gate deliberately does not require
-this object to match, because its current role is to validate a declared result
-on the producing machine rather than make a cross-toolchain equivalence claim.
+Evaluation report schema v2 additionally requires an `evaluator_build_environment`
+object. `configured_environment_sha256` covers the published compiler identity,
+C++ language mode/extensions, generator, platform, pointer width, and base
+C++ flags fingerprint; `build_configuration` and
+`active_configuration_flags_sha256` identify the Debug/Release-like variant
+actually compiled. The report exposes both flag-family hashes, so a differing
+environment fingerprint can be diagnosed without relying on an absolute
+compiler installation path. It is provenance, not a promise that two
+independently built binaries are bit-identical. The NLB quality gate validates
+this object's shape but deliberately does not require it to match the expected
+identity, because its current role is to validate a declared result on the
+producing machine rather than make a cross-toolchain equivalence claim.
 
 `tools/agent-memory-bench/nlb-pilot-expected-identity.example.json` documents
 the required manifest shape. A concrete manifest belongs beside the curated

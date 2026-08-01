@@ -421,16 +421,22 @@ namespace {
     }
 
     [[nodiscard]] nlohmann::json evaluator_build_environment_json() {
+        const std::string build_configuration = AGENT_MEMORY_EVALUATOR_BUILD_CONFIGURATION;
         return {
-            {"manifest_sha256", AGENT_MEMORY_EVALUATOR_BUILD_ENVIRONMENT_SHA256},
+            {"configured_environment_sha256", AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256},
             {"compiler_id", AGENT_MEMORY_EVALUATOR_COMPILER_ID},
             {"compiler_version", AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
             {"cxx_standard", AGENT_MEMORY_EVALUATOR_CXX_STANDARD},
+            {"cxx_extensions", AGENT_MEMORY_EVALUATOR_CXX_EXTENSIONS != 0},
             {"generator", AGENT_MEMORY_EVALUATOR_GENERATOR},
-            {"build_type", AGENT_MEMORY_EVALUATOR_BUILD_TYPE},
+            {"build_configuration",
+             build_configuration.empty() ? "unspecified" : build_configuration},
             {"system_name", AGENT_MEMORY_EVALUATOR_SYSTEM_NAME},
             {"system_processor", AGENT_MEMORY_EVALUATOR_SYSTEM_PROCESSOR},
             {"pointer_bits", AGENT_MEMORY_EVALUATOR_POINTER_BITS},
+            {"base_cxx_flags_sha256", AGENT_MEMORY_EVALUATOR_BASE_CXX_FLAGS_SHA256},
+            {"active_configuration_flags_sha256",
+             AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256},
         };
     }
 
@@ -480,9 +486,14 @@ namespace {
 int main(int argc, char* argv[]) {
     if(argc == 2 && std::string{argv[1]} == "--self-test") {
         const auto build_environment = evaluator_build_environment_json();
-        const auto manifest = build_environment.value("manifest_sha256", std::string{});
+        const auto manifest = build_environment.value("configured_environment_sha256", std::string{});
         if(manifest.size() != 64U ||
            build_environment.value("cxx_standard", 0) != 17 ||
+           !build_environment.contains("cxx_extensions") ||
+           !build_environment.at("cxx_extensions").is_boolean() ||
+           build_environment.value("build_configuration", std::string{}).empty() ||
+           build_environment.value("base_cxx_flags_sha256", std::string{}).size() != 64U ||
+           build_environment.value("active_configuration_flags_sha256", std::string{}).size() != 64U ||
            build_environment.value("pointer_bits", 0) != static_cast<int>(sizeof(void*) * 8U) ||
            build_environment.value("compiler_id", std::string{}).empty() ||
            build_environment.value("system_name", std::string{}).empty()) {
