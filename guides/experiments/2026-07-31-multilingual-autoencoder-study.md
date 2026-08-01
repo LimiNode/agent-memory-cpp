@@ -996,3 +996,29 @@ stop/diagnose result rather than a candidate for promotion. The next
 document-only training experiment therefore anchors median-calibrated decision
 boundaries explicitly and studies a weaker local-neighbour objective; it must
 not silently reuse this failed distillation setting.
+
+### Median-preserving ITQ fine-tuning
+
+The preceding failure isolates the decision boundary as a likely failure mode:
+training an affine bias directly can turn otherwise useful projections into an
+imbalanced code. This follow-up keeps the ITQ initialization but excludes the
+bias from the optimizer. At initialization and after each training epoch, every
+bias is set to the negative median of that row's projections over the same
+23,801 document-only training vectors. Thus every train bit has occupancy
+within one document of 50%; held-out query/qrel data are still absent from
+training and selection.
+
+| Variant | Coverage@512 | Reranked nDCG@10 | cosine/-Hamming correlation | Total bit entropy |
+| --- | ---: | ---: | ---: | ---: |
+| ITQ + median frozen control | 0.9367 | 0.7932 | 0.5813 | 127.11 |
+| Median-preserving ITQ + reconstruction | 0.9439 | 0.7945 | 0.5580 | 127.23 |
+| Median-preserving ITQ + reconstruction + decorrelation | 0.9436 | 0.7946 | 0.5576 | 127.23 |
+| Median-preserving ITQ + reconstruction + weak soft-code-cosine distillation (`0.005`) | 0.9408 | 0.7928 | 0.5412 | 127.27 |
+
+This is a positive document-only result: median projection preserves code
+capacity while optimization gains about `0.72` coverage points over the frozen
+ITQ control. The small decorrelation and weak distillation variants do not
+improve it materially. These are still one seed and one held-out RU fixture;
+the next gate is a local-neighbour/margin objective and then a separately
+declared qrels-aware experiment, not promotion of this artifact as a production
+default.
