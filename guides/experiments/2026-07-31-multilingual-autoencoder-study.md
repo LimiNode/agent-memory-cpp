@@ -949,3 +949,16 @@ over seeds with query-bootstrap confidence intervals, run a controlled ITQ-only
 versus ITQ-plus-each-loss ablation, and test a separately predeclared
 median-anchor/bias-regularization study. Query/qrels-aware training remains a
 distinct later experiment and must not be combined with this no-leakage result.
+
+### Superseded retrieval-distillation pilot protocol
+
+The table above is retained as a historical record only and must not be used
+for a training-family decision. A later audit found two protocol defects: it
+selected checkpoints at a temperature that changed with epoch, and labelled an
+effectively frozen ITQ point although it still executed optimizer steps. The
+replacement protocol uses a fixed final-temperature validation objective and an
+explicit zero-epoch, zero-step initialization-only control. It also defines
+document-geometry distillation as cosine similarity between L2-normalized
+soft codes, rather than a bit-count-scaled dot product. The same held-out RU
+fixture and document-only split are retained; replacement results are recorded
+in the follow-up section after rerunning every comparison under this contract.

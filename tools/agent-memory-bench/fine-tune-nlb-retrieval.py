@@ -63,6 +63,16 @@ def temperature_for_epoch(start: float, finish: float, epoch: int, epochs: int) 
     return start * ((finish / start) ** fraction)
 
 
+def validate_optimization_mode(epochs: int, export_initialization_only: bool) -> None:
+    """Require an explicit zero-step mode for a frozen initialization control."""
+    if epochs < 0:
+        raise FineTuneError("epochs must be non-negative")
+    if export_initialization_only != (epochs == 0):
+        raise FineTuneError(
+            "initialization-only export requires --epochs 0 and training requires positive epochs"
+        )
+
+
 def load_weight(
     *, root: Path, descriptor: dict[str, Any], expected_shape: list[int], numpy: Any
 ) -> Any:
@@ -185,13 +195,17 @@ def train(
     row_orthogonality_weight: float, teacher_temperature: float,
     student_temperature: float, soft_temperature_start: float,
     soft_temperature_end: float, initialization_mode: str, itq_iterations: int,
-    torch_threads: int, train_ids_path: Path | None = None,
+    torch_threads: int, export_initialization_only: bool,
+    train_ids_path: Path | None = None,
     validation_ids_path: Path | None = None,
 ) -> dict[str, Any]:
     if output_root.exists():
         raise FineTuneError(f"output directory already exists: {output_root}")
-    if min(bit_count, epochs, batch_size, torch_threads) <= 0 or learning_rate <= 0.0:
-        raise FineTuneError("bit_count, epochs, batch_size, threads, and learning_rate must be positive")
+    if bit_count <= 0 or batch_size <= 0 or torch_threads <= 0 or learning_rate <= 0.0:
+        raise FineTuneError(
+            "bit_count, batch_size, threads, and learning_rate must be positive"
+        )
+    validate_optimization_mode(epochs, export_initialization_only)
     if not 0.0 < validation_fraction < 0.5:
         raise FineTuneError("validation_fraction must be in (0, 0.5)")
     for value, name in (
@@ -261,9 +275,11 @@ def train(
     encoder_weight = torch.nn.Parameter(torch.from_numpy(initial_weight.copy()))
     encoder_bias = torch.nn.Parameter(torch.from_numpy(initial_bias.copy()))
     decoder_bias = torch.nn.Parameter(torch.from_numpy(initial_decoder_bias.copy()))
-    optimizer = torch.optim.AdamW(
-        [encoder_weight, encoder_bias, decoder_bias], lr=learning_rate, weight_decay=0.0
-    )
+    optimizer = None
+    if not export_initialization_only:
+        optimizer = torch.optim.AdamW(
+            [encoder_weight, encoder_bias, decoder_bias], lr=learning_rate, weight_decay=0.0
+        )
 
     def batch_tensor(indices: list[int]) -> Any:
         return torch.from_numpy(numpy.asarray(vectors[indices], dtype=numpy.float32).copy())
@@ -295,7 +311,8 @@ def train(
         if distillation_weight != 0.0 and len(values) > 1:
             teacher_vectors = functional.normalize(clipped, dim=1)
             teacher_scores = teacher_vectors @ teacher_vectors.T
-            student_scores = (soft_code @ soft_code.T) / bit_count
+            student_vectors = functional.normalize(soft_code, dim=1, eps=1.0e-6)
+            student_scores = student_vectors @ student_vectors.T
             diagonal_mask = torch.eye(len(values), dtype=torch.bool, device=values.device)
             teacher_scores = teacher_scores.masked_fill(diagonal_mask, -1.0e9)
             student_scores = student_scores.masked_fill(diagonal_mask, -1.0e9)
@@ -327,19 +344,7 @@ def train(
             "row_orthogonality": row_orthogonality_loss,
         }
 
-    best_loss = float("inf")
-    best_state: dict[str, Any] | None = None
-    for epoch in range(epochs):
-        temperature = temperature_for_epoch(
-            soft_temperature_start, soft_temperature_end, epoch, epochs
-        )
-        epoch_indices = base.deterministic_epoch_permutation(train_indices, seed, epoch)
-        for start in range(0, len(epoch_indices), batch_size):
-            values = batch_tensor(epoch_indices[start:start + batch_size])
-            optimizer.zero_grad(set_to_none=True)
-            loss, _ = loss_for(values, temperature)
-            loss.backward()
-            optimizer.step()
+    def validation_loss_for(temperature: float) -> tuple[float, dict[str, float]]:
         with torch.no_grad():
             validation_loss = 0.0
             validation_components = {
@@ -359,18 +364,52 @@ def train(
             validation_loss /= validation_rows
             for name in validation_components:
                 validation_components[name] /= validation_rows
-        if validation_loss < best_loss:
-            best_loss = validation_loss
-            best_state = {
-                "epoch": epoch,
-                "temperature": temperature,
-                "validation_components": validation_components,
-                "encoder_weight": encoder_weight.detach().clone(),
-                "encoder_bias": encoder_bias.detach().clone(),
-                "decoder_bias": decoder_bias.detach().clone(),
-            }
-    if best_state is None:
-        raise FineTuneError("fine-tuner did not produce an artifact")
+        return validation_loss, validation_components
+
+    # Selection must compare every checkpoint under one objective. Training still
+    # uses the scheduled temperature, but all validation choices use its declared
+    # final temperature.
+    selection_temperature = soft_temperature_end
+    optimizer_step_count = 0
+    if export_initialization_only:
+        best_loss, validation_components = validation_loss_for(selection_temperature)
+        best_state: dict[str, Any] = {
+            "epoch": None,
+            "training_temperature": None,
+            "validation_components": validation_components,
+            "encoder_weight": encoder_weight.detach().clone(),
+            "encoder_bias": encoder_bias.detach().clone(),
+            "decoder_bias": decoder_bias.detach().clone(),
+        }
+    else:
+        best_loss = float("inf")
+        best_state = None
+        for epoch in range(epochs):
+            training_temperature = temperature_for_epoch(
+                soft_temperature_start, soft_temperature_end, epoch, epochs
+            )
+            epoch_indices = base.deterministic_epoch_permutation(train_indices, seed, epoch)
+            for start in range(0, len(epoch_indices), batch_size):
+                values = batch_tensor(epoch_indices[start:start + batch_size])
+                assert optimizer is not None
+                optimizer.zero_grad(set_to_none=True)
+                loss, _ = loss_for(values, training_temperature)
+                loss.backward()
+                optimizer.step()
+                optimizer_step_count += 1
+            validation_loss, validation_components = validation_loss_for(selection_temperature)
+            if validation_loss < best_loss:
+                best_loss = validation_loss
+                best_state = {
+                    "epoch": epoch,
+                    "training_temperature": training_temperature,
+                    "validation_components": validation_components,
+                    "encoder_weight": encoder_weight.detach().clone(),
+                    "encoder_bias": encoder_bias.detach().clone(),
+                    "decoder_bias": decoder_bias.detach().clone(),
+                }
+        if best_state is None:
+            raise FineTuneError("fine-tuner did not produce an artifact")
 
     train_health = base.hard_code_health(
         vectors=vectors, indices=train_indices,
@@ -434,8 +473,16 @@ def train(
             "validation_vector_count": len(validation_indices),
             "best_document_only_validation_loss": best_loss,
             "best_epoch": best_state["epoch"],
-            "best_soft_temperature": best_state["temperature"],
+            "best_training_temperature": best_state["training_temperature"],
             "best_validation_components": best_state["validation_components"],
+            "selection": {
+                "id": "fixed_soft_code_validation_loss_v1",
+                "temperature": selection_temperature,
+            },
+            "optimization": {
+                "initialization_only": export_initialization_only,
+                "optimizer_step_count": optimizer_step_count,
+            },
             "loss_weights": {
                 "reconstruction": reconstruction_weight,
                 "decorrelation": decorrelation_weight,
@@ -445,7 +492,7 @@ def train(
             "distillation": {
                 "id": "document_only_in_batch_listwise_kl_v1",
                 "teacher": "normalized_clipped_e5_cosine",
-                "student": "soft_binary_normalized_dot",
+                "student": "soft_binary_cosine_v1",
                 "teacher_temperature": teacher_temperature,
                 "student_temperature": student_temperature,
                 "queries_or_qrels_used": False,
@@ -502,8 +549,16 @@ def run_self_test() -> int:
     try:
         require_finite_nonnegative(-1.0, "test")
     except FineTuneError:
+        pass
+    else:
+        print("self-test failed: negative loss weight accepted", file=sys.stderr)
+        return 1
+    validate_optimization_mode(0, True)
+    try:
+        validate_optimization_mode(0, False)
+    except FineTuneError:
         return 0
-    print("self-test failed: negative loss weight accepted", file=sys.stderr)
+    print("self-test failed: non-explicit frozen control accepted", file=sys.stderr)
     return 1
 
 
@@ -532,6 +587,7 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--itq-iterations", type=int, default=50)
     parser.add_argument("--torch-threads", type=int, default=18)
+    parser.add_argument("--export-initialization-only", action="store_true")
     parser.add_argument("--train-ids", type=Path)
     parser.add_argument("--validation-ids", type=Path)
     parser.add_argument("--self-test", action="store_true")
@@ -558,6 +614,7 @@ def main(argv: list[str]) -> int:
             soft_temperature_end=args.soft_temperature_end,
             initialization_mode=args.initialization_mode,
             itq_iterations=args.itq_iterations, torch_threads=args.torch_threads,
+            export_initialization_only=args.export_initialization_only,
             train_ids_path=args.train_ids, validation_ids_path=args.validation_ids,
         )
     except FineTuneError as exc:

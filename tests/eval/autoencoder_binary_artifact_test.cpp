@@ -178,12 +178,23 @@ namespace {
   },
   "training": {
     "seed": 42,
+    "epochs": 1,
+    "batch_size": 1,
+    "learning_rate": 0.001,
+    "train_vector_count": 1,
+    "validation_vector_count": 1,
+    "best_document_only_validation_loss": 0.0,
+    "best_epoch": 0,
+    "best_training_temperature": 8.0,
     "objective": "document_geometry_distillation_v1",
     "torch_threads": 1,
     "initialization": {"mode": "median_artifact", "source_artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_family": "nlb_median_threshold_v1", "itq_iterations": 0},
+    "optimizer": {"id": "adamw", "weight_decay": 0.0},
+    "selection": {"id": "fixed_soft_code_validation_loss_v1", "temperature": 8.0},
+    "optimization": {"initialization_only": false, "optimizer_step_count": 1},
     "loss_weights": {"reconstruction": 1.0, "decorrelation": 0.0, "document_geometry_distillation": 0.0, "row_orthogonality": 0.0},
     "soft_to_hard": {"id": "geometric_tanh_temperature_schedule_v1", "start": 1.0, "end": 8.0},
-    "distillation": {"id": "document_only_in_batch_listwise_kl_v1", "queries_or_qrels_used": false},
+    "distillation": {"id": "document_only_in_batch_listwise_kl_v1", "teacher": "normalized_clipped_e5_cosine", "student": "soft_binary_cosine_v1", "teacher_temperature": 0.05, "student_temperature": 0.05, "queries_or_qrels_used": false},
     "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true},
     "stable_id_lists": {
       "train_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
@@ -354,6 +365,19 @@ int main() {
                );
            })) {
             return fail("NLB retrieval artifact accepted query or qrels training");
+        }
+        write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"student\": \"soft_binary_cosine_v1\"",
+            "\"student\": \"soft_binary_normalized_dot\""
+        );
+        if(!throws_runtime_error([&] {
+               (void)agent_memory::load_autoencoder_binary_artifact(
+                   root / "nlb-retrieval-distilled-artifact.json"
+               );
+           })) {
+            return fail("NLB retrieval artifact accepted obsolete soft-code scorer metadata");
         }
         write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
         const auto metrics = agent_memory::evaluate_autoencoder_binary_retrieval(

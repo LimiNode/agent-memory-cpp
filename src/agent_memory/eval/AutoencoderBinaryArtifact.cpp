@@ -11,6 +11,7 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <string>
 #include <string_view>
 #include <utility>
 #include <vector>
@@ -233,6 +234,33 @@ namespace agent_memory {
                     name
                 );
             }
+        }
+
+        [[nodiscard]] double require_finite_positive_number(
+            const nlohmann::json& object,
+            const char* name
+        ) {
+            const auto& value = require_field(object, name);
+            if(!value.is_number() || !std::isfinite(value.get<double>()) ||
+               value.get<double>() <= 0.0) {
+                throw std::runtime_error(
+                    std::string{"autoencoder artifact field must be finite positive number: "} +
+                    name
+                );
+            }
+            return value.get<double>();
+        }
+
+        void require_requirements_lock(const nlohmann::json& trainer) {
+            const auto value = require_string(trainer, "requirements_lock");
+            constexpr std::string_view kSeparator{";sha256="};
+            const auto separator = value.rfind(kSeparator);
+            if(separator == std::string::npos || separator == 0U ||
+               separator + kSeparator.size() + 64U != value.size()) {
+                throw std::runtime_error("invalid retrieval NLB requirements-lock descriptor");
+            }
+            const nlohmann::json hash_holder{{"hash", value.substr(separator + kSeparator.size())}};
+            (void)require_sha256(hash_holder, "hash");
         }
 
         [[nodiscard]] std::size_t checked_product(
@@ -522,7 +550,7 @@ namespace agent_memory {
         (void)require_sha256(trainer, "source_hash");
         if(is_nlb_retrieval) {
             (void)require_sha256(trainer, "base_trainer_source_hash");
-            (void)require_string(trainer, "requirements_lock");
+            require_requirements_lock(trainer);
         }
         if((is_ste &&
             (require_string(architecture, "encoder_activation") != "tanh_sign_ste_v1" ||
@@ -601,6 +629,22 @@ namespace agent_memory {
                    "nlb_median_threshold_v1") {
                 throw std::runtime_error("unsupported retrieval NLB artifact initialization");
             }
+            const auto itq_iterations = require_u64(initialization, "itq_iterations");
+            if((initialization_mode == "itq_median" && itq_iterations == 0U) ||
+               (initialization_mode == "median_artifact" && itq_iterations != 0U)) {
+                throw std::runtime_error("invalid retrieval NLB ITQ initialization metadata");
+            }
+            const auto epochs = require_u64(training, "epochs");
+            (void)require_positive_size(training, "batch_size");
+            (void)require_finite_positive_number(training, "learning_rate");
+            (void)require_positive_size(training, "train_vector_count");
+            (void)require_positive_size(training, "validation_vector_count");
+            require_finite_nonnegative_number(training, "best_document_only_validation_loss");
+            const auto& optimizer = require_field(training, "optimizer");
+            if(require_string(optimizer, "id") != "adamw") {
+                throw std::runtime_error("unsupported retrieval NLB optimizer");
+            }
+            require_finite_nonnegative_number(optimizer, "weight_decay");
             const auto& loss_weights = require_field(training, "loss_weights");
             require_finite_nonnegative_number(loss_weights, "reconstruction");
             require_finite_nonnegative_number(loss_weights, "decorrelation");
@@ -619,12 +663,49 @@ namespace agent_memory {
                schedule_start.get<double>() <= 0.0 || schedule_end.get<double>() <= 0.0) {
                 throw std::runtime_error("invalid retrieval NLB soft-to-hard temperatures");
             }
+            const auto& selection = require_field(training, "selection");
+            if(require_string(selection, "id") != "fixed_soft_code_validation_loss_v1" ||
+               require_finite_positive_number(selection, "temperature") !=
+                   schedule_end.get<double>()) {
+                throw std::runtime_error("unsupported retrieval NLB checkpoint-selection contract");
+            }
+            const auto& optimization = require_field(training, "optimization");
+            const auto& initialization_only_value = require_field(
+                optimization, "initialization_only"
+            );
+            if(!initialization_only_value.is_boolean()) {
+                throw std::runtime_error("retrieval NLB initialization-only flag must be boolean");
+            }
+            const auto initialization_only = initialization_only_value.get<bool>();
+            const auto optimizer_steps = require_u64(optimization, "optimizer_step_count");
+            const auto& best_epoch = require_field(training, "best_epoch");
+            const auto& best_training_temperature = require_field(
+                training, "best_training_temperature"
+            );
+            if(initialization_only) {
+                if(epochs != 0U || optimizer_steps != 0U || !best_epoch.is_null() ||
+                   !best_training_temperature.is_null()) {
+                    throw std::runtime_error("invalid retrieval NLB frozen-initialization metadata");
+                }
+            } else {
+                if(epochs == 0U || optimizer_steps == 0U || !best_epoch.is_number_unsigned() ||
+                   best_epoch.get<std::uint64_t>() >= epochs ||
+                   !best_training_temperature.is_number() ||
+                   !std::isfinite(best_training_temperature.get<double>()) ||
+                   best_training_temperature.get<double>() <= 0.0) {
+                    throw std::runtime_error("invalid retrieval NLB training metadata");
+                }
+            }
             const auto& distillation = require_field(training, "distillation");
             if(require_string(distillation, "id") !=
                "document_only_in_batch_listwise_kl_v1" ||
+               require_string(distillation, "teacher") != "normalized_clipped_e5_cosine" ||
+               require_string(distillation, "student") != "soft_binary_cosine_v1" ||
                require_field(distillation, "queries_or_qrels_used") != false) {
                 throw std::runtime_error("unsupported retrieval NLB distillation contract");
             }
+            (void)require_finite_positive_number(distillation, "teacher_temperature");
+            (void)require_finite_positive_number(distillation, "student_temperature");
             (void)require_positive_size(training, "torch_threads");
         }
         std::string training_document_ids_sha256;
