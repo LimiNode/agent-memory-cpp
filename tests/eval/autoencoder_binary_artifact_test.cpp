@@ -404,6 +404,37 @@ int main() {
         if(!reranked_recall || *reranked_recall != 1.0) {
             return fail("qrels retrieval evaluation contract");
         }
+        const auto cascade_evaluation =
+            agent_memory::evaluate_autoencoder_binary_cascade_with_qrels(
+                document_ids,
+                document_embeddings,
+                query_ids,
+                query_embeddings,
+                materialization.judgments,
+                artifact.encoder,
+                {1, 2, 1, 0, 1},
+                {{1}, {1}}
+            );
+        if(cascade_evaluation.document_count != 2 ||
+           cascade_evaluation.query_count != 1 ||
+           cascade_evaluation.hamming_candidate_limit != 2 ||
+           cascade_evaluation.asymmetric_candidate_limit != 1 ||
+           cascade_evaluation.binary_payload_bytes != 16 ||
+           cascade_evaluation.float_payload_bytes != 16 ||
+           cascade_evaluation.qrels_positive_query_count != 1 ||
+           cascade_evaluation.hamming_exact_top_k_candidate_coverage != 1.0 ||
+           cascade_evaluation.asymmetric_exact_top_k_candidate_coverage != 1.0 ||
+           cascade_evaluation.hamming_qrels_positive_candidate_coverage != 1.0 ||
+           cascade_evaluation.asymmetric_qrels_positive_candidate_coverage != 1.0 ||
+           cascade_evaluation.reranked_recall_at_k_vs_exact != 1.0 ||
+           cascade_evaluation.timing.query_projection_ms.sample_count != 1 ||
+           cascade_evaluation.timing.hamming_candidate_search_ms.sample_count != 1 ||
+           cascade_evaluation.timing.asymmetric_lut_build_ms.sample_count != 1 ||
+           cascade_evaluation.timing.asymmetric_candidate_search_ms.sample_count != 1 ||
+           cascade_evaluation.timing.exact_rerank_ms.sample_count != 1 ||
+           cascade_evaluation.timing.total_query_pipeline_ms.sample_count != 1) {
+            return fail("three-stage binary cascade evaluation contract");
+        }
         const std::vector<std::string> parity_query_ids{"q0", "q1"};
         const std::vector<agent_memory::Embedding> parity_query_embeddings{
             {{1.0F, 0.0F}}, {{0.0F, 1.0F}}

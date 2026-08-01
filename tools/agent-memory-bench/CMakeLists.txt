@@ -100,6 +100,26 @@ target_link_libraries(agent-memory-autoencoder-eval
         agent_memory::json
 )
 
+add_executable(agent-memory-autoencoder-cascade-eval
+    autoencoder_cascade_evaluation.cpp
+)
+agent_memory_set_evaluator_source_manifest(agent-memory-autoencoder-cascade-eval
+    "${CMAKE_CURRENT_SOURCE_DIR}/autoencoder_cascade_evaluation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/eval/AutoencoderBinaryArtifact.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/eval/AutoencoderBinaryEvaluation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/eval/Evaluation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/AsymmetricBinarySignatureScorer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/BinarySignature.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/VectorSimilarityComputer.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/AutoencoderBinaryEncoder.cpp"
+)
+agent_memory_set_evaluator_build_environment(agent-memory-autoencoder-cascade-eval)
+target_link_libraries(agent-memory-autoencoder-cascade-eval
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 add_executable(agent-memory-standard-binary-eval
     standard_binary_encoder_evaluation.cpp
 )
