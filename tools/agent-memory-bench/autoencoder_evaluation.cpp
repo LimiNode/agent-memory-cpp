@@ -51,6 +51,31 @@ namespace {
             : "hamming_distance_v1";
     }
 
+    [[nodiscard]] agent_memory::AutoencoderBinaryAsymmetricScoringBackend
+    parse_asymmetric_scoring_backend(const char* text) {
+        const auto value = std::string{text};
+        if(value == "scalar-reference") {
+            return agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ScalarReference;
+        }
+        if(value == "byte-lut") {
+            return agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ByteLookupTable;
+        }
+        throw std::invalid_argument(
+            "asymmetric-scoring-backend must be scalar-reference or byte-lut"
+        );
+    }
+
+    [[nodiscard]] const char* asymmetric_scoring_backend_name(
+        agent_memory::AutoencoderBinaryCandidateScoring scoring,
+        agent_memory::AutoencoderBinaryAsymmetricScoringBackend backend
+    ) noexcept {
+        return scoring == agent_memory::AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
+            ? backend == agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ScalarReference
+                ? "scalar_reference_v1"
+                : "byte_lookup_table_v1"
+            : "not_applicable";
+    }
+
     [[nodiscard]] std::string language_id_from_record_id(const std::string& record_id) {
         const auto separator = record_id.find(':');
         if(separator == std::string::npos || separator == 0U) {
@@ -203,8 +228,8 @@ namespace {
 } // namespace
 
 int main(int argc, char* argv[]) {
-    if(argc < 4 || argc > 7) {
-        std::cerr << "usage: agent-memory-autoencoder-eval <materialization-root> <artifact.json> <report.json> [oracle-k] [candidate-limit] [candidate-scoring]\n";
+    if(argc < 4 || argc > 8) {
+        std::cerr << "usage: agent-memory-autoencoder-eval <materialization-root> <artifact.json> <report.json> [oracle-k] [candidate-limit] [candidate-scoring] [asymmetric-scoring-backend]\n";
         return 2;
     }
     try {
@@ -240,6 +265,8 @@ int main(int argc, char* argv[]) {
             argc >= 6 ? parse_positive_size(argv[5], "candidate-limit") : 100U,
             argc >= 7 ? parse_candidate_scoring(argv[6]) :
                 agent_memory::AutoencoderBinaryCandidateScoring::HammingDistance,
+            argc >= 8 ? parse_asymmetric_scoring_backend(argv[7]) :
+                agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ByteLookupTable,
         };
         const auto evaluation = agent_memory::evaluate_autoencoder_binary_retrieval_with_qrels(
             document_ids,
@@ -286,6 +313,10 @@ int main(int argc, char* argv[]) {
             {"oracle_k", evaluation.exact_agreement.oracle_k},
             {"returned_candidate_limit", evaluation.exact_agreement.returned_candidate_limit},
             {"candidate_scoring", candidate_scoring_name(binary_options.candidate_scoring)},
+            {"asymmetric_scoring_backend", asymmetric_scoring_backend_name(
+                binary_options.candidate_scoring,
+                binary_options.asymmetric_scoring_backend
+            )},
             {"exact_top_k_candidate_coverage", evaluation.exact_agreement.exact_top_k_candidate_coverage},
             {"reranked_recall_at_k_vs_exact", evaluation.exact_agreement.reranked_recall_at_k_vs_exact},
             {"decoder_recall_at_k_vs_exact", evaluation.exact_agreement.decoder_recall_at_k_vs_exact},

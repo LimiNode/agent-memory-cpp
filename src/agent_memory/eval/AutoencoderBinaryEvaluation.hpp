@@ -6,6 +6,7 @@
 /// \brief Comparable float, binary-rerank, and decoder retrieval evaluation.
 
 #include <agent_memory/index/AutoencoderBinaryEncoder.hpp>
+#include <agent_memory/index/AsymmetricBinarySignatureScorer.hpp>
 #include <agent_memory/index/BinarySignature.hpp>
 #include <agent_memory/eval/Evaluation.hpp>
 
@@ -23,6 +24,13 @@ namespace agent_memory {
         AsymmetricAffineDot,
     };
 
+    /// \brief Backend used when candidate_scoring is AsymmetricAffineDot.
+    ///
+    /// The scalar backend is retained as a numerical reference. The byte lookup
+    /// table is the default candidate-scoring implementation.
+    using AutoencoderBinaryAsymmetricScoringBackend =
+        AsymmetricBinarySignatureScoringBackend;
+
     /// \brief Candidate and oracle limits for autoencoder retrieval comparison.
     struct AutoencoderBinaryEvaluationOptions final {
         /// \brief Number of original-float neighbours treated as the oracle top-K.
@@ -32,6 +40,9 @@ namespace agent_memory {
         /// \brief Candidate ordering evaluated before the exact float reranker.
         AutoencoderBinaryCandidateScoring candidate_scoring =
             AutoencoderBinaryCandidateScoring::HammingDistance;
+        /// \brief Asymmetric implementation selected when candidate_scoring uses logits.
+        AutoencoderBinaryAsymmetricScoringBackend asymmetric_scoring_backend =
+            AutoencoderBinaryAsymmetricScoringBackend::ByteLookupTable;
     };
 
     /// \brief Descriptive statistics emitted by a binary-code diagnostic pass.

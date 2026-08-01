@@ -86,6 +86,7 @@ agent_memory_set_evaluator_source_manifest(agent-memory-autoencoder-eval
     "${CMAKE_CURRENT_SOURCE_DIR}/autoencoder_evaluation.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/eval/AutoencoderBinaryArtifact.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/eval/AutoencoderBinaryEvaluation.cpp"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/AsymmetricBinarySignatureScorer.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/eval/Evaluation.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/index/BinarySignature.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/index/VectorSimilarityComputer.cpp"

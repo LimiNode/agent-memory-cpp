@@ -155,29 +155,14 @@ namespace agent_memory {
             return ranked;
         }
 
-        [[nodiscard]] float asymmetric_affine_dot(
-            const std::vector<float>& query_affine_projections,
-            const BinarySignature& document_signature
-        ) {
-            if(query_affine_projections.size() != document_signature.bit_count()) {
-                throw std::invalid_argument("asymmetric query projection width mismatch");
-            }
-            float score = 0.0F;
-            for(std::size_t bit = 0; bit < document_signature.bit_count(); ++bit) {
-                score += document_signature.bit(bit)
-                    ? query_affine_projections[bit]
-                    : -query_affine_projections[bit];
-            }
-            return score;
-        }
-
         [[nodiscard]] std::vector<ScoredPosition> binary_candidate_rank(
             const BinarySignature& query_signature,
             const std::vector<BinarySignature>& document_signatures,
             const std::vector<std::string>& document_ids,
             std::size_t candidate_limit,
             AutoencoderBinaryCandidateScoring scoring,
-            const std::vector<float>* query_affine_projections
+            const std::vector<float>* query_affine_projections,
+            AutoencoderBinaryAsymmetricScoringBackend asymmetric_scoring_backend
         ) {
             if(scoring == AutoencoderBinaryCandidateScoring::AsymmetricAffineDot &&
                query_affine_projections == nullptr) {
@@ -185,11 +170,29 @@ namespace agent_memory {
             }
             std::vector<ScoredPosition> output;
             output.reserve(document_signatures.size());
-            for(std::size_t position = 0; position < document_signatures.size(); ++position) {
-                const auto score = scoring == AutoencoderBinaryCandidateScoring::HammingDistance
-                    ? -static_cast<float>(hamming_distance(query_signature, document_signatures[position]))
-                    : asymmetric_affine_dot(*query_affine_projections, document_signatures[position]);
-                output.push_back({position, score, document_ids[position]});
+            if(scoring == AutoencoderBinaryCandidateScoring::HammingDistance) {
+                for(std::size_t position = 0; position < document_signatures.size(); ++position) {
+                    output.push_back({
+                        position,
+                        -static_cast<float>(hamming_distance(
+                            query_signature,
+                            document_signatures[position]
+                        )),
+                        document_ids[position],
+                    });
+                }
+            } else {
+                const AsymmetricBinarySignatureScorer asymmetric_scorer(
+                    *query_affine_projections,
+                    asymmetric_scoring_backend
+                );
+                for(std::size_t position = 0; position < document_signatures.size(); ++position) {
+                    output.push_back({
+                        position,
+                        asymmetric_scorer.score(document_signatures[position]),
+                        document_ids[position],
+                    });
+                }
             }
             std::sort(output.begin(), output.end(), better_score);
             output.resize(candidate_limit);
@@ -518,7 +521,8 @@ namespace agent_memory {
                 document_ids,
                 candidate_limit,
                 options.candidate_scoring,
-                query_affine_projections.empty() ? nullptr : &query_affine_projections
+                query_affine_projections.empty() ? nullptr : &query_affine_projections,
+                options.asymmetric_scoring_backend
             );
             output.exact_top_k_candidate_coverage += overlap_fraction(
                 oracle,
@@ -663,7 +667,8 @@ namespace agent_memory {
                 document_ids,
                 candidate_limit,
                 binary_options.candidate_scoring,
-                query_affine_projections.empty() ? nullptr : &query_affine_projections
+                query_affine_projections.empty() ? nullptr : &query_affine_projections,
+                binary_options.asymmetric_scoring_backend
             );
             for(auto& candidate : candidates) {
                 candidate.score = similarity.dot_product_values(
