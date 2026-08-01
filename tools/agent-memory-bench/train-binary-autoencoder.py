@@ -147,6 +147,27 @@ def load_ids(path: Path) -> list[str]:
     return ids
 
 
+def select_explicit_indices(
+    source_ids: list[str],
+    train_ids_path: Path,
+    validation_ids_path: Path,
+) -> tuple[list[int], list[int]]:
+    """Maps canonical disjoint ID lists to materialized document-vector rows."""
+    train_ids = load_ids(train_ids_path)
+    validation_ids = load_ids(validation_ids_path)
+    if set(train_ids).intersection(validation_ids):
+        raise TrainingError("explicit training and validation ID lists overlap")
+    positions = {identifier: index for index, identifier in enumerate(source_ids)}
+    try:
+        train_indices = [positions[identifier] for identifier in train_ids]
+        validation_indices = [positions[identifier] for identifier in validation_ids]
+    except KeyError as exc:
+        raise TrainingError(f"explicit training ID is absent from materialization: {exc.args[0]}") from exc
+    if not train_indices or not validation_indices:
+        raise TrainingError("explicit training or validation ID list is empty")
+    return train_indices, validation_indices
+
+
 def load_materialization(root: Path) -> tuple[list[str], Path, int, str]:
     try:
         manifest = require_mapping(json.loads((root / "manifest.json").read_text(encoding="utf-8")), "manifest")
@@ -438,6 +459,8 @@ def train(
     balance_weight: float,
     objective: str,
     nlb_regularizer_weight: float,
+    train_ids_path: Path | None = None,
+    validation_ids_path: Path | None = None,
 ) -> dict[str, Any]:
     if output_root.exists():
         raise TrainingError(f"output directory already exists: {output_root}")
@@ -459,8 +482,15 @@ def train(
         raise TrainingError(f"training requires packages from {REQUIREMENTS_LOCK_FILE}") from exc
 
     ids, vectors_path, dimension, materialization_hash = load_materialization(materialization_root)
-    validation_indices = [index for index, identifier in enumerate(ids) if stable_split(identifier, seed, validation_fraction)]
-    train_indices = [index for index, identifier in enumerate(ids) if not stable_split(identifier, seed, validation_fraction)]
+    if (train_ids_path is None) != (validation_ids_path is None):
+        raise TrainingError("explicit train and validation ID lists must be supplied together")
+    if train_ids_path is None:
+        validation_indices = [index for index, identifier in enumerate(ids) if stable_split(identifier, seed, validation_fraction)]
+        train_indices = [index for index, identifier in enumerate(ids) if not stable_split(identifier, seed, validation_fraction)]
+    else:
+        train_indices, validation_indices = select_explicit_indices(
+            ids, train_ids_path, validation_ids_path
+        )
     if not validation_indices or not train_indices:
         raise TrainingError("document-only validation split is empty")
     vectors = numpy.memmap(vectors_path, dtype="<f4", mode="r", shape=(len(ids), dimension))
@@ -664,6 +694,12 @@ def train(
             "validation": validation_hard_code_health,
         },
     }
+    if train_ids_path is not None:
+        training["explicit_id_lists"] = {
+            "train_sha256": sha256_file(train_ids_path),
+            "validation_sha256": sha256_file(validation_ids_path),
+            "selection": "external_canonical_id_lists_v1",
+        }
     if objective == OBJECTIVE_STE:
         training.update({
             "optimizer": {"id": "adamw"},
@@ -844,6 +880,8 @@ def main(argv: list[str]) -> int:
         default=OBJECTIVE_STE,
     )
     parser.add_argument("--nlb-regularizer-weight", type=float, default=1.0)
+    parser.add_argument("--train-ids", type=Path)
+    parser.add_argument("--validation-ids", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
     if args.self_test:
@@ -866,6 +904,8 @@ def main(argv: list[str]) -> int:
             balance_weight=args.balance_weight,
             objective=args.objective,
             nlb_regularizer_weight=args.nlb_regularizer_weight,
+            train_ids_path=args.train_ids,
+            validation_ids_path=args.validation_ids,
         )
     except TrainingError as exc:
         print(f"train-binary-autoencoder: {exc}", file=sys.stderr)

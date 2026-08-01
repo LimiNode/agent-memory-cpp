@@ -148,7 +148,12 @@ def copy_verified_weight(
     return copied
 
 
-def calibrate(source_artifact_path: Path, materialization_root: Path, output_root: Path) -> None:
+def calibrate(
+    source_artifact_path: Path,
+    materialization_root: Path,
+    output_root: Path,
+    train_ids_path: Path | None,
+) -> None:
     if output_root.exists():
         raise CalibrationError(f"output root already exists: {output_root}")
     trainer = load_trainer_module()
@@ -174,11 +179,32 @@ def calibrate(source_artifact_path: Path, materialization_root: Path, output_roo
         raise CalibrationError("source artifact materialization manifest does not match calibration root")
     if prepared_manifest_hash != source.get("prepared_study_manifest_sha256"):
         raise CalibrationError("source artifact prepared-study manifest does not match calibration root")
-    calibration_indices = [
-        index for index, identifier in enumerate(ids)
-        if not trainer.stable_split(identifier, seed, float(validation_fraction))
-    ]
-    calibration_ids = [ids[index] for index in calibration_indices]
+    explicit = training.get("explicit_id_lists")
+    if explicit is not None:
+        if train_ids_path is None:
+            raise CalibrationError("source artifact requires --train-ids for median calibration")
+        explicit = require_mapping(explicit, "source artifact.training.explicit_id_lists")
+        if sha256_file(train_ids_path) != require_sha256(explicit.get("train_sha256"), "explicit train hash"):
+            raise CalibrationError("explicit calibration train ID hash does not match source artifact")
+        try:
+            calibration_ids = trainer.load_ids(train_ids_path)
+        except (OSError, trainer.TrainingError) as exc:
+            raise CalibrationError(f"cannot load explicit calibration IDs: {exc}") from exc
+        positions = {identifier: index for index, identifier in enumerate(ids)}
+        try:
+            calibration_indices = [positions[identifier] for identifier in calibration_ids]
+        except KeyError as exc:
+            raise CalibrationError("explicit calibration ID is absent from materialization") from exc
+        split_id = "external_canonical_id_lists_v1"
+    else:
+        if train_ids_path is not None:
+            raise CalibrationError("--train-ids is only valid for an explicitly trained source artifact")
+        calibration_indices = [
+            index for index, identifier in enumerate(ids)
+            if not trainer.stable_split(identifier, seed, float(validation_fraction))
+        ]
+        calibration_ids = [ids[index] for index in calibration_indices]
+        split_id = "stable_document_only_train_v1"
     if not calibration_ids:
         raise CalibrationError("document-only calibration split is empty")
     verify_calibration_is_held_out(trainer, materialization_root, calibration_ids)
@@ -210,7 +236,7 @@ def calibrate(source_artifact_path: Path, materialization_root: Path, output_roo
     }
     calibration = {
         "policy": POLICY,
-        "split_id": "stable_document_only_train_v1",
+        "split_id": split_id,
         "document_count": len(calibration_ids),
         "document_ids_sha256": canonical_ids_sha256(calibration_ids),
     }
@@ -263,6 +289,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("source_artifact", type=Path, nargs="?")
     parser.add_argument("materialization_root", type=Path, nargs="?")
     parser.add_argument("output_root", type=Path, nargs="?")
+    parser.add_argument("--train-ids", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
     if args.self_test:
@@ -272,7 +299,7 @@ def main(argv: list[str]) -> int:
     if not args.source_artifact or not args.materialization_root or not args.output_root:
         parser.error("source_artifact, materialization_root, and output_root are required")
     try:
-        calibrate(args.source_artifact, args.materialization_root, args.output_root)
+        calibrate(args.source_artifact, args.materialization_root, args.output_root, args.train_ids)
     except CalibrationError as exc:
         print(f"calibrate-nlb-median-threshold: {exc}", file=sys.stderr)
         return 1
