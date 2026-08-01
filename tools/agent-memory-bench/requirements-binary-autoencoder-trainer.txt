@@ -1,0 +1,5 @@
+# Regeneration environment for the external binary-autoencoder trainer.
+# This is deliberately not a CI dependency list.
+# python-version: 3.12.13
+torch==2.8.0
+numpy==2.5.1

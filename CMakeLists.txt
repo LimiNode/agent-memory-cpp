@@ -178,6 +178,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_binary_autoencoder_trainer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-binary-autoencoder.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         execute_process(
             COMMAND ${Python3_EXECUTABLE} -c "import yaml"
             RESULT_VARIABLE AGENT_MEMORY_PYYAML_IMPORT_RESULT
