@@ -78,6 +78,7 @@ class StudyConfig:
     queries_template: str
     qrels_template: str
     evaluation_qrels_split: str
+    purpose: str
     seed: int
     train_documents_per_language: int
     evaluation_distractors_per_language: int
@@ -175,6 +176,9 @@ def load_config(path: Path) -> StudyConfig:
         raise PreparationError("languages must not contain duplicates")
     if sampling.get("strategy") != "balanced_stable_hash":
         raise PreparationError("sampling.strategy must equal balanced_stable_hash")
+    purpose = split.get("purpose", "evaluation")
+    if purpose not in ("evaluation", "retrieval_training"):
+        raise PreparationError("split.purpose must equal evaluation or retrieval_training")
     sampling.setdefault("evaluation_queries_per_language", 0)
 
     dataset: dict[str, dict[str, str]] = {}
@@ -203,6 +207,7 @@ def load_config(path: Path) -> StudyConfig:
             split.get("evaluation_qrels_split"),
             "split.evaluation_qrels_split",
         ),
+        purpose=purpose,
         seed=non_negative_int(sampling.get("seed"), "sampling.seed"),
         train_documents_per_language=non_negative_int(
             sampling.get("train_documents_per_language"),
@@ -559,10 +564,20 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
             "evaluation_queries_per_language": config.evaluation_queries_per_language,
         },
         "split": {
-            "policy": "held_out_document_ids",
+            "policy": (
+                "held_out_document_ids" if config.purpose == "evaluation" else
+                "qrels_closed_retrieval_training_documents"
+            ),
             "evaluation_qrels_split": config.evaluation_qrels_split,
-            "query_usage": "evaluation_only",
-            "qrels_usage": "evaluation_only",
+            "purpose": config.purpose,
+            "query_usage": (
+                "evaluation_only" if config.purpose == "evaluation" else
+                "retrieval_training_only"
+            ),
+            "qrels_usage": (
+                "evaluation_only" if config.purpose == "evaluation" else
+                "retrieval_training_only"
+            ),
             "qrels_excluded_document_ids_sha256": sorted_id_set_sha256(qrels_excluded_ids),
             "evaluation_query_ids_sha256": sorted_id_set_sha256(evaluation_query_ids),
             "evaluation_document_ids_sha256": sorted_id_set_sha256(

@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "dataset": {
+    "corpus": {
+      "id": "miracl/miracl-corpus",
+      "revision": "d921ec7e349ce0d28daf30b2da9da5ee698bef0d"
+    },
+    "judgments": {
+      "id": "miracl/miracl",
+      "revision": "5be20db9509754dadad47689368639fcec739c00"
+    }
+  },
+  "languages": ["ru"],
+  "layout": {
+    "corpus": "miracl-corpus-v1.0-{language}/docs-*.jsonl.gz",
+    "queries": "miracl-v1.0-{language}/topics/topics.miracl-v1.0-{language}-train.tsv",
+    "qrels": "miracl-v1.0-{language}/qrels/qrels.miracl-v1.0-{language}-train.tsv"
+  },
+  "sampling": {
+    "strategy": "balanced_stable_hash",
+    "seed": 42,
+    "train_documents_per_language": 25000,
+    "evaluation_distractors_per_language": 10000,
+    "evaluation_queries_per_language": 0
+  },
+  "split": {
+    "purpose": "retrieval_training",
+    "evaluation_qrels_split": "train"
+  },
+  "embedding": {
+    "model_id": "intfloat/multilingual-e5-small",
+    "model_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "document_prefix": "passage: ",
+    "query_prefix": "query: ",
+    "normalized": true
+  }
+}
