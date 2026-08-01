@@ -87,7 +87,7 @@ def require_nonempty_string(value: Any, field: str) -> str:
     return value
 
 
-def validate_build_environment(report: dict[str, Any], path: Path) -> None:
+def validate_build_environment(report: dict[str, Any], path: Path) -> dict[str, Any]:
     environment = require_mapping(
         report.get("evaluator_build_environment"),
         f"{path}: evaluator_build_environment",
@@ -121,6 +121,7 @@ def validate_build_environment(report: dict[str, Any], path: Path) -> None:
         environment.get("active_configuration_flags_sha256"),
         f"{path}: evaluator_build_environment.active_configuration_flags_sha256",
     )
+    return environment
 
 
 def metric_at_10(report: dict[str, Any], field: str) -> float:
@@ -150,21 +151,30 @@ def load_expected_identity(path: Path) -> dict[str, Any]:
 
 def validate_report_identity(
     report: dict[str, Any], expected_identity: dict[str, Any], path: Path
-) -> None:
+) -> dict[str, Any]:
     if report.get("schema_version") != 2:
         raise GateError(f"{path}: schema_version must equal 2")
-    validate_build_environment(report, path)
+    environment = validate_build_environment(report, path)
     for field in (*IDENTITY_LITERAL_FIELDS, *IDENTITY_SHA256_FIELDS):
         if report.get(field) != expected_identity[field]:
             raise GateError(f"{path}: {field} does not match expected experiment identity")
+    return environment
 
 
 def validate_reports(paths: list[Path], expected_identity: dict[str, Any]) -> None:
     """Requires the two predeclared 128-bit RU candidate budgets to pass."""
     reports: dict[int, dict[str, Any]] = {}
+    reference_environment: dict[str, Any] | None = None
     for path in paths:
         report = load_report(path)
-        validate_report_identity(report, expected_identity, path)
+        environment = validate_report_identity(report, expected_identity, path)
+        if reference_environment is None:
+            reference_environment = environment
+        elif environment != reference_environment:
+            raise GateError(
+                f"{path}: evaluator build environment differs from the other reports "
+                "in this gate decision"
+            )
         candidate_limit = require_positive_int(
             report.get("returned_candidate_limit"), f"{path}: returned_candidate_limit"
         )
@@ -338,6 +348,22 @@ def run_self_test() -> int:
             else:
                 print(f"self-test failed: {description} passed", file=sys.stderr)
                 return 1
+        paths[0].write_text(json.dumps(representative_report(512)), encoding="utf-8")
+        mixed_environment_report = representative_report(2048)
+        mixed_environment_report["evaluator_build_environment"].update(
+            {
+                "build_configuration": "Debug",
+                "active_configuration_flags_sha256": "8" * 64,
+            }
+        )
+        paths[1].write_text(json.dumps(mixed_environment_report), encoding="utf-8")
+        try:
+            validate_reports(paths, expected_identity)
+        except GateError:
+            pass
+        else:
+            print("self-test failed: mixed build environments passed", file=sys.stderr)
+            return 1
     print("NLB pilot gate validator self-test ok")
     return 0
 

@@ -769,8 +769,9 @@ environment fingerprint can be diagnosed without relying on an absolute
 compiler installation path. It is provenance, not a promise that two
 independently built binaries are bit-identical. The NLB quality gate validates
 this object's shape but deliberately does not require it to match the expected
-identity, because its current role is to validate a declared result on the
-producing machine rather than make a cross-toolchain equivalence claim.
+identity. It does require every report in one gate decision to carry the same
+build environment, so its 512- and 2,048-candidate evidence cannot be silently
+combined across toolchains or build configurations.
 
 `tools/agent-memory-bench/nlb-pilot-expected-identity.example.json` documents
 the required manifest shape. A concrete manifest belongs beside the curated
