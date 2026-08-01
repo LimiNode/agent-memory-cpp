@@ -526,8 +526,10 @@ namespace agent_memory {
         if(is_nlb_median) {
             (void)require_sha256(root, "source_encoder_artifact_sha256");
             const auto& calibration = require_field(root, "calibration");
+            const auto calibration_split_id = require_string(calibration, "split_id");
             if(require_string(calibration, "policy") != "per_bit_projection_median_v1" ||
-               require_string(calibration, "split_id") != "stable_document_only_train_v1" ||
+               (calibration_split_id != "stable_document_only_train_v1" &&
+                calibration_split_id != "external_canonical_id_lists_v1") ||
                require_positive_size(calibration, "document_count") == 0U) {
                 throw std::runtime_error("unsupported NLB median-threshold calibration");
             }
