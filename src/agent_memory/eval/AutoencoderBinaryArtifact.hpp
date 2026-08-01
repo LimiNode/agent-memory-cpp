@@ -28,6 +28,9 @@ namespace agent_memory {
     struct MaterializedAutoencoderEvaluationDataset final {
         std::string materialization_manifest_sha256;
         std::string prepared_study_manifest_sha256;
+        std::string evaluation_document_ids_sha256;
+        std::string evaluation_query_ids_sha256;
+        std::string evaluation_qrels_sha256;
         /// \brief Document-only rows available for offline encoder training.
         ///
         /// These IDs are verified against the materialization manifest. Callers
@@ -44,6 +47,13 @@ namespace agent_memory {
         std::string artifact_sha256;
         std::string trainer_id;
         std::string trainer_version;
+        std::string artifact_family;
+        /// \brief SHA-256 of the selected document-only train IDs, if present.
+        std::string training_document_ids_sha256;
+        /// \brief SHA-256 of the selected document-only validation IDs, if present.
+        std::string validation_document_ids_sha256;
+        /// \brief SHA-256 of the document-only threshold-calibration IDs, if present.
+        std::string calibration_document_ids_sha256;
         std::string input_materialization_manifest_sha256;
         std::string prepared_study_manifest_sha256;
         AutoencoderBinaryEncoder encoder;

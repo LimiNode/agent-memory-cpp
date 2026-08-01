@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "artifact_sha256": "replace-with-exact-artifact-sha256",
+  "artifact_family": "nlb_median_threshold_v1",
+  "bit_count": 128,
+  "materialization_manifest_sha256": "replace-with-exact-materialization-manifest-sha256",
+  "prepared_study_manifest_sha256": "replace-with-exact-prepared-study-manifest-sha256",
+  "training_document_ids_sha256": "replace-with-exact-train-id-list-sha256",
+  "validation_document_ids_sha256": "replace-with-exact-validation-id-list-sha256",
+  "calibration_document_ids_sha256": "replace-with-exact-calibration-id-list-sha256",
+  "evaluation_document_ids_sha256": "replace-with-exact-held-out-document-id-list-sha256",
+  "evaluation_query_ids_sha256": "replace-with-exact-held-out-query-id-list-sha256",
+  "evaluation_qrels_sha256": "replace-with-exact-held-out-qrels-sha256",
+  "evaluation_protocol": "miracl_monolingual_per_language_v1",
+  "language_ids": ["ru"],
+  "oracle_k": 10,
+  "candidate_scoring": "hamming_distance_v1",
+  "tie_break_policy": "score_desc_document_id_asc_v1"
+}

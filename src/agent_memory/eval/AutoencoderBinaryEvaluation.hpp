@@ -112,6 +112,7 @@ namespace agent_memory {
     /// the query float but ranks decoder-reconstructed document vectors; it is an
     /// explicitly separate compact-storage experiment, not a safe reranker.
     [[nodiscard]] AutoencoderBinaryEvaluationMetrics evaluate_autoencoder_binary_retrieval(
+        const std::vector<std::string>& document_ids,
         const std::vector<Embedding>& document_vectors,
         const std::vector<Embedding>& query_vectors,
         const AutoencoderBinaryEncoder& encoder,

@@ -715,12 +715,15 @@ and 512 binary candidates followed by exact float reranking.
 | 8,192 | 0.9332 | 0.7934 | 0.9387 | 0.7929 | 0.8886 | 0.7836 |
 | 23,801 | 0.9350 | 0.7972 | 0.9365 | 0.7895 | 0.8891 | 0.7833 |
 
-The curve rejects the hypothesis that NLB-128 will catch up merely through
-more document-only reconstruction training under the current objective. Its
-coverage is stable around `0.889` and nDCG@10 around `0.783--0.786`; PCA+sign
-is stronger at every budget and reaches `0.7972` at 23,801 documents. ITQ is
-statistically too close to PCA at the small budgets to claim a distinct win,
-and is lower at the largest point in this single-seed run.
+Under this fixed-epoch, single-seed run and the then-current normalized
+regularizer, increasing the document-only training subset from 512 to 23,801
+did not materially improve NLB-128: its coverage remained around `0.889` and
+nDCG@10 around `0.783--0.786`. PCA+sign is stronger at every measured budget
+and reaches `0.7972` at 23,801 documents. This is not evidence that additional
+data cannot help after changing the objective, training duration, or
+regularizer normalization. ITQ is statistically too close to PCA at the small
+budgets to claim a distinct win, and is lower at the largest point in this
+single-seed run.
 
 This is not a failure of calibrated NLB as a candidate filter: it retains about
 97.7--98.0% of full-E5 nDCG@10 at 512 candidates. It is evidence that the
@@ -730,6 +733,59 @@ learnable median-initialized bias, decorrelation, and document-only neighbour
 or margin distillation. Before declaring a small PCA/ITQ difference, run at
 least two additional seeds and query-bootstrap confidence intervals. A strict
 total-data-budget 512 control remains a separate future ablation.
+
+### Evaluation-integrity follow-up
+
+Before re-running any Hamming candidate figures, the evaluator was changed to
+order equal scores by `document_id` ascending rather than materialization row
+position. A permutation regression test now proves that tied Hamming candidates
+produce the same coverage and reranked recall regardless of input row order.
+
+Each report now records the artifact family and bit count; train, validation,
+and threshold-calibration ID hashes when they exist; held-out document-ID,
+query-ID, and qrels hashes; the language IDs; the evaluation protocol; and the
+tie-break policy. The NLB pilot gate must receive a separate expected-identity
+manifest and rejects every mismatch instead of merely requiring two reports to
+agree with one another. Existing numeric tables predate this ranking-integrity
+change and are historical observations only; the common RU Hamming baselines,
+quantile sweep, and Hamming-versus-asymmetric comparison must be rerun before
+they are used for a new selection decision.
+
+`tools/agent-memory-bench/nlb-pilot-expected-identity.example.json` documents
+the required manifest shape. A concrete manifest belongs beside the curated
+result table for its particular run; the placeholder file is deliberately not
+a runnable gate input.
+
+### Reproduced RU median-NLB gate after evaluator-integrity fixes
+
+The 128-bit median NLB control was retrained from the same RU document-only
+materialization after stable train/validation ID hashes became mandatory
+artifact provenance. The artifact was then median-calibrated from that exact
+train split. The expected-identity manifest bound the artifact, materialization,
+prepared study, train, validation, calibration, held-out document/query/qrels,
+language (`ru`), protocol, oracle depth, scoring rule, and tie-break policy.
+
+| Candidates | exact top-10 candidate coverage | exact-rerank nDCG@10 | Full-E5 nDCG@10 | nDCG retention | cosine to -Hamming correlation |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 0.8886 | 0.7826 | 0.8015 | 0.9765 | 0.4100 |
+| 2,048 | 0.9670 | 0.7977 | 0.8015 | 0.9953 | 0.4100 |
+
+The new gate passed every predeclared condition: coverage at 512/2,048,
+rerank retention, correlation, zero constant document bits, and 0.999912
+unique document-code fraction. The repeated quality values are close to the
+historical rows, which is reassuring but not a license to reuse those rows for
+selection: this is the first version bound to the complete identity contract
+and ID-independent Hamming ties.
+
+During this rerun the qrels evaluator exposed a separate memory defect: it
+retained three full-corpus `RetrievalRun` objects for every query. On this
+fixture that grew to roughly 7.5 GB before completion. The evaluator now
+computes metrics one query at a time and releases each full ranking
+immediately, preserving unbounded MRR while keeping the evaluation memory
+bounded. The observed wall time of this comprehensive correctness evaluator
+(about 86--101 seconds per candidate budget on the local machine) includes the
+full cosine oracle, decoder ranking, and all-pair diagnostics; it is not a
+candidate-search latency measurement.
 
 ### Post-hoc NLB quantile-threshold sweep
 

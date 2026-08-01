@@ -556,6 +556,26 @@ namespace agent_memory {
         const auto bit_count = require_positive_size(architecture, "bit_count");
         const auto& training = require_field(root, "training");
         const auto seed = require_u64(training, "seed");
+        std::string training_document_ids_sha256;
+        std::string validation_document_ids_sha256;
+        const auto has_explicit_id_lists = training.contains("explicit_id_lists");
+        const auto has_stable_id_lists = training.contains("stable_id_lists");
+        if(has_explicit_id_lists && has_stable_id_lists) {
+            throw std::runtime_error("artifact training ID-list provenance is ambiguous");
+        }
+        if(has_explicit_id_lists || has_stable_id_lists) {
+            const auto& id_lists = require_field(
+                training, has_explicit_id_lists ? "explicit_id_lists" : "stable_id_lists"
+            );
+            training_document_ids_sha256 = require_sha256(id_lists, "train_sha256");
+            validation_document_ids_sha256 = require_sha256(id_lists, "validation_sha256");
+        }
+        std::string calibration_document_ids_sha256;
+        if(is_nlb_median || is_nlb_quantile) {
+            calibration_document_ids_sha256 = require_sha256(
+                require_field(root, "calibration"), "document_ids_sha256"
+            );
+        }
         const auto& shuffle_recipe = require_field(training, "shuffle_recipe");
         if(require_string(shuffle_recipe, "id") != "python_fisher_yates_sha256_seed_v1" ||
            require_field(shuffle_recipe, "per_epoch") != true) {
@@ -612,6 +632,10 @@ namespace agent_memory {
             artifact_sha256,
             trainer_id,
             trainer_version,
+            family,
+            training_document_ids_sha256,
+            validation_document_ids_sha256,
+            calibration_document_ids_sha256,
             require_sha256(root, "input_materialization_manifest_sha256"),
             require_sha256(root, "prepared_study_manifest_sha256"),
             AutoencoderBinaryEncoder({
@@ -740,6 +764,15 @@ namespace agent_memory {
         MaterializedAutoencoderEvaluationDataset output;
         output.materialization_manifest_sha256 = sha256_hex(manifest_bytes);
         output.prepared_study_manifest_sha256 = prepared_study_manifest_sha256;
+        output.evaluation_document_ids_sha256 = require_sha256(
+            require_field(outputs, "evaluation_document_ids"), "sha256"
+        );
+        output.evaluation_query_ids_sha256 = require_sha256(
+            require_field(outputs, "evaluation_query_ids"), "sha256"
+        );
+        output.evaluation_qrels_sha256 = require_sha256(
+            require_field(outputs, "evaluation_qrels"), "sha256"
+        );
         output.judgments = judgments;
         output.training_embeddings.reserve(training_ids.size());
         for(std::size_t index = 0; index < training_ids.size(); ++index) {
