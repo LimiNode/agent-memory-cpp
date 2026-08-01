@@ -15,6 +15,7 @@ namespace agent_memory {
         struct ScoredPosition final {
             std::size_t position = 0;
             float score = 0.0F;
+            std::string_view document_id;
         };
 
         class RunningStatistics final {
@@ -95,7 +96,7 @@ namespace agent_memory {
             const ScoredPosition& rhs
         ) noexcept {
             if(lhs.score == rhs.score) {
-                return lhs.position < rhs.position;
+                return lhs.document_id < rhs.document_id;
             }
             return lhs.score > rhs.score;
         }
@@ -133,6 +134,7 @@ namespace agent_memory {
             const Embedding& query,
             float query_inverse_norm,
             const std::vector<Embedding>& documents,
+            const std::vector<std::string>& document_ids,
             const std::vector<float>& document_inverse_norms,
             const VectorSimilarityComputer& similarity
         ) {
@@ -146,6 +148,7 @@ namespace agent_memory {
                         documents[position].values.data(),
                         query.dimension()
                     ) * query_inverse_norm * document_inverse_norms[position],
+                    document_ids[position],
                 });
             }
             std::sort(ranked.begin(), ranked.end(), better_score);
@@ -171,6 +174,7 @@ namespace agent_memory {
         [[nodiscard]] std::vector<ScoredPosition> binary_candidate_rank(
             const BinarySignature& query_signature,
             const std::vector<BinarySignature>& document_signatures,
+            const std::vector<std::string>& document_ids,
             std::size_t candidate_limit,
             AutoencoderBinaryCandidateScoring scoring,
             const std::vector<float>* query_affine_projections
@@ -185,7 +189,7 @@ namespace agent_memory {
                 const auto score = scoring == AutoencoderBinaryCandidateScoring::HammingDistance
                     ? -static_cast<float>(hamming_distance(query_signature, document_signatures[position]))
                     : asymmetric_affine_dot(*query_affine_projections, document_signatures[position]);
-                output.push_back({position, score});
+                output.push_back({position, score, document_ids[position]});
             }
             std::sort(output.begin(), output.end(), better_score);
             output.resize(candidate_limit);
@@ -285,15 +289,91 @@ namespace agent_memory {
             return output;
         }
 
+        [[nodiscard]] RetrievalEvalDataset make_single_query_eval_dataset(
+            const RetrievalEvalDataset& dataset,
+            std::size_t query_index
+        ) {
+            RetrievalEvalDataset output;
+            output.queries.push_back(dataset.queries.at(query_index));
+            const auto& query_id = output.queries.front().id;
+            for(const auto& judgment : dataset.judgments) {
+                if(judgment.query_id == query_id) {
+                    output.judgments.push_back(judgment);
+                }
+            }
+            return output;
+        }
+
+        void accumulate_query_metrics(
+            RetrievalMetrics& total,
+            const RetrievalMetrics& query_metrics
+        ) {
+            if(total.recall_at.empty() && total.ndcg_at.empty() && total.query_count == 0U) {
+                total.recall_at = query_metrics.recall_at;
+                total.ndcg_at = query_metrics.ndcg_at;
+                for(auto& metric : total.recall_at) {
+                    metric.value = 0.0;
+                }
+                for(auto& metric : total.ndcg_at) {
+                    metric.value = 0.0;
+                }
+            }
+            if(total.recall_at.size() != query_metrics.recall_at.size() ||
+               total.ndcg_at.size() != query_metrics.ndcg_at.size()) {
+                throw std::logic_error("inconsistent per-query retrieval metric cutoffs");
+            }
+            const auto judged_count = static_cast<double>(query_metrics.judged_query_count);
+            const auto no_answer_count = static_cast<double>(query_metrics.no_answer_query_count);
+            for(std::size_t index = 0; index < total.recall_at.size(); ++index) {
+                total.recall_at[index].value += query_metrics.recall_at[index].value * judged_count;
+            }
+            for(std::size_t index = 0; index < total.ndcg_at.size(); ++index) {
+                total.ndcg_at[index].value += query_metrics.ndcg_at[index].value * judged_count;
+            }
+            total.mrr += query_metrics.mrr * judged_count;
+            total.no_answer_accuracy += query_metrics.no_answer_accuracy * no_answer_count;
+            total.query_count += query_metrics.query_count;
+            total.judged_query_count += query_metrics.judged_query_count;
+            total.no_answer_query_count += query_metrics.no_answer_query_count;
+            total.ignored_query_count += query_metrics.ignored_query_count;
+            total.evaluated_query_count += query_metrics.evaluated_query_count;
+            total.evaluated_query_run_count += query_metrics.evaluated_query_run_count;
+            total.evaluated_query_latency_count += query_metrics.evaluated_query_latency_count;
+            total.ignored_query_run_count += query_metrics.ignored_query_run_count;
+            total.empty_result_count += query_metrics.empty_result_count;
+        }
+
+        void finalize_accumulated_metrics(RetrievalMetrics& metrics) noexcept {
+            if(metrics.judged_query_count != 0U) {
+                const auto judged_count = static_cast<double>(metrics.judged_query_count);
+                for(auto& metric : metrics.recall_at) {
+                    metric.value /= judged_count;
+                }
+                for(auto& metric : metrics.ndcg_at) {
+                    metric.value /= judged_count;
+                }
+                metrics.mrr /= judged_count;
+            }
+            if(metrics.no_answer_query_count != 0U) {
+                metrics.no_answer_accuracy /= static_cast<double>(metrics.no_answer_query_count);
+            }
+            if(metrics.evaluated_query_count != 0U) {
+                metrics.empty_result_fraction = static_cast<double>(metrics.empty_result_count) /
+                    static_cast<double>(metrics.evaluated_query_count);
+            }
+        }
+
     } // namespace
 
     AutoencoderBinaryEvaluationMetrics evaluate_autoencoder_binary_retrieval(
+        const std::vector<std::string>& document_ids,
         const std::vector<Embedding>& document_vectors,
         const std::vector<Embedding>& query_vectors,
         const AutoencoderBinaryEncoder& encoder,
         const AutoencoderBinaryDecoder& decoder,
         AutoencoderBinaryEvaluationOptions options
     ) {
+        validate_ids(document_ids, document_vectors.size(), "autoencoder evaluation document IDs");
         if(options.oracle_k == 0 || options.returned_candidate_limit == 0) {
             throw std::invalid_argument("autoencoder evaluation limits must be positive");
         }
@@ -306,7 +386,7 @@ namespace agent_memory {
         validate_embeddings(query_vectors, dimension, "autoencoder evaluation queries");
         const auto oracle_k = std::min(options.oracle_k, document_vectors.size());
         const auto candidate_limit = std::min(options.returned_candidate_limit, document_vectors.size());
-        const VectorSimilarityComputer similarity;
+        const VectorSimilarityComputer similarity(VectorSimilarityBackend::Scalar);
         std::vector<float> document_inverse_norms;
         document_inverse_norms.reserve(document_vectors.size());
         for(const auto& vector : document_vectors) {
@@ -389,6 +469,7 @@ namespace agent_memory {
                 query,
                 query_inverse_norm,
                 document_vectors,
+                document_ids,
                 document_inverse_norms,
                 similarity
             );
@@ -434,6 +515,7 @@ namespace agent_memory {
             hamming_rank = binary_candidate_rank(
                 query_signature,
                 document_signatures,
+                document_ids,
                 candidate_limit,
                 options.candidate_scoring,
                 query_affine_projections.empty() ? nullptr : &query_affine_projections
@@ -455,6 +537,7 @@ namespace agent_memory {
                         document_vectors[candidate.position].values.data(),
                         dimension
                     ) * query_inverse_norm * document_inverse_norms[candidate.position],
+                    document_ids[candidate.position],
                 });
             }
             std::sort(reranked.begin(), reranked.end(), better_score);
@@ -469,6 +552,7 @@ namespace agent_memory {
                 query,
                 query_inverse_norm,
                 decoded_documents,
+                document_ids,
                 decoded_inverse_norms,
                 similarity
             );
@@ -520,6 +604,7 @@ namespace agent_memory {
         validate_ids(query_ids, query_vectors.size(), "autoencoder evaluation query IDs");
         AutoencoderBinaryRetrievalEvaluation output;
         output.exact_agreement = evaluate_autoencoder_binary_retrieval(
+            document_ids,
             document_vectors,
             query_vectors,
             encoder,
@@ -532,7 +617,7 @@ namespace agent_memory {
             binary_options.returned_candidate_limit,
             document_vectors.size()
         );
-        const VectorSimilarityComputer similarity;
+        const VectorSimilarityComputer similarity(VectorSimilarityBackend::Scalar);
         std::vector<float> document_inverse_norms;
         document_inverse_norms.reserve(document_vectors.size());
         for(const auto& vector : document_vectors) {
@@ -550,9 +635,11 @@ namespace agent_memory {
             decoded_inverse_norms.push_back(inverse_norm(vector, similarity));
         }
 
-        RetrievalRun original_run{"original_float", {}};
-        RetrievalRun rerank_run{"binary_candidates_exact_rerank", {}};
-        RetrievalRun decoder_run{"decoder_approximation", {}};
+        // A full ranking can contain every document. Evaluate and discard each
+        // query run immediately instead of retaining three corpus-sized runs.
+        RetrievalMetrics original_metrics;
+        RetrievalMetrics rerank_metrics;
+        RetrievalMetrics decoder_metrics;
         for(std::size_t query_index = 0; query_index < query_vectors.size(); ++query_index) {
             const auto& query = query_vectors[query_index];
             const auto query_inverse_norm = inverse_norm(query, similarity);
@@ -560,6 +647,7 @@ namespace agent_memory {
                 query,
                 query_inverse_norm,
                 document_vectors,
+                document_ids,
                 document_inverse_norms,
                 similarity
             );
@@ -572,6 +660,7 @@ namespace agent_memory {
             auto candidates = binary_candidate_rank(
                 query_signature,
                 document_signatures,
+                document_ids,
                 candidate_limit,
                 binary_options.candidate_scoring,
                 query_affine_projections.empty() ? nullptr : &query_affine_projections
@@ -588,14 +677,27 @@ namespace agent_memory {
                 query,
                 query_inverse_norm,
                 decoded_documents,
+                document_ids,
                 decoded_inverse_norms,
                 similarity
             );
-            original_run.queries.push_back(
-                make_query_run(query_ids[query_index], original, document_ids, "original_float")
+            const auto query_dataset = make_single_query_eval_dataset(dataset, query_index);
+            accumulate_query_metrics(
+                original_metrics,
+                evaluate_retrieval(
+                    query_dataset,
+                    {"original_float", {
+                        make_query_run(query_ids[query_index], original, document_ids, "original_float")
+                    }},
+                    retrieval_options
+                )
             );
-            rerank_run.queries.push_back(
-                make_query_run(
+            accumulate_query_metrics(
+                rerank_metrics,
+                evaluate_retrieval(
+                    query_dataset,
+                    {"binary_candidates_exact_rerank", {
+                        make_query_run(
                     query_ids[query_index],
                     candidates,
                     document_ids,
@@ -603,15 +705,30 @@ namespace agent_memory {
                         AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
                     ? "binary_asymmetric_affine_exact_rerank"
                     : "binary_exact_rerank"
+                        )
+                    }},
+                    retrieval_options
                 )
             );
-            decoder_run.queries.push_back(
-                make_query_run(query_ids[query_index], decoded, document_ids, "decoder_approximation")
+            accumulate_query_metrics(
+                decoder_metrics,
+                evaluate_retrieval(
+                    query_dataset,
+                    {"decoder_approximation", {
+                        make_query_run(
+                            query_ids[query_index], decoded, document_ids, "decoder_approximation"
+                        )
+                    }},
+                    retrieval_options
+                )
             );
         }
-        output.original_float_metrics = evaluate_retrieval(dataset, original_run, retrieval_options);
-        output.binary_rerank_metrics = evaluate_retrieval(dataset, rerank_run, retrieval_options);
-        output.decoder_approximation_metrics = evaluate_retrieval(dataset, decoder_run, retrieval_options);
+        finalize_accumulated_metrics(original_metrics);
+        finalize_accumulated_metrics(rerank_metrics);
+        finalize_accumulated_metrics(decoder_metrics);
+        output.original_float_metrics = std::move(original_metrics);
+        output.binary_rerank_metrics = std::move(rerank_metrics);
+        output.decoder_approximation_metrics = std::move(decoder_metrics);
         return output;
     }
 

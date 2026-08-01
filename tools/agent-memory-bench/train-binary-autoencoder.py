@@ -51,6 +51,11 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def canonical_ids_sha256(ids: list[str]) -> str:
+    """Hashes the ordered canonical ID sequence used for a train/validation split."""
+    return hashlib.sha256("".join(f"{identifier}\n" for identifier in ids).encode("utf-8")).hexdigest()
+
+
 def require_mapping(value: Any, field: str) -> dict[str, Any]:
     if not isinstance(value, dict):
         raise TrainingError(f"{field} must be an object")
@@ -528,7 +533,7 @@ def train(
             balance_loss = torch.mean(torch.mean(soft_code, dim=0) ** 2)
             return reconstruction_loss + quantization_weight * quantization_loss + balance_weight * balance_loss
         clipped = torch.clamp(values, min=-1.0, max=1.0)
-        hard_code = (encoder(clipped) > 0.0).to(clipped.dtype).detach()
+        hard_code = (encoder(clipped) >= 0.0).to(clipped.dtype).detach()
         reconstruction = torch.tanh(hard_code @ encoder.weight + decoder_bias)
         reconstruction_loss = torch.mean((reconstruction - clipped) ** 2)
         gram = encoder.weight.T @ encoder.weight
@@ -699,6 +704,14 @@ def train(
             "train_sha256": sha256_file(train_ids_path),
             "validation_sha256": sha256_file(validation_ids_path),
             "selection": "external_canonical_id_lists_v1",
+        }
+    else:
+        training["stable_id_lists"] = {
+            "train_sha256": canonical_ids_sha256([ids[index] for index in train_indices]),
+            "validation_sha256": canonical_ids_sha256(
+                [ids[index] for index in validation_indices]
+            ),
+            "selection": "stable_sha256_id_split_v1",
         }
     if objective == OBJECTIVE_STE:
         training.update({

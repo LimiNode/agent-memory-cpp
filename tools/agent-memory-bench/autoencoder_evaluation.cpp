@@ -1,5 +1,6 @@
 #include <agent_memory/eval/AutoencoderBinaryArtifact.hpp>
 #include <agent_memory/eval/AutoencoderBinaryEvaluation.hpp>
+#include <agent_memory/index/VectorSimilarityComputer.hpp>
 
 #include <nlohmann/json.hpp>
 
@@ -7,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <set>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -47,6 +49,32 @@ namespace {
         return scoring == agent_memory::AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
             ? "asymmetric_affine_dot_v1"
             : "hamming_distance_v1";
+    }
+
+    [[nodiscard]] std::string language_id_from_record_id(const std::string& record_id) {
+        const auto separator = record_id.find(':');
+        if(separator == std::string::npos || separator == 0U) {
+            throw std::runtime_error("MIRACL record ID must begin with a language prefix");
+        }
+        return record_id.substr(0U, separator);
+    }
+
+    [[nodiscard]] std::vector<std::string> evaluation_language_ids(
+        const std::vector<std::string>& document_ids,
+        const std::vector<std::string>& query_ids
+    ) {
+        std::set<std::string> document_languages;
+        std::set<std::string> query_languages;
+        for(const auto& id : document_ids) {
+            document_languages.insert(language_id_from_record_id(id));
+        }
+        for(const auto& id : query_ids) {
+            query_languages.insert(language_id_from_record_id(id));
+        }
+        if(document_languages.empty() || document_languages != query_languages) {
+            throw std::runtime_error("MIRACL evaluation document and query languages must match");
+        }
+        return {document_languages.begin(), document_languages.end()};
     }
 
     [[nodiscard]] nlohmann::json metric_values(
@@ -204,11 +232,34 @@ int main(int argc, char* argv[]) {
             binary_options,
             {{1U, 5U, 10U, 100U}, {10U}}
         );
+        const auto language_ids = evaluation_language_ids(document_ids, query_ids);
+        if(language_ids.size() != 1U) {
+            throw std::runtime_error(
+                "mixed-language MIRACL evaluation requires per-language corpus filtering"
+            );
+        }
         const nlohmann::json report{
             {"schema_version", 1},
             {"artifact_sha256", artifact.artifact_sha256},
+            {"artifact_family", artifact.artifact_family},
+            {"bit_count", artifact.encoder.info().bit_count},
+            {"training_document_ids_sha256", artifact.training_document_ids_sha256},
+            {"validation_document_ids_sha256", artifact.validation_document_ids_sha256},
+            {"calibration_document_ids_sha256", artifact.calibration_document_ids_sha256},
             {"materialization_manifest_sha256", materialization.materialization_manifest_sha256},
             {"prepared_study_manifest_sha256", materialization.prepared_study_manifest_sha256},
+            {"evaluation_document_ids_sha256", materialization.evaluation_document_ids_sha256},
+            {"evaluation_query_ids_sha256", materialization.evaluation_query_ids_sha256},
+            {"evaluation_qrels_sha256", materialization.evaluation_qrels_sha256},
+            {"tie_break_policy", "score_desc_document_id_asc_v1"},
+            {"evaluator_id", "agent-memory-autoencoder-eval"},
+            {"evaluator_version", "v1"},
+            {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
+            {"vector_similarity_backend", agent_memory::vector_similarity_backend_name(
+                agent_memory::VectorSimilarityComputer(agent_memory::VectorSimilarityBackend::Scalar).backend()
+            )},
+            {"evaluation_protocol", "miracl_monolingual_per_language_v1"},
+            {"language_ids", language_ids},
             {"document_count", materialization.document_embeddings.size()},
             {"query_count", materialization.query_embeddings.size()},
             {"oracle_k", evaluation.exact_agreement.oracle_k},

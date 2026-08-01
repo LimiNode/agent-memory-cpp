@@ -61,7 +61,15 @@ namespace {
     "encoder_activation": "tanh_sign_ste_v1",
     "decoder": "linear"
   },
-  "training": {"seed": 42, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true}},
+  "training": {
+    "seed": 42,
+    "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true},
+    "stable_id_lists": {
+      "train_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "validation_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "selection": "stable_sha256_id_split_v1"
+    }
+  },
   "weights": {
     "encoder_weights": {"path": "encoder-weights.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "shape": [2, 2], "layout": "row_major_out_by_in", "dtype": "float32_le"},
     "encoder_bias": {"path": "encoder-bias.f32", "sha256": "1dc7fbfac33e9a09c59d17f9ff8c27e3de8d248f2b7488fbee7768e307abdd33", "shape": [2], "dtype": "float32_le"},
@@ -191,6 +199,12 @@ int main() {
         const auto artifact = agent_memory::load_autoencoder_binary_artifact(
             root / "artifact.json"
         );
+        if(artifact.artifact_family != "linear_binary_autoencoder_ste" ||
+           artifact.training_document_ids_sha256 != std::string(64, '1') ||
+           artifact.validation_document_ids_sha256 != std::string(64, '2') ||
+           !artifact.calibration_document_ids_sha256.empty()) {
+            return fail("linear artifact provenance contract");
+        }
         const auto signature = artifact.encoder.encode({{0.25F, 0.25F}});
         const auto projections = artifact.encoder.affine_projections({{0.25F, 0.25F}});
         if(signature.bit_count() != 2 || signature.bit(0) || !signature.bit(1)) {
@@ -213,6 +227,8 @@ int main() {
         const auto nlb_signature = nlb_artifact.encoder.encode({{2.0F, -2.0F}});
         const auto nlb_reconstructed = nlb_artifact.decoder.decode(nlb_signature);
         if(nlb_artifact.encoder.info().encoder_id != "nlb_paper_tied" ||
+           !nlb_artifact.training_document_ids_sha256.empty() ||
+           !nlb_artifact.validation_document_ids_sha256.empty() ||
            !nlb_signature.bit(0) || nlb_signature.bit(1) ||
            std::fabs(nlb_reconstructed.values[0] - std::tanh(1.0F)) > 1.0e-6F ||
            std::fabs(nlb_reconstructed.values[1]) > 1.0e-6F) {
@@ -227,6 +243,7 @@ int main() {
             nlb_median_signature
         );
         if(nlb_median_artifact.encoder.info().encoder_id != "nlb_median_threshold" ||
+           nlb_median_artifact.calibration_document_ids_sha256 != std::string(64, 'a') ||
            nlb_median_signature.bit(0) || !nlb_median_signature.bit(1) ||
            std::fabs(nlb_median_reconstructed.values[0]) > 1.0e-6F ||
            std::fabs(nlb_median_reconstructed.values[1] - std::tanh(1.0F)) > 1.0e-6F) {
@@ -241,6 +258,7 @@ int main() {
             return fail("NLB quantile-threshold artifact contract");
         }
         const auto metrics = agent_memory::evaluate_autoencoder_binary_retrieval(
+            {"d0", "d1"},
             {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},
             {{{1.0F, 0.0F}}},
             artifact.encoder,
@@ -255,6 +273,7 @@ int main() {
             return fail("three-mode retrieval evaluation contract");
         }
         const auto asymmetric_metrics = agent_memory::evaluate_autoencoder_binary_retrieval(
+            {"d0", "d1"},
             {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},
             {{{1.0F, 0.0F}}},
             artifact.encoder,
@@ -264,6 +283,36 @@ int main() {
         if(asymmetric_metrics.exact_top_k_candidate_coverage != 1.0 ||
            asymmetric_metrics.reranked_recall_at_k_vs_exact != 1.0) {
             return fail("asymmetric affine candidate evaluation contract");
+        }
+        const agent_memory::AutoencoderBinaryEncoder tie_encoder({
+            2, 2, 0, std::string(64, 'a'), {1.0F, 0.0F, 0.0F, 1.0F}, {0.0F, 0.0F},
+            "tie_test", "v1", agent_memory::AutoencoderBinaryInputTransform::Identity,
+        });
+        const auto zero_projection_signature = tie_encoder.encode({{0.0F, 0.0F}});
+        if(!zero_projection_signature.bit(0) || !zero_projection_signature.bit(1)) {
+            return fail("zero projection must set an autoencoder bit");
+        }
+        const agent_memory::AutoencoderBinaryDecoder tie_decoder({
+            2, 2, {1.0F, 0.0F, 0.0F, 1.0F}, {0.0F, 0.0F},
+            agent_memory::AutoencoderBinaryCodeValueEncoding::ZeroToOne,
+            agent_memory::AutoencoderBinaryDecoderActivation::Identity,
+        });
+        const auto tie_first = agent_memory::evaluate_autoencoder_binary_retrieval(
+            {"document-b", "document-a"},
+            {{{0.2F, 1.0F}}, {{1.0F, 0.2F}}},
+            {{{1.0F, 0.2F}}}, tie_encoder, tie_decoder, {1, 1}
+        );
+        const auto tie_permuted = agent_memory::evaluate_autoencoder_binary_retrieval(
+            {"document-a", "document-b"},
+            {{{1.0F, 0.2F}}, {{0.2F, 1.0F}}},
+            {{{1.0F, 0.2F}}}, tie_encoder, tie_decoder, {1, 1}
+        );
+        if(tie_first.exact_top_k_candidate_coverage != 1.0 ||
+           tie_first.exact_top_k_candidate_coverage !=
+               tie_permuted.exact_top_k_candidate_coverage ||
+           tie_first.reranked_recall_at_k_vs_exact !=
+               tie_permuted.reranked_recall_at_k_vs_exact) {
+            return fail("document-ID tie breaking must be permutation invariant");
         }
         const auto& diagnostics = metrics.code_diagnostics;
         if(diagnostics.unique_document_code_count != 2 ||
@@ -291,6 +340,7 @@ int main() {
             return fail("autoencoder code diagnostic contract");
         }
         const auto decoder_mismatch = agent_memory::evaluate_autoencoder_binary_retrieval(
+            {"d0", "d1"},
             {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},
             {{{0.0F, 1.0F}}},
             artifact.encoder,
@@ -353,6 +403,57 @@ int main() {
         );
         if(!reranked_recall || *reranked_recall != 1.0) {
             return fail("qrels retrieval evaluation contract");
+        }
+        const std::vector<std::string> parity_query_ids{"q0", "q1"};
+        const std::vector<agent_memory::Embedding> parity_query_embeddings{
+            {{1.0F, 0.0F}}, {{0.0F, 1.0F}}
+        };
+        const std::vector<agent_memory::RelevanceJudgment> parity_judgments{
+            {"q0", "d0", 1}, {"q1", "d0", 1}
+        };
+        const auto streamed_parity =
+            agent_memory::evaluate_autoencoder_binary_retrieval_with_qrels(
+                document_ids,
+                document_embeddings,
+                parity_query_ids,
+                parity_query_embeddings,
+                parity_judgments,
+                artifact.encoder,
+                artifact.decoder,
+                {1, 1},
+                {{1}, {1}}
+            );
+        agent_memory::RetrievalEvalDataset full_dataset;
+        full_dataset.queries = {
+            {"q0", "q0", {}, 1, {}, agent_memory::EvalQueryAnswerMode::JudgedRetrieval},
+            {"q1", "q1", {}, 1, {}, agent_memory::EvalQueryAnswerMode::JudgedRetrieval},
+        };
+        full_dataset.judgments = parity_judgments;
+        const agent_memory::RetrievalRun full_run{"original", {
+            {"q0", {{"d0", 1.0F, 0, "original"}, {"d1", 0.0F, 0, "original"}}},
+            {"q1", {{"d1", 1.0F, 0, "original"}, {"d0", 0.0F, 0, "original"}}},
+        }};
+        const auto retained_parity = agent_memory::evaluate_retrieval(
+            full_dataset, full_run, {{1}, {1}}
+        );
+        const auto streamed_recall = agent_memory::metric_value_at(
+            streamed_parity.original_float_metrics.recall_at, 1
+        );
+        const auto retained_recall = agent_memory::metric_value_at(
+            retained_parity.recall_at, 1
+        );
+        const auto streamed_ndcg = agent_memory::metric_value_at(
+            streamed_parity.original_float_metrics.ndcg_at, 1
+        );
+        const auto retained_ndcg = agent_memory::metric_value_at(retained_parity.ndcg_at, 1);
+        if(!streamed_recall || !retained_recall || !streamed_ndcg || !retained_ndcg ||
+           *streamed_recall != *retained_recall || *streamed_ndcg != *retained_ndcg ||
+           streamed_parity.original_float_metrics.mrr != retained_parity.mrr ||
+           streamed_parity.original_float_metrics.evaluated_query_count !=
+               retained_parity.evaluated_query_count ||
+           streamed_parity.original_float_metrics.empty_result_fraction !=
+               retained_parity.empty_result_fraction) {
+            return fail("streaming qrels metrics must match retained full-run metrics");
         }
         if(!throws_runtime_error([&] {
                auto bytes = std::fstream(
