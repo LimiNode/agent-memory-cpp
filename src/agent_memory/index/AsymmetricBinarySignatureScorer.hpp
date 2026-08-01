@@ -16,7 +16,7 @@ namespace agent_memory {
 
     /// \brief Implementation selected for asymmetric binary-signature scoring.
     enum class AsymmetricBinarySignatureScoringBackend {
-        /// \brief Per-bit reference implementation used for parity tests.
+        /// \brief Per-bit direct floating-point implementation.
         ScalarReference,
         /// \brief Per-byte lookup table built once for each query projection vector.
         ByteLookupTable
@@ -32,6 +32,11 @@ namespace agent_memory {
     /// A set document bit contributes `+projection[bit]`; a cleared bit contributes
     /// `-projection[bit]`. The byte-LUT backend precomputes all 256 signed sums for
     /// every packed byte, then reads one table value per document-code byte.
+    ///
+    /// Both backends implement the same mathematical score. They use different
+    /// floating-point reduction orders, so equal scores and candidate-boundary
+    /// ordering are backend-specific for nearly equal fractional scores. Persisted
+    /// experiment reports must identify the backend that produced their ranking.
     class AsymmetricBinarySignatureScorer final {
     public:
         /// \brief Creates a query-specific scorer for non-empty finite projections.
@@ -46,7 +51,10 @@ namespace agent_memory {
         /// \brief Backend selected at construction.
         [[nodiscard]] AsymmetricBinarySignatureScoringBackend backend() const noexcept;
 
-        /// \brief Computes the continuous asymmetric score for one same-width signature.
+        /// \brief Computes a backend-specific floating-point asymmetric score.
+        ///
+        /// Scores from different backends are numerically equivalent within normal
+        /// floating-point rounding error, but are not a bitwise ranking contract.
         /// \throws std::invalid_argument when `signature` has a different width.
         [[nodiscard]] float score(const BinarySignature& signature) const;
 
