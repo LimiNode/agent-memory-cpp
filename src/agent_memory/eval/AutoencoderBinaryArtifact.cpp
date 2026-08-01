@@ -488,11 +488,14 @@ namespace agent_memory {
         const auto family = require_string(architecture, "family");
         const auto is_ste = family == "linear_binary_autoencoder_ste";
         const auto is_nlb_paper = family == "nlb_paper_tied_v1";
+        const auto is_nlb_median = family == "nlb_median_threshold_v1";
         if((is_ste && (trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
                        trainer_version != "v1")) ||
            (is_nlb_paper && (trainer_id != "agent-memory-cpp:nlb-tied-binary-autoencoder-trainer" ||
                              trainer_version != "v1")) ||
-           (!is_ste && !is_nlb_paper)) {
+           (is_nlb_median && (trainer_id != "agent-memory-cpp:nlb-median-threshold-calibrator" ||
+                              trainer_version != "v1")) ||
+           (!is_ste && !is_nlb_paper && !is_nlb_median)) {
             throw std::runtime_error("unsupported autoencoder artifact trainer identity");
         }
         (void)require_sha256(trainer, "source_hash");
@@ -501,6 +504,11 @@ namespace agent_memory {
              require_string(architecture, "decoder") != "linear")) ||
            (is_nlb_paper &&
             (require_string(architecture, "encoder_activation") != "hard_step_no_ste_v1" ||
+             require_string(architecture, "decoder") != "tied_transpose_tanh" ||
+             require_string(architecture, "code_value_encoding") != "zero_one" ||
+             require_string(architecture, "input_transform") != "clip_minus_one_one_v1")) ||
+           (is_nlb_median &&
+            (require_string(architecture, "encoder_activation") != "affine_hard_step_median_threshold_v1" ||
              require_string(architecture, "decoder") != "tied_transpose_tanh" ||
              require_string(architecture, "code_value_encoding") != "zero_one" ||
              require_string(architecture, "input_transform") != "clip_minus_one_one_v1"))) {
@@ -514,6 +522,16 @@ namespace agent_memory {
                !std::isfinite(require_field(regularizer, "weight").get<double>())) {
                 throw std::runtime_error("unsupported NLB-paper artifact regularizer");
             }
+        }
+        if(is_nlb_median) {
+            (void)require_sha256(root, "source_encoder_artifact_sha256");
+            const auto& calibration = require_field(root, "calibration");
+            if(require_string(calibration, "policy") != "per_bit_projection_median_v1" ||
+               require_string(calibration, "split_id") != "stable_document_only_train_v1" ||
+               require_positive_size(calibration, "document_count") == 0U) {
+                throw std::runtime_error("unsupported NLB median-threshold calibration");
+            }
+            (void)require_sha256(calibration, "document_ids_sha256");
         }
         const auto input_dimension = require_positive_size(architecture, "input_dimension");
         const auto bit_count = require_positive_size(architecture, "bit_count");
@@ -533,14 +551,18 @@ namespace agent_memory {
             "row_major_out_by_in"
         );
         std::vector<float> encoder_bias;
-        std::vector<float> decoder_weights;
-        if(is_ste) {
+        if(is_ste || is_nlb_median) {
             encoder_bias = load_weight_file(
                 artifact_directory,
                 require_field(weights, "encoder_bias"),
                 {bit_count},
                 nullptr
             );
+        } else {
+            encoder_bias.assign(bit_count, 0.0F);
+        }
+        std::vector<float> decoder_weights;
+        if(is_ste) {
             decoder_weights = load_weight_file(
                 artifact_directory,
                 require_field(weights, "decoder_weights"),
@@ -548,7 +570,6 @@ namespace agent_memory {
                 "row_major_out_by_in"
             );
         } else {
-            encoder_bias.assign(bit_count, 0.0F);
             decoder_weights.resize(checked_product(
                 input_dimension,
                 bit_count,
@@ -581,7 +602,8 @@ namespace agent_memory {
                 artifact_sha256,
                 encoder_weights,
                 encoder_bias,
-                is_ste ? "linear_binary_autoencoder_ste" : "nlb_paper_tied",
+                is_ste ? "linear_binary_autoencoder_ste" :
+                    (is_nlb_median ? "nlb_median_threshold" : "nlb_paper_tied"),
                 "v1",
                 is_ste ? AutoencoderBinaryInputTransform::Identity :
                     AutoencoderBinaryInputTransform::ClipMinusOneToOne,
