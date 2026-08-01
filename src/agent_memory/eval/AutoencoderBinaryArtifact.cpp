@@ -532,7 +532,10 @@ namespace agent_memory {
         const auto is_nlb_paper = family == "nlb_paper_tied_v1";
         const auto is_nlb_median = family == "nlb_median_threshold_v1";
         const auto is_nlb_quantile = family == "nlb_quantile_threshold_v1";
-        const auto is_nlb_retrieval = family == "nlb_retrieval_distilled_v1";
+        const auto is_nlb_median_preserving_retrieval =
+            family == "nlb_median_preserving_retrieval_v1";
+        const auto is_nlb_retrieval = family == "nlb_retrieval_distilled_v1" ||
+            is_nlb_median_preserving_retrieval;
         if((is_ste && (trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
                        trainer_version != "v1")) ||
            (is_nlb_paper && (trainer_id != "agent-memory-cpp:nlb-tied-binary-autoencoder-trainer" ||
@@ -541,8 +544,11 @@ namespace agent_memory {
                               trainer_version != "v1")) ||
            (is_nlb_quantile && (trainer_id != "agent-memory-cpp:nlb-median-threshold-calibrator" ||
                                  trainer_version != "v1")) ||
-           (is_nlb_retrieval && (trainer_id != "agent-memory-cpp:nlb-retrieval-finetuner" ||
-                                  trainer_version != "v1")) ||
+           (is_nlb_retrieval &&
+            (trainer_id != (is_nlb_median_preserving_retrieval ?
+                                "agent-memory-cpp:nlb-median-preserving-finetuner" :
+                                "agent-memory-cpp:nlb-retrieval-finetuner") ||
+             trainer_version != "v1")) ||
            (!is_ste && !is_nlb_paper && !is_nlb_median && !is_nlb_quantile &&
             !is_nlb_retrieval)) {
             throw std::runtime_error("unsupported autoencoder artifact trainer identity");
@@ -618,6 +624,11 @@ namespace agent_memory {
             if(require_string(training, "objective") !=
                "document_geometry_distillation_v1") {
                 throw std::runtime_error("unsupported retrieval NLB artifact objective");
+            }
+            if(is_nlb_median_preserving_retrieval &&
+               require_string(training, "bias_policy") !=
+                   "recalibrate_document_median_each_epoch_v1") {
+                throw std::runtime_error("unsupported median-preserving NLB bias policy");
             }
             const auto& initialization = require_field(training, "initialization");
             const auto initialization_mode = require_string(initialization, "mode");
@@ -800,7 +811,11 @@ namespace agent_memory {
                 is_ste ? "linear_binary_autoencoder_ste" :
                     (is_nlb_median ? "nlb_median_threshold" :
                         (is_nlb_quantile ? "nlb_quantile_threshold" :
-                            (is_nlb_retrieval ? "nlb_retrieval_distilled" : "nlb_paper_tied"))),
+                            (is_nlb_retrieval ?
+                                (is_nlb_median_preserving_retrieval ?
+                                    "nlb_median_preserving_retrieval" :
+                                    "nlb_retrieval_distilled") :
+                                "nlb_paper_tied"))),
                 "v1",
                 is_ste ? AutoencoderBinaryInputTransform::Identity :
                     AutoencoderBinaryInputTransform::ClipMinusOneToOne,

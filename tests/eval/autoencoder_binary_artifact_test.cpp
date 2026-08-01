@@ -339,6 +339,29 @@ int main() {
            nlb_retrieval_artifact.encoder.encode({{0.25F, 0.25F}}).bit(0)) {
             return fail("NLB retrieval-distilled artifact contract");
         }
+        write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "agent-memory-cpp:nlb-retrieval-finetuner",
+            "agent-memory-cpp:nlb-median-preserving-finetuner"
+        );
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"family\": \"nlb_retrieval_distilled_v1\"",
+            "\"family\": \"nlb_median_preserving_retrieval_v1\""
+        );
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"objective\": \"document_geometry_distillation_v1\"",
+            "\"objective\": \"document_geometry_distillation_v1\", \"bias_policy\": \"recalibrate_document_median_each_epoch_v1\""
+        );
+        const auto median_preserving_artifact = agent_memory::load_autoencoder_binary_artifact(
+            root / "nlb-retrieval-distilled-artifact.json"
+        );
+        if(median_preserving_artifact.encoder.info().encoder_id !=
+           "nlb_median_preserving_retrieval") {
+            return fail("median-preserving NLB retrieval artifact contract");
+        }
         replace_once(
             root / "nlb-retrieval-distilled-artifact.json",
             "\"source_encoder_artifact_sha256\": \"cccccccccccccccccccccccccccccccc"

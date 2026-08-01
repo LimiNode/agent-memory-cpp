@@ -18,6 +18,8 @@ TRAINER_ID = "agent-memory-cpp:nlb-retrieval-finetuner"
 TRAINER_VERSION = "v1"
 OBJECTIVE = "document_geometry_distillation_v1"
 BASE_TRAINER_FILE = "train-binary-autoencoder.py"
+MEDIAN_PRESERVING_TRAINER_ID = "agent-memory-cpp:nlb-median-preserving-finetuner"
+MEDIAN_PRESERVING_ARTIFACT_FAMILY = "nlb_median_preserving_retrieval_v1"
 
 
 class FineTuneError(RuntimeError):
@@ -71,6 +73,11 @@ def validate_optimization_mode(epochs: int, export_initialization_only: bool) ->
         raise FineTuneError(
             "initialization-only export requires --epochs 0 and training requires positive epochs"
         )
+
+
+def validate_bias_policy(bias_policy: str) -> None:
+    if bias_policy not in ("learned_bias_v1", "recalibrate_document_median_each_epoch_v1"):
+        raise FineTuneError(f"unsupported encoder-bias policy: {bias_policy}")
 
 
 def load_weight(
@@ -195,7 +202,7 @@ def train(
     row_orthogonality_weight: float, teacher_temperature: float,
     student_temperature: float, soft_temperature_start: float,
     soft_temperature_end: float, initialization_mode: str, itq_iterations: int,
-    torch_threads: int, export_initialization_only: bool,
+    torch_threads: int, export_initialization_only: bool, bias_policy: str,
     train_ids_path: Path | None = None,
     validation_ids_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -206,6 +213,7 @@ def train(
             "bit_count, batch_size, threads, and learning_rate must be positive"
         )
     validate_optimization_mode(epochs, export_initialization_only)
+    validate_bias_policy(bias_policy)
     if not 0.0 < validation_fraction < 0.5:
         raise FineTuneError("validation_fraction must be in (0, 0.5)")
     for value, name in (
@@ -272,17 +280,37 @@ def train(
     torch.set_num_threads(torch_threads)
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
+    preserve_document_median = bias_policy == "recalibrate_document_median_each_epoch_v1"
     encoder_weight = torch.nn.Parameter(torch.from_numpy(initial_weight.copy()))
-    encoder_bias = torch.nn.Parameter(torch.from_numpy(initial_bias.copy()))
+    encoder_bias = torch.nn.Parameter(
+        torch.from_numpy(initial_bias.copy()), requires_grad=not preserve_document_median
+    )
     decoder_bias = torch.nn.Parameter(torch.from_numpy(initial_decoder_bias.copy()))
     optimizer = None
     if not export_initialization_only:
+        trainable_parameters = [encoder_weight, decoder_bias]
+        if not preserve_document_median:
+            trainable_parameters.append(encoder_bias)
         optimizer = torch.optim.AdamW(
-            [encoder_weight, encoder_bias, decoder_bias], lr=learning_rate, weight_decay=0.0
+            trainable_parameters, lr=learning_rate, weight_decay=0.0
         )
 
     def batch_tensor(indices: list[int]) -> Any:
         return torch.from_numpy(numpy.asarray(vectors[indices], dtype=numpy.float32).copy())
+
+    def recalibrate_document_median_bias() -> None:
+        """Restore every decision boundary to its train-document projection median."""
+        if not preserve_document_median:
+            return
+        weights = encoder_weight.detach().cpu().numpy()
+        projections: list[Any] = []
+        for start in range(0, len(train_indices), batch_size):
+            indices = train_indices[start:start + batch_size]
+            values = numpy.asarray(vectors[indices], dtype=numpy.float32)
+            projections.append(numpy.clip(values, -1.0, 1.0) @ weights.T)
+        medians = numpy.median(numpy.concatenate(projections, axis=0), axis=0).astype(numpy.float32)
+        with torch.no_grad():
+            encoder_bias.copy_(torch.from_numpy(-medians))
 
     def loss_for(values: Any, temperature: float) -> tuple[Any, dict[str, Any]]:
         clipped = torch.clamp(values, min=-1.0, max=1.0)
@@ -371,6 +399,7 @@ def train(
     # final temperature.
     selection_temperature = soft_temperature_end
     optimizer_step_count = 0
+    recalibrate_document_median_bias()
     if export_initialization_only:
         best_loss, validation_components = validation_loss_for(selection_temperature)
         best_state: dict[str, Any] = {
@@ -397,6 +426,7 @@ def train(
                 loss.backward()
                 optimizer.step()
                 optimizer_step_count += 1
+            recalibrate_document_median_bias()
             validation_loss, validation_components = validation_loss_for(selection_temperature)
             if validation_loss < best_loss:
                 best_loss = validation_loss
@@ -435,10 +465,11 @@ def train(
     base.write_f32(output_weights["encoder_bias"], best_state["encoder_bias"])
     base.write_f32(output_weights["decoder_bias"], best_state["decoder_bias"])
     source_hash = sha256_file(initialization_artifact)
+    is_median_preserving = preserve_document_median
     artifact = {
         "schema_version": 1,
         "trainer": {
-            "id": TRAINER_ID,
+            "id": MEDIAN_PRESERVING_TRAINER_ID if is_median_preserving else TRAINER_ID,
             "version": TRAINER_VERSION,
             "source_hash": sha256_file(Path(__file__)),
             "base_trainer_source_hash": sha256_file(
@@ -450,7 +481,10 @@ def train(
         "prepared_study_manifest_sha256": prepared_study_hash,
         "source_encoder_artifact_sha256": source_hash,
         "architecture": {
-            "family": "nlb_retrieval_distilled_v1",
+            "family": (
+                MEDIAN_PRESERVING_ARTIFACT_FAMILY
+                if is_median_preserving else "nlb_retrieval_distilled_v1"
+            ),
             "input_dimension": dimension,
             "bit_count": bit_count,
             "encoder_activation": "affine_hard_step_learned_bias_v1",
@@ -465,6 +499,7 @@ def train(
             "learning_rate": learning_rate,
             "validation_fraction": validation_fraction,
             "objective": OBJECTIVE,
+            "bias_policy": bias_policy,
             "optimizer": {"id": "adamw", "weight_decay": 0.0},
             "shuffle_recipe": {
                 "id": "python_fisher_yates_sha256_seed_v1", "per_epoch": True,
@@ -554,6 +589,7 @@ def run_self_test() -> int:
         print("self-test failed: negative loss weight accepted", file=sys.stderr)
         return 1
     validate_optimization_mode(0, True)
+    validate_bias_policy("recalibrate_document_median_each_epoch_v1")
     try:
         validate_optimization_mode(0, False)
     except FineTuneError:
@@ -588,6 +624,11 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--itq-iterations", type=int, default=50)
     parser.add_argument("--torch-threads", type=int, default=18)
     parser.add_argument("--export-initialization-only", action="store_true")
+    parser.add_argument(
+        "--bias-policy",
+        choices=("learned_bias_v1", "recalibrate_document_median_each_epoch_v1"),
+        default="learned_bias_v1",
+    )
     parser.add_argument("--train-ids", type=Path)
     parser.add_argument("--validation-ids", type=Path)
     parser.add_argument("--self-test", action="store_true")
@@ -615,6 +656,7 @@ def main(argv: list[str]) -> int:
             initialization_mode=args.initialization_mode,
             itq_iterations=args.itq_iterations, torch_threads=args.torch_threads,
             export_initialization_only=args.export_initialization_only,
+            bias_policy=args.bias_policy,
             train_ids_path=args.train_ids, validation_ids_path=args.validation_ids,
         )
     except FineTuneError as exc:
