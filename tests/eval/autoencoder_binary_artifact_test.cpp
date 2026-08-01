@@ -362,6 +362,34 @@ int main() {
            "nlb_median_preserving_retrieval") {
             return fail("median-preserving NLB retrieval artifact contract");
         }
+        write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "agent-memory-cpp:nlb-retrieval-finetuner",
+            "agent-memory-cpp:nlb-local-geometry-finetuner"
+        );
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"family\": \"nlb_retrieval_distilled_v1\"",
+            "\"family\": \"nlb_local_geometry_v1\""
+        );
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"objective\": \"document_geometry_distillation_v1\"",
+            "\"objective\": \"document_only_local_neighbour_margin_v1\", \"bias_policy\": \"recalibrate_document_median_each_epoch_v1\", \"local_neighbour\": {\"id\": \"in_batch_teacher_rank_margin_v1\", \"positive_rank\": 1, \"negative_rank\": 8, \"margin\": 0.05, \"queries_or_qrels_used\": false}"
+        );
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"row_orthogonality\": 0.0}",
+            "\"row_orthogonality\": 0.0, \"local_neighbour\": 0.1}"
+        );
+        const auto local_geometry_artifact = agent_memory::load_autoencoder_binary_artifact(
+            root / "nlb-retrieval-distilled-artifact.json"
+        );
+        if(local_geometry_artifact.encoder.info().encoder_id != "nlb_local_geometry") {
+            return fail("local-geometry NLB artifact contract");
+        }
+        write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
         replace_once(
             root / "nlb-retrieval-distilled-artifact.json",
             "\"source_encoder_artifact_sha256\": \"cccccccccccccccccccccccccccccccc"

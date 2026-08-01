@@ -534,8 +534,9 @@ namespace agent_memory {
         const auto is_nlb_quantile = family == "nlb_quantile_threshold_v1";
         const auto is_nlb_median_preserving_retrieval =
             family == "nlb_median_preserving_retrieval_v1";
+        const auto is_nlb_local_geometry = family == "nlb_local_geometry_v1";
         const auto is_nlb_retrieval = family == "nlb_retrieval_distilled_v1" ||
-            is_nlb_median_preserving_retrieval;
+            is_nlb_median_preserving_retrieval || is_nlb_local_geometry;
         if((is_ste && (trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
                        trainer_version != "v1")) ||
            (is_nlb_paper && (trainer_id != "agent-memory-cpp:nlb-tied-binary-autoencoder-trainer" ||
@@ -547,7 +548,9 @@ namespace agent_memory {
            (is_nlb_retrieval &&
             (trainer_id != (is_nlb_median_preserving_retrieval ?
                                 "agent-memory-cpp:nlb-median-preserving-finetuner" :
-                                "agent-memory-cpp:nlb-retrieval-finetuner") ||
+                                (is_nlb_local_geometry ?
+                                    "agent-memory-cpp:nlb-local-geometry-finetuner" :
+                                    "agent-memory-cpp:nlb-retrieval-finetuner")) ||
              trainer_version != "v1")) ||
            (!is_ste && !is_nlb_paper && !is_nlb_median && !is_nlb_quantile &&
             !is_nlb_retrieval)) {
@@ -621,11 +624,13 @@ namespace agent_memory {
             const auto source_artifact_sha256 = require_sha256(
                 root, "source_encoder_artifact_sha256"
             );
-            if(require_string(training, "objective") !=
-               "document_geometry_distillation_v1") {
+            const auto expected_objective = is_nlb_local_geometry ?
+                "document_only_local_neighbour_margin_v1" :
+                "document_geometry_distillation_v1";
+            if(require_string(training, "objective") != expected_objective) {
                 throw std::runtime_error("unsupported retrieval NLB artifact objective");
             }
-            if(is_nlb_median_preserving_retrieval &&
+            if((is_nlb_median_preserving_retrieval || is_nlb_local_geometry) &&
                require_string(training, "bias_policy") !=
                    "recalibrate_document_median_each_epoch_v1") {
                 throw std::runtime_error("unsupported median-preserving NLB bias policy");
@@ -660,6 +665,18 @@ namespace agent_memory {
             require_finite_nonnegative_number(loss_weights, "reconstruction");
             require_finite_nonnegative_number(loss_weights, "decorrelation");
             require_finite_nonnegative_number(loss_weights, "document_geometry_distillation");
+            if(is_nlb_local_geometry) {
+                (void)require_finite_positive_number(loss_weights, "local_neighbour");
+                const auto& local_neighbour = require_field(training, "local_neighbour");
+                if(require_string(local_neighbour, "id") != "in_batch_teacher_rank_margin_v1" ||
+                   require_u64(local_neighbour, "positive_rank") == 0U ||
+                   require_u64(local_neighbour, "negative_rank") <=
+                       require_u64(local_neighbour, "positive_rank") ||
+                   require_finite_positive_number(local_neighbour, "margin") <= 0.0 ||
+                   require_field(local_neighbour, "queries_or_qrels_used") != false) {
+                    throw std::runtime_error("unsupported local-neighbour NLB training contract");
+                }
+            }
             require_finite_nonnegative_number(loss_weights, "row_orthogonality");
             const auto& soft_to_hard = require_field(training, "soft_to_hard");
             if(require_string(soft_to_hard, "id") !=
@@ -812,9 +829,10 @@ namespace agent_memory {
                     (is_nlb_median ? "nlb_median_threshold" :
                         (is_nlb_quantile ? "nlb_quantile_threshold" :
                             (is_nlb_retrieval ?
-                                (is_nlb_median_preserving_retrieval ?
-                                    "nlb_median_preserving_retrieval" :
-                                    "nlb_retrieval_distilled") :
+                                (is_nlb_local_geometry ? "nlb_local_geometry" :
+                                    (is_nlb_median_preserving_retrieval ?
+                                        "nlb_median_preserving_retrieval" :
+                                        "nlb_retrieval_distilled")) :
                                 "nlb_paper_tied"))),
                 "v1",
                 is_ste ? AutoencoderBinaryInputTransform::Identity :

@@ -20,6 +20,8 @@ OBJECTIVE = "document_geometry_distillation_v1"
 BASE_TRAINER_FILE = "train-binary-autoencoder.py"
 MEDIAN_PRESERVING_TRAINER_ID = "agent-memory-cpp:nlb-median-preserving-finetuner"
 MEDIAN_PRESERVING_ARTIFACT_FAMILY = "nlb_median_preserving_retrieval_v1"
+LOCAL_GEOMETRY_TRAINER_ID = "agent-memory-cpp:nlb-local-geometry-finetuner"
+LOCAL_GEOMETRY_ARTIFACT_FAMILY = "nlb_local_geometry_v1"
 
 
 class FineTuneError(RuntimeError):
@@ -78,6 +80,16 @@ def validate_optimization_mode(epochs: int, export_initialization_only: bool) ->
 def validate_bias_policy(bias_policy: str) -> None:
     if bias_policy not in ("learned_bias_v1", "recalibrate_document_median_each_epoch_v1"):
         raise FineTuneError(f"unsupported encoder-bias policy: {bias_policy}")
+
+
+def validate_local_neighbour_options(
+    weight: float, positive_rank: int, negative_rank: int, margin: float
+) -> None:
+    require_finite_nonnegative(weight, "local_neighbour_weight")
+    if positive_rank <= 0 or negative_rank <= positive_rank:
+        raise FineTuneError("local neighbour ranks must satisfy 0 < positive < negative")
+    if not math.isfinite(margin) or margin <= 0.0:
+        raise FineTuneError("local neighbour margin must be finite and positive")
 
 
 def load_weight(
@@ -203,6 +215,8 @@ def train(
     student_temperature: float, soft_temperature_start: float,
     soft_temperature_end: float, initialization_mode: str, itq_iterations: int,
     torch_threads: int, export_initialization_only: bool, bias_policy: str,
+    local_neighbour_weight: float, local_positive_rank: int,
+    local_negative_rank: int, local_neighbour_margin: float,
     train_ids_path: Path | None = None,
     validation_ids_path: Path | None = None,
 ) -> dict[str, Any]:
@@ -214,6 +228,12 @@ def train(
         )
     validate_optimization_mode(epochs, export_initialization_only)
     validate_bias_policy(bias_policy)
+    validate_local_neighbour_options(
+        local_neighbour_weight, local_positive_rank, local_negative_rank,
+        local_neighbour_margin,
+    )
+    if local_neighbour_weight != 0.0 and batch_size <= local_negative_rank:
+        raise FineTuneError("batch_size must exceed local_negative_rank when local loss is enabled")
     if not 0.0 < validation_fraction < 0.5:
         raise FineTuneError("validation_fraction must be in (0, 0.5)")
     for value, name in (
@@ -281,6 +301,8 @@ def train(
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
     preserve_document_median = bias_policy == "recalibrate_document_median_each_epoch_v1"
+    if local_neighbour_weight != 0.0 and not preserve_document_median:
+        raise FineTuneError("local-neighbour training requires median-preserving bias recalibration")
     encoder_weight = torch.nn.Parameter(torch.from_numpy(initial_weight.copy()))
     encoder_bias = torch.nn.Parameter(
         torch.from_numpy(initial_bias.copy()), requires_grad=not preserve_document_median
@@ -336,7 +358,8 @@ def train(
             ) / max(1, bit_count * (bit_count - 1))
 
         distillation_loss = torch.zeros((), dtype=clipped.dtype)
-        if distillation_weight != 0.0 and len(values) > 1:
+        local_neighbour_loss = torch.zeros((), dtype=clipped.dtype)
+        if (distillation_weight != 0.0 or local_neighbour_weight != 0.0) and len(values) > 1:
             teacher_vectors = functional.normalize(clipped, dim=1)
             teacher_scores = teacher_vectors @ teacher_vectors.T
             student_vectors = functional.normalize(soft_code, dim=1, eps=1.0e-6)
@@ -344,14 +367,29 @@ def train(
             diagonal_mask = torch.eye(len(values), dtype=torch.bool, device=values.device)
             teacher_scores = teacher_scores.masked_fill(diagonal_mask, -1.0e9)
             student_scores = student_scores.masked_fill(diagonal_mask, -1.0e9)
-            teacher_distribution = functional.softmax(
-                teacher_scores / teacher_temperature, dim=1
-            )
-            distillation_loss = functional.kl_div(
-                functional.log_softmax(student_scores / student_temperature, dim=1),
-                teacher_distribution,
-                reduction="batchmean",
-            )
+            if distillation_weight != 0.0:
+                teacher_distribution = functional.softmax(
+                    teacher_scores / teacher_temperature, dim=1
+                )
+                distillation_loss = functional.kl_div(
+                    functional.log_softmax(student_scores / student_temperature, dim=1),
+                    teacher_distribution,
+                    reduction="batchmean",
+                )
+            if local_neighbour_weight != 0.0 and len(values) > local_negative_rank:
+                teacher_ranked_indices = torch.topk(
+                    teacher_scores, k=local_negative_rank, dim=1, largest=True, sorted=True
+                ).indices
+                rows = torch.arange(len(values), device=values.device)
+                positive_scores = student_scores[
+                    rows, teacher_ranked_indices[:, local_positive_rank - 1]
+                ]
+                negative_scores = student_scores[
+                    rows, teacher_ranked_indices[:, local_negative_rank - 1]
+                ]
+                local_neighbour_loss = functional.softplus(
+                    local_neighbour_margin - positive_scores + negative_scores
+                ).mean()
 
         row_orthogonality_loss = torch.zeros((), dtype=clipped.dtype)
         if row_orthogonality_weight != 0.0:
@@ -363,12 +401,14 @@ def train(
             reconstruction_weight * reconstruction_loss
             + decorrelation_weight * decorrelation_loss
             + distillation_weight * distillation_loss
+            + local_neighbour_weight * local_neighbour_loss
             + row_orthogonality_weight * row_orthogonality_loss
         )
         return total, {
             "reconstruction": reconstruction_loss,
             "decorrelation": decorrelation_loss,
             "distillation": distillation_loss,
+            "local_neighbour": local_neighbour_loss,
             "row_orthogonality": row_orthogonality_loss,
         }
 
@@ -379,6 +419,7 @@ def train(
                 "reconstruction": 0.0,
                 "decorrelation": 0.0,
                 "distillation": 0.0,
+                "local_neighbour": 0.0,
                 "row_orthogonality": 0.0,
             }
             validation_rows = 0
@@ -466,10 +507,14 @@ def train(
     base.write_f32(output_weights["decoder_bias"], best_state["decoder_bias"])
     source_hash = sha256_file(initialization_artifact)
     is_median_preserving = preserve_document_median
+    is_local_geometry = local_neighbour_weight != 0.0
     artifact = {
         "schema_version": 1,
         "trainer": {
-            "id": MEDIAN_PRESERVING_TRAINER_ID if is_median_preserving else TRAINER_ID,
+            "id": (
+                LOCAL_GEOMETRY_TRAINER_ID if is_local_geometry else
+                (MEDIAN_PRESERVING_TRAINER_ID if is_median_preserving else TRAINER_ID)
+            ),
             "version": TRAINER_VERSION,
             "source_hash": sha256_file(Path(__file__)),
             "base_trainer_source_hash": sha256_file(
@@ -482,8 +527,9 @@ def train(
         "source_encoder_artifact_sha256": source_hash,
         "architecture": {
             "family": (
-                MEDIAN_PRESERVING_ARTIFACT_FAMILY
-                if is_median_preserving else "nlb_retrieval_distilled_v1"
+                LOCAL_GEOMETRY_ARTIFACT_FAMILY if is_local_geometry else
+                (MEDIAN_PRESERVING_ARTIFACT_FAMILY
+                 if is_median_preserving else "nlb_retrieval_distilled_v1")
             ),
             "input_dimension": dimension,
             "bit_count": bit_count,
@@ -498,7 +544,9 @@ def train(
             "batch_size": batch_size,
             "learning_rate": learning_rate,
             "validation_fraction": validation_fraction,
-            "objective": OBJECTIVE,
+            "objective": (
+                "document_only_local_neighbour_margin_v1" if is_local_geometry else OBJECTIVE
+            ),
             "bias_policy": bias_policy,
             "optimizer": {"id": "adamw", "weight_decay": 0.0},
             "shuffle_recipe": {
@@ -522,7 +570,15 @@ def train(
                 "reconstruction": reconstruction_weight,
                 "decorrelation": decorrelation_weight,
                 "document_geometry_distillation": distillation_weight,
+                "local_neighbour": local_neighbour_weight,
                 "row_orthogonality": row_orthogonality_weight,
+            },
+            "local_neighbour": {
+                "id": "in_batch_teacher_rank_margin_v1",
+                "positive_rank": local_positive_rank,
+                "negative_rank": local_negative_rank,
+                "margin": local_neighbour_margin,
+                "queries_or_qrels_used": False,
             },
             "distillation": {
                 "id": "document_only_in_batch_listwise_kl_v1",
@@ -590,6 +646,7 @@ def run_self_test() -> int:
         return 1
     validate_optimization_mode(0, True)
     validate_bias_policy("recalibrate_document_median_each_epoch_v1")
+    validate_local_neighbour_options(0.1, 1, 8, 0.05)
     try:
         validate_optimization_mode(0, False)
     except FineTuneError:
@@ -612,6 +669,10 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--reconstruction-weight", type=float, default=1.0)
     parser.add_argument("--decorrelation-weight", type=float, default=0.0)
     parser.add_argument("--distillation-weight", type=float, default=0.0)
+    parser.add_argument("--local-neighbour-weight", type=float, default=0.0)
+    parser.add_argument("--local-positive-rank", type=int, default=1)
+    parser.add_argument("--local-negative-rank", type=int, default=8)
+    parser.add_argument("--local-neighbour-margin", type=float, default=0.05)
     parser.add_argument("--row-orthogonality-weight", type=float, default=0.0)
     parser.add_argument("--teacher-temperature", type=float, default=0.05)
     parser.add_argument("--student-temperature", type=float, default=0.05)
@@ -648,6 +709,10 @@ def main(argv: list[str]) -> int:
             reconstruction_weight=args.reconstruction_weight,
             decorrelation_weight=args.decorrelation_weight,
             distillation_weight=args.distillation_weight,
+            local_neighbour_weight=args.local_neighbour_weight,
+            local_positive_rank=args.local_positive_rank,
+            local_negative_rank=args.local_negative_rank,
+            local_neighbour_margin=args.local_neighbour_margin,
             row_orthogonality_weight=args.row_orthogonality_weight,
             teacher_temperature=args.teacher_temperature,
             student_temperature=args.student_temperature,
