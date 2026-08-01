@@ -962,3 +962,37 @@ document-geometry distillation as cosine similarity between L2-normalized
 soft codes, rather than a bit-count-scaled dot product. The same held-out RU
 fixture and document-only split are retained; replacement results are recorded
 in the follow-up section after rerunning every comparison under this contract.
+
+### Corrected retrieval-distillation ablation
+
+The replacement run keeps the same 23,801 document-only training vectors,
+1,199 document-only validation vectors, 22,607 held-out evaluation documents,
+1,252 held-out queries, and 13,100 qrels. It uses 128 bits, ten epochs where
+training is enabled, batch size 256, and candidate limit 512. Checkpoint
+selection evaluates every epoch at the fixed final soft-code temperature `8`.
+The frozen ITQ control is an explicit initialization-only export: zero epochs
+and zero optimizer steps. Document-only geometry distillation compares the
+cosine matrix of L2-normalized clipped E5 vectors with the cosine matrix of
+L2-normalized soft codes. No query text, query vector, or qrel is used for
+training or checkpoint selection.
+
+| Variant | Optimizer steps | Coverage@512 | Reranked nDCG@10 | cosine/-Hamming correlation | Total bit entropy |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Median NLB source baseline | 0 | 0.8886 | 0.7826 | 0.4100 | 127.59 |
+| Median initialization + reconstruction | 930 | 0.8260 | 0.7670 | 0.3833 | 106.49 |
+| ITQ + median, frozen initialization-only control | 0 | 0.9367 | 0.7932 | 0.5813 | 127.11 |
+| ITQ + median + reconstruction | 930 | 0.9369 | 0.7916 | 0.5580 | 124.40 |
+| ITQ + median + reconstruction + decorrelation | 930 | 0.9368 | 0.7917 | 0.5577 | 124.40 |
+| ITQ + median + reconstruction + soft-code-cosine distillation | 930 | 0.7047 | 0.7024 | 0.5259 | 65.44 |
+| ITQ + median + reconstruction + decorrelation + soft-code-cosine distillation | 930 | 0.7051 | 0.7028 | 0.5259 | 65.44 |
+
+The corrected result preserves the principal finding but narrows its claim:
+the gain comes from deterministic ITQ-plus-median initialization, not from the
+tested fine-tuning losses. Reconstruction leaves candidate coverage effectively
+unchanged and modestly lowers final nDCG. The tested decorrelation weight has
+no material additional effect. Under these temperatures and weights, soft-code
+cosine distillation collapses effective code information and is a clear
+stop/diagnose result rather than a candidate for promotion. The next
+document-only training experiment therefore anchors median-calibrated decision
+boundaries explicitly and studies a weaker local-neighbour objective; it must
+not silently reuse this failed distillation setting.
