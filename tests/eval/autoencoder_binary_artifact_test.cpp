@@ -8,6 +8,7 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <iterator>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -158,9 +159,69 @@ namespace {
 })";
     }
 
+    void write_nlb_retrieval_distilled_artifact(const std::filesystem::path& path) {
+        std::ofstream output(path, std::ios::binary);
+        output << R"({
+  "schema_version": 1,
+  "trainer": {"id": "agent-memory-cpp:nlb-retrieval-finetuner", "version": "v1", "source_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "base_trainer_source_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "requirements_lock": "requirements-binary-autoencoder-trainer.txt;sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "input_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "prepared_study_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "source_encoder_artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+  "architecture": {
+    "family": "nlb_retrieval_distilled_v1",
+    "input_dimension": 2,
+    "bit_count": 2,
+    "encoder_activation": "affine_hard_step_learned_bias_v1",
+    "decoder": "tied_transpose_tanh",
+    "code_value_encoding": "zero_one",
+    "input_transform": "clip_minus_one_one_v1"
+  },
+  "training": {
+    "seed": 42,
+    "objective": "document_geometry_distillation_v1",
+    "torch_threads": 1,
+    "initialization": {"mode": "median_artifact", "source_artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_family": "nlb_median_threshold_v1", "itq_iterations": 0},
+    "loss_weights": {"reconstruction": 1.0, "decorrelation": 0.0, "document_geometry_distillation": 0.0, "row_orthogonality": 0.0},
+    "soft_to_hard": {"id": "geometric_tanh_temperature_schedule_v1", "start": 1.0, "end": 8.0},
+    "distillation": {"id": "document_only_in_batch_listwise_kl_v1", "queries_or_qrels_used": false},
+    "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true},
+    "stable_id_lists": {
+      "train_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+      "validation_sha256": "2222222222222222222222222222222222222222222222222222222222222222",
+      "selection": "stable_sha256_id_split_v1"
+    }
+  },
+  "weights": {
+    "encoder_weights": {"path": "encoder-weights.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "shape": [2, 2], "layout": "row_major_out_by_in", "dtype": "float32_le"},
+    "encoder_bias": {"path": "encoder-bias.f32", "sha256": "1dc7fbfac33e9a09c59d17f9ff8c27e3de8d248f2b7488fbee7768e307abdd33", "shape": [2], "dtype": "float32_le"},
+    "decoder_bias": {"path": "decoder-bias.f32", "sha256": "af5570f5a1810b7af78caf4bc70a660f0df51e42baf91d4de5b2328de0e83dfc", "shape": [2], "dtype": "float32_le"}
+  }
+})";
+    }
+
     void write_text(const std::filesystem::path& path, const char* text) {
         std::ofstream output(path, std::ios::binary);
         output << text;
+    }
+
+    void replace_once(
+        const std::filesystem::path& path,
+        const std::string& expected,
+        const std::string& replacement
+    ) {
+        std::ifstream input(path, std::ios::binary);
+        const std::string content(
+            (std::istreambuf_iterator<char>(input)),
+            std::istreambuf_iterator<char>()
+        );
+        const auto position = content.find(expected);
+        if(position == std::string::npos || content.find(expected, position + expected.size()) !=
+            std::string::npos) {
+            throw std::runtime_error("test artifact replacement is ambiguous");
+        }
+        auto modified = content;
+        modified.replace(position, expected.size(), replacement);
+        write_text(path, modified.c_str());
     }
 
     void write_materialization_manifest(const std::filesystem::path& path) {
@@ -257,6 +318,44 @@ int main() {
            nlb_quantile_artifact.encoder.encode({{0.25F, 0.25F}}).bit(0)) {
             return fail("NLB quantile-threshold artifact contract");
         }
+        write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
+        const auto nlb_retrieval_artifact = agent_memory::load_autoencoder_binary_artifact(
+            root / "nlb-retrieval-distilled-artifact.json"
+        );
+        if(nlb_retrieval_artifact.encoder.info().encoder_id != "nlb_retrieval_distilled" ||
+           nlb_retrieval_artifact.training_document_ids_sha256 != std::string(64, '1') ||
+           nlb_retrieval_artifact.validation_document_ids_sha256 != std::string(64, '2') ||
+           nlb_retrieval_artifact.encoder.encode({{0.25F, 0.25F}}).bit(0)) {
+            return fail("NLB retrieval-distilled artifact contract");
+        }
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"source_encoder_artifact_sha256\": \"cccccccccccccccccccccccccccccccc"
+            "cccccccccccccccccccccccccccccccc\"",
+            "\"source_encoder_artifact_sha256\": \"dddddddddddddddddddddddddddddddd"
+            "dddddddddddddddddddddddddddddddd\""
+        );
+        if(!throws_runtime_error([&] {
+               (void)agent_memory::load_autoencoder_binary_artifact(
+                   root / "nlb-retrieval-distilled-artifact.json"
+               );
+           })) {
+            return fail("NLB retrieval artifact accepted mismatched initialization source");
+        }
+        write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
+        replace_once(
+            root / "nlb-retrieval-distilled-artifact.json",
+            "\"queries_or_qrels_used\": false",
+            "\"queries_or_qrels_used\": true"
+        );
+        if(!throws_runtime_error([&] {
+               (void)agent_memory::load_autoencoder_binary_artifact(
+                   root / "nlb-retrieval-distilled-artifact.json"
+               );
+           })) {
+            return fail("NLB retrieval artifact accepted query or qrels training");
+        }
+        write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
         const auto metrics = agent_memory::evaluate_autoencoder_binary_retrieval(
             {"d0", "d1"},
             {{{1.0F, 0.0F}}, {{0.0F, 1.0F}}},
