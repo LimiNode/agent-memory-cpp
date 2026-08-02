@@ -425,7 +425,22 @@ def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
             handle.write("\n")
 
 
-def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> dict[str, Any]:
+def load_excluded_document_ids(path: Path | None) -> set[str]:
+    if path is None:
+        return set()
+    try:
+        return {
+            non_empty_string(json.loads(line).get("id"), "excluded document.id")
+            for line in path.read_text(encoding="utf-8").splitlines() if line
+        }
+    except (OSError, json.JSONDecodeError) as exc:
+        raise PreparationError(f"cannot read excluded document IDs: {exc}") from exc
+
+
+def prepare_study(
+    config: StudyConfig, input_root: Path, output_root: Path,
+    excluded_document_ids_path: Path | None = None,
+) -> dict[str, Any]:
     if output_root.exists():
         raise PreparationError(f"output directory already exists: {output_root}")
     output_root.mkdir(parents=True)
@@ -437,6 +452,7 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
     output_queries: list[tuple[str, str, str]] = []
     output_qrels: list[tuple[str, str, int]] = []
     per_language: list[dict[str, Any]] = []
+    excluded_document_ids = load_excluded_document_ids(excluded_document_ids_path)
 
     for language in config.languages:
         corpus_paths = resolve_input_paths(
@@ -455,7 +471,16 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
             seed=config.seed,
             language=language,
         )
-        qrels = [row for row in all_qrels if row[0] in queries]
+        qrels = [
+            row for row in all_qrels
+            if row[0] in queries and f"{language}:{row[1]}" not in excluded_document_ids
+        ]
+        qrel_query_ids = {query_id for query_id, _, _ in qrels}
+        queries = {
+            query_id: text
+            for query_id, text in queries.items()
+            if query_id in qrel_query_ids
+        }
         qrel_document_ids = {document_id for _, document_id, _ in qrels}
         if not qrels:
             raise PreparationError(f"{language}: selected evaluation queries have no qrels")
@@ -477,7 +502,8 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
             (
                 document
                 for document in iter_corpora(corpus_paths, language)
-                if document.docid not in qrel_document_ids
+                if document.docid not in qrel_document_ids and
+                document.global_id not in excluded_document_ids
             ),
             limit=config.train_documents_per_language,
             seed=config.seed,
@@ -489,7 +515,8 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
             (
                 document
                 for document in iter_corpora(corpus_paths, language)
-                if document.docid not in qrel_document_ids
+                if document.docid not in qrel_document_ids and
+                document.global_id not in excluded_document_ids
                 and document.docid not in selected_train_ids
             ),
             limit=config.evaluation_distractors_per_language,
@@ -579,6 +606,10 @@ def prepare_study(config: StudyConfig, input_root: Path, output_root: Path) -> d
                 "retrieval_training_only"
             ),
             "qrels_excluded_document_ids_sha256": sorted_id_set_sha256(qrels_excluded_ids),
+            "external_excluded_document_ids_sha256": (
+                sha256_file(excluded_document_ids_path)
+                if excluded_document_ids_path is not None else ""
+            ),
             "evaluation_query_ids_sha256": sorted_id_set_sha256(evaluation_query_ids),
             "evaluation_document_ids_sha256": sorted_id_set_sha256(
                 document.global_id for document in evaluation_documents
@@ -707,6 +738,35 @@ def run_self_test() -> int:
             print("self-test failed: train and evaluation documents overlap", file=sys.stderr)
             return 1
 
+        external_exclusions = root / "external-excluded-document-ids.jsonl"
+        external_exclusions.write_text(
+            '{"id":"ru:ru-3"}\n', encoding="utf-8", newline="\n"
+        )
+        external_exclusion_config = json.loads(config_path.read_text(encoding="utf-8"))
+        external_exclusion_config["sampling"]["train_documents_per_language"] = 1
+        external_exclusion_config_path = root / "external-exclusion.json"
+        external_exclusion_config_path.write_text(
+            json.dumps(external_exclusion_config), encoding="utf-8", newline="\n"
+        )
+        externally_excluded_manifest = prepare_study(
+            load_config(external_exclusion_config_path),
+            root / "input",
+            root / "externally-excluded",
+            external_exclusions,
+        )
+        externally_excluded_ids = {
+            json.loads(line)["id"]
+            for output_name in ("train-documents.jsonl", "evaluation-documents.jsonl")
+            for line in (root / "externally-excluded" / output_name).read_text(
+                encoding="utf-8"
+            ).splitlines()
+        }
+        if ("ru:ru-3" in externally_excluded_ids or
+                externally_excluded_manifest["split"]["external_excluded_document_ids_sha256"] !=
+                sha256_file(external_exclusions)):
+            print("self-test failed: external exclusion was not enforced", file=sys.stderr)
+            return 1
+
         query_limited = json.loads(config_path.read_text(encoding="utf-8"))
         query_limited["sampling"]["evaluation_queries_per_language"] = 1
         query_limited_path = root / "query-limited.json"
@@ -745,18 +805,22 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--config", type=Path)
     parser.add_argument("--input-root", type=Path)
     parser.add_argument("--output-root", type=Path)
+    parser.add_argument("--excluded-document-ids", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
 
     if args.self_test:
-        if args.config or args.input_root or args.output_root:
+        if args.config or args.input_root or args.output_root or args.excluded_document_ids:
             parser.error("--self-test cannot be combined with preparation arguments")
         return run_self_test()
     if not args.config or not args.input_root or not args.output_root:
         parser.error("--config, --input-root, and --output-root are required")
 
     try:
-        manifest = prepare_study(load_config(args.config), args.input_root, args.output_root)
+        manifest = prepare_study(
+            load_config(args.config), args.input_root, args.output_root,
+            args.excluded_document_ids,
+        )
     except PreparationError as exc:
         print(f"prepare-miracl-ae-study: {exc}", file=sys.stderr)
         return 1
