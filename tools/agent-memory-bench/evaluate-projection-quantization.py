@@ -456,6 +456,50 @@ def bootstrap(args: Any) -> None:
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
+def write_compact_manifest(args: Any) -> None:
+    rows: list[dict[str, Any]] = []
+    reference_identity: dict[str, Any] | None = None
+    for report_path in args.report:
+        try:
+            report = json.loads(report_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise EvaluationError(f"cannot read scalar projection report: {report_path}: {exc}") from exc
+        if report.get("schema_version") != 2 or report.get("family") != "scalar_projection_reference_v2":
+            raise EvaluationError(f"scalar projection report schema is unsupported: {report_path}")
+        identity = validate_contribution_identity(report.get("per_query_contribution_identity"), numpy.load(report_path.parent / Path(report.get("per_query_contributions_path", "")).name, allow_pickle=False)["query_ids"], report.get("query_count"))
+        contribution_path = report_path.parent / Path(report.get("per_query_contributions_path", "")).name
+        if not contribution_path.is_file() or report.get("per_query_contributions_sha256") != sha256_file(contribution_path):
+            raise EvaluationError(f"scalar projection contribution hash differs: {report_path}")
+        if reference_identity is None:
+            reference_identity = identity
+        elif identity != reference_identity:
+            raise EvaluationError("scalar projection manifest mixes evaluation identities")
+        rows.append({
+            "report_file": report_path.name,
+            "report_sha256": sha256_file(report_path),
+            "contributions_file": contribution_path.name,
+            "contributions_sha256": sha256_file(contribution_path),
+            "projection": report["projection"],
+            "quantizer": report["quantizer"],
+            "code_assignment": report["code_assignment"],
+            "scoring": report["scoring"],
+            "coordinate_count": report["coordinate_count"],
+            "packed_payload_bytes_per_document": report["packed_payload_bytes_per_document"],
+            "seed": report["seed"],
+            "itq_iterations": report["itq_iterations"],
+            "kmeans_iterations": report["kmeans_iterations"],
+            "projection_weights_sha256": report["projection_weights_sha256"],
+            "centroids_sha256": report["centroids_sha256"],
+            "exact_top_k_candidate_coverage": report["exact_top_k_candidate_coverage"],
+            "reranked_ndcg_at_10": report["reranked_ndcg_at_10"],
+            "full_e5_ndcg_at_10": report["full_e5_ndcg_at_10"],
+        })
+    if reference_identity is None:
+        raise EvaluationError("scalar projection manifest needs at least one report")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps({"schema_version": 1, "family": "scalar_projection_result_manifest_v1", "evaluator_source_sha256": sha256_file(Path(__file__)), "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+
+
 def run_self_test() -> int:
     codes = numpy.asarray([[0, 1, 2, 0, 1, 2], [2, 1, 0, 2, 1, 0]], dtype=numpy.uint8)
     packed = pack_codes(codes, 3, 5)
@@ -503,11 +547,13 @@ def main(argv: list[str]) -> int:
     binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
     ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
+    manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--output", type=Path, required=True)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
         if args.command == "binary": evaluate_artifact(args)
         elif args.command == "ternary": evaluate_ternary(args)
         elif args.command == "bootstrap": bootstrap(args)
+        elif args.command == "write-manifest": write_compact_manifest(args)
         else: return run_self_test()
     except (EvaluationError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"evaluate-projection-quantization: {error}", file=__import__("sys").stderr); return 1
