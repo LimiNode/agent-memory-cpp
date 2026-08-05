@@ -1171,3 +1171,51 @@ then is it meaningful to tune the supervised loss or promote it over the
 document-only family. A compact committed provenance record links every table
 row to its artifact, training-history, and held-out report digest in
 [`2026-08-05-qrels-supervised-matrix-manifest.json`](2026-08-05-qrels-supervised-matrix-manifest.json).
+
+### Auxiliary-only attribution and ternary projection reference
+
+The corrected binary matrix was re-evaluated query-by-query with the stable-ID
+reference contract, then tested with a paired 10,000-replicate query bootstrap
+(seed `20260806`). PCA supervised minus zero-step has coverage 95% CI
+`[-0.00288, 0.00471]` and nDCG@10 CI `[-0.00270, 0.00305]`; neither effect is
+resolved. ITQ supervised minus zero-step has coverage CI
+`[-0.01637, -0.00767]`, while its nDCG@10 CI `[-0.00171, 0.00439]` crosses
+zero. Thus the ITQ locality loss is robust to dev-query resampling, while the
+claimed relevance gain is not.
+
+The no-triplet auxiliary control used the same initialization, epochs, batch
+order, reconstruction/decorrelation/orthogonality weights, and median
+recalibration as qrels supervision, but set the triplet weight to zero. Against
+that control, the triplet changes PCA coverage by `+0.00016` (95% CI
+`[-0.00343, 0.00376]`) and nDCG@10 by `+0.00064` (CI
+`[-0.00138, 0.00276]`). For ITQ it changes coverage by `-0.00966` (CI
+`[-0.01366, -0.00567]`) and nDCG@10 by `+0.00098` (CI
+`[-0.00190, 0.00398]`). The current triplet is therefore not a supported
+quality improvement and is the direct cause of most remaining ITQ locality
+loss, rather than the auxiliary optimizer updates alone.
+
+The same label-free 25k calibration root was then used for ternary projection
+codes. Documents use base-3 packing (five trits per byte); the k-means rows use
+three per-coordinate Lloyd--Max centroids and an unquantized query with a
+query-specific packed ADC LUT. The scan values below are NumPy reference-harness
+times over all 1,252 queries, not production C++ latency measurements.
+
+| Code / candidate scoring | Packed bytes | Coverage@512 | Reranked nDCG@10 | Reference scan seconds |
+| --- | ---: | ---: | ---: | ---: |
+| PCA binary, 128 bits, Hamming | 16 | 0.93347 | 0.79295 | 8.05 |
+| ITQ binary, 128 bits, Hamming | 16 | 0.93746 | 0.79005 | 8.05 |
+| PCA 80 trits, symmetric tertile distance | 16 | 0.94113 | 0.79312 | 12.87 |
+| PCA 80 trits, 3-centroid packed ADC | 16 | 0.95871 | 0.79502 | 28.88 |
+| ITQ 80 trits, 3-centroid packed ADC | 16 | 0.97061 | 0.79856 | 29.46 |
+| PCA binary, 208 bits, Hamming | 26 | 0.96534 | 0.79994 | 11.73 |
+| ITQ binary, 208 bits, Hamming | 26 | 0.98227 | 0.80072 | 11.54 |
+| PCA 128 trits, 3-centroid packed ADC | 26 | 0.99201 | 0.80085 | 42.65 |
+| ITQ 128 trits, 3-centroid packed ADC | 26 | 0.99577 | 0.80150 | 43.28 |
+
+Full E5 nDCG@10 is `0.80145`. This is a strong label-free quality signal: the
+equal-16-byte ITQ ternary ADC improves coverage by `+0.03315` and nDCG@10 by
+`+0.00851` over matched binary-128, while the 26-byte ITQ ternary ADC reaches
+full-E5 nDCG within this reference evaluation. Packed ADC LUT and direct scalar
+ADC are covered by a deterministic parity self-test. These findings do not yet
+establish a production speed win: an independently benchmarked C++ packed-LUT
+implementation and multiple initialization seeds remain required.
