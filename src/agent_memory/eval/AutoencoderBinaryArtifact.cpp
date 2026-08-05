@@ -535,6 +535,7 @@ namespace agent_memory {
         const auto is_nlb_median_preserving_retrieval =
             family == "nlb_median_preserving_retrieval_v1";
         const auto is_nlb_local_geometry = family == "nlb_local_geometry_v1";
+        const auto is_nlb_qrels_supervised = family == "nlb_qrels_supervised_v1";
         const auto is_nlb_retrieval = family == "nlb_retrieval_distilled_v1" ||
             is_nlb_median_preserving_retrieval || is_nlb_local_geometry;
         if((is_ste && (trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
@@ -552,12 +553,15 @@ namespace agent_memory {
                                     "agent-memory-cpp:nlb-local-geometry-finetuner" :
                                     "agent-memory-cpp:nlb-retrieval-finetuner")) ||
              trainer_version != "v1")) ||
+           (is_nlb_qrels_supervised &&
+            (trainer_id != "agent-memory-cpp:nlb-qrels-supervised-trainer" ||
+             trainer_version != "v1")) ||
            (!is_ste && !is_nlb_paper && !is_nlb_median && !is_nlb_quantile &&
-            !is_nlb_retrieval)) {
+            !is_nlb_retrieval && !is_nlb_qrels_supervised)) {
             throw std::runtime_error("unsupported autoencoder artifact trainer identity");
         }
         (void)require_sha256(trainer, "source_hash");
-        if(is_nlb_retrieval) {
+        if(is_nlb_retrieval || is_nlb_qrels_supervised) {
             (void)require_sha256(trainer, "base_trainer_source_hash");
             require_requirements_lock(trainer);
         }
@@ -585,6 +589,14 @@ namespace agent_memory {
               require_string(architecture, "code_value_encoding") != "zero_one" ||
               require_string(architecture, "input_transform") != "clip_minus_one_one_v1"))) {
             throw std::runtime_error("unsupported autoencoder artifact architecture");
+        }
+        if(is_nlb_qrels_supervised &&
+           (require_string(architecture, "encoder_activation") !=
+                "affine_hard_step_document_median_v1" ||
+            require_string(architecture, "decoder") != "tied_transpose_tanh" ||
+            require_string(architecture, "code_value_encoding") != "zero_one" ||
+            require_string(architecture, "input_transform") != "clip_minus_one_one_v1")) {
+            throw std::runtime_error("unsupported qrels-supervised NLB architecture");
         }
         if(is_nlb_paper) {
             const auto& regularizer = require_field(architecture, "regularizer");
@@ -736,6 +748,109 @@ namespace agent_memory {
             (void)require_finite_positive_number(distillation, "student_temperature");
             (void)require_positive_size(training, "torch_threads");
         }
+        if(is_nlb_qrels_supervised) {
+            const auto source_artifact_sha256 = require_sha256(
+                root, "source_encoder_artifact_sha256"
+            );
+            if(require_string(training, "objective") != "qrels_soft_hamming_triplet_v1" ||
+               require_field(training, "queries_or_qrels_used") != true ||
+               require_u64(training, "candidate_limit") != 512U ||
+               require_finite_positive_number(training, "margin") <= 0.0) {
+                throw std::runtime_error("unsupported qrels-supervised NLB objective");
+            }
+            const auto& initialization = require_field(training, "initialization");
+            if(require_string(initialization, "mode") != "pca_median_document_only_v1" ||
+               require_sha256(initialization, "source_artifact_sha256") !=
+                   source_artifact_sha256 ||
+               require_string(initialization, "source_family") !=
+                   "label_free_document_only_e5_v1" ||
+               require_u64(initialization, "itq_iterations") != 0U) {
+                throw std::runtime_error("unsupported qrels-supervised NLB initialization");
+            }
+            const auto& calibration = require_field(training, "calibration");
+            if(require_string(calibration, "policy") != "per_bit_projection_median_v1" ||
+               require_string(calibration, "source") != "label_free_document_only_train_v1" ||
+               require_positive_size(calibration, "document_count") == 0U) {
+                throw std::runtime_error("unsupported qrels-supervised NLB calibration");
+            }
+            (void)require_sha256(calibration, "document_ids_sha256");
+            const auto& query_split = require_field(training, "query_split");
+            if(require_string(query_split, "id") != "stable_sha256_query_split_v1") {
+                throw std::runtime_error("unsupported qrels-supervised NLB query split");
+            }
+            const auto& validation_fraction = require_field(query_split, "validation_fraction");
+            if(!validation_fraction.is_number() || !std::isfinite(validation_fraction.get<double>()) ||
+               validation_fraction.get<double>() <= 0.0 || validation_fraction.get<double>() >= 0.5) {
+                throw std::runtime_error("invalid qrels-supervised validation fraction");
+            }
+            (void)require_sha256(query_split, "train_query_ids_sha256");
+            (void)require_sha256(query_split, "validation_query_ids_sha256");
+            (void)require_positive_size(query_split, "train_query_count");
+            (void)require_positive_size(query_split, "validation_query_count");
+            const auto& mining = require_field(training, "hard_negative_mining");
+            if(require_string(mining, "id") != "frozen_e5_cosine_topk_nonpositive_v1" ||
+               require_string(mining, "teacher") != "normalized_e5_cosine" ||
+               require_positive_size(mining, "negative_count_per_query") == 0U ||
+               require_string(mining, "positive_exclusion") != "all_grade_gt_zero_v1" ||
+               require_string(mining, "path").find_first_of("/\\\\") != std::string::npos) {
+                throw std::runtime_error("unsupported qrels-supervised hard-negative mining");
+            }
+            (void)require_sha256(mining, "sha256");
+            (void)require_sha256(mining, "canonical_sha256");
+            (void)require_sha256(mining, "train_query_ids_sha256");
+            (void)require_sha256(mining, "validation_query_ids_sha256");
+            if(require_sha256(mining, "train_query_ids_sha256") !=
+                   require_sha256(query_split, "train_query_ids_sha256") ||
+               require_sha256(mining, "validation_query_ids_sha256") !=
+                   require_sha256(query_split, "validation_query_ids_sha256")) {
+                throw std::runtime_error("qrels-supervised mining query split mismatch");
+            }
+            const auto& teacher = require_field(training, "teacher");
+            (void)require_string(teacher, "id");
+            (void)require_string(teacher, "revision");
+            if(require_field(teacher, "normalized") != true) {
+                throw std::runtime_error("qrels-supervised teacher must be normalized");
+            }
+            const auto& supervision = require_field(training, "supervision");
+            if(require_string(supervision, "positive_qrels") != "grade_gt_zero_v1") {
+                throw std::runtime_error("unsupported qrels-supervised relevance contract");
+            }
+            (void)require_sha256(supervision, "qrels_sha256");
+            const auto& selection = require_field(training, "selection");
+            if(require_string(selection, "id") != "qrels_lexicographic_hard_code_v1" ||
+               require_u64(selection, "candidate_limit") != 512U ||
+               require_u64(selection, "selected_epoch") >= require_u64(training, "epochs")) {
+                throw std::runtime_error("unsupported qrels-supervised checkpoint selection");
+            }
+            const auto& order = require_field(selection, "lexicographic_order");
+            const nlohmann::json expected_order = nlohmann::json::array({
+                "hard_code_health", "positive_qrels_query_coverage_at_512",
+                "reranked_ndcg_at_10", "lower_occupancy_deviation", "earlier_epoch",
+            });
+            if(order != expected_order) {
+                throw std::runtime_error("unsupported qrels-supervised selection order");
+            }
+            const auto& metrics = require_field(selection, "metrics");
+            require_finite_nonnegative_number(metrics, "positive_qrels_query_coverage_at_512");
+            require_finite_nonnegative_number(metrics, "reranked_ndcg_at_10");
+            const auto& health = require_field(selection, "hard_code_health");
+            (void)require_positive_size(health, "vector_count");
+            (void)require_positive_size(health, "unique_code_count");
+            require_finite_nonnegative_number(selection, "occupancy_deviation");
+            const auto& optimizer = require_field(training, "optimizer");
+            if(require_string(optimizer, "id") != "adamw") {
+                throw std::runtime_error("unsupported qrels-supervised NLB optimizer");
+            }
+            require_finite_nonnegative_number(optimizer, "weight_decay");
+            const auto& loss_weights = require_field(training, "loss_weights");
+            require_finite_nonnegative_number(loss_weights, "reconstruction");
+            require_finite_nonnegative_number(loss_weights, "decorrelation");
+            require_finite_nonnegative_number(loss_weights, "row_orthogonality");
+            (void)require_positive_size(training, "batch_size");
+            (void)require_finite_positive_number(training, "learning_rate");
+            (void)require_positive_size(training, "torch_threads");
+            (void)require_sha256(training, "source_materialization_outputs_sha256");
+        }
         std::string training_document_ids_sha256;
         std::string validation_document_ids_sha256;
         const auto has_explicit_id_lists = training.contains("explicit_id_lists");
@@ -770,7 +885,8 @@ namespace agent_memory {
             "row_major_out_by_in"
         );
         std::vector<float> encoder_bias;
-        if(is_ste || is_nlb_median || is_nlb_quantile || is_nlb_retrieval) {
+        if(is_ste || is_nlb_median || is_nlb_quantile || is_nlb_retrieval ||
+           is_nlb_qrels_supervised) {
             encoder_bias = load_weight_file(
                 artifact_directory,
                 require_field(weights, "encoder_bias"),
@@ -808,6 +924,16 @@ namespace agent_memory {
             nullptr
         );
         const auto artifact_sha256 = sha256_hex(artifact_bytes);
+        const std::string encoder_id = is_ste ? "linear_binary_autoencoder_ste" :
+            (is_nlb_median ? "nlb_median_threshold" :
+                (is_nlb_quantile ? "nlb_quantile_threshold" :
+                    (is_nlb_qrels_supervised ? "nlb_qrels_supervised" :
+                        (is_nlb_retrieval ?
+                            (is_nlb_local_geometry ? "nlb_local_geometry" :
+                                (is_nlb_median_preserving_retrieval ?
+                                    "nlb_median_preserving_retrieval" :
+                                    "nlb_retrieval_distilled")) :
+                            "nlb_paper_tied"))));
         return {
             artifact_sha256,
             trainer_id,
@@ -825,15 +951,7 @@ namespace agent_memory {
                 artifact_sha256,
                 encoder_weights,
                 encoder_bias,
-                is_ste ? "linear_binary_autoencoder_ste" :
-                    (is_nlb_median ? "nlb_median_threshold" :
-                        (is_nlb_quantile ? "nlb_quantile_threshold" :
-                            (is_nlb_retrieval ?
-                                (is_nlb_local_geometry ? "nlb_local_geometry" :
-                                    (is_nlb_median_preserving_retrieval ?
-                                        "nlb_median_preserving_retrieval" :
-                                        "nlb_retrieval_distilled")) :
-                                "nlb_paper_tied"))),
+                encoder_id,
                 "v1",
                 is_ste ? AutoencoderBinaryInputTransform::Identity :
                     AutoencoderBinaryInputTransform::ClipMinusOneToOne,
