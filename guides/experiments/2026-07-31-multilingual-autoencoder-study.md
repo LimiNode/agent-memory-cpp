@@ -1168,4 +1168,6 @@ The raw artifacts and reports remain uncommitted under
 qrels and random negatives under the same PCA and ITQ schedule, followed by
 paired query bootstrap confidence intervals for any retained candidate. Only
 then is it meaningful to tune the supervised loss or promote it over the
-document-only family.
+document-only family. A compact committed provenance record links every table
+row to its artifact, training-history, and held-out report digest in
+[`2026-08-05-qrels-supervised-matrix-manifest.json`](2026-08-05-qrels-supervised-matrix-manifest.json).
