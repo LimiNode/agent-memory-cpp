@@ -1124,3 +1124,48 @@ is a fresh label-free PCA-plus-median export on exactly this root, followed by
 a matched frozen-ITQ initialization when the same initialization can be made
 without reusing held-out dev data. Only then should shuffled-qrel and random-
 negative controls be interpreted as causal tests of supervision.
+
+### Corrected matched qrels-supervised matrix
+
+This replacement matrix was run after the unique-positive loss correction and
+the fail-closed negative-pool/provenance contracts. It uses the same
+authoritative RU train root (25,000 label-free calibration documents, 37,538
+supervised documents, 4,326 retained train queries, and 30,004 qrels) and the
+unchanged 22,607-document / 1,252-query RU dev root for its one final held-out
+evaluation. E5 remains `intfloat/multilingual-e5-small` at revision
+`614241f622f53c4eeff9890bdc4f31cfecc418b3`.
+
+Every row uses 128 bits, seed 42, 64 frozen E5 non-positive documents per
+train query, eight negative positions per query per epoch, candidate budget
+512, and scalar reference exact reranking. The supervised rows use eight
+epochs, batch size 128, AdamW learning rate `1e-4`, triplet margin `0.1`, and
+reconstruction/decorrelation/row-orthogonality weights
+`0.01 / 0.01 / 0.001`. The zero-step controls use exactly the corresponding
+fresh initialization and select `epoch = -1`, with zero optimizer steps and
+zero consumed negatives. The ITQ rows use the trainer's fresh deterministic
+SVD-plus-50-rotation initialization; they are matched to each other but are
+not claimed to be bitwise equivalent to the earlier covariance-based
+document-only ITQ implementation.
+
+| Initialization / regime | Selected epoch / steps | Held-out exact-top-10 coverage@512 | Held-out reranked nDCG@10 | Retention vs. full E5 | Cosine / -Hamming correlation |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| PCA + median, zero-step | `-1 / 0` | 0.93347 | 0.79295 | 0.98939 | 0.4039 |
+| PCA + median, qrels-supervised | `6 / 196` | 0.93435 | 0.79300 | 0.98946 | 0.3955 |
+| ITQ + median, zero-step | `-1 / 0` | 0.93746 | 0.79005 | 0.98577 | 0.5823 |
+| ITQ + median, qrels-supervised | `5 / 168` | 0.92548 | 0.79135 | 0.98740 | 0.5615 |
+
+Full E5 nDCG@10 is `0.80145`. All four artifacts have zero constant document
+bits; total document entropy ranges from `127.105` to `127.732` out of 128.
+The PCA supervised row changes coverage by only `+0.00088` and reranked nDCG
+by `+0.00006` relative to its exact zero-step control. The ITQ supervised row
+changes coverage by `-0.01198` while changing reranked nDCG by `+0.00130`.
+Those deltas are not evidence of a reliable supervised gain: this is one seed,
+the validation split participates in checkpoint selection, and no paired query
+bootstrap confidence interval has yet been calculated.
+
+The raw artifacts and reports remain uncommitted under
+`tmp/nlb-qrels-*-corrected-*`. The next causal controls are shuffled positive
+qrels and random negatives under the same PCA and ITQ schedule, followed by
+paired query bootstrap confidence intervals for any retained candidate. Only
+then is it meaningful to tune the supervised loss or promote it over the
+document-only family.
