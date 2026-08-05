@@ -190,6 +190,7 @@ def validate_source_provenance(
     actual_train_ids: set[str],
     actual_evaluation_ids: set[str],
     actual_query_ids: set[str],
+    excluded_document_ids_path: Path | None,
 ) -> None:
     config = normalized_input_config(load_json(config_path, "input config"))
     input_hash = hashlib.sha256(canonical_json(config).encode("utf-8")).hexdigest()
@@ -216,6 +217,19 @@ def validate_source_provenance(
         raise ValidationError("manifest preparer source_hash does not match the local preparer")
 
     layout = require_mapping(config.get("layout"), "config.layout")
+    configured_languages = tuple(config.get("languages", []))
+    external_exclusions = preparer.load_excluded_document_ids(
+        excluded_document_ids_path, configured_languages
+    )
+    expected_file_sha256 = external_exclusions.file_sha256
+    expected_set_sha256 = external_exclusions.set_sha256
+    if manifest_split.get("external_excluded_document_ids_file_sha256") != expected_file_sha256:
+        raise ValidationError("external exclusion file digest does not match the supplied input")
+    if manifest_split.get("external_excluded_document_ids_set_sha256") != expected_set_sha256:
+        raise ValidationError("external exclusion set digest does not match the supplied input")
+    if manifest_split.get("external_excluded_document_ids_count") != len(external_exclusions.ids):
+        raise ValidationError("external exclusion count does not match the supplied input")
+
     per_language = manifest.get("per_language")
     if not isinstance(per_language, list):
         raise ValidationError("manifest.per_language must be an array")
@@ -223,6 +237,9 @@ def validate_source_provenance(
     expected_evaluation_ids: set[str] = set()
     expected_qrels_excluded_ids: set[str] = set()
     expected_query_ids: set[str] = set()
+    expected_positive_query_ids: set[str] = set()
+    expected_dropped_query_ids: set[str] = set()
+    observed_excluded_document_ids: set[str] = set()
     for row in per_language:
         record = require_mapping(row, "manifest.per_language entry")
         language = require_string(record.get("language"), "manifest language")
@@ -263,17 +280,43 @@ def validate_source_provenance(
             seed=config["sampling"]["seed"],
             language=language,
         )
-        qrels = [row for row in all_qrels if row[0] in queries]
+        filtered_qrels = [
+            row
+            for row in all_qrels
+            if row[0] in queries and f"{language}:{row[1]}" not in external_exclusions.ids
+        ]
+        positive_query_ids = {
+            query_id for query_id, _, grade in filtered_qrels if grade > 0
+        }
+        dropped_query_ids = set(queries) - positive_query_ids
+        queries = {
+            query_id: text
+            for query_id, text in queries.items()
+            if query_id in positive_query_ids
+        }
+        qrels = [row for row in filtered_qrels if row[0] in positive_query_ids]
         qrel_document_ids = {document_id for _, document_id, _ in qrels}
+
+        def observed_corpus_documents() -> Iterator[Any]:
+            for document in preparer.iter_corpora(corpus_paths, language):
+                if document.global_id in external_exclusions.ids:
+                    observed_excluded_document_ids.add(document.global_id)
+                yield document
+
         documents_by_id = {
             document.docid: document
-            for document in preparer.iter_corpora(corpus_paths, language)
+            for document in observed_corpus_documents()
             if document.docid in qrel_document_ids
         }
         if set(documents_by_id) != qrel_document_ids:
             raise ValidationError(f"source corpus does not close qrels for {language}")
         selected_train = preparer.choose_lowest_ranked(
-            (document for document in preparer.iter_corpora(corpus_paths, language) if document.docid not in qrel_document_ids),
+            (
+                document
+                for document in observed_corpus_documents()
+                if document.docid not in qrel_document_ids and
+                document.global_id not in external_exclusions.ids
+            ),
             limit=config["sampling"]["train_documents_per_language"],
             seed=config["sampling"]["seed"],
             language=language,
@@ -283,8 +326,10 @@ def validate_source_provenance(
         selected_distractors = preparer.choose_lowest_ranked(
             (
                 document
-                for document in preparer.iter_corpora(corpus_paths, language)
-                if document.docid not in qrel_document_ids and document.docid not in selected_train_ids
+                for document in observed_corpus_documents()
+                if document.docid not in qrel_document_ids and
+                document.global_id not in external_exclusions.ids and
+                document.docid not in selected_train_ids
             ),
             limit=config["sampling"]["evaluation_distractors_per_language"],
             seed=config["sampling"]["seed"],
@@ -296,6 +341,33 @@ def validate_source_provenance(
         expected_evaluation_ids.update(document.global_id for document in selected_distractors)
         expected_qrels_excluded_ids.update(f"{language}:{document_id}" for document_id in qrel_document_ids)
         expected_query_ids.update(f"{language}:{query_id}" for query_id in queries)
+        expected_positive_query_ids.update(
+            f"{language}:{query_id}" for query_id in positive_query_ids
+        )
+        expected_dropped_query_ids.update(
+            f"{language}:{query_id}" for query_id in dropped_query_ids
+        )
+
+    if observed_excluded_document_ids != external_exclusions.ids:
+        raise ValidationError("external exclusion IDs are absent from the source corpus")
+    if manifest_split.get("external_excluded_document_ids_observed_count") != len(
+            observed_excluded_document_ids):
+        raise ValidationError("external exclusion observed count is invalid")
+    if manifest_split.get("queries_dropped_after_external_exclusion_count") != len(
+            expected_dropped_query_ids):
+        raise ValidationError("dropped query count is invalid")
+    if manifest_split.get("queries_dropped_after_external_exclusion_ids_sha256") != (
+            preparer.sorted_id_set_sha256(expected_dropped_query_ids)):
+        raise ValidationError("dropped query ID digest is invalid")
+    if manifest_split.get("positive_qrel_query_ids_sha256") != (
+            preparer.sorted_id_set_sha256(expected_positive_query_ids)):
+        raise ValidationError("positive-qrel query ID digest is invalid")
+    config_split = require_mapping(config.get("split"), "config.split")
+    if (manifest_split.get("expected_external_exclusion_query_drop_count") !=
+            config_split.get("expected_external_exclusion_query_drop_count") or
+            manifest_split.get("expected_external_exclusion_query_drop_ids_sha256") !=
+            config_split.get("expected_external_exclusion_query_drop_ids_sha256")):
+        raise ValidationError("manifest expected external-exclusion query contract disagrees with config")
 
     if actual_train_ids != expected_train_ids:
         raise ValidationError("train document IDs do not match balanced_stable_hash selection")
@@ -316,6 +388,7 @@ def validate_prepared_study(
     *,
     config_path: Path | None = None,
     source_root: Path | None = None,
+    excluded_document_ids_path: Path | None = None,
 ) -> None:
     manifest_path = prepared_root / "manifest.json"
     manifest = load_json(manifest_path, "manifest")
@@ -412,6 +485,8 @@ def validate_prepared_study(
 
     if (config_path is None) != (source_root is None):
         raise ValidationError("--config and --source-root must be supplied together")
+    if excluded_document_ids_path is not None and config_path is None:
+        raise ValidationError("--excluded-document-ids requires --config and --source-root")
     if config_path is not None and source_root is not None:
         validate_source_provenance(
             manifest,
@@ -420,6 +495,7 @@ def validate_prepared_study(
             train_ids,
             evaluation_ids,
             query_ids,
+            excluded_document_ids_path,
         )
 
 
@@ -443,6 +519,45 @@ def run_self_test() -> int:
         prepared_root = root / "prepared"
         preparer.prepare_study(preparer.load_config(config_path), input_root, prepared_root)
         validate_prepared_study(prepared_root, config_path=config_path, source_root=input_root)
+
+        external_config = json.loads(config_path.read_text(encoding="utf-8"))
+        external_config["sampling"]["train_documents_per_language"] = 1
+        external_config["split"]["expected_external_exclusion_query_drop_count"] = 0
+        external_config["split"]["expected_external_exclusion_query_drop_ids_sha256"] = (
+            preparer.sorted_id_set_sha256([])
+        )
+        external_config_path = root / "external-config.json"
+        external_config_path.write_text(
+            json.dumps(external_config), encoding="utf-8", newline="\n"
+        )
+        external_exclusions_path = root / "external-exclusions.jsonl"
+        external_exclusions_path.write_text(
+            '{"id":"ru:ru-3"}\n', encoding="utf-8", newline="\n"
+        )
+        externally_prepared_root = root / "externally-prepared"
+        preparer.prepare_study(
+            preparer.load_config(external_config_path),
+            input_root,
+            externally_prepared_root,
+            external_exclusions_path,
+        )
+        validate_prepared_study(
+            externally_prepared_root,
+            config_path=external_config_path,
+            source_root=input_root,
+            excluded_document_ids_path=external_exclusions_path,
+        )
+        try:
+            validate_prepared_study(
+                externally_prepared_root,
+                config_path=external_config_path,
+                source_root=input_root,
+            )
+        except ValidationError:
+            pass
+        else:
+            print("self-test failed: replay accepted a missing exclusion input", file=sys.stderr)
+            return 1
 
         train_path = prepared_root / "train-documents.jsonl"
         train_rows = [json.loads(line) for line in train_path.read_text(encoding="utf-8").splitlines()]
@@ -493,11 +608,12 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--prepared-root", type=Path)
     parser.add_argument("--config", type=Path)
     parser.add_argument("--source-root", type=Path)
+    parser.add_argument("--excluded-document-ids", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
 
     if args.self_test:
-        if args.prepared_root or args.config or args.source_root:
+        if args.prepared_root or args.config or args.source_root or args.excluded_document_ids:
             parser.error("--self-test cannot be combined with validation arguments")
         return run_self_test()
     if args.prepared_root is None:
@@ -508,6 +624,7 @@ def main(argv: list[str]) -> int:
             args.prepared_root,
             config_path=args.config,
             source_root=args.source_root,
+            excluded_document_ids_path=args.excluded_document_ids,
         )
     except ValidationError as exc:
         print(f"validate-miracl-ae-study: {exc}", file=sys.stderr)
