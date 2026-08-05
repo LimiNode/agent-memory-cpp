@@ -26,7 +26,8 @@
   "split": {
     "purpose": "retrieval_training",
     "evaluation_qrels_split": "train",
-    "expected_external_exclusion_query_drop_count": 357
+    "expected_external_exclusion_query_drop_count": 357,
+    "expected_external_exclusion_query_drop_ids_sha256": "65a943d55ff5323fcca0bb52c7ecc0967e604c773407c9ff53223af7173d4b94"
   },
   "embedding": {
     "model_id": "intfloat/multilingual-e5-small",

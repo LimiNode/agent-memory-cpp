@@ -80,6 +80,7 @@ class StudyConfig:
     evaluation_qrels_split: str
     purpose: str
     expected_external_exclusion_query_drop_count: int | None
+    expected_external_exclusion_query_drop_ids_sha256: str | None
     seed: int
     train_documents_per_language: int
     evaluation_distractors_per_language: int
@@ -147,6 +148,13 @@ def non_empty_string(value: Any, field: str) -> str:
     return value
 
 
+def sha256_hex(value: Any, field: str) -> str:
+    digest = non_empty_string(value, field)
+    if len(digest) != 64 or any(character not in "0123456789abcdef" for character in digest):
+        raise PreparationError(f"{field} must be a lowercase SHA-256 digest")
+    return digest
+
+
 def non_negative_int(value: Any, field: str, *, positive: bool = False) -> int:
     if isinstance(value, bool) or not isinstance(value, int):
         raise PreparationError(f"{field} must be an integer")
@@ -200,6 +208,14 @@ def load_config(path: Path) -> StudyConfig:
             expected_external_exclusion_query_drop_count,
             "split.expected_external_exclusion_query_drop_count",
         )
+    expected_external_exclusion_query_drop_ids_sha256 = split.get(
+        "expected_external_exclusion_query_drop_ids_sha256"
+    )
+    if expected_external_exclusion_query_drop_ids_sha256 is not None:
+        expected_external_exclusion_query_drop_ids_sha256 = sha256_hex(
+            expected_external_exclusion_query_drop_ids_sha256,
+            "split.expected_external_exclusion_query_drop_ids_sha256",
+        )
     sampling.setdefault("evaluation_queries_per_language", 0)
 
     dataset: dict[str, dict[str, str]] = {}
@@ -231,6 +247,9 @@ def load_config(path: Path) -> StudyConfig:
         purpose=purpose,
         expected_external_exclusion_query_drop_count=(
             expected_external_exclusion_query_drop_count
+        ),
+        expected_external_exclusion_query_drop_ids_sha256=(
+            expected_external_exclusion_query_drop_ids_sha256
         ),
         seed=non_negative_int(sampling.get("seed"), "sampling.seed"),
         train_documents_per_language=non_negative_int(
@@ -639,6 +658,7 @@ def prepare_study(
         )
     if not output_queries:
         raise PreparationError("no queries retain positive qrels after external exclusions")
+    dropped_query_ids_sha256 = sorted_id_set_sha256(dropped_query_ids)
     if (config.expected_external_exclusion_query_drop_count is not None and
             len(dropped_query_ids) != config.expected_external_exclusion_query_drop_count):
         raise PreparationError(
@@ -646,6 +666,10 @@ def prepare_study(
             f"expected {config.expected_external_exclusion_query_drop_count}, "
             f"got {len(dropped_query_ids)}"
         )
+    if (config.expected_external_exclusion_query_drop_ids_sha256 is not None and
+            dropped_query_ids_sha256 !=
+            config.expected_external_exclusion_query_drop_ids_sha256):
+        raise PreparationError("external exclusion dropped an unexpected query ID set")
 
     train_path = output_root / "train-documents.jsonl"
     evaluation_path = output_root / "evaluation-documents.jsonl"
@@ -701,10 +725,11 @@ def prepare_study(
             "expected_external_exclusion_query_drop_count": (
                 config.expected_external_exclusion_query_drop_count
             ),
-            "queries_dropped_after_external_exclusion_count": len(dropped_query_ids),
-            "queries_dropped_after_external_exclusion_ids_sha256": sorted_id_set_sha256(
-                dropped_query_ids
+            "expected_external_exclusion_query_drop_ids_sha256": (
+                config.expected_external_exclusion_query_drop_ids_sha256
             ),
+            "queries_dropped_after_external_exclusion_count": len(dropped_query_ids),
+            "queries_dropped_after_external_exclusion_ids_sha256": dropped_query_ids_sha256,
             "positive_qrel_query_ids_sha256": sorted_id_set_sha256(
                 positive_qrel_query_ids
             ),
@@ -845,6 +870,9 @@ def run_self_test() -> int:
         external_exclusion_config["split"][
             "expected_external_exclusion_query_drop_count"
         ] = 1
+        external_exclusion_config["split"][
+            "expected_external_exclusion_query_drop_ids_sha256"
+        ] = sorted_id_set_sha256(["ru:q1"])
         external_exclusion_config_path = root / "external-exclusion.json"
         external_exclusion_config_path.write_text(
             json.dumps(external_exclusion_config), encoding="utf-8", newline="\n"
@@ -892,6 +920,9 @@ def run_self_test() -> int:
         one_positive_remains_config["split"][
             "expected_external_exclusion_query_drop_count"
         ] = 0
+        one_positive_remains_config["split"][
+            "expected_external_exclusion_query_drop_ids_sha256"
+        ] = sorted_id_set_sha256([])
         one_positive_remains_config_path = root / "one-positive-remains.json"
         one_positive_remains_config_path.write_text(
             json.dumps(one_positive_remains_config), encoding="utf-8", newline="\n"
@@ -915,6 +946,29 @@ def run_self_test() -> int:
         multi_positive_qrels.write_text(
             original_ru_qrels, encoding="utf-8", newline="\n"
         )
+
+        mismatched_drop_ids = json.loads(
+            external_exclusion_config_path.read_text(encoding="utf-8")
+        )
+        mismatched_drop_ids["split"][
+            "expected_external_exclusion_query_drop_ids_sha256"
+        ] = "0" * 64
+        mismatched_drop_ids_path = root / "mismatched-drop-ids.json"
+        mismatched_drop_ids_path.write_text(
+            json.dumps(mismatched_drop_ids), encoding="utf-8", newline="\n"
+        )
+        try:
+            prepare_study(
+                load_config(mismatched_drop_ids_path),
+                root / "input",
+                root / "mismatched-drop-ids",
+                external_exclusions,
+            )
+        except PreparationError:
+            pass
+        else:
+            print("self-test failed: unexpected dropped-query set was accepted", file=sys.stderr)
+            return 1
 
         unknown_exclusions = root / "unknown-excluded-document-ids.jsonl"
         unknown_exclusions.write_text(

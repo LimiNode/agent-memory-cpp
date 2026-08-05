@@ -131,8 +131,8 @@ ladder. It uses the official MIRACL `train` topics and qrels, while the MIRACL
   is duplicated, or is absent from the source corpus.
 - After exclusions, a query remains only if it has at least one `grade > 0`
   qrel. The manifest records the dropped-query count and canonical ID hash.
-  An authoritative configuration fixes the expected drop count so a changed
-  exclusion set cannot silently alter the supervised task.
+  An authoritative configuration fixes both the expected count and ID-set hash
+  so a changed exclusion set cannot silently alter the supervised task.
 - The 25k document-only split remains the source of per-bit median calibration.
   Supervised queries, their qrels, and the held-out dev data never participate
   in that calibration.
@@ -143,6 +143,14 @@ shared by the two query partitions; this tests generalization to unseen
 queries, not to unseen passages. Frozen E5 top-k hard negatives are mined
 separately for train and validation queries, exclude every positive qrel, and
 must be persisted or canonically hashed in the trained artifact.
+
+Supervised checkpoint selection uses hard binary codes on that fixed validation
+query partition. The policy is lexicographic: hard-code health gates must pass,
+then maximize positive-qrels coverage at the predeclared candidate budget,
+then maximize reranked nDCG@10; ties prefer lower occupancy deviation and then
+the earlier epoch. Document-only reconstruction and soft-code proxy losses must
+not select a qrels-supervised checkpoint. The held-out MIRACL dev split is used
+once only after this policy and all training hyperparameters are fixed.
 
 ## Training matrix
 
