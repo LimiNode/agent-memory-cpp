@@ -154,6 +154,12 @@ soft-code proxy losses must not select a qrels-supervised checkpoint. The
 held-out MIRACL dev split is used once only after this policy and all training
 hyperparameters are fixed.
 
+The supervised-train and held-out-dev E5 roots are intentionally different
+materializations. Evaluation reports retain both the artifact's training-root
+and prepared-study digests and the evaluated-root digests. They must not
+require equality as a provenance shortcut: equality would make a genuine
+held-out evaluation impossible.
+
 ## Training matrix
 
 Every ablation row uses the same total document count, architecture, optimizer,
