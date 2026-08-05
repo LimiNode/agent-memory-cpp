@@ -31,6 +31,11 @@ Primary references:
 - Attached Graphiti/Zep review:
   `C:\Users\User\.codex\attachments\dfe7f516-e425-40a3-9b6b-6348958a4f6c\pasted-text.txt`.
 
+- Attached persistent-memory review:
+  `C:\Users\User\.codex\attachments\82d2bb41-ece1-4122-ab45-37fc0fb4b548\pasted-text.txt`.
+- Attached workflow-layer review:
+  `C:\Users\User\.codex\attachments\37025a23-b8e1-401b-b4e4-931bf539deee\pasted-text.txt`.
+
 ## 1. Boundary
 
 `agent-memory-cpp` is the embedded memory/retrieval core. It owns durable
@@ -657,7 +662,131 @@ source-revision policy, temporal and contradiction policy, traversal limits,
 access policy, query/answer set and evaluation procedure. AM-22 acceptance
 rejects a comparison whose digest differs, even when the corpus name matches.
 
-## 14. Deferred To ADELIA / Runtime
+## 14. AM-23: Fail-Closed Memory Admission And External Materialization
+
+Extraction, import and model output must not write a retrieval-visible
+`KnowledgeUnit` directly. They first produce a `MemoryCandidate`; a versioned
+admission policy then produces a durable decision. This is a higher-level
+boundary than `WritePolicy`: the latter decides how an accepted unit is
+managed, while admission decides whether a candidate may become a unit at all.
+
+```cpp
+enum class MemoryAdmissionAction : std::uint8_t {
+    Accept,
+    Reject,
+    Quarantine,
+    RequestConfirmation
+};
+
+enum class ExternalMaterializationPolicy : std::uint8_t {
+    ReferenceOnly,
+    EphemeralSnapshot,
+    DurableSnapshot
+};
+
+struct MemoryCandidate {
+    CandidateId id;
+    CandidatePayload payload;
+    ContentDigest content_digest;
+    CandidateProvenance provenance;
+    std::vector<EvidenceRef> evidence;
+    SourceTrustClass source_trust;
+    std::vector<SensitivityLabel> sensitivity_labels;
+    ExternalMaterializationPolicy requested_materialization =
+        ExternalMaterializationPolicy::ReferenceOnly;
+};
+
+struct MemoryAdmissionDecision {
+    MemoryAdmissionAction action = MemoryAdmissionAction::Reject;
+    std::string policy_id;
+    std::string policy_version;
+    std::vector<AdmissionReasonCode> reasons;
+    std::vector<SensitivityLabel> effective_sensitivity_labels;
+    ExternalMaterializationPolicy materialization =
+        ExternalMaterializationPolicy::ReferenceOnly;
+};
+
+class IMemoryAdmissionPolicy;
+class IMemoryAdmissionAuditSink;
+```
+
+The names above define the intended contract shape, not an M1 public header.
+Their concrete value types must be canonical, serializable and scoped before
+implementation. `CandidateProvenance` records the producing adapter/model and
+version, source identity/revision where available, and a content or evidence
+digest; it does not make a model-produced statement authoritative by itself.
+`CandidatePayload` is transient policy input: its raw text or structured fields
+are not durable unless an `Accept` decision authorizes the resulting write.
+
+### Admission Invariants
+
+- `Reject`, `Quarantine` and `RequestConfirmation` candidates are not
+  retrieval-visible. They must not create lexical postings, embeddings, binary
+  signatures, graph edges, summaries or ordinary `KnowledgeUnit` rows.
+- `Quarantine` is a separately access-controlled review queue, never a hidden
+  low-confidence retrieval index. `RequestConfirmation` is likewise pending
+  application or operator confirmation, not an implicit acceptance.
+- Secret detection, content sanitization and sensitivity classification run
+  before text is embedded, sent to an external model adapter, stored in an
+  LLM-derived record, indexed, logged or copied into a retrieval trace. A
+  policy that cannot complete a required check fails closed.
+- An `Accept` decision binds the candidate digest, policy id/version, evidence
+  references, effective labels and requested materialization in the same
+  transaction or durable outbox as the resulting memory write. A stale,
+  substituted or differently classified candidate cannot reuse the decision.
+- A policy may require explicit confirmation for model-derived facts,
+  untrusted sources, sensitive labels, missing revision evidence or a material
+  change from the source episode. It must emit a reason code rather than
+  silently degrading that case to acceptance.
+- Admission changes neither lifecycle truth nor access rights. Accepted units
+  still pass the normal authority, lifecycle, temporal and hydration checks on
+  every read.
+
+### External Source Materialization
+
+The application declares one materialization policy for each source connector
+or candidate class; importers must not quietly retain a body merely because it
+was available during extraction.
+
+| Policy | Durable contract | Retrieval consequence |
+|---|---|---|
+| `ReferenceOnly` | Retain only a validated locator, source identity/revision and permitted citation metadata. Do not retain a source body. | A result can cite the source but cannot promise offline body hydration. |
+| `EphemeralSnapshot` | Hold a bounded, encrypted working copy only for the declared processing lifetime. It has an expiry/cleanup receipt and is not a durable `ResourceBodyStore` revision. | It is unavailable after expiry and cannot be treated as durable evidence. Any derived accepted unit retains the source reference and admission provenance. |
+| `DurableSnapshot` | Retain an immutable, revision-bound body in `ResourceBodyStore` with its digest, retention class and deletion policy. | Revision-bound citations and later evidence hydration are permitted subject to normal access checks. |
+
+`ReferenceOnly` is the safe default. `EphemeralSnapshot` and `DurableSnapshot`
+require policy authorization after the sanitization and sensitivity gate. A
+later materialization upgrade is a new policy-governed write with an evidence
+and revision check; it must not rewrite a reference-only citation as though the
+body had always been retained. Deletion, expiry and source-revocation flows
+must remove or invalidate derived retrieval projections according to the
+existing lifecycle/deletion contract. Once `DurableSnapshot` is authorized,
+the ArtifactProvenance profile owns the resulting artifact, source-revision,
+blob-retention and evidence-anchor contract; admission does not create a
+parallel catalog or BlobStore.
+
+### Minimal Admission Audit (M2)
+
+Admission audit is distinct from `IRetrievalTrace`: a retrieval trace explains
+how an accepted record was read, while the admission audit explains why a
+candidate was accepted, rejected or held. An optional `IMemoryAdmissionAuditSink`
+records the candidate id/digest, action, reason codes, policy id/version,
+timestamps, source-trust category and materialization choice.
+
+Raw candidate content, raw query text, secrets, unredacted source bodies and
+model chain-of-thought are excluded from the default audit schema. A deployment
+that needs any of them must define an explicit, access-controlled retention
+policy outside the ordinary retrieval store. When audit delivery is required by
+policy, the decision receipt and accepted write use one atomic transaction or a
+durable transactional outbox; an unrecorded required decision fails closed.
+
+Required M2 fixtures cover an accepted revision-bound candidate, an untrusted
+candidate rejected before embedding, a secret-labelled candidate routed to
+quarantine, a pending confirmation that produces no retrieval candidate, each
+materialization mode, snapshot expiry, decision/candidate digest mismatch, and
+an audit event that proves no raw body or query text was persisted by default.
+
+## 15. Deferred To ADELIA / Runtime
 
 The following proposals are valuable, but they are not core
 `agent-memory-cpp` roadmap items:
@@ -668,19 +797,25 @@ The following proposals are valuable, but they are not core
   personalization models.
 - MetaMind, Mind Modeling and predictive-coding reasoning loops.
 - Event-driven workflow engines, Archon-style DAG policies and orchestration.
+- Declarative `ScenarioPackage`s, `StageDecisionDraft`s, host-evaluated
+  transition predicates, workflow blackboards, scenario renderers and trace
+  viewers. A model may propose a stage decision, but the host validates schema,
+  transition admissibility, completion, revision/CAS, budget and policy before
+  one atomic workflow commit.
 - UI/runtime integrations, ASR/TTS, browser automation, Candle/langchain-rust
   inference adapters and process reward models.
 
 They can consume the memory core through regular read/write/policy interfaces.
 
-## 15. Roadmap Placement
+## 16. Roadmap Placement
 
 Suggested maturity placement:
 
 - M1: keep current `TemporalComponent`, `WritePolicy`, retrieval metrics and
   raw resource support.
-- M2: add bi-temporal component/indexes, policy-selectable mutation model and
-  expanded evaluation metrics.
+- M2: add bi-temporal component/indexes, policy-selectable mutation model,
+  fail-closed memory admission/external-materialization policy, optional
+  admission audit, and expanded evaluation metrics.
 - M2+: add abstraction/derivation graph, causal relation vocabulary and
   progressive retrieval; add deterministic-first entity resolution, typed
   query/MCP safety, logical index separation and the optional
