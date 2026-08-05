@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import math
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -33,6 +34,35 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def canonical_ids_sha256(ids: list[str]) -> str:
+    return hashlib.sha256("".join(f"{value}\n" for value in sorted(ids)).encode("utf-8")).hexdigest()
+
+
+def ordered_ids_sha256(ids: list[str]) -> str:
+    return hashlib.sha256("".join(f"{value}\n" for value in ids).encode("utf-8")).hexdigest()
+
+
+def canonical_json_sha256(value: Any) -> str:
+    return hashlib.sha256(
+        json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def require_sha256(value: Any, field: str) -> str:
+    if not isinstance(value, str) or len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+        raise EvaluationError(f"{field} must be a lowercase SHA-256")
+    return value
+
+
+def require_plain_path(value: Any, field: str) -> Path:
+    if not isinstance(value, str):
+        raise EvaluationError(f"{field} must be a path string")
+    path = Path(value)
+    if path.is_absolute() or path.name != value:
+        raise EvaluationError(f"{field} must be a plain file name")
+    return path
+
+
 def read_ids(path: Path) -> list[str]:
     values = [json.loads(line)["id"] for line in path.read_text(encoding="utf-8").splitlines()]
     if not values or len(values) != len(set(values)):
@@ -41,32 +71,67 @@ def read_ids(path: Path) -> list[str]:
 
 
 def load_root(root: Path) -> dict[str, Any]:
-    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
-    dimension = manifest["vector_format"]["dimension"]
-    outputs = manifest["outputs"]
+    try:
+        manifest_path = root / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationError(f"cannot read materialization manifest: {root}: {exc}") from exc
+    if manifest.get("schema_version") != 1:
+        raise EvaluationError("unsupported materialization schema")
+    vector_format = manifest.get("vector_format")
+    embedding = manifest.get("embedding")
+    outputs = manifest.get("outputs")
+    if not isinstance(vector_format, dict) or vector_format.get("dtype") != "float32_le" or vector_format.get("endianness") != "little":
+        raise EvaluationError("unsupported materialization vector format")
+    dimension = vector_format.get("dimension")
+    if isinstance(dimension, bool) or not isinstance(dimension, int) or dimension <= 0:
+        raise EvaluationError("materialization dimension is invalid")
+    if not isinstance(embedding, dict) or not all(isinstance(embedding.get(name), str) and embedding[name] for name in ("model_id", "model_revision", "query_prefix", "document_prefix")) or embedding.get("normalized") is not True:
+        raise EvaluationError("materialization embedding contract is invalid")
+    if not isinstance(outputs, dict):
+        raise EvaluationError("materialization outputs are invalid")
     def entry(name: str) -> dict[str, Any]:
-        value = outputs[name]
-        path = root / value["path"]
-        if sha256_file(path) != value["sha256"]:
+        value = outputs.get(name)
+        if not isinstance(value, dict):
+            raise EvaluationError(f"materialization output is missing: {name}")
+        path = root / require_plain_path(value.get("path"), f"outputs.{name}.path")
+        if not path.is_file() or sha256_file(path) != require_sha256(value.get("sha256"), f"outputs.{name}.sha256"):
             raise EvaluationError(f"materialization output hash mismatch: {name}")
         return value
     train = entry("train_vectors"); documents = entry("evaluation_document_vectors"); queries = entry("evaluation_query_vectors")
-    train_ids = read_ids(root / entry("train_ids")["path"])
-    document_ids = read_ids(root / entry("evaluation_document_ids")["path"])
-    query_ids = read_ids(root / entry("evaluation_query_ids")["path"])
+    train_id_entry = entry("train_ids"); document_id_entry = entry("evaluation_document_ids"); query_id_entry = entry("evaluation_query_ids")
+    qrels_entry = entry("evaluation_qrels")
+    train_ids = read_ids(root / require_plain_path(train_id_entry.get("path"), "outputs.train_ids.path"))
+    document_ids = read_ids(root / require_plain_path(document_id_entry.get("path"), "outputs.evaluation_document_ids.path"))
+    query_ids = read_ids(root / require_plain_path(query_id_entry.get("path"), "outputs.evaluation_query_ids.path"))
+    for name, value, ids in (("train_ids", train_id_entry, train_ids), ("evaluation_document_ids", document_id_entry, document_ids), ("evaluation_query_ids", query_id_entry, query_ids)):
+        if value.get("count") != len(ids):
+            raise EvaluationError(f"materialization {name} count is invalid")
     def vectors(value: dict[str, Any], count: int) -> Any:
-        path = root / value["path"]
-        if value["count"] != count or path.stat().st_size != count * dimension * 4:
+        path = root / require_plain_path(value.get("path"), "vector output path")
+        if value.get("count") != count or value.get("dimension") != dimension or value.get("dtype") != "float32_le" or path.stat().st_size != count * dimension * 4:
             raise EvaluationError("materialized vector shape is invalid")
         return numpy.memmap(path, dtype="<f4", mode="r", shape=(count, dimension))
     qrels: dict[str, dict[str, int]] = {value: {} for value in query_ids}
     document_set = set(document_ids)
-    for line in (root / entry("evaluation_qrels")["path"]).read_text(encoding="utf-8").splitlines():
-        query_id, _, document_id, grade = line.split()
+    for line_number, line in enumerate((root / require_plain_path(qrels_entry.get("path"), "outputs.evaluation_qrels.path")).read_text(encoding="utf-8").splitlines(), 1):
+        fields = line.split()
+        if len(fields) != 4:
+            raise EvaluationError(f"qrels line {line_number} is invalid")
+        query_id, _, document_id, grade = fields
         if query_id not in qrels or document_id not in document_set:
             raise EvaluationError("qrels references unavailable materialized IDs")
-        qrels[query_id][document_id] = int(grade)
-    return {"root": root, "manifest": manifest, "manifest_sha256": sha256_file(root / "manifest.json"), "dimension": dimension, "train": vectors(train, len(train_ids)), "documents": vectors(documents, len(document_ids)), "queries": vectors(queries, len(query_ids)), "document_ids": numpy.asarray(document_ids), "query_ids": query_ids, "qrels": qrels}
+        try:
+            qrels[query_id][document_id] = int(grade)
+        except ValueError as exc:
+            raise EvaluationError(f"qrels line {line_number} has an invalid grade") from exc
+    if qrels_entry.get("count") != sum(len(values) for values in qrels.values()) or any(not values for values in qrels.values()):
+        raise EvaluationError("materialization qrels coverage is invalid")
+    embedding_identity = {name: embedding[name] for name in ("model_id", "model_revision", "query_prefix", "document_prefix", "normalized")}
+    output_hashes = {name: require_sha256(value.get("sha256"), f"outputs.{name}.sha256") for name, value in outputs.items() if isinstance(value, dict)}
+    if len(output_hashes) != len(outputs):
+        raise EvaluationError("materialization output descriptors are invalid")
+    return {"root": root, "manifest": manifest, "manifest_sha256": sha256_file(manifest_path), "prepared_study_manifest_sha256": require_sha256(manifest.get("prepared_study_manifest_sha256"), "prepared_study_manifest_sha256"), "dimension": dimension, "train": vectors(train, len(train_ids)), "documents": vectors(documents, len(document_ids)), "queries": vectors(queries, len(query_ids)), "train_ids": train_ids, "document_ids": numpy.asarray(document_ids), "query_ids": query_ids, "qrels": qrels, "embedding_identity": embedding_identity, "output_hashes": output_hashes, "evaluation_document_ids_sha256": canonical_ids_sha256(document_ids), "evaluation_qrels_sha256": require_sha256(qrels_entry.get("sha256"), "outputs.evaluation_qrels.sha256")}
 
 
 def pca_weights(values: Any, count: int) -> Any:
@@ -90,6 +155,17 @@ def itq_weights(values: Any, count: int, seed: int, iterations: int) -> Any:
 
 def binary_thresholds(values: Any, weights: Any) -> Any:
     return -numpy.median(numpy.clip(values, -1.0, 1.0) @ weights.T, axis=0).astype(numpy.float32)
+
+
+def conditional_centers(values: Any, codes: Any, symbol_count: int) -> Any:
+    centers = numpy.empty((values.shape[1], symbol_count), dtype=numpy.float32)
+    for symbol in range(symbol_count):
+        selected = codes == symbol
+        counts = selected.sum(axis=0)
+        if numpy.any(counts == 0):
+            raise EvaluationError("quantizer has an empty coordinate-symbol cell")
+        centers[:, symbol] = (values * selected).sum(axis=0) / counts
+    return centers
 
 
 def kmeans_centers(values: Any, iterations: int) -> Any:
@@ -120,34 +196,42 @@ def ternary_codes(values: Any, centers: Any | None = None, thresholds: tuple[Any
     return numpy.where(values < low, 0, numpy.where(values > high, 2, 1)).astype(numpy.uint8)
 
 
-def pack_trits(codes: Any) -> Any:
+def pack_codes(codes: Any, symbol_count: int, symbols_per_byte: int) -> Any:
     count = codes.shape[1]
-    result = numpy.zeros((codes.shape[0], (count + 4) // 5), dtype=numpy.uint8)
-    for offset in range(5):
-        indices = numpy.arange(offset, count, 5)
+    result = numpy.zeros((codes.shape[0], (count + symbols_per_byte - 1) // symbols_per_byte), dtype=numpy.uint8)
+    for offset in range(symbols_per_byte):
+        indices = numpy.arange(offset, count, symbols_per_byte)
         if indices.size:
-            result[:, :indices.size] += codes[:, indices] * (3 ** offset)
+            result[:, :indices.size] += codes[:, indices] * (symbol_count ** offset)
     return result
 
 
-def ternary_lut(query: Any, centers: Any) -> list[Any]:
+def packed_lut(query: Any, centers: Any, symbol_count: int, symbols_per_byte: int) -> list[Any]:
     result: list[Any] = []
-    for start in range(0, centers.shape[0], 5):
-        width = min(5, centers.shape[0] - start)
-        table = numpy.empty(3 ** width, dtype=numpy.float32)
-        for value in range(3 ** width):
-            digits = [(value // (3 ** offset)) % 3 for offset in range(width)]
+    for start in range(0, centers.shape[0], symbols_per_byte):
+        width = min(symbols_per_byte, centers.shape[0] - start)
+        table = numpy.empty(symbol_count ** width, dtype=numpy.float32)
+        for value in range(symbol_count ** width):
+            digits = [(value // (symbol_count ** offset)) % symbol_count for offset in range(width)]
             table[value] = sum(float((query[start + offset] - centers[start + offset, digit]) ** 2) for offset, digit in enumerate(digits))
         result.append(table)
     return result
 
 
-def packed_adc_scores(packed_codes: Any, query: Any, centers: Any) -> Any:
-    """Scores base-3 packed document codes with query-specific ternary ADC LUTs."""
+def packed_adc_scores(packed_codes: Any, query: Any, centers: Any, symbol_count: int, symbols_per_byte: int) -> Any:
+    """Scores packed scalar codes with query-specific asymmetric distance LUTs."""
     scores = numpy.zeros(packed_codes.shape[0], dtype=numpy.float32)
-    for group, table in enumerate(ternary_lut(query, centers)):
+    for group, table in enumerate(packed_lut(query, centers, symbol_count, symbols_per_byte)):
         scores += table[packed_codes[:, group]]
     return scores
+
+
+def total_marginal_entropy_bits(codes: Any, symbol_count: int) -> float:
+    result = 0.0
+    for coordinate in range(codes.shape[1]):
+        probabilities = [float(numpy.mean(codes[:, coordinate] == symbol)) for symbol in range(symbol_count)]
+        result += -sum(probability * math.log2(probability) for probability in probabilities if probability > 0.0)
+    return result
 
 
 def dcg_at_10(ranked_ids: Any, grades: dict[str, int]) -> float:
@@ -159,7 +243,33 @@ def dcg_at_10(ranked_ids: Any, grades: dict[str, int]) -> float:
     return value / denominator if denominator else 0.0
 
 
+def contribution_identity(data: dict[str, Any], candidate_limit: int, oracle_k: int) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "ordered_query_ids_sha256": ordered_ids_sha256(data["query_ids"]),
+        "query_count": len(data["query_ids"]),
+        "evaluation_materialization_manifest_sha256": data["manifest_sha256"],
+        "evaluation_qrels_sha256": data["evaluation_qrels_sha256"],
+        "oracle_k": oracle_k,
+        "candidate_limit": candidate_limit,
+    }
+
+
+def validate_contribution_identity(identity: Any, query_ids: Any, count: int) -> dict[str, Any]:
+    if not isinstance(identity, dict) or identity.get("schema_version") != 1:
+        raise EvaluationError("paired contribution identity schema is invalid")
+    for name in ("ordered_query_ids_sha256", "evaluation_materialization_manifest_sha256", "evaluation_qrels_sha256"):
+        require_sha256(identity.get(name), f"paired contribution identity.{name}")
+    if identity.get("query_count") != count or identity.get("ordered_query_ids_sha256") != ordered_ids_sha256(query_ids.tolist()):
+        raise EvaluationError("paired contribution query identity is invalid")
+    if any(isinstance(identity.get(name), bool) or not isinstance(identity.get(name), int) or identity[name] <= 0 for name in ("oracle_k", "candidate_limit")):
+        raise EvaluationError("paired contribution candidate identity is invalid")
+    return identity
+
+
 def evaluate_candidates(data: dict[str, Any], candidate_scores: Any, candidate_limit: int, oracle_k: int) -> tuple[dict[str, Any], dict[str, Any]]:
+    if candidate_limit <= 0 or candidate_limit > len(data["document_ids"]) or oracle_k <= 0:
+        raise EvaluationError("candidate limit or oracle K is invalid")
     documents = numpy.asarray(data["documents"], dtype=numpy.float32)
     document_ids = data["document_ids"]
     coverage: list[float] = []; rerank_ndcg: list[float] = []; full_ndcg: list[float] = []
@@ -178,77 +288,166 @@ def evaluate_candidates(data: dict[str, Any], candidate_scores: Any, candidate_l
         rerank_ndcg.append(dcg_at_10(document_ids[rerank_order], grades))
         full_ndcg.append(dcg_at_10(document_ids[exact_order], grades))
     contributions = {"coverage_at_candidate_limit": numpy.asarray(coverage, dtype=numpy.float64), "reranked_ndcg_at_10": numpy.asarray(rerank_ndcg, dtype=numpy.float64), "full_e5_ndcg_at_10": numpy.asarray(full_ndcg, dtype=numpy.float64)}
-    return ({"exact_top_k_candidate_coverage": float(numpy.mean(coverage)), "reranked_ndcg_at_10": float(numpy.mean(rerank_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_ndcg)), "candidate_scan_seconds": candidate_seconds, "query_count": len(coverage)}, contributions)
+    return ({"exact_top_k_candidate_coverage": float(numpy.mean(coverage)), "reranked_ndcg_at_10": float(numpy.mean(rerank_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_ndcg)), "reference_candidate_scoring_and_full_ordering_seconds": candidate_seconds, "query_count": len(coverage)}, contributions)
 
 
-def write_result(path: Path, report: dict[str, Any], contributions: dict[str, Any], contribution_path: Path) -> None:
+def write_result(path: Path, report: dict[str, Any], contributions: dict[str, Any], contribution_path: Path, identity: dict[str, Any], query_ids: list[str]) -> None:
     contribution_path.parent.mkdir(parents=True, exist_ok=True)
-    numpy.savez_compressed(contribution_path, **contributions)
+    numpy.savez_compressed(
+        contribution_path,
+        **contributions,
+        query_ids=numpy.asarray(query_ids, dtype=numpy.str_),
+        identity_json=numpy.asarray(json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))),
+    )
     report["per_query_contributions_path"] = str(contribution_path)
     report["per_query_contributions_sha256"] = sha256_file(contribution_path)
+    report["per_query_contribution_identity"] = identity
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
+def require_artifact_weight(root: Path, entry: Any, expected_shape: list[int], expected_layout: str | None, name: str) -> Any:
+    if not isinstance(entry, dict) or entry.get("dtype") != "float32_le" or entry.get("shape") != expected_shape or (expected_layout is not None and entry.get("layout") != expected_layout):
+        raise EvaluationError(f"artifact weight descriptor is invalid: {name}")
+    path = root / require_plain_path(entry.get("path"), f"artifact.weights.{name}.path")
+    if not path.is_file() or path.stat().st_size != math.prod(expected_shape) * 4 or sha256_file(path) != require_sha256(entry.get("sha256"), f"artifact.weights.{name}.sha256"):
+        raise EvaluationError(f"artifact weight payload is invalid: {name}")
+    values = numpy.fromfile(path, dtype="<f4")
+    if not numpy.isfinite(values).all():
+        raise EvaluationError(f"artifact weight payload is non-finite: {name}")
+    return values.reshape(expected_shape)
+
+
+def validate_calibration_evaluation_pair(calibration: dict[str, Any], data: dict[str, Any]) -> None:
+    if calibration["embedding_identity"] != data["embedding_identity"] or set(calibration["train_ids"]).intersection(data["document_ids"].tolist()):
+        raise EvaluationError("calibration and evaluation roots violate the held-out embedding contract")
+
+
+def load_artifact_for_evaluation(path: Path, data: dict[str, Any], calibration: dict[str, Any] | None) -> tuple[dict[str, Any], Any, Any]:
+    try:
+        artifact = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationError(f"cannot read artifact: {exc}") from exc
+    if not isinstance(artifact, dict) or artifact.get("schema_version") != 1:
+        raise EvaluationError("artifact schema is unsupported")
+    architecture = artifact.get("architecture")
+    training = artifact.get("training")
+    weights = artifact.get("weights")
+    if not isinstance(architecture, dict) or not isinstance(training, dict) or not isinstance(weights, dict):
+        raise EvaluationError("artifact sections are invalid")
+    bit_count = architecture.get("bit_count")
+    if isinstance(bit_count, bool) or not isinstance(bit_count, int) or bit_count <= 0 or architecture.get("input_dimension") != data["dimension"] or architecture.get("input_transform") != "clip_minus_one_one_v1":
+        raise EvaluationError("artifact architecture is incompatible with evaluation vectors")
+    family = architecture.get("family")
+    if family == "nlb_qrels_supervised_v1":
+        if calibration is None:
+            raise EvaluationError("qrels-supervised artifact evaluation requires a calibration root")
+        validate_calibration_evaluation_pair(calibration, data)
+        teacher = training.get("teacher")
+        exclusion = training.get("held_out_exclusion")
+        loss_weights = training.get("loss_weights")
+        calibration_contract = training.get("calibration")
+        if artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"] or not isinstance(teacher, dict) or {name: teacher.get(name) for name in data["embedding_identity"]} != data["embedding_identity"]:
+            raise EvaluationError("artifact teacher embedding contract differs from evaluation")
+        if not isinstance(calibration_contract, dict) or calibration_contract.get("document_ids_sha256") != canonical_ids_sha256(calibration["train_ids"]) or training.get("source_materialization_outputs_sha256") != canonical_json_sha256(calibration["output_hashes"]):
+            raise EvaluationError("artifact calibration provenance differs from its materialization root")
+        if not isinstance(exclusion, dict) or exclusion.get("id") != "external_excluded_document_ids_set_v1" or exclusion.get("document_ids_set_sha256") != data["evaluation_document_ids_sha256"]:
+            raise EvaluationError("artifact held-out document exclusion differs from evaluation")
+        if not isinstance(loss_weights, dict) or not isinstance(training.get("optimization_qrels_used"), bool) or not isinstance(loss_weights.get("triplet"), (int, float)) or isinstance(loss_weights.get("triplet"), bool) or not math.isfinite(loss_weights["triplet"]) or loss_weights["triplet"] < 0.0 or training["optimization_qrels_used"] != (loss_weights["triplet"] > 0.0):
+            raise EvaluationError("artifact qrels optimization provenance is invalid")
+    encoder_weights = require_artifact_weight(path.parent, weights.get("encoder_weights"), [bit_count, data["dimension"]], "row_major_out_by_in", "encoder_weights")
+    encoder_bias = require_artifact_weight(path.parent, weights.get("encoder_bias"), [bit_count], None, "encoder_bias")
+    return artifact, encoder_weights, encoder_bias
+
+
 def evaluate_artifact(args: Any) -> None:
     data = load_root(args.evaluation_root)
-    artifact = json.loads(args.artifact.read_text(encoding="utf-8"))
-    weight_path = args.artifact.parent / artifact["weights"]["encoder_weights"]["path"]
-    bias_path = args.artifact.parent / artifact["weights"]["encoder_bias"]["path"]
-    bit_count = artifact["architecture"]["bit_count"]; dimension = data["dimension"]
-    weights = numpy.fromfile(weight_path, dtype="<f4").reshape(bit_count, dimension)
-    bias = numpy.fromfile(bias_path, dtype="<f4")
+    calibration = load_root(args.calibration_root) if args.calibration_root is not None else None
+    artifact, weights, bias = load_artifact_for_evaluation(args.artifact, data, calibration)
     document_codes = (numpy.clip(data["documents"], -1.0, 1.0) @ weights.T + bias >= 0.0)
     def candidates(index: int, query: Any) -> Any:
         query_code = numpy.clip(query, -1.0, 1.0) @ weights.T + bias >= 0.0
         distance = numpy.count_nonzero(document_codes != query_code, axis=1)
         return numpy.lexsort((data["document_ids"], distance))
     metrics, contributions = evaluate_candidates(data, candidates, args.candidate_limit, args.oracle_k)
-    write_result(args.output, {"schema_version": 1, "family": "binary_artifact_hamming_reference_v1", "artifact_sha256": sha256_file(args.artifact), "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, **metrics}, contributions, args.contributions_output)
+    identity = contribution_identity(data, args.candidate_limit, args.oracle_k)
+    write_result(args.output, {"schema_version": 2, "family": "binary_artifact_hamming_reference_v2", "artifact_sha256": sha256_file(args.artifact), "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
 
 
 def evaluate_ternary(args: Any) -> None:
     calibration = load_root(args.calibration_root); data = load_root(args.evaluation_root)
-    weights = itq_weights(calibration["train"], args.trit_count, args.seed, args.itq_iterations) if args.projection == "itq" else pca_weights(calibration["train"], args.trit_count)
+    validate_calibration_evaluation_pair(calibration, data)
+    weights = itq_weights(calibration["train"], args.coordinate_count, args.seed, args.itq_iterations) if args.projection == "itq" else pca_weights(calibration["train"], args.coordinate_count)
     calibration_projection = numpy.clip(calibration["train"], -1.0, 1.0) @ weights.T
     document_projection = numpy.clip(data["documents"], -1.0, 1.0) @ weights.T
     query_projection = numpy.clip(data["queries"], -1.0, 1.0) @ weights.T
     if args.quantizer == "binary":
         thresholds = binary_thresholds(calibration["train"], weights)
-        document_codes = numpy.clip(data["documents"], -1.0, 1.0) @ weights.T + thresholds >= 0.0
-        def candidates(index: int, query: Any) -> Any:
-            query_code = numpy.clip(query, -1.0, 1.0) @ weights.T + thresholds >= 0.0
-            distance = numpy.count_nonzero(document_codes != query_code, axis=1)
-            return numpy.lexsort((data["document_ids"], distance))
-        scoring = "binary_hamming_reference_v1"; zero_fraction = 0.0
+        calibration_codes = (calibration_projection + thresholds >= 0.0).astype(numpy.uint8)
+        document_codes = (document_projection + thresholds >= 0.0).astype(numpy.uint8)
+        symbol_count = 2; symbols_per_byte = 8; code_assignment = "per_coordinate_median_threshold_v1"; centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
+        if args.scoring == "symmetric":
+            query_codes = (query_projection + thresholds >= 0.0).astype(numpy.uint8)
+            def candidates(index: int, query: Any) -> Any:
+                return numpy.lexsort((data["document_ids"], numpy.count_nonzero(document_codes != query_codes[index], axis=1)))
+            scoring = "binary_hamming_reference_v2"
+        else:
+            packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
+            def candidates(index: int, query: Any) -> Any:
+                return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)))
+            scoring = "binary_adc_packed_base2_lut_v1"
+        zero_fraction = 0.0
     elif args.quantizer == "kmeans":
+        if args.scoring != "adc":
+            raise EvaluationError("Lloyd-Max ternary codes require ADC scoring")
         centers = kmeans_centers(calibration_projection, args.kmeans_iterations)
+        calibration_codes = ternary_codes(calibration_projection, centers=centers)
         document_codes = ternary_codes(document_projection, centers=centers)
-        packed = pack_trits(document_codes)
+        symbol_count = 3; symbols_per_byte = 5; code_assignment = "per_coordinate_lloyd_max_kmeans_v1"; packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
         def candidates(index: int, query: Any) -> Any:
-            cost = packed_adc_scores(packed, query_projection[index], centers)
+            cost = packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)
             return numpy.lexsort((data["document_ids"], cost))
         scoring = "ternary_adc_packed_base3_lut_v1"; zero_fraction = float(numpy.mean(document_codes == 1))
     else:
         thresholds = ternary_tertile_thresholds(calibration_projection)
+        calibration_codes = ternary_codes(calibration_projection, thresholds=thresholds)
         document_codes = ternary_codes(document_projection, thresholds=thresholds)
-        query_codes = ternary_codes(query_projection, thresholds=thresholds)
-        def candidates(index: int, query: Any) -> Any:
-            distance = numpy.abs(document_codes.astype(numpy.int16) - query_codes[index]).sum(axis=1)
-            return numpy.lexsort((data["document_ids"], distance))
-        scoring = "ternary_symmetric_l1_v1"; zero_fraction = float(numpy.mean(document_codes == 1))
+        symbol_count = 3; symbols_per_byte = 5; code_assignment = "per_coordinate_tertile_threshold_v1"; centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
+        if args.scoring == "symmetric":
+            query_codes = ternary_codes(query_projection, thresholds=thresholds)
+            def candidates(index: int, query: Any) -> Any:
+                return numpy.lexsort((data["document_ids"], numpy.abs(document_codes.astype(numpy.int16) - query_codes[index]).sum(axis=1)))
+            scoring = "ternary_symmetric_l1_v1"
+        else:
+            packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
+            def candidates(index: int, query: Any) -> Any:
+                return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)))
+            scoring = "ternary_adc_packed_base3_lut_v1"
+        zero_fraction = float(numpy.mean(document_codes == 1))
     metrics, contributions = evaluate_candidates(data, candidates, args.candidate_limit, args.oracle_k)
-    symbol_count = 2 if args.quantizer == "binary" else 3
-    entropy = -sum(float(numpy.mean(document_codes == symbol)) * math.log2(float(numpy.mean(document_codes == symbol))) for symbol in range(symbol_count) if numpy.any(document_codes == symbol))
-    payload_bytes = (args.trit_count + 7) // 8 if args.quantizer == "binary" else (args.trit_count + 4) // 5
-    write_result(args.output, {"schema_version": 1, "family": "binary_projection_reference_v1" if args.quantizer == "binary" else "ternary_projection_reference_v1", "projection": args.projection, "quantizer": args.quantizer, "scoring": scoring, "trit_count": args.trit_count, "packed_payload_bytes_per_document": payload_bytes, "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, "zero_symbol_fraction": zero_fraction, "symbol_entropy_bits": entropy * args.trit_count, **metrics}, contributions, args.contributions_output)
+    payload_bytes = (args.coordinate_count + symbols_per_byte - 1) // symbols_per_byte
+    identity = contribution_identity(data, args.candidate_limit, args.oracle_k)
+    write_result(args.output, {"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": args.projection, "quantizer": args.quantizer, "code_assignment": code_assignment, "scoring": scoring, "coordinate_count": args.coordinate_count, "packed_payload_bytes_per_document": payload_bytes, "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "projection_weights_sha256": hashlib.sha256(numpy.asarray(weights, dtype="<f4").tobytes()).hexdigest(), "centroids_sha256": hashlib.sha256(numpy.asarray(centers, dtype="<f4").tobytes()).hexdigest(), "seed": args.seed, "itq_iterations": args.itq_iterations if args.projection == "itq" else 0, "kmeans_iterations": args.kmeans_iterations if args.quantizer == "kmeans" else 0, "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, "zero_symbol_fraction": zero_fraction, "total_marginal_symbol_entropy_bits": total_marginal_entropy_bits(document_codes, symbol_count), **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
 
 
 def bootstrap(args: Any) -> None:
-    left = numpy.load(args.left_contributions); right = numpy.load(args.right_contributions)
+    left = numpy.load(args.left_contributions, allow_pickle=False); right = numpy.load(args.right_contributions, allow_pickle=False)
     generator = numpy.random.default_rng(args.seed); count = left["coverage_at_candidate_limit"].shape[0]
-    if count != right["coverage_at_candidate_limit"].shape[0]: raise EvaluationError("paired contribution lengths differ")
-    report: dict[str, Any] = {"schema_version": 1, "family": "paired_query_bootstrap_v1", "left_sha256": sha256_file(args.left_contributions), "right_sha256": sha256_file(args.right_contributions), "query_count": count, "replicates": args.replicates, "seed": args.seed, "metrics": {}}
+    required = {"coverage_at_candidate_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "query_ids", "identity_json"}
+    if set(left.files) != required or set(right.files) != required or count != right["coverage_at_candidate_limit"].shape[0] or not numpy.array_equal(left["query_ids"], right["query_ids"]):
+        raise EvaluationError("paired contribution query identities differ")
+    if any(left[name].shape != (count,) or right[name].shape != (count,) for name in ("coverage_at_candidate_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10")):
+        raise EvaluationError("paired contribution metric shapes differ")
+    try:
+        identity = json.loads(str(left["identity_json"].item()))
+        right_identity = json.loads(str(right["identity_json"].item()))
+    except (ValueError, AttributeError) as exc:
+        raise EvaluationError("paired contribution identity metadata is invalid") from exc
+    validate_contribution_identity(identity, left["query_ids"], count)
+    validate_contribution_identity(right_identity, right["query_ids"], count)
+    if identity != right_identity:
+        raise EvaluationError("paired contribution evaluation contract differs")
+    report: dict[str, Any] = {"schema_version": 2, "family": "paired_query_bootstrap_v2", "left_sha256": sha256_file(args.left_contributions), "right_sha256": sha256_file(args.right_contributions), "identity": identity, "query_count": count, "replicates": args.replicates, "seed": args.seed, "metrics": {}}
     for name in ("coverage_at_candidate_limit", "reranked_ndcg_at_10"):
         difference = right[name] - left[name]
         samples = numpy.empty(args.replicates, dtype=numpy.float64)
@@ -259,27 +458,50 @@ def bootstrap(args: Any) -> None:
 
 def run_self_test() -> int:
     codes = numpy.asarray([[0, 1, 2, 0, 1, 2], [2, 1, 0, 2, 1, 0]], dtype=numpy.uint8)
-    packed = pack_trits(codes)
+    packed = pack_codes(codes, 3, 5)
     if packed.tolist() != [[102, 2], [140, 0]]:
         print("self-test failed: base-3 packing", file=__import__("sys").stderr); return 1
     centers = numpy.asarray([[0.0, 1.0, 2.0]] * 6, dtype=numpy.float32)
-    lookup = ternary_lut(numpy.asarray([0.0] * 6, dtype=numpy.float32), centers)
+    lookup = packed_lut(numpy.asarray([0.0] * 6, dtype=numpy.float32), centers, 3, 5)
     if not numpy.isclose(sum(table[packed[0, group]] for group, table in enumerate(lookup)), 10.0):
         print("self-test failed: packed ADC LUT", file=__import__("sys").stderr); return 1
     direct = numpy.asarray([
         sum((0.0 - centers[coordinate, symbol]) ** 2 for coordinate, symbol in enumerate(row))
         for row in codes
     ], dtype=numpy.float32)
-    if not numpy.allclose(packed_adc_scores(packed, numpy.zeros(6, dtype=numpy.float32), centers), direct):
+    if not numpy.allclose(packed_adc_scores(packed, numpy.zeros(6, dtype=numpy.float32), centers, 3, 5), direct):
         print("self-test failed: packed ADC scalar parity", file=__import__("sys").stderr); return 1
+    binary_codes = numpy.asarray([[0, 1, 1, 0, 1, 0, 1, 0]], dtype=numpy.uint8)
+    binary_packed = pack_codes(binary_codes, 2, 8)
+    binary_centers = numpy.asarray([[0.0, 1.0]] * 8, dtype=numpy.float32)
+    if binary_packed.tolist() != [[86]] or not numpy.isclose(packed_adc_scores(binary_packed, numpy.zeros(8, dtype=numpy.float32), binary_centers, 2, 8)[0], 4.0):
+        print("self-test failed: packed binary ADC LUT", file=__import__("sys").stderr); return 1
+    entropy = total_marginal_entropy_bits(numpy.asarray([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=numpy.uint8), 2)
+    if not numpy.isclose(entropy, 2.0):
+        print("self-test failed: total marginal entropy", file=__import__("sys").stderr); return 1
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        query_ids = numpy.asarray(["q0", "q1"], dtype=numpy.str_)
+        identity = {"schema_version": 1, "ordered_query_ids_sha256": ordered_ids_sha256(query_ids.tolist()), "query_count": 2, "evaluation_materialization_manifest_sha256": "a" * 64, "evaluation_qrels_sha256": "b" * 64, "oracle_k": 10, "candidate_limit": 512}
+        payload = {"coverage_at_candidate_limit": numpy.asarray([0.5, 1.0]), "reranked_ndcg_at_10": numpy.asarray([0.5, 1.0]), "full_e5_ndcg_at_10": numpy.asarray([0.5, 1.0]), "query_ids": query_ids, "identity_json": numpy.asarray(json.dumps(identity, sort_keys=True, separators=(",", ":")))}
+        left_path = root / "left.npz"; right_path = root / "right.npz"
+        numpy.savez_compressed(left_path, **payload); numpy.savez_compressed(right_path, **payload)
+        bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "bootstrap.json", replicates=8, seed=42))
+        payload["query_ids"] = query_ids[::-1]
+        numpy.savez_compressed(right_path, **payload)
+        try:
+            bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "unexpected.json", replicates=8, seed=42))
+            print("self-test failed: mismatched query IDs accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
     print("projection quantization evaluator self-test passed"); return 0
 
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     common = argparse.ArgumentParser(add_help=False); common.add_argument("--evaluation-root", type=Path, required=True); common.add_argument("--output", type=Path, required=True); common.add_argument("--contributions-output", type=Path, required=True); common.add_argument("--oracle-k", type=int, default=10); common.add_argument("--candidate-limit", type=int, default=512)
-    binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True)
-    ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans"), required=True); ternary.add_argument("--trit-count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
+    binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
+    ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:

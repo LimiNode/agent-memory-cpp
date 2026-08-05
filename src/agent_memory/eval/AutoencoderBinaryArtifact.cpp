@@ -907,6 +907,17 @@ namespace agent_memory {
             }
             require_finite_nonnegative_number(optimizer, "weight_decay");
             const auto& loss_weights = require_field(training, "loss_weights");
+            require_finite_nonnegative_number(loss_weights, "triplet");
+            const auto triplet_weight = require_field(loss_weights, "triplet").get<double>();
+            const auto& optimization_qrels_used = require_field(
+                training, "optimization_qrels_used"
+            );
+            if(!optimization_qrels_used.is_boolean() ||
+               optimization_qrels_used.get<bool>() != (triplet_weight > 0.0)) {
+                throw std::runtime_error(
+                    "qrels-supervised triplet provenance does not match its loss weight"
+                );
+            }
             require_finite_nonnegative_number(loss_weights, "reconstruction");
             require_finite_nonnegative_number(loss_weights, "decorrelation");
             require_finite_nonnegative_number(loss_weights, "row_orthogonality");
