@@ -145,12 +145,14 @@ separately for train and validation queries, exclude every positive qrel, and
 must be persisted or canonically hashed in the trained artifact.
 
 Supervised checkpoint selection uses hard binary codes on that fixed validation
-query partition. The policy is lexicographic: hard-code health gates must pass,
-then maximize positive-qrels coverage at the predeclared candidate budget,
-then maximize reranked nDCG@10; ties prefer lower occupancy deviation and then
-the earlier epoch. Document-only reconstruction and soft-code proxy losses must
-not select a qrels-supervised checkpoint. The held-out MIRACL dev split is used
-once only after this policy and all training hyperparameters are fixed.
+query partition. For the first RU experiment, the candidate budget is fixed at
+`K = 512` for every epoch and every baseline. The policy is lexicographic:
+hard-code health gates must pass, then maximize positive-qrels coverage at
+`K = 512`, then maximize reranked nDCG@10; ties prefer lower occupancy
+deviation and then the earlier epoch. Document-only reconstruction and
+soft-code proxy losses must not select a qrels-supervised checkpoint. The
+held-out MIRACL dev split is used once only after this policy and all training
+hyperparameters are fixed.
 
 ## Training matrix
 
