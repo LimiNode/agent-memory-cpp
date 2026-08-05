@@ -15,6 +15,47 @@
 
 namespace {
 
+    struct EmbeddingIdentity final {
+        std::string model_id;
+        std::string model_revision;
+        std::string query_prefix;
+        std::string document_prefix;
+        bool normalized = false;
+    };
+
+    [[nodiscard]] EmbeddingIdentity load_embedding_identity(
+        const std::filesystem::path& manifest_path,
+        const char* owner,
+        bool artifact_teacher = false
+    ) {
+        std::ifstream input(manifest_path, std::ios::binary);
+        nlohmann::json document;
+        try {
+            input >> document;
+        } catch(const nlohmann::json::exception& error) {
+            throw std::runtime_error(std::string{"cannot parse "} + owner + ": " + error.what());
+        }
+        const auto& embedding = artifact_teacher ?
+            document.at("training").at("teacher") : document.at("embedding");
+        const auto require_string = [&embedding, owner](const char* name) {
+            const auto& value = embedding.at(name);
+            if(!value.is_string() || value.get_ref<const std::string&>().empty()) {
+                throw std::runtime_error(std::string{owner} + " embedding field is invalid: " + name);
+            }
+            return value.get<std::string>();
+        };
+        const auto& normalized = embedding.at("normalized");
+        if(!normalized.is_boolean()) {
+            throw std::runtime_error(std::string{owner} + " embedding normalized must be boolean");
+        }
+        return {
+            require_string(artifact_teacher ? "id" : "model_id"),
+            require_string(artifact_teacher ? "revision" : "model_revision"),
+            require_string("query_prefix"), require_string("document_prefix"),
+            normalized.get<bool>(),
+        };
+    }
+
     [[nodiscard]] std::size_t parse_positive_size(const char* text, const char* name) {
         try {
             std::size_t parsed = 0;
@@ -236,9 +277,40 @@ int main(int argc, char* argv[]) {
         const auto materialization =
             agent_memory::load_materialized_autoencoder_evaluation_dataset(argv[1]);
         const auto artifact = agent_memory::load_autoencoder_binary_artifact(argv[2]);
-        // Training and held-out evaluation are deliberately distinct materializations.
-        // Both identities are recorded below; encoder/vector dimensionality is checked by
-        // the evaluation implementation rather than incorrectly requiring data leakage.
+        const auto evaluation_identity = load_embedding_identity(
+            std::filesystem::path{argv[1]} / "manifest.json", "evaluation materialization manifest"
+        );
+        if(artifact.artifact_family == "nlb_qrels_supervised_v1") {
+            const auto training_identity = load_embedding_identity(
+                argv[2], "qrels-supervised artifact", true
+            );
+            if(training_identity.model_id != evaluation_identity.model_id ||
+               training_identity.model_revision != evaluation_identity.model_revision ||
+               training_identity.query_prefix != evaluation_identity.query_prefix ||
+               training_identity.document_prefix != evaluation_identity.document_prefix ||
+               training_identity.normalized != evaluation_identity.normalized) {
+                throw std::runtime_error("artifact and evaluation embedding identities differ");
+            }
+            nlohmann::json artifact_document;
+            nlohmann::json prepared_study;
+            std::ifstream artifact_input(argv[2], std::ios::binary);
+            std::ifstream prepared_input(
+                std::filesystem::path{argv[1]} / "prepared-study-manifest.json", std::ios::binary
+            );
+            artifact_input >> artifact_document;
+            prepared_input >> prepared_study;
+            const auto& exclusion = artifact_document.at("training").at("held_out_exclusion");
+            const auto& evaluated_ids = prepared_study.at("split").at(
+                "evaluation_document_ids_sha256"
+            );
+            if(!exclusion.at("document_ids_set_sha256").is_string() ||
+               !evaluated_ids.is_string() ||
+               exclusion.at("document_ids_set_sha256") != evaluated_ids) {
+                throw std::runtime_error(
+                    "supervised artifact exclusion set does not match evaluation documents"
+                );
+            }
+        }
         std::vector<std::string> document_ids;
         std::vector<agent_memory::Embedding> document_vectors;
         for(const auto& record : materialization.document_embeddings) {
@@ -293,6 +365,13 @@ int main(int argc, char* argv[]) {
             {"artifact_evaluation_materialization_match",
              artifact.input_materialization_manifest_sha256 ==
                  materialization.materialization_manifest_sha256},
+            {"evaluation_embedding_identity", {
+                {"model_id", evaluation_identity.model_id},
+                {"model_revision", evaluation_identity.model_revision},
+                {"query_prefix", evaluation_identity.query_prefix},
+                {"document_prefix", evaluation_identity.document_prefix},
+                {"normalized", evaluation_identity.normalized},
+            }},
             {"evaluation_document_ids_sha256", materialization.evaluation_document_ids_sha256},
             {"evaluation_query_ids_sha256", materialization.evaluation_query_ids_sha256},
             {"evaluation_qrels_sha256", materialization.evaluation_qrels_sha256},

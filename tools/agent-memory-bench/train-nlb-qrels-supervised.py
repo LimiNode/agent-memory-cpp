@@ -206,10 +206,10 @@ def select_better(candidate: dict[str, Any], incumbent: dict[str, Any] | None) -
     return (candidate["health_passes"], a["positive_qrels_query_coverage_at_512"], a["reranked_ndcg_at_10"], -candidate["occupancy_deviation"], -candidate["epoch"]) > (incumbent["health_passes"], b["positive_qrels_query_coverage_at_512"], b["reranked_ndcg_at_10"], -incumbent["occupancy_deviation"], -incumbent["epoch"])
 
 
-def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed: int, epochs: int, batch_size: int, learning_rate: float, margin: float, validation_fraction: float, hard_negative_count: int, torch_threads: int, reconstruction_weight: float, decorrelation_weight: float, row_orthogonality_weight: float) -> dict[str, Any]:
+def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed: int, epochs: int, batch_size: int, learning_rate: float, margin: float, validation_fraction: float, hard_negative_count: int, consumed_negatives_per_query: int, torch_threads: int, reconstruction_weight: float, decorrelation_weight: float, row_orthogonality_weight: float) -> dict[str, Any]:
     if output_root.exists():
         raise SupervisedTrainingError(f"output directory already exists: {output_root}")
-    if bit_count <= 0 or epochs <= 0 or batch_size <= 0 or learning_rate <= 0.0 or margin <= 0.0 or torch_threads <= 0:
+    if bit_count <= 0 or epochs < 0 or batch_size <= 0 or learning_rate <= 0.0 or margin <= 0.0 or torch_threads <= 0 or consumed_negatives_per_query <= 0 or consumed_negatives_per_query > hard_negative_count:
         raise SupervisedTrainingError("training parameters must be positive")
     base = load_base()
     try:
@@ -220,6 +220,13 @@ def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed
     except (ImportError, base.TrainingError) as exc:
         raise SupervisedTrainingError(f"pinned trainer environment is required: {exc}") from exc
     data = load_supervised_materialization(materialization_root, base, numpy)
+    try:
+        prepared_study = json.loads((materialization_root / "prepared-study-manifest.json").read_text(encoding="utf-8"))
+        excluded_document_ids_sha256 = prepared_study["split"]["external_excluded_document_ids_set_sha256"]
+        if not isinstance(excluded_document_ids_sha256, str) or len(excluded_document_ids_sha256) != 64:
+            raise ValueError("invalid external exclusion digest")
+    except (OSError, json.JSONDecodeError, KeyError, ValueError) as exc:
+        raise SupervisedTrainingError(f"supervised prepared-study exclusion provenance is invalid: {exc}") from exc
     if bit_count > data["dimension"]:
         raise SupervisedTrainingError("bit count cannot exceed input dimension")
     train_query_ids, validation_query_ids = split_query_ids(data["query_ids"], seed, validation_fraction)
@@ -233,8 +240,7 @@ def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed
     torch.set_num_threads(torch_threads)
     torch.manual_seed(seed)
     torch.use_deterministic_algorithms(True)
-    initial_weight, initial_bias = __import__("numpy").random.default_rng(seed).standard_normal((bit_count, data["dimension"])).astype(numpy.float32), numpy.zeros(bit_count, dtype=numpy.float32)
-    # Deterministic PCA+ITQ initialization on label-free document-only vectors.
+    # Deterministic PCA+median initialization on label-free document-only vectors.
     values = numpy.asarray(data["train_vectors"], dtype=numpy.float32)
     centered = values.astype(numpy.float64) - values.mean(axis=0)
     _, _, right = numpy.linalg.svd(centered, full_matrices=False)
@@ -250,14 +256,26 @@ def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed
     def recalibrate() -> None:
         projections = numpy.clip(values, -1.0, 1.0) @ weight.detach().cpu().numpy().T
         with torch.no_grad(): bias.copy_(torch.from_numpy((-numpy.median(projections, axis=0)).astype(numpy.float32)))
+    def consider_checkpoint(epoch: int) -> None:
+        nonlocal best
+        weight_array, bias_array = weight.detach().cpu().numpy(), bias.detach().cpu().numpy()
+        health = base.hard_code_health(vectors=data["train_vectors"], indices=list(range(len(data["train_ids"]))), encoder_weight=weight, encoder_bias=bias, batch_size=batch_size, clip_inputs=True)
+        occupancy_deviation = float(numpy.mean(numpy.abs(numpy.clip(data["train_vectors"], -1.0, 1.0) @ weight_array.T + bias_array >= 0.0).mean(axis=0) - 0.5))
+        metrics = rank_validation(query_ids=validation_query_ids, query_vectors=numpy.asarray(data["query_vectors"])[[query_positions[value] for value in validation_query_ids]], document_ids=data["document_ids"], document_vectors=data["document_vectors"], positives=data["positive"], weights=weight_array, bias=bias_array, candidate_limit=FIXED_CANDIDATE_LIMIT, numpy=numpy)
+        record = {"epoch": epoch, "health": health, "health_passes": health["unique_code_count"] >= 2 and health["constant_bit_fraction"] <= 0.10, "occupancy_deviation": occupancy_deviation, "selection_metrics": metrics, "encoder_weight": weight.detach().clone(), "encoder_bias": bias.detach().clone(), "decoder_bias": decoder_bias.detach().clone()}
+        history.append({key: value for key, value in record.items() if key not in ("encoder_weight", "encoder_bias", "decoder_bias")})
+        if select_better(record, best): best = record
+
+    recalibrate()
+    consider_checkpoint(-1)
     for epoch in range(epochs):
         order = ordered_train[:]
         random.Random(int.from_bytes(hashlib.sha256(f"{seed}\0qrels-supervised\0{epoch}".encode()).digest()[:16], "big")).shuffle(order)
         for start in range(0, len(order), batch_size):
             ids = order[start:start + batch_size]
-            q_rows = [query_positions[value] for value in ids]
-            pos_rows = [document_positions[sorted(data["positive"][value], key=lambda document: (-data["positive"][value][document], document))[0]] for value in ids]
-            neg_rows = [document_positions[train_negatives[value][epoch % len(train_negatives[value])]] for value in ids]
+            q_rows = [query_positions[value] for value in ids for _ in range(consumed_negatives_per_query)]
+            pos_rows = [document_positions[sorted(data["positive"][value], key=lambda document: (-data["positive"][value][document], document))[0]] for value in ids for _ in range(consumed_negatives_per_query)]
+            neg_rows = [document_positions[train_negatives[value][(epoch * consumed_negatives_per_query + offset) % len(train_negatives[value])]] for value in ids for offset in range(consumed_negatives_per_query)]
             q = torch.from_numpy(numpy.asarray(data["query_vectors"][q_rows], dtype=numpy.float32).copy())
             pos = torch.from_numpy(numpy.asarray(data["document_vectors"][pos_rows], dtype=numpy.float32).copy())
             neg = torch.from_numpy(numpy.asarray(data["document_vectors"][neg_rows], dtype=numpy.float32).copy())
@@ -275,13 +293,7 @@ def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed
             loss = triplet + reconstruction_weight * reconstruction + decorrelation_weight * decorrelation + row_orthogonality_weight * orthogonality
             optimizer.zero_grad(set_to_none=True); loss.backward(); optimizer.step()
         recalibrate()
-        weight_array, bias_array = weight.detach().cpu().numpy(), bias.detach().cpu().numpy()
-        health = base.hard_code_health(vectors=data["train_vectors"], indices=list(range(len(data["train_ids"]))), encoder_weight=weight, encoder_bias=bias, batch_size=batch_size, clip_inputs=True)
-        occupancy_deviation = float(numpy.mean(numpy.abs(numpy.clip(data["train_vectors"], -1.0, 1.0) @ weight_array.T + bias_array >= 0.0).mean(axis=0) - 0.5))
-        metrics = rank_validation(query_ids=validation_query_ids, query_vectors=numpy.asarray(data["query_vectors"])[[query_positions[value] for value in validation_query_ids]], document_ids=data["document_ids"], document_vectors=data["document_vectors"], positives=data["positive"], weights=weight_array, bias=bias_array, candidate_limit=FIXED_CANDIDATE_LIMIT, numpy=numpy)
-        record = {"epoch": epoch, "health": health, "health_passes": health["unique_code_count"] >= 2 and health["constant_bit_fraction"] <= 0.10, "occupancy_deviation": occupancy_deviation, "selection_metrics": metrics, "encoder_weight": weight.detach().clone(), "encoder_bias": bias.detach().clone(), "decoder_bias": decoder_bias.detach().clone()}
-        history.append({key: value for key, value in record.items() if key not in ("encoder_weight", "encoder_bias", "decoder_bias")})
-        if select_better(record, best): best = record
+        consider_checkpoint(epoch)
     if best is None or not best["health_passes"]:
         raise SupervisedTrainingError("no checkpoint passed hard-code health gates")
     output_root.mkdir(parents=True)
@@ -291,6 +303,25 @@ def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed
     negatives_path = output_root / "frozen-hard-negatives.json"
     negatives_path.write_text(json.dumps(negative_payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8", newline="\n")
     artifact = {"schema_version": 1, "trainer": {"id": TRAINER_ID, "version": TRAINER_VERSION, "source_hash": sha256_file(Path(__file__)), "base_trainer_source_hash": sha256_file(Path(__file__).with_name("train-binary-autoencoder.py")), "requirements_lock": "requirements-binary-autoencoder-trainer.txt;sha256=" + sha256_file(Path(__file__).with_name("requirements-binary-autoencoder-trainer.txt"))}, "input_materialization_manifest_sha256": data["manifest_sha256"], "prepared_study_manifest_sha256": data["manifest"]["prepared_study_manifest_sha256"], "source_encoder_artifact_sha256": data["manifest_sha256"], "architecture": {"family": ARTIFACT_FAMILY, "input_dimension": data["dimension"], "bit_count": bit_count, "encoder_activation": "affine_hard_step_document_median_v1", "decoder": "tied_transpose_tanh", "code_value_encoding": "zero_one", "input_transform": "clip_minus_one_one_v1"}, "training": {"seed": seed, "epochs": epochs, "batch_size": batch_size, "learning_rate": learning_rate, "objective": OBJECTIVE, "queries_or_qrels_used": True, "candidate_limit": FIXED_CANDIDATE_LIMIT, "margin": margin, "optimizer": {"id": "adamw", "weight_decay": 0.0}, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": True}, "initialization": {"mode": "pca_median_document_only_v1", "source_artifact_sha256": data["manifest_sha256"], "source_family": "label_free_document_only_e5_v1", "itq_iterations": 0}, "calibration": {"policy": "per_bit_projection_median_v1", "source": "label_free_document_only_train_v1", "document_count": len(data["train_ids"]), "document_ids_sha256": canonical_ids_sha256(data["train_ids"])}, "teacher": {"id": data["manifest"]["embedding"]["model_id"], "revision": data["manifest"]["embedding"]["model_revision"], "normalized": data["manifest"]["embedding"]["normalized"]}, "supervision": {"qrels_sha256": data["output_hashes"]["evaluation_qrels"], "positive_qrels": "grade_gt_zero_v1"}, "query_split": {"id": QUERY_SPLIT_ID, "validation_fraction": validation_fraction, "train_query_ids_sha256": canonical_ids_sha256(train_query_ids), "validation_query_ids_sha256": canonical_ids_sha256(validation_query_ids), "train_query_count": len(train_query_ids), "validation_query_count": len(validation_query_ids)}, "hard_negative_mining": {"id": MINING_ID, "teacher": "normalized_e5_cosine", "negative_count_per_query": hard_negative_count, "positive_exclusion": "all_grade_gt_zero_v1", "path": negatives_path.name, "sha256": sha256_file(negatives_path), "canonical_sha256": canonical_json_sha256(negative_payload), "train_query_ids_sha256": canonical_ids_sha256(train_query_ids), "validation_query_ids_sha256": canonical_ids_sha256(validation_query_ids)}, "selection": {"id": SELECTION_ID, "candidate_limit": FIXED_CANDIDATE_LIMIT, "lexicographic_order": ["hard_code_health", "positive_qrels_query_coverage_at_512", "reranked_ndcg_at_10", "lower_occupancy_deviation", "earlier_epoch"], "selected_epoch": best["epoch"], "metrics": best["selection_metrics"], "hard_code_health": best["health"], "occupancy_deviation": best["occupancy_deviation"]}, "loss_weights": {"reconstruction": reconstruction_weight, "decorrelation": decorrelation_weight, "row_orthogonality": row_orthogonality_weight}, "torch_threads": torch_threads, "source_materialization_outputs_sha256": canonical_json_sha256(data["output_hashes"])}, "weights": {"encoder_weights": {"path": paths["encoder_weights"].name, "sha256": sha256_file(paths["encoder_weights"]), "shape": [bit_count, data["dimension"]], "layout": "row_major_out_by_in", "dtype": "float32_le"}, "encoder_bias": {"path": paths["encoder_bias"].name, "sha256": sha256_file(paths["encoder_bias"]), "shape": [bit_count], "dtype": "float32_le"}, "decoder_bias": {"path": paths["decoder_bias"].name, "sha256": sha256_file(paths["decoder_bias"]), "shape": [data["dimension"]], "dtype": "float32_le"}}}
+    # PCA is built inside this trainer, so its provenance is a materialization,
+    # not a fictitious source encoder artifact.
+    del artifact["source_encoder_artifact_sha256"]
+    initialization = artifact["training"]["initialization"]
+    del initialization["source_artifact_sha256"]
+    initialization["source_materialization_manifest_sha256"] = data["manifest_sha256"]
+    artifact["training"]["teacher"].update({
+        "query_prefix": data["manifest"]["embedding"]["query_prefix"],
+        "document_prefix": data["manifest"]["embedding"]["document_prefix"],
+    })
+    artifact["training"]["hard_negative_mining"].update({
+        "mined_negative_count_per_query": hard_negative_count,
+        "consumed_negative_count_per_query": min(epochs * consumed_negatives_per_query, hard_negative_count),
+        "sampling_policy": "epoch_indexed_without_replacement_multi_negative_v1",
+    })
+    artifact["training"]["held_out_exclusion"] = {
+        "id": "external_excluded_document_ids_set_v1",
+        "document_ids_set_sha256": excluded_document_ids_sha256,
+    }
     (output_root / "artifact.json").write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     (output_root / "training-history.json").write_text(json.dumps(history, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     return artifact
@@ -324,14 +355,14 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--bit-count", type=int, default=128); parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--epochs", type=int, default=8); parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument("--learning-rate", type=float, default=1.0e-4); parser.add_argument("--margin", type=float, default=0.1)
-    parser.add_argument("--validation-fraction", type=float, default=0.2); parser.add_argument("--hard-negative-count", type=int, default=64)
+    parser.add_argument("--validation-fraction", type=float, default=0.2); parser.add_argument("--hard-negative-count", type=int, default=64); parser.add_argument("--consumed-negatives-per-query", type=int, default=8)
     parser.add_argument("--torch-threads", type=int, default=18); parser.add_argument("--reconstruction-weight", type=float, default=0.01)
     parser.add_argument("--decorrelation-weight", type=float, default=0.01); parser.add_argument("--row-orthogonality-weight", type=float, default=0.001)
     parser.add_argument("--self-test", action="store_true"); args = parser.parse_args(argv)
     if args.self_test: return run_self_test()
     if args.materialization_root is None or args.output_root is None: parser.error("materialization-root and output-root are required")
     try:
-        artifact = train(materialization_root=args.materialization_root, output_root=args.output_root, bit_count=args.bit_count, seed=args.seed, epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, margin=args.margin, validation_fraction=args.validation_fraction, hard_negative_count=args.hard_negative_count, torch_threads=args.torch_threads, reconstruction_weight=args.reconstruction_weight, decorrelation_weight=args.decorrelation_weight, row_orthogonality_weight=args.row_orthogonality_weight)
+        artifact = train(materialization_root=args.materialization_root, output_root=args.output_root, bit_count=args.bit_count, seed=args.seed, epochs=args.epochs, batch_size=args.batch_size, learning_rate=args.learning_rate, margin=args.margin, validation_fraction=args.validation_fraction, hard_negative_count=args.hard_negative_count, consumed_negatives_per_query=args.consumed_negatives_per_query, torch_threads=args.torch_threads, reconstruction_weight=args.reconstruction_weight, decorrelation_weight=args.decorrelation_weight, row_orthogonality_weight=args.row_orthogonality_weight)
     except SupervisedTrainingError as exc:
         print(f"train-nlb-qrels-supervised: {exc}", file=sys.stderr); return 1
     print(f"trained {artifact['architecture']['bit_count']}-bit qrels-supervised NLB")

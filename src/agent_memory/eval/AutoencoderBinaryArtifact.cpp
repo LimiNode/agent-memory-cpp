@@ -749,8 +749,8 @@ namespace agent_memory {
             (void)require_positive_size(training, "torch_threads");
         }
         if(is_nlb_qrels_supervised) {
-            const auto source_artifact_sha256 = require_sha256(
-                root, "source_encoder_artifact_sha256"
+            const auto source_materialization_manifest_sha256 = require_sha256(
+                root, "input_materialization_manifest_sha256"
             );
             if(require_string(training, "objective") != "qrels_soft_hamming_triplet_v1" ||
                require_field(training, "queries_or_qrels_used") != true ||
@@ -760,8 +760,8 @@ namespace agent_memory {
             }
             const auto& initialization = require_field(training, "initialization");
             if(require_string(initialization, "mode") != "pca_median_document_only_v1" ||
-               require_sha256(initialization, "source_artifact_sha256") !=
-                   source_artifact_sha256 ||
+               require_sha256(initialization, "source_materialization_manifest_sha256") !=
+                   source_materialization_manifest_sha256 ||
                require_string(initialization, "source_family") !=
                    "label_free_document_only_e5_v1" ||
                require_u64(initialization, "itq_iterations") != 0U) {
@@ -797,6 +797,16 @@ namespace agent_memory {
             }
             (void)require_sha256(mining, "sha256");
             (void)require_sha256(mining, "canonical_sha256");
+            const auto mined_count = require_positive_size(
+                mining, "mined_negative_count_per_query"
+            );
+            const auto consumed_count = require_positive_size(
+                mining, "consumed_negative_count_per_query"
+            );
+            if(consumed_count > mined_count || require_string(mining, "sampling_policy") !=
+               "epoch_indexed_without_replacement_multi_negative_v1") {
+                throw std::runtime_error("unsupported qrels-supervised negative sampling policy");
+            }
             (void)require_sha256(mining, "train_query_ids_sha256");
             (void)require_sha256(mining, "validation_query_ids_sha256");
             if(require_sha256(mining, "train_query_ids_sha256") !=
@@ -808,6 +818,8 @@ namespace agent_memory {
             const auto& teacher = require_field(training, "teacher");
             (void)require_string(teacher, "id");
             (void)require_string(teacher, "revision");
+            (void)require_string(teacher, "query_prefix");
+            (void)require_string(teacher, "document_prefix");
             if(require_field(teacher, "normalized") != true) {
                 throw std::runtime_error("qrels-supervised teacher must be normalized");
             }
@@ -816,10 +828,21 @@ namespace agent_memory {
                 throw std::runtime_error("unsupported qrels-supervised relevance contract");
             }
             (void)require_sha256(supervision, "qrels_sha256");
+            const auto& exclusion = require_field(training, "held_out_exclusion");
+            if(require_string(exclusion, "id") !=
+               "external_excluded_document_ids_set_v1") {
+                throw std::runtime_error("unsupported qrels-supervised held-out exclusion contract");
+            }
+            (void)require_sha256(exclusion, "document_ids_set_sha256");
             const auto& selection = require_field(training, "selection");
+            const auto& selected_epoch = require_field(selection, "selected_epoch");
             if(require_string(selection, "id") != "qrels_lexicographic_hard_code_v1" ||
                require_u64(selection, "candidate_limit") != 512U ||
-               require_u64(selection, "selected_epoch") >= require_u64(training, "epochs")) {
+               !selected_epoch.is_number_integer() ||
+               selected_epoch.get<std::int64_t>() < -1 ||
+               selected_epoch.get<std::int64_t>() >= static_cast<std::int64_t>(
+                   require_u64(training, "epochs")
+               )) {
                 throw std::runtime_error("unsupported qrels-supervised checkpoint selection");
             }
             const auto& order = require_field(selection, "lexicographic_order");

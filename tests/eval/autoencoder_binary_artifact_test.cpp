@@ -55,6 +55,7 @@ namespace {
   "trainer": {"id": "agent-memory-cpp:linear-binary-autoencoder-trainer", "version": "v1", "source_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
   "input_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "prepared_study_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "source_encoder_artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
   "architecture": {
     "family": "linear_binary_autoencoder_ste",
     "input_dimension": 2,
@@ -222,11 +223,12 @@ namespace {
   "training": {
     "seed": 42, "epochs": 1, "batch_size": 1, "learning_rate": 0.001, "objective": "qrels_soft_hamming_triplet_v1", "queries_or_qrels_used": true, "candidate_limit": 512, "margin": 0.1, "torch_threads": 1,
     "optimizer": {"id": "adamw", "weight_decay": 0.0}, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true},
-    "initialization": {"mode": "pca_median_document_only_v1", "source_artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", "source_family": "label_free_document_only_e5_v1", "itq_iterations": 0},
+    "initialization": {"mode": "pca_median_document_only_v1", "source_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "source_family": "label_free_document_only_e5_v1", "itq_iterations": 0},
     "calibration": {"policy": "per_bit_projection_median_v1", "source": "label_free_document_only_train_v1", "document_count": 2, "document_ids_sha256": "1111111111111111111111111111111111111111111111111111111111111111"},
-    "teacher": {"id": "intfloat/multilingual-e5-small", "revision": "pinned-revision", "normalized": true}, "supervision": {"qrels_sha256": "7777777777777777777777777777777777777777777777777777777777777777", "positive_qrels": "grade_gt_zero_v1"},
+    "teacher": {"id": "intfloat/multilingual-e5-small", "revision": "pinned-revision", "query_prefix": "query: ", "document_prefix": "passage: ", "normalized": true}, "supervision": {"qrels_sha256": "7777777777777777777777777777777777777777777777777777777777777777", "positive_qrels": "grade_gt_zero_v1"},
+    "held_out_exclusion": {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": "8888888888888888888888888888888888888888888888888888888888888888"},
     "query_split": {"id": "stable_sha256_query_split_v1", "validation_fraction": 0.2, "train_query_ids_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "validation_query_ids_sha256": "3333333333333333333333333333333333333333333333333333333333333333", "train_query_count": 1, "validation_query_count": 1},
-    "hard_negative_mining": {"id": "frozen_e5_cosine_topk_nonpositive_v1", "teacher": "normalized_e5_cosine", "negative_count_per_query": 1, "positive_exclusion": "all_grade_gt_zero_v1", "path": "frozen-hard-negatives.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "canonical_sha256": "5555555555555555555555555555555555555555555555555555555555555555", "train_query_ids_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "validation_query_ids_sha256": "3333333333333333333333333333333333333333333333333333333333333333"},
+    "hard_negative_mining": {"id": "frozen_e5_cosine_topk_nonpositive_v1", "teacher": "normalized_e5_cosine", "negative_count_per_query": 1, "mined_negative_count_per_query": 1, "consumed_negative_count_per_query": 1, "sampling_policy": "epoch_indexed_without_replacement_multi_negative_v1", "positive_exclusion": "all_grade_gt_zero_v1", "path": "frozen-hard-negatives.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "canonical_sha256": "5555555555555555555555555555555555555555555555555555555555555555", "train_query_ids_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "validation_query_ids_sha256": "3333333333333333333333333333333333333333333333333333333333333333"},
     "selection": {"id": "qrels_lexicographic_hard_code_v1", "candidate_limit": 512, "lexicographic_order": ["hard_code_health", "positive_qrels_query_coverage_at_512", "reranked_ndcg_at_10", "lower_occupancy_deviation", "earlier_epoch"], "selected_epoch": 0, "metrics": {"positive_qrels_query_coverage_at_512": 0.5, "reranked_ndcg_at_10": 0.5}, "hard_code_health": {"vector_count": 2, "unique_code_count": 2}, "occupancy_deviation": 0.0},
     "loss_weights": {"reconstruction": 0.01, "decorrelation": 0.01, "row_orthogonality": 0.001}, "source_materialization_outputs_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
   },
