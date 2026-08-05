@@ -150,6 +150,14 @@ def split_query_ids(query_ids: list[str], seed: int, validation_fraction: float)
     return train, validation
 
 
+def require_hard_negative_pool_size(*, available_count: int, requested_count: int) -> None:
+    """Ensures every query can use its frozen negatives without replacement."""
+    if available_count < requested_count:
+        raise SupervisedTrainingError(
+            "query has fewer non-positive documents than the required hard-negative pool"
+        )
+
+
 def mine_hard_negatives(*, query_ids: list[str], query_vectors: Any, document_ids: list[str], document_vectors: Any, positives: dict[str, dict[str, int]], count: int, numpy: Any) -> dict[str, list[str]]:
     if count <= 0:
         raise SupervisedTrainingError("hard negative count must be positive")
@@ -160,11 +168,11 @@ def mine_hard_negatives(*, query_ids: list[str], query_vectors: Any, document_id
         query = numpy.asarray(query_vectors[query_index], dtype=numpy.float32)
         scores = document_matrix @ query
         excluded = {document_positions[value] for value in positives[query_id]}
-        if len(excluded) >= len(document_ids):
-            raise SupervisedTrainingError("query has no non-positive hard-negative candidates")
+        require_hard_negative_pool_size(
+            available_count=len(document_ids) - len(excluded), requested_count=count
+        )
         scores[list(excluded)] = -numpy.inf
-        width = min(count, len(document_ids) - len(excluded))
-        candidates = numpy.argpartition(-scores, width - 1)[:width]
+        candidates = numpy.argpartition(-scores, count - 1)[:count]
         ordered = sorted(candidates.tolist(), key=lambda index: (-float(scores[index]), document_ids[index]))
         negatives = [document_ids[index] for index in ordered]
         if set(negatives).intersection(positives[query_id]) or len(set(negatives)) != len(negatives):
@@ -313,7 +321,7 @@ def train(*, materialization_root: Path, output_root: Path, bit_count: int, seed
             ids = order[start:start + batch_size]
             q_rows = [query_positions[value] for value in ids for _ in range(consumed_negatives_per_query)]
             pos_rows = [document_positions[sorted(data["positive"][value], key=lambda document: (-data["positive"][value][document], document))[0]] for value in ids for _ in range(consumed_negatives_per_query)]
-            neg_rows = [document_positions[train_negatives[value][(epoch * consumed_negatives_per_query + offset) % len(train_negatives[value])]] for value in ids for offset in range(consumed_negatives_per_query)]
+            neg_rows = [document_positions[train_negatives[value][epoch * consumed_negatives_per_query + offset]] for value in ids for offset in range(consumed_negatives_per_query)]
             unique_pos_rows = [document_positions[sorted(data["positive"][value], key=lambda document: (-data["positive"][value][document], document))[0]] for value in ids]
             q = torch.from_numpy(numpy.asarray(data["query_vectors"][q_rows], dtype=numpy.float32).copy())
             pos = torch.from_numpy(numpy.asarray(data["document_vectors"][pos_rows], dtype=numpy.float32).copy())
@@ -367,6 +375,12 @@ def run_self_test() -> int:
         healthy = {"epoch": 1, "health_passes": True, "occupancy_deviation": 0.1, "selection_metrics": {"positive_qrels_query_coverage_at_512": 0.4, "reranked_ndcg_at_10": 0.2}}
         weaker = {"epoch": 0, "health_passes": True, "occupancy_deviation": 0.0, "selection_metrics": {"positive_qrels_query_coverage_at_512": 0.3, "reranked_ndcg_at_10": 1.0}}
         if not select_better(healthy, weaker): raise SupervisedTrainingError("selection order is wrong")
+        try:
+            require_hard_negative_pool_size(available_count=7, requested_count=8)
+        except SupervisedTrainingError:
+            pass
+        else:
+            raise SupervisedTrainingError("short hard-negative pool was accepted")
         validate_training_parameters(bit_count=128, epochs=0, batch_size=128, learning_rate=1.0e-4, margin=0.1, hard_negative_count=64, consumed_negatives_per_query=8, initialization_mode="pca_median", itq_iterations=50, torch_threads=1)
         try:
             validate_training_parameters(bit_count=128, epochs=9, batch_size=128, learning_rate=1.0e-4, margin=0.1, hard_negative_count=64, consumed_negatives_per_query=8, initialization_mode="pca_median", itq_iterations=50, torch_threads=1)

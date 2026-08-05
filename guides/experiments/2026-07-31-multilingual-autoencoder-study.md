@@ -1055,7 +1055,9 @@ consumption instead of the selected checkpoint's consumption. The replacement
 matrix uses unique positive rows for reconstruction and decorrelation, records
 per-epoch and selected-checkpoint consumption separately, includes an explicit
 zero-step control, and evaluates matched PCA-plus-median and ITQ-plus-median
-initializations before interpreting supervised effects.
+initializations before interpreting supervised effects. The supervised ITQ
+initializer is a fresh matched implementation; its SVD-based PCA basis is not
+claimed to be bitwise identical to the historical document-only ITQ baseline.
 
 This pilot is a separate artifact family, `nlb_qrels_supervised_v1`, rather
 than a relabelled document-only artifact. Its goal is to test whether a soft

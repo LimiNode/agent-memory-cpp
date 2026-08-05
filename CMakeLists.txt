@@ -161,6 +161,10 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
             COMMAND agent-memory-standard-binary-eval --self-test
         )
+        add_test(
+            NAME agent_memory_autoencoder_evaluator_self_test
+            COMMAND agent-memory-autoencoder-eval --self-test
+        )
     endif()
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
@@ -193,6 +197,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND
                 ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-binary-autoencoder.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_nlb_qrels_supervised_trainer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-nlb-qrels-supervised.py
                 --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
