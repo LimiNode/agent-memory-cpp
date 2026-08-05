@@ -1043,3 +1043,71 @@ entropy. It is not yet a robust winner: one seed, one margin and one in-batch
 neighbour definition cannot establish a general training recipe. The remaining
 separate experiment may use labeled MIRACL query--document pairs and hard
 negatives, with a disjoint train query/qrel split and untouched dev evaluation.
+
+### Qrels-supervised RU train-to-dev pilot
+
+This pilot is a separate artifact family, `nlb_qrels_supervised_v1`, rather
+than a relabelled document-only artifact. Its goal is to test whether a soft
+Hamming triplet objective can improve a median-calibrated binary code while
+keeping MIRACL RU dev completely outside training, hard-negative mining,
+checkpoint selection, and hyperparameter selection.
+
+The authoritative source roots were
+`tmp/miracl-ru-supervised-disjoint-prepared-v2-authoritative` and
+`tmp/miracl-ru-supervised-disjoint-e5-authoritative`. The E5 root has manifest
+SHA-256 `fb5af79a70a8f61e27c9615c178203599ed5dc10f287d0741d132d97f0218856`,
+uses `intfloat/multilingual-e5-small` at revision
+`614241f622f53c4eeff9890bdc4f31cfecc418b3`, and contains 25,000 label-free
+calibration documents, 37,538 supervised documents, 4,326 retained official
+MIRACL train queries, and 30,004 qrels. The held-out root is the existing
+22,607-document / 1,252-query RU dev materialization with manifest SHA-256
+`cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86`.
+
+The deterministic pre-mining query split was 3,477 train and 849 validation
+queries. For each partition separately, 64 frozen E5 top-ranked non-positive
+documents were mined after excluding every `grade > 0` qrel. The trainer uses
+one shared affine projection for queries and documents and optimizes
+`softplus(margin - mean(soft(q)*soft(d+)) + mean(soft(q)*soft(d-)))`. It
+recalibrates every threshold to the label-free 25k document median after every
+epoch. Checkpoint selection was fixed in advance: hard-code health, then
+positive-qrel candidate coverage at K=512, reranked nDCG@10, lower occupancy
+deviation, and earlier epoch. The artifact retains hashes of both query splits,
+the qrels, hard-negative payload, E5 model revision, materialization outputs,
+and trainer sources.
+
+All eight checkpoints passed the health gate: zero constant bits, 25,000 unique
+codes over the 25k calibration documents, and occupancy deviation zero at the
+stored precision. Selection nevertheless chose the first post-update epoch;
+later epochs did not improve the fixed validation objective.
+
+| Checkpoint | Validation positive-qrel coverage@512 | Validation reranked nDCG@10 |
+| ---: | ---: | ---: |
+| epoch 0 (selected) | 0.98115 | 0.82415 |
+| epoch 1 | 0.97762 | 0.82211 |
+| epoch 4 | 0.97291 | 0.81580 |
+| epoch 7 | 0.98115 | 0.82184 |
+
+The selected artifact (`37b36cdb2f5730db51cb09af78adbea22042567a4b4294b2aed4b7722baf8d58`)
+was evaluated once on held-out RU dev using scalar reference ranking and 512
+Hamming candidates followed by exact E5 rerank. Training and evaluation roots
+are explicitly distinct in the report; requiring their hashes to match would
+invalidate a held-out train-to-dev experiment.
+
+| Artifact / mode | exact-top-10 coverage@512 | reranked nDCG@10 | nDCG retention vs. full E5 | cosine vs. -Hamming | decoder nDCG@10 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Full E5 oracle | 1.00000 | 0.80145 | 1.0000 | — | — |
+| Qrels-supervised NLB | 0.93482 | 0.79284 | 0.9893 | 0.4044 | 0.61962 |
+| Historical frozen ITQ document-only control | 0.93666 | 0.79316 | 0.9897 | 0.5813 | 0.56818 |
+
+The learned code is decisively non-random: the 512-document random expectation
+is 0.02265 top-10 coverage, whereas the supervised artifact has 0.93482
+(41.28x lift). Exact rerank retains 98.93% of the full-E5 nDCG@10 and decoder
+ranking is still too weak to replace retained float vectors. However, this is
+not evidence that the first supervised objective improves over the strongest
+document-only recipe: its selected result is slightly below the historical
+frozen ITQ control, and this pilot uses a separately declared PCA-plus-median
+initialization on the authoritative disjoint root. The appropriate next control
+is a fresh label-free PCA-plus-median export on exactly this root, followed by
+a matched frozen-ITQ initialization when the same initialization can be made
+without reusing held-out dev data. Only then should shuffled-qrel and random-
+negative controls be interpreted as causal tests of supervision.
