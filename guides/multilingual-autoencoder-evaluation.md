@@ -118,6 +118,48 @@ A separate **corpus-adaptive** run may train on serving-index documents. It is
 useful for deployment planning, but must be labelled `transductive`; it is not
 evidence of held-out document generalization.
 
+## Qrels-supervised training split
+
+Query--qrel supervision is a separate experiment from the document-only
+ladder. It uses the official MIRACL `train` topics and qrels, while the MIRACL
+`dev` corpus, queries, and qrels remain held out for the final report.
+
+- An external JSONL exclusion list may remove every held-out dev document ID
+  from the supervised corpus. Its file SHA-256, canonical ID-set SHA-256,
+  count, and observed-in-corpus count are part of the prepared manifest.
+  Preparation fails if an ID is malformed, belongs to an unconfigured language,
+  is duplicated, or is absent from the source corpus.
+- After exclusions, a query remains only if it has at least one `grade > 0`
+  qrel. The manifest records the dropped-query count and canonical ID hash.
+  An authoritative configuration fixes both the expected count and ID-set hash
+  so a changed exclusion set cannot silently alter the supervised task.
+- The 25k document-only split remains the source of per-bit median calibration.
+  Supervised queries, their qrels, and the held-out dev data never participate
+  in that calibration.
+
+For the first RU train-to-dev study, query-held-out validation is a
+deterministic 80/20 split made before hard-negative mining. Documents may be
+shared by the two query partitions; this tests generalization to unseen
+queries, not to unseen passages. Frozen E5 top-k hard negatives are mined
+separately for train and validation queries, exclude every positive qrel, and
+must be persisted or canonically hashed in the trained artifact.
+
+Supervised checkpoint selection uses hard binary codes on that fixed validation
+query partition. For the first RU experiment, the candidate budget is fixed at
+`K = 512` for every epoch and every baseline. The policy is lexicographic:
+hard-code health gates must pass, then maximize positive-qrels coverage at
+`K = 512`, then maximize reranked nDCG@10; ties prefer lower occupancy
+deviation and then the earlier epoch. Document-only reconstruction and
+soft-code proxy losses must not select a qrels-supervised checkpoint. The
+held-out MIRACL dev split is used once only after this policy and all training
+hyperparameters are fixed.
+
+The supervised-train and held-out-dev E5 roots are intentionally different
+materializations. Evaluation reports retain both the artifact's training-root
+and prepared-study digests and the evaluated-root digests. They must not
+require equality as a provenance shortcut: equality would make a genuine
+held-out evaluation impossible.
+
 ## Training matrix
 
 Every ablation row uses the same total document count, architecture, optimizer,

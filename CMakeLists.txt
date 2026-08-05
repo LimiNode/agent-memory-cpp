@@ -44,6 +44,7 @@ add_library(agent_memory STATIC
     src/agent_memory/facts/Fact.cpp
     src/agent_memory/ingestion/ResourceIndexer.cpp
     src/agent_memory/index/AggregateBinarySignature.cpp
+    src/agent_memory/index/AsymmetricBinarySignatureScorer.cpp
     src/agent_memory/index/AutoencoderBinaryEncoder.cpp
     src/agent_memory/index/BinarySignature.cpp
     src/agent_memory/index/BinarySignatureEncoderRegistry.cpp
@@ -160,6 +161,10 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
             COMMAND agent-memory-standard-binary-eval --self-test
         )
+        add_test(
+            NAME agent_memory_autoencoder_evaluator_self_test
+            COMMAND agent-memory-autoencoder-eval --self-test
+        )
     endif()
     find_package(Python3 COMPONENTS Interpreter QUIET)
     if(Python3_Interpreter_FOUND)
@@ -192,6 +197,22 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND
                 ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-binary-autoencoder.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_nlb_qrels_supervised_trainer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-nlb-qrels-supervised.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_nlb_retrieval_finetuner_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/fine-tune-nlb-retrieval.py
                 --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
