@@ -54,7 +54,7 @@ from typing import Any, Iterable, Iterator
 sys.dont_write_bytecode = True
 
 PREPARER_ID = "agent-memory-cpp:miracl-ae-preparer"
-PREPARER_VERSION = "v1"
+PREPARER_VERSION = "v2"
 REQUIRED_CONFIG_KEYS = {
     "schema_version",
     "dataset",
@@ -79,6 +79,7 @@ class StudyConfig:
     qrels_template: str
     evaluation_qrels_split: str
     purpose: str
+    expected_external_exclusion_query_drop_count: int | None
     seed: int
     train_documents_per_language: int
     evaluation_distractors_per_language: int
@@ -106,6 +107,18 @@ class Document:
             "title": self.title,
             "text": self.text,
         }
+
+
+@dataclass(frozen=True)
+class ExternalExclusionSet:
+    """Canonical external document exclusions and their source-file identity."""
+
+    ids: frozenset[str]
+    file_sha256: str
+
+    @property
+    def set_sha256(self) -> str:
+        return sorted_id_set_sha256(self.ids)
 
 
 def canonical_json(value: Any) -> str:
@@ -179,6 +192,14 @@ def load_config(path: Path) -> StudyConfig:
     purpose = split.get("purpose", "evaluation")
     if purpose not in ("evaluation", "retrieval_training"):
         raise PreparationError("split.purpose must equal evaluation or retrieval_training")
+    expected_external_exclusion_query_drop_count = split.get(
+        "expected_external_exclusion_query_drop_count"
+    )
+    if expected_external_exclusion_query_drop_count is not None:
+        expected_external_exclusion_query_drop_count = non_negative_int(
+            expected_external_exclusion_query_drop_count,
+            "split.expected_external_exclusion_query_drop_count",
+        )
     sampling.setdefault("evaluation_queries_per_language", 0)
 
     dataset: dict[str, dict[str, str]] = {}
@@ -208,6 +229,9 @@ def load_config(path: Path) -> StudyConfig:
             "split.evaluation_qrels_split",
         ),
         purpose=purpose,
+        expected_external_exclusion_query_drop_count=(
+            expected_external_exclusion_query_drop_count
+        ),
         seed=non_negative_int(sampling.get("seed"), "sampling.seed"),
         train_documents_per_language=non_negative_int(
             sampling.get("train_documents_per_language"),
@@ -425,16 +449,41 @@ def write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
             handle.write("\n")
 
 
-def load_excluded_document_ids(path: Path | None) -> set[str]:
+def load_excluded_document_ids(
+    path: Path | None, configured_languages: tuple[str, ...]
+) -> ExternalExclusionSet:
     if path is None:
-        return set()
+        return ExternalExclusionSet(ids=frozenset(), file_sha256="")
+    exclusions: set[str] = set()
     try:
-        return {
-            non_empty_string(json.loads(line).get("id"), "excluded document.id")
-            for line in path.read_text(encoding="utf-8").splitlines() if line
-        }
+        for line_number, raw_line in enumerate(
+            path.read_text(encoding="utf-8").splitlines(), start=1
+        ):
+            if not raw_line:
+                continue
+            row = require_mapping(
+                json.loads(raw_line), f"excluded document IDs:{line_number}"
+            )
+            identifier = non_empty_string(
+                row.get("id"), f"excluded document IDs:{line_number}: id"
+            )
+            language, separator, source_id = identifier.partition(":")
+            if (identifier != identifier.strip() or not separator or not source_id or
+                    language not in configured_languages):
+                raise PreparationError(
+                    f"excluded document IDs:{line_number}: id must use a configured "
+                    f"<language>:<source_id> form"
+                )
+            if identifier in exclusions:
+                raise PreparationError(
+                    f"excluded document IDs:{line_number}: duplicate id {identifier}"
+                )
+            exclusions.add(identifier)
     except (OSError, json.JSONDecodeError) as exc:
         raise PreparationError(f"cannot read excluded document IDs: {exc}") from exc
+    return ExternalExclusionSet(
+        ids=frozenset(exclusions), file_sha256=sha256_file(path)
+    )
 
 
 def prepare_study(
@@ -452,7 +501,12 @@ def prepare_study(
     output_queries: list[tuple[str, str, str]] = []
     output_qrels: list[tuple[str, str, int]] = []
     per_language: list[dict[str, Any]] = []
-    excluded_document_ids = load_excluded_document_ids(excluded_document_ids_path)
+    external_exclusions = load_excluded_document_ids(
+        excluded_document_ids_path, config.languages
+    )
+    observed_excluded_document_ids: set[str] = set()
+    dropped_query_ids: list[str] = []
+    positive_qrel_query_ids: list[str] = []
 
     for language in config.languages:
         corpus_paths = resolve_input_paths(
@@ -471,24 +525,38 @@ def prepare_study(
             seed=config.seed,
             language=language,
         )
-        qrels = [
+        filtered_qrels = [
             row for row in all_qrels
-            if row[0] in queries and f"{language}:{row[1]}" not in excluded_document_ids
+            if row[0] in queries and f"{language}:{row[1]}" not in external_exclusions.ids
         ]
-        qrel_query_ids = {query_id for query_id, _, _ in qrels}
+        retained_positive_query_ids = {
+            query_id for query_id, _, grade in filtered_qrels if grade > 0
+        }
+        removed_query_ids = set(queries) - retained_positive_query_ids
         queries = {
             query_id: text
             for query_id, text in queries.items()
-            if query_id in qrel_query_ids
+            if query_id in retained_positive_query_ids
         }
+        qrels = [
+            row for row in filtered_qrels if row[0] in retained_positive_query_ids
+        ]
         qrel_document_ids = {document_id for _, document_id, _ in qrels}
-        if not qrels:
-            raise PreparationError(f"{language}: selected evaluation queries have no qrels")
+        dropped_query_ids.extend(f"{language}:{query_id}" for query_id in removed_query_ids)
+        positive_qrel_query_ids.extend(
+            f"{language}:{query_id}" for query_id in retained_positive_query_ids
+        )
         qrels_excluded_ids.extend(f"{language}:{document_id}" for document_id in qrel_document_ids)
         evaluation_query_ids.extend(f"{language}:{query_id}" for query_id in queries)
 
+        def observed_corpus_documents() -> Iterator[Document]:
+            for document in iter_corpora(corpus_paths, language):
+                if document.global_id in external_exclusions.ids:
+                    observed_excluded_document_ids.add(document.global_id)
+                yield document
+
         evaluation_by_id: dict[str, Document] = {}
-        for document in iter_corpora(corpus_paths, language):
+        for document in observed_corpus_documents():
             if document.docid in qrel_document_ids:
                 if document.docid in evaluation_by_id:
                     raise PreparationError(f"{language}: duplicate qrels document id {document.docid}")
@@ -501,9 +569,9 @@ def prepare_study(
         selected_train = choose_lowest_ranked(
             (
                 document
-                for document in iter_corpora(corpus_paths, language)
+                for document in observed_corpus_documents()
                 if document.docid not in qrel_document_ids and
-                document.global_id not in excluded_document_ids
+                document.global_id not in external_exclusions.ids
             ),
             limit=config.train_documents_per_language,
             seed=config.seed,
@@ -514,9 +582,9 @@ def prepare_study(
         selected_distractors = choose_lowest_ranked(
             (
                 document
-                for document in iter_corpora(corpus_paths, language)
+                for document in observed_corpus_documents()
                 if document.docid not in qrel_document_ids and
-                document.global_id not in excluded_document_ids
+                document.global_id not in external_exclusions.ids
                 and document.docid not in selected_train_ids
             ),
             limit=config.evaluation_distractors_per_language,
@@ -559,6 +627,24 @@ def prepare_study(
                     "qrels": sha256_file(qrels_path),
                 },
             }
+        )
+
+    if observed_excluded_document_ids != external_exclusions.ids:
+        missing_exclusion_ids = sorted(
+            external_exclusions.ids - observed_excluded_document_ids
+        )
+        raise PreparationError(
+            "external excluded document IDs are absent from the configured corpus: "
+            f"{', '.join(missing_exclusion_ids[:3])}"
+        )
+    if not output_queries:
+        raise PreparationError("no queries retain positive qrels after external exclusions")
+    if (config.expected_external_exclusion_query_drop_count is not None and
+            len(dropped_query_ids) != config.expected_external_exclusion_query_drop_count):
+        raise PreparationError(
+            "external exclusion dropped an unexpected number of queries: "
+            f"expected {config.expected_external_exclusion_query_drop_count}, "
+            f"got {len(dropped_query_ids)}"
         )
 
     train_path = output_root / "train-documents.jsonl"
@@ -606,9 +692,21 @@ def prepare_study(
                 "retrieval_training_only"
             ),
             "qrels_excluded_document_ids_sha256": sorted_id_set_sha256(qrels_excluded_ids),
-            "external_excluded_document_ids_sha256": (
-                sha256_file(excluded_document_ids_path)
-                if excluded_document_ids_path is not None else ""
+            "external_excluded_document_ids_file_sha256": external_exclusions.file_sha256,
+            "external_excluded_document_ids_set_sha256": external_exclusions.set_sha256,
+            "external_excluded_document_ids_count": len(external_exclusions.ids),
+            "external_excluded_document_ids_observed_count": len(
+                observed_excluded_document_ids
+            ),
+            "expected_external_exclusion_query_drop_count": (
+                config.expected_external_exclusion_query_drop_count
+            ),
+            "queries_dropped_after_external_exclusion_count": len(dropped_query_ids),
+            "queries_dropped_after_external_exclusion_ids_sha256": sorted_id_set_sha256(
+                dropped_query_ids
+            ),
+            "positive_qrel_query_ids_sha256": sorted_id_set_sha256(
+                positive_qrel_query_ids
             ),
             "evaluation_query_ids_sha256": sorted_id_set_sha256(evaluation_query_ids),
             "evaluation_document_ids_sha256": sorted_id_set_sha256(
@@ -740,10 +838,13 @@ def run_self_test() -> int:
 
         external_exclusions = root / "external-excluded-document-ids.jsonl"
         external_exclusions.write_text(
-            '{"id":"ru:ru-3"}\n', encoding="utf-8", newline="\n"
+            '{"id":"ru:ru-1"}\n', encoding="utf-8", newline="\n"
         )
         external_exclusion_config = json.loads(config_path.read_text(encoding="utf-8"))
         external_exclusion_config["sampling"]["train_documents_per_language"] = 1
+        external_exclusion_config["split"][
+            "expected_external_exclusion_query_drop_count"
+        ] = 1
         external_exclusion_config_path = root / "external-exclusion.json"
         external_exclusion_config_path.write_text(
             json.dumps(external_exclusion_config), encoding="utf-8", newline="\n"
@@ -761,10 +862,75 @@ def run_self_test() -> int:
                 encoding="utf-8"
             ).splitlines()
         }
-        if ("ru:ru-3" in externally_excluded_ids or
-                externally_excluded_manifest["split"]["external_excluded_document_ids_sha256"] !=
-                sha256_file(external_exclusions)):
-            print("self-test failed: external exclusion was not enforced", file=sys.stderr)
+        externally_excluded_query_ids = {
+            line.split("\t", 1)[0]
+            for line in (root / "externally-excluded" / "evaluation-queries.tsv").read_text(
+                encoding="utf-8"
+            ).splitlines()
+        }
+        if ("ru:ru-1" in externally_excluded_ids or
+                externally_excluded_query_ids != {"en:q1"} or
+                externally_excluded_manifest["split"][
+                    "queries_dropped_after_external_exclusion_count"
+                ] != 1 or
+                externally_excluded_manifest["split"][
+                    "positive_qrel_query_ids_sha256"
+                ] != sorted_id_set_sha256(["en:q1"])):
+            print("self-test failed: positive-qrel exclusion was not enforced", file=sys.stderr)
+            return 1
+
+        multi_positive_qrels = root / "input" / "ru" / "qrels.dev.tsv"
+        original_ru_qrels = multi_positive_qrels.read_text(encoding="utf-8")
+        multi_positive_qrels.write_text(
+            "q1 Q0 ru-1 2\nq1 Q0 ru-2 0\nq1 Q0 ru-3 1\n",
+            encoding="utf-8",
+            newline="\n",
+        )
+        one_positive_remains_config = json.loads(
+            external_exclusion_config_path.read_text(encoding="utf-8")
+        )
+        one_positive_remains_config["split"][
+            "expected_external_exclusion_query_drop_count"
+        ] = 0
+        one_positive_remains_config_path = root / "one-positive-remains.json"
+        one_positive_remains_config_path.write_text(
+            json.dumps(one_positive_remains_config), encoding="utf-8", newline="\n"
+        )
+        one_positive_remains_manifest = prepare_study(
+            load_config(one_positive_remains_config_path),
+            root / "input",
+            root / "one-positive-remains",
+            external_exclusions,
+        )
+        one_positive_remains_qrels = (
+            root / "one-positive-remains" / "evaluation-qrels.tsv"
+        ).read_text(encoding="utf-8")
+        if ("ru:q1 Q0 ru:ru-3 1" not in one_positive_remains_qrels or
+                "ru:q1 Q0 ru:ru-1 2" in one_positive_remains_qrels or
+                one_positive_remains_manifest["split"][
+                    "queries_dropped_after_external_exclusion_count"
+                ] != 0):
+            print("self-test failed: remaining positive qrel was not preserved", file=sys.stderr)
+            return 1
+        multi_positive_qrels.write_text(
+            original_ru_qrels, encoding="utf-8", newline="\n"
+        )
+
+        unknown_exclusions = root / "unknown-excluded-document-ids.jsonl"
+        unknown_exclusions.write_text(
+            '{"id":"ru:not-in-corpus"}\n', encoding="utf-8", newline="\n"
+        )
+        try:
+            prepare_study(
+                load_config(external_exclusion_config_path),
+                root / "input",
+                root / "unknown-excluded",
+                unknown_exclusions,
+            )
+        except PreparationError:
+            pass
+        else:
+            print("self-test failed: unknown external exclusion was accepted", file=sys.stderr)
             return 1
 
         query_limited = json.loads(config_path.read_text(encoding="utf-8"))

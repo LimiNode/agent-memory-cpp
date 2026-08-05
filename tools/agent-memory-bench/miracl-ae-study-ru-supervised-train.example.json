@@ -25,7 +25,8 @@
   },
   "split": {
     "purpose": "retrieval_training",
-    "evaluation_qrels_split": "train"
+    "evaluation_qrels_split": "train",
+    "expected_external_exclusion_query_drop_count": 357
   },
   "embedding": {
     "model_id": "intfloat/multilingual-e5-small",
