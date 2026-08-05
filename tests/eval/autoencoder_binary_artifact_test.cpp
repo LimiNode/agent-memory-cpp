@@ -228,8 +228,9 @@ namespace {
     "teacher": {"id": "intfloat/multilingual-e5-small", "revision": "pinned-revision", "query_prefix": "query: ", "document_prefix": "passage: ", "normalized": true}, "supervision": {"qrels_sha256": "7777777777777777777777777777777777777777777777777777777777777777", "positive_qrels": "grade_gt_zero_v1"},
     "held_out_exclusion": {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": "8888888888888888888888888888888888888888888888888888888888888888"},
     "query_split": {"id": "stable_sha256_query_split_v1", "validation_fraction": 0.2, "train_query_ids_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "validation_query_ids_sha256": "3333333333333333333333333333333333333333333333333333333333333333", "train_query_count": 1, "validation_query_count": 1},
-    "hard_negative_mining": {"id": "frozen_e5_cosine_topk_nonpositive_v1", "teacher": "normalized_e5_cosine", "negative_count_per_query": 1, "mined_negative_count_per_query": 1, "consumed_negative_count_per_query": 1, "sampling_policy": "epoch_indexed_without_replacement_multi_negative_v1", "positive_exclusion": "all_grade_gt_zero_v1", "path": "frozen-hard-negatives.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "canonical_sha256": "5555555555555555555555555555555555555555555555555555555555555555", "train_query_ids_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "validation_query_ids_sha256": "3333333333333333333333333333333333333333333333333333333333333333"},
+    "hard_negative_mining": {"id": "frozen_e5_cosine_topk_nonpositive_v1", "teacher": "normalized_e5_cosine", "negative_count_per_query": 1, "mined_negative_count_per_query": 1, "consumed_negatives_per_query_per_epoch": 1, "consumed_negative_count_per_query": 1, "sampling_policy": "epoch_indexed_without_replacement_multi_negative_v1", "positive_exclusion": "all_grade_gt_zero_v1", "path": "frozen-hard-negatives.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "canonical_sha256": "5555555555555555555555555555555555555555555555555555555555555555", "train_query_ids_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "validation_query_ids_sha256": "3333333333333333333333333333333333333333333333333333333333333333"},
     "selection": {"id": "qrels_lexicographic_hard_code_v1", "candidate_limit": 512, "lexicographic_order": ["hard_code_health", "positive_qrels_query_coverage_at_512", "reranked_ndcg_at_10", "lower_occupancy_deviation", "earlier_epoch"], "selected_epoch": 0, "metrics": {"positive_qrels_query_coverage_at_512": 0.5, "reranked_ndcg_at_10": 0.5}, "hard_code_health": {"vector_count": 2, "unique_code_count": 2}, "occupancy_deviation": 0.0},
+    "run_provenance": {"planned_epoch_count": 1, "completed_epoch_count": 1, "selected_epoch": 0, "selected_optimizer_step_count": 1, "selected_consumed_negative_count_per_query": 1},
     "loss_weights": {"reconstruction": 0.01, "decorrelation": 0.01, "row_orthogonality": 0.001}, "source_materialization_outputs_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
   },
   "weights": {
@@ -429,6 +430,48 @@ int main() {
         write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
         replace_once(
             root / "nlb-qrels-supervised-artifact.json",
+            "\"mode\": \"pca_median_document_only_v1\"",
+            "\"mode\": \"itq_median_document_only_v1\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"itq_iterations\": 0",
+            "\"itq_iterations\": 50"
+        );
+        if(agent_memory::load_autoencoder_binary_artifact(
+               root / "nlb-qrels-supervised-artifact.json"
+           ).encoder.info().encoder_id != "nlb_qrels_supervised") {
+            return fail("qrels-supervised ITQ initialization contract");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"seed\": 42, \"epochs\": 1,",
+            "\"seed\": 42, \"epochs\": 0,"
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"consumed_negative_count_per_query\": 1",
+            "\"consumed_negative_count_per_query\": 0"
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"selected_epoch\": 0, \"metrics\"",
+            "\"selected_epoch\": -1, \"metrics\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"planned_epoch_count\": 1, \"completed_epoch_count\": 1, \"selected_epoch\": 0, \"selected_optimizer_step_count\": 1, \"selected_consumed_negative_count_per_query\": 1",
+            "\"planned_epoch_count\": 0, \"completed_epoch_count\": 0, \"selected_epoch\": -1, \"selected_optimizer_step_count\": 0, \"selected_consumed_negative_count_per_query\": 0"
+        );
+        if(agent_memory::load_autoencoder_binary_artifact(
+               root / "nlb-qrels-supervised-artifact.json"
+           ).encoder.info().encoder_id != "nlb_qrels_supervised") {
+            return fail("qrels-supervised zero-step artifact contract");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
             "\"candidate_limit\": 512, \"margin\"",
             "\"candidate_limit\": 256, \"margin\""
         );
@@ -438,6 +481,32 @@ int main() {
                );
            })) {
             return fail("qrels-supervised artifact accepted a non-fixed candidate limit");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "epoch_indexed_without_replacement_multi_negative_v1",
+            "epoch_indexed_with_replacement_multi_negative_v1"
+        );
+        if(!throws_runtime_error([&] {
+               (void)agent_memory::load_autoencoder_binary_artifact(
+                   root / "nlb-qrels-supervised-artifact.json"
+               );
+           })) {
+            return fail("qrels-supervised artifact accepted replacement negative sampling");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"selected_consumed_negative_count_per_query\": 1",
+            "\"selected_consumed_negative_count_per_query\": 0"
+        );
+        if(!throws_runtime_error([&] {
+               (void)agent_memory::load_autoencoder_binary_artifact(
+                   root / "nlb-qrels-supervised-artifact.json"
+               );
+           })) {
+            return fail("qrels-supervised artifact accepted inconsistent selected provenance");
         }
         write_nlb_retrieval_distilled_artifact(root / "nlb-retrieval-distilled-artifact.json");
         replace_once(

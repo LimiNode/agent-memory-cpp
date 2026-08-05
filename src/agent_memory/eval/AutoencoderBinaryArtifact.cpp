@@ -2,6 +2,7 @@
 
 #include <nlohmann/json.hpp>
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstdint>
@@ -759,12 +760,17 @@ namespace agent_memory {
                 throw std::runtime_error("unsupported qrels-supervised NLB objective");
             }
             const auto& initialization = require_field(training, "initialization");
-            if(require_string(initialization, "mode") != "pca_median_document_only_v1" ||
+            const auto initialization_mode = require_string(initialization, "mode");
+            if((initialization_mode != "pca_median_document_only_v1" &&
+                initialization_mode != "itq_median_document_only_v1") ||
                require_sha256(initialization, "source_materialization_manifest_sha256") !=
                    source_materialization_manifest_sha256 ||
                require_string(initialization, "source_family") !=
                    "label_free_document_only_e5_v1" ||
-               require_u64(initialization, "itq_iterations") != 0U) {
+               ((initialization_mode == "pca_median_document_only_v1" &&
+                 require_u64(initialization, "itq_iterations") != 0U) ||
+                (initialization_mode == "itq_median_document_only_v1" &&
+                 require_u64(initialization, "itq_iterations") == 0U))) {
                 throw std::runtime_error("unsupported qrels-supervised NLB initialization");
             }
             const auto& calibration = require_field(training, "calibration");
@@ -800,10 +806,19 @@ namespace agent_memory {
             const auto mined_count = require_positive_size(
                 mining, "mined_negative_count_per_query"
             );
-            const auto consumed_count = require_positive_size(
+            const auto consumed_per_epoch = require_positive_size(
+                mining, "consumed_negatives_per_query_per_epoch"
+            );
+            const auto consumed_count = require_u64(
                 mining, "consumed_negative_count_per_query"
             );
-            if(consumed_count > mined_count || require_string(mining, "sampling_policy") !=
+            const auto epoch_count = require_u64(training, "epochs");
+            if(epoch_count > static_cast<std::uint64_t>(
+                   std::numeric_limits<std::int64_t>::max()
+               ) || consumed_per_epoch > mined_count ||
+               epoch_count > std::numeric_limits<std::uint64_t>::max() / consumed_per_epoch ||
+               consumed_count != epoch_count * consumed_per_epoch ||
+               consumed_count > mined_count || require_string(mining, "sampling_policy") !=
                "epoch_indexed_without_replacement_multi_negative_v1") {
                 throw std::runtime_error("unsupported qrels-supervised negative sampling policy");
             }
@@ -841,9 +856,35 @@ namespace agent_memory {
                !selected_epoch.is_number_integer() ||
                selected_epoch.get<std::int64_t>() < -1 ||
                selected_epoch.get<std::int64_t>() >= static_cast<std::int64_t>(
-                   require_u64(training, "epochs")
+                   epoch_count
                )) {
                 throw std::runtime_error("unsupported qrels-supervised checkpoint selection");
+            }
+            const auto& run_provenance = require_field(training, "run_provenance");
+            const auto planned_epochs = require_u64(run_provenance, "planned_epoch_count");
+            const auto completed_epochs = require_u64(run_provenance, "completed_epoch_count");
+            const auto selected_provenance_epoch = require_field(run_provenance, "selected_epoch");
+            const auto selected_epoch_value = selected_epoch.get<std::int64_t>();
+            const auto selected_epoch_count = static_cast<std::uint64_t>(
+                std::max<std::int64_t>(0, selected_epoch_value + 1)
+            );
+            const auto train_query_count = require_positive_size(query_split, "train_query_count");
+            const auto batch_size = require_positive_size(training, "batch_size");
+            const auto batch_count = static_cast<std::uint64_t>(
+                train_query_count / batch_size + (train_query_count % batch_size == 0U ? 0U : 1U)
+            );
+            if(planned_epochs != epoch_count || completed_epochs != planned_epochs ||
+               !selected_provenance_epoch.is_number_integer() ||
+               selected_provenance_epoch.get<std::int64_t>() != selected_epoch_value ||
+               selected_epoch_value >= static_cast<std::int64_t>(completed_epochs) ||
+               selected_epoch_count > std::numeric_limits<std::uint64_t>::max() /
+                   consumed_per_epoch ||
+               selected_epoch_count > std::numeric_limits<std::uint64_t>::max() / batch_count ||
+               require_u64(run_provenance, "selected_consumed_negative_count_per_query") !=
+                   selected_epoch_count * consumed_per_epoch ||
+               require_u64(run_provenance, "selected_optimizer_step_count") !=
+                   selected_epoch_count * batch_count) {
+                throw std::runtime_error("invalid qrels-supervised selected checkpoint provenance");
             }
             const auto& order = require_field(selection, "lexicographic_order");
             const nlohmann::json expected_order = nlohmann::json::array({

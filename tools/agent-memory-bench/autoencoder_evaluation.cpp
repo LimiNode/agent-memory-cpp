@@ -56,6 +56,40 @@ namespace {
         };
     }
 
+    void validate_qrels_supervised_evaluation_contract(
+        const std::filesystem::path& artifact_path,
+        const EmbeddingIdentity& evaluation_identity,
+        const std::filesystem::path& prepared_study_path
+    ) {
+        const auto training_identity = load_embedding_identity(
+            artifact_path, "qrels-supervised artifact", true
+        );
+        if(training_identity.model_id != evaluation_identity.model_id ||
+           training_identity.model_revision != evaluation_identity.model_revision ||
+           training_identity.query_prefix != evaluation_identity.query_prefix ||
+           training_identity.document_prefix != evaluation_identity.document_prefix ||
+           training_identity.normalized != evaluation_identity.normalized) {
+            throw std::runtime_error("artifact and evaluation embedding identities differ");
+        }
+        nlohmann::json artifact_document;
+        nlohmann::json prepared_study;
+        std::ifstream artifact_input(artifact_path, std::ios::binary);
+        std::ifstream prepared_input(prepared_study_path, std::ios::binary);
+        artifact_input >> artifact_document;
+        prepared_input >> prepared_study;
+        const auto& exclusion = artifact_document.at("training").at("held_out_exclusion");
+        const auto& evaluated_ids = prepared_study.at("split").at(
+            "evaluation_document_ids_sha256"
+        );
+        if(!exclusion.at("document_ids_set_sha256").is_string() ||
+           !evaluated_ids.is_string() ||
+           exclusion.at("document_ids_set_sha256") != evaluated_ids) {
+            throw std::runtime_error(
+                "supervised artifact exclusion set does not match evaluation documents"
+            );
+        }
+    }
+
     [[nodiscard]] std::size_t parse_positive_size(const char* text, const char* name) {
         try {
             std::size_t parsed = 0;
@@ -266,9 +300,91 @@ namespace {
         };
     }
 
+    int run_qrels_supervised_contract_self_test() {
+        const auto root = std::filesystem::temp_directory_path() /
+            "agent-memory-qrels-supervised-contract-self-test";
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root);
+        const auto artifact_path = root / "artifact.json";
+        const auto manifest_path = root / "manifest.json";
+        const auto prepared_study_path = root / "prepared-study-manifest.json";
+        const auto write_json = [](const std::filesystem::path& path, const nlohmann::json& value) {
+            std::ofstream output(path, std::ios::binary);
+            output << value.dump();
+        };
+        const auto rejects = [](const auto& action) {
+            try {
+                action();
+            } catch(const std::exception&) {
+                return true;
+            }
+            return false;
+        };
+        try {
+            const nlohmann::json evaluation_manifest = {
+                {"embedding", {{"model_id", "model"}, {"model_revision", "revision"},
+                                {"query_prefix", "query: "}, {"document_prefix", "passage: "},
+                                {"normalized", true}}},
+            };
+            nlohmann::json artifact = {
+                {"training", {{"teacher", {{"id", "model"}, {"revision", "revision"},
+                                            {"query_prefix", "query: "},
+                                            {"document_prefix", "passage: "},
+                                            {"normalized", true}}},
+                               {"held_out_exclusion", {
+                                   {"document_ids_set_sha256", std::string(64U, 'a')},
+                               }}}},
+            };
+            const nlohmann::json prepared_study = {
+                {"split", {{"evaluation_document_ids_sha256", std::string(64U, 'a')}}},
+            };
+            write_json(manifest_path, evaluation_manifest);
+            write_json(artifact_path, artifact);
+            write_json(prepared_study_path, prepared_study);
+            const auto identity = load_embedding_identity(
+                manifest_path, "self-test evaluation materialization manifest"
+            );
+            validate_qrels_supervised_evaluation_contract(
+                artifact_path, identity, prepared_study_path
+            );
+
+            artifact["training"]["teacher"]["revision"] = "other-revision";
+            write_json(artifact_path, artifact);
+            if(!rejects([&] {
+                   validate_qrels_supervised_evaluation_contract(
+                       artifact_path, identity, prepared_study_path
+                   );
+               })) {
+                throw std::runtime_error("embedding identity mismatch was accepted");
+            }
+
+            artifact["training"]["teacher"]["revision"] = "revision";
+            artifact["training"]["held_out_exclusion"]["document_ids_set_sha256"] =
+                std::string(64U, 'b');
+            write_json(artifact_path, artifact);
+            if(!rejects([&] {
+                   validate_qrels_supervised_evaluation_contract(
+                       artifact_path, identity, prepared_study_path
+                   );
+               })) {
+                throw std::runtime_error("held-out exclusion mismatch was accepted");
+            }
+        } catch(const std::exception& error) {
+            std::filesystem::remove_all(root);
+            std::cerr << "qrels-supervised evaluator self-test failed: " << error.what() << '\n';
+            return 1;
+        }
+        std::filesystem::remove_all(root);
+        std::cout << "qrels-supervised evaluator self-test passed\n";
+        return 0;
+    }
+
 } // namespace
 
 int main(int argc, char* argv[]) {
+    if(argc == 2 && std::string{argv[1]} == "--self-test") {
+        return run_qrels_supervised_contract_self_test();
+    }
     if(argc < 4 || argc > 8) {
         std::cerr << "usage: agent-memory-autoencoder-eval <materialization-root> <artifact.json> <report.json> [oracle-k] [candidate-limit] [candidate-scoring] [asymmetric-scoring-backend]\n";
         return 2;
@@ -281,35 +397,10 @@ int main(int argc, char* argv[]) {
             std::filesystem::path{argv[1]} / "manifest.json", "evaluation materialization manifest"
         );
         if(artifact.artifact_family == "nlb_qrels_supervised_v1") {
-            const auto training_identity = load_embedding_identity(
-                argv[2], "qrels-supervised artifact", true
+            validate_qrels_supervised_evaluation_contract(
+                argv[2], evaluation_identity,
+                std::filesystem::path{argv[1]} / "prepared-study-manifest.json"
             );
-            if(training_identity.model_id != evaluation_identity.model_id ||
-               training_identity.model_revision != evaluation_identity.model_revision ||
-               training_identity.query_prefix != evaluation_identity.query_prefix ||
-               training_identity.document_prefix != evaluation_identity.document_prefix ||
-               training_identity.normalized != evaluation_identity.normalized) {
-                throw std::runtime_error("artifact and evaluation embedding identities differ");
-            }
-            nlohmann::json artifact_document;
-            nlohmann::json prepared_study;
-            std::ifstream artifact_input(argv[2], std::ios::binary);
-            std::ifstream prepared_input(
-                std::filesystem::path{argv[1]} / "prepared-study-manifest.json", std::ios::binary
-            );
-            artifact_input >> artifact_document;
-            prepared_input >> prepared_study;
-            const auto& exclusion = artifact_document.at("training").at("held_out_exclusion");
-            const auto& evaluated_ids = prepared_study.at("split").at(
-                "evaluation_document_ids_sha256"
-            );
-            if(!exclusion.at("document_ids_set_sha256").is_string() ||
-               !evaluated_ids.is_string() ||
-               exclusion.at("document_ids_set_sha256") != evaluated_ids) {
-                throw std::runtime_error(
-                    "supervised artifact exclusion set does not match evaluation documents"
-                );
-            }
         }
         std::vector<std::string> document_ids;
         std::vector<agent_memory::Embedding> document_vectors;

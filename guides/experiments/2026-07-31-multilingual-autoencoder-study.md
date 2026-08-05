@@ -1046,6 +1046,17 @@ negatives, with a disjoint train query/qrel split and untouched dev evaluation.
 
 ### Qrels-supervised RU train-to-dev pilot
 
+**Status: superseded protocol run.** The measurements in this section are
+retained for auditability only and must not be used to compare supervision with
+PCA or ITQ initialization. The trainer replicated each positive once per hard
+negative but normalized its decorrelation term by the unreplicated batch size,
+amplifying that loss. Its artifact also described all planned negative
+consumption instead of the selected checkpoint's consumption. The replacement
+matrix uses unique positive rows for reconstruction and decorrelation, records
+per-epoch and selected-checkpoint consumption separately, includes an explicit
+zero-step control, and evaluates matched PCA-plus-median and ITQ-plus-median
+initializations before interpreting supervised effects.
+
 This pilot is a separate artifact family, `nlb_qrels_supervised_v1`, rather
 than a relabelled document-only artifact. Its goal is to test whether a soft
 Hamming triplet objective can improve a median-calibrated binary code while
