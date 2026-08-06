@@ -695,6 +695,11 @@ enum class ExternalMaterializationPolicy : std::uint8_t {
     DurableSnapshot
 };
 
+enum class ContentInspectionAction : std::uint8_t {
+    Allow,
+    Reject
+};
+
 class IContentIngressPolicy;
 class IMemoryAdmissionPolicy;
 class IMemoryAdmissionAuditSink;
@@ -704,10 +709,12 @@ struct ContentInspectionDecision {
     WorkspaceId workspace_id;
     SecurityScopeId scope_id;
     PolicyFingerprint policy;
+    ContentInspectionAction action = ContentInspectionAction::Reject;
+    std::vector<IngressReasonCode> reasons;
     ContentDigest raw_input_digest;
-    ContentDigest sanitized_view_digest;
-    SanitizerFingerprint sanitizer;
-    ContentTransformationReport transformation;
+    std::optional<ContentDigest> sanitized_view_digest;
+    std::optional<SanitizerFingerprint> sanitizer;
+    std::optional<ContentTransformationReport> transformation;
     std::vector<SensitivityLabel> effective_labels;
     std::vector<DownstreamDestination> allowed_destinations;
     std::uint64_t decided_at_ms = 0;
@@ -762,7 +769,99 @@ struct MemoryAdmissionDecisionReceipt {
     std::optional<std::uint64_t> expires_at_ms;
     PrincipalId decision_authority;
 };
+
+struct AdmissionConsumptionReceipt {
+    AdmissionConsumptionReceiptId id;
+    DecisionId decision_id;
+    ContentDigest candidate_input_digest;
+    std::vector<GlobalKnowledgeUnitId> unit_ids;
+    std::vector<ContentDigest> canonical_unit_digests;
+    std::uint64_t consumed_at_ms = 0;
+};
+
+struct AdmissionRevocationReceipt {
+    AdmissionRevocationReceiptId id;
+    DecisionId decision_id;
+    AdmissionRevocationReason reason;
+    PrincipalId authority;
+    AuthorityContextFingerprint authority_context;
+    std::uint64_t revoked_at_ms = 0;
+};
+
+struct ConfirmationRequestReceipt {
+    ConfirmationRequestId id;
+    WorkspaceId workspace_id;
+    SecurityScopeId scope_id;
+    ContentDigest candidate_input_digest;
+    PolicyFingerprint policy;
+    AuthorityContextFingerprint permitted_authority_context;
+    MemoryAdmissionAction requested_action = MemoryAdmissionAction::Reject;
+    ExternalMaterializationPolicy requested_materialization =
+        ExternalMaterializationPolicy::ReferenceOnly;
+    std::uint64_t created_at_ms = 0;
+    std::uint64_t expires_at_ms = 0;
+};
+
+enum class ConfirmationResolution : std::uint8_t {
+    Confirmed,
+    Rejected,
+    Expired,
+    ExpiredByRestore
+};
+
+struct ConfirmationResolutionReceipt {
+    ConfirmationResolutionReceiptId id;
+    ConfirmationRequestId request_id;
+    ConfirmationResolution resolution = ConfirmationResolution::Expired;
+    PrincipalId authority;
+    AuthorityContextFingerprint authority_context;
+    std::uint64_t resolved_at_ms = 0;
+};
+
+struct QuarantineReleaseReceipt {
+    QuarantineReleaseReceiptId id;
+    QuarantineRecordId record_id;
+    CandidateId released_candidate_id;
+    PrincipalId authority;
+    std::uint64_t released_at_ms = 0;
+};
+
+struct QuarantineDeletionReceipt {
+    QuarantineDeletionReceiptId id;
+    QuarantineRecordId record_id;
+    QuarantineDeletionReason reason;
+    PrincipalId authority;
+    std::uint64_t deleted_at_ms = 0;
+};
+
+struct ProjectionVisibilityReceipt {
+    ProjectionVisibilityReceiptId id;
+    GlobalKnowledgeUnitId unit_id;
+    DecisionId admission_decision_id;
+    ContentDigest required_projection_profile_digest;
+    ProjectionGenerationId generation_id;
+    std::vector<ProjectionKind> committed_projection_kinds;
+    std::uint64_t visible_at_ms = 0;
+};
 ```
+
+`ContentInspectionDecision` is fail-closed. `Reject` requires an absent
+sanitized digest and an empty destination list. `Allow` requires a sanitized
+digest and at least one explicit allowed destination. A rejected inspection
+therefore has a complete, auditable representation even when size/type checks,
+secret scanning, a required scanner failure, or safe sanitization prevented the
+creation of any sanitized view. `SanitizedContentView` exists only for `Allow`
+and must match the decision digest and destination allowlist.
+
+All lifecycle records above are immutable and append-only. An equal retry is
+idempotent; a different terminal resolution, revocation, consumption, or
+quarantine transition for the same target is a conflict. `AccessDenied`,
+`Corrupt`, and `BackendUnavailable` are operation outcomes and are never
+receipt states. `AdmissionConsumptionReceipt` is the single-use binding between
+an `Accept` decision and its exact canonical output units; the two vectors have
+equal length and are ordered pairwise. A pending `Accept` decision can be
+consumed once or revoked once, but not both; later changes to a published unit
+use its lifecycle transition rather than retroactively changing admission.
 
 These names define the intended M2 contract, not public M1 headers. The values
 must have canonical serialization and equality before implementation. The
@@ -784,13 +883,14 @@ consumers. Abort, expiry, and successful hand-off produce a cleanup receipt.
 `IContentIngressPolicy` evaluates size/type limits, secret detection,
 sensitivity classification, and sanitization in that order. It returns a
 `ContentInspectionDecision` and, only for permitted destinations, a
-`SanitizedContentView`. The decision records raw and sanitized digests,
+`SanitizedContentView`. An `Allow` decision records raw and sanitized digests,
 sanitizer/classifier identity and version through `SanitizerFingerprint`, a
 transformation report, effective labels, and allowed downstream destinations.
-A missing required scan, expired inspection, altered view, or non-allowed
-destination fails closed. Raw content must therefore not be embedded, sent to
-an external model, indexed, logged, copied into a trace, or placed in an
-LLM-derived record before preflight succeeds.
+A `Reject` records its explicit reason codes without inventing a sanitized
+representation. A missing required scan, expired inspection, altered view, or
+non-allowed destination fails closed. Raw content must therefore not be
+embedded, sent to an external model, indexed, logged, copied into a trace, or
+placed in an LLM-derived record before preflight succeeds.
 
 `MemoryCandidate` retains the inspection id, raw and sanitized digests,
 sanitizer/classifier identity, transformation report, and allowed destinations;
@@ -804,17 +904,37 @@ confer authority.
 scope-bound `MemoryAdmissionDecisionReceipt`, rather than an unbound action
 sketch. Only an unexpired `Accept` receipt whose candidate digest, workspace,
 scope, authority context, policy fingerprint, and requested materialization
-all match permits a write. The receipt and accepted canonical write are
-committed atomically, or with one durable transactional outbox.
+all match permits one consumption. `expires_at_ms` is the deadline for that
+consumption and for publication of its required projections. The local
+transaction atomically persists the `Accept` receipt, pending canonical units,
+one `AdmissionConsumptionReceipt`, and projection outbox rows. The transactional
+outbox is part of that same transaction; it is not an alternative to atomic
+receipt-to-unit binding.
 
 An accepted write is initially **pending and non-visible**. Projection workers
 receive a receipt reference, validate the receipt and candidate binding before
-every delivery, and are idempotent. A unit becomes retrieval-visible only after
-all projections required by its admission/materialization profile are committed
-and the visibility transition is recorded. A revoked or expired receipt, a
-candidate digest mismatch, or a failed projection leaves the unit non-visible;
-it never creates partial lexical postings, embeddings, binary signatures, graph
-edges, summaries, or normal retrieval results.
+every delivery, and are idempotent. They may create partial physical rows only
+inside a `Staged` projection generation. A crash after dense projection but
+before lexical projection can therefore leave staged dense data, but retrieval
+must ignore it. After every kind required by the profile is committed, one
+`ProjectionVisibilityReceipt` names that complete generation and makes it
+eligible for ordinary retrieval. A revoked or expired receipt before
+publication, a candidate digest mismatch, or a failed projection leaves the
+unit non-visible; it never makes partial lexical postings, embeddings, binary
+signatures, graph edges, summaries, or normal retrieval results visible.
+
+`ProjectionVisibilityReceipt` is a technical completeness barrier. It is
+distinct from `KnowledgeVisibilityReceipt`, which records the first-visible
+sequence for one runtime origin under `SequenceReplay`. A profile that enables
+both capabilities must pass both barriers: the completed projection generation
+for ordinary retrieval and the origin-scoped replay receipt for historical
+runtime visibility.
+
+Expiry before consumption or `ProjectionVisibilityReceipt` prevents publication.
+Expiry after a unit has been published does not hide it retroactively; later
+removal or hiding needs a separate lifecycle transition.
+Restore validates that the historical receipt was valid at consumption and
+publication time, not that it remains unexpired at the current clock.
 
 Admission does not alter lifecycle truth or access rights. A visible accepted
 unit still passes normal authority, lifecycle, temporal, and hydration checks
@@ -832,14 +952,18 @@ and encryption key, mandatory TTL and bounded size, explicit
 store has no embeddings, lexical indexes, summaries, LLM enrichment, normal
 workspace-backup membership, or retrieval visibility. Ordinary audit records
 only an opaque `QuarantineRecordId`; the content is available only to the
-authorized review path. Release produces a new candidate and re-runs both
-applicable policy gates.
+authorized review path. `QuarantineReleaseReceipt` records an authorized release
+and the resulting new candidate; `QuarantineDeletionReceipt` records expiry,
+deletion, or other terminal removal. Release re-runs both applicable policy
+gates and cannot make the quarantined payload retrieval-visible directly.
 
 `RequestConfirmation` creates an immutable `ConfirmationRequestReceipt` with a
 request id, workspace/scope, candidate digest, policy fingerprint, permitted
-confirming authority, requested action/materialization, creation/expiry time,
-and one-time status. It may retain only a minimal confirmable sanitized draft
-or a safe external reference in a non-retrieval pending store. Confirmation is
+confirming authority, requested action/materialization, and creation/expiry
+time. Its terminal status is not mutated in place: exactly one
+`ConfirmationResolutionReceipt` records `Confirmed`, `Rejected`, `Expired`, or
+`ExpiredByRestore`. It may retain only a minimal confirmable sanitized draft or
+a safe external reference in a non-retrieval pending store. Confirmation is
 single-use and fails on expiry, candidate/source-revision/label change, revoked
 authority, or changed policy. It never changes the candidate directly to
 `Accept`: it permits the host to submit the unchanged candidate to semantic
@@ -853,7 +977,7 @@ because it was available during inspection.
 
 | Policy | Durable contract | Retrieval consequence |
 |---|---|---|
-| `ReferenceOnly` | Retain a validated locator, source identity/revision, permitted citation metadata, and an `ArtifactProvenance` identity marked `NeverRetained`. Do not retain source bytes. | A result may cite the source but cannot promise offline body hydration. |
+| `ReferenceOnly` | After a complete verified byte observation, retain a validated locator, source identity/revision, permitted citation metadata, and an `ArtifactProvenance` binding marked `NeverRetained`; destroy transient source bytes. A locator-only source retains no artifact identity or byte-stable anchor. | A result may cite the observed source but cannot promise offline body hydration. |
 | `EphemeralSnapshot` | Keep a bounded encrypted working copy only for the declared processing lifetime, with expiry/cleanup receipt. It is not a `ResourceBodyStore` revision. | It is unavailable after expiry and cannot be presented as durable evidence. |
 | `DurableSnapshot` | Retain immutable revision-bound bytes in `ResourceBodyStore`, with digest, retention class and deletion policy. | Revision-bound citations and later evidence hydration are permitted subject to normal access checks. |
 
@@ -873,31 +997,47 @@ the raw SHA-256/content digest. The protected receipt may retain the canonical
 digest for integrity validation. Raw candidate content, raw query text, secrets,
 unredacted source bodies, and model chain-of-thought are excluded from audit.
 Required audit delivery joins the receipt and accepted write through one atomic
-transaction or durable outbox; failure to record a required event fails closed.
+local transaction and its durable transactional outbox; failure to record a
+required event fails closed.
+
+Every HMAC-backed audit envelope includes an `AuditPseudonymKeyId` alongside its
+pseudonym. Key rotation may therefore issue a different pseudonym for the same
+candidate without making historical audit records unverifiable or ambiguous
+during export/import.
 
 Three operations remain distinct:
 
 - An **external content import** creates a new ingress lease, candidate, and
   admission decision.
 - A **canonical workspace-backup restore** validates the historical admission
-  receipt, identity scheme, reference closure, and scope compatibility before
-  publishing. It does not re-admit historical content under a newer policy.
+  receipt, consumption/revocation and projection-visibility receipts, identity
+  scheme, reference closure, and scope compatibility before publishing. It
+  validates receipt expiry at historical consumption/publication time and does
+  not re-admit historical content under a newer policy. Pending confirmation
+  payloads are excluded from normal backup closure; every unresolved request is
+  restored only with an `ExpiredByRestore` resolution, never as active and
+  actionable.
 - A **legacy migration without a receipt** uses an explicitly named migration
   policy, records migration provenance, and never masquerades as a historical
   admission decision.
 
 ### Required Fixtures
 
-M2 fixtures cover an accepted revision-bound candidate; an untrusted or secret
-candidate rejected before embedding; unauthorized model destination; ingress
-spill expiry/cleanup; each materialization mode; a `NeverRetained` anchor;
-quarantine authorization and expiry; confirmation replay, expiry and policy
-change; decision/candidate/scope/authority mismatch; and an audit record with
-no raw body or query text. Projection fixtures cover crash after decision/before
+M2 fixtures cover an accepted revision-bound candidate and its single
+consumption; an untrusted or secret candidate rejected before embedding;
+unauthorized model destination; ingress spill expiry/cleanup; each
+materialization mode; a `NeverRetained` anchor after complete verified byte
+observation; and a locator-only source rejected from artifact/anchor creation.
+They also cover quarantine authorization, release and expiry/deletion;
+confirmation replay, resolution, expiry, policy change and `ExpiredByRestore`;
+decision/candidate/scope/authority mismatch; an audit record with no raw body or
+query text plus its key id; and restore of a receipt that had expired only after
+historical publication. Projection fixtures cover crash after decision/before
 unit, after unit/before outbox, after dense/before lexical projection, duplicate
 outbox delivery, receipt revocation while pending, and candidate-digest mismatch
-during worker replay. They prove that no rejected, quarantined, confirmation-
-pending, or partially projected unit is retrieval-visible.
+during worker replay. They prove that staged partial projections never become
+retrieval-visible and that every visible unit has the required
+`ProjectionVisibilityReceipt`.
 
 ## 15. Deferred To ADELIA / Runtime
 
