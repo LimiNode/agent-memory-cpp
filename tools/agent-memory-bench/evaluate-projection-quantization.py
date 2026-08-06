@@ -553,6 +553,55 @@ def evaluate_artifact(args: Any) -> None:
     write_result(args.output, {"schema_version": 2, "family": "binary_artifact_hamming_reference_v2", "artifact_sha256": sha256_file(args.artifact), "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
 
 
+def learned_adc_stable_split(ids: list[str], seed: int, validation_fraction: float) -> tuple[list[int], list[int]]:
+    """Reconstructs the trainer's stable document-only validation split."""
+    train: list[int] = []
+    validation: list[int] = []
+    for index, identifier in enumerate(ids):
+        value = int.from_bytes(
+            hashlib.sha256(
+                f"{seed}\0learned-binary-adc-validation\0{identifier}".encode("utf-8")
+            ).digest()[:8],
+            "big",
+        ) / float(1 << 64)
+        (validation if value < validation_fraction else train).append(index)
+    if not train or not validation:
+        raise EvaluationError("learned ADC stable validation split is empty")
+    return train, validation
+
+
+def learned_adc_hard_code_health(
+    vectors: Any,
+    indices: list[int],
+    projection: Any,
+    thresholds: Any,
+    batch_size: int,
+) -> dict[str, Any]:
+    """Recomputes the artifact's hard-code health from its calibration vectors."""
+    ones = numpy.zeros(projection.shape[0], dtype=numpy.int64)
+    unique: set[bytes] = set()
+    for start in range(0, len(indices), batch_size):
+        codes = (
+            numpy.asarray(vectors[indices[start:start + batch_size]], dtype=numpy.float32)
+            @ projection.T
+            + thresholds
+            >= 0.0
+        )
+        ones += codes.sum(axis=0, dtype=numpy.int64)
+        unique.update(
+            row.tobytes() for row in numpy.packbits(codes, axis=1, bitorder="little")
+        )
+    occupancy = ones / float(len(indices))
+    return {
+        "vector_count": len(indices),
+        "unique_code_count": len(unique),
+        "unique_code_fraction": len(unique) / float(len(indices)),
+        "constant_bit_count": int(numpy.count_nonzero((occupancy == 0.0) | (occupancy == 1.0))),
+        "minimum_bit_occupancy": float(occupancy.min()),
+        "maximum_bit_occupancy": float(occupancy.max()),
+    }
+
+
 def load_learned_binary_adc_artifact(path: Path, data: dict[str, Any], calibration: dict[str, Any]) -> tuple[dict[str, Any], Any, Any, Any]:
     try:
         artifact = json.loads(path.read_text(encoding="utf-8"))
@@ -605,6 +654,16 @@ def load_learned_binary_adc_artifact(path: Path, data: dict[str, Any], calibrati
         raise EvaluationError("learned ADC validation fraction is invalid")
     require_sha256(validation["train_document_ids_sha256"], "artifact.training.validation.train_document_ids_sha256")
     require_sha256(validation["validation_document_ids_sha256"], "artifact.training.validation.validation_document_ids_sha256")
+    train_indices, validation_indices = learned_adc_stable_split(
+        calibration["train_ids"], training["seed"], validation["fraction"]
+    )
+    if (
+        validation["train_document_ids_sha256"]
+        != canonical_ids_sha256([calibration["train_ids"][index] for index in train_indices])
+        or validation["validation_document_ids_sha256"]
+        != canonical_ids_sha256([calibration["train_ids"][index] for index in validation_indices])
+    ):
+        raise EvaluationError("learned ADC validation split differs from calibration IDs")
     selected_epoch = validation["selected_epoch"]
     if isinstance(selected_epoch, bool) or not isinstance(selected_epoch, int):
         raise EvaluationError("learned ADC selected epoch is invalid")
@@ -634,6 +693,16 @@ def load_learned_binary_adc_artifact(path: Path, data: dict[str, Any], calibrati
     projection = require_artifact_weight(path.parent, weights.get("projection_weights"), [bit_count, data["dimension"]], "row_major_out_by_in", "projection_weights")
     thresholds = require_artifact_weight(path.parent, weights.get("thresholds"), [bit_count], None, "thresholds")
     centroids = require_artifact_weight(path.parent, weights.get("centroids"), [bit_count, 2], "coordinate_symbol", "centroids")
+    actual_health = {
+        "train": learned_adc_hard_code_health(
+            calibration["train"], train_indices, projection, thresholds, training["batch_size"]
+        ),
+        "validation": learned_adc_hard_code_health(
+            calibration["train"], validation_indices, projection, thresholds, training["batch_size"]
+        ),
+    }
+    if health != actual_health:
+        raise EvaluationError("learned ADC hard-code health differs from calibration vectors")
     return artifact, projection, thresholds, centroids
 
 
