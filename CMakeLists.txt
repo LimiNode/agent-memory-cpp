@@ -166,7 +166,19 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND agent-memory-autoencoder-eval --self-test
         )
     endif()
-    find_package(Python3 COMPONENTS Interpreter QUIET)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c "import numpy; import yaml"
+        RESULT_VARIABLE AGENT_MEMORY_PYTHON_TOOLS_IMPORT_RESULT
+        OUTPUT_QUIET
+        ERROR_VARIABLE AGENT_MEMORY_PYTHON_TOOLS_IMPORT_ERROR
+    )
+    if(NOT AGENT_MEMORY_PYTHON_TOOLS_IMPORT_RESULT EQUAL 0)
+        message(FATAL_ERROR
+            "Python evaluator self-tests require NumPy and PyYAML from ${Python3_EXECUTABLE}: "
+            "${AGENT_MEMORY_PYTHON_TOOLS_IMPORT_ERROR}"
+        )
+    endif()
     if(Python3_Interpreter_FOUND)
         add_test(
             NAME agent_memory_miracl_ae_preparer_self_test

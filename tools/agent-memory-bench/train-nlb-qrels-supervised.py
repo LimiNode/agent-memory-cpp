@@ -21,9 +21,9 @@ from typing import Any
 sys.dont_write_bytecode = True
 
 TRAINER_ID = "agent-memory-cpp:nlb-qrels-supervised-trainer"
-TRAINER_VERSION = "v1"
-ARTIFACT_FAMILY = "nlb_qrels_supervised_v1"
-OBJECTIVE = "qrels_soft_hamming_triplet_v1"
+TRAINER_VERSION = "v2"
+ARTIFACT_FAMILY = "nlb_qrels_supervised_v2"
+OBJECTIVE = "qrels_soft_hamming_triplet_v2"
 SELECTION_ID = "qrels_lexicographic_hard_code_v1"
 MINING_ID = "frozen_e5_cosine_topk_nonpositive_v1"
 QUERY_SPLIT_ID = "stable_sha256_query_split_v1"

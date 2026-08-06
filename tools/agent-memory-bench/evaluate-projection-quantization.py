@@ -243,6 +243,10 @@ def total_marginal_entropy_bits(codes: Any, symbol_count: int) -> float:
     return result
 
 
+def symbol_frequencies(codes: Any, symbol_count: int) -> list[float]:
+    return [float(numpy.mean(codes == symbol)) for symbol in range(symbol_count)]
+
+
 def dcg_at_10(ranked_ids: Any, grades: dict[str, int]) -> float:
     value = 0.0
     for rank, document_id in enumerate(ranked_ids[:10]):
@@ -297,7 +301,7 @@ def evaluate_candidates(data: dict[str, Any], candidate_scores: Any, candidate_l
         rerank_ndcg.append(dcg_at_10(document_ids[rerank_order], grades))
         full_ndcg.append(dcg_at_10(document_ids[exact_order], grades))
     contributions = {"coverage_at_candidate_limit": numpy.asarray(coverage, dtype=numpy.float64), "reranked_ndcg_at_10": numpy.asarray(rerank_ndcg, dtype=numpy.float64), "full_e5_ndcg_at_10": numpy.asarray(full_ndcg, dtype=numpy.float64)}
-    return ({"exact_top_k_candidate_coverage": float(numpy.mean(coverage)), "reranked_ndcg_at_10": float(numpy.mean(rerank_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_ndcg)), "reference_candidate_scoring_and_full_ordering_seconds": candidate_seconds, "query_count": len(coverage)}, contributions)
+    return ({"exact_top_k_candidate_coverage": float(numpy.mean(coverage)), "reranked_ndcg_at_10": float(numpy.mean(rerank_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_ndcg)), "reference_candidate_search_seconds_including_query_encoding_and_full_ordering": candidate_seconds, "query_count": len(coverage)}, contributions)
 
 
 def write_result(path: Path, report: dict[str, Any], contributions: dict[str, Any], contribution_path: Path, identity: dict[str, Any], query_ids: list[str]) -> None:
@@ -349,7 +353,7 @@ def load_artifact_for_evaluation(path: Path, data: dict[str, Any], calibration: 
     if isinstance(bit_count, bool) or not isinstance(bit_count, int) or bit_count <= 0 or architecture.get("input_dimension") != data["dimension"] or architecture.get("input_transform") != "clip_minus_one_one_v1":
         raise EvaluationError("artifact architecture is incompatible with evaluation vectors")
     family = architecture.get("family")
-    if family == "nlb_qrels_supervised_v1":
+    if family in ("nlb_qrels_supervised_v1", "nlb_qrels_supervised_v2"):
         if calibration is None:
             raise EvaluationError("qrels-supervised artifact evaluation requires a calibration root")
         validate_calibration_evaluation_pair(calibration, data)
@@ -363,7 +367,13 @@ def load_artifact_for_evaluation(path: Path, data: dict[str, Any], calibration: 
             raise EvaluationError("artifact calibration provenance differs from its materialization root")
         if not isinstance(exclusion, dict) or exclusion.get("id") != "external_excluded_document_ids_set_v1" or exclusion.get("document_ids_set_sha256") != data["evaluation_document_ids_sha256"]:
             raise EvaluationError("artifact held-out document exclusion differs from evaluation")
-        if not isinstance(loss_weights, dict) or not isinstance(training.get("optimization_qrels_used"), bool) or not isinstance(loss_weights.get("triplet"), (int, float)) or isinstance(loss_weights.get("triplet"), bool) or not math.isfinite(loss_weights["triplet"]) or loss_weights["triplet"] < 0.0 or training["optimization_qrels_used"] != (loss_weights["triplet"] > 0.0):
+        has_triplet_weight = isinstance(loss_weights, dict) and "triplet" in loss_weights
+        has_optimization_qrels_used = "optimization_qrels_used" in training
+        if family == "nlb_qrels_supervised_v2" and (not has_triplet_weight or not has_optimization_qrels_used):
+            raise EvaluationError("qrels-supervised v2 artifact requires explicit triplet provenance")
+        if has_triplet_weight != has_optimization_qrels_used:
+            raise EvaluationError("artifact qrels optimization provenance is incomplete")
+        if has_triplet_weight and (not isinstance(loss_weights.get("triplet"), (int, float)) or isinstance(loss_weights.get("triplet"), bool) or not math.isfinite(loss_weights["triplet"]) or loss_weights["triplet"] < 0.0 or not isinstance(training.get("optimization_qrels_used"), bool) or training["optimization_qrels_used"] != (loss_weights["triplet"] > 0.0)):
             raise EvaluationError("artifact qrels optimization provenance is invalid")
     encoder_weights = require_artifact_weight(path.parent, weights.get("encoder_weights"), [bit_count, data["dimension"]], "row_major_out_by_in", "encoder_weights")
     encoder_bias = require_artifact_weight(path.parent, weights.get("encoder_bias"), [bit_count], None, "encoder_bias")
@@ -390,23 +400,22 @@ def evaluate_ternary(args: Any) -> None:
     weights = itq_weights(calibration["train"], args.coordinate_count, args.seed, args.itq_iterations) if args.projection == "itq" else pca_weights(calibration["train"], args.coordinate_count)
     calibration_projection = numpy.clip(calibration["train"], -1.0, 1.0) @ weights.T
     document_projection = numpy.clip(data["documents"], -1.0, 1.0) @ weights.T
-    query_projection = numpy.clip(data["queries"], -1.0, 1.0) @ weights.T
     if args.quantizer == "binary":
         thresholds = binary_thresholds(calibration["train"], weights)
         calibration_codes = (calibration_projection + thresholds >= 0.0).astype(numpy.uint8)
         document_codes = (document_projection + thresholds >= 0.0).astype(numpy.uint8)
         symbol_count = 2; symbols_per_byte = 8; code_assignment = "per_coordinate_median_threshold_v1"; centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
         if args.scoring == "symmetric":
-            query_codes = (query_projection + thresholds >= 0.0).astype(numpy.uint8)
             def candidates(index: int, query: Any) -> Any:
-                return numpy.lexsort((data["document_ids"], numpy.count_nonzero(document_codes != query_codes[index], axis=1)))
+                query_code = numpy.clip(query, -1.0, 1.0) @ weights.T + thresholds >= 0.0
+                return numpy.lexsort((data["document_ids"], numpy.count_nonzero(document_codes != query_code, axis=1)))
             scoring = "binary_hamming_reference_v2"
         else:
             packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
             def candidates(index: int, query: Any) -> Any:
-                return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)))
+                query_projection = numpy.clip(query, -1.0, 1.0) @ weights.T
+                return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection, centers, symbol_count, symbols_per_byte)))
             scoring = "binary_adc_packed_base2_lut_v1"
-        zero_fraction = 0.0
     elif args.quantizer == "kmeans":
         if args.scoring != "adc":
             raise EvaluationError("Lloyd-Max ternary codes require ADC scoring")
@@ -415,25 +424,27 @@ def evaluate_ternary(args: Any) -> None:
         document_codes = scalar_codes(document_projection, centers=centers)
         symbol_count = 3; symbols_per_byte = 5; code_assignment = "per_coordinate_lloyd_max_kmeans_v1"; packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
         def candidates(index: int, query: Any) -> Any:
-            cost = packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)
+            query_projection = numpy.clip(query, -1.0, 1.0) @ weights.T
+            cost = packed_adc_scores(packed, query_projection, centers, symbol_count, symbols_per_byte)
             return numpy.lexsort((data["document_ids"], cost))
-        scoring = "ternary_adc_packed_base3_lut_v1"; zero_fraction = float(numpy.mean(document_codes == 1))
+        scoring = "ternary_adc_packed_base3_lut_v1"
     elif args.quantizer == "tertiles":
         thresholds = equal_mass_thresholds(calibration_projection, 3)
         calibration_codes = scalar_codes(calibration_projection, thresholds=thresholds)
         document_codes = scalar_codes(document_projection, thresholds=thresholds)
         symbol_count = 3; symbols_per_byte = 5; code_assignment = "per_coordinate_tertile_threshold_v1"; centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
         if args.scoring == "symmetric":
-            query_codes = scalar_codes(query_projection, thresholds=thresholds)
             def candidates(index: int, query: Any) -> Any:
-                return numpy.lexsort((data["document_ids"], numpy.abs(document_codes.astype(numpy.int16) - query_codes[index]).sum(axis=1)))
+                query_projection = numpy.asarray([numpy.clip(query, -1.0, 1.0) @ weights.T])
+                query_code = scalar_codes(query_projection, thresholds=thresholds)[0]
+                return numpy.lexsort((data["document_ids"], numpy.abs(document_codes.astype(numpy.int16) - query_code).sum(axis=1)))
             scoring = "ternary_symmetric_l1_v1"
         else:
             packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
             def candidates(index: int, query: Any) -> Any:
-                return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)))
+                query_projection = numpy.clip(query, -1.0, 1.0) @ weights.T
+                return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection, centers, symbol_count, symbols_per_byte)))
             scoring = "ternary_adc_packed_base3_lut_v1"
-        zero_fraction = float(numpy.mean(document_codes == 1))
     elif args.quantizer == "quartiles":
         if args.scoring != "adc":
             raise EvaluationError("quartile scalar codes require ADC scoring")
@@ -445,14 +456,16 @@ def evaluate_ternary(args: Any) -> None:
         centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
         packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
         def candidates(index: int, query: Any) -> Any:
-            cost = packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)
+            query_projection = numpy.clip(query, -1.0, 1.0) @ weights.T
+            cost = packed_adc_scores(packed, query_projection, centers, symbol_count, symbols_per_byte)
             return numpy.lexsort((data["document_ids"], cost))
         scoring = "quaternary_adc_packed_base4_lut_v1"
-        zero_fraction = float(numpy.mean(document_codes == 1))
     metrics, contributions = evaluate_candidates(data, candidates, args.candidate_limit, args.oracle_k)
     payload_bytes = (args.coordinate_count + symbols_per_byte - 1) // symbols_per_byte
     identity = contribution_identity(data, args.candidate_limit, args.oracle_k)
-    write_result(args.output, {"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": args.projection, "quantizer": args.quantizer, "code_assignment": code_assignment, "scoring": scoring, "symbol_count": symbol_count, "coordinate_count": args.coordinate_count, "packed_payload_bytes_per_document": payload_bytes, "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "projection_weights_sha256": hashlib.sha256(numpy.asarray(weights, dtype="<f4").tobytes()).hexdigest(), "centroids_sha256": hashlib.sha256(numpy.asarray(centers, dtype="<f4").tobytes()).hexdigest(), "seed": args.seed, "itq_iterations": args.itq_iterations if args.projection == "itq" else 0, "kmeans_iterations": args.kmeans_iterations if args.quantizer == "kmeans" else 0, "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, "zero_symbol_fraction": zero_fraction, "total_marginal_symbol_entropy_bits": total_marginal_entropy_bits(document_codes, symbol_count), **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
+    total_entropy = total_marginal_entropy_bits(document_codes, symbol_count)
+    maximum_entropy = args.coordinate_count * math.log2(symbol_count)
+    write_result(args.output, {"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": args.projection, "quantizer": args.quantizer, "code_assignment": code_assignment, "scoring": scoring, "symbol_count": symbol_count, "coordinate_count": args.coordinate_count, "packed_payload_bytes_per_document": payload_bytes, "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "projection_weights_sha256": hashlib.sha256(numpy.asarray(weights, dtype="<f4").tobytes()).hexdigest(), "centroids_sha256": hashlib.sha256(numpy.asarray(centers, dtype="<f4").tobytes()).hexdigest(), "seed": args.seed, "itq_iterations": args.itq_iterations if args.projection == "itq" else 0, "kmeans_iterations": args.kmeans_iterations if args.quantizer == "kmeans" else 0, "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, "symbol_frequencies": symbol_frequencies(document_codes, symbol_count), "total_marginal_symbol_entropy_bits": total_entropy, "maximum_marginal_symbol_entropy_bits": maximum_entropy, "normalized_marginal_symbol_entropy": total_entropy / maximum_entropy, **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
 
 
 def bootstrap(args: Any) -> None:
@@ -472,7 +485,7 @@ def bootstrap(args: Any) -> None:
     validate_contribution_identity(right_identity, right["query_ids"], count)
     if identity != right_identity:
         raise EvaluationError("paired contribution evaluation contract differs")
-    report: dict[str, Any] = {"schema_version": 2, "family": "paired_query_bootstrap_v2", "left_sha256": sha256_file(args.left_contributions), "right_sha256": sha256_file(args.right_contributions), "identity": identity, "query_count": count, "replicates": args.replicates, "seed": args.seed, "metrics": {}}
+    report: dict[str, Any] = {"schema_version": 2, "family": "paired_query_bootstrap_v2", "id": args.comparison_id, "left_sha256": sha256_file(args.left_contributions), "right_sha256": sha256_file(args.right_contributions), "identity": identity, "query_count": count, "replicates": args.replicates, "seed": args.seed, "evaluator_source_sha256": sha256_file(Path(__file__)), "metrics": {}}
     for name in ("coverage_at_candidate_limit", "reranked_ndcg_at_10"):
         difference = right[name] - left[name]
         samples = numpy.empty(args.replicates, dtype=numpy.float64)
@@ -483,6 +496,7 @@ def bootstrap(args: Any) -> None:
 
 def write_compact_manifest(args: Any) -> None:
     rows: list[dict[str, Any]] = []
+    contribution_hashes: set[str] = set()
     reference_identity: dict[str, Any] | None = None
     reference_calibration_manifest_sha256: str | None = None
     reference_evaluator_source_sha256: str | None = None
@@ -501,10 +515,36 @@ def write_compact_manifest(args: Any) -> None:
             report.get("calibration_materialization_manifest_sha256"),
             "scalar projection report calibration_materialization_manifest_sha256",
         )
-        identity = validate_contribution_identity(report.get("per_query_contribution_identity"), numpy.load(report_path.parent / Path(report.get("per_query_contributions_path", "")).name, allow_pickle=False)["query_ids"], report.get("query_count"))
         contribution_path = report_path.parent / Path(report.get("per_query_contributions_path", "")).name
         if not contribution_path.is_file() or report.get("per_query_contributions_sha256") != sha256_file(contribution_path):
             raise EvaluationError(f"scalar projection contribution hash differs: {report_path}")
+        with numpy.load(contribution_path, allow_pickle=False) as contributions:
+            required = {"coverage_at_candidate_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "query_ids", "identity_json"}
+            if set(contributions.files) != required:
+                raise EvaluationError(f"scalar projection contribution schema is invalid: {report_path}")
+            query_count = report.get("query_count")
+            if isinstance(query_count, bool) or not isinstance(query_count, int) or query_count <= 0:
+                raise EvaluationError(f"scalar projection query count is invalid: {report_path}")
+            identity = validate_contribution_identity(report.get("per_query_contribution_identity"), contributions["query_ids"], query_count)
+            means: dict[str, float] = {}
+            for contribution_name, report_name in (("coverage_at_candidate_limit", "exact_top_k_candidate_coverage"), ("reranked_ndcg_at_10", "reranked_ndcg_at_10"), ("full_e5_ndcg_at_10", "full_e5_ndcg_at_10")):
+                values = contributions[contribution_name]
+                if values.shape != (query_count,) or not numpy.isfinite(values).all() or numpy.any(values < 0.0) or numpy.any(values > 1.0):
+                    raise EvaluationError(f"scalar projection contribution values are invalid: {report_path}")
+                reported = report.get(report_name)
+                if isinstance(reported, bool) or not isinstance(reported, (int, float)) or not math.isfinite(reported):
+                    raise EvaluationError(f"scalar projection aggregate metric is invalid: {report_path}")
+                means[report_name] = float(numpy.mean(values))
+                if not math.isclose(float(reported), means[report_name], rel_tol=0.0, abs_tol=1.0e-12):
+                    raise EvaluationError(f"scalar projection aggregate metric differs from contributions: {report_path}")
+        frequencies = report.get("symbol_frequencies")
+        if not isinstance(frequencies, list) or len(frequencies) != report.get("symbol_count") or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0.0 or value > 1.0 for value in frequencies) or not math.isclose(sum(float(value) for value in frequencies), 1.0, rel_tol=0.0, abs_tol=1.0e-12):
+            raise EvaluationError(f"scalar projection symbol frequencies are invalid: {report_path}")
+        entropy = report.get("total_marginal_symbol_entropy_bits")
+        maximum_entropy = report.get("maximum_marginal_symbol_entropy_bits")
+        normalized_entropy = report.get("normalized_marginal_symbol_entropy")
+        if any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in (entropy, maximum_entropy, normalized_entropy)) or entropy < 0.0 or maximum_entropy <= 0.0 or entropy > maximum_entropy or not math.isclose(float(normalized_entropy), float(entropy) / float(maximum_entropy), rel_tol=0.0, abs_tol=1.0e-12):
+            raise EvaluationError(f"scalar projection marginal entropy is invalid: {report_path}")
         if reference_identity is None:
             reference_identity = identity
         elif identity != reference_identity:
@@ -517,11 +557,13 @@ def write_compact_manifest(args: Any) -> None:
             reference_evaluator_source_sha256 = evaluator_source_sha256
         elif evaluator_source_sha256 != reference_evaluator_source_sha256:
             raise EvaluationError("scalar projection manifest mixes evaluator sources")
+        contribution_sha256 = sha256_file(contribution_path)
+        contribution_hashes.add(contribution_sha256)
         rows.append({
             "report_file": report_path.name,
             "report_sha256": sha256_file(report_path),
             "contributions_file": contribution_path.name,
-            "contributions_sha256": sha256_file(contribution_path),
+            "contributions_sha256": contribution_sha256,
             "projection": report["projection"],
             "quantizer": report["quantizer"],
             "code_assignment": report["code_assignment"],
@@ -537,14 +579,48 @@ def write_compact_manifest(args: Any) -> None:
             "kmeans_iterations": report["kmeans_iterations"],
             "projection_weights_sha256": report["projection_weights_sha256"],
             "centroids_sha256": report["centroids_sha256"],
-            "exact_top_k_candidate_coverage": report["exact_top_k_candidate_coverage"],
-            "reranked_ndcg_at_10": report["reranked_ndcg_at_10"],
-            "full_e5_ndcg_at_10": report["full_e5_ndcg_at_10"],
+            "symbol_frequencies": frequencies,
+            "total_marginal_symbol_entropy_bits": entropy,
+            "maximum_marginal_symbol_entropy_bits": maximum_entropy,
+            "normalized_marginal_symbol_entropy": normalized_entropy,
+            "exact_top_k_candidate_coverage": means["exact_top_k_candidate_coverage"],
+            "reranked_ndcg_at_10": means["reranked_ndcg_at_10"],
+            "full_e5_ndcg_at_10": means["full_e5_ndcg_at_10"],
         })
     if reference_identity is None or reference_calibration_manifest_sha256 is None or reference_evaluator_source_sha256 is None:
         raise EvaluationError("scalar projection manifest needs at least one report")
+    comparisons: list[dict[str, Any]] = []
+    comparison_ids: set[str] = set()
+    for comparison_path in args.comparison:
+        try:
+            comparison = json.loads(comparison_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as exc:
+            raise EvaluationError(f"cannot read bootstrap comparison: {comparison_path}: {exc}") from exc
+        comparison_id = comparison.get("id")
+        if not isinstance(comparison_id, str) or not comparison_id or comparison_id in comparison_ids or comparison.get("schema_version") != 2 or comparison.get("family") != "paired_query_bootstrap_v2" or comparison.get("identity") != reference_identity or comparison.get("evaluator_source_sha256") != reference_evaluator_source_sha256:
+            raise EvaluationError(f"bootstrap comparison contract is invalid: {comparison_path}")
+        left_sha256 = require_sha256(comparison.get("left_sha256"), "bootstrap left_sha256")
+        right_sha256 = require_sha256(comparison.get("right_sha256"), "bootstrap right_sha256")
+        if left_sha256 not in contribution_hashes or right_sha256 not in contribution_hashes:
+            raise EvaluationError(f"bootstrap comparison inputs are not in this manifest: {comparison_path}")
+        metrics = comparison.get("metrics")
+        if not isinstance(metrics, dict) or not isinstance(comparison.get("replicates"), int) or comparison["replicates"] <= 0 or not isinstance(comparison.get("seed"), int):
+            raise EvaluationError(f"bootstrap comparison metrics are invalid: {comparison_path}")
+        entry: dict[str, Any] = {"id": comparison_id, "left_contributions_sha256": left_sha256, "right_contributions_sha256": right_sha256, "bootstrap_report_file": comparison_path.name, "bootstrap_report_sha256": sha256_file(comparison_path), "replicates": comparison["replicates"], "seed": comparison["seed"]}
+        for source_name, target_name in (("coverage_at_candidate_limit", "coverage"), ("reranked_ndcg_at_10", "ndcg")):
+            metric = metrics.get(source_name)
+            if not isinstance(metric, dict):
+                raise EvaluationError(f"bootstrap comparison metric is invalid: {comparison_path}")
+            difference = metric.get("observed_difference")
+            interval = metric.get("percentile_95_ci")
+            if isinstance(difference, bool) or not isinstance(difference, (int, float)) or not math.isfinite(difference) or not isinstance(interval, list) or len(interval) != 2 or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in interval) or interval[0] > interval[1]:
+                raise EvaluationError(f"bootstrap comparison interval is invalid: {comparison_path}")
+            entry[f"{target_name}_delta"] = float(difference)
+            entry[f"{target_name}_percentile_95_ci"] = [float(interval[0]), float(interval[1])]
+        comparison_ids.add(comparison_id)
+        comparisons.append(entry)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps({"schema_version": 1, "family": "scalar_projection_result_manifest_v1", "evaluator_source_sha256": reference_evaluator_source_sha256, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    args.output.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_result_manifest_v2", "evaluator_source_sha256": reference_evaluator_source_sha256, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"]), "comparisons": sorted(comparisons, key=lambda entry: entry["id"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def run_self_test() -> int:
@@ -582,11 +658,23 @@ def run_self_test() -> int:
         payload = {"coverage_at_candidate_limit": numpy.asarray([0.5, 1.0]), "reranked_ndcg_at_10": numpy.asarray([0.5, 1.0]), "full_e5_ndcg_at_10": numpy.asarray([0.5, 1.0]), "query_ids": query_ids, "identity_json": numpy.asarray(json.dumps(identity, sort_keys=True, separators=(",", ":")))}
         left_path = root / "left.npz"; right_path = root / "right.npz"
         numpy.savez_compressed(left_path, **payload); numpy.savez_compressed(right_path, **payload)
-        bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "bootstrap.json", replicates=8, seed=42))
+        bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "bootstrap.json", replicates=8, seed=42, comparison_id="self_test"))
+        def report_for(path: Path, contribution_path: Path) -> None:
+            path.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": "pca", "quantizer": "binary", "code_assignment": "self_test", "scoring": "binary_adc_packed_base2_lut_v1", "symbol_count": 2, "coordinate_count": 2, "packed_payload_bytes_per_document": 1, "evaluation_materialization_manifest_sha256": "a" * 64, "evaluation_qrels_sha256": "b" * 64, "calibration_materialization_manifest_sha256": "c" * 64, "projection_weights_sha256": "d" * 64, "centroids_sha256": "e" * 64, "seed": 42, "itq_iterations": 0, "kmeans_iterations": 0, "oracle_k": 10, "candidate_limit": 512, "query_count": 2, "symbol_frequencies": [0.5, 0.5], "total_marginal_symbol_entropy_bits": 2.0, "maximum_marginal_symbol_entropy_bits": 2.0, "normalized_marginal_symbol_entropy": 1.0, "exact_top_k_candidate_coverage": 0.75, "reranked_ndcg_at_10": 0.75, "full_e5_ndcg_at_10": 0.75, "per_query_contributions_path": contribution_path.name, "per_query_contributions_sha256": sha256_file(contribution_path), "per_query_contribution_identity": identity, "evaluator_source_sha256": sha256_file(Path(__file__))}, sort_keys=True), encoding="utf-8", newline="\n")
+        left_report = root / "left.json"; right_report = root / "right.json"
+        report_for(left_report, left_path); report_for(right_report, right_path)
+        write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "manifest.json"))
+        corrupted = json.loads(left_report.read_text(encoding="utf-8")); corrupted["exact_top_k_candidate_coverage"] = 0.5
+        left_report.write_text(json.dumps(corrupted, sort_keys=True), encoding="utf-8", newline="\n")
+        try:
+            write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[], output=root / "unexpected-manifest.json"))
+            print("self-test failed: aggregate metric mismatch accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
         payload["query_ids"] = query_ids[::-1]
         numpy.savez_compressed(right_path, **payload)
         try:
-            bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "unexpected.json", replicates=8, seed=42))
+            bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "unexpected.json", replicates=8, seed=42, comparison_id="self_test"))
             print("self-test failed: mismatched query IDs accepted", file=__import__("sys").stderr); return 1
         except EvaluationError:
             pass
@@ -598,8 +686,8 @@ def main(argv: list[str]) -> int:
     common = argparse.ArgumentParser(add_help=False); common.add_argument("--evaluation-root", type=Path, required=True); common.add_argument("--output", type=Path, required=True); common.add_argument("--contributions-output", type=Path, required=True); common.add_argument("--oracle-k", type=int, default=10); common.add_argument("--candidate-limit", type=int, default=512)
     binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
     ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
-    boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
-    manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--output", type=Path, required=True)
+    boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--comparison-id", required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
+    manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--comparison", type=Path, action="append", default=[]); manifest.add_argument("--output", type=Path, required=True)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
         if args.command == "binary": evaluate_artifact(args)

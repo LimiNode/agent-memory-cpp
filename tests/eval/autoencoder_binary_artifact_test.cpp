@@ -215,13 +215,13 @@ namespace {
         std::ofstream output(path, std::ios::binary);
         output << R"({
   "schema_version": 1,
-  "trainer": {"id": "agent-memory-cpp:nlb-qrels-supervised-trainer", "version": "v1", "source_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "base_trainer_source_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "requirements_lock": "requirements-binary-autoencoder-trainer.txt;sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "trainer": {"id": "agent-memory-cpp:nlb-qrels-supervised-trainer", "version": "v2", "source_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "base_trainer_source_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "requirements_lock": "requirements-binary-autoencoder-trainer.txt;sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
   "input_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "prepared_study_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "source_encoder_artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "architecture": {"family": "nlb_qrels_supervised_v1", "input_dimension": 2, "bit_count": 2, "encoder_activation": "affine_hard_step_document_median_v1", "decoder": "tied_transpose_tanh", "code_value_encoding": "zero_one", "input_transform": "clip_minus_one_one_v1"},
+  "architecture": {"family": "nlb_qrels_supervised_v2", "input_dimension": 2, "bit_count": 2, "encoder_activation": "affine_hard_step_document_median_v1", "decoder": "tied_transpose_tanh", "code_value_encoding": "zero_one", "input_transform": "clip_minus_one_one_v1"},
   "training": {
-    "seed": 42, "epochs": 1, "batch_size": 1, "learning_rate": 0.001, "objective": "qrels_soft_hamming_triplet_v1", "queries_or_qrels_used": true, "optimization_qrels_used": true, "candidate_limit": 512, "margin": 0.1, "torch_threads": 1,
+    "seed": 42, "epochs": 1, "batch_size": 1, "learning_rate": 0.001, "objective": "qrels_soft_hamming_triplet_v2", "queries_or_qrels_used": true, "optimization_qrels_used": true, "candidate_limit": 512, "margin": 0.1, "torch_threads": 1,
     "optimizer": {"id": "adamw", "weight_decay": 0.0}, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true},
     "initialization": {"mode": "pca_median_document_only_v1", "source_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "source_family": "label_free_document_only_e5_v1", "itq_iterations": 0},
     "calibration": {"policy": "per_bit_projection_median_v1", "source": "label_free_document_only_train_v1", "document_count": 2, "document_ids_sha256": "1111111111111111111111111111111111111111111111111111111111111111"},
@@ -426,6 +426,37 @@ int main() {
         );
         if(qrels_supervised_artifact.encoder.info().encoder_id != "nlb_qrels_supervised") {
             return fail("qrels-supervised NLB artifact contract");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"family\": \"nlb_qrels_supervised_v2\"",
+            "\"family\": \"nlb_qrels_supervised_v1\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"version\": \"v2\"",
+            "\"version\": \"v1\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"objective\": \"qrels_soft_hamming_triplet_v2\"",
+            "\"objective\": \"qrels_soft_hamming_triplet_v1\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"optimization_qrels_used\": true, ",
+            ""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"triplet\": 1.0, ",
+            ""
+        );
+        if(agent_memory::load_autoencoder_binary_artifact(
+               root / "nlb-qrels-supervised-artifact.json"
+           ).encoder.info().encoder_id != "nlb_qrels_supervised") {
+            return fail("legacy qrels-supervised artifact contract");
         }
         write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
         replace_once(
