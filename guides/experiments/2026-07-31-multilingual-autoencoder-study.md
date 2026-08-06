@@ -1630,3 +1630,54 @@ full stable ordering. It rules out this particular low-margin, document-only
 mask policy; it does not rule out query-adaptive confidence, learned routing,
 or a different quantizer family. The next conventional baseline is PQ/OPQ at
 equal stored payload.
+
+### 2026-08-06 4-bit PQ/OPQ versus binary ADC at equal document payload
+
+This experiment tests the next conventional alternative without changing the
+held-out RU contract.  The fixed 25,000-document calibration root trains
+4-bit product codebooks; all 22,607 held-out documents are encoded only after
+that training, and the 1,252 held-out queries remain continuous.  Candidate
+scores are exact sums of query-to-centroid squared-L2 lookup values, followed
+by the same `K=512` candidate cutoff and exact E5 rerank used by the binary
+ADC controls.
+
+The payload points are exact: 16, 24, and 32 stored bytes correspond to 32,
+48, and 64 product subspaces respectively.  Every subspace stores one
+4-bit, 16-centroid code; because the E5 dimension is 384, their widths are
+12, 8, and 6.  PQ and OPQ use an 8,192-document deterministic calibration
+sample selected from the 25k root for each seed; this only limits offline
+codebook training and never introduces evaluation documents or queries.
+OPQ uses two alternating PQ / orthogonal-Procrustes steps, not a PCA rotation
+with a different name.  The binary control is ITQ binary ADC at 128, 192,
+and 256 coordinates respectively, trained from the same label-free root with
+50 ITQ iterations.  Five predeclared encoder seeds are `42`--`46`.
+
+| Document bytes / continuous-query ADC | Mean coverage@512 | Mean reranked nDCG@10 |
+| --- | ---: | ---: |
+| ITQ binary ADC, 16 B | 0.984313 | 0.800762 |
+| PQ-16, 16 B | 0.976661 | 0.799704 |
+| OPQ-16, 16 B | 0.982220 | 0.800212 |
+| ITQ binary ADC, 24 B | 0.996805 | 0.801357 |
+| PQ-16, 24 B | 0.993419 | 0.801098 |
+| OPQ-16, 24 B | 0.995096 | 0.801347 |
+| ITQ binary ADC, 32 B | 0.999137 | 0.801482 |
+| PQ-16, 32 B | 0.998227 | 0.801438 |
+| OPQ-16, 32 B | 0.998195 | 0.801411 |
+
+For every payload and all five rotations, both PQ and OPQ have lower
+candidate coverage than the matched binary-ADC control.  The observed
+five-seed mean coverage deltas (candidate minus binary) are PQ
+`-0.007652`, `-0.003387`, and `-0.000911`, and OPQ `-0.002093`,
+`-0.001709`, and `-0.000942` at 16, 24, and 32 bytes.  Thirty paired-query
+bootstraps (10,000 replicates, seed `20260806`) retain the per-seed evidence;
+they must be read as conditional intervals for each fixed encoder seed, not
+as an interval over the five rotations.
+
+The result is therefore a no-go for *this* 4-bit equal-payload PQ/OPQ
+frontier on the current fixture: OPQ closes part of the gap at 16 and 24 B,
+but it does not surpass fixed ITQ binary ADC.  It does not claim a production
+latency ordering.  The reference harness performs full stable ordering in
+NumPy, and the early quality rows were executed concurrently; final timing
+numbers are intentionally excluded from the conclusion.  The next separate
+questions remain coarse routing (a pre-retrieval task, not a code index) and
+a locality-aware learned-ADC objective against the retained binary baseline.
