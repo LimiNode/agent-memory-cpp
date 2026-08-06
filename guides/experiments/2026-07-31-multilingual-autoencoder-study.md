@@ -1606,9 +1606,9 @@ at 25%. Thus the intended uncertainty states are genuinely exercised, rather
 than reducing to an ordinary sign code.
 
 The 256-bit attribution control distinguishes the two possible explanations:
-all mask variants modestly exceed plain Hamming-256, so the wildcard carries a
-small signal, but it spends the extra payload bits less effectively than extra
-binary directions. The strongest candidate is the 32-coordinate, 25% mask at
+all mask variants have slightly higher five-seed mean coverage than plain
+Hamming-256, but these attribution differences were not separately
+bootstrap-tested. The strongest candidate is the 32-coordinate, 25% mask at
 36 B, but it still averages `-0.001837` coverage against 288-bit Hamming. Four
 of its five observed same-seed deltas are negative; the remaining delta is
 `+0.000160`. The 16-coordinate, 25% mask at 34 B averages `-0.001869` against
