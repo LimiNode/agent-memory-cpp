@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Evaluate label-free binary and ternary projection codes on materialized E5 data.
+"""Evaluate label-free scalar projection codes on materialized E5 data.
 
 This is a NumPy reference harness, not a production search implementation.  It
 keeps stable-ID tie breaking, emits per-query contributions for paired
-bootstrap, and implements packed base-3 ADC lookup scoring for ternary codes.
+bootstrap, and implements packed base-N ADC lookup scoring for scalar codes.
 """
 
 from __future__ import annotations
@@ -183,17 +183,26 @@ def kmeans_centers(values: Any, iterations: int) -> Any:
     return centers
 
 
-def ternary_tertile_thresholds(values: Any) -> tuple[Any, Any]:
-    return tuple(numpy.quantile(values, (1.0 / 3.0, 2.0 / 3.0), axis=0).astype(numpy.float32))
+def equal_mass_thresholds(values: Any, symbol_count: int) -> Any:
+    if symbol_count < 2:
+        raise EvaluationError("scalar quantizer needs at least two symbols")
+    return numpy.quantile(
+        values,
+        numpy.arange(1, symbol_count, dtype=numpy.float64) / symbol_count,
+        axis=0,
+    ).astype(numpy.float32)
 
 
-def ternary_codes(values: Any, centers: Any | None = None, thresholds: tuple[Any, Any] | None = None) -> Any:
+def scalar_codes(values: Any, centers: Any | None = None, thresholds: Any | None = None) -> Any:
     if centers is not None:
         return numpy.abs(values[:, :, None] - centers[None, :, :]).argmin(axis=2).astype(numpy.uint8)
     if thresholds is None:
-        raise EvaluationError("ternary quantizer is missing centers or thresholds")
-    low, high = thresholds
-    return numpy.where(values < low, 0, numpy.where(values > high, 2, 1)).astype(numpy.uint8)
+        raise EvaluationError("scalar quantizer is missing centers or thresholds")
+    if thresholds.ndim != 2 or thresholds.shape[1] != values.shape[1]:
+        raise EvaluationError("scalar quantizer thresholds are invalid")
+    return numpy.count_nonzero(
+        values[:, :, None] > thresholds.T[None, :, :], axis=2
+    ).astype(numpy.uint8)
 
 
 def pack_codes(codes: Any, symbol_count: int, symbols_per_byte: int) -> Any:
@@ -302,6 +311,7 @@ def write_result(path: Path, report: dict[str, Any], contributions: dict[str, An
     report["per_query_contributions_path"] = str(contribution_path)
     report["per_query_contributions_sha256"] = sha256_file(contribution_path)
     report["per_query_contribution_identity"] = identity
+    report["evaluator_source_sha256"] = sha256_file(Path(__file__))
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
@@ -401,20 +411,20 @@ def evaluate_ternary(args: Any) -> None:
         if args.scoring != "adc":
             raise EvaluationError("Lloyd-Max ternary codes require ADC scoring")
         centers = kmeans_centers(calibration_projection, args.kmeans_iterations)
-        calibration_codes = ternary_codes(calibration_projection, centers=centers)
-        document_codes = ternary_codes(document_projection, centers=centers)
+        calibration_codes = scalar_codes(calibration_projection, centers=centers)
+        document_codes = scalar_codes(document_projection, centers=centers)
         symbol_count = 3; symbols_per_byte = 5; code_assignment = "per_coordinate_lloyd_max_kmeans_v1"; packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
         def candidates(index: int, query: Any) -> Any:
             cost = packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)
             return numpy.lexsort((data["document_ids"], cost))
         scoring = "ternary_adc_packed_base3_lut_v1"; zero_fraction = float(numpy.mean(document_codes == 1))
-    else:
-        thresholds = ternary_tertile_thresholds(calibration_projection)
-        calibration_codes = ternary_codes(calibration_projection, thresholds=thresholds)
-        document_codes = ternary_codes(document_projection, thresholds=thresholds)
+    elif args.quantizer == "tertiles":
+        thresholds = equal_mass_thresholds(calibration_projection, 3)
+        calibration_codes = scalar_codes(calibration_projection, thresholds=thresholds)
+        document_codes = scalar_codes(document_projection, thresholds=thresholds)
         symbol_count = 3; symbols_per_byte = 5; code_assignment = "per_coordinate_tertile_threshold_v1"; centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
         if args.scoring == "symmetric":
-            query_codes = ternary_codes(query_projection, thresholds=thresholds)
+            query_codes = scalar_codes(query_projection, thresholds=thresholds)
             def candidates(index: int, query: Any) -> Any:
                 return numpy.lexsort((data["document_ids"], numpy.abs(document_codes.astype(numpy.int16) - query_codes[index]).sum(axis=1)))
             scoring = "ternary_symmetric_l1_v1"
@@ -424,10 +434,25 @@ def evaluate_ternary(args: Any) -> None:
                 return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)))
             scoring = "ternary_adc_packed_base3_lut_v1"
         zero_fraction = float(numpy.mean(document_codes == 1))
+    elif args.quantizer == "quartiles":
+        if args.scoring != "adc":
+            raise EvaluationError("quartile scalar codes require ADC scoring")
+        thresholds = equal_mass_thresholds(calibration_projection, 4)
+        calibration_codes = scalar_codes(calibration_projection, thresholds=thresholds)
+        document_codes = scalar_codes(document_projection, thresholds=thresholds)
+        symbol_count = 4; symbols_per_byte = 4
+        code_assignment = "per_coordinate_quartile_threshold_v1"
+        centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
+        packed = pack_codes(document_codes, symbol_count, symbols_per_byte)
+        def candidates(index: int, query: Any) -> Any:
+            cost = packed_adc_scores(packed, query_projection[index], centers, symbol_count, symbols_per_byte)
+            return numpy.lexsort((data["document_ids"], cost))
+        scoring = "quaternary_adc_packed_base4_lut_v1"
+        zero_fraction = float(numpy.mean(document_codes == 1))
     metrics, contributions = evaluate_candidates(data, candidates, args.candidate_limit, args.oracle_k)
     payload_bytes = (args.coordinate_count + symbols_per_byte - 1) // symbols_per_byte
     identity = contribution_identity(data, args.candidate_limit, args.oracle_k)
-    write_result(args.output, {"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": args.projection, "quantizer": args.quantizer, "code_assignment": code_assignment, "scoring": scoring, "coordinate_count": args.coordinate_count, "packed_payload_bytes_per_document": payload_bytes, "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "projection_weights_sha256": hashlib.sha256(numpy.asarray(weights, dtype="<f4").tobytes()).hexdigest(), "centroids_sha256": hashlib.sha256(numpy.asarray(centers, dtype="<f4").tobytes()).hexdigest(), "seed": args.seed, "itq_iterations": args.itq_iterations if args.projection == "itq" else 0, "kmeans_iterations": args.kmeans_iterations if args.quantizer == "kmeans" else 0, "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, "zero_symbol_fraction": zero_fraction, "total_marginal_symbol_entropy_bits": total_marginal_entropy_bits(document_codes, symbol_count), **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
+    write_result(args.output, {"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": args.projection, "quantizer": args.quantizer, "code_assignment": code_assignment, "scoring": scoring, "symbol_count": symbol_count, "coordinate_count": args.coordinate_count, "packed_payload_bytes_per_document": payload_bytes, "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "projection_weights_sha256": hashlib.sha256(numpy.asarray(weights, dtype="<f4").tobytes()).hexdigest(), "centroids_sha256": hashlib.sha256(numpy.asarray(centers, dtype="<f4").tobytes()).hexdigest(), "seed": args.seed, "itq_iterations": args.itq_iterations if args.projection == "itq" else 0, "kmeans_iterations": args.kmeans_iterations if args.quantizer == "kmeans" else 0, "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, "zero_symbol_fraction": zero_fraction, "total_marginal_symbol_entropy_bits": total_marginal_entropy_bits(document_codes, symbol_count), **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
 
 
 def bootstrap(args: Any) -> None:
@@ -459,6 +484,8 @@ def bootstrap(args: Any) -> None:
 def write_compact_manifest(args: Any) -> None:
     rows: list[dict[str, Any]] = []
     reference_identity: dict[str, Any] | None = None
+    reference_calibration_manifest_sha256: str | None = None
+    reference_evaluator_source_sha256: str | None = None
     for report_path in args.report:
         try:
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -466,6 +493,14 @@ def write_compact_manifest(args: Any) -> None:
             raise EvaluationError(f"cannot read scalar projection report: {report_path}: {exc}") from exc
         if report.get("schema_version") != 2 or report.get("family") != "scalar_projection_reference_v2":
             raise EvaluationError(f"scalar projection report schema is unsupported: {report_path}")
+        evaluator_source_sha256 = require_sha256(
+            report.get("evaluator_source_sha256"),
+            "scalar projection report evaluator_source_sha256",
+        )
+        calibration_manifest_sha256 = require_sha256(
+            report.get("calibration_materialization_manifest_sha256"),
+            "scalar projection report calibration_materialization_manifest_sha256",
+        )
         identity = validate_contribution_identity(report.get("per_query_contribution_identity"), numpy.load(report_path.parent / Path(report.get("per_query_contributions_path", "")).name, allow_pickle=False)["query_ids"], report.get("query_count"))
         contribution_path = report_path.parent / Path(report.get("per_query_contributions_path", "")).name
         if not contribution_path.is_file() or report.get("per_query_contributions_sha256") != sha256_file(contribution_path):
@@ -474,6 +509,14 @@ def write_compact_manifest(args: Any) -> None:
             reference_identity = identity
         elif identity != reference_identity:
             raise EvaluationError("scalar projection manifest mixes evaluation identities")
+        if reference_calibration_manifest_sha256 is None:
+            reference_calibration_manifest_sha256 = calibration_manifest_sha256
+        elif calibration_manifest_sha256 != reference_calibration_manifest_sha256:
+            raise EvaluationError("scalar projection manifest mixes calibration identities")
+        if reference_evaluator_source_sha256 is None:
+            reference_evaluator_source_sha256 = evaluator_source_sha256
+        elif evaluator_source_sha256 != reference_evaluator_source_sha256:
+            raise EvaluationError("scalar projection manifest mixes evaluator sources")
         rows.append({
             "report_file": report_path.name,
             "report_sha256": sha256_file(report_path),
@@ -483,8 +526,12 @@ def write_compact_manifest(args: Any) -> None:
             "quantizer": report["quantizer"],
             "code_assignment": report["code_assignment"],
             "scoring": report["scoring"],
+            "symbol_count": report["symbol_count"],
             "coordinate_count": report["coordinate_count"],
             "packed_payload_bytes_per_document": report["packed_payload_bytes_per_document"],
+            "calibration_materialization_manifest_sha256": report[
+                "calibration_materialization_manifest_sha256"
+            ],
             "seed": report["seed"],
             "itq_iterations": report["itq_iterations"],
             "kmeans_iterations": report["kmeans_iterations"],
@@ -494,10 +541,10 @@ def write_compact_manifest(args: Any) -> None:
             "reranked_ndcg_at_10": report["reranked_ndcg_at_10"],
             "full_e5_ndcg_at_10": report["full_e5_ndcg_at_10"],
         })
-    if reference_identity is None:
+    if reference_identity is None or reference_calibration_manifest_sha256 is None or reference_evaluator_source_sha256 is None:
         raise EvaluationError("scalar projection manifest needs at least one report")
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps({"schema_version": 1, "family": "scalar_projection_result_manifest_v1", "evaluator_source_sha256": sha256_file(Path(__file__)), "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    args.output.write_text(json.dumps({"schema_version": 1, "family": "scalar_projection_result_manifest_v1", "evaluator_source_sha256": reference_evaluator_source_sha256, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def run_self_test() -> int:
@@ -520,6 +567,11 @@ def run_self_test() -> int:
     binary_centers = numpy.asarray([[0.0, 1.0]] * 8, dtype=numpy.float32)
     if binary_packed.tolist() != [[86]] or not numpy.isclose(packed_adc_scores(binary_packed, numpy.zeros(8, dtype=numpy.float32), binary_centers, 2, 8)[0], 4.0):
         print("self-test failed: packed binary ADC LUT", file=__import__("sys").stderr); return 1
+    quaternary_codes = numpy.asarray([[0, 1, 2, 3]], dtype=numpy.uint8)
+    quaternary_packed = pack_codes(quaternary_codes, 4, 4)
+    quaternary_centers = numpy.asarray([[0.0, 1.0, 2.0, 3.0]] * 4, dtype=numpy.float32)
+    if quaternary_packed.tolist() != [[228]] or not numpy.isclose(packed_adc_scores(quaternary_packed, numpy.zeros(4, dtype=numpy.float32), quaternary_centers, 4, 4)[0], 14.0):
+        print("self-test failed: packed quaternary ADC LUT", file=__import__("sys").stderr); return 1
     entropy = total_marginal_entropy_bits(numpy.asarray([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=numpy.uint8), 2)
     if not numpy.isclose(entropy, 2.0):
         print("self-test failed: total marginal entropy", file=__import__("sys").stderr); return 1
@@ -545,7 +597,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     common = argparse.ArgumentParser(add_help=False); common.add_argument("--evaluation-root", type=Path, required=True); common.add_argument("--output", type=Path, required=True); common.add_argument("--contributions-output", type=Path, required=True); common.add_argument("--oracle-k", type=int, default=10); common.add_argument("--candidate-limit", type=int, default=512)
     binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
-    ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
+    ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
     manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--output", type=Path, required=True)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
