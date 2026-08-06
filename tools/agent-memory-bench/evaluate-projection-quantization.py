@@ -8,6 +8,10 @@ bootstrap, and implements packed base-N ADC lookup scoring for scalar codes.
 
 from __future__ import annotations
 
+import sys
+
+sys.dont_write_bytecode = True
+
 import argparse
 import hashlib
 import json
@@ -20,8 +24,6 @@ from pathlib import Path
 from typing import Any
 
 import numpy
-
-__import__("sys").dont_write_bytecode = True
 
 
 class EvaluationError(RuntimeError):
