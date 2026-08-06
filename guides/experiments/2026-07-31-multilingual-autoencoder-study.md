@@ -1434,3 +1434,56 @@ file, or compact manifest is rejected.
 The release asset preserves the result evidence, not a claim that the local
 environment can be reproduced bit-for-bit. The evaluator runtime and source
 identity remain those captured by the compact manifest and its reports.
+
+### 2026-08-06 two-plane ternary coarse-filter control
+
+This control asks a narrower question than the scalar-ADC grid: whether two
+packed bitplanes can make a useful **symmetric** coarse filter. A ternary
+coordinate uses a `nonzero` plane and a `sign` plane. Its score is the packed
+bitplane identity
+
+```text
+popcount(nonzero_q XOR nonzero_d)
++ 2 * popcount(nonzero_q AND nonzero_d AND (sign_q XOR sign_d))
+```
+
+which exactly equals the low/center/high ternary L1 distance. The evaluator
+has a deterministic parity self-test against the direct ternary calculation.
+
+The held-out RU setup is unchanged: the label-free 25k calibration root and
+22,607-document / 1,252-query evaluation root, ITQ seed `42`, `K=512`, and
+oracle `K=10`. All four rows were rerun from evaluator source SHA-256
+`b63d6bec24c9d356648db9d1d90bf074092f76b3b482a69b608d7ce785fec206`.
+
+| Document code / candidate scorer | Payload | Coverage@512 | Reranked nDCG@10 |
+| --- | ---: | ---: | ---: |
+| ITQ binary, 256 coordinates, Hamming | 32 B | 0.988099 | 0.801356 |
+| ITQ ternary, 128 coordinates, two-plane symmetric | 32 B | 0.982109 | 0.800315 |
+| ITQ binary, 256 coordinates, binary ADC | 32 B | 0.999441 | 0.801451 |
+| ITQ ternary, 128 coordinates, dense base-3 ADC | 26 B | 0.995767 | 0.801425 |
+
+Paired 10,000-replicate query bootstrap (seed `20260806`) makes the result
+unambiguous for candidate recall. At the same 32-byte payload, two-plane
+ternary loses to 256-bit binary Hamming by `-0.005990` coverage (95% CI
+`[-0.009026, -0.003035]`); the nDCG@10 delta is `-0.001041` with CI
+`[-0.002637, +0.000430]`. Replacing the two-plane filter with 256-bit binary
+ADC increases coverage by `+0.017332` (CI `[+0.014537, +0.020367]`), although
+the nDCG delta `+0.001136` has CI `[-0.000257, +0.002602]`.
+
+The NumPy reference candidate-scoring totals were 7.90 seconds for two-plane,
+13.57 seconds for binary Hamming, 43.28 seconds for 128-trit dense ADC, and
+78.34 seconds for 256-bit binary ADC. These include query preparation and
+full stable ordering over all queries, so they are **not** a production speed
+claim: the two-plane implementation is vectorized NumPy `bitwise_count`, not
+the intended C++ POPCNT scan and top-K selection.
+
+For ITQ seed `42`, the full two-plane representation does not improve
+symmetric quality at equal bytes over simply using 256 binary directions, and
+it remains materially below the asymmetric binary ADC frontier. This is a
+query-bootstrap result for one rotation, not yet a five-rotation general
+no-go or a production latency result. The more targeted future coarse-filter
+hypothesis is a binary sign code plus a compact uncertainty mask, rather than
+two state planes for every coordinate. This control does not rule out a
+learned binary-ADC projection, coarse routing, or PQ/OPQ: those are different
+objectives and must each be tested against the fixed-payload ITQ binary-ADC
+baseline.

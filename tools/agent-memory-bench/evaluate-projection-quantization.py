@@ -245,6 +245,32 @@ def pack_codes(codes: Any, symbol_count: int, symbols_per_byte: int) -> Any:
     return result
 
 
+def ternary_two_plane_codes(codes: Any) -> tuple[Any, Any]:
+    """Encodes low/center/high ternary symbols as nonzero and sign bitplanes."""
+    if codes.ndim != 2 or not numpy.isin(codes, (0, 1, 2)).all():
+        raise EvaluationError("two-plane ternary codes are invalid")
+    nonzero = codes != 1
+    sign = codes == 2
+    return (
+        numpy.packbits(nonzero, axis=1, bitorder="little"),
+        numpy.packbits(sign, axis=1, bitorder="little"),
+    )
+
+
+def two_plane_ternary_scores(document_nonzero: Any, document_sign: Any, query_code: Any) -> Any:
+    """Returns symmetric ternary L1 distance through packed bitplane operations."""
+    query_nonzero, query_sign = ternary_two_plane_codes(numpy.asarray([query_code], dtype=numpy.uint8))
+    nonzero_mismatch = numpy.bitwise_xor(document_nonzero, query_nonzero[0])
+    opposite_sign = numpy.bitwise_and(
+        numpy.bitwise_and(document_nonzero, query_nonzero[0]),
+        numpy.bitwise_xor(document_sign, query_sign[0]),
+    )
+    return (
+        numpy.bitwise_count(nonzero_mismatch).sum(axis=1, dtype=numpy.int32)
+        + 2 * numpy.bitwise_count(opposite_sign).sum(axis=1, dtype=numpy.int32)
+    )
+
+
 def packed_lut(query: Any, centers: Any, symbol_count: int, symbols_per_byte: int) -> list[Any]:
     result: list[Any] = []
     for start in range(0, centers.shape[0], symbols_per_byte):
@@ -487,6 +513,21 @@ def evaluate_ternary(args: Any) -> None:
                 query_projection = numpy.clip(query, -1.0, 1.0) @ weights.T
                 return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection, centers, symbol_count, symbols_per_byte)))
             scoring = "ternary_adc_packed_base3_lut_v1"
+    elif args.quantizer == "bitplanes":
+        if args.scoring != "symmetric":
+            raise EvaluationError("two-plane ternary codes require symmetric scoring")
+        thresholds = equal_mass_thresholds(calibration_projection, 3)
+        calibration_codes = scalar_codes(calibration_projection, thresholds=thresholds)
+        document_codes = scalar_codes(document_projection, thresholds=thresholds)
+        symbol_count = 3; symbols_per_byte = 1
+        code_assignment = "per_coordinate_ternary_two_plane_v1"
+        centers = conditional_centers(calibration_projection, calibration_codes, symbol_count)
+        document_nonzero, document_sign = ternary_two_plane_codes(document_codes)
+        def candidates(index: int, query: Any) -> Any:
+            query_projection = numpy.asarray([numpy.clip(query, -1.0, 1.0) @ weights.T])
+            query_code = scalar_codes(query_projection, thresholds=thresholds)[0]
+            return numpy.lexsort((data["document_ids"], two_plane_ternary_scores(document_nonzero, document_sign, query_code)))
+        scoring = "ternary_two_plane_symmetric_popcount_reference_v1"
     elif args.quantizer == "quartiles":
         if args.scoring != "adc":
             raise EvaluationError("quartile scalar codes require ADC scoring")
@@ -503,7 +544,7 @@ def evaluate_ternary(args: Any) -> None:
             return numpy.lexsort((data["document_ids"], cost))
         scoring = "quaternary_adc_packed_base4_lut_v1"
     metrics, contributions = evaluate_candidates(data, candidates, args.candidate_limit, args.oracle_k)
-    payload_bytes = (args.coordinate_count + symbols_per_byte - 1) // symbols_per_byte
+    payload_bytes = (2 * args.coordinate_count + 7) // 8 if args.quantizer == "bitplanes" else (args.coordinate_count + symbols_per_byte - 1) // symbols_per_byte
     identity = contribution_identity(data, args.candidate_limit, args.oracle_k)
     total_entropy = total_marginal_entropy_bits(document_codes, symbol_count)
     maximum_entropy = args.coordinate_count * math.log2(symbol_count)
@@ -850,6 +891,15 @@ def run_self_test() -> int:
     ], dtype=numpy.float32)
     if not numpy.allclose(packed_adc_scores(packed, numpy.zeros(6, dtype=numpy.float32), centers, 3, 5), direct):
         print("self-test failed: packed ADC scalar parity", file=__import__("sys").stderr); return 1
+    two_plane_documents = numpy.asarray([
+        [0, 1, 2, 0, 1, 2, 1, 0],
+        [2, 1, 0, 2, 1, 0, 1, 2],
+    ], dtype=numpy.uint8)
+    two_plane_query = numpy.asarray([0, 1, 2, 2, 1, 0, 1, 2], dtype=numpy.uint8)
+    two_plane_nonzero, two_plane_sign = ternary_two_plane_codes(two_plane_documents)
+    expected_two_plane = numpy.abs(two_plane_documents.astype(numpy.int16) - two_plane_query).sum(axis=1)
+    if not numpy.array_equal(two_plane_ternary_scores(two_plane_nonzero, two_plane_sign, two_plane_query), expected_two_plane):
+        print("self-test failed: two-plane ternary parity", file=__import__("sys").stderr); return 1
     binary_codes = numpy.asarray([[0, 1, 1, 0, 1, 0, 1, 0]], dtype=numpy.uint8)
     binary_packed = pack_codes(binary_codes, 2, 8)
     binary_centers = numpy.asarray([[0.0, 1.0]] * 8, dtype=numpy.float32)
@@ -935,7 +985,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     common = argparse.ArgumentParser(add_help=False); common.add_argument("--evaluation-root", type=Path, required=True); common.add_argument("--output", type=Path, required=True); common.add_argument("--contributions-output", type=Path, required=True); common.add_argument("--oracle-k", type=int, default=10); common.add_argument("--candidate-limit", type=int, default=512)
     binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
-    ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
+    ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles", "bitplanes"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--comparison-id", required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
     manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--comparison", type=Path, action="append", default=[]); manifest.add_argument("--output", type=Path, required=True)
     bundle = sub.add_parser("write-evidence-bundle"); bundle.add_argument("--compact-manifest", type=Path, required=True); bundle.add_argument("--reports-dir", type=Path, required=True); bundle.add_argument("--contributions-dir", type=Path, required=True); bundle.add_argument("--bootstrap-dir", type=Path, required=True); bundle.add_argument("--output", type=Path, required=True)
