@@ -79,6 +79,16 @@ def read_ids(path: Path) -> list[str]:
     return values
 
 
+def parse_qrel_grade(value: str, line_number: int) -> int:
+    try:
+        grade = int(value)
+    except ValueError as exc:
+        raise EvaluationError(f"qrels line {line_number} has an invalid grade") from exc
+    if grade < 0:
+        raise EvaluationError(f"qrels line {line_number} has a negative grade")
+    return grade
+
+
 def load_root(root: Path) -> dict[str, Any]:
     try:
         manifest_path = root / "manifest.json"
@@ -130,10 +140,7 @@ def load_root(root: Path) -> dict[str, Any]:
         query_id, _, document_id, grade = fields
         if query_id not in qrels or document_id not in document_set:
             raise EvaluationError("qrels references unavailable materialized IDs")
-        try:
-            qrels[query_id][document_id] = int(grade)
-        except ValueError as exc:
-            raise EvaluationError(f"qrels line {line_number} has an invalid grade") from exc
+        qrels[query_id][document_id] = parse_qrel_grade(grade, line_number)
     if qrels_entry.get("count") != sum(len(values) for values in qrels.values()) or any(not values for values in qrels.values()):
         raise EvaluationError("materialization qrels coverage is invalid")
     embedding_identity = {name: embedding[name] for name in ("model_id", "model_revision", "query_prefix", "document_prefix", "normalized")}
@@ -264,9 +271,16 @@ def dcg_at_10(ranked_ids: Any, grades: dict[str, int]) -> float:
     denominator = sum((2.0 ** grade - 1.0) / math.log2(rank + 2.0) for rank, grade in enumerate(ideal))
     if not denominator:
         return 0.0
+    return bounded_ndcg(value / denominator)
+
+
+def bounded_ndcg(ratio: float) -> float:
     # Different summation orders for equally ideal rankings can exceed one by a
     # floating-point ulp; nDCG is semantically bounded by its definition.
-    return min(1.0, max(0.0, value / denominator))
+    tolerance = 1.0e-12
+    if ratio < -tolerance or ratio > 1.0 + tolerance:
+        raise EvaluationError(f"nDCG outside semantic bounds: {ratio}")
+    return min(1.0, max(0.0, ratio))
 
 
 def contribution_identity(data: dict[str, Any], candidate_limit: int, oracle_k: int) -> dict[str, Any]:
@@ -511,6 +525,7 @@ def bootstrap(args: Any) -> None:
 def write_compact_manifest(args: Any) -> None:
     rows: list[dict[str, Any]] = []
     contribution_hashes: set[str] = set()
+    contribution_paths: dict[str, Path] = {}
     reference_identity: dict[str, Any] | None = None
     reference_calibration_manifest_sha256: str | None = None
     reference_evaluator_source_sha256: str | None = None
@@ -581,6 +596,7 @@ def write_compact_manifest(args: Any) -> None:
             raise EvaluationError("scalar projection manifest mixes evaluator runtimes")
         contribution_sha256 = sha256_file(contribution_path)
         contribution_hashes.add(contribution_sha256)
+        contribution_paths.setdefault(contribution_sha256, contribution_path)
         rows.append({
             "report_file": report_path.name,
             "report_sha256": sha256_file(report_path),
@@ -637,6 +653,12 @@ def write_compact_manifest(args: Any) -> None:
             interval = metric.get("percentile_95_ci")
             if isinstance(difference, bool) or not isinstance(difference, (int, float)) or not math.isfinite(difference) or not isinstance(interval, list) or len(interval) != 2 or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) for value in interval) or interval[0] > interval[1]:
                 raise EvaluationError(f"bootstrap comparison interval is invalid: {comparison_path}")
+            with numpy.load(contribution_paths[left_sha256], allow_pickle=False) as left, numpy.load(contribution_paths[right_sha256], allow_pickle=False) as right:
+                if left[source_name].shape != right[source_name].shape or not numpy.array_equal(left["query_ids"], right["query_ids"]):
+                    raise EvaluationError(f"bootstrap comparison contributions differ: {comparison_path}")
+                observed_difference = float(numpy.mean(right[source_name] - left[source_name]))
+            if not math.isclose(float(difference), observed_difference, rel_tol=0.0, abs_tol=1.0e-12):
+                raise EvaluationError(f"bootstrap comparison observed difference differs from contributions: {comparison_path}")
             entry[f"{target_name}_delta"] = float(difference)
             entry[f"{target_name}_percentile_95_ci"] = [float(interval[0]), float(interval[1])]
         comparison_ids.add(comparison_id)
@@ -677,6 +699,16 @@ def run_self_test() -> int:
     ideal_grades = {"d0": 1, "d1": 1, "d2": 1, "d3": 3}
     if dcg_at_10(ideal_ids, ideal_grades) != 1.0:
         print("self-test failed: nDCG upper bound", file=__import__("sys").stderr); return 1
+    try:
+        bounded_ndcg(1.02)
+        print("self-test failed: nDCG semantic violation accepted", file=__import__("sys").stderr); return 1
+    except EvaluationError:
+        pass
+    try:
+        parse_qrel_grade("-1", 1)
+        print("self-test failed: negative qrel grade accepted", file=__import__("sys").stderr); return 1
+    except EvaluationError:
+        pass
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         query_ids = numpy.asarray(["q0", "q1"], dtype=numpy.str_)
@@ -690,6 +722,15 @@ def run_self_test() -> int:
         left_report = root / "left.json"; right_report = root / "right.json"
         report_for(left_report, left_path); report_for(right_report, right_path)
         write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "manifest.json"))
+        corrupted_bootstrap = json.loads((root / "bootstrap.json").read_text(encoding="utf-8"))
+        corrupted_bootstrap["metrics"]["coverage_at_candidate_limit"]["observed_difference"] = 0.25
+        (root / "bootstrap.json").write_text(json.dumps(corrupted_bootstrap, sort_keys=True), encoding="utf-8", newline="\n")
+        try:
+            write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "unexpected-bootstrap-manifest.json"))
+            print("self-test failed: bootstrap difference mismatch accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
+        bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "bootstrap.json", replicates=8, seed=42, comparison_id="self_test"))
         corrupted = json.loads(left_report.read_text(encoding="utf-8")); corrupted["exact_top_k_candidate_coverage"] = 0.5
         left_report.write_text(json.dumps(corrupted, sort_keys=True), encoding="utf-8", newline="\n")
         try:
