@@ -1221,7 +1221,7 @@ ADC are covered by a deterministic parity self-test. These findings do not yet
 establish a production speed win: an independently benchmarked C++ packed-LUT
 implementation and multiple initialization seeds remain required.
 
-### Corrected scalar-quantization attribution and rate--distortion study
+### Initial scalar-quantization attribution and rate--distortion grid
 
 The preceding ternary table is retained as a historical directional run. It did
 not yet contain the matched two-centroid float-query ADC baseline, did not bind
@@ -1315,3 +1315,87 @@ an independently benchmarked C++ packed-LUT scorer and top-K selection; banded
 MDBX access remains a later decision. The compact provenance record for every
 reported scalar row is
 [`2026-08-06-scalar-projection-rate-distortion-manifest.json`](2026-08-06-scalar-projection-rate-distortion-manifest.json).
+
+### 2026-08-06 reproducibility correction: complete five-seed scalar grid
+
+The preceding scalar section is retained as historical evidence, but its
+multi-seed table was incomplete: seeds `43`--`46` covered Hamming and ternary
+ADC rows only. It therefore could not support a five-seed ordering of binary,
+ternary, and quaternary ADC. The evaluator and all scalar rows were rerun
+after the methodology fixes. The final compact manifest is schema v2 and
+contains 50 rows plus 32 linked paired-bootstrap reports. It recomputes every
+reported aggregate from the referenced per-query NPZ contributions, validates
+their schemas and ranges, and rejects a mixed source/runtime/fixture set.
+
+The final evaluator source SHA-256 is
+`5a3a408724ec5d390b29979d7038b8efee5a6d26ef939551539bdba998945e77`.
+All rows use CPython `3.12.13`, NumPy `2.4.6`, the same 25k calibration and
+held-out RU fixture as above, 22,607 evaluation documents, 1,252 queries,
+`K=512`, and oracle `K=10`. Per-row code-health provenance records symbol
+frequencies and total *marginal* symbol entropy; this is not a claim about the
+joint entropy of a packed code.
+
+For the following table, each value is the mean across the five ITQ rotation
+seeds `42`--`46`, followed by population SD and seed range. The five-seed
+result now covers all three equal-payload ADC families.
+
+| Document code / scoring | Payload | Coverage@512: mean +/- SD [min, max] | Reranked nDCG@10: mean +/- SD [min, max] |
+| --- | ---: | ---: | ---: |
+| Binary 128, Hamming | 16 B | 0.938626 +/- 0.001740 [0.935383, 0.940096] | 0.792771 +/- 0.002118 [0.790214, 0.796060] |
+| Binary 128, 2-centroid ADC | 16 B | 0.984313 +/- 0.001190 [0.982748, 0.986022] | 0.800762 +/- 0.000347 [0.800336, 0.801214] |
+| Ternary 80, 3-centroid ADC | 16 B | 0.967955 +/- 0.001426 [0.965974, 0.969728] | 0.798057 +/- 0.000651 [0.797545, 0.799339] |
+| Quaternary 64, 4-centroid ADC | 16 B | 0.951741 +/- 0.000989 [0.950479, 0.953275] | 0.795541 +/- 0.001147 [0.794385, 0.797277] |
+| Binary 208, Hamming | 26 B | 0.980942 +/- 0.000855 [0.979553, 0.981949] | 0.800185 +/- 0.000681 [0.799024, 0.801127] |
+| Binary 208, 2-centroid ADC | 26 B | 0.997764 +/- 0.000375 [0.997284, 0.998243] | 0.801465 +/- 0.000114 [0.801255, 0.801584] |
+| Ternary 128, 3-centroid ADC | 26 B | 0.995543 +/- 0.000301 [0.994968, 0.995767] | 0.801308 +/- 0.000205 [0.800943, 0.801521] |
+| Quaternary 104, 4-centroid ADC | 26 B | 0.992859 +/- 0.000433 [0.992173, 0.993450] | 0.801251 +/- 0.000259 [0.800927, 0.801586] |
+
+The paired seed differences make the attribution explicit. Each cell is the
+mean difference of right minus left over the five rotations, followed by
+population SD and seed range.
+
+| Transition | Coverage delta: mean +/- SD [min, max] | nDCG@10 delta: mean +/- SD [min, max] |
+| --- | ---: | ---: |
+| Hamming 128 -> binary ADC 128 | +0.045687 +/- 0.001229 [+0.044409, +0.047923] | +0.007991 +/- 0.001792 [+0.005154, +0.010161] |
+| Binary ADC 128 -> ternary ADC 80 | -0.016358 +/- 0.000964 [-0.017492, -0.014936] | -0.002705 +/- 0.000555 [-0.003404, -0.001874] |
+| Ternary ADC 80 -> quaternary ADC 64 | -0.016214 +/- 0.001941 [-0.018770, -0.013658] | -0.002517 +/- 0.001574 [-0.004954, -0.000586] |
+| Hamming 208 -> binary ADC 208 | +0.016821 +/- 0.001153 [+0.015415, +0.018690] | +0.001280 +/- 0.000700 [+0.000342, +0.002522] |
+| Binary ADC 208 -> ternary ADC 128 | -0.002220 +/- 0.000478 [-0.002955, -0.001597] | -0.000156 +/- 0.000201 [-0.000529, +0.000052] |
+| Ternary ADC 128 -> quaternary ADC 104 | -0.002684 +/- 0.000588 [-0.003514, -0.001837] | -0.000058 +/- 0.000313 [-0.000594, +0.000352] |
+
+These seed-to-seed summaries are different from query-bootstrap uncertainty.
+For every transition and seed, the manifest links the exact left/right NPZ
+hashes to a 10,000-replicate paired bootstrap with seed `20260806`. For
+example, seed 42 gives binary-128 ADC minus Hamming coverage `+0.047923`, 95%
+CI `[+0.043051, +0.052955]`, and nDCG@10 `+0.008274`, CI
+`[+0.005154, +0.011646]`. Its equal-16-B binary-128 minus ternary-80 delta is
+coverage `+0.017332`, CI `[+0.013498, +0.021246]`, and nDCG@10 `+0.003234`,
+CI `[+0.000984, +0.005622]`. The CI is conditional on the fixed rotation and
+the sampled query population; it is not a confidence interval over rotations.
+
+The corrected same-coordinate seed-42 controls are also retained: binary ADC
+at 80 coordinates (10 B) reaches coverage `0.934425`, whereas ternary ADC at
+80 coordinates (16 B) reaches `0.965974` (delta `+0.031550`, bootstrap CI
+`[+0.027476, +0.035783]`). At 128 coordinates, binary ADC is 16 B and has
+coverage `0.983307`; ternary ADC is 26 B and has `0.995767` (delta
+`+0.012460`, CI `[+0.010064, +0.015016]`). Thus extra symbols help when they
+also consume extra bytes, but they lose at the two equal-payload operating
+points. PCA directional controls show the same ordering: binary/ternary/
+quaternary coverage is `0.969089 / 0.957428 / 0.944010` at 16 B and
+`0.992572 / 0.992252 / 0.989617` at 26 B.
+
+The metric named
+`reference_candidate_search_seconds_including_query_encoding_and_full_ordering`
+is the total across 1,252 queries. It includes query projection, symmetric
+query quantization where applicable, ADC LUT construction, candidate scoring,
+and stable full ordering. It excludes full-E5 reference scoring, exact float
+reranking, document-code materialization, process startup, and warm-up; it is
+therefore not a production latency claim. This is a two-payload
+rate--distortion *grid*, not a curve.
+
+The corrected conclusion is limited but strong: on this held-out RU fixture,
+asymmetric two-centroid binary ADC consistently uses fixed document bytes more
+effectively than the matched ternary and quaternary scalar codes. All scalar
+codes remain candidate generators only; exact float reranking still requires
+retained float vectors. A C++ packed-LUT plus top-K benchmark and a larger
+multi-payload grid remain separate future work.

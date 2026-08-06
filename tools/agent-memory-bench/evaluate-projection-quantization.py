@@ -262,7 +262,11 @@ def dcg_at_10(ranked_ids: Any, grades: dict[str, int]) -> float:
         value += (2.0 ** grades.get(str(document_id), 0) - 1.0) / math.log2(rank + 2.0)
     ideal = sorted(grades.values(), reverse=True)[:10]
     denominator = sum((2.0 ** grade - 1.0) / math.log2(rank + 2.0) for rank, grade in enumerate(ideal))
-    return value / denominator if denominator else 0.0
+    if not denominator:
+        return 0.0
+    # Different summation orders for equally ideal rankings can exceed one by a
+    # floating-point ulp; nDCG is semantically bounded by its definition.
+    return min(1.0, max(0.0, value / denominator))
 
 
 def contribution_identity(data: dict[str, Any], candidate_limit: int, oracle_k: int) -> dict[str, Any]:
@@ -669,6 +673,10 @@ def run_self_test() -> int:
     entropy = total_marginal_entropy_bits(numpy.asarray([[0, 0], [0, 1], [1, 0], [1, 1]], dtype=numpy.uint8), 2)
     if not numpy.isclose(entropy, 2.0):
         print("self-test failed: total marginal entropy", file=__import__("sys").stderr); return 1
+    ideal_ids = numpy.asarray(["d3", "d1", "d2", "d0"])
+    ideal_grades = {"d0": 1, "d1": 1, "d2": 1, "d3": 3}
+    if dcg_at_10(ideal_ids, ideal_grades) != 1.0:
+        print("self-test failed: nDCG upper bound", file=__import__("sys").stderr); return 1
     with tempfile.TemporaryDirectory() as temporary:
         root = Path(temporary)
         query_ids = numpy.asarray(["q0", "q1"], dtype=numpy.str_)
