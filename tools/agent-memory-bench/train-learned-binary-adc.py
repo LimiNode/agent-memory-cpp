@@ -447,19 +447,61 @@ def run_end_to_end_self_test() -> int:
         evaluator = importlib.util.module_from_spec(specification); specification.loader.exec_module(evaluator)
         data = evaluator.load_root(root)
         _, projection, thresholds, centers = evaluator.load_learned_binary_adc_artifact(output / "artifact.json", data, data)
+        evaluator.load_learned_binary_adc_artifact(
+            output / "initial-itq-control-artifact.json", data, data
+        )
         codes = ((data["documents"] @ projection.T) + thresholds >= 0.0).astype(numpy.uint8)
         packed = evaluator.pack_codes(codes, 2, 8)
         query = data["queries"][0] @ projection.T
         direct = numpy.sum((query[None, :] - centers[numpy.arange(2), codes]) ** 2, axis=1)
         if not numpy.allclose(evaluator.packed_adc_scores(packed, query, centers, 2, 8), direct):
             print("end-to-end self-test failed: packed ADC parity", file=sys.stderr); return 1
-        corrupted = json.loads((output / "artifact.json").read_text(encoding="utf-8")); corrupted["weights"]["thresholds"]["sha256"] = "0" * 64
-        corrupted_path = output / "corrupted-artifact.json"; corrupted_path.write_text(json.dumps(corrupted), encoding="utf-8", newline="\n")
-        try:
-            evaluator.load_learned_binary_adc_artifact(corrupted_path, data, data)
-            print("end-to-end self-test failed: corrupt artifact accepted", file=sys.stderr); return 1
-        except evaluator.EvaluationError:
-            pass
+        def require_rejection(
+            artifact_name: str,
+            source_name: str,
+            mutate: Any,
+        ) -> bool:
+            corrupted = json.loads((output / source_name).read_text(encoding="utf-8"))
+            mutate(corrupted)
+            corrupted_path = output / artifact_name
+            corrupted_path.write_text(json.dumps(corrupted), encoding="utf-8", newline="\n")
+            try:
+                evaluator.load_learned_binary_adc_artifact(corrupted_path, data, data)
+            except evaluator.EvaluationError:
+                return True
+            return False
+
+        mutations = (
+            (
+                "corrupted-weight-artifact.json",
+                lambda artifact: artifact["weights"]["thresholds"].update({"sha256": "0" * 64}),
+            ),
+            (
+                "corrupted-epochs-artifact.json",
+                lambda artifact: artifact["training"].update({"epochs": 0}),
+            ),
+            (
+                "corrupted-selected-epoch-artifact.json",
+                lambda artifact: artifact["training"]["validation"].update({"selected_epoch": 0}),
+            ),
+            (
+                "corrupted-split-artifact.json",
+                lambda artifact: artifact["training"]["validation"].update({"train_document_ids_sha256": "0" * 64}),
+            ),
+            (
+                "corrupted-health-artifact.json",
+                lambda artifact: artifact["training"]["hard_code_health"]["train"].update({"minimum_bit_occupancy": 0.001}),
+            ),
+        )
+        for artifact_name, mutate in mutations:
+            if not require_rejection(artifact_name, "artifact.json", mutate):
+                print(f"end-to-end self-test failed: {artifact_name} accepted", file=sys.stderr); return 1
+        if not require_rejection(
+            "corrupted-zero-step-control.json",
+            "initial-itq-control-artifact.json",
+            lambda artifact: artifact["training"]["validation"].update({"selected_epoch": 1}),
+        ):
+            print("end-to-end self-test failed: corrupt zero-step control accepted", file=sys.stderr); return 1
         for name in ("train", "documents", "queries"):
             data[name]._mmap.close()
     print("learned binary ADC end-to-end self-test passed"); return 0
