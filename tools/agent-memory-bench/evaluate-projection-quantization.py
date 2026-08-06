@@ -586,6 +586,51 @@ def load_learned_binary_adc_artifact(path: Path, data: dict[str, Any], calibrati
     }
     if artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"] or training.get("queries_or_qrels_used") is not False or training.get("objective") not in allowed_objectives or training.get("source_materialization_outputs_sha256") != canonical_json_sha256(calibration["output_hashes"]):
         raise EvaluationError("learned ADC artifact provenance is incompatible")
+    require_sha256(training.get("source_materialization_outputs_sha256"), "artifact.training.source_materialization_outputs_sha256")
+    for name in ("seed", "epochs", "batch_size", "itq_iterations", "torch_threads"):
+        value = training.get(name)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 0 or (name in {"batch_size", "itq_iterations", "torch_threads"} and value == 0):
+            raise EvaluationError(f"learned ADC training.{name} is invalid")
+    for name in ("learning_rate", "temperature"):
+        value = training.get(name)
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0.0:
+            raise EvaluationError(f"learned ADC training.{name} is invalid")
+    loss_weights = training.get("loss_weights")
+    if not isinstance(loss_weights, dict) or set(loss_weights) != {"geometry", "quantization", "orthogonality", "balance"} or any(isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0.0 for value in loss_weights.values()) or loss_weights["geometry"] != 1.0:
+        raise EvaluationError("learned ADC loss weights are invalid")
+    validation = training.get("validation")
+    if not isinstance(validation, dict) or validation.get("id") != "stable_sha256_document_split_v1" or set(validation) != {"id", "fraction", "train_document_ids_sha256", "validation_document_ids_sha256", "selected_epoch", "selected_document_only_loss"}:
+        raise EvaluationError("learned ADC validation provenance is invalid")
+    if isinstance(validation["fraction"], bool) or not isinstance(validation["fraction"], (int, float)) or not math.isfinite(validation["fraction"]) or not 0.0 < validation["fraction"] < 0.5:
+        raise EvaluationError("learned ADC validation fraction is invalid")
+    require_sha256(validation["train_document_ids_sha256"], "artifact.training.validation.train_document_ids_sha256")
+    require_sha256(validation["validation_document_ids_sha256"], "artifact.training.validation.validation_document_ids_sha256")
+    selected_epoch = validation["selected_epoch"]
+    if isinstance(selected_epoch, bool) or not isinstance(selected_epoch, int):
+        raise EvaluationError("learned ADC selected epoch is invalid")
+    selected_loss = validation["selected_document_only_loss"]
+    if training["objective"] == "initial_itq_binary_adc_control_v1":
+        if training["epochs"] != 0 or selected_epoch != 0 or selected_loss is not None:
+            raise EvaluationError("zero-step learned ADC control provenance is invalid")
+    elif selected_epoch < 1 or selected_epoch > training["epochs"] or isinstance(selected_loss, bool) or not isinstance(selected_loss, (int, float)) or not math.isfinite(selected_loss):
+        raise EvaluationError("learned ADC checkpoint provenance is invalid")
+    health = training.get("hard_code_health")
+    if not isinstance(health, dict) or set(health) != {"train", "validation"}:
+        raise EvaluationError("learned ADC hard-code health is invalid")
+    for partition in health.values():
+        if not isinstance(partition, dict) or set(partition) != {"vector_count", "unique_code_count", "unique_code_fraction", "constant_bit_count", "minimum_bit_occupancy", "maximum_bit_occupancy"}:
+            raise EvaluationError("learned ADC hard-code health entry is invalid")
+        vector_count = partition["vector_count"]
+        unique_count = partition["unique_code_count"]
+        constant_count = partition["constant_bit_count"]
+        if any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in (vector_count, unique_count, constant_count)) or vector_count <= 0 or unique_count > vector_count or constant_count > bit_count:
+            raise EvaluationError("learned ADC hard-code health count is invalid")
+        for name in ("unique_code_fraction", "minimum_bit_occupancy", "maximum_bit_occupancy"):
+            value = partition[name]
+            if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or not 0.0 <= value <= 1.0:
+                raise EvaluationError("learned ADC hard-code health value is invalid")
+        if partition["minimum_bit_occupancy"] > partition["maximum_bit_occupancy"] or not math.isclose(partition["unique_code_fraction"], unique_count / vector_count, rel_tol=0.0, abs_tol=1.0e-12):
+            raise EvaluationError("learned ADC hard-code health is inconsistent")
     projection = require_artifact_weight(path.parent, weights.get("projection_weights"), [bit_count, data["dimension"]], "row_major_out_by_in", "projection_weights")
     thresholds = require_artifact_weight(path.parent, weights.get("thresholds"), [bit_count], None, "thresholds")
     centroids = require_artifact_weight(path.parent, weights.get("centroids"), [bit_count, 2], "coordinate_symbol", "centroids")

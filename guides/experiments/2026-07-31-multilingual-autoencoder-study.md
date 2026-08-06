@@ -1541,19 +1541,32 @@ baseline and is not a candidate for the next implementation stage.
 
 Hard-code health rules out trivial code collapse: both the control and learned
 checkpoint have no constant bits and a unique-code fraction of 1.0 on both the
-optimizer and validation partitions. It instead identifies threshold drift as
-the immediate failure mode. The zero-step control has train occupancy exactly
+optimizer and validation partitions. Threshold drift is the clearest correlated
+failure signature, but its causal contribution is not yet isolated from the
+simultaneous projection and centroid updates. The zero-step control has train occupancy exactly
 `0.500` per bit (validation range `0.478`--`0.534`); the learned checkpoint has
 train occupancy range `0.168`--`0.830` and validation range `0.157`--`0.844`.
-The batch balance penalty did not preserve the global median property, and the
-resulting uneven partitions lost document-query locality.
+The batch balance penalty did not preserve the global median property. A future
+ablation must separately recalibrate or freeze thresholds and centroids before
+assigning causality for the coverage loss.
 
 Raw artifacts are intentionally retained outside Git under
 `tmp/learned-binary-adc-128-seed42-fair-control/`: the learned artifact,
 zero-step-control artifact, two reports, paired contribution NPZ files, and
-bootstrap report. The trainer and evaluator self-tests passed, as did their
-registered CTest entries. This is one deterministic initialization seed and a
+bootstrap report. Their reviewable copy is the draft release asset
+[`learned-binary-adc-seed42-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-0ba4ebba4d9eb8546f3c/learned-binary-adc-seed42-evidence-v1.zip):
+archive SHA-256 `b86af919f1bea3316b3608f91d9e9536df23cf85a128f966b114b7412cbe4af7`,
+bundle-root SHA-256 `b7330c34df74004b9e3a4b373743eca0b397e0caf843722204df82117180b21e`.
+The bundle contains the exact trainer/evaluator source snapshots identified by
+the artifacts and reports, the materialization manifest, and an enumerated
+hash-and-size manifest for all 17 payload files. The lightweight trainer and
+evaluator self-tests passed, as did their registered CTest entries; a separate
+pinned-Torch synthetic end-to-end self-test now covers training, artifact
+emission/loading, packed-ADC parity, and corrupted-weight rejection. This is
+one deterministic initialization seed and a
 reference NumPy full-ordering evaluator; its search seconds are not production
 latency measurements. A future learned-ADC line must first make median or
-global-occupancy preservation a hard or explicitly validated contract, then
-compare against this zero-step control before spending a multi-seed budget.
+global-occupancy preservation a hard or explicitly validated contract, use a
+fixed locality-aware validation-pair set rather than contiguous validation
+chunks, then compare against this zero-step control before spending a multi-seed
+budget.

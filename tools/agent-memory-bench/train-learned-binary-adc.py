@@ -6,12 +6,14 @@ from __future__ import annotations
 import argparse
 import hashlib
 import importlib.metadata
+import importlib.util
 import json
 import math
 import platform
 import random
 import struct
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -231,7 +233,7 @@ def train(args: Any) -> dict[str, Any]:
         teacher = values @ values.T
         mask = ~torch.eye(len(values), dtype=torch.bool)
         def normalize(scores: Any) -> Any:
-            return (scores - scores.mean(dim=1, keepdim=True)) / scores.std(dim=1, keepdim=True).clamp_min(1.0e-6)
+            return (scores - scores.mean(dim=1, keepdim=True)) / scores.std(dim=1, keepdim=True, unbiased=False).clamp_min(1.0e-6)
         geometry = torch.mean((normalize(student)[mask] - normalize(teacher)[mask]) ** 2)
         quantization = torch.mean((projected - decoded) ** 2)
         orthogonality = torch.mean((weight @ weight.T - identity) ** 2)
@@ -383,6 +385,7 @@ def train(args: Any) -> dict[str, Any]:
     initial_artifact["weights"] = initial_descriptors
     (args.output_root / "artifact.json").write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     (args.output_root / "initial-itq-control-artifact.json").write_text(json.dumps(initial_artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    vectors._mmap.close()
     return artifact
 
 
@@ -399,10 +402,74 @@ def run_self_test() -> int:
     print("learned binary ADC trainer self-test passed"); return 0
 
 
+def run_end_to_end_self_test() -> int:
+    """Exercise the pinned Torch trainer and evaluator on a tiny materialization."""
+    verify_environment()
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary) / "materialization"
+        root.mkdir()
+        generator = numpy.random.default_rng(7)
+        dimension = 4
+        train_ids = [f"train-{index}" for index in range(20)]
+        document_ids = [f"document-{index}" for index in range(6)]
+        query_ids = ["query-0", "query-1"]
+
+        def normalized(count: int) -> Any:
+            values = generator.normal(size=(count, dimension)).astype(numpy.float32)
+            return values / numpy.linalg.norm(values, axis=1, keepdims=True)
+
+        training_vectors = normalized(len(train_ids)); documents = normalized(len(document_ids)); queries = normalized(len(query_ids))
+        output_entries: dict[str, dict[str, Any]] = {}
+
+        def ids_output(name: str, ids: list[str]) -> None:
+            path = root / f"{name}.jsonl"
+            path.write_text("".join(json.dumps({"id": identifier}) + "\n" for identifier in ids), encoding="utf-8", newline="\n")
+            output_entries[name] = {"path": path.name, "sha256": sha256_file(path), "count": len(ids)}
+
+        def vectors_output(name: str, values: Any) -> None:
+            path = root / f"{name}.f32"
+            path.write_bytes(numpy.asarray(values, dtype="<f4").tobytes())
+            output_entries[name] = {"path": path.name, "sha256": sha256_file(path), "count": len(values), "dimension": dimension, "dtype": "float32_le"}
+
+        ids_output("train_ids", train_ids); ids_output("evaluation_document_ids", document_ids); ids_output("evaluation_query_ids", query_ids)
+        vectors_output("train_vectors", training_vectors); vectors_output("evaluation_document_vectors", documents); vectors_output("evaluation_query_vectors", queries)
+        qrels_path = root / "evaluation-qrels.tsv"
+        qrels_path.write_text("query-0 0 document-0 1\nquery-1 0 document-1 1\n", encoding="utf-8", newline="\n")
+        output_entries["evaluation_qrels"] = {"path": qrels_path.name, "sha256": sha256_file(qrels_path), "count": 2}
+        manifest = {"schema_version": 1, "prepared_study_manifest_sha256": "a" * 64, "vector_format": {"dimension": dimension, "dtype": "float32_le", "endianness": "little"}, "embedding": {"model_id": "self-test", "model_revision": "self-test", "query_prefix": "query: ", "document_prefix": "passage: ", "normalized": True}, "outputs": output_entries}
+        (root / "manifest.json").write_text(json.dumps(manifest, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        output = Path(temporary) / "artifact"
+        args = argparse.Namespace(materialization_root=root, output_root=output, bit_count=2, seed=42, epochs=2, batch_size=4, learning_rate=1.0e-3, temperature=4.0, quantization_weight=0.1, orthogonality_weight=0.1, balance_weight=0.1, validation_fraction=0.2, itq_iterations=2, torch_threads=1)
+        train(args)
+        specification = importlib.util.spec_from_file_location("learned_adc_evaluator", Path(__file__).with_name("evaluate-projection-quantization.py"))
+        if specification is None or specification.loader is None:
+            print("end-to-end self-test failed: evaluator import", file=sys.stderr); return 1
+        evaluator = importlib.util.module_from_spec(specification); specification.loader.exec_module(evaluator)
+        data = evaluator.load_root(root)
+        _, projection, thresholds, centers = evaluator.load_learned_binary_adc_artifact(output / "artifact.json", data, data)
+        codes = ((data["documents"] @ projection.T) + thresholds >= 0.0).astype(numpy.uint8)
+        packed = evaluator.pack_codes(codes, 2, 8)
+        query = data["queries"][0] @ projection.T
+        direct = numpy.sum((query[None, :] - centers[numpy.arange(2), codes]) ** 2, axis=1)
+        if not numpy.allclose(evaluator.packed_adc_scores(packed, query, centers, 2, 8), direct):
+            print("end-to-end self-test failed: packed ADC parity", file=sys.stderr); return 1
+        corrupted = json.loads((output / "artifact.json").read_text(encoding="utf-8")); corrupted["weights"]["thresholds"]["sha256"] = "0" * 64
+        corrupted_path = output / "corrupted-artifact.json"; corrupted_path.write_text(json.dumps(corrupted), encoding="utf-8", newline="\n")
+        try:
+            evaluator.load_learned_binary_adc_artifact(corrupted_path, data, data)
+            print("end-to-end self-test failed: corrupt artifact accepted", file=sys.stderr); return 1
+        except evaluator.EvaluationError:
+            pass
+        for name in ("train", "documents", "queries"):
+            data[name]._mmap.close()
+    print("learned binary ADC end-to-end self-test passed"); return 0
+
+
 def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true"); parser.add_argument("--materialization-root", type=Path); parser.add_argument("--output-root", type=Path); parser.add_argument("--bit-count", type=int, default=128); parser.add_argument("--seed", type=int, default=42); parser.add_argument("--epochs", type=int, default=12); parser.add_argument("--batch-size", type=int, default=128); parser.add_argument("--learning-rate", type=float, default=1.0e-3); parser.add_argument("--temperature", type=float, default=4.0); parser.add_argument("--quantization-weight", type=float, default=0.1); parser.add_argument("--orthogonality-weight", type=float, default=0.1); parser.add_argument("--balance-weight", type=float, default=0.1); parser.add_argument("--validation-fraction", type=float, default=0.2); parser.add_argument("--itq-iterations", type=int, default=50); parser.add_argument("--torch-threads", type=int, default=18); args = parser.parse_args(argv)
+    parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true"); parser.add_argument("--end-to-end-self-test", action="store_true"); parser.add_argument("--materialization-root", type=Path); parser.add_argument("--output-root", type=Path); parser.add_argument("--bit-count", type=int, default=128); parser.add_argument("--seed", type=int, default=42); parser.add_argument("--epochs", type=int, default=12); parser.add_argument("--batch-size", type=int, default=128); parser.add_argument("--learning-rate", type=float, default=1.0e-3); parser.add_argument("--temperature", type=float, default=4.0); parser.add_argument("--quantization-weight", type=float, default=0.1); parser.add_argument("--orthogonality-weight", type=float, default=0.1); parser.add_argument("--balance-weight", type=float, default=0.1); parser.add_argument("--validation-fraction", type=float, default=0.2); parser.add_argument("--itq-iterations", type=int, default=50); parser.add_argument("--torch-threads", type=int, default=18); args = parser.parse_args(argv)
     try:
         if args.self_test: return run_self_test()
+        if args.end_to_end_self_test: return run_end_to_end_self_test()
         if args.materialization_root is None or args.output_root is None: parser.error("--materialization-root and --output-root are required")
         artifact = train(args); print(f"trained learned binary ADC with {artifact['architecture']['bit_count']} bits")
     except (TrainingError, OSError, ValueError, json.JSONDecodeError) as error:
