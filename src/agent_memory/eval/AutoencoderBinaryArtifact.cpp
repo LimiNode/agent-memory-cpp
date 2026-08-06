@@ -536,7 +536,10 @@ namespace agent_memory {
         const auto is_nlb_median_preserving_retrieval =
             family == "nlb_median_preserving_retrieval_v1";
         const auto is_nlb_local_geometry = family == "nlb_local_geometry_v1";
-        const auto is_nlb_qrels_supervised = family == "nlb_qrels_supervised_v1";
+        const auto is_nlb_qrels_supervised_v1 = family == "nlb_qrels_supervised_v1";
+        const auto is_nlb_qrels_supervised_v2 = family == "nlb_qrels_supervised_v2";
+        const auto is_nlb_qrels_supervised =
+            is_nlb_qrels_supervised_v1 || is_nlb_qrels_supervised_v2;
         const auto is_nlb_retrieval = family == "nlb_retrieval_distilled_v1" ||
             is_nlb_median_preserving_retrieval || is_nlb_local_geometry;
         if((is_ste && (trainer_id != "agent-memory-cpp:linear-binary-autoencoder-trainer" ||
@@ -556,7 +559,7 @@ namespace agent_memory {
              trainer_version != "v1")) ||
            (is_nlb_qrels_supervised &&
             (trainer_id != "agent-memory-cpp:nlb-qrels-supervised-trainer" ||
-             trainer_version != "v1")) ||
+             trainer_version != (is_nlb_qrels_supervised_v2 ? "v2" : "v1"))) ||
            (!is_ste && !is_nlb_paper && !is_nlb_median && !is_nlb_quantile &&
             !is_nlb_retrieval && !is_nlb_qrels_supervised)) {
             throw std::runtime_error("unsupported autoencoder artifact trainer identity");
@@ -753,7 +756,9 @@ namespace agent_memory {
             const auto source_materialization_manifest_sha256 = require_sha256(
                 root, "input_materialization_manifest_sha256"
             );
-            if(require_string(training, "objective") != "qrels_soft_hamming_triplet_v1" ||
+            if(require_string(training, "objective") !=
+                   (is_nlb_qrels_supervised_v2 ? "qrels_soft_hamming_triplet_v2" :
+                                                 "qrels_soft_hamming_triplet_v1") ||
                require_field(training, "queries_or_qrels_used") != true ||
                require_u64(training, "candidate_limit") != 512U ||
                require_finite_positive_number(training, "margin") <= 0.0) {
@@ -907,6 +912,28 @@ namespace agent_memory {
             }
             require_finite_nonnegative_number(optimizer, "weight_decay");
             const auto& loss_weights = require_field(training, "loss_weights");
+            const auto has_triplet_weight = loss_weights.contains("triplet");
+            const auto has_optimization_qrels_used = training.contains("optimization_qrels_used");
+            if(is_nlb_qrels_supervised_v2 && (!has_triplet_weight || !has_optimization_qrels_used)) {
+                throw std::runtime_error("qrels-supervised v2 requires explicit triplet provenance");
+            }
+            if(has_triplet_weight != has_optimization_qrels_used) {
+                throw std::runtime_error("qrels-supervised triplet provenance is incomplete");
+            }
+            double triplet_weight = 1.0;
+            if(has_triplet_weight) {
+                require_finite_nonnegative_number(loss_weights, "triplet");
+                triplet_weight = require_field(loss_weights, "triplet").get<double>();
+                const auto& optimization_qrels_used = require_field(
+                    training, "optimization_qrels_used"
+                );
+                if(!optimization_qrels_used.is_boolean() ||
+                   optimization_qrels_used.get<bool>() != (triplet_weight > 0.0)) {
+                    throw std::runtime_error(
+                        "qrels-supervised triplet provenance does not match its loss weight"
+                    );
+                }
+            }
             require_finite_nonnegative_number(loss_weights, "reconstruction");
             require_finite_nonnegative_number(loss_weights, "decorrelation");
             require_finite_nonnegative_number(loss_weights, "row_orthogonality");

@@ -215,13 +215,13 @@ namespace {
         std::ofstream output(path, std::ios::binary);
         output << R"({
   "schema_version": 1,
-  "trainer": {"id": "agent-memory-cpp:nlb-qrels-supervised-trainer", "version": "v1", "source_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "base_trainer_source_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "requirements_lock": "requirements-binary-autoencoder-trainer.txt;sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
+  "trainer": {"id": "agent-memory-cpp:nlb-qrels-supervised-trainer", "version": "v2", "source_hash": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee", "base_trainer_source_hash": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "requirements_lock": "requirements-binary-autoencoder-trainer.txt;sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},
   "input_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "prepared_study_manifest_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
   "source_encoder_artifact_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
-  "architecture": {"family": "nlb_qrels_supervised_v1", "input_dimension": 2, "bit_count": 2, "encoder_activation": "affine_hard_step_document_median_v1", "decoder": "tied_transpose_tanh", "code_value_encoding": "zero_one", "input_transform": "clip_minus_one_one_v1"},
+  "architecture": {"family": "nlb_qrels_supervised_v2", "input_dimension": 2, "bit_count": 2, "encoder_activation": "affine_hard_step_document_median_v1", "decoder": "tied_transpose_tanh", "code_value_encoding": "zero_one", "input_transform": "clip_minus_one_one_v1"},
   "training": {
-    "seed": 42, "epochs": 1, "batch_size": 1, "learning_rate": 0.001, "objective": "qrels_soft_hamming_triplet_v1", "queries_or_qrels_used": true, "candidate_limit": 512, "margin": 0.1, "torch_threads": 1,
+    "seed": 42, "epochs": 1, "batch_size": 1, "learning_rate": 0.001, "objective": "qrels_soft_hamming_triplet_v2", "queries_or_qrels_used": true, "optimization_qrels_used": true, "candidate_limit": 512, "margin": 0.1, "torch_threads": 1,
     "optimizer": {"id": "adamw", "weight_decay": 0.0}, "shuffle_recipe": {"id": "python_fisher_yates_sha256_seed_v1", "per_epoch": true},
     "initialization": {"mode": "pca_median_document_only_v1", "source_materialization_manifest_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "source_family": "label_free_document_only_e5_v1", "itq_iterations": 0},
     "calibration": {"policy": "per_bit_projection_median_v1", "source": "label_free_document_only_train_v1", "document_count": 2, "document_ids_sha256": "1111111111111111111111111111111111111111111111111111111111111111"},
@@ -231,7 +231,7 @@ namespace {
     "hard_negative_mining": {"id": "frozen_e5_cosine_topk_nonpositive_v1", "teacher": "normalized_e5_cosine", "negative_count_per_query": 1, "mined_negative_count_per_query": 1, "consumed_negatives_per_query_per_epoch": 1, "consumed_negative_count_per_query": 1, "sampling_policy": "epoch_indexed_without_replacement_multi_negative_v1", "positive_exclusion": "all_grade_gt_zero_v1", "path": "frozen-hard-negatives.json", "sha256": "4444444444444444444444444444444444444444444444444444444444444444", "canonical_sha256": "5555555555555555555555555555555555555555555555555555555555555555", "train_query_ids_sha256": "2222222222222222222222222222222222222222222222222222222222222222", "validation_query_ids_sha256": "3333333333333333333333333333333333333333333333333333333333333333"},
     "selection": {"id": "qrels_lexicographic_hard_code_v1", "candidate_limit": 512, "lexicographic_order": ["hard_code_health", "positive_qrels_query_coverage_at_512", "reranked_ndcg_at_10", "lower_occupancy_deviation", "earlier_epoch"], "selected_epoch": 0, "metrics": {"positive_qrels_query_coverage_at_512": 0.5, "reranked_ndcg_at_10": 0.5}, "hard_code_health": {"vector_count": 2, "unique_code_count": 2}, "occupancy_deviation": 0.0},
     "run_provenance": {"planned_epoch_count": 1, "completed_epoch_count": 1, "selected_epoch": 0, "selected_optimizer_step_count": 1, "selected_consumed_negative_count_per_query": 1},
-    "loss_weights": {"reconstruction": 0.01, "decorrelation": 0.01, "row_orthogonality": 0.001}, "source_materialization_outputs_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
+    "loss_weights": {"triplet": 1.0, "reconstruction": 0.01, "decorrelation": 0.01, "row_orthogonality": 0.001}, "source_materialization_outputs_sha256": "6666666666666666666666666666666666666666666666666666666666666666"
   },
   "weights": {
     "encoder_weights": {"path": "encoder-weights.f32", "sha256": "a666c95f0822c64e01580063e9bb27c629d4d0534e3163a9611738599f97df2a", "shape": [2, 2], "layout": "row_major_out_by_in", "dtype": "float32_le"},
@@ -426,6 +426,79 @@ int main() {
         );
         if(qrels_supervised_artifact.encoder.info().encoder_id != "nlb_qrels_supervised") {
             return fail("qrels-supervised NLB artifact contract");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"family\": \"nlb_qrels_supervised_v2\"",
+            "\"family\": \"nlb_qrels_supervised_v1\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"version\": \"v2\"",
+            "\"version\": \"v1\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"objective\": \"qrels_soft_hamming_triplet_v2\"",
+            "\"objective\": \"qrels_soft_hamming_triplet_v1\""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"optimization_qrels_used\": true, ",
+            ""
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"triplet\": 1.0, ",
+            ""
+        );
+        if(agent_memory::load_autoencoder_binary_artifact(
+               root / "nlb-qrels-supervised-artifact.json"
+           ).encoder.info().encoder_id != "nlb_qrels_supervised") {
+            return fail("legacy qrels-supervised artifact contract");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"optimization_qrels_used\": true",
+            "\"optimization_qrels_used\": false"
+        );
+        if(!throws_runtime_error([&] {
+               (void)agent_memory::load_autoencoder_binary_artifact(
+                   root / "nlb-qrels-supervised-artifact.json"
+               );
+           })) {
+            return fail("qrels-supervised artifact accepted mismatched qrels provenance");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"triplet\": 1.0",
+            "\"triplet\": 0.0"
+        );
+        if(!throws_runtime_error([&] {
+               (void)agent_memory::load_autoencoder_binary_artifact(
+                   root / "nlb-qrels-supervised-artifact.json"
+               );
+           })) {
+            return fail("qrels-supervised artifact accepted zero-triplet qrels provenance");
+        }
+        write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"optimization_qrels_used\": true",
+            "\"optimization_qrels_used\": false"
+        );
+        replace_once(
+            root / "nlb-qrels-supervised-artifact.json",
+            "\"triplet\": 1.0",
+            "\"triplet\": 0.0"
+        );
+        if(agent_memory::load_autoencoder_binary_artifact(
+               root / "nlb-qrels-supervised-artifact.json"
+           ).encoder.info().encoder_id != "nlb_qrels_supervised") {
+            return fail("qrels-supervised no-triplet artifact contract");
         }
         write_nlb_qrels_supervised_artifact(root / "nlb-qrels-supervised-artifact.json");
         replace_once(

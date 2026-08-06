@@ -396,7 +396,8 @@ int main(int argc, char* argv[]) {
         const auto evaluation_identity = load_embedding_identity(
             std::filesystem::path{argv[1]} / "manifest.json", "evaluation materialization manifest"
         );
-        if(artifact.artifact_family == "nlb_qrels_supervised_v1") {
+        if(artifact.artifact_family == "nlb_qrels_supervised_v1" ||
+           artifact.artifact_family == "nlb_qrels_supervised_v2") {
             validate_qrels_supervised_evaluation_contract(
                 argv[2], evaluation_identity,
                 std::filesystem::path{argv[1]} / "prepared-study-manifest.json"

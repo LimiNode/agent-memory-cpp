@@ -1171,3 +1171,231 @@ then is it meaningful to tune the supervised loss or promote it over the
 document-only family. A compact committed provenance record links every table
 row to its artifact, training-history, and held-out report digest in
 [`2026-08-05-qrels-supervised-matrix-manifest.json`](2026-08-05-qrels-supervised-matrix-manifest.json).
+
+### Auxiliary-only attribution and ternary projection reference
+
+The corrected binary matrix was re-evaluated query-by-query with the stable-ID
+reference contract, then tested with a paired 10,000-replicate query bootstrap
+(seed `20260806`). PCA supervised minus zero-step has coverage 95% CI
+`[-0.00288, 0.00471]` and nDCG@10 CI `[-0.00270, 0.00305]`; neither effect is
+resolved. ITQ supervised minus zero-step has coverage CI
+`[-0.01637, -0.00767]`, while its nDCG@10 CI `[-0.00171, 0.00439]` crosses
+zero. Thus the ITQ locality loss is robust to dev-query resampling, while the
+claimed relevance gain is not.
+
+The no-triplet auxiliary control used the same initialization, epochs, batch
+order, reconstruction/decorrelation/orthogonality weights, and median
+recalibration as qrels supervision, but set the triplet weight to zero. Against
+that control, the triplet changes PCA coverage by `+0.00016` (95% CI
+`[-0.00343, 0.00376]`) and nDCG@10 by `+0.00064` (CI
+`[-0.00138, 0.00276]`). For ITQ it changes coverage by `-0.00966` (CI
+`[-0.01366, -0.00567]`) and nDCG@10 by `+0.00098` (CI
+`[-0.00190, 0.00398]`). The current triplet is therefore not a supported
+quality improvement and is the direct cause of most remaining ITQ locality
+loss, rather than the auxiliary optimizer updates alone.
+
+The same label-free 25k calibration root was then used for ternary projection
+codes. Documents use base-3 packing (five trits per byte); the k-means rows use
+three per-coordinate Lloyd--Max centroids and an unquantized query with a
+query-specific packed ADC LUT. The timing values below cover query preparation,
+candidate scoring, and a stable full ordering in the NumPy reference harness
+over all 1,252 queries; they are not production C++ latency measurements.
+
+| Code / candidate scoring | Packed bytes | Coverage@512 | Reranked nDCG@10 | Reference candidate scoring + full sort seconds |
+| --- | ---: | ---: | ---: | ---: |
+| PCA binary, 128 bits, Hamming | 16 | 0.93347 | 0.79295 | 8.05 |
+| ITQ binary, 128 bits, Hamming | 16 | 0.93746 | 0.79005 | 8.05 |
+| PCA 80 trits, symmetric tertile distance | 16 | 0.94113 | 0.79312 | 12.87 |
+| PCA 80 trits, 3-centroid packed ADC | 16 | 0.95871 | 0.79502 | 28.88 |
+| ITQ 80 trits, 3-centroid packed ADC | 16 | 0.97061 | 0.79856 | 29.46 |
+| PCA binary, 208 bits, Hamming | 26 | 0.96534 | 0.79994 | 11.73 |
+| ITQ binary, 208 bits, Hamming | 26 | 0.98227 | 0.80072 | 11.54 |
+| PCA 128 trits, 3-centroid packed ADC | 26 | 0.99201 | 0.80085 | 42.65 |
+| ITQ 128 trits, 3-centroid packed ADC | 26 | 0.99577 | 0.80150 | 43.28 |
+
+Full E5 nDCG@10 is `0.80145`. This is a strong label-free quality signal: the
+equal-16-byte ITQ ternary ADC improves coverage by `+0.03315` and nDCG@10 by
+`+0.00851` over matched binary-128, while the 26-byte ITQ ternary ADC reaches
+full-E5 nDCG within this reference evaluation. Packed ADC LUT and direct scalar
+ADC are covered by a deterministic parity self-test. These findings do not yet
+establish a production speed win: an independently benchmarked C++ packed-LUT
+implementation and multiple initialization seeds remain required.
+
+### Initial scalar-quantization attribution and rate--distortion grid
+
+The preceding ternary table is retained as a historical directional run. It did
+not yet contain the matched two-centroid float-query ADC baseline, did not bind
+bootstrap contributions to ordered query IDs, and did not retain a compact
+source/provenance manifest. It must therefore not be interpreted as evidence
+that a third document symbol alone beat binary coding.
+
+The corrected reference harness is fail-closed for materialization output
+hashes, embedding identity, artifact payload hashes, calibration/evaluation
+disjointness, ordered query IDs, qrels identity, `K=512`, and `oracle_k=10`.
+Every paired-bootstrap input stores the ordered query IDs themselves plus its
+identity metadata. All final rows use the original label-free 25k calibration
+and held-out RU evaluation fixture, manifest SHA-256
+`cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86`:
+22,607 evaluation documents, 1,252 queries, and the frozen E5 qrels. The
+reference evaluator source SHA-256 is
+`607467573725424da6bff49c917c684876b23863497616c67108db9f3a02fb91`.
+
+Document codes use median-threshold binary codes (eight coordinates per byte),
+tertile ternary codes (five coordinates per byte), or quartile quaternary codes
+(four coordinates per byte). ADC leaves the query projection as float and
+scores document symbols through per-byte LUTs of squared distances to their
+conditional scalar centroids. Hamming and ternary symmetric rows quantize the
+query as well. Ranking has stable-ID tie-breaking before the candidate cutoff
+and after exact float reranking. The reported reference time includes query
+projection/LUT construction, complete candidate scoring, and stable full
+ordering; it is explicitly not a production scan/selection benchmark.
+
+The seed-42 attribution matrix separates symmetric scoring, asymmetric scoring,
+symbol count, coordinate count, and payload size. Full E5 nDCG@10 is
+`0.801451`; a filtered result slightly above or below it is not a better or
+worse embedding model, only the qrels result after removing some exact-E5
+candidates.
+
+| Projection / document code / scoring | Payload | Coverage@512 | Reranked nDCG@10 |
+| --- | ---: | ---: | ---: |
+| ITQ binary 128, symmetric Hamming | 16 B | 0.935383 | 0.792662 |
+| ITQ binary 128, 2-centroid ADC | 16 B | 0.983307 | 0.800936 |
+| ITQ ternary 80, symmetric | 16 B | 0.929073 | 0.791561 |
+| ITQ ternary 80, 3-centroid ADC | 16 B | 0.965974 | 0.797702 |
+| ITQ quaternary 64, 4-centroid ADC | 16 B | 0.952316 | 0.794559 |
+| ITQ binary 208, symmetric Hamming | 26 B | 0.979553 | 0.799024 |
+| ITQ binary 208, 2-centroid ADC | 26 B | 0.998243 | 0.801545 |
+| ITQ ternary 128, symmetric | 26 B | 0.982109 | 0.800315 |
+| ITQ ternary 128, 3-centroid ADC | 26 B | 0.995767 | 0.801425 |
+| ITQ quaternary 104, 4-centroid ADC | 26 B | 0.993450 | 0.801484 |
+
+For the causal ITQ comparisons, paired 10,000-replicate query bootstrap (seed
+`20260806`) gives the following deltas. Each interval is a percentile 95% CI.
+
+| Transition | Coverage delta | nDCG@10 delta |
+| --- | ---: | ---: |
+| 128-bit Hamming -> 128-bit binary ADC | +0.047923 [0.043051, 0.052955] | +0.008274 [0.005154, 0.011646] |
+| 208-bit Hamming -> 208-bit binary ADC | +0.018690 [0.015735, 0.021725] | +0.002522 [0.001222, 0.003945] |
+| 128-bit binary ADC -> 80-trit ADC, equal 16 B | -0.017332 [-0.021246, -0.013498] | -0.003234 [-0.005622, -0.000984] |
+| 208-bit binary ADC -> 128-trit ADC, equal 26 B | -0.002476 [-0.003914, -0.001118] | -0.000120 [-0.000893, 0.000627] |
+| 80-trit ADC -> 64-quaternary ADC, equal 16 B | -0.013658 [-0.017492, -0.009984] | -0.003143 [-0.005969, -0.000478] |
+| 128-trit ADC -> 104-quaternary ADC, equal 26 B | -0.002316 [-0.003914, -0.000799] | +0.000059 [-0.000521, 0.000809] |
+
+The same-coordinate controls distinguish symbol capacity from coordinate count:
+at 80 coordinates ITQ binary ADC uses 10 B and reaches coverage `0.934425`,
+whereas 80-trit ADC uses 16 B and reaches `0.965974` (delta `+0.031550`, CI
+`[0.027476, 0.035783]`). At 128 coordinates, binary ADC uses 16 B and reaches
+`0.983307`, while ternary ADC uses 26 B and reaches `0.995767` (delta
+`+0.012460`, CI `[0.010064, 0.015016]`); its nDCG interval crosses zero. Thus
+more scalar levels help when the coordinate count is held fixed, but their extra
+payload does not beat binary ADC at either equal 16 B or equal 26 B in this
+fixture. The equal-payload winner is therefore the asymmetric float-query ADC
+scorer applied to a binary code, not ternary or quaternary coding itself.
+
+The rate--distortion comparison generalizes directionally to PCA: at 16 B,
+PCA binary/ternary/quaternary ADC gives coverage `0.969089 / 0.957428 /
+0.944010`; at 26 B it gives `0.992572 / 0.992252 / 0.989617`. ITQ is stronger
+than PCA at the ternary points, but neither projection makes four levels the
+best fixed-payload choice in this grid.
+
+Five independent ITQ rotation seeds (`42`--`46`) establish that the central
+conclusion is not a single-rotation artifact:
+
+| Code | Mean coverage@512 +/- population SD | Mean reranked nDCG@10 +/- population SD |
+| --- | ---: | ---: |
+| Binary Hamming 128 | 0.938626 +/- 0.001740 | 0.792771 +/- 0.002118 |
+| Ternary ADC 80 | 0.967955 +/- 0.001426 | 0.798057 +/- 0.000651 |
+| Binary Hamming 208 | 0.980942 +/- 0.000855 | 0.800185 +/- 0.000681 |
+| Ternary ADC 128 | 0.995543 +/- 0.000301 | 0.801308 +/- 0.000205 |
+
+This study validates scalar quantization only as candidate generation followed
+by retained-float exact rerank. It neither claims a production latency win nor
+selects a persistence/index layout. The next implementation-oriented stage is
+an independently benchmarked C++ packed-LUT scorer and top-K selection; banded
+MDBX access remains a later decision. The compact provenance record for every
+reported scalar row is
+[`2026-08-06-scalar-projection-rate-distortion-manifest.json`](2026-08-06-scalar-projection-rate-distortion-manifest.json).
+
+### 2026-08-06 reproducibility correction: complete five-seed scalar grid
+
+The preceding scalar section is retained as historical evidence, but its
+multi-seed table was incomplete: seeds `43`--`46` covered Hamming and ternary
+ADC rows only. It therefore could not support a five-seed ordering of binary,
+ternary, and quaternary ADC. The evaluator and all scalar rows were rerun
+after the methodology fixes. The final compact manifest is schema v2 and
+contains 50 rows plus 32 linked paired-bootstrap reports. It recomputes every
+reported aggregate from the referenced per-query NPZ contributions, validates
+their schemas and ranges, and rejects a mixed source/runtime/fixture set.
+
+The final evaluator source SHA-256 is
+`5a3a408724ec5d390b29979d7038b8efee5a6d26ef939551539bdba998945e77`.
+All rows use CPython `3.12.13`, NumPy `2.4.6`, the same 25k calibration and
+held-out RU fixture as above, 22,607 evaluation documents, 1,252 queries,
+`K=512`, and oracle `K=10`. Per-row code-health provenance records symbol
+frequencies and total *marginal* symbol entropy; this is not a claim about the
+joint entropy of a packed code.
+
+For the following table, each value is the mean across the five ITQ rotation
+seeds `42`--`46`, followed by population SD and seed range. The five-seed
+result now covers all three equal-payload ADC families.
+
+| Document code / scoring | Payload | Coverage@512: mean +/- SD [min, max] | Reranked nDCG@10: mean +/- SD [min, max] |
+| --- | ---: | ---: | ---: |
+| Binary 128, Hamming | 16 B | 0.938626 +/- 0.001740 [0.935383, 0.940096] | 0.792771 +/- 0.002118 [0.790214, 0.796060] |
+| Binary 128, 2-centroid ADC | 16 B | 0.984313 +/- 0.001190 [0.982748, 0.986022] | 0.800762 +/- 0.000347 [0.800336, 0.801214] |
+| Ternary 80, 3-centroid ADC | 16 B | 0.967955 +/- 0.001426 [0.965974, 0.969728] | 0.798057 +/- 0.000651 [0.797545, 0.799339] |
+| Quaternary 64, 4-centroid ADC | 16 B | 0.951741 +/- 0.000989 [0.950479, 0.953275] | 0.795541 +/- 0.001147 [0.794385, 0.797277] |
+| Binary 208, Hamming | 26 B | 0.980942 +/- 0.000855 [0.979553, 0.981949] | 0.800185 +/- 0.000681 [0.799024, 0.801127] |
+| Binary 208, 2-centroid ADC | 26 B | 0.997764 +/- 0.000375 [0.997284, 0.998243] | 0.801465 +/- 0.000114 [0.801255, 0.801584] |
+| Ternary 128, 3-centroid ADC | 26 B | 0.995543 +/- 0.000301 [0.994968, 0.995767] | 0.801308 +/- 0.000205 [0.800943, 0.801521] |
+| Quaternary 104, 4-centroid ADC | 26 B | 0.992859 +/- 0.000433 [0.992173, 0.993450] | 0.801251 +/- 0.000259 [0.800927, 0.801586] |
+
+The paired seed differences make the attribution explicit. Each cell is the
+mean difference of right minus left over the five rotations, followed by
+population SD and seed range.
+
+| Transition | Coverage delta: mean +/- SD [min, max] | nDCG@10 delta: mean +/- SD [min, max] |
+| --- | ---: | ---: |
+| Hamming 128 -> binary ADC 128 | +0.045687 +/- 0.001229 [+0.044409, +0.047923] | +0.007991 +/- 0.001792 [+0.005154, +0.010161] |
+| Binary ADC 128 -> ternary ADC 80 | -0.016358 +/- 0.000964 [-0.017492, -0.014936] | -0.002705 +/- 0.000555 [-0.003404, -0.001874] |
+| Ternary ADC 80 -> quaternary ADC 64 | -0.016214 +/- 0.001941 [-0.018770, -0.013658] | -0.002517 +/- 0.001574 [-0.004954, -0.000586] |
+| Hamming 208 -> binary ADC 208 | +0.016821 +/- 0.001153 [+0.015415, +0.018690] | +0.001280 +/- 0.000700 [+0.000342, +0.002522] |
+| Binary ADC 208 -> ternary ADC 128 | -0.002220 +/- 0.000478 [-0.002955, -0.001597] | -0.000156 +/- 0.000201 [-0.000529, +0.000052] |
+| Ternary ADC 128 -> quaternary ADC 104 | -0.002684 +/- 0.000588 [-0.003514, -0.001837] | -0.000058 +/- 0.000313 [-0.000594, +0.000352] |
+
+These seed-to-seed summaries are different from query-bootstrap uncertainty.
+For every transition and seed, the manifest links the exact left/right NPZ
+hashes to a 10,000-replicate paired bootstrap with seed `20260806`. For
+example, seed 42 gives binary-128 ADC minus Hamming coverage `+0.047923`, 95%
+CI `[+0.043051, +0.052955]`, and nDCG@10 `+0.008274`, CI
+`[+0.005154, +0.011646]`. Its equal-16-B binary-128 minus ternary-80 delta is
+coverage `+0.017332`, CI `[+0.013498, +0.021246]`, and nDCG@10 `+0.003234`,
+CI `[+0.000984, +0.005622]`. The CI is conditional on the fixed rotation and
+the sampled query population; it is not a confidence interval over rotations.
+
+The corrected same-coordinate seed-42 controls are also retained: binary ADC
+at 80 coordinates (10 B) reaches coverage `0.934425`, whereas ternary ADC at
+80 coordinates (16 B) reaches `0.965974` (delta `+0.031550`, bootstrap CI
+`[+0.027476, +0.035783]`). At 128 coordinates, binary ADC is 16 B and has
+coverage `0.983307`; ternary ADC is 26 B and has `0.995767` (delta
+`+0.012460`, CI `[+0.010064, +0.015016]`). Thus extra symbols help when they
+also consume extra bytes, but they lose at the two equal-payload operating
+points. PCA directional controls show the same ordering: binary/ternary/
+quaternary coverage is `0.969089 / 0.957428 / 0.944010` at 16 B and
+`0.992572 / 0.992252 / 0.989617` at 26 B.
+
+The metric named
+`reference_candidate_search_seconds_including_query_encoding_and_full_ordering`
+is the total across 1,252 queries. It includes query projection, symmetric
+query quantization where applicable, ADC LUT construction, candidate scoring,
+and stable full ordering. It excludes full-E5 reference scoring, exact float
+reranking, document-code materialization, process startup, and warm-up; it is
+therefore not a production latency claim. This is a two-payload
+rate--distortion *grid*, not a curve.
+
+The corrected conclusion is limited but strong: on this held-out RU fixture,
+asymmetric two-centroid binary ADC consistently uses fixed document bytes more
+effectively than the matched ternary and quaternary scalar codes. All scalar
+codes remain candidate generators only; exact float reranking still requires
+retained float vectors. A C++ packed-LUT plus top-K benchmark and a larger
+multi-payload grid remain separate future work.
