@@ -362,6 +362,32 @@ def two_plane_ternary_scores(document_nonzero: Any, document_sign: Any, query_co
     )
 
 
+def uncertainty_mask_coordinate_indices(calibration_margin: Any, count: int) -> Any:
+    """Selects globally least-confident sign directions with deterministic ties."""
+    if count <= 0 or count > calibration_margin.shape[1]:
+        raise EvaluationError("uncertainty-mask coordinate count is invalid")
+    median_margin = numpy.median(numpy.abs(calibration_margin), axis=0)
+    return numpy.lexsort((numpy.arange(calibration_margin.shape[1]), median_margin))[:count]
+
+
+def uncertainty_mask_scores(
+    document_sign_codes: Any,
+    document_uncertainty: Any,
+    selected_coordinates: Any,
+    query_sign_code: Any,
+) -> Any:
+    """Scores sign Hamming distance with document-local uncertain mismatches ignored."""
+    if (
+        document_sign_codes.ndim != 2
+        or document_uncertainty.shape != (document_sign_codes.shape[0], len(selected_coordinates))
+        or query_sign_code.shape != (document_sign_codes.shape[1],)
+    ):
+        raise EvaluationError("uncertainty-mask score shapes are invalid")
+    mismatch = document_sign_codes != query_sign_code
+    ignored = document_uncertainty & mismatch[:, selected_coordinates]
+    return mismatch.sum(axis=1, dtype=numpy.int32) - ignored.sum(axis=1, dtype=numpy.int32)
+
+
 def packed_lut(query: Any, centers: Any, symbol_count: int, symbols_per_byte: int) -> list[Any]:
     result: list[Any] = []
     for start in range(0, centers.shape[0], symbols_per_byte):
@@ -809,6 +835,93 @@ def evaluate_ternary(args: Any) -> None:
     write_result(args.output, {"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": args.projection, "quantizer": args.quantizer, "code_assignment": code_assignment, "scoring": scoring, "symbol_count": symbol_count, "coordinate_count": args.coordinate_count, "packed_payload_bytes_per_document": payload_bytes, "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "projection_weights_sha256": hashlib.sha256(numpy.asarray(weights, dtype="<f4").tobytes()).hexdigest(), "centroids_sha256": hashlib.sha256(numpy.asarray(centers, dtype="<f4").tobytes()).hexdigest(), "seed": args.seed, "itq_iterations": args.itq_iterations if args.projection == "itq" else 0, "kmeans_iterations": args.kmeans_iterations if args.quantizer == "kmeans" else 0, "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, "symbol_frequencies": symbol_frequencies(document_codes, symbol_count), "total_marginal_symbol_entropy_bits": total_entropy, "maximum_marginal_symbol_entropy_bits": maximum_entropy, "normalized_marginal_symbol_entropy": total_entropy / maximum_entropy, **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
 
 
+def evaluate_uncertainty_mask(args: Any) -> None:
+    """Evaluates a compact document-side wildcard mask over binary sign codes."""
+    calibration = load_root(args.calibration_root)
+    data = load_root(args.evaluation_root)
+    validate_calibration_evaluation_pair(calibration, data)
+    if args.masked_coordinate_count <= 0 or args.masked_coordinate_count > args.coordinate_count:
+        raise EvaluationError("masked coordinate count is invalid")
+    if not 0.0 < args.mask_fraction <= 0.5:
+        raise EvaluationError("uncertainty-mask fraction is invalid")
+    weights = itq_weights(calibration["train"], args.coordinate_count, args.seed, args.itq_iterations)
+    calibration_projection = numpy.clip(calibration["train"], -1.0, 1.0) @ weights.T
+    document_projection = numpy.clip(data["documents"], -1.0, 1.0) @ weights.T
+    thresholds = binary_thresholds(calibration["train"], weights)
+    calibration_margin = calibration_projection + thresholds
+    selected_coordinates = uncertainty_mask_coordinate_indices(
+        calibration_margin, args.masked_coordinate_count
+    )
+    uncertainty_thresholds = numpy.quantile(
+        numpy.abs(calibration_margin[:, selected_coordinates]), args.mask_fraction, axis=0
+    ).astype(numpy.float32)
+    calibration_sign_codes = (calibration_margin >= 0.0).astype(numpy.uint8)
+    document_sign_codes = (document_projection + thresholds >= 0.0).astype(numpy.uint8)
+    document_uncertainty = (
+        numpy.abs(document_projection[:, selected_coordinates] + thresholds[selected_coordinates])
+        <= uncertainty_thresholds
+    )
+
+    def candidates(index: int, query: Any) -> Any:
+        query_sign_code = (
+            numpy.clip(query, -1.0, 1.0) @ weights.T + thresholds >= 0.0
+        )
+        cost = uncertainty_mask_scores(
+            document_sign_codes,
+            document_uncertainty,
+            selected_coordinates,
+            query_sign_code,
+        )
+        return numpy.lexsort((data["document_ids"], cost))
+
+    metrics, contributions = evaluate_candidates(data, candidates, args.candidate_limit, args.oracle_k)
+    identity = contribution_identity(data, args.candidate_limit, args.oracle_k)
+    sign_payload_bytes = (args.coordinate_count + 7) // 8
+    mask_payload_bytes = (args.masked_coordinate_count + 7) // 8
+    total_entropy = total_marginal_entropy_bits(document_sign_codes, 2)
+    maximum_entropy = float(args.coordinate_count)
+    write_result(args.output, {
+        "schema_version": 1,
+        "family": "binary_uncertainty_mask_reference_v1",
+        "projection": "itq",
+        "quantizer": "binary_sign_plus_document_uncertainty_mask",
+        "code_assignment": "median_sign_with_low_margin_document_wildcards_v1",
+        "scoring": "masked_binary_hamming_reference_v1",
+        "symbol_count": 2,
+        "coordinate_count": args.coordinate_count,
+        "masked_coordinate_count": args.masked_coordinate_count,
+        "mask_fraction": args.mask_fraction,
+        "mask_coordinate_indices_sha256": hashlib.sha256(
+            numpy.asarray(selected_coordinates, dtype="<u4").tobytes()
+        ).hexdigest(),
+        "uncertainty_thresholds_sha256": hashlib.sha256(
+            numpy.asarray(uncertainty_thresholds, dtype="<f4").tobytes()
+        ).hexdigest(),
+        "document_mask_activation_fraction": float(document_uncertainty.mean()),
+        "sign_payload_bytes_per_document": sign_payload_bytes,
+        "mask_payload_bytes_per_document": mask_payload_bytes,
+        "packed_payload_bytes_per_document": sign_payload_bytes + mask_payload_bytes,
+        "evaluation_materialization_manifest_sha256": data["manifest_sha256"],
+        "evaluation_qrels_sha256": data["evaluation_qrels_sha256"],
+        "calibration_materialization_manifest_sha256": calibration["manifest_sha256"],
+        "projection_weights_sha256": hashlib.sha256(
+            numpy.asarray(weights, dtype="<f4").tobytes()
+        ).hexdigest(),
+        "thresholds_sha256": hashlib.sha256(
+            numpy.asarray(thresholds, dtype="<f4").tobytes()
+        ).hexdigest(),
+        "seed": args.seed,
+        "itq_iterations": args.itq_iterations,
+        "oracle_k": args.oracle_k,
+        "candidate_limit": args.candidate_limit,
+        "symbol_frequencies": symbol_frequencies(document_sign_codes, 2),
+        "total_marginal_symbol_entropy_bits": total_entropy,
+        "maximum_marginal_symbol_entropy_bits": maximum_entropy,
+        "normalized_marginal_symbol_entropy": total_entropy / maximum_entropy,
+        **metrics,
+    }, contributions, args.contributions_output, identity, data["query_ids"])
+
+
 def bootstrap(args: Any) -> None:
     left = numpy.load(args.left_contributions, allow_pickle=False); right = numpy.load(args.right_contributions, allow_pickle=False)
     generator = numpy.random.default_rng(args.seed); count = left["coverage_at_candidate_limit"].shape[0]
@@ -1166,6 +1279,22 @@ def run_self_test() -> int:
     expected_two_plane = numpy.abs(two_plane_documents.astype(numpy.int16) - two_plane_query).sum(axis=1)
     if not numpy.array_equal(two_plane_ternary_scores(two_plane_nonzero, two_plane_sign, two_plane_query), expected_two_plane):
         print("self-test failed: two-plane ternary parity", file=__import__("sys").stderr); return 1
+    uncertainty_sign_codes = numpy.asarray([[0, 1, 0, 1], [1, 1, 0, 0]], dtype=numpy.uint8)
+    uncertainty_mask = numpy.asarray([[True, False], [True, True]])
+    uncertainty_query = numpy.asarray([1, 1, 1, 0], dtype=numpy.uint8)
+    uncertainty_scores = uncertainty_mask_scores(
+        uncertainty_sign_codes,
+        uncertainty_mask,
+        numpy.asarray([0, 3]),
+        uncertainty_query,
+    )
+    if not numpy.array_equal(uncertainty_scores, numpy.asarray([2, 1], dtype=numpy.int32)):
+        print("self-test failed: uncertainty-mask Hamming parity", file=__import__("sys").stderr); return 1
+    uncertainty_indices = uncertainty_mask_coordinate_indices(
+        numpy.asarray([[0.1, -0.9, 0.2], [-0.1, 0.8, -0.2]], dtype=numpy.float32), 2
+    )
+    if uncertainty_indices.tolist() != [0, 2]:
+        print("self-test failed: uncertainty-mask coordinate selection", file=__import__("sys").stderr); return 1
     binary_codes = numpy.asarray([[0, 1, 1, 0, 1, 0, 1, 0]], dtype=numpy.uint8)
     binary_packed = pack_codes(binary_codes, 2, 8)
     binary_centers = numpy.asarray([[0.0, 1.0]] * 8, dtype=numpy.float32)
@@ -1307,6 +1436,7 @@ def main(argv: list[str]) -> int:
     binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
     learned_adc = sub.add_parser("learned-adc", parents=[common]); learned_adc.add_argument("--artifact", type=Path, required=True); learned_adc.add_argument("--calibration-root", type=Path, required=True)
     ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles", "bitplanes"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
+    uncertainty_mask = sub.add_parser("uncertainty-mask", parents=[common]); uncertainty_mask.add_argument("--calibration-root", type=Path, required=True); uncertainty_mask.add_argument("--coordinate-count", type=int, required=True); uncertainty_mask.add_argument("--masked-coordinate-count", type=int, required=True); uncertainty_mask.add_argument("--mask-fraction", type=float, required=True); uncertainty_mask.add_argument("--seed", type=int, default=42); uncertainty_mask.add_argument("--itq-iterations", type=int, default=50)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--comparison-id", required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
     manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--comparison", type=Path, action="append", default=[]); manifest.add_argument("--grid-contract", type=Path); manifest.add_argument("--output", type=Path, required=True)
     bundle = sub.add_parser("write-evidence-bundle"); bundle.add_argument("--compact-manifest", type=Path, required=True); bundle.add_argument("--reports-dir", type=Path, required=True); bundle.add_argument("--contributions-dir", type=Path, required=True); bundle.add_argument("--bootstrap-dir", type=Path, required=True); bundle.add_argument("--output", type=Path, required=True)
@@ -1316,6 +1446,7 @@ def main(argv: list[str]) -> int:
         if args.command == "binary": evaluate_artifact(args)
         elif args.command == "learned-adc": evaluate_learned_binary_adc(args)
         elif args.command == "ternary": evaluate_ternary(args)
+        elif args.command == "uncertainty-mask": evaluate_uncertainty_mask(args)
         elif args.command == "bootstrap": bootstrap(args)
         elif args.command == "write-manifest": write_compact_manifest(args)
         elif args.command == "write-evidence-bundle": write_evidence_bundle(args)
