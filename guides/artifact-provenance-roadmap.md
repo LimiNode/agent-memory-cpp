@@ -151,9 +151,18 @@ they belong to its binding in a particular source revision.
 
 ```cpp
 enum class ArtifactRetentionClass : std::uint8_t {
+    ReferenceOnly,
     SourceOriginal,
     DerivedDurable,
     RebuildableCache
+};
+
+enum class ArtifactAvailability : std::uint8_t {
+    Materialized,
+    NeverRetained,
+    RetentionRemoved,
+    AccessDenied,
+    Corrupt
 };
 
 enum class CatalogLifecycleState : std::uint8_t {
@@ -175,6 +184,7 @@ struct ArtifactBinding {
     ArtifactId artifact_id;
     std::string role;  // e.g. primary_source_original, extracted_audio, page_render
     ArtifactRetentionClass retention;
+    ArtifactAvailability availability = ArtifactAvailability::Materialized;
     std::optional<std::string> media_type;
     std::optional<std::string> original_name;
     std::uint64_t bound_at_ms = 0;
@@ -203,13 +213,17 @@ the same bytes can be imported into different sources under different policies.
 `record_artifact` is idempotent only when `id`, digest and size agree; a
 conflicting record is a validation error, not a metadata overwrite.
 
-Each SourceRevision has exactly one retained binding with role
+Each SourceRevision has exactly one original binding with role
 `primary_source_original`; it replaces the former ambiguous
-`primary_artifact_id` field. Additional bindings are allowed and explicit.
+`primary_artifact_id` field. Its retention/availability pair is either
+`SourceOriginal` / `Materialized` (or later `RetentionRemoved`) or
+`ReferenceOnly` / `NeverRetained`. Additional bindings are allowed and explicit.
 
-`SourceOriginal` must be retained or reported as unavailable. `DerivedDurable`
-is retained because rebuilding it would be expensive, nondeterministic or
-would lose provenance. `RebuildableCache` may be evicted and regenerated.
+`SourceOriginal` must be materialized or reported as retention-removed.
+`ReferenceOnly` records an inspected immutable identity and locator without
+claiming that a durable body ever existed. `DerivedDurable` is retained because
+rebuilding it would be expensive, nondeterministic or would lose provenance.
+`RebuildableCache` may be evicted and regenerated.
 
 Source revisions, representations and segment sets carry a lifecycle state and
 retention policy even though their immutable identity never changes. `Active`
@@ -489,9 +503,15 @@ original observation. `original_locator` is mandatory and coordinates the
 original artifact. `representation_locator` coordinates a derived artifact only
 when `representation_id` and an `AlignmentProvenance` (processor/version,
 alignment method and optional confidence) are present. A context excerpt based
-on derived text is labeled as derived. If an original artifact has been deleted
-under an authorized retention policy, the anchor remains resolvable as metadata
-and materialization reports `ArtifactUnavailable`.
+on derived text is labeled as derived. `ArtifactBinding.availability` records
+whether original bytes are materialized separately from this immutable identity.
+`NeverRetained` means that the source was inspected and its identity/locator was
+recorded, but its original bytes were never added to a durable body store. It is
+the required state for an AM-23 `ReferenceOnly` source and is not equivalent to
+a failed import. `RetentionRemoved` means that bytes were previously retained
+and later removed under an authorized retention policy. In both cases an anchor
+remains resolvable as metadata, but their different history must remain
+observable to export, audit, and citation rendering.
 
 ## 5. Catalog, Blob And Lineage Boundaries
 
@@ -561,7 +581,8 @@ public:
 
 enum class BlobStatus : std::uint8_t {
     Ok, NotFound, AccessDenied, RangeUnsupported, DigestMismatch,
-    Corrupt, LimitExceeded, BackendUnavailable, ArtifactUnavailable
+    Corrupt, LimitExceeded, BackendUnavailable, ArtifactUnavailable,
+    ArtifactNeverRetained
 };
 
 template <typename T>
@@ -686,15 +707,17 @@ All backends expose the same artifact identity. Compression, encryption and
 chunking are storage codecs declared in the artifact/body descriptor; they do
 not alter `ArtifactId`, which is based on the original immutable byte stream.
 
-`ArtifactUnavailable` means that the catalog still resolves a durable artifact
-identity and its evidence anchors, but an authorized retention policy has
-removed the materializable body. `probe`, `open`, and `materialize` return this
-status for that state. `NotFound` means no matching artifact is known to the
+`ArtifactUnavailable` means that the catalog resolves a durable artifact
+identity and its evidence anchors, but an authorized retention policy removed a
+previously materialized body (`RetentionRemoved`). `ArtifactNeverRetained`
+means the catalog has a reference-only identity and anchor but no durable body
+was ever retained (`NeverRetained`). `probe`, `open`, and `materialize` return
+the corresponding status. `NotFound` means no matching artifact is known to the
 selected blob backend, `AccessDenied` means the body may exist but is not
 readable to the caller, and `Corrupt` means a body was found but failed its
-integrity checks. Callers preserve the anchor metadata when they receive
-`ArtifactUnavailable` and render the citation as retained metadata with an
-unavailable original, rather than as a broken or fabricated citation.
+integrity checks. Callers preserve anchor metadata for both unavailable states,
+but render `NeverRetained` as external/reference-only evidence rather than as a
+previously retained original that is now unavailable.
 
 ## 6. Indexing And Context Assembly
 
@@ -877,6 +900,7 @@ The closure recipe selects at least the following authoritative sets:
 | Raw-first M0 | `ResourceRevision` descriptors, body/chunk bytes, body digests, and locator/revision mappings |
 | `SequenceReplay` | complete `KnowledgeVisibilityReceipt` set |
 | `GraphRelations` | Relation-owned logical `GraphEdge` set |
+| AM-23 admission | complete canonical admission receipts and required confirmation, quarantine-expiry, and projection-visibility receipts; quarantine payloads remain excluded |
 | `ArtifactProvenance` (M2) | the base closure plus the separate artifact backup extension |
 
 An application-local snapshot is a distinct non-portable format. It must not
@@ -893,6 +917,14 @@ validates the artifact catalog root and artifact identity scheme, and requires e
 retained `SourceRef` and `EvidenceAnchor` to resolve. Rebuildable ANN/vector
 indexes remain outside both manifests and may be rebuilt only after validation.
 Failed restore leaves the target workspace unpublished.
+
+When AM-23 admission is selected, restore also validates every admission
+receipt's canonical candidate binding, workspace/scope compatibility, authority
+and policy fingerprints, and required projection-visibility receipt before
+publication. It restores those historical receipts; it does not submit the
+historical payload to the current admission policy. A legacy record without a
+receipt must instead enter through the explicitly named migration policy and
+retain its migration provenance.
 
 `SequenceReplay` selects the complete `KnowledgeVisibilityReceipt` logical
 record set in `WorkspaceBackupManifest` as authoritative backup state. The
