@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import json
 import math
+import platform
 import tempfile
 import time
 from pathlib import Path
@@ -32,6 +33,14 @@ def sha256_file(path: Path) -> str:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(block)
     return digest.hexdigest()
+
+
+def evaluator_runtime() -> dict[str, str]:
+    return {
+        "python_implementation": platform.python_implementation(),
+        "python_version": platform.python_version(),
+        "numpy_version": numpy.__version__,
+    }
 
 
 def canonical_ids_sha256(ids: list[str]) -> str:
@@ -316,6 +325,7 @@ def write_result(path: Path, report: dict[str, Any], contributions: dict[str, An
     report["per_query_contributions_sha256"] = sha256_file(contribution_path)
     report["per_query_contribution_identity"] = identity
     report["evaluator_source_sha256"] = sha256_file(Path(__file__))
+    report["evaluator_runtime"] = evaluator_runtime()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
@@ -485,7 +495,7 @@ def bootstrap(args: Any) -> None:
     validate_contribution_identity(right_identity, right["query_ids"], count)
     if identity != right_identity:
         raise EvaluationError("paired contribution evaluation contract differs")
-    report: dict[str, Any] = {"schema_version": 2, "family": "paired_query_bootstrap_v2", "id": args.comparison_id, "left_sha256": sha256_file(args.left_contributions), "right_sha256": sha256_file(args.right_contributions), "identity": identity, "query_count": count, "replicates": args.replicates, "seed": args.seed, "evaluator_source_sha256": sha256_file(Path(__file__)), "metrics": {}}
+    report: dict[str, Any] = {"schema_version": 2, "family": "paired_query_bootstrap_v2", "id": args.comparison_id, "left_sha256": sha256_file(args.left_contributions), "right_sha256": sha256_file(args.right_contributions), "identity": identity, "query_count": count, "replicates": args.replicates, "seed": args.seed, "evaluator_source_sha256": sha256_file(Path(__file__)), "evaluator_runtime": evaluator_runtime(), "metrics": {}}
     for name in ("coverage_at_candidate_limit", "reranked_ndcg_at_10"):
         difference = right[name] - left[name]
         samples = numpy.empty(args.replicates, dtype=numpy.float64)
@@ -500,6 +510,7 @@ def write_compact_manifest(args: Any) -> None:
     reference_identity: dict[str, Any] | None = None
     reference_calibration_manifest_sha256: str | None = None
     reference_evaluator_source_sha256: str | None = None
+    reference_evaluator_runtime: dict[str, str] | None = None
     for report_path in args.report:
         try:
             report = json.loads(report_path.read_text(encoding="utf-8"))
@@ -511,6 +522,9 @@ def write_compact_manifest(args: Any) -> None:
             report.get("evaluator_source_sha256"),
             "scalar projection report evaluator_source_sha256",
         )
+        runtime = report.get("evaluator_runtime")
+        if not isinstance(runtime, dict) or set(runtime) != {"python_implementation", "python_version", "numpy_version"} or any(not isinstance(value, str) or not value for value in runtime.values()):
+            raise EvaluationError(f"scalar projection evaluator runtime is invalid: {report_path}")
         calibration_manifest_sha256 = require_sha256(
             report.get("calibration_materialization_manifest_sha256"),
             "scalar projection report calibration_materialization_manifest_sha256",
@@ -557,6 +571,10 @@ def write_compact_manifest(args: Any) -> None:
             reference_evaluator_source_sha256 = evaluator_source_sha256
         elif evaluator_source_sha256 != reference_evaluator_source_sha256:
             raise EvaluationError("scalar projection manifest mixes evaluator sources")
+        if reference_evaluator_runtime is None:
+            reference_evaluator_runtime = runtime
+        elif runtime != reference_evaluator_runtime:
+            raise EvaluationError("scalar projection manifest mixes evaluator runtimes")
         contribution_sha256 = sha256_file(contribution_path)
         contribution_hashes.add(contribution_sha256)
         rows.append({
@@ -587,7 +605,7 @@ def write_compact_manifest(args: Any) -> None:
             "reranked_ndcg_at_10": means["reranked_ndcg_at_10"],
             "full_e5_ndcg_at_10": means["full_e5_ndcg_at_10"],
         })
-    if reference_identity is None or reference_calibration_manifest_sha256 is None or reference_evaluator_source_sha256 is None:
+    if reference_identity is None or reference_calibration_manifest_sha256 is None or reference_evaluator_source_sha256 is None or reference_evaluator_runtime is None:
         raise EvaluationError("scalar projection manifest needs at least one report")
     comparisons: list[dict[str, Any]] = []
     comparison_ids: set[str] = set()
@@ -597,7 +615,7 @@ def write_compact_manifest(args: Any) -> None:
         except (OSError, json.JSONDecodeError) as exc:
             raise EvaluationError(f"cannot read bootstrap comparison: {comparison_path}: {exc}") from exc
         comparison_id = comparison.get("id")
-        if not isinstance(comparison_id, str) or not comparison_id or comparison_id in comparison_ids or comparison.get("schema_version") != 2 or comparison.get("family") != "paired_query_bootstrap_v2" or comparison.get("identity") != reference_identity or comparison.get("evaluator_source_sha256") != reference_evaluator_source_sha256:
+        if not isinstance(comparison_id, str) or not comparison_id or comparison_id in comparison_ids or comparison.get("schema_version") != 2 or comparison.get("family") != "paired_query_bootstrap_v2" or comparison.get("identity") != reference_identity or comparison.get("evaluator_source_sha256") != reference_evaluator_source_sha256 or comparison.get("evaluator_runtime") != reference_evaluator_runtime:
             raise EvaluationError(f"bootstrap comparison contract is invalid: {comparison_path}")
         left_sha256 = require_sha256(comparison.get("left_sha256"), "bootstrap left_sha256")
         right_sha256 = require_sha256(comparison.get("right_sha256"), "bootstrap right_sha256")
@@ -620,7 +638,7 @@ def write_compact_manifest(args: Any) -> None:
         comparison_ids.add(comparison_id)
         comparisons.append(entry)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_result_manifest_v2", "evaluator_source_sha256": reference_evaluator_source_sha256, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"]), "comparisons": sorted(comparisons, key=lambda entry: entry["id"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    args.output.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_result_manifest_v2", "evaluator_source_sha256": reference_evaluator_source_sha256, "evaluator_runtime": reference_evaluator_runtime, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"]), "comparisons": sorted(comparisons, key=lambda entry: entry["id"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def run_self_test() -> int:
@@ -660,7 +678,7 @@ def run_self_test() -> int:
         numpy.savez_compressed(left_path, **payload); numpy.savez_compressed(right_path, **payload)
         bootstrap(argparse.Namespace(left_contributions=left_path, right_contributions=right_path, output=root / "bootstrap.json", replicates=8, seed=42, comparison_id="self_test"))
         def report_for(path: Path, contribution_path: Path) -> None:
-            path.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": "pca", "quantizer": "binary", "code_assignment": "self_test", "scoring": "binary_adc_packed_base2_lut_v1", "symbol_count": 2, "coordinate_count": 2, "packed_payload_bytes_per_document": 1, "evaluation_materialization_manifest_sha256": "a" * 64, "evaluation_qrels_sha256": "b" * 64, "calibration_materialization_manifest_sha256": "c" * 64, "projection_weights_sha256": "d" * 64, "centroids_sha256": "e" * 64, "seed": 42, "itq_iterations": 0, "kmeans_iterations": 0, "oracle_k": 10, "candidate_limit": 512, "query_count": 2, "symbol_frequencies": [0.5, 0.5], "total_marginal_symbol_entropy_bits": 2.0, "maximum_marginal_symbol_entropy_bits": 2.0, "normalized_marginal_symbol_entropy": 1.0, "exact_top_k_candidate_coverage": 0.75, "reranked_ndcg_at_10": 0.75, "full_e5_ndcg_at_10": 0.75, "per_query_contributions_path": contribution_path.name, "per_query_contributions_sha256": sha256_file(contribution_path), "per_query_contribution_identity": identity, "evaluator_source_sha256": sha256_file(Path(__file__))}, sort_keys=True), encoding="utf-8", newline="\n")
+            path.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": "pca", "quantizer": "binary", "code_assignment": "self_test", "scoring": "binary_adc_packed_base2_lut_v1", "symbol_count": 2, "coordinate_count": 2, "packed_payload_bytes_per_document": 1, "evaluation_materialization_manifest_sha256": "a" * 64, "evaluation_qrels_sha256": "b" * 64, "calibration_materialization_manifest_sha256": "c" * 64, "projection_weights_sha256": "d" * 64, "centroids_sha256": "e" * 64, "seed": 42, "itq_iterations": 0, "kmeans_iterations": 0, "oracle_k": 10, "candidate_limit": 512, "query_count": 2, "symbol_frequencies": [0.5, 0.5], "total_marginal_symbol_entropy_bits": 2.0, "maximum_marginal_symbol_entropy_bits": 2.0, "normalized_marginal_symbol_entropy": 1.0, "exact_top_k_candidate_coverage": 0.75, "reranked_ndcg_at_10": 0.75, "full_e5_ndcg_at_10": 0.75, "per_query_contributions_path": contribution_path.name, "per_query_contributions_sha256": sha256_file(contribution_path), "per_query_contribution_identity": identity, "evaluator_source_sha256": sha256_file(Path(__file__)), "evaluator_runtime": evaluator_runtime()}, sort_keys=True), encoding="utf-8", newline="\n")
         left_report = root / "left.json"; right_report = root / "right.json"
         report_for(left_report, left_path); report_for(right_report, right_path)
         write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "manifest.json"))
