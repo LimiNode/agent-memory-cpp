@@ -1570,3 +1570,52 @@ global-occupancy preservation a hard or explicitly validated contract, use a
 fixed locality-aware validation-pair set rather than contiguous validation
 chunks, then compare against this zero-step control before spending a multi-seed
 budget.
+
+### 2026-08-06 compact document uncertainty-mask control
+
+This control tests the narrower coarse-filter idea left open by the full
+two-plane ternary result: retain a binary ITQ sign code, but store a compact
+document-side uncertainty mask only for globally low-margin directions. For a
+masked coordinate, a document/query sign mismatch is ignored during candidate
+generation. The mask is asymmetric by design: it is a document payload, while
+the query remains a plain binary sign code.
+
+The fixed, label-free RU setup uses the existing 25k calibration root and the
+disjoint 22,607-document / 1,252-query evaluation root, `K=512`, oracle
+`K=10`, ITQ iterations `50`, and seeds `42`--`46`. For each seed, selected
+coordinates are the directions with the smallest calibration median absolute
+margin to their median sign threshold. The mask threshold is a calibration
+margin quantile; all candidate ordering uses stable document-ID ties and exact
+float reranking. Raw reports, per-query NPZ contributions, and 15 paired
+10,000-replicate bootstraps (seed `20260806`) are retained outside Git under
+`tmp/uncertainty-mask-grid-v1/`. Evaluator source SHA-256 is
+`f2a21674ad48883e7bb7d9131bae81d0ecd1183558db451ea68132685aba415d`.
+
+| Document payload / scorer | Bytes | Mean coverage@512 across five ITQ seeds | Mean reranked nDCG@10 |
+| --- | ---: | ---: | ---: |
+| Binary sign Hamming, 272 coordinates | 34 | 0.990942 | 0.801277 |
+| Sign 256 + mask 16, 25% margin quantile | 34 | 0.989073 | 0.801190 |
+| Binary sign Hamming, 288 coordinates | 36 | 0.991693 | 0.801313 |
+| Sign 256 + mask 32, 10% margin quantile | 36 | 0.989409 | 0.801320 |
+| Sign 256 + mask 32, 25% margin quantile | 36 | 0.989856 | 0.801175 |
+
+The mean document mask activation is `0.281048` for the 16-coordinate 25%
+case, `0.126294` for 32 coordinates at 10%, and `0.280967` for 32 coordinates
+at 25%. Thus the intended uncertainty states are genuinely exercised, rather
+than reducing to an ordinary sign code.
+
+Every same-seed, equal-byte paired coverage comparison is non-positive for the
+mask. The strongest candidate is the 32-coordinate, 25% mask at 36 B, but it
+still averages `-0.001837` coverage against 288-bit Hamming; its five paired
+seed deltas range from `-0.003834` to `+0.000160`. The 16-coordinate, 25%
+mask at 34 B averages `-0.001869` against 272-bit Hamming. The paired nDCG
+deltas are small and mixed, as expected once exact reranking is applied, but
+there is no candidate-recall justification for the mask.
+
+Therefore the tested wildcard rule does not improve the equal-payload binary
+coarse-filter frontier. This is a five-rotation quality result, not a C++
+latency measurement: the NumPy reference uses dense Boolean operations and
+full stable ordering. It rules out this particular low-margin, document-only
+mask policy; it does not rule out query-adaptive confidence, learned routing,
+or a different quantizer family. The next conventional baseline is PQ/OPQ at
+equal stored payload.
