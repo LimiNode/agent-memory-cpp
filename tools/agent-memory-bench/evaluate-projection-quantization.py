@@ -895,7 +895,12 @@ def verify_compact_manifest(
             shutil.copyfile(bootstrap_dir / bootstrap_name, bootstrap)
             comparisons.append(bootstrap)
         reconstructed = root / "reconstructed-compact-manifest.json"
-        write_compact_manifest(argparse.Namespace(report=reports, comparison=comparisons, output=reconstructed))
+        write_compact_manifest(argparse.Namespace(
+            report=reports,
+            comparison=comparisons,
+            grid_contract=None,
+            output=reconstructed,
+        ))
         if reconstructed.read_bytes() != compact_manifest_path.read_bytes():
             raise EvaluationError("compact manifest differs from reconstructed evidence")
 
