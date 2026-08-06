@@ -553,6 +553,59 @@ def evaluate_artifact(args: Any) -> None:
     write_result(args.output, {"schema_version": 2, "family": "binary_artifact_hamming_reference_v2", "artifact_sha256": sha256_file(args.artifact), "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
 
 
+def load_learned_binary_adc_artifact(path: Path, data: dict[str, Any], calibration: dict[str, Any]) -> tuple[dict[str, Any], Any, Any, Any]:
+    try:
+        artifact = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationError(f"cannot read learned ADC artifact: {exc}") from exc
+    architecture = artifact.get("architecture") if isinstance(artifact, dict) else None
+    trainer = artifact.get("trainer") if isinstance(artifact, dict) else None
+    training = artifact.get("training") if isinstance(artifact, dict) else None
+    weights = artifact.get("weights") if isinstance(artifact, dict) else None
+    if artifact.get("schema_version") != 1 or not isinstance(architecture, dict) or not isinstance(trainer, dict) or not isinstance(training, dict) or not isinstance(weights, dict):
+        raise EvaluationError("learned ADC artifact sections are invalid")
+    bit_count = architecture.get("bit_count")
+    if (
+        architecture.get("family") != "learned_binary_adc_v1"
+        or architecture.get("input_transform") != "identity_normalized_e5_v1"
+        or architecture.get("document_quantizer") != "learned_threshold_hard_step_v1"
+        or architecture.get("candidate_scoring") != "continuous_query_binary_adc_l2_v1"
+        or isinstance(bit_count, bool)
+        or not isinstance(bit_count, int)
+        or bit_count <= 0
+        or architecture.get("input_dimension") != data["dimension"]
+    ):
+        raise EvaluationError("learned ADC artifact architecture is incompatible")
+    if trainer.get("id") != "agent-memory-cpp:learned-binary-adc-trainer" or trainer.get("version") != "v1" or not isinstance(trainer.get("requirements_lock"), str) or not trainer["requirements_lock"] or not isinstance(trainer.get("source_hash"), str):
+        raise EvaluationError("learned ADC trainer provenance is invalid")
+    require_sha256(trainer["source_hash"], "artifact.trainer.source_hash")
+    validate_calibration_evaluation_pair(calibration, data)
+    allowed_objectives = {
+        "document_pairwise_adc_geometry_distillation_v1",
+        "initial_itq_binary_adc_control_v1",
+    }
+    if artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"] or training.get("queries_or_qrels_used") is not False or training.get("objective") not in allowed_objectives or training.get("source_materialization_outputs_sha256") != canonical_json_sha256(calibration["output_hashes"]):
+        raise EvaluationError("learned ADC artifact provenance is incompatible")
+    projection = require_artifact_weight(path.parent, weights.get("projection_weights"), [bit_count, data["dimension"]], "row_major_out_by_in", "projection_weights")
+    thresholds = require_artifact_weight(path.parent, weights.get("thresholds"), [bit_count], None, "thresholds")
+    centroids = require_artifact_weight(path.parent, weights.get("centroids"), [bit_count, 2], "coordinate_symbol", "centroids")
+    return artifact, projection, thresholds, centroids
+
+
+def evaluate_learned_binary_adc(args: Any) -> None:
+    data = load_root(args.evaluation_root); calibration = load_root(args.calibration_root)
+    artifact, projection, thresholds, centroids = load_learned_binary_adc_artifact(args.artifact, data, calibration)
+    document_projection = numpy.asarray(data["documents"], dtype=numpy.float32) @ projection.T
+    document_codes = (document_projection + thresholds >= 0.0).astype(numpy.uint8)
+    packed = pack_codes(document_codes, 2, 8)
+    def candidates(index: int, query: Any) -> Any:
+        query_projection = numpy.asarray(query, dtype=numpy.float32) @ projection.T
+        return numpy.lexsort((data["document_ids"], packed_adc_scores(packed, query_projection, centroids, 2, 8)))
+    metrics, contributions = evaluate_candidates(data, candidates, args.candidate_limit, args.oracle_k)
+    identity = contribution_identity(data, args.candidate_limit, args.oracle_k)
+    write_result(args.output, {"schema_version": 2, "family": "learned_binary_adc_reference_v1", "artifact_sha256": sha256_file(args.artifact), "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "oracle_k": args.oracle_k, "candidate_limit": args.candidate_limit, **metrics}, contributions, args.contributions_output, identity, data["query_ids"])
+
+
 def evaluate_ternary(args: Any) -> None:
     calibration = load_root(args.calibration_root); data = load_root(args.evaluation_root)
     validate_calibration_evaluation_pair(calibration, data)
@@ -1138,6 +1191,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     common = argparse.ArgumentParser(add_help=False); common.add_argument("--evaluation-root", type=Path, required=True); common.add_argument("--output", type=Path, required=True); common.add_argument("--contributions-output", type=Path, required=True); common.add_argument("--oracle-k", type=int, default=10); common.add_argument("--candidate-limit", type=int, default=512)
     binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
+    learned_adc = sub.add_parser("learned-adc", parents=[common]); learned_adc.add_argument("--artifact", type=Path, required=True); learned_adc.add_argument("--calibration-root", type=Path, required=True)
     ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles", "bitplanes"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--comparison-id", required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
     manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--comparison", type=Path, action="append", default=[]); manifest.add_argument("--grid-contract", type=Path); manifest.add_argument("--output", type=Path, required=True)
@@ -1146,6 +1200,7 @@ def main(argv: list[str]) -> int:
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
         if args.command == "binary": evaluate_artifact(args)
+        elif args.command == "learned-adc": evaluate_learned_binary_adc(args)
         elif args.command == "ternary": evaluate_ternary(args)
         elif args.command == "bootstrap": bootstrap(args)
         elif args.command == "write-manifest": write_compact_manifest(args)
