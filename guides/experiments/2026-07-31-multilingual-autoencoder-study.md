@@ -1477,11 +1477,13 @@ full stable ordering over all queries, so they are **not** a production speed
 claim: the two-plane implementation is vectorized NumPy `bitwise_count`, not
 the intended C++ POPCNT scan and top-K selection.
 
-The conclusion is a no-go for a full two-plane persistence/index design. It
-does not improve symmetric quality at equal bytes over simply using 256 binary
-directions, and it remains materially below the asymmetric binary ADC
-frontier. The more targeted future coarse-filter hypothesis is a binary sign
-code plus a compact uncertainty mask, rather than two state planes for every
-coordinate. This control does not rule out a learned binary-ADC projection,
-coarse routing, or PQ/OPQ: those are different objectives and must each be
-tested against the fixed-payload ITQ binary-ADC baseline.
+For ITQ seed `42`, the full two-plane representation does not improve
+symmetric quality at equal bytes over simply using 256 binary directions, and
+it remains materially below the asymmetric binary ADC frontier. This is a
+query-bootstrap result for one rotation, not yet a five-rotation general
+no-go or a production latency result. The more targeted future coarse-filter
+hypothesis is a binary sign code plus a compact uncertainty mask, rather than
+two state planes for every coordinate. This control does not rule out a
+learned binary-ADC projection, coarse routing, or PQ/OPQ: those are different
+objectives and must each be tested against the fixed-payload ITQ binary-ADC
+baseline.
