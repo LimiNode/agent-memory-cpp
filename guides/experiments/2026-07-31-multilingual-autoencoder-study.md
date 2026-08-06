@@ -1399,3 +1399,38 @@ effectively than the matched ternary and quaternary scalar codes. All scalar
 codes remain candidate generators only; exact float reranking still requires
 retained float vectors. A C++ packed-LUT plus top-K benchmark and a larger
 multi-payload grid remain separate future work.
+
+### 2026-08-06 evidence bundle for the final scalar grid
+
+The final 50-row scalar grid is accompanied by the immutable evidence bundle
+`scalar-projection-rate-distortion-v1`. Its bundle-root SHA-256 is
+`8d81938c142e3d35a0752a4b19a67f7a4e7ec198e6746cc2a9adf66ea12bd410`.
+The bundle is published as the asset
+`scalar-projection-rate-distortion-v1.zip` on the matching GitHub draft
+release, rather than committed as generated binary data. It contains exactly:
+
+- `compact-manifest.json` — the committed 50-row compact provenance record;
+- `reports/` — every per-row evaluator report;
+- `contributions/` — every ordered per-query NPZ contribution input;
+- `bootstrap/` — every linked paired-query bootstrap report;
+- `evidence-bundle-manifest.json` — file hashes, file sizes, and the bundle
+  root commitment.
+
+The reference evaluator can create and verify this layout without trusting the
+archive filename or a manually transcribed table:
+
+```text
+python tools/agent-memory-bench/evaluate-projection-quantization.py \
+  validate-evidence-bundle --bundle-root scalar-projection-rate-distortion-v1
+```
+
+Validation first checks the exact file set, each file size and SHA-256, the
+compact-manifest SHA-256, and the canonical bundle-root SHA-256. It then
+reconstructs the compact manifest from the retained reports, NPZ inputs, and
+bootstrap reports. This repeats the report/contribution aggregate checks and
+the observed bootstrap-difference checks; a substituted report, NPZ, bootstrap
+file, or compact manifest is rejected.
+
+The release asset preserves the result evidence, not a claim that the local
+environment can be reproduced bit-for-bit. The evaluator runtime and source
+identity remain those captured by the compact manifest and its reports.

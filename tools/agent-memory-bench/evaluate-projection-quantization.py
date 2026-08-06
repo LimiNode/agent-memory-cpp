@@ -13,6 +13,7 @@ import hashlib
 import json
 import math
 import platform
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -57,6 +58,10 @@ def canonical_json_sha256(value: Any) -> str:
     ).hexdigest()
 
 
+def canonical_json_bytes(value: Any) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
 def require_sha256(value: Any, field: str) -> str:
     if not isinstance(value, str) or len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
         raise EvaluationError(f"{field} must be a lowercase SHA-256")
@@ -69,6 +74,15 @@ def require_plain_path(value: Any, field: str) -> Path:
     path = Path(value)
     if path.is_absolute() or path.name != value:
         raise EvaluationError(f"{field} must be a plain file name")
+    return path
+
+
+def require_bundle_path(value: Any, field: str) -> Path:
+    if not isinstance(value, str):
+        raise EvaluationError(f"{field} must be a relative path string")
+    path = Path(value)
+    if path.is_absolute() or any(part in ("", ".", "..") for part in path.parts) or len(path.parts) != 2:
+        raise EvaluationError(f"{field} must be a two-part relative path")
     return path
 
 
@@ -667,6 +681,160 @@ def write_compact_manifest(args: Any) -> None:
     args.output.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_result_manifest_v2", "evaluator_source_sha256": reference_evaluator_source_sha256, "evaluator_runtime": reference_evaluator_runtime, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"]), "comparisons": sorted(comparisons, key=lambda entry: entry["id"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
+def read_compact_manifest(path: Path) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationError(f"cannot read compact manifest: {path}: {exc}") from exc
+    if value.get("schema_version") != 2 or value.get("family") != "scalar_projection_result_manifest_v2":
+        raise EvaluationError("compact manifest schema is unsupported")
+    if not isinstance(value.get("rows"), list) or not value["rows"] or not isinstance(value.get("comparisons"), list):
+        raise EvaluationError("compact manifest rows or comparisons are invalid")
+    return value
+
+
+def evidence_bundle_entries(
+    compact_manifest: dict[str, Any],
+    reports_dir: Path,
+    contributions_dir: Path,
+    bootstrap_dir: Path,
+) -> list[dict[str, Any]]:
+    entries: list[dict[str, Any]] = []
+    seen_paths: set[str] = set()
+
+    def append(source: Path, bundle_path: Path, expected_sha256: Any, field: str) -> None:
+        expected = require_sha256(expected_sha256, field)
+        if not source.is_file() or sha256_file(source) != expected:
+            raise EvaluationError(f"evidence input hash differs: {source}")
+        portable_path = bundle_path.as_posix()
+        if portable_path in seen_paths:
+            raise EvaluationError(f"evidence bundle has duplicate path: {portable_path}")
+        seen_paths.add(portable_path)
+        entries.append({"path": portable_path, "sha256": expected, "size_bytes": source.stat().st_size})
+
+    for row in compact_manifest["rows"]:
+        if not isinstance(row, dict):
+            raise EvaluationError("compact manifest row is invalid")
+        report_name = require_plain_path(row.get("report_file"), "compact manifest report_file")
+        contribution_name = require_plain_path(row.get("contributions_file"), "compact manifest contributions_file")
+        append(reports_dir / report_name, Path("reports") / report_name, row.get("report_sha256"), "compact manifest report_sha256")
+        append(contributions_dir / contribution_name, Path("contributions") / contribution_name, row.get("contributions_sha256"), "compact manifest contributions_sha256")
+    for comparison in compact_manifest["comparisons"]:
+        if not isinstance(comparison, dict):
+            raise EvaluationError("compact manifest comparison is invalid")
+        bootstrap_name = require_plain_path(comparison.get("bootstrap_report_file"), "compact manifest bootstrap_report_file")
+        append(bootstrap_dir / bootstrap_name, Path("bootstrap") / bootstrap_name, comparison.get("bootstrap_report_sha256"), "compact manifest bootstrap_report_sha256")
+    return sorted(entries, key=lambda entry: entry["path"])
+
+
+def evidence_bundle_root(compact_manifest_sha256: str, entries: list[dict[str, Any]]) -> str:
+    return canonical_json_sha256({
+        "schema_version": 1,
+        "family": "scalar_projection_evidence_bundle_v1",
+        "compact_manifest_sha256": compact_manifest_sha256,
+        "files": entries,
+    })
+
+
+def verify_compact_manifest(
+    compact_manifest_path: Path,
+    reports_dir: Path,
+    contributions_dir: Path,
+    bootstrap_dir: Path,
+) -> None:
+    compact_manifest = read_compact_manifest(compact_manifest_path)
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        reports: list[Path] = []
+        comparisons: list[Path] = []
+        for row in compact_manifest["rows"]:
+            report_name = require_plain_path(row.get("report_file"), "compact manifest report_file")
+            contribution_name = require_plain_path(row.get("contributions_file"), "compact manifest contributions_file")
+            report = root / report_name
+            shutil.copyfile(reports_dir / report_name, report)
+            shutil.copyfile(contributions_dir / contribution_name, root / contribution_name)
+            reports.append(report)
+        for comparison in compact_manifest["comparisons"]:
+            bootstrap_name = require_plain_path(comparison.get("bootstrap_report_file"), "compact manifest bootstrap_report_file")
+            bootstrap = root / bootstrap_name
+            shutil.copyfile(bootstrap_dir / bootstrap_name, bootstrap)
+            comparisons.append(bootstrap)
+        reconstructed = root / "reconstructed-compact-manifest.json"
+        write_compact_manifest(argparse.Namespace(report=reports, comparison=comparisons, output=reconstructed))
+        if reconstructed.read_bytes() != compact_manifest_path.read_bytes():
+            raise EvaluationError("compact manifest differs from reconstructed evidence")
+
+
+def write_evidence_bundle(args: Any) -> None:
+    if args.output.exists():
+        raise EvaluationError(f"evidence bundle output already exists: {args.output}")
+    compact_manifest = read_compact_manifest(args.compact_manifest)
+    verify_compact_manifest(args.compact_manifest, args.reports_dir, args.contributions_dir, args.bootstrap_dir)
+    entries = evidence_bundle_entries(compact_manifest, args.reports_dir, args.contributions_dir, args.bootstrap_dir)
+    compact_manifest_sha256 = sha256_file(args.compact_manifest)
+    args.output.mkdir(parents=True)
+    shutil.copyfile(args.compact_manifest, args.output / "compact-manifest.json")
+    for entry in entries:
+        source = {
+            "reports": args.reports_dir,
+            "contributions": args.contributions_dir,
+            "bootstrap": args.bootstrap_dir,
+        }[Path(entry["path"]).parts[0]] / Path(entry["path"]).name
+        destination = args.output / require_bundle_path(entry["path"], "evidence bundle file path")
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, destination)
+    manifest = {
+        "schema_version": 1,
+        "family": "scalar_projection_evidence_bundle_v1",
+        "compact_manifest_file": "compact-manifest.json",
+        "compact_manifest_sha256": compact_manifest_sha256,
+        "files": entries,
+        "bundle_root_sha256": evidence_bundle_root(compact_manifest_sha256, entries),
+    }
+    (args.output / "evidence-bundle-manifest.json").write_bytes(canonical_json_bytes(manifest))
+    validate_evidence_bundle(argparse.Namespace(bundle_root=args.output))
+
+
+def validate_evidence_bundle(args: Any) -> None:
+    manifest_path = args.bundle_root / "evidence-bundle-manifest.json"
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationError(f"cannot read evidence bundle manifest: {manifest_path}: {exc}") from exc
+    if manifest.get("schema_version") != 1 or manifest.get("family") != "scalar_projection_evidence_bundle_v1" or manifest.get("compact_manifest_file") != "compact-manifest.json" or not isinstance(manifest.get("files"), list) or not manifest["files"]:
+        raise EvaluationError("evidence bundle manifest schema is invalid")
+    compact_manifest_path = args.bundle_root / "compact-manifest.json"
+    compact_manifest_sha256 = require_sha256(manifest.get("compact_manifest_sha256"), "evidence bundle compact_manifest_sha256")
+    if not compact_manifest_path.is_file() or sha256_file(compact_manifest_path) != compact_manifest_sha256:
+        raise EvaluationError("evidence bundle compact manifest hash differs")
+    files: list[dict[str, Any]] = []
+    expected_paths = {"compact-manifest.json", "evidence-bundle-manifest.json"}
+    for entry in manifest["files"]:
+        if not isinstance(entry, dict) or set(entry) != {"path", "sha256", "size_bytes"}:
+            raise EvaluationError("evidence bundle file entry is invalid")
+        relative_path = require_bundle_path(entry["path"], "evidence bundle file path")
+        portable_path = relative_path.as_posix()
+        if portable_path in expected_paths:
+            raise EvaluationError("evidence bundle file path is duplicated")
+        expected_paths.add(portable_path)
+        source = args.bundle_root / relative_path
+        if not source.is_file() or entry["size_bytes"] != source.stat().st_size or sha256_file(source) != require_sha256(entry["sha256"], "evidence bundle file sha256"):
+            raise EvaluationError(f"evidence bundle file hash differs: {relative_path}")
+        files.append(entry)
+    actual_paths = {path.relative_to(args.bundle_root).as_posix() for path in args.bundle_root.rglob("*") if path.is_file()}
+    if actual_paths != expected_paths:
+        raise EvaluationError("evidence bundle file set differs from manifest")
+    expected_root = evidence_bundle_root(compact_manifest_sha256, sorted(files, key=lambda entry: entry["path"]))
+    if manifest.get("bundle_root_sha256") != expected_root:
+        raise EvaluationError("evidence bundle root hash differs")
+    verify_compact_manifest(
+        compact_manifest_path,
+        args.bundle_root / "reports",
+        args.bundle_root / "contributions",
+        args.bundle_root / "bootstrap",
+    )
+
+
 def run_self_test() -> int:
     codes = numpy.asarray([[0, 1, 2, 0, 1, 2], [2, 1, 0, 2, 1, 0]], dtype=numpy.uint8)
     packed = pack_codes(codes, 3, 5)
@@ -722,6 +890,21 @@ def run_self_test() -> int:
         left_report = root / "left.json"; right_report = root / "right.json"
         report_for(left_report, left_path); report_for(right_report, right_path)
         write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "manifest.json"))
+        bundle = root / "bundle"
+        write_evidence_bundle(argparse.Namespace(
+            compact_manifest=root / "manifest.json",
+            reports_dir=root,
+            contributions_dir=root,
+            bootstrap_dir=root,
+            output=bundle,
+        ))
+        validate_evidence_bundle(argparse.Namespace(bundle_root=bundle))
+        (bundle / "contributions" / "right.npz").write_bytes(b"tampered")
+        try:
+            validate_evidence_bundle(argparse.Namespace(bundle_root=bundle))
+            print("self-test failed: tampered evidence bundle accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
         corrupted_bootstrap = json.loads((root / "bootstrap.json").read_text(encoding="utf-8"))
         corrupted_bootstrap["metrics"]["coverage_at_candidate_limit"]["observed_difference"] = 0.25
         (root / "bootstrap.json").write_text(json.dumps(corrupted_bootstrap, sort_keys=True), encoding="utf-8", newline="\n")
@@ -755,12 +938,16 @@ def main(argv: list[str]) -> int:
     ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--comparison-id", required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
     manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--comparison", type=Path, action="append", default=[]); manifest.add_argument("--output", type=Path, required=True)
+    bundle = sub.add_parser("write-evidence-bundle"); bundle.add_argument("--compact-manifest", type=Path, required=True); bundle.add_argument("--reports-dir", type=Path, required=True); bundle.add_argument("--contributions-dir", type=Path, required=True); bundle.add_argument("--bootstrap-dir", type=Path, required=True); bundle.add_argument("--output", type=Path, required=True)
+    validate_bundle = sub.add_parser("validate-evidence-bundle"); validate_bundle.add_argument("--bundle-root", type=Path, required=True)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
         if args.command == "binary": evaluate_artifact(args)
         elif args.command == "ternary": evaluate_ternary(args)
         elif args.command == "bootstrap": bootstrap(args)
         elif args.command == "write-manifest": write_compact_manifest(args)
+        elif args.command == "write-evidence-bundle": write_evidence_bundle(args)
+        elif args.command == "validate-evidence-bundle": validate_evidence_bundle(args)
         else: return run_self_test()
     except (EvaluationError, OSError, ValueError, KeyError, json.JSONDecodeError) as error:
         print(f"evaluate-projection-quantization: {error}", file=__import__("sys").stderr); return 1
