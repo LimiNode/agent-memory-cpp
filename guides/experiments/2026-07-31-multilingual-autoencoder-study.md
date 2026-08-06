@@ -1595,6 +1595,7 @@ float reranking. Raw reports, per-query NPZ contributions, and 15 paired
 | --- | ---: | ---: | ---: |
 | Binary sign Hamming, 272 coordinates | 34 | 0.990942 | 0.801277 |
 | Sign 256 + mask 16, 25% margin quantile | 34 | 0.989073 | 0.801190 |
+| Binary sign Hamming, 256 coordinates | 32 | 0.989026 | 0.801078 |
 | Binary sign Hamming, 288 coordinates | 36 | 0.991693 | 0.801313 |
 | Sign 256 + mask 32, 10% margin quantile | 36 | 0.989409 | 0.801320 |
 | Sign 256 + mask 32, 25% margin quantile | 36 | 0.989856 | 0.801175 |
@@ -1604,13 +1605,23 @@ case, `0.126294` for 32 coordinates at 10%, and `0.280967` for 32 coordinates
 at 25%. Thus the intended uncertainty states are genuinely exercised, rather
 than reducing to an ordinary sign code.
 
-Every same-seed, equal-byte paired coverage comparison is non-positive for the
-mask. The strongest candidate is the 32-coordinate, 25% mask at 36 B, but it
-still averages `-0.001837` coverage against 288-bit Hamming; its five paired
-seed deltas range from `-0.003834` to `+0.000160`. The 16-coordinate, 25%
-mask at 34 B averages `-0.001869` against 272-bit Hamming. The paired nDCG
-deltas are small and mixed, as expected once exact reranking is applied, but
-there is no candidate-recall justification for the mask.
+The 256-bit attribution control distinguishes the two possible explanations:
+all mask variants modestly exceed plain Hamming-256, so the wildcard carries a
+small signal, but it spends the extra payload bits less effectively than extra
+binary directions. The strongest candidate is the 32-coordinate, 25% mask at
+36 B, but it still averages `-0.001837` coverage against 288-bit Hamming. Four
+of its five observed same-seed deltas are negative; the remaining delta is
+`+0.000160`. The 16-coordinate, 25% mask at 34 B averages `-0.001869` against
+272-bit Hamming. The paired nDCG deltas are small and mixed, as expected once
+exact reranking is applied, but no mask variant shows a consistent positive
+equal-payload coverage effect across seeds.
+
+The reviewable evidence bundle is the draft release asset
+[`uncertainty-mask-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-f8f532ac4835febfc3d8/uncertainty-mask-evidence-v1.zip),
+archive SHA-256 `d69dd03c5ad14783a3f05497b80f800d92bd0b529097aae4f1982859ff27d9d8`.
+It contains 30 reports and matching per-query NPZ files, 15 paired bootstrap
+reports, the exact evaluator source snapshot, and `evidence-manifest.json`
+with the relative path, SHA-256, and byte size of every retained payload.
 
 Therefore the tested wildcard rule does not improve the equal-payload binary
 coarse-filter frontier. This is a five-rotation quality result, not a C++
