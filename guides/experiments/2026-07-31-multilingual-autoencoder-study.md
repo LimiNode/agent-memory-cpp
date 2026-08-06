@@ -1493,3 +1493,80 @@ When passed to `write-manifest`, that contract rejects a rerun with a missing,
 duplicate, or unexpected projection/quantizer/scoring/coordinate/seed row, or
 with a missing, unexpected, or endpoint/replicate/seed-mismatched paired
 bootstrap comparison.
+### 2026-08-06 label-free learned binary ADC: initial result is negative
+
+This experiment tested whether a learned document-only binary ADC encoder can
+improve on fixed ITQ binary ADC before introducing qrels or query supervision.
+The artifact starts from ITQ weights, per-coordinate median thresholds, and two
+conditional scalar centroids. It then learns the projection, thresholds, and
+centroids with a straight-through hard document code and a row-standardized
+document-pair geometry-distillation objective. The float query remains
+continuous and candidate scoring is its squared distance to the centroid
+selected by each hard document bit. The loss has geometry, quantization,
+row-orthogonality, and batch bit-balance terms with weights `1.0`, `0.1`,
+`0.1`, and `0.1` respectively.
+
+The run used the existing label-free RU materialization with manifest
+SHA-256 `cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86`:
+25,000 calibration documents and a disjoint evaluation set of 22,607 documents
+and 1,252 queries. A stable SHA-256 document split reserved 5,062 calibration
+documents for checkpoint selection, leaving 19,938 for optimizer updates. No
+query text, qrel, or evaluation document was used by the trainer. The selected
+checkpoint was epoch 9 of 12, seed 42, batch size 128, learning rate `1e-3`,
+temperature 4, and 18 Torch CPU threads. Validation is evaluated in fixed
+bounded document batches, rather than a quadratic full validation matrix, so
+checkpoint selection does not depend on host RAM.
+
+The decisive comparator is the trainer-emitted *zero-step control*: the exact
+same ITQ initialization, thresholds, centroids, 19,938-document input subset,
+and held-out retrieval fixture, evaluated before a single optimizer update.
+The ordinary ITQ binary ADC row calibrated from all 25,000 documents is also
+shown for external context. All rows use 128 binary coordinates (16 packed
+document bytes), float-query two-centroid ADC, `K=512`, oracle `K=10`, stable
+ID ties, and exact float rerank.
+
+| Variant | Calibration documents | Coverage@512 | Reranked nDCG@10 |
+| --- | ---: | ---: | ---: |
+| ITQ binary ADC, full calibration context | 25,000 | 0.983307 | 0.800936 |
+| ITQ initialization, zero-step matched control | 19,938 | 0.985543 | 0.800224 |
+| Learned binary ADC, selected epoch 9 | 19,938 | 0.958147 | 0.798925 |
+
+Paired 10,000-replicate query bootstrap (seed `20260806`) for the matched
+control minus the learned checkpoint gives coverage `+0.027396`, 95% CI
+`[+0.023323, +0.031550]`; the nDCG@10 difference is `+0.001299`, CI
+`[-0.001832, +0.004669]`. Thus the learned objective substantially worsens
+exact-E5 neighbour capture, while the relevance metric is too noisy here to
+establish a separate nDCG difference. It does not beat the fixed ITQ binary ADC
+baseline and is not a candidate for the next implementation stage.
+
+Hard-code health rules out trivial code collapse: both the control and learned
+checkpoint have no constant bits and a unique-code fraction of 1.0 on both the
+optimizer and validation partitions. Threshold drift is the clearest correlated
+failure signature, but its causal contribution is not yet isolated from the
+simultaneous projection and centroid updates. The zero-step control has train occupancy exactly
+`0.500` per bit (validation range `0.478`--`0.534`); the learned checkpoint has
+train occupancy range `0.168`--`0.830` and validation range `0.157`--`0.844`.
+The batch balance penalty did not preserve the global median property. A future
+ablation must separately recalibrate or freeze thresholds and centroids before
+assigning causality for the coverage loss.
+
+Raw artifacts are intentionally retained outside Git under
+`tmp/learned-binary-adc-128-seed42-fair-control/`: the learned artifact,
+zero-step-control artifact, two reports, paired contribution NPZ files, and
+bootstrap report. Their reviewable copy is the draft release asset
+[`learned-binary-adc-seed42-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-0ba4ebba4d9eb8546f3c/learned-binary-adc-seed42-evidence-v1.zip):
+archive SHA-256 `b86af919f1bea3316b3608f91d9e9536df23cf85a128f966b114b7412cbe4af7`,
+bundle-root SHA-256 `b7330c34df74004b9e3a4b373743eca0b397e0caf843722204df82117180b21e`.
+The bundle contains the exact trainer/evaluator source snapshots identified by
+the artifacts and reports, the materialization manifest, and an enumerated
+hash-and-size manifest for all 17 payload files. The lightweight trainer and
+evaluator self-tests passed, as did their registered CTest entries; a separate
+pinned-Torch synthetic end-to-end self-test now covers training, artifact
+emission/loading, packed-ADC parity, and corrupted-weight rejection. This is
+one deterministic initialization seed and a
+reference NumPy full-ordering evaluator; its search seconds are not production
+latency measurements. A future learned-ADC line must first make median or
+global-occupancy preservation a hard or explicitly validated contract, use a
+fixed locality-aware validation-pair set rather than contiguous validation
+chunks, then compare against this zero-step control before spending a multi-seed
+budget.
