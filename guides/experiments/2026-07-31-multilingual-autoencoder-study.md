@@ -1487,3 +1487,9 @@ two state planes for every coordinate. This control does not rule out a
 learned binary-ADC projection, coarse routing, or PQ/OPQ: those are different
 objectives and must each be tested against the fixed-payload ITQ binary-ADC
 baseline.
+The final 50-row grid is also declared independently in
+[`2026-08-06-scalar-projection-rate-distortion-grid-contract.json`](2026-08-06-scalar-projection-rate-distortion-grid-contract.json).
+When passed to `write-manifest`, that contract rejects a rerun with a missing,
+duplicate, or unexpected projection/quantizer/scoring/coordinate/seed row, or
+with a missing, unexpected, or endpoint/replicate/seed-mismatched paired
+bootstrap comparison.

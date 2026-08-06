@@ -1,0 +1,103 @@
+{
+  "comparison_ids": [
+    "itq_seed42_binary_adc_128_to_ternary_adc_128",
+    "itq_seed42_binary_adc_128_to_ternary_adc_80",
+    "itq_seed42_binary_adc_208_to_ternary_adc_128",
+    "itq_seed42_binary_adc_80_to_ternary_adc_80",
+    "itq_seed42_hamming_128_to_binary_adc_128",
+    "itq_seed42_hamming_208_to_binary_adc_208",
+    "itq_seed42_ternary_adc_128_to_quaternary_adc_104",
+    "itq_seed42_ternary_adc_80_to_quaternary_adc_64",
+    "itq_seed43_binary_adc_128_to_ternary_adc_80",
+    "itq_seed43_binary_adc_208_to_ternary_adc_128",
+    "itq_seed43_hamming_128_to_binary_adc_128",
+    "itq_seed43_hamming_208_to_binary_adc_208",
+    "itq_seed43_ternary_adc_128_to_quaternary_adc_104",
+    "itq_seed43_ternary_adc_80_to_quaternary_adc_64",
+    "itq_seed44_binary_adc_128_to_ternary_adc_80",
+    "itq_seed44_binary_adc_208_to_ternary_adc_128",
+    "itq_seed44_hamming_128_to_binary_adc_128",
+    "itq_seed44_hamming_208_to_binary_adc_208",
+    "itq_seed44_ternary_adc_128_to_quaternary_adc_104",
+    "itq_seed44_ternary_adc_80_to_quaternary_adc_64",
+    "itq_seed45_binary_adc_128_to_ternary_adc_80",
+    "itq_seed45_binary_adc_208_to_ternary_adc_128",
+    "itq_seed45_hamming_128_to_binary_adc_128",
+    "itq_seed45_hamming_208_to_binary_adc_208",
+    "itq_seed45_ternary_adc_128_to_quaternary_adc_104",
+    "itq_seed45_ternary_adc_80_to_quaternary_adc_64",
+    "itq_seed46_binary_adc_128_to_ternary_adc_80",
+    "itq_seed46_binary_adc_208_to_ternary_adc_128",
+    "itq_seed46_hamming_128_to_binary_adc_128",
+    "itq_seed46_hamming_208_to_binary_adc_208",
+    "itq_seed46_ternary_adc_128_to_quaternary_adc_104",
+    "itq_seed46_ternary_adc_80_to_quaternary_adc_64"
+  ],
+  "family": "scalar_projection_grid_contract_v1",
+  "row_groups": [
+    {
+      "coordinate_counts": [128, 208],
+      "projection": "itq",
+      "quantizer": "binary",
+      "scoring": "binary_hamming_reference_v2",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [128, 208],
+      "projection": "itq",
+      "quantizer": "binary",
+      "scoring": "binary_adc_packed_base2_lut_v1",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [80, 128],
+      "projection": "itq",
+      "quantizer": "tertiles",
+      "scoring": "ternary_adc_packed_base3_lut_v1",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [64, 104],
+      "projection": "itq",
+      "quantizer": "quartiles",
+      "scoring": "quaternary_adc_packed_base4_lut_v1",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [80],
+      "projection": "itq",
+      "quantizer": "binary",
+      "scoring": "binary_adc_packed_base2_lut_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [80, 128],
+      "projection": "itq",
+      "quantizer": "tertiles",
+      "scoring": "ternary_symmetric_l1_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [80, 128, 208],
+      "projection": "pca",
+      "quantizer": "binary",
+      "scoring": "binary_adc_packed_base2_lut_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [80, 128],
+      "projection": "pca",
+      "quantizer": "tertiles",
+      "scoring": "ternary_adc_packed_base3_lut_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [64, 104],
+      "projection": "pca",
+      "quantizer": "quartiles",
+      "scoring": "quaternary_adc_packed_base4_lut_v1",
+      "seeds": [42]
+    }
+  ],
+  "schema_version": 1
+}

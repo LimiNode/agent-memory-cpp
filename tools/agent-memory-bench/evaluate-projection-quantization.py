@@ -21,7 +21,7 @@ from typing import Any
 
 import numpy
 
-sys_dont_write_bytecode = True
+__import__("sys").dont_write_bytecode = True
 
 
 class EvaluationError(RuntimeError):
@@ -60,6 +60,95 @@ def canonical_json_sha256(value: Any) -> str:
 
 def canonical_json_bytes(value: Any) -> bytes:
     return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def scalar_grid_row_key(row: Any, field: str) -> tuple[str, str, str, int, int]:
+    if not isinstance(row, dict):
+        raise EvaluationError(f"{field} must be an object")
+    projection = row.get("projection")
+    quantizer = row.get("quantizer")
+    scoring = row.get("scoring")
+    coordinate_count = row.get("coordinate_count")
+    seed = row.get("seed")
+    if (not isinstance(projection, str) or not projection or not isinstance(quantizer, str) or not quantizer or
+            not isinstance(scoring, str) or not scoring or isinstance(coordinate_count, bool) or not isinstance(coordinate_count, int) or coordinate_count <= 0 or
+            isinstance(seed, bool) or not isinstance(seed, int) or seed < 0):
+        raise EvaluationError(f"{field} has an invalid row key")
+    return projection, quantizer, scoring, coordinate_count, seed
+
+
+def validate_grid_contract(manifest: dict[str, Any], path: Path) -> None:
+    try:
+        contract = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationError(f"cannot read scalar grid contract: {path}: {exc}") from exc
+    if contract.get("schema_version") != 2 or contract.get("family") != "scalar_projection_grid_contract_v1":
+        raise EvaluationError("scalar grid contract schema is unsupported")
+    groups = contract.get("row_groups")
+    comparisons = contract.get("comparisons")
+    if not isinstance(groups, list) or not groups or not isinstance(comparisons, list):
+        raise EvaluationError("scalar grid contract sections are invalid")
+    expected_rows: set[tuple[str, str, str, int, int]] = set()
+    for index, group in enumerate(groups):
+        if not isinstance(group, dict) or set(group) != {"projection", "quantizer", "scoring", "coordinate_counts", "seeds"}:
+            raise EvaluationError("scalar grid contract row group is invalid")
+        projection = group["projection"]
+        quantizer = group["quantizer"]
+        scoring = group["scoring"]
+        coordinates = group["coordinate_counts"]
+        seeds = group["seeds"]
+        if (not isinstance(projection, str) or not projection or not isinstance(quantizer, str) or not quantizer or
+                not isinstance(scoring, str) or not scoring or not isinstance(coordinates, list) or not coordinates or not isinstance(seeds, list) or not seeds or
+                any(isinstance(value, bool) or not isinstance(value, int) or value <= 0 for value in coordinates) or
+                any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in seeds)):
+            raise EvaluationError("scalar grid contract row group values are invalid")
+        for coordinate_count in coordinates:
+            for seed in seeds:
+                key = projection, quantizer, scoring, coordinate_count, seed
+                if key in expected_rows:
+                    raise EvaluationError(f"scalar grid contract has a duplicate row key in group {index}")
+                expected_rows.add(key)
+    actual_rows = [scalar_grid_row_key(row, "scalar manifest row") for row in manifest.get("rows", [])]
+    if len(actual_rows) != len(set(actual_rows)):
+        raise EvaluationError("scalar manifest has duplicate grid row keys")
+    if set(actual_rows) != expected_rows:
+        raise EvaluationError("scalar manifest rows differ from the declared grid contract")
+    expected_comparisons: dict[str, tuple[tuple[str, str, str, int, int], tuple[str, str, str, int, int], int, int]] = {}
+    for index, comparison in enumerate(comparisons):
+        if not isinstance(comparison, dict) or set(comparison) != {"id", "left", "right", "replicates", "bootstrap_seed"}:
+            raise EvaluationError(f"scalar grid contract comparison {index} is invalid")
+        comparison_id = comparison["id"]
+        if not isinstance(comparison_id, str) or not comparison_id or comparison_id in expected_comparisons:
+            raise EvaluationError("scalar grid contract comparison IDs are invalid")
+        left = scalar_grid_row_key(comparison["left"], f"scalar grid contract comparison {index}.left")
+        right = scalar_grid_row_key(comparison["right"], f"scalar grid contract comparison {index}.right")
+        replicates = comparison["replicates"]
+        bootstrap_seed = comparison["bootstrap_seed"]
+        if (left not in expected_rows or right not in expected_rows or isinstance(replicates, bool) or not isinstance(replicates, int) or replicates <= 0 or isinstance(bootstrap_seed, bool) or not isinstance(bootstrap_seed, int) or bootstrap_seed < 0):
+            raise EvaluationError(f"scalar grid contract comparison {index} values are invalid")
+        expected_comparisons[comparison_id] = left, right, replicates, bootstrap_seed
+    actual_comparisons = manifest.get("comparisons", [])
+    if not isinstance(actual_comparisons, list):
+        raise EvaluationError("scalar manifest comparisons are invalid")
+    actual_comparison_ids = [entry.get("id") for entry in actual_comparisons if isinstance(entry, dict)]
+    if len(actual_comparison_ids) != len(actual_comparisons) or len(actual_comparison_ids) != len(set(actual_comparison_ids)) or set(actual_comparison_ids) != set(expected_comparisons):
+        raise EvaluationError("scalar manifest comparisons differ from the declared grid contract")
+    contribution_rows: dict[str, tuple[str, str, str, int, int]] = {}
+    for row in manifest.get("rows", []):
+        contribution_sha256 = require_sha256(row.get("contributions_sha256"), "scalar manifest row contributions_sha256")
+        row_key = scalar_grid_row_key(row, "scalar manifest row")
+        existing = contribution_rows.setdefault(contribution_sha256, row_key)
+        if existing != row_key:
+            raise EvaluationError("scalar manifest contribution hash maps to multiple row keys")
+    for entry in actual_comparisons:
+        comparison_id = entry["id"]
+        left_sha256 = require_sha256(entry.get("left_contributions_sha256"), "scalar manifest comparison left_contributions_sha256")
+        right_sha256 = require_sha256(entry.get("right_contributions_sha256"), "scalar manifest comparison right_contributions_sha256")
+        if left_sha256 not in contribution_rows or right_sha256 not in contribution_rows:
+            raise EvaluationError("scalar manifest comparison endpoint is unavailable")
+        expected_left, expected_right, expected_replicates, expected_seed = expected_comparisons[comparison_id]
+        if (contribution_rows[left_sha256] != expected_left or contribution_rows[right_sha256] != expected_right or entry.get("replicates") != expected_replicates or entry.get("seed") != expected_seed):
+            raise EvaluationError("scalar manifest comparison differs from the declared contract")
 
 
 def require_sha256(value: Any, field: str) -> str:
@@ -718,8 +807,11 @@ def write_compact_manifest(args: Any) -> None:
             entry[f"{target_name}_percentile_95_ci"] = [float(interval[0]), float(interval[1])]
         comparison_ids.add(comparison_id)
         comparisons.append(entry)
+    manifest = {"schema_version": 2, "family": "scalar_projection_result_manifest_v2", "evaluator_source_sha256": reference_evaluator_source_sha256, "evaluator_runtime": reference_evaluator_runtime, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"]), "comparisons": sorted(comparisons, key=lambda entry: entry["id"])}
+    if args.grid_contract is not None:
+        validate_grid_contract(manifest, args.grid_contract)
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_result_manifest_v2", "evaluator_source_sha256": reference_evaluator_source_sha256, "evaluator_runtime": reference_evaluator_runtime, "calibration_materialization_manifest_sha256": reference_calibration_manifest_sha256, "evaluation_identity": reference_identity, "rows": sorted(rows, key=lambda row: row["report_file"]), "comparisons": sorted(comparisons, key=lambda entry: entry["id"])}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    args.output.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def read_compact_manifest(path: Path) -> dict[str, Any]:
@@ -939,7 +1031,61 @@ def run_self_test() -> int:
             path.write_text(json.dumps({"schema_version": 2, "family": "scalar_projection_reference_v2", "projection": "pca", "quantizer": "binary", "code_assignment": "self_test", "scoring": "binary_adc_packed_base2_lut_v1", "symbol_count": 2, "coordinate_count": 2, "packed_payload_bytes_per_document": 1, "evaluation_materialization_manifest_sha256": "a" * 64, "evaluation_qrels_sha256": "b" * 64, "calibration_materialization_manifest_sha256": "c" * 64, "projection_weights_sha256": "d" * 64, "centroids_sha256": "e" * 64, "seed": 42, "itq_iterations": 0, "kmeans_iterations": 0, "oracle_k": 10, "candidate_limit": 512, "query_count": 2, "symbol_frequencies": [0.5, 0.5], "total_marginal_symbol_entropy_bits": 2.0, "maximum_marginal_symbol_entropy_bits": 2.0, "normalized_marginal_symbol_entropy": 1.0, "exact_top_k_candidate_coverage": 0.75, "reranked_ndcg_at_10": 0.75, "full_e5_ndcg_at_10": 0.75, "per_query_contributions_path": contribution_path.name, "per_query_contributions_sha256": sha256_file(contribution_path), "per_query_contribution_identity": identity, "evaluator_source_sha256": sha256_file(Path(__file__)), "evaluator_runtime": evaluator_runtime()}, sort_keys=True), encoding="utf-8", newline="\n")
         left_report = root / "left.json"; right_report = root / "right.json"
         report_for(left_report, left_path); report_for(right_report, right_path)
-        write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "manifest.json"))
+        write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "manifest.json", grid_contract=None))
+        adc_row = {"projection": "pca", "quantizer": "binary", "scoring": "binary_adc_packed_base2_lut_v1", "coordinate_count": 2, "seed": 42, "contributions_sha256": "f" * 64}
+        hamming_row = {"projection": "pca", "quantizer": "binary", "scoring": "binary_hamming_reference_v2", "coordinate_count": 2, "seed": 42, "contributions_sha256": "e" * 64}
+        grid_manifest = {
+            "rows": [adc_row, hamming_row],
+            "comparisons": [{"id": "self_test", "left_contributions_sha256": adc_row["contributions_sha256"], "right_contributions_sha256": hamming_row["contributions_sha256"], "replicates": 8, "seed": 42}],
+        }
+        grid_contract_value = {
+            "schema_version": 2,
+            "family": "scalar_projection_grid_contract_v1",
+            "row_groups": [
+                {"projection": "pca", "quantizer": "binary", "scoring": "binary_adc_packed_base2_lut_v1", "coordinate_counts": [2], "seeds": [42]},
+                {"projection": "pca", "quantizer": "binary", "scoring": "binary_hamming_reference_v2", "coordinate_counts": [2], "seeds": [42]},
+            ],
+            "comparisons": [{
+                "id": "self_test",
+                "left": {key: value for key, value in adc_row.items() if key != "contributions_sha256"},
+                "right": {key: value for key, value in hamming_row.items() if key != "contributions_sha256"},
+                "replicates": 8,
+                "bootstrap_seed": 42,
+            }],
+        }
+        grid_contract = root / "grid-contract.json"
+        grid_contract.write_text(json.dumps(grid_contract_value), encoding="utf-8", newline="\n")
+        validate_grid_contract(grid_manifest, grid_contract)
+        incomplete_grid = json.loads(json.dumps(grid_manifest)); incomplete_grid["rows"] = []
+        try:
+            validate_grid_contract(incomplete_grid, grid_contract)
+            print("self-test failed: incomplete grid accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
+        wrong_pair_grid = json.loads(json.dumps(grid_manifest)); wrong_pair_grid["comparisons"][0]["left_contributions_sha256"] = hamming_row["contributions_sha256"]; wrong_pair_grid["comparisons"][0]["right_contributions_sha256"] = adc_row["contributions_sha256"]
+        try:
+            validate_grid_contract(wrong_pair_grid, grid_contract)
+            print("self-test failed: wrong comparison pair accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
+        wrong_replicates_grid = json.loads(json.dumps(grid_manifest)); wrong_replicates_grid["comparisons"][0]["replicates"] = 9
+        try:
+            validate_grid_contract(wrong_replicates_grid, grid_contract)
+            print("self-test failed: wrong bootstrap replicates accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
+        wrong_seed_grid = json.loads(json.dumps(grid_manifest)); wrong_seed_grid["comparisons"][0]["seed"] = 43
+        try:
+            validate_grid_contract(wrong_seed_grid, grid_contract)
+            print("self-test failed: wrong bootstrap seed accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
+        missing_comparison_grid = json.loads(json.dumps(grid_manifest)); missing_comparison_grid["comparisons"] = []
+        try:
+            validate_grid_contract(missing_comparison_grid, grid_contract)
+            print("self-test failed: missing comparison accepted", file=__import__("sys").stderr); return 1
+        except EvaluationError:
+            pass
         bundle = root / "bundle"
         write_evidence_bundle(argparse.Namespace(
             compact_manifest=root / "manifest.json",
@@ -959,7 +1105,7 @@ def run_self_test() -> int:
         corrupted_bootstrap["metrics"]["coverage_at_candidate_limit"]["observed_difference"] = 0.25
         (root / "bootstrap.json").write_text(json.dumps(corrupted_bootstrap, sort_keys=True), encoding="utf-8", newline="\n")
         try:
-            write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "unexpected-bootstrap-manifest.json"))
+            write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[root / "bootstrap.json"], output=root / "unexpected-bootstrap-manifest.json", grid_contract=None))
             print("self-test failed: bootstrap difference mismatch accepted", file=__import__("sys").stderr); return 1
         except EvaluationError:
             pass
@@ -967,7 +1113,7 @@ def run_self_test() -> int:
         corrupted = json.loads(left_report.read_text(encoding="utf-8")); corrupted["exact_top_k_candidate_coverage"] = 0.5
         left_report.write_text(json.dumps(corrupted, sort_keys=True), encoding="utf-8", newline="\n")
         try:
-            write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[], output=root / "unexpected-manifest.json"))
+            write_compact_manifest(argparse.Namespace(report=[left_report, right_report], comparison=[], output=root / "unexpected-manifest.json", grid_contract=None))
             print("self-test failed: aggregate metric mismatch accepted", file=__import__("sys").stderr); return 1
         except EvaluationError:
             pass
@@ -987,7 +1133,7 @@ def main(argv: list[str]) -> int:
     binary = sub.add_parser("binary", parents=[common]); binary.add_argument("--artifact", type=Path, required=True); binary.add_argument("--calibration-root", type=Path)
     ternary = sub.add_parser("ternary", parents=[common]); ternary.add_argument("--calibration-root", type=Path, required=True); ternary.add_argument("--projection", choices=("pca", "itq"), required=True); ternary.add_argument("--quantizer", choices=("binary", "tertiles", "kmeans", "quartiles", "bitplanes"), required=True); ternary.add_argument("--scoring", choices=("symmetric", "adc"), required=True); ternary.add_argument("--coordinate-count", "--trit-count", dest="coordinate_count", type=int, required=True); ternary.add_argument("--seed", type=int, default=42); ternary.add_argument("--itq-iterations", type=int, default=50); ternary.add_argument("--kmeans-iterations", type=int, default=25)
     boot = sub.add_parser("bootstrap"); boot.add_argument("--left-contributions", type=Path, required=True); boot.add_argument("--right-contributions", type=Path, required=True); boot.add_argument("--output", type=Path, required=True); boot.add_argument("--comparison-id", required=True); boot.add_argument("--replicates", type=int, default=10000); boot.add_argument("--seed", type=int, default=42)
-    manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--comparison", type=Path, action="append", default=[]); manifest.add_argument("--output", type=Path, required=True)
+    manifest = sub.add_parser("write-manifest"); manifest.add_argument("--report", type=Path, action="append", required=True); manifest.add_argument("--comparison", type=Path, action="append", default=[]); manifest.add_argument("--grid-contract", type=Path); manifest.add_argument("--output", type=Path, required=True)
     bundle = sub.add_parser("write-evidence-bundle"); bundle.add_argument("--compact-manifest", type=Path, required=True); bundle.add_argument("--reports-dir", type=Path, required=True); bundle.add_argument("--contributions-dir", type=Path, required=True); bundle.add_argument("--bootstrap-dir", type=Path, required=True); bundle.add_argument("--output", type=Path, required=True)
     validate_bundle = sub.add_parser("validate-evidence-bundle"); validate_bundle.add_argument("--bundle-root", type=Path, required=True)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
