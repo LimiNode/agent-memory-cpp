@@ -188,7 +188,7 @@ def expected_contract(value: dict[str, Any]) -> tuple[dict[str, dict[str, Any]],
     family = value.get("family")
     if (schema_version, family) not in ((1, "pq_opq_equal_payload_grid_contract_v1"), (2, "pq_opq_equal_payload_grid_contract_v2")):
         raise EvidenceError("PQ/OPQ grid contract schema is unsupported")
-    if value.get("candidate_limit") != 512 or value.get("oracle_k") != 10:
+    if value.get("candidate_limit") != 512 or value.get("oracle_k") != 10 or (schema_version == 2 and value.get("kmeans_iterations") != 12):
         raise EvidenceError("PQ/OPQ grid contract retrieval budget is invalid")
     methods = value.get("methods")
     payloads = value.get("payload_bytes")
@@ -269,7 +269,7 @@ def write_selection(args: Any) -> None:
         load_contributions(contribution, report, f"selection report {path.name}")
         optimizer_ids_sha256 = report.get("optimizer_ids_sha256", report.get("training_sample_ids_sha256"))
         calibration_manifest = require_sha256(report.get("calibration_materialization_manifest_sha256"), "selection calibration manifest")
-        current = (method, payload, bits, report.get("seed"), report.get("training_sample_count"), report.get("optimizer_vector_count"), report.get("validation_vector_count"), optimizer_ids_sha256, report.get("validation_sample_ids_sha256"), calibration_manifest, report.get("validation_split_algorithm"), report.get("validation_split_salt"))
+        current = (method, payload, bits, report.get("seed"), report.get("kmeans_iterations"), report.get("training_sample_count"), report.get("optimizer_vector_count"), report.get("validation_vector_count"), optimizer_ids_sha256, report.get("validation_sample_ids_sha256"), calibration_manifest, report.get("validation_split_algorithm"), report.get("validation_split_salt"))
         if common is None:
             common = current
         elif current != common:
@@ -282,10 +282,10 @@ def write_selection(args: Any) -> None:
     if {row["steps"] for row in rows} != set(expected_steps):
         raise EvidenceError("selection candidate step set is invalid")
     selected = min(rows, key=lambda row: (row["validation_reconstruction_mse"], row["steps"]))
-    _, _, _, seed, sample_count, optimizer_count, validation_count, optimizer_hash, validation_hash, calibration_manifest, split_algorithm, split_salt = common or ()
+    _, _, _, seed, kmeans_iterations, sample_count, optimizer_count, validation_count, optimizer_hash, validation_hash, calibration_manifest, split_algorithm, split_salt = common or ()
     result = {"schema_version": 1, "family": "pq_opq_opq_step_selection_v1", "candidate_steps": expected_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": seed, "selection_calibration_materialization_manifest_sha256": calibration_manifest, "selection_calibration_vector_count": sample_count, "selection_optimizer_vector_count": optimizer_count, "selection_holdout_vector_count": validation_count, "selection_optimizer_ids_sha256": optimizer_hash, "selection_holdout_ids_sha256": validation_hash, "final_training_vector_count": 25000, "steps": sorted(rows, key=lambda row: row["steps"]), "selected_steps": selected["steps"]}
     if is_extension:
-        result.update({"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "selection_split_algorithm": split_algorithm, "selection_split_salt": split_salt})
+        result.update({"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "selection_kmeans_iterations": kmeans_iterations, "selection_split_algorithm": split_algorithm, "selection_split_salt": split_salt})
     args.output.write_bytes(canonical_json_bytes(result))
 
 
@@ -293,12 +293,12 @@ def validate_selection(path: Path, reports_dir: Path, contributions_dir: Path) -
     value = read_json(path, "selection contract")
     base_required = {"schema_version", "family", "candidate_steps", "selection_metric", "tie_break", "seed", "selection_calibration_materialization_manifest_sha256", "selection_calibration_vector_count", "selection_optimizer_vector_count", "selection_holdout_vector_count", "selection_optimizer_ids_sha256", "selection_holdout_ids_sha256", "final_training_vector_count", "steps", "selected_steps"}
     is_extension = value.get("schema_version") == 2 and value.get("family") == "pq_opq_opq_step_selection_v2"
-    required = base_required | ({"selection_split_algorithm", "selection_split_salt"} if is_extension else set())
+    required = base_required | ({"selection_kmeans_iterations", "selection_split_algorithm", "selection_split_salt"} if is_extension else set())
     expected_steps = [0, 2, 4, 8, 16, 32, 64] if is_extension else [0, 2, 4, 8, 16]
     if (set(value) != required or
             (not is_extension and (value.get("schema_version") != 1 or value.get("family") != "pq_opq_opq_step_selection_v1")) or
             value.get("candidate_steps") != expected_steps or value.get("selection_metric") != "calibration_holdout_reconstruction_mse" or value.get("tie_break") != "smaller_step_count" or value.get("final_training_vector_count") != 25000 or
-            (is_extension and (value.get("selection_split_algorithm") != "sha256_document_id_rank_v1" or value.get("selection_split_salt") != "opq-step-convergence-extension-v1"))):
+            (is_extension and (value.get("selection_kmeans_iterations") != 12 or value.get("selection_split_algorithm") != "sha256_document_id_rank_v1" or value.get("selection_split_salt") != "opq-step-convergence-extension-v1"))):
         raise EvidenceError("selection contract schema is invalid")
     rows = value["steps"]
     if not isinstance(rows, list) or len(rows) != len(expected_steps) or [row.get("steps") for row in rows if isinstance(row, dict)] != expected_steps:
@@ -325,7 +325,7 @@ def validate_selection(path: Path, reports_dir: Path, contributions_dir: Path) -
             raise EvidenceError("selection calibration split differs from report")
         if report_value.get("opq_iterations") != row["steps"] or not math.isclose(finite_metric(report_value.get("validation_reconstruction_mse"), "selection report MSE"), finite_metric(row.get("validation_reconstruction_mse"), "selection contract MSE"), rel_tol=0.0, abs_tol=1.0e-15):
             raise EvidenceError("selection contract MSE differs from report")
-        if is_extension and (report_value.get("validation_split_algorithm") != value["selection_split_algorithm"] or report_value.get("validation_split_salt") != value["selection_split_salt"]):
+        if is_extension and (report_value.get("kmeans_iterations") != value["selection_kmeans_iterations"] or report_value.get("validation_split_algorithm") != value["selection_split_algorithm"] or report_value.get("validation_split_salt") != value["selection_split_salt"]):
             raise EvidenceError("selection contract split differs from report")
     chosen = min(rows, key=lambda row: (float(row["validation_reconstruction_mse"]), row["steps"]))
     if value.get("selected_steps") != chosen["steps"]:
@@ -343,6 +343,7 @@ def write_extended_grid_contract(args: Any) -> None:
         "family": "pq_opq_equal_payload_grid_contract_v2",
         "candidate_limit": 512,
         "oracle_k": 10,
+        "kmeans_iterations": selection["selection_kmeans_iterations"],
         "methods": [
             {"id": "binary", "family": "binary", "scheme": None, "code_bits": 1, "opq_iterations": 0},
             {"id": "pq4", "family": "pq_opq", "scheme": "pq", "code_bits": 4, "opq_iterations": 0},
@@ -381,6 +382,8 @@ def write_manifest(args: Any) -> None:
             raise EvidenceError(f"report is outside the declared grid: {path}")
         if report.get("candidate_limit") != contract["candidate_limit"] or report.get("oracle_k") != contract["oracle_k"]:
             raise EvidenceError(f"report retrieval contract differs: {path}")
+        if contract.get("schema_version") == 2 and report.get("kmeans_iterations") != contract["kmeans_iterations"]:
+            raise EvidenceError(f"report k-means contract differs: {path}")
         full_ids = require_final_training_contract(report, method, path)
         calibration_manifest, full_calibration_ids = require_shared_calibration_provenance(
             report, path, calibration_manifest, full_calibration_ids, full_ids
@@ -518,6 +521,7 @@ def run_self_test() -> int:
     extended_contract = json.loads(json.dumps(contract))
     extended_contract["schema_version"] = 2
     extended_contract["family"] = "pq_opq_equal_payload_grid_contract_v2"
+    extended_contract["kmeans_iterations"] = 12
     for method in extended_contract["methods"]:
         if method["scheme"] == "opq":
             method["opq_iterations"] = 64
@@ -587,6 +591,7 @@ def run_self_test() -> int:
                 "opq_iterations": step,
                 "validation_reconstruction_mse": mse,
                 "seed": 42,
+                "kmeans_iterations": 12,
                 "training_sample_count": 25000,
                 "optimizer_vector_count": 20000,
                 "validation_vector_count": 5000,
@@ -604,6 +609,7 @@ def run_self_test() -> int:
             "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000,
             "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000,
             "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64,
+            "selection_kmeans_iterations": 12,
             "selection_split_algorithm": "sha256_document_id_rank_v1", "selection_split_salt": "opq-step-convergence-extension-v1",
             "final_training_vector_count": 25000, "steps": extended_rows, "selected_steps": 64,
         }))
@@ -649,7 +655,7 @@ def run_self_test() -> int:
 
 def run_extended_selection_self_test() -> int:
     contract = {
-        "schema_version": 2, "family": "pq_opq_equal_payload_grid_contract_v2", "candidate_limit": 512, "oracle_k": 10,
+        "schema_version": 2, "family": "pq_opq_equal_payload_grid_contract_v2", "candidate_limit": 512, "oracle_k": 10, "kmeans_iterations": 12,
         "methods": [
             {"id": "binary", "family": "binary", "scheme": None, "code_bits": 1, "opq_iterations": 0},
             {"id": "pq4", "family": "pq_opq", "scheme": "pq", "code_bits": 4, "opq_iterations": 0},
@@ -673,10 +679,10 @@ def run_extended_selection_self_test() -> int:
             report_path = reports_dir / f"step{step}.json"; contribution_path = contributions_dir / f"step{step}.npz"
             contribution_path.write_bytes(b"selection")
             mse = 1.0 / (step + 1)
-            report = {"opq_iterations": step, "validation_reconstruction_mse": mse, "calibration_materialization_manifest_sha256": "b" * 64, "seed": 42, "training_sample_count": 25000, "optimizer_vector_count": 20000, "validation_vector_count": 5000, "optimizer_ids_sha256": "a" * 64, "validation_sample_ids_sha256": "c" * 64, "validation_split_algorithm": "sha256_document_id_rank_v1", "validation_split_salt": "opq-step-convergence-extension-v1"}
+            report = {"opq_iterations": step, "validation_reconstruction_mse": mse, "calibration_materialization_manifest_sha256": "b" * 64, "seed": 42, "kmeans_iterations": 12, "training_sample_count": 25000, "optimizer_vector_count": 20000, "validation_vector_count": 5000, "optimizer_ids_sha256": "a" * 64, "validation_sample_ids_sha256": "c" * 64, "validation_split_algorithm": "sha256_document_id_rank_v1", "validation_split_salt": "opq-step-convergence-extension-v1"}
             report_path.write_text(json.dumps(report), encoding="utf-8", newline="\n")
             rows.append({"steps": step, "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution_path.name, "contributions_sha256": sha256_file(contribution_path), "validation_reconstruction_mse": mse, "diagnostic_coverage_at_512": 0.5})
-        selection = {"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "candidate_steps": candidate_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42, "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000, "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000, "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64, "final_training_vector_count": 25000, "selection_split_algorithm": "sha256_document_id_rank_v1", "selection_split_salt": "opq-step-convergence-extension-v1", "steps": rows, "selected_steps": 64}
+        selection = {"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "candidate_steps": candidate_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42, "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000, "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000, "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64, "selection_kmeans_iterations": 12, "final_training_vector_count": 25000, "selection_split_algorithm": "sha256_document_id_rank_v1", "selection_split_salt": "opq-step-convergence-extension-v1", "steps": rows, "selected_steps": 64}
         selection_path = root / "selection.json"
         selection_path.write_bytes(canonical_json_bytes(selection))
         validate_selection(selection_path, reports_dir, contributions_dir)
