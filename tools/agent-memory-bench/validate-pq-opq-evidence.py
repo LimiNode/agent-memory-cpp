@@ -9,6 +9,7 @@ import json
 import math
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -474,6 +475,28 @@ def run_self_test() -> int:
         return 1
     except EvidenceError:
         pass
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        reports_dir = root / "reports"; contributions_dir = root / "contributions"
+        reports_dir.mkdir(); contributions_dir.mkdir()
+        selection_rows: list[dict[str, Any]] = []
+        for step, mse in zip((0, 2, 4, 8, 16), (0.5, 0.4, 0.3, 0.2, 0.1)):
+            report_path = reports_dir / f"step{step}.json"; contribution_path = contributions_dir / f"step{step}.npz"
+            contribution_path.write_bytes(b"selection")
+            report_path.write_text(json.dumps({"opq_iterations": step, "validation_reconstruction_mse": mse, "calibration_materialization_manifest_sha256": "b" * 64}), encoding="utf-8", newline="\n")
+            selection_rows.append({"steps": step, "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution_path.name, "contributions_sha256": sha256_file(contribution_path), "validation_reconstruction_mse": mse, "diagnostic_coverage_at_512": 0.5})
+        selection_path = root / "selection.json"
+        selection_path.write_bytes(canonical_json_bytes({"schema_version": 1, "family": "pq_opq_opq_step_selection_v1", "candidate_steps": [0, 2, 4, 8, 16], "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42, "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000, "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000, "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64, "final_training_vector_count": 25000, "steps": selection_rows, "selected_steps": 16}))
+        validate_selection(selection_path, reports_dir, contributions_dir)
+        mutated_selection = read_json(selection_path, "self-test selection")
+        mutated_selection["selection_calibration_materialization_manifest_sha256"] = "d" * 64
+        selection_path.write_bytes(canonical_json_bytes(mutated_selection))
+        try:
+            validate_selection(selection_path, reports_dir, contributions_dir)
+            print("self-test failed: selection calibration manifest mutation accepted", file=sys.stderr)
+            return 1
+        except EvidenceError:
+            pass
     valid_binary_memory = {"projection_bytes": 16, "centroid_bytes": 8, "total_model_bytes": 24}
     require_model_memory_contract(valid_binary_memory, "binary", Path("binary.json"))
     try:

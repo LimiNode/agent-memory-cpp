@@ -1742,7 +1742,7 @@ source snapshots.
 The reviewable draft-release asset is
 [`pq-opq-equal-payload-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-2318e0bce3a2a2fe2283/pq-opq-equal-payload-evidence-v1.zip),
 archive SHA-256
-`21c9fcea682d89d275fb7ba47512a2b867d2866c4cf325a737d44a35b513b754`.
+`5518afa2b3dd3fd7275400a3ca566617cb5f45acaf0618c5c231570efae2b353`.
 
 As a separate attribution control, the binary ADC rows were also retrained on
 the deterministic 8,192-vector sample for each seed. Relative to the final
