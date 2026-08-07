@@ -187,6 +187,20 @@ def reconstruction_mse(values: Any, rotation: Any, centroids: Any) -> float:
     return float(numpy.mean((transformed - reconstruct(encode(values, rotation, centroids), centroids)) ** 2))
 
 
+def stable_validation_indices(ids: list[str], validation_count: int, seed: int, salt: str) -> Any:
+    """Choose a validation membership independent of calibration input order."""
+    if not isinstance(salt, str) or not salt:
+        raise EvaluationError("PQ validation split salt is invalid")
+    if validation_count < 0 or validation_count >= len(ids):
+        raise EvaluationError("PQ validation split count is invalid")
+    prefix = f"agent-memory-pq-opq-validation-split-v1\0{salt}\0{seed}\0".encode("utf-8")
+    ranked = sorted(
+        (hashlib.sha256(prefix + identifier.encode("utf-8")).digest(), index)
+        for index, identifier in enumerate(ids)
+    )
+    return numpy.asarray(sorted(index for _, index in ranked[:validation_count]), dtype=numpy.int64)
+
+
 def evaluate(args: Any) -> None:
     calibration = shared.load_root(args.calibration_root)
     data = shared.load_root(args.evaluation_root)
@@ -205,9 +219,18 @@ def evaluate(args: Any) -> None:
     if not 0.0 <= args.validation_fraction < 0.5:
         raise EvaluationError("PQ validation fraction is invalid")
     validation_count = int(round(sample_count * args.validation_fraction))
-    split = numpy.random.default_rng(args.seed + 31).permutation(sample_count)
-    validation_positions = numpy.sort(split[:validation_count])
-    optimizer_positions = numpy.sort(split[validation_count:])
+    if args.validation_split_salt is None:
+        split = numpy.random.default_rng(args.seed + 31).permutation(sample_count)
+        validation_positions = numpy.sort(split[:validation_count])
+        validation_split_algorithm = "legacy_rng_seed_plus_31_v1"
+        validation_split_salt = None
+    else:
+        validation_positions = stable_validation_indices(training_ids, validation_count, args.seed, args.validation_split_salt)
+        validation_split_algorithm = "sha256_document_id_rank_v1"
+        validation_split_salt = args.validation_split_salt
+    validation_mask = numpy.zeros(sample_count, dtype=bool)
+    validation_mask[validation_positions] = True
+    optimizer_positions = numpy.flatnonzero(~validation_mask)
     if not optimizer_positions.size:
         raise EvaluationError("PQ optimizer split is empty")
     validation_values = training_values[validation_positions]
@@ -258,6 +281,8 @@ def evaluate(args: Any) -> None:
         "validation_vector_count": len(validation_ids),
         "validation_sample_ids_sha256": shared.canonical_ids_sha256(validation_ids) if validation_ids else None,
         "validation_reconstruction_mse": reconstruction_mse(validation_values, rotation, centroids) if validation_ids else None,
+        "validation_split_algorithm": validation_split_algorithm,
+        "validation_split_salt": validation_split_salt,
         "seed": args.seed,
         "kmeans_iterations": args.kmeans_iterations,
         "opq_iterations": opq_iterations,
@@ -276,6 +301,12 @@ def evaluate(args: Any) -> None:
 
 def run_self_test() -> int:
     generator = numpy.random.default_rng(42)
+    split_ids = [f"document-{index}" for index in range(12)]
+    selected = {split_ids[index] for index in stable_validation_indices(split_ids, 4, 42, "opq-step-extension-v1")}
+    reordered_ids = list(reversed(split_ids))
+    reordered_selected = {reordered_ids[index] for index in stable_validation_indices(reordered_ids, 4, 42, "opq-step-extension-v1")}
+    if selected != reordered_selected or selected == {split_ids[index] for index in stable_validation_indices(split_ids, 4, 42, "other-split")}:
+        print("self-test failed: validation split is not stable and salt-scoped", file=sys.stderr); return 1
     values = generator.normal(size=(96, 8)).astype(numpy.float32)
     centroids, codes, _ = train_pq(values, 2, 16, 42, 4)
     query = generator.normal(size=8).astype(numpy.float32)
@@ -318,6 +349,7 @@ def main(argv: list[str]) -> int:
     run.add_argument("--opq-iterations", type=int, default=4)
     run.add_argument("--training-sample-count", type=int, default=0, help="0 uses all calibration vectors")
     run.add_argument("--validation-fraction", type=float, default=0.0)
+    run.add_argument("--validation-split-salt", type=str, default=None)
     run.add_argument("--candidate-limit", type=int, default=512)
     run.add_argument("--oracle-k", type=int, default=10)
     run.add_argument("--output", type=Path, required=True)
