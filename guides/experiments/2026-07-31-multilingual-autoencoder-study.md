@@ -1630,3 +1630,123 @@ full stable ordering. It rules out this particular low-margin, document-only
 mask policy; it does not rule out query-adaptive confidence, learned routing,
 or a different quantizer family. The next conventional baseline is PQ/OPQ at
 equal stored payload.
+
+### 2026-08-06 4-bit PQ/OPQ versus binary ADC at equal document payload
+
+This experiment tests the next conventional alternative without changing the
+held-out RU contract.  The fixed 25,000-document calibration root trains
+4-bit product codebooks; all 22,607 held-out documents are encoded only after
+that training, and the 1,252 held-out queries remain continuous.  Candidate
+scores are exact sums of query-to-centroid squared-L2 lookup values, followed
+by the same `K=512` candidate cutoff and exact E5 rerank used by the binary
+ADC controls.
+
+The payload points are exact: 16, 24, and 32 stored bytes correspond to 32,
+48, and 64 product subspaces respectively.  Every subspace stores one
+4-bit, 16-centroid code; because the E5 dimension is 384, their widths are
+12, 8, and 6.  PQ and OPQ use an 8,192-document deterministic calibration
+sample selected from the 25k root for each seed; this only limits offline
+codebook training and never introduces evaluation documents or queries.
+OPQ uses two alternating PQ / orthogonal-Procrustes steps, not a PCA rotation
+with a different name.  The binary control is ITQ binary ADC at 128, 192,
+and 256 coordinates respectively, trained from the same label-free root with
+50 ITQ iterations.  Five predeclared encoder seeds are `42`--`46`.
+
+| Document bytes / continuous-query ADC | Mean coverage@512 | Mean reranked nDCG@10 |
+| --- | ---: | ---: |
+| ITQ binary ADC, 16 B | 0.984313 | 0.800762 |
+| PQ-16, 16 B | 0.976661 | 0.799704 |
+| OPQ-16, 16 B | 0.982220 | 0.800212 |
+| ITQ binary ADC, 24 B | 0.996805 | 0.801357 |
+| PQ-16, 24 B | 0.993419 | 0.801098 |
+| OPQ-16, 24 B | 0.995096 | 0.801347 |
+| ITQ binary ADC, 32 B | 0.999137 | 0.801482 |
+| PQ-16, 32 B | 0.998227 | 0.801438 |
+| OPQ-16, 32 B | 0.998195 | 0.801411 |
+
+For every payload and all five rotations, both PQ and OPQ have lower
+candidate coverage than the matched binary-ADC control.  The observed
+five-seed mean coverage deltas (candidate minus binary) are PQ
+`-0.007652`, `-0.003387`, and `-0.000911`, and OPQ `-0.002093`,
+`-0.001709`, and `-0.000942` at 16, 24, and 32 bytes.  Thirty paired-query
+bootstraps (10,000 replicates, seed `20260806`) retain the per-seed evidence;
+they must be read as conditional intervals for each fixed encoder seed, not
+as an interval over the five rotations.
+
+The result is therefore a no-go for *this* 4-bit equal-payload PQ/OPQ
+frontier on the current fixture: OPQ closes part of the gap at 16 and 24 B,
+but it does not surpass fixed ITQ binary ADC.  It does not claim a production
+latency ordering.  The reference harness performs full stable ordering in
+NumPy, and the early quality rows were executed concurrently; final timing
+numbers are intentionally excluded from the conclusion.  The next separate
+questions remain coarse routing (a pre-retrieval task, not a code index) and
+a locality-aware learned-ADC objective against the retained binary baseline.
+
+### 2026-08-07 revised full-calibration PQ/OPQ equal-payload baseline
+
+The preceding 8,192-vector, two-step, 4-bit PQ/OPQ result is **superseded**.
+It remains historical diagnostic evidence only: it is not an equal-training-
+budget conclusion and must not be used to claim a PQ/OPQ no-go.
+
+The revised label-free study fixes the RU fixture and retrieval contract used
+above: 25,000 calibration vectors, disjoint 22,607 evaluation documents and
+1,252 queries, continuous queries, `K=512`, oracle `K=10`, stable document-ID
+ties, and five seeds `42`--`46`. Every final encoder is trained on all 25,000
+calibration vectors. The document payload is exactly 16, 24, or 32 bytes for
+binary ADC, PQ4, OPQ4, PQ8, and OPQ8. PQ/OPQ scoring reads packed document
+codes directly through the query-to-centroid LUT; it does not score an
+unpacked surrogate. Model-side codebook and rotation bytes are retained
+separately from document payload.
+
+OPQ step selection is a distinct calibration-only phase. On the deterministic
+20,000/5,000 calibration optimizer/holdout split, the predeclared candidates
+were `0, 2, 4, 8, 16`; selection is the minimum holdout reconstruction MSE,
+with a smaller step count only as a tie-break. The MSE sequence was
+`0.000494360`, `0.000444435`, `0.000427136`, `0.000411007`, and
+`0.000397759`, so 16 Procrustes updates are the best candidate setting among
+the predeclared sweep points. This does not establish OPQ convergence. The
+retrieval coverage sequence (`0.977157`, `0.984744`, `0.985863`, `0.985463`,
+`0.984105`) is retained as diagnostic only and did not participate in the
+selection. Step zero is initial PQ under identity rotation; step `N` is `N`
+Procrustes updates with warm-start PQ refinements, followed by a final
+warm-start PQ refinement under the final rotation.
+
+| Document payload / continuous-query ADC | Mean coverage@512 | Mean reranked nDCG@10 | Projection bytes | Centroid/codebook bytes | Rotation bytes | Total model bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Binary ADC, 16 B | 0.984313 | 0.800762 | 196,608 | 1,024 | 0 | 197,632 |
+| PQ4, 16 B | 0.975895 | 0.799694 | 0 | 24,576 | 0 | 24,576 |
+| OPQ4, 16 B | 0.986805 | 0.800730 | 0 | 24,576 | 589,824 | 614,400 |
+| PQ8, 16 B | 0.984010 | 0.800640 | 0 | 393,216 | 0 | 393,216 |
+| OPQ8, 16 B | 0.988003 | 0.800420 | 0 | 393,216 | 589,824 | 983,040 |
+| Binary ADC, 24 B | 0.996805 | 0.801357 | 294,912 | 1,536 | 0 | 296,448 |
+| PQ4, 24 B | 0.994105 | 0.801290 | 0 | 24,576 | 0 | 24,576 |
+| OPQ4, 24 B | 0.996709 | 0.801457 | 0 | 24,576 | 589,824 | 614,400 |
+| PQ8, 24 B | 0.996070 | 0.801383 | 0 | 393,216 | 0 | 393,216 |
+| OPQ8, 24 B | 0.997332 | 0.801138 | 0 | 393,216 | 589,824 | 983,040 |
+| Binary ADC, 32 B | 0.999137 | 0.801482 | 393,216 | 2,048 | 0 | 395,264 |
+| PQ4, 32 B | 0.998163 | 0.801499 | 0 | 24,576 | 0 | 24,576 |
+| OPQ4, 32 B | 0.998898 | 0.801444 | 0 | 24,576 | 589,824 | 614,400 |
+| PQ8, 32 B | 0.998786 | 0.801426 | 0 | 393,216 | 0 | 393,216 |
+| OPQ8, 32 B | 0.999026 | 0.801415 | 0 | 393,216 | 589,824 | 983,040 |
+
+At 16 B both OPQ variants increase mean candidate coverage over binary ADC;
+at 24 B OPQ8 does so again, while at 32 B binary ADC remains slightly ahead.
+These are quality measurements under fixed encoder seeds, not production
+latency measurements and not an equal-total-memory claim: especially PQ8 and
+OPQ have substantial model-side state. The evidence contract declares all 75
+rows and all 60 binary-versus-PQ/OPQ paired bootstraps (10,000 replicates,
+seed `20260806`); the retained bundle additionally contains the selection
+split, five convergence reports, all per-query NPZ files, and exact evaluator
+source snapshots.
+
+The reviewable draft-release asset is
+[`pq-opq-equal-payload-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-4af9de2461aaf73686f7/pq-opq-equal-payload-evidence-v1.zip),
+archive SHA-256
+`5518afa2b3dd3fd7275400a3ca566617cb5f45acaf0618c5c231570efae2b353`.
+
+As a separate attribution control, the binary ADC rows were also retrained on
+the deterministic 8,192-vector sample for each seed. Relative to the final
+full-25k binary rows, mean coverage changed by `-0.000735`, `-0.000527`, and
+`-0.000288` at 16, 24, and 32 B respectively. This confirms that calibration
+budget is a measurable but smaller effect than the earlier under-trained PQ4
+gap; it is not combined with the full-to-full primary comparison.
