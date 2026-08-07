@@ -125,6 +125,63 @@ def method_from_report(report: dict[str, Any], path: Path) -> tuple[str, int, in
     return method, payload, bits
 
 
+def require_final_training_contract(report: dict[str, Any], method: str, path: Path) -> str:
+    """Return the canonical full-calibration ID hash after fail-closed checks."""
+    if report.get("training_sample_count") != 25000:
+        raise EvidenceError(f"final training sample count differs: {path}")
+    calibration_ids = report.get("calibration_sample_ids_sha256", report.get("training_sample_ids_sha256"))
+    calibration_ids = require_sha256(calibration_ids, "final calibration IDs")
+    if method == "binary":
+        return calibration_ids
+    if (report.get("calibration_vector_count") != 25000 or report.get("optimizer_vector_count") != 25000 or
+            report.get("validation_vector_count") != 0 or report.get("validation_sample_ids_sha256") is not None):
+        raise EvidenceError(f"final PQ/OPQ row is not trained on all calibration vectors: {path}")
+    optimizer_ids = require_sha256(
+        report.get("optimizer_ids_sha256", report.get("training_sample_ids_sha256")),
+        "final optimizer IDs",
+    )
+    if optimizer_ids != calibration_ids:
+        raise EvidenceError(f"final PQ/OPQ optimizer IDs differ from calibration IDs: {path}")
+    return calibration_ids
+
+
+def require_shared_calibration_provenance(
+    report: dict[str, Any],
+    path: Path,
+    reference_manifest: str | None,
+    reference_ids: str | None,
+    full_ids: str,
+) -> tuple[str, str]:
+    manifest = require_sha256(report.get("calibration_materialization_manifest_sha256"), "calibration manifest")
+    if reference_manifest is not None and manifest != reference_manifest:
+        raise EvidenceError(f"calibration materialization differs: {path}")
+    if reference_ids is not None and full_ids != reference_ids:
+        raise EvidenceError(f"full calibration IDs differ: {path}")
+    return manifest, full_ids
+
+
+def require_nonnegative_bytes(value: Any, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise EvidenceError(f"{field} must be a non-negative integer")
+    return value
+
+
+def require_model_memory_contract(report: dict[str, Any], method: str, path: Path) -> tuple[int, int, int, int, int]:
+    projection_bytes = require_nonnegative_bytes(report.get("projection_bytes", 0), "projection bytes")
+    centroid_bytes = require_nonnegative_bytes(report.get("centroid_bytes", 0), "centroid bytes")
+    codebook_bytes = require_nonnegative_bytes(report.get("codebook_bytes", 0), "codebook bytes")
+    rotation_bytes = require_nonnegative_bytes(report.get("rotation_bytes", 0), "rotation bytes")
+    total_bytes = require_nonnegative_bytes(report.get("total_model_bytes"), "total model bytes")
+    expected = projection_bytes + centroid_bytes + codebook_bytes + rotation_bytes
+    if total_bytes != expected:
+        raise EvidenceError(f"model memory accounting differs: {path}")
+    if method == "binary" and (projection_bytes == 0 or centroid_bytes == 0 or codebook_bytes != 0 or rotation_bytes != 0):
+        raise EvidenceError(f"binary model memory contract is invalid: {path}")
+    if method != "binary" and (projection_bytes != 0 or centroid_bytes != 0):
+        raise EvidenceError(f"PQ/OPQ model memory contract is invalid: {path}")
+    return projection_bytes, centroid_bytes, codebook_bytes, rotation_bytes, total_bytes
+
+
 def expected_contract(value: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], set[tuple[str, int, int]], list[dict[str, Any]]]:
     if value.get("schema_version") != 1 or value.get("family") != "pq_opq_equal_payload_grid_contract_v1":
         raise EvidenceError("PQ/OPQ grid contract schema is unsupported")
@@ -195,7 +252,8 @@ def write_selection(args: Any) -> None:
         contribution = args.contributions_dir / report_contribution_name(report.get("per_query_contributions_path", ""), "selection contribution path")
         load_contributions(contribution, report, f"selection report {path.name}")
         optimizer_ids_sha256 = report.get("optimizer_ids_sha256", report.get("training_sample_ids_sha256"))
-        current = (method, payload, bits, report.get("seed"), report.get("training_sample_count"), report.get("optimizer_vector_count"), report.get("validation_vector_count"), optimizer_ids_sha256, report.get("validation_sample_ids_sha256"))
+        calibration_manifest = require_sha256(report.get("calibration_materialization_manifest_sha256"), "selection calibration manifest")
+        current = (method, payload, bits, report.get("seed"), report.get("training_sample_count"), report.get("optimizer_vector_count"), report.get("validation_vector_count"), optimizer_ids_sha256, report.get("validation_sample_ids_sha256"), calibration_manifest)
         if common is None:
             common = current
         elif current != common:
@@ -206,14 +264,14 @@ def write_selection(args: Any) -> None:
     if {row["steps"] for row in rows} != set(expected_steps):
         raise EvidenceError("selection candidate step set is invalid")
     selected = min(rows, key=lambda row: (row["validation_reconstruction_mse"], row["steps"]))
-    _, _, _, seed, sample_count, optimizer_count, validation_count, optimizer_hash, validation_hash = common or ()
-    result = {"schema_version": 1, "family": "pq_opq_opq_step_selection_v1", "candidate_steps": expected_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": seed, "selection_calibration_vector_count": sample_count, "selection_optimizer_vector_count": optimizer_count, "selection_holdout_vector_count": validation_count, "selection_optimizer_ids_sha256": optimizer_hash, "selection_holdout_ids_sha256": validation_hash, "final_training_vector_count": 25000, "steps": sorted(rows, key=lambda row: row["steps"]), "selected_steps": selected["steps"]}
+    _, _, _, seed, sample_count, optimizer_count, validation_count, optimizer_hash, validation_hash, calibration_manifest = common or ()
+    result = {"schema_version": 1, "family": "pq_opq_opq_step_selection_v1", "candidate_steps": expected_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": seed, "selection_calibration_materialization_manifest_sha256": calibration_manifest, "selection_calibration_vector_count": sample_count, "selection_optimizer_vector_count": optimizer_count, "selection_holdout_vector_count": validation_count, "selection_optimizer_ids_sha256": optimizer_hash, "selection_holdout_ids_sha256": validation_hash, "final_training_vector_count": 25000, "steps": sorted(rows, key=lambda row: row["steps"]), "selected_steps": selected["steps"]}
     args.output.write_bytes(canonical_json_bytes(result))
 
 
 def validate_selection(path: Path, reports_dir: Path, contributions_dir: Path) -> dict[str, Any]:
     value = read_json(path, "selection contract")
-    required = {"schema_version", "family", "candidate_steps", "selection_metric", "tie_break", "seed", "selection_calibration_vector_count", "selection_optimizer_vector_count", "selection_holdout_vector_count", "selection_optimizer_ids_sha256", "selection_holdout_ids_sha256", "final_training_vector_count", "steps", "selected_steps"}
+    required = {"schema_version", "family", "candidate_steps", "selection_metric", "tie_break", "seed", "selection_calibration_materialization_manifest_sha256", "selection_calibration_vector_count", "selection_optimizer_vector_count", "selection_holdout_vector_count", "selection_optimizer_ids_sha256", "selection_holdout_ids_sha256", "final_training_vector_count", "steps", "selected_steps"}
     if set(value) != required or value.get("schema_version") != 1 or value.get("family") != "pq_opq_opq_step_selection_v1" or value.get("candidate_steps") != [0, 2, 4, 8, 16] or value.get("selection_metric") != "calibration_holdout_reconstruction_mse" or value.get("tie_break") != "smaller_step_count" or value.get("final_training_vector_count") != 25000:
         raise EvidenceError("selection contract schema is invalid")
     rows = value["steps"]
@@ -225,6 +283,8 @@ def validate_selection(path: Path, reports_dir: Path, contributions_dir: Path) -
         if sha256_file(report) != require_sha256(row.get("report_sha256"), "selection report SHA") or sha256_file(contribution) != require_sha256(row.get("contributions_sha256"), "selection contribution SHA"):
             raise EvidenceError("selection evidence hash differs")
         report_value = read_json(report, "selection report")
+        if require_sha256(report_value.get("calibration_materialization_manifest_sha256"), "selection report calibration manifest") != require_sha256(value.get("selection_calibration_materialization_manifest_sha256"), "selection calibration manifest"):
+            raise EvidenceError("selection calibration materialization differs from report")
         if report_value.get("opq_iterations") != row["steps"] or not math.isclose(finite_metric(report_value.get("validation_reconstruction_mse"), "selection report MSE"), finite_metric(row.get("validation_reconstruction_mse"), "selection contract MSE"), rel_tol=0.0, abs_tol=1.0e-15):
             raise EvidenceError("selection contract MSE differs from report")
     chosen = min(rows, key=lambda row: (float(row["validation_reconstruction_mse"]), row["steps"]))
@@ -240,6 +300,8 @@ def write_manifest(args: Any) -> None:
     rows: list[dict[str, Any]] = []
     identity: dict[str, Any] | None = None
     sources: dict[str, str] = {}
+    calibration_manifest: str | None = None
+    full_calibration_ids: str | None = None
     for path in args.report:
         report = read_json(path, "PQ/OPQ report")
         method, payload, _ = method_from_report(report, path)
@@ -247,8 +309,13 @@ def write_manifest(args: Any) -> None:
         key = method, payload, seed
         if key not in expected_rows:
             raise EvidenceError(f"report is outside the declared grid: {path}")
-        if report.get("candidate_limit") != contract["candidate_limit"] or report.get("oracle_k") != contract["oracle_k"] or report.get("training_sample_count") != 25000:
-            raise EvidenceError(f"report training or retrieval contract differs: {path}")
+        if report.get("candidate_limit") != contract["candidate_limit"] or report.get("oracle_k") != contract["oracle_k"]:
+            raise EvidenceError(f"report retrieval contract differs: {path}")
+        full_ids = require_final_training_contract(report, method, path)
+        calibration_manifest, full_calibration_ids = require_shared_calibration_provenance(
+            report, path, calibration_manifest, full_calibration_ids, full_ids
+        )
+        projection_bytes, centroid_bytes, codebook_bytes, rotation_bytes, total_model_bytes = require_model_memory_contract(report, method, path)
         expected = methods[method]
         if method != "binary" and (report.get("scheme") != expected["scheme"] or report.get("code_bits_per_subspace") != expected["code_bits"] or report.get("opq_iterations") != expected["opq_iterations"]):
             raise EvidenceError(f"report method configuration differs: {path}")
@@ -263,7 +330,7 @@ def write_manifest(args: Any) -> None:
         if source_key in sources and sources[source_key] != source:
             raise EvidenceError("grid reports do not share evaluator source")
         sources[source_key] = source
-        rows.append({"method": method, "payload_bytes": payload, "seed": seed, "report_file": path.name, "report_sha256": sha256_file(path), "contributions_file": contribution.name, "contributions_sha256": sha256_file(contribution), "coverage_at_512": finite_metric(report.get("exact_top_k_candidate_coverage"), "report coverage"), "reranked_ndcg_at_10": finite_metric(report.get("reranked_ndcg_at_10"), "report nDCG"), "document_payload_bytes": payload, "codebook_bytes": report.get("codebook_bytes", 0), "rotation_bytes": report.get("rotation_bytes", 0), "total_model_bytes": report.get("total_model_bytes", 0)})
+        rows.append({"method": method, "payload_bytes": payload, "seed": seed, "report_file": path.name, "report_sha256": sha256_file(path), "contributions_file": contribution.name, "contributions_sha256": sha256_file(contribution), "coverage_at_512": finite_metric(report.get("exact_top_k_candidate_coverage"), "report coverage"), "reranked_ndcg_at_10": finite_metric(report.get("reranked_ndcg_at_10"), "report nDCG"), "document_payload_bytes": payload, "projection_bytes": projection_bytes, "centroid_bytes": centroid_bytes, "codebook_bytes": codebook_bytes, "rotation_bytes": rotation_bytes, "total_model_bytes": total_model_bytes})
     keys = {(row["method"], row["payload_bytes"], row["seed"]) for row in rows}
     if len(rows) != 75 or len(keys) != len(rows) or keys != expected_rows:
         raise EvidenceError("PQ/OPQ reports differ from the declared 75-row grid")
@@ -282,13 +349,19 @@ def write_manifest(args: Any) -> None:
         elif bootstrap_source != current_source:
             raise EvidenceError("bootstrap evaluator source differs")
         comparison_rows.append({"id": comparison["id"], "left_contributions_sha256": value["left_sha256"], "right_contributions_sha256": value["right_sha256"], "bootstrap_report_file": bootstrap.name, "bootstrap_report_sha256": sha256_file(bootstrap), "replicates": value["replicates"], "seed": value["seed"], "metrics": value.get("metrics")})
-    manifest = {"schema_version": 1, "family": "pq_opq_equal_payload_manifest_v1", "grid_contract_sha256": sha256_file(args.grid_contract), "selection_contract_file": args.selection_contract.name, "selection_contract_sha256": sha256_file(args.selection_contract), "evaluation_identity": identity, "evaluator_sources": {**sources, "bootstrap": bootstrap_source}, "rows": sorted(rows, key=lambda row: (row["method"], row["payload_bytes"], row["seed"])), "comparisons": sorted(comparison_rows, key=lambda row: row["id"])}
+    if selection["selection_calibration_materialization_manifest_sha256"] != calibration_manifest:
+        raise EvidenceError("selection and final grid calibration materializations differ")
+    manifest = {"schema_version": 1, "family": "pq_opq_equal_payload_manifest_v1", "grid_contract_sha256": sha256_file(args.grid_contract), "selection_contract_file": args.selection_contract.name, "selection_contract_sha256": sha256_file(args.selection_contract), "calibration_materialization_manifest_sha256": calibration_manifest, "full_calibration_ids_sha256": full_calibration_ids, "evaluation_identity": identity, "evaluator_sources": {**sources, "bootstrap": bootstrap_source}, "rows": sorted(rows, key=lambda row: (row["method"], row["payload_bytes"], row["seed"])), "comparisons": sorted(comparison_rows, key=lambda row: row["id"])}
     args.output.write_bytes(canonical_json_bytes(manifest))
 
 
 def validate_manifest(path: Path, grid_contract: Path, selection_contract: Path, reports_dir: Path, contributions_dir: Path, bootstrap_dir: Path, selection_reports_dir: Path, selection_contributions_dir: Path) -> dict[str, Any]:
     manifest = read_json(path, "PQ/OPQ manifest")
-    if manifest.get("schema_version") != 1 or manifest.get("family") != "pq_opq_equal_payload_manifest_v1" or manifest.get("grid_contract_sha256") != sha256_file(grid_contract) or manifest.get("selection_contract_sha256") != sha256_file(selection_contract):
+    if (manifest.get("schema_version") != 1 or manifest.get("family") != "pq_opq_equal_payload_manifest_v1" or
+            manifest.get("grid_contract_sha256") != sha256_file(grid_contract) or
+            manifest.get("selection_contract_sha256") != sha256_file(selection_contract) or
+            not isinstance(manifest.get("calibration_materialization_manifest_sha256"), str) or
+            not isinstance(manifest.get("full_calibration_ids_sha256"), str)):
         raise EvidenceError("PQ/OPQ manifest identity is invalid")
     rebuilt = path.with_suffix(".reconstructed.json")
     try:
@@ -371,6 +444,44 @@ def run_self_test() -> int:
     if len(rows) != 75 or len(comparisons) != 60:
         print("self-test failed: contract expansion is wrong", file=sys.stderr)
         return 1
+    valid_pq = {
+        "training_sample_count": 25000,
+        "calibration_vector_count": 25000,
+        "calibration_sample_ids_sha256": "a" * 64,
+        "optimizer_vector_count": 25000,
+        "optimizer_ids_sha256": "a" * 64,
+        "validation_vector_count": 0,
+        "validation_sample_ids_sha256": None,
+        "calibration_materialization_manifest_sha256": "b" * 64,
+    }
+    if require_final_training_contract(valid_pq, "opq4", Path("valid.json")) != "a" * 64:
+        print("self-test failed: valid final PQ/OPQ row rejected", file=sys.stderr)
+        return 1
+    for field, value in (("optimizer_vector_count", 20000), ("validation_vector_count", 5000), ("validation_sample_ids_sha256", "c" * 64), ("optimizer_ids_sha256", "c" * 64)):
+        mutation = dict(valid_pq); mutation[field] = value
+        try:
+            require_final_training_contract(mutation, "opq4", Path("mutated.json"))
+            print("self-test failed: final PQ/OPQ training mutation accepted", file=sys.stderr)
+            return 1
+        except EvidenceError:
+            pass
+    try:
+        require_shared_calibration_provenance(
+            {**valid_pq, "calibration_materialization_manifest_sha256": "c" * 64},
+            Path("different-calibration.json"), "b" * 64, "a" * 64, "a" * 64,
+        )
+        print("self-test failed: calibration manifest mutation accepted", file=sys.stderr)
+        return 1
+    except EvidenceError:
+        pass
+    valid_binary_memory = {"projection_bytes": 16, "centroid_bytes": 8, "total_model_bytes": 24}
+    require_model_memory_contract(valid_binary_memory, "binary", Path("binary.json"))
+    try:
+        require_model_memory_contract({**valid_binary_memory, "total_model_bytes": 0}, "binary", Path("wrong-memory.json"))
+        print("self-test failed: binary memory mutation accepted", file=sys.stderr)
+        return 1
+    except EvidenceError:
+        pass
     contract["payload_bytes"] = [16]
     try:
         expected_contract(contract)

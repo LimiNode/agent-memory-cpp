@@ -1703,30 +1703,31 @@ OPQ step selection is a distinct calibration-only phase. On the deterministic
 were `0, 2, 4, 8, 16`; selection is the minimum holdout reconstruction MSE,
 with a smaller step count only as a tie-break. The MSE sequence was
 `0.000494360`, `0.000444435`, `0.000427136`, `0.000411007`, and
-`0.000397759`, so the selected final setting is 16 Procrustes updates. The
+`0.000397759`, so 16 Procrustes updates are the best candidate setting among
+the predeclared sweep points. This does not establish OPQ convergence. The
 retrieval coverage sequence (`0.977157`, `0.984744`, `0.985863`, `0.985463`,
 `0.984105`) is retained as diagnostic only and did not participate in the
 selection. Step zero is initial PQ under identity rotation; step `N` is `N`
 Procrustes updates with warm-start PQ refinements, followed by a final
 warm-start PQ refinement under the final rotation.
 
-| Document payload / continuous-query ADC | Mean coverage@512 | Mean reranked nDCG@10 | Codebook bytes | Rotation bytes |
-| --- | ---: | ---: | ---: | ---: |
-| Binary ADC, 16 B | 0.984313 | 0.800762 | 0 | 0 |
-| PQ4, 16 B | 0.975895 | 0.799694 | 24,576 | 0 |
-| OPQ4, 16 B | 0.986805 | 0.800730 | 24,576 | 589,824 |
-| PQ8, 16 B | 0.984010 | 0.800640 | 393,216 | 0 |
-| OPQ8, 16 B | 0.988003 | 0.800420 | 393,216 | 589,824 |
-| Binary ADC, 24 B | 0.996805 | 0.801357 | 0 | 0 |
-| PQ4, 24 B | 0.994105 | 0.801290 | 24,576 | 0 |
-| OPQ4, 24 B | 0.996709 | 0.801457 | 24,576 | 589,824 |
-| PQ8, 24 B | 0.996070 | 0.801383 | 393,216 | 0 |
-| OPQ8, 24 B | 0.997332 | 0.801138 | 393,216 | 589,824 |
-| Binary ADC, 32 B | 0.999137 | 0.801482 | 0 | 0 |
-| PQ4, 32 B | 0.998163 | 0.801499 | 24,576 | 0 |
-| OPQ4, 32 B | 0.998898 | 0.801444 | 24,576 | 589,824 |
-| PQ8, 32 B | 0.998786 | 0.801426 | 393,216 | 0 |
-| OPQ8, 32 B | 0.999026 | 0.801415 | 393,216 | 589,824 |
+| Document payload / continuous-query ADC | Mean coverage@512 | Mean reranked nDCG@10 | Projection bytes | Centroid/codebook bytes | Rotation bytes | Total model bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Binary ADC, 16 B | 0.984313 | 0.800762 | 196,608 | 1,024 | 0 | 197,632 |
+| PQ4, 16 B | 0.975895 | 0.799694 | 0 | 24,576 | 0 | 24,576 |
+| OPQ4, 16 B | 0.986805 | 0.800730 | 0 | 24,576 | 589,824 | 614,400 |
+| PQ8, 16 B | 0.984010 | 0.800640 | 0 | 393,216 | 0 | 393,216 |
+| OPQ8, 16 B | 0.988003 | 0.800420 | 0 | 393,216 | 589,824 | 983,040 |
+| Binary ADC, 24 B | 0.996805 | 0.801357 | 294,912 | 1,536 | 0 | 296,448 |
+| PQ4, 24 B | 0.994105 | 0.801290 | 0 | 24,576 | 0 | 24,576 |
+| OPQ4, 24 B | 0.996709 | 0.801457 | 0 | 24,576 | 589,824 | 614,400 |
+| PQ8, 24 B | 0.996070 | 0.801383 | 0 | 393,216 | 0 | 393,216 |
+| OPQ8, 24 B | 0.997332 | 0.801138 | 0 | 393,216 | 589,824 | 983,040 |
+| Binary ADC, 32 B | 0.999137 | 0.801482 | 393,216 | 2,048 | 0 | 395,264 |
+| PQ4, 32 B | 0.998163 | 0.801499 | 0 | 24,576 | 0 | 24,576 |
+| OPQ4, 32 B | 0.998898 | 0.801444 | 0 | 24,576 | 589,824 | 614,400 |
+| PQ8, 32 B | 0.998786 | 0.801426 | 0 | 393,216 | 0 | 393,216 |
+| OPQ8, 32 B | 0.999026 | 0.801415 | 0 | 393,216 | 589,824 | 983,040 |
 
 At 16 B both OPQ variants increase mean candidate coverage over binary ADC;
 at 24 B OPQ8 does so again, while at 32 B binary ADC remains slightly ahead.
@@ -1741,7 +1742,7 @@ source snapshots.
 The reviewable draft-release asset is
 [`pq-opq-equal-payload-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-82bff572bfffcf4fff57/pq-opq-equal-payload-evidence-v1.zip),
 archive SHA-256
-`7d43879f191ffff735cf837a5273754b27cf773d7810f7c7f9a2cdd90b064e37`.
+`21c9fcea682d89d275fb7ba47512a2b867d2866c4cf325a737d44a35b513b754`.
 
 As a separate attribution control, the binary ADC rows were also retrained on
 the deterministic 8,192-vector sample for each seed. Relative to the final
