@@ -1681,3 +1681,66 @@ NumPy, and the early quality rows were executed concurrently; final timing
 numbers are intentionally excluded from the conclusion.  The next separate
 questions remain coarse routing (a pre-retrieval task, not a code index) and
 a locality-aware learned-ADC objective against the retained binary baseline.
+
+### 2026-08-07 revised full-calibration PQ/OPQ equal-payload baseline
+
+The preceding 8,192-vector, two-step, 4-bit PQ/OPQ result is **superseded**.
+It remains historical diagnostic evidence only: it is not an equal-training-
+budget conclusion and must not be used to claim a PQ/OPQ no-go.
+
+The revised label-free study fixes the RU fixture and retrieval contract used
+above: 25,000 calibration vectors, disjoint 22,607 evaluation documents and
+1,252 queries, continuous queries, `K=512`, oracle `K=10`, stable document-ID
+ties, and five seeds `42`--`46`. Every final encoder is trained on all 25,000
+calibration vectors. The document payload is exactly 16, 24, or 32 bytes for
+binary ADC, PQ4, OPQ4, PQ8, and OPQ8. PQ/OPQ scoring reads packed document
+codes directly through the query-to-centroid LUT; it does not score an
+unpacked surrogate. Model-side codebook and rotation bytes are retained
+separately from document payload.
+
+OPQ step selection is a distinct calibration-only phase. On the deterministic
+20,000/5,000 calibration optimizer/holdout split, the predeclared candidates
+were `0, 2, 4, 8, 16`; selection is the minimum holdout reconstruction MSE,
+with a smaller step count only as a tie-break. The MSE sequence was
+`0.000494360`, `0.000444435`, `0.000427136`, `0.000411007`, and
+`0.000397759`, so the selected final setting is 16 Procrustes updates. The
+retrieval coverage sequence (`0.977157`, `0.984744`, `0.985863`, `0.985463`,
+`0.984105`) is retained as diagnostic only and did not participate in the
+selection. Step zero is initial PQ under identity rotation; step `N` is `N`
+Procrustes updates with warm-start PQ refinements, followed by a final
+warm-start PQ refinement under the final rotation.
+
+| Document payload / continuous-query ADC | Mean coverage@512 | Mean reranked nDCG@10 | Codebook bytes | Rotation bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Binary ADC, 16 B | 0.984313 | 0.800762 | 0 | 0 |
+| PQ4, 16 B | 0.975895 | 0.799694 | 24,576 | 0 |
+| OPQ4, 16 B | 0.986805 | 0.800730 | 24,576 | 589,824 |
+| PQ8, 16 B | 0.984010 | 0.800640 | 393,216 | 0 |
+| OPQ8, 16 B | 0.988003 | 0.800420 | 393,216 | 589,824 |
+| Binary ADC, 24 B | 0.996805 | 0.801357 | 0 | 0 |
+| PQ4, 24 B | 0.994105 | 0.801290 | 24,576 | 0 |
+| OPQ4, 24 B | 0.996709 | 0.801457 | 24,576 | 589,824 |
+| PQ8, 24 B | 0.996070 | 0.801383 | 393,216 | 0 |
+| OPQ8, 24 B | 0.997332 | 0.801138 | 393,216 | 589,824 |
+| Binary ADC, 32 B | 0.999137 | 0.801482 | 0 | 0 |
+| PQ4, 32 B | 0.998163 | 0.801499 | 24,576 | 0 |
+| OPQ4, 32 B | 0.998898 | 0.801444 | 24,576 | 589,824 |
+| PQ8, 32 B | 0.998786 | 0.801426 | 393,216 | 0 |
+| OPQ8, 32 B | 0.999026 | 0.801415 | 393,216 | 589,824 |
+
+At 16 B both OPQ variants increase mean candidate coverage over binary ADC;
+at 24 B OPQ8 does so again, while at 32 B binary ADC remains slightly ahead.
+These are quality measurements under fixed encoder seeds, not production
+latency measurements and not an equal-total-memory claim: especially PQ8 and
+OPQ have substantial model-side state. The evidence contract declares all 75
+rows and all 60 binary-versus-PQ/OPQ paired bootstraps (10,000 replicates,
+seed `20260806`); the retained bundle additionally contains the selection
+split, five convergence reports, all per-query NPZ files, and exact evaluator
+source snapshots.
+
+As a separate attribution control, the binary ADC rows were also retrained on
+the deterministic 8,192-vector sample for each seed. Relative to the final
+full-25k binary rows, mean coverage changed by `-0.000735`, `-0.000527`, and
+`-0.000288` at 16, 24, and 32 B respectively. This confirms that calibration
+budget is a measurable but smaller effect than the earlier under-trained PQ4
+gap; it is not combined with the full-to-full primary comparison.

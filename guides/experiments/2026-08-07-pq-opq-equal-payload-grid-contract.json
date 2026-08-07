@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "family": "pq_opq_equal_payload_grid_contract_v1",
+  "candidate_limit": 512,
+  "oracle_k": 10,
+  "methods": [
+    {"id": "binary", "family": "binary", "scheme": null, "code_bits": 1, "opq_iterations": 0},
+    {"id": "pq4", "family": "pq_opq", "scheme": "pq", "code_bits": 4, "opq_iterations": 0},
+    {"id": "opq4", "family": "pq_opq", "scheme": "opq", "code_bits": 4, "opq_iterations": 16},
+    {"id": "pq8", "family": "pq_opq", "scheme": "pq", "code_bits": 8, "opq_iterations": 0},
+    {"id": "opq8", "family": "pq_opq", "scheme": "opq", "code_bits": 8, "opq_iterations": 16}
+  ],
+  "payload_bytes": [16, 24, 32],
+  "seeds": [42, 43, 44, 45, 46],
+  "comparison_template": {
+    "left_method": "binary",
+    "right_methods": ["pq4", "opq4", "pq8", "opq8"],
+    "replicates": 10000,
+    "bootstrap_seed": 20260806
+  }
+}

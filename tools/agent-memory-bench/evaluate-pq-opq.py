@@ -41,42 +41,60 @@ def sha256_array(values: Any) -> str:
     return hashlib.sha256(numpy.asarray(values, dtype="<f4").tobytes()).hexdigest()
 
 
-def require_payload(payload_bytes: int, dimension: int) -> int:
-    if payload_bytes <= 0 or dimension % (payload_bytes * 2) != 0:
-        raise EvaluationError("4-bit PQ payload must divide the embedding dimension")
-    return payload_bytes * 2
+def require_payload(payload_bytes: int, dimension: int, code_bits: int) -> int:
+    if code_bits not in (4, 8) or payload_bytes <= 0:
+        raise EvaluationError("PQ code width is unsupported")
+    subspaces = payload_bytes * 8 // code_bits
+    if subspaces <= 0 or dimension % subspaces:
+        raise EvaluationError("PQ payload must divide the embedding dimension")
+    return subspaces
 
 
-def train_kmeans(values: Any, seed: int, iterations: int) -> Any:
-    """Deterministic 16-centroid Lloyd k-means with fail-closed empty cells."""
+def train_kmeans(values: Any, centroid_count: int, seed: int, iterations: int, initial: Any | None = None) -> tuple[Any, Any, float]:
+    """Deterministic Lloyd k-means with explicit warm starts for OPQ."""
     values = numpy.asarray(values, dtype=numpy.float32)
-    if values.ndim != 2 or values.shape[0] < 16 or iterations <= 0:
+    if values.ndim != 2 or values.shape[0] < centroid_count or centroid_count < 2 or iterations <= 0:
         raise EvaluationError("invalid PQ k-means input")
-    generator = numpy.random.default_rng(seed)
-    centers = values[generator.choice(values.shape[0], size=16, replace=False)].copy()
+    if initial is None:
+        generator = numpy.random.default_rng(seed)
+        centers = values[generator.choice(values.shape[0], size=centroid_count, replace=False)].copy()
+    else:
+        centers = numpy.asarray(initial, dtype=numpy.float32).copy()
+        if centers.shape != (centroid_count, values.shape[1]):
+            raise EvaluationError("PQ warm-start centroid shape is invalid")
+    def assign(current: Any) -> tuple[Any, Any]:
+        codes = numpy.empty(values.shape[0], dtype=numpy.uint8)
+        errors = numpy.empty(values.shape[0], dtype=numpy.float32)
+        for start in range(0, values.shape[0], 1024):
+            stop = min(values.shape[0], start + 1024)
+            distances = ((values[start:stop, None, :] - current[None, :, :]) ** 2).sum(axis=2)
+            chosen = distances.argmin(axis=1)
+            codes[start:stop] = chosen
+            errors[start:stop] = distances[numpy.arange(stop - start), chosen]
+        return codes, errors
     for _ in range(iterations):
-        distances = ((values[:, None, :] - centers[None, :, :]) ** 2).sum(axis=2)
-        codes = distances.argmin(axis=1)
-        counts = numpy.bincount(codes, minlength=16)
+        codes, _ = assign(centers)
+        counts = numpy.bincount(codes, minlength=centroid_count)
         if numpy.any(counts == 0):
             raise EvaluationError("PQ k-means produced an empty centroid")
-        centers = numpy.stack([values[codes == code].mean(axis=0) for code in range(16)]).astype(numpy.float32)
-    return centers
+        centers = numpy.stack([values[codes == code].mean(axis=0) for code in range(centroid_count)]).astype(numpy.float32)
+    codes, errors = assign(centers)
+    return centers, codes, float(errors.mean())
 
 
-def train_pq(values: Any, subspaces: int, seed: int, iterations: int) -> tuple[Any, Any]:
+def train_pq(values: Any, subspaces: int, centroid_count: int, seed: int, iterations: int, initial: Any | None = None) -> tuple[Any, Any, float]:
     values = numpy.asarray(values, dtype=numpy.float32)
     if values.ndim != 2 or values.shape[1] % subspaces != 0:
         raise EvaluationError("PQ subspace layout is invalid")
     width = values.shape[1] // subspaces
-    centroids = numpy.empty((subspaces, 16, width), dtype=numpy.float32)
+    centroids = numpy.empty((subspaces, centroid_count, width), dtype=numpy.float32)
     codes = numpy.empty((values.shape[0], subspaces), dtype=numpy.uint8)
     for index in range(subspaces):
-        centers = train_kmeans(values[:, index * width:(index + 1) * width], seed + 1009 * index, iterations)
+        centers, assigned, _ = train_kmeans(values[:, index * width:(index + 1) * width], centroid_count, seed + 1009 * index, iterations, None if initial is None else initial[index])
         centroids[index] = centers
-        distances = ((values[:, None, index * width:(index + 1) * width] - centers[None, :, :]) ** 2).sum(axis=2)
-        codes[:, index] = distances.argmin(axis=1)
-    return centroids, codes
+        codes[:, index] = assigned
+    reconstructed = reconstruct(codes, centroids)
+    return centroids, codes, float(numpy.mean((values - reconstructed) ** 2))
 
 
 def reconstruct(codes: Any, centroids: Any) -> Any:
@@ -86,24 +104,45 @@ def reconstruct(codes: Any, centroids: Any) -> Any:
     return centroids[numpy.arange(subspaces)[None, :], codes].reshape(codes.shape[0], subspaces * width)
 
 
-def train_opq(values: Any, subspaces: int, seed: int, kmeans_iterations: int, opq_iterations: int) -> tuple[Any, Any, Any]:
-    if opq_iterations <= 0:
-        raise EvaluationError("OPQ needs at least one alternating iteration")
+def train_opq(values: Any, subspaces: int, centroid_count: int, seed: int, kmeans_iterations: int, opq_iterations: int) -> tuple[Any, Any, Any, list[dict[str, float]]]:
+    if opq_iterations < 0:
+        raise EvaluationError("OPQ iteration count is invalid")
     values = numpy.asarray(values, dtype=numpy.float32)
     rotation = numpy.eye(values.shape[1], dtype=numpy.float32)
+    centroids, codes, mse = train_pq(values, subspaces, centroid_count, seed, kmeans_iterations)
+    history: list[dict[str, float]] = [{"iteration": 0.0, "train_reconstruction_mse": mse, "rotation_displacement_frobenius": 0.0, "code_reassignment_fraction": 0.0}]
     for iteration in range(opq_iterations):
-        centroids, codes = train_pq(values @ rotation, subspaces, seed + 1000003 * iteration, kmeans_iterations)
+        previous_codes = codes.copy()
+        rotated = values @ rotation
+        centroids, codes, mse = train_pq(rotated, subspaces, centroid_count, seed, kmeans_iterations, centroids)
         reconstructed = reconstruct(codes, centroids)
         left, _, right = numpy.linalg.svd(numpy.asarray(values, dtype=numpy.float64).T @ numpy.asarray(reconstructed, dtype=numpy.float64), full_matrices=False)
-        rotation = (left @ right).astype(numpy.float32)
-    centroids, codes = train_pq(values @ rotation, subspaces, seed + 1000003 * opq_iterations, kmeans_iterations)
-    return rotation, centroids, codes
+        next_rotation = (left @ right).astype(numpy.float32)
+        history.append({"iteration": float(iteration + 1), "train_reconstruction_mse": mse, "rotation_displacement_frobenius": float(numpy.linalg.norm(next_rotation - rotation)), "code_reassignment_fraction": float(numpy.mean(codes != previous_codes))})
+        rotation = next_rotation
+    centroids, codes, _ = train_pq(values @ rotation, subspaces, centroid_count, seed, kmeans_iterations, centroids)
+    return rotation, centroids, codes, history
 
 
-def pack_nibbles(codes: Any) -> Any:
-    if codes.ndim != 2 or codes.shape[1] % 2 or numpy.any(codes > 15):
+def pack_codes(codes: Any, code_bits: int) -> Any:
+    if codes.ndim != 2 or code_bits not in (4, 8) or numpy.any(codes >= 2 ** code_bits):
         raise EvaluationError("PQ codes cannot be nibble packed")
+    if code_bits == 8:
+        return codes.astype(numpy.uint8)
+    if codes.shape[1] % 2:
+        raise EvaluationError("4-bit PQ needs an even subspace count")
     return (codes[:, 0::2] | (codes[:, 1::2] << 4)).astype(numpy.uint8)
+
+
+def unpack_codes(packed: Any, code_bits: int, subspaces: int) -> Any:
+    packed = numpy.asarray(packed, dtype=numpy.uint8)
+    if code_bits == 8 and packed.shape[1] == subspaces:
+        return packed.copy()
+    if code_bits == 4 and packed.shape[1] * 2 == subspaces:
+        result = numpy.empty((packed.shape[0], subspaces), dtype=numpy.uint8)
+        result[:, 0::2] = packed & 15; result[:, 1::2] = packed >> 4
+        return result
+    raise EvaluationError("packed PQ shape is invalid")
 
 
 def adc_scores(query: Any, rotation: Any, centroids: Any, document_codes: Any) -> Any:
@@ -113,39 +152,84 @@ def adc_scores(query: Any, rotation: Any, centroids: Any, document_codes: Any) -
     return lookup[numpy.arange(subspaces)[:, None], document_codes.T].sum(axis=0)
 
 
+def packed_adc_scores(query: Any, rotation: Any, centroids: Any, packed_codes: Any, code_bits: int) -> Any:
+    rotated = numpy.asarray(query, dtype=numpy.float32) @ rotation
+    subspaces, _, width = centroids.shape
+    lookup = ((centroids - rotated.reshape(subspaces, width)[:, None, :]) ** 2).sum(axis=2)
+    packed = numpy.asarray(packed_codes, dtype=numpy.uint8)
+    result = numpy.zeros(packed.shape[0], dtype=numpy.float32)
+    if code_bits == 8:
+        if packed.shape[1] != subspaces:
+            raise EvaluationError("packed 8-bit PQ shape is invalid")
+        for index in range(subspaces):
+            result += lookup[index, packed[:, index]]
+        return result
+    if code_bits != 4 or packed.shape[1] * 2 != subspaces:
+        raise EvaluationError("packed 4-bit PQ shape is invalid")
+    for index in range(packed.shape[1]):
+        result += lookup[2 * index, packed[:, index] & 15]
+        result += lookup[2 * index + 1, packed[:, index] >> 4]
+    return result
+
+
+def encode(values: Any, rotation: Any, centroids: Any) -> Any:
+    transformed = numpy.asarray(values, dtype=numpy.float32) @ rotation
+    subspaces, _, width = centroids.shape
+    codes = numpy.empty((transformed.shape[0], subspaces), dtype=numpy.uint8)
+    for index in range(subspaces):
+        part = transformed[:, index * width:(index + 1) * width]
+        codes[:, index] = ((part[:, None, :] - centroids[index][None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
+    return codes
+
+
+def reconstruction_mse(values: Any, rotation: Any, centroids: Any) -> float:
+    transformed = numpy.asarray(values, dtype=numpy.float32) @ rotation
+    return float(numpy.mean((transformed - reconstruct(encode(values, rotation, centroids), centroids)) ** 2))
+
+
 def evaluate(args: Any) -> None:
     calibration = shared.load_root(args.calibration_root)
     data = shared.load_root(args.evaluation_root)
     shared.validate_calibration_evaluation_pair(calibration, data)
-    subspaces = require_payload(args.payload_bytes, data["dimension"])
+    subspaces = require_payload(args.payload_bytes, data["dimension"], args.code_bits)
+    centroid_count = 2 ** args.code_bits
     if data["dimension"] != calibration["dimension"]:
         raise EvaluationError("calibration and evaluation dimensions differ")
-    if args.training_sample_count <= 0 or args.training_sample_count > len(calibration["train_ids"]):
+    if args.training_sample_count < 0 or args.training_sample_count > len(calibration["train_ids"]):
         raise EvaluationError("PQ training sample count is invalid")
-    sample_indices = numpy.sort(numpy.random.default_rng(args.seed).choice(
-        len(calibration["train_ids"]), size=args.training_sample_count, replace=False
-    ))
+    sample_count = args.training_sample_count or len(calibration["train_ids"])
+    sample_indices = numpy.arange(len(calibration["train_ids"])) if sample_count == len(calibration["train_ids"]) else numpy.sort(numpy.random.default_rng(args.seed).choice(len(calibration["train_ids"]), size=sample_count, replace=False))
     training_values = numpy.asarray(calibration["train"], dtype=numpy.float32)[sample_indices]
     training_ids = [calibration["train_ids"][index] for index in sample_indices]
+    calibration_sample_ids = list(training_ids)
+    if not 0.0 <= args.validation_fraction < 0.5:
+        raise EvaluationError("PQ validation fraction is invalid")
+    validation_count = int(round(sample_count * args.validation_fraction))
+    split = numpy.random.default_rng(args.seed + 31).permutation(sample_count)
+    validation_positions = numpy.sort(split[:validation_count])
+    optimizer_positions = numpy.sort(split[validation_count:])
+    if not optimizer_positions.size:
+        raise EvaluationError("PQ optimizer split is empty")
+    validation_values = training_values[validation_positions]
+    validation_ids = [training_ids[index] for index in validation_positions]
+    training_values = training_values[optimizer_positions]
+    training_ids = [training_ids[index] for index in optimizer_positions]
     if args.scheme == "pq":
         rotation = numpy.eye(data["dimension"], dtype=numpy.float32)
-        centroids, _ = train_pq(training_values, subspaces, args.seed, args.kmeans_iterations)
+        centroids, _, _ = train_pq(training_values, subspaces, centroid_count, args.seed, args.kmeans_iterations)
         opq_iterations = 0
+        convergence = []
     else:
-        rotation, centroids, _ = train_opq(training_values, subspaces, args.seed, args.kmeans_iterations, args.opq_iterations)
+        rotation, centroids, _, convergence = train_opq(training_values, subspaces, centroid_count, args.seed, args.kmeans_iterations, args.opq_iterations)
         opq_iterations = args.opq_iterations
     width = data["dimension"] // subspaces
-    transformed_documents = numpy.asarray(data["documents"], dtype=numpy.float32) @ rotation
-    document_codes = numpy.empty((len(data["document_ids"]), subspaces), dtype=numpy.uint8)
-    for index in range(subspaces):
-        part = transformed_documents[:, index * width:(index + 1) * width]
-        document_codes[:, index] = ((part[:, None, :] - centroids[index][None, :, :]) ** 2).sum(axis=2).argmin(axis=1)
-    packed = pack_nibbles(document_codes)
+    document_codes = encode(data["documents"], rotation, centroids)
+    packed = pack_codes(document_codes, args.code_bits)
     if packed.shape[1] != args.payload_bytes:
         raise EvaluationError("PQ packed payload size differs from the contract")
     metrics, contributions = shared.evaluate_candidates(
         data,
-        lambda _index, query: numpy.lexsort((data["document_ids"], adc_scores(query, rotation, centroids, document_codes))),
+        lambda _index, query: numpy.lexsort((data["document_ids"], packed_adc_scores(query, rotation, centroids, packed, args.code_bits))),
         args.candidate_limit,
         args.oracle_k,
     )
@@ -157,18 +241,27 @@ def evaluate(args: Any) -> None:
         "payload_bytes_per_document": args.payload_bytes,
         "subspace_count": subspaces,
         "subspace_dimension": width,
-        "centroid_count": 16,
-        "code_bits_per_subspace": 4,
+        "centroid_count": centroid_count,
+        "code_bits_per_subspace": args.code_bits,
+        "codebook_bytes": int(centroids.nbytes),
+        "rotation_bytes": int(rotation.nbytes) if args.scheme == "opq" else 0,
+        "total_model_bytes": int(centroids.nbytes + (rotation.nbytes if args.scheme == "opq" else 0)),
         "scoring": "continuous_query_squared_l2_adc",
         "evaluation_materialization_manifest_sha256": data["manifest_sha256"],
         "evaluation_qrels_sha256": data["evaluation_qrels_sha256"],
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"],
         "calibration_vector_count": len(calibration["train_ids"]),
-        "training_sample_count": args.training_sample_count,
-        "training_sample_ids_sha256": shared.canonical_ids_sha256(training_ids),
+        "training_sample_count": sample_count,
+        "calibration_sample_ids_sha256": shared.canonical_ids_sha256(calibration_sample_ids),
+        "optimizer_vector_count": len(training_ids),
+        "optimizer_ids_sha256": shared.canonical_ids_sha256(training_ids),
+        "validation_vector_count": len(validation_ids),
+        "validation_sample_ids_sha256": shared.canonical_ids_sha256(validation_ids) if validation_ids else None,
+        "validation_reconstruction_mse": reconstruction_mse(validation_values, rotation, centroids) if validation_ids else None,
         "seed": args.seed,
         "kmeans_iterations": args.kmeans_iterations,
         "opq_iterations": opq_iterations,
+        "opq_convergence": convergence,
         "rotation_sha256": sha256_array(rotation),
         "centroids_sha256": sha256_array(centroids),
         "document_codes_sha256": hashlib.sha256(packed.tobytes()).hexdigest(),
@@ -184,16 +277,28 @@ def evaluate(args: Any) -> None:
 def run_self_test() -> int:
     generator = numpy.random.default_rng(42)
     values = generator.normal(size=(96, 8)).astype(numpy.float32)
-    centroids, codes = train_pq(values, 2, 42, 4)
+    centroids, codes, _ = train_pq(values, 2, 16, 42, 4)
     query = generator.normal(size=8).astype(numpy.float32)
     scores = adc_scores(query, numpy.eye(8, dtype=numpy.float32), centroids, codes)
     direct = ((reconstruct(codes, centroids) - query[None, :]) ** 2).sum(axis=1)
     if not numpy.allclose(scores, direct, rtol=1.0e-5, atol=1.0e-5):
         print("self-test failed: PQ ADC does not match reconstructed L2", file=sys.stderr); return 1
-    rotation, _, _ = train_opq(values, 2, 42, 3, 2)
+    packed = pack_codes(codes, 4)
+    if not numpy.array_equal(unpack_codes(packed, 4, 2), codes) or not numpy.allclose(packed_adc_scores(query, numpy.eye(8, dtype=numpy.float32), centroids, packed, 4), scores, rtol=1.0e-5, atol=1.0e-5):
+        print("self-test failed: packed 4-bit ADC parity", file=sys.stderr); return 1
+    rotation, opq_centroids, opq_codes, _ = train_opq(values, 2, 16, 42, 3, 2)
     if not numpy.allclose(rotation.T @ rotation, numpy.eye(8), rtol=1.0e-5, atol=1.0e-5):
         print("self-test failed: OPQ rotation is not orthogonal", file=sys.stderr); return 1
-    if pack_nibbles(codes).shape != (96, 1):
+    opq_scores = adc_scores(query, rotation, opq_centroids, opq_codes)
+    rotated_direct = ((reconstruct(opq_codes, opq_centroids) - query[None, :] @ rotation) ** 2).sum(axis=1)
+    if not numpy.allclose(opq_scores, rotated_direct, rtol=1.0e-5, atol=1.0e-5):
+        print("self-test failed: OPQ ADC does not match rotated L2", file=sys.stderr); return 1
+    wide_centroids, wide_codes, _ = train_pq(values, 2, 32, 42, 4)
+    wide_packed = pack_codes(wide_codes, 8)
+    wide_scores = adc_scores(query, numpy.eye(8, dtype=numpy.float32), wide_centroids, wide_codes)
+    if not numpy.allclose(packed_adc_scores(query, numpy.eye(8, dtype=numpy.float32), wide_centroids, wide_packed, 8), wide_scores, rtol=1.0e-5, atol=1.0e-5):
+        print("self-test failed: packed 8-bit ADC parity", file=sys.stderr); return 1
+    if pack_codes(codes, 4).shape != (96, 1):
         print("self-test failed: packed payload shape is wrong", file=sys.stderr); return 1
     print("PQ/OPQ evaluator self-test passed")
     return 0
@@ -208,9 +313,11 @@ def main(argv: list[str]) -> int:
     run.add_argument("--scheme", choices=("pq", "opq"), required=True)
     run.add_argument("--payload-bytes", type=int, required=True)
     run.add_argument("--seed", type=int, required=True)
+    run.add_argument("--code-bits", type=int, choices=(4, 8), required=True)
     run.add_argument("--kmeans-iterations", type=int, default=20)
     run.add_argument("--opq-iterations", type=int, default=4)
-    run.add_argument("--training-sample-count", type=int, default=8192)
+    run.add_argument("--training-sample-count", type=int, default=0, help="0 uses all calibration vectors")
+    run.add_argument("--validation-fraction", type=float, default=0.0)
     run.add_argument("--candidate-limit", type=int, default=512)
     run.add_argument("--oracle-k", type=int, default=10)
     run.add_argument("--output", type=Path, required=True)
