@@ -1738,6 +1738,11 @@ seed `20260806`); the retained bundle additionally contains the selection
 split, five convergence reports, all per-query NPZ files, and exact evaluator
 source snapshots.
 
+The reviewable draft-release asset is
+[`pq-opq-equal-payload-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-82bff572bfffcf4fff57/pq-opq-equal-payload-evidence-v1.zip),
+archive SHA-256
+`7d43879f191ffff735cf837a5273754b27cf773d7810f7c7f9a2cdd90b064e37`.
+
 As a separate attribution control, the binary ADC rows were also retrained on
 the deterministic 8,192-vector sample for each seed. Relative to the final
 full-25k binary rows, mean coverage changed by `-0.000735`, `-0.000527`, and
