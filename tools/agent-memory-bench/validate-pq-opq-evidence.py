@@ -362,11 +362,6 @@ def write_manifest(args: Any) -> None:
     contract = read_json(args.grid_contract, "PQ/OPQ grid contract")
     methods, expected_rows, comparisons = expected_contract(contract)
     selection = validate_selection(args.selection_contract, args.selection_reports_dir, args.selection_contributions_dir)
-    if contract.get("schema_version") == 2:
-        selected_steps = selection.get("selected_steps")
-        if (selection.get("schema_version") != 2 or
-                any(method["opq_iterations"] != selected_steps for method in methods.values() if method["scheme"] == "opq")):
-            raise EvidenceError("extended grid OPQ steps differ from selection")
     selected_steps = selection["selected_steps"]
     if contract.get("schema_version") == 2 and any(
             method["scheme"] == "opq" and method["opq_iterations"] != selected_steps
@@ -552,24 +547,6 @@ def run_self_test() -> int:
             return 1
         except EvidenceError:
             pass
-        extension_steps = [0, 2, 4, 8, 16, 32, 64]
-        extension_rows: list[dict[str, Any]] = []
-        for step, mse in zip(extension_steps, (0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1)):
-            report_path = reports_dir / f"extension-step{step}.json"; contribution_path = contributions_dir / f"extension-step{step}.npz"
-            contribution_path.write_bytes(b"extension-selection")
-            report_path.write_text(json.dumps({"opq_iterations": step, "validation_reconstruction_mse": mse, "calibration_materialization_manifest_sha256": "b" * 64, "validation_split_algorithm": "sha256_document_id_rank_v1", "validation_split_salt": "opq-step-convergence-extension-v1"}), encoding="utf-8", newline="\n")
-            extension_rows.append({"steps": step, "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution_path.name, "contributions_sha256": sha256_file(contribution_path), "validation_reconstruction_mse": mse, "diagnostic_coverage_at_512": 0.5})
-        selection_path.write_bytes(canonical_json_bytes({"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "candidate_steps": extension_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42, "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000, "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000, "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64, "final_training_vector_count": 25000, "selection_split_algorithm": "sha256_document_id_rank_v1", "selection_split_salt": "opq-step-convergence-extension-v1", "steps": extension_rows, "selected_steps": 64}))
-        validate_selection(selection_path, reports_dir, contributions_dir)
-        mutated_extension = read_json(selection_path, "extended self-test selection")
-        mutated_extension["selection_split_salt"] = "other-split"
-        selection_path.write_bytes(canonical_json_bytes(mutated_extension))
-        try:
-            validate_selection(selection_path, reports_dir, contributions_dir)
-            print("self-test failed: extended selection split mutation accepted", file=sys.stderr)
-            return 1
-        except EvidenceError:
-            pass
     try:
         require_shared_calibration_provenance(
             {**valid_pq, "calibration_materialization_manifest_sha256": "c" * 64},
@@ -734,8 +711,6 @@ def main(argv: list[str]) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     selection = commands.add_parser("write-selection")
     selection.add_argument("--report", type=Path, action="append", required=True)
-    selection.add_argument("--candidate-step", type=int, action="append")
-    selection.add_argument("--selection-split-salt", type=str, default=None)
     selection.add_argument("--candidate-step", type=int, action="append")
     selection.add_argument("--selection-split-salt", type=str, default=None)
     selection.add_argument("--contributions-dir", type=Path, required=True)
