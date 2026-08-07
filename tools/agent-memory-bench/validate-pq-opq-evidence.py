@@ -333,10 +333,40 @@ def validate_selection(path: Path, reports_dir: Path, contributions_dir: Path) -
     return value
 
 
+def write_extended_grid_contract(args: Any) -> None:
+    selection = validate_selection(args.selection_contract, args.selection_reports_dir, args.selection_contributions_dir)
+    if selection.get("schema_version") != 2:
+        raise EvidenceError("extended grid requires the v2 OPQ selection contract")
+    selected_steps = selection["selected_steps"]
+    contract = {
+        "schema_version": 2,
+        "family": "pq_opq_equal_payload_grid_contract_v2",
+        "candidate_limit": 512,
+        "oracle_k": 10,
+        "methods": [
+            {"id": "binary", "family": "binary", "scheme": None, "code_bits": 1, "opq_iterations": 0},
+            {"id": "pq4", "family": "pq_opq", "scheme": "pq", "code_bits": 4, "opq_iterations": 0},
+            {"id": "opq4", "family": "pq_opq", "scheme": "opq", "code_bits": 4, "opq_iterations": selected_steps},
+            {"id": "pq8", "family": "pq_opq", "scheme": "pq", "code_bits": 8, "opq_iterations": 0},
+            {"id": "opq8", "family": "pq_opq", "scheme": "opq", "code_bits": 8, "opq_iterations": selected_steps},
+        ],
+        "payload_bytes": [16, 24, 32],
+        "seeds": [42, 43, 44, 45, 46],
+        "comparison_template": {"left_method": "binary", "right_methods": ["pq4", "opq4", "pq8", "opq8"], "replicates": 10000, "bootstrap_seed": 20260806},
+    }
+    expected_contract(contract)
+    args.output.write_bytes(canonical_json_bytes(contract))
+
+
 def write_manifest(args: Any) -> None:
     contract = read_json(args.grid_contract, "PQ/OPQ grid contract")
     methods, expected_rows, comparisons = expected_contract(contract)
     selection = validate_selection(args.selection_contract, args.selection_reports_dir, args.selection_contributions_dir)
+    if contract.get("schema_version") == 2:
+        selected_steps = selection.get("selected_steps")
+        if (selection.get("schema_version") != 2 or
+                any(method["opq_iterations"] != selected_steps for method in methods.values() if method["scheme"] == "opq")):
+            raise EvidenceError("extended grid OPQ steps differ from selection")
     selected_steps = selection["selected_steps"]
     if contract.get("schema_version") == 2 and any(
             method["scheme"] == "opq" and method["opq_iterations"] != selected_steps
@@ -474,7 +504,7 @@ def validate_bundle(args: Any) -> None:
         raise EvidenceError("PQ/OPQ evidence bundle root differs")
 
 
-def run_self_test_legacy() -> int:
+def run_self_test() -> int:
     contract = {
         "schema_version": 1, "family": "pq_opq_equal_payload_grid_contract_v1", "candidate_limit": 512, "oracle_k": 10,
         "methods": [
@@ -519,6 +549,24 @@ def run_self_test_legacy() -> int:
         try:
             require_final_training_contract(mutation, "opq4", Path("mutated.json"))
             print("self-test failed: final PQ/OPQ training mutation accepted", file=sys.stderr)
+            return 1
+        except EvidenceError:
+            pass
+        extension_steps = [0, 2, 4, 8, 16, 32, 64]
+        extension_rows: list[dict[str, Any]] = []
+        for step, mse in zip(extension_steps, (0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1)):
+            report_path = reports_dir / f"extension-step{step}.json"; contribution_path = contributions_dir / f"extension-step{step}.npz"
+            contribution_path.write_bytes(b"extension-selection")
+            report_path.write_text(json.dumps({"opq_iterations": step, "validation_reconstruction_mse": mse, "calibration_materialization_manifest_sha256": "b" * 64, "validation_split_algorithm": "sha256_document_id_rank_v1", "validation_split_salt": "opq-step-convergence-extension-v1"}), encoding="utf-8", newline="\n")
+            extension_rows.append({"steps": step, "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution_path.name, "contributions_sha256": sha256_file(contribution_path), "validation_reconstruction_mse": mse, "diagnostic_coverage_at_512": 0.5})
+        selection_path.write_bytes(canonical_json_bytes({"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "candidate_steps": extension_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42, "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000, "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000, "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64, "final_training_vector_count": 25000, "selection_split_algorithm": "sha256_document_id_rank_v1", "selection_split_salt": "opq-step-convergence-extension-v1", "steps": extension_rows, "selected_steps": 64}))
+        validate_selection(selection_path, reports_dir, contributions_dir)
+        mutated_extension = read_json(selection_path, "extended self-test selection")
+        mutated_extension["selection_split_salt"] = "other-split"
+        selection_path.write_bytes(canonical_json_bytes(mutated_extension))
+        try:
+            validate_selection(selection_path, reports_dir, contributions_dir)
+            print("self-test failed: extended selection split mutation accepted", file=sys.stderr)
             return 1
         except EvidenceError:
             pass
@@ -595,6 +643,16 @@ def run_self_test_legacy() -> int:
             return 1
         except EvidenceError:
             pass
+        changed_value["validation_split_salt"] = "opq-step-convergence-extension-v1"
+        changed_report.write_bytes(canonical_json_bytes(changed_value))
+        extended_rows[5]["report_sha256"] = sha256_file(changed_report)
+        extended_path.write_bytes(canonical_json_bytes({**read_json(extended_path, "self-test restored extended selection"), "steps": extended_rows}))
+        grid_path = root / "extended-grid-contract.json"
+        write_extended_grid_contract(argparse.Namespace(selection_contract=extended_path, selection_reports_dir=reports_dir, selection_contributions_dir=contributions_dir, output=grid_path))
+        generated_methods, _, _ = expected_contract(read_json(grid_path, "self-test extended grid"))
+        if generated_methods["opq4"]["opq_iterations"] != 64 or generated_methods["opq8"]["opq_iterations"] != 64:
+            print("self-test failed: extended grid does not retain selected steps", file=sys.stderr)
+            return 1
     valid_binary_memory = {"projection_bytes": 16, "centroid_bytes": 8, "total_model_bytes": 24}
     require_model_memory_contract(valid_binary_memory, "binary", Path("binary.json"))
     try:
@@ -607,13 +665,12 @@ def run_self_test_legacy() -> int:
     try:
         expected_contract(contract)
     except EvidenceError:
-        print("PQ/OPQ evidence validator self-test passed")
-        return 0
+        return run_extended_selection_self_test()
     print("self-test failed: incomplete contract accepted", file=sys.stderr)
     return 1
 
 
-def run_self_test() -> int:
+def run_extended_selection_self_test() -> int:
     contract = {
         "schema_version": 2, "family": "pq_opq_equal_payload_grid_contract_v2", "candidate_limit": 512, "oracle_k": 10,
         "methods": [
@@ -679,8 +736,15 @@ def main(argv: list[str]) -> int:
     selection.add_argument("--report", type=Path, action="append", required=True)
     selection.add_argument("--candidate-step", type=int, action="append")
     selection.add_argument("--selection-split-salt", type=str, default=None)
+    selection.add_argument("--candidate-step", type=int, action="append")
+    selection.add_argument("--selection-split-salt", type=str, default=None)
     selection.add_argument("--contributions-dir", type=Path, required=True)
     selection.add_argument("--output", type=Path, required=True)
+    grid = commands.add_parser("write-extended-grid-contract")
+    grid.add_argument("--selection-contract", type=Path, required=True)
+    grid.add_argument("--selection-reports-dir", type=Path, required=True)
+    grid.add_argument("--selection-contributions-dir", type=Path, required=True)
+    grid.add_argument("--output", type=Path, required=True)
     manifest = commands.add_parser("write-manifest")
     manifest.add_argument("--grid-contract", type=Path, required=True)
     manifest.add_argument("--selection-contract", type=Path, required=True)
@@ -702,6 +766,8 @@ def main(argv: list[str]) -> int:
     try:
         if args.command == "write-selection":
             write_selection(args)
+        elif args.command == "write-extended-grid-contract":
+            write_extended_grid_contract(args)
         elif args.command == "write-manifest":
             write_manifest(args)
         elif args.command == "write-evidence-bundle":
