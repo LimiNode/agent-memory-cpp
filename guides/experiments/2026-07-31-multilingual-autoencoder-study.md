@@ -1740,7 +1740,7 @@ split, five convergence reports, all per-query NPZ files, and exact evaluator
 source snapshots.
 
 The reviewable draft-release asset is
-[`pq-opq-equal-payload-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-2318e0bce3a2a2fe2283/pq-opq-equal-payload-evidence-v1.zip),
+[`pq-opq-equal-payload-evidence-v1.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-4af9de2461aaf73686f7/pq-opq-equal-payload-evidence-v1.zip),
 archive SHA-256
 `5518afa2b3dd3fd7275400a3ca566617cb5f45acaf0618c5c231570efae2b353`.
 
