@@ -359,6 +359,14 @@ def write_extended_grid_contract(args: Any) -> None:
     args.output.write_bytes(canonical_json_bytes(contract))
 
 
+def require_grid_kmeans_contract(report: dict[str, Any], method: str, contract: dict[str, Any], path: Path) -> None:
+    if contract.get("schema_version") != 2:
+        return
+    expected_iterations = 0 if method == "binary" else contract["kmeans_iterations"]
+    if report.get("kmeans_iterations") != expected_iterations:
+        raise EvidenceError(f"report k-means contract differs: {path}")
+
+
 def write_manifest(args: Any) -> None:
     contract = read_json(args.grid_contract, "PQ/OPQ grid contract")
     methods, expected_rows, comparisons = expected_contract(contract)
@@ -382,8 +390,7 @@ def write_manifest(args: Any) -> None:
             raise EvidenceError(f"report is outside the declared grid: {path}")
         if report.get("candidate_limit") != contract["candidate_limit"] or report.get("oracle_k") != contract["oracle_k"]:
             raise EvidenceError(f"report retrieval contract differs: {path}")
-        if contract.get("schema_version") == 2 and report.get("kmeans_iterations") != contract["kmeans_iterations"]:
-            raise EvidenceError(f"report k-means contract differs: {path}")
+        require_grid_kmeans_contract(report, method, contract, path)
         full_ids = require_final_training_contract(report, method, path)
         calibration_manifest, full_calibration_ids = require_shared_calibration_provenance(
             report, path, calibration_manifest, full_calibration_ids, full_ids
@@ -641,6 +648,20 @@ def run_self_test() -> int:
     try:
         require_model_memory_contract({**valid_binary_memory, "total_model_bytes": 0}, "binary", Path("wrong-memory.json"))
         print("self-test failed: binary memory mutation accepted", file=sys.stderr)
+        return 1
+    except EvidenceError:
+        pass
+    require_grid_kmeans_contract({"kmeans_iterations": 0}, "binary", extended_contract, Path("binary.json"))
+    try:
+        require_grid_kmeans_contract({"kmeans_iterations": 12}, "binary", extended_contract, Path("binary-kmeans.json"))
+        print("self-test failed: binary k-means mutation accepted", file=sys.stderr)
+        return 1
+    except EvidenceError:
+        pass
+    require_grid_kmeans_contract({"kmeans_iterations": 12}, "pq4", extended_contract, Path("pq4.json"))
+    try:
+        require_grid_kmeans_contract({"kmeans_iterations": 0}, "pq4", extended_contract, Path("pq4-kmeans.json"))
+        print("self-test failed: PQ k-means mutation accepted", file=sys.stderr)
         return 1
     except EvidenceError:
         pass
