@@ -10,6 +10,7 @@ import math
 import shutil
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -184,9 +185,11 @@ def require_model_memory_contract(report: dict[str, Any], method: str, path: Pat
 
 
 def expected_contract(value: dict[str, Any]) -> tuple[dict[str, dict[str, Any]], set[tuple[str, int, int]], list[dict[str, Any]]]:
-    if value.get("schema_version") != 1 or value.get("family") != "pq_opq_equal_payload_grid_contract_v1":
+    schema_version = value.get("schema_version")
+    family = value.get("family")
+    if (schema_version, family) not in ((1, "pq_opq_equal_payload_grid_contract_v1"), (2, "pq_opq_equal_payload_grid_contract_v2")):
         raise EvidenceError("PQ/OPQ grid contract schema is unsupported")
-    if value.get("candidate_limit") != 512 or value.get("oracle_k") != 10:
+    if value.get("candidate_limit") != 512 or value.get("oracle_k") != 10 or (schema_version == 2 and value.get("kmeans_iterations") != 12):
         raise EvidenceError("PQ/OPQ grid contract retrieval budget is invalid")
     methods = value.get("methods")
     payloads = value.get("payload_bytes")
@@ -205,7 +208,13 @@ def expected_contract(value: dict[str, Any]) -> tuple[dict[str, dict[str, Any]],
             raise EvidenceError("PQ/OPQ grid contract method values are invalid")
         if method["family"] == "binary" and (method["scheme"] is not None or method["code_bits"] != 1 or method["opq_iterations"] != 0):
             raise EvidenceError("PQ/OPQ binary method contract is invalid")
-        if method["family"] == "pq_opq" and (method["code_bits"] not in (4, 8) or (method["scheme"] == "pq" and method["opq_iterations"] != 0) or (method["scheme"] == "opq" and method["opq_iterations"] != 16)):
+        if (method["family"] == "pq_opq" and
+                (method["code_bits"] not in (4, 8) or
+                 (method["scheme"] == "pq" and method["opq_iterations"] != 0) or
+                 (method["scheme"] == "opq" and
+                  (not isinstance(method["opq_iterations"], int) or
+                   method["opq_iterations"] <= 0 or
+                   (schema_version == 1 and method["opq_iterations"] != 16))))):
             raise EvidenceError("PQ/OPQ method training contract is invalid")
         method_map[identifier] = method
     if set(method_map) != {"binary", "pq4", "opq4", "pq8", "opq8"} or payloads != [16, 24, 32] or seeds != [42, 43, 44, 45, 46]:
@@ -242,9 +251,16 @@ def expected_contract(value: dict[str, Any]) -> tuple[dict[str, dict[str, Any]],
 
 def write_selection(args: Any) -> None:
     reports = [read_json(path, "selection report") for path in args.report]
-    if len(reports) != 5:
-        raise EvidenceError("selection requires five reports")
-    expected_steps = [0, 2, 4, 8, 16]
+    expected_steps = args.candidate_step or [0, 2, 4, 8, 16]
+    is_extension = bool(args.candidate_step)
+    if (not all(isinstance(step, int) and not isinstance(step, bool) and step >= 0 for step in expected_steps) or
+            expected_steps != sorted(set(expected_steps)) or
+            (is_extension and expected_steps != [0, 2, 4, 8, 16, 32, 64])):
+        raise EvidenceError("selection candidate steps are invalid")
+    if len(reports) != len(expected_steps):
+        raise EvidenceError("selection report count differs from candidate steps")
+    if is_extension and args.selection_split_salt != "opq-step-convergence-extension-v1":
+        raise EvidenceError("extended selection split salt is invalid")
     rows: list[dict[str, Any]] = []
     common: tuple[Any, ...] | None = None
     for path, report in zip(args.report, reports):
@@ -254,29 +270,39 @@ def write_selection(args: Any) -> None:
         load_contributions(contribution, report, f"selection report {path.name}")
         optimizer_ids_sha256 = report.get("optimizer_ids_sha256", report.get("training_sample_ids_sha256"))
         calibration_manifest = require_sha256(report.get("calibration_materialization_manifest_sha256"), "selection calibration manifest")
-        current = (method, payload, bits, report.get("seed"), report.get("training_sample_count"), report.get("optimizer_vector_count"), report.get("validation_vector_count"), optimizer_ids_sha256, report.get("validation_sample_ids_sha256"), calibration_manifest)
+        current = (method, payload, bits, report.get("seed"), report.get("kmeans_iterations"), report.get("training_sample_count"), report.get("optimizer_vector_count"), report.get("validation_vector_count"), optimizer_ids_sha256, report.get("validation_sample_ids_sha256"), calibration_manifest, report.get("validation_split_algorithm"), report.get("validation_split_salt"))
         if common is None:
             common = current
         elif current != common:
             raise EvidenceError("selection reports do not share one calibration split")
+        if is_extension and (report.get("validation_split_algorithm") != "sha256_document_id_rank_v1" or report.get("validation_split_salt") != args.selection_split_salt):
+            raise EvidenceError("extended selection report uses the wrong validation split")
         if method != "opq4" or payload != 16 or bits != 4 or step not in expected_steps:
             raise EvidenceError("selection report row is outside the declared sweep")
         rows.append({"steps": step, "report_file": path.name, "report_sha256": sha256_file(path), "contributions_file": contribution.name, "contributions_sha256": sha256_file(contribution), "validation_reconstruction_mse": finite_metric(report.get("validation_reconstruction_mse"), "selection validation MSE"), "diagnostic_coverage_at_512": finite_metric(report.get("exact_top_k_candidate_coverage"), "selection coverage")})
     if {row["steps"] for row in rows} != set(expected_steps):
         raise EvidenceError("selection candidate step set is invalid")
     selected = min(rows, key=lambda row: (row["validation_reconstruction_mse"], row["steps"]))
-    _, _, _, seed, sample_count, optimizer_count, validation_count, optimizer_hash, validation_hash, calibration_manifest = common or ()
+    _, _, _, seed, kmeans_iterations, sample_count, optimizer_count, validation_count, optimizer_hash, validation_hash, calibration_manifest, split_algorithm, split_salt = common or ()
     result = {"schema_version": 1, "family": "pq_opq_opq_step_selection_v1", "candidate_steps": expected_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": seed, "selection_calibration_materialization_manifest_sha256": calibration_manifest, "selection_calibration_vector_count": sample_count, "selection_optimizer_vector_count": optimizer_count, "selection_holdout_vector_count": validation_count, "selection_optimizer_ids_sha256": optimizer_hash, "selection_holdout_ids_sha256": validation_hash, "final_training_vector_count": 25000, "steps": sorted(rows, key=lambda row: row["steps"]), "selected_steps": selected["steps"]}
+    if is_extension:
+        result.update({"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "selection_kmeans_iterations": kmeans_iterations, "selection_split_algorithm": split_algorithm, "selection_split_salt": split_salt})
     args.output.write_bytes(canonical_json_bytes(result))
 
 
 def validate_selection(path: Path, reports_dir: Path, contributions_dir: Path) -> dict[str, Any]:
     value = read_json(path, "selection contract")
-    required = {"schema_version", "family", "candidate_steps", "selection_metric", "tie_break", "seed", "selection_calibration_materialization_manifest_sha256", "selection_calibration_vector_count", "selection_optimizer_vector_count", "selection_holdout_vector_count", "selection_optimizer_ids_sha256", "selection_holdout_ids_sha256", "final_training_vector_count", "steps", "selected_steps"}
-    if set(value) != required or value.get("schema_version") != 1 or value.get("family") != "pq_opq_opq_step_selection_v1" or value.get("candidate_steps") != [0, 2, 4, 8, 16] or value.get("selection_metric") != "calibration_holdout_reconstruction_mse" or value.get("tie_break") != "smaller_step_count" or value.get("final_training_vector_count") != 25000:
+    base_required = {"schema_version", "family", "candidate_steps", "selection_metric", "tie_break", "seed", "selection_calibration_materialization_manifest_sha256", "selection_calibration_vector_count", "selection_optimizer_vector_count", "selection_holdout_vector_count", "selection_optimizer_ids_sha256", "selection_holdout_ids_sha256", "final_training_vector_count", "steps", "selected_steps"}
+    is_extension = value.get("schema_version") == 2 and value.get("family") == "pq_opq_opq_step_selection_v2"
+    required = base_required | ({"selection_kmeans_iterations", "selection_split_algorithm", "selection_split_salt"} if is_extension else set())
+    expected_steps = [0, 2, 4, 8, 16, 32, 64] if is_extension else [0, 2, 4, 8, 16]
+    if (set(value) != required or
+            (not is_extension and (value.get("schema_version") != 1 or value.get("family") != "pq_opq_opq_step_selection_v1")) or
+            value.get("candidate_steps") != expected_steps or value.get("selection_metric") != "calibration_holdout_reconstruction_mse" or value.get("tie_break") != "smaller_step_count" or value.get("final_training_vector_count") != 25000 or
+            (is_extension and (value.get("selection_kmeans_iterations") != 12 or value.get("selection_split_algorithm") != "sha256_document_id_rank_v1" or value.get("selection_split_salt") != "opq-step-convergence-extension-v1"))):
         raise EvidenceError("selection contract schema is invalid")
     rows = value["steps"]
-    if not isinstance(rows, list) or len(rows) != 5 or [row.get("steps") for row in rows if isinstance(row, dict)] != [0, 2, 4, 8, 16]:
+    if not isinstance(rows, list) or len(rows) != len(expected_steps) or [row.get("steps") for row in rows if isinstance(row, dict)] != expected_steps:
         raise EvidenceError("selection contract rows are invalid")
     for row in rows:
         report = reports_dir / plain_name(row.get("report_file"), "selection report file")
@@ -284,20 +310,73 @@ def validate_selection(path: Path, reports_dir: Path, contributions_dir: Path) -
         if sha256_file(report) != require_sha256(row.get("report_sha256"), "selection report SHA") or sha256_file(contribution) != require_sha256(row.get("contributions_sha256"), "selection contribution SHA"):
             raise EvidenceError("selection evidence hash differs")
         report_value = read_json(report, "selection report")
-        if require_sha256(report_value.get("calibration_materialization_manifest_sha256"), "selection report calibration manifest") != require_sha256(value.get("selection_calibration_materialization_manifest_sha256"), "selection calibration manifest"):
-            raise EvidenceError("selection calibration materialization differs from report")
+        report_identity = (
+            report_value.get("seed"), report_value.get("training_sample_count"), report_value.get("optimizer_vector_count"),
+            report_value.get("validation_vector_count"), report_value.get("optimizer_ids_sha256", report_value.get("training_sample_ids_sha256")),
+            report_value.get("validation_sample_ids_sha256"),
+            require_sha256(report_value.get("calibration_materialization_manifest_sha256"), "selection report calibration manifest"),
+        )
+        selection_identity = (
+            value.get("seed"), value.get("selection_calibration_vector_count"), value.get("selection_optimizer_vector_count"),
+            value.get("selection_holdout_vector_count"), value.get("selection_optimizer_ids_sha256"),
+            value.get("selection_holdout_ids_sha256"),
+            require_sha256(value.get("selection_calibration_materialization_manifest_sha256"), "selection calibration manifest"),
+        )
+        if report_identity != selection_identity:
+            raise EvidenceError("selection calibration split differs from report")
         if report_value.get("opq_iterations") != row["steps"] or not math.isclose(finite_metric(report_value.get("validation_reconstruction_mse"), "selection report MSE"), finite_metric(row.get("validation_reconstruction_mse"), "selection contract MSE"), rel_tol=0.0, abs_tol=1.0e-15):
             raise EvidenceError("selection contract MSE differs from report")
+        if is_extension and (report_value.get("kmeans_iterations") != value["selection_kmeans_iterations"] or report_value.get("validation_split_algorithm") != value["selection_split_algorithm"] or report_value.get("validation_split_salt") != value["selection_split_salt"]):
+            raise EvidenceError("selection contract split differs from report")
     chosen = min(rows, key=lambda row: (float(row["validation_reconstruction_mse"]), row["steps"]))
     if value.get("selected_steps") != chosen["steps"]:
         raise EvidenceError("selection contract chosen step differs from policy")
     return value
 
 
+def write_extended_grid_contract(args: Any) -> None:
+    selection = validate_selection(args.selection_contract, args.selection_reports_dir, args.selection_contributions_dir)
+    if selection.get("schema_version") != 2:
+        raise EvidenceError("extended grid requires the v2 OPQ selection contract")
+    selected_steps = selection["selected_steps"]
+    contract = {
+        "schema_version": 2,
+        "family": "pq_opq_equal_payload_grid_contract_v2",
+        "candidate_limit": 512,
+        "oracle_k": 10,
+        "kmeans_iterations": selection["selection_kmeans_iterations"],
+        "methods": [
+            {"id": "binary", "family": "binary", "scheme": None, "code_bits": 1, "opq_iterations": 0},
+            {"id": "pq4", "family": "pq_opq", "scheme": "pq", "code_bits": 4, "opq_iterations": 0},
+            {"id": "opq4", "family": "pq_opq", "scheme": "opq", "code_bits": 4, "opq_iterations": selected_steps},
+            {"id": "pq8", "family": "pq_opq", "scheme": "pq", "code_bits": 8, "opq_iterations": 0},
+            {"id": "opq8", "family": "pq_opq", "scheme": "opq", "code_bits": 8, "opq_iterations": selected_steps},
+        ],
+        "payload_bytes": [16, 24, 32],
+        "seeds": [42, 43, 44, 45, 46],
+        "comparison_template": {"left_method": "binary", "right_methods": ["pq4", "opq4", "pq8", "opq8"], "replicates": 10000, "bootstrap_seed": 20260806},
+    }
+    expected_contract(contract)
+    args.output.write_bytes(canonical_json_bytes(contract))
+
+
+def require_grid_kmeans_contract(report: dict[str, Any], method: str, contract: dict[str, Any], path: Path) -> None:
+    if contract.get("schema_version") != 2:
+        return
+    expected_iterations = 0 if method == "binary" else contract["kmeans_iterations"]
+    if report.get("kmeans_iterations") != expected_iterations:
+        raise EvidenceError(f"report k-means contract differs: {path}")
+
+
 def write_manifest(args: Any) -> None:
     contract = read_json(args.grid_contract, "PQ/OPQ grid contract")
     methods, expected_rows, comparisons = expected_contract(contract)
     selection = validate_selection(args.selection_contract, args.selection_reports_dir, args.selection_contributions_dir)
+    selected_steps = selection["selected_steps"]
+    if contract.get("schema_version") == 2 and any(
+            method["scheme"] == "opq" and method["opq_iterations"] != selected_steps
+            for method in methods.values()):
+        raise EvidenceError("extended grid OPQ steps differ from the selection contract")
     rows: list[dict[str, Any]] = []
     identity: dict[str, Any] | None = None
     sources: dict[str, str] = {}
@@ -312,6 +391,7 @@ def write_manifest(args: Any) -> None:
             raise EvidenceError(f"report is outside the declared grid: {path}")
         if report.get("candidate_limit") != contract["candidate_limit"] or report.get("oracle_k") != contract["oracle_k"]:
             raise EvidenceError(f"report retrieval contract differs: {path}")
+        require_grid_kmeans_contract(report, method, contract, path)
         full_ids = require_final_training_contract(report, method, path)
         calibration_manifest, full_calibration_ids = require_shared_calibration_provenance(
             report, path, calibration_manifest, full_calibration_ids, full_ids
@@ -352,13 +432,14 @@ def write_manifest(args: Any) -> None:
         comparison_rows.append({"id": comparison["id"], "left_contributions_sha256": value["left_sha256"], "right_contributions_sha256": value["right_sha256"], "bootstrap_report_file": bootstrap.name, "bootstrap_report_sha256": sha256_file(bootstrap), "replicates": value["replicates"], "seed": value["seed"], "metrics": value.get("metrics")})
     if selection["selection_calibration_materialization_manifest_sha256"] != calibration_manifest:
         raise EvidenceError("selection and final grid calibration materializations differ")
-    manifest = {"schema_version": 1, "family": "pq_opq_equal_payload_manifest_v1", "grid_contract_sha256": sha256_file(args.grid_contract), "selection_contract_file": args.selection_contract.name, "selection_contract_sha256": sha256_file(args.selection_contract), "calibration_materialization_manifest_sha256": calibration_manifest, "full_calibration_ids_sha256": full_calibration_ids, "evaluation_identity": identity, "evaluator_sources": {**sources, "bootstrap": bootstrap_source}, "rows": sorted(rows, key=lambda row: (row["method"], row["payload_bytes"], row["seed"])), "comparisons": sorted(comparison_rows, key=lambda row: row["id"])}
+    is_extension = contract.get("schema_version") == 2
+    manifest = {"schema_version": 2 if is_extension else 1, "family": "pq_opq_equal_payload_manifest_v2" if is_extension else "pq_opq_equal_payload_manifest_v1", "grid_contract_sha256": sha256_file(args.grid_contract), "selection_contract_file": args.selection_contract.name, "selection_contract_sha256": sha256_file(args.selection_contract), "calibration_materialization_manifest_sha256": calibration_manifest, "full_calibration_ids_sha256": full_calibration_ids, "evaluation_identity": identity, "evaluator_sources": {**sources, "bootstrap": bootstrap_source}, "rows": sorted(rows, key=lambda row: (row["method"], row["payload_bytes"], row["seed"])), "comparisons": sorted(comparison_rows, key=lambda row: row["id"])}
     args.output.write_bytes(canonical_json_bytes(manifest))
 
 
 def validate_manifest(path: Path, grid_contract: Path, selection_contract: Path, reports_dir: Path, contributions_dir: Path, bootstrap_dir: Path, selection_reports_dir: Path, selection_contributions_dir: Path) -> dict[str, Any]:
     manifest = read_json(path, "PQ/OPQ manifest")
-    if (manifest.get("schema_version") != 1 or manifest.get("family") != "pq_opq_equal_payload_manifest_v1" or
+    if ((manifest.get("schema_version"), manifest.get("family")) not in ((1, "pq_opq_equal_payload_manifest_v1"), (2, "pq_opq_equal_payload_manifest_v2")) or
             manifest.get("grid_contract_sha256") != sha256_file(grid_contract) or
             manifest.get("selection_contract_sha256") != sha256_file(selection_contract) or
             not isinstance(manifest.get("calibration_materialization_manifest_sha256"), str) or
@@ -429,6 +510,23 @@ def validate_bundle(args: Any) -> None:
         raise EvidenceError("PQ/OPQ evidence bundle root differs")
 
 
+def write_evidence_archive(args: Any) -> None:
+    validate_bundle(argparse.Namespace(bundle_root=args.bundle_root))
+    if args.output.exists():
+        raise EvidenceError("PQ/OPQ evidence archive output already exists")
+    root = args.bundle_root
+    paths = sorted(path for path in root.rglob("*") if path.is_file())
+    archive_names = [(Path(root.name) / path.relative_to(root)).as_posix() for path in paths]
+    if len(set(archive_names)) != len(archive_names) or any("\\" in name for name in archive_names):
+        raise EvidenceError("PQ/OPQ evidence archive paths are invalid")
+    with zipfile.ZipFile(args.output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path, archive_name in zip(paths, archive_names):
+            archive.write(path, archive_name)
+    with zipfile.ZipFile(args.output) as archive:
+        if archive.namelist() != archive_names:
+            raise EvidenceError("PQ/OPQ evidence archive entry paths differ")
+
+
 def run_self_test() -> int:
     contract = {
         "schema_version": 1, "family": "pq_opq_equal_payload_grid_contract_v1", "candidate_limit": 512, "oracle_k": 10,
@@ -444,6 +542,18 @@ def run_self_test() -> int:
     _, rows, comparisons = expected_contract(contract)
     if len(rows) != 75 or len(comparisons) != 60:
         print("self-test failed: contract expansion is wrong", file=sys.stderr)
+        return 1
+    extended_contract = json.loads(json.dumps(contract))
+    extended_contract["schema_version"] = 2
+    extended_contract["family"] = "pq_opq_equal_payload_grid_contract_v2"
+    extended_contract["kmeans_iterations"] = 12
+    for method in extended_contract["methods"]:
+        if method["scheme"] == "opq":
+            method["opq_iterations"] = 64
+    try:
+        expected_contract(extended_contract)
+    except EvidenceError:
+        print("self-test failed: valid extended grid contract rejected", file=sys.stderr)
         return 1
     valid_pq = {
         "training_sample_count": 25000,
@@ -483,7 +593,7 @@ def run_self_test() -> int:
         for step, mse in zip((0, 2, 4, 8, 16), (0.5, 0.4, 0.3, 0.2, 0.1)):
             report_path = reports_dir / f"step{step}.json"; contribution_path = contributions_dir / f"step{step}.npz"
             contribution_path.write_bytes(b"selection")
-            report_path.write_text(json.dumps({"opq_iterations": step, "validation_reconstruction_mse": mse, "calibration_materialization_manifest_sha256": "b" * 64}), encoding="utf-8", newline="\n")
+            report_path.write_text(json.dumps({"opq_iterations": step, "validation_reconstruction_mse": mse, "seed": 42, "training_sample_count": 25000, "optimizer_vector_count": 20000, "validation_vector_count": 5000, "optimizer_ids_sha256": "a" * 64, "validation_sample_ids_sha256": "c" * 64, "calibration_materialization_manifest_sha256": "b" * 64}), encoding="utf-8", newline="\n")
             selection_rows.append({"steps": step, "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution_path.name, "contributions_sha256": sha256_file(contribution_path), "validation_reconstruction_mse": mse, "diagnostic_coverage_at_512": 0.5})
         selection_path = root / "selection.json"
         selection_path.write_bytes(canonical_json_bytes({"schema_version": 1, "family": "pq_opq_opq_step_selection_v1", "candidate_steps": [0, 2, 4, 8, 16], "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42, "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000, "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000, "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64, "final_training_vector_count": 25000, "steps": selection_rows, "selected_steps": 16}))
@@ -494,6 +604,148 @@ def run_self_test() -> int:
         try:
             validate_selection(selection_path, reports_dir, contributions_dir)
             print("self-test failed: selection calibration manifest mutation accepted", file=sys.stderr)
+            return 1
+        except EvidenceError:
+            pass
+        extended_rows: list[dict[str, Any]] = []
+        for step, mse in zip((0, 2, 4, 8, 16, 32, 64), (0.7, 0.6, 0.5, 0.4, 0.3, 0.2, 0.1)):
+            report_path = reports_dir / f"extended-step{step}.json"
+            contribution_path = contributions_dir / f"extended-step{step}.npz"
+            contribution_path.write_bytes(b"extended-selection")
+            report_path.write_text(json.dumps({
+                "opq_iterations": step,
+                "validation_reconstruction_mse": mse,
+                "seed": 42,
+                "kmeans_iterations": 12,
+                "training_sample_count": 25000,
+                "optimizer_vector_count": 20000,
+                "validation_vector_count": 5000,
+                "optimizer_ids_sha256": "a" * 64,
+                "validation_sample_ids_sha256": "c" * 64,
+                "calibration_materialization_manifest_sha256": "b" * 64,
+                "validation_split_algorithm": "sha256_document_id_rank_v1",
+                "validation_split_salt": "opq-step-convergence-extension-v1",
+            }), encoding="utf-8", newline="\n")
+            extended_rows.append({"steps": step, "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution_path.name, "contributions_sha256": sha256_file(contribution_path), "validation_reconstruction_mse": mse, "diagnostic_coverage_at_512": 0.5})
+        extended_path = root / "extended-selection.json"
+        extended_path.write_bytes(canonical_json_bytes({
+            "schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "candidate_steps": [0, 2, 4, 8, 16, 32, 64],
+            "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42,
+            "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000,
+            "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000,
+            "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64,
+            "selection_kmeans_iterations": 12,
+            "selection_split_algorithm": "sha256_document_id_rank_v1", "selection_split_salt": "opq-step-convergence-extension-v1",
+            "final_training_vector_count": 25000, "steps": extended_rows, "selected_steps": 64,
+        }))
+        validate_selection(extended_path, reports_dir, contributions_dir)
+        changed_report = reports_dir / "extended-step32.json"
+        changed_value = read_json(changed_report, "self-test extended report")
+        changed_value["validation_split_salt"] = "wrong-salt"
+        changed_report.write_bytes(canonical_json_bytes(changed_value))
+        extended_rows[5]["report_sha256"] = sha256_file(changed_report)
+        extended_path.write_bytes(canonical_json_bytes({**read_json(extended_path, "self-test extended selection"), "steps": extended_rows}))
+        try:
+            validate_selection(extended_path, reports_dir, contributions_dir)
+            print("self-test failed: extended selection split mutation accepted", file=sys.stderr)
+            return 1
+        except EvidenceError:
+            pass
+        changed_value["validation_split_salt"] = "opq-step-convergence-extension-v1"
+        changed_report.write_bytes(canonical_json_bytes(changed_value))
+        extended_rows[5]["report_sha256"] = sha256_file(changed_report)
+        extended_path.write_bytes(canonical_json_bytes({**read_json(extended_path, "self-test restored extended selection"), "steps": extended_rows}))
+        grid_path = root / "extended-grid-contract.json"
+        write_extended_grid_contract(argparse.Namespace(selection_contract=extended_path, selection_reports_dir=reports_dir, selection_contributions_dir=contributions_dir, output=grid_path))
+        generated_methods, _, _ = expected_contract(read_json(grid_path, "self-test extended grid"))
+        if generated_methods["opq4"]["opq_iterations"] != 64 or generated_methods["opq8"]["opq_iterations"] != 64:
+            print("self-test failed: extended grid does not retain selected steps", file=sys.stderr)
+            return 1
+    valid_binary_memory = {"projection_bytes": 16, "centroid_bytes": 8, "total_model_bytes": 24}
+    require_model_memory_contract(valid_binary_memory, "binary", Path("binary.json"))
+    try:
+        require_model_memory_contract({**valid_binary_memory, "total_model_bytes": 0}, "binary", Path("wrong-memory.json"))
+        print("self-test failed: binary memory mutation accepted", file=sys.stderr)
+        return 1
+    except EvidenceError:
+        pass
+    require_grid_kmeans_contract({"kmeans_iterations": 0}, "binary", extended_contract, Path("binary.json"))
+    try:
+        require_grid_kmeans_contract({"kmeans_iterations": 12}, "binary", extended_contract, Path("binary-kmeans.json"))
+        print("self-test failed: binary k-means mutation accepted", file=sys.stderr)
+        return 1
+    except EvidenceError:
+        pass
+    require_grid_kmeans_contract({"kmeans_iterations": 12}, "pq4", extended_contract, Path("pq4.json"))
+    try:
+        require_grid_kmeans_contract({"kmeans_iterations": 0}, "pq4", extended_contract, Path("pq4-kmeans.json"))
+        print("self-test failed: PQ k-means mutation accepted", file=sys.stderr)
+        return 1
+    except EvidenceError:
+        pass
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary) / "bundle"
+        report = root / "reports" / "row.json"
+        report.parent.mkdir(parents=True)
+        report.write_text("{}\n", encoding="utf-8")
+        compact = root / "compact-manifest.json"
+        compact.write_text("{}\n", encoding="utf-8")
+        entry = {"path": "reports/row.json", "sha256": sha256_file(report), "size_bytes": report.stat().st_size}
+        bundle = {"schema_version": 1, "family": "pq_opq_equal_payload_evidence_bundle_v1", "compact_manifest_file": "compact-manifest.json", "compact_manifest_sha256": sha256_file(compact), "files": [entry], "bundle_root_sha256": canonical_json_sha256({"compact_manifest_sha256": sha256_file(compact), "files": [entry]})}
+        (root / "evidence-bundle-manifest.json").write_bytes(canonical_json_bytes(bundle))
+        archive_path = Path(temporary) / "bundle.zip"
+        write_evidence_archive(argparse.Namespace(bundle_root=root, output=archive_path))
+        with zipfile.ZipFile(archive_path) as archive:
+            if archive.namelist() != ["bundle/compact-manifest.json", "bundle/evidence-bundle-manifest.json", "bundle/reports/row.json"]:
+                print("self-test failed: evidence archive paths are not portable", file=sys.stderr)
+                return 1
+    contract["payload_bytes"] = [16]
+    try:
+        expected_contract(contract)
+    except EvidenceError:
+        return run_extended_selection_self_test()
+    print("self-test failed: incomplete contract accepted", file=sys.stderr)
+    return 1
+
+
+def run_extended_selection_self_test() -> int:
+    contract = {
+        "schema_version": 2, "family": "pq_opq_equal_payload_grid_contract_v2", "candidate_limit": 512, "oracle_k": 10, "kmeans_iterations": 12,
+        "methods": [
+            {"id": "binary", "family": "binary", "scheme": None, "code_bits": 1, "opq_iterations": 0},
+            {"id": "pq4", "family": "pq_opq", "scheme": "pq", "code_bits": 4, "opq_iterations": 0},
+            {"id": "opq4", "family": "pq_opq", "scheme": "opq", "code_bits": 4, "opq_iterations": 64},
+            {"id": "pq8", "family": "pq_opq", "scheme": "pq", "code_bits": 8, "opq_iterations": 0},
+            {"id": "opq8", "family": "pq_opq", "scheme": "opq", "code_bits": 8, "opq_iterations": 64},
+        ], "payload_bytes": [16, 24, 32], "seeds": [42, 43, 44, 45, 46],
+        "comparison_template": {"left_method": "binary", "right_methods": ["pq4", "opq4", "pq8", "opq8"], "replicates": 10000, "bootstrap_seed": 20260806},
+    }
+    _, rows, comparisons = expected_contract(contract)
+    if len(rows) != 75 or len(comparisons) != 60:
+        print("self-test failed: extended contract expansion is wrong", file=sys.stderr)
+        return 1
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary)
+        reports_dir = root / "reports"; contributions_dir = root / "contributions"
+        reports_dir.mkdir(); contributions_dir.mkdir()
+        candidate_steps = [0, 2, 4, 8, 16, 32, 64]
+        rows = []
+        for step in candidate_steps:
+            report_path = reports_dir / f"step{step}.json"; contribution_path = contributions_dir / f"step{step}.npz"
+            contribution_path.write_bytes(b"selection")
+            mse = 1.0 / (step + 1)
+            report = {"opq_iterations": step, "validation_reconstruction_mse": mse, "calibration_materialization_manifest_sha256": "b" * 64, "seed": 42, "kmeans_iterations": 12, "training_sample_count": 25000, "optimizer_vector_count": 20000, "validation_vector_count": 5000, "optimizer_ids_sha256": "a" * 64, "validation_sample_ids_sha256": "c" * 64, "validation_split_algorithm": "sha256_document_id_rank_v1", "validation_split_salt": "opq-step-convergence-extension-v1"}
+            report_path.write_text(json.dumps(report), encoding="utf-8", newline="\n")
+            rows.append({"steps": step, "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution_path.name, "contributions_sha256": sha256_file(contribution_path), "validation_reconstruction_mse": mse, "diagnostic_coverage_at_512": 0.5})
+        selection = {"schema_version": 2, "family": "pq_opq_opq_step_selection_v2", "candidate_steps": candidate_steps, "selection_metric": "calibration_holdout_reconstruction_mse", "tie_break": "smaller_step_count", "seed": 42, "selection_calibration_materialization_manifest_sha256": "b" * 64, "selection_calibration_vector_count": 25000, "selection_optimizer_vector_count": 20000, "selection_holdout_vector_count": 5000, "selection_optimizer_ids_sha256": "a" * 64, "selection_holdout_ids_sha256": "c" * 64, "selection_kmeans_iterations": 12, "final_training_vector_count": 25000, "selection_split_algorithm": "sha256_document_id_rank_v1", "selection_split_salt": "opq-step-convergence-extension-v1", "steps": rows, "selected_steps": 64}
+        selection_path = root / "selection.json"
+        selection_path.write_bytes(canonical_json_bytes(selection))
+        validate_selection(selection_path, reports_dir, contributions_dir)
+        selection["selection_split_salt"] = "wrong"
+        selection_path.write_bytes(canonical_json_bytes(selection))
+        try:
+            validate_selection(selection_path, reports_dir, contributions_dir)
+            print("self-test failed: extended selection salt mutation accepted", file=sys.stderr)
             return 1
         except EvidenceError:
             pass
@@ -520,8 +772,15 @@ def main(argv: list[str]) -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     selection = commands.add_parser("write-selection")
     selection.add_argument("--report", type=Path, action="append", required=True)
+    selection.add_argument("--candidate-step", type=int, action="append")
+    selection.add_argument("--selection-split-salt", type=str, default=None)
     selection.add_argument("--contributions-dir", type=Path, required=True)
     selection.add_argument("--output", type=Path, required=True)
+    grid = commands.add_parser("write-extended-grid-contract")
+    grid.add_argument("--selection-contract", type=Path, required=True)
+    grid.add_argument("--selection-reports-dir", type=Path, required=True)
+    grid.add_argument("--selection-contributions-dir", type=Path, required=True)
+    grid.add_argument("--output", type=Path, required=True)
     manifest = commands.add_parser("write-manifest")
     manifest.add_argument("--grid-contract", type=Path, required=True)
     manifest.add_argument("--selection-contract", type=Path, required=True)
@@ -538,17 +797,24 @@ def main(argv: list[str]) -> int:
     bundle.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate-evidence-bundle")
     validate.add_argument("--bundle-root", type=Path, required=True)
+    archive = commands.add_parser("write-evidence-archive")
+    archive.add_argument("--bundle-root", type=Path, required=True)
+    archive.add_argument("--output", type=Path, required=True)
     commands.add_parser("self-test")
     args = parser.parse_args(argv)
     try:
         if args.command == "write-selection":
             write_selection(args)
+        elif args.command == "write-extended-grid-contract":
+            write_extended_grid_contract(args)
         elif args.command == "write-manifest":
             write_manifest(args)
         elif args.command == "write-evidence-bundle":
             write_bundle(args)
         elif args.command == "validate-evidence-bundle":
             validate_bundle(args)
+        elif args.command == "write-evidence-archive":
+            write_evidence_archive(args)
         else:
             return run_self_test()
         return 0
