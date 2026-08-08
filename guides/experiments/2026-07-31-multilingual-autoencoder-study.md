@@ -1822,7 +1822,7 @@ bootstrap reports, both evaluator snapshots, and an enumerated evidence-bundle
 manifest were regenerated and validated fail-closed under
 `tmp/opq-step-convergence-k12-authoritative-v1/`. The review archive is the
 draft-release asset
-[`opq-step-convergence-evidence-v2.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/opq-step-convergence-evidence-v2/opq-step-convergence-evidence-v2.zip),
+[`opq-step-convergence-evidence-v2.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-5a6711fcda6dfdf622a7/opq-step-convergence-evidence-v2.zip),
 SHA-256 `c47756f53f8a0f2bbdc3db8f2c4fb18e305eae912c8e16c52dd17a1e279de23b`.
 The archive is written with POSIX ZIP entry separators and its validated
 internal bundle-root SHA-256 is
