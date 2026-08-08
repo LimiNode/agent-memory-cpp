@@ -10,6 +10,7 @@ import math
 import shutil
 import sys
 import tempfile
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -509,6 +510,23 @@ def validate_bundle(args: Any) -> None:
         raise EvidenceError("PQ/OPQ evidence bundle root differs")
 
 
+def write_evidence_archive(args: Any) -> None:
+    validate_bundle(argparse.Namespace(bundle_root=args.bundle_root))
+    if args.output.exists():
+        raise EvidenceError("PQ/OPQ evidence archive output already exists")
+    root = args.bundle_root
+    paths = sorted(path for path in root.rglob("*") if path.is_file())
+    archive_names = [(Path(root.name) / path.relative_to(root)).as_posix() for path in paths]
+    if len(set(archive_names)) != len(archive_names) or any("\\" in name for name in archive_names):
+        raise EvidenceError("PQ/OPQ evidence archive paths are invalid")
+    with zipfile.ZipFile(args.output, "x", compression=zipfile.ZIP_DEFLATED) as archive:
+        for path, archive_name in zip(paths, archive_names):
+            archive.write(path, archive_name)
+    with zipfile.ZipFile(args.output) as archive:
+        if archive.namelist() != archive_names:
+            raise EvidenceError("PQ/OPQ evidence archive entry paths differ")
+
+
 def run_self_test() -> int:
     contract = {
         "schema_version": 1, "family": "pq_opq_equal_payload_grid_contract_v1", "candidate_limit": 512, "oracle_k": 10,
@@ -665,6 +683,22 @@ def run_self_test() -> int:
         return 1
     except EvidenceError:
         pass
+    with tempfile.TemporaryDirectory() as temporary:
+        root = Path(temporary) / "bundle"
+        report = root / "reports" / "row.json"
+        report.parent.mkdir(parents=True)
+        report.write_text("{}\n", encoding="utf-8")
+        compact = root / "compact-manifest.json"
+        compact.write_text("{}\n", encoding="utf-8")
+        entry = {"path": "reports/row.json", "sha256": sha256_file(report), "size_bytes": report.stat().st_size}
+        bundle = {"schema_version": 1, "family": "pq_opq_equal_payload_evidence_bundle_v1", "compact_manifest_file": "compact-manifest.json", "compact_manifest_sha256": sha256_file(compact), "files": [entry], "bundle_root_sha256": canonical_json_sha256({"compact_manifest_sha256": sha256_file(compact), "files": [entry]})}
+        (root / "evidence-bundle-manifest.json").write_bytes(canonical_json_bytes(bundle))
+        archive_path = Path(temporary) / "bundle.zip"
+        write_evidence_archive(argparse.Namespace(bundle_root=root, output=archive_path))
+        with zipfile.ZipFile(archive_path) as archive:
+            if archive.namelist() != ["bundle/compact-manifest.json", "bundle/evidence-bundle-manifest.json", "bundle/reports/row.json"]:
+                print("self-test failed: evidence archive paths are not portable", file=sys.stderr)
+                return 1
     contract["payload_bytes"] = [16]
     try:
         expected_contract(contract)
@@ -763,6 +797,9 @@ def main(argv: list[str]) -> int:
     bundle.add_argument("--output", type=Path, required=True)
     validate = commands.add_parser("validate-evidence-bundle")
     validate.add_argument("--bundle-root", type=Path, required=True)
+    archive = commands.add_parser("write-evidence-archive")
+    archive.add_argument("--bundle-root", type=Path, required=True)
+    archive.add_argument("--output", type=Path, required=True)
     commands.add_parser("self-test")
     args = parser.parse_args(argv)
     try:
@@ -776,6 +813,8 @@ def main(argv: list[str]) -> int:
             write_bundle(args)
         elif args.command == "validate-evidence-bundle":
             validate_bundle(args)
+        elif args.command == "write-evidence-archive":
+            write_evidence_archive(args)
         else:
             return run_self_test()
         return 0

@@ -1751,14 +1751,16 @@ full-25k binary rows, mean coverage changed by `-0.000735`, `-0.000527`, and
 budget is a measurable but smaller effect than the earlier under-trained PQ4
 gap; it is not combined with the full-to-full primary comparison.
 
-### 2026-08-08 extended OPQ-step convergence and full-grid replay
+### 2026-08-08 extended OPQ-step sweep and full-grid replay
 
 The 16-step OPQ choice above was explicitly only the best point of its initial
-predeclared sweep, not a convergence claim. This continuation extends the same
-label-free, deterministic 20,000/5,000 calibration optimizer/holdout split
-with new predeclared candidates `32` and `64`, keeping seed `42`, 12 k-means
+predeclared sweep, not a convergence claim. This continuation reruns the full
+`0,2,4,8,16,32,64` sweep on a new order-independent deterministic 20,000/5,000
+calibration optimizer/holdout split, using `sha256_document_id_rank_v1` with
+salt `opq-step-convergence-extension-v1`. It keeps seed `42`, 12 k-means
 iterations, and holdout reconstruction MSE as the sole selection metric. The
-retrieval measurements below are diagnostic and never select the step budget.
+v2 split supersedes the legacy RNG-position split for step selection; retrieval
+measurements are diagnostic and never select the step budget.
 
 | OPQ steps | Holdout reconstruction MSE | Diagnostic coverage@512 |
 | ---: | ---: | ---: |
@@ -1772,10 +1774,11 @@ retrieval measurements below are diagnostic and never select the step budget.
 
 MSE improves by 2.46% from 16 to 32 steps and by a further 1.74% from 32 to
 64. Thus the initial sweep endpoint was not near an MSE plateau, and the v2
-policy selects 64 steps. The non-monotonic diagnostic coverage confirms that
-reconstruction and neighbour preservation are related but distinct objectives;
-the observed 16-step coverage must not be used to substitute a retrieval-based
-selection rule after the fact.
+policy selects 64 steps. The selected 64-step endpoint still does not establish
+convergence; it is the minimum-MSE point within the tested budget. The
+non-monotonic diagnostic coverage confirms that reconstruction and neighbour
+preservation are related but distinct objectives; the observed 16-step coverage
+must not be used to substitute a retrieval-based selection rule after the fact.
 
 The final full-25k grid retrains all PQ/OPQ rows with 12 k-means iterations and
 the selected 64-step OPQ budget. The existing binary rows are valid
@@ -1806,17 +1809,21 @@ and exact E5 reranking. All 60 binary-versus-PQ/OPQ endpoints have a paired
 At 16 B, OPQ4 and OPQ8 improve mean candidate coverage over binary by
 `+0.002077` and `+0.004026`; at 24 B the deltas are `+0.000479` and
 `+0.000927`; and at 32 B they shrink to `+0.000048` and `+0.000080`.
-Unrotated PQ remains below binary at every tested payload. This is a quality
-frontier at equal document payload, not an equal-total-memory or production
-latency conclusion: OPQ stores a 589,824-byte rotation and PQ8 stores much
-larger codebooks than binary ADC. It supports keeping OPQ as a second-stage
-quality challenger, while binary codes remain the more natural shared payload
-for the next MIH/Hamming candidate-generation study.
+Unrotated PQ remains below binary in the five-seed mean at every tested
+payload. This is a quality frontier at equal document payload, not an
+equal-total-memory or production latency conclusion: OPQ stores a 589,824-byte
+rotation and PQ8 stores much larger codebooks than binary ADC. It supports
+keeping OPQ as a second-stage quality challenger, while binary codes remain the
+more natural shared payload for the next MIH/Hamming candidate-generation
+study.
 
 The compact manifest, all 75 reports and NPZ contributions, the 60 canonical
 bootstrap reports, both evaluator snapshots, and an enumerated evidence-bundle
 manifest were regenerated and validated fail-closed under
-`tmp/opq-step-convergence-k12-authoritative-v1/`. The review archive is
-`opq-step-convergence-evidence-v2.zip`, SHA-256
-`571eec65a03854c1b69e97fc72acfea3e30230576a385be60794cea44dfd422a`.
-It is intentionally retained outside Git pending draft-release publication.
+`tmp/opq-step-convergence-k12-authoritative-v1/`. The review archive is the
+draft-release asset
+[`opq-step-convergence-evidence-v2.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/download/opq-step-convergence-evidence-v2/opq-step-convergence-evidence-v2.zip),
+SHA-256 `c47756f53f8a0f2bbdc3db8f2c4fb18e305eae912c8e16c52dd17a1e279de23b`.
+The archive is written with POSIX ZIP entry separators and its validated
+internal bundle-root SHA-256 is
+`5f22109ce2d9c74bc43f14705c8e3fb4f9ea41912e88bbc392d9ffbff0a8fbcf`.
