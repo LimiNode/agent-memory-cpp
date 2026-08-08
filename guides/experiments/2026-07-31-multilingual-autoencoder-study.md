@@ -1750,3 +1750,73 @@ full-25k binary rows, mean coverage changed by `-0.000735`, `-0.000527`, and
 `-0.000288` at 16, 24, and 32 B respectively. This confirms that calibration
 budget is a measurable but smaller effect than the earlier under-trained PQ4
 gap; it is not combined with the full-to-full primary comparison.
+
+### 2026-08-08 extended OPQ-step convergence and full-grid replay
+
+The 16-step OPQ choice above was explicitly only the best point of its initial
+predeclared sweep, not a convergence claim. This continuation extends the same
+label-free, deterministic 20,000/5,000 calibration optimizer/holdout split
+with new predeclared candidates `32` and `64`, keeping seed `42`, 12 k-means
+iterations, and holdout reconstruction MSE as the sole selection metric. The
+retrieval measurements below are diagnostic and never select the step budget.
+
+| OPQ steps | Holdout reconstruction MSE | Diagnostic coverage@512 |
+| ---: | ---: | ---: |
+| 0 | 0.000493800 | 0.976917 |
+| 2 | 0.000443401 | 0.983866 |
+| 4 | 0.000426373 | 0.985144 |
+| 8 | 0.000411334 | 0.984984 |
+| 16 | 0.000398276 | 0.987700 |
+| 32 | 0.000388488 | 0.985942 |
+| 64 | 0.000381722 | 0.987300 |
+
+MSE improves by 2.46% from 16 to 32 steps and by a further 1.74% from 32 to
+64. Thus the initial sweep endpoint was not near an MSE plateau, and the v2
+policy selects 64 steps. The non-monotonic diagnostic coverage confirms that
+reconstruction and neighbour preservation are related but distinct objectives;
+the observed 16-step coverage must not be used to substitute a retrieval-based
+selection rule after the fact.
+
+The final full-25k grid retrains all PQ/OPQ rows with 12 k-means iterations and
+the selected 64-step OPQ budget. The existing binary rows are valid
+full-25k, label-free controls and are retained unchanged. Every method/payload
+cell has five seeds (`42`--`46`), a 22,607-document / 1,252-query held-out RU
+fixture, continuous queries, `K=512`, oracle `K=10`, stable document-ID ties,
+and exact E5 reranking. All 60 binary-versus-PQ/OPQ endpoints have a paired
+10,000-replicate query bootstrap with seed `20260806`.
+
+| Method | Document bytes | Mean coverage@512 | Mean reranked nDCG@10 | Total model bytes |
+| --- | ---: | ---: | ---: | ---: |
+| Binary ADC | 16 | 0.984313 | 0.800762 | 197,632 |
+| PQ4 | 16 | 0.975895 | 0.799694 | 24,576 |
+| OPQ4 (64 steps) | 16 | 0.986390 | 0.801027 | 614,400 |
+| PQ8 | 16 | 0.984010 | 0.800640 | 393,216 |
+| OPQ8 (64 steps) | 16 | 0.988339 | 0.800743 | 983,040 |
+| Binary ADC | 24 | 0.996805 | 0.801357 | 296,448 |
+| PQ4 | 24 | 0.994105 | 0.801290 | 24,576 |
+| OPQ4 (64 steps) | 24 | 0.997284 | 0.801310 | 614,400 |
+| PQ8 | 24 | 0.996070 | 0.801383 | 393,216 |
+| OPQ8 (64 steps) | 24 | 0.997732 | 0.801420 | 983,040 |
+| Binary ADC | 32 | 0.999137 | 0.801482 | 395,264 |
+| PQ4 | 32 | 0.998163 | 0.801499 | 24,576 |
+| OPQ4 (64 steps) | 32 | 0.999185 | 0.801445 | 614,400 |
+| PQ8 | 32 | 0.998786 | 0.801426 | 393,216 |
+| OPQ8 (64 steps) | 32 | 0.999217 | 0.801364 | 983,040 |
+
+At 16 B, OPQ4 and OPQ8 improve mean candidate coverage over binary by
+`+0.002077` and `+0.004026`; at 24 B the deltas are `+0.000479` and
+`+0.000927`; and at 32 B they shrink to `+0.000048` and `+0.000080`.
+Unrotated PQ remains below binary at every tested payload. This is a quality
+frontier at equal document payload, not an equal-total-memory or production
+latency conclusion: OPQ stores a 589,824-byte rotation and PQ8 stores much
+larger codebooks than binary ADC. It supports keeping OPQ as a second-stage
+quality challenger, while binary codes remain the more natural shared payload
+for the next MIH/Hamming candidate-generation study.
+
+The compact manifest, all 75 reports and NPZ contributions, the 60 canonical
+bootstrap reports, both evaluator snapshots, and an enumerated evidence-bundle
+manifest were regenerated and validated fail-closed under
+`tmp/opq-step-convergence-k12-authoritative-v1/`. The review archive is
+`opq-step-convergence-evidence-v2.zip`, SHA-256
+`571eec65a03854c1b69e97fc72acfea3e30230576a385be60794cea44dfd422a`.
+It is intentionally retained outside Git pending draft-release publication.
