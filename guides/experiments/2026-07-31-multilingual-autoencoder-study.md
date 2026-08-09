@@ -1848,22 +1848,24 @@ seed 20260809). Each report is linked to a per-query NPZ by SHA-256; the
 manifest verifies the complete report grid, exact bootstrap endpoints, and
 their fixed bootstrap settings.
 
-| Code / schedule | Mean candidates | Hamming recall@512 | E5 coverage@512 | Reranked nDCG@10 |
-| --- | ---: | ---: | ---: | ---: |
-| 128-bit, 8 bands, local radius 2 | 614.8 | 0.244361 | 0.556150 | 0.626371 |
-| 128-bit, 12 bands, local radius 1 | 2,591.4 | 0.531498 | 0.770495 | 0.731141 |
-| 128-bit, 16 bands, local radius 1 | 10,976.7 | 0.957658 | 0.933195 | 0.791220 |
-| 256-bit, 24 bands, local radius 1 | 4,455.7 | 0.610513 | 0.898115 | 0.781647 |
-| 256-bit, 32 bands, local radius 1 | 16,132.5 | 0.986366 | 0.988291 | 0.801049 |
-| 256-bit, 16x16 MIH, global radius 48 | 1,280.7 | 0.306789 | 0.731230 | 0.726573 |
-| 256-bit, 16x16 MIH, global radius 56 | 3,047.3 | 0.552333 | 0.890911 | 0.780001 |
-| 256-bit, 16x16 MIH, global radius 64 | 5,027.7 | 0.737186 | 0.952939 | 0.794638 |
+| Code / schedule | Bucket probes | Mean candidates | Hamming recall@512 | E5 coverage@512 | Reranked nDCG@10 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| 128-bit, 8 bands, local radius 2 | 1,096 | 614.8 | 0.244361 | 0.556150 | 0.626371 |
+| 128-bit, 12 bands, local radius 1 | 140 | 2,591.4 | 0.531498 | 0.770495 | 0.731141 |
+| 128-bit, 16 bands, local radius 1 | 144 | 10,976.7 | 0.957658 | 0.933195 | 0.791220 |
+| 256-bit, 24 bands, local radius 1 | 272 | 4,455.7 | 0.610513 | 0.898115 | 0.781647 |
+| 256-bit, 32 bands, local radius 1 | 288 | 16,132.5 | 0.986366 | 0.988291 | 0.801049 |
+| 256-bit, 16x16 MIH, global radius 48 | 2,752 | 1,280.7 | 0.306789 | 0.731230 | 0.726573 |
+| 256-bit, 16x16 MIH, global radius 56 | 7,232 | 3,047.3 | 0.552333 | 0.890911 | 0.780001 |
+| 256-bit, 16x16 MIH, global radius 64 | 12,972 | 5,027.7 | 0.737186 | 0.952939 | 0.794638 |
 
-The fixed-radius 16x16 schedule provides the intended operational control:
-radius 48, 56, and 64 expose a deterministic quality/work dial without
-index-time duplicated postings. A wide 32-band radius-one probe can recover
-more quality, but at roughly 16k candidates; it is a different
-quality/work point, not a replacement for the bounded global-radius schedule.
+The fixed-radius 16x16 schedule provides a deterministic
+quality/candidate-volume dial without index-time duplicated postings. It is
+not yet an operational work dial: bucket probes and posting-page costs need an
+MDBX/CSR benchmark. A wide 32-band radius-one probe can recover more quality,
+but at roughly 16k candidates and only 288 bucket probes; it is a different
+candidate-volume/probe-volume point, not a replacement for the bounded
+global-radius schedule.
 
 The cascade uses the 256-bit 16x16 MIH controls, K1=512, then either retains
 full-Hamming order or reorders only those K1 candidates with shared-code

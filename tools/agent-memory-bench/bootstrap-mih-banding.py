@@ -44,6 +44,20 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def source_files_sha256() -> dict[str, str]:
+    shared_path = Path(__file__).with_name("evaluate-projection-quantization.py")
+    return {
+        Path(__file__).name: sha256_file(Path(__file__)),
+        shared_path.name: sha256_file(shared_path),
+    }
+
+
+def source_bundle_sha256(files: dict[str, str]) -> str:
+    return hashlib.sha256(
+        json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def load_contributions(path: Path) -> dict[str, Any]:
     with numpy.load(path, allow_pickle=False) as values:
         if set(values.files) != REQUIRED_ARRAYS:
@@ -68,9 +82,10 @@ def bootstrap(args: Any) -> None:
     if count != right["query_ids"].shape[0] or not numpy.array_equal(left["query_ids"], right["query_ids"]) or left["identity"] != right["identity"]:
         raise EvaluationError("paired MIH contribution identities differ")
     generator = numpy.random.default_rng(args.seed)
+    source_files = source_files_sha256()
     report: dict[str, Any] = {
-        "schema_version": 1,
-        "family": "mih_paired_query_bootstrap_v1",
+        "schema_version": 2,
+        "family": "mih_paired_query_bootstrap_v2",
         "id": args.comparison_id,
         "left_contributions_file": args.left_contributions.name,
         "right_contributions_file": args.right_contributions.name,
@@ -80,7 +95,8 @@ def bootstrap(args: Any) -> None:
         "query_count": count,
         "replicates": args.replicates,
         "seed": args.seed,
-        "evaluator_source_sha256": sha256_file(Path(__file__)),
+        "bootstrap_source_files_sha256": source_files,
+        "bootstrap_source_bundle_sha256": source_bundle_sha256(source_files),
         "metrics": {},
     }
     for name in ("hamming_top_k_recall", "coverage_at_candidate_limit", "reranked_ndcg_at_10"):

@@ -42,6 +42,20 @@ def source_sha256() -> str:
     return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 
+def source_files_sha256() -> dict[str, str]:
+    shared_path = Path(__file__).with_name("evaluate-projection-quantization.py")
+    return {
+        Path(__file__).name: source_sha256(),
+        shared_path.name: hashlib.sha256(shared_path.read_bytes()).hexdigest(),
+    }
+
+
+def source_bundle_sha256(files: dict[str, str]) -> str:
+    return hashlib.sha256(
+        json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
 def band_ranges(code_bits: int, band_count: int) -> list[tuple[int, int]]:
     if code_bits <= 0 or band_count <= 1 or band_count > code_bits:
         raise EvaluationError("MIH band count is invalid")
@@ -125,6 +139,12 @@ def binary_adc_order(
     return candidates[numpy.lexsort((document_ids[candidates], scores))]
 
 
+def validate_roots(calibration: dict[str, Any], data: dict[str, Any], code_bits: int) -> None:
+    shared.validate_calibration_evaluation_pair(calibration, data)
+    if calibration["dimension"] != data["dimension"] or code_bits > calibration["dimension"]:
+        raise EvaluationError("MIH calibration and evaluation dimensions are incompatible")
+
+
 def write_result(args: Any, report: dict[str, Any], contributions: dict[str, Any], data: dict[str, Any]) -> None:
     """Write paired per-query metrics before their hash is recorded in JSON."""
     contribution_path = args.contributions_output
@@ -166,8 +186,7 @@ def evaluate(args: Any) -> None:
         raise EvaluationError("MIH probe radius exceeds a band width")
     calibration = shared.load_root(args.calibration_root)
     data = shared.load_root(args.evaluation_root)
-    if calibration["dimension"] != data["dimension"] or args.code_bits > calibration["dimension"]:
-        raise EvaluationError("MIH calibration and evaluation dimensions are incompatible")
+    validate_roots(calibration, data, args.code_bits)
     weights = shared.itq_weights(numpy.asarray(calibration["train"]), args.code_bits, args.seed, args.itq_iterations)
     thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
     calibration_projection = numpy.asarray(calibration["train"]) @ weights.T + thresholds
@@ -207,9 +226,14 @@ def evaluate(args: Any) -> None:
         reranked_ndcg.append(shared.dcg_at_10(document_ids[rerank], data["qrels"][query_id]))
         full_e5_ndcg.append(shared.dcg_at_10(document_ids[exact_order], data["qrels"][query_id]))
     guarantee = args.global_radius is not None
+    source_files = source_files_sha256()
     report = {
-        "schema_version": 2, "family": "mih_banding_reference_v2", "evaluator_source_sha256": source_sha256(),
+        "schema_version": 3, "family": "mih_banding_reference_v3",
+        "evaluator_source_files_sha256": source_files,
+        "evaluator_source_bundle_sha256": source_bundle_sha256(source_files),
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "evaluation_materialization_manifest_sha256": data["manifest_sha256"],
+        "calibration_vector_count": len(calibration["train_ids"]),
+        "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
         "code_bits": args.code_bits, "band_count": args.band_count, "band_width_bits": [stop - start for start, stop in ranges], "probe_radius": args.probe_radius, "global_radius": args.global_radius, "band_probe_radii": radii,
         "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k,
         "seed": args.seed, "itq_iterations": args.itq_iterations, "query_count": len(data["query_ids"]),
@@ -251,6 +275,18 @@ def self_test() -> int:
     )
     if adc_order.tolist() != [1, 0, 2]:
         print("self-test failed: binary ADC symbol indexing is invalid", file=sys.stderr); return 1
+    calibration = {"embedding_identity": {"model": "test"}, "train_ids": ["calibration"], "dimension": 4}
+    evaluation = {"embedding_identity": {"model": "test"}, "document_ids": numpy.asarray(["evaluation"]), "dimension": 4}
+    validate_roots(calibration, evaluation, 4)
+    evaluation["document_ids"] = numpy.asarray(["calibration"])
+    try:
+        validate_roots(calibration, evaluation, 4)
+        print("self-test failed: overlapping held-out roots accepted", file=sys.stderr); return 1
+    except EvaluationError:
+        pass
+    files = source_files_sha256()
+    if set(files) != {Path(__file__).name, "evaluate-projection-quantization.py"} or source_bundle_sha256(files) != source_bundle_sha256(dict(reversed(list(files.items())))):
+        print("self-test failed: evaluator source bundle is invalid", file=sys.stderr); return 1
     print("MIH banding self-test passed")
     return 0
 

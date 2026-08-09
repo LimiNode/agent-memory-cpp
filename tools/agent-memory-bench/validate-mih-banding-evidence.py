@@ -44,6 +44,60 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def is_sha256(value: Any) -> bool:
+    return isinstance(value, str) and len(value) == 64 and all(character in "0123456789abcdef" for character in value)
+
+
+def source_files_sha256() -> dict[str, str]:
+    shared_path = Path(__file__).with_name("evaluate-projection-quantization.py")
+    return {
+        Path(__file__).name: sha256_file(Path(__file__)),
+        shared_path.name: sha256_file(shared_path),
+    }
+
+
+def source_bundle_sha256(files: dict[str, str]) -> str:
+    return hashlib.sha256(
+        json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    ).hexdigest()
+
+
+def validate_source_bundle(
+    files: Any,
+    digest: Any,
+    expected_names: set[str],
+    description: str,
+) -> dict[str, str]:
+    if not isinstance(files, dict) or set(files) != expected_names:
+        raise EvaluationError(f"{description} source file map is invalid")
+    if any(not isinstance(name, str) or not is_sha256(value) for name, value in files.items()):
+        raise EvaluationError(f"{description} source file digest is invalid")
+    if not is_sha256(digest) or digest != source_bundle_sha256(files):
+        raise EvaluationError(f"{description} source bundle digest is invalid")
+    return dict(files)
+
+
+def report_calibration_contract(report: dict[str, Any], identity: dict[str, Any]) -> tuple[str, str, int, str, int]:
+    calibration_manifest = report.get("calibration_materialization_manifest_sha256")
+    evaluation_manifest = report.get("evaluation_materialization_manifest_sha256")
+    calibration_ids = report.get("calibration_train_ids_sha256")
+    if not all(is_sha256(value) for value in (calibration_manifest, evaluation_manifest, calibration_ids)):
+        raise EvaluationError("report materialization provenance is invalid")
+    if report.get("itq_iterations") != 50 or report.get("calibration_vector_count") != 25000:
+        raise EvaluationError("report calibration contract is invalid")
+    if evaluation_manifest != identity.get("evaluation_materialization_manifest_sha256"):
+        raise EvaluationError("report and contribution evaluation manifests differ")
+    return calibration_manifest, evaluation_manifest, 25000, calibration_ids, 50
+
+
+def require_common_calibration_contract(
+    expected: tuple[str, str, int, str, int],
+    actual: tuple[str, str, int, str, int],
+) -> None:
+    if expected != actual:
+        raise EvaluationError("reports mix calibration provenance")
+
+
 def json_value(path: Path) -> dict[str, Any]:
     try:
         value = json.loads(path.read_text(encoding="utf-8"))
@@ -149,11 +203,21 @@ def read_contributions(path: Path, report: dict[str, Any]) -> tuple[dict[str, An
     return payload, identity
 
 
-def validate_reports(mih_dir: Path, cascade_dir: Path) -> tuple[list[dict[str, Any]], dict[str, tuple[str, dict[str, Any]]], dict[str, Any], str]:
+def validate_reports(
+    mih_dir: Path,
+    cascade_dir: Path,
+) -> tuple[
+    list[dict[str, Any]],
+    dict[str, tuple[str, dict[str, Any]]],
+    dict[str, Any],
+    dict[str, str],
+    tuple[str, str, int, str, int],
+]:
     expected = expected_reports()
     actual: dict[str, tuple[str, dict[str, Any]]] = {}
-    source: str | None = None
+    source_files: dict[str, str] | None = None
     identity: dict[str, Any] | None = None
+    calibration_contract: tuple[str, str, int, str, int] | None = None
     rows: list[dict[str, Any]] = []
     for scope, root in (("mih", mih_dir), ("cascade", cascade_dir)):
         paths = sorted(root.glob("*.json"))
@@ -161,19 +225,22 @@ def validate_reports(mih_dir: Path, cascade_dir: Path) -> tuple[list[dict[str, A
             if path.name not in expected or expected[path.name][0] != scope:
                 raise EvaluationError(f"unexpected report: {path}")
             report = json_value(path)
-            if report.get("schema_version") != 2 or report.get("family") != "mih_banding_reference_v2":
+            if report.get("schema_version") != 3 or report.get("family") != "mih_banding_reference_v3":
                 raise EvaluationError(f"report schema is invalid: {path}")
             if report.get("hamming_limit") != 512 or report.get("candidate_limit") != 512 or report.get("oracle_k") != 10:
                 raise EvaluationError(f"report candidate contract is invalid: {path}")
             for key, value in expected[path.name][1].items():
                 if report.get(key) != value:
                     raise EvaluationError(f"report grid field differs: {path}: {key}")
-            current_source = report.get("evaluator_source_sha256")
-            if not isinstance(current_source, str) or len(current_source) != 64:
-                raise EvaluationError(f"report source digest is invalid: {path}")
-            if source is None:
-                source = current_source
-            elif source != current_source:
+            current_source_files = validate_source_bundle(
+                report.get("evaluator_source_files_sha256"),
+                report.get("evaluator_source_bundle_sha256"),
+                {"evaluate-mih-banding.py", "evaluate-projection-quantization.py"},
+                f"report {path}",
+            )
+            if source_files is None:
+                source_files = current_source_files
+            elif source_files != current_source_files:
                 raise EvaluationError("reports mix evaluator sources")
             contribution = root / report.get("per_query_contributions_path", "")
             _, current_identity = read_contributions(contribution, report)
@@ -181,32 +248,46 @@ def validate_reports(mih_dir: Path, cascade_dir: Path) -> tuple[list[dict[str, A
                 identity = current_identity
             elif identity != current_identity:
                 raise EvaluationError("reports mix contribution identities")
+            current_calibration_contract = report_calibration_contract(report, current_identity)
+            if calibration_contract is None:
+                calibration_contract = current_calibration_contract
+            else:
+                require_common_calibration_contract(calibration_contract, current_calibration_contract)
             actual[path.name] = expected[path.name]
             rows.append({
                 "scope": scope, "report_file": path.name, "report_sha256": sha256_file(path),
                 "contributions_file": contribution.name, "contributions_sha256": sha256_file(contribution),
                 **expected[path.name][1],
+                "calibration_materialization_manifest_sha256": current_calibration_contract[0],
+                "evaluation_materialization_manifest_sha256": current_calibration_contract[1],
+                "calibration_vector_count": current_calibration_contract[2],
+                "calibration_train_ids_sha256": current_calibration_contract[3],
+                "itq_iterations": current_calibration_contract[4],
                 "hamming_top_k_recall": report["hamming_top_k_recall"],
                 "coverage_at_512": report["exact_top_k_candidate_coverage"],
                 "reranked_ndcg_at_10": report["reranked_ndcg_at_10"],
             })
-    if set(actual) != set(expected) or source is None or identity is None:
+    if set(actual) != set(expected) or source_files is None or identity is None or calibration_contract is None:
         raise EvaluationError("report grid is incomplete")
-    return rows, actual, identity, source
+    return rows, actual, identity, source_files, calibration_contract
 
 
-def validate_comparisons(bootstrap_dir: Path, contribution_paths: dict[str, Path], identity: dict[str, Any]) -> tuple[list[dict[str, Any]], str]:
+def validate_comparisons(
+    bootstrap_dir: Path,
+    contribution_paths: dict[str, Path],
+    identity: dict[str, Any],
+) -> tuple[list[dict[str, Any]], dict[str, str]]:
     paths = sorted(bootstrap_dir.glob("*.json"))
     expected = expected_comparisons()
     actual: set[str] = set()
-    source: str | None = None
+    source_files: dict[str, str] | None = None
     rows: list[dict[str, Any]] = []
     for path in paths:
         report = json_value(path)
         comparison_id = report.get("id")
         if comparison_id not in expected or comparison_id in actual or path.name != f"{comparison_id}.json":
             raise EvaluationError(f"comparison ID is invalid: {path}")
-        if report.get("schema_version") != 1 or report.get("family") != "mih_paired_query_bootstrap_v1" or report.get("identity") != identity or report.get("replicates") != BOOTSTRAP_REPLICATES or report.get("seed") != BOOTSTRAP_SEED:
+        if report.get("schema_version") != 2 or report.get("family") != "mih_paired_query_bootstrap_v2" or report.get("identity") != identity or report.get("replicates") != BOOTSTRAP_REPLICATES or report.get("seed") != BOOTSTRAP_SEED:
             raise EvaluationError(f"comparison contract is invalid: {path}")
         left = report.get("left_sha256"); right = report.get("right_sha256")
         expected_left, expected_right = expected[comparison_id]
@@ -214,31 +295,46 @@ def validate_comparisons(bootstrap_dir: Path, contribution_paths: dict[str, Path
             raise EvaluationError(f"comparison endpoint names differ: {path}")
         if contribution_paths.get(expected_left) is None or contribution_paths.get(expected_right) is None or left != sha256_file(contribution_paths[expected_left]) or right != sha256_file(contribution_paths[expected_right]):
             raise EvaluationError(f"comparison endpoints are invalid: {path}")
-        current_source = report.get("evaluator_source_sha256")
-        if not isinstance(current_source, str) or len(current_source) != 64:
-            raise EvaluationError(f"comparison source digest is invalid: {path}")
-        if source is None:
-            source = current_source
-        elif source != current_source:
+        current_source_files = validate_source_bundle(
+            report.get("bootstrap_source_files_sha256"),
+            report.get("bootstrap_source_bundle_sha256"),
+            {"bootstrap-mih-banding.py", "evaluate-projection-quantization.py"},
+            f"comparison {path}",
+        )
+        if source_files is None:
+            source_files = current_source_files
+        elif source_files != current_source_files:
             raise EvaluationError("comparisons mix bootstrap sources")
         metrics = report.get("metrics")
         if not isinstance(metrics, dict) or set(metrics) != {"hamming_top_k_recall", "coverage_at_candidate_limit", "reranked_ndcg_at_10"}:
             raise EvaluationError(f"comparison metrics are invalid: {path}")
         actual.add(comparison_id)
         rows.append({"id": comparison_id, "bootstrap_report_file": path.name, "bootstrap_report_sha256": sha256_file(path), "left_contributions_sha256": left, "right_contributions_sha256": right, "replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED, "metrics": metrics})
-    if actual != set(expected) or source is None:
+    if actual != set(expected) or source_files is None:
         raise EvaluationError("comparison grid is incomplete")
-    return rows, source
+    return rows, source_files
 
 
 def write_manifest(args: Any) -> None:
-    reports, _, identity, evaluator_source = validate_reports(args.mih_dir, args.cascade_dir)
+    reports, _, identity, evaluator_source_files, calibration_contract = validate_reports(args.mih_dir, args.cascade_dir)
     contribution_paths = {row["contributions_file"]: (args.mih_dir if row["scope"] == "mih" else args.cascade_dir) / row["contributions_file"] for row in reports}
-    comparisons, bootstrap_source = validate_comparisons(args.bootstrap_dir, contribution_paths, identity)
+    comparisons, bootstrap_source_files = validate_comparisons(args.bootstrap_dir, contribution_paths, identity)
+    validator_source_files = source_files_sha256()
     manifest = {
-        "schema_version": 1, "family": "mih_banding_evidence_v1",
-        "evaluation_identity": identity, "evaluator_source_sha256": evaluator_source,
-        "bootstrap_evaluator_source_sha256": bootstrap_source, "report_count": len(reports),
+        "schema_version": 2, "family": "mih_banding_evidence_v2",
+        "evaluation_identity": identity,
+        "calibration_materialization_manifest_sha256": calibration_contract[0],
+        "evaluation_materialization_manifest_sha256": calibration_contract[1],
+        "calibration_vector_count": calibration_contract[2],
+        "calibration_train_ids_sha256": calibration_contract[3],
+        "itq_iterations": calibration_contract[4],
+        "evaluator_source_files_sha256": evaluator_source_files,
+        "evaluator_source_bundle_sha256": source_bundle_sha256(evaluator_source_files),
+        "bootstrap_source_files_sha256": bootstrap_source_files,
+        "bootstrap_source_bundle_sha256": source_bundle_sha256(bootstrap_source_files),
+        "validator_source_files_sha256": validator_source_files,
+        "validator_source_bundle_sha256": source_bundle_sha256(validator_source_files),
+        "report_count": len(reports),
         "comparison_count": len(comparisons), "reports": reports, "comparisons": comparisons,
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -247,7 +343,7 @@ def write_manifest(args: Any) -> None:
 
 def write_bundle(args: Any) -> None:
     manifest = json_value(args.manifest)
-    if manifest.get("family") != "mih_banding_evidence_v1":
+    if manifest.get("schema_version") != 2 or manifest.get("family") != "mih_banding_evidence_v2":
         raise EvaluationError("evidence manifest schema is invalid")
     files: list[tuple[Path, str]] = [(args.manifest, "bundle/compact-manifest.json")]
     roots = {"mih": args.mih_dir, "cascade": args.cascade_dir}
@@ -265,8 +361,23 @@ def write_bundle(args: Any) -> None:
         if not source.is_file() or sha256_file(source) != row["bootstrap_report_sha256"]:
             raise EvaluationError("evidence comparison hash differs")
         files.append((source, f"bundle/bootstrap/{source.name}"))
-    for source in (Path(__file__), Path(__file__).with_name("evaluate-mih-banding.py"), Path(__file__).with_name("bootstrap-mih-banding.py"), Path(__file__).with_name("evaluate-projection-quantization.py")):
-        files.append((source, f"bundle/sources/{source.name}"))
+    source_maps = (
+        ("evaluator_source_files_sha256", "evaluator_source_bundle_sha256", {"evaluate-mih-banding.py", "evaluate-projection-quantization.py"}),
+        ("bootstrap_source_files_sha256", "bootstrap_source_bundle_sha256", {"bootstrap-mih-banding.py", "evaluate-projection-quantization.py"}),
+        ("validator_source_files_sha256", "validator_source_bundle_sha256", {Path(__file__).name, "evaluate-projection-quantization.py"}),
+    )
+    bundled_sources: dict[str, str] = {}
+    for files_field, digest_field, expected_names in source_maps:
+        current = validate_source_bundle(manifest.get(files_field), manifest.get(digest_field), expected_names, "manifest")
+        for name, digest in current.items():
+            if name in bundled_sources and bundled_sources[name] != digest:
+                raise EvaluationError("source maps disagree on a shared helper")
+            bundled_sources[name] = digest
+    for name, digest in sorted(bundled_sources.items()):
+        source = Path(__file__).with_name(name)
+        if not source.is_file() or sha256_file(source) != digest:
+            raise EvaluationError("evidence source snapshot differs from manifest")
+        files.append((source, f"bundle/sources/{name}"))
     names = [name for _, name in files]
     if len(names) != len(set(names)) or any("\\" in name for name in names):
         raise EvaluationError("evidence archive names are invalid")
@@ -279,15 +390,64 @@ def write_bundle(args: Any) -> None:
             raise EvaluationError("evidence archive contents differ")
 
 
+def run_self_test() -> int:
+    if len(expected_reports()) != 170 or len(expected_comparisons()) != 250:
+        print("self-test failed: expected evidence grid is invalid", file=sys.stderr)
+        return 1
+    source_files = source_files_sha256()
+    validate_source_bundle(
+        source_files,
+        source_bundle_sha256(source_files),
+        {Path(__file__).name, "evaluate-projection-quantization.py"},
+        "self-test",
+    )
+    try:
+        validate_source_bundle(
+            {Path(__file__).name: source_files[Path(__file__).name]},
+            source_bundle_sha256({Path(__file__).name: source_files[Path(__file__).name]}),
+            {Path(__file__).name, "evaluate-projection-quantization.py"},
+            "self-test",
+        )
+        print("self-test failed: incomplete source map accepted", file=sys.stderr)
+        return 1
+    except EvaluationError:
+        pass
+    identity = {"evaluation_materialization_manifest_sha256": "b" * 64}
+    report = {
+        "calibration_materialization_manifest_sha256": "a" * 64,
+        "evaluation_materialization_manifest_sha256": "b" * 64,
+        "calibration_vector_count": 25000,
+        "calibration_train_ids_sha256": "c" * 64,
+        "itq_iterations": 50,
+    }
+    baseline = report_calibration_contract(report, identity)
+    for field, value in (("itq_iterations", 20), ("calibration_vector_count", 8192), ("calibration_train_ids_sha256", "d" * 64), ("evaluation_materialization_manifest_sha256", "e" * 64)):
+        mutated = dict(report)
+        mutated[field] = value
+        try:
+            require_common_calibration_contract(baseline, report_calibration_contract(mutated, identity))
+            print(f"self-test failed: mutated {field} accepted", file=sys.stderr)
+            return 1
+        except EvaluationError:
+            pass
+    print("MIH evidence validator self-test passed")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     common = argparse.ArgumentParser(add_help=False); common.add_argument("--mih-dir", type=Path, required=True); common.add_argument("--cascade-dir", type=Path, required=True); common.add_argument("--bootstrap-dir", type=Path, required=True)
     write = sub.add_parser("write-manifest", parents=[common]); write.add_argument("--output", type=Path, required=True)
     bundle = sub.add_parser("write-bundle"); bundle.add_argument("--manifest", type=Path, required=True); bundle.add_argument("--mih-dir", type=Path, required=True); bundle.add_argument("--cascade-dir", type=Path, required=True); bundle.add_argument("--bootstrap-dir", type=Path, required=True); bundle.add_argument("--output", type=Path, required=True)
+    sub.add_parser("self-test")
     args = parser.parse_args(argv)
     try:
-        if args.command == "write-manifest": write_manifest(args)
-        else: write_bundle(args)
+        if args.command == "write-manifest":
+            write_manifest(args)
+        elif args.command == "write-bundle":
+            write_bundle(args)
+        else:
+            return run_self_test()
     except (EvaluationError, OSError, ValueError, json.JSONDecodeError) as error:
         print(f"validate-mih-banding-evidence: {error}", file=sys.stderr); return 1
     return 0
