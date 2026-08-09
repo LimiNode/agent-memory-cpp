@@ -1827,3 +1827,76 @@ SHA-256 `c47756f53f8a0f2bbdc3db8f2c4fb18e305eae912c8e16c52dd17a1e279de23b`.
 The archive is written with POSIX ZIP entry separators and its validated
 internal bundle-root SHA-256 is
 `5f22109ce2d9c74bc43f14705c8e3fb4f9ea41912e88bbc392d9ffbff0a8fbcf`.
+
+### 2026-08-09 MIH banding and shared-code cascade
+
+This experiment tests whether a document-side ITQ code can make a practical
+coarse candidate generator before full Hamming, asymmetric binary ADC, and
+exact E5 reranking. It is an in-memory Python/NumPy reference implementation,
+not an MDBX implementation or a latency claim. The fixed-radius schedule
+follows Multi-Index Hashing (MIH): for m bands and radius r = m r-prime + a,
+probe a+1 bands at r-prime, the remaining bands at r-prime-1, then
+deduplicate and score the full code. This guarantees inclusion of codes inside
+the requested radius; it does not make top-K Hamming retrieval exact.
+
+The held-out fixture remains 22,607 documents and 1,252 queries, with the
+shared 25,000-vector calibration root, 50 ITQ iterations, seeds 42--46,
+continuous queries, Hamming K1=512, exact E5 reranking, and stable
+document-ID ties. The final evidence grid contains 80 MIH rows, 90 cascade
+rows, and 250 predeclared per-seed paired-query bootstraps (10,000 replicates,
+seed 20260809). Each report is linked to a per-query NPZ by SHA-256; the
+manifest verifies the complete report grid, exact bootstrap endpoints, and
+their fixed bootstrap settings.
+
+| Code / schedule | Mean candidates | Hamming recall@512 | E5 coverage@512 | Reranked nDCG@10 |
+| --- | ---: | ---: | ---: | ---: |
+| 128-bit, 8 bands, local radius 2 | 614.8 | 0.244361 | 0.556150 | 0.626371 |
+| 128-bit, 12 bands, local radius 1 | 2,591.4 | 0.531498 | 0.770495 | 0.731141 |
+| 128-bit, 16 bands, local radius 1 | 10,976.7 | 0.957658 | 0.933195 | 0.791220 |
+| 256-bit, 24 bands, local radius 1 | 4,455.7 | 0.610513 | 0.898115 | 0.781647 |
+| 256-bit, 32 bands, local radius 1 | 16,132.5 | 0.986366 | 0.988291 | 0.801049 |
+| 256-bit, 16x16 MIH, global radius 48 | 1,280.7 | 0.306789 | 0.731230 | 0.726573 |
+| 256-bit, 16x16 MIH, global radius 56 | 3,047.3 | 0.552333 | 0.890911 | 0.780001 |
+| 256-bit, 16x16 MIH, global radius 64 | 5,027.7 | 0.737186 | 0.952939 | 0.794638 |
+
+The fixed-radius 16x16 schedule provides the intended operational control:
+radius 48, 56, and 64 expose a deterministic quality/work dial without
+index-time duplicated postings. A wide 32-band radius-one probe can recover
+more quality, but at roughly 16k candidates; it is a different
+quality/work point, not a replacement for the bounded global-radius schedule.
+
+The cascade uses the 256-bit 16x16 MIH controls, K1=512, then either retains
+full-Hamming order or reorders only those K1 candidates with shared-code
+binary ADC before exact E5 reranking:
+
+| MIH radius | K2 | Hamming coverage / nDCG | Binary ADC coverage / nDCG |
+| ---: | ---: | ---: | ---: |
+| 48 | 64 | 0.722157 / 0.725181 | 0.730351 / 0.726345 |
+| 48 | 256 | 0.730831 / 0.726501 | 0.731230 / 0.726573 |
+| 56 | 64 | 0.857891 / 0.776678 | 0.885351 / 0.779724 |
+| 56 | 256 | 0.887188 / 0.779735 | 0.890863 / 0.780002 |
+| 64 | 64 | 0.902540 / 0.789565 | 0.943546 / 0.794302 |
+| 64 | 256 | 0.946070 / 0.794108 | 0.952796 / 0.794639 |
+
+Binary ADC helps most when K2 is deliberately small. For ADC versus Hamming
+at K2=64, every seed-level 95% paired-bootstrap coverage interval is
+strictly positive at all three radii; the five-seed mean deltas are +0.008195,
++0.027460, and +0.041006 at radii 48, 56, and 64. At K2=256, the
+mean deltas shrink to +0.000399, +0.003674, and +0.006725; radius-48
+has one interval touching zero because both orders nearly saturate the MIH
+candidate union. Thus ADC is a useful shared-code selective stage, not a
+reason to omit full Hamming or exact reranking.
+
+The retained local review archive is
+tmp/mih-evidence-v1/mih-banding-cascade-evidence-v1.zip, SHA-256
+697d5653c4dc41771495312324791f8ea722acb86cdd5e2dde8e4428c6590005.
+It contains the compact manifest, all reports and NPZ contributions, all
+bootstrap reports, and exact evaluator snapshots. It has 595 POSIX ZIP
+entries. A draft release asset should be published from the experiment commit
+before this note is treated as externally reviewable evidence.
+
+This result gates the next implementation work: benchmark an MDBX 16-bit-band
+posting layout against a dense/CSR in-memory directory, retain deterministic
+bounded posting-page reads and deduplication before full Hamming, then compare
+the shared-code cascade with a separately stored OPQ/PQ second-stage
+challenger. It does not yet establish a production latency or memory frontier.
