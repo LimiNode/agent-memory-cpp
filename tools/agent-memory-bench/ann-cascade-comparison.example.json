@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "family": "ann_cascade_comparison_v1",
+  "engine": "faiss_binary_hnsw",
+  "code_bits": 256,
+  "itq_seed": 42,
+  "itq_iterations": 50,
+  "candidate_limit": 512,
+  "adc_limit": 256,
+  "oracle_k": 10,
+  "warmup_repeats": 1,
+  "timing_repeats": 5,
+  "thread_count": 1,
+  "mih": {
+    "band_count": 16,
+    "global_radius": 56
+  },
+  "hnsw": {
+    "connectivity": 16,
+    "ef_construction": 200,
+    "ef_search": 512,
+    "build_seed": 20260810
+  }
+}

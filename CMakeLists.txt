@@ -245,6 +245,24 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_ann_cascade_comparison_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/evaluate-ann-cascade.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_ann_cascade_matrix_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-ann-cascade-matrix.py
+                self-test
+                --matrix
+                ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-08-10-ann-cascade-comparison-matrix-v1.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_mih_banding_evidence_validator_self_test
             COMMAND
                 ${Python3_EXECUTABLE}
