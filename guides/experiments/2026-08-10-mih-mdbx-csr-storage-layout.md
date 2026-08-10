@@ -84,7 +84,9 @@ bucket map before committing, so it is not a streaming-ingestion benchmark.
 
 The raw MDBX files remain under `tmp/` and are not committed. A compact public
 evidence archive retains the packed inputs, configs, reports, source snapshots,
-and dependency manifest. Its ZIP SHA-256 is
+and dependency manifest. The public asset is
+[mih-mdbx-csr-storage-evidence-v1.zip](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-c01831e29ac74d354cf2/mih-mdbx-csr-storage-evidence-v1.zip).
+Its ZIP SHA-256 is
 `e4575e3c0d5e65d248ec5c2a3cae3b5e0d691d4cb16f33da38fa3ed3c700044a` and
 its internal bundle-root SHA-256 is
 `c65c3ccd9a9634ebec90b536682e9c93d9a94a686f5429bd0b70c9e3aec300e7`.
