@@ -184,8 +184,26 @@ if(AGENT_MEMORY_ENABLE_MDBX)
                 RESULT_VARIABLE agent_memory_mdbx_containers_revision_result
                 ERROR_QUIET
             )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR} rev-parse HEAD:external/libmdbx
+                OUTPUT_VARIABLE agent_memory_pinned_libmdbx_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_pinned_libmdbx_revision_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR} rev-parse HEAD:external/mdbx-containers
+                OUTPUT_VARIABLE agent_memory_pinned_mdbx_containers_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_pinned_mdbx_containers_revision_result
+                ERROR_QUIET
+            )
             if(agent_memory_libmdbx_revision_result EQUAL 0
-               AND agent_memory_mdbx_containers_revision_result EQUAL 0)
+               AND agent_memory_mdbx_containers_revision_result EQUAL 0
+               AND agent_memory_pinned_libmdbx_revision_result EQUAL 0
+               AND agent_memory_pinned_mdbx_containers_revision_result EQUAL 0
+               AND agent_memory_libmdbx_revision STREQUAL agent_memory_pinned_libmdbx_revision
+               AND agent_memory_mdbx_containers_revision STREQUAL agent_memory_pinned_mdbx_containers_revision)
                 set(agent_memory_storage_provenance_authoritative 1)
                 set(agent_memory_storage_provenance_reason "repository_pinned_external_submodules")
             endif()

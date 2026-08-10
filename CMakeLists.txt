@@ -260,6 +260,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_mih_storage_evidence_writer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-storage-evidence.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
         if(AGENT_MEMORY_ENABLE_MDBX AND AGENT_MEMORY_BUILD_BENCHMARKS)
             add_test(
                 NAME agent_memory_mih_storage_benchmark_self_test
