@@ -2385,3 +2385,39 @@ storage estimates, quality targets и per-stack defaults).
   path analysis, CMake flags, `simd::` abstraction layer, `HammingTopK`
   kernel design, Eigen encoder memory sizes, `IAutoencoderEncoder`
   interface pattern, training pipeline boundaries.
+
+## MIH / Banded Binary Candidate Generation (in progress)
+
+The current research line evaluates Multi-Index Hashing (MIH) as a candidate
+generator for a document-side ITQ binary code. It is not yet a production MDBX
+index. The intended cascade reuses one document code rather than storing a
+second approximate payload:
+
+```text
+ITQ binary code -> MIH/bands -> full Hamming -> binary ADC -> exact embedding rerank
+```
+
+For `m` bands and requested global Hamming radius `r`, the query-time schedule
+uses `r = m * r_prime + a`: probe radius `r_prime` in `a + 1` bands and
+`r_prime - 1` in the remaining bands; a negative radius means no probe. Every
+union candidate then receives full-code Hamming scoring. This is a fixed-radius
+completeness guarantee, not a claim that a top-K Hamming result is exact.
+
+Bounded probe schedules are explicitly approximate and must report bucket
+probes, duplicate postings, unique candidates, full-Hamming scores,
+Hamming-top-K recall, E5 coverage, reranked nDCG, and reference timing against
+brute-force Hamming.
+
+MDBX requirements remain evidence-gated: descriptor- and scope-scoped keys
+must include code identity, band ordinal and band key; postings must update
+atomically with the signature record; reads need deterministic bounded posting
+pages and candidate deduplication. A dense in-memory directory/CSR form for
+16-bit band keys is a benchmarked alternative to repeated B-tree lookups.
+Index-time radius-one expansion is a separate storage-versus-query challenger;
+larger radii stay query-time multiprobe unless measured evidence justifies the
+posting multiplication.
+
+Faiss `IndexBinaryHash` and `IndexBinaryMultiHash` are useful API references,
+but their implementation is not copied. See the original
+[Multi-Index Hashing paper](https://arxiv.org/abs/1307.2982) and
+[Faiss binary indexes](https://github.com/facebookresearch/faiss/wiki/Binary-indexes).

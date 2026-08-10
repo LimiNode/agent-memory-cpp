@@ -46,6 +46,41 @@ def evaluator_runtime() -> dict[str, str]:
     }
 
 
+def paired_bootstrap_metrics(
+    left: dict[str, Any],
+    right: dict[str, Any],
+    metric_names: tuple[str, ...],
+    replicates: int,
+    seed: int,
+) -> dict[str, dict[str, float | list[float]]]:
+    """Return deterministic paired-query bootstrap statistics for named metrics."""
+    if replicates <= 0:
+        raise EvaluationError("bootstrap replicate count is invalid")
+    generator = numpy.random.default_rng(seed)
+    result: dict[str, dict[str, float | list[float]]] = {}
+    for name in metric_names:
+        if name not in left or name not in right:
+            raise EvaluationError("bootstrap metric is missing")
+        left_values = numpy.asarray(left[name], dtype=numpy.float64)
+        right_values = numpy.asarray(right[name], dtype=numpy.float64)
+        if left_values.ndim != 1 or right_values.shape != left_values.shape or left_values.size <= 0:
+            raise EvaluationError("bootstrap metric shape is invalid")
+        if not numpy.isfinite(left_values).all() or not numpy.isfinite(right_values).all():
+            raise EvaluationError("bootstrap metric values are not finite")
+        difference = right_values - left_values
+        samples = numpy.empty(replicates, dtype=numpy.float64)
+        for index in range(replicates):
+            samples[index] = difference[generator.integers(0, difference.size, size=difference.size)].mean()
+        result[name] = {
+            "observed_difference": float(difference.mean()),
+            "percentile_95_ci": [
+                float(numpy.quantile(samples, 0.025)),
+                float(numpy.quantile(samples, 0.975)),
+            ],
+        }
+    return result
+
+
 def canonical_ids_sha256(ids: list[str]) -> str:
     return hashlib.sha256("".join(f"{value}\n" for value in sorted(ids)).encode("utf-8")).hexdigest()
 
