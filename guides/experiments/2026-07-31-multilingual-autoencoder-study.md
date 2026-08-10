@@ -1889,12 +1889,13 @@ has one interval touching zero because both orders nearly saturate the MIH
 candidate union. Thus ADC is a useful shared-code selective stage, not a
 reason to omit full Hamming or exact reranking.
 
-The review archive is the draft-release asset
-[mih-banding-cascade-evidence-v2.zip](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-228406d748fa851a1ab3/mih-banding-cascade-evidence-v2.zip),
-SHA-256 d1a5c76139ac91d3b9793d51aeabe5d8c1bee96bb4684948821508804c8fd8d0.
+The public review archive is the release asset
+[mih-banding-cascade-evidence-v3.zip](https://github.com/LimiNode/agent-memory-cpp/releases/download/mih-banding-cascade-evidence-v3/mih-banding-cascade-evidence-v3.zip),
+SHA-256 df39be039f33f9e7c5eaf966fe3ef6c5b211cf9254cae4c153490716fa4dd083.
 It contains the compact manifest, all reports and NPZ contributions, all
-bootstrap reports, and exact evaluator snapshots. It has 595 POSIX ZIP
-entries and is targeted at review-fix commit 89fd9cf.
+bootstrap reports, and exact evaluator snapshots. The validator recomputes
+each paired-bootstrap difference and percentile interval from the NPZ inputs.
+It has 595 POSIX ZIP entries and is targeted at review-fix commit ed8112d.
 
 This result gates the next implementation work: benchmark an MDBX 16-bit-band
 posting layout against a dense/CSR in-memory directory, retain deterministic
