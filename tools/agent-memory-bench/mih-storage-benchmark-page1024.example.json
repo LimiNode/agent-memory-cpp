@@ -1,0 +1,9 @@
+{
+  "input_directory": "tmp/mih-storage-input-v1",
+  "mdbx_path": "tmp/mih-storage-benchmark-page1024.mdbx",
+  "query_count": 128,
+  "repeat_count": 5,
+  "page_entries": 1024,
+  "query_seed": 20260810,
+  "global_radii": [48, 56, 64]
+}

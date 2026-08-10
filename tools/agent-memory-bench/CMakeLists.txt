@@ -160,6 +160,18 @@ target_link_libraries(agent-memory-hamming-hot-path-bench
 )
 
 if(AGENT_MEMORY_ENABLE_MDBX)
+    execute_process(
+        COMMAND git -C ${PROJECT_SOURCE_DIR}/external/libmdbx rev-parse HEAD
+        OUTPUT_VARIABLE agent_memory_libmdbx_revision
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY
+    )
+    execute_process(
+        COMMAND git -C ${PROJECT_SOURCE_DIR}/external/mdbx-containers rev-parse HEAD
+        OUTPUT_VARIABLE agent_memory_mdbx_containers_revision
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+        COMMAND_ERROR_IS_FATAL ANY
+    )
     add_executable(agent-memory-mih-storage-bench
         mih_storage_benchmark.cpp
     )
@@ -167,6 +179,11 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         "${CMAKE_CURRENT_SOURCE_DIR}/mih_storage_benchmark.cpp"
     )
     agent_memory_set_evaluator_build_environment(agent-memory-mih-storage-bench)
+    target_compile_definitions(agent-memory-mih-storage-bench
+        PRIVATE
+            AGENT_MEMORY_LIBMDBX_REVISION="${agent_memory_libmdbx_revision}"
+            AGENT_MEMORY_MDBX_CONTAINERS_REVISION="${agent_memory_mdbx_containers_revision}"
+    )
     target_link_libraries(agent-memory-mih-storage-bench
         PRIVATE
             agent_memory::agent_memory

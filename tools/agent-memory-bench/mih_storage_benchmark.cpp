@@ -1,10 +1,12 @@
 #include <agent_memory.hpp>
+#include <agent_memory/eval/AutoencoderBinaryArtifact.hpp>
 
 #include <mdbx_containers/KeyValueTable.hpp>
 
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -104,7 +106,27 @@ Config load_config(const std::filesystem::path& path) {
     return result;
 }
 
-std::vector<std::uint64_t> read_words(const std::filesystem::path& path, std::size_t expected_words) {
+std::string required_sha256(const nlohmann::json& value, const char* field) {
+    const auto result = value.at(field).get<std::string>();
+    if(result.size() != 64 || !std::all_of(result.begin(), result.end(), [](char character) {
+        return (character >= '0' && character <= '9') || (character >= 'a' && character <= 'f');
+    })) {
+        throw std::runtime_error(std::string("invalid SHA-256 field: ") + field);
+    }
+    return result;
+}
+
+std::vector<std::uint64_t> read_words(
+    const std::filesystem::path& path,
+    std::size_t expected_words,
+    const std::string& expected_sha256) {
+    const auto expected_bytes = expected_words * sizeof(std::uint64_t);
+    if(!std::filesystem::is_regular_file(path) || std::filesystem::file_size(path) != expected_bytes) {
+        throw std::runtime_error("packed code payload size is invalid");
+    }
+    if(agent_memory::sha256_file_hex(path) != expected_sha256) {
+        throw std::runtime_error("packed code payload SHA-256 is invalid");
+    }
     std::ifstream stream(path, std::ios::binary);
     std::vector<std::uint64_t> values(expected_words);
     stream.read(reinterpret_cast<char*>(values.data()), static_cast<std::streamsize>(values.size() * sizeof(std::uint64_t)));
@@ -121,8 +143,14 @@ Input load_input(const std::filesystem::path& root) {
     result.document_count = manifest.at("document_count").get<std::size_t>();
     result.query_count = manifest.at("query_count").get<std::size_t>();
     if(result.document_count == 0 || result.query_count == 0) throw std::runtime_error("storage input is empty");
-    result.documents = read_words(root / manifest.at("document_codes_file").get<std::string>(), result.document_count * 4);
-    result.queries = read_words(root / manifest.at("query_codes_file").get<std::string>(), result.query_count * 4);
+    result.documents = read_words(
+        root / manifest.at("document_codes_file").get<std::string>(),
+        result.document_count * 4,
+        required_sha256(manifest, "document_codes_sha256"));
+    result.queries = read_words(
+        root / manifest.at("query_codes_file").get<std::string>(),
+        result.query_count * 4,
+        required_sha256(manifest, "query_codes_sha256"));
     return result;
 }
 
@@ -195,9 +223,32 @@ public:
         for(std::size_t band = 0; band < kBandCount; ++band) probe_keys(bucket_key(query, band), radii[band], [&](std::uint16_t bucket) { ++output.bucket_probes; const auto pages = m_table->find(key('m', band, bucket), transaction); if(!pages) return; const auto count = static_cast<std::size_t>(std::stoul(*pages)); ++output.metadata_hits; for(std::size_t page = 0; page < count; ++page) { const auto payload = m_table->find(key('p', band, bucket, static_cast<std::uint16_t>(page)), transaction); if(!payload || payload->size() % 4 != 0) throw std::runtime_error("MDBX posting page is invalid"); ++output.posting_page_reads; for(std::size_t offset = 0; offset < payload->size(); offset += 4) { const auto position = decode_u32(*payload, offset); ++output.visited_postings; if(position >= seen.size()) throw std::runtime_error("MDBX posting position is invalid"); if(seen[position] == 0) { seen[position] = 1; ++output.unique_candidates; output.candidate_checksum += position + 1; } } } });
         transaction.commit(); return output;
     }
+    void empty_read_transaction() const {
+        auto transaction = m_connection->transaction(mdbxc::TransactionMode::READ_ONLY);
+        transaction.commit();
+    }
     std::size_t bytes() const { return static_cast<std::size_t>(std::filesystem::file_size(m_path)); }
 private: std::size_t m_page_entries; std::filesystem::path m_path; std::shared_ptr<mdbxc::Connection> m_connection; std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_table;
 };
+
+void validate_candidate_unions(
+    const CsrIndex& csr,
+    const MdbxIndex& mdbx,
+    const Input& input,
+    const std::vector<std::size_t>& query_positions,
+    const std::vector<std::size_t>& global_radii) {
+    for(const auto radius : global_radii) {
+        for(const auto position : query_positions) {
+            std::vector<unsigned char> csr_seen(input.document_count);
+            std::vector<unsigned char> mdbx_seen(input.document_count);
+            static_cast<void>(csr.lookup(input.queries.data() + position * 4, radius, csr_seen));
+            static_cast<void>(mdbx.lookup(input.queries.data() + position * 4, radius, mdbx_seen));
+            if(csr_seen != mdbx_seen) {
+                throw std::runtime_error("CSR and MDBX candidate unions differ during untimed preflight");
+            }
+        }
+    }
+}
 
 std::size_t probe_count(std::size_t radius) {
     std::size_t count = 0;
@@ -225,6 +276,44 @@ Input synthetic_input() {
     return input;
 }
 
+void self_test_input_payload_validation(const std::filesystem::path& mdbx_path) {
+    const auto root = mdbx_path.parent_path() / "mih-storage-benchmark-payload-self-test";
+    std::filesystem::create_directories(root);
+    const auto document_path = root / "document.bin";
+    const auto query_path = root / "query.bin";
+    const std::array<std::uint64_t, 4> code{0, 0, 0, 0};
+    for(const auto* path : {&document_path, &query_path}) {
+        std::ofstream output(*path, std::ios::binary | std::ios::trunc);
+        output.write(reinterpret_cast<const char*>(code.data()), static_cast<std::streamsize>(sizeof(code)));
+    }
+    nlohmann::json manifest{
+        {"schema_version", 1},
+        {"family", "mih_storage_benchmark_input_v1"},
+        {"code_bits", 256},
+        {"word_count", 4},
+        {"itq_iterations", 50},
+        {"document_count", 1},
+        {"query_count", 1},
+        {"document_codes_file", document_path.filename().string()},
+        {"query_codes_file", query_path.filename().string()},
+        {"document_codes_sha256", agent_memory::sha256_file_hex(document_path)},
+        {"query_codes_sha256", agent_memory::sha256_file_hex(query_path)},
+    };
+    std::ofstream(root / "manifest.json") << manifest.dump(2) << '\n';
+    static_cast<void>(load_input(root));
+    {
+        std::fstream output(document_path, std::ios::binary | std::ios::in | std::ios::out);
+        output.put(static_cast<char>(1));
+    }
+    bool rejected = false;
+    try {
+        static_cast<void>(load_input(root));
+    } catch(const std::runtime_error&) {
+        rejected = true;
+    }
+    if(!rejected) throw std::runtime_error("modified packed code payload was accepted");
+}
+
 int self_test(const std::filesystem::path& mdbx_path) {
     try {
         if(probe_count(48) != 2752 || probe_count(56) != 7232 || probe_count(64) != 12972) {
@@ -237,6 +326,7 @@ int self_test(const std::filesystem::path& mdbx_path) {
             rejected_truncated_payload = true;
         }
         if(!rejected_truncated_payload) throw std::runtime_error("truncated posting payload was accepted");
+        self_test_input_payload_validation(mdbx_path);
 
         const auto input = synthetic_input();
         CsrIndex csr(input);
@@ -269,13 +359,15 @@ int run(const Config& config, const std::filesystem::path& report_path) {
     const auto csr_start = Clock::now(); CsrIndex csr(input); const auto csr_build_ms = milliseconds(csr_start, Clock::now());
     const auto mdbx_start = Clock::now(); MdbxIndex mdbx(input, config.mdbx_path, config.page_entries); const auto mdbx_build_ms = milliseconds(mdbx_start, Clock::now());
     std::vector<std::size_t> query_positions(input.query_count); std::iota(query_positions.begin(), query_positions.end(), 0); std::mt19937_64 random(config.query_seed); std::shuffle(query_positions.begin(), query_positions.end(), random); query_positions.resize(config.query_count);
+    validate_candidate_unions(csr, mdbx, input, query_positions, config.global_radii);
     nlohmann::json rows = nlohmann::json::array();
     for(const auto radius : config.global_radii) {
-        std::vector<double> csr_samples, mdbx_samples; LookupDiagnostics expected{};
+        std::vector<double> csr_samples, mdbx_samples, transaction_samples; LookupDiagnostics expected{};
         for(std::size_t repeat = 0; repeat < config.repeat_count; ++repeat) { LookupDiagnostics csr_total{}, mdbx_total{}; std::vector<unsigned char> csr_seen(input.document_count), mdbx_seen(input.document_count); auto start = Clock::now(); for(const auto position : query_positions) { std::fill(csr_seen.begin(), csr_seen.end(), 0); const auto value = csr.lookup(input.queries.data() + position * 4, radius, csr_seen); csr_total.bucket_probes += value.bucket_probes; csr_total.visited_postings += value.visited_postings; csr_total.unique_candidates += value.unique_candidates; csr_total.candidate_checksum += value.candidate_checksum; } csr_samples.push_back(milliseconds(start, Clock::now())); start = Clock::now(); for(const auto position : query_positions) { std::fill(mdbx_seen.begin(), mdbx_seen.end(), 0); const auto value = mdbx.lookup(input.queries.data() + position * 4, radius, mdbx_seen); mdbx_total.bucket_probes += value.bucket_probes; mdbx_total.metadata_hits += value.metadata_hits; mdbx_total.posting_page_reads += value.posting_page_reads; mdbx_total.visited_postings += value.visited_postings; mdbx_total.unique_candidates += value.unique_candidates; mdbx_total.candidate_checksum += value.candidate_checksum; } mdbx_samples.push_back(milliseconds(start, Clock::now())); if(csr_total.bucket_probes != mdbx_total.bucket_probes || csr_total.visited_postings != mdbx_total.visited_postings || csr_total.unique_candidates != mdbx_total.unique_candidates || csr_total.candidate_checksum != mdbx_total.candidate_checksum) throw std::runtime_error("CSR and MDBX candidate unions differ"); expected = mdbx_total; }
-        rows.push_back({{"global_radius", radius}, {"csr_warm_lookup_decode_dedup_ms_median", median(csr_samples)}, {"mdbx_warm_lookup_decode_dedup_ms_median", median(mdbx_samples)}, {"bucket_metadata_lookups_per_query", expected.bucket_probes / config.query_count}, {"mdbx_metadata_hits_per_query", expected.metadata_hits / config.query_count}, {"mdbx_posting_page_reads_per_query", expected.posting_page_reads / config.query_count}, {"visited_postings_per_query", expected.visited_postings / config.query_count}, {"unique_candidates_per_query", expected.unique_candidates / config.query_count}, {"candidate_checksum_equality_guard", expected.candidate_checksum}});
+        for(std::size_t repeat = 0; repeat < config.repeat_count; ++repeat) { const auto start = Clock::now(); for(std::size_t query = 0; query < config.query_count; ++query) mdbx.empty_read_transaction(); transaction_samples.push_back(milliseconds(start, Clock::now())); }
+        rows.push_back({{"global_radius", radius}, {"csr_warm_lookup_decode_dedup_ms_median", median(csr_samples)}, {"mdbx_warm_lookup_decode_dedup_ms_median", median(mdbx_samples)}, {"mdbx_empty_read_transaction_ms_median", median(transaction_samples)}, {"bucket_metadata_lookups_per_query", expected.bucket_probes / config.query_count}, {"mdbx_metadata_hits_per_query", expected.metadata_hits / config.query_count}, {"mdbx_posting_page_reads_per_query", expected.posting_page_reads / config.query_count}, {"visited_postings_per_query", expected.visited_postings / config.query_count}, {"unique_candidates_per_query", expected.unique_candidates / config.query_count}, {"candidate_checksum_timing_diagnostic", expected.candidate_checksum}});
     }
-    nlohmann::json report{{"schema_version", 2}, {"family", "mih_mdbx_csr_storage_benchmark_v1"}, {"timing_scope", "warm bucket metadata lookup, posting-page lookup, decode, and candidate deduplication only; excludes query encoding, Hamming ranking, ADC, exact rerank, cold-cache I/O, and OS-cache eviction"}, {"input_manifest", input.manifest}, {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256}, {"evaluator_build_environment", evaluator_build_environment()}, {"query_count", config.query_count}, {"repeat_count", config.repeat_count}, {"page_entries", config.page_entries}, {"csr_build_ms", csr_build_ms}, {"csr_logical_bytes", csr.bytes()}, {"mdbx_build_ms", mdbx_build_ms}, {"mdbx_file_bytes", mdbx.bytes()}, {"rows", rows}};
+    nlohmann::json report{{"schema_version", 3}, {"family", "mih_mdbx_csr_storage_benchmark_v1"}, {"timing_scope", "warm bucket metadata lookup, posting-page lookup, decode, candidate deduplication, and one MDBX read-transaction lifecycle per query; excludes query encoding, Hamming ranking, ADC, exact rerank, cold-cache I/O, and OS-cache eviction"}, {"candidate_union_preflight", "all selected query/radius CSR and MDBX seen vectors compared exactly before timing"}, {"input_manifest", input.manifest}, {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256}, {"evaluator_build_environment", evaluator_build_environment()}, {"storage_stack", {{"libmdbx_commit", AGENT_MEMORY_LIBMDBX_REVISION}, {"mdbx_containers_commit", AGENT_MEMORY_MDBX_CONTAINERS_REVISION}}}, {"query_count", config.query_count}, {"query_seed", config.query_seed}, {"query_selection_algorithm", "std_mt19937_64_shuffle_v1"}, {"selected_query_positions", query_positions}, {"repeat_count", config.repeat_count}, {"page_entries", config.page_entries}, {"csr_build_ms", csr_build_ms}, {"csr_logical_bytes", csr.bytes()}, {"mdbx_build_ms", mdbx_build_ms}, {"mdbx_file_bytes", mdbx.bytes()}, {"rows", rows}};
     std::ofstream output(report_path); if(!output) throw std::runtime_error("cannot write benchmark report"); output << report.dump(2) << '\n'; std::cout << report.dump(2) << '\n'; return 0;
 }
 } // namespace
