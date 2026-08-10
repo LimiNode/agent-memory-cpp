@@ -81,11 +81,10 @@ def bootstrap(args: Any) -> None:
     count = left["query_ids"].shape[0]
     if count != right["query_ids"].shape[0] or not numpy.array_equal(left["query_ids"], right["query_ids"]) or left["identity"] != right["identity"]:
         raise EvaluationError("paired MIH contribution identities differ")
-    generator = numpy.random.default_rng(args.seed)
     source_files = source_files_sha256()
     report: dict[str, Any] = {
-        "schema_version": 2,
-        "family": "mih_paired_query_bootstrap_v2",
+        "schema_version": 3,
+        "family": "mih_paired_query_bootstrap_v3",
         "id": args.comparison_id,
         "left_contributions_file": args.left_contributions.name,
         "right_contributions_file": args.right_contributions.name,
@@ -95,19 +94,21 @@ def bootstrap(args: Any) -> None:
         "query_count": count,
         "replicates": args.replicates,
         "seed": args.seed,
+        "bootstrap_runtime": shared.evaluator_runtime(),
         "bootstrap_source_files_sha256": source_files,
         "bootstrap_source_bundle_sha256": source_bundle_sha256(source_files),
-        "metrics": {},
+        "metrics": shared.paired_bootstrap_metrics(
+            left,
+            right,
+            (
+                "hamming_top_k_recall",
+                "coverage_at_candidate_limit",
+                "reranked_ndcg_at_10",
+            ),
+            args.replicates,
+            args.seed,
+        ),
     }
-    for name in ("hamming_top_k_recall", "coverage_at_candidate_limit", "reranked_ndcg_at_10"):
-        difference = right[name] - left[name]
-        samples = numpy.empty(args.replicates, dtype=numpy.float64)
-        for index in range(args.replicates):
-            samples[index] = difference[generator.integers(0, count, size=count)].mean()
-        report["metrics"][name] = {
-            "observed_difference": float(difference.mean()),
-            "percentile_95_ci": [float(numpy.quantile(samples, 0.025)), float(numpy.quantile(samples, 0.975))],
-        }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 

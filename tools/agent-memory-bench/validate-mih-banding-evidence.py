@@ -38,6 +38,16 @@ CONTRIBUTION_KEYS = {
 SEEDS = range(42, 47)
 BOOTSTRAP_SEED = 20260809
 BOOTSTRAP_REPLICATES = 10000
+BOOTSTRAP_METRICS = (
+    "hamming_top_k_recall",
+    "coverage_at_candidate_limit",
+    "reranked_ndcg_at_10",
+)
+RUNTIME_FIELDS = {
+    "python_implementation",
+    "python_version",
+    "numpy_version",
+}
 
 
 def sha256_file(path: Path) -> str:
@@ -75,6 +85,46 @@ def validate_source_bundle(
     if not is_sha256(digest) or digest != source_bundle_sha256(files):
         raise EvaluationError(f"{description} source bundle digest is invalid")
     return dict(files)
+
+
+def validate_runtime(value: Any, description: str) -> dict[str, str]:
+    if not isinstance(value, dict) or set(value) != RUNTIME_FIELDS:
+        raise EvaluationError(f"{description} runtime is invalid")
+    if any(not isinstance(entry, str) or not entry for entry in value.values()):
+        raise EvaluationError(f"{description} runtime value is invalid")
+    return dict(value)
+
+
+def validate_bootstrap_metrics(
+    value: Any,
+    expected: dict[str, dict[str, float | list[float]]],
+) -> None:
+    if not isinstance(value, dict) or set(value) != set(BOOTSTRAP_METRICS):
+        raise EvaluationError("comparison metrics are invalid")
+    for name in BOOTSTRAP_METRICS:
+        metric = value[name]
+        if not isinstance(metric, dict) or set(metric) != {"observed_difference", "percentile_95_ci"}:
+            raise EvaluationError("comparison metric shape is invalid")
+        observed = metric["observed_difference"]
+        interval = metric["percentile_95_ci"]
+        if (
+            isinstance(observed, bool)
+            or not isinstance(observed, (int, float))
+            or not math.isfinite(float(observed))
+            or not isinstance(interval, list)
+            or len(interval) != 2
+            or any(isinstance(bound, bool) or not isinstance(bound, (int, float)) or not math.isfinite(float(bound)) for bound in interval)
+            or float(interval[0]) > float(interval[1])
+        ):
+            raise EvaluationError("comparison metric value is invalid")
+        expected_metric = expected[name]
+        expected_interval = expected_metric["percentile_95_ci"]
+        if (
+            float(observed) != expected_metric["observed_difference"]
+            or float(interval[0]) != expected_interval[0]
+            or float(interval[1]) != expected_interval[1]
+        ):
+            raise EvaluationError("comparison metric differs from deterministic bootstrap")
 
 
 def report_calibration_contract(report: dict[str, Any], identity: dict[str, Any]) -> tuple[str, str, int, str, int]:
@@ -203,6 +253,13 @@ def read_contributions(path: Path, report: dict[str, Any]) -> tuple[dict[str, An
     return payload, identity
 
 
+def bootstrap_metric_payload(path: Path) -> dict[str, numpy.ndarray]:
+    with numpy.load(path, allow_pickle=False) as values:
+        if not set(BOOTSTRAP_METRICS).issubset(values.files):
+            raise EvaluationError(f"bootstrap contribution metrics are missing: {path}")
+        return {name: values[name].copy() for name in BOOTSTRAP_METRICS}
+
+
 def validate_reports(
     mih_dir: Path,
     cascade_dir: Path,
@@ -212,12 +269,14 @@ def validate_reports(
     dict[str, Any],
     dict[str, str],
     tuple[str, str, int, str, int],
+    dict[str, str],
 ]:
     expected = expected_reports()
     actual: dict[str, tuple[str, dict[str, Any]]] = {}
     source_files: dict[str, str] | None = None
     identity: dict[str, Any] | None = None
     calibration_contract: tuple[str, str, int, str, int] | None = None
+    runtime: dict[str, str] | None = None
     rows: list[dict[str, Any]] = []
     for scope, root in (("mih", mih_dir), ("cascade", cascade_dir)):
         paths = sorted(root.glob("*.json"))
@@ -225,7 +284,7 @@ def validate_reports(
             if path.name not in expected or expected[path.name][0] != scope:
                 raise EvaluationError(f"unexpected report: {path}")
             report = json_value(path)
-            if report.get("schema_version") != 3 or report.get("family") != "mih_banding_reference_v3":
+            if report.get("schema_version") != 4 or report.get("family") != "mih_banding_reference_v4":
                 raise EvaluationError(f"report schema is invalid: {path}")
             if report.get("hamming_limit") != 512 or report.get("candidate_limit") != 512 or report.get("oracle_k") != 10:
                 raise EvaluationError(f"report candidate contract is invalid: {path}")
@@ -242,6 +301,11 @@ def validate_reports(
                 source_files = current_source_files
             elif source_files != current_source_files:
                 raise EvaluationError("reports mix evaluator sources")
+            current_runtime = validate_runtime(report.get("evaluator_runtime"), f"report {path}")
+            if runtime is None:
+                runtime = current_runtime
+            elif runtime != current_runtime:
+                raise EvaluationError("reports mix evaluator runtimes")
             contribution = root / report.get("per_query_contributions_path", "")
             _, current_identity = read_contributions(contribution, report)
             if identity is None:
@@ -267,27 +331,28 @@ def validate_reports(
                 "coverage_at_512": report["exact_top_k_candidate_coverage"],
                 "reranked_ndcg_at_10": report["reranked_ndcg_at_10"],
             })
-    if set(actual) != set(expected) or source_files is None or identity is None or calibration_contract is None:
+    if set(actual) != set(expected) or source_files is None or identity is None or calibration_contract is None or runtime is None:
         raise EvaluationError("report grid is incomplete")
-    return rows, actual, identity, source_files, calibration_contract
+    return rows, actual, identity, source_files, calibration_contract, runtime
 
 
 def validate_comparisons(
     bootstrap_dir: Path,
     contribution_paths: dict[str, Path],
     identity: dict[str, Any],
-) -> tuple[list[dict[str, Any]], dict[str, str]]:
+) -> tuple[list[dict[str, Any]], dict[str, str], dict[str, str]]:
     paths = sorted(bootstrap_dir.glob("*.json"))
     expected = expected_comparisons()
     actual: set[str] = set()
     source_files: dict[str, str] | None = None
+    runtime: dict[str, str] | None = None
     rows: list[dict[str, Any]] = []
     for path in paths:
         report = json_value(path)
         comparison_id = report.get("id")
         if comparison_id not in expected or comparison_id in actual or path.name != f"{comparison_id}.json":
             raise EvaluationError(f"comparison ID is invalid: {path}")
-        if report.get("schema_version") != 2 or report.get("family") != "mih_paired_query_bootstrap_v2" or report.get("identity") != identity or report.get("replicates") != BOOTSTRAP_REPLICATES or report.get("seed") != BOOTSTRAP_SEED:
+        if report.get("schema_version") != 3 or report.get("family") != "mih_paired_query_bootstrap_v3" or report.get("identity") != identity or report.get("replicates") != BOOTSTRAP_REPLICATES or report.get("seed") != BOOTSTRAP_SEED:
             raise EvaluationError(f"comparison contract is invalid: {path}")
         left = report.get("left_sha256"); right = report.get("right_sha256")
         expected_left, expected_right = expected[comparison_id]
@@ -305,23 +370,37 @@ def validate_comparisons(
             source_files = current_source_files
         elif source_files != current_source_files:
             raise EvaluationError("comparisons mix bootstrap sources")
-        metrics = report.get("metrics")
-        if not isinstance(metrics, dict) or set(metrics) != {"hamming_top_k_recall", "coverage_at_candidate_limit", "reranked_ndcg_at_10"}:
-            raise EvaluationError(f"comparison metrics are invalid: {path}")
+        current_runtime = validate_runtime(report.get("bootstrap_runtime"), f"comparison {path}")
+        if runtime is None:
+            runtime = current_runtime
+        elif runtime != current_runtime:
+            raise EvaluationError("comparisons mix bootstrap runtimes")
+        left_payload = bootstrap_metric_payload(contribution_paths[expected_left])
+        right_payload = bootstrap_metric_payload(contribution_paths[expected_right])
+        validate_bootstrap_metrics(
+            report.get("metrics"),
+            shared.paired_bootstrap_metrics(
+                left_payload,
+                right_payload,
+                BOOTSTRAP_METRICS,
+                BOOTSTRAP_REPLICATES,
+                BOOTSTRAP_SEED,
+            ),
+        )
         actual.add(comparison_id)
-        rows.append({"id": comparison_id, "bootstrap_report_file": path.name, "bootstrap_report_sha256": sha256_file(path), "left_contributions_sha256": left, "right_contributions_sha256": right, "replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED, "metrics": metrics})
-    if actual != set(expected) or source_files is None:
+        rows.append({"id": comparison_id, "bootstrap_report_file": path.name, "bootstrap_report_sha256": sha256_file(path), "left_contributions_sha256": left, "right_contributions_sha256": right, "replicates": BOOTSTRAP_REPLICATES, "seed": BOOTSTRAP_SEED, "metrics": report["metrics"]})
+    if actual != set(expected) or source_files is None or runtime is None:
         raise EvaluationError("comparison grid is incomplete")
-    return rows, source_files
+    return rows, source_files, runtime
 
 
 def write_manifest(args: Any) -> None:
-    reports, _, identity, evaluator_source_files, calibration_contract = validate_reports(args.mih_dir, args.cascade_dir)
+    reports, _, identity, evaluator_source_files, calibration_contract, evaluator_runtime = validate_reports(args.mih_dir, args.cascade_dir)
     contribution_paths = {row["contributions_file"]: (args.mih_dir if row["scope"] == "mih" else args.cascade_dir) / row["contributions_file"] for row in reports}
-    comparisons, bootstrap_source_files = validate_comparisons(args.bootstrap_dir, contribution_paths, identity)
+    comparisons, bootstrap_source_files, bootstrap_runtime = validate_comparisons(args.bootstrap_dir, contribution_paths, identity)
     validator_source_files = source_files_sha256()
     manifest = {
-        "schema_version": 2, "family": "mih_banding_evidence_v2",
+        "schema_version": 3, "family": "mih_banding_evidence_v3",
         "evaluation_identity": identity,
         "calibration_materialization_manifest_sha256": calibration_contract[0],
         "evaluation_materialization_manifest_sha256": calibration_contract[1],
@@ -330,10 +409,13 @@ def write_manifest(args: Any) -> None:
         "itq_iterations": calibration_contract[4],
         "evaluator_source_files_sha256": evaluator_source_files,
         "evaluator_source_bundle_sha256": source_bundle_sha256(evaluator_source_files),
+        "evaluator_runtime": evaluator_runtime,
         "bootstrap_source_files_sha256": bootstrap_source_files,
         "bootstrap_source_bundle_sha256": source_bundle_sha256(bootstrap_source_files),
+        "bootstrap_runtime": bootstrap_runtime,
         "validator_source_files_sha256": validator_source_files,
         "validator_source_bundle_sha256": source_bundle_sha256(validator_source_files),
+        "validator_runtime": shared.evaluator_runtime(),
         "report_count": len(reports),
         "comparison_count": len(comparisons), "reports": reports, "comparisons": comparisons,
     }
@@ -343,8 +425,10 @@ def write_manifest(args: Any) -> None:
 
 def write_bundle(args: Any) -> None:
     manifest = json_value(args.manifest)
-    if manifest.get("schema_version") != 2 or manifest.get("family") != "mih_banding_evidence_v2":
+    if manifest.get("schema_version") != 3 or manifest.get("family") != "mih_banding_evidence_v3":
         raise EvaluationError("evidence manifest schema is invalid")
+    for field in ("evaluator_runtime", "bootstrap_runtime", "validator_runtime"):
+        validate_runtime(manifest.get(field), f"manifest {field}")
     files: list[tuple[Path, str]] = [(args.manifest, "bundle/compact-manifest.json")]
     roots = {"mih": args.mih_dir, "cascade": args.cascade_dir}
     for row in manifest.get("reports", []):
@@ -409,6 +493,32 @@ def run_self_test() -> int:
             "self-test",
         )
         print("self-test failed: incomplete source map accepted", file=sys.stderr)
+        return 1
+    except EvaluationError:
+        pass
+    bootstrap_left = {name: numpy.asarray([0.0, 0.25, 0.5], dtype=numpy.float64) for name in BOOTSTRAP_METRICS}
+    bootstrap_right = {name: values + 0.125 for name, values in bootstrap_left.items()}
+    bootstrap_expected = shared.paired_bootstrap_metrics(
+        bootstrap_left,
+        bootstrap_right,
+        BOOTSTRAP_METRICS,
+        31,
+        BOOTSTRAP_SEED,
+    )
+    validate_bootstrap_metrics(bootstrap_expected, bootstrap_expected)
+    for field, value in (("observed_difference", 1.0), ("percentile_95_ci", [-1.0, 1.0])):
+        mutated_metrics = json.loads(json.dumps(bootstrap_expected))
+        mutated_metrics["coverage_at_candidate_limit"][field] = value
+        try:
+            validate_bootstrap_metrics(mutated_metrics, bootstrap_expected)
+            print(f"self-test failed: mutated bootstrap {field} accepted", file=sys.stderr)
+            return 1
+        except EvaluationError:
+            pass
+    validate_runtime(shared.evaluator_runtime(), "self-test")
+    try:
+        validate_runtime({"numpy_version": "test"}, "self-test")
+        print("self-test failed: incomplete runtime accepted", file=sys.stderr)
         return 1
     except EvaluationError:
         pass

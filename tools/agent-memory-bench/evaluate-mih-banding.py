@@ -228,9 +228,10 @@ def evaluate(args: Any) -> None:
     guarantee = args.global_radius is not None
     source_files = source_files_sha256()
     report = {
-        "schema_version": 3, "family": "mih_banding_reference_v3",
+        "schema_version": 4, "family": "mih_banding_reference_v4",
         "evaluator_source_files_sha256": source_files,
         "evaluator_source_bundle_sha256": source_bundle_sha256(source_files),
+        "evaluator_runtime": shared.evaluator_runtime(),
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "evaluation_materialization_manifest_sha256": data["manifest_sha256"],
         "calibration_vector_count": len(calibration["train_ids"]),
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
