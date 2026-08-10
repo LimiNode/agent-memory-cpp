@@ -253,6 +253,24 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mih_storage_input_materializer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/materialize-mih-storage-input.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        if(AGENT_MEMORY_ENABLE_MDBX)
+            add_test(
+                NAME agent_memory_mih_storage_benchmark_self_test
+                COMMAND
+                    $<TARGET_FILE:agent-memory-mih-storage-bench>
+                    --self-test
+                    ${CMAKE_CURRENT_BINARY_DIR}/mih-storage-benchmark-self-test.mdbx
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+        endif()
+        add_test(
             NAME agent_memory_pq_opq_evaluator_self_test
             COMMAND
                 ${Python3_EXECUTABLE}

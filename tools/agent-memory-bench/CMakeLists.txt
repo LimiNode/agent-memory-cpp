@@ -159,6 +159,22 @@ target_link_libraries(agent-memory-hamming-hot-path-bench
         agent_memory::json
 )
 
+if(AGENT_MEMORY_ENABLE_MDBX)
+    add_executable(agent-memory-mih-storage-bench
+        mih_storage_benchmark.cpp
+    )
+    agent_memory_set_evaluator_source_manifest(agent-memory-mih-storage-bench
+        "${CMAKE_CURRENT_SOURCE_DIR}/mih_storage_benchmark.cpp"
+    )
+    agent_memory_set_evaluator_build_environment(agent-memory-mih-storage-bench)
+    target_link_libraries(agent-memory-mih-storage-bench
+        PRIVATE
+            agent_memory::agent_memory
+            agent_memory::json
+            mdbx_containers::mdbx_containers
+    )
+endif()
+
 add_executable(agent-memory-aggregate-signature-bench
     aggregate_signature.cpp
 )
