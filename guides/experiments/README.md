@@ -46,6 +46,22 @@ and enough identifying metadata for reproduction. If a future PR needs
 long-term raw artifact retention, add an explicit policy for artifact location,
 size budget, and cleanup before committing dumps.
 
+## Evidence releases
+
+Long-lived compact research evidence belongs in GitHub Releases, not in Git
+and not in the short-lived Actions artifact store. Library releases use normal
+semantic tags and names such as `v0.2.0` / `agent-memory-cpp 0.2.0`. Research
+releases must use an evidence namespace and a visually distinct title, for
+example `evidence/mih-banding-v3` / `[Evidence] MIH banding cascade v3`.
+
+An evidence release is published only after its archive validator succeeds.
+It must state its archive SHA-256, internal bundle-root SHA-256, target commit,
+and artifact scope. Draft releases are review staging only and must not be
+called public in experiment notes. Do not commit large ZIPs or generated DB
+files; retain a compact manifest and a stable release link instead. If evidence
+outgrows practical GitHub Release size or count, publish it to an archival
+service and retain the manifest plus external link here.
+
 ## Timing methodology
 
 Experiment notes must distinguish:

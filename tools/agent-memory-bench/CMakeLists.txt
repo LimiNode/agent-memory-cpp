@@ -160,18 +160,37 @@ target_link_libraries(agent-memory-hamming-hot-path-bench
 )
 
 if(AGENT_MEMORY_ENABLE_MDBX)
-    execute_process(
-        COMMAND git -C ${PROJECT_SOURCE_DIR}/external/libmdbx rev-parse HEAD
-        OUTPUT_VARIABLE agent_memory_libmdbx_revision
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        COMMAND_ERROR_IS_FATAL ANY
-    )
-    execute_process(
-        COMMAND git -C ${PROJECT_SOURCE_DIR}/external/mdbx-containers rev-parse HEAD
-        OUTPUT_VARIABLE agent_memory_mdbx_containers_revision
-        OUTPUT_STRIP_TRAILING_WHITESPACE
-        COMMAND_ERROR_IS_FATAL ANY
-    )
+    set(agent_memory_storage_provenance_authoritative 0)
+    set(agent_memory_storage_provenance_reason "non_pinned_dependency_resolution")
+    set(agent_memory_libmdbx_revision "unavailable")
+    set(agent_memory_mdbx_containers_revision "unavailable")
+    if(AGENT_MEMORY_MDBX_DEPS_MODE STREQUAL "BUNDLED"
+       AND "${AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR}" STREQUAL ""
+       AND EXISTS "${PROJECT_SOURCE_DIR}/external/libmdbx/.git"
+       AND EXISTS "${PROJECT_SOURCE_DIR}/external/mdbx-containers/.git")
+        find_program(agent_memory_storage_git_executable git)
+        if(agent_memory_storage_git_executable)
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/libmdbx rev-parse HEAD
+                OUTPUT_VARIABLE agent_memory_libmdbx_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_libmdbx_revision_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/mdbx-containers rev-parse HEAD
+                OUTPUT_VARIABLE agent_memory_mdbx_containers_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_mdbx_containers_revision_result
+                ERROR_QUIET
+            )
+            if(agent_memory_libmdbx_revision_result EQUAL 0
+               AND agent_memory_mdbx_containers_revision_result EQUAL 0)
+                set(agent_memory_storage_provenance_authoritative 1)
+                set(agent_memory_storage_provenance_reason "repository_pinned_external_submodules")
+            endif()
+        endif()
+    endif()
     add_executable(agent-memory-mih-storage-bench
         mih_storage_benchmark.cpp
     )
@@ -183,6 +202,8 @@ if(AGENT_MEMORY_ENABLE_MDBX)
         PRIVATE
             AGENT_MEMORY_LIBMDBX_REVISION="${agent_memory_libmdbx_revision}"
             AGENT_MEMORY_MDBX_CONTAINERS_REVISION="${agent_memory_mdbx_containers_revision}"
+            AGENT_MEMORY_STORAGE_PROVENANCE_AUTHORITATIVE=${agent_memory_storage_provenance_authoritative}
+            AGENT_MEMORY_STORAGE_PROVENANCE_REASON="${agent_memory_storage_provenance_reason}"
     )
     target_link_libraries(agent-memory-mih-storage-bench
         PRIVATE

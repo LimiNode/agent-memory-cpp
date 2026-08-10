@@ -2413,7 +2413,7 @@ must include code identity, band ordinal and band key; postings must update
 atomically with the signature record; reads need deterministic bounded posting
 pages and candidate deduplication. A 2026-08-10 warm-path benchmark on the
 shared 22,607-document ITQ-256 fixture found that a dense in-memory CSR form
-for 16-bit band keys is roughly 32x--37x faster than the deliberately direct
+for 16-bit band keys is roughly 29x--42x faster than the deliberately direct
 one-MDBX-key-per-probed-bucket layout at global radii 48/56/64. The evidence
 rules out that naive hot path, not MDBX-backed grouped or batched layouts.
 Index-time radius-one expansion is a separate storage-versus-query challenger;

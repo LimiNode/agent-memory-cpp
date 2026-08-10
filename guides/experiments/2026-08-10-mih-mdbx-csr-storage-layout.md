@@ -53,26 +53,27 @@ for CSR and 27,223.66 ms for the one-transaction MDBX bulk build.
 
 | Global radius | Metadata lookups/query | Posting page reads/query | Candidates/query | CSR warm median (ms/128) | MDBX warm median (ms/128) |
 | ---: | ---: | ---: | ---: | ---: | ---: |
-| 48 | 2,752 | 945 | 1,239 | 10.85 | 350.56 |
-| 56 | 7,232 | 2,405 | 2,978 | 25.59 | 878.46 |
-| 64 | 12,972 | 4,233 | 4,926 | 41.45 | 1,527.32 |
+| 48 | 2,752 | 945 | 1,239 | 9.14 | 287.27 |
+| 56 | 7,232 | 2,405 | 2,978 | 18.83 | 735.01 |
+| 64 | 12,972 | 4,233 | 4,926 | 32.80 | 1,381.14 |
 
-The empty read-transaction control was 0.13, 0.10, and 0.14 ms respectively
+The empty read-transaction control was 0.14, 0.08, and 0.08 ms respectively
 for the same 128 queries. It is negligible relative to the full MDBX path, so
 the measured gap is not explained by transaction lifecycle.
 
 The page-size control did not materially change the result. At page sizes 64,
 256, and 1024, each non-empty bucket on this corpus fitted in one posting page,
 so the number of posting-page reads was unchanged. MDBX medians respectively
-spanned 334.47/350.56/336.89 ms at radius 48, 818.34/878.46/831.03 ms at radius
-56, and 1,480.22/1,527.32/1,465.41 ms at radius 64. These small differences are
+spanned 327.95/287.27/284.59 ms at radius 48, 741.53/735.01/749.88 ms at radius
+56, and 1,252.76/1,381.14/1,281.13 ms at radius 64. These local-run differences are
 local-run variation, not a page-size effect.
 
 ## Interpretation
 
-For this deliberately direct layout, thousands of individual B-tree metadata
-lookups dominate the warm candidate-union path. CSR is roughly 32x--37x faster
-in these local medians. This is evidence against a naive
+For this deliberately direct layout, the result is consistent with repeated
+per-bucket MDBX lookups dominating the warm candidate-union path; the empty
+transaction control rules out transaction lifecycle as the explanation. CSR is
+roughly 29x--42x faster in these local medians. This is evidence against a naive
 one-key-per-probed-bucket MDBX hot path, not evidence that MDBX cannot
 participate in a production MIH design.
 
@@ -85,11 +86,11 @@ bucket map before committing, so it is not a streaming-ingestion benchmark.
 The raw MDBX files remain under `tmp/` and are not committed. A compact public
 evidence archive retains the packed inputs, configs, reports, source snapshots,
 and dependency manifest. The public asset is
-[mih-mdbx-csr-storage-evidence-v1.zip](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-c01831e29ac74d354cf2/mih-mdbx-csr-storage-evidence-v1.zip).
+[mih-mdbx-csr-storage-evidence-v2.zip](https://github.com/LimiNode/agent-memory-cpp/releases/download/evidence/mih-mdbx-csr-v2/mih-mdbx-csr-storage-evidence-v2.zip).
 Its ZIP SHA-256 is
-`e4575e3c0d5e65d248ec5c2a3cae3b5e0d691d4cb16f33da38fa3ed3c700044a` and
+`90df1f5f49e4899764a7386be31a26cf15d8b44a3d17c766aacf7ff9ebabc888` and
 its internal bundle-root SHA-256 is
-`c65c3ccd9a9634ebec90b536682e9c93d9a94a686f5429bd0b70c9e3aec300e7`.
+`96cc4f917707c02e2a128fe6270d48451055bf21f207d81b64d0811929ba516a`.
 This is one local warm-cache environment, without process-wide memory
 high-water measurement, cache eviction, or concurrent readers.
 

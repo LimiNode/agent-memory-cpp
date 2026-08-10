@@ -76,3 +76,39 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-mdbx --build-config Release --output-on-failure
+
+  mdbx-benchmark:
+    name: MDBX benchmark harness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Init flat MDBX submodules
+        run: git submodule update --init external/libmdbx external/mdbx-containers
+
+      - name: Configure benchmark harness
+        run: >
+          cmake -S . -B build-mdbx-benchmark
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_ENABLE_MDBX=ON
+          -DAGENT_MEMORY_MDBX_DEPS_MODE=BUNDLED
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build storage benchmark harness
+        run: cmake --build build-mdbx-benchmark --config Release --target agent-memory-mih-storage-bench
+
+      - name: Test storage benchmark harness
+        run: ctest --test-dir build-mdbx-benchmark --build-config Release --output-on-failure -R agent_memory_mih_storage

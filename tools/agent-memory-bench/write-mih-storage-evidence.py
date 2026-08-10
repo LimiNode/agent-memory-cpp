@@ -33,7 +33,7 @@ def validate_reports(paths: list[Path]) -> None:
     seen_pages: set[int] = set()
     for path in paths:
         report = read_json(path)
-        require(report.get("schema_version") == 3, f"{path} schema is not v3")
+        require(report.get("schema_version") == 4, f"{path} schema is not v4")
         require(report.get("family") == "mih_mdbx_csr_storage_benchmark_v1", f"{path} family is invalid")
         require(report.get("candidate_union_preflight") == "all selected query/radius CSR and MDBX seen vectors compared exactly before timing", f"{path} has no exact-union preflight")
         require(report.get("query_count") == 128 and report.get("repeat_count") == 5, f"{path} query contract is invalid")
@@ -42,6 +42,9 @@ def validate_reports(paths: list[Path]) -> None:
         seen_pages.add(page_entries)
         require(len(report.get("selected_query_positions", [])) == 128, f"{path} query selection is invalid")
         require(len(report.get("rows", [])) == 3, f"{path} radius grid is invalid")
+        stack = report.get("storage_stack", {})
+        require(stack.get("provenance_authoritative") is True, f"{path} is not authoritative")
+        require(stack.get("provenance_reason") == "repository_pinned_external_submodules", f"{path} dependency provenance is invalid")
         if reference is None:
             reference = report
         else:
@@ -71,8 +74,23 @@ def archive(args: argparse.Namespace) -> None:
     names = [name for _, name in paths]
     require(len(names) == len(set(names)), "evidence archive names are not unique")
     entries = {name: {"sha256": sha256_file(path), "size": path.stat().st_size} for path, name in paths}
+    sources = {name.removeprefix("bundle/sources/"): entry["sha256"] for name, entry in entries.items() if name.startswith("bundle/sources/")}
+    benchmark_source = "tools/agent-memory-bench/mih_storage_benchmark.cpp"
+    benchmark_sha256 = sources.get(benchmark_source)
+    require(benchmark_sha256 is not None, "benchmark source snapshot is missing")
+    expected_evaluator_manifest = hashlib.sha256(
+        f"{benchmark_source}:{benchmark_sha256}\n".encode("utf-8")
+    ).hexdigest()
+    report = read_json(report_paths[0])
+    require(report["evaluator_source_manifest_sha256"] == expected_evaluator_manifest, "benchmark snapshot does not match report provenance")
+    input_sources = input_manifest.get("source_files_sha256", {})
+    for name, expected_sha256 in input_sources.items():
+        matches = [actual for path, actual in sources.items() if Path(path).name == name]
+        require(len(matches) == 1 and matches[0] == expected_sha256, f"input source snapshot is invalid: {name}")
+    writer_source = "tools/agent-memory-bench/write-mih-storage-evidence.py"
+    require(writer_source in sources, "evidence writer source snapshot is missing")
     bundle_root = hashlib.sha256(json.dumps(entries, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
-    manifest = {"schema_version": 1, "family": "mih_storage_benchmark_evidence_v1", "bundle_root_sha256": bundle_root, "entries": entries}
+    manifest = {"schema_version": 2, "family": "mih_storage_benchmark_evidence_v1", "bundle_root_sha256": bundle_root, "writer_source_sha256": sources[writer_source], "entries": entries}
     output = Path(args.output)
     with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive_file:
         for path, name in paths:
