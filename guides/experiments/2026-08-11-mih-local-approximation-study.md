@@ -70,8 +70,8 @@ archive SHA-256: 396bccee00f44a40e2dcab30151b0d3496f9dc1783545d26ea1f416cd19fd1b
 bundle root:     2cf3b4593b8dd18aa51cbf407ce40ea1c2f08e7dbae10f4f396336a2d69b9413
 ```
 
-The ZIP is staged in the draft GitHub evidence release and is not committed to
-Git. It becomes a public research release only after PR review and merge.
+The ZIP is published in the namespaced GitHub evidence release and is not
+committed to Git.
 
 ## Interpretation
 
@@ -93,6 +93,11 @@ The next experiments must make a stronger, predeclared intervention:
    membership are calibrated;
 3. MIH-aware ITQ/code selection using a calibration-only candidate-efficiency
    objective.
+
+The first follow-up is in progress as a separate experiment: query-adaptive
+ADC-cost best-first enumeration of bounded two- and three-bit bucket probes,
+with predeclared soft candidate and posting-visit targets. It is intentionally
+separate from this note's three narrow approximations.
 
 At larger corpus scales, the same variants should also be judged by posting
 bytes, bucket-tail behaviour, and latency, not only final E5 survival.
