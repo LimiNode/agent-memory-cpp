@@ -1,6 +1,6 @@
 # Static weighted-Hamming MIH approximation
 
-Date: 2026-08-12. Context: PR #123, calibrated-weighted-Hamming matrix.
+Date: 2026-08-11. Context: PR #123, calibrated-weighted-Hamming matrix.
 
 ## Question
 
