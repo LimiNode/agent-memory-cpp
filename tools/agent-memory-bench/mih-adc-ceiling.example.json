@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "family": "mih_adc_ceiling_stage_loss_matrix_v1",
+  "evaluation": {
+    "code_bits": 256,
+    "band_count": 32,
+    "probe_policy": "budgeted-confidence",
+    "probe_radius": 1,
+    "budgets": [[8192, 11000], [12288, 19000], [16384, 30000]],
+    "hamming_limits": [512, 768, 1024, 1536],
+    "second_limits": [64, 128, 256, 512],
+    "second_stages": ["hamming", "binary-adc", "continuous-itq-projection-l2", "exact-e5-within-hamming"],
+    "oracle_k": 10,
+    "itq_iterations": 50,
+    "itq_seeds": [42, 43, 44, 45, 46]
+  }
+}
