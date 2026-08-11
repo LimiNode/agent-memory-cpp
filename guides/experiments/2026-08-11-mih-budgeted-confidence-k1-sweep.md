@@ -86,7 +86,7 @@ internal bundle-root SHA-256 is
 `3b296782c1254e95b9606c75864ae181d6f430bf3d24055faa25fb9e99dd903c`.
 
 The reviewable draft-release asset is
-[mih-budgeted-confidence-k1-evidence-v1.zip](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-9e9c324501b443576a67/mih-budgeted-confidence-k1-evidence-v1.zip).
+[mih-budgeted-confidence-k1-evidence-v1.zip](https://github.com/LimiNode/agent-memory-cpp/releases/download/untagged-e89a9cd083141fd7493f/mih-budgeted-confidence-k1-evidence-v1.zip).
 Its exact evidence-producing commit is `f5225976b32b7504ae10d59782ced869a421c5e5`;
 the subsequent note-link commit does not change scientific code. The archive validator verifies
 the complete row/comparison grid, contribution hashes and summaries, paired
