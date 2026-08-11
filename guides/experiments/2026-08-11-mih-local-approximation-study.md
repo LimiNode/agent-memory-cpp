@@ -58,6 +58,21 @@ has one negative seed. The tiny point estimates are not explained by material
 candidate or posting expansion, but they do not establish a practically
 meaningful retrieval advantage.
 
+## Evidence staging
+
+The confirmatory evidence bundle contains the frozen matrix, 15 reports, 15
+per-query contribution NPZ files, ten paired bootstrap reports, compact and
+bundle manifests, and source snapshots. It was validated before upload as
+`mih-calibration-balanced-bands-evidence-v1.zip`:
+
+```text
+archive SHA-256: 396bccee00f44a40e2dcab30151b0d3496f9dc1783545d26ea1f416cd19fd1b2
+bundle root:     2cf3b4593b8dd18aa51cbf407ce40ea1c2f08e7dbae10f4f396336a2d69b9413
+```
+
+The ZIP is staged in the draft GitHub evidence release and is not committed to
+Git. It becomes a public research release only after PR review and merge.
+
 ## Interpretation
 
 The three inexpensive local approximations did not deliver the expected final
