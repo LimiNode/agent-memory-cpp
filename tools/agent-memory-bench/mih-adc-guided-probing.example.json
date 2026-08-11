@@ -1,0 +1,18 @@
+{
+  "evaluation": {
+    "band_count": 32,
+    "candidate_limit": 512,
+    "code_bits": 256,
+    "hamming_limit": 768,
+    "itq_iterations": 50,
+    "itq_seeds": [42, 43, 44, 45, 46],
+    "oracle_k": 10,
+    "probe_policies": ["budgeted-confidence", "budgeted-adc"],
+    "probe_radius": 1,
+    "second_limit": 256,
+    "second_stage": "binary-adc",
+    "soft_candidate_targets": [8192, 12288, 16384]
+  },
+  "family": "mih_adc_guided_probing_matrix_v1",
+  "schema_version": 1
+}

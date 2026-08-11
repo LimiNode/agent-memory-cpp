@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Run a fixed MIH margin-confidence versus ADC-guided probe-order matrix."""
+
+from __future__ import annotations
+
+import argparse
+import concurrent.futures
+import hashlib
+import importlib.util
+import json
+import os
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+from typing import Any
+
+
+EXPECTED_TOP_LEVEL = {"schema_version", "family", "evaluation"}
+EXPECTED_EVALUATION = {
+    "code_bits", "band_count", "probe_radius", "probe_policies", "soft_candidate_targets",
+    "hamming_limit", "second_limit", "second_stage", "oracle_k", "candidate_limit",
+    "itq_iterations", "itq_seeds",
+}
+POLICIES = ("budgeted-confidence", "budgeted-adc")
+TARGETS = (8192, 12288, 16384)
+SEEDS = (42, 43, 44, 45, 46)
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def load_matrix(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(isinstance(value, dict) and set(value) == EXPECTED_TOP_LEVEL, "matrix fields are invalid")
+    require(value["schema_version"] == 1 and value["family"] == "mih_adc_guided_probing_matrix_v1", "matrix identity is invalid")
+    require(isinstance(value["evaluation"], dict) and set(value["evaluation"]) == EXPECTED_EVALUATION, "matrix evaluation fields are invalid")
+    return value
+
+
+def rows(matrix: dict[str, Any]) -> list[tuple[str, dict[str, int | str]]]:
+    evaluation = matrix["evaluation"]
+    require(
+        evaluation["code_bits"] == 256 and evaluation["band_count"] == 32 and evaluation["probe_radius"] == 1 and
+        tuple(evaluation["probe_policies"]) == POLICIES and tuple(evaluation["soft_candidate_targets"]) == TARGETS and
+        evaluation["hamming_limit"] == 768 and evaluation["second_limit"] == 256 and evaluation["second_stage"] == "binary-adc" and
+        evaluation["oracle_k"] == 10 and evaluation["candidate_limit"] == 512 and evaluation["itq_iterations"] == 50 and
+        tuple(evaluation["itq_seeds"]) == SEEDS,
+        "matrix contract is invalid",
+    )
+    result = [
+        (f"mih256-{policy}-target{target}-h768-adc256-seed{seed}", {"probe_policy": policy, "soft_candidate_target": target, "seed": seed})
+        for policy in POLICIES for target in TARGETS for seed in SEEDS
+    ]
+    require(len(result) == 30 and len({name for name, _ in result}) == 30, "matrix row expansion is invalid")
+    return result
+
+
+def sha256_file(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _load_shared() -> Any:
+    path = Path(__file__).with_name("evaluate-projection-quantization.py")
+    spec = importlib.util.spec_from_file_location("mih_adc_matrix_shared", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load projection evaluation helper")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def evaluator_sources() -> dict[str, str]:
+    root = Path(__file__).parent
+    return {name: sha256_file(root / name) for name in ("evaluate-mih-banding.py", "evaluate-projection-quantization.py")}
+
+
+def source_bundle(files: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def row_is_complete(report_path: Path, contribution_path: Path, row: dict[str, int | str], calibration: dict[str, Any], evaluation: dict[str, Any]) -> bool:
+    if not report_path.is_file() or not contribution_path.is_file():
+        return False
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return False
+    sources = evaluator_sources()
+    expected_identity = _load_shared().contribution_identity(evaluation, 512, 10)
+    return (
+        isinstance(report, dict) and report.get("schema_version") == 6 and report.get("family") == "mih_banding_reference_v6" and
+        report.get("code_bits") == 256 and report.get("band_count") == 32 and report.get("probe_radius") == 1 and
+        report.get("probe_policy") == row["probe_policy"] and report.get("soft_candidate_target") == row["soft_candidate_target"] and
+        report.get("hamming_policy") == "uniform" and report.get("hamming_limit") == 768 and report.get("seed") == row["seed"] and
+        report.get("second_limit") == 256 and report.get("second_stage") == "binary-adc" and report.get("query_count") == len(evaluation["query_ids"]) and
+        report.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and report.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and report.get("calibration_train_ids_sha256") == _load_shared().ordered_ids_sha256(calibration["train_ids"]) and report.get("calibration_vector_count") == len(calibration["train_ids"]) and report.get("evaluator_source_files_sha256") == sources and report.get("evaluator_source_bundle_sha256") == source_bundle(sources) and report.get("per_query_contribution_identity") == expected_identity and report.get("per_query_contributions_path") == contribution_path.name and report.get("per_query_contributions_sha256") == sha256_file(contribution_path)
+    )
+
+
+def run(args: Any) -> None:
+    matrix_rows = rows(load_matrix(args.matrix))
+    evaluator = Path(__file__).with_name("evaluate-mih-banding.py")
+    shared = _load_shared()
+    calibration = shared.load_root(args.calibration_root)
+    evaluation = shared.load_root(args.evaluation_root)
+    args.output_root.mkdir(parents=True, exist_ok=True)
+    environment = os.environ.copy()
+    for variable in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
+        environment[variable] = "1"
+
+    def execute(index: int, name: str, row: dict[str, int | str]) -> None:
+        report = args.output_root / "reports" / f"{name}.json"
+        contributions = args.output_root / "contributions" / f"{name}.npz"
+        if args.resume and row_is_complete(report, contributions, row, calibration, evaluation):
+            return
+        report.parent.mkdir(parents=True, exist_ok=True)
+        contributions.parent.mkdir(parents=True, exist_ok=True)
+        command = [
+            str(args.python), str(evaluator), "evaluate", "--calibration-root", str(args.calibration_root),
+            "--evaluation-root", str(args.evaluation_root), "--output", str(report), "--contributions-output", str(contributions),
+            "--code-bits", "256", "--band-count", "32", "--probe-radius", "1", "--probe-policy", str(row["probe_policy"]),
+            "--soft-candidate-target", str(row["soft_candidate_target"]), "--hamming-policy", "uniform", "--seed", str(row["seed"]),
+            "--itq-iterations", "50", "--candidate-limit", "512", "--hamming-limit", "768", "--second-limit", "256",
+            "--second-stage", "binary-adc", "--oracle-k", "10",
+        ]
+        print(f"[{index}/{len(matrix_rows)}] {name}", flush=True)
+        subprocess.run(command, check=True, env=environment)
+        require(row_is_complete(report, contributions, row, calibration, evaluation), f"evaluator wrote an invalid row: {name}")
+
+    require(args.jobs > 0, "matrix job count is invalid")
+    if args.jobs == 1:
+        for index, (name, row) in enumerate(matrix_rows, 1):
+            execute(index, name, row)
+        return
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        futures = [executor.submit(execute, index, name, row) for index, (name, row) in enumerate(matrix_rows, 1)]
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
+
+
+def self_test(matrix_path: Path) -> int:
+    try:
+        matrix = load_matrix(matrix_path)
+        if len(rows(matrix)) != 30:
+            raise ValueError("matrix row count is invalid")
+        with tempfile.TemporaryDirectory() as directory:
+            invalid = json.loads(matrix_path.read_text(encoding="utf-8"))
+            invalid["evaluation"]["soft_candidate_targets"] = [12288]
+            path = Path(directory) / "invalid.json"
+            path.write_text(json.dumps(invalid), encoding="utf-8")
+            try:
+                rows(load_matrix(path))
+            except ValueError:
+                pass
+            else:
+                raise ValueError("incomplete target grid was accepted")
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"run-mih-adc-guided-probing-matrix self-test failed: {error}", file=sys.stderr)
+        return 1
+    print("MIH ADC-guided probing matrix self-test passed")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser()
+    subparsers = parser.add_subparsers(dest="command", required=True)
+    run_parser = subparsers.add_parser("run")
+    run_parser.add_argument("--matrix", type=Path, required=True)
+    run_parser.add_argument("--calibration-root", type=Path, required=True)
+    run_parser.add_argument("--evaluation-root", type=Path, required=True)
+    run_parser.add_argument("--output-root", type=Path, required=True)
+    run_parser.add_argument("--python", type=Path, default=Path(sys.executable))
+    run_parser.add_argument("--jobs", type=int, default=1)
+    run_parser.add_argument("--resume", action="store_true")
+    test_parser = subparsers.add_parser("self-test")
+    test_parser.add_argument("--matrix", type=Path, required=True)
+    args = parser.parse_args(argv)
+    if args.command == "self-test":
+        return self_test(args.matrix)
+    try:
+        run(args)
+    except (OSError, ValueError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
+        print(f"run-mih-adc-guided-probing-matrix: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

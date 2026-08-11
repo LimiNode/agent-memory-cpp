@@ -161,6 +161,56 @@ def budgeted_confidence_candidate_union(
     return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count
 
 
+def budgeted_adc_candidate_union(
+    index: list[dict[int, numpy.ndarray]],
+    query: Any,
+    query_projection: Any,
+    centers: Any,
+    ranges: list[tuple[int, int]],
+    soft_candidate_target: int,
+) -> tuple[numpy.ndarray, int, int, int]:
+    """Probe exact buckets then least-cost one-bit ADC alternatives.
+
+    The policy is intentionally restricted to the same 32x8, radius-one
+    universe as budgeted confidence probing.  It changes only the order of
+    optional probes, using query-side binary-ADC loss rather than a raw margin.
+    """
+    if soft_candidate_target <= 0 or len(ranges) != 32 or any(stop - start != 8 for start, stop in ranges):
+        raise EvaluationError("budgeted ADC probing requires 32 equal 8-bit bands")
+    values = numpy.asarray(query_projection, dtype=numpy.float32)
+    code = numpy.asarray(query, dtype=numpy.uint8)
+    calibration_centers = numpy.asarray(centers, dtype=numpy.float32)
+    if values.shape != code.shape or calibration_centers.shape != (values.size, 2):
+        raise EvaluationError("budgeted ADC probe inputs are invalid")
+    selected: set[int] = set()
+    probes = 0
+    posting_visits = 0
+
+    def add(bucket: dict[int, numpy.ndarray], key: int) -> None:
+        nonlocal probes, posting_visits
+        probes += 1
+        positions = bucket.get(key)
+        if positions is not None:
+            posting_visits += int(positions.size)
+            selected.update(positions.tolist())
+
+    for buckets, (start, stop) in zip(index, ranges):
+        add(buckets, band_key(query, start, stop))
+    exact_bucket_floor_count = len(selected)
+    lookup = numpy.square(values[:, None] - calibration_centers)
+    flips = [
+        (float(lookup[start + bit, 1 - code[start + bit]] - lookup[start + bit, code[start + bit]]), band, bit)
+        for band, (start, stop) in enumerate(ranges)
+        for bit in range(stop - start)
+    ]
+    for _, band, bit in sorted(flips):
+        if len(selected) >= soft_candidate_target:
+            break
+        start, _ = ranges[band]
+        add(index[band], band_key(query, start, start + 8) ^ (1 << bit))
+    return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count
+
+
 def calibrated_hamming_weights(calibration_projection: Any, calibration_codes: Any) -> numpy.ndarray:
     """Return mean-one bit weights from calibration-only binary centroids.
 
@@ -264,10 +314,10 @@ def evaluate(args: Any) -> None:
         radii = [args.probe_radius] * args.band_count
     if max(radii) > min(stop - start for start, stop in ranges):
         raise EvaluationError("MIH probe radius exceeds a band width")
-    if args.probe_policy == "budgeted-confidence" and (
+    if args.probe_policy in ("budgeted-confidence", "budgeted-adc") and (
         args.global_radius is not None or args.probe_radius != 1 or args.soft_candidate_target <= 0
     ):
-        raise EvaluationError("budgeted confidence policy requires local radius one and a candidate budget")
+        raise EvaluationError("budgeted probe policies require local radius one and a candidate budget")
     calibration = shared.load_root(args.calibration_root)
     data = shared.load_root(args.evaluation_root)
     validate_roots(calibration, data, args.code_bits)
@@ -279,7 +329,7 @@ def evaluate(args: Any) -> None:
     calibration_codes = calibration_projection >= 0.0
     codes = document_projection >= 0.0
     query_codes = query_projection >= 0.0
-    centers = shared.conditional_centers(calibration_projection, calibration_codes.astype(numpy.uint8), 2) if args.second_stage == "binary-adc" else None
+    centers = shared.conditional_centers(calibration_projection, calibration_codes.astype(numpy.uint8), 2) if args.second_stage == "binary-adc" or args.probe_policy == "budgeted-adc" else None
     hamming_weights = None
     if args.hamming_policy == "calibrated-centroid-separation":
         hamming_weights = calibrated_hamming_weights(calibration_projection, calibration_codes)
@@ -305,6 +355,10 @@ def evaluate(args: Any) -> None:
         if args.probe_policy == "budgeted-confidence":
             candidates, probes, visits, exact_bucket_floor_count = budgeted_confidence_candidate_union(
                 index, query_codes[row], query_projection[row], ranges, args.soft_candidate_target
+            )
+        elif args.probe_policy == "budgeted-adc":
+            candidates, probes, visits, exact_bucket_floor_count = budgeted_adc_candidate_union(
+                index, query_codes[row], query_projection[row], centers, ranges, args.soft_candidate_target
             )
         else:
             candidates, probes = candidate_union(index, query_codes[row], ranges, radii)
@@ -346,7 +400,7 @@ def evaluate(args: Any) -> None:
         "calibration_vector_count": len(calibration["train_ids"]),
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
         "code_bits": args.code_bits, "band_count": args.band_count, "band_width_bits": [stop - start for start, stop in ranges], "probe_radius": args.probe_radius, "global_radius": args.global_radius, "band_probe_radii": radii,
-        "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k, "probe_policy": args.probe_policy, "soft_candidate_target": args.soft_candidate_target if args.probe_policy == "budgeted-confidence" else None,
+        "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k, "probe_policy": args.probe_policy, "soft_candidate_target": args.soft_candidate_target if args.probe_policy in ("budgeted-confidence", "budgeted-adc") else None,
         "hamming_policy": args.hamming_policy,
         "calibrated_hamming_weights_sha256": hamming_weights_sha256(hamming_weights) if hamming_weights is not None else None,
         "calibrated_hamming_weight_min": float(numpy.min(hamming_weights)) if hamming_weights is not None else None,
@@ -396,6 +450,18 @@ def self_test() -> int:
     )
     if set(budgeted.tolist()) != {0, 1, 2} or exact_bucket_floor != 3 or budget_probes != 32 or budget_visits != 94:
         print("self-test failed: budgeted confidence exact-bucket lower bound is invalid", file=sys.stderr); return 1
+    adc_probe_codes = numpy.zeros((3, 256), dtype=bool)
+    adc_probe_codes[1, numpy.arange(0, 256, 8)] = True
+    adc_probe_codes[2, numpy.arange(1, 256, 8)] = True
+    adc_probe_index = build_index(adc_probe_codes, budget_ranges)
+    adc_probe_centers = numpy.tile(numpy.asarray([[0.0, 1.0]], dtype=numpy.float32), (256, 1))
+    adc_probe_centers[0] = numpy.asarray([1.0, 0.0], dtype=numpy.float32)
+    adc_probe_centers[1] = numpy.asarray([0.0, 2.0], dtype=numpy.float32)
+    adc_budgeted, adc_budget_probes, _, adc_floor = budgeted_adc_candidate_union(
+        adc_probe_index, adc_probe_codes[0], numpy.zeros(256, dtype=numpy.float32), adc_probe_centers, budget_ranges, 2,
+    )
+    if set(adc_budgeted.tolist()) != {0, 1} or adc_floor != 1 or adc_budget_probes != 33:
+        print("self-test failed: budgeted ADC optional probe ordering is invalid", file=sys.stderr); return 1
     adc_codes = numpy.asarray([[False, False], [True, False], [True, True]], dtype=bool)
     adc_centers = numpy.asarray([[-1.0, 1.0], [-1.0, 1.0]], dtype=numpy.float32)
     adc_order = binary_adc_order(
@@ -439,7 +505,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("evaluate")
     run.add_argument("--calibration-root", type=Path, required=True); run.add_argument("--evaluation-root", type=Path, required=True); run.add_argument("--output", type=Path, required=True); run.add_argument("--contributions-output", type=Path, required=True)
-    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform")
+    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform")
     run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
