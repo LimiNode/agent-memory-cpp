@@ -271,12 +271,21 @@ def budgeted_adc_candidate_union(
         for band, (start, stop) in enumerate(ranges)
         for bit in range(stop - start)
     ]
+    optional_probes = 0
+    optional_visits = 0
     for _, band, bit in sorted(flips):
         if len(selected) >= soft_candidate_target:
             break
         start, _ = ranges[band]
+        before = posting_visits
         add(index[band], band_key(query, start, start + 8) ^ (1 << bit))
-    return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count
+        optional_probes += 1
+        optional_visits += posting_visits - before
+    reason = "candidate" if len(selected) >= soft_candidate_target else "exhausted"
+    return (
+        numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits,
+        exact_bucket_floor_count, [optional_probes, 0, 0], [optional_visits, 0, 0], reason,
+    )
 
 
 def budgeted_adc_best_first_candidate_union(
@@ -505,7 +514,7 @@ def evaluate(args: Any) -> None:
                 index, query_codes[row], query_projection[row], ranges, args.soft_candidate_target, args.soft_posting_visit_target or None
             )
         elif args.probe_policy == "budgeted-adc":
-            candidates, probes, visits, exact_bucket_floor_count = budgeted_adc_candidate_union(
+            candidates, probes, visits, exact_bucket_floor_count, depth_probes, depth_visits, stop_reason = budgeted_adc_candidate_union(
                 index, query_codes[row], query_projection[row], centers, ranges, args.soft_candidate_target
             )
         elif args.probe_policy == "budgeted-adc-best-first":
@@ -637,10 +646,14 @@ def self_test() -> int:
     adc_probe_centers = numpy.tile(numpy.asarray([[0.0, 1.0]], dtype=numpy.float32), (256, 1))
     adc_probe_centers[0] = numpy.asarray([1.0, 0.0], dtype=numpy.float32)
     adc_probe_centers[1] = numpy.asarray([0.0, 2.0], dtype=numpy.float32)
-    adc_budgeted, adc_budget_probes, _, adc_floor = budgeted_adc_candidate_union(
+    adc_budgeted, adc_budget_probes, adc_budget_visits, adc_floor, adc_depth_probes, adc_depth_visits, adc_reason = budgeted_adc_candidate_union(
         adc_probe_index, adc_probe_codes[0], numpy.zeros(256, dtype=numpy.float32), adc_probe_centers, budget_ranges, 2,
     )
-    if set(adc_budgeted.tolist()) != {0, 1} or adc_floor != 1 or adc_budget_probes != 33:
+    if (
+        set(adc_budgeted.tolist()) != {0, 1} or adc_floor != 1 or adc_budget_probes != 33
+        or adc_budget_visits != 33 or adc_depth_probes != [1, 0, 0]
+        or adc_depth_visits != [1, 0, 0] or adc_reason != "candidate"
+    ):
         print("self-test failed: budgeted ADC optional probe ordering is invalid", file=sys.stderr); return 1
     best_first, best_first_probes, best_first_visits, best_first_floor, _, _, _ = budgeted_adc_best_first_candidate_union(
         adc_probe_index, adc_probe_codes[0], numpy.zeros(256, dtype=numpy.float32), adc_probe_centers,

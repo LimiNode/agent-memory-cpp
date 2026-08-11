@@ -47,7 +47,7 @@ def run(args: Any) -> None:
         report.parent.mkdir(parents=True, exist_ok=True); contribution.parent.mkdir(parents=True, exist_ok=True)
         policy = "budgeted-confidence" if row["variant"] == "budgeted-confidence" else "budgeted-adc-best-first"
         command = [str(args.python), str(evaluator), "evaluate", "--calibration-root", str(args.calibration_root), "--evaluation-root", str(args.evaluation_root), "--output", str(report), "--contributions-output", str(contribution), "--code-bits", "256", "--band-count", "32", "--probe-radius", "1", "--probe-policy", policy, "--soft-candidate-target", str(row["candidate"]), "--soft-posting-visit-target", str(row["postings"]), "--hamming-policy", "uniform", "--seed", str(row["seed"]), "--itq-iterations", "50", "--candidate-limit", "512", "--hamming-limit", "768", "--second-limit", "256", "--second-stage", "binary-adc", "--oracle-k", "10"]
-        if policy == "budgeted-adc-best-first": command += ["--soft-posting-visit-target", str(row["postings"]), "--max-probe-bit-flips", row["variant"][-1]]
+        if policy == "budgeted-adc-best-first": command += ["--max-probe-bit-flips", row["variant"][-1]]
         print(f"[{index}/45] {name}", flush=True); subprocess.run(command, check=True, env=env); require(complete(report, contribution, row, calibration, evaluation), f"invalid completed row: {name}")
     require(args.jobs > 0, "job count is invalid")
     with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
