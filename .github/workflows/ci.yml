@@ -113,6 +113,28 @@ jobs:
       - name: Test storage benchmark harness
         run: ctest --test-dir build-mdbx-benchmark --build-config Release --output-on-failure -R agent_memory_mih_storage
 
+  native-mih-benchmark:
+    name: Native MIH benchmark harness
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure native MIH benchmark harness
+        run: >
+          cmake -S . -B build-native-mih
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=ON
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+
+      - name: Build native MIH benchmark harness
+        run: cmake --build build-native-mih --config Release --target agent-memory-mih-native-hot-path
+
+      - name: Test native MIH benchmark harness
+        run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_hot_path
+
   ann-cascade:
     name: ANN cascade harness
     runs-on: ubuntu-latest

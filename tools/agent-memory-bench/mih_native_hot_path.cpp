@@ -419,6 +419,48 @@ void require_guarantee(
            !std::all_of(radius_64.begin() + 1, radius_64.end(), [](int value) { return value == 3; })) {
             throw std::runtime_error("global MIH radius schedule is invalid");
         }
+        Input global_input;
+        global_input.document_count = 2;
+        global_input.query_count = 1;
+        global_input.documents.assign(global_input.document_count * kWordCount, 0);
+        for(std::size_t band = 0; band < 16; ++band) {
+            const auto bit_offset = band * 16;
+            global_input.documents[kWordCount + bit_offset / 64] |= std::uint64_t{0xFU} << (bit_offset % 64);
+        }
+        global_input.queries.assign(kWordCount, 0);
+        CsrIndex global_index(global_input, 16);
+        Config global_config;
+        global_config.band_count = 16;
+        global_config.global_radius = 64;
+        global_config.hamming_limit = 2;
+        QueryDiagnostics global_diagnostics{};
+        const auto global_spans = global_index.spans(global_input.queries.data(), radii_for(global_config), global_diagnostics);
+        std::vector<std::uint32_t> global_candidates;
+        GenerationDeduplicator global_deduplicator(global_input.document_count);
+        global_deduplicator.next_query();
+        for(const auto& span : global_spans) {
+            for(auto position = span.first; position < span.last; ++position) {
+                global_deduplicator.append_unique(global_index.postings()[position], global_candidates);
+            }
+        }
+        if(std::find(global_candidates.begin(), global_candidates.end(), 1U) == global_candidates.end()) {
+            throw std::runtime_error("64-radius global MIH self-test omitted its boundary document");
+        }
+        const auto global_full = full_score(global_input, global_input.queries.data(), computer);
+        require_guarantee(global_full, global_candidates, global_config);
+        QueryDiagnostics radius_three_diagnostics{};
+        const auto radius_three_spans = global_index.spans(global_input.queries.data(), std::vector<int>(16, 3), radius_three_diagnostics);
+        std::vector<std::uint32_t> radius_three_candidates;
+        GenerationDeduplicator radius_three_deduplicator(global_input.document_count);
+        radius_three_deduplicator.next_query();
+        for(const auto& span : radius_three_spans) {
+            for(auto position = span.first; position < span.last; ++position) {
+                radius_three_deduplicator.append_unique(global_index.postings()[position], radius_three_candidates);
+            }
+        }
+        if(std::find(radius_three_candidates.begin(), radius_three_candidates.end(), 1U) != radius_three_candidates.end()) {
+            throw std::runtime_error("64-radius global MIH boundary self-test is not adversarial");
+        }
         std::cout << "native MIH hot-path self-test passed\n";
         return 0;
     } catch(const std::exception& error) {
