@@ -159,6 +159,102 @@ target_link_libraries(agent-memory-hamming-hot-path-bench
         agent_memory::json
 )
 
+if(AGENT_MEMORY_ENABLE_MDBX)
+    set(agent_memory_storage_provenance_authoritative 0)
+    set(agent_memory_storage_provenance_reason "non_pinned_dependency_resolution")
+    set(agent_memory_libmdbx_revision "unavailable")
+    set(agent_memory_mdbx_containers_revision "unavailable")
+    if(AGENT_MEMORY_MDBX_DEPS_MODE STREQUAL "BUNDLED"
+       AND "${AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR}" STREQUAL ""
+       AND EXISTS "${PROJECT_SOURCE_DIR}/external/libmdbx/.git"
+       AND EXISTS "${PROJECT_SOURCE_DIR}/external/mdbx-containers/.git")
+        find_program(agent_memory_storage_git_executable git)
+        if(agent_memory_storage_git_executable)
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/libmdbx rev-parse HEAD
+                OUTPUT_VARIABLE agent_memory_libmdbx_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_libmdbx_revision_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/mdbx-containers rev-parse HEAD
+                OUTPUT_VARIABLE agent_memory_mdbx_containers_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_mdbx_containers_revision_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR} rev-parse HEAD:external/libmdbx
+                OUTPUT_VARIABLE agent_memory_pinned_libmdbx_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_pinned_libmdbx_revision_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR} rev-parse HEAD:external/mdbx-containers
+                OUTPUT_VARIABLE agent_memory_pinned_mdbx_containers_revision
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+                RESULT_VARIABLE agent_memory_pinned_mdbx_containers_revision_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/libmdbx diff --quiet
+                RESULT_VARIABLE agent_memory_libmdbx_worktree_clean_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/libmdbx diff --cached --quiet
+                RESULT_VARIABLE agent_memory_libmdbx_index_clean_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/mdbx-containers diff --quiet
+                RESULT_VARIABLE agent_memory_mdbx_containers_worktree_clean_result
+                ERROR_QUIET
+            )
+            execute_process(
+                COMMAND ${agent_memory_storage_git_executable} -C ${PROJECT_SOURCE_DIR}/external/mdbx-containers diff --cached --quiet
+                RESULT_VARIABLE agent_memory_mdbx_containers_index_clean_result
+                ERROR_QUIET
+            )
+            if(agent_memory_libmdbx_revision_result EQUAL 0
+               AND agent_memory_mdbx_containers_revision_result EQUAL 0
+               AND agent_memory_pinned_libmdbx_revision_result EQUAL 0
+               AND agent_memory_pinned_mdbx_containers_revision_result EQUAL 0
+               AND agent_memory_libmdbx_worktree_clean_result EQUAL 0
+               AND agent_memory_libmdbx_index_clean_result EQUAL 0
+               AND agent_memory_mdbx_containers_worktree_clean_result EQUAL 0
+               AND agent_memory_mdbx_containers_index_clean_result EQUAL 0
+               AND agent_memory_libmdbx_revision STREQUAL agent_memory_pinned_libmdbx_revision
+               AND agent_memory_mdbx_containers_revision STREQUAL agent_memory_pinned_mdbx_containers_revision)
+                set(agent_memory_storage_provenance_authoritative 1)
+                set(agent_memory_storage_provenance_reason "repository_pinned_external_submodules")
+            endif()
+        endif()
+    endif()
+    add_executable(agent-memory-mih-storage-bench
+        mih_storage_benchmark.cpp
+    )
+    agent_memory_set_evaluator_source_manifest(agent-memory-mih-storage-bench
+        "${CMAKE_CURRENT_SOURCE_DIR}/mih_storage_benchmark.cpp"
+    )
+    agent_memory_set_evaluator_build_environment(agent-memory-mih-storage-bench)
+    target_compile_definitions(agent-memory-mih-storage-bench
+        PRIVATE
+            AGENT_MEMORY_LIBMDBX_REVISION="${agent_memory_libmdbx_revision}"
+            AGENT_MEMORY_MDBX_CONTAINERS_REVISION="${agent_memory_mdbx_containers_revision}"
+            AGENT_MEMORY_STORAGE_PROVENANCE_AUTHORITATIVE=${agent_memory_storage_provenance_authoritative}
+            AGENT_MEMORY_STORAGE_PROVENANCE_REASON="${agent_memory_storage_provenance_reason}"
+    )
+    target_link_libraries(agent-memory-mih-storage-bench
+        PRIVATE
+            agent_memory::agent_memory
+            agent_memory::json
+            mdbx_containers::mdbx_containers
+    )
+endif()
+
 add_executable(agent-memory-aggregate-signature-bench
     aggregate_signature.cpp
 )

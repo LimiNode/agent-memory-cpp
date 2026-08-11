@@ -2411,11 +2411,32 @@ brute-force Hamming.
 MDBX requirements remain evidence-gated: descriptor- and scope-scoped keys
 must include code identity, band ordinal and band key; postings must update
 atomically with the signature record; reads need deterministic bounded posting
-pages and candidate deduplication. A dense in-memory directory/CSR form for
-16-bit band keys is a benchmarked alternative to repeated B-tree lookups.
+pages and candidate deduplication. A 2026-08-10 warm-path benchmark on the
+shared 22,607-document ITQ-256 fixture found that a dense in-memory CSR form
+for 16-bit band keys is roughly 29x--42x faster than the deliberately direct
+one-MDBX-key-per-probed-bucket layout at global radii 48/56/64. The evidence
+rules out that naive hot path, not MDBX-backed grouped or batched layouts.
 Index-time radius-one expansion is a separate storage-versus-query challenger;
 larger radii stay query-time multiprobe unless measured evidence justifies the
 posting multiplication.
+
+The next MDBX layout experiment must keep MDBX as the durable,
+transactional, sync-captured source of truth while reducing B-tree operations:
+
+```text
+MDBX durable band/block records -> materialized CSR view -> MIH -> Hamming -> ADC/OPQ -> exact rerank
+```
+
+The predeclared challengers are sorted-cursor batched probes, block-CSR values
+covering 256/1024/4096 adjacent 16-bit buckets, whole-band CSR values, and a
+hydrated whole-CSR read cache. Each must report MDBX get/cursor operations,
+bytes returned and decoded, candidate-union time, file footprint, startup
+hydration, resident RAM, update rewrite amplification, and sync payload per
+atomic document update. A block-CSR primitive is a candidate future
+`mdbx-containers` feature: it should expose block reads and deduplicated
+`get_many()` over block IDs while preserving existing transaction and sync
+semantics; it must not be introduced into this library until independently
+benchmarked.
 
 Faiss `IndexBinaryHash` and `IndexBinaryMultiHash` are useful API references,
 but their implementation is not copied. See the original
