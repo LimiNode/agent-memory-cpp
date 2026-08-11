@@ -1,0 +1,21 @@
+{
+  "evaluation": {
+    "band_count": 32,
+    "band_layouts": ["contiguous", "fixed-random", "calibration-correlation-balanced"],
+    "band_layout_seed": 20260812,
+    "candidate_limit": 512,
+    "code_bits": 256,
+    "hamming_limit": 768,
+    "hamming_policy": "uniform",
+    "itq_iterations": 50,
+    "itq_seeds": [52, 53, 54, 55, 56],
+    "oracle_k": 10,
+    "probe_policy": "budgeted-confidence",
+    "probe_radius": 1,
+    "second_limit": 256,
+    "second_stage": "binary-adc",
+    "soft_candidate_target": 12288
+  },
+  "family": "mih_calibration_balanced_bands_confirmatory_matrix_v1",
+  "schema_version": 1
+}

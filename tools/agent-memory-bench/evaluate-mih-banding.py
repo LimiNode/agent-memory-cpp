@@ -110,15 +110,23 @@ def band_layout_sha256(permutation: Any) -> str:
     return hashlib.sha256(values.tobytes()).hexdigest()
 
 
+def fixed_random_band_permutation(code_bits: int, seed: int) -> numpy.ndarray:
+    if code_bits <= 0 or seed < 0:
+        raise EvaluationError("fixed random band layout arguments are invalid")
+    return numpy.random.default_rng(seed).permutation(code_bits).astype(numpy.intp)
+
+
 def mean_intraband_absolute_correlation(codes: Any, band_count: int) -> float:
     values = numpy.asarray(codes, dtype=numpy.float64)
-    width = values.shape[1] // band_count
     centered = values - values.mean(axis=0)
     scale = numpy.sqrt(numpy.sum(centered * centered, axis=0))
     if numpy.any(scale == 0.0):
         raise EvaluationError("band correlation statistics are invalid")
     correlation = numpy.abs((centered.T @ centered) / numpy.outer(scale, scale))
-    pairs = [correlation[start:stop, start:stop][numpy.triu_indices(width, 1)] for start, stop in band_ranges(values.shape[1], band_count)]
+    pairs = []
+    for start, stop in band_ranges(values.shape[1], band_count):
+        width = stop - start
+        pairs.append(correlation[start:stop, start:stop][numpy.triu_indices(width, 1)])
     return float(numpy.concatenate(pairs).mean())
 
 
@@ -383,6 +391,9 @@ def evaluate(args: Any) -> None:
     band_permutation = numpy.arange(args.code_bits, dtype=numpy.intp)
     if args.band_layout == "calibration-correlation-balanced":
         band_permutation = calibrated_band_permutation(calibration_codes, args.band_count)
+    elif args.band_layout == "fixed-random":
+        band_permutation = fixed_random_band_permutation(args.code_bits, args.band_layout_seed)
+    if args.band_layout != "contiguous":
         calibration_projection = calibration_projection[:, band_permutation]
         document_projection = document_projection[:, band_permutation]
         query_projection = query_projection[:, band_permutation]
@@ -466,6 +477,7 @@ def evaluate(args: Any) -> None:
         "calibrated_hamming_weight_min": float(numpy.min(hamming_weights)) if hamming_weights is not None else None,
         "calibrated_hamming_weight_max": float(numpy.max(hamming_weights)) if hamming_weights is not None else None,
         "band_layout": args.band_layout,
+        "band_layout_seed": args.band_layout_seed if args.band_layout == "fixed-random" else None,
         "band_layout_sha256": band_layout_sha256(band_permutation),
         "mean_intraband_absolute_correlation": mean_intraband_absolute_correlation(calibration_codes, args.band_count),
         "seed": args.seed, "itq_iterations": args.itq_iterations, "query_count": len(data["query_ids"]),
@@ -505,6 +517,12 @@ def self_test() -> int:
     layout = calibrated_band_permutation(layout_codes, 2)
     if layout.shape != (4,) or not numpy.array_equal(numpy.sort(layout), numpy.arange(4)) or not band_layout_sha256(layout):
         print("self-test failed: calibrated band layout is invalid", file=sys.stderr); return 1
+    uneven_codes = numpy.asarray([[False, False, False, False, False], [False, True, False, True, False], [True, False, True, False, True], [True, True, True, True, True]], dtype=bool)
+    if not numpy.isfinite(mean_intraband_absolute_correlation(uneven_codes, 2)):
+        print("self-test failed: uneven band correlation is invalid", file=sys.stderr); return 1
+    random_layout = fixed_random_band_permutation(4, 20260812)
+    if not numpy.array_equal(random_layout, fixed_random_band_permutation(4, 20260812)) or not numpy.array_equal(numpy.sort(random_layout), numpy.arange(4)):
+        print("self-test failed: fixed random band layout is invalid", file=sys.stderr); return 1
     if global_radius_schedule(16, 16) != [1] + [0] * 15:
         print("self-test failed: global radius schedule is invalid", file=sys.stderr); return 1
     budget_codes = numpy.zeros((3, 256), dtype=bool)
@@ -572,7 +590,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("evaluate")
     run.add_argument("--calibration-root", type=Path, required=True); run.add_argument("--evaluation-root", type=Path, required=True); run.add_argument("--output", type=Path, required=True); run.add_argument("--contributions-output", type=Path, required=True)
-    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform"); run.add_argument("--band-layout", choices=("contiguous", "calibration-correlation-balanced"), default="contiguous")
+    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform"); run.add_argument("--band-layout", choices=("contiguous", "fixed-random", "calibration-correlation-balanced"), default="contiguous"); run.add_argument("--band-layout-seed", type=int, default=20260812)
     run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
