@@ -161,10 +161,47 @@ def budgeted_confidence_candidate_union(
     return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count
 
 
-def stable_hamming_order(codes: Any, query: Any, document_ids: Any, candidates: Any | None = None) -> numpy.ndarray:
+def calibrated_hamming_weights(calibration_projection: Any, calibration_codes: Any) -> numpy.ndarray:
+    """Return mean-one bit weights from calibration-only binary centroids.
+
+    A mismatch on a coordinate with farther-apart conditional reconstruction
+    centroids loses more of the projected value than a mismatch on a weak
+    coordinate.  The normalization preserves the scale of ordinary Hamming
+    distance while keeping the learned values independent of held-out queries.
+    """
+    centers = shared.conditional_centers(
+        calibration_projection, calibration_codes.astype(numpy.uint8), 2
+    )
+    weights = numpy.square(centers[:, 1] - centers[:, 0]).astype(numpy.float32)
+    if not numpy.all(numpy.isfinite(weights)) or numpy.any(weights <= 0.0):
+        raise EvaluationError("calibrated Hamming weights are invalid")
+    return (weights / numpy.mean(weights, dtype=numpy.float64)).astype(numpy.float32)
+
+
+def hamming_weights_sha256(weights: Any) -> str:
+    values = numpy.asarray(weights, dtype="<f4")
+    if values.ndim != 1 or not numpy.all(numpy.isfinite(values)):
+        raise EvaluationError("Hamming weight digest input is invalid")
+    return hashlib.sha256(values.tobytes()).hexdigest()
+
+
+def stable_hamming_order(
+    codes: Any,
+    query: Any,
+    document_ids: Any,
+    candidates: Any | None = None,
+    weights: Any | None = None,
+) -> numpy.ndarray:
     if candidates is None:
         candidates = numpy.arange(codes.shape[0], dtype=numpy.int32)
-    distances = numpy.count_nonzero(codes[candidates] != query, axis=1)
+    mismatches = codes[candidates] != query
+    if weights is None:
+        distances = numpy.count_nonzero(mismatches, axis=1)
+    else:
+        values = numpy.asarray(weights, dtype=numpy.float32)
+        if values.shape != (codes.shape[1],) or not numpy.all(numpy.isfinite(values)) or numpy.any(values <= 0.0):
+            raise EvaluationError("Hamming weights are invalid")
+        distances = mismatches @ values
     return candidates[numpy.lexsort((document_ids[candidates], distances))]
 
 
@@ -243,6 +280,9 @@ def evaluate(args: Any) -> None:
     codes = document_projection >= 0.0
     query_codes = query_projection >= 0.0
     centers = shared.conditional_centers(calibration_projection, calibration_codes.astype(numpy.uint8), 2) if args.second_stage == "binary-adc" else None
+    hamming_weights = None
+    if args.hamming_policy == "calibrated-centroid-separation":
+        hamming_weights = calibrated_hamming_weights(calibration_projection, calibration_codes)
     index = build_index(codes, ranges)
     document_ids = data["document_ids"]
     hamming_recall: list[float] = []
@@ -260,7 +300,7 @@ def evaluate(args: Any) -> None:
     oracle_hamming_distance_mean: list[float] = []
     seconds = 0.0
     for row, query_id in enumerate(data["query_ids"]):
-        full_hamming = stable_hamming_order(codes, query_codes[row], document_ids)
+        full_hamming = stable_hamming_order(codes, query_codes[row], document_ids, weights=hamming_weights)
         start = time.perf_counter()
         if args.probe_policy == "budgeted-confidence":
             candidates, probes, visits, exact_bucket_floor_count = budgeted_confidence_candidate_union(
@@ -275,7 +315,7 @@ def evaluate(args: Any) -> None:
                 for key in probe_keys(band_key(query_codes[row], start_bit, stop_bit), stop_bit - start_bit, radius)
             )
             exact_bucket_floor_count = 0
-        restricted = stable_hamming_order(codes, query_codes[row], document_ids, candidates)[:args.hamming_limit]
+        restricted = stable_hamming_order(codes, query_codes[row], document_ids, candidates, hamming_weights)[:args.hamming_limit]
         seconds += time.perf_counter() - start
         candidate_counts.append(int(candidates.size)); probe_counts.append(probes); posting_visits.append(visits); exact_bucket_floor_counts.append(exact_bucket_floor_count); hamming_scores.append(int(candidates.size))
         hamming_recall.append(float(numpy.isin(full_hamming[:args.candidate_limit], restricted[:args.candidate_limit]).sum()) / args.candidate_limit)
@@ -307,6 +347,10 @@ def evaluate(args: Any) -> None:
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
         "code_bits": args.code_bits, "band_count": args.band_count, "band_width_bits": [stop - start for start, stop in ranges], "probe_radius": args.probe_radius, "global_radius": args.global_radius, "band_probe_radii": radii,
         "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k, "probe_policy": args.probe_policy, "soft_candidate_target": args.soft_candidate_target if args.probe_policy == "budgeted-confidence" else None,
+        "hamming_policy": args.hamming_policy,
+        "calibrated_hamming_weights_sha256": hamming_weights_sha256(hamming_weights) if hamming_weights is not None else None,
+        "calibrated_hamming_weight_min": float(numpy.min(hamming_weights)) if hamming_weights is not None else None,
+        "calibrated_hamming_weight_max": float(numpy.max(hamming_weights)) if hamming_weights is not None else None,
         "seed": args.seed, "itq_iterations": args.itq_iterations, "query_count": len(data["query_ids"]),
         "hamming_top_k_recall": float(numpy.mean(hamming_recall)), "exact_top_k_candidate_coverage": float(numpy.mean(e5_coverage)), "reranked_ndcg_at_10": float(numpy.mean(reranked_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_e5_ndcg)),
         "mean_candidates_per_query": float(numpy.mean(candidate_counts)), "mean_exact_bucket_floor_candidates_per_query": float(numpy.mean(exact_bucket_floor_counts)), "mean_bucket_probes_per_query": float(numpy.mean(probe_counts)), "mean_posting_visits_per_query": float(numpy.mean(posting_visits)), "mean_posting_bytes_per_query": float(numpy.mean(posting_visits) * numpy.dtype(numpy.int32).itemsize), "mean_full_hamming_scores_per_query": float(numpy.mean(hamming_scores)),
@@ -363,6 +407,18 @@ def self_test() -> int:
     )
     if adc_order.tolist() != [1, 0, 2]:
         print("self-test failed: binary ADC symbol indexing is invalid", file=sys.stderr); return 1
+    weight_projection = numpy.asarray([[-3.0, -1.0], [-2.0, 1.0], [2.0, -1.0], [3.0, 1.0]], dtype=numpy.float32)
+    weight_codes = weight_projection >= 0.0
+    weights = calibrated_hamming_weights(weight_projection, weight_codes)
+    if weights.shape != (2,) or not numpy.isclose(float(weights.mean()), 1.0) or weights[0] <= weights[1]:
+        print("self-test failed: calibrated Hamming weights are invalid", file=sys.stderr); return 1
+    weighted_order = stable_hamming_order(
+        numpy.asarray([[False, True], [True, False]], dtype=bool),
+        numpy.asarray([False, False], dtype=bool), numpy.asarray(["a", "b"]),
+        weights=numpy.asarray([2.0, 1.0], dtype=numpy.float32),
+    )
+    if weighted_order.tolist() != [0, 1] or not hamming_weights_sha256(weights):
+        print("self-test failed: weighted Hamming order is invalid", file=sys.stderr); return 1
     calibration = {"embedding_identity": {"model": "test"}, "train_ids": ["calibration"], "dimension": 4}
     evaluation = {"embedding_identity": {"model": "test"}, "document_ids": numpy.asarray(["evaluation"]), "dimension": 4}
     validate_roots(calibration, evaluation, 4)
@@ -383,7 +439,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("evaluate")
     run.add_argument("--calibration-root", type=Path, required=True); run.add_argument("--evaluation-root", type=Path, required=True); run.add_argument("--output", type=Path, required=True); run.add_argument("--contributions-output", type=Path, required=True)
-    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0)
+    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform")
     run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
