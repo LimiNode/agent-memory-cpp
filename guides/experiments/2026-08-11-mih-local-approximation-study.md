@@ -147,8 +147,8 @@ per-query contribution NPZ files, 30 deterministic paired 10,000-replicate
 bootstrap reports, compact and bundle manifests, and source snapshots:
 
 ```text
-archive SHA-256: e63255473d98322ddeb576732b9fd81cde87ee4213528ddd6d21b8f549de62f5
-bundle root:     f3a2e2da0cf492c6a1a691f69e62716a7b0a3f6213e3dc4feab4c63a5ab2a590
+archive SHA-256: 2265f5b5b4053d55a2a0457d9930634d35bcf57d5ca7436eea97d485654d41c3
+bundle root:     2239cc357ec03d63bdcb1763e25f66a1227919e5469f5ca1b5ddb356602527a5
 ```
 
 It is staged for the namespaced draft release `evidence/mih-adc-best-first-v2`
