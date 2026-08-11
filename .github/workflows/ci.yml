@@ -170,6 +170,7 @@ jobs:
           python tools/agent-memory-bench/evaluate-mih-adc-ceiling.py self-test &&
           python tools/agent-memory-bench/run-mih-adc-ceiling-matrix.py self-test
           --matrix tools/agent-memory-bench/mih-adc-ceiling.example.json &&
+          python tools/agent-memory-bench/bootstrap-mih-adc-ceiling.py self-test &&
           python tools/agent-memory-bench/run-mih-calibration-balanced-bands-matrix.py self-test
           --matrix tools/agent-memory-bench/mih-calibration-balanced-bands.example.json &&
           python tools/agent-memory-bench/run-mih-budgeted-confidence-matrix.py self-test
