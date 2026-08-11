@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -87,11 +88,11 @@ def run(args: Any) -> None:
     environment = os.environ.copy()
     for variable in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
         environment[variable] = "1"
-    for index, (name, row) in enumerate(matrix_rows, 1):
+    def execute(index: int, name: str, row: dict[str, int | str]) -> None:
         report = args.output_root / "reports" / f"{name}.json"
         contributions = args.output_root / "contributions" / f"{name}.npz"
         if args.resume and row_is_complete(report, contributions, row):
-            continue
+            return
         report.parent.mkdir(parents=True, exist_ok=True)
         contributions.parent.mkdir(parents=True, exist_ok=True)
         command = [
@@ -107,6 +108,18 @@ def run(args: Any) -> None:
         print(f"[{index}/{len(matrix_rows)}] {name}", flush=True)
         subprocess.run(command, check=True, env=environment)
         require(row_is_complete(report, contributions, row), f"evaluator wrote an invalid row: {name}")
+    require(args.jobs > 0, "matrix job count is invalid")
+    if args.jobs == 1:
+        for index, (name, row) in enumerate(matrix_rows, 1):
+            execute(index, name, row)
+        return
+    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as executor:
+        futures = [
+            executor.submit(execute, index, name, row)
+            for index, (name, row) in enumerate(matrix_rows, 1)
+        ]
+        for future in concurrent.futures.as_completed(futures):
+            future.result()
 
 
 def self_test(matrix_path: Path) -> int:
@@ -141,6 +154,7 @@ def main(argv: list[str]) -> int:
     run_parser.add_argument("--evaluation-root", type=Path, required=True)
     run_parser.add_argument("--output-root", type=Path, required=True)
     run_parser.add_argument("--python", type=Path, default=Path(sys.executable))
+    run_parser.add_argument("--jobs", type=int, default=1)
     run_parser.add_argument("--resume", action="store_true")
     test_parser = subparsers.add_parser("self-test")
     test_parser.add_argument("--matrix", type=Path, required=True)
