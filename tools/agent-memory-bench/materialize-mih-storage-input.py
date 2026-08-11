@@ -86,8 +86,11 @@ def materialize(args: Any) -> None:
         numpy.asarray(calibration["train"]), args.code_bits, args.seed, args.itq_iterations
     )
     thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
+    calibration_projection = numpy.asarray(calibration["train"]) @ weights.T + thresholds
     document_codes = numpy.asarray(evaluation["documents"]) @ weights.T + thresholds >= 0.0
     query_codes = numpy.asarray(evaluation["queries"]) @ weights.T + thresholds >= 0.0
+    query_projection = numpy.asarray(evaluation["queries"]) @ weights.T + thresholds
+    centers = shared.conditional_centers(calibration_projection, (calibration_projection >= 0.0).astype(numpy.uint8), 2)
     documents = pack_codes(document_codes, args.code_bits)
     queries = pack_codes(query_codes, args.code_bits)
     document_vectors = pack_vectors(evaluation["documents"], evaluation["dimension"])
@@ -98,10 +101,14 @@ def materialize(args: Any) -> None:
     query_path = output / "query-codes-u64le.bin"
     document_vector_path = output / "document-vectors-f32le.bin"
     query_vector_path = output / "query-vectors-f32le.bin"
+    query_projection_path = output / "query-itq-projections-f32le.bin"
+    centroid_path = output / "itq-binary-adc-centroids-f32le.bin"
     document_path.write_bytes(documents)
     query_path.write_bytes(queries)
     document_vector_path.write_bytes(document_vectors)
     query_vector_path.write_bytes(query_vectors)
+    query_projection_path.write_bytes(pack_vectors(query_projection, args.code_bits))
+    centroid_path.write_bytes(pack_vectors(centers, 2))
     sources = source_files_sha256()
     manifest = {
         "schema_version": 1,
@@ -124,6 +131,11 @@ def materialize(args: Any) -> None:
         "document_vectors_sha256": sha256_file(document_vector_path),
         "query_vectors_file": query_vector_path.name,
         "query_vectors_sha256": sha256_file(query_vector_path),
+        "itq_projection_dimension": args.code_bits,
+        "query_itq_projections_file": query_projection_path.name,
+        "query_itq_projections_sha256": sha256_file(query_projection_path),
+        "binary_adc_centroids_file": centroid_path.name,
+        "binary_adc_centroids_sha256": sha256_file(centroid_path),
         "source_files_sha256": sources,
         "source_bundle_sha256": source_bundle_sha256(sources),
         "runtime": runtime(),

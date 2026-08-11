@@ -45,6 +45,9 @@ struct Input final {
     std::size_t embedding_dimension = 0;
     std::vector<float> document_vectors;
     std::vector<float> query_vectors;
+    std::size_t itq_projection_dimension = 0;
+    std::vector<float> query_projections;
+    std::vector<float> adc_centroids;
     nlohmann::json manifest;
 };
 
@@ -132,6 +135,10 @@ struct Timings final {
     if(result.embedding_dimension == 0) throw std::runtime_error("native MIH input has no dense vector payload");
     result.document_vectors = read_vectors(root / manifest.at("document_vectors_file").get<std::string>(), result.document_count * result.embedding_dimension, required_sha256(manifest, "document_vectors_sha256"));
     result.query_vectors = read_vectors(root / manifest.at("query_vectors_file").get<std::string>(), result.query_count * result.embedding_dimension, required_sha256(manifest, "query_vectors_sha256"));
+    result.itq_projection_dimension = manifest.value("itq_projection_dimension", 0U);
+    if(result.itq_projection_dimension != kCodeBits) throw std::runtime_error("native MIH input has no compatible ITQ projection payload");
+    result.query_projections = read_vectors(root / manifest.at("query_itq_projections_file").get<std::string>(), result.query_count * result.itq_projection_dimension, required_sha256(manifest, "query_itq_projections_sha256"));
+    result.adc_centroids = read_vectors(root / manifest.at("binary_adc_centroids_file").get<std::string>(), result.itq_projection_dimension * 2, required_sha256(manifest, "binary_adc_centroids_sha256"));
     return result;
 }
 
@@ -296,6 +303,22 @@ struct ExactScored final { std::uint32_t position = 0; float similarity = 0.0F; 
     return milliseconds(start, Clock::now());
 }
 
+struct AdcScored final { std::uint32_t position = 0; float distance = 0.0F; };
+[[nodiscard]] bool lower_adc_distance(const AdcScored& left, const AdcScored& right) noexcept { return left.distance == right.distance ? left.position < right.position : left.distance < right.distance; }
+[[nodiscard]] double binary_adc_rerank(const Input& input, const float* query_projection, const std::vector<Scored>& hamming, std::size_t limit, std::size_t& checksum) {
+    const auto start = Clock::now(); std::array<std::array<float, 256>, 32> tables{};
+    for(std::size_t group = 0; group < tables.size(); ++group) for(std::size_t value = 0; value < tables[group].size(); ++value) for(std::size_t offset = 0; offset < 8; ++offset) { const auto bit = group * 8 + offset; const auto symbol = (value >> offset) & 1U; const auto delta = query_projection[bit] - input.adc_centroids[bit * 2 + symbol]; tables[group][value] += delta * delta; }
+    std::vector<AdcScored> scored; scored.reserve(hamming.size());
+    for(const auto& candidate : hamming) {
+        const auto* code = input.documents.data() + static_cast<std::size_t>(candidate.position) * kWordCount; float distance = 0.0F;
+        for(std::size_t group = 0; group < tables.size(); ++group) distance += tables[group][static_cast<std::uint8_t>(code[group / 8] >> ((group % 8) * 8))];
+        scored.push_back({candidate.position, distance});
+    }
+    if(limit < scored.size()) { std::nth_element(scored.begin(), scored.begin() + static_cast<std::ptrdiff_t>(limit), scored.end(), lower_adc_distance); scored.resize(limit); }
+    std::sort(scored.begin(), scored.end(), lower_adc_distance); for(const auto& value : scored) checksum += static_cast<std::size_t>(value.position) + 1U;
+    return milliseconds(start, Clock::now());
+}
+
 [[nodiscard]] bool closer(const Scored& left, const Scored& right) noexcept {
     return left.distance == right.distance ? left.position < right.position : left.distance < right.distance;
 }
@@ -422,6 +445,10 @@ void require_guarantee(
         input.embedding_dimension = 2;
         input.document_vectors = {1.0F, 0.0F, 0.0F, 1.0F, -1.0F, 0.0F, 0.0F, -1.0F};
         input.query_vectors = {1.0F, 0.0F, 0.0F, 1.0F};
+        input.itq_projection_dimension = kCodeBits;
+        input.query_projections.assign(input.query_count * kCodeBits, 0.0F);
+        input.adc_centroids.resize(kCodeBits * 2);
+        for(std::size_t bit = 0; bit < kCodeBits; ++bit) input.adc_centroids[bit * 2 + 1] = 1.0F;
         CsrIndex index(input, 32);
         Config config;
         config.band_count = 32;
@@ -446,6 +473,10 @@ void require_guarantee(
         const auto vector_computer = agent_memory::VectorSimilarityComputer(false);
         if(exact_rerank(input, input.query_vectors.data(), first_selected, 3, vector_computer, rerank_checksum) < 0.0 || rerank_checksum == 0) {
             throw std::runtime_error("exact rerank self-test is invalid");
+        }
+        std::size_t adc_checksum = 0;
+        if(binary_adc_rerank(input, input.query_projections.data(), first_selected, 3, adc_checksum) < 0.0 || adc_checksum == 0) {
+            throw std::runtime_error("binary ADC rerank self-test is invalid");
         }
         const auto full = full_score(input, input.queries.data(), computer);
         std::vector<std::uint32_t> all_positions{0, 1, 2, 3};
@@ -518,6 +549,7 @@ void require_guarantee(
     query_positions.resize(config.query_count);
     std::vector<double> probes_samples, traversal_samples, dedup_samples, hamming_samples, top_samples, total_samples;
     std::vector<std::vector<double>> exact_samples(config.exact_rerank_limits.size());
+    std::vector<std::vector<double>> adc_samples(config.exact_rerank_limits.size());
     const auto vector_computer = agent_memory::VectorSimilarityComputer();
     QueryDiagnostics expected{};
     for(std::size_t repeat = 0; repeat < config.repeat_count; ++repeat) {
@@ -539,7 +571,11 @@ void require_guarantee(
             aggregate_diagnostics.unique_candidates += current.unique_candidates;
             aggregate_diagnostics.candidate_checksum += current.candidate_checksum;
             std::size_t checksum = 0;
-            for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) exact_samples[limit_index].push_back(exact_rerank(input, input.query_vectors.data() + position * input.embedding_dimension, selected, config.exact_rerank_limits[limit_index], vector_computer, checksum));
+            for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) {
+                const auto limit = config.exact_rerank_limits[limit_index];
+                adc_samples[limit_index].push_back(binary_adc_rerank(input, input.query_projections.data() + position * input.itq_projection_dimension, selected, limit, checksum));
+                exact_samples[limit_index].push_back(exact_rerank(input, input.query_vectors.data() + position * input.embedding_dimension, selected, limit, vector_computer, checksum));
+            }
         }
         if(repeat == 0) expected = aggregate_diagnostics;
         else if(expected.bucket_probes != aggregate_diagnostics.bucket_probes || expected.posting_visits != aggregate_diagnostics.posting_visits || expected.unique_candidates != aggregate_diagnostics.unique_candidates || expected.candidate_checksum != aggregate_diagnostics.candidate_checksum) throw std::runtime_error("native MIH warm repeats differ in candidate union");
@@ -615,10 +651,15 @@ void require_guarantee(
             {"candidate_generator_to_hamming_top_k_total", median(total_samples)},
         }},
         {"exact_rerank_ms_per_query_median", nlohmann::json::object()},
+        {"binary_adc_ms_per_query_median", nlohmann::json::object()},
         {"hamming_top_k_recall", hamming_recall_sum / divisor},
-        {"timing_scope", "warm direct-address CSR bucket spans, posting copy, generation-array deduplication, full Hamming over unique candidates, stable top-k, and in-memory exact E5 dot-product rerank for each reported K2; excludes query encoding, ADC, full-corpus oracle, cold-cache I/O, and process-wide memory"},
+        {"timing_scope", "warm direct-address CSR bucket spans, posting copy, generation-array deduplication, full Hamming over unique candidates, stable top-k, binary ADC over the Hamming K1 shortlist for each reported K2, and in-memory exact E5 dot-product rerank; excludes query encoding, full-corpus oracle, cold-cache I/O, and process-wide memory"},
     };
-    for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) report["exact_rerank_ms_per_query_median"][std::to_string(config.exact_rerank_limits[limit_index])] = median(exact_samples[limit_index]);
+    for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) {
+        const auto key = std::to_string(config.exact_rerank_limits[limit_index]);
+        report["binary_adc_ms_per_query_median"][key] = median(adc_samples[limit_index]);
+        report["exact_rerank_ms_per_query_median"][key] = median(exact_samples[limit_index]);
+    }
     std::ofstream output(report_path);
     if(!output) throw std::runtime_error("cannot write native MIH report");
     output << report.dump(2) << '\n';
