@@ -276,6 +276,7 @@ def evaluate(args: Any) -> None:
             exact_scores = documents[second] @ queries[row]
             rerank = second[numpy.lexsort((document_ids[second], -exact_scores))]
             exact_elapsed = time.perf_counter() - exact_start
+            cascade_elapsed = time.perf_counter() - total_start
             full_scores = documents @ queries[row]
             exact_order = numpy.lexsort((document_ids, -full_scores))
             candidate_coverage.append(float(numpy.isin(exact_order[:config["oracle_k"]], candidates).sum()) / config["oracle_k"])
@@ -286,7 +287,7 @@ def evaluate(args: Any) -> None:
             hamming_ms.append(hamming_elapsed * 1000.0)
             adc_ms.append(adc_elapsed * 1000.0)
             exact_ms.append(exact_elapsed * 1000.0)
-            total_ms.append((time.perf_counter() - total_start) * 1000.0)
+            total_ms.append(cascade_elapsed * 1000.0)
     source_files = source_files_sha256()
     contribution_identity = shared.contribution_identity(data, config["candidate_limit"], config["oracle_k"])
     per_query = len(data["query_ids"])
@@ -345,7 +346,7 @@ def evaluate(args: Any) -> None:
     args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
-def self_test() -> int:
+def self_test(external: bool = False) -> int:
     values = numpy.asarray([[False] * 256, [True] + [False] * 255], dtype=bool)
     packed = packed_codes(values)
     if packed.shape != (2, 32) or packed[1, 0] != 1:
@@ -367,6 +368,14 @@ def self_test() -> int:
     if set(files) != {Path(__file__).name, "evaluate-mih-banding.py", "evaluate-projection-quantization.py", "requirements-ann-cascade-comparison.txt"}:
         print("self-test failed: source bundle is incomplete", file=sys.stderr)
         return 1
+    if external:
+        config = {"hnsw": {"connectivity": 2, "ef_construction": 4, "ef_search": 2, "build_seed": 20260810}, "candidate_limit": 2, "thread_count": 1, "mih": {"band_count": 16, "global_radius": 0}}
+        byte_codes = packed_codes(values)
+        for builder, input_values in ((build_faiss_binary, byte_codes), (build_usearch_binary, byte_codes), (build_faiss_float, numpy.zeros((2, 256), dtype=numpy.float32))):
+            search, _ = builder(input_values, config)
+            if search(input_values[0]).size == 0:
+                print("self-test failed: external ANN search returned no candidates", file=sys.stderr)
+                return 1
     print("ANN cascade comparison self-test passed")
     return 0
 
@@ -380,11 +389,11 @@ def main(argv: list[str]) -> int:
     run.add_argument("--evaluation-root", type=Path, required=True)
     run.add_argument("--output", type=Path, required=True)
     run.add_argument("--contributions-output", type=Path, required=True)
-    subparsers.add_parser("self-test")
+    test = subparsers.add_parser("self-test"); test.add_argument("--external", action="store_true")
     args = parser.parse_args(argv)
     try:
         if args.command == "self-test":
-            return self_test()
+            return self_test(args.external)
         evaluate(args)
     except (EvaluationError, OSError, ValueError, json.JSONDecodeError) as error:
         print(f"evaluate-ann-cascade: {error}", file=sys.stderr)

@@ -41,9 +41,12 @@ The initial matrix is deliberately small:
 | Faiss float | `IndexHNSWFlat` with inner product on normalized E5 | same `M`, construction and search breadth; build seed 20260810 |
 
 For binary cascades, ADC shortlist limits 128 and 256 are measured.  ITQ seeds
-42--46 are independent repetitions.  Retrieval quality is never used to
-choose an ITQ rotation, an MIH radius, or an HNSW parameter; the table records
-the predeclared frontier.  The machine-readable expansion contract is
+42--46 are independent repetitions of the binary code.  The float-HNSW rows
+are rerun against each corresponding seed as matched controls, but are not
+independent float-algorithm repetitions because they do not consume an ITQ
+code.  Retrieval quality is never used to choose an ITQ rotation, an MIH
+radius, or an HNSW parameter; the table records the predeclared frontier.  The
+machine-readable expansion contract is
 [`2026-08-10-ann-cascade-comparison-matrix-v1.json`](2026-08-10-ann-cascade-comparison-matrix-v1.json).
 
 ## Metrics and timing scope
@@ -54,6 +57,13 @@ build time, and candidate-generator/cascade p50 and p95.  Binary candidate
 generator time is followed by the common Hamming/ADC/exact stages; query ITQ
 projection and full-corpus oracle construction are excluded because they are
 shared or diagnostic work rather than index-specific latency.
+
+Timing is a Python reference-harness comparison: MIH uses the deliberately
+transparent Python/NumPy reference while Faiss and USearch use their native
+bindings.  It is useful for regression detection and for locating the next
+implementation question, but is not a production MIH-versus-native-HNSW
+latency verdict.  A production comparison requires the planned C++ MIH/block-
+CSR challenger under the same timing protocol.
 The final matrix fixes one compute thread for NumPy/BLAS and Faiss; the runner
 also sets `OMP_NUM_THREADS`, `OPENBLAS_NUM_THREADS`, `MKL_NUM_THREADS` and
 `NUMEXPR_NUM_THREADS` to `1` before starting each evaluator subprocess.
@@ -75,21 +85,31 @@ paired bootstrap and evidence archive remain pending.
 
 ## Result
 
-The complete 130-row matrix completed with all five ITQ seeds.  On the fixed
-256-candidate ADC-256 profile, current MIH at global radius 64 reached mean
-nDCG@10 `0.79536` and exact-E5 top-10 coverage `0.95361`.  Faiss binary HNSW
-(`M=16`, `efSearch=512`) reached `0.80085` / `0.98836`; USearch binary HNSW on
-the same profile reached `0.79625` / `0.98136`.  Faiss float HNSW approached
-the E5 oracle (`0.80118` / `0.99968`).
+The corrected complete 130-row matrix completed with all five ITQ seeds.  On
+the fixed 256-candidate ADC-256 profile, current MIH at global radius 64
+reached mean nDCG@10 `0.79536` and exact-E5 top-10 coverage `0.95361`.  Faiss
+binary HNSW (`M=16`, `efSearch=512`) reached `0.80085` / `0.98835`; USearch
+binary HNSW on the same profile reached `0.79827` / `0.98224`.  Faiss float
+HNSW approached the E5 oracle (`0.80118` / `0.99968`).
+
+The same reference harness measured median/p95 cascade times per query of
+`21.88` / `25.42` ms for MIH r64, `3.64` / `4.05` ms for Faiss binary,
+`4.11` / `4.76` ms for USearch binary, and `3.23` / `3.74` ms for Faiss float.
+These numbers intentionally exclude shared ITQ query projection and the
+full-corpus E5 oracle, but remain harness diagnostics rather than a production
+latency frontier because the MIH implementation is Python reference code.
 
 The paired bootstrap reports are descriptive fixed-profile comparisons, not a
-post-hoc choice of one matrix row as the universal winner.  They show a stable
-candidate-coverage advantage for Faiss binary HNSW over MIH, while final nDCG
-differences are materially smaller.  The evidence archive is
-`ann-cascade-evidence-v3.zip`, SHA-256
-`ddfec446db27e877155da5b7f7698b6478b61759fc98e658611d16813c29196c`, with
+post-hoc choice of one matrix row as the universal winner.  They are
+fail-closed bound to their declared per-seed contribution endpoints, exact
+comparison identifiers, 10,000 replicates, bootstrap seed, contribution
+identity, and bootstrap source hashes.  They show a stable candidate-coverage
+advantage for Faiss binary HNSW over MIH, while final nDCG differences are
+materially smaller.  The corrected evidence archive is
+`ann-cascade-evidence-v5.zip`, SHA-256
+`5b44f322bbc6dd8f98756d497ffa81adf22390896c91019ead43c96f54e21b64`, with
 bundle-root SHA-256
-`b4604252e71222d1d0d7fdf33b6e72b7d7ae4b047373678c36080dd725cefa90`.
+`cd2b6eceb3c3eacc94103d0f89b833b8212b3899dcfab8e72838d085fe54aa17`.
 
 This rules out neither compact MIH nor a future MIH improvement.  It supports
 the narrower conclusion that the tested fixed-radius candidate policy, not
