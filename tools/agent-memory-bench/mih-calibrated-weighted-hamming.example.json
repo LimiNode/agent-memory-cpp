@@ -1,0 +1,19 @@
+{
+  "evaluation": {
+    "band_count": 32,
+    "candidate_limit": 512,
+    "code_bits": 256,
+    "hamming_limit": 768,
+    "hamming_policies": ["uniform", "calibrated-centroid-separation"],
+    "itq_iterations": 50,
+    "itq_seeds": [42, 43, 44, 45, 46],
+    "oracle_k": 10,
+    "probe_policy": "budgeted-confidence",
+    "probe_radius": 1,
+    "second_limit": 256,
+    "second_stage": "binary-adc",
+    "soft_candidate_target": 12288
+  },
+  "family": "mih_calibrated_weighted_hamming_matrix_v1",
+  "schema_version": 1
+}
