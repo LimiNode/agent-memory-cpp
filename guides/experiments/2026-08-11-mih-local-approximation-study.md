@@ -142,16 +142,19 @@ it loses after binary ADC at 8,192 and 12,288, while the apparent advantage at
 exhausted one-bit buckets. It is a no-go for this particular bounded
 approximation, not for broader query-adaptive multiprobe research.
 
-The validated v2 evidence bundle contains the frozen matrix, 45 reports, 45
+The validated v3 evidence bundle contains the frozen matrix, 45 reports, 45
 per-query contribution NPZ files, 30 deterministic paired 10,000-replicate
-bootstrap reports, compact and bundle manifests, and source snapshots:
+bootstrap reports, compact and bundle manifests, and source snapshots. The
+contributions retain per-query probe-depth, posting-depth, and stopping-reason
+values; the packager independently recomputes the corresponding report
+summaries from them.
 
 ```text
-archive SHA-256: 2265f5b5b4053d55a2a0457d9930634d35bcf57d5ca7436eea97d485654d41c3
-bundle root:     2239cc357ec03d63bdcb1763e25f66a1227919e5469f5ca1b5ddb356602527a5
+archive SHA-256: fbe00f2e56ac7c45aaa9eb75c24def7681e6cb6c31c1b2dfe6efc2e119925b7e
+bundle root:     bfccac59f193cf87adb72ba2c4c3755431132a9aeacde16e5bf56c62c9bd7883
 ```
 
-It is staged for the namespaced draft release `evidence/mih-adc-best-first-v2`
+It is staged for the namespaced draft release `evidence/mih-adc-best-first-v3`
 and is not committed to Git. At larger corpus scales, the same variants should
 also be judged by posting bytes, bucket-tail behaviour, and latency, not only
 final E5 survival.
