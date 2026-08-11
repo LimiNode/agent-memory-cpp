@@ -77,11 +77,10 @@ integration.
 
 ## Preliminary implementation check
 
-The evaluator has successfully exercised all four paths once on the full
-fixture: MIH-256, Faiss binary HNSW, USearch binary HNSW and Faiss float HNSW.
-Those one-pass values are smoke validation only and are intentionally not
-interpreted as the experiment result.  The full predeclared multi-seed matrix,
-paired bootstrap and evidence archive remain pending.
+Before the full matrix run, the evaluator exercised all four paths once on the
+full fixture: MIH-256, Faiss binary HNSW, USearch binary HNSW and Faiss float
+HNSW.  Those one-pass values were smoke validation only and were intentionally
+not interpreted as the experiment result.
 
 ## Result
 
