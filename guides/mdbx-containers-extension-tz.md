@@ -94,20 +94,45 @@
 
 ### 1.5. Upstream sync subsystem (informational)
 
-#### 1.5.1 Purpose
+#### 1.5.1 Historical snapshot and current mapping
 
-Этот раздел носит **чисто информационный характер** на момент написания ТЗ.
-Последний проверенный локальный upstream checkout: `E:\_repoz\mdbx-containers`,
-commit `be72a2bd0e598f87a6ccfc26db0a1ce368b23670`
-(`docs(sync): clarify VectorStore raw replication boundary`).
-Это reference snapshot для planning/compatibility review; он не меняет gitlink
-`external/mdbx-containers` и не означает formal sync adoption этим PR.
-Цель раздела — зафиксировать состояние upstream sync v0.1 / logical-adapter
-surface в этом ТЗ, чтобы будущие ревизии не дрифтовали относительно фактической
-поверхности API. Никакие изменения в текущих DBIs секции 5 не подразумеваются;
-фиксация adoption — отдельный вопрос §11.7.
+> **Historical only.** The detailed sync description in §§1.5.2--1.5.10 was
+> recorded against `be72a2bd0e598f87a6ccfc26db0a1ce368b23670`
+> (`docs(sync): clarify VectorStore raw replication boundary`). It remains a
+> planning record, not the current or authoritative upstream support matrix.
+> It does not change the `external/mdbx-containers` gitlink, adopt sync for
+> this project, or modify any DBI in §5.
 
-#### 1.5.2 Source attribution policy
+The current upstream reference is
+[`LimiNode/mdbx-containers:main`](https://github.com/LimiNode/mdbx-containers/tree/main),
+verified on 2026-08-10 at
+`56a025cf9f30e271122efc10a02fbe40218228ad` after merges
+[#295](https://github.com/LimiNode/mdbx-containers/pull/295),
+[#296](https://github.com/LimiNode/mdbx-containers/pull/296), and
+[#297](https://github.com/LimiNode/mdbx-containers/pull/297).
+
+**Current capability mapping (upstream capability, not downstream adoption):**
+
+- ordered logical delivery and the receiver-bound delivery protocol are
+  available;
+- `DirectSyncPeer` provides logical-aware recovery;
+- raw `CompleteUserDatabase` recovery fails closed when persistent logical-sync
+  state is present;
+- logical-aware recovery has structural materialization-accounting bounds;
+- HTTP and WebSocket transports do not yet provide logical-aware recovery,
+  because a bounded wire codec for `LogicalRecoveryBaseline` has not been
+  introduced;
+- `VectorStoreLogicalAdapter` is suitable for one authoritative or externally
+  serialized writer. It does not provide independent multi-writer allocation,
+  conflict resolution, or a global vector-identity model.
+
+The sync contracts above belong to upstream `mdbx-containers`. `KnowledgeUnit`,
+`QAPair`, provenance, model identity, and policy remain owned by
+`agent-memory-cpp`. A future vector backend or multi-writer vector replication
+is separate benchmark-backed work, not an already implemented downstream
+capability.
+
+#### 1.5.2 Historical source attribution policy
 
 Поскольку upstream `mdbx-containers` не публикует RFC / спецификации отдельно от кода, в этом разделе используется **двухуровневая citation pattern**:
 
@@ -116,7 +141,7 @@ surface в этом ТЗ, чтобы будущие ревизии не дриф
 
 Никакие URL, arXiv ID, или DOI не публикуются без верификации; если источника нет — пишем «нет публичного источника» и приводим internal anchor.
 
-#### 1.5.3 Upstream `sync` v0.1 — файлы
+#### 1.5.3 Historical upstream `sync` v0.1 — файлы
 
 Директория: `include/mdbx_containers/sync/` в указанном выше upstream snapshot-е. Состав:
 
@@ -142,7 +167,7 @@ sync-функционала требует явного `-DMDBXC_SYNC_ENABLED=1`
 
 Public first-class упоминания sync subsystem в PR descriptions — это GitHub PR #86–#105 (chronologically; детали в §1.5.8). PR #104 и PR #105 уже merged на момент этого snapshot-а; transport DTO codec и HTTP adapter seam входят в v0.1.
 
-#### 1.5.4 v0.1 support matrix
+#### 1.5.4 Historical v0.1 support matrix
 
 Sync v0.1 покрывает wire-format round-trip только для определённых table types upstream:
 
@@ -160,7 +185,7 @@ Sync v0.1 покрывает wire-format round-trip только для опре
 
 Покрытие для любого table type, не перечисленного как «Supported», считается **out of v0.1 scope**; см. §5.6 для влияния на DBI-схему настоящего проекта.
 
-#### 1.5.5 Wire format locks (по `DESIGN.md`)
+#### 1.5.5 Historical wire format locks (по `DESIGN.md`)
 
 Locked decisions, цитаты согласно `include/mdbx_containers/sync/DESIGN.md`:
 
@@ -173,7 +198,7 @@ Locked decisions, цитаты согласно `include/mdbx_containers/sync/DE
 
 Эти решения считаются **locked** до появления отдельного `DESIGN.md` update-а; пересмотр требует явного bump-а версии wire format.
 
-#### 1.5.6 Lifecycle state machine (по `SyncWorker.hpp`)
+#### 1.5.6 Historical lifecycle state machine (по `SyncWorker.hpp`)
 
 `SyncWorker` реализует явный state machine для фонового pull/apply:
 
@@ -207,7 +232,7 @@ errors. Foreground `run_once()` имеет другую семантику: об
 round возвращает result с `ok=false` и переводит worker в `Failed`, потому что
 одноразовый вызов не имеет фонового retry loop.
 
-#### 1.5.7 Conflict reasons (по `SyncEngine.hpp`)
+#### 1.5.7 Historical conflict reasons (по `SyncEngine.hpp`)
 
 Возвращаемое значение `ApplyResult`:
 
@@ -248,7 +273,7 @@ submodule-pointer-а `e9e9f2f`. Это не полный changelog и не sourc
 Точный per-PR breakdown отложен до формальной adoption (§11.7); этот раздел
 сохраняет только исторический контекст.
 
-#### 1.5.9 Transport status after PR #104–#105
+#### 1.5.9 Historical transport status after PR #104–#105
 
 - **Direct peer** — `DirectSyncPeer` остаётся единственным полностью in-process peer.
 - **HTTP seam** — `HttpSyncPeer`, `IHttpSyncClient`, `HttpSyncServer` и `HttpSyncRoutes` задают route/content-type/body/status mapping поверх `TransportMessageCodec`, но не открывают sockets и не зависят от конкретного HTTP framework.
@@ -256,9 +281,14 @@ submodule-pointer-а `e9e9f2f`. Это не полный changelog и не sourc
 - **Optional examples** — socket-backed HTTP/WebSocket examples существуют как examples, но production-grade concrete socket transport библиотека не навязывает.
 - **Middleware** — transport middleware покрывает allow-list policies, fixed-budget rate limiting, HTTP request context, bearer token / remote address policies, WebSocket session identity и retry status classification.
 
-Следствие для `agent-memory-cpp`: HTTP/WebSocket adapter seams больше не являются upstream blocker-ом сами по себе. Adoption всё равно откладывается из-за coverage gap по `KeyMultiValueTable` / `AnyValueTable` и отсутствия multi-host scope-routing requirement для M0/M1/M2 (§11.7).
+Historical consequence only: HTTP/WebSocket adapter seams were no longer an
+upstream blocker by themselves. The current mapping in §1.5.1 supersedes that
+statement for logical-aware recovery: HTTP/WebSocket still lack the bounded
+`LogicalRecoveryBaseline` wire codec. Adoption remains deferred because of the
+coverage gap for `KeyMultiValueTable` / `AnyValueTable` and the absence of a
+multi-host scope-routing requirement for M0/M1/M2 (§11.7).
 
-#### 1.5.10 System DBIs и `max_dbs` budget
+#### 1.5.10 Historical system DBIs и `max_dbs` budget
 
 System DBI budget привязан к pinned upstream snapshot-у, а не к числу,
 записанному в этом TZ. Snapshot `be72a2b` использует следующий manifest:
@@ -2507,10 +2537,16 @@ The currently permitted deployment modes are:
    collection name, descriptor/schema version, metric, dimension,
    normalization, embedding codec and model identity. A mismatch fails closed.
 3. **MultiWriterLogicalReplication (deferred, M2+).** This is not enabled by
-   raw replication. It requires a separately designed upstream logical adapter
-   with global vector-record identity, a persistent collection descriptor,
-   owned-DBI manifest, typed add/update/delete/clear frames, atomic outbox
-   capture/delivery, and explicit ordering/conflict rules.
+   raw replication or by the current `VectorStoreLogicalAdapter`. It requires
+   independent multi-writer allocation, global vector-record identity, a
+   persistent collection descriptor, owned-DBI manifest, typed
+   add/update/delete/clear frames, atomic outbox capture/delivery, and explicit
+   ordering/conflict rules.
+
+The current upstream adapter is useful only when one authoritative or
+externally serialized writer owns a collection. This is an upstream sync
+capability boundary, not a `KnowledgeUnit`/`QAPair` replication design: the
+application retains provenance, model, descriptor, and policy ownership.
 
 The M2+ work starts only after a product requirement for independently
 writable replicas exists, for example offline workspace merge, a collaborative
