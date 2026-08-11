@@ -1,6 +1,6 @@
 # One-bit ADC-guided MIH probe ordering
 
-Date: 2026-08-12. Context: PR #124, ADC-guided probing matrix.
+Date: 2026-08-11. Context: PR #124, ADC-guided probing matrix.
 
 ## Question and frozen setup
 
