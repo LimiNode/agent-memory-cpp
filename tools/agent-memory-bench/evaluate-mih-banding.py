@@ -556,7 +556,7 @@ def evaluate(args: Any) -> None:
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
         "code_bits": args.code_bits, "band_count": args.band_count, "band_width_bits": [stop - start for start, stop in ranges], "probe_radius": args.max_probe_bit_flips if args.probe_policy == "budgeted-adc-best-first" else args.probe_radius, "base_probe_radius": args.probe_radius, "global_radius": args.global_radius, "band_probe_radii": [args.max_probe_bit_flips] * args.band_count if args.probe_policy == "budgeted-adc-best-first" else radii,
         "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k, "probe_policy": args.probe_policy, "soft_candidate_target": args.soft_candidate_target if args.probe_policy in ("budgeted-confidence", "budgeted-adc", "budgeted-adc-best-first") else None,
-        "soft_posting_visit_target": args.soft_posting_visit_target if args.probe_policy == "budgeted-adc-best-first" else None,
+        "soft_posting_visit_target": args.soft_posting_visit_target if args.probe_policy in ("budgeted-confidence", "budgeted-adc-best-first") else None,
         "max_probe_bit_flips": args.max_probe_bit_flips if args.probe_policy == "budgeted-adc-best-first" else None,
         "hamming_policy": args.hamming_policy,
         "calibrated_hamming_weights_sha256": hamming_weights_sha256(hamming_weights) if hamming_weights is not None else None,
