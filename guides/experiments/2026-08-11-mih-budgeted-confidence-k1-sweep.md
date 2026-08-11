@@ -55,7 +55,7 @@ only the second stage.
 
 At the 12,288 target, paired ADC-survival deltas versus K1=512 are +.003051
 for K1=768, +.004681 for K1=1,024, and +.005687 for K1=1,536. The smallest
-tested shortlist that exceeds the predeclared `.985` operating threshold is
+tested shortlist that exceeds the previously chosen `.985` operating threshold is
 therefore **soft target 12,288 with Hamming K1=768 and ADC K2=256**.
 
 ## Interpretation
