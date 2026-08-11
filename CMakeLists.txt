@@ -158,6 +158,10 @@ if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
+            NAME agent_memory_mih_native_hot_path_self_test
+            COMMAND agent-memory-mih-native-hot-path --self-test
+        )
+        add_test(
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
             COMMAND agent-memory-standard-binary-eval --self-test
         )
