@@ -13,6 +13,11 @@ the primary quality metric.
 The retained evidence archive contains 30 reports and per-query contribution
 files, plus 15 source-bound paired 10,000-replicate bootstraps.
 
+```text
+archive SHA-256: 9941e48966cf613467c98af19c32ed740992808bea641f32080f6481b3714036
+bundle root:     501b3556429d06abde8bab40c77b3d048a17dc46efeb1cadecb47385d0741cf8
+```
+
 ## Result
 
 At target 8,192, ADC-guided ordering changes mean ADC survival from `0.960176`
