@@ -187,7 +187,8 @@ def budgeted_confidence_candidate_union(
     query_projection: Any,
     ranges: list[tuple[int, int]],
     soft_candidate_target: int,
-) -> tuple[numpy.ndarray, int, int, int]:
+    soft_posting_visit_target: int | None = None,
+) -> tuple[numpy.ndarray, int, int, int, list[int], list[int], str]:
     """Probe exact 32x8 buckets, then one-bit buckets until a soft target.
 
     The exact-bucket union is mandatory and can exceed ``soft_candidate_target``.
@@ -216,12 +217,16 @@ def budgeted_confidence_candidate_union(
         for band, (start, stop) in enumerate(ranges)
         for bit in range(stop - start)
     ]
+    optional_probes = 0; optional_visits = 0
     for _, band, bit in sorted(flips):
-        if len(selected) >= soft_candidate_target:
+        if len(selected) >= soft_candidate_target or (soft_posting_visit_target is not None and posting_visits >= soft_posting_visit_target):
             break
         start, stop = ranges[band]
+        before = posting_visits
         add(index[band], band_key(query, start, stop) ^ (1 << bit))
-    return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count
+        optional_probes += 1; optional_visits += posting_visits - before
+    reason = "candidate" if len(selected) >= soft_candidate_target else "posting" if soft_posting_visit_target is not None and posting_visits >= soft_posting_visit_target else "exhausted"
+    return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count, [optional_probes, 0, 0], [optional_visits, 0, 0], reason
 
 
 def budgeted_adc_candidate_union(
@@ -231,7 +236,7 @@ def budgeted_adc_candidate_union(
     centers: Any,
     ranges: list[tuple[int, int]],
     soft_candidate_target: int,
-) -> tuple[numpy.ndarray, int, int, int]:
+) -> tuple[numpy.ndarray, int, int, int, list[int], list[int], str]:
     """Probe exact buckets then least-cost one-bit ADC alternatives.
 
     The policy is intentionally restricted to the same 32x8, radius-one
@@ -326,11 +331,15 @@ def budgeted_adc_best_first_candidate_union(
             for positions in itertools.combinations(range(stop - start), count):
                 mask = sum(1 << position for position in positions)
                 heapq.heappush(frontier, (sum(deltas[position] for position in positions), count, band, mask))
+    depth_probes = [0, 0, 0]; depth_visits = [0, 0, 0]
     while frontier and len(selected) < soft_candidate_target and posting_visits < soft_posting_visit_target:
-        _, _, band, mask = heapq.heappop(frontier)
+        _, count, band, mask = heapq.heappop(frontier)
         start, stop = ranges[band]
+        before = posting_visits
         add(index[band], band_key(query, start, stop) ^ mask)
-    return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count
+        depth_probes[count - 1] += 1; depth_visits[count - 1] += posting_visits - before
+    reason = "candidate" if len(selected) >= soft_candidate_target else "posting" if posting_visits >= soft_posting_visit_target else "exhausted"
+    return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count, depth_probes, depth_visits, reason
 
 
 def calibrated_hamming_weights(calibration_projection: Any, calibration_codes: Any) -> numpy.ndarray:
@@ -486,20 +495,21 @@ def evaluate(args: Any) -> None:
     hamming_oracle_coverage: list[float] = []
     second_oracle_coverage: list[float] = []
     oracle_hamming_distance_mean: list[float] = []
+    probe_depths: list[list[int]] = []; posting_depths: list[list[int]] = []; stop_reasons: list[str] = []
     seconds = 0.0
     for row, query_id in enumerate(data["query_ids"]):
         full_hamming = stable_hamming_order(codes, query_codes[row], document_ids, weights=hamming_weights)
         start = time.perf_counter()
         if args.probe_policy == "budgeted-confidence":
-            candidates, probes, visits, exact_bucket_floor_count = budgeted_confidence_candidate_union(
-                index, query_codes[row], query_projection[row], ranges, args.soft_candidate_target
+            candidates, probes, visits, exact_bucket_floor_count, depth_probes, depth_visits, stop_reason = budgeted_confidence_candidate_union(
+                index, query_codes[row], query_projection[row], ranges, args.soft_candidate_target, args.soft_posting_visit_target or None
             )
         elif args.probe_policy == "budgeted-adc":
             candidates, probes, visits, exact_bucket_floor_count = budgeted_adc_candidate_union(
                 index, query_codes[row], query_projection[row], centers, ranges, args.soft_candidate_target
             )
         elif args.probe_policy == "budgeted-adc-best-first":
-            candidates, probes, visits, exact_bucket_floor_count = budgeted_adc_best_first_candidate_union(
+            candidates, probes, visits, exact_bucket_floor_count, depth_probes, depth_visits, stop_reason = budgeted_adc_best_first_candidate_union(
                 index, query_codes[row], query_projection[row], centers, ranges,
                 args.soft_candidate_target, args.soft_posting_visit_target, args.max_probe_bit_flips,
             )
@@ -512,9 +522,11 @@ def evaluate(args: Any) -> None:
                 for key in probe_keys(band_key(query_codes[row], start_bit, stop_bit), stop_bit - start_bit, radius)
             )
             exact_bucket_floor_count = 0
+            depth_probes = [0, 0, 0]; depth_visits = [0, 0, 0]; stop_reason = "fixed-radius"
         restricted = stable_hamming_order(codes, query_codes[row], document_ids, candidates, hamming_weights)[:args.hamming_limit]
         seconds += time.perf_counter() - start
         candidate_counts.append(int(candidates.size)); probe_counts.append(probes); posting_visits.append(visits); exact_bucket_floor_counts.append(exact_bucket_floor_count); hamming_scores.append(int(candidates.size))
+        probe_depths.append(depth_probes); posting_depths.append(depth_visits); stop_reasons.append(stop_reason)
         hamming_recall.append(float(numpy.isin(full_hamming[:args.candidate_limit], restricted[:args.candidate_limit]).sum()) / args.candidate_limit)
         if args.second_stage == "binary-adc":
             second = binary_adc_order(query_projection[row], centers, codes, document_ids, restricted)[:args.second_limit]
@@ -542,7 +554,7 @@ def evaluate(args: Any) -> None:
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "evaluation_materialization_manifest_sha256": data["manifest_sha256"],
         "calibration_vector_count": len(calibration["train_ids"]),
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
-        "code_bits": args.code_bits, "band_count": args.band_count, "band_width_bits": [stop - start for start, stop in ranges], "probe_radius": args.probe_radius, "global_radius": args.global_radius, "band_probe_radii": radii,
+        "code_bits": args.code_bits, "band_count": args.band_count, "band_width_bits": [stop - start for start, stop in ranges], "probe_radius": args.max_probe_bit_flips if args.probe_policy == "budgeted-adc-best-first" else args.probe_radius, "base_probe_radius": args.probe_radius, "global_radius": args.global_radius, "band_probe_radii": [args.max_probe_bit_flips] * args.band_count if args.probe_policy == "budgeted-adc-best-first" else radii,
         "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k, "probe_policy": args.probe_policy, "soft_candidate_target": args.soft_candidate_target if args.probe_policy in ("budgeted-confidence", "budgeted-adc", "budgeted-adc-best-first") else None,
         "soft_posting_visit_target": args.soft_posting_visit_target if args.probe_policy == "budgeted-adc-best-first" else None,
         "max_probe_bit_flips": args.max_probe_bit_flips if args.probe_policy == "budgeted-adc-best-first" else None,
@@ -561,6 +573,9 @@ def evaluate(args: Any) -> None:
         "mean_candidates_per_query": float(numpy.mean(candidate_counts)), "mean_exact_bucket_floor_candidates_per_query": float(numpy.mean(exact_bucket_floor_counts)), "mean_bucket_probes_per_query": float(numpy.mean(probe_counts)), "mean_posting_visits_per_query": float(numpy.mean(posting_visits)), "mean_posting_bytes_per_query": float(numpy.mean(posting_visits) * numpy.dtype(numpy.int32).itemsize), "mean_full_hamming_scores_per_query": float(numpy.mean(hamming_scores)),
         "e5_oracle_survival": {"raw_union": float(numpy.mean(raw_union_oracle_coverage)), "hamming_top_k": float(numpy.mean(hamming_oracle_coverage)), "second_stage": float(numpy.mean(second_oracle_coverage)), "mean_full_hamming_distance": float(numpy.mean(oracle_hamming_distance_mean))},
         "reference_candidate_generation_seconds": seconds,
+        "mean_probe_count_by_flip_depth": [float(numpy.mean(numpy.asarray(probe_depths)[:, depth])) for depth in range(3)],
+        "mean_posting_visits_by_flip_depth": [float(numpy.mean(numpy.asarray(posting_depths)[:, depth])) for depth in range(3)],
+        "stop_reason_fractions": {reason: float(stop_reasons.count(reason)) / len(stop_reasons) for reason in ("candidate", "posting", "exhausted", "fixed-radius")},
     }
     contributions = {
         "hamming_top_k_recall": numpy.asarray(hamming_recall, dtype=numpy.float64),
@@ -610,7 +625,7 @@ def self_test() -> int:
     budget_codes[2, 1] = True
     budget_ranges = band_ranges(256, 32)
     budget_index = build_index(budget_codes, budget_ranges)
-    budgeted, budget_probes, budget_visits, exact_bucket_floor = budgeted_confidence_candidate_union(
+    budgeted, budget_probes, budget_visits, exact_bucket_floor, _, _, _ = budgeted_confidence_candidate_union(
         budget_index, budget_codes[0], numpy.asarray([0.1, 0.2] + [1.0] * 254), budget_ranges, 2
     )
     if set(budgeted.tolist()) != {0, 1, 2} or exact_bucket_floor != 3 or budget_probes != 32 or budget_visits != 94:
@@ -627,11 +642,11 @@ def self_test() -> int:
     )
     if set(adc_budgeted.tolist()) != {0, 1} or adc_floor != 1 or adc_budget_probes != 33:
         print("self-test failed: budgeted ADC optional probe ordering is invalid", file=sys.stderr); return 1
-    best_first, best_first_probes, best_first_visits, best_first_floor = budgeted_adc_best_first_candidate_union(
+    best_first, best_first_probes, best_first_visits, best_first_floor, _, _, _ = budgeted_adc_best_first_candidate_union(
         adc_probe_index, adc_probe_codes[0], numpy.zeros(256, dtype=numpy.float32), adc_probe_centers,
         budget_ranges, 3, 10000, 2,
     )
-    replay, replay_probes, replay_visits, replay_floor = budgeted_adc_best_first_candidate_union(
+    replay, replay_probes, replay_visits, replay_floor, _, _, _ = budgeted_adc_best_first_candidate_union(
         adc_probe_index, adc_probe_codes[0], numpy.zeros(256, dtype=numpy.float32), adc_probe_centers,
         budget_ranges, 3, 10000, 2,
     )
