@@ -20,6 +20,11 @@ The final archive contains all 10 reports, per-query contributions, five
 paired 10,000-replicate bootstraps, the frozen matrix, and exact source
 snapshots. It is retained as a GitHub evidence release rather than in Git.
 
+```text
+archive SHA-256: ea741ed9d55025eee19c46bda45eac3c1bfaa48bcd3b08885d5d1573b28c26ce
+bundle root:     c91de42485ec1f2265bb66c3abcf9a94df2d4748b7f9b783e36a95ee64da180f
+```
+
 ## Result
 
 Across the five seeds, uniform Hamming had mean ADC survival `0.987252`, while
