@@ -288,7 +288,7 @@ def budgeted_adc_best_first_candidate_union(
     soft_candidate_target: int,
     soft_posting_visit_target: int,
     max_probe_bit_flips: int,
-) -> tuple[numpy.ndarray, int, int, int]:
+) -> tuple[numpy.ndarray, int, int, int, list[int], list[int], str]:
     """Globally enumerate bounded multi-bit MIH buckets by query ADC cost.
 
     Exact buckets remain mandatory. Optional buckets are ordered by the sum of
@@ -652,6 +652,27 @@ def self_test() -> int:
     )
     if set(best_first.tolist()) != {0, 1, 2} or best_first_floor != 1 or best_first_probes <= 33 or (best_first.tolist(), best_first_probes, best_first_visits, best_first_floor) != (replay.tolist(), replay_probes, replay_visits, replay_floor):
         print("self-test failed: best-first multi-bit probing is invalid", file=sys.stderr); return 1
+    multi_bit_codes = numpy.zeros((2, 256), dtype=bool)
+    for band_start, _ in budget_ranges:
+        multi_bit_codes[0, band_start:band_start + 2] = True
+        multi_bit_codes[1, band_start:band_start + 3] = True
+    multi_bit_index = build_index(multi_bit_codes, budget_ranges)
+    multi_bit_centers = numpy.tile(numpy.asarray([[0.0, 1.0]], dtype=numpy.float32), (256, 1))
+    two_bit, _, _, two_floor, two_depth_probes, _, two_reason = budgeted_adc_best_first_candidate_union(
+        multi_bit_index, numpy.zeros(256, dtype=bool), numpy.zeros(256, dtype=numpy.float32),
+        multi_bit_centers, budget_ranges, 2, 10000, 2,
+    )
+    three_bit, _, _, three_floor, three_depth_probes, _, three_reason = budgeted_adc_best_first_candidate_union(
+        multi_bit_index, numpy.zeros(256, dtype=bool), numpy.zeros(256, dtype=numpy.float32),
+        multi_bit_centers, budget_ranges, 2, 10000, 3,
+    )
+    if (
+        two_floor != 0 or three_floor != 0
+        or two_bit.tolist() != [0] or three_bit.tolist() != [0, 1]
+        or two_depth_probes[1] == 0 or two_depth_probes[2] != 0 or two_reason != "exhausted"
+        or three_depth_probes[1] == 0 or three_depth_probes[2] == 0 or three_reason != "candidate"
+    ):
+        print("self-test failed: best-first multi-bit depth reachability is invalid", file=sys.stderr); return 1
     adc_codes = numpy.asarray([[False, False], [True, False], [True, True]], dtype=bool)
     adc_centers = numpy.asarray([[-1.0, 1.0], [-1.0, 1.0]], dtype=numpy.float32)
     adc_order = binary_adc_order(
