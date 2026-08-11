@@ -1,6 +1,5 @@
 #include <agent_memory/index/AsymmetricBinarySignatureScorer.hpp>
 
-#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -38,13 +37,6 @@ namespace {
         std::size_t value = 0;
         float score = 0.0F;
     };
-
-    bool better_score(const ScoredSignature& lhs, const ScoredSignature& rhs) noexcept {
-        if(lhs.score == rhs.score) {
-            return lhs.value < rhs.value;
-        }
-        return lhs.score > rhs.score;
-    }
 
 } // namespace
 
@@ -91,24 +83,12 @@ int main() {
         return fail("asymmetric scorer metadata");
     }
 
-    std::vector<ScoredSignature> scalar_rank;
-    std::vector<ScoredSignature> byte_lut_rank;
     for(std::size_t value = 0; value < 1024U; ++value) {
         const auto signature = make_signature(projections.size(), value);
         const auto scalar_score = scalar.score(signature);
         const auto byte_lut_score = byte_lut.score(signature);
         if(scalar_score != byte_lut_score) {
             return fail("byte LUT must reproduce exact binary-power scalar scores");
-        }
-        scalar_rank.push_back({value, scalar_score});
-        byte_lut_rank.push_back({value, byte_lut_score});
-    }
-    std::sort(scalar_rank.begin(), scalar_rank.end(), better_score);
-    std::sort(byte_lut_rank.begin(), byte_lut_rank.end(), better_score);
-    for(std::size_t index = 0; index < scalar_rank.size(); ++index) {
-        if(scalar_rank[index].value != byte_lut_rank[index].value ||
-           scalar_rank[index].score != byte_lut_rank[index].score) {
-            return fail("byte LUT must preserve deterministic scalar ordering");
         }
     }
 
@@ -128,12 +108,45 @@ int main() {
         AsymmetricBinarySignatureScoringBackend::ScalarReference
     );
     const AsymmetricBinarySignatureScorer fractional_byte_lut(fractional_projections);
+    constexpr float kMaximumFractionalScoreError = 2.0e-6F;
     for(std::size_t value = 0; value < 8192U; ++value) {
         const auto signature = make_signature(fractional_projections.size(), value);
         if(std::fabs(
                fractional_scalar.score(signature) - fractional_byte_lut.score(signature)
-           ) > 2.0e-6F) {
+           ) > kMaximumFractionalScoreError) {
             return fail("byte LUT must numerically match fractional scalar scores");
+        }
+    }
+
+    // Scores farther apart than accumulated rounding error must keep their order;
+    // exact equality for nearly tied fractional scores is intentionally not part
+    // of the scalar/LUT contract.
+    const std::vector<ScoredSignature> fractional_candidates{
+        {0U, fractional_scalar.score(make_signature(fractional_projections.size(), 0U))},
+        {87U, fractional_scalar.score(make_signature(fractional_projections.size(), 87U))},
+        {1903U, fractional_scalar.score(make_signature(fractional_projections.size(), 1903U))},
+        {4095U, fractional_scalar.score(make_signature(fractional_projections.size(), 4095U))},
+        {6211U, fractional_scalar.score(make_signature(fractional_projections.size(), 6211U))},
+        {8191U, fractional_scalar.score(make_signature(fractional_projections.size(), 8191U))},
+    };
+    for(std::size_t lhs = 0; lhs < fractional_candidates.size(); ++lhs) {
+        for(std::size_t rhs = lhs + 1; rhs < fractional_candidates.size(); ++rhs) {
+            const auto lhs_signature = make_signature(
+                fractional_projections.size(), fractional_candidates[lhs].value
+            );
+            const auto rhs_signature = make_signature(
+                fractional_projections.size(), fractional_candidates[rhs].value
+            );
+            const auto scalar_difference =
+                fractional_scalar.score(lhs_signature) - fractional_scalar.score(rhs_signature);
+            if(std::fabs(scalar_difference) <= 2.0F * kMaximumFractionalScoreError) {
+                continue;
+            }
+            const auto lut_difference =
+                fractional_byte_lut.score(lhs_signature) - fractional_byte_lut.score(rhs_signature);
+            if((scalar_difference > 0.0F) != (lut_difference > 0.0F)) {
+                return fail("byte LUT must preserve clearly separated fractional ordering");
+            }
         }
     }
 
