@@ -25,7 +25,8 @@ CONTRIBUTION_KEYS = {
     "full_e5_ndcg_at_10", "candidate_count", "exact_bucket_floor_candidate_count",
     "bucket_probe_count", "posting_visit_count", "e5_oracle_raw_union_coverage",
     "e5_oracle_hamming_top_k_coverage", "e5_oracle_second_stage_coverage",
-    "e5_oracle_mean_full_hamming_distance", "query_ids", "identity_json",
+    "e5_oracle_mean_full_hamming_distance", "probe_count_by_flip_depth",
+    "posting_visit_count_by_flip_depth", "stop_reason", "query_ids", "identity_json",
 }
 BOOTSTRAP_METRICS = (
     "e5_oracle_hamming_top_k_coverage", "e5_oracle_second_stage_coverage",
@@ -135,7 +136,17 @@ def load_contribution(path: Path, report: dict[str, Any]) -> tuple[dict[str, Any
         require(set(values.files) == CONTRIBUTION_KEYS, f"contribution fields are invalid: {path.name}")
         result = {name: values[name].copy() for name in values.files}
     count = result["query_ids"].shape[0]
-    require(count == 1252 and all(result[name].shape == (count,) for name in CONTRIBUTION_KEYS - {"query_ids", "identity_json"}), f"contribution shapes are invalid: {path.name}")
+    scalar_names = CONTRIBUTION_KEYS - {
+        "query_ids", "identity_json", "probe_count_by_flip_depth",
+        "posting_visit_count_by_flip_depth",
+    }
+    require(
+        count == 1252
+        and all(result[name].shape == (count,) for name in scalar_names)
+        and result["probe_count_by_flip_depth"].shape == (count, 3)
+        and result["posting_visit_count_by_flip_depth"].shape == (count, 3),
+        f"contribution shapes are invalid: {path.name}",
+    )
     identity = json.loads(str(result["identity_json"].item()))
     shared.validate_contribution_identity(identity, result["query_ids"], count)
     require(report.get("per_query_contribution_identity") == identity, f"contribution identity differs: {path.name}")
@@ -151,6 +162,15 @@ def validate_summary(report: dict[str, Any], values: dict[str, Any]) -> None:
     }
     for report_field, value_field in fields.items():
         require(report.get(report_field) == float(numpy.mean(values[value_field])), f"report summary differs: {report_field}")
+    expected_probe_depths = [float(numpy.mean(values["probe_count_by_flip_depth"][:, depth])) for depth in range(3)]
+    expected_posting_depths = [float(numpy.mean(values["posting_visit_count_by_flip_depth"][:, depth])) for depth in range(3)]
+    require(report.get("mean_probe_count_by_flip_depth") == expected_probe_depths, "probe-depth summary differs")
+    require(report.get("mean_posting_visits_by_flip_depth") == expected_posting_depths, "posting-depth summary differs")
+    expected_stops = {
+        reason: float(numpy.count_nonzero(values["stop_reason"] == reason)) / values["stop_reason"].shape[0]
+        for reason in ("candidate", "posting", "exhausted", "fixed-radius")
+    }
+    require(report.get("stop_reason_fractions") == expected_stops, "stop-reason summary differs")
     funnel = report.get("e5_oracle_survival")
     require(isinstance(funnel, dict) and set(funnel) == {"raw_union", "hamming_top_k", "second_stage", "mean_full_hamming_distance"}, "oracle funnel is invalid")
     for report_field, value_field in (("raw_union", "e5_oracle_raw_union_coverage"), ("hamming_top_k", "e5_oracle_hamming_top_k_coverage"), ("second_stage", "e5_oracle_second_stage_coverage"), ("mean_full_hamming_distance", "e5_oracle_mean_full_hamming_distance")):

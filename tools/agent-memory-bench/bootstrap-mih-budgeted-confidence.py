@@ -33,7 +33,8 @@ REQUIRED_ARRAYS = {
     "full_e5_ndcg_at_10", "candidate_count", "exact_bucket_floor_candidate_count",
     "bucket_probe_count", "posting_visit_count", "e5_oracle_raw_union_coverage",
     "e5_oracle_hamming_top_k_coverage", "e5_oracle_second_stage_coverage",
-    "e5_oracle_mean_full_hamming_distance", "query_ids", "identity_json",
+    "e5_oracle_mean_full_hamming_distance", "probe_count_by_flip_depth",
+    "posting_visit_count_by_flip_depth", "stop_reason", "query_ids", "identity_json",
 }
 BOOTSTRAP_METRICS = (
     "e5_oracle_hamming_top_k_coverage", "e5_oracle_second_stage_coverage",
@@ -60,7 +61,16 @@ def load_contributions(path: Path) -> dict[str, Any]:
             raise EvaluationError("budgeted-confidence contribution array set is invalid")
         result = {name: values[name].copy() for name in values.files}
     count = result["query_ids"].shape[0]
-    if count <= 0 or any(result[name].shape != (count,) for name in REQUIRED_ARRAYS - {"query_ids", "identity_json"}):
+    scalar_names = REQUIRED_ARRAYS - {
+        "query_ids", "identity_json", "probe_count_by_flip_depth",
+        "posting_visit_count_by_flip_depth",
+    }
+    if (
+        count <= 0
+        or any(result[name].shape != (count,) for name in scalar_names)
+        or result["probe_count_by_flip_depth"].shape != (count, 3)
+        or result["posting_visit_count_by_flip_depth"].shape != (count, 3)
+    ):
         raise EvaluationError("budgeted-confidence contribution array shape is invalid")
     try:
         identity = json.loads(str(result["identity_json"].item()))
@@ -105,8 +115,11 @@ def self_test() -> int:
             root = Path(directory)
             identity = {"schema_version": 1, "query_count": 2, "ordered_query_ids_sha256": "0" * 64, "evaluation_materialization_manifest_sha256": "1" * 64, "evaluation_qrels_sha256": "2" * 64, "candidate_limit": 512, "oracle_k": 10}
             # The shared identity checker is intentionally exercised by malformed input below.
-            arrays = {name: numpy.asarray([0.0, 1.0], dtype=numpy.float64) for name in REQUIRED_ARRAYS - {"query_ids", "identity_json", "candidate_count", "exact_bucket_floor_candidate_count", "bucket_probe_count", "posting_visit_count"}}
+            arrays = {name: numpy.asarray([0.0, 1.0], dtype=numpy.float64) for name in REQUIRED_ARRAYS - {"query_ids", "identity_json", "candidate_count", "exact_bucket_floor_candidate_count", "bucket_probe_count", "posting_visit_count", "probe_count_by_flip_depth", "posting_visit_count_by_flip_depth", "stop_reason"}}
             arrays.update({name: numpy.asarray([1, 2], dtype=numpy.int32) for name in ("candidate_count", "exact_bucket_floor_candidate_count", "bucket_probe_count", "posting_visit_count")})
+            arrays["probe_count_by_flip_depth"] = numpy.zeros((2, 3), dtype=numpy.int32)
+            arrays["posting_visit_count_by_flip_depth"] = numpy.zeros((2, 3), dtype=numpy.int32)
+            arrays["stop_reason"] = numpy.asarray(["candidate", "candidate"], dtype=numpy.str_)
             arrays["query_ids"] = numpy.asarray(["a", "b"], dtype=numpy.str_)
             arrays["identity_json"] = numpy.asarray(json.dumps(identity, sort_keys=True))
             path = root / "invalid.npz"

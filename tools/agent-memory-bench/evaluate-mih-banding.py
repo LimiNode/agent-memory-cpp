@@ -599,6 +599,9 @@ def evaluate(args: Any) -> None:
         "e5_oracle_hamming_top_k_coverage": numpy.asarray(hamming_oracle_coverage, dtype=numpy.float64),
         "e5_oracle_second_stage_coverage": numpy.asarray(second_oracle_coverage, dtype=numpy.float64),
         "e5_oracle_mean_full_hamming_distance": numpy.asarray(oracle_hamming_distance_mean, dtype=numpy.float64),
+        "probe_count_by_flip_depth": numpy.asarray(probe_depths, dtype=numpy.int32),
+        "posting_visit_count_by_flip_depth": numpy.asarray(posting_depths, dtype=numpy.int32),
+        "stop_reason": numpy.asarray(stop_reasons, dtype=numpy.str_),
     }
     write_result(args, report, contributions, data)
 
