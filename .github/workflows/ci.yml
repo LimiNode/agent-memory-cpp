@@ -76,3 +76,20 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build-mdbx --build-config Release --output-on-failure
+
+  ann-cascade:
+    name: ANN cascade harness
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install ANN comparison dependencies
+        run: python -m pip install -r tools/agent-memory-bench/requirements-ann-cascade-comparison.txt
+      - name: Exercise external ANN bindings
+        run: python tools/agent-memory-bench/evaluate-ann-cascade.py self-test --external
+      - name: Exercise ANN evidence bootstrap contract
+        run: python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test
