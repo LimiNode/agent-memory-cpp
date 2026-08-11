@@ -297,6 +297,11 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mih_adc_ceiling_evidence_packager_self_test
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-adc-ceiling-evidence.py --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_mih_calibration_balanced_bands_matrix_self_test
             COMMAND
                 ${Python3_EXECUTABLE}
