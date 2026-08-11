@@ -277,6 +277,16 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mih_calibration_balanced_bands_matrix_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mih-calibration-balanced-bands-matrix.py
+                self-test
+                --matrix
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/mih-calibration-balanced-bands.example.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_ann_cascade_comparison_self_test
             COMMAND
                 ${Python3_EXECUTABLE}

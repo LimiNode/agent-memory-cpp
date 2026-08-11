@@ -36,6 +36,8 @@ def _load_shared() -> Any:
 
 shared = _load_shared()
 EvaluationError = shared.EvaluationError
+BALANCED_BAND_OBJECTIVE = "abs-correlation-plus-entropy-balance-v1"
+ENTROPY_BALANCE_WEIGHT = 0.05
 
 
 def source_sha256() -> str:
@@ -93,7 +95,7 @@ def calibrated_band_permutation(calibration_codes: Any, band_count: int) -> nump
         def score(index: int) -> tuple[float, int]:
             intra = float(numpy.mean(correlation[bit, bands[index]])) if bands[index] else 0.0
             balance = abs(totals[index] + float(entropy[bit]) - target_entropy)
-            return intra + 0.05 * balance, index
+            return intra + ENTROPY_BALANCE_WEIGHT * balance, index
         chosen = min(candidates, key=score)
         bands[chosen].append(bit)
         totals[chosen] += float(entropy[bit])
@@ -127,7 +129,8 @@ def mean_intraband_absolute_correlation(codes: Any, band_count: int) -> float:
     for start, stop in band_ranges(values.shape[1], band_count):
         width = stop - start
         pairs.append(correlation[start:stop, start:stop][numpy.triu_indices(width, 1)])
-    return float(numpy.concatenate(pairs).mean())
+    nonempty = [pair for pair in pairs if pair.size]
+    return float(numpy.concatenate(nonempty).mean()) if nonempty else 0.0
 
 
 def band_key(code: Any, start: int, stop: int) -> int:
@@ -478,6 +481,8 @@ def evaluate(args: Any) -> None:
         "calibrated_hamming_weight_max": float(numpy.max(hamming_weights)) if hamming_weights is not None else None,
         "band_layout": args.band_layout,
         "band_layout_seed": args.band_layout_seed if args.band_layout == "fixed-random" else None,
+        "band_layout_objective": BALANCED_BAND_OBJECTIVE if args.band_layout == "calibration-correlation-balanced" else None,
+        "band_layout_entropy_balance_weight": ENTROPY_BALANCE_WEIGHT if args.band_layout == "calibration-correlation-balanced" else None,
         "band_layout_sha256": band_layout_sha256(band_permutation),
         "mean_intraband_absolute_correlation": mean_intraband_absolute_correlation(calibration_codes, args.band_count),
         "seed": args.seed, "itq_iterations": args.itq_iterations, "query_count": len(data["query_ids"]),
@@ -517,9 +522,13 @@ def self_test() -> int:
     layout = calibrated_band_permutation(layout_codes, 2)
     if layout.shape != (4,) or not numpy.array_equal(numpy.sort(layout), numpy.arange(4)) or not band_layout_sha256(layout):
         print("self-test failed: calibrated band layout is invalid", file=sys.stderr); return 1
+    if mean_intraband_absolute_correlation(layout_codes[:, layout], 2) >= mean_intraband_absolute_correlation(layout_codes, 2):
+        print("self-test failed: calibrated band layout did not reduce correlation", file=sys.stderr); return 1
     uneven_codes = numpy.asarray([[False, False, False, False, False], [False, True, False, True, False], [True, False, True, False, True], [True, True, True, True, True]], dtype=bool)
     if not numpy.isfinite(mean_intraband_absolute_correlation(uneven_codes, 2)):
         print("self-test failed: uneven band correlation is invalid", file=sys.stderr); return 1
+    if mean_intraband_absolute_correlation(uneven_codes, 5) != 0.0:
+        print("self-test failed: one-bit band correlation is invalid", file=sys.stderr); return 1
     random_layout = fixed_random_band_permutation(4, 20260812)
     if not numpy.array_equal(random_layout, fixed_random_band_permutation(4, 20260812)) or not numpy.array_equal(numpy.sort(random_layout), numpy.arange(4)):
         print("self-test failed: fixed random band layout is invalid", file=sys.stderr); return 1

@@ -165,6 +165,8 @@ jobs:
           --matrix tools/agent-memory-bench/mih-calibrated-weighted-hamming.example.json &&
           python tools/agent-memory-bench/run-mih-adc-guided-probing-matrix.py self-test
           --matrix tools/agent-memory-bench/mih-adc-guided-probing.example.json &&
+          python tools/agent-memory-bench/run-mih-calibration-balanced-bands-matrix.py self-test
+          --matrix tools/agent-memory-bench/mih-calibration-balanced-bands.example.json &&
           python tools/agent-memory-bench/run-mih-budgeted-confidence-matrix.py self-test
           --matrix tools/agent-memory-bench/mih-budgeted-confidence-k1.example.json &&
           python tools/agent-memory-bench/bootstrap-mih-budgeted-confidence.py self-test &&
