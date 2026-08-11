@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import hashlib
+import importlib.util
 import json
 import os
 import subprocess
@@ -62,19 +63,40 @@ def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def row_is_complete(report_path: Path, contribution_path: Path, row: dict[str, int | str]) -> bool:
+def _load_shared() -> Any:
+    path = Path(__file__).with_name("evaluate-projection-quantization.py")
+    spec = importlib.util.spec_from_file_location("mih_weighted_matrix_shared", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load projection evaluation helper")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def evaluator_sources() -> dict[str, str]:
+    root = Path(__file__).parent
+    return {name: sha256_file(root / name) for name in ("evaluate-mih-banding.py", "evaluate-projection-quantization.py")}
+
+
+def source_bundle(files: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def row_is_complete(report_path: Path, contribution_path: Path, row: dict[str, int | str], calibration: dict[str, Any], evaluation: dict[str, Any]) -> bool:
     if not report_path.is_file() or not contribution_path.is_file():
         return False
     try:
         report = json.loads(report_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return False
+    sources = evaluator_sources()
     return (
         isinstance(report, dict) and report.get("schema_version") == 6 and report.get("family") == "mih_banding_reference_v6" and
-        report.get("probe_policy") == "budgeted-confidence" and report.get("soft_candidate_target") == 12288 and
+        report.get("code_bits") == 256 and report.get("band_count") == 32 and report.get("band_width_bits") == [8] * 32 and report.get("probe_radius") == 1 and report.get("global_radius") is None and report.get("band_probe_radii") == [1] * 32 and
+        report.get("probe_policy") == "budgeted-confidence" and report.get("soft_candidate_target") == 12288 and report.get("candidate_limit") == 512 and report.get("oracle_k") == 10 and report.get("itq_iterations") == 50 and
         report.get("hamming_limit") == 768 and report.get("hamming_policy") == row["hamming_policy"] and
         report.get("seed") == row["seed"] and report.get("second_limit") == 256 and report.get("second_stage") == "binary-adc" and
-        report.get("query_count") == 1252 and report.get("per_query_contributions_path") == contribution_path.name and
+        report.get("query_count") == len(evaluation["query_ids"]) and report.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and report.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and report.get("calibration_vector_count") == len(calibration["train_ids"]) and report.get("evaluator_source_files_sha256") == sources and report.get("evaluator_source_bundle_sha256") == source_bundle(sources) and report.get("per_query_contributions_path") == contribution_path.name and
         report.get("per_query_contributions_sha256") == sha256_file(contribution_path)
     )
 
@@ -82,6 +104,9 @@ def row_is_complete(report_path: Path, contribution_path: Path, row: dict[str, i
 def run(args: Any) -> None:
     matrix_rows = rows(load_matrix(args.matrix))
     evaluator = Path(__file__).with_name("evaluate-mih-banding.py")
+    shared = _load_shared()
+    calibration = shared.load_root(args.calibration_root)
+    evaluation = shared.load_root(args.evaluation_root)
     args.output_root.mkdir(parents=True, exist_ok=True)
     environment = os.environ.copy()
     for variable in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
@@ -90,7 +115,7 @@ def run(args: Any) -> None:
     def execute(index: int, name: str, row: dict[str, int | str]) -> None:
         report = args.output_root / "reports" / f"{name}.json"
         contributions = args.output_root / "contributions" / f"{name}.npz"
-        if args.resume and row_is_complete(report, contributions, row):
+        if args.resume and row_is_complete(report, contributions, row, calibration, evaluation):
             return
         report.parent.mkdir(parents=True, exist_ok=True)
         contributions.parent.mkdir(parents=True, exist_ok=True)
@@ -106,7 +131,7 @@ def run(args: Any) -> None:
         ]
         print(f"[{index}/{len(matrix_rows)}] {name}", flush=True)
         subprocess.run(command, check=True, env=environment)
-        require(row_is_complete(report, contributions, row), f"evaluator wrote an invalid row: {name}")
+        require(row_is_complete(report, contributions, row, calibration, evaluation), f"evaluator wrote an invalid row: {name}")
 
     require(args.jobs > 0, "matrix job count is invalid")
     if args.jobs == 1:
