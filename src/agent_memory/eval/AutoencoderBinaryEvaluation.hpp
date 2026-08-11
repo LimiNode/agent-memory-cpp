@@ -6,6 +6,7 @@
 /// \brief Comparable float, binary-rerank, and decoder retrieval evaluation.
 
 #include <agent_memory/index/AutoencoderBinaryEncoder.hpp>
+#include <agent_memory/index/AsymmetricBinarySignatureScorer.hpp>
 #include <agent_memory/index/BinarySignature.hpp>
 #include <agent_memory/eval/Evaluation.hpp>
 
@@ -23,6 +24,13 @@ namespace agent_memory {
         AsymmetricAffineDot,
     };
 
+    /// \brief Backend used when candidate_scoring is AsymmetricAffineDot.
+    ///
+    /// The scalar backend is retained as a numerical reference. The byte lookup
+    /// table is the default candidate-scoring implementation.
+    using AutoencoderBinaryAsymmetricScoringBackend =
+        AsymmetricBinarySignatureScoringBackend;
+
     /// \brief Candidate and oracle limits for autoencoder retrieval comparison.
     struct AutoencoderBinaryEvaluationOptions final {
         /// \brief Number of original-float neighbours treated as the oracle top-K.
@@ -32,6 +40,9 @@ namespace agent_memory {
         /// \brief Candidate ordering evaluated before the exact float reranker.
         AutoencoderBinaryCandidateScoring candidate_scoring =
             AutoencoderBinaryCandidateScoring::HammingDistance;
+        /// \brief Asymmetric implementation selected when candidate_scoring uses logits.
+        AutoencoderBinaryAsymmetricScoringBackend asymmetric_scoring_backend =
+            AutoencoderBinaryAsymmetricScoringBackend::ByteLookupTable;
     };
 
     /// \brief Descriptive statistics emitted by a binary-code diagnostic pass.
@@ -105,6 +116,54 @@ namespace agent_memory {
         RetrievalMetrics decoder_approximation_metrics;
     };
 
+    /// \brief Candidate limits and timing repetitions for a three-stage cascade.
+    struct AutoencoderBinaryCascadeOptions final {
+        std::size_t oracle_k = 10;
+        /// \brief Full-corpus Hamming candidates passed to asymmetric scoring.
+        std::size_t hamming_candidate_limit = 512;
+        /// \brief Asymmetric candidates passed to exact float reranking.
+        std::size_t asymmetric_candidate_limit = 128;
+        /// \brief Untimed warm-up executions of the complete candidate pipeline.
+        std::size_t warmup_repeat_count = 1;
+        /// \brief Timed executions per query; quality is computed from the final run.
+        std::size_t timing_repeat_count = 3;
+    };
+
+    /// \brief Per-query stage timing summaries for the binary cascade.
+    struct AutoencoderBinaryCascadeTiming final {
+        double document_signature_build_ms = 0.0;
+        AutoencoderBinaryDescriptiveStatistics query_projection_ms;
+        AutoencoderBinaryDescriptiveStatistics hamming_candidate_search_ms;
+        AutoencoderBinaryDescriptiveStatistics asymmetric_lut_build_ms;
+        AutoencoderBinaryDescriptiveStatistics asymmetric_candidate_search_ms;
+        AutoencoderBinaryDescriptiveStatistics exact_rerank_ms;
+        AutoencoderBinaryDescriptiveStatistics total_query_pipeline_ms;
+    };
+
+    /// \brief Qrels and candidate-stage evidence for Hamming -> asymmetric -> float rerank.
+    struct AutoencoderBinaryCascadeEvaluation final {
+        std::size_t document_count = 0;
+        std::size_t query_count = 0;
+        std::size_t oracle_k = 0;
+        std::size_t hamming_candidate_limit = 0;
+        std::size_t asymmetric_candidate_limit = 0;
+        std::size_t binary_payload_bytes = 0;
+        std::size_t float_payload_bytes = 0;
+        /// \brief Queries that have at least one positive qrels judgment in the corpus.
+        std::size_t qrels_positive_query_count = 0;
+        HammingDistanceBackend hamming_backend = HammingDistanceBackend::LookupTable;
+        double hamming_exact_top_k_candidate_coverage = 0.0;
+        double asymmetric_exact_top_k_candidate_coverage = 0.0;
+        /// \brief Macro mean over qrels-positive queries after Hamming.
+        double hamming_qrels_positive_candidate_coverage = 0.0;
+        /// \brief Macro mean over qrels-positive queries after asymmetric scoring.
+        double asymmetric_qrels_positive_candidate_coverage = 0.0;
+        double reranked_recall_at_k_vs_exact = 0.0;
+        RetrievalMetrics original_float_metrics;
+        RetrievalMetrics cascade_rerank_metrics;
+        AutoencoderBinaryCascadeTiming timing;
+    };
+
     /// \brief Evaluates the three retrieval modes over common dense inputs.
     ///
     /// The original-float cosine ranking is the oracle. Binary candidates are
@@ -136,6 +195,23 @@ namespace agent_memory {
         const AutoencoderBinaryEncoder& encoder,
         const AutoencoderBinaryDecoder& decoder,
         AutoencoderBinaryEvaluationOptions binary_options = {},
+        RetrievalEvaluationOptions retrieval_options = {}
+    );
+
+    /// \brief Evaluates a Hamming -> asymmetric -> exact-rerank candidate cascade.
+    ///
+    /// Document signatures are materialized once. Full-float oracle and qrels
+    /// accounting are outside the candidate-pipeline timers; timing fields cover
+    /// only query projection, candidate stages, and final float reranking.
+    [[nodiscard]] AutoencoderBinaryCascadeEvaluation
+    evaluate_autoencoder_binary_cascade_with_qrels(
+        const std::vector<std::string>& document_ids,
+        const std::vector<Embedding>& document_vectors,
+        const std::vector<std::string>& query_ids,
+        const std::vector<Embedding>& query_vectors,
+        const std::vector<RelevanceJudgment>& judgments,
+        const AutoencoderBinaryEncoder& encoder,
+        AutoencoderBinaryCascadeOptions cascade_options = {},
         RetrievalEvaluationOptions retrieval_options = {}
     );
 

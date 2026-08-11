@@ -1,0 +1,5 @@
+# Research-only CPU bindings for the external ANN cascade comparison.
+# These are not production dependencies of agent-memory-cpp.
+faiss-cpu==1.15.0
+numpy==2.5.2
+usearch==2.26.0

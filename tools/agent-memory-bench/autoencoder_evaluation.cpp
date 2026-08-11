@@ -15,6 +15,81 @@
 
 namespace {
 
+    struct EmbeddingIdentity final {
+        std::string model_id;
+        std::string model_revision;
+        std::string query_prefix;
+        std::string document_prefix;
+        bool normalized = false;
+    };
+
+    [[nodiscard]] EmbeddingIdentity load_embedding_identity(
+        const std::filesystem::path& manifest_path,
+        const char* owner,
+        bool artifact_teacher = false
+    ) {
+        std::ifstream input(manifest_path, std::ios::binary);
+        nlohmann::json document;
+        try {
+            input >> document;
+        } catch(const nlohmann::json::exception& error) {
+            throw std::runtime_error(std::string{"cannot parse "} + owner + ": " + error.what());
+        }
+        const auto& embedding = artifact_teacher ?
+            document.at("training").at("teacher") : document.at("embedding");
+        const auto require_string = [&embedding, owner](const char* name) {
+            const auto& value = embedding.at(name);
+            if(!value.is_string() || value.get_ref<const std::string&>().empty()) {
+                throw std::runtime_error(std::string{owner} + " embedding field is invalid: " + name);
+            }
+            return value.get<std::string>();
+        };
+        const auto& normalized = embedding.at("normalized");
+        if(!normalized.is_boolean()) {
+            throw std::runtime_error(std::string{owner} + " embedding normalized must be boolean");
+        }
+        return {
+            require_string(artifact_teacher ? "id" : "model_id"),
+            require_string(artifact_teacher ? "revision" : "model_revision"),
+            require_string("query_prefix"), require_string("document_prefix"),
+            normalized.get<bool>(),
+        };
+    }
+
+    void validate_qrels_supervised_evaluation_contract(
+        const std::filesystem::path& artifact_path,
+        const EmbeddingIdentity& evaluation_identity,
+        const std::filesystem::path& prepared_study_path
+    ) {
+        const auto training_identity = load_embedding_identity(
+            artifact_path, "qrels-supervised artifact", true
+        );
+        if(training_identity.model_id != evaluation_identity.model_id ||
+           training_identity.model_revision != evaluation_identity.model_revision ||
+           training_identity.query_prefix != evaluation_identity.query_prefix ||
+           training_identity.document_prefix != evaluation_identity.document_prefix ||
+           training_identity.normalized != evaluation_identity.normalized) {
+            throw std::runtime_error("artifact and evaluation embedding identities differ");
+        }
+        nlohmann::json artifact_document;
+        nlohmann::json prepared_study;
+        std::ifstream artifact_input(artifact_path, std::ios::binary);
+        std::ifstream prepared_input(prepared_study_path, std::ios::binary);
+        artifact_input >> artifact_document;
+        prepared_input >> prepared_study;
+        const auto& exclusion = artifact_document.at("training").at("held_out_exclusion");
+        const auto& evaluated_ids = prepared_study.at("split").at(
+            "evaluation_document_ids_sha256"
+        );
+        if(!exclusion.at("document_ids_set_sha256").is_string() ||
+           !evaluated_ids.is_string() ||
+           exclusion.at("document_ids_set_sha256") != evaluated_ids) {
+            throw std::runtime_error(
+                "supervised artifact exclusion set does not match evaluation documents"
+            );
+        }
+    }
+
     [[nodiscard]] std::size_t parse_positive_size(const char* text, const char* name) {
         try {
             std::size_t parsed = 0;
@@ -49,6 +124,31 @@ namespace {
         return scoring == agent_memory::AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
             ? "asymmetric_affine_dot_v1"
             : "hamming_distance_v1";
+    }
+
+    [[nodiscard]] agent_memory::AutoencoderBinaryAsymmetricScoringBackend
+    parse_asymmetric_scoring_backend(const char* text) {
+        const auto value = std::string{text};
+        if(value == "scalar-reference") {
+            return agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ScalarReference;
+        }
+        if(value == "byte-lut") {
+            return agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ByteLookupTable;
+        }
+        throw std::invalid_argument(
+            "asymmetric-scoring-backend must be scalar-reference or byte-lut"
+        );
+    }
+
+    [[nodiscard]] const char* asymmetric_scoring_backend_name(
+        agent_memory::AutoencoderBinaryCandidateScoring scoring,
+        agent_memory::AutoencoderBinaryAsymmetricScoringBackend backend
+    ) noexcept {
+        return scoring == agent_memory::AutoencoderBinaryCandidateScoring::AsymmetricAffineDot
+            ? backend == agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ScalarReference
+                ? "scalar_reference_v1"
+                : "byte_lookup_table_v1"
+            : "not_applicable";
     }
 
     [[nodiscard]] std::string language_id_from_record_id(const std::string& record_id) {
@@ -200,27 +300,107 @@ namespace {
         };
     }
 
+    int run_qrels_supervised_contract_self_test() {
+        const auto root = std::filesystem::temp_directory_path() /
+            "agent-memory-qrels-supervised-contract-self-test";
+        std::filesystem::remove_all(root);
+        std::filesystem::create_directories(root);
+        const auto artifact_path = root / "artifact.json";
+        const auto manifest_path = root / "manifest.json";
+        const auto prepared_study_path = root / "prepared-study-manifest.json";
+        const auto write_json = [](const std::filesystem::path& path, const nlohmann::json& value) {
+            std::ofstream output(path, std::ios::binary);
+            output << value.dump();
+        };
+        const auto rejects = [](const auto& action) {
+            try {
+                action();
+            } catch(const std::exception&) {
+                return true;
+            }
+            return false;
+        };
+        try {
+            const nlohmann::json evaluation_manifest = {
+                {"embedding", {{"model_id", "model"}, {"model_revision", "revision"},
+                                {"query_prefix", "query: "}, {"document_prefix", "passage: "},
+                                {"normalized", true}}},
+            };
+            nlohmann::json artifact = {
+                {"training", {{"teacher", {{"id", "model"}, {"revision", "revision"},
+                                            {"query_prefix", "query: "},
+                                            {"document_prefix", "passage: "},
+                                            {"normalized", true}}},
+                               {"held_out_exclusion", {
+                                   {"document_ids_set_sha256", std::string(64U, 'a')},
+                               }}}},
+            };
+            const nlohmann::json prepared_study = {
+                {"split", {{"evaluation_document_ids_sha256", std::string(64U, 'a')}}},
+            };
+            write_json(manifest_path, evaluation_manifest);
+            write_json(artifact_path, artifact);
+            write_json(prepared_study_path, prepared_study);
+            const auto identity = load_embedding_identity(
+                manifest_path, "self-test evaluation materialization manifest"
+            );
+            validate_qrels_supervised_evaluation_contract(
+                artifact_path, identity, prepared_study_path
+            );
+
+            artifact["training"]["teacher"]["revision"] = "other-revision";
+            write_json(artifact_path, artifact);
+            if(!rejects([&] {
+                   validate_qrels_supervised_evaluation_contract(
+                       artifact_path, identity, prepared_study_path
+                   );
+               })) {
+                throw std::runtime_error("embedding identity mismatch was accepted");
+            }
+
+            artifact["training"]["teacher"]["revision"] = "revision";
+            artifact["training"]["held_out_exclusion"]["document_ids_set_sha256"] =
+                std::string(64U, 'b');
+            write_json(artifact_path, artifact);
+            if(!rejects([&] {
+                   validate_qrels_supervised_evaluation_contract(
+                       artifact_path, identity, prepared_study_path
+                   );
+               })) {
+                throw std::runtime_error("held-out exclusion mismatch was accepted");
+            }
+        } catch(const std::exception& error) {
+            std::filesystem::remove_all(root);
+            std::cerr << "qrels-supervised evaluator self-test failed: " << error.what() << '\n';
+            return 1;
+        }
+        std::filesystem::remove_all(root);
+        std::cout << "qrels-supervised evaluator self-test passed\n";
+        return 0;
+    }
+
 } // namespace
 
 int main(int argc, char* argv[]) {
-    if(argc < 4 || argc > 7) {
-        std::cerr << "usage: agent-memory-autoencoder-eval <materialization-root> <artifact.json> <report.json> [oracle-k] [candidate-limit] [candidate-scoring]\n";
+    if(argc == 2 && std::string{argv[1]} == "--self-test") {
+        return run_qrels_supervised_contract_self_test();
+    }
+    if(argc < 4 || argc > 8) {
+        std::cerr << "usage: agent-memory-autoencoder-eval <materialization-root> <artifact.json> <report.json> [oracle-k] [candidate-limit] [candidate-scoring] [asymmetric-scoring-backend]\n";
         return 2;
     }
     try {
         const auto materialization =
             agent_memory::load_materialized_autoencoder_evaluation_dataset(argv[1]);
         const auto artifact = agent_memory::load_autoencoder_binary_artifact(argv[2]);
-        if(artifact.input_materialization_manifest_sha256 !=
-           materialization.materialization_manifest_sha256) {
-            throw std::runtime_error(
-                "artifact input materialization manifest hash does not match evaluation root"
-            );
-        }
-        if(artifact.prepared_study_manifest_sha256 !=
-           materialization.prepared_study_manifest_sha256) {
-            throw std::runtime_error(
-                "artifact prepared study manifest hash does not match evaluation root"
+        const auto evaluation_identity = load_embedding_identity(
+            std::filesystem::path{argv[1]} / "manifest.json", "evaluation materialization manifest"
+        );
+        if(artifact.artifact_family == "nlb_qrels_supervised_v1" ||
+           artifact.artifact_family == "nlb_qrels_supervised_v2") {
+            validate_qrels_supervised_evaluation_contract(
+                argv[2], evaluation_identity,
+                std::filesystem::path{argv[1]} / "prepared-study-manifest.json"
             );
         }
         std::vector<std::string> document_ids;
@@ -240,6 +420,8 @@ int main(int argc, char* argv[]) {
             argc >= 6 ? parse_positive_size(argv[5], "candidate-limit") : 100U,
             argc >= 7 ? parse_candidate_scoring(argv[6]) :
                 agent_memory::AutoencoderBinaryCandidateScoring::HammingDistance,
+            argc >= 8 ? parse_asymmetric_scoring_backend(argv[7]) :
+                agent_memory::AutoencoderBinaryAsymmetricScoringBackend::ByteLookupTable,
         };
         const auto evaluation = agent_memory::evaluate_autoencoder_binary_retrieval_with_qrels(
             document_ids,
@@ -266,8 +448,22 @@ int main(int argc, char* argv[]) {
             {"training_document_ids_sha256", artifact.training_document_ids_sha256},
             {"validation_document_ids_sha256", artifact.validation_document_ids_sha256},
             {"calibration_document_ids_sha256", artifact.calibration_document_ids_sha256},
+            {"artifact_input_materialization_manifest_sha256",
+             artifact.input_materialization_manifest_sha256},
+            {"artifact_prepared_study_manifest_sha256",
+             artifact.prepared_study_manifest_sha256},
             {"materialization_manifest_sha256", materialization.materialization_manifest_sha256},
             {"prepared_study_manifest_sha256", materialization.prepared_study_manifest_sha256},
+            {"artifact_evaluation_materialization_match",
+             artifact.input_materialization_manifest_sha256 ==
+                 materialization.materialization_manifest_sha256},
+            {"evaluation_embedding_identity", {
+                {"model_id", evaluation_identity.model_id},
+                {"model_revision", evaluation_identity.model_revision},
+                {"query_prefix", evaluation_identity.query_prefix},
+                {"document_prefix", evaluation_identity.document_prefix},
+                {"normalized", evaluation_identity.normalized},
+            }},
             {"evaluation_document_ids_sha256", materialization.evaluation_document_ids_sha256},
             {"evaluation_query_ids_sha256", materialization.evaluation_query_ids_sha256},
             {"evaluation_qrels_sha256", materialization.evaluation_qrels_sha256},
@@ -286,6 +482,10 @@ int main(int argc, char* argv[]) {
             {"oracle_k", evaluation.exact_agreement.oracle_k},
             {"returned_candidate_limit", evaluation.exact_agreement.returned_candidate_limit},
             {"candidate_scoring", candidate_scoring_name(binary_options.candidate_scoring)},
+            {"asymmetric_scoring_backend", asymmetric_scoring_backend_name(
+                binary_options.candidate_scoring,
+                binary_options.asymmetric_scoring_backend
+            )},
             {"exact_top_k_candidate_coverage", evaluation.exact_agreement.exact_top_k_candidate_coverage},
             {"reranked_recall_at_k_vs_exact", evaluation.exact_agreement.reranked_recall_at_k_vs_exact},
             {"decoder_recall_at_k_vs_exact", evaluation.exact_agreement.decoder_recall_at_k_vs_exact},

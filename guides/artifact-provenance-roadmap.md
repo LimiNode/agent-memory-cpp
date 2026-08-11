@@ -50,7 +50,8 @@ This guide extends, rather than replaces:
 
 ## 3. Identity Model
 
-`SourceId`, `SourceRevisionId`, `ArtifactId`, `RepresentationId`,
+`SourceId`, `SourceRevisionId`, `ArtifactId`, `ArtifactBindingId`,
+`ArtifactBodyStateReceiptId`, `RepresentationId`,
 `SegmentSetId`, `SegmentId`, `SourceRefId` and `EvidenceAnchorId` are opaque,
 versioned durable identifiers. Their concrete codec is an application-owned
 artifact-profile decision; it must have canonical byte encoding, equality,
@@ -151,9 +152,17 @@ they belong to its binding in a particular source revision.
 
 ```cpp
 enum class ArtifactRetentionClass : std::uint8_t {
+    ReferenceOnly,
     SourceOriginal,
     DerivedDurable,
     RebuildableCache
+};
+
+enum class BindingBodyState : std::uint8_t {
+    Materialized,
+    NeverRetained,
+    RetentionRemoved,
+    Evicted
 };
 
 enum class CatalogLifecycleState : std::uint8_t {
@@ -171,6 +180,7 @@ struct Artifact {
 };
 
 struct ArtifactBinding {
+    ArtifactBindingId id;
     SourceRevisionId source_revision_id;
     ArtifactId artifact_id;
     std::string role;  // e.g. primary_source_original, extracted_audio, page_render
@@ -179,6 +189,16 @@ struct ArtifactBinding {
     std::optional<std::string> original_name;
     std::uint64_t bound_at_ms = 0;
     TypedMetadata source_metadata;
+};
+
+struct ArtifactBodyStateReceipt {
+    ArtifactBodyStateReceiptId id;
+    ArtifactBindingId binding_id;
+    BindingBodyState state = BindingBodyState::NeverRetained;
+    std::optional<ArtifactBodyStateReceiptId> previous_receipt_id;
+    PolicyFingerprint policy;
+    PrincipalId authority;
+    std::uint64_t recorded_at_ms = 0;
 };
 ```
 
@@ -203,13 +223,49 @@ the same bytes can be imported into different sources under different policies.
 `record_artifact` is idempotent only when `id`, digest and size agree; a
 conflicting record is a validation error, not a metadata overwrite.
 
-Each SourceRevision has exactly one retained binding with role
+Each SourceRevision has exactly one original binding with role
 `primary_source_original`; it replaces the former ambiguous
-`primary_artifact_id` field. Additional bindings are allowed and explicit.
+`primary_artifact_id` field. `ArtifactBinding` is immutable and records the
+relationship, role and retention policy only. The current body state is the
+last append-only `ArtifactBodyStateReceipt` for that binding. Retrying an
+identical receipt is idempotent; a second, different terminal transition is a
+conflict.
 
-`SourceOriginal` must be retained or reported as unavailable. `DerivedDurable`
-is retained because rebuilding it would be expensive, nondeterministic or
-would lose provenance. `RebuildableCache` may be evicted and regenerated.
+The initial receipt and all later transitions must satisfy this fail-closed
+matrix:
+
+| Retention class | Permitted binding body states |
+| --- | --- |
+| `ReferenceOnly` | `NeverRetained` only |
+| `SourceOriginal` | `Materialized`, then optionally `RetentionRemoved` |
+| `DerivedDurable` | `Materialized`, then optionally `RetentionRemoved` |
+| `RebuildableCache` | `Materialized`, `Evicted`, or authorized `RetentionRemoved` |
+
+`AccessDenied`, `Corrupt`, and `BackendUnavailable` are operation outcomes,
+not durable binding states: they can vary by caller, replica, or time.
+`SourceOriginal` and `DerivedDurable` bodies must be materialized unless a
+later receipt reports their authorized removal. `ReferenceOnly` records an
+observed immutable identity and locator without claiming that a durable body
+ever existed. `DerivedDurable` is retained because rebuilding it would be
+expensive, nondeterministic or would lose provenance. `RebuildableCache` may
+be evicted and regenerated.
+
+The catalog validates the receipt chain before appending it. `ReferenceOnly /
+NeverRetained` has no body-materialization transition. `SourceOriginal` and
+`DerivedDurable` may transition only from `Materialized` to terminal
+`RetentionRemoved`. `RebuildableCache` may transition between `Materialized`
+and `Evicted`; `RetentionRemoved` is terminal for every retention class that
+allows it. An attempted transition with a missing, mismatched, or non-current
+`previous_receipt_id` fails closed.
+
+`ReferenceOnly` with `ArtifactProvenance` is valid only after a complete,
+verified observation of the canonical byte stream: the connector reads all
+bytes, computes the digest and size, verifies that the source did not change
+during observation, and destroys any transient copy. A locator, ETag,
+Last-Modified value, external revision id, or partial range fetch is not an
+artifact observation. A locator-only source may retain a Source-level external
+reference, but must not fabricate an `ArtifactId`, snapshot digest, or
+byte-stable `EvidenceAnchor`.
 
 Source revisions, representations and segment sets carry a lifecycle state and
 retention policy even though their immutable identity never changes. `Active`
@@ -489,9 +545,16 @@ original observation. `original_locator` is mandatory and coordinates the
 original artifact. `representation_locator` coordinates a derived artifact only
 when `representation_id` and an `AlignmentProvenance` (processor/version,
 alignment method and optional confidence) are present. A context excerpt based
-on derived text is labeled as derived. If an original artifact has been deleted
-under an authorized retention policy, the anchor remains resolvable as metadata
-and materialization reports `ArtifactUnavailable`.
+on derived text is labeled as derived. The latest
+`ArtifactBodyStateReceipt` for the relevant binding records whether original
+bytes are materialized separately from this immutable identity. `NeverRetained`
+means that a complete verified source observation established the identity and
+locator, but its original bytes were never added to a durable body store. It is
+the required state for an AM-23 `ReferenceOnly` source and is not equivalent to
+a failed import. `RetentionRemoved` means that bytes were previously retained
+and later removed under an authorized retention policy. In both cases an anchor
+remains resolvable as metadata, but their different history must remain
+observable to export, audit, and citation rendering.
 
 ## 5. Catalog, Blob And Lineage Boundaries
 
@@ -544,6 +607,8 @@ public:
         const AppendSourceRevisionRequest& request) = 0;
     virtual CatalogResult<ArtifactId> record_artifact(const Artifact& artifact) = 0;
     virtual CatalogStatusResult bind_artifact(const ArtifactBinding& binding) = 0;
+    virtual CatalogStatusResult record_artifact_body_state(
+        const ArtifactBodyStateReceipt& receipt) = 0;
     virtual CatalogResult<RepresentationId> record_representation(
         const Representation& representation) = 0;
     virtual CatalogResult<SegmentSetId> record_segment_set(
@@ -560,8 +625,7 @@ public:
 };
 
 enum class BlobStatus : std::uint8_t {
-    Ok, NotFound, AccessDenied, RangeUnsupported, DigestMismatch,
-    Corrupt, LimitExceeded, BackendUnavailable, ArtifactUnavailable
+    Ok, NotFound, AccessDenied, Corrupt, DigestMismatch, BackendUnavailable
 };
 
 template <typename T>
@@ -608,6 +672,38 @@ public:
         const MaterializationRequest& request) = 0;
 };
 
+enum class BindingMaterializationStatus : std::uint8_t {
+    Materialized,
+    NeverRetained,
+    RetentionRemoved,
+    Evicted
+};
+
+struct ArtifactMaterializationRequest {
+    ArtifactBindingId binding_id;
+    SourceRevisionId source_revision_id;
+    ArtifactId artifact_id;
+    RetrievalAccessContext access;
+    BlobReadRange range;
+    MaterializationRequest request;
+};
+
+struct ArtifactMaterializationResult {
+    BindingMaterializationStatus binding_status =
+        BindingMaterializationStatus::NeverRetained;
+    BlobStatus blob_status = BlobStatus::NotFound;
+    std::optional<MaterializedArtifact> value;
+    std::string diagnostic;
+};
+
+class IArtifactMaterializationResolver {
+public:
+    virtual ~IArtifactMaterializationResolver() = default;
+
+    virtual ArtifactMaterializationResult materialize(
+        const ArtifactMaterializationRequest& request) = 0;
+};
+
 struct ArtifactPublicationRequest {
     Artifact artifact;
     std::vector<ArtifactBinding> bindings;
@@ -645,6 +741,16 @@ or an explicit recovery/retention decision. `record_segment_set` appends an
 immutable set; `activate_materialization` changes only the current retrieval
 view. A boolean existence API is deliberately forbidden because callers must
 distinguish missing bytes from policy denial, corruption and backend failure.
+
+`IBlobStore` is deliberately unaware of catalog bindings. Its `open` and
+`materialize` operations receive only the globally deduplicated `ArtifactId`
+and report only physical/backend outcomes. In particular, `NeverRetained` and
+`RetentionRemoved` must never be global `BlobStatus` values: another binding of
+the same artifact bytes may still be materialized. The catalog-aware
+`IArtifactMaterializationResolver` resolves the exact binding, verifies its
+body-state receipt and caller access, then invokes the raw store only for a
+`Materialized` binding. A resolver returns a binding state without attempting a
+raw read for `NeverRetained`, `RetentionRemoved`, or `Evicted`.
 
 `record_evidence_anchor` is create-or-validate over the immutable source
 revision, artifact and locator coordinates. `ISourceRefStore` owns the
@@ -686,15 +792,15 @@ All backends expose the same artifact identity. Compression, encryption and
 chunking are storage codecs declared in the artifact/body descriptor; they do
 not alter `ArtifactId`, which is based on the original immutable byte stream.
 
-`ArtifactUnavailable` means that the catalog still resolves a durable artifact
-identity and its evidence anchors, but an authorized retention policy has
-removed the materializable body. `probe`, `open`, and `materialize` return this
-status for that state. `NotFound` means no matching artifact is known to the
-selected blob backend, `AccessDenied` means the body may exist but is not
-readable to the caller, and `Corrupt` means a body was found but failed its
-integrity checks. Callers preserve the anchor metadata when they receive
-`ArtifactUnavailable` and render the citation as retained metadata with an
-unavailable original, rather than as a broken or fabricated citation.
+`BindingMaterializationStatus::RetentionRemoved` means that the relevant
+catalog binding resolves an artifact identity and evidence anchor, but an
+authorized policy removed a body that it previously retained.
+`BindingMaterializationStatus::NeverRetained` means that the relevant binding
+is reference-only and no durable body was ever retained. `NotFound`,
+`AccessDenied`, `Corrupt`, and `BackendUnavailable` remain raw operation
+outcomes. Callers preserve anchor metadata for both binding-level unavailable
+states, but render `NeverRetained` as external/reference-only evidence rather
+than as a previously retained original that is now unavailable.
 
 ## 6. Indexing And Context Assembly
 
@@ -877,7 +983,8 @@ The closure recipe selects at least the following authoritative sets:
 | Raw-first M0 | `ResourceRevision` descriptors, body/chunk bytes, body digests, and locator/revision mappings |
 | `SequenceReplay` | complete `KnowledgeVisibilityReceipt` set |
 | `GraphRelations` | Relation-owned logical `GraphEdge` set |
-| `ArtifactProvenance` (M2) | the base closure plus the separate artifact backup extension |
+| AM-23 admission | complete canonical admission decisions, consumption and revocation receipts; confirmation-resolution and quarantine release/deletion receipts; and projection-visibility receipts; quarantine payloads remain excluded |
+| `ArtifactProvenance` (M2) | the base closure plus the separate artifact catalog extension, including immutable bindings and complete binding body-state receipt history |
 
 An application-local snapshot is a distinct non-portable format. It must not
 masquerade as `WorkspaceBackupManifest` or cross a workspace boundary.
@@ -893,6 +1000,18 @@ validates the artifact catalog root and artifact identity scheme, and requires e
 retained `SourceRef` and `EvidenceAnchor` to resolve. Rebuildable ANN/vector
 indexes remain outside both manifests and may be rebuilt only after validation.
 Failed restore leaves the target workspace unpublished.
+
+When AM-23 admission is selected, restore also validates every admission
+receipt's canonical candidate binding, workspace/scope compatibility, authority
+and policy fingerprints, its matching consumption/revocation history, and a
+required projection-visibility receipt before publication. It validates receipt
+expiry at historical consumption time, not against the restore clock. It
+restores those historical receipts; it does not submit the historical payload to
+the current admission policy. Unresolved confirmation requests are never
+restored as actionable: because the non-retrieval pending payload is excluded
+from normal backup closure, restore appends an `ExpiredByRestore` confirmation
+resolution receipt. A legacy record without a receipt must instead enter through
+the explicitly named migration policy and retain its migration provenance.
 
 `SequenceReplay` selects the complete `KnowledgeVisibilityReceipt` logical
 record set in `WorkspaceBackupManifest` as authoritative backup state. The
@@ -987,6 +1106,14 @@ Minimum evaluation gates are:
 - original-versus-derived representation labeling in context and traces;
 - retention and backup/restore reachability checks, including binding roots and
   interrupted import/export/materialization fixtures;
+- one deduplicated `ArtifactId` bound as `ReferenceOnly` for one revision and
+  `SourceOriginal` for another: the resolver must deny materialization through
+  the first binding while the raw store remains readable through the second;
+- immutable binding body-state transitions, including idempotent retry,
+  conflicting transition rejection, cache eviction/regeneration, and
+  `RetentionRemoved` terminality;
+- complete-observation acceptance for `ReferenceOnly` and rejection of
+  locator-only/partial-observation artifact identities;
 - bounded read amplification and explicit `BlobStatus` results for
   compressed/chunked artifacts;
 - retrieval quality and latency reported separately for each modality and

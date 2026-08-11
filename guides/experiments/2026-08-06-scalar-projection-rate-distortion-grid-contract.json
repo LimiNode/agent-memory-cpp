@@ -1,0 +1,103 @@
+{
+  "comparisons": [
+    {"id":"itq_seed42_binary_adc_128_to_ternary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":42},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed42_binary_adc_128_to_ternary_adc_80","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":42},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed42_binary_adc_208_to_ternary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":42},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed42_binary_adc_80_to_ternary_adc_80","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":80,"seed":42},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed42_hamming_128_to_binary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":128,"seed":42},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed42_hamming_208_to_binary_adc_208","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":208,"seed":42},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed42_ternary_adc_128_to_quaternary_adc_104","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":42},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":104,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed42_ternary_adc_80_to_quaternary_adc_64","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":42},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":64,"seed":42},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed43_binary_adc_128_to_ternary_adc_80","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":43},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":43},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed43_binary_adc_208_to_ternary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":43},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":43},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed43_hamming_128_to_binary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":128,"seed":43},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":43},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed43_hamming_208_to_binary_adc_208","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":208,"seed":43},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":43},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed43_ternary_adc_128_to_quaternary_adc_104","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":43},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":104,"seed":43},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed43_ternary_adc_80_to_quaternary_adc_64","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":43},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":64,"seed":43},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed44_binary_adc_128_to_ternary_adc_80","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":44},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":44},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed44_binary_adc_208_to_ternary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":44},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":44},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed44_hamming_128_to_binary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":128,"seed":44},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":44},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed44_hamming_208_to_binary_adc_208","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":208,"seed":44},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":44},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed44_ternary_adc_128_to_quaternary_adc_104","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":44},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":104,"seed":44},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed44_ternary_adc_80_to_quaternary_adc_64","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":44},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":64,"seed":44},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed45_binary_adc_128_to_ternary_adc_80","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":45},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":45},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed45_binary_adc_208_to_ternary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":45},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":45},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed45_hamming_128_to_binary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":128,"seed":45},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":45},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed45_hamming_208_to_binary_adc_208","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":208,"seed":45},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":45},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed45_ternary_adc_128_to_quaternary_adc_104","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":45},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":104,"seed":45},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed45_ternary_adc_80_to_quaternary_adc_64","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":45},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":64,"seed":45},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed46_binary_adc_128_to_ternary_adc_80","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":46},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":46},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed46_binary_adc_208_to_ternary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":46},"right":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":46},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed46_hamming_128_to_binary_adc_128","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":128,"seed":46},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":128,"seed":46},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed46_hamming_208_to_binary_adc_208","left":{"projection":"itq","quantizer":"binary","scoring":"binary_hamming_reference_v2","coordinate_count":208,"seed":46},"right":{"projection":"itq","quantizer":"binary","scoring":"binary_adc_packed_base2_lut_v1","coordinate_count":208,"seed":46},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed46_ternary_adc_128_to_quaternary_adc_104","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":128,"seed":46},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":104,"seed":46},"replicates":10000,"bootstrap_seed":20260806},
+    {"id":"itq_seed46_ternary_adc_80_to_quaternary_adc_64","left":{"projection":"itq","quantizer":"tertiles","scoring":"ternary_adc_packed_base3_lut_v1","coordinate_count":80,"seed":46},"right":{"projection":"itq","quantizer":"quartiles","scoring":"quaternary_adc_packed_base4_lut_v1","coordinate_count":64,"seed":46},"replicates":10000,"bootstrap_seed":20260806}
+  ],
+  "family": "scalar_projection_grid_contract_v1",
+  "row_groups": [
+    {
+      "coordinate_counts": [128, 208],
+      "projection": "itq",
+      "quantizer": "binary",
+      "scoring": "binary_hamming_reference_v2",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [128, 208],
+      "projection": "itq",
+      "quantizer": "binary",
+      "scoring": "binary_adc_packed_base2_lut_v1",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [80, 128],
+      "projection": "itq",
+      "quantizer": "tertiles",
+      "scoring": "ternary_adc_packed_base3_lut_v1",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [64, 104],
+      "projection": "itq",
+      "quantizer": "quartiles",
+      "scoring": "quaternary_adc_packed_base4_lut_v1",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    {
+      "coordinate_counts": [80],
+      "projection": "itq",
+      "quantizer": "binary",
+      "scoring": "binary_adc_packed_base2_lut_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [80, 128],
+      "projection": "itq",
+      "quantizer": "tertiles",
+      "scoring": "ternary_symmetric_l1_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [80, 128, 208],
+      "projection": "pca",
+      "quantizer": "binary",
+      "scoring": "binary_adc_packed_base2_lut_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [80, 128],
+      "projection": "pca",
+      "quantizer": "tertiles",
+      "scoring": "ternary_adc_packed_base3_lut_v1",
+      "seeds": [42]
+    },
+    {
+      "coordinate_counts": [64, 104],
+      "projection": "pca",
+      "quantizer": "quartiles",
+      "scoring": "quaternary_adc_packed_base4_lut_v1",
+      "seeds": [42]
+    }
+  ],
+  "schema_version": 2
+}

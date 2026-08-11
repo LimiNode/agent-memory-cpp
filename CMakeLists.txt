@@ -44,6 +44,7 @@ add_library(agent_memory STATIC
     src/agent_memory/facts/Fact.cpp
     src/agent_memory/ingestion/ResourceIndexer.cpp
     src/agent_memory/index/AggregateBinarySignature.cpp
+    src/agent_memory/index/AsymmetricBinarySignatureScorer.cpp
     src/agent_memory/index/AutoencoderBinaryEncoder.cpp
     src/agent_memory/index/BinarySignature.cpp
     src/agent_memory/index/BinarySignatureEncoderRegistry.cpp
@@ -160,8 +161,24 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
             COMMAND agent-memory-standard-binary-eval --self-test
         )
+        add_test(
+            NAME agent_memory_autoencoder_evaluator_self_test
+            COMMAND agent-memory-autoencoder-eval --self-test
+        )
     endif()
-    find_package(Python3 COMPONENTS Interpreter QUIET)
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    execute_process(
+        COMMAND ${Python3_EXECUTABLE} -c "import numpy; import yaml"
+        RESULT_VARIABLE AGENT_MEMORY_PYTHON_TOOLS_IMPORT_RESULT
+        OUTPUT_QUIET
+        ERROR_VARIABLE AGENT_MEMORY_PYTHON_TOOLS_IMPORT_ERROR
+    )
+    if(NOT AGENT_MEMORY_PYTHON_TOOLS_IMPORT_RESULT EQUAL 0)
+        message(FATAL_ERROR
+            "Python evaluator self-tests require NumPy and PyYAML from ${Python3_EXECUTABLE}: "
+            "${AGENT_MEMORY_PYTHON_TOOLS_IMPORT_ERROR}"
+        )
+    endif()
     if(Python3_Interpreter_FOUND)
         add_test(
             NAME agent_memory_miracl_ae_preparer_self_test
@@ -192,6 +209,96 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND
                 ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-binary-autoencoder.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_learned_binary_adc_trainer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-learned-binary-adc.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_nlb_qrels_supervised_trainer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-nlb-qrels-supervised.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_projection_quantization_evaluator_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/evaluate-projection-quantization.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mih_banding_evaluator_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/evaluate-mih-banding.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_ann_cascade_comparison_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/evaluate-ann-cascade.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_ann_cascade_matrix_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-ann-cascade-matrix.py
+                self-test
+                --matrix
+                ${CMAKE_CURRENT_SOURCE_DIR}/guides/experiments/2026-08-10-ann-cascade-comparison-matrix-v1.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_ann_cascade_evidence_packager_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-ann-cascade-evidence.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mih_banding_evidence_validator_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-mih-banding-evidence.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_pq_opq_evaluator_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/evaluate-pq-opq.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_pq_opq_evidence_validator_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-pq-opq-evidence.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_nlb_retrieval_finetuner_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/fine-tune-nlb-retrieval.py
                 --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
