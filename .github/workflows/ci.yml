@@ -121,6 +121,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
       - name: Configure native MIH benchmark harness
         run: >
           cmake -S . -B build-native-mih
@@ -128,6 +136,7 @@ jobs:
           -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
           -DAGENT_MEMORY_BUILD_TESTS=ON
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build native MIH benchmark harness
         run: cmake --build build-native-mih --config Release --target agent-memory-mih-native-hot-path
