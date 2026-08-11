@@ -159,6 +159,16 @@ target_link_libraries(agent-memory-hamming-hot-path-bench
         agent_memory::json
 )
 
+add_executable(agent-memory-mih-native-hot-path
+    mih_native_hot_path.cpp
+)
+
+target_link_libraries(agent-memory-mih-native-hot-path
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 if(AGENT_MEMORY_ENABLE_MDBX)
     set(agent_memory_storage_provenance_authoritative 0)
     set(agent_memory_storage_provenance_reason "non_pinned_dependency_resolution")

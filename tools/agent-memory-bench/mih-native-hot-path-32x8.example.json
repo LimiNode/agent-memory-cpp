@@ -1,0 +1,10 @@
+{
+  "input_directory": "tmp/mih-storage-input-v1",
+  "query_count": 128,
+  "repeat_count": 5,
+  "query_seed": 20260811,
+  "band_count": 32,
+  "local_probe_radius": 1,
+  "global_radius": -1,
+  "hamming_limit": 512
+}

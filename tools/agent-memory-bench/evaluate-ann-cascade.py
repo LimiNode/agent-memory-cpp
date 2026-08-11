@@ -143,10 +143,13 @@ def build_faiss_binary(codes: numpy.ndarray, config: dict[str, Any]) -> tuple[Ca
     index.hnsw.efSearch = hnsw["ef_search"]
     index.add(codes)
     limit = config["candidate_limit"]
+    info = {"library": "faiss-cpu", "index": "IndexBinaryHNSW", "distance": "hamming", "packed_bits": 256, "build_seed": hnsw["build_seed"], "serialized_index_bytes": len(faiss.serialize_index_binary(index)), "distance_evaluations_counter": "faiss.cvar.hnsw_stats.ndis"}
     def search(query: numpy.ndarray) -> numpy.ndarray:
+        faiss.cvar.hnsw_stats.reset()
         _, labels = index.search(query.reshape(1, -1), limit)
+        info["_last_distance_evaluations"] = int(faiss.cvar.hnsw_stats.ndis)
         return require_candidate_positions(labels[0], codes.shape[0], limit)
-    return search, {"library": "faiss-cpu", "index": "IndexBinaryHNSW", "distance": "hamming", "packed_bits": 256, "build_seed": hnsw["build_seed"], "serialized_index_bytes": len(faiss.serialize_index_binary(index))}
+    return search, info
 
 
 def build_usearch_binary(codes: numpy.ndarray, config: dict[str, Any]) -> tuple[Callable[[numpy.ndarray], numpy.ndarray], dict[str, Any]]:
@@ -178,10 +181,13 @@ def build_faiss_float(vectors: numpy.ndarray, config: dict[str, Any]) -> tuple[C
     index.hnsw.efSearch = hnsw["ef_search"]
     index.add(values)
     limit = config["candidate_limit"]
+    info = {"library": "faiss-cpu", "index": "IndexHNSWFlat", "distance": "inner_product_on_l2_normalized_e5", "build_seed": hnsw["build_seed"], "serialized_index_bytes": len(faiss.serialize_index(index)), "distance_evaluations_counter": "faiss.cvar.hnsw_stats.ndis"}
     def search(query: numpy.ndarray) -> numpy.ndarray:
+        faiss.cvar.hnsw_stats.reset()
         _, labels = index.search(numpy.ascontiguousarray(query.reshape(1, -1), dtype=numpy.float32), limit)
+        info["_last_distance_evaluations"] = int(faiss.cvar.hnsw_stats.ndis)
         return require_candidate_positions(labels[0], values.shape[0], limit)
-    return search, {"library": "faiss-cpu", "index": "IndexHNSWFlat", "distance": "inner_product_on_l2_normalized_e5", "build_seed": hnsw["build_seed"], "serialized_index_bytes": len(faiss.serialize_index(index))}
+    return search, info
 
 
 def build_mih(codes: numpy.ndarray, config: dict[str, Any]) -> tuple[Callable[[numpy.ndarray], numpy.ndarray], dict[str, Any]]:
@@ -250,6 +256,7 @@ def evaluate(args: Any) -> None:
     adc_ms: list[float] = []
     exact_ms: list[float] = []
     total_ms: list[float] = []
+    generator_distance_evaluations: list[int] = []
     for _ in range(config["warmup_repeats"]):
         for row in range(len(data["query_ids"])):
             generator(packed_queries[row] if binary_generator and engine != "mih_256" else (query_codes[row] if binary_generator else queries[row]))
@@ -259,6 +266,8 @@ def evaluate(args: Any) -> None:
             generate_start = time.perf_counter()
             raw_candidates = generator(packed_queries[row] if binary_generator and engine != "mih_256" else (query_codes[row] if binary_generator else queries[row]))
             generator_elapsed = time.perf_counter() - generate_start
+            if "_last_distance_evaluations" in generator_info:
+                generator_distance_evaluations.append(int(generator_info.pop("_last_distance_evaluations")))
             candidate_counts.append(int(raw_candidates.size))
             if binary_generator:
                 hamming_start = time.perf_counter()
@@ -339,6 +348,11 @@ def evaluate(args: Any) -> None:
             "cascade_total_p95": float(numpy.percentile(total_ms, 95)),
         },
         "mean_candidate_count": float(numpy.mean(candidate_counts)),
+        "candidate_generator_work": {
+            "returned_candidates_mean": float(numpy.mean(candidate_counts)),
+            "distance_evaluations_mean": float(numpy.mean(generator_distance_evaluations)) if generator_distance_evaluations else None,
+            "distance_evaluations_scope": "Faiss global HNSW counter reset before each one-thread search" if generator_distance_evaluations else None,
+        },
         "timing_scope": "candidate generator plus common downstream rerank; shared ITQ query projection and full-corpus oracle are excluded",
         "thread_count": config["thread_count"],
     }
@@ -372,9 +386,12 @@ def self_test(external: bool = False) -> int:
         config = {"hnsw": {"connectivity": 2, "ef_construction": 4, "ef_search": 2, "build_seed": 20260810}, "candidate_limit": 2, "thread_count": 1, "mih": {"band_count": 16, "global_radius": 0}}
         byte_codes = packed_codes(values)
         for builder, input_values in ((build_faiss_binary, byte_codes), (build_usearch_binary, byte_codes), (build_faiss_float, numpy.zeros((2, 256), dtype=numpy.float32))):
-            search, _ = builder(input_values, config)
+            search, info = builder(input_values, config)
             if search(input_values[0]).size == 0:
                 print("self-test failed: external ANN search returned no candidates", file=sys.stderr)
+                return 1
+            if builder in (build_faiss_binary, build_faiss_float) and int(info.get("_last_distance_evaluations", 0)) <= 0:
+                print("self-test failed: Faiss HNSW distance counter was not incremented", file=sys.stderr)
                 return 1
     print("ANN cascade comparison self-test passed")
     return 0
