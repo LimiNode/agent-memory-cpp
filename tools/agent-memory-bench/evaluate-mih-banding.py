@@ -118,6 +118,49 @@ def candidate_union(index: list[dict[int, numpy.ndarray]], query: Any, ranges: l
     return numpy.asarray(sorted(selected), dtype=numpy.int32), probes
 
 
+def budgeted_confidence_candidate_union(
+    index: list[dict[int, numpy.ndarray]],
+    query: Any,
+    query_projection: Any,
+    ranges: list[tuple[int, int]],
+    soft_candidate_target: int,
+) -> tuple[numpy.ndarray, int, int, int]:
+    """Probe exact 32x8 buckets, then one-bit buckets until a soft target.
+
+    The exact-bucket union is mandatory and can exceed ``soft_candidate_target``.
+    The target therefore controls only optional one-bit expansion, not a hard
+    candidate-set cap.
+    """
+    if soft_candidate_target <= 0 or len(ranges) != 32 or any(stop - start != 8 for start, stop in ranges):
+        raise EvaluationError("budgeted confidence probing requires 32 equal 8-bit bands")
+    selected: set[int] = set()
+    probes = 0
+    posting_visits = 0
+
+    def add(bucket: dict[int, numpy.ndarray], key: int) -> None:
+        nonlocal probes, posting_visits
+        probes += 1
+        positions = bucket.get(key)
+        if positions is not None:
+            posting_visits += int(positions.size)
+            selected.update(positions.tolist())
+
+    for buckets, (start, stop) in zip(index, ranges):
+        add(buckets, band_key(query, start, stop))
+    exact_bucket_floor_count = len(selected)
+    flips = [
+        (float(abs(query_projection[start + bit])), band, bit)
+        for band, (start, stop) in enumerate(ranges)
+        for bit in range(stop - start)
+    ]
+    for _, band, bit in sorted(flips):
+        if len(selected) >= soft_candidate_target:
+            break
+        start, stop = ranges[band]
+        add(index[band], band_key(query, start, stop) ^ (1 << bit))
+    return numpy.asarray(sorted(selected), dtype=numpy.int32), probes, posting_visits, exact_bucket_floor_count
+
+
 def stable_hamming_order(codes: Any, query: Any, document_ids: Any, candidates: Any | None = None) -> numpy.ndarray:
     if candidates is None:
         candidates = numpy.arange(codes.shape[0], dtype=numpy.int32)
@@ -184,6 +227,10 @@ def evaluate(args: Any) -> None:
         radii = [args.probe_radius] * args.band_count
     if max(radii) > min(stop - start for start, stop in ranges):
         raise EvaluationError("MIH probe radius exceeds a band width")
+    if args.probe_policy == "budgeted-confidence" and (
+        args.global_radius is not None or args.probe_radius != 1 or args.soft_candidate_target <= 0
+    ):
+        raise EvaluationError("budgeted confidence policy requires local radius one and a candidate budget")
     calibration = shared.load_root(args.calibration_root)
     data = shared.load_root(args.evaluation_root)
     validate_roots(calibration, data, args.code_bits)
@@ -204,15 +251,33 @@ def evaluate(args: Any) -> None:
     full_e5_ndcg: list[float] = []
     candidate_counts: list[int] = []
     probe_counts: list[int] = []
+    posting_visits: list[int] = []
+    exact_bucket_floor_counts: list[int] = []
     hamming_scores: list[int] = []
+    raw_union_oracle_coverage: list[float] = []
+    hamming_oracle_coverage: list[float] = []
+    second_oracle_coverage: list[float] = []
+    oracle_hamming_distance_mean: list[float] = []
     seconds = 0.0
     for row, query_id in enumerate(data["query_ids"]):
         full_hamming = stable_hamming_order(codes, query_codes[row], document_ids)
         start = time.perf_counter()
-        candidates, probes = candidate_union(index, query_codes[row], ranges, radii)
+        if args.probe_policy == "budgeted-confidence":
+            candidates, probes, visits, exact_bucket_floor_count = budgeted_confidence_candidate_union(
+                index, query_codes[row], query_projection[row], ranges, args.soft_candidate_target
+            )
+        else:
+            candidates, probes = candidate_union(index, query_codes[row], ranges, radii)
+            visits = sum(
+                int(index[band].get(key, numpy.empty(0, dtype=numpy.int32)).size)
+                for band, ((start_bit, stop_bit), radius) in enumerate(zip(ranges, radii))
+                if radius >= 0
+                for key in probe_keys(band_key(query_codes[row], start_bit, stop_bit), stop_bit - start_bit, radius)
+            )
+            exact_bucket_floor_count = 0
         restricted = stable_hamming_order(codes, query_codes[row], document_ids, candidates)[:args.hamming_limit]
         seconds += time.perf_counter() - start
-        candidate_counts.append(int(candidates.size)); probe_counts.append(probes); hamming_scores.append(int(candidates.size))
+        candidate_counts.append(int(candidates.size)); probe_counts.append(probes); posting_visits.append(visits); exact_bucket_floor_counts.append(exact_bucket_floor_count); hamming_scores.append(int(candidates.size))
         hamming_recall.append(float(numpy.isin(full_hamming[:args.candidate_limit], restricted[:args.candidate_limit]).sum()) / args.candidate_limit)
         if args.second_stage == "binary-adc":
             second = binary_adc_order(query_projection[row], centers, codes, document_ids, restricted)[:args.second_limit]
@@ -222,13 +287,18 @@ def evaluate(args: Any) -> None:
         rerank = second[numpy.lexsort((document_ids[second], -exact_scores))]
         full_exact = numpy.asarray(data["documents"]) @ numpy.asarray(data["queries"])[row]
         exact_order = numpy.lexsort((document_ids, -full_exact))
-        e5_coverage.append(float(numpy.isin(exact_order[:args.oracle_k], rerank).sum()) / args.oracle_k)
+        oracle = exact_order[:args.oracle_k]
+        raw_union_oracle_coverage.append(float(numpy.isin(oracle, candidates).sum()) / args.oracle_k)
+        hamming_oracle_coverage.append(float(numpy.isin(oracle, restricted).sum()) / args.oracle_k)
+        second_oracle_coverage.append(float(numpy.isin(oracle, second).sum()) / args.oracle_k)
+        oracle_hamming_distance_mean.append(float(numpy.count_nonzero(codes[oracle] != query_codes[row], axis=1).mean()))
+        e5_coverage.append(float(numpy.isin(oracle, rerank).sum()) / args.oracle_k)
         reranked_ndcg.append(shared.dcg_at_10(document_ids[rerank], data["qrels"][query_id]))
         full_e5_ndcg.append(shared.dcg_at_10(document_ids[exact_order], data["qrels"][query_id]))
     guarantee = args.global_radius is not None
     source_files = source_files_sha256()
     report = {
-        "schema_version": 4, "family": "mih_banding_reference_v4",
+        "schema_version": 6, "family": "mih_banding_reference_v6",
         "evaluator_source_files_sha256": source_files,
         "evaluator_source_bundle_sha256": source_bundle_sha256(source_files),
         "evaluator_runtime": shared.evaluator_runtime(),
@@ -236,10 +306,11 @@ def evaluate(args: Any) -> None:
         "calibration_vector_count": len(calibration["train_ids"]),
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
         "code_bits": args.code_bits, "band_count": args.band_count, "band_width_bits": [stop - start for start, stop in ranges], "probe_radius": args.probe_radius, "global_radius": args.global_radius, "band_probe_radii": radii,
-        "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k,
+        "fixed_radius": args.global_radius, "fixed_radius_exact_guarantee": guarantee, "candidate_limit": args.candidate_limit, "hamming_limit": args.hamming_limit, "second_limit": args.second_limit, "second_stage": args.second_stage, "oracle_k": args.oracle_k, "probe_policy": args.probe_policy, "soft_candidate_target": args.soft_candidate_target if args.probe_policy == "budgeted-confidence" else None,
         "seed": args.seed, "itq_iterations": args.itq_iterations, "query_count": len(data["query_ids"]),
         "hamming_top_k_recall": float(numpy.mean(hamming_recall)), "exact_top_k_candidate_coverage": float(numpy.mean(e5_coverage)), "reranked_ndcg_at_10": float(numpy.mean(reranked_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_e5_ndcg)),
-        "mean_candidates_per_query": float(numpy.mean(candidate_counts)), "mean_bucket_probes_per_query": float(numpy.mean(probe_counts)), "mean_full_hamming_scores_per_query": float(numpy.mean(hamming_scores)),
+        "mean_candidates_per_query": float(numpy.mean(candidate_counts)), "mean_exact_bucket_floor_candidates_per_query": float(numpy.mean(exact_bucket_floor_counts)), "mean_bucket_probes_per_query": float(numpy.mean(probe_counts)), "mean_posting_visits_per_query": float(numpy.mean(posting_visits)), "mean_posting_bytes_per_query": float(numpy.mean(posting_visits) * numpy.dtype(numpy.int32).itemsize), "mean_full_hamming_scores_per_query": float(numpy.mean(hamming_scores)),
+        "e5_oracle_survival": {"raw_union": float(numpy.mean(raw_union_oracle_coverage)), "hamming_top_k": float(numpy.mean(hamming_oracle_coverage)), "second_stage": float(numpy.mean(second_oracle_coverage)), "mean_full_hamming_distance": float(numpy.mean(oracle_hamming_distance_mean))},
         "reference_candidate_generation_seconds": seconds,
     }
     contributions = {
@@ -248,7 +319,13 @@ def evaluate(args: Any) -> None:
         "reranked_ndcg_at_10": numpy.asarray(reranked_ndcg, dtype=numpy.float64),
         "full_e5_ndcg_at_10": numpy.asarray(full_e5_ndcg, dtype=numpy.float64),
         "candidate_count": numpy.asarray(candidate_counts, dtype=numpy.int32),
+        "exact_bucket_floor_candidate_count": numpy.asarray(exact_bucket_floor_counts, dtype=numpy.int32),
         "bucket_probe_count": numpy.asarray(probe_counts, dtype=numpy.int32),
+        "posting_visit_count": numpy.asarray(posting_visits, dtype=numpy.int32),
+        "e5_oracle_raw_union_coverage": numpy.asarray(raw_union_oracle_coverage, dtype=numpy.float64),
+        "e5_oracle_hamming_top_k_coverage": numpy.asarray(hamming_oracle_coverage, dtype=numpy.float64),
+        "e5_oracle_second_stage_coverage": numpy.asarray(second_oracle_coverage, dtype=numpy.float64),
+        "e5_oracle_mean_full_hamming_distance": numpy.asarray(oracle_hamming_distance_mean, dtype=numpy.float64),
     }
     write_result(args, report, contributions, data)
 
@@ -265,6 +342,16 @@ def self_test() -> int:
         print("self-test failed: uneven band partition is invalid", file=sys.stderr); return 1
     if global_radius_schedule(16, 16) != [1] + [0] * 15:
         print("self-test failed: global radius schedule is invalid", file=sys.stderr); return 1
+    budget_codes = numpy.zeros((3, 256), dtype=bool)
+    budget_codes[1, 0] = True
+    budget_codes[2, 1] = True
+    budget_ranges = band_ranges(256, 32)
+    budget_index = build_index(budget_codes, budget_ranges)
+    budgeted, budget_probes, budget_visits, exact_bucket_floor = budgeted_confidence_candidate_union(
+        budget_index, budget_codes[0], numpy.asarray([0.1, 0.2] + [1.0] * 254), budget_ranges, 2
+    )
+    if set(budgeted.tolist()) != {0, 1, 2} or exact_bucket_floor != 3 or budget_probes != 32 or budget_visits != 94:
+        print("self-test failed: budgeted confidence exact-bucket lower bound is invalid", file=sys.stderr); return 1
     adc_codes = numpy.asarray([[False, False], [True, False], [True, True]], dtype=bool)
     adc_centers = numpy.asarray([[-1.0, 1.0], [-1.0, 1.0]], dtype=numpy.float32)
     adc_order = binary_adc_order(
@@ -296,7 +383,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("evaluate")
     run.add_argument("--calibration-root", type=Path, required=True); run.add_argument("--evaluation-root", type=Path, required=True); run.add_argument("--output", type=Path, required=True); run.add_argument("--contributions-output", type=Path, required=True)
-    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int)
+    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0)
     run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:

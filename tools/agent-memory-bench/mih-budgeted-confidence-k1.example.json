@@ -1,0 +1,18 @@
+{
+  "evaluation": {
+    "band_count": 32,
+    "candidate_limit": 512,
+    "code_bits": 256,
+    "hamming_limits": [512, 768, 1024, 1536],
+    "itq_iterations": 50,
+    "itq_seeds": [42, 43, 44, 45, 46],
+    "oracle_k": 10,
+    "probe_policy": "budgeted-confidence",
+    "probe_radius": 1,
+    "second_limit": 256,
+    "second_stage": "binary-adc",
+    "soft_candidate_targets": [8192, 12288, 16384]
+  },
+  "family": "mih_budgeted_confidence_k1_matrix_v1",
+  "schema_version": 1
+}
