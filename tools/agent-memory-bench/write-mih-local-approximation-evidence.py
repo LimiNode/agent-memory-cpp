@@ -179,7 +179,7 @@ def validate_row(kind: str, name: str, row: dict[str, Any], report: dict[str, An
         variant = row["variant"]
         policy = "budgeted-confidence" if variant == "budgeted-confidence" else "budgeted-adc-best-first"
         flips = None if variant == "budgeted-confidence" else int(variant[-1])
-        common.update({"probe_radius": flips or 1, "base_probe_radius": 1, "probe_policy": policy, "soft_candidate_target": row["candidate"], "soft_posting_visit_target": row["postings"], "max_probe_bit_flips": flips, "hamming_policy": "uniform"})
+        common.update({"probe_radius": flips or 1, "base_probe_radius": 1, "band_probe_radii": [flips or 1] * 32, "probe_policy": policy, "soft_candidate_target": row["candidate"], "soft_posting_visit_target": row["postings"], "max_probe_bit_flips": flips, "hamming_policy": "uniform"})
     require(all(report.get(field) == value for field, value in common.items()), f"row contract is invalid: {name}")
     files = report.get("evaluator_source_files_sha256")
     require(isinstance(files, dict) and set(files) == {"evaluate-mih-banding.py", "evaluate-projection-quantization.py"} and all(is_sha256(value) for value in files.values()) and report.get("evaluator_source_bundle_sha256") == digest(files), f"evaluator provenance is invalid: {name}")
