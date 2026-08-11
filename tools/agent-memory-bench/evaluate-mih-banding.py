@@ -450,12 +450,18 @@ def self_test() -> int:
     )
     if set(budgeted.tolist()) != {0, 1, 2} or exact_bucket_floor != 3 or budget_probes != 32 or budget_visits != 94:
         print("self-test failed: budgeted confidence exact-bucket lower bound is invalid", file=sys.stderr); return 1
+    adc_probe_codes = numpy.zeros((3, 256), dtype=bool)
+    adc_probe_codes[1, numpy.arange(0, 256, 8)] = True
+    adc_probe_codes[2, numpy.arange(1, 256, 8)] = True
+    adc_probe_index = build_index(adc_probe_codes, budget_ranges)
+    adc_probe_centers = numpy.tile(numpy.asarray([[0.0, 1.0]], dtype=numpy.float32), (256, 1))
+    adc_probe_centers[0] = numpy.asarray([1.0, 0.0], dtype=numpy.float32)
+    adc_probe_centers[1] = numpy.asarray([0.0, 2.0], dtype=numpy.float32)
     adc_budgeted, adc_budget_probes, _, adc_floor = budgeted_adc_candidate_union(
-        budget_index, budget_codes[0], numpy.asarray([0.1, 0.2] + [1.0] * 254),
-        numpy.tile(numpy.asarray([[-1.0, 1.0]], dtype=numpy.float32), (256, 1)), budget_ranges, 2,
+        adc_probe_index, adc_probe_codes[0], numpy.zeros(256, dtype=numpy.float32), adc_probe_centers, budget_ranges, 2,
     )
-    if set(adc_budgeted.tolist()) != {0, 1, 2} or adc_floor != 3 or adc_budget_probes != 32:
-        print("self-test failed: budgeted ADC exact-bucket lower bound is invalid", file=sys.stderr); return 1
+    if set(adc_budgeted.tolist()) != {0, 1} or adc_floor != 1 or adc_budget_probes != 33:
+        print("self-test failed: budgeted ADC optional probe ordering is invalid", file=sys.stderr); return 1
     adc_codes = numpy.asarray([[False, False], [True, False], [True, True]], dtype=bool)
     adc_centers = numpy.asarray([[-1.0, 1.0], [-1.0, 1.0]], dtype=numpy.float32)
     adc_order = binary_adc_order(
