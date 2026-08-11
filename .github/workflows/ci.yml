@@ -158,5 +158,11 @@ jobs:
         run: python -m pip install -r tools/agent-memory-bench/requirements-ann-cascade-comparison.txt
       - name: Exercise external ANN bindings
         run: python tools/agent-memory-bench/evaluate-ann-cascade.py self-test --external
+      - name: Exercise MIH budgeted-confidence contracts
+        run: >
+          python tools/agent-memory-bench/evaluate-mih-banding.py self-test &&
+          python tools/agent-memory-bench/run-mih-budgeted-confidence-matrix.py self-test
+          --matrix tools/agent-memory-bench/mih-budgeted-confidence-k1.example.json &&
+          python tools/agent-memory-bench/bootstrap-mih-budgeted-confidence.py self-test
       - name: Exercise ANN evidence bootstrap contract
         run: python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test
