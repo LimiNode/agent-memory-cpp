@@ -99,5 +99,21 @@ ADC-cost best-first enumeration of bounded two- and three-bit bucket probes,
 with predeclared soft candidate and posting-visit targets. It is intentionally
 separate from this note's three narrow approximations.
 
+## Query-adaptive ADC best-first follow-up
+
+The follow-up freezes three resource pairs `(candidate, postings)`:
+`(8192, 11000)`, `(12288, 19000)`, and `(16384, 30000)`. For each of five
+ITQ seeds it compares the confidence control with globally ADC-cost-ordered
+two- and three-bit per-band mutations. Exact buckets remain mandatory; both
+resource values govern optional probing only.
+
+The 45-row matrix finds no uniform improvement. At 8,192 candidates, ADC
+survival falls from `0.961821` for confidence to `0.959537` (two-bit) and
+`0.959345` (three-bit). At 12,288 it falls from `0.986789` to `0.986629` and
+`0.986390`. At 16,384, three-bit reaches `0.991741` versus confidence
+`0.991102`, but does so with more candidates and postings; it is not a matched
+budget improvement. The evidence therefore remains a no-go for this bounded
+ADC-cost approximation, not for broader query-adaptive multiprobe research.
+
 At larger corpus scales, the same variants should also be judged by posting
 bytes, bucket-tail behaviour, and latency, not only final E5 survival.

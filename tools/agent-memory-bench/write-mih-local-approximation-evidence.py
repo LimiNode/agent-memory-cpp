@@ -101,6 +101,17 @@ def study_spec(kind: str) -> tuple[str, str, dict[str, tuple[str, str]]]:
                 ) for seed in (52, 53, 54, 55, 56)},
             },
         )
+    if kind == "adc-best-first":
+        return (
+            "run-mih-adc-best-first-matrix.py",
+            "mih_adc_best_first_evidence_v1",
+            {
+                f"mih256-adc-best-first-{bits}-vs-confidence-target{target}-seed{seed}": (
+                    f"mih256-budgeted-confidence-target{target}-p{postings}-h768-adc256-seed{seed}.npz",
+                    f"mih256-adc-best-first-{bits}-target{target}-p{postings}-h768-adc256-seed{seed}.npz",
+                ) for bits in (2, 3) for target, postings in ((8192, 11000), (12288, 19000), (16384, 30000)) for seed in (42, 43, 44, 45, 46)
+            },
+        )
     raise ValueError("evidence kind is invalid")
 
 
@@ -108,7 +119,7 @@ def expected_rows(kind: str, matrix: Path) -> tuple[dict[str, dict[str, Any]], A
     runner_name, _, _ = study_spec(kind)
     runner = load_module(runner_name, f"mih_local_{kind}_runner")
     rows = dict(runner.rows(runner.load_matrix(matrix)))
-    require(len(rows) == {"weighted-hamming": 10, "adc-guided-probing": 30, "calibration-balanced-bands": 15}[kind], "matrix row count differs")
+    require(len(rows) == {"weighted-hamming": 10, "adc-guided-probing": 30, "calibration-balanced-bands": 15, "adc-best-first": 45}[kind], "matrix row count differs")
     return rows, runner, runner_name
 
 
@@ -159,11 +170,16 @@ def validate_row(kind: str, name: str, row: dict[str, Any], report: dict[str, An
         common.update({"probe_policy": "budgeted-confidence", "soft_candidate_target": 12288, "hamming_policy": row["hamming_policy"]})
     elif kind == "adc-guided-probing":
         common.update({"probe_policy": row["probe_policy"], "soft_candidate_target": row["soft_candidate_target"], "hamming_policy": "uniform"})
-    else:
+    elif kind == "calibration-balanced-bands":
         layout = row["band_layout"]
         common.update({"probe_policy": "budgeted-confidence", "soft_candidate_target": 12288, "hamming_policy": "uniform", "band_layout": layout, "band_layout_seed": 20260812 if layout == "fixed-random" else None})
         if layout == "calibration-correlation-balanced":
             common.update({"band_layout_objective": "abs-correlation-plus-entropy-balance-v1", "band_layout_entropy_balance_weight": 0.05})
+    else:
+        variant = row["variant"]
+        policy = "budgeted-confidence" if variant == "budgeted-confidence" else "budgeted-adc-best-first"
+        flips = None if variant == "budgeted-confidence" else int(variant[-1])
+        common.update({"probe_policy": policy, "soft_candidate_target": row["candidate"], "soft_posting_visit_target": row["postings"] if flips else None, "max_probe_bit_flips": flips, "hamming_policy": "uniform"})
     require(all(report.get(field) == value for field, value in common.items()), f"row contract is invalid: {name}")
     files = report.get("evaluator_source_files_sha256")
     require(isinstance(files, dict) and set(files) == {"evaluate-mih-banding.py", "evaluate-projection-quantization.py"} and all(is_sha256(value) for value in files.values()) and report.get("evaluator_source_bundle_sha256") == digest(files), f"evaluator provenance is invalid: {name}")
@@ -245,7 +261,7 @@ def make_bundle(kind: str, root: Path, matrix: Path, bootstrap: Path, output: Pa
 
 def self_test() -> int:
     try:
-        require(len(study_spec("weighted-hamming")[2]) == 5 and len(study_spec("adc-guided-probing")[2]) == 15 and len(study_spec("calibration-balanced-bands")[2]) == 10, "comparison grids are invalid")
+        require(len(study_spec("weighted-hamming")[2]) == 5 and len(study_spec("adc-guided-probing")[2]) == 15 and len(study_spec("calibration-balanced-bands")[2]) == 10 and len(study_spec("adc-best-first")[2]) == 30, "comparison grids are invalid")
         with tempfile.TemporaryDirectory() as directory:
             archive = Path(directory) / "portable.zip"
             with zipfile.ZipFile(archive, "w") as written: written.writestr("bundle/item.json", "{}")
@@ -257,7 +273,7 @@ def self_test() -> int:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--kind", choices=("weighted-hamming", "adc-guided-probing", "calibration-balanced-bands"))
+    parser.add_argument("--kind", choices=("weighted-hamming", "adc-guided-probing", "calibration-balanced-bands", "adc-best-first"))
     parser.add_argument("--input-root", type=Path); parser.add_argument("--matrix", type=Path); parser.add_argument("--bootstrap-root", type=Path); parser.add_argument("--output", type=Path); parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args(argv)
     try:
