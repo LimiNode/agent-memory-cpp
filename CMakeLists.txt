@@ -277,6 +277,11 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mih_adc_best_first_matrix_self_test
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mih-adc-best-first-matrix.py self-test --matrix ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/mih-adc-best-first.example.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_mih_calibration_balanced_bands_matrix_self_test
             COMMAND
                 ${Python3_EXECUTABLE}

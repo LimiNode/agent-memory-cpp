@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "family": "mih_adc_best_first_matrix_v1",
+  "evaluation": {
+    "code_bits": 256,
+    "band_count": 32,
+    "probe_radius": 1,
+    "variants": ["budgeted-confidence", "adc-best-first-2", "adc-best-first-3"],
+    "budgets": [[8192, 11000], [12288, 19000], [16384, 30000]],
+    "hamming_limit": 768,
+    "second_limit": 256,
+    "second_stage": "binary-adc",
+    "oracle_k": 10,
+    "candidate_limit": 512,
+    "itq_iterations": 50,
+    "itq_seeds": [42, 43, 44, 45, 46]
+  }
+}
