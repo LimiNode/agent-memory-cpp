@@ -34,6 +34,7 @@ struct Config final {
     int local_probe_radius = 0;
     int global_radius = 64;
     std::size_t hamming_limit = 512;
+    std::vector<std::size_t> exact_rerank_limits{64, 128, 256};
 };
 
 struct Input final {
@@ -41,6 +42,9 @@ struct Input final {
     std::size_t query_count = 0;
     std::vector<std::uint64_t> documents;
     std::vector<std::uint64_t> queries;
+    std::size_t embedding_dimension = 0;
+    std::vector<float> document_vectors;
+    std::vector<float> query_vectors;
     nlohmann::json manifest;
 };
 
@@ -100,6 +104,15 @@ struct Timings final {
     return values;
 }
 
+[[nodiscard]] std::vector<float> read_vectors(const std::filesystem::path& path, std::size_t count, const std::string& expected_sha256) {
+    if(agent_memory::sha256_file_hex(path) != expected_sha256) throw std::runtime_error("vector payload SHA-256 differs");
+    std::vector<float> values(count);
+    std::ifstream input(path, std::ios::binary);
+    input.read(reinterpret_cast<char*>(values.data()), static_cast<std::streamsize>(count * sizeof(float)));
+    if(input.gcount() != static_cast<std::streamsize>(count * sizeof(float))) throw std::runtime_error("vector payload is truncated");
+    return values;
+}
+
 [[nodiscard]] Input load_input(const std::filesystem::path& root) {
     std::ifstream input(root / "manifest.json");
     if(!input) throw std::runtime_error("cannot open native MIH input manifest");
@@ -115,6 +128,10 @@ struct Timings final {
     if(result.document_count == 0 || result.query_count == 0) throw std::runtime_error("native MIH input is empty");
     result.documents = read_words(root / manifest.at("document_codes_file").get<std::string>(), result.document_count * kWordCount, required_sha256(manifest, "document_codes_sha256"));
     result.queries = read_words(root / manifest.at("query_codes_file").get<std::string>(), result.query_count * kWordCount, required_sha256(manifest, "query_codes_sha256"));
+    result.embedding_dimension = manifest.value("embedding_dimension", 0U);
+    if(result.embedding_dimension == 0) throw std::runtime_error("native MIH input has no dense vector payload");
+    result.document_vectors = read_vectors(root / manifest.at("document_vectors_file").get<std::string>(), result.document_count * result.embedding_dimension, required_sha256(manifest, "document_vectors_sha256"));
+    result.query_vectors = read_vectors(root / manifest.at("query_vectors_file").get<std::string>(), result.query_count * result.embedding_dimension, required_sha256(manifest, "query_vectors_sha256"));
     return result;
 }
 
@@ -138,10 +155,12 @@ struct Timings final {
     config.local_probe_radius = value.value("local_probe_radius", config.local_probe_radius);
     config.global_radius = value.value("global_radius", config.global_radius);
     config.hamming_limit = read_size(value, "hamming_limit", config.hamming_limit);
+    if(value.contains("exact_rerank_limits")) config.exact_rerank_limits = value.at("exact_rerank_limits").get<std::vector<std::size_t>>();
     if(config.query_count == 0 || config.repeat_count == 0 || config.band_count == 0 || kCodeBits % config.band_count != 0 ||
-       config.hamming_limit == 0 || config.local_probe_radius < 0 || config.global_radius < -1) {
+       config.hamming_limit == 0 || config.exact_rerank_limits.empty() || config.local_probe_radius < 0 || config.global_radius < -1) {
         throw std::invalid_argument("native MIH config is invalid");
     }
+    if(!std::is_sorted(config.exact_rerank_limits.begin(), config.exact_rerank_limits.end()) || config.exact_rerank_limits.back() > config.hamming_limit || config.exact_rerank_limits.front() == 0) throw std::invalid_argument("native MIH exact rerank limits are invalid");
     const auto band_bits = kCodeBits / config.band_count;
     if(band_bits > 16 || config.local_probe_radius > static_cast<int>(band_bits)) {
         throw std::invalid_argument("native MIH band parameters are invalid");
@@ -268,6 +287,15 @@ struct Scored final {
     std::size_t distance = 0;
 };
 
+struct ExactScored final { std::uint32_t position = 0; float similarity = 0.0F; };
+[[nodiscard]] bool more_similar(const ExactScored& left, const ExactScored& right) noexcept { return left.similarity == right.similarity ? left.position < right.position : left.similarity > right.similarity; }
+[[nodiscard]] double exact_rerank(const Input& input, const float* query, const std::vector<Scored>& hamming, std::size_t limit, const agent_memory::VectorSimilarityComputer& computer, std::size_t& checksum) {
+    const auto start = Clock::now(); std::vector<ExactScored> scored; scored.reserve(limit);
+    for(std::size_t index = 0; index < limit; ++index) { const auto position = hamming[index].position; scored.push_back({position, computer.dot_product_values(query, input.document_vectors.data() + static_cast<std::size_t>(position) * input.embedding_dimension, input.embedding_dimension)}); }
+    std::sort(scored.begin(), scored.end(), more_similar); for(const auto& value : scored) checksum += static_cast<std::size_t>(value.position) + 1U;
+    return milliseconds(start, Clock::now());
+}
+
 [[nodiscard]] bool closer(const Scored& left, const Scored& right) noexcept {
     return left.distance == right.distance ? left.position < right.position : left.distance < right.distance;
 }
@@ -391,6 +419,9 @@ void require_guarantee(
         input.documents[12] = (std::uint64_t{1} << 63);
         input.queries.assign(input.query_count * kWordCount, 0);
         input.queries[4] = 1;
+        input.embedding_dimension = 2;
+        input.document_vectors = {1.0F, 0.0F, 0.0F, 1.0F, -1.0F, 0.0F, 0.0F, -1.0F};
+        input.query_vectors = {1.0F, 0.0F, 0.0F, 1.0F};
         CsrIndex index(input, 32);
         Config config;
         config.band_count = 32;
@@ -410,6 +441,11 @@ void require_guarantee(
         static_cast<void>(run_query(index, input, input.queries.data() + kWordCount, radii_for(config), deduplicator, computer, config.hamming_limit, second, &second_selected));
         if(second.unique_candidates != 4 || second_selected.front().position != 1) {
             throw std::runtime_error("generation-array dedup retained stale candidates");
+        }
+        std::size_t rerank_checksum = 0;
+        const auto vector_computer = agent_memory::VectorSimilarityComputer(false);
+        if(exact_rerank(input, input.query_vectors.data(), first_selected, 3, vector_computer, rerank_checksum) < 0.0 || rerank_checksum == 0) {
+            throw std::runtime_error("exact rerank self-test is invalid");
         }
         const auto full = full_score(input, input.queries.data(), computer);
         std::vector<std::uint32_t> all_positions{0, 1, 2, 3};
@@ -481,6 +517,8 @@ void require_guarantee(
     std::shuffle(query_positions.begin(), query_positions.end(), random);
     query_positions.resize(config.query_count);
     std::vector<double> probes_samples, traversal_samples, dedup_samples, hamming_samples, top_samples, total_samples;
+    std::vector<std::vector<double>> exact_samples(config.exact_rerank_limits.size());
+    const auto vector_computer = agent_memory::VectorSimilarityComputer();
     QueryDiagnostics expected{};
     for(std::size_t repeat = 0; repeat < config.repeat_count; ++repeat) {
         GenerationDeduplicator deduplicator(input.document_count);
@@ -488,7 +526,8 @@ void require_guarantee(
         QueryDiagnostics aggregate_diagnostics{};
         for(const auto position : query_positions) {
             QueryDiagnostics current{};
-            const auto timing = run_query(index, input, input.queries.data() + position * kWordCount, radii, deduplicator, computer, config.hamming_limit, current);
+            std::vector<Scored> selected;
+            const auto timing = run_query(index, input, input.queries.data() + position * kWordCount, radii, deduplicator, computer, config.hamming_limit, current, &selected);
             aggregate.probe_enumeration_ms += timing.probe_enumeration_ms;
             aggregate.posting_traversal_ms += timing.posting_traversal_ms;
             aggregate.deduplication_ms += timing.deduplication_ms;
@@ -499,6 +538,8 @@ void require_guarantee(
             aggregate_diagnostics.posting_visits += current.posting_visits;
             aggregate_diagnostics.unique_candidates += current.unique_candidates;
             aggregate_diagnostics.candidate_checksum += current.candidate_checksum;
+            std::size_t checksum = 0;
+            for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) exact_samples[limit_index].push_back(exact_rerank(input, input.query_vectors.data() + position * input.embedding_dimension, selected, config.exact_rerank_limits[limit_index], vector_computer, checksum));
         }
         if(repeat == 0) expected = aggregate_diagnostics;
         else if(expected.bucket_probes != aggregate_diagnostics.bucket_probes || expected.posting_visits != aggregate_diagnostics.posting_visits || expected.unique_candidates != aggregate_diagnostics.unique_candidates || expected.candidate_checksum != aggregate_diagnostics.candidate_checksum) throw std::runtime_error("native MIH warm repeats differ in candidate union");
@@ -564,6 +605,7 @@ void require_guarantee(
             {"hamming_distance_evaluations", static_cast<double>(expected.unique_candidates) / divisor},
             {"hamming_code_bytes_touched", hamming_bytes},
         }},
+        {"exact_vector_similarity_backend", std::string(agent_memory::vector_similarity_backend_name(vector_computer.backend()))},
         {"timing_ms_per_query_median", {
             {"probe_enumeration", median(probes_samples)},
             {"posting_traversal", median(traversal_samples)},
@@ -572,9 +614,11 @@ void require_guarantee(
             {"top_k_selection", median(top_samples)},
             {"candidate_generator_to_hamming_top_k_total", median(total_samples)},
         }},
+        {"exact_rerank_ms_per_query_median", nlohmann::json::object()},
         {"hamming_top_k_recall", hamming_recall_sum / divisor},
-        {"timing_scope", "warm direct-address CSR bucket spans, posting copy, generation-array deduplication, full Hamming over unique candidates, and stable top-k; excludes query encoding, ADC, exact E5 rerank, full-corpus oracle, cold-cache I/O, and process-wide memory"},
+        {"timing_scope", "warm direct-address CSR bucket spans, posting copy, generation-array deduplication, full Hamming over unique candidates, stable top-k, and in-memory exact E5 dot-product rerank for each reported K2; excludes query encoding, ADC, full-corpus oracle, cold-cache I/O, and process-wide memory"},
     };
+    for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) report["exact_rerank_ms_per_query_median"][std::to_string(config.exact_rerank_limits[limit_index])] = median(exact_samples[limit_index]);
     std::ofstream output(report_path);
     if(!output) throw std::runtime_error("cannot write native MIH report");
     output << report.dump(2) << '\n';
