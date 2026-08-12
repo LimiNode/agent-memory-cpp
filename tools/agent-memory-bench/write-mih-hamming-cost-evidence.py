@@ -19,7 +19,9 @@ COMPONENTS = (
     "contiguous_hamming_distance_loop",
     "score_buffer_materialization",
     "gather_contiguous_hamming_score_buffer",
-    "top_k_selection_on_prepared_scores",
+    "score_buffer_clone",
+    "top_k_inplace_selection_on_prepared_scores",
+    "clone_plus_top_k_selection",
 )
 
 
@@ -60,6 +62,10 @@ def validate_decomposition(report: dict[str, Any]) -> None:
         medians["candidate_code_gather"] > medians["contiguous_hamming_distance_loop"],
         "candidate code gather does not expose the expected access cost",
     )
+    require(
+        medians["clone_plus_top_k_selection"] >= medians["top_k_inplace_selection_on_prepared_scores"],
+        "clone-plus-selection cost is below in-place selection",
+    )
 
 
 def self_test() -> int:
@@ -69,6 +75,7 @@ def self_test() -> int:
         samples = {component: [0.1] * 7 for component in COMPONENTS}
         samples["direct_indirect_score_buffer"] = [0.3] * 7
         samples["candidate_code_gather"] = [0.2] * 7
+        samples["clone_plus_top_k_selection"] = [0.2] * 7
         report = {
             "hamming_candidate_cost_decomposition_ms_per_query_repeat_means": samples,
             "hamming_candidate_cost_decomposition_ms_per_query_median": {
