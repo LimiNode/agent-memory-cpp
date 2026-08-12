@@ -35,6 +35,12 @@ constexpr std::size_t kWordCount = 4;
 #ifndef AGENT_MEMORY_NATIVE_HOT_PATH_MATERIALIZER_SOURCE_SHA256
 #define AGENT_MEMORY_NATIVE_HOT_PATH_MATERIALIZER_SOURCE_SHA256 "unconfigured"
 #endif
+#ifndef AGENT_MEMORY_NATIVE_HOT_PATH_VECTOR_SIMILARITY_SOURCE_SHA256
+#define AGENT_MEMORY_NATIVE_HOT_PATH_VECTOR_SIMILARITY_SOURCE_SHA256 "unconfigured"
+#endif
+#ifndef AGENT_MEMORY_NATIVE_HOT_PATH_BINARY_SIGNATURE_SOURCE_SHA256
+#define AGENT_MEMORY_NATIVE_HOT_PATH_BINARY_SIGNATURE_SOURCE_SHA256 "unconfigured"
+#endif
 #ifndef AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256
 #define AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256 "unconfigured"
 #endif
@@ -721,6 +727,8 @@ void require_guarantee(
         {"benchmark_source_files_sha256", {
             {"tools/agent-memory-bench/mih_native_hot_path.cpp", AGENT_MEMORY_NATIVE_HOT_PATH_SOURCE_SHA256},
             {"tools/agent-memory-bench/materialize-mih-storage-input.py", AGENT_MEMORY_NATIVE_HOT_PATH_MATERIALIZER_SOURCE_SHA256},
+            {"src/agent_memory/index/VectorSimilarityComputer.cpp", AGENT_MEMORY_NATIVE_HOT_PATH_VECTOR_SIMILARITY_SOURCE_SHA256},
+            {"src/agent_memory/index/BinarySignature.cpp", AGENT_MEMORY_NATIVE_HOT_PATH_BINARY_SIGNATURE_SOURCE_SHA256},
         }},
         {"build_environment", build_environment()},
         {"query_count", config.query_count},
@@ -786,7 +794,7 @@ void require_guarantee(
         deltas.reserve(config.repeat_count);
         for(std::size_t repeat = 0; repeat < config.repeat_count; ++repeat) deltas.push_back(exact_samples[upper_index][repeat] - exact_samples[lower_index][repeat]);
         const auto [minimum, maximum] = std::minmax_element(deltas.begin(), deltas.end());
-        report["exact_rerank_256_minus_64_ms_per_query_paired"] = {
+        report["exact_rerank_256_minus_64_ms_per_query_aligned_repeat"] = {
             {"repeat_deltas", deltas},
             {"median", median(deltas)},
             {"min", *minimum},

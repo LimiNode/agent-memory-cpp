@@ -19,6 +19,8 @@ BENCH_ROOT = Path(__file__).resolve().parent
 SOURCE_PATHS = (
     BENCH_ROOT / "mih_native_hot_path.cpp",
     BENCH_ROOT / "materialize-mih-storage-input.py",
+    ROOT / "src/agent_memory/index/VectorSimilarityComputer.cpp",
+    ROOT / "src/agent_memory/index/BinarySignature.cpp",
 )
 INPUT_SOURCE_PATHS = (
     BENCH_ROOT / "materialize-mih-storage-input.py",
@@ -95,6 +97,8 @@ def validate_report(report: dict[str, Any], config: dict[str, Any], input_manife
     require(report.get("benchmark_source_bundle_sha256") == source_bundle_sha256(SOURCE_PATHS), "report source bundle SHA-256 differs")
     expected_report_sources = {path.relative_to(ROOT).as_posix(): digest(path) for path in SOURCE_PATHS}
     require(report.get("benchmark_source_files_sha256") == expected_report_sources, "report source files differ from evaluator sources")
+    require(report.get("exact_vector_similarity_backend") == "avx2", "report exact-vector backend is not AVX2")
+    require(report.get("hamming_backend") == "hardware_popcount", "report Hamming backend is not hardware POPCNT")
     build = report.get("build_environment")
     require(isinstance(build, dict), "report build environment is absent")
     for field in ("configured_environment_sha256", "compiler_id", "compiler_version", "cxx_standard", "generator", "system_name", "system_processor", "pointer_bits", "base_cxx_flags_sha256", "active_configuration_flags_sha256"):
@@ -118,15 +122,15 @@ def validate_report(report: dict[str, Any], config: dict[str, Any], input_manife
         for key in K2_KEYS:
             values = numeric_samples(stage_samples[key], f"{stage} {key}", 7)
             require(close(float(stage_medians[key]), median(values)), f"{stage} {key} median differs from samples")
-    paired = report.get("exact_rerank_256_minus_64_ms_per_query_paired")
-    require(isinstance(paired, dict), "report paired 256-minus-64 delta is absent")
-    deltas = numeric_samples(paired.get("repeat_deltas"), "paired exact rerank deltas", 7)
+    aligned = report.get("exact_rerank_256_minus_64_ms_per_query_aligned_repeat")
+    require(isinstance(aligned, dict), "report aligned-repeat 256-minus-64 delta is absent")
+    deltas = numeric_samples(aligned.get("repeat_deltas"), "aligned-repeat exact rerank deltas", 7)
     expected_deltas = [right - left for left, right in zip(samples["exact_e5_rerank"]["64"], samples["exact_e5_rerank"]["256"])]
-    require(all(close(left, right) for left, right in zip(deltas, expected_deltas)), "paired exact rerank deltas differ from samples")
-    require(close(float(paired.get("median", float("nan"))), median(deltas)), "paired delta median differs")
-    require(close(float(paired.get("min", float("nan"))), min(deltas)), "paired delta min differs")
-    require(close(float(paired.get("max", float("nan"))), max(deltas)), "paired delta max differs")
-    require(close(float(paired.get("spread", float("nan"))), max(deltas) - min(deltas)), "paired delta spread differs")
+    require(all(close(left, right) for left, right in zip(deltas, expected_deltas)), "aligned-repeat exact rerank deltas differ from samples")
+    require(close(float(aligned.get("median", float("nan"))), median(deltas)), "aligned-repeat delta median differs")
+    require(close(float(aligned.get("min", float("nan"))), min(deltas)), "aligned-repeat delta min differs")
+    require(close(float(aligned.get("max", float("nan"))), max(deltas)), "aligned-repeat delta max differs")
+    require(close(float(aligned.get("spread", float("nan"))), max(deltas) - min(deltas)), "aligned-repeat delta spread differs")
 
 
 def evidence_files(report_path: Path, input_path: Path, config_path: Path) -> list[tuple[Path, str]]:

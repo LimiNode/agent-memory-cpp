@@ -31,28 +31,32 @@ On the local warm AVX2 run:
 
 | Component | Median ms/query |
 | --- | ---: |
-| MIH through Hamming K1 selection | 0.5226 |
-| binary ADC on Hamming K1, K2=64 | 0.1185 |
-| binary ADC on Hamming K1, K2=128 | 0.1249 |
-| binary ADC on Hamming K1, K2=256 | 0.1357 |
-| exact E5 rerank after ADC, K2=64 | 0.0148 |
-| exact E5 rerank after ADC, K2=128 | 0.0285 |
-| exact E5 rerank after ADC, K2=256 | 0.0589 |
+| MIH through Hamming K1 selection | 0.5816 |
+| binary ADC on Hamming K1, K2=64 | 0.1221 |
+| binary ADC on Hamming K1, K2=128 | 0.1271 |
+| binary ADC on Hamming K1, K2=256 | 0.1402 |
+| exact E5 rerank after ADC, K2=64 | 0.0160 |
+| exact E5 rerank after ADC, K2=128 | 0.0299 |
+| exact E5 rerank after ADC, K2=256 | 0.0596 |
 
-The paired `K2=256 - K2=64` exact-rerank delta has median `0.0442 ms/query`
-(range `0.0366..0.0474` across the seven matched passes). That saving is smaller
-than the existing binary ADC stage and only a small fraction of the
-MIH-through-Hamming path. The result does not support prioritizing a compact
-residual scorer solely to reduce exact rerank work in the current RAM-resident
-cascade.
+The aligned-repeat `K2=256 - K2=64` exact-rerank delta has median
+`0.0423 ms/query` (range `0.0358..0.0492` across the seven ordinally aligned,
+but separately scheduled, passes). That saving is smaller than the existing
+binary ADC stage and only a small fraction of the MIH-through-Hamming path.
+The result does not support prioritizing a compact residual scorer solely to
+reduce exact rerank work in the current RAM-resident cascade.
 
 The replayable archive is staged as the draft evidence release
 `evidence/mih-rerank-cost-v1`. Its replacement asset contains the actual
 full-run config, input-manifest and source/build provenance, all seven
-per-stage samples, the paired delta, and portable ZIP member validation. The
-archive SHA-256 is `04b376b4f11c2e2fce658e83eb21499a36e0c45606a5a525cdaf7551336930cf`;
+per-stage samples, the aligned-repeat delta, and portable ZIP member validation.
+The source identity includes the actual `VectorSimilarityComputer.cpp` AVX2
+kernel/dispatch implementation and the `BinarySignature.cpp` POPCNT backend.
+The evidence contract requires the observed `avx2` exact and
+`hardware_popcount` Hamming backends. The archive SHA-256 is
+`6cf0f5f7bd7d471a9a1435ab2846ab7d508ac05a7f784b957efb597dbf80e5a1`;
 its internal bundle-root SHA-256 is
-`1c50296751830f4146056f10c5a168d104552771ec92c46b9806ac22511cf7bf`.
+`36cdd5997f719ba2fe2dc2c96e500f56aede0a3cce34b7426a0da4b256666a6b`.
 
 ## Interpretation and limits
 
@@ -63,3 +67,7 @@ result in #127 still leaves a residual-scorer opportunity at tight K2=64/128,
 but this measurement makes true variable-width MIH the next main research
 line. A residual branch should be reopened only if a future storage benchmark
 shows that exact-vector retrieval dominates end-to-end latency.
+
+Exact rerank fully sorts its K2 scores. A production top-10 endpoint could use
+partial selection instead, so these exact-rerank timings are conservative for
+that specific final-result contract.
