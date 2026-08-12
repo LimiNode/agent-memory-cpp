@@ -47,3 +47,28 @@ The balanced-bit null model and the previous 6/7/9/10 negative result suggest
 that 32 x 8 may remain selected. The direct objective is still necessary: it
 tests actual union overlap and postings on the calibration corpus rather than
 assuming independent bits or optimizing collision information indirectly.
+
+### Result
+
+All five independently trained ITQ codes selected the equal-width profile:
+
+| ITQ seeds | Selected widths | Mean union / pseudoquery | Mean posting visits | Mean p95 visits |
+| --- | --- | ---: | ---: | ---: |
+| 52--56 | 32 x 8 | 16,836.36 | 29,153.53 | 30,830.00 |
+
+The five individual union means span 16,800.84--16,849.38. Each seed searched
+all six bounded profiles, performed two assignment restarts per profile, and
+made the fixed twelve direct-work swap proposals per restart. The archive
+therefore records 12 assignment evaluations per seed, not a post-hoc choice of
+one attractive result.
+
+### Interpretation
+
+Within this fixed direct-work search space, the existing 32 x 8 partition is
+the selected static local-radius-one MIH layout for ITQ-256. A held-out
+retrieval matrix is unnecessary here: the selected treatment is exactly the
+already measured equal-width control, not merely a similarly shaped layout.
+This closes the static-width branch at the stated bounds. It does not reject
+query-adaptive multiprobe policies, dynamic/static alternatives with materially
+larger search spaces, or MIH-aware ITQ/code learning; the latter is the next
+research branch.
