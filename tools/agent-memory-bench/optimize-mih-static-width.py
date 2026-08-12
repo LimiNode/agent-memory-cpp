@@ -130,15 +130,26 @@ def direct_work(codes: numpy.ndarray, queries: numpy.ndarray, widths: tuple[int,
     ranges = mih.variable_band_ranges(codes.shape[1], list(widths))
     index = mih.build_index(permuted_codes, ranges)
     candidates: list[int] = []; visits: list[int] = []
-    for query in permuted_queries:
-        union, probes = mih.candidate_union(index, query, ranges, [1] * len(ranges))
+    # A generation array computes the same set union as ``candidate_union``
+    # without sorting an otherwise-unused candidate list for every proposal.
+    # This is only an optimizer implementation detail: the measured objective
+    # remains the exact document-level union and posting work of the reference
+    # buckets.
+    generations = numpy.zeros(permuted_codes.shape[0], dtype=numpy.int32)
+    for generation, query in enumerate(permuted_queries, 1):
+        probes = 0; candidate_count = 0; visit_count = 0
+        for buckets, (start, stop) in zip(index, ranges):
+            for key in mih.probe_keys(mih.band_key(query, start, stop), stop - start, 1):
+                probes += 1
+                posting = buckets.get(key)
+                if posting is None:
+                    continue
+                visit_count += int(posting.size)
+                unseen = generations[posting] != generation
+                candidate_count += int(numpy.count_nonzero(unseen))
+                generations[posting] = generation
         require(probes == len(widths) + sum(widths), "radius-one probe count is invalid")
-        candidates.append(int(union.size))
-        visits.append(sum(
-            int(buckets.get(key, numpy.empty(0, dtype=numpy.int32)).size)
-            for buckets, (start, stop) in zip(index, ranges)
-            for key in mih.probe_keys(mih.band_key(query, start, stop), stop - start, 1)
-        ))
+        candidates.append(candidate_count); visits.append(visit_count)
     values = numpy.asarray(visits, dtype=numpy.int64)
     return {
         "mean_unique_candidates": float(numpy.mean(candidates)),
@@ -220,6 +231,13 @@ def self_test() -> int:
         codes = numpy.asarray([[0, 0, 0, 0], [0, 1, 0, 1], [1, 0, 1, 0], [1, 1, 1, 1]], dtype=bool)
         metrics = direct_work(codes, codes[:2], (2, 2), numpy.asarray([0, 1, 2, 3], dtype=numpy.intp))
         require(metrics["mean_bucket_probes"] == 6.0 and metrics["pseudoquery_count"] == 2, "direct work accounting is invalid")
+        ranges = mih.variable_band_ranges(4, [2, 2]); index = mih.build_index(codes, ranges)
+        expected_candidates: list[int] = []; expected_visits: list[int] = []
+        for query in codes[:2]:
+            union, _ = mih.candidate_union(index, query, ranges, [1, 1])
+            expected_candidates.append(int(union.size))
+            expected_visits.append(sum(int(index[band].get(key, numpy.empty(0, dtype=numpy.int32)).size) for band, ((start, stop), radius) in enumerate(zip(ranges, [1, 1])) for key in mih.probe_keys(mih.band_key(query, start, stop), stop - start, radius)))
+        require(math.isclose(metrics["mean_unique_candidates"], float(numpy.mean(expected_candidates))) and math.isclose(metrics["mean_posting_visits"], float(numpy.mean(expected_visits))), "generation-array union differs from reference")
         first = pseudoquery_indices(["a", "b", "c"], 2); second = pseudoquery_indices(["a", "b", "c"], 2)
         require(numpy.array_equal(first, second), "pseudoquery selection is not deterministic")
     except (EvaluationError, ValueError, OSError) as error:
