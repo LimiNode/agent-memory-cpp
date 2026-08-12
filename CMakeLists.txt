@@ -193,6 +193,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(
+                NAME agent_memory_mih_hamming_cost_evidence_packager_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-hamming-cost-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
         add_test(
             NAME agent_memory_miracl_ae_preparer_self_test
