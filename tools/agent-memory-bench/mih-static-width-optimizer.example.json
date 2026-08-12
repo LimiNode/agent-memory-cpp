@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "family": "mih_static_width_calibration_optimizer_v1",
+  "calibration": {
+    "vector_count": 25000,
+    "pseudo_query_count": 128
+  },
+  "encoding": {
+    "code_bits": 256,
+    "band_count": 32,
+    "itq_seeds": [52, 53, 54, 55, 56],
+    "itq_iterations": 50
+  },
+  "search": {
+    "minimum_band_width": 6,
+    "maximum_band_width": 10,
+    "maximum_width_transfers": 2,
+    "assignment_restart_seeds": [20260812, 20260813],
+    "swap_proposals_per_restart": 12
+  },
+  "objective": {
+    "probe_radius": 1,
+    "lexicographic_metrics": [
+      "mean_unique_candidates",
+      "mean_posting_visits",
+      "p95_posting_visits",
+      "width_variance",
+      "widths_lexicographic",
+      "permutation_lexicographic"
+    ]
+  }
+}
