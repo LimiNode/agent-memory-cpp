@@ -434,6 +434,151 @@ struct AdcSelection final { double elapsed_ms = 0.0; std::vector<std::uint32_t> 
     return result;
 }
 
+void gather_candidate_codes(
+    const Input& input,
+    const std::vector<std::uint32_t>& positions,
+    std::vector<std::uint64_t>& gathered
+) {
+    for(std::size_t index = 0; index < positions.size(); ++index) {
+        std::copy_n(
+            input.documents.data() + static_cast<std::size_t>(positions[index]) * kWordCount,
+            kWordCount,
+            gathered.data() + index * kWordCount
+        );
+    }
+}
+
+void materialize_scored_positions(
+    const std::vector<std::uint32_t>& positions,
+    const std::vector<std::size_t>& distances,
+    std::vector<Scored>& output
+) {
+    for(std::size_t index = 0; index < positions.size(); ++index) {
+        output[index] = {positions[index], distances[index]};
+    }
+}
+
+enum class HammingCostComponent {
+    DirectIndirectScoreBuffer,
+    CandidateCodeGather,
+    ContiguousHammingDistanceLoop,
+    ScoreBufferMaterialization,
+    GatherContiguousHammingScoreBuffer,
+    TopKSelectionOnPreparedScores,
+};
+
+[[nodiscard]] double measure_hamming_cost_component(
+    const Input& input,
+    const std::vector<std::size_t>& query_positions,
+    const std::vector<std::vector<std::uint32_t>>& candidate_lists,
+    const agent_memory::HammingDistanceComputer& computer,
+    std::size_t hamming_limit,
+    HammingCostComponent component
+) {
+    if(query_positions.size() != candidate_lists.size()) {
+        throw std::runtime_error("native MIH Hamming component candidate grid is incomplete");
+    }
+    std::size_t maximum_candidates = 0;
+    for(const auto& candidates : candidate_lists) maximum_candidates = std::max(maximum_candidates, candidates.size());
+    std::vector<std::uint64_t> gathered(maximum_candidates * kWordCount);
+    std::vector<std::size_t> distances(maximum_candidates);
+    std::vector<Scored> prepared(maximum_candidates);
+    std::size_t checksum = 0;
+    double elapsed_ms = 0.0;
+    for(std::size_t query_index = 0; query_index < query_positions.size(); ++query_index) {
+        const auto position = query_positions[query_index];
+        const auto& candidates = candidate_lists[query_index];
+        const auto* query = input.queries.data() + position * kWordCount;
+        const auto count = candidates.size();
+        switch(component) {
+        case HammingCostComponent::DirectIndirectScoreBuffer: {
+            const auto start = Clock::now();
+            const auto scored = score_positions(input, query, candidates, computer);
+            elapsed_ms += milliseconds(start, Clock::now());
+            for(const auto& value : scored) checksum += static_cast<std::size_t>(value.position) + value.distance + 1U;
+            break;
+        }
+        case HammingCostComponent::CandidateCodeGather: {
+            const auto start = Clock::now();
+            gather_candidate_codes(input, candidates, gathered);
+            elapsed_ms += milliseconds(start, Clock::now());
+            for(std::size_t index = 0; index < count * kWordCount; ++index) checksum += static_cast<std::size_t>(gathered[index]) + 1U;
+            break;
+        }
+        case HammingCostComponent::ContiguousHammingDistanceLoop: {
+            gather_candidate_codes(input, candidates, gathered);
+            const auto start = Clock::now();
+            computer.compute_distances(query, gathered.data(), count, distances.data());
+            elapsed_ms += milliseconds(start, Clock::now());
+            for(std::size_t index = 0; index < count; ++index) checksum += distances[index] + 1U;
+            break;
+        }
+        case HammingCostComponent::ScoreBufferMaterialization: {
+            gather_candidate_codes(input, candidates, gathered);
+            computer.compute_distances(query, gathered.data(), count, distances.data());
+            const auto start = Clock::now();
+            materialize_scored_positions(candidates, distances, prepared);
+            elapsed_ms += milliseconds(start, Clock::now());
+            for(std::size_t index = 0; index < count; ++index) checksum += static_cast<std::size_t>(prepared[index].position) + prepared[index].distance + 1U;
+            break;
+        }
+        case HammingCostComponent::GatherContiguousHammingScoreBuffer: {
+            const auto start = Clock::now();
+            gather_candidate_codes(input, candidates, gathered);
+            computer.compute_distances(query, gathered.data(), count, distances.data());
+            materialize_scored_positions(candidates, distances, prepared);
+            elapsed_ms += milliseconds(start, Clock::now());
+            for(std::size_t index = 0; index < count; ++index) checksum += static_cast<std::size_t>(prepared[index].position) + prepared[index].distance + 1U;
+            break;
+        }
+        case HammingCostComponent::TopKSelectionOnPreparedScores: {
+            gather_candidate_codes(input, candidates, gathered);
+            computer.compute_distances(query, gathered.data(), count, distances.data());
+            materialize_scored_positions(candidates, distances, prepared);
+            const auto start = Clock::now();
+            const auto selected = top_k(std::vector<Scored>(prepared.begin(), prepared.begin() + static_cast<std::ptrdiff_t>(count)), hamming_limit);
+            elapsed_ms += milliseconds(start, Clock::now());
+            for(const auto& value : selected) checksum += static_cast<std::size_t>(value.position) + value.distance + 1U;
+            break;
+        }
+        }
+    }
+    if(checksum == 0) throw std::runtime_error("native MIH Hamming component checksum is invalid");
+    return elapsed_ms / static_cast<double>(query_positions.size());
+}
+
+struct HammingCostSamples final {
+    std::vector<double> direct_indirect_score_buffer;
+    std::vector<double> candidate_code_gather;
+    std::vector<double> contiguous_hamming_distance_loop;
+    std::vector<double> score_buffer_materialization;
+    std::vector<double> gather_contiguous_hamming_score_buffer;
+    std::vector<double> top_k_selection_on_prepared_scores;
+};
+
+void append_hamming_cost_samples(
+    HammingCostSamples& samples,
+    const Input& input,
+    const std::vector<std::size_t>& query_positions,
+    const std::vector<std::vector<std::uint32_t>>& candidate_lists,
+    const agent_memory::HammingDistanceComputer& computer,
+    std::size_t hamming_limit,
+    std::size_t repeat_count
+) {
+    const auto run_component = [&](HammingCostComponent component, std::vector<double>& output) {
+        static_cast<void>(measure_hamming_cost_component(input, query_positions, candidate_lists, computer, hamming_limit, component));
+        for(std::size_t repeat = 0; repeat < repeat_count; ++repeat) {
+            output.push_back(measure_hamming_cost_component(input, query_positions, candidate_lists, computer, hamming_limit, component));
+        }
+    };
+    run_component(HammingCostComponent::DirectIndirectScoreBuffer, samples.direct_indirect_score_buffer);
+    run_component(HammingCostComponent::CandidateCodeGather, samples.candidate_code_gather);
+    run_component(HammingCostComponent::ContiguousHammingDistanceLoop, samples.contiguous_hamming_distance_loop);
+    run_component(HammingCostComponent::ScoreBufferMaterialization, samples.score_buffer_materialization);
+    run_component(HammingCostComponent::GatherContiguousHammingScoreBuffer, samples.gather_contiguous_hamming_score_buffer);
+    run_component(HammingCostComponent::TopKSelectionOnPreparedScores, samples.top_k_selection_on_prepared_scores);
+}
+
 [[nodiscard]] std::vector<Scored> full_score(
     const Input& input,
     const std::uint64_t* query,
@@ -477,7 +622,8 @@ void require_guarantee(
     const agent_memory::HammingDistanceComputer& computer,
     std::size_t hamming_limit,
     QueryDiagnostics& diagnostics,
-    std::vector<Scored>* selected = nullptr
+    std::vector<Scored>* selected = nullptr,
+    std::vector<std::uint32_t>* raw_candidates = nullptr
 ) {
     const auto total_start = Clock::now();
     const auto probes_start = Clock::now();
@@ -497,6 +643,7 @@ void require_guarantee(
     const auto dedup_end = Clock::now();
     diagnostics.unique_candidates = candidates.size();
     for(const auto position : candidates) diagnostics.candidate_checksum += static_cast<std::size_t>(position) + 1;
+    if(raw_candidates) *raw_candidates = candidates;
     const auto hamming_start = Clock::now();
     auto scored = score_positions(input, query, candidates, computer);
     const auto hamming_end = Clock::now();
@@ -555,6 +702,24 @@ void require_guarantee(
         const auto adc = binary_adc_rerank(input, input.query_projections.data(), first_selected, 3, adc_checksum);
         if(adc.elapsed_ms < 0.0 || adc.positions.size() != 3 || adc_checksum == 0) {
             throw std::runtime_error("binary ADC rerank self-test is invalid");
+        }
+        HammingCostSamples cost_samples;
+        append_hamming_cost_samples(
+            cost_samples,
+            input,
+            std::vector<std::size_t>{0},
+            std::vector<std::vector<std::uint32_t>>{{0, 1, 2, 3}},
+            computer,
+            3,
+            1
+        );
+        if(cost_samples.direct_indirect_score_buffer.size() != 1 ||
+           cost_samples.candidate_code_gather.size() != 1 ||
+           cost_samples.contiguous_hamming_distance_loop.size() != 1 ||
+           cost_samples.score_buffer_materialization.size() != 1 ||
+           cost_samples.gather_contiguous_hamming_score_buffer.size() != 1 ||
+           cost_samples.top_k_selection_on_prepared_scores.size() != 1) {
+            throw std::runtime_error("Hamming cost decomposition self-test is invalid");
         }
         const auto full = full_score(input, input.queries.data(), computer);
         std::vector<std::uint32_t> all_positions{0, 1, 2, 3};
@@ -631,6 +796,7 @@ void require_guarantee(
     const auto vector_computer = agent_memory::VectorSimilarityComputer();
     QueryDiagnostics expected{};
     std::vector<std::vector<Scored>> hamming_shortlists;
+    std::vector<std::vector<std::uint32_t>> raw_candidate_lists;
     for(std::size_t repeat = 0; repeat < config.repeat_count; ++repeat) {
         GenerationDeduplicator deduplicator(input.document_count);
         Timings aggregate{};
@@ -638,7 +804,19 @@ void require_guarantee(
         for(const auto position : query_positions) {
             QueryDiagnostics current{};
             std::vector<Scored> selected;
-            const auto timing = run_query(index, input, input.queries.data() + position * kWordCount, radii, deduplicator, computer, config.hamming_limit, current, &selected);
+            std::vector<std::uint32_t> raw_candidates;
+            const auto timing = run_query(
+                index,
+                input,
+                input.queries.data() + position * kWordCount,
+                radii,
+                deduplicator,
+                computer,
+                config.hamming_limit,
+                current,
+                &selected,
+                repeat == 0 ? &raw_candidates : nullptr
+            );
             aggregate.probe_enumeration_ms += timing.probe_enumeration_ms;
             aggregate.posting_traversal_ms += timing.posting_traversal_ms;
             aggregate.deduplication_ms += timing.deduplication_ms;
@@ -649,7 +827,10 @@ void require_guarantee(
             aggregate_diagnostics.posting_visits += current.posting_visits;
             aggregate_diagnostics.unique_candidates += current.unique_candidates;
             aggregate_diagnostics.candidate_checksum += current.candidate_checksum;
-            if(repeat == 0) hamming_shortlists.push_back(std::move(selected));
+            if(repeat == 0) {
+                hamming_shortlists.push_back(std::move(selected));
+                raw_candidate_lists.push_back(std::move(raw_candidates));
+            }
         }
         if(repeat == 0) expected = aggregate_diagnostics;
         else if(expected.bucket_probes != aggregate_diagnostics.bucket_probes || expected.posting_visits != aggregate_diagnostics.posting_visits || expected.unique_candidates != aggregate_diagnostics.unique_candidates || expected.candidate_checksum != aggregate_diagnostics.candidate_checksum) throw std::runtime_error("native MIH warm repeats differ in candidate union");
@@ -664,6 +845,16 @@ void require_guarantee(
     if(hamming_shortlists.size() != query_positions.size()) {
         throw std::runtime_error("native MIH Hamming shortlist grid is incomplete");
     }
+    HammingCostSamples hamming_cost_samples;
+    append_hamming_cost_samples(
+        hamming_cost_samples,
+        input,
+        query_positions,
+        raw_candidate_lists,
+        computer,
+        config.hamming_limit,
+        config.repeat_count
+    );
     for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) {
         const auto limit = config.exact_rerank_limits[limit_index];
         const auto run_rerank_pass = [&]() {
@@ -773,10 +964,26 @@ void require_guarantee(
             {"binary_adc", nlohmann::json::object()},
             {"exact_e5_rerank", nlohmann::json::object()},
         }},
+        {"hamming_candidate_cost_decomposition_ms_per_query_median", {
+            {"direct_indirect_score_buffer", median(hamming_cost_samples.direct_indirect_score_buffer)},
+            {"candidate_code_gather", median(hamming_cost_samples.candidate_code_gather)},
+            {"contiguous_hamming_distance_loop", median(hamming_cost_samples.contiguous_hamming_distance_loop)},
+            {"score_buffer_materialization", median(hamming_cost_samples.score_buffer_materialization)},
+            {"gather_contiguous_hamming_score_buffer", median(hamming_cost_samples.gather_contiguous_hamming_score_buffer)},
+            {"top_k_selection_on_prepared_scores", median(hamming_cost_samples.top_k_selection_on_prepared_scores)},
+        }},
+        {"hamming_candidate_cost_decomposition_ms_per_query_repeat_means", {
+            {"direct_indirect_score_buffer", hamming_cost_samples.direct_indirect_score_buffer},
+            {"candidate_code_gather", hamming_cost_samples.candidate_code_gather},
+            {"contiguous_hamming_distance_loop", hamming_cost_samples.contiguous_hamming_distance_loop},
+            {"score_buffer_materialization", hamming_cost_samples.score_buffer_materialization},
+            {"gather_contiguous_hamming_score_buffer", hamming_cost_samples.gather_contiguous_hamming_score_buffer},
+            {"top_k_selection_on_prepared_scores", hamming_cost_samples.top_k_selection_on_prepared_scores},
+        }},
         {"exact_rerank_ms_per_query_median", nlohmann::json::object()},
         {"binary_adc_ms_per_query_median", nlohmann::json::object()},
         {"hamming_top_k_recall", hamming_recall_sum / divisor},
-        {"timing_scope", "Warm direct-address CSR bucket spans, posting copy, generation-array deduplication, full Hamming over unique candidates, and stable K1 selection are each measured in seven full-query passes. For every K2, one unrecorded full-query warm pass then seven separately timed full-query ADC-to-exact passes run over the fixed Hamming K1 shortlist from the first MIH pass; exact E5 rerank receives the ADC-selected K2 positions. This prevents nested within-query cache reuse across K2 values. Excludes query encoding, full-corpus oracle, cold-cache I/O, and process-wide memory."},
+        {"timing_scope", "Warm direct-address CSR bucket spans, posting copy, generation-array deduplication, full Hamming over unique candidates, and stable K1 selection are each measured in seven full-query passes. Hamming candidate-cost components use the fixed raw MIH candidate unions from the first MIH pass; each component receives one unrecorded warm full-query pass and seven isolated measured full-query passes. For every K2, one unrecorded full-query warm pass then seven separately timed full-query ADC-to-exact passes run over the fixed Hamming K1 shortlist from the first MIH pass; exact E5 rerank receives the ADC-selected K2 positions. Excludes query encoding, full-corpus oracle, cold-cache I/O, and process-wide memory."},
     };
     for(std::size_t limit_index = 0; limit_index < config.exact_rerank_limits.size(); ++limit_index) {
         const auto key = std::to_string(config.exact_rerank_limits[limit_index]);
