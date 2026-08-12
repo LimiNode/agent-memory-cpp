@@ -184,6 +184,16 @@ if(AGENT_MEMORY_BUILD_TESTS)
         )
     endif()
     if(Python3_Interpreter_FOUND)
+        if(AGENT_MEMORY_BUILD_BENCHMARKS)
+            add_test(
+                NAME agent_memory_mih_rerank_cost_evidence_packager_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-rerank-cost-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+        endif()
         add_test(
             NAME agent_memory_miracl_ae_preparer_self_test
             COMMAND

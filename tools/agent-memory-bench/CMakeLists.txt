@@ -163,6 +163,19 @@ add_executable(agent-memory-mih-native-hot-path
     mih_native_hot_path.cpp
 )
 
+agent_memory_set_evaluator_source_manifest(agent-memory-mih-native-hot-path
+    "${CMAKE_CURRENT_SOURCE_DIR}/mih_native_hot_path.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/materialize-mih-storage-input.py"
+)
+agent_memory_set_evaluator_build_environment(agent-memory-mih-native-hot-path)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/mih_native_hot_path.cpp" agent_memory_native_hot_path_source_sha256)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/materialize-mih-storage-input.py" agent_memory_native_hot_path_materializer_source_sha256)
+target_compile_definitions(agent-memory-mih-native-hot-path
+    PRIVATE
+        AGENT_MEMORY_NATIVE_HOT_PATH_SOURCE_SHA256="${agent_memory_native_hot_path_source_sha256}"
+        AGENT_MEMORY_NATIVE_HOT_PATH_MATERIALIZER_SOURCE_SHA256="${agent_memory_native_hot_path_materializer_source_sha256}"
+)
+
 target_link_libraries(agent-memory-mih-native-hot-path
     PRIVATE
         agent_memory::agent_memory
