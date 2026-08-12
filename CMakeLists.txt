@@ -201,6 +201,32 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(
+                NAME agent_memory_mih_variable_width_matrix_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mih-variable-width-matrix.py
+                    self-test
+                    --matrix
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/mih-variable-width.example.json
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_mih_variable_width_bootstrap_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/bootstrap-mih-variable-width.py
+                    self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_mih_variable_width_evidence_packager_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-variable-width-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
         add_test(
             NAME agent_memory_miracl_ae_preparer_self_test
