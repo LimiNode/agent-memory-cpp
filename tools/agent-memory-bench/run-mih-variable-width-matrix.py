@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the predeclared calibration-only true variable-width MIH matrix."""
+"""Run the fixed calibration-only true variable-width MIH matrix."""
 
 from __future__ import annotations
 
@@ -31,7 +31,7 @@ def load_matrix(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict) and set(value) == {"schema_version", "family", "evaluation"}, "matrix fields are invalid")
     evaluation = value["evaluation"]
-    require(value["schema_version"] == 1 and value["family"] == "mih_variable_width_confirmatory_matrix_v1" and isinstance(evaluation, dict), "matrix identity is invalid")
+    require(value["schema_version"] == 1 and value["family"] == "mih_variable_width_fixed_matrix_v1" and isinstance(evaluation, dict), "matrix identity is invalid")
     expected = {
         "code_bits": 256, "band_count": 32, "equal_widths": EQUAL_WIDTHS,
         "variable_widths": VARIABLE_WIDTHS, "layouts": list(LAYOUTS),

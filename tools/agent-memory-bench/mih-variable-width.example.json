@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "family": "mih_variable_width_confirmatory_matrix_v1",
+  "family": "mih_variable_width_fixed_matrix_v1",
   "evaluation": {
     "code_bits": 256,
     "band_count": 32,

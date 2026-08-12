@@ -47,17 +47,35 @@ def expected_rows(matrix: Path) -> dict[str, dict[str, Any]]:
 def expected_bootstraps(rows: dict[str, dict[str, Any]]) -> dict[str, tuple[str, str]]:
     result: dict[str, tuple[str, str]] = {}
     for seed in runner.SEEDS:
-        left = f"mih256-calibration-collision-balanced-variable-r1-h768-adc256-seed{seed}"
         for control in ("contiguous", "fixed-random"):
-            right = f"mih256-{control}-r1-h768-adc256-seed{seed}"
-            identifier = f"mih256-calibrated-variable-vs-{control}-r1-h768-adc256-seed{seed}"
+            left = f"mih256-{control}-r1-h768-adc256-seed{seed}"
+            right = f"mih256-calibration-collision-balanced-variable-r1-h768-adc256-seed{seed}"
+            identifier = f"mih256-{control}-vs-calibrated-variable-r1-h768-adc256-seed{seed}"
             require(left in rows and right in rows, "bootstrap endpoint is absent from matrix")
             result[identifier] = (left, right)
     require(len(result) == 10, "bootstrap expansion is invalid")
     return result
 
 
-def validate_row(name: str, report: dict[str, Any], row: dict[str, Any], contribution: Path) -> tuple[dict[str, Any], dict[str, Any]]:
+def calibration_provenance(report: dict[str, Any]) -> dict[str, Any]:
+    fields = (
+        "calibration_materialization_manifest_sha256",
+        "calibration_train_ids_sha256",
+        "evaluation_materialization_manifest_sha256",
+    )
+    require(
+        all(local.is_sha256(report.get(field)) for field in fields)
+        and report.get("calibration_vector_count") == 25000,
+        "calibration provenance is invalid",
+    )
+    return {
+        "materialization_manifest_sha256": report["calibration_materialization_manifest_sha256"],
+        "train_ids_sha256": report["calibration_train_ids_sha256"],
+        "vector_count": report["calibration_vector_count"],
+    }
+
+
+def validate_row(name: str, report: dict[str, Any], row: dict[str, Any], contribution: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
     layout = row["layout"]
     require(
         report.get("schema_version") == 6 and report.get("family") == "mih_banding_reference_v6"
@@ -77,12 +95,13 @@ def validate_row(name: str, report: dict[str, Any], row: dict[str, Any], contrib
         and report.get("per_query_contributions_sha256") == sha256_file(contribution),
         f"row contract is invalid: {name}",
     )
+    calibration = calibration_provenance(report)
     values, identity = local.load_contribution(contribution, report)
     local.validate_summary(report, values)
-    return values, identity
+    return values, identity, calibration
 
 
-def validate_rows(root: Path, matrix: Path) -> tuple[list[dict[str, Any]], dict[str, Path], dict[str, Any], dict[str, str]]:
+def validate_rows(root: Path, matrix: Path) -> tuple[list[dict[str, Any]], dict[str, Path], dict[str, Any], dict[str, str], dict[str, Any]]:
     expected = expected_rows(matrix)
     reports = root / "reports"; contributions = root / "contributions"
     require(reports.is_dir() and contributions.is_dir(), "matrix evidence directories are absent")
@@ -90,21 +109,22 @@ def validate_rows(root: Path, matrix: Path) -> tuple[list[dict[str, Any]], dict[
     require({path.stem for path in contributions.glob("*.npz")} == set(expected), "contribution grid is incomplete")
     evaluator_files: dict[str, str] | None = None
     identity: dict[str, Any] | None = None
+    calibration: dict[str, Any] | None = None
     records: list[dict[str, Any]] = []; contribution_paths: dict[str, Path] = {}
     for name, row in sorted(expected.items()):
         report_path = reports / f"{name}.json"; contribution = contributions / f"{name}.npz"
         report = json.loads(report_path.read_text(encoding="utf-8"))
-        _, current_identity = validate_row(name, report, row, contribution)
+        _, current_identity, current_calibration = validate_row(name, report, row, contribution)
         source_files = report.get("evaluator_source_files_sha256")
         require(isinstance(source_files, dict) and source_files == runner.source_files() and report.get("evaluator_source_bundle_sha256") == runner.source_bundle(source_files), f"evaluator provenance is invalid: {name}")
         if evaluator_files is None:
-            evaluator_files = source_files; identity = current_identity
+            evaluator_files = source_files; identity = current_identity; calibration = current_calibration
         else:
-            require(evaluator_files == source_files and identity == current_identity, f"rows mix provenance: {name}")
+            require(evaluator_files == source_files and identity == current_identity and calibration == current_calibration, f"rows mix provenance: {name}")
         records.append({"id": name, "layout": row["layout"], "seed": row["seed"], "band_width_bits": row["widths"], "report_file": report_path.name, "report_sha256": sha256_file(report_path), "contributions_file": contribution.name, "contributions_sha256": sha256_file(contribution)})
         contribution_paths[name] = contribution
-    require(evaluator_files is not None and identity is not None, "matrix is empty")
-    return records, contribution_paths, identity, evaluator_files
+    require(evaluator_files is not None and identity is not None and calibration is not None, "matrix is empty")
+    return records, contribution_paths, identity, evaluator_files, calibration
 
 
 def validate_bootstraps(root: Path, rows: dict[str, dict[str, Any]], contributions: dict[str, Path], identity: dict[str, Any]) -> list[dict[str, Any]]:
@@ -132,7 +152,7 @@ def validate_bootstraps(root: Path, rows: dict[str, dict[str, Any]], contributio
 
 
 def make_bundle(input_root: Path, matrix: Path, bootstrap_root: Path, output: Path) -> dict[str, Any]:
-    rows, contributions, identity, evaluator_sources = validate_rows(input_root, matrix)
+    rows, contributions, identity, evaluator_sources, calibration = validate_rows(input_root, matrix)
     comparisons = validate_bootstraps(bootstrap_root, expected_rows(matrix), contributions, identity)
     source_names = [
         "evaluate-mih-banding.py", "evaluate-projection-quantization.py",
@@ -150,7 +170,7 @@ def make_bundle(input_root: Path, matrix: Path, bootstrap_root: Path, output: Pa
     files += [(input_root / "reports" / row["report_file"], f"bundle/reports/{row['report_file']}") for row in rows]
     files += [(input_root / "contributions" / row["contributions_file"], f"bundle/contributions/{row['contributions_file']}") for row in rows]
     files += [(bootstrap_root / item["file"], f"bundle/bootstrap/{item['file']}") for item in comparisons]
-    compact = {"schema_version": 1, "family": "mih_variable_width_evidence_v1", "matrix_sha256": sha256_file(matrix), "evaluation_identity": identity, "evaluator_source_files_sha256": evaluator_sources, "bootstrap_source_files_sha256": bootstrap.source_files(), "rows": rows, "comparisons": comparisons}
+    compact = {"schema_version": 1, "family": "mih_variable_width_evidence_v1", "matrix_sha256": sha256_file(matrix), "evaluation_identity": identity, "calibration_provenance": calibration, "evaluator_source_files_sha256": evaluator_sources, "bootstrap_source_files_sha256": bootstrap.source_files(), "rows": rows, "comparisons": comparisons}
     compact_path = input_root / "compact-manifest.json"
     compact_path.write_text(json.dumps(compact, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     files.append((compact_path, "bundle/compact-manifest.json")); files += source_paths
@@ -170,6 +190,20 @@ def self_test() -> int:
             pass
         else:
             raise ValueError("incomplete matrix was accepted by bootstrap expansion")
+        valid_calibration = {
+            "calibration_materialization_manifest_sha256": "a" * 64,
+            "calibration_train_ids_sha256": "b" * 64,
+            "evaluation_materialization_manifest_sha256": "c" * 64,
+            "calibration_vector_count": 25000,
+        }
+        calibration_provenance(valid_calibration)
+        valid_calibration["calibration_vector_count"] = 20000
+        try:
+            calibration_provenance(valid_calibration)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("calibration vector-count mutation was accepted")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"write-mih-variable-width-evidence self-test failed: {error}", file=sys.stderr)
         return 1

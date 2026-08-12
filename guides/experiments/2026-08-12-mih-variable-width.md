@@ -1,6 +1,6 @@
 # True variable-width MIH under matched local probing
 
-## 2026-08-12 — predeclared 32-band comparison
+## 2026-08-12 — fixed 32-band comparison
 
 ### Question
 
@@ -11,8 +11,8 @@ Can true variable-width MIH reduce the candidate union of the current ITQ-256
 
 The study uses the frozen 25,000-vector MIRACL Russian E5 materialization,
 1,252 evaluation queries, ITQ seeds 52--56, 32 bands, local radius one,
-Hamming K1=768, binary ADC K2=256, and E5 oracle K=10.  The 15 predeclared
-rows are three layouts by five ITQ seeds:
+Hamming K1=768, binary ADC K2=256, and E5 oracle K=10.  The fixed 15-row
+matrix is three layouts by five ITQ seeds:
 
 | Layout | Band widths | Assignment rule |
 | --- | --- | --- |
@@ -26,9 +26,9 @@ variable layouts additional probes.  The calibration-only procedure does not
 read held-out query relevance, E5-oracle outcomes, candidate counts, or
 retrieval metrics while creating the layout.
 
-Paired-query bootstrap uses 10,000 replicates for both predeclared comparisons
-per seed: calibrated variable versus equal-width control, and calibrated
-variable versus variable-width fixed-random control.  It preserves raw-union,
+Paired-query bootstrap uses 10,000 replicates for both comparisons per seed:
+equal-width control versus calibrated variable, and variable-width fixed-random
+control versus calibrated variable. It preserves raw-union,
 Hamming K1, ADC K2, final coverage/NDCG, candidate count, posting visits, and
 bucket-probe work arrays.
 
@@ -55,13 +55,33 @@ This particular true-variable-width allocation is **not** a candidate-reduction
 improvement for the current radius-one cascade.  The quality movement is small
 and is explained by a larger union, not a better selectivity/work frontier.
 The calibration collision-information approximation also does not beat the
-fixed-random variable-width control at the same widths.
+fixed-random variable-width control at the same widths. This is not merely an
+unsuccessful greedy assignment: the candidate expansion is closely predicted
+by the radius-one bucket geometry itself.
+
+For independent balanced bits, a width-`w` band hits a random document with
+probability `(w + 1) / 2^w` under exact plus one-bit probing. The corresponding
+union prediction and observed mean union fraction for the 22,607-document
+corpus are:
+
+| Form | Independent balanced-bit prediction | Observed candidate fraction |
+| --- | ---: | ---: |
+| 32 x 8 | 0.6819 | 0.7132 |
+| 8 x 6, 8 x 7, 8 x 9, 8 x 10 | 0.8150 | 0.8301 |
+
+The eight 6-bit bands alone have an independent-bit union prediction of
+0.6041. Because MIH forms a union, later 9/10-bit bands cannot remove the
+false-positive candidates that shorter bands already admitted. A 6-bit key also
+cannot contain more than about six bits of collision information when the ITQ
+bits are already near balanced, so calibration assignment cannot make it as
+selective as a good 8-bit key.
 
 This does not say that every variable-width MIH algorithm is ineffective.  It
-rejects this predeclared static width shape and greedy calibration-only
-assignment under equal probe count.  A future learned layout would need a
-separate, predeclared objective and must show an improved quality-versus-union
-frontier, not merely higher recall after admitting more candidates.
+rejects this fixed static width shape and greedy calibration-only assignment
+under equal probe count. It does not reject every variable-width MIH method.
+A future learned layout would need a separate objective and must show an
+improved quality-versus-union frontier, not merely higher recall after admitting
+more candidates.
 
 ### Scope and limitations
 
@@ -73,13 +93,18 @@ until its validator and PR checks are green; its target commit and digests are
 recorded in the PR rather than treated as a public release here.
 
 The measured static variable widths are only one shape: eight bands each of 6,
-7, 9, and 10 bits.  They do not test query-adaptive radii, weighted Hamming,
-learned code training, or Hamming-weight-tree alternatives.
+7, 9, and 10 bits. This is a fixed-matrix study; its repository chronology does
+not claim an independently auditable predeclaration before execution. It does
+not test query-adaptive radii, weighted Hamming, learned code training, or
+Hamming-weight-tree alternatives.
 
 ### Follow-up
 
 The immediate implementation priority remains the native hot path and reducing
-the union before Hamming/top-K.  If variable-width MIH is revisited, compare a
-new predeclared learned-width objective against both equal-width and
-width-matched random controls, with matching probe budgets and per-query work
-evidence.
+the union before Hamming/top-K. If static variable width is revisited, it should
+directly optimize calibration-estimated unique union, posting visits, and a
+tail-work statistic while choosing both widths and bit assignment. It should
+compare the returned design with equal-width and width-matched random controls
+at matching probe budgets. Returning 32 x 8 is an informative outcome: it
+would support closing static radius-one variable-width MIH for this ITQ-256
+distribution rather than hand-enumerating more width shapes.
