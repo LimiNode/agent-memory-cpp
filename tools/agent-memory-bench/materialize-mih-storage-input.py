@@ -67,6 +67,13 @@ def pack_codes(codes: Any, code_bits: int) -> bytes:
     return packed.tobytes(order="C")
 
 
+def pack_vectors(vectors: Any, dimension: int) -> bytes:
+    values = numpy.asarray(vectors, dtype="<f4")
+    if values.ndim != 2 or values.shape[1] != dimension or dimension == 0:
+        raise EvaluationError("storage benchmark vector shape is invalid")
+    return values.tobytes(order="C")
+
+
 def materialize(args: Any) -> None:
     if args.code_bits != 256 or args.itq_iterations != 50 or args.seed < 0:
         raise EvaluationError("storage benchmark input contract is invalid")
@@ -79,16 +86,29 @@ def materialize(args: Any) -> None:
         numpy.asarray(calibration["train"]), args.code_bits, args.seed, args.itq_iterations
     )
     thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
+    calibration_projection = numpy.asarray(calibration["train"]) @ weights.T + thresholds
     document_codes = numpy.asarray(evaluation["documents"]) @ weights.T + thresholds >= 0.0
     query_codes = numpy.asarray(evaluation["queries"]) @ weights.T + thresholds >= 0.0
+    query_projection = numpy.asarray(evaluation["queries"]) @ weights.T + thresholds
+    centers = shared.conditional_centers(calibration_projection, (calibration_projection >= 0.0).astype(numpy.uint8), 2)
     documents = pack_codes(document_codes, args.code_bits)
     queries = pack_codes(query_codes, args.code_bits)
+    document_vectors = pack_vectors(evaluation["documents"], evaluation["dimension"])
+    query_vectors = pack_vectors(evaluation["queries"], evaluation["dimension"])
     output = args.output
     output.mkdir(parents=True, exist_ok=True)
     document_path = output / "document-codes-u64le.bin"
     query_path = output / "query-codes-u64le.bin"
+    document_vector_path = output / "document-vectors-f32le.bin"
+    query_vector_path = output / "query-vectors-f32le.bin"
+    query_projection_path = output / "query-itq-projections-f32le.bin"
+    centroid_path = output / "itq-binary-adc-centroids-f32le.bin"
     document_path.write_bytes(documents)
     query_path.write_bytes(queries)
+    document_vector_path.write_bytes(document_vectors)
+    query_vector_path.write_bytes(query_vectors)
+    query_projection_path.write_bytes(pack_vectors(query_projection, args.code_bits))
+    centroid_path.write_bytes(pack_vectors(centers, 2))
     sources = source_files_sha256()
     manifest = {
         "schema_version": 1,
@@ -106,6 +126,16 @@ def materialize(args: Any) -> None:
         "document_codes_sha256": sha256_file(document_path),
         "query_codes_file": query_path.name,
         "query_codes_sha256": sha256_file(query_path),
+        "embedding_dimension": evaluation["dimension"],
+        "document_vectors_file": document_vector_path.name,
+        "document_vectors_sha256": sha256_file(document_vector_path),
+        "query_vectors_file": query_vector_path.name,
+        "query_vectors_sha256": sha256_file(query_vector_path),
+        "itq_projection_dimension": args.code_bits,
+        "query_itq_projections_file": query_projection_path.name,
+        "query_itq_projections_sha256": sha256_file(query_projection_path),
+        "binary_adc_centroids_file": centroid_path.name,
+        "binary_adc_centroids_sha256": sha256_file(centroid_path),
         "source_files_sha256": sources,
         "source_bundle_sha256": source_bundle_sha256(sources),
         "runtime": runtime(),
@@ -122,6 +152,10 @@ def self_test() -> int:
     payload = pack_codes(codes, 64)
     if len(payload) != 16 or int.from_bytes(payload[8:16], "little") != 1:
         print("self-test failed: packed code bit order is invalid", file=sys.stderr)
+        return 1
+    vectors = numpy.asarray([[1.0, -2.0]], dtype=numpy.float32)
+    if len(pack_vectors(vectors, 2)) != 8:
+        print("self-test failed: packed vector payload is invalid", file=sys.stderr)
         return 1
     files = source_files_sha256()
     if set(files) != {Path(__file__).name, "evaluate-projection-quantization.py"}:

@@ -6,5 +6,6 @@
   "band_count": 32,
   "local_probe_radius": 1,
   "global_radius": -1,
-  "hamming_limit": 512
+  "hamming_limit": 768,
+  "exact_rerank_limits": [64, 128, 256]
 }
