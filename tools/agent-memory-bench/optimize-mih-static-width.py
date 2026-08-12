@@ -40,7 +40,7 @@ shared = load_module("evaluate-projection-quantization.py", "mih_static_width_sh
 mih = load_module("evaluate-mih-banding.py", "mih_static_width_reference")
 EvaluationError = shared.EvaluationError
 
-FAMILY = "mih_static_width_calibration_optimizer_v1"
+FAMILY = "mih_static_width_calibration_optimizer_v2"
 EXPECTED_SEEDS = [52, 53, 54, 55, 56]
 EXPECTED_OBJECTIVE = [
     "mean_unique_candidates", "mean_posting_visits", "p95_posting_visits",
@@ -68,12 +68,13 @@ def source_bundle(files: dict[str, str]) -> str:
 
 def load_contract(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    require(isinstance(value, dict) and set(value) == {"schema_version", "family", "calibration", "encoding", "search", "objective"}, "optimizer contract fields are invalid")
-    require(value["schema_version"] == 1 and value["family"] == FAMILY, "optimizer contract identity is invalid")
-    calibration = value["calibration"]; encoding = value["encoding"]; search = value["search"]; objective = value["objective"]
+    require(isinstance(value, dict) and set(value) == {"schema_version", "family", "calibration", "encoding", "control", "search", "objective"}, "optimizer contract fields are invalid")
+    require(value["schema_version"] == 2 and value["family"] == FAMILY, "optimizer contract identity is invalid")
+    calibration = value["calibration"]; encoding = value["encoding"]; control = value["control"]; search = value["search"]; objective = value["objective"]
     require(
         calibration == {"vector_count": 25000, "pseudo_query_count": 128}
         and encoding == {"code_bits": 256, "band_count": 32, "itq_seeds": EXPECTED_SEEDS, "itq_iterations": 50}
+        and control == {"id": "current-contiguous-32x8-identity", "widths": [8] * 32, "permutation": "identity"}
         and search == {"minimum_band_width": 6, "maximum_band_width": 10, "maximum_width_transfers": 2, "assignment_restart_seeds": [20260812, 20260813], "swap_proposals_per_restart": 12}
         and objective == {"probe_radius": 1, "lexicographic_metrics": EXPECTED_OBJECTIVE},
         "optimizer contract values are invalid",
@@ -180,20 +181,39 @@ def optimize_assignment(codes: numpy.ndarray, queries: numpy.ndarray, widths: tu
     return permutation, current, accepted
 
 
+def candidate_record(identifier: str, kind: str, widths: tuple[int, ...], permutation: numpy.ndarray, metrics: dict[str, Any], restart_seed: int | None, accepted_swaps: int) -> dict[str, Any]:
+    return {
+        "id": identifier, "kind": kind, "widths": list(widths),
+        "permutation": [int(value) for value in permutation.tolist()],
+        "permutation_sha256": mih.band_layout_sha256(permutation),
+        "metrics": metrics, "restart_seed": restart_seed, "accepted_swaps": accepted_swaps,
+    }
+
+
 def optimize(codes: numpy.ndarray, queries: numpy.ndarray, contract: dict[str, Any]) -> dict[str, Any]:
     search = contract["search"]; profiles = width_profiles(32, search["minimum_band_width"], search["maximum_band_width"], search["maximum_width_transfers"])
-    candidates = []
+    control_widths = tuple(contract["control"]["widths"])
+    control_permutation = numpy.arange(codes.shape[1], dtype=numpy.intp)
+    candidates = [candidate_record(
+        contract["control"]["id"], "current-contiguous-identity", control_widths,
+        control_permutation, direct_work(codes, queries, control_widths, control_permutation), None, 0,
+    )]
     for widths in profiles:
         for restart_seed in search["assignment_restart_seeds"]:
             permutation, metrics, accepted = optimize_assignment(codes, queries, widths, restart_seed, search["swap_proposals_per_restart"])
-            candidates.append({"widths": list(widths), "restart_seed": restart_seed, "permutation": permutation, "metrics": metrics, "accepted_swaps": accepted})
-    selected = min(candidates, key=lambda item: objective_key(item["metrics"], tuple(item["widths"]), item["permutation"]))
+            candidates.append(candidate_record(
+                f"heuristic-widths-{'-'.join(str(width) for width in widths)}-restart-{restart_seed}",
+                "bounded-heuristic", widths, permutation, metrics, restart_seed, accepted,
+            ))
+    selected = min(candidates, key=lambda item: objective_key(item["metrics"], tuple(item["widths"]), numpy.asarray(item["permutation"], dtype=numpy.intp)))
     return {
-        "profile_count": len(profiles), "assignment_evaluations": len(candidates),
+        "profile_count": len(profiles), "heuristic_assignment_evaluations": len(candidates) - 1,
+        "total_candidate_evaluations": len(candidates),
+        "selected_id": selected["id"], "selected_kind": selected["kind"],
         "selected_widths": selected["widths"], "selected_permutation": selected["permutation"],
         "selected_metrics": selected["metrics"], "selected_restart_seed": selected["restart_seed"],
         "selected_accepted_swaps": selected["accepted_swaps"],
-        "candidates": [{**{key: value for key, value in item.items() if key != "permutation"}, "permutation_sha256": mih.band_layout_sha256(item["permutation"])} for item in candidates],
+        "candidates": candidates,
     }
 
 
@@ -209,8 +229,8 @@ def run(args: Any) -> None:
         thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
         codes = (numpy.asarray(calibration["train"]) @ weights.T + thresholds) >= 0.0
         result = optimize(codes, codes[indices], contract)
-        permutation = result.pop("selected_permutation")
-        rows.append({"seed": seed, **result, "selected_permutation": [int(value) for value in permutation.tolist()], "selected_permutation_sha256": mih.band_layout_sha256(permutation)})
+        permutation = numpy.asarray(result["selected_permutation"], dtype=numpy.intp)
+        rows.append({"seed": seed, **result, "selected_permutation_sha256": mih.band_layout_sha256(permutation)})
     report = {
         "schema_version": 1, "family": FAMILY, "contract_sha256": sha256_file(args.contract),
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"],
@@ -240,6 +260,8 @@ def self_test() -> int:
         require(math.isclose(metrics["mean_unique_candidates"], float(numpy.mean(expected_candidates))) and math.isclose(metrics["mean_posting_visits"], float(numpy.mean(expected_visits))), "generation-array union differs from reference")
         first = pseudoquery_indices(["a", "b", "c"], 2); second = pseudoquery_indices(["a", "b", "c"], 2)
         require(numpy.array_equal(first, second), "pseudoquery selection is not deterministic")
+        control = candidate_record("current-contiguous-32x8-identity", "current-contiguous-identity", (2, 2), numpy.arange(4, dtype=numpy.intp), metrics, None, 0)
+        require(control["id"] == "current-contiguous-32x8-identity" and control["permutation"] == [0, 1, 2, 3] and control["accepted_swaps"] == 0, "current identity control record is invalid")
     except (EvaluationError, ValueError, OSError) as error:
         print(f"MIH static-width optimizer self-test failed: {error}", file=sys.stderr)
         return 1

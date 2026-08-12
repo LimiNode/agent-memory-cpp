@@ -48,7 +48,7 @@ that 32 x 8 may remain selected. The direct objective is still necessary: it
 tests actual union overlap and postings on the calibration corpus rather than
 assuming independent bits or optimizing collision information indirectly.
 
-### Result
+### v1 superseded result
 
 All five independently trained ITQ codes selected the equal-width profile:
 
@@ -62,13 +62,30 @@ made the fixed twelve direct-work swap proposals per restart. The archive
 therefore records 12 assignment evaluations per seed, not a post-hoc choice of
 one attractive result.
 
-### Interpretation
+This v1 result is historical only. It did **not** include the current
+contiguous identity `32 x 8` layout as an explicit candidate. A selected
+equal-width profile could therefore have a new bit permutation and would need
+held-out retrieval validation. It is not evidence that the selected layout was
+the existing production control.
 
-Within this fixed direct-work search space, the existing 32 x 8 partition is
-the selected static local-radius-one MIH layout for ITQ-256. A held-out
-retrieval matrix is unnecessary here: the selected treatment is exactly the
-already measured equal-width control, not merely a similarly shaped layout.
-This closes the static-width branch at the stated bounds. It does not reject
-query-adaptive multiprobe policies, dynamic/static alternatives with materially
-larger search spaces, or MIH-aware ITQ/code learning; the latter is the next
-research branch.
+## 2026-08-13 — v2 pre-execution contract
+
+The v2 rerun keeps the same calibration-only corpus, pseudoqueries, direct-work
+objective, bounded width profiles, restart seeds, and swap budget. It adds one
+required candidate to every seed's global objective: the current contiguous
+`32 x 8` identity permutation. The report retains every candidate's widths,
+full permutation, hash, direct metrics, restart identity, and accepted-swap
+count. Its evidence validator rejects a report unless the exact control plus
+six profiles × two restarts grid is present and independently recomputes the
+winner from all candidate objective keys.
+
+Interpretation branches are fixed before execution:
+
+- identity control wins every seed: the bounded search selected the existing
+  layout and no new held-out treatment exists;
+- a non-identity equal-width layout wins: width variation was not selected, but
+  the new assignment is a treatment and requires held-out evaluation;
+- a variable-width layout wins: it requires the same held-out evaluation.
+
+The scope remains a bounded heuristic search, not a global proof over static
+partitions or bit assignments.

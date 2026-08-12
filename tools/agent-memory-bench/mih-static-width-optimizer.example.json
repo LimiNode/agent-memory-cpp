@@ -1,6 +1,6 @@
 {
-  "schema_version": 1,
-  "family": "mih_static_width_calibration_optimizer_v1",
+  "schema_version": 2,
+  "family": "mih_static_width_calibration_optimizer_v2",
   "calibration": {
     "vector_count": 25000,
     "pseudo_query_count": 128
@@ -10,6 +10,11 @@
     "band_count": 32,
     "itq_seeds": [52, 53, 54, 55, 56],
     "itq_iterations": 50
+  },
+  "control": {
+    "id": "current-contiguous-32x8-identity",
+    "widths": [8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8, 8],
+    "permutation": "identity"
   },
   "search": {
     "minimum_band_width": 6,
