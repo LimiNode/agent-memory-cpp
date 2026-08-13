@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "family": "mih_static_width_optimizer_heldout_matrix_v1",
+  "selection": {
+    "optimizer_family": "mih_static_width_calibration_optimizer_v2",
+    "optimizer_schema_version": 2,
+    "control_id": "current-contiguous-32x8-identity",
+    "itq_seeds": [52, 53, 54, 55, 56],
+    "treatment": "per-seed-calibration-winner-if-noncontrol"
+  },
+  "evaluation": {
+    "code_bits": 256,
+    "band_count": 32,
+    "probe_policy": "uniform-radius",
+    "probe_radius": 1,
+    "hamming_policy": "uniform",
+    "hamming_limit": 768,
+    "candidate_limit": 512,
+    "second_stage": "binary-adc",
+    "second_limit": 256,
+    "oracle_k": 10,
+    "itq_iterations": 50
+  },
+  "bootstrap": {
+    "replicates": 10000,
+    "seed": 20260813
+  }
+}
