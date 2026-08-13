@@ -188,7 +188,11 @@ jobs:
           python tools/agent-memory-bench/run-mih-static-width-heldout.py self-test
           --contract tools/agent-memory-bench/mih-static-width-heldout.example.json &&
           python tools/agent-memory-bench/bootstrap-mih-static-width-heldout.py self-test &&
-          python tools/agent-memory-bench/write-mih-static-width-heldout-evidence.py --self-test
+          python tools/agent-memory-bench/write-mih-static-width-heldout-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-mih-aware-itq-frontier.py self-test
+          --contract tools/agent-memory-bench/mih-aware-itq-frontier.example.json &&
+          python tools/agent-memory-bench/bootstrap-mih-aware-itq-frontier.py self-test &&
+          python tools/agent-memory-bench/write-mih-aware-itq-evidence.py --self-test
       - name: Exercise ANN evidence bootstrap contract
         run: >
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&

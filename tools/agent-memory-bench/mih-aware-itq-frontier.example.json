@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "family": "mih_aware_itq_heldout_frontier_v1",
+  "calibration": {
+    "vector_count": 25000,
+    "document_only_validation_fraction": 0.2
+  },
+  "encoding": {
+    "code_bits": 256,
+    "band_count": 32,
+    "band_width_bits": 8,
+    "itq_seeds": [52, 53, 54, 55, 56],
+    "itq_iterations": 50
+  },
+  "training": {
+    "epochs": 16,
+    "batch_size": 192,
+    "learning_rate": 0.00001,
+    "temperature": 4.0,
+    "quantization_weight": 0.1,
+    "orthogonality_weight": 0.05,
+    "balance_weight": 0.5,
+    "semantic_weight": 1.0,
+    "checkpoint_selection": "minimum_document_only_validation_total_loss",
+    "queries_or_qrels_used": false
+  },
+  "treatments": [
+    {"id": "itq-control", "mih_work_weight": null},
+    {"id": "training-path-control-zero-work", "mih_work_weight": 0.0},
+    {"id": "mih-aware-work-0.02", "mih_work_weight": 0.02},
+    {"id": "mih-aware-work-0.05", "mih_work_weight": 0.05},
+    {"id": "mih-aware-work-0.10", "mih_work_weight": 0.1}
+  ],
+  "held_out": {
+    "evaluation_document_count": 22607,
+    "query_count": 1252,
+    "probe_policy": "uniform-radius",
+    "probe_radius": 1,
+    "expected_bucket_probes": 288,
+    "hamming_limit": 768,
+    "second_stage": "binary-adc",
+    "second_limit": 256,
+    "oracle_k": 10,
+    "paired_bootstrap_replicates": 10000,
+    "frontier_x": ["mean_unique_candidates", "mean_posting_visits"],
+    "frontier_y": "e5_oracle_raw_union_coverage"
+  },
+  "gate": {
+    "baseline_mean_unique_candidates_approx": 16000,
+    "minimum_interesting_max_mean_unique_candidates": 12000,
+    "strong_max_mean_unique_candidates": 8000,
+    "very_strong_max_mean_unique_candidates": 6000,
+    "survival_rule": "paired held-out E5-oracle top-10 raw-union survival is not materially lower than itq-control"
+  }
+}
