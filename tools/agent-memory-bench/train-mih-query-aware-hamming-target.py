@@ -101,8 +101,8 @@ def frontier(
     radii = banding.global_radius_schedule(RADIUS, BANDS)
     centers = banding.shared.conditional_centers(projection, doc_codes.astype(numpy.uint8), 2)
     positions = {value: index for index, value in enumerate(data["query_ids"])}
-    documents = data["document_ids"]
-    document_positions = {value: index for index, value in enumerate(documents)}
+    documents = numpy.asarray(data["document_ids"], dtype=numpy.str_)
+    document_positions = {value: index for index, value in enumerate(documents.tolist())}
     positive_positions = {value: [document_positions[document] for document in sorted(data["positive"][value])] for value in query_ids}
     threshold_values: list[float] = []
     raw_values: list[float] = []
