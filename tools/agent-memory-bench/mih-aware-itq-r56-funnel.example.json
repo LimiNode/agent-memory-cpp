@@ -1,0 +1,38 @@
+{
+  "diagnostics": {
+    "correlations": [
+      "threshold_delta_vs_candidate_delta",
+      "threshold_delta_vs_raw_union_delta",
+      "threshold_delta_vs_hamming_k1_delta",
+      "threshold_delta_vs_adc_k2_delta"
+    ],
+    "stages": [
+      "hamming_within_radius_56",
+      "raw_union",
+      "hamming_top_k",
+      "adc_k2",
+      "candidate_count",
+      "posting_visits"
+    ]
+  },
+  "family": "mih_aware_itq_r56_funnel_diagnosis_v1",
+  "methodology": {
+    "purpose": "descriptive_only_no_radius_or_treatment_selection",
+    "uses_only": "published_repaired_heldout_evidence_v2"
+  },
+  "schema_version": 1,
+  "source_evidence": {
+    "archive_sha256": "07a20a79bfaf1120244a8f2d719344fb3b213dcc03b6493113d3f0dd5357f71f",
+    "bundle_root_sha256": "22317e8a8b3bf337a0c714e26fbea55e897f049ca003d2761b649ea7e83172fa",
+    "measured_matrix_source_commit": "6c887a330ac7c44b48cc72827a75636d5116f4fb",
+    "release_tag": "evidence/mih-aware-itq-repaired-heldout-frontier-v1",
+    "reporting_source_commit": "1535cceb3513c0e43f5ea7e96c8f881d80618b35"
+  },
+  "study": {
+    "encoders": ["itq-control", "repaired-control"],
+    "query_count": 1252,
+    "regime": "16x16-r56",
+    "seeds": [52, 53, 54, 55, 56],
+    "threshold": 56
+  }
+}
