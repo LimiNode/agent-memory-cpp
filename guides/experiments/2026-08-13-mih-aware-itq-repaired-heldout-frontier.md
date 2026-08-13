@@ -74,3 +74,14 @@ as `P(Hamming <= R)` for fixed oracle-neighbour targets and hard negatives,
 then separately consider a MISH-style term that penalizes MIH substring false
 positives. It should begin with a new pre-execution contract and not reuse this
 held-out matrix for selection.
+
+### Evidence replay hardening
+
+The staged evidence was replayed after the result without re-running the
+held-out matrix. Resume and evidence replay now fail closed unless every
+individual evaluator report matches the evaluator file and bundle hashes from
+the measured source commit, and unless its per-band probe radii match the exact
+predeclared schedule. The replayed `mih-aware-itq-repaired-heldout-evidence-v2.zip`
+has SHA-256 `07a20a79bfaf1120244a8f2d719344fb3b213dcc03b6493113d3f0dd5357f71f`
+and bundle-root SHA-256
+`22317e8a8b3bf337a0c714e26fbea55e897f049ca003d2761b649ea7e83172fa`.
