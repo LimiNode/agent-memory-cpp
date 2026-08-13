@@ -82,3 +82,63 @@ or a different index family.
 Raw reports, per-query contributions, paired bootstraps, source snapshots, and
 runtime provenance will be retained in a GitHub Evidence release only after a
 fail-closed archive validator succeeds.
+
+## 2026-08-13 — held-out result
+
+### Actual result
+
+The full predeclared matrix completed: five ordinary ITQ controls and four
+document-only training treatments for each of ITQ seeds 52--56. The output has
+25 reports, 25 per-query contribution files, 20 same-seed paired bootstraps
+(10,000 replicates each), and a matrix manifest that binds every report,
+contribution, and learned artifact by SHA-256.
+
+All learned treatments failed the minimum frontier gate. The training-path
+control itself moved the system in the wrong direction, and the MIH-work
+weights made only a tiny additional change relative to that control:
+
+| Treatment, delta from same-seed ITQ | Mean candidates/query | Mean posting visits/query | Raw E5-oracle survival | Final ADC survival |
+| --- | ---: | ---: | ---: | ---: |
+| training path, work weight 0.00 | +5,181.56 | +37,294.95 | +0.001310 | -0.006486 |
+| MIH-work 0.02 | +5,180.42 | +37,275.72 | +0.001310 | -0.006629 |
+| MIH-work 0.05 | +5,177.87 | +37,230.74 | +0.001310 | -0.006502 |
+| MIH-work 0.10 | +5,173.36 | +37,145.84 | +0.001310 | -0.006629 |
+
+The ordinary ITQ controls average about 16,139 candidates/query. The learned
+rows instead average about 21,316--21,321 candidates/query, well above the
+predeclared `<=12,000` minimum-interesting threshold. Every seed's paired
+candidate-union bootstrap interval is strictly positive for every learned
+treatment. The observed tiny raw-union survival gain does not rescue the
+result: it is purchased with substantially more work, then loses roughly
+0.0065 final E5-oracle survival after Hamming and ADC.
+
+The zero-work training-path control is crucial here. It shows that the failure
+is not evidence that the small MIH-work coefficient alone found a bad optimum:
+the first document-pair semantic/quantization refinement objective already
+degrades the local-radius-one code geometry relative to ordinary ITQ. Raising
+the MIH-work weight from zero to 0.10 only recovers about eight candidates/query
+of a roughly 5,180-candidate regression, while its calibrated soft collision
+surrogate changes only in the sixth decimal place.
+
+### Interpretation
+
+This first MIH-aware ITQ objective is a **no-go** under the declared gate. It
+does not establish that MIH-aware code learning is impossible; it establishes
+that this document-pair soft radius-one collision surrogate, combined with the
+current semantic proxy and checkpoint rule, does not preserve the ITQ geometry
+that makes the existing `32 x 8` local-radius-one cascade viable.
+
+The next representation-learning proposal must be a new predeclared algorithm,
+not a held-out retuning of `0.02/0.05/0.10`. In particular, it should explicitly
+anchor to the initial ITQ projection and optimize a closer proxy for local
+Hamming-neighbour preservation/candidate union, with document-only calibration
+diagnostics proving any work reduction before another held-out frontier run.
+
+### Evidence
+
+The validated archive is `mih-aware-itq-frontier-evidence-v1.zip`: SHA-256
+`12569b7686dee3191e8556695c059cd87c54b32015a38b99e22d189760e35fd4`,
+internal bundle-root SHA-256
+`69a3dc3afbb4f019f0e87aedbf6d93a0766cd939e3408f2dc9988520dc3a74a5`.
+It is staged for the draft evidence release and is not public until the PR is
+reviewed and the release is published.
