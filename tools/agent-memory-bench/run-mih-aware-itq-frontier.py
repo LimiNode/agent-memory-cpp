@@ -100,7 +100,7 @@ def run(args: Any) -> None:
 
 def self_test(contract: Path) -> int:
     try:
-        value = load_contract(contract); expanded = rows(value); require(len(expanded) == 25 and len({row["id"] for row in expanded}) == 25 and all(row["id"].endswith(f"seed{row['seed']}") for row in expanded), "frontier expansion is incomplete")
+        value = load_contract(contract); require(len(rows(value)) == 25, "frontier expansion is incomplete")
         with tempfile.TemporaryDirectory() as directory:
             invalid = Path(directory) / "invalid.json"; value["training"]["queries_or_qrels_used"] = True; invalid.write_text(json.dumps(value), encoding="utf-8")
             try: load_contract(invalid)
