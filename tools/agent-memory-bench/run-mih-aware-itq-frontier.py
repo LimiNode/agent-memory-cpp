@@ -59,7 +59,7 @@ def rows(contract: dict[str, Any]) -> list[dict[str, Any]]:
     result = []
     for seed in contract["encoding"]["itq_seeds"]:
         for treatment in contract["treatments"]:
-            result.append({"id": f"{treatment['id']}-seed{seed}", "seed": seed, **treatment})
+            result.append({**treatment, "id": f"{treatment['id']}-seed{seed}", "seed": seed})
     return result
 
 
