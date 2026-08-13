@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the predeclared calibration gate for repaired MIH-aware ITQ."""
+"""Run the fixed calibration gate for repaired MIH-aware ITQ."""
 
 from __future__ import annotations
 

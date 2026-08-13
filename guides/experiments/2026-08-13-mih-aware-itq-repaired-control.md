@@ -1,6 +1,6 @@
 # Repaired MIH-aware ITQ calibration control
 
-## 2026-08-13 — pre-execution contract
+## 2026-08-13 — fixed calibration protocol
 
 ### Question
 
@@ -38,7 +38,7 @@ separate predeclared held-out frontier, including `16 x 16` radius controls.
 
 ## 2026-08-13 — five-seed calibration result
 
-The fixed protocol passed all four gates. The means below are paired across
+The fixed calibration protocol passed all four gates. The means below are paired across
 the five frozen ITQ seeds; this calibration-only result did not read an
 evaluation root, queries, or qrels.
 
