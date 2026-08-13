@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "family": "mih_aware_itq_geometry_diagnosis_v1",
+  "calibration": {"vector_count": 25000, "validation_fraction": 0.2, "neighbor_anchor_count": 1024, "neighbor_k": 10, "random_pair_count": 10000},
+  "encoding": {"code_bits": 256, "band_count": 32, "band_width_bits": 8, "itq_iterations": 50, "seeds": [52, 53, 54, 55, 56]},
+  "treatments": ["full-itq-25k", "split-itq-80-no-sgd", "split-init-zero-work", "split-init-work-0.10"],
+  "data_access": {"evaluation_root_allowed": false, "query_vectors_allowed": false, "qrels_allowed": false}
+}
