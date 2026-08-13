@@ -524,6 +524,28 @@ def validate_roots(calibration: dict[str, Any], data: dict[str, Any], code_bits:
         raise EvaluationError("MIH calibration and evaluation dimensions are incompatible")
 
 
+def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: dict[str, Any], code_bits: int, band_count: int, band_widths: list[int]) -> tuple[dict[str, Any], Any, Any]:
+    """Load a document-only MIH-aware projection under its strict artifact contract."""
+    try:
+        artifact = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise EvaluationError(f"cannot read MIH-aware artifact: {exc}") from exc
+    architecture = artifact.get("architecture") if isinstance(artifact, dict) else None
+    training = artifact.get("training") if isinstance(artifact, dict) else None
+    weights = artifact.get("weights") if isinstance(artifact, dict) else None
+    if artifact.get("schema_version") != 1 or not isinstance(architecture, dict) or not isinstance(training, dict) or not isinstance(weights, dict):
+        raise EvaluationError("MIH-aware artifact sections are invalid")
+    if architecture.get("family") != "mih_aware_itq_v1" or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or architecture.get("band_count") != band_count:
+        raise EvaluationError("MIH-aware artifact architecture differs from evaluation")
+    if band_widths != [architecture.get("band_width_bits")] * band_count or artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"]:
+        raise EvaluationError("MIH-aware artifact calibration provenance differs")
+    if training.get("queries_or_qrels_used") is not False or training.get("objective") != "document_semantic_itq_quantization_radius_one_mih_work_surrogate_v1":
+        raise EvaluationError("MIH-aware artifact is not document-only")
+    projection = shared.require_artifact_weight(path.parent, weights.get("projection_weights"), [code_bits, data["dimension"]], "row_major_out_by_in", "projection_weights")
+    thresholds = shared.require_artifact_weight(path.parent, weights.get("thresholds"), [code_bits], None, "thresholds")
+    return artifact, projection, thresholds
+
+
 def write_result(args: Any, report: dict[str, Any], contributions: dict[str, Any], data: dict[str, Any]) -> None:
     """Write paired per-query metrics before their hash is recorded in JSON."""
     contribution_path = args.contributions_output
@@ -575,8 +597,12 @@ def evaluate(args: Any) -> None:
     calibration = shared.load_root(args.calibration_root)
     data = shared.load_root(args.evaluation_root)
     validate_roots(calibration, data, args.code_bits)
-    weights = shared.itq_weights(numpy.asarray(calibration["train"]), args.code_bits, args.seed, args.itq_iterations)
-    thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
+    artifact = None
+    if args.encoder_artifact is None:
+        weights = shared.itq_weights(numpy.asarray(calibration["train"]), args.code_bits, args.seed, args.itq_iterations)
+        thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
+    else:
+        artifact, weights, thresholds = load_mih_aware_itq_artifact(args.encoder_artifact, calibration, data, args.code_bits, args.band_count, widths)
     calibration_projection = numpy.asarray(calibration["train"]) @ weights.T + thresholds
     document_projection = numpy.asarray(data["documents"]) @ weights.T + thresholds
     query_projection = numpy.asarray(data["queries"]) @ weights.T + thresholds
@@ -705,7 +731,7 @@ def evaluate(args: Any) -> None:
         "band_layout_variable_width_objective": VARIABLE_WIDTH_BAND_OBJECTIVE if args.band_layout == "calibration-collision-balanced-variable" else None,
         "band_layout_sha256": band_layout_sha256(band_permutation),
         "mean_intraband_absolute_correlation": mean_intraband_absolute_correlation(calibration_codes, ranges),
-        "seed": args.seed, "itq_iterations": args.itq_iterations, "query_count": len(data["query_ids"]),
+        "seed": args.seed, "itq_iterations": args.itq_iterations if artifact is None else None, "encoder_artifact_sha256": hashlib.sha256(args.encoder_artifact.read_bytes()).hexdigest() if artifact is not None else None, "encoder_artifact_family": artifact["architecture"]["family"] if artifact is not None else "itq_rotation_projection", "query_count": len(data["query_ids"]),
         "hamming_top_k_recall": float(numpy.mean(hamming_recall)), "exact_top_k_candidate_coverage": float(numpy.mean(e5_coverage)), "reranked_ndcg_at_10": float(numpy.mean(reranked_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_e5_ndcg)),
         "mean_candidates_per_query": float(numpy.mean(candidate_counts)), "mean_exact_bucket_floor_candidates_per_query": float(numpy.mean(exact_bucket_floor_counts)), "mean_bucket_probes_per_query": float(numpy.mean(probe_counts)), "mean_posting_visits_per_query": float(numpy.mean(posting_visits)), "mean_posting_bytes_per_query": float(numpy.mean(posting_visits) * numpy.dtype(numpy.int32).itemsize), "mean_full_hamming_scores_per_query": float(numpy.mean(hamming_scores)),
         "e5_oracle_survival": {"raw_union": float(numpy.mean(raw_union_oracle_coverage)), "hamming_top_k": float(numpy.mean(hamming_oracle_coverage)), "second_stage": float(numpy.mean(second_oracle_coverage)), "mean_full_hamming_distance": float(numpy.mean(oracle_hamming_distance_mean))},
@@ -874,7 +900,7 @@ def main(argv: list[str]) -> int:
     run = sub.add_parser("evaluate")
     run.add_argument("--calibration-root", type=Path, required=True); run.add_argument("--evaluation-root", type=Path, required=True); run.add_argument("--output", type=Path, required=True); run.add_argument("--contributions-output", type=Path, required=True)
     run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc", "budgeted-adc-best-first"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--soft-posting-visit-target", type=int, default=0); run.add_argument("--max-probe-bit-flips", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform"); run.add_argument("--band-layout", choices=("contiguous", "fixed-random", "calibration-correlation-balanced", "calibration-collision-balanced-variable", "explicit-permutation"), default="contiguous"); run.add_argument("--band-layout-seed", type=int, default=20260812); run.add_argument("--band-permutation", type=Path); run.add_argument("--band-selection-provenance", type=Path)
-    run.add_argument("--band-widths"); run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
+    run.add_argument("--band-widths"); run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--encoder-artifact", type=Path); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
         if args.command == "evaluate": evaluate(args)
