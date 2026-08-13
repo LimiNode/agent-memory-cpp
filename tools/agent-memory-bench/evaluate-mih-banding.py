@@ -524,8 +524,16 @@ def validate_roots(calibration: dict[str, Any], data: dict[str, Any], code_bits:
         raise EvaluationError("MIH calibration and evaluation dimensions are incompatible")
 
 
+def document_id_set_sha256(document_ids: Any) -> str:
+    """Return the train/dev exclusion identity independent of source row order."""
+    values = [str(value) for value in document_ids]
+    if len(values) != len(set(values)):
+        raise EvaluationError("evaluation document IDs are not unique")
+    return hashlib.sha256("".join(f"{value}\n" for value in sorted(values)).encode("utf-8")).hexdigest()
+
+
 def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: dict[str, Any], code_bits: int, band_count: int, band_widths: list[int]) -> tuple[dict[str, Any], Any, Any]:
-    """Load a document-only MIH-aware projection under its strict artifact contract."""
+    """Load a document-only or train-query-supervised MIH projection safely."""
     try:
         artifact = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -535,12 +543,25 @@ def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: d
     weights = artifact.get("weights") if isinstance(artifact, dict) else None
     if artifact.get("schema_version") != 1 or not isinstance(architecture, dict) or not isinstance(training, dict) or not isinstance(weights, dict):
         raise EvaluationError("MIH-aware artifact sections are invalid")
-    repaired = architecture.get("family") == "mih_aware_itq_repaired_control_v1"
-    if architecture.get("family") not in ("mih_aware_itq_v1", "mih_aware_itq_repaired_control_v1") or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or (not repaired and architecture.get("band_count") != band_count):
+    family = architecture.get("family")
+    repaired = family == "mih_aware_itq_repaired_control_v1"
+    query_aware = family == "mih_query_aware_hamming_target_shared_w_v1"
+    if family not in ("mih_aware_itq_v1", "mih_aware_itq_repaired_control_v1", "mih_query_aware_hamming_target_shared_w_v1") or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or (not repaired and architecture.get("band_count") != band_count):
         raise EvaluationError("MIH-aware artifact architecture differs from evaluation")
-    if (not repaired and band_widths != [architecture.get("band_width_bits")] * band_count) or artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"]:
+    if not repaired and band_widths != [architecture.get("band_width_bits")] * band_count:
+        raise EvaluationError("MIH-aware artifact band widths differ from evaluation")
+    if not query_aware and (artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"]):
         raise EvaluationError("MIH-aware artifact calibration provenance differs")
-    if training.get("queries_or_qrels_used") is not False or training.get("objective") not in ("document_semantic_itq_quantization_radius_one_mih_work_surrogate_v1", "bipolar_hamming_semantic_full_itq_anchor_v1"):
+    if query_aware:
+        exclusion = training.get("held_out_exclusion")
+        if (training.get("queries_or_qrels_used") is not True or
+                training.get("objective") != "shared_w_qrels_hamming_radius_target_with_mih_frontier_gate_v1" or
+                not architecture.get("shared_projection") or
+                not isinstance(exclusion, dict) or
+                exclusion.get("id") != "external_excluded_document_ids_set_v1" or
+                exclusion.get("document_ids_set_sha256") != document_id_set_sha256(data["document_ids"])):
+            raise EvaluationError("query-aware artifact train/dev exclusion differs")
+    elif training.get("queries_or_qrels_used") is not False or training.get("objective") not in ("document_semantic_itq_quantization_radius_one_mih_work_surrogate_v1", "bipolar_hamming_semantic_full_itq_anchor_v1"):
         raise EvaluationError("MIH-aware artifact is not document-only")
     projection = shared.require_artifact_weight(path.parent, weights.get("projection_weights"), [code_bits, data["dimension"]], "row_major_out_by_in", "projection_weights")
     thresholds = shared.require_artifact_weight(path.parent, weights.get("thresholds"), [code_bits], None, "thresholds")
