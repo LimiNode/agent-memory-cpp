@@ -137,7 +137,7 @@ diagnostics proving any work reduction before another held-out frontier run.
 ### Evidence
 
 The validated archive is `mih-aware-itq-frontier-evidence-v1.zip`: SHA-256
-`12569b7686dee3191e8556695c059cd87c54b32015a38b99e22d189760e35fd4`,
+`4f7700154d17faf48da954b7415f4ff120aab6707709cd0f63c6c5f49e8c6ef9`,
 internal bundle-root SHA-256
 `69a3dc3afbb4f019f0e87aedbf6d93a0766cd939e3408f2dc9988520dc3a74a5`.
 It is staged for the draft evidence release and is not public until the PR is
