@@ -192,7 +192,9 @@ jobs:
           python tools/agent-memory-bench/run-mih-aware-itq-frontier.py self-test
           --contract tools/agent-memory-bench/mih-aware-itq-frontier.example.json &&
           python tools/agent-memory-bench/bootstrap-mih-aware-itq-frontier.py self-test &&
-          python tools/agent-memory-bench/write-mih-aware-itq-evidence.py --self-test
+          python tools/agent-memory-bench/write-mih-aware-itq-evidence.py --self-test &&
+          python tools/agent-memory-bench/diagnose-mih-aware-itq-geometry.py --self-test
+          --contract tools/agent-memory-bench/mih-aware-itq-diagnosis.example.json
       - name: Exercise ANN evidence bootstrap contract
         run: >
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&

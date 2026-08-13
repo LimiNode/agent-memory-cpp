@@ -289,6 +289,16 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-aware-itq-evidence.py --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(
+                NAME agent_memory_mih_aware_itq_geometry_diagnosis_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/diagnose-mih-aware-itq-geometry.py
+                    --self-test
+                    --contract
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/mih-aware-itq-diagnosis.example.json
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
         add_test(
             NAME agent_memory_miracl_ae_preparer_self_test
