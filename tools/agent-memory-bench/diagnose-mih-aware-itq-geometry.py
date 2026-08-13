@@ -76,6 +76,23 @@ def bit_entropy(probability: Any) -> Any:
     return -(numpy.where(value > 0, value * numpy.log2(value), 0) + numpy.where(value < 1, (1 - value) * numpy.log2(1 - value), 0))
 
 
+def union_counts(index: list[dict[int, numpy.ndarray]], codes: numpy.ndarray, ranges: list[tuple[int, int]]) -> tuple[numpy.ndarray, numpy.ndarray]:
+    """Count radius-zero/one unions without allocating or sorting candidate sets."""
+    count = len(codes); exact_marks = numpy.zeros(count, dtype=numpy.uint32); radius_one_marks = numpy.zeros(count, dtype=numpy.uint32); exact_counts = numpy.empty(count, dtype=numpy.int32); radius_one_counts = numpy.empty(count, dtype=numpy.int32)
+    for query_index, code in enumerate(codes):
+        stamp = query_index + 1; exact_total = 0; radius_one_total = 0
+        for buckets, (start, stop) in zip(index, ranges):
+            exact_key = banding.band_key(code, start, stop); exact_posting = buckets.get(exact_key)
+            if exact_posting is not None:
+                fresh_exact = exact_marks[exact_posting] != stamp; exact_marks[exact_posting[fresh_exact]] = stamp; exact_total += int(numpy.count_nonzero(fresh_exact))
+            for key in banding.probe_keys(exact_key, stop - start, 1):
+                posting = buckets.get(key)
+                if posting is not None:
+                    fresh_radius_one = radius_one_marks[posting] != stamp; radius_one_marks[posting[fresh_radius_one]] = stamp; radius_one_total += int(numpy.count_nonzero(fresh_radius_one))
+        exact_counts[query_index] = exact_total; radius_one_counts[query_index] = radius_one_total
+    return exact_counts, radius_one_counts
+
+
 def geometry(codes: numpy.ndarray, vectors: numpy.ndarray, seed: int, contract: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     ranges = banding.band_ranges(256, 32); index = banding.build_index(codes, ranges); count = len(codes); occupancy = codes.mean(axis=0); bands = []; exact_visits = numpy.zeros(count, dtype=numpy.int32); radius_one_visits = numpy.zeros(count, dtype=numpy.int32)
     for number, ((start, stop), buckets) in enumerate(zip(ranges, index)):
@@ -85,15 +102,13 @@ def geometry(codes: numpy.ndarray, vectors: numpy.ndarray, seed: int, contract: 
         exact_visits += exact; radius_one_visits += radius_one
         values = codes[:, start:stop].astype(numpy.float64); centered = values - values.mean(axis=0); scale = numpy.sqrt((centered * centered).sum(axis=0)); corr = (centered.T @ centered) / numpy.outer(scale, scale)
         bands.append({"band": number, "bucket_entropy_bits": float(-(numpy.where(probability > 0, probability * numpy.log2(probability), 0)).sum()), "occupied_bucket_count": len(buckets), "posting_size": summary(sizes), "exact_match_probability": float((probability * probability).sum()), "radius_one_match_probability": float(radius_one.mean() / count), "radius_one_posting_visits": summary(radius_one), "mean_absolute_intraband_correlation": float(numpy.abs(corr[numpy.triu_indices(8, 1)]).mean())})
-    radius_zero_candidates, radius_one_candidates = [], []
-    for code in codes:
-        radius_zero_candidates.append(len(banding.candidate_union(index, code, ranges, [0] * 32)[0])); radius_one_candidates.append(len(banding.candidate_union(index, code, ranges, [1] * 32)[0]))
+    radius_zero_candidates, radius_one_candidates = union_counts(index, codes, ranges)
     calibration = contract["calibration"]; generator = numpy.random.default_rng(seed); random_left = generator.integers(0, count, calibration["random_pair_count"], dtype=numpy.int32); random_right = (random_left + generator.integers(1, count, calibration["random_pair_count"], dtype=numpy.int32)) % count; random_distance = numpy.count_nonzero(codes[random_left] != codes[random_right], axis=1).astype(numpy.int16)
     anchors = numpy.sort(generator.choice(count, calibration["neighbor_anchor_count"], replace=False)).astype(numpy.int32); neighbours = numpy.empty((len(anchors), calibration["neighbor_k"]), dtype=numpy.int32)
     for start in range(0, len(anchors), 64):
         anchor = anchors[start:start + 64]; scores = vectors[anchor] @ vectors.T; scores[numpy.arange(len(anchor)), anchor] = -numpy.inf; neighbours[start:start + len(anchor)] = numpy.argpartition(-scores, calibration["neighbor_k"], axis=1)[:, :calibration["neighbor_k"]]
     neighbour_distance = numpy.count_nonzero(codes[anchors, None, :] != codes[neighbours], axis=2).astype(numpy.int16)
-    raw = {"radius0_candidate_count": numpy.asarray(radius_zero_candidates, dtype=numpy.int32), "radius0_posting_visits": exact_visits, "radius1_candidate_count": numpy.asarray(radius_one_candidates, dtype=numpy.int32), "radius1_posting_visits": radius_one_visits, "random_pair_hamming": random_distance, "e5_neighbor_hamming": neighbour_distance, "random_pair_left_indices": random_left, "random_pair_right_indices": random_right, "neighbor_anchor_indices": anchors, "e5_neighbor_indices": neighbours}
+    raw = {"radius0_candidate_count": radius_zero_candidates, "radius0_posting_visits": exact_visits, "radius1_candidate_count": radius_one_candidates, "radius1_posting_visits": radius_one_visits, "random_pair_hamming": random_distance, "e5_neighbor_hamming": neighbour_distance, "random_pair_left_indices": random_left, "random_pair_right_indices": random_right, "neighbor_anchor_indices": anchors, "e5_neighbor_indices": neighbours}
     report = {"per_bit_probability_one": [float(value) for value in occupancy], "per_bit_entropy": [float(value) for value in bit_entropy(occupancy)], "constant_bit_count": int(((occupancy == 0) | (occupancy == 1)).sum()), "mean_bit_entropy": float(bit_entropy(occupancy).mean()), "bands": bands, "union_work": {"radius_0": {"unique_candidates": summary(raw["radius0_candidate_count"]), "posting_visits": summary(exact_visits)}, "radius_1": {"unique_candidates": summary(raw["radius1_candidate_count"]), "posting_visits": summary(radius_one_visits)}}, "hamming": {"random_document_pairs": summary(random_distance), "e5_calibration_neighbors": summary(neighbour_distance), "neighbor_anchor_count": calibration["neighbor_anchor_count"], "neighbor_k": calibration["neighbor_k"]}}
     return report, raw
 
@@ -142,7 +157,8 @@ def run(args: Any) -> dict[str, Any]:
 
 def self_test(contract: Path) -> int:
     try:
-        require(load_contract(contract) == CONTRACT, "contract differs"); generator = numpy.random.default_rng(52); codes = generator.integers(0, 2, size=(1024, 256), dtype=numpy.uint8).astype(bool); vectors = generator.standard_normal((1024, 3), dtype=numpy.float32); local = json.loads(json.dumps(CONTRACT)); local["calibration"]["neighbor_anchor_count"] = 32; local["calibration"]["random_pair_count"] = 64; metrics, raw = geometry(codes, vectors, 52, local); require(len(metrics["bands"]) == 32 and raw["radius1_candidate_count"].shape == (1024,) and raw["e5_neighbor_hamming"].shape == (32, 10), "geometry result differs")
+        require(load_contract(contract) == CONTRACT, "contract differs"); generator = numpy.random.default_rng(52); small = generator.integers(0, 2, size=(16, 8), dtype=numpy.uint8).astype(bool); ranges = banding.band_ranges(8, 2); index = banding.build_index(small, ranges); actual_zero, actual_one = union_counts(index, small, ranges); expected_zero = [len(banding.candidate_union(index, code, ranges, [0, 0])[0]) for code in small]; expected_one = [len(banding.candidate_union(index, code, ranges, [1, 1])[0]) for code in small]; require(numpy.array_equal(actual_zero, expected_zero) and numpy.array_equal(actual_one, expected_one), "generation-array union differs")
+        codes = generator.integers(0, 2, size=(1024, 256), dtype=numpy.uint8).astype(bool); vectors = generator.standard_normal((1024, 3), dtype=numpy.float32); local = json.loads(json.dumps(CONTRACT)); local["calibration"]["neighbor_anchor_count"] = 32; local["calibration"]["random_pair_count"] = 64; metrics, raw = geometry(codes, vectors, 52, local); require(len(metrics["bands"]) == 32 and raw["radius1_candidate_count"].shape == (1024,) and raw["e5_neighbor_hamming"].shape == (32, 10), "geometry result differs")
     except (OSError, ValueError, subprocess.CalledProcessError, shared.EvaluationError) as error: print(f"diagnose-mih-aware-itq-geometry self-test failed: {error}", file=sys.stderr); return 1
     print("MIH-aware ITQ geometry diagnosis self-test passed"); return 0
 
