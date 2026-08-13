@@ -189,6 +189,42 @@ def fixed_random_band_permutation(code_bits: int, seed: int) -> numpy.ndarray:
     return numpy.random.default_rng(seed).permutation(code_bits).astype(numpy.intp)
 
 
+def explicit_band_permutation(path: Path, code_bits: int) -> numpy.ndarray:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise EvaluationError("explicit MIH band permutation is invalid") from error
+    if not isinstance(value, list) or len(value) != code_bits or any(isinstance(item, bool) or not isinstance(item, int) for item in value):
+        raise EvaluationError("explicit MIH band permutation is invalid")
+    permutation = numpy.asarray(value, dtype=numpy.intp)
+    if not numpy.array_equal(numpy.sort(permutation), numpy.arange(code_bits)):
+        raise EvaluationError("explicit MIH band permutation is invalid")
+    return permutation
+
+
+def explicit_band_selection_provenance(path: Path, permutation: numpy.ndarray) -> dict[str, Any]:
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as error:
+        raise EvaluationError("explicit MIH band selection provenance is invalid") from error
+    expected = {
+        "schema_version", "family", "optimizer_report_sha256", "seed", "selected_id",
+        "selected_widths", "selected_permutation_sha256",
+    }
+    if (
+        not isinstance(value, dict) or set(value) != expected
+        or value["schema_version"] != 1 or value["family"] != "mih_static_width_optimizer_selection_v1"
+        or not isinstance(value["optimizer_report_sha256"], str) or len(value["optimizer_report_sha256"]) != 64
+        or not isinstance(value["seed"], int) or isinstance(value["seed"], bool)
+        or not isinstance(value["selected_id"], str) or not value["selected_id"]
+        or not isinstance(value["selected_widths"], list) or any(not isinstance(width, int) or isinstance(width, bool) or width <= 0 for width in value["selected_widths"])
+        or sum(value["selected_widths"]) != permutation.size
+        or value["selected_permutation_sha256"] != band_layout_sha256(permutation)
+    ):
+        raise EvaluationError("explicit MIH band selection provenance is invalid")
+    return value
+
+
 def mean_intraband_absolute_correlation(codes: Any, bands: int | list[tuple[int, int]]) -> float:
     values = numpy.asarray(codes, dtype=numpy.float64)
     centered = values - values.mean(axis=0)
@@ -554,6 +590,19 @@ def evaluate(args: Any) -> None:
         band_permutation = calibrated_variable_band_permutation(calibration_codes, widths)
     elif args.band_layout == "fixed-random":
         band_permutation = fixed_random_band_permutation(args.code_bits, args.band_layout_seed)
+    elif args.band_layout == "explicit-permutation":
+        if args.band_permutation is None:
+            raise EvaluationError("explicit MIH band permutation path is required")
+        band_permutation = explicit_band_permutation(args.band_permutation, args.code_bits)
+    selection_provenance = None
+    if args.band_layout == "explicit-permutation":
+        if args.band_selection_provenance is None:
+            raise EvaluationError("explicit MIH band selection provenance path is required")
+        selection_provenance = explicit_band_selection_provenance(args.band_selection_provenance, band_permutation)
+        if selection_provenance["seed"] != args.seed or selection_provenance["selected_widths"] != widths:
+            raise EvaluationError("explicit MIH band selection provenance does not match evaluation")
+    elif args.band_selection_provenance is not None:
+        raise EvaluationError("MIH band selection provenance requires an explicit permutation")
     if args.band_layout != "contiguous":
         calibration_projection = calibration_projection[:, band_permutation]
         document_projection = document_projection[:, band_permutation]
@@ -649,6 +698,8 @@ def evaluate(args: Any) -> None:
         "calibrated_hamming_weight_max": float(numpy.max(hamming_weights)) if hamming_weights is not None else None,
         "band_layout": args.band_layout,
         "band_layout_seed": args.band_layout_seed if args.band_layout == "fixed-random" else None,
+        "band_layout_explicit_permutation_sha256": band_layout_sha256(band_permutation) if args.band_layout == "explicit-permutation" else None,
+        "band_layout_selection_provenance": selection_provenance,
         "band_layout_objective": BALANCED_BAND_OBJECTIVE if args.band_layout == "calibration-correlation-balanced" else None,
         "band_layout_entropy_balance_weight": ENTROPY_BALANCE_WEIGHT if args.band_layout == "calibration-correlation-balanced" else None,
         "band_layout_variable_width_objective": VARIABLE_WIDTH_BAND_OBJECTIVE if args.band_layout == "calibration-collision-balanced-variable" else None,
@@ -699,6 +750,14 @@ def self_test() -> int:
     layout = calibrated_band_permutation(layout_codes, 2)
     if layout.shape != (4,) or not numpy.array_equal(numpy.sort(layout), numpy.arange(4)) or not band_layout_sha256(layout):
         print("self-test failed: calibrated band layout is invalid", file=sys.stderr); return 1
+    with __import__("tempfile").TemporaryDirectory() as directory:
+        path = Path(directory) / "permutation.json"; path.write_text("[2,0,3,1]", encoding="utf-8")
+        if explicit_band_permutation(path, 4).tolist() != [2, 0, 3, 1]:
+            print("self-test failed: explicit band permutation is invalid", file=sys.stderr); return 1
+        provenance = Path(directory) / "provenance.json"
+        provenance.write_text(json.dumps({"schema_version": 1, "family": "mih_static_width_optimizer_selection_v1", "optimizer_report_sha256": "a" * 64, "seed": 52, "selected_id": "candidate", "selected_widths": [2, 2], "selected_permutation_sha256": band_layout_sha256(numpy.asarray([2, 0, 3, 1], dtype=numpy.intp))}), encoding="utf-8")
+        if explicit_band_selection_provenance(provenance, numpy.asarray([2, 0, 3, 1], dtype=numpy.intp))["seed"] != 52:
+            print("self-test failed: explicit band selection provenance is invalid", file=sys.stderr); return 1
     if mean_intraband_absolute_correlation(layout_codes[:, layout], 2) >= mean_intraband_absolute_correlation(layout_codes, 2):
         print("self-test failed: calibrated band layout did not reduce correlation", file=sys.stderr); return 1
     variable_layout = calibrated_variable_band_permutation(layout_codes, [1, 3])
@@ -814,7 +873,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("evaluate")
     run.add_argument("--calibration-root", type=Path, required=True); run.add_argument("--evaluation-root", type=Path, required=True); run.add_argument("--output", type=Path, required=True); run.add_argument("--contributions-output", type=Path, required=True)
-    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc", "budgeted-adc-best-first"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--soft-posting-visit-target", type=int, default=0); run.add_argument("--max-probe-bit-flips", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform"); run.add_argument("--band-layout", choices=("contiguous", "fixed-random", "calibration-correlation-balanced", "calibration-collision-balanced-variable"), default="contiguous"); run.add_argument("--band-layout-seed", type=int, default=20260812)
+    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc", "budgeted-adc-best-first"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--soft-posting-visit-target", type=int, default=0); run.add_argument("--max-probe-bit-flips", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform"); run.add_argument("--band-layout", choices=("contiguous", "fixed-random", "calibration-correlation-balanced", "calibration-collision-balanced-variable", "explicit-permutation"), default="contiguous"); run.add_argument("--band-layout-seed", type=int, default=20260812); run.add_argument("--band-permutation", type=Path); run.add_argument("--band-selection-provenance", type=Path)
     run.add_argument("--band-widths"); run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:
