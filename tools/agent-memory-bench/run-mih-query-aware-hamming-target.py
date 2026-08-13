@@ -110,7 +110,7 @@ def verify_artifact(path: Path, contract: dict[str, Any], train_root: Path, dev:
     shared.require_artifact_weight(path.parent, weights.get("projection_weights"), [256, 384], "row_major_out_by_in", "projection_weights")
     shared.require_artifact_weight(path.parent, weights.get("thresholds"), [256], None, "thresholds")
     anchor = training.get("itq_anchor", {}); history = training.get("training_history", {})
-    require(anchor.get("artifact_path") == "itq-anchor.json" and anchor.get("artifact_sha256") == verify_anchor(anchor_path(path.parents[2], seed), contract, train_root, seed) and anchor.get("train_ids_sha256") == contract["itq_anchor"]["train_ids_sha256"] and anchor.get("train_vectors_sha256") == contract["itq_anchor"]["train_vectors_sha256"], "query-aware artifact ITQ anchor differs")
+    require(anchor.get("artifact_path") == "itq-anchor.json" and anchor.get("artifact_sha256") == verify_anchor(anchor_path(path.parents[2], seed), contract, shared.load_root(train_root), seed) and anchor.get("train_ids_sha256") == contract["itq_anchor"]["train_ids_sha256"] and anchor.get("train_vectors_sha256") == contract["itq_anchor"]["train_vectors_sha256"], "query-aware artifact ITQ anchor differs")
     history_path = path.with_name("training-history.json")
     history_value = json.loads(history_path.read_text(encoding="utf-8"))
     require(history.get("path") == history_path.name and history.get("sha256") == sha256(history_path) and history.get("checkpoint_count") == expected["epochs"] + 1 and isinstance(history_value, list) and len(history_value) == expected["epochs"] + 1 and [entry.get("epoch") for entry in history_value] == [-1, *range(expected["epochs"])], "query-aware artifact history differs")
