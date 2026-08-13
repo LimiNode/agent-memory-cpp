@@ -232,7 +232,7 @@ def run(args: Any) -> None:
         permutation = numpy.asarray(result["selected_permutation"], dtype=numpy.intp)
         rows.append({"seed": seed, **result, "selected_permutation_sha256": mih.band_layout_sha256(permutation)})
     report = {
-        "schema_version": 1, "family": FAMILY, "contract_sha256": sha256_file(args.contract),
+        "schema_version": 2, "family": FAMILY, "contract_sha256": sha256_file(args.contract),
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"],
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
         "calibration_vector_count": len(calibration["train_ids"]),

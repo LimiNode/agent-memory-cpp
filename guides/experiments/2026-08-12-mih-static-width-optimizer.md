@@ -84,7 +84,8 @@ Interpretation branches are fixed before execution:
 - identity control wins every seed: the bounded search selected the existing
   layout and no new held-out treatment exists;
 - a non-identity equal-width layout wins: width variation was not selected, but
-  the new assignment is a treatment and requires held-out evaluation;
+  the new assignment is a treatment and requires a paired held-out evaluation
+  against the current contiguous identity control;
 - a variable-width layout wins: it requires the same held-out evaluation.
 
 The scope remains a bounded heuristic search, not a global proof over static
