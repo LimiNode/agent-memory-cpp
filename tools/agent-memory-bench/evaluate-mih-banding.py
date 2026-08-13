@@ -535,11 +535,12 @@ def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: d
     weights = artifact.get("weights") if isinstance(artifact, dict) else None
     if artifact.get("schema_version") != 1 or not isinstance(architecture, dict) or not isinstance(training, dict) or not isinstance(weights, dict):
         raise EvaluationError("MIH-aware artifact sections are invalid")
-    if architecture.get("family") != "mih_aware_itq_v1" or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or architecture.get("band_count") != band_count:
+    repaired = architecture.get("family") == "mih_aware_itq_repaired_control_v1"
+    if architecture.get("family") not in ("mih_aware_itq_v1", "mih_aware_itq_repaired_control_v1") or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or (not repaired and architecture.get("band_count") != band_count):
         raise EvaluationError("MIH-aware artifact architecture differs from evaluation")
-    if band_widths != [architecture.get("band_width_bits")] * band_count or artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"]:
+    if (not repaired and band_widths != [architecture.get("band_width_bits")] * band_count) or artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"]:
         raise EvaluationError("MIH-aware artifact calibration provenance differs")
-    if training.get("queries_or_qrels_used") is not False or training.get("objective") != "document_semantic_itq_quantization_radius_one_mih_work_surrogate_v1":
+    if training.get("queries_or_qrels_used") is not False or training.get("objective") not in ("document_semantic_itq_quantization_radius_one_mih_work_surrogate_v1", "bipolar_hamming_semantic_full_itq_anchor_v1"):
         raise EvaluationError("MIH-aware artifact is not document-only")
     projection = shared.require_artifact_weight(path.parent, weights.get("projection_weights"), [code_bits, data["dimension"]], "row_major_out_by_in", "projection_weights")
     thresholds = shared.require_artifact_weight(path.parent, weights.get("thresholds"), [code_bits], None, "thresholds")
@@ -655,6 +656,9 @@ def evaluate(args: Any) -> None:
     hamming_oracle_coverage: list[float] = []
     second_oracle_coverage: list[float] = []
     oracle_hamming_distance_mean: list[float] = []
+    oracle_hamming_within_48: list[float] = []
+    oracle_hamming_within_56: list[float] = []
+    oracle_hamming_within_64: list[float] = []
     probe_depths: list[list[int]] = []; posting_depths: list[list[int]] = []; stop_reasons: list[str] = []
     seconds = 0.0
     for row, query_id in enumerate(data["query_ids"]):
@@ -700,7 +704,11 @@ def evaluate(args: Any) -> None:
         raw_union_oracle_coverage.append(float(numpy.isin(oracle, candidates).sum()) / args.oracle_k)
         hamming_oracle_coverage.append(float(numpy.isin(oracle, restricted).sum()) / args.oracle_k)
         second_oracle_coverage.append(float(numpy.isin(oracle, second).sum()) / args.oracle_k)
-        oracle_hamming_distance_mean.append(float(numpy.count_nonzero(codes[oracle] != query_codes[row], axis=1).mean()))
+        oracle_distances = numpy.count_nonzero(codes[oracle] != query_codes[row], axis=1)
+        oracle_hamming_distance_mean.append(float(oracle_distances.mean()))
+        oracle_hamming_within_48.append(float(numpy.mean(oracle_distances <= 48)))
+        oracle_hamming_within_56.append(float(numpy.mean(oracle_distances <= 56)))
+        oracle_hamming_within_64.append(float(numpy.mean(oracle_distances <= 64)))
         e5_coverage.append(float(numpy.isin(oracle, rerank).sum()) / args.oracle_k)
         reranked_ndcg.append(shared.dcg_at_10(document_ids[rerank], data["qrels"][query_id]))
         full_e5_ndcg.append(shared.dcg_at_10(document_ids[exact_order], data["qrels"][query_id]))
@@ -734,7 +742,7 @@ def evaluate(args: Any) -> None:
         "seed": args.seed, "itq_iterations": args.itq_iterations if artifact is None else None, "encoder_artifact_sha256": hashlib.sha256(args.encoder_artifact.read_bytes()).hexdigest() if artifact is not None else None, "encoder_artifact_family": artifact["architecture"]["family"] if artifact is not None else "itq_rotation_projection", "query_count": len(data["query_ids"]),
         "hamming_top_k_recall": float(numpy.mean(hamming_recall)), "exact_top_k_candidate_coverage": float(numpy.mean(e5_coverage)), "reranked_ndcg_at_10": float(numpy.mean(reranked_ndcg)), "full_e5_ndcg_at_10": float(numpy.mean(full_e5_ndcg)),
         "mean_candidates_per_query": float(numpy.mean(candidate_counts)), "mean_exact_bucket_floor_candidates_per_query": float(numpy.mean(exact_bucket_floor_counts)), "mean_bucket_probes_per_query": float(numpy.mean(probe_counts)), "mean_posting_visits_per_query": float(numpy.mean(posting_visits)), "mean_posting_bytes_per_query": float(numpy.mean(posting_visits) * numpy.dtype(numpy.int32).itemsize), "mean_full_hamming_scores_per_query": float(numpy.mean(hamming_scores)),
-        "e5_oracle_survival": {"raw_union": float(numpy.mean(raw_union_oracle_coverage)), "hamming_top_k": float(numpy.mean(hamming_oracle_coverage)), "second_stage": float(numpy.mean(second_oracle_coverage)), "mean_full_hamming_distance": float(numpy.mean(oracle_hamming_distance_mean))},
+        "e5_oracle_survival": {"raw_union": float(numpy.mean(raw_union_oracle_coverage)), "hamming_top_k": float(numpy.mean(hamming_oracle_coverage)), "second_stage": float(numpy.mean(second_oracle_coverage)), "mean_full_hamming_distance": float(numpy.mean(oracle_hamming_distance_mean)), "hamming_within_radius": {"48": float(numpy.mean(oracle_hamming_within_48)), "56": float(numpy.mean(oracle_hamming_within_56)), "64": float(numpy.mean(oracle_hamming_within_64))}},
         "reference_candidate_generation_seconds": seconds,
         "mean_probe_count_by_flip_depth": [float(numpy.mean(numpy.asarray(probe_depths)[:, depth])) for depth in range(3)],
         "mean_posting_visits_by_flip_depth": [float(numpy.mean(numpy.asarray(posting_depths)[:, depth])) for depth in range(3)],
@@ -753,6 +761,9 @@ def evaluate(args: Any) -> None:
         "e5_oracle_hamming_top_k_coverage": numpy.asarray(hamming_oracle_coverage, dtype=numpy.float64),
         "e5_oracle_second_stage_coverage": numpy.asarray(second_oracle_coverage, dtype=numpy.float64),
         "e5_oracle_mean_full_hamming_distance": numpy.asarray(oracle_hamming_distance_mean, dtype=numpy.float64),
+        "e5_oracle_hamming_within_48": numpy.asarray(oracle_hamming_within_48, dtype=numpy.float64),
+        "e5_oracle_hamming_within_56": numpy.asarray(oracle_hamming_within_56, dtype=numpy.float64),
+        "e5_oracle_hamming_within_64": numpy.asarray(oracle_hamming_within_64, dtype=numpy.float64),
         "probe_count_by_flip_depth": numpy.asarray(probe_depths, dtype=numpy.int32),
         "posting_visit_count_by_flip_depth": numpy.asarray(posting_depths, dtype=numpy.int32),
         "stop_reason": numpy.asarray(stop_reasons, dtype=numpy.str_),

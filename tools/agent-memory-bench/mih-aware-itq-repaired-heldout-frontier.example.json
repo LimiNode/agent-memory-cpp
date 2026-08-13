@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "family": "mih_aware_itq_repaired_heldout_frontier_v1",
+  "calibration": {"vector_count": 25000},
+  "evaluation": {"document_count": 22607, "query_count": 1252},
+  "encoding": {"code_bits": 256, "itq_iterations": 50, "seeds": [52, 53, 54, 55, 56]},
+  "repaired_training": {"epochs": 8, "batch_size": 192, "learning_rate": 0.00001, "temperature": 4.0, "anchor_weight": 50.0, "orthogonality_weight": 0.05, "torch_threads": 1, "threshold_policy": "recalibrate_full_calibration_median_after_each_epoch", "checkpoint": "fixed_final_epoch", "queries_or_qrels_used": false},
+  "encoders": ["itq-control", "repaired-control"],
+  "index_regimes": [
+    {"id": "32x8-r1", "band_count": 32, "band_width_bits": 8, "probe_radius": 1, "global_radius": null, "expected_bucket_probes": 288},
+    {"id": "16x16-r48", "band_count": 16, "band_width_bits": 16, "probe_radius": 0, "global_radius": 48, "expected_bucket_probes": null},
+    {"id": "16x16-r56", "band_count": 16, "band_width_bits": 16, "probe_radius": 0, "global_radius": 56, "expected_bucket_probes": null},
+    {"id": "16x16-r64", "band_count": 16, "band_width_bits": 16, "probe_radius": 0, "global_radius": 64, "expected_bucket_probes": null}
+  ],
+  "stages": {"candidate_limit": 512, "hamming_limit": 768, "second_stage": "binary-adc", "second_limit": 256, "oracle_k": 10},
+  "diagnostics": {"oracle_hamming_thresholds": [48, 56, 64], "report": ["raw_candidate_union", "posting_visits", "raw_union_survival", "hamming_k1_survival", "adc_k2_survival", "reranked_ndcg_at_10", "mean_oracle_hamming", "oracle_hamming_threshold_fractions"]},
+  "bootstrap": {"replicates": 10000, "seed": 20260813},
+  "decision_rule": "Report the paired held-out frontier without selecting or retuning the encoder, training hyperparameters, radius, or partition."
+}
