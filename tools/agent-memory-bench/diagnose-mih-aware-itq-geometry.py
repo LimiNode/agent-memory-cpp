@@ -77,19 +77,23 @@ def bit_entropy(probability: Any) -> Any:
 
 
 def union_counts(index: list[dict[int, numpy.ndarray]], codes: numpy.ndarray, ranges: list[tuple[int, int]]) -> tuple[numpy.ndarray, numpy.ndarray]:
-    """Count radius-zero/one unions without allocating or sorting candidate sets."""
-    count = len(codes); exact_marks = numpy.zeros(count, dtype=numpy.uint32); radius_one_marks = numpy.zeros(count, dtype=numpy.uint32); exact_counts = numpy.empty(count, dtype=numpy.int32); radius_one_counts = numpy.empty(count, dtype=numpy.int32)
+    """Count radius-zero/one unions with packed posting bitsets.
+
+    The reference evaluator needs sorted candidate IDs. This diagnostic needs
+    only cardinalities, so packed OR/popcount preserves the same union exactly
+    while avoiding millions of Python ``set`` updates and sorts.
+    """
+    count = len(codes); words = (count + 63) // 64; bitsets = numpy.zeros((len(index), 256, words), dtype=numpy.uint64)
+    for band, buckets in enumerate(index):
+        for key, posting in buckets.items():
+            numpy.bitwise_or.at(bitsets[band, key], posting // 64, numpy.left_shift(numpy.uint64(1), (posting % 64).astype(numpy.uint64)))
+    byte_popcount = numpy.unpackbits(numpy.arange(256, dtype=numpy.uint8)[:, None], axis=1).sum(axis=1); exact_counts = numpy.empty(count, dtype=numpy.int32); radius_one_counts = numpy.empty(count, dtype=numpy.int32)
     for query_index, code in enumerate(codes):
-        stamp = query_index + 1; exact_total = 0; radius_one_total = 0
-        for buckets, (start, stop) in zip(index, ranges):
-            exact_key = banding.band_key(code, start, stop); exact_posting = buckets.get(exact_key)
-            if exact_posting is not None:
-                fresh_exact = exact_marks[exact_posting] != stamp; exact_marks[exact_posting[fresh_exact]] = stamp; exact_total += int(numpy.count_nonzero(fresh_exact))
-            for key in banding.probe_keys(exact_key, stop - start, 1):
-                posting = buckets.get(key)
-                if posting is not None:
-                    fresh_radius_one = radius_one_marks[posting] != stamp; radius_one_marks[posting[fresh_radius_one]] = stamp; radius_one_total += int(numpy.count_nonzero(fresh_radius_one))
-        exact_counts[query_index] = exact_total; radius_one_counts[query_index] = radius_one_total
+        keys = numpy.asarray([banding.band_key(code, start, stop) for start, stop in ranges], dtype=numpy.intp); exact = numpy.bitwise_or.reduce(bitsets[numpy.arange(len(index)), keys], axis=0)
+        radius_one = numpy.zeros(words, dtype=numpy.uint64)
+        for band, key in enumerate(keys):
+            radius_one |= numpy.bitwise_or.reduce(bitsets[band, banding.probe_keys(int(key), ranges[band][1] - ranges[band][0], 1)], axis=0)
+        exact_counts[query_index] = int(byte_popcount[exact.view(numpy.uint8)].sum()); radius_one_counts[query_index] = int(byte_popcount[radius_one.view(numpy.uint8)].sum())
     return exact_counts, radius_one_counts
 
 
