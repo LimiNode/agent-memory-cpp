@@ -198,7 +198,10 @@ jobs:
           python tools/agent-memory-bench/write-mih-aware-itq-diagnosis-evidence.py --self-test &&
           python tools/agent-memory-bench/run-mih-aware-itq-repaired-control.py --self-test
           --contract tools/agent-memory-bench/mih-aware-itq-repaired-control.example.json &&
-          python tools/agent-memory-bench/write-mih-aware-itq-repaired-control-evidence.py --self-test
+          python tools/agent-memory-bench/write-mih-aware-itq-repaired-control-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-mih-aware-itq-repaired-heldout-frontier.py self-test
+          --contract tools/agent-memory-bench/mih-aware-itq-repaired-heldout-frontier.example.json &&
+          python tools/agent-memory-bench/write-mih-aware-itq-repaired-heldout-evidence.py --self-test
       - name: Exercise ANN evidence bootstrap contract
         run: >
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&
