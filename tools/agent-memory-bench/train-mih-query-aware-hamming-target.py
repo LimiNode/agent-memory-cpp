@@ -262,6 +262,23 @@ def train(args: Any) -> dict[str, Any]:
     if best is None or not best["health_passes"]:
         raise TrainingError("no checkpoint passed code-health requirements")
     args.output_root.mkdir(parents=True)
+    anchor_weights_path = args.output_root / "initial-itq-projection-weights.f32"
+    anchor_thresholds_path = args.output_root / "initial-itq-thresholds.f32"
+    base.write_f32(anchor_weights_path, torch.from_numpy(initial_weights))
+    base.write_f32(anchor_thresholds_path, torch.from_numpy(thresholds_for(initial)))
+    anchor = {
+        "schema_version": 1,
+        "family": "itq_anchor_projection_v1",
+        "input_materialization_manifest_sha256": data["manifest_sha256"],
+        "prepared_study_manifest_sha256": data["manifest"]["prepared_study_manifest_sha256"],
+        "architecture": {"family": "itq_anchor_projection_v1", "input_dimension": data["dimension"], "bit_count": args.bit_count, "band_count": BANDS, "band_width_bits": 16, "shared_projection": True, "input_transform": "clip_minus_one_one_normalized_e5_v1", "document_quantizer": "train_document_median_hard_step_v1"},
+        "training": {"queries_or_qrels_used": False, "objective": "initial_full_itq_anchor_v1", "seed": args.seed, "itq_iterations": args.itq_iterations, "train_ids_sha256": data["manifest"]["outputs"]["train_ids"]["sha256"], "train_vectors_sha256": data["manifest"]["outputs"]["train_vectors"]["sha256"]},
+        "weights": {"projection_weights": {"path": anchor_weights_path.name, "sha256": sha256(anchor_weights_path), "shape": [args.bit_count, data["dimension"]], "layout": "row_major_out_by_in", "dtype": "float32_le"}, "thresholds": {"path": anchor_thresholds_path.name, "sha256": sha256(anchor_thresholds_path), "shape": [args.bit_count], "dtype": "float32_le"}},
+    }
+    anchor_path = args.output_root / "itq-anchor.json"
+    anchor_path.write_text(json.dumps(anchor, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    (args.output_root / "training-history.json").write_text(json.dumps(history, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    history_path = args.output_root / "training-history.json"
     weights_path = args.output_root / "projection-weights.f32"; thresholds_path = args.output_root / "thresholds.f32"
     base.write_f32(weights_path, torch.from_numpy(best["weights"])); base.write_f32(thresholds_path, torch.from_numpy(best["thresholds"]))
     artifact = {
@@ -270,11 +287,10 @@ def train(args: Any) -> dict[str, Any]:
         "input_materialization_manifest_sha256": data["manifest_sha256"],
         "prepared_study_manifest_sha256": data["manifest"]["prepared_study_manifest_sha256"],
         "architecture": {"family": FAMILY, "input_dimension": data["dimension"], "bit_count": args.bit_count, "band_count": BANDS, "band_width_bits": 16, "shared_projection": True, "input_transform": "clip_minus_one_one_normalized_e5_v1", "document_quantizer": "recalibrated_train_document_median_hard_step_v1"},
-        "training": {"seed": args.seed, "epochs": args.epochs, "batch_size": args.batch_size, "learning_rate": args.learning_rate, "itq_iterations": args.itq_iterations, "torch_threads": args.torch_threads, "queries_or_qrels_used": True, "objective": OBJECTIVE, "positive_radius": RADIUS, "negative_radius": args.negative_radius, "threshold_policy": "recalibrate_train_document_median_after_each_epoch", "loss_weights": {"positive_radius": args.positive_weight, "negative_radius": args.negative_weight, "anchor_to_full_itq": args.anchor_weight, "orthogonality": args.orthogonality_weight}, "query_split": {"id": QUERY_SPLIT_ID, "validation_fraction": args.validation_fraction, "train_query_ids_sha256": canonical_ids_sha256(train_ids), "validation_query_ids_sha256": canonical_ids_sha256(validation_ids), "train_query_count": len(train_ids), "validation_query_count": len(validation_ids)}, "hard_negative_mining": {"id": nlb.MINING_ID, "negative_count_per_query": args.hard_negative_count, "teacher": "normalized_e5_cosine", "positive_exclusion": "all_grade_gt_zero_v1"}, "checkpoint": {"policy": "train_query_validation_mih_frontier_gate_v1", "baseline": baseline, "work_multiplier": WORK_MULTIPLIER, "survival_signal": "strict_adc_improvement_or_strict_raw_and_hamming_k1_improvement_v1", "selected_epoch": best["epoch"], "selected_frontier": best["frontier"], "gate_passed": best["frontier_gate_passes"], "hard_code_health": best["hard_code_health"]}, "held_out_exclusion": {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": excluded_digest}},
+        "training": {"seed": args.seed, "epochs": args.epochs, "batch_size": args.batch_size, "learning_rate": args.learning_rate, "itq_iterations": args.itq_iterations, "torch_threads": args.torch_threads, "queries_or_qrels_used": True, "objective": OBJECTIVE, "positive_radius": RADIUS, "negative_radius": args.negative_radius, "threshold_policy": "recalibrate_train_document_median_after_each_epoch", "loss_weights": {"positive_radius": args.positive_weight, "negative_radius": args.negative_weight, "anchor_to_full_itq": args.anchor_weight, "orthogonality": args.orthogonality_weight}, "query_split": {"id": QUERY_SPLIT_ID, "validation_fraction": args.validation_fraction, "train_query_ids_sha256": canonical_ids_sha256(train_ids), "validation_query_ids_sha256": canonical_ids_sha256(validation_ids), "train_query_count": len(train_ids), "validation_query_count": len(validation_ids)}, "hard_negative_mining": {"id": nlb.MINING_ID, "negative_count_per_query": args.hard_negative_count, "teacher": "normalized_e5_cosine", "positive_exclusion": "all_grade_gt_zero_v1"}, "checkpoint": {"policy": "train_query_validation_mih_frontier_gate_v1", "baseline": baseline, "work_multiplier": WORK_MULTIPLIER, "survival_signal": "strict_adc_improvement_or_strict_raw_and_hamming_k1_improvement_v1", "selected_epoch": best["epoch"], "selected_frontier": best["frontier"], "gate_passed": best["frontier_gate_passes"], "hard_code_health": best["hard_code_health"], "gate_semantics": "checkpoint_ranking_diagnostic_not_seed_eligibility_v1"}, "held_out_exclusion": {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": excluded_digest}, "itq_anchor": {"artifact_path": anchor_path.name, "artifact_sha256": sha256(anchor_path), "train_ids_sha256": anchor["training"]["train_ids_sha256"], "train_vectors_sha256": anchor["training"]["train_vectors_sha256"]}, "training_history": {"path": history_path.name, "sha256": sha256(history_path), "checkpoint_count": args.epochs + 2}},
         "weights": {"projection_weights": {"path": weights_path.name, "sha256": sha256(weights_path), "shape": [args.bit_count, data["dimension"]], "layout": "row_major_out_by_in", "dtype": "float32_le"}, "thresholds": {"path": thresholds_path.name, "sha256": sha256(thresholds_path), "shape": [args.bit_count], "dtype": "float32_le"}},
     }
     (args.output_root / "artifact.json").write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-    (args.output_root / "training-history.json").write_text(json.dumps(history, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     return artifact
 
 

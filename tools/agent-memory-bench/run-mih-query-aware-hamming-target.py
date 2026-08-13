@@ -75,18 +75,45 @@ def artifact_path(root: Path, seed: int) -> Path:
     return root / "artifacts" / f"query-aware-hamming-target-seed{seed}" / "artifact.json"
 
 
+def anchor_path(root: Path, seed: int) -> Path:
+    return artifact_path(root, seed).with_name("itq-anchor.json")
+
+
+def validate_matched_anchor(contract: dict[str, Any], training: dict[str, Any], calibration: dict[str, Any]) -> None:
+    anchor = contract["itq_anchor"]
+    for root, name in ((training, "training"), (calibration, "calibration")):
+        require(root["manifest_sha256"] == contract["training_materialization"]["manifest_sha256"], f"{name} root differs from ITQ anchor materialization")
+        require(root["output_hashes"].get("train_ids") == anchor["train_ids_sha256"] and root["output_hashes"].get("train_vectors") == anchor["train_vectors_sha256"], f"{name} root differs from matched ITQ anchor inputs")
+
+
+def verify_anchor(path: Path, contract: dict[str, Any], calibration: dict[str, Any], seed: int) -> str:
+    value = json.loads(path.read_text(encoding="utf-8")); training = value.get("training", {}); weights = value.get("weights", {})
+    anchor = contract["itq_anchor"]
+    require(value.get("schema_version") == 1 and value.get("family") == "itq_anchor_projection_v1" and value.get("input_materialization_manifest_sha256") == calibration["manifest_sha256"] and value.get("prepared_study_manifest_sha256") == calibration["prepared_study_manifest_sha256"], "ITQ anchor provenance differs")
+    require(value.get("architecture") == {"family": "itq_anchor_projection_v1", "input_dimension": 384, "bit_count": 256, "band_count": 16, "band_width_bits": 16, "shared_projection": True, "input_transform": "clip_minus_one_one_normalized_e5_v1", "document_quantizer": "train_document_median_hard_step_v1"}, "ITQ anchor architecture differs")
+    require(training == {"queries_or_qrels_used": False, "objective": "initial_full_itq_anchor_v1", "seed": seed, "itq_iterations": contract["encoding"]["itq_iterations"], "train_ids_sha256": anchor["train_ids_sha256"], "train_vectors_sha256": anchor["train_vectors_sha256"]}, "ITQ anchor training identity differs")
+    shared.require_artifact_weight(path.parent, weights.get("projection_weights"), [256, 384], "row_major_out_by_in", "projection_weights")
+    shared.require_artifact_weight(path.parent, weights.get("thresholds"), [256], None, "thresholds")
+    return sha256(path)
+
+
 def verify_artifact(path: Path, contract: dict[str, Any], train_root: Path, dev: dict[str, Any], seed: int) -> str:
     value = json.loads(path.read_text(encoding="utf-8")); architecture = value.get("architecture"); training = value.get("training"); weights = value.get("weights")
     expected = contract["training"]
     require(value.get("schema_version") == 1 and value.get("trainer", {}).get("id") == trainer.TRAINER_ID and value.get("trainer", {}).get("source_files_sha256") == trainer.source_hashes(), "query-aware artifact trainer provenance differs")
     require(value.get("input_materialization_manifest_sha256") == contract["training_materialization"]["manifest_sha256"] == sha256(train_root / "manifest.json") and value.get("prepared_study_manifest_sha256") == contract["training_materialization"]["prepared_study_manifest_sha256"], "query-aware artifact train materialization differs")
     require(architecture == {"family": trainer.FAMILY, "input_dimension": 384, "bit_count": 256, "band_count": 16, "band_width_bits": 16, "shared_projection": True, "input_transform": "clip_minus_one_one_normalized_e5_v1", "document_quantizer": "recalibrated_train_document_median_hard_step_v1"}, "query-aware artifact architecture differs")
-    require(isinstance(training, dict) and training.get("seed") == seed and training.get("epochs") == expected["epochs"] and training.get("batch_size") == expected["batch_size"] and training.get("learning_rate") == expected["learning_rate"] and training.get("itq_iterations") == contract["encoding"]["itq_iterations"] and training.get("torch_threads") == expected["torch_threads"] and training.get("queries_or_qrels_used") is True and training.get("objective") == trainer.OBJECTIVE and training.get("positive_radius") == expected["positive_radius"] and training.get("negative_radius") == expected["negative_radius"] and training.get("checkpoint", {}).get("policy") == expected["checkpoint"]["selection"] and training.get("checkpoint", {}).get("survival_signal") == expected["checkpoint"]["survival_signal"] and training.get("checkpoint", {}).get("work_multiplier") == expected["checkpoint"]["work_multiplier"] and isinstance(training.get("checkpoint", {}).get("gate_passed"), bool), "query-aware artifact training or validation gate differs")
+    require(isinstance(training, dict) and training.get("seed") == seed and training.get("epochs") == expected["epochs"] and training.get("batch_size") == expected["batch_size"] and training.get("learning_rate") == expected["learning_rate"] and training.get("itq_iterations") == contract["encoding"]["itq_iterations"] and training.get("torch_threads") == expected["torch_threads"] and training.get("queries_or_qrels_used") is True and training.get("objective") == trainer.OBJECTIVE and training.get("positive_radius") == expected["positive_radius"] and training.get("negative_radius") == expected["negative_radius"] and training.get("checkpoint", {}).get("policy") == expected["checkpoint"]["selection"] and training.get("checkpoint", {}).get("survival_signal") == expected["checkpoint"]["survival_signal"] and training.get("checkpoint", {}).get("work_multiplier") == expected["checkpoint"]["work_multiplier"] and training.get("checkpoint", {}).get("gate_semantics") == "checkpoint_ranking_diagnostic_not_seed_eligibility_v1" and isinstance(training.get("checkpoint", {}).get("gate_passed"), bool), "query-aware artifact training or validation gate differs")
     exclusion = training.get("held_out_exclusion", {})
     require(exclusion.get("document_ids_set_sha256") == contract["training_materialization"]["external_excluded_document_ids_set_sha256"] == evaluator.document_id_set_sha256(dev["document_ids"]), "query-aware artifact held-out exclusion differs")
     require(isinstance(weights, dict), "query-aware artifact weights are absent")
     shared.require_artifact_weight(path.parent, weights.get("projection_weights"), [256, 384], "row_major_out_by_in", "projection_weights")
     shared.require_artifact_weight(path.parent, weights.get("thresholds"), [256], None, "thresholds")
+    anchor = training.get("itq_anchor", {}); history = training.get("training_history", {})
+    require(anchor.get("artifact_path") == "itq-anchor.json" and anchor.get("artifact_sha256") == verify_anchor(anchor_path(path.parents[2], seed), contract, train_root, seed) and anchor.get("train_ids_sha256") == contract["itq_anchor"]["train_ids_sha256"] and anchor.get("train_vectors_sha256") == contract["itq_anchor"]["train_vectors_sha256"], "query-aware artifact ITQ anchor differs")
+    history_path = path.with_name("training-history.json")
+    history_value = json.loads(history_path.read_text(encoding="utf-8"))
+    require(history.get("path") == history_path.name and history.get("sha256") == sha256(history_path) and history.get("checkpoint_count") == expected["epochs"] + 2 and isinstance(history_value, list) and len(history_value) == expected["epochs"] + 2 and [entry.get("epoch") for entry in history_value] == [-1, *range(expected["epochs"])], "query-aware artifact history differs")
     return sha256(path)
 
 
@@ -118,7 +145,8 @@ def complete(root: Path, row: dict[str, Any], contract: dict[str, Any], calibrat
         pipeline = contract["held_out_pipeline"]
         base = (report.get("schema_version") == 6 and report.get("family") == "mih_banding_reference_v6" and report.get("evaluator_source_files_sha256") == expected_sources and report.get("evaluator_source_bundle_sha256") == evaluator.source_bundle_sha256(expected_sources) and report.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and report.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and report.get("code_bits") == 256 and report.get("band_count") == pipeline["band_count"] and report.get("band_width_bits") == [16] * 16 and report.get("global_radius") == 56 and report.get("band_probe_radii") == evaluator.global_radius_schedule(56, 16) and report.get("candidate_limit") == pipeline["candidate_limit"] and report.get("hamming_limit") == pipeline["hamming_limit"] and report.get("second_stage") == pipeline["second_stage"] and report.get("second_limit") == pipeline["second_limit"] and report.get("oracle_k") == pipeline["oracle_k"] and report.get("seed") == row["seed"] and report.get("query_count") == count and report.get("per_query_contributions_sha256") == sha256(contribution_path) and report.get("per_query_contribution_identity") == identity == expected_identity)
         if row["encoder"] == "itq-control":
-            return bool(base and report.get("encoder_artifact_sha256") is None and report.get("encoder_artifact_family") == "itq_rotation_projection" and report.get("itq_iterations") == 50)
+            anchor = anchor_path(root, row["seed"])
+            return bool(base and report.get("encoder_artifact_sha256") == verify_anchor(anchor, contract, calibration, row["seed"]) and report.get("encoder_artifact_family") == "itq_anchor_projection_v1" and report.get("itq_iterations") is None)
         path = artifact_path(root, row["seed"])
         return bool(base and report.get("encoder_artifact_sha256") == sha256(path) and report.get("encoder_artifact_family") == trainer.FAMILY and report.get("itq_iterations") is None)
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, shared.EvaluationError):
@@ -126,8 +154,9 @@ def complete(root: Path, row: dict[str, Any], contract: dict[str, Any], calibrat
 
 
 def run(args: Any) -> None:
-    contract = load_contract(args.contract); calibration = shared.load_root(args.calibration_root); evaluation = shared.load_root(args.evaluation_root)
+    contract = load_contract(args.contract); training = shared.load_root(args.training_materialization_root); calibration = shared.load_root(args.calibration_root); evaluation = shared.load_root(args.evaluation_root)
     shared.validate_calibration_evaluation_pair(calibration, evaluation)
+    validate_matched_anchor(contract, training, calibration)
     require(sha256(args.evaluation_root / "manifest.json") == contract["held_out_evaluation"]["manifest_sha256"] and len(evaluation["document_ids"]) == contract["held_out_evaluation"]["document_count"] and len(evaluation["query_ids"]) == contract["held_out_evaluation"]["query_count"], "held-out materialization differs")
     environment = os.environ.copy(); environment.update({name: "1" for name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS")})
     ensure_artifacts(args, contract, evaluation, environment)
@@ -141,11 +170,11 @@ def run(args: Any) -> None:
         if row["encoder"] == "query-aware-hamming-target":
             command += ["--encoder-artifact", str(artifact_path(args.output_root, row["seed"]))]
         else:
-            command += ["--itq-iterations", "50"]
+            command += ["--encoder-artifact", str(anchor_path(args.output_root, row["seed"]))]
         print(f"[{number}/10] evaluate {row['id']}", flush=True)
         subprocess.run(command, check=True, env=environment)
         require(complete(args.output_root, row, contract, calibration, evaluation), f"invalid held-out row: {row['id']}")
-    entries = [{**row, "report_sha256": sha256(args.output_root / "reports" / f"{row['id']}.json"), "contribution_sha256": sha256(args.output_root / "contributions" / f"{row['id']}.npz"), "artifact_sha256": sha256(artifact_path(args.output_root, row["seed"])) if row["encoder"] == "query-aware-hamming-target" else None} for row in rows(contract)]
+    entries = [{**row, "report_sha256": sha256(args.output_root / "reports" / f"{row['id']}.json"), "contribution_sha256": sha256(args.output_root / "contributions" / f"{row['id']}.npz"), "artifact_sha256": sha256(artifact_path(args.output_root, row["seed"])) if row["encoder"] == "query-aware-hamming-target" else sha256(anchor_path(args.output_root, row["seed"]))} for row in rows(contract)]
     manifest = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "evaluation_materialization_manifest_sha256": evaluation["manifest_sha256"], "source_files_sha256": source_files(), "source_bundle_sha256": source_bundle(source_files()), "rows": entries}
     (args.output_root / "matrix-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 

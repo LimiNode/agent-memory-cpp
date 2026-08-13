@@ -7,6 +7,12 @@
     "purpose": "train_query_retrieval_training_only",
     "external_excluded_document_ids_set_sha256": "23c3ec159a39881bc6f9804b603a74a27d90d09dd925ba1f550e10124641a4fc"
   },
+  "itq_anchor": {
+    "id": "matched_train_document_itq_anchor_v1",
+    "train_ids_sha256": "dbe2c8efdc9bfbeb1a0b520082088b1cb31491ee94d4fe65933f242b03d1a98e",
+    "train_vectors_sha256": "0adce3132b9651b32c27bbacec5ae2140de8c2d00247cca5de2823e2ea47260b",
+    "semantics": "control_and_treatment_start_from_the_same_deterministic_full_itq_projection"
+  },
   "held_out_evaluation": {
     "manifest_sha256": "cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86",
     "document_count": 22607,
