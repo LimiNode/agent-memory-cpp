@@ -90,3 +90,58 @@ Interpretation branches are fixed before execution:
 
 The scope remains a bounded heuristic search, not a global proof over static
 partitions or bit assignments.
+
+## 2026-08-13 — v2 calibration selection and held-out result
+
+### Actual result
+
+The v2 calibration replay evaluated the explicit current contiguous identity
+control plus the exact six-profile × two-restart heuristic grid for each of
+the five ITQ seeds. The validator independently recomputed every winner from
+the full 13-candidate objective grid.
+
+The identity control did not win a seed. Every winner retained equal widths
+(`32 x 8`) but used a non-identity assignment; no variable-width profile won.
+The calibration winner means span 16,800.84–16,849.38 unique candidates and
+29,042.36–29,225.53 posting visits per pseudoquery.
+
+The predeclared held-out matrix therefore compared, for each seed, the current
+contiguous identity control with that seed's selected equal-width assignment.
+It used the frozen 25,000-vector calibration train, the disjoint MIRACL-RU
+evaluation corpus and 1,252 evaluation queries, local radius one (288 probes),
+Hamming `K1=768`, binary ADC `K2=256`, and E5 oracle `K=10`. Every comparison
+uses `right - left = selected assignment - current control` in 10,000 paired
+bootstrap replicates.
+
+| Held-out delta, selected − current | Five-seed mean | Per-seed range |
+| --- | ---: | ---: |
+| unique candidates / query | −4.19 | −26.87 to +39.37 |
+| posting visits / query | −25.98 | −116.56 to +128.21 |
+| exact top-10 candidate coverage | −0.000144 | −0.000719 to +0.000479 |
+| reranked nDCG@10 | −0.000087 | −0.000460 to +0.000189 |
+
+The candidate/posting deltas change sign across seeds; all five paired
+bootstrap intervals for raw E5-oracle union coverage include zero. The
+selected assignment is therefore not a stable held-out work reduction and
+does not establish a retrieval improvement.
+
+### Interpretation
+
+The bounded direct-work search consistently rejects variable width, but its
+small calibration gains from non-identity equal-width assignments do not
+transfer as a stable held-out result. This closes the specified static
+local-radius-one widths-and-shallow-assignment search; it is not an exhaustive
+claim about every static bit partition. The next degree of freedom should be
+MIH-aware code learning, where the representation itself is trained against
+candidate-union work rather than repeatedly reorganizing frozen ITQ bits.
+
+### Evidence
+
+The staged archive is `mih-static-width-optimizer-heldout-evidence-v1.zip`:
+SHA-256 `b7a088ad96dc10d0ecf400b9ba22cdb8bd7e04795184dc48c955269f686dfea3`,
+internal bundle-root SHA-256
+`a74639337393969ba583eebd879f0a0f16c176323e664d4a963caa7e64a2dbfb`.
+It contains the v2 optimizer report and contract, 10 held-out reports and NPZ
+contributions, five paired bootstraps, the matrix manifest, compact manifest,
+and source snapshots. It remains draft staging evidence until the PR review
+approves publication.
