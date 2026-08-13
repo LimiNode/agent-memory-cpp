@@ -25,6 +25,20 @@ posting work for every calibration document as a pseudoquery. E5 neighbours
 use 1,024 deterministic calibration anchors and exact top-10 calibration
 neighbours.
 
+The archive retains per-row raw NPZ contributions: radius-zero and radius-one
+candidate/posting vectors for all 25,000 pseudoqueries, random-pair and
+neighbour Hamming distances, pseudoquery IDs, pair indices, anchor indices,
+and neighbour indices. This makes the three same-seed transitions replayable
+without rerunning the expensive union traversal.
+
+### Limitations
+
+Each pseudoquery is itself in the calibration index, so its exact and
+radius-one work includes one self-hit. That is not an estimate of an external
+query's absolute work. It is common to all four same-document variants and is
+negligible relative to the observed multi-thousand-document unions, making it
+acceptable for this paired geometry decomposition.
+
 ### Decision use
 
 This is a causal decomposition diagnostic, not another held-out winner
