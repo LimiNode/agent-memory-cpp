@@ -88,6 +88,17 @@ def correlation(left: numpy.ndarray, right: numpy.ndarray) -> float:
     return float(numpy.corrcoef(left, right)[0, 1])
 
 
+def conditional_summary(threshold: numpy.ndarray, values: dict[str, numpy.ndarray]) -> dict[str, dict[str, float]]:
+    groups = {"threshold_increased": threshold > 0, "threshold_unchanged": threshold == 0, "threshold_decreased": threshold < 0}
+    result: dict[str, dict[str, float]] = {}
+    for name, mask in groups.items():
+        require(bool(numpy.any(mask)), f"conditional group is empty: {name}")
+        result[name] = {field: float(numpy.mean(values[field][mask])) for field in ("raw_union_delta", "hamming_k1_delta", "adc_k2_delta", "candidate_delta", "posting_visits_delta")}
+        result[name]["raw_union_positive_fraction"] = float(numpy.mean(values["raw_union_delta"][mask] > 0))
+        result[name]["adc_k2_positive_fraction"] = float(numpy.mean(values["adc_k2_delta"][mask] > 0))
+    return result
+
+
 def summaries(values: dict[str, numpy.ndarray]) -> dict[str, Any]:
     threshold = values["threshold_delta"]
     result: dict[str, Any] = {
@@ -103,14 +114,16 @@ def summaries(values: dict[str, numpy.ndarray]) -> dict[str, Any]:
             "threshold_delta_vs_hamming_k1_delta": correlation(threshold, values["hamming_k1_delta"]),
             "threshold_delta_vs_adc_k2_delta": correlation(threshold, values["adc_k2_delta"]),
         },
+        "conditional": conditional_summary(threshold, values),
     }
     return result
 
 
-def run(args: Any) -> dict[str, Any]:
-    contract = load_contract(args.contract); members = archive_members(args.source_archive, contract); compact = json.loads(members["bundle/compact-manifest.json"].decode("utf-8")); matrix = json.loads(members["bundle/matrix-manifest.json"].decode("utf-8"))
+def expected_contribution(members: dict[str, bytes], contract: dict[str, Any]) -> dict[str, numpy.ndarray]:
+    """Derive the diagnostic arrays directly from the validated source bundle."""
+    compact = json.loads(members["bundle/compact-manifest.json"].decode("utf-8")); matrix = json.loads(members["bundle/matrix-manifest.json"].decode("utf-8"))
     require(compact.get("measured_source_commit") == contract["source_evidence"]["measured_matrix_source_commit"] and matrix.get("family") == "mih_aware_itq_repaired_heldout_frontier_v1", "source evidence provenance differs")
-    query_count = contract["study"]["query_count"]; regime = contract["study"]["regime"]; seed_results = []; all_values: dict[str, list[numpy.ndarray]] = {name: [] for name in DIAGNOSTIC_FIELDS}; all_ids: list[numpy.ndarray] = []
+    query_count = contract["study"]["query_count"]; regime = contract["study"]["regime"]; all_values: dict[str, list[numpy.ndarray]] = {name: [] for name in DIAGNOSTIC_FIELDS}; all_ids: list[numpy.ndarray] = []
     for seed in contract["study"]["seeds"]:
         left_id = f"itq-control--{regime}-seed{seed}"; right_id = f"repaired-control--{regime}-seed{seed}"; left_report, left = report_and_values(members, left_id, query_count); right_report, right = report_and_values(members, right_id, query_count)
         require(left["query_ids"].tolist() == right["query_ids"].tolist() and left_report.get("seed") == right_report.get("seed") == seed, f"paired source identity differs: seed{seed}")
@@ -122,8 +135,16 @@ def run(args: Any) -> dict[str, Any]:
             "candidate_delta": right["candidate_count"].astype(numpy.float64) - left["candidate_count"].astype(numpy.float64),
             "posting_visits_delta": right["posting_visit_count"].astype(numpy.float64) - left["posting_visit_count"].astype(numpy.float64),
         }
-        seed_results.append({"seed": seed, **summaries(values)}); all_ids.append(left["query_ids"]); [all_values[name].append(value) for name, value in values.items()]
-    pooled = {name: numpy.concatenate(value) for name, value in all_values.items()}; contribution = {name: numpy.stack(value) for name, value in all_values.items()}; contribution["query_ids"] = numpy.stack(all_ids); contribution["seeds"] = numpy.asarray(contract["study"]["seeds"], dtype=numpy.int32); contribution["identity_json"] = numpy.asarray(json.dumps({"contract_sha256": sha256(args.contract), "source_evidence_sha256": sha256(args.source_archive), "regime": regime}, sort_keys=True, separators=(",", ":")))
+        all_ids.append(left["query_ids"]); [all_values[name].append(value) for name, value in values.items()]
+    contribution = {name: numpy.stack(value) for name, value in all_values.items()}; contribution["query_ids"] = numpy.stack(all_ids); contribution["seeds"] = numpy.asarray(contract["study"]["seeds"], dtype=numpy.int32)
+    return contribution
+
+
+def run(args: Any) -> dict[str, Any]:
+    contract = load_contract(args.contract); members = archive_members(args.source_archive, contract); contribution = expected_contribution(members, contract); regime = contract["study"]["regime"]
+    seed_results = [{"seed": int(seed), **summaries({name: contribution[name][index] for name in DIAGNOSTIC_FIELDS})} for index, seed in enumerate(contribution["seeds"].tolist())]
+    pooled = {name: contribution[name].reshape(-1) for name in DIAGNOSTIC_FIELDS}
+    contribution["identity_json"] = numpy.asarray(json.dumps({"contract_sha256": sha256(args.contract), "source_evidence_sha256": sha256(args.source_archive), "regime": regime}, sort_keys=True, separators=(",", ":")))
     args.contribution.parent.mkdir(parents=True, exist_ok=True); numpy.savez_compressed(args.contribution, **contribution)
     report = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "source_evidence_archive_sha256": sha256(args.source_archive), "source_evidence_bundle_root_sha256": contract["source_evidence"]["bundle_root_sha256"], "contribution_sha256": sha256(args.contribution), "study": contract["study"], "limitation": "The source evidence stores per-query oracle fractions, not oracle document identities; this diagnostic therefore traces aggregate per-query funnel deltas and cannot attribute a threshold crosser to an individual document.", "per_seed": seed_results, "pooled": summaries(pooled)}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(report, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n"); return report
@@ -132,7 +153,7 @@ def run(args: Any) -> dict[str, Any]:
 def self_test(contract_path: Path) -> int:
     try:
         require(load_contract(contract_path) == CONTRACT, "contract differs")
-        values = {"threshold_delta": numpy.asarray([-.1, .0, .1]), "raw_union_delta": numpy.asarray([-.2, .0, .2]), "hamming_k1_delta": numpy.asarray([-.3, .0, .3]), "adc_k2_delta": numpy.asarray([-.4, .0, .4]), "candidate_delta": numpy.asarray([-2., 0., 2.]), "posting_visits_delta": numpy.asarray([-3., 0., 3.])}; result = summaries(values); require(result["query_fraction"] == {"threshold_increased": 1 / 3, "threshold_unchanged": 1 / 3, "threshold_decreased": 1 / 3}, "summary fractions differ")
+        values = {"threshold_delta": numpy.asarray([-.1, .0, .1]), "raw_union_delta": numpy.asarray([-.2, .0, .2]), "hamming_k1_delta": numpy.asarray([-.3, .0, .3]), "adc_k2_delta": numpy.asarray([-.4, .0, .4]), "candidate_delta": numpy.asarray([-2., 0., 2.]), "posting_visits_delta": numpy.asarray([-3., 0., 3.])}; result = summaries(values); require(result["query_fraction"] == {"threshold_increased": 1 / 3, "threshold_unchanged": 1 / 3, "threshold_decreased": 1 / 3} and result["conditional"]["threshold_increased"]["adc_k2_delta"] == .4, "summary fractions differ")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"diagnose-mih-aware-itq-r56-funnel self-test failed: {error}", file=sys.stderr); return 1
     print("MIH-aware ITQ r56 funnel diagnosis self-test passed"); return 0
