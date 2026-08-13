@@ -46,3 +46,53 @@ selection. It determines whether the next algorithm must first preserve
 full-25k ITQ initialization, or whether an anchored Hamming-target objective
 has a distinct geometry problem to solve. Any later held-out frontier remains a
 new predeclared experiment.
+
+## 2026-08-13 — calibration result
+
+### Actual result
+
+The full five-seed matrix completed with 20 raw contribution files. The first
+transition is essentially neutral: fitting ITQ on the stable 80% split rather
+than all 25,000 calibration documents changes radius-one union work by only
+`+4.51` candidates and `+8.61` posting visits/query in the five-seed mean.
+
+| Transition | Delta mean radius-one candidates | Delta mean posting visits | Delta E5-neighbour Hamming distance |
+| --- | ---: | ---: | ---: |
+| full-25k ITQ → split-80% ITQ | +4.51 | +8.61 | +0.12 |
+| split-80% ITQ → zero-work refinement | +6,535.13 | +46,224.07 | -14.56 |
+| zero-work → 0.10-work refinement | -10.37 | -189.68 | +0.04 |
+
+The resulting mean radius-one work is `16,867.31` candidates / `29,270.61`
+posting visits for full ITQ, `16,871.82` / `29,279.22` for split-only ITQ,
+`23,406.95` / `75,503.29` for zero-work refinement, and `23,396.59` /
+`75,313.62` for 0.10-work refinement.
+
+The geometry identifies the mechanism more clearly than the original frontier:
+the mean per-bit entropy is effectively `1.0000` for full ITQ and `0.99999`
+for split-only ITQ, but falls to `0.87181` after zero-work refinement. The
+0.10 term changes this only to `0.87221`. Thus the refinement path makes
+calibration E5-neighbours much closer in Hamming space, but does so by making
+the global code distribution materially less balanced; the larger and more
+correlated postings dominate local-radius-one work.
+
+### Interpretation
+
+The #132 confound is now resolved for this protocol: split-specific ITQ
+initialization is not the source of the regression. The damaging transition is
+the document-pair semantic/quantization refinement path itself. Raising its
+v1 MIH-work coefficient to `0.10` remains far too weak to counter that change.
+
+This closes the first v1 refinement formulation without ruling out MIH-aware
+learning. A next algorithm must retain full-25k ITQ as an explicit anchor and
+use a Hamming-equivalent, work-aware objective with a held-out frontier gate;
+it should not merely retune the tested v1 coefficient.
+
+### Evidence
+
+The replay-validated archive is `mih-aware-itq-diagnosis-evidence-v1.zip`:
+SHA-256 `ea5eae59d547bd327f4f4f56a90b4fa411b8619ef56f50fe3a14d78149cb3902`,
+internal bundle-root SHA-256
+`611c8d9ff1ca8753b98be739ad8dfa30b9ab24a775502ae7b2e9aef69ec30298`.
+It contains the 20 raw paired contribution NPZ files, the exact consumed #132
+artifacts and matrix manifest, the frozen contract, and source snapshots. It
+will be staged as a draft evidence release on the final PR commit.
