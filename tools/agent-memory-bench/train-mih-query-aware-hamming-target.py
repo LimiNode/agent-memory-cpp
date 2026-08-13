@@ -263,7 +263,7 @@ def train(args: Any) -> dict[str, Any]:
         raise TrainingError("no checkpoint passed code-health requirements")
     args.output_root.mkdir(parents=True)
     weights_path = args.output_root / "projection-weights.f32"; thresholds_path = args.output_root / "thresholds.f32"
-    base.write_f32(weights_path, best["weights"]); base.write_f32(thresholds_path, best["thresholds"])
+    base.write_f32(weights_path, torch.from_numpy(best["weights"])); base.write_f32(thresholds_path, torch.from_numpy(best["thresholds"]))
     artifact = {
         "schema_version": 1,
         "trainer": {"id": TRAINER_ID, "version": "v1", "source_files_sha256": source_hashes()},
