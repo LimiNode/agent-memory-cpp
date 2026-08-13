@@ -112,33 +112,41 @@ treatment. The observed tiny raw-union survival gain does not rescue the
 result: it is purchased with substantially more work, then loses roughly
 0.0065 final E5-oracle survival after Hamming and ADC.
 
-The zero-work training-path control is crucial here. It shows that the failure
-is not evidence that the small MIH-work coefficient alone found a bad optimum:
-the first document-pair semantic/quantization refinement objective already
-degrades the local-radius-one code geometry relative to ordinary ITQ. Raising
-the MIH-work weight from zero to 0.10 only recovers about eight candidates/query
-of a roughly 5,180-candidate regression, while its calibrated soft collision
-surrogate changes only in the sixth decimal place.
+The zero-work training-path control shows that changing the MIH-work weight
+from zero to 0.10 does not repair this training path: it recovers only about
+eight candidates/query of the roughly 5,180-candidate regression. The path
+also changes ITQ initialization: ordinary control fits ITQ on all 25,000
+calibration documents, whereas the trainer initializes on its 80% document
+training split. This experiment therefore does not causally apportion the
+regression between split-specific initialization and subsequent
+semantic/quantization refinement. It establishes only that the complete
+predeclared split-initialized refinement training path is dominated by ordinary
+full-25k ITQ.
 
 ### Interpretation
 
-This first MIH-aware ITQ objective is a **no-go** under the declared gate. It
-does not establish that MIH-aware code learning is impossible; it establishes
-that this document-pair soft radius-one collision surrogate, combined with the
-current semantic proxy and checkpoint rule, does not preserve the ITQ geometry
-that makes the existing `32 x 8` local-radius-one cascade viable.
+This first predeclared document-only split-initialized refinement path is a
+**no-go** under the declared gate. It does not identify which component causes
+the regression or establish that MIH-aware code learning is impossible. The
+next diagnostic separates split-specific ITQ initialization from the subsequent
+refinement path before a new learning objective is proposed.
 
-The next representation-learning proposal must be a new predeclared algorithm,
-not a held-out retuning of `0.02/0.05/0.10`. In particular, it should explicitly
+The next step is a calibration-only diagnostic that separates full-25k ITQ,
+split-only ITQ, and the already fixed refinement path. Any subsequent
+representation-learning proposal must be a new predeclared algorithm, not a
+held-out retuning of `0.02/0.05/0.10`. In particular, it should explicitly
 anchor to the initial ITQ projection and optimize a closer proxy for local
 Hamming-neighbour preservation/candidate union, with document-only calibration
 diagnostics proving any work reduction before another held-out frontier run.
 
 ### Evidence
 
-The validated archive is `mih-aware-itq-frontier-evidence-v1.zip`: SHA-256
-`4f7700154d17faf48da954b7415f4ff120aab6707709cd0f63c6c5f49e8c6ef9`,
-internal bundle-root SHA-256
-`69a3dc3afbb4f019f0e87aedbf6d93a0766cd939e3408f2dc9988520dc3a74a5`.
-It is staged for the draft evidence release and is not public until the PR is
-reviewed and the release is published.
+The replay-validated archive is `mih-aware-itq-frontier-evidence-v2.zip`.
+It snapshots the exact measured source revision separately from the later
+validator sources, rechecks every report and artifact against the per-query
+NPZ data, and regenerates all 20 paired bootstraps from those contributions.
+Its SHA-256 and internal bundle-root SHA-256 are recorded in the draft evidence
+release: `49e5b810998c1cc81ad5933fdff6b377317581fcf7a2ad61621ef144f8dfe292`
+and `8eb59b000bdb82ff0a919694f4cb20681ea60171aaaecdb3c048d3f737a86175`,
+respectively. The release is not public until the PR is reviewed and the
+release is published.
