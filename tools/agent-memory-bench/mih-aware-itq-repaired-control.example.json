@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "family": "mih_aware_itq_repaired_calibration_control_v1",
+  "calibration": {"vector_count": 25000, "neighbor_anchor_count": 1024, "neighbor_k": 10, "random_pair_count": 10000},
+  "encoding": {"code_bits": 256, "band_count": 32, "band_width_bits": 8, "itq_iterations": 50, "seeds": [52, 53, 54, 55, 56]},
+  "training": {"epochs": 8, "batch_size": 192, "learning_rate": 0.00001, "temperature": 4.0, "anchor_weight": 50.0, "orthogonality_weight": 0.05, "torch_threads": 1, "mih_work_weight": 0.0, "checkpoint": "fixed_final_epoch", "threshold_policy": "recalibrate_full_calibration_median_after_each_epoch", "queries_or_qrels_used": false},
+  "gate": {"minimum_mean_bit_entropy": 0.99, "maximum_radius_one_candidate_work_ratio": 1.02, "maximum_radius_one_posting_work_ratio": 1.02, "required_direction": "strictly lower E5-calibration-neighbour Hamming distance than full ITQ in the five-seed mean"}
+}
