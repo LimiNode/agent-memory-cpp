@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "family": "mih_asymmetric_train_selected_heldout_confirmatory_v1",
+  "schedule_aware_contract_sha256": "687f9c4c1825415e851771ef0b31b4984d478617c7b1aaa9864955cc29a866d6",
+  "schedule_aware_matrix_manifest_sha256": "d4e5df8204b417424895b24479ed99f118665eeb608e9e7425100f42120e0a74",
+  "training_materialization_manifest_sha256": "fb5af79a70a8f61e27c9615c178203599ed5dc10f287d0741d132d97f0218856",
+  "held_out_evaluation_manifest_sha256": "cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86",
+  "pipeline": {"band_count": 16, "band_width_bits": 16, "global_radius": 56, "candidate_limit": 512, "hamming_limit": 768, "second_stage": "binary-adc", "second_limit": 256, "oracle_k": 10},
+  "selection": {"eligible": "schedule_aware_pareto_admissible_checkpoint_v1", "rank": ["maximum_adc_survival_delta", "minimum_maximum_work_ratio", "minimum_mean_hamming_drift", "minimum_epoch", "minimum_seed"], "held_out_access_before_selection": "forbidden"},
+  "decision_rule": {"primary": "paired_adc_k2_e5_oracle_survival", "bootstrap_replicates": 10000, "bootstrap_seed": 20260814, "held_out_runs": "exactly_selected_wq_and_matched_w0_once_v1"},
+  "scope": {"source": "frozen_mih_schedule_aware_routing_gate_v2", "document_projection": "frozen_full_itq_w0_v1", "query_projection": "selected_train_validation_wq_only_v1", "interpretation": "prospective_held_out_confirmation_conditioned_on_existing_train_matrix_v1"}
+}

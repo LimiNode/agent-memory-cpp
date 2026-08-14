@@ -557,7 +557,7 @@ def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: d
     if query_aware or asymmetric:
         exclusion = training.get("held_out_exclusion")
         if (training.get("queries_or_qrels_used") is not True or
-                training.get("objective") not in ("shared_w_qrels_hamming_radius_target_with_mih_frontier_gate_v1", "frozen_document_itq_query_projection_with_train_mih_false_positive_mining_v1") or
+                training.get("objective") not in ("shared_w_qrels_hamming_radius_target_with_mih_frontier_gate_v1", "frozen_document_itq_query_projection_with_train_mih_false_positive_mining_v1", "dynamic_current_wq_danger_mining_code_trust_region_routing_surrogate_v1") or
                 (not asymmetric and not architecture.get("shared_projection")) or
                 not isinstance(exclusion, dict) or
                 exclusion.get("id") != "external_excluded_document_ids_set_v1" or

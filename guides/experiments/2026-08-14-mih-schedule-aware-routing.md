@@ -44,3 +44,34 @@ bundle-root SHA-256
 Its packager derives the matrix source hashes from that exact commit through
 `git show`, snapshots the evidence source, and is covered by CTest and CI
 self-tests.
+
+## 2026-08-14 - historical v2 train-selected held-out result
+
+This follow-up was run against the then-frozen #140 v2 train-validation matrix.
+It asked the narrower practical question: can an offline system select one
+configuration entirely from that matrix, then transfer that one choice to
+held-out data? The selection ranks eligible checkpoints by ADC-survival delta,
+then maximum work ratio, mean Hamming drift, epoch, and seed. It selected seed
+52, epoch 1 before held-out access.
+
+The one permitted paired comparison, selected `Wq` versus that seed's matched
+frozen `W0`, raises ADC/E5-oracle second-stage survival by `+0.002636` (paired
+95% interval `[+0.000160, +0.005112]`). Candidate and posting work rise by
+`+25.37` (`[+21.93, +28.77]`) and `+30.98` (`[+27.07, +35.09]`) per query;
+reranked nDCG@10 changes by `+0.000912` (`[-0.002089, +0.003904]`). This is a
+positive result for that preselected v2 configuration, not a claim that the
+method is rotation-robust: the parent all-seed gate remains `2/5`.
+
+This is historical evidence only. The parent v2 proxy under-scaled its
+stratified-population work estimate, so this held-out comparison is not a
+confirmation of the corrected v3 objective and must not be rerun or relabelled
+as one. A current verifier replays all v2 Pareto-admissible checkpoints and
+independently confirms the same seed-52/epoch-1 winner without reopening
+held-out data.
+
+Draft evidence v3 archives the historical measured source commit
+`c7b64b2c53619a107e3f85ab5992bf0fba70eaf9` and the independent verifier commit
+`3b9ccdb`. Archive SHA-256
+`90f43bc28ab7e2eead01596e089c58923975d1e28f53599303f313f036605f09`,
+bundle-root SHA-256
+`e744bad264684169c9c9f35f9a48b913d0dcb976b5bd24d1e21516d0a57154dc`.
