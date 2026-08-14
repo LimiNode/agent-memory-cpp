@@ -13,7 +13,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-THIS = Path(__file__.resolve()); ROOT = THIS.parents[2]
+THIS = Path(__file__).resolve(); ROOT = THIS.parents[2]
 SOURCES = (THIS.name, "run-mih-schedule-aware-routing.py", "mih-schedule-aware-routing.example.json", "train-mih-query-trust-region.py", "run-mih-query-trust-region.py", "evaluate-mih-banding.py", "evaluate-projection-quantization.py", "train-nlb-qrels-supervised.py", "requirements-binary-autoencoder-trainer.txt", "write-mih-rerank-cost-evidence.py")
 
 
