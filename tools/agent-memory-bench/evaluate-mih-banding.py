@@ -547,8 +547,8 @@ def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: d
     repaired = family == "mih_aware_itq_repaired_control_v1"
     itq_anchor = family == "itq_anchor_projection_v1"
     query_aware = family == "mih_query_aware_hamming_target_shared_w_v1"
-    asymmetric = family == "mih_query_aware_asymmetric_projection_v1"
-    if family not in ("mih_aware_itq_v1", "mih_aware_itq_repaired_control_v1", "mih_query_aware_hamming_target_shared_w_v1", "itq_anchor_projection_v1", "mih_query_aware_asymmetric_projection_v1") or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or (not repaired and architecture.get("band_count") != band_count):
+    asymmetric = family in ("mih_query_aware_asymmetric_projection_v1", "mih_query_trust_region_projection_v1")
+    if family not in ("mih_aware_itq_v1", "mih_aware_itq_repaired_control_v1", "mih_query_aware_hamming_target_shared_w_v1", "itq_anchor_projection_v1", "mih_query_aware_asymmetric_projection_v1", "mih_query_trust_region_projection_v1") or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or (not repaired and architecture.get("band_count") != band_count):
         raise EvaluationError("MIH-aware artifact architecture differs from evaluation")
     if not repaired and band_widths != [architecture.get("band_width_bits")] * band_count:
         raise EvaluationError("MIH-aware artifact band widths differ from evaluation")
