@@ -266,8 +266,7 @@ def main(argv: list[str]) -> int:
             values = {"epochs": 6, "batch_size": 192, "learning_rate": 5e-6, "itq_iterations": 50, "hard_negative_count": 4, "validation_fraction": .2, "positive_radius": 56, "negative_radius": 80, "code_drift_weight": 8.0, "routing_work_weight": 1.0, "routing_pool_size": 1024, "routing_temperature": 3.0, "routing_radius": 3, "routing_estimator": "sampled-band-radius-soft-collision-v1", "routing_strata": 4, "routing_pool_per_stratum": 512, "maximum_work_multiplier": 1.02, "maximum_mean_hamming_drift": 8.0}
             exclusion = {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": "a" * 64}
             frozen = execution_contract(values, 3461, 64, exclusion); changed = dict(values); changed["learning_rate"] = 1e-5
-            import torch
-            require(float(population_total(torch.tensor([2.0]), 5650).item()) == 11300.0 and source_hashes() == source_hashes() and frozen != execution_contract(changed, 3461, 64, exclusion), "trainer execution contract is unstable"); print("MIH query trust-region trainer self-test passed"); return 0
+            require(population_total(2.0, 5650) == 11300.0 and source_hashes() == source_hashes() and frozen != execution_contract(changed, 3461, 64, exclusion), "trainer execution contract is unstable"); print("MIH query trust-region trainer self-test passed"); return 0
         train(args)
     except (TrainingError, OSError, ValueError, json.JSONDecodeError) as error:
         print(f"train-mih-query-trust-region: {error}", file=sys.stderr); return 1
