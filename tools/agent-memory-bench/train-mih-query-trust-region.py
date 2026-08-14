@@ -48,9 +48,9 @@ def source_hashes() -> dict[str, str]:
 
 def execution_contract(values: dict[str, Any], train_query_count: int, validation_query_count: int, held_out_exclusion: dict[str, Any]) -> dict[str, Any]:
     """Return the complete frozen invocation identity for either gate outcome."""
-    if values["routing_estimator"] == "schedule-aware-stratified-union-posting-v2":
+    if values["routing_estimator"] == "schedule-aware-stratified-union-posting-v3":
         routing_surrogate = {
-            "id": "schedule_aware_stratified_union_posting_proxy_v2",
+            "id": "schedule_aware_stratified_union_posting_proxy_v3",
             "weight": values["routing_work_weight"],
             "strata": values["routing_strata"],
             "pool_per_stratum": values["routing_pool_per_stratum"],
@@ -160,6 +160,12 @@ def routing_pools(document_codes: Any, index: list[dict[int, Any]], ranges: list
     return result
 
 
+def population_total(sample_mean: Any, population: int) -> Any:
+    """Expand a sampled per-document mean to its complete stratum total."""
+    require(population > 0, "routing stratum population differs")
+    return sample_mean * float(population)
+
+
 def schedule_aware_routing_loss(query_soft: Any, pools: list[tuple[Any, int]], radii: list[int], temperature: float, torch: Any) -> Any:
     code = torch.tanh(4.0 * query_soft).reshape(-1, BANDS, 16)
     thresholds = torch.tensor([16.0 - 2.0 * radius - 1.0 for radius in radii], dtype=code.dtype, device=code.device).reshape(1, BANDS, 1)
@@ -168,8 +174,8 @@ def schedule_aware_routing_loss(query_soft: Any, pools: list[tuple[Any, int]], r
     for pool, population in pools:
         agreement = torch.einsum("bmk,pmk->bmp", code, pool.to(code.device))
         probability = torch.sigmoid(temperature * (agreement - thresholds))
-        expected_visits = expected_visits + probability.sum(1).mean(1) * (float(population) / float(pool.shape[0]))
-        expected_union = expected_union + (1.0 - torch.prod(1.0 - probability, dim=1)).mean(1) * (float(population) / float(pool.shape[0]))
+        expected_visits = expected_visits + population_total(probability.sum(1).mean(1), population)
+        expected_union = expected_union + population_total((1.0 - torch.prod(1.0 - probability, dim=1)).mean(1), population)
     return (torch.log1p(expected_visits) + torch.log1p(expected_union)).mean()
 
 
@@ -195,7 +201,7 @@ def train(args: Any) -> None:
     pool_rng = numpy.random.default_rng(int.from_bytes(hashlib.sha256(f"routing-pool\0{args.seed}".encode()).digest()[:16], "big"))
     pool_rows = pool_rng.choice(document_codes.shape[0], size=min(args.routing_pool_size, document_codes.shape[0]), replace=False)
     pool_codes = torch.from_numpy(numpy.where(document_codes[pool_rows], 1.0, -1.0).astype(numpy.float32).reshape(-1, BANDS, 16))
-    calibrated_pools = routing_pools(document_codes, index, ranges, args.routing_strata, args.routing_pool_per_stratum, args.seed, numpy, torch) if args.routing_estimator == "schedule-aware-stratified-union-posting-v2" else []
+    calibrated_pools = routing_pools(document_codes, index, ranges, args.routing_strata, args.routing_pool_per_stratum, args.seed, numpy, torch) if args.routing_estimator == "schedule-aware-stratified-union-posting-v3" else []
     baseline = validation_metrics(data, document_codes, {"weights": document_weights}, document_weights, thresholds, index, ranges, radii, centers, validation_ids)
     print(json.dumps({"seed": args.seed, "baseline_validation": baseline}, sort_keys=True), flush=True)
     history = [{"epoch": -1, "validation": baseline, "pareto_admissible": False, "mining": "w0_baseline_only"}]
@@ -253,14 +259,15 @@ def train(args: Any) -> None:
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--materialization-root", type=Path); parser.add_argument("--output-root", type=Path); parser.add_argument("--seed", type=int, default=52)
-    parser.add_argument("--epochs", type=int, default=6); parser.add_argument("--batch-size", type=int, default=192); parser.add_argument("--learning-rate", type=float, default=5e-6); parser.add_argument("--itq-iterations", type=int, default=50); parser.add_argument("--hard-negative-count", type=int, default=4); parser.add_argument("--validation-fraction", type=float, default=.2); parser.add_argument("--validation-query-count", type=int, default=64); parser.add_argument("--positive-radius", type=int, default=56); parser.add_argument("--negative-radius", type=int, default=80); parser.add_argument("--code-drift-weight", type=float, default=8.0); parser.add_argument("--routing-work-weight", type=float, default=1.0); parser.add_argument("--routing-pool-size", type=int, default=1024); parser.add_argument("--routing-temperature", type=float, default=3.0); parser.add_argument("--routing-radius", type=int, default=3); parser.add_argument("--routing-estimator", choices=("sampled-band-radius-soft-collision-v1", "schedule-aware-stratified-union-posting-v2"), default="sampled-band-radius-soft-collision-v1"); parser.add_argument("--routing-strata", type=int, default=4); parser.add_argument("--routing-pool-per-stratum", type=int, default=512); parser.add_argument("--maximum-work-multiplier", type=float, default=1.02); parser.add_argument("--maximum-mean-hamming-drift", type=float, default=8.0)
+    parser.add_argument("--epochs", type=int, default=6); parser.add_argument("--batch-size", type=int, default=192); parser.add_argument("--learning-rate", type=float, default=5e-6); parser.add_argument("--itq-iterations", type=int, default=50); parser.add_argument("--hard-negative-count", type=int, default=4); parser.add_argument("--validation-fraction", type=float, default=.2); parser.add_argument("--validation-query-count", type=int, default=64); parser.add_argument("--positive-radius", type=int, default=56); parser.add_argument("--negative-radius", type=int, default=80); parser.add_argument("--code-drift-weight", type=float, default=8.0); parser.add_argument("--routing-work-weight", type=float, default=1.0); parser.add_argument("--routing-pool-size", type=int, default=1024); parser.add_argument("--routing-temperature", type=float, default=3.0); parser.add_argument("--routing-radius", type=int, default=3); parser.add_argument("--routing-estimator", choices=("sampled-band-radius-soft-collision-v1", "schedule-aware-stratified-union-posting-v3"), default="sampled-band-radius-soft-collision-v1"); parser.add_argument("--routing-strata", type=int, default=4); parser.add_argument("--routing-pool-per-stratum", type=int, default=512); parser.add_argument("--maximum-work-multiplier", type=float, default=1.02); parser.add_argument("--maximum-mean-hamming-drift", type=float, default=8.0)
     args = parser.parse_args(argv)
     try:
         if args.self_test:
             values = {"epochs": 6, "batch_size": 192, "learning_rate": 5e-6, "itq_iterations": 50, "hard_negative_count": 4, "validation_fraction": .2, "positive_radius": 56, "negative_radius": 80, "code_drift_weight": 8.0, "routing_work_weight": 1.0, "routing_pool_size": 1024, "routing_temperature": 3.0, "routing_radius": 3, "routing_estimator": "sampled-band-radius-soft-collision-v1", "routing_strata": 4, "routing_pool_per_stratum": 512, "maximum_work_multiplier": 1.02, "maximum_mean_hamming_drift": 8.0}
             exclusion = {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": "a" * 64}
             frozen = execution_contract(values, 3461, 64, exclusion); changed = dict(values); changed["learning_rate"] = 1e-5
-            require(source_hashes() == source_hashes() and frozen != execution_contract(changed, 3461, 64, exclusion), "trainer execution contract is unstable"); print("MIH query trust-region trainer self-test passed"); return 0
+            import torch
+            require(float(population_total(torch.tensor([2.0]), 5650).item()) == 11300.0 and source_hashes() == source_hashes() and frozen != execution_contract(changed, 3461, 64, exclusion), "trainer execution contract is unstable"); print("MIH query trust-region trainer self-test passed"); return 0
         train(args)
     except (TrainingError, OSError, ValueError, json.JSONDecodeError) as error:
         print(f"train-mih-query-trust-region: {error}", file=sys.stderr); return 1
