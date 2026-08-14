@@ -38,3 +38,25 @@ bundle-root SHA-256
 Its packager derives the matrix source hashes from that exact commit through
 `git show`, separately snapshots the evidence source, and is covered by CTest
 and CI self-tests.
+
+## 2026-08-14 - train-selected held-out confirmation
+
+This follow-up asks a narrower practical question without relaxing the `5/5`
+robustness rule: can an offline system select one configuration entirely from
+the frozen #140 train-validation matrix, then transfer that one choice to
+held-out data? The selection ranks eligible checkpoints by ADC-survival delta,
+then maximum work ratio, mean Hamming drift, epoch, and seed. It selects seed
+52, epoch 1 before held-out access.
+
+The one permitted paired comparison, selected `Wq` versus that seed's matched
+frozen `W0`, raises ADC/E5-oracle second-stage survival by `+0.002636` (paired
+95% interval `[+0.000160, +0.005112]`). Candidate and posting work rise by
+`+25.37` (`[+21.93, +28.77]`) and `+30.98` (`[+27.07, +35.09]`) per query;
+reranked nDCG@10 changes by `+0.000912` (`[-0.002089, +0.003904]`). This is a
+positive result for the preselected practical configuration, not a claim that
+the method is rotation-robust: the parent all-seed gate remains `2/5`.
+
+Draft evidence v2 is tied to `47043c2ff1568d3500e1507720425b97aa98b431`:
+archive SHA-256 `1b3699b85fcd98576e3cd5c8fc7cd1d312eafe1a52cb1c2da4723b1dbe314947`,
+bundle-root SHA-256
+`3daba23b67606b2033fe6284b19c26fdf48e131a3e783fff29eba0198ecbea96`.
