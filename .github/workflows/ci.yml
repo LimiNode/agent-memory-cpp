@@ -163,6 +163,7 @@ jobs:
           python tools/agent-memory-bench/evaluate-mih-banding.py self-test &&
           python tools/agent-memory-bench/run-mih-progressive-exact-hamming-top-k.py self-test
           --contract tools/agent-memory-bench/mih-progressive-exact-hamming-top-k.example.json &&
+          python tools/agent-memory-bench/write-mih-progressive-exact-hamming-top-k-evidence.py --self-test &&
           python tools/agent-memory-bench/train-mih-query-aware-hamming-target.py --self-test &&
           python tools/agent-memory-bench/run-mih-query-aware-hamming-target.py self-test
           --contract tools/agent-memory-bench/mih-query-aware-hamming-target.example.json &&
