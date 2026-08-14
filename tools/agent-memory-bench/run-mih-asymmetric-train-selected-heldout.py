@@ -85,6 +85,7 @@ def select(matrix_root: Path, training_root: Path, contract: dict[str, Any]) -> 
     require(sha256(manifest_path) == contract["schedule_aware_matrix_manifest_sha256"], "schedule-aware matrix manifest digest differs")
     require(manifest.get("family") == schedule.FAMILY and manifest.get("contract_sha256") == sha256(schedule_contract_path) and manifest.get("training_materialization_manifest_sha256") == contract["training_materialization_manifest_sha256"] and manifest.get("held_out_execution") == "forbidden_without_all_five_pareto_admissible_checkpoints_v1", "schedule-aware matrix provenance differs")
     candidates: list[dict[str, Any]] = []
+    accepted: dict[int, tuple[dict[str, Any], int, dict[str, float], dict[str, float], Path]] = {}
     for row in manifest.get("rows", []):
         seed = row.get("seed")
         require(isinstance(seed, int), "schedule-aware seed differs")
@@ -100,9 +101,16 @@ def select(matrix_root: Path, training_root: Path, contract: dict[str, Any]) -> 
         artifact = directory / "artifact.json"
         require(row.get("status") == "accepted" and selected is not None and artifact.is_file() and row.get("artifact_sha256") == sha256(artifact), f"schedule-aware accepted row differs: seed{seed}")
         epoch, current = selected
-        candidates.append({"seed": seed, "epoch": epoch, "baseline": baseline, "selected": current, "artifact_sha256": row["artifact_sha256"], "key": list(selected_key(seed, epoch, baseline, current))})
+        accepted[seed] = (row, epoch, current, baseline, artifact)
+        for entry in history[1:]:
+            candidate = schedule.trust.metrics(entry["validation"], schedule_contract["training"]["validation_query_count"])
+            if schedule.trust.admissible(candidate, baseline, schedule_contract["training"]["pareto"]):
+                candidates.append({"seed": seed, "epoch": entry["epoch"], "baseline": baseline, "selected": candidate, "key": list(selected_key(seed, entry["epoch"], baseline, candidate))})
     require(candidates, "schedule-aware matrix has no eligible checkpoint")
     winner = max(candidates, key=lambda value: tuple(value["key"]))
+    row, epoch, current, baseline, artifact = accepted[winner["seed"]]
+    require(winner["epoch"] == epoch and winner["selected"] == current and winner["baseline"] == baseline and row["artifact_sha256"] == sha256(artifact), "global checkpoint ranking is not materialized by the frozen schedule-aware artifact")
+    winner["artifact_sha256"] = row["artifact_sha256"]
     return {"schema_version": 1, "family": "mih_asymmetric_train_selected_choice_v1", "schedule_aware_matrix_manifest_sha256": sha256(manifest_path), "ranking": CONTRACT["selection"]["rank"], "eligible": candidates, "selected": winner}
 
 
