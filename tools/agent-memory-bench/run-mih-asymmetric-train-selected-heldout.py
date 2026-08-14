@@ -98,7 +98,7 @@ def select(matrix_root: Path, training_root: Path, contract: dict[str, Any]) -> 
         artifact = directory / "artifact.json"
         require(row.get("status") == "accepted" and selected is not None and artifact.is_file() and row.get("artifact_sha256") == sha256(artifact), f"schedule-aware accepted row differs: seed{seed}")
         epoch, current = selected
-        candidates.append({"seed": seed, "epoch": epoch, "baseline": baseline, "selected": current, "artifact_sha256": row["artifact_sha256"], "key": selected_key(seed, epoch, baseline, current)})
+        candidates.append({"seed": seed, "epoch": epoch, "baseline": baseline, "selected": current, "artifact_sha256": row["artifact_sha256"], "key": list(selected_key(seed, epoch, baseline, current))})
     require(candidates, "schedule-aware matrix has no eligible checkpoint")
     winner = max(candidates, key=lambda value: tuple(value["key"]))
     return {"schema_version": 1, "family": "mih_asymmetric_train_selected_choice_v1", "schedule_aware_matrix_manifest_sha256": sha256(manifest_path), "ranking": CONTRACT["selection"]["rank"], "eligible": candidates, "selected": winner}
