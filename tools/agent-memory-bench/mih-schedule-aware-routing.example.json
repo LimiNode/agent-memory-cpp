@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "family": "mih_schedule_aware_routing_gate_v2",
+  "training_materialization_manifest_sha256": "fb5af79a70a8f61e27c9615c178203599ed5dc10f287d0741d132d97f0218856",
+  "seeds": [52, 53, 54, 55, 56],
+  "training": {
+    "epochs": 6,
+    "batch_size": 192,
+    "learning_rate": 0.000005,
+    "itq_iterations": 50,
+    "hard_negative_count": 4,
+    "validation_fraction": 0.20,
+    "validation_query_count": 128,
+    "positive_radius": 56,
+    "negative_radius": 80,
+    "code_drift_weight": 8.0,
+    "routing_work_weight": 1.0,
+    "routing_temperature": 3.0,
+    "routing_radius": 3,
+    "routing_pool_size": 0,
+    "routing_estimator": "schedule-aware-stratified-union-posting-v2",
+    "routing_strata": 4,
+    "routing_pool_per_stratum": 512,
+    "pareto": {"minimum_adc_delta": 0.0, "maximum_work_multiplier": 1.02, "maximum_mean_hamming_drift": 8.0}
+  },
+  "pipeline": {"band_count": 16, "band_width_bits": 16, "global_radius": 56, "schedule": "nine_radius3_then_seven_radius2", "candidate_limit": 512, "hamming_limit": 768, "second_stage": "binary-adc", "second_limit": 256, "oracle_k": 10},
+  "decision_rule": {"held_out_selection": "forbidden", "multi_seed_gate": "all_five_seeds_must_have_a_pareto_admissible_checkpoint_before_held_out_execution_v1"},
+  "scope": {"document_projection": "frozen_full_itq_w0_v1", "query_projection": "learned_train_qrels_only_v1", "false_positive_mining": "dynamic_current_wq_ranked_downstream_danger_v1", "routing_estimator": "corrected_bipolar_hamming_schedule_aware_stratified_union_posting_v2"}
+}
