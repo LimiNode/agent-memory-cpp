@@ -46,6 +46,14 @@ proof, dataset and schedule, rather than a rejection based on the former local
 bound. Generation-array first discovery remains a correct full-union baseline;
 the global stopping proof itself does not reduce work here, even for top-10.
 
+**Terminology.** The 6,260 observations are `6,260/6,260 exact
+full-r56-union Hamming top-K matches`, not corpus-wide exact-kNN matches. The
+fallback ranks the complete candidate union produced through radius 56. An
+exact-kNN MIH algorithm could instead continue expanding the global Hamming
+radius after 56; that different policy is outside this experiment. What this
+result closes is the early global-proof branch for the present ITQ-256 corpus
+and `m=16/r56` schedule.
+
 ### Evidence replay hardening (v3)
 
 The original v2 draft evidence records the result but is historical only. The
@@ -58,8 +66,8 @@ from the NPZ contribution; it does not trust the report's summary or a runner
 boolean. Resume now performs the same fail-closed validation before accepting
 an existing row.
 
-The staged archive is
-[`mih-progressive-exact-hamming-top-k-evidence-v3.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/mih-progressive-exact-hamming-top-k-v3).
+The historical v3 archive is superseded by published
+[evidence v4](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/mih-progressive-exact-hamming-top-k-v4).
 
 The v4 verifier additionally binds the supplied contract bytes to the measured
 source snapshot and requires both materialization manifest hashes to equal the
