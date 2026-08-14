@@ -32,6 +32,8 @@ def require(condition: bool, message: str) -> None:
 
 
 def sha256(path: Path) -> str: return hashlib.sha256(path.read_bytes()).hexdigest()
+def source_files() -> dict[str, str]: return {name: sha256(THIS.with_name(name)) for name in (THIS.name, "run-mih-arbitrary-m-reference.py", "evaluate-projection-quantization.py")}
+def source_bundle(value: dict[str, str]) -> str: return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
 def paired_summary(control: numpy.ndarray, challenger: numpy.ndarray, seed: int, replicates: int) -> dict[str, Any]:
@@ -45,15 +47,20 @@ def load_values(path: Path) -> dict[str, numpy.ndarray]:
     with numpy.load(path, allow_pickle=False) as archive: return {name: archive[name].copy() for name in archive.files}
 
 
+def bootstrap_report(contract: dict[str, Any], seed: int, control_path: Path, challenger_path: Path) -> dict[str, Any]:
+    control, challenger = load_values(control_path), load_values(challenger_path)
+    require(numpy.array_equal(control["query_ids"], challenger["query_ids"]), "paired query identities differ")
+    metrics = {"candidate_count": "unique_candidates", "posting_visit_count": "posting_visits", "bucket_probe_count": "bucket_probes", "e5_oracle_raw_union_coverage": "e5_oracle_raw_union", "e5_oracle_hamming_top_k_coverage": "e5_oracle_hamming_top_k", "e5_oracle_second_stage_coverage": "e5_oracle_second_stage", "reranked_ndcg_at_10": "reranked_ndcg_at_10"}
+    sources = source_files()
+    return {"schema_version": 2, "family": "mih_arbitrary_m_reference_paired_bootstrap_v2", "seed": seed, "replicates": contract["decision_rule"]["bootstrap_replicates"], "bootstrap_seed": contract["decision_rule"]["bootstrap_seed"] + seed, "control_contribution_sha256": sha256(control_path), "challenger_contribution_sha256": sha256(challenger_path), "bootstrap_source_files_sha256": sources, "bootstrap_source_bundle_sha256": source_bundle(sources), "metrics": {name: paired_summary(control[field].astype(numpy.float64), challenger[field].astype(numpy.float64), contract["decision_rule"]["bootstrap_seed"] + seed + number * 1000, contract["decision_rule"]["bootstrap_replicates"]) for number, (field, name) in enumerate(metrics.items())}}
+
+
 def run(args: Any) -> None:
     contract = runner.load_contract(args.contract); matrix = json.loads((args.matrix_root / "matrix-manifest.json").read_text(encoding="utf-8")); require(matrix.get("family") == runner.FAMILY and matrix.get("contract_sha256") == sha256(args.contract), "arbitrary-m matrix manifest differs")
     expected_rows = runner.rows(contract); require(matrix.get("rows") == [{"id": row["id"], "treatment": row["treatment"]["id"], "seed": row["seed"], "report_sha256": sha256(args.matrix_root / "reports" / f"{row['id']}.json"), "contribution_sha256": sha256(args.matrix_root / "contributions" / f"{row['id']}.npz")} for row in expected_rows], "arbitrary-m matrix rows differ")
-    metrics = {"candidate_count": "unique_candidates", "posting_visit_count": "posting_visits", "bucket_probe_count": "bucket_probes", "e5_oracle_raw_union_coverage": "e5_oracle_raw_union", "e5_oracle_hamming_top_k_coverage": "e5_oracle_hamming_top_k", "e5_oracle_second_stage_coverage": "e5_oracle_second_stage", "reranked_ndcg_at_10": "reranked_ndcg_at_10"}
     args.output_root.mkdir(parents=True, exist_ok=True)
     for seed in contract["seeds"]:
-        control_path = args.matrix_root / "contributions" / f"m16-canonical-r56-seed{seed}.npz"; challenger_path = args.matrix_root / "contributions" / f"m19-uniform-radius2-seed{seed}.npz"; control, challenger = load_values(control_path), load_values(challenger_path)
-        require(numpy.array_equal(control["query_ids"], challenger["query_ids"]), "paired query identities differ")
-        output = {"schema_version": 1, "family": "mih_arbitrary_m_reference_paired_bootstrap_v1", "seed": seed, "replicates": contract["decision_rule"]["bootstrap_replicates"], "bootstrap_seed": contract["decision_rule"]["bootstrap_seed"] + seed, "control_contribution_sha256": sha256(control_path), "challenger_contribution_sha256": sha256(challenger_path), "metrics": {name: paired_summary(control[field].astype(numpy.float64), challenger[field].astype(numpy.float64), contract["decision_rule"]["bootstrap_seed"] + seed + number * 1000, contract["decision_rule"]["bootstrap_replicates"]) for number, (field, name) in enumerate(metrics.items())}}
+        control_path = args.matrix_root / "contributions" / f"m16-canonical-r56-seed{seed}.npz"; challenger_path = args.matrix_root / "contributions" / f"m19-uniform-radius2-seed{seed}.npz"; output = bootstrap_report(contract, seed, control_path, challenger_path)
         path = args.output_root / f"m19-minus-m16-seed{seed}.json"; path.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 

@@ -41,8 +41,18 @@ def load_runner() -> Any:
 runner = load_runner()
 
 
+def load_bootstrap() -> Any:
+    import importlib.util
+    path = THIS.with_name("bootstrap-mih-arbitrary-m-reference.py"); spec = importlib.util.spec_from_file_location("arbitrary_m_packager_bootstrap", path)
+    if spec is None or spec.loader is None: raise RuntimeError("cannot load arbitrary-m bootstrap")
+    module = importlib.util.module_from_spec(spec); sys.modules[spec.name] = module; spec.loader.exec_module(module); return module
+
+
+bootstrap_module = load_bootstrap()
+
+
 def collect(args: Any) -> dict[str, bytes]:
-    contract = runner.load_contract(args.contract); calibration = runner.shared.load_root(args.calibration_root); evaluation = runner.shared.load_root(args.evaluation_root); runner.shared.validate_calibration_evaluation_pair(calibration, evaluation); manifest_path = args.matrix_root / "matrix-manifest.json"; matrix = json.loads(manifest_path.read_text(encoding="utf-8")); expected_sources = {name: sha256_bytes(git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")) for name in ("run-mih-arbitrary-m-reference.py", "mih-arbitrary-m-reference.example.json", "evaluate-mih-banding.py", "evaluate-projection-quantization.py")}
+    contract = runner.load_contract(args.contract); calibration = runner.shared.load_root(args.calibration_root); evaluation = runner.shared.load_root(args.evaluation_root); runner.shared.validate_calibration_evaluation_pair(calibration, evaluation); manifest_path = args.matrix_root / "matrix-manifest.json"; matrix = json.loads(manifest_path.read_text(encoding="utf-8")); expected_sources = {name: sha256_bytes(git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")) for name in ("run-mih-arbitrary-m-reference.py", "mih-arbitrary-m-reference.example.json", "evaluate-mih-banding.py", "evaluate-projection-quantization.py")}; expected_bootstrap_sources = {name: sha256_bytes(git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")) for name in ("bootstrap-mih-arbitrary-m-reference.py", "run-mih-arbitrary-m-reference.py", "evaluate-projection-quantization.py")}
     require(matrix.get("schema_version") == 1 and matrix.get("family") == runner.FAMILY and matrix.get("contract_sha256") == sha256(args.contract) and matrix.get("source_files_sha256") == expected_sources and matrix.get("source_bundle_sha256") == digest(expected_sources), "arbitrary-m matrix provenance differs")
     expected_rows = runner.rows(contract); expected_manifest_rows = []
     for row in expected_rows:
@@ -53,18 +63,19 @@ def collect(args: Any) -> dict[str, bytes]:
     files: dict[str, bytes] = {"bundle/contract.json": args.contract.read_bytes(), "bundle/matrix-manifest.json": manifest_path.read_bytes()}
     for row in expected_rows:
         files[f"bundle/reports/{row['id']}.json"] = (args.matrix_root / "reports" / f"{row['id']}.json").read_bytes(); files[f"bundle/contributions/{row['id']}.npz"] = (args.matrix_root / "contributions" / f"{row['id']}.npz").read_bytes()
-        bootstrap = args.bootstrap_root / f"m19-minus-m16-seed{row['seed']}.json"
+        bootstrap_path = args.bootstrap_root / f"m19-minus-m16-seed{row['seed']}.json"
         if row["treatment"]["id"] == "m19-uniform-radius2":
-            value = json.loads(bootstrap.read_text(encoding="utf-8")); require(value.get("schema_version") == 1 and value.get("family") == "mih_arbitrary_m_reference_paired_bootstrap_v1" and value.get("seed") == row["seed"] and value.get("replicates") == 10000 and value.get("control_contribution_sha256") == sha256(args.matrix_root / "contributions" / f"m16-canonical-r56-seed{row['seed']}.npz") and value.get("challenger_contribution_sha256") == sha256(args.matrix_root / "contributions" / f"m19-uniform-radius2-seed{row['seed']}.npz"), f"bootstrap provenance differs: seed{row['seed']}")
-            files[f"bundle/bootstrap/{bootstrap.name}"] = bootstrap.read_bytes()
-    for name in expected_sources:
+            value = json.loads(bootstrap_path.read_text(encoding="utf-8")); control = args.matrix_root / "contributions" / f"m16-canonical-r56-seed{row['seed']}.npz"; challenger = args.matrix_root / "contributions" / f"m19-uniform-radius2-seed{row['seed']}.npz"; expected_bootstrap = bootstrap_module.bootstrap_report(contract, row["seed"], control, challenger)
+            require(expected_bootstrap.get("bootstrap_source_files_sha256") == expected_bootstrap_sources and expected_bootstrap.get("bootstrap_source_bundle_sha256") == bootstrap_module.source_bundle(expected_bootstrap_sources) and value == expected_bootstrap, f"bootstrap replay differs: seed{row['seed']}")
+            files[f"bundle/bootstrap/{bootstrap_path.name}"] = bootstrap_path.read_bytes()
+    for name in sorted(set(expected_sources) | set(expected_bootstrap_sources)):
         files[f"bundle/sources/{name}"] = git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")
     files[f"bundle/sources/{THIS.name}"] = THIS.read_bytes(); files["bundle/experiment-note.md"] = args.note.read_bytes()
     return files
 
 
 def package(args: Any) -> None:
-    files = collect(args); members = {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}; root = digest({name: item["sha256"] for name, item in members.items()}); manifest = {"schema_version": 2, "family": "mih_arbitrary_m_reference_evidence_v2", "measured_source_ref": args.measured_source_ref, "bundle_root_sha256": root, "members": members}; files["bundle/evidence-manifest.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+    files = collect(args); members = {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}; root = digest({name: item["sha256"] for name, item in members.items()}); manifest = {"schema_version": 3, "family": "mih_arbitrary_m_reference_evidence_v3", "measured_source_ref": args.measured_source_ref, "bundle_root_sha256": root, "members": members}; files["bundle/evidence-manifest.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(args.output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name, value in sorted(files.items()):
@@ -82,6 +93,7 @@ def self_test() -> int:
             path = Path(directory) / "archive.zip"; contents = {"bundle/a": b"a"}
             with zipfile.ZipFile(path, "w") as archive: archive.writestr("bundle/a", contents["bundle/a"])
             with zipfile.ZipFile(path) as archive: require(archive.read("bundle/a") == b"a", "archive reopen differs")
+        sources = bootstrap_module.source_files(); require(bootstrap_module.source_bundle(sources) == digest(sources), "bootstrap source bundle differs")
     except (OSError, ValueError):
         print("MIH arbitrary-m evidence packager self-test failed", file=sys.stderr); return 1
     print("MIH arbitrary-m evidence packager self-test passed"); return 0
