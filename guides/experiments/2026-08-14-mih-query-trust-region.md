@@ -45,11 +45,15 @@ The executable runner already prohibited mixed statuses before the result was
 known; the later explicit all-five wording in the JSON manifest preserves that
 existing behavior and is not claimed to have been the literal pre-result field.
 
-Draft evidence v2 is tied to provenance-verifier commit
-`7b1b4898739cac8278efab1cd5e87d00dc961275`: archive SHA-256
-`b404afba21e5c3aaec7931fb38a23e3f0a0779bbaf5fd6f3f2e45bdcc9b0bf92`,
+The v1/v2 staging bundles are historical. The fresh train-only replay required
+after rejected gate rows began recording their complete normalized execution
+contract produced the same 2/5 result, without opening held-out data.
+
+Draft evidence v3 is tied to commit
+`e6a1f0aefba7a2cfadf411efda00bc019164297b`: archive SHA-256
+`2cb11af3fc168d469205c84f20b5fd33f2e68bbd488c602eff39215e38d8ea40`,
 bundle-root SHA-256
-`d189be0242faec5dea80f2705d5630b994ae16c0f5874fdbc2c63f97b48ee8b3`.
-It replays every gate inequality and lexicographic checkpoint choice from all
-five histories, contains the failure decomposition, and contains no held-out
-quality report because the contract forbids that run.
+`31451885ae5bc0b74502ec66d7555fa53aa559d67a72fdb9e19b483ba0a517fe`.
+It validates matrix source hashes through `git show`, replays every gate
+inequality and lexicographic checkpoint choice from all five histories, and
+contains the independent failure decomposition with no held-out quality report.
