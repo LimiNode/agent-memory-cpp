@@ -54,17 +54,18 @@ def schedule(contract: dict[str, Any]) -> list[int]: return mih.global_radius_sc
 
 def progressive_top_k_curve(index: list[dict[int, numpy.ndarray]], codes: numpy.ndarray, query: numpy.ndarray, ranges: list[tuple[int, int]], radii: list[int], document_ids: numpy.ndarray, limits: list[int], generation: numpy.ndarray, generation_id: int) -> tuple[numpy.ndarray, dict[int, dict[str, Any]], dict[str, int]]:
     """Measure a global pigeonhole proof for every predeclared top-K value."""
-    probes: list[tuple[int, int, numpy.ndarray]] = []
+    probes: list[tuple[int, int, numpy.ndarray, int]] = []
     for band, ((start, stop), radius) in enumerate(zip(ranges, radii)):
         key = mih.band_key(query, start, stop)
         for depth in range(radius + 1):
             keys = [probe for probe in mih.probe_keys(key, stop - start, depth)]
             if depth: keys = keys[len(mih.probe_keys(key, stop - start, depth - 1)):]
             postings = [index[band].get(probe, numpy.empty(0, dtype=numpy.int32)) for probe in keys]
-            probes.append((depth, band, numpy.concatenate(postings) if postings else numpy.empty(0, dtype=numpy.int32)))
+            probes.append((depth, band, numpy.concatenate(postings) if postings else numpy.empty(0, dtype=numpy.int32), len(keys)))
     probes.sort(key=lambda item: (item[0], item[1]))
-    discovered: list[int] = []; distances: list[int] = []; visits = 0; completed = [-1] * len(ranges); records: dict[int, dict[str, Any]] = {}; maximum = max(limits)
-    for number, (depth, band, posting) in enumerate(probes, 1):
+    discovered: list[int] = []; distances: list[int] = []; visits = 0; bucket_probes = 0; completed = [-1] * len(ranges); records: dict[int, dict[str, Any]] = {}; maximum = max(limits)
+    for number, (depth, band, posting, group_probe_count) in enumerate(probes, 1):
+        bucket_probes += group_probe_count
         visits += int(posting.size)
         for candidate in posting:
             candidate = int(candidate)
@@ -78,12 +79,12 @@ def progressive_top_k_curve(index: list[dict[int, numpy.ndarray]], codes: numpy.
             if limit in records or candidate_ids.size < limit: continue
             selected = candidate_ids[order[:limit]]; worst = int(candidate_distances[order[limit - 1]])
             if worst < lower_bound:
-                records[limit] = {"ids": selected, "probe_count": number, "posting_visits": visits, "unique_candidates": candidate_ids.size, "hamming_computations": candidate_ids.size, "global_lower_bound": lower_bound, "early_proof": number < len(probes)}
+                records[limit] = {"ids": selected, "probe_count": bucket_probes, "posting_visits": visits, "unique_candidates": candidate_ids.size, "hamming_computations": candidate_ids.size, "global_lower_bound": lower_bound, "early_proof": number < len(probes)}
     candidate_ids = numpy.asarray(discovered, dtype=numpy.int32); candidate_distances = numpy.asarray(distances, dtype=numpy.int32); order = numpy.lexsort((document_ids[candidate_ids], candidate_distances))[:maximum]
     for limit in limits:
         if limit not in records:
-            records[limit] = {"ids": candidate_ids[order[:limit]], "probe_count": len(probes), "posting_visits": visits, "unique_candidates": candidate_ids.size, "hamming_computations": candidate_ids.size, "global_lower_bound": sum(value + 1 for value in completed), "early_proof": False}
-    return candidate_ids[order], records, {"total_probes": len(probes), "total_posting_visits": visits, "unique_candidates": candidate_ids.size, "hamming_computations": candidate_ids.size}
+            records[limit] = {"ids": candidate_ids[order[:limit]], "probe_count": bucket_probes, "posting_visits": visits, "unique_candidates": candidate_ids.size, "hamming_computations": candidate_ids.size, "global_lower_bound": sum(value + 1 for value in completed), "early_proof": False}
+    return candidate_ids[order], records, {"total_probes": bucket_probes, "total_posting_visits": visits, "unique_candidates": candidate_ids.size, "hamming_computations": candidate_ids.size}
 
 
 def run(args: Any) -> None:
