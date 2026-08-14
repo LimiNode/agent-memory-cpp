@@ -1,54 +1,50 @@
 # Arbitrary-m fixed-radius MIH reference
 
-## 2026-08-14 — m=19 radius-two partition versus current m=16 schedule
+## Historical v1 — unmatched wide-control diagnostic
 
-**Context.** Research branch `agent/mih-arbitrary-m-reference` (PR #142, source
-commit `57dce6a4593e134436e049243020862198528f40`). This is a held-out,
-five-seed comparison; neither partition nor radius was selected from the
-held-out outputs.
+The original v1 compared m=19 radius-two bands with an `8 x r4 + 8 x r3`
+m=16 control. That 25,712-probe control is deliberately wider than canonical
+minimum r56 coverage. The raw archive remains historical evidence, but its
+former negative m=19 interpretation is withdrawn and must not be used as a
+matched-r56 frontier conclusion.
 
-**Question.** Can a 19-band partition reduce radius-56 candidate work while
-retaining enough E5-oracle candidates to improve the current exact-radius
-pipeline?
+## 2026-08-14 — matched canonical-r56 replay (v2)
 
-**Protocol.** Both arms use deterministic 256-bit ITQ-50 encoders for seeds
-52--56, the fixed 25k training materialization and the untouched 22,607
-document / 1,252 query evaluation materialization. Both retain the same
-post-union stages: Hamming top-768, binary ADC top-256 and exact E5 rerank.
+**Question.** How does the predeclared `m=19`, `9 x 14 + 10 x 13`, all-r2
+partition compare with the actual canonical m=16 r56 schedule?
 
-| Arm | Partition and local radii | Bucket probes/query | Exact radius-56 guarantee |
-|---|---|---:|---|
-| Control | 16 x 16; eight radius-4 then eight radius-3 bands | 25,712 | Yes: the local-radius sum is 56. |
-| Challenger | 9 x 14 plus 10 x 13; all 19 bands radius 2 | 1,874 | Yes: if every band differed by at least 3 bits, full Hamming distance would be at least 19 x 3 = 57. |
+**Protocol.** Both arms use fixed ITQ-256/50 seeds 52--56, the 25k training
+materialization, untouched 22,607 documents / 1,252 queries, Hamming top-768,
+binary ADC top-256 and exact E5 rerank. There is no held-out selection.
 
-**Result.** m=19 greatly lowers reference index work but loses a material,
-consistent portion of the E5 oracle before Hamming. Values are means across
-the five fixed seeds; candidate and posting counts are per query.
+Both schedules have the same pigeonhole guarantee: after probing the declared
+local radii, an undiscovered document has full Hamming distance at least 57.
 
-| Arm | Candidates | Posting visits | Raw-union oracle survival | ADC@256 oracle survival | nDCG@10 |
-|---|---:|---:|---:|---:|---:|
-| m=16 control | 8,599.8 | 11,126.7 | 0.9891 | 0.9847 | 0.8004 |
-| m=19 radius-two | 4,349.4 | 4,943.8 | 0.9262 | 0.9249 | 0.7889 |
+| Arm | Local schedule | Probes/query | Candidates/query | Posting visits/query |
+|---|---|---:|---:|---:|
+| m=16 canonical | 9 x 16-bit r3, 7 x 16-bit r2 | 7,232 | 3,061.0 | 3,356.3 |
+| m=19 | 9 x 14-bit r2, 10 x 13-bit r2 | 1,874 | 4,349.4 | 4,943.8 |
 
-For every seed, paired bootstrap CIs exclude zero in the adverse direction for
-raw-union and ADC@256 oracle survival. The challenger reduces candidates by
-4,120--4,305/query and posting visits by 5,999--6,263/query, but loses
-0.0621--0.0640 raw-union survival and 0.0590--0.0603 ADC survival.
+| Arm | Raw-union oracle survival | ADC@256 survival | nDCG@10 |
+|---|---:|---:|---:|
+| m=16 canonical | 0.8923 | 0.8917 | 0.7819 |
+| m=19 | 0.9262 | 0.9249 | 0.7889 |
 
-**Interpretation.** The pigeonhole guarantee proves only coverage of documents
-within full Hamming radius 56. It does not make the probe schedule quality
-equivalent: the narrower m=19 bands with radius-two probing return a much
-smaller union and exclude many E5-oracle documents whose full codes are not
-within that guaranteed radius. This is a useful negative frontier point, not a
-reason to replace the current m=16 schedule.
+**Result.** m=19 makes 74% fewer bucket probes, but has 42% more unique
+candidates and 47% more posting visits. It gains 0.0293--0.0369 raw-union
+survival and 0.0288--0.0362 ADC survival per seed; every paired 95% bootstrap
+interval excludes zero in that direction.
 
-**Limitations.** This is a Python reference evaluator and reports reference
-candidate generation work, not a native latency claim. It tests one
-mathematically motivated m=19 partition; it is not an optimizer over all
-partitions or radius schedules.
+**Interpretation.** This is a three-dimensional frontier, not a no-go. m=19
+trades fewer random index lookups for more sequential posting/rerank work and
+better E5-oracle preservation. A native storage benchmark is needed before any
+latency decision; neither probe count nor candidate count alone is a latency
+proxy.
 
-**Next checks.** Keep arbitrary-m reference partitions separate from algorithmic
-execution changes. The next PR tests progressive exact Hamming top-K with
-first-discovery dedup and a conformance proof against full Hamming rankings;
-only after that should wider/sparser extraction indexes or corpus-scale sweeps
-be compared.
+**Limitations.** The evaluator is a Python reference harness and tests one
+predeclared m=19 partition. It does not optimize m, layouts, or a native MDBX
+lookup implementation.
+
+**Next checks.** Predeclare a minimal-schedule `m=15..21` sweep and report
+probes, postings, candidates and quality together. Keep that separate from the
+global-bound progressive execution study.
