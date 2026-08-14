@@ -51,7 +51,7 @@ def run(args: Any) -> None:
     evaluation = shared.load_root(args.evaluation_root)
     require(contract.get("held_out_evaluation_manifest_sha256") == evaluation["manifest_sha256"], "evaluation root differs from contract")
     rows: list[dict[str, Any]] = []
-    vectors = numpy.clip(numpy.asarray(evaluation["query_vectors"], dtype=numpy.float32), -1.0, 1.0)
+    vectors = numpy.clip(numpy.asarray(evaluation["queries"], dtype=numpy.float32), -1.0, 1.0)
     for seed in contract["seeds"]:
         artifact = args.matrix_root / "artifacts" / f"asymmetric-seed{seed}"
         baseline = args.shared_root / "reports" / f"itq-control--16x16-r56-seed{seed}.json"
