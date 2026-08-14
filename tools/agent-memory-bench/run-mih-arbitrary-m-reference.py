@@ -62,7 +62,7 @@ def load_contract(path: Path) -> dict[str, Any]:
     treatments = value.get("treatments")
     require(isinstance(treatments, list) and len(treatments) == 2, "arbitrary-m treatments differ")
     expected = {
-        "m16-current-radius-sum": ([16] * 16, [4] * 8 + [3] * 8, "sum_local_radii_equals_global_radius_v1"),
+        "m16-canonical-r56": ([16] * 16, [3] * 9 + [2] * 7, "pigeonhole_all_bands_exceed_schedule_implies_distance_at_least_57_v1"),
         "m19-uniform-radius2": ([14] * 9 + [13] * 10, [2] * 19, "pigeonhole_all_bands_exceed_radius_implies_distance_at_least_57_v1"),
     }
     for treatment in treatments:
@@ -145,7 +145,10 @@ def run(args: Any) -> None:
 def self_test(contract_path: Path) -> int:
     try:
         contract = load_contract(contract_path); require(len(rows(contract)) == 10, "arbitrary-m matrix count differs")
-        m19 = contract["treatments"][1]; require(sum(radius + 1 for radius in m19["local_radii"]) == 57, "m19 pigeonhole lower bound differs")
+        m16, m19 = contract["treatments"]
+        require(sum(radius + 1 for radius in m16["local_radii"]) == 57, "m16 canonical pigeonhole lower bound differs")
+        require(sum(sum(__import__("math").comb(width, depth) for depth in range(radius + 1)) for width, radius in zip(m16["widths"], m16["local_radii"])) == 7232, "m16 canonical probe count differs")
+        require(sum(radius + 1 for radius in m19["local_radii"]) == 57, "m19 pigeonhole lower bound differs")
         require(sum(sum(__import__("math").comb(width, depth) for depth in range(radius + 1)) for width, radius in zip(m19["widths"], m19["local_radii"])) == 1874, "m19 probe count differs")
         changed = json.loads(json.dumps(contract)); changed["treatments"][1]["local_radii"][0] = 1
         with tempfile.TemporaryDirectory() as directory:

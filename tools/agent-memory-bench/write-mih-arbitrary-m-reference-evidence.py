@@ -55,7 +55,7 @@ def collect(args: Any) -> dict[str, bytes]:
         files[f"bundle/reports/{row['id']}.json"] = (args.matrix_root / "reports" / f"{row['id']}.json").read_bytes(); files[f"bundle/contributions/{row['id']}.npz"] = (args.matrix_root / "contributions" / f"{row['id']}.npz").read_bytes()
         bootstrap = args.bootstrap_root / f"m19-minus-m16-seed{row['seed']}.json"
         if row["treatment"]["id"] == "m19-uniform-radius2":
-            value = json.loads(bootstrap.read_text(encoding="utf-8")); require(value.get("schema_version") == 1 and value.get("family") == "mih_arbitrary_m_reference_paired_bootstrap_v1" and value.get("seed") == row["seed"] and value.get("replicates") == 10000 and value.get("control_contribution_sha256") == sha256(args.matrix_root / "contributions" / f"m16-current-radius-sum-seed{row['seed']}.npz") and value.get("challenger_contribution_sha256") == sha256(args.matrix_root / "contributions" / f"m19-uniform-radius2-seed{row['seed']}.npz"), f"bootstrap provenance differs: seed{row['seed']}")
+            value = json.loads(bootstrap.read_text(encoding="utf-8")); require(value.get("schema_version") == 1 and value.get("family") == "mih_arbitrary_m_reference_paired_bootstrap_v1" and value.get("seed") == row["seed"] and value.get("replicates") == 10000 and value.get("control_contribution_sha256") == sha256(args.matrix_root / "contributions" / f"m16-canonical-r56-seed{row['seed']}.npz") and value.get("challenger_contribution_sha256") == sha256(args.matrix_root / "contributions" / f"m19-uniform-radius2-seed{row['seed']}.npz"), f"bootstrap provenance differs: seed{row['seed']}")
             files[f"bundle/bootstrap/{bootstrap.name}"] = bootstrap.read_bytes()
     for name in expected_sources:
         files[f"bundle/sources/{name}"] = git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")
@@ -64,7 +64,7 @@ def collect(args: Any) -> dict[str, bytes]:
 
 
 def package(args: Any) -> None:
-    files = collect(args); members = {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}; root = digest({name: item["sha256"] for name, item in members.items()}); manifest = {"schema_version": 1, "family": "mih_arbitrary_m_reference_evidence_v1", "measured_source_ref": args.measured_source_ref, "bundle_root_sha256": root, "members": members}; files["bundle/evidence-manifest.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
+    files = collect(args); members = {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}; root = digest({name: item["sha256"] for name, item in members.items()}); manifest = {"schema_version": 2, "family": "mih_arbitrary_m_reference_evidence_v2", "measured_source_ref": args.measured_source_ref, "bundle_root_sha256": root, "members": members}; files["bundle/evidence-manifest.json"] = (json.dumps(manifest, indent=2, sort_keys=True) + "\n").encode()
     args.output.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(args.output, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=9) as archive:
         for name, value in sorted(files.items()):
