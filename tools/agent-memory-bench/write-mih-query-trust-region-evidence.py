@@ -48,17 +48,23 @@ def snapshot_sources(commit: str, directory: Path) -> list[tuple[Path, str]]:
 def make_bundle(args: Any) -> dict[str, str]:
     contract = runner.load_contract(args.contract)
     manifest_path = args.matrix_root / "matrix-manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract) and manifest.get("outcome") == "gate_rejected" and manifest.get("source_files_sha256") == runner.source_files() and manifest.get("source_bundle_sha256") == runner.source_bundle(runner.source_files()), "gate matrix provenance differs")
-    rows = manifest.get("rows", []); require(isinstance(rows, list) and len(rows) == 5 and all(row.get("status") == "gate_rejected" for row in rows), "gate matrix outcome differs")
+    require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract) and manifest.get("outcome") in ("gate_rejected", "mixed_gate_rejected") and manifest.get("held_out_execution") == "forbidden_without_all_five_pareto_admissible_checkpoints_v1" and manifest.get("source_files_sha256") == runner.source_files() and manifest.get("source_bundle_sha256") == runner.source_bundle(runner.source_files()), "gate matrix provenance differs")
+    rows = manifest.get("rows", []); require(isinstance(rows, list) and len(rows) == 5 and {row.get("status") for row in rows}.issubset({"gate_rejected", "accepted"}), "gate matrix outcome differs")
     files: list[tuple[Path, str]] = [(args.contract, "bundle/contract.json"), (manifest_path, "bundle/matrix-manifest.json")]
     for seed in contract["seeds"]:
-        directory = runner.output_dir(args.matrix_root, seed); history = directory / "training-history.json"; rejection = directory / "gate-rejection.json"
+        directory = runner.output_dir(args.matrix_root, seed); history = directory / "training-history.json"; rejection = directory / "gate-rejection.json"; artifact = directory / "artifact.json"
         row = next(value for value in rows if value["seed"] == seed)
-        require(row.get("history_sha256") == sha256(history) and row.get("gate_rejection_sha256") == sha256(rejection), f"gate row digest differs: seed{seed}")
-        files += [(history, f"bundle/artifacts/seed{seed}/training-history.json"), (rejection, f"bundle/artifacts/seed{seed}/gate-rejection.json")]
+        require(row.get("history_sha256") == sha256(history), f"gate history digest differs: seed{seed}")
+        files.append((history, f"bundle/artifacts/seed{seed}/training-history.json"))
+        if row.get("status") == "gate_rejected":
+            require(row.get("gate_rejection_sha256") == sha256(rejection), f"gate rejection digest differs: seed{seed}")
+            files.append((rejection, f"bundle/artifacts/seed{seed}/gate-rejection.json"))
+        else:
+            require(row.get("artifact_sha256") == sha256(artifact), f"accepted artifact digest differs: seed{seed}")
+            files.append((artifact, f"bundle/artifacts/seed{seed}/artifact.json"))
     with tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary); files.extend(snapshot_sources(args.source_commit, directory))
-        compact = directory / "compact-manifest.json"; compact.write_text(json.dumps({"schema_version": 1, "family": "mih_query_trust_region_gate_evidence_v1", "source_commit": args.source_commit, "contract_sha256": sha256(args.contract), "matrix_manifest_sha256": sha256(manifest_path), "outcome": "train_validation_gate_rejected_no_held_out_execution_v1", "source_snapshot_policy": "git_show_exact_measured_commit_v1"}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        compact = directory / "compact-manifest.json"; compact.write_text(json.dumps({"schema_version": 1, "family": "mih_query_trust_region_gate_evidence_v1", "source_commit": args.source_commit, "contract_sha256": sha256(args.contract), "matrix_manifest_sha256": sha256(manifest_path), "outcome": manifest["outcome"], "held_out_execution": "forbidden_without_all_five_pareto_admissible_checkpoints_v1", "source_snapshot_policy": "git_show_exact_measured_commit_v1"}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         files.append((compact, "bundle/compact-manifest.json")); archive_manifest = archive.archive_manifest(files); archive_manifest["family"] = "mih_query_trust_region_gate_evidence_v1"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, archive_manifest)
     return {"sha256": sha256(args.output), "bundle_root_sha256": archive_manifest["bundle_root_sha256"]}
 

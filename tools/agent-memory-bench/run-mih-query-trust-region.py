@@ -90,8 +90,9 @@ def run(args: Any) -> None:
         require(row_status(args.output_root, contract, args.training_materialization_root, seed) is not None, f"invalid trust-region row: seed{seed}")
     rows = [row_status(args.output_root, contract, args.training_materialization_root, seed) for seed in contract["seeds"]]
     require(all(row is not None for row in rows), "trust-region matrix is incomplete")
-    statuses = {row["status"] for row in rows if row is not None}; require(len(statuses) == 1, "mixed gate outcomes are intentionally not eligible for held-out execution")
-    manifest = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "training_materialization_manifest_sha256": training["manifest_sha256"], "source_files_sha256": source_files(), "source_bundle_sha256": source_bundle(source_files()), "outcome": next(iter(statuses)), "rows": rows}
+    statuses = {row["status"] for row in rows if row is not None}
+    outcome = next(iter(statuses)) if len(statuses) == 1 else "mixed_gate_rejected"
+    manifest = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "training_materialization_manifest_sha256": training["manifest_sha256"], "source_files_sha256": source_files(), "source_bundle_sha256": source_bundle(source_files()), "outcome": outcome, "held_out_execution": "forbidden_without_all_five_pareto_admissible_checkpoints_v1", "rows": rows}
     (args.output_root / "matrix-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
