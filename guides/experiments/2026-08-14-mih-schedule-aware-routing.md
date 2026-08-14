@@ -35,10 +35,12 @@ under-scaled. The fresh v3 replay records the complete normalized execution
 contract for both accepted and rejected rows and confirms the `2/5` result
 under the population-scaled estimator, without opening held-out data.
 
-Draft evidence v3 is tied to `37d56d1fdd5e7cd1dd94e975590420f02dc8882e`:
-archive SHA-256 `4ba6ac7634663ee842b60ffaa36ec252dac3b13fb383bf79878d98091be6a3dd`,
+Draft evidence v4 is tied to `3237a5c744c4e8d7e81c63a441c47530dd9dfa4e`;
+the measured matrix execution remains bound to
+`37d56d1fdd5e7cd1dd94e975590420f02dc8882e`. Archive SHA-256
+`4b522b674619f4aabaae42e0003be2b08be0c83f73f0caadebbb606aecd494df`,
 bundle-root SHA-256
-`9cea1fe2501c357b9be22f023fc23e2686ccf8dcf0152cbab397eb47deb7e26e`.
+`c647ab909b38a14fd5792282c82cb130b0ca08f18f798c3a5fedf7b9e1717fe2`.
 Its packager derives the matrix source hashes from that exact commit through
 `git show`, snapshots the evidence source, and is covered by CTest and CI
 self-tests.
