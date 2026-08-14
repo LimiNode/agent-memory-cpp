@@ -65,16 +65,27 @@ def validate_bootstrap(root: Path, shared_root: Path, seed: int, baseline: str) 
     require(actual == expected, f"bootstrap replay differs: {baseline} seed{seed}")
 
 
+def matrix_source_files_at_commit(source_commit: str) -> dict[str, str]:
+    names = tuple(runner.source_files())
+    values: dict[str, str] = {}
+    for name in names:
+        result = subprocess.run(("git", "show", f"{source_commit}:tools/agent-memory-bench/{name}"), cwd=ROOT, capture_output=True)
+        require(result.returncode == 0 and result.stdout, f"measured source commit does not contain {name}")
+        values[name] = hashlib.sha256(result.stdout).hexdigest()
+    return values
+
+
 def validate(args: Any) -> dict[str, Any]:
     contract = runner.load_contract(args.contract)
     training = shared.load_root(args.training_materialization_root)
     calibration = shared.load_root(args.calibration_root)
     evaluation = shared.load_root(args.evaluation_root)
     shared.validate_calibration_evaluation_pair(calibration, evaluation)
+    shared_manifest = runner.validate_shared_baseline(args.shared_root, args.shared_contract, calibration)
     manifest = json.loads((args.matrix_root / "matrix-manifest.json").read_text(encoding="utf-8"))
     require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract), "matrix contract provenance differs")
     require(manifest.get("training_materialization_manifest_sha256") == training["manifest_sha256"] and manifest.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and manifest.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"], "matrix materialization provenance differs")
-    files = runner.source_files()
+    files = matrix_source_files_at_commit(args.matrix_source_commit)
     require(manifest.get("source_files_sha256") == files and manifest.get("source_bundle_sha256") == runner.source_bundle(files), "matrix runner source identity differs")
     entries = {entry.get("id"): entry for entry in manifest.get("rows", [])}
     require(len(entries) == 5, "matrix row IDs differ")
@@ -84,14 +95,14 @@ def validate(args: Any) -> dict[str, Any]:
         contribution = args.matrix_root / "contributions" / f"{identifier}.npz"
         artifact = runner.artifact_path(args.matrix_root, row["seed"])
         entry = entries.get(identifier, {})
-        require(runner.complete(args.matrix_root, row, contract, args.training_materialization_root, calibration, evaluation, args.shared_root), f"matrix row is incomplete: {identifier}")
+        require(runner.complete(args.matrix_root, row, contract, args.training_materialization_root, calibration, evaluation, args.shared_root, args.shared_contract), f"matrix row is incomplete: {identifier}")
         require(entry.get("report_sha256") == sha256(report) and entry.get("contribution_sha256") == sha256(contribution) and entry.get("artifact_sha256") == sha256(artifact), f"matrix row digest differs: {identifier}")
         for baseline in ("itq-control", "query-aware-hamming-target"):
             validate_bootstrap(args.matrix_root, args.shared_root, row["seed"], baseline)
     diagnostic = args.matrix_root / "asymmetric-diagnostic.json"
     value = json.loads(diagnostic.read_text(encoding="utf-8"))
     require(value.get("family") == "mih_asymmetric_query_projection_post_hoc_diagnostic_v1" and value.get("contract_sha256") == sha256(args.contract) and len(value.get("rows", [])) == 5, "asymmetric diagnostic differs")
-    return contract
+    return {"contract": contract, "shared_manifest": shared_manifest}
 
 
 def verify_source_commit(source_commit: str) -> None:
@@ -112,8 +123,8 @@ def snapshot_sources(source_commit: str, directory: Path) -> list[tuple[Path, st
 
 
 def make_bundle(args: Any) -> dict[str, str]:
-    validate(args)
-    files: list[tuple[Path, str]] = [(args.contract, "bundle/contract.json"), (args.matrix_root / "matrix-manifest.json", "bundle/matrix-manifest.json"), (args.matrix_root / "asymmetric-diagnostic.json", "bundle/asymmetric-diagnostic.json")]
+    provenance = validate(args)
+    files: list[tuple[Path, str]] = [(args.contract, "bundle/contract.json"), (args.matrix_root / "matrix-manifest.json", "bundle/matrix-manifest.json"), (args.matrix_root / "asymmetric-diagnostic.json", "bundle/asymmetric-diagnostic.json"), (args.shared_contract, "bundle/shared-baseline-contract.json"), (args.shared_root / "matrix-manifest.json", "bundle/shared-baseline-matrix-manifest.json")]
     for seed in SEEDS:
         identifier = f"asymmetric--16x16-r56-seed{seed}"
         files += [(args.matrix_root / "reports" / f"{identifier}.json", f"bundle/reports/{identifier}.json"), (args.matrix_root / "contributions" / f"{identifier}.npz", f"bundle/contributions/{identifier}.npz")]
@@ -127,8 +138,8 @@ def make_bundle(args: Any) -> dict[str, str]:
     with tempfile.TemporaryDirectory() as directory:
         temporary = Path(directory); files.extend(snapshot_sources(args.source_commit, temporary))
         compact = temporary / "compact-manifest.json"
-        compact.write_text(json.dumps({"schema_version": 2, "family": "mih_asymmetric_query_projection_evidence_v2", "contract_sha256": sha256(args.contract), "matrix_manifest_sha256": sha256(args.matrix_root / "matrix-manifest.json"), "source_commit": args.source_commit, "source_snapshot_policy": "git_show_exact_measured_commit_v1", "static_v1_scope": "initial_w0_union_first_materialized_false_positives_final_epoch_no_validation_selection"}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-        files.append((compact, "bundle/compact-manifest.json")); manifest = archive.archive_manifest(files); manifest["family"] = "mih_asymmetric_query_projection_evidence_v2"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, manifest)
+        compact.write_text(json.dumps({"schema_version": 3, "family": "mih_asymmetric_query_projection_evidence_v3", "contract_sha256": sha256(args.contract), "matrix_manifest_sha256": sha256(args.matrix_root / "matrix-manifest.json"), "matrix_execution_source_commit": args.matrix_source_commit, "shared_baseline_contract_sha256": sha256(args.shared_contract), "shared_baseline_matrix_manifest_sha256": sha256(args.shared_root / "matrix-manifest.json"), "shared_baseline_calibration_manifest_sha256": provenance["shared_manifest"]["calibration_materialization_manifest_sha256"], "source_commit": args.source_commit, "source_snapshot_policy": "git_show_exact_evidence_commit_v1", "static_v1_scope": "initial_w0_union_first_materialized_false_positives_final_epoch_no_validation_selection"}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        files.append((compact, "bundle/compact-manifest.json")); manifest = archive.archive_manifest(files); manifest["family"] = "mih_asymmetric_query_projection_evidence_v3"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, manifest)
     return {"sha256": sha256(args.output), "bundle_root_sha256": manifest["bundle_root_sha256"]}
 
 
@@ -151,14 +162,15 @@ def self_test() -> int:
 
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true")
-    for name in ("contract", "matrix-root", "training-materialization-root", "calibration-root", "evaluation-root", "shared-root", "output"):
+    for name in ("contract", "matrix-root", "training-materialization-root", "calibration-root", "evaluation-root", "shared-root", "shared-contract", "output"):
         parser.add_argument(f"--{name}", type=Path)
     parser.add_argument("--source-commit")
+    parser.add_argument("--matrix-source-commit")
     args = parser.parse_args(argv)
     try:
         if args.self_test:
             return self_test()
-        require(all((args.contract, args.matrix_root, args.training_materialization_root, args.calibration_root, args.evaluation_root, args.shared_root, args.output, args.source_commit)), "evidence paths and source commit are required")
+        require(all((args.contract, args.matrix_root, args.training_materialization_root, args.calibration_root, args.evaluation_root, args.shared_root, args.shared_contract, args.output, args.source_commit, args.matrix_source_commit)), "evidence paths and source commits are required")
         print(json.dumps(make_bundle(args), sort_keys=True))
     except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError, shared.EvaluationError) as error:
         print(f"write-mih-asymmetric-query-projection-evidence: {error}", file=sys.stderr)
