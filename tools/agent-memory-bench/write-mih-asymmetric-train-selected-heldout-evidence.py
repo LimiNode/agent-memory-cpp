@@ -38,6 +38,10 @@ def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
 def snapshot(commit: str, directory: Path) -> list[tuple[Path, str]]:
     require(len(commit) == 40 and all(value in "0123456789abcdef" for value in commit), "source commit must be a full lowercase SHA-1")
     files: list[tuple[Path, str]] = []
@@ -56,14 +60,17 @@ def validate(args: Any) -> dict[str, Any]:
     selection_path = args.matrix_root / "selection.json"; selection = json.loads(selection_path.read_text(encoding="utf-8")); expected_selection = runner.select(args.schedule_matrix_root, args.training_materialization_root, contract)
     require(selection == expected_selection, "train-only selection replay differs")
     manifest_path = args.matrix_root / "matrix-manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract) and manifest.get("selection_sha256") == sha256(selection_path) and manifest.get("selected") == selection["selected"] and manifest.get("schedule_aware_matrix_manifest_sha256") == contract["schedule_aware_matrix_manifest_sha256"] and manifest.get("training_materialization_manifest_sha256") == training["manifest_sha256"] and manifest.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and manifest.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and manifest.get("source_files_sha256") == runner.source_files() and manifest.get("source_bundle_sha256") == runner.source_bundle(runner.source_files()), "held-out matrix provenance differs")
+    measured_sources = {name: sha256_bytes(subprocess.run(("git", "show", f"{args.source_commit}:tools/agent-memory-bench/{name}"), cwd=ROOT, check=True, capture_output=True).stdout) for name in runner.source_files()}
+    require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract) and manifest.get("selection_sha256") == sha256(selection_path) and manifest.get("selected") == selection["selected"] and manifest.get("schedule_aware_matrix_manifest_sha256") == contract["schedule_aware_matrix_manifest_sha256"] and manifest.get("training_materialization_manifest_sha256") == training["manifest_sha256"] and manifest.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and manifest.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and manifest.get("source_files_sha256") == measured_sources and manifest.get("source_bundle_sha256") == runner.source_bundle(measured_sources), "held-out matrix provenance differs")
     seed = selection["selected"]["seed"]; rows = {row.get("label"): row for row in manifest.get("rows", [])}; require(set(rows) == {"matched-w0", "selected-wq"}, "held-out rows differ")
     for label, row in rows.items():
         report = args.matrix_root / "reports" / f"{label}--16x16-r56-seed{seed}.json"; contribution = args.matrix_root / "contributions" / f"{label}--16x16-r56-seed{seed}.npz"; artifact = args.matrix_root / "artifacts" / label / "artifact.json"
         require(runner.complete(args.matrix_root, label, seed, calibration, evaluation) and row == {"id": f"{label}--16x16-r56-seed{seed}", "label": label, "seed": seed, "report_sha256": sha256(report), "contribution_sha256": sha256(contribution), "artifact_sha256": sha256(artifact)}, f"held-out row differs: {label}")
     source = runner.schedule.output_dir(args.schedule_matrix_root, seed) / "artifact.json"; selected_artifact = args.matrix_root / "artifacts" / "selected-wq" / "artifact.json"; control = args.matrix_root / "artifacts" / "matched-w0"
     require(sha256(source) == selection["selected"]["artifact_sha256"] == sha256(selected_artifact), "selected #140 artifact was not preserved byte-for-byte")
-    require((control / "projection-weights.f32").read_bytes() == (control / "query-projection-weights.f32").read_bytes(), "matched W0 query projection differs from frozen document projection")
+    for name in ("projection-weights.f32", "query-projection-weights.f32", "thresholds.f32"):
+        require((args.matrix_root / "artifacts" / "selected-wq" / name).read_bytes() == source.with_name(name).read_bytes(), f"selected payload differs from frozen schedule-aware artifact: {name}")
+    require((control / "projection-weights.f32").read_bytes() == source.with_name("projection-weights.f32").read_bytes() and (control / "query-projection-weights.f32").read_bytes() == source.with_name("projection-weights.f32").read_bytes() and (control / "thresholds.f32").read_bytes() == source.with_name("thresholds.f32").read_bytes(), "matched W0 payload differs from frozen schedule-aware artifact")
     expected_bootstrap = args.matrix_root / "bootstrap" / f"matched-w0-vs-selected-wq--16x16-r56-seed{seed}.json"
     with tempfile.TemporaryDirectory() as temporary:
         replay = Path(temporary) / "bootstrap.json"
@@ -75,6 +82,15 @@ def validate(args: Any) -> dict[str, Any]:
 def make_bundle(args: Any) -> dict[str, str]:
     value = validate(args); seed = value["selection"]["selected"]["seed"]
     files: list[tuple[Path, str]] = [(args.contract, "bundle/contract.json"), (THIS.with_name("mih-schedule-aware-routing.example.json"), "bundle/schedule-aware-contract.json"), (args.schedule_matrix_root / "matrix-manifest.json", "bundle/schedule-aware-matrix-manifest.json"), (args.matrix_root / "selection.json", "bundle/selection.json"), (args.matrix_root / "matrix-manifest.json", "bundle/matrix-manifest.json"), (value["bootstrap"], "bundle/bootstrap/matched-w0-vs-selected-wq.json")]
+    schedule_manifest = json.loads((args.schedule_matrix_root / "matrix-manifest.json").read_text(encoding="utf-8"))
+    for row in schedule_manifest["rows"]:
+        directory = runner.schedule.output_dir(args.schedule_matrix_root, row["seed"])
+        files.append((directory / "training-history.json", f"bundle/schedule-aware-artifacts/seed{row['seed']}/training-history.json"))
+        if row["status"] == "accepted":
+            for name in ("artifact.json", "projection-weights.f32", "query-projection-weights.f32", "thresholds.f32"):
+                files.append((directory / name, f"bundle/schedule-aware-artifacts/seed{row['seed']}/{name}"))
+        else:
+            files.append((directory / "gate-rejection.json", f"bundle/schedule-aware-artifacts/seed{row['seed']}/gate-rejection.json"))
     for label in ("matched-w0", "selected-wq"):
         identifier = f"{label}--16x16-r56-seed{seed}"; artifact = args.matrix_root / "artifacts" / label
         files += [(args.matrix_root / "reports" / f"{identifier}.json", f"bundle/reports/{identifier}.json"), (args.matrix_root / "contributions" / f"{identifier}.npz", f"bundle/contributions/{identifier}.npz")]
