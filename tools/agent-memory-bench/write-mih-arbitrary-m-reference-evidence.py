@@ -31,6 +31,13 @@ def git_snapshot(ref: str, relative: str) -> bytes:
     return subprocess.run(["git", "show", f"{ref}:{relative}"], cwd=ROOT, check=True, capture_output=True).stdout
 
 
+def validate_contract_binding(contract_bytes: bytes, measured_contract_bytes: bytes, contract: dict[str, Any], calibration: dict[str, Any], evaluation: dict[str, Any]) -> None:
+    """Bind the supplied experiment inputs to the historical measured contract."""
+    require(contract_bytes == measured_contract_bytes, "arbitrary-m contract bytes differ from measured source")
+    require(calibration.get("manifest_sha256") == contract.get("training_materialization_manifest_sha256"), "arbitrary-m calibration materialization differs")
+    require(evaluation.get("manifest_sha256") == contract.get("held_out_evaluation_manifest_sha256"), "arbitrary-m evaluation materialization differs")
+
+
 def load_runner() -> Any:
     import importlib.util
     path = THIS.with_name("run-mih-arbitrary-m-reference.py"); spec = importlib.util.spec_from_file_location("arbitrary_m_packager_runner", path)
@@ -52,7 +59,10 @@ bootstrap_module = load_bootstrap()
 
 
 def collect(args: Any) -> dict[str, bytes]:
-    contract = runner.load_contract(args.contract); calibration = runner.shared.load_root(args.calibration_root); evaluation = runner.shared.load_root(args.evaluation_root); runner.shared.validate_calibration_evaluation_pair(calibration, evaluation); manifest_path = args.matrix_root / "matrix-manifest.json"; matrix = json.loads(manifest_path.read_text(encoding="utf-8")); expected_sources = {name: sha256_bytes(git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")) for name in ("run-mih-arbitrary-m-reference.py", "mih-arbitrary-m-reference.example.json", "evaluate-mih-banding.py", "evaluate-projection-quantization.py")}; expected_bootstrap_sources = {name: sha256_bytes(git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")) for name in ("bootstrap-mih-arbitrary-m-reference.py", "run-mih-arbitrary-m-reference.py", "evaluate-projection-quantization.py")}
+    contract_bytes = args.contract.read_bytes(); measured_contract_bytes = git_snapshot(args.measured_source_ref, "tools/agent-memory-bench/mih-arbitrary-m-reference.example.json")
+    contract = runner.load_contract(args.contract); calibration = runner.shared.load_root(args.calibration_root); evaluation = runner.shared.load_root(args.evaluation_root)
+    validate_contract_binding(contract_bytes, measured_contract_bytes, contract, calibration, evaluation); runner.shared.validate_calibration_evaluation_pair(calibration, evaluation)
+    manifest_path = args.matrix_root / "matrix-manifest.json"; matrix = json.loads(manifest_path.read_text(encoding="utf-8")); expected_sources = {name: sha256_bytes(git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")) for name in ("run-mih-arbitrary-m-reference.py", "mih-arbitrary-m-reference.example.json", "evaluate-mih-banding.py", "evaluate-projection-quantization.py")}; expected_bootstrap_sources = {name: sha256_bytes(git_snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")) for name in ("bootstrap-mih-arbitrary-m-reference.py", "run-mih-arbitrary-m-reference.py", "evaluate-projection-quantization.py")}
     require(matrix.get("schema_version") == 1 and matrix.get("family") == runner.FAMILY and matrix.get("contract_sha256") == sha256(args.contract) and matrix.get("source_files_sha256") == expected_sources and matrix.get("source_bundle_sha256") == digest(expected_sources), "arbitrary-m matrix provenance differs")
     expected_rows = runner.rows(contract); expected_manifest_rows = []
     for row in expected_rows:
@@ -94,6 +104,12 @@ def self_test() -> int:
             with zipfile.ZipFile(path, "w") as archive: archive.writestr("bundle/a", contents["bundle/a"])
             with zipfile.ZipFile(path) as archive: require(archive.read("bundle/a") == b"a", "archive reopen differs")
         sources = bootstrap_module.source_files(); require(bootstrap_module.source_bundle(sources) == digest(sources), "bootstrap source bundle differs")
+        contract = {"training_materialization_manifest_sha256": "a" * 64, "held_out_evaluation_manifest_sha256": "b" * 64}; calibration = {"manifest_sha256": "a" * 64}; evaluation = {"manifest_sha256": "b" * 64}
+        validate_contract_binding(b"contract", b"contract", contract, calibration, evaluation)
+        for contract_bytes, checked_contract, checked_calibration, checked_evaluation in ((b"mutated", b"contract", calibration, evaluation), (b"contract", b"contract", {"manifest_sha256": "c" * 64}, evaluation), (b"contract", b"contract", calibration, {"manifest_sha256": "c" * 64})):
+            try: validate_contract_binding(contract_bytes, checked_contract, contract, checked_calibration, checked_evaluation)
+            except ValueError: pass
+            else: raise ValueError("contract/materialization mutation was accepted")
     except (OSError, ValueError):
         print("MIH arbitrary-m evidence packager self-test failed", file=sys.stderr); return 1
     print("MIH arbitrary-m evidence packager self-test passed"); return 0
