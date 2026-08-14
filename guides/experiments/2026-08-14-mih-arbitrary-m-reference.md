@@ -41,13 +41,21 @@ better E5-oracle preservation. A native storage benchmark is needed before any
 latency decision; neither probe count nor candidate count alone is a latency
 proxy.
 
-### Evidence replay hardening (v3)
+### Evidence replay hardening (v4)
 
-The v3 evidence packager reconstructs each of the five deterministic paired
+The v4 evidence packager reconstructs each of the five deterministic paired
 bootstrap reports directly from the preserved control and challenger NPZ files
-and requires exact JSON equality, including all confidence intervals. The
-bootstrap reports also retain the source-file bundle identity used for that
-replay. This hardening changes neither matrix rows nor the reported frontier.
+and requires exact JSON equality, including all confidence intervals. It also
+requires byte-identical contract bytes from the measured source commit and the
+exact contract-bound calibration and evaluation materialization manifests. The
+bootstrap reports retain the source-file bundle identity used for that replay.
+This hardening changes neither matrix rows nor the reported frontier.
+
+Draft evidence v4 archives measured source
+`5ec7c933c4410fc028a4c1db7f010fc903cd5786`: archive SHA-256
+`efa3bcd584a952bbfc74a623ad5a1ef3778acb6b632e7c46e4f155c5f8946e78`,
+bundle-root SHA-256
+`ce178946f236df820bddcb53a852bd2ecec09622a18b46496bcb90515dd0de1d`.
 
 **Limitations.** The evaluator is a Python reference harness and tests one
 predeclared m=19 partition. It does not optimize m, layouts, or a native MDBX
