@@ -179,6 +179,9 @@ jobs:
           python tools/agent-memory-bench/run-mih-schedule-aware-routing.py self-test
           --contract tools/agent-memory-bench/mih-schedule-aware-routing.example.json &&
           python tools/agent-memory-bench/write-mih-schedule-aware-routing-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-mih-asymmetric-train-selected-heldout.py self-test
+          --contract tools/agent-memory-bench/mih-asymmetric-train-selected-heldout.example.json &&
+          python tools/agent-memory-bench/write-mih-asymmetric-train-selected-heldout-evidence.py --self-test &&
           python tools/agent-memory-bench/run-mih-calibrated-weighted-hamming-matrix.py self-test
           --matrix tools/agent-memory-bench/mih-calibrated-weighted-hamming.example.json &&
           python tools/agent-memory-bench/run-mih-adc-guided-probing-matrix.py self-test
