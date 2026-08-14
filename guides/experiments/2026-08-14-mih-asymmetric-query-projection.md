@@ -16,16 +16,34 @@ interpretation will be added only after the predeclared matrix completes.
 
 ## Result
 
-The five-seed fixed matrix rejects this v1 asymmetric objective. Relative to
-matched ordinary ITQ, frozen-document asymmetric query routing changes ADC-K2
-E5-oracle survival by `-0.013403`, reranked nDCG@10 by `-0.006110`, candidates
-by `+582.97/query`, and posting visits by `+718.87/query`. All five seed-level
-ADC deltas are negative (`-0.013259`, `-0.020687`, `-0.013099`, `-0.012700`,
-`-0.007268`). It is also worse than the matched shared-W treatment.
+The corrected serial five-seed replay rejects this **static v1 asymmetric
+objective**. Relative to matched ordinary ITQ, frozen-document asymmetric query
+routing changes ADC-K2 E5-oracle survival by `-0.013403`, reranked nDCG@10 by
+`-0.006110`, candidates by `+582.97/query`, and posting visits by
+`+718.87/query`. All five seed-level ADC deltas are negative (`-0.013259`,
+`-0.020687`, `-0.013099`, `-0.012700`, `-0.007268`). It is also worse than the
+matched shared-W treatment.
 
-This is a useful no-go rather than a refutation of query-aware learning:
-query-side freedom alone can route into many more frozen document buckets
-without moving relevant documents into the desired ones. Train MIH
-false-positive mining is therefore not enough under the simple Hamming-radius
-loss. A future asymmetric branch needs an explicit candidate/posting work term
-or a routing-aware objective, rather than more epochs of this loss.
+The post-hoc held-out diagnostic records mean query-code drift from `W0` to
+`W_query` of `25.045/256` bits (`9.783%`), alongside the work and ADC deltas.
+It is descriptive only: these co-occurring changes do not establish a causal
+correlation. Exact-bucket floor work remains zero under this `r=56` schedule,
+so it cannot explain the increased routed union by itself.
+
+The scope is intentionally narrow. False positives were mined only once from
+the initial `W0` candidate union, retained in materialized row order rather
+than ranked by downstream danger, never re-mined after `W_query` moved, and the
+final epoch was used without a train-validation work gate. The result is thus a
+no-go for that static initial-MIH-negative Hamming objective, not a refutation
+of query-aware learning.
+
+The replayed archive is staged as draft evidence and is tied to source commit
+`9b16fba6880eaa2cc675f0a4fba33871c24c87ea`: archive SHA-256
+`b1ccb56d0ddf705db889108f7cc501e7b99bb4f23d79d67fd0725d057f94115d`,
+bundle-root SHA-256
+`8e0c5f9ce4b3b60cb58851d126be9d35bca8422821a5bfec345776618589cded`.
+
+The next predeclared asymmetric branch must instead constrain query-code drift,
+re-mine current-query false positives by downstream danger, add an explicit
+routing/posting-work surrogate, and select only train-validation Pareto-admissible
+checkpoints before one held-out replay.
