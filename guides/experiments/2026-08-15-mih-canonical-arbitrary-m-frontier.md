@@ -53,3 +53,44 @@ reference work counters.
 invalidate simplistic rules based on candidate count or table count. It cannot
 establish a universal `m`-to-corpus-size recommendation, production latency,
 or cross-dataset generalization.
+
+## Result
+
+The complete five-seed matrix contains 35 validated report/contribution pairs.
+The `m=15` layout required 18-bit substring keys, so the reference evaluator's
+former artificial 16-bit variable-band limit was lifted with a regression test
+before this final matrix was run. That change makes the intended arbitrary-m
+domain representable; it is not a latency optimization.
+
+| m | Local keys/query | Posting visits/query | Candidates/query | Raw survival | ADC survival | nDCG@10 |
+|---:|---:|---:|---:|---:|---:|---:|
+| 15 | 10,488 | 2,495.0 | 2,316.4 | 0.8636 | 0.8634 | 0.7731 |
+| 16 | 7,232 | 3,356.3 | 3,061.0 | 0.8923 | 0.8917 | 0.7819 |
+| 17 | 4,803 | 4,250.0 | 3,809.7 | 0.9127 | 0.9118 | 0.7861 |
+| 18 | 3,060 | 4,996.0 | 4,413.9 | 0.9251 | 0.9238 | 0.7895 |
+| 19 | 1,874 | 4,943.8 | 4,349.4 | 0.9262 | 0.9249 | 0.7889 |
+| 20 | 1,554 | 6,476.8 | 5,520.3 | 0.9460 | 0.9444 | 0.7923 |
+| 21 | 1,267 | 8,475.7 | 6,941.2 | 0.9633 | 0.9609 | 0.7966 |
+
+All six challenger-vs-`m=16` comparisons have per-seed paired bootstraps with
+10,000 replicates. The raw-union and ADC-survival intervals have one direction
+for every seed: `m=15` is lower by about 0.0286/0.0284, while `m=17..21` are
+higher by 0.0204..0.0711 / 0.0201..0.0692 respectively. The nDCG difference
+is not uniformly separated from zero for `m=15..20`; `m=21` is positive for
+all five seed-level intervals. This evidence supports a smooth quality/work
+frontier, not selection of a production point.
+
+**Interpretation.** `m=19` is not a hidden optimum. It is one attractive
+middle point: compared with `m=16`, it removes 5,358 key lookups while adding
+about 1,588 posting visits and 1,288 candidates. `m=20` and `m=21` continue
+the same exchange rather than revealing a discontinuity. Native sparse-index
+timing and index-byte measurements are now required to compare these work
+units on the target CPU.
+
+**Provenance.** The matrix is rooted at source commit
+`65f1e54ef90c74b2923f4056bc2dd4c6d79d3e36`, with matrix source-bundle SHA-256
+`ad2c7f469fa88f2389c320f9bd0c8963765493d603770552f5c827cfb9b05239` and
+contract SHA-256
+`14fc5023b7797334997b1b0f62a23fbcd603c744798009e55df4bd9238e55f85`.
+The raw matrix and bootstrap files remain outside Git pending evidence-package
+validation and release staging.
