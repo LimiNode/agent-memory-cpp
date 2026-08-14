@@ -77,7 +77,8 @@ def progressive_top_k(index: list[dict[int, numpy.ndarray]], codes: numpy.ndarra
         worst = distances[int(order[-1])]
         next_lower_bound = probes[number][0] if number < len(probes) else 1 << 30
         if worst < next_lower_bound:
-            proof_probe, proof_visits, proven = number, visits, True; break
+            proof_probe, proof_visits, proven = number, visits, number < len(probes)
+            if proven: break
     candidate_ids = numpy.asarray(discovered, dtype=numpy.int32); candidate_distances = numpy.asarray(distances, dtype=numpy.int32); order = numpy.lexsort((document_ids[candidate_ids], candidate_distances))[:limit]
     return candidate_ids[order], candidate_distances[order], {"total_probes": len(probes), "probes_at_proof": proof_probe, "posting_visits_at_proof": proof_visits if proven else visits, "total_posting_visits": visits, "unique_candidates": len(discovered), "hamming_computations": len(discovered), "early_proof": proven}
 
