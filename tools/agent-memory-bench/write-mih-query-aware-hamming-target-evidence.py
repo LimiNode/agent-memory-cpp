@@ -71,7 +71,7 @@ def validate_aggregates(report: dict[str, Any], values: dict[str, Any], row: str
         expected = [float(value) for value in numpy.mean(values[contribution_name], axis=0)]
         require(report.get(report_name) == expected, f"report depth aggregate differs: {row} {report_name}")
     stops = values["stop_reason"].astype(str)
-    expected_stops = {value: float(numpy.mean(stops == value)) for value in sorted(set(stops.tolist()))}
+    expected_stops = {value: float(numpy.mean(stops == value)) for value in ("candidate", "exhausted", "fixed-radius", "posting")}
     require(report.get("stop_reason_fractions") == expected_stops, f"report stop-reason aggregate differs: {row}")
 
 
