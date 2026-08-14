@@ -96,7 +96,8 @@ def validate_artifact(path: Path, contract: dict[str, Any], training_root: Path,
     }, "artifact architecture differs")
     expected = contract["training"]
     require(training.get("seed") == seed and training.get("epochs") == expected["epochs"] and training.get("batch_size") == expected["batch_size"] and training.get("learning_rate") == expected["learning_rate"] and training.get("itq_iterations") == expected["itq_iterations"] and training.get("anchor_weight") == expected["anchor_weight"] and training.get("hard_negative_mining", {}).get("count") == expected["hard_negative_count"] and training.get("negative_mining_scope") == "static_initial_w0_candidate_union_first_materialized_rows_v1" and training.get("checkpoint_selection") == "final_epoch_only_no_train_validation_gate_v1", "artifact training contract differs")
-    require(training.get("held_out_exclusion", {}).get("document_ids_set_sha256") == shared.load_root(training_root)["manifest"]["split"]["external_excluded_document_ids_set_sha256"], "artifact held-out exclusion differs")
+    prepared = json.loads((training_root / "prepared-study-manifest.json").read_text(encoding="utf-8"))
+    require(training.get("held_out_exclusion", {}).get("document_ids_set_sha256") == prepared["split"]["external_excluded_document_ids_set_sha256"], "artifact held-out exclusion differs")
     for key, shape, layout in (("projection_weights", [256, 384], "row_major_out_by_in"), ("query_projection_weights", [256, 384], "row_major_out_by_in"), ("thresholds", [256], None)):
         shared.require_artifact_weight(path.parent, weights.get(key), shape, layout, key)
     anchor = shared_root / "artifacts" / f"query-aware-hamming-target-seed{seed}"
