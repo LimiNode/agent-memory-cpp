@@ -135,7 +135,54 @@ def copy_artifact(source: Path, destination: Path, control: bool) -> Path:
     return artifact
 
 
-def complete(root: Path, label: str, seed: int, calibration: dict[str, Any], evaluation: dict[str, Any]) -> bool:
+def close(left: Any, right: Any) -> bool:
+    return isinstance(left, (int, float)) and not isinstance(left, bool) and numpy.isclose(float(left), float(right), rtol=0.0, atol=1e-12)
+
+
+def contribution_aggregates(values: dict[str, Any]) -> dict[str, Any]:
+    reasons = values["stop_reason"].tolist()
+    return {
+        "hamming_top_k_recall": float(numpy.mean(values["hamming_top_k_recall"])),
+        "exact_top_k_candidate_coverage": float(numpy.mean(values["coverage_at_candidate_limit"])),
+        "reranked_ndcg_at_10": float(numpy.mean(values["reranked_ndcg_at_10"])),
+        "full_e5_ndcg_at_10": float(numpy.mean(values["full_e5_ndcg_at_10"])),
+        "mean_candidates_per_query": float(numpy.mean(values["candidate_count"])),
+        "mean_exact_bucket_floor_candidates_per_query": float(numpy.mean(values["exact_bucket_floor_candidate_count"])),
+        "mean_bucket_probes_per_query": float(numpy.mean(values["bucket_probe_count"])),
+        "mean_posting_visits_per_query": float(numpy.mean(values["posting_visit_count"])),
+        "e5_oracle_survival": {
+            "raw_union": float(numpy.mean(values["e5_oracle_raw_union_coverage"])),
+            "hamming_top_k": float(numpy.mean(values["e5_oracle_hamming_top_k_coverage"])),
+            "second_stage": float(numpy.mean(values["e5_oracle_second_stage_coverage"])),
+            "mean_full_hamming_distance": float(numpy.mean(values["e5_oracle_mean_full_hamming_distance"])),
+            "hamming_within_radius": {str(radius): float(numpy.mean(values[f"e5_oracle_hamming_within_{radius}"])) for radius in (48, 56, 64)},
+        },
+        "mean_probe_count_by_flip_depth": [float(numpy.mean(values["probe_count_by_flip_depth"][:, depth])) for depth in range(3)],
+        "mean_posting_visits_by_flip_depth": [float(numpy.mean(values["posting_visit_count_by_flip_depth"][:, depth])) for depth in range(3)],
+        "stop_reason_fractions": {reason: float(reasons.count(reason)) / len(reasons) for reason in ("candidate", "posting", "exhausted", "fixed-radius")},
+    }
+
+
+def aggregates_match(report: dict[str, Any], values: dict[str, Any]) -> bool:
+    expected = contribution_aggregates(values)
+    for name in ("hamming_top_k_recall", "exact_top_k_candidate_coverage", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "mean_candidates_per_query", "mean_exact_bucket_floor_candidates_per_query", "mean_bucket_probes_per_query", "mean_posting_visits_per_query"):
+        if not close(report.get(name), expected[name]):
+            return False
+    for name in ("raw_union", "hamming_top_k", "second_stage", "mean_full_hamming_distance"):
+        if not close(report.get("e5_oracle_survival", {}).get(name), expected["e5_oracle_survival"][name]):
+            return False
+    for radius in (48, 56, 64):
+        if not close(report.get("e5_oracle_survival", {}).get("hamming_within_radius", {}).get(str(radius)), expected["e5_oracle_survival"]["hamming_within_radius"][str(radius)]):
+            return False
+    for name in ("mean_probe_count_by_flip_depth", "mean_posting_visits_by_flip_depth"):
+        actual = report.get(name)
+        if not isinstance(actual, list) or len(actual) != 3 or not all(close(value, expected[name][index]) for index, value in enumerate(actual)):
+            return False
+    actual_reasons = report.get("stop_reason_fractions")
+    return isinstance(actual_reasons, dict) and set(actual_reasons) == set(expected["stop_reason_fractions"]) and all(close(actual_reasons[name], expected["stop_reason_fractions"][name]) for name in expected["stop_reason_fractions"])
+
+
+def complete(root: Path, label: str, seed: int, calibration: dict[str, Any], evaluation: dict[str, Any], evaluator_sources: dict[str, str] | None = None) -> bool:
     report_path = root / "reports" / f"{label}--16x16-r56-seed{seed}.json"; contribution = root / "contributions" / f"{label}--16x16-r56-seed{seed}.npz"; artifact = root / "artifacts" / label / "artifact.json"
     if not report_path.is_file() or not contribution.is_file() or not artifact.is_file():
         return False
@@ -144,7 +191,40 @@ def complete(root: Path, label: str, seed: int, calibration: dict[str, Any], eva
         with numpy.load(contribution, allow_pickle=False) as loaded:
             values = {name: loaded[name].copy() for name in loaded.files}
         scalar = REQUIRED - {"identity_json", "query_ids", "probe_count_by_flip_depth", "posting_visit_count_by_flip_depth", "stop_reason"}
-        return bool(set(values) == REQUIRED and values["query_ids"].shape == (1252,) and values["stop_reason"].shape == (1252,) and values["probe_count_by_flip_depth"].shape == (1252, 3) and values["posting_visit_count_by_flip_depth"].shape == (1252, 3) and all(values[name].shape == (1252,) and numpy.isfinite(values[name]).all() for name in scalar) and report.get("schema_version") == 6 and report.get("evaluator_source_files_sha256") == evaluator.source_files_sha256() and report.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and report.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and report.get("seed") == seed and report.get("query_count") == 1252 and report.get("encoder_artifact_sha256") == sha256(artifact) and report.get("per_query_contributions_sha256") == sha256(contribution))
+        pipeline = CONTRACT["pipeline"]
+        identity = json.loads(str(values["identity_json"].item()))
+        expected_identity = shared.contribution_identity(evaluation, pipeline["candidate_limit"], pipeline["oracle_k"])
+        expected_evaluator_sources = evaluator.source_files_sha256() if evaluator_sources is None else evaluator_sources
+        return bool(
+            set(values) == REQUIRED
+            and values["query_ids"].shape == (1252,)
+            and numpy.array_equal(values["query_ids"], numpy.asarray(evaluation["query_ids"], dtype=numpy.str_))
+            and identity == expected_identity == report.get("per_query_contribution_identity")
+            and values["stop_reason"].shape == (1252,)
+            and values["probe_count_by_flip_depth"].shape == (1252, 3)
+            and values["posting_visit_count_by_flip_depth"].shape == (1252, 3)
+            and all(values[name].shape == (1252,) and numpy.isfinite(values[name]).all() for name in scalar)
+            and report.get("schema_version") == 6
+            and report.get("family") == "mih_banding_reference_v6"
+            and report.get("evaluator_source_files_sha256") == expected_evaluator_sources
+            and report.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"]
+            and report.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"]
+            and report.get("code_bits") == 256
+            and report.get("band_count") == pipeline["band_count"]
+            and report.get("band_width_bits") == [pipeline["band_width_bits"]] * pipeline["band_count"]
+            and report.get("global_radius") == report.get("fixed_radius") == pipeline["global_radius"]
+            and report.get("fixed_radius_exact_guarantee") is True
+            and report.get("candidate_limit") == pipeline["candidate_limit"]
+            and report.get("hamming_limit") == pipeline["hamming_limit"]
+            and report.get("second_stage") == pipeline["second_stage"]
+            and report.get("second_limit") == pipeline["second_limit"]
+            and report.get("oracle_k") == pipeline["oracle_k"]
+            and report.get("seed") == seed
+            and report.get("query_count") == 1252
+            and report.get("encoder_artifact_sha256") == sha256(artifact)
+            and report.get("per_query_contributions_sha256") == sha256(contribution)
+            and aggregates_match(report, values)
+        )
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         return False
 
