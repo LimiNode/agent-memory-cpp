@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "family": "mih_query_aware_hamming_target_confirmatory_v1",
+  "training_materialization": {
+    "manifest_sha256": "fb5af79a70a8f61e27c9615c178203599ed5dc10f287d0741d132d97f0218856",
+    "prepared_study_manifest_sha256": "c844e85bc3c07244e71539d76a00044eea7f498f0af3e8f74b88589961e229d4",
+    "purpose": "train_query_retrieval_training_only",
+    "external_excluded_document_ids_set_sha256": "23c3ec159a39881bc6f9804b603a74a27d90d09dd925ba1f550e10124641a4fc"
+  },
+  "itq_anchor": {
+    "id": "matched_train_document_itq_anchor_v1",
+    "train_ids_sha256": "dbe2c8efdc9bfbeb1a0b520082088b1cb31491ee94d4fe65933f242b03d1a98e",
+    "train_vectors_sha256": "0adce3132b9651b32c27bbacec5ae2140de8c2d00247cca5de2823e2ea47260b",
+    "semantics": "control_and_treatment_start_from_the_same_deterministic_full_itq_projection"
+  },
+  "held_out_evaluation": {
+    "manifest_sha256": "cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86",
+    "document_count": 22607,
+    "query_count": 1252,
+    "policy": "evaluation_only_untouched_until_this_contract"
+  },
+  "encoding": {
+    "code_bits": 256,
+    "itq_iterations": 50,
+    "shared_projection": true,
+    "seeds": [52, 53, 54, 55, 56]
+  },
+  "training": {
+    "epochs": 4,
+    "batch_size": 192,
+    "learning_rate": 0.00001,
+    "hard_negative_count": 4,
+    "validation_fraction": 0.10,
+    "positive_radius": 56,
+    "negative_radius": 80,
+    "positive_temperature": 4.0,
+    "negative_temperature": 4.0,
+    "positive_weight": 1.0,
+    "negative_weight": 1.0,
+    "anchor_weight": 50.0,
+    "orthogonality_weight": 0.05,
+    "torch_threads": 1,
+    "checkpoint": {
+      "selection": "train_query_validation_mih_frontier_gate_v1",
+      "survival_signal": "strict_adc_improvement_or_strict_raw_and_hamming_k1_improvement_v1",
+      "work_multiplier": 1.05
+    }
+  },
+  "held_out_pipeline": {
+    "regime": "16x16-r56",
+    "band_count": 16,
+    "band_width_bits": 16,
+    "global_radius": 56,
+    "candidate_limit": 512,
+    "hamming_limit": 768,
+    "second_stage": "binary-adc",
+    "second_limit": 256,
+    "oracle_k": 10
+  },
+  "decision_rule": {
+    "selection_data": "train_query_validation_only",
+    "held_out_rule": "paired five-seed report only; held-out results do not select a checkpoint, radius, partition, or hyperparameter",
+    "primary": "paired ADC-K2 E5 oracle survival",
+    "work": ["mean_candidates_per_query", "mean_posting_visits_per_query"],
+    "bootstrap": {"replicates": 10000, "seed": 20260813}
+  }
+}

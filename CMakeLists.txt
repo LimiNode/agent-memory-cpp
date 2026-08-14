@@ -394,6 +394,34 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mih_query_aware_hamming_target_trainer_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/train-mih-query-aware-hamming-target.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mih_query_aware_hamming_target_confirmatory_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mih-query-aware-hamming-target.py
+                self-test
+                --contract
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/mih-query-aware-hamming-target.example.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mih_query_aware_hamming_target_bootstrap_self_test
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/bootstrap-mih-query-aware-hamming-target.py self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mih_query_aware_hamming_target_evidence_packager_self_test
+            COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-query-aware-hamming-target-evidence.py --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_projection_quantization_evaluator_self_test
             COMMAND
                 ${Python3_EXECUTABLE}
