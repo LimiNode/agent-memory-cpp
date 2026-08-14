@@ -69,6 +69,11 @@ def load_values(path: Path) -> dict[str, numpy.ndarray]:
         return {name: archive[name].copy() for name in archive.files}
 
 
+def metric_seeds(contract: dict[str, Any], challenger_m: int, seed: int, names: list[str]) -> dict[str, int]:
+    base = contract["decision_rule"]["bootstrap_seed"]
+    return {name: base + challenger_m * 1000 + seed + index * 100000 for index, name in enumerate(names)}
+
+
 def bootstrap_report(contract: dict[str, Any], control_m: int, challenger_m: int, seed: int, control_path: Path, challenger_path: Path) -> dict[str, Any]:
     control, challenger = load_values(control_path), load_values(challenger_path)
     require(control["query_ids"].tobytes() == challenger["query_ids"].tobytes() and control["identity_json"].tobytes() == challenger["identity_json"].tobytes(), "paired bootstrap identities differ")
@@ -81,19 +86,21 @@ def bootstrap_report(contract: dict[str, Any], control_m: int, challenger_m: int
         "reranked_ndcg_at_10": "reranked_ndcg_at_10",
     }
     sources = source_files()
+    seeds = metric_seeds(contract, challenger_m, seed, list(metrics.values()))
     return {
-        "schema_version": 1,
-        "family": "mih_canonical_arbitrary_m_frontier_paired_bootstrap_v1",
+        "schema_version": 2,
+        "family": "mih_canonical_arbitrary_m_frontier_paired_bootstrap_v2",
         "control": f"m{control_m}-minimum-probe-r56",
         "challenger": f"m{challenger_m}-minimum-probe-r56",
         "seed": seed,
         "replicates": contract["decision_rule"]["bootstrap_replicates"],
-        "bootstrap_seed": contract["decision_rule"]["bootstrap_seed"] + challenger_m * 100 + seed,
+        "bootstrap_seed_base": contract["decision_rule"]["bootstrap_seed"],
+        "metric_seeds": seeds,
         "control_contribution_sha256": sha256(control_path),
         "challenger_contribution_sha256": sha256(challenger_path),
         "bootstrap_source_files_sha256": sources,
         "bootstrap_source_bundle_sha256": source_bundle(sources),
-        "metrics": {name: paired_summary(control[field].astype(numpy.float64), challenger[field].astype(numpy.float64), contract["decision_rule"]["bootstrap_seed"] + challenger_m * 1000 + seed + index * 100000, contract["decision_rule"]["bootstrap_replicates"]) for index, (field, name) in enumerate(metrics.items())},
+        "metrics": {name: paired_summary(control[field].astype(numpy.float64), challenger[field].astype(numpy.float64), seeds[name], contract["decision_rule"]["bootstrap_replicates"]) for field, name in metrics.items()},
     }
 
 
@@ -128,7 +135,7 @@ def self_test() -> int:
             contract_path = THIS.with_name("mih-canonical-arbitrary-m-frontier.example.json")
             contract = runner.load_contract(contract_path)
             report = bootstrap_report(contract, 16, 17, 52, control, challenger)
-            require(report["metrics"]["candidates_per_query"]["mean_delta"] == 2.0 and report["challenger"] == "m17-minimum-probe-r56", "paired bootstrap differs")
+            require(report["metrics"]["candidates_per_query"]["mean_delta"] == 2.0 and report["challenger"] == "m17-minimum-probe-r56" and report["bootstrap_seed_base"] == 20260815 and report["metric_seeds"]["candidates_per_query"] == 20260815 + 17000 + 52 + 200000, "paired bootstrap provenance differs")
             diagnostic = path / "diagnostic.json"
             diagnostic.write_text(json.dumps({"schema_version": 1, "family": "mih_canonical_arbitrary_m_frontier_post_hoc_diagnostics_v1", "matrix_contract_sha256": sha256(contract_path), "comparisons": [{"id": "m18-versus-m19", "control_m": 18, "challenger_m": 19, "purpose": "post_hoc_local_frontier_clarification_not_selection"}]}), encoding="utf-8")
             require(load_diagnostics(diagnostic, contract, contract_path) == [(18, 19)], "diagnostic contract differs")

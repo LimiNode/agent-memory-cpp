@@ -94,12 +94,14 @@ Sources: [Norouzi et al.](https://www.cs.toronto.edu/~norouzi/research/papers/mu
 [Faiss IndexBinaryHNSW](https://faiss.ai/cpp_api/struct/structfaiss_1_1IndexBinaryHNSW.html),
 and [USearch C++ documentation](https://unum-cloud.github.io/usearch/cpp/).
 
-There is no defensible rule such as "use m=19 below 100k documents". At a
-fixed code length, increasing `m` shortens substring keys and tends to enlarge
-their buckets, but can reduce the number of local keys that an exact schedule
-probes; increasing `N` raises posting occupancy. The preferred `m`
-consequently depends jointly on corpus size, code geometry, radius, bit
-assignment, memory layout, and hardware.
+Classical MIH analysis provides a useful uniform-code baseline: under a
+simplified equal-cost model, the substring length is near `log2(N)`, or
+`m ≈ b / log2(N)` for a `b`-bit code. We do not treat it as a universal
+production rule. At a fixed code length, increasing `m` shortens substring
+keys and tends to enlarge their buckets, but can reduce the number of local
+keys that an exact schedule probes; increasing `N` raises posting occupancy.
+Real code geometry, radius, bit assignment, memory layout, and hardware alter
+the optimum.
 The only current recommendation is empirical: measure a multi-dimensional
 frontier at each intended scale and select a point using a predeclared latency,
 memory, and quality budget.

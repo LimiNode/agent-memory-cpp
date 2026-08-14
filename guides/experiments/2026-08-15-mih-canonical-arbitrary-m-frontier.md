@@ -24,18 +24,23 @@ satisfy the exact pigeonhole condition:
 `sum_b (r_b + 1) >= 57`.
 
 Select the schedule with the fewest enumerated local keys
-`sum_b sum_(d=0..r_b) C(width_b, d)`. Break ties by the reverse-lexicographic
-radius vector after bands are ordered by descending width. This is a
-width-only, deterministic minimum-probe schedule; it is not tuned on the
-evaluation queries. A later, separately predeclared calibration-only study may
-compare it with a minimum-posting schedule.
+`sum_b sum_(d=0..r_b) C(width_b, d)`. Break ties by the
+lexicographically maximum radius vector after bands are ordered by descending
+width. This is a width-only, deterministic minimum-probe schedule; it is not
+tuned on the evaluation queries. The measured contract's former
+"reverse-lexicographic" label is retained as immutable historical provenance,
+but was an inaccurate description of the already-executed comparator; this
+correction changes neither schedule nor matrix. A later, separately
+predeclared calibration-only study may compare it with a minimum-posting
+schedule.
 
 **Measurements.** For every fixed ITQ seed and every `m`, preserve per-query
 bucket probes, posting visits, unique candidates, raw E5-oracle survival,
 Hamming-shortlist survival, ADC@256 survival, and nDCG@10. Report seed rows,
-paired bootstrap comparisons with `m=16`, index bytes, and exact source and
-materialization identities. Do not infer native latency from the Python
-reference work counters.
+paired bootstrap comparisons with `m=16`, and exact source and materialization
+identities. Index bytes are deferred to the native sparse arbitrary-m
+benchmark, whose immutable directory representation makes them meaningful. Do
+not infer native latency from the Python reference work counters.
 
 **Decision sequence.**
 
@@ -106,5 +111,9 @@ contract SHA-256
 The fail-closed evidence packager revalidates all 35 report/contribution rows,
 all 30 predeclared `m`-versus-`m=16` paired bootstraps, and all five post-hoc
 `m=19`-versus-`m=18` diagnostic replays before writing a deterministic ZIP.
+Bootstrap v2 records the base RNG seed and the exact independently derived
+seed for every metric; this corrects the earlier v1 report-level seed field,
+which did not describe the metric-specific RNG streams. The matrix was not
+replayed because this correction changes bootstrap metadata/provenance only.
 The resulting archive is staged in the corresponding draft evidence release;
 the raw matrix and bootstrap files remain outside Git.
