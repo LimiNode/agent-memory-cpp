@@ -103,6 +103,16 @@ def parse_band_widths(value: str | None, code_bits: int, band_count: int) -> lis
     return widths
 
 
+def parse_band_probe_radii(value: str, band_count: int) -> list[int]:
+    try:
+        radii = [int(part) for part in value.split(",")]
+    except ValueError as error:
+        raise EvaluationError("MIH band probe radii are invalid") from error
+    if len(radii) != band_count or any(radius < 0 for radius in radii):
+        raise EvaluationError("MIH band probe radii are invalid")
+    return radii
+
+
 def calibrated_band_permutation(calibration_codes: Any, band_count: int) -> numpy.ndarray:
     """Greedily separate correlated calibration bits into equal-size bands."""
     values = numpy.asarray(calibration_codes, dtype=numpy.float64)
@@ -605,7 +615,9 @@ def evaluate(args: Any) -> None:
         raise EvaluationError("MIH evaluation arguments are invalid")
     widths = parse_band_widths(args.band_widths, args.code_bits, args.band_count)
     ranges = variable_band_ranges(args.code_bits, widths)
-    if args.global_radius is not None:
+    if args.band_probe_radii is not None:
+        radii = parse_band_probe_radii(args.band_probe_radii, args.band_count)
+    elif args.global_radius is not None:
         radii = global_radius_schedule(args.global_radius, args.band_count)
     else:
         radii = [args.probe_radius] * args.band_count
@@ -736,7 +748,7 @@ def evaluate(args: Any) -> None:
         e5_coverage.append(float(numpy.isin(oracle, rerank).sum()) / args.oracle_k)
         reranked_ndcg.append(shared.dcg_at_10(document_ids[rerank], data["qrels"][query_id]))
         full_e5_ndcg.append(shared.dcg_at_10(document_ids[exact_order], data["qrels"][query_id]))
-    guarantee = args.global_radius is not None
+    guarantee = args.global_radius is not None and sum(radius + 1 for radius in radii) > args.global_radius
     source_files = source_files_sha256()
     report = {
         "schema_version": 6, "family": "mih_banding_reference_v6",
@@ -934,7 +946,7 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(); sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("evaluate")
     run.add_argument("--calibration-root", type=Path, required=True); run.add_argument("--evaluation-root", type=Path, required=True); run.add_argument("--output", type=Path, required=True); run.add_argument("--contributions-output", type=Path, required=True)
-    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc", "budgeted-adc-best-first"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--soft-posting-visit-target", type=int, default=0); run.add_argument("--max-probe-bit-flips", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform"); run.add_argument("--band-layout", choices=("contiguous", "fixed-random", "calibration-correlation-balanced", "calibration-collision-balanced-variable", "explicit-permutation"), default="contiguous"); run.add_argument("--band-layout-seed", type=int, default=20260812); run.add_argument("--band-permutation", type=Path); run.add_argument("--band-selection-provenance", type=Path)
+    run.add_argument("--code-bits", type=int, required=True); run.add_argument("--band-count", type=int, required=True); run.add_argument("--probe-radius", type=int, default=0); run.add_argument("--global-radius", type=int); run.add_argument("--band-probe-radii"); run.add_argument("--probe-policy", choices=("uniform-radius", "budgeted-confidence", "budgeted-adc", "budgeted-adc-best-first"), default="uniform-radius"); run.add_argument("--soft-candidate-target", type=int, default=0); run.add_argument("--soft-posting-visit-target", type=int, default=0); run.add_argument("--max-probe-bit-flips", type=int, default=0); run.add_argument("--hamming-policy", choices=("uniform", "calibrated-centroid-separation"), default="uniform"); run.add_argument("--band-layout", choices=("contiguous", "fixed-random", "calibration-correlation-balanced", "calibration-collision-balanced-variable", "explicit-permutation"), default="contiguous"); run.add_argument("--band-layout-seed", type=int, default=20260812); run.add_argument("--band-permutation", type=Path); run.add_argument("--band-selection-provenance", type=Path)
     run.add_argument("--band-widths"); run.add_argument("--seed", type=int, default=42); run.add_argument("--itq-iterations", type=int, default=50); run.add_argument("--encoder-artifact", type=Path); run.add_argument("--candidate-limit", type=int, default=512); run.add_argument("--hamming-limit", type=int, default=512); run.add_argument("--second-limit", type=int, default=512); run.add_argument("--second-stage", choices=("hamming", "binary-adc"), default="hamming"); run.add_argument("--oracle-k", type=int, default=10)
     sub.add_parser("self-test"); args = parser.parse_args(argv)
     try:

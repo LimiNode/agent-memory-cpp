@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "family": "mih_arbitrary_m_reference_fixed_radius_v1",
+  "training_materialization_manifest_sha256": "fb5af79a70a8f61e27c9615c178203599ed5dc10f287d0741d132d97f0218856",
+  "held_out_evaluation_manifest_sha256": "cd1987fdef63f5f6b4fd595d312648ea58f85aa502ed982958ebf02e99290e86",
+  "seeds": [52, 53, 54, 55, 56],
+  "pipeline": {"code_bits": 256, "global_radius": 56, "hamming_limit": 768, "candidate_limit": 512, "second_stage": "binary-adc", "second_limit": 256, "oracle_k": 10},
+  "treatments": [
+    {"id": "m16-current-radius-sum", "band_count": 16, "widths": [16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16, 16], "local_radii": [4, 4, 4, 4, 4, 4, 4, 4, 3, 3, 3, 3, 3, 3, 3, 3], "exact_coverage": "sum_local_radii_equals_global_radius_v1"},
+    {"id": "m19-uniform-radius2", "band_count": 19, "widths": [14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13], "local_radii": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2], "exact_coverage": "pigeonhole_all_bands_exceed_radius_implies_distance_at_least_57_v1"}
+  ],
+  "decision_rule": {"primary": "exact_hamming_radius56_candidate_and_work_comparison", "bootstrap_replicates": 10000, "bootstrap_seed": 20260814, "held_out_selection": "none"}
+}
