@@ -16,6 +16,7 @@ from typing import Any
 
 THIS = Path(__file__).resolve(); ROOT = THIS.parents[2]
 SOURCES = (THIS.name, "run-mih-asymmetric-train-selected-heldout.py", "mih-asymmetric-train-selected-heldout.example.json", "run-mih-schedule-aware-routing.py", "mih-schedule-aware-routing.example.json", "evaluate-mih-banding.py", "evaluate-projection-quantization.py", "bootstrap-mih-asymmetric-query-projection.py", "write-mih-rerank-cost-evidence.py")
+MEASURED_SOURCES = ("run-mih-asymmetric-train-selected-heldout.py", "mih-asymmetric-train-selected-heldout.example.json", "run-mih-schedule-aware-routing.py", "mih-schedule-aware-routing.example.json", "evaluate-mih-banding.py", "evaluate-projection-quantization.py")
 
 
 def load(name: str, key: str) -> Any:
@@ -42,14 +43,26 @@ def sha256_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
-def snapshot(commit: str, directory: Path) -> list[tuple[Path, str]]:
+def commit_bytes(commit: str, name: str) -> bytes:
+    result = subprocess.run(("git", "show", f"{commit}:tools/agent-memory-bench/{name}"), cwd=ROOT, capture_output=True)
+    require(result.returncode == 0 and result.stdout, f"source commit does not contain {name}")
+    return result.stdout
+
+
+def snapshot(commit: str, names: tuple[str, ...], directory: Path, prefix: str) -> list[tuple[Path, str]]:
     require(len(commit) == 40 and all(value in "0123456789abcdef" for value in commit), "source commit must be a full lowercase SHA-1")
     files: list[tuple[Path, str]] = []
-    for name in SOURCES:
-        result = subprocess.run(("git", "show", f"{commit}:tools/agent-memory-bench/{name}"), cwd=ROOT, capture_output=True)
-        require(result.returncode == 0 and result.stdout, f"source commit does not contain {name}")
-        path = directory / name; path.write_bytes(result.stdout); files.append((path, f"bundle/sources/{name}"))
+    for name in names:
+        path = directory / prefix / name; path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(commit_bytes(commit, name)); files.append((path, f"bundle/{prefix}/{name}"))
     return files
+
+
+def current_commit() -> str:
+    result = subprocess.run(("git", "rev-parse", "HEAD"), cwd=ROOT, check=True, capture_output=True, text=True)
+    value = result.stdout.strip()
+    require(len(value) == 40 and all(character in "0123456789abcdef" for character in value), "current verifier commit is invalid")
+    return value
 
 
 def validate(args: Any) -> dict[str, Any]:
@@ -58,14 +71,15 @@ def validate(args: Any) -> dict[str, Any]:
     shared.validate_calibration_evaluation_pair(calibration, evaluation)
     require(training["manifest_sha256"] == contract["training_materialization_manifest_sha256"] and evaluation["manifest_sha256"] == contract["held_out_evaluation_manifest_sha256"], "materialization provenance differs")
     selection_path = args.matrix_root / "selection.json"; selection = json.loads(selection_path.read_text(encoding="utf-8")); expected_selection = runner.select(args.schedule_matrix_root, args.training_materialization_root, contract)
-    require(selection == expected_selection, "train-only selection replay differs")
+    require(selection.get("schema_version") == 1 and selection.get("family") == expected_selection["family"] and selection.get("schedule_aware_matrix_manifest_sha256") == expected_selection["schedule_aware_matrix_manifest_sha256"] and selection.get("ranking") == expected_selection["ranking"] and selection.get("selected") == expected_selection["selected"], "historical train-only selection does not match the all-admissible replay winner")
     manifest_path = args.matrix_root / "matrix-manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    measured_sources = {name: sha256_bytes(subprocess.run(("git", "show", f"{args.source_commit}:tools/agent-memory-bench/{name}"), cwd=ROOT, check=True, capture_output=True).stdout) for name in runner.source_files()}
+    measured_sources = {name: sha256_bytes(commit_bytes(args.source_commit, name)) for name in runner.source_files()}
     require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract) and manifest.get("selection_sha256") == sha256(selection_path) and manifest.get("selected") == selection["selected"] and manifest.get("schedule_aware_matrix_manifest_sha256") == contract["schedule_aware_matrix_manifest_sha256"] and manifest.get("training_materialization_manifest_sha256") == training["manifest_sha256"] and manifest.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and manifest.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and manifest.get("source_files_sha256") == measured_sources and manifest.get("source_bundle_sha256") == runner.source_bundle(measured_sources), "held-out matrix provenance differs")
     seed = selection["selected"]["seed"]; rows = {row.get("label"): row for row in manifest.get("rows", [])}; require(set(rows) == {"matched-w0", "selected-wq"}, "held-out rows differ")
     for label, row in rows.items():
         report = args.matrix_root / "reports" / f"{label}--16x16-r56-seed{seed}.json"; contribution = args.matrix_root / "contributions" / f"{label}--16x16-r56-seed{seed}.npz"; artifact = args.matrix_root / "artifacts" / label / "artifact.json"
-        require(runner.complete(args.matrix_root, label, seed, calibration, evaluation) and row == {"id": f"{label}--16x16-r56-seed{seed}", "label": label, "seed": seed, "report_sha256": sha256(report), "contribution_sha256": sha256(contribution), "artifact_sha256": sha256(artifact)}, f"held-out row differs: {label}")
+        evaluator_sources = {name: measured_sources[name] for name in ("evaluate-mih-banding.py", "evaluate-projection-quantization.py")}
+        require(runner.complete(args.matrix_root, label, seed, calibration, evaluation, evaluator_sources) and row == {"id": f"{label}--16x16-r56-seed{seed}", "label": label, "seed": seed, "report_sha256": sha256(report), "contribution_sha256": sha256(contribution), "artifact_sha256": sha256(artifact)}, f"held-out row differs: {label}")
     source = runner.schedule.output_dir(args.schedule_matrix_root, seed) / "artifact.json"; selected_artifact = args.matrix_root / "artifacts" / "selected-wq" / "artifact.json"; control = args.matrix_root / "artifacts" / "matched-w0"
     require(sha256(source) == selection["selected"]["artifact_sha256"] == sha256(selected_artifact), "selected #140 artifact was not preserved byte-for-byte")
     for name in ("projection-weights.f32", "query-projection-weights.f32", "thresholds.f32"):
@@ -76,7 +90,7 @@ def validate(args: Any) -> dict[str, Any]:
         replay = Path(temporary) / "bootstrap.json"
         bootstrap.bootstrap(SimpleNamespace(left_contributions=args.matrix_root / "contributions" / f"matched-w0--16x16-r56-seed{seed}.npz", right_contributions=args.matrix_root / "contributions" / f"selected-wq--16x16-r56-seed{seed}.npz", output=replay, comparison_id=f"matched-w0-vs-selected-wq--16x16-r56-seed{seed}", replicates=10000, seed=20260814))
         require(json.loads(replay.read_text(encoding="utf-8")) == json.loads(expected_bootstrap.read_text(encoding="utf-8")), "paired bootstrap replay differs")
-    return {"contract": contract, "selection": selection, "manifest": manifest, "bootstrap": expected_bootstrap}
+    return {"contract": contract, "selection": selection, "all_admissible_selection": expected_selection, "manifest": manifest, "bootstrap": expected_bootstrap}
 
 
 def make_bundle(args: Any) -> dict[str, str]:
@@ -97,9 +111,12 @@ def make_bundle(args: Any) -> dict[str, str]:
         for name in ("artifact.json", "projection-weights.f32", "query-projection-weights.f32", "thresholds.f32"):
             files.append((artifact / name, f"bundle/artifacts/{label}/{name}"))
     with tempfile.TemporaryDirectory() as temporary:
-        directory = Path(temporary); files.extend(snapshot(args.source_commit, directory))
-        compact = directory / "compact-manifest.json"; compact.write_text(json.dumps({"schema_version": 1, "family": "mih_asymmetric_train_selected_heldout_evidence_v1", "source_commit": args.source_commit, "contract_sha256": sha256(args.contract), "schedule_aware_matrix_manifest_sha256": value["selection"]["schedule_aware_matrix_manifest_sha256"], "selection_sha256": sha256(args.matrix_root / "selection.json"), "matrix_manifest_sha256": sha256(args.matrix_root / "matrix-manifest.json"), "bootstrap_sha256": sha256(value["bootstrap"]), "selected_seed": seed, "selected_epoch": value["selection"]["selected"]["epoch"], "source_snapshot_policy": "git_show_exact_evidence_commit_v1"}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        files.append((compact, "bundle/compact-manifest.json")); manifest = archive.archive_manifest(files); manifest["family"] = "mih_asymmetric_train_selected_heldout_evidence_v1"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, manifest)
+        directory = Path(temporary); verifier_commit = current_commit()
+        files.extend(snapshot(args.source_commit, MEASURED_SOURCES, directory, "measured-sources"))
+        files.extend(snapshot(verifier_commit, SOURCES, directory, "verifier-sources"))
+        replay = directory / "all-admissible-selection-replay.json"; replay.write_text(json.dumps(value["all_admissible_selection"], indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        compact = directory / "compact-manifest.json"; compact.write_text(json.dumps({"schema_version": 2, "family": "mih_asymmetric_train_selected_heldout_evidence_v2", "measured_source_commit": args.source_commit, "evidence_verifier_source_commit": verifier_commit, "contract_sha256": sha256(args.contract), "schedule_aware_matrix_manifest_sha256": value["selection"]["schedule_aware_matrix_manifest_sha256"], "selection_sha256": sha256(args.matrix_root / "selection.json"), "all_admissible_selection_replay_sha256": sha256(replay), "matrix_manifest_sha256": sha256(args.matrix_root / "matrix-manifest.json"), "bootstrap_sha256": sha256(value["bootstrap"]), "selected_seed": seed, "selected_epoch": value["selection"]["selected"]["epoch"], "source_snapshot_policy": {"measured": "git_show_exact_historical_execution_commit_v1", "verifier": "git_show_exact_evidence_packaging_commit_v1"}}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        files.extend(((replay, "bundle/verifier-global-selection-replay.json"), (compact, "bundle/compact-manifest.json"))); manifest = archive.archive_manifest(files); manifest["family"] = "mih_asymmetric_train_selected_heldout_evidence_v2"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, manifest)
     return {"sha256": sha256(args.output), "bundle_root_sha256": manifest["bundle_root_sha256"]}
 
 
