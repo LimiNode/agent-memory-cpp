@@ -161,6 +161,10 @@ jobs:
       - name: Exercise MIH budgeted-confidence contracts
         run: >
           python tools/agent-memory-bench/evaluate-mih-banding.py self-test &&
+          python tools/agent-memory-bench/run-mih-arbitrary-m-reference.py self-test
+          --contract tools/agent-memory-bench/mih-arbitrary-m-reference.example.json &&
+          python tools/agent-memory-bench/bootstrap-mih-arbitrary-m-reference.py self-test &&
+          python tools/agent-memory-bench/write-mih-arbitrary-m-reference-evidence.py --self-test &&
           python tools/agent-memory-bench/train-mih-query-aware-hamming-target.py --self-test &&
           python tools/agent-memory-bench/run-mih-query-aware-hamming-target.py self-test
           --contract tools/agent-memory-bench/mih-query-aware-hamming-target.example.json &&
