@@ -45,15 +45,27 @@ def snapshot(commit: str, directory: Path) -> list[tuple[Path, str]]:
     return result
 
 
+def source_hashes_at_commit(commit: str, names: tuple[str, ...]) -> dict[str, str]:
+    require(len(commit) == 40 and all(value in "0123456789abcdef" for value in commit), "matrix source commit must be a full lowercase SHA-1")
+    result: dict[str, str] = {}
+    for name in names:
+        shown = subprocess.run(("git", "show", f"{commit}:tools/agent-memory-bench/{name}"), cwd=ROOT, capture_output=True)
+        require(shown.returncode == 0 and shown.stdout, f"matrix source commit does not contain {name}")
+        result[name] = hashlib.sha256(shown.stdout).hexdigest()
+    return result
+
+
 def make_bundle(args: Any) -> dict[str, str]:
     contract = runner.load_contract(args.contract)
     manifest_path = args.matrix_root / "matrix-manifest.json"; manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract) and manifest.get("training_materialization_manifest_sha256") == contract["training_materialization_manifest_sha256"] and manifest.get("source_files_sha256") == runner.source_files() and manifest.get("source_bundle_sha256") == runner.source_bundle(runner.source_files()) and manifest.get("outcome") in ("gate_rejected", "mixed_gate_rejected") and manifest.get("held_out_execution") == "forbidden_without_all_five_pareto_admissible_checkpoints_v1", "schedule-aware matrix provenance differs")
+    matrix_sources = source_hashes_at_commit(args.matrix_source_commit, tuple(runner.source_files()))
+    trainer_sources = source_hashes_at_commit(args.matrix_source_commit, tuple(runner.trust.trainer.source_hashes()))
+    require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract) and manifest.get("training_materialization_manifest_sha256") == contract["training_materialization_manifest_sha256"] and manifest.get("source_files_sha256") == matrix_sources and manifest.get("source_bundle_sha256") == runner.source_bundle(matrix_sources) and manifest.get("outcome") in ("gate_rejected", "mixed_gate_rejected") and manifest.get("held_out_execution") == "forbidden_without_all_five_pareto_admissible_checkpoints_v1", "schedule-aware matrix provenance differs")
     rows = manifest.get("rows", []); require(isinstance(rows, list) and len(rows) == 5, "schedule-aware rows differ")
     files: list[tuple[Path, str]] = [(args.contract, "bundle/contract.json"), (manifest_path, "bundle/matrix-manifest.json")]
     for seed in contract["seeds"]:
         row = next((value for value in rows if value.get("seed") == seed), None)
-        status = runner.status(args.matrix_root, contract, args.training_materialization_root, seed)
+        status = runner.status(args.matrix_root, contract, args.training_materialization_root, seed, trainer_sources)
         require(row == status and status is not None, f"schedule-aware gate replay differs: seed{seed}")
         directory = runner.output_dir(args.matrix_root, seed); history = directory / "training-history.json"; files.append((history, f"bundle/artifacts/seed{seed}/training-history.json"))
         if status["status"] == "accepted":
@@ -64,15 +76,34 @@ def make_bundle(args: Any) -> dict[str, str]:
             rejection = directory / "gate-rejection.json"; files.append((rejection, f"bundle/artifacts/seed{seed}/gate-rejection.json"))
     with tempfile.TemporaryDirectory() as temporary:
         directory = Path(temporary); files.extend(snapshot(args.source_commit, directory))
-        compact = directory / "compact-manifest.json"; compact.write_text(json.dumps({"schema_version": 1, "family": "mih_schedule_aware_routing_gate_evidence_v1", "source_commit": args.source_commit, "contract_sha256": sha256(args.contract), "matrix_manifest_sha256": sha256(manifest_path), "outcome": manifest["outcome"], "held_out_execution": manifest["held_out_execution"], "source_snapshot_policy": "git_show_exact_evidence_commit_v1"}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-        files.append((compact, "bundle/compact-manifest.json")); archive_manifest = archive.archive_manifest(files); archive_manifest["family"] = "mih_schedule_aware_routing_gate_evidence_v1"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, archive_manifest)
+        compact = directory / "compact-manifest.json"; compact.write_text(json.dumps({"schema_version": 2, "family": "mih_schedule_aware_routing_gate_evidence_v2", "source_commit": args.source_commit, "matrix_execution_source_commit": args.matrix_source_commit, "contract_sha256": sha256(args.contract), "matrix_manifest_sha256": sha256(manifest_path), "outcome": manifest["outcome"], "held_out_execution": manifest["held_out_execution"], "source_snapshot_policy": "git_show_exact_evidence_commit_v1"}, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+        files.append((compact, "bundle/compact-manifest.json")); archive_manifest = archive.archive_manifest(files); archive_manifest["family"] = "mih_schedule_aware_routing_gate_evidence_v2"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, archive_manifest)
     return {"sha256": sha256(args.output), "bundle_root_sha256": archive_manifest["bundle_root_sha256"]}
 
 
-def main(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(); parser.add_argument("--contract", type=Path); parser.add_argument("--matrix-root", type=Path); parser.add_argument("--training-materialization-root", type=Path); parser.add_argument("--output", type=Path); parser.add_argument("--source-commit"); args = parser.parse_args(argv)
+def self_test() -> int:
     try:
-        require(all((args.contract, args.matrix_root, args.training_materialization_root, args.output, args.source_commit)), "evidence paths are required")
+        if archive.self_test() != 0:
+            return 1
+        head = subprocess.run(("git", "rev-parse", "HEAD"), cwd=ROOT, capture_output=True, text=True, check=True).stdout.strip()
+        require(len(source_hashes_at_commit(head, (THIS.name,))[THIS.name]) == 64, "current source snapshot differs")
+        try:
+            source_hashes_at_commit("0" * 40, (THIS.name,))
+        except ValueError:
+            pass
+        else:
+            raise ValueError("invalid historical source was accepted")
+    except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as error:
+        print(f"write-mih-schedule-aware-routing-evidence self-test failed: {error}", file=sys.stderr); return 1
+    print("MIH schedule-aware routing evidence packager self-test passed"); return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true"); parser.add_argument("--contract", type=Path); parser.add_argument("--matrix-root", type=Path); parser.add_argument("--training-materialization-root", type=Path); parser.add_argument("--output", type=Path); parser.add_argument("--source-commit"); parser.add_argument("--matrix-source-commit"); args = parser.parse_args(argv)
+    try:
+        if args.self_test:
+            return self_test()
+        require(all((args.contract, args.matrix_root, args.training_materialization_root, args.output, args.source_commit, args.matrix_source_commit)), "evidence paths are required")
         print(json.dumps(make_bundle(args), sort_keys=True))
     except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError) as error:
         print(f"write-mih-schedule-aware-routing-evidence: {error}", file=sys.stderr); return 1

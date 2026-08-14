@@ -57,12 +57,12 @@ def output_dir(root: Path, seed: int) -> Path:
     return root / "artifacts" / f"schedule-aware-routing-seed{seed}"
 
 
-def status(root: Path, contract: dict[str, Any], training_root: Path, seed: int) -> dict[str, Any] | None:
+def status(root: Path, contract: dict[str, Any], training_root: Path, seed: int, trainer_sources: dict[str, str] | None = None) -> dict[str, Any] | None:
     directory = output_dir(root, seed)
     legacy = trust.output_dir
     try:
         trust.output_dir = lambda _root, _seed: directory
-        return trust.row_status(root, contract, training_root, seed)
+        return trust.row_status(root, contract, training_root, seed, trainer_sources)
     finally:
         trust.output_dir = legacy
 
