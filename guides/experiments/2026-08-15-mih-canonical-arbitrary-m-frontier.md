@@ -87,6 +87,17 @@ the same exchange rather than revealing a discontinuity. Native sparse-index
 timing and index-byte measurements are now required to compare these work
 units on the target CPU.
 
+### Post-hoc m=18 versus m=19 diagnostic
+
+This five-seed, 10,000-replicate paired bootstrap is explicitly exploratory:
+it clarifies a local feature seen after the frontier matrix and is not a
+selection rule. The mean `m=19 - m=18` deltas are `-52.2` posting visits,
+`-64.5` candidates, `+0.00102` raw survival, `+0.00110` ADC survival, and
+`-0.00068` nDCG@10 per query. Every seed-level quality interval includes zero;
+work direction also differs in one seed. Thus the apparent m=19/m=18 local
+advantage is not established as dominance. The result reinforces the term
+**structured work/quality frontier**, rather than a smooth monotone curve.
+
 **Provenance.** The matrix is rooted at source commit
 `65f1e54ef90c74b2923f4056bc2dd4c6d79d3e36`, with matrix source-bundle SHA-256
 `ad2c7f469fa88f2389c320f9bd0c8963765493d603770552f5c827cfb9b05239` and

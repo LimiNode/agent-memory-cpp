@@ -78,6 +78,13 @@ document positions whose meaning is defined by the exact evaluation root.
 benchmark. It does not rule out other admissible bounds, alternate partitions,
 or a different corpus/scale regime.
 
+**Branch status.** Closed for the current fixed-r56 candidate-generator
+architecture. The global bound was tested for K=10, 64, 128, 256, 512, and
+768 over all fixed seeds and queries, with zero early proofs. This does not
+claim that progressive MIH is impossible for another radius policy, corpus, or
+exact-kNN continuation, but it does not justify further research budget before
+the native arbitrary-m latency frontier is known.
+
 **Next checks.** Combine the matched m frontier with native lookup/posting
 costs before choosing a storage layout. Treat other global bounds or index
 structures as separate predeclared work.

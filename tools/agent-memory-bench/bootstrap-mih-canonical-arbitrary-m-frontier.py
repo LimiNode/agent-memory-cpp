@@ -50,6 +50,12 @@ def source_bundle(value: dict[str, str]) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
 
+def load_diagnostics(path: Path, contract: dict[str, Any], contract_path: Path) -> list[tuple[int, int]]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(value == {"schema_version": 1, "family": "mih_canonical_arbitrary_m_frontier_post_hoc_diagnostics_v1", "matrix_contract_sha256": sha256(contract_path), "comparisons": [{"id": "m18-versus-m19", "control_m": 18, "challenger_m": 19, "purpose": "post_hoc_local_frontier_clarification_not_selection"}]}, "canonical arbitrary-m diagnostic contract differs")
+    return [(18, 19)]
+
+
 def paired_summary(control: numpy.ndarray, challenger: numpy.ndarray, seed: int, replicates: int) -> dict[str, Any]:
     require(control.shape == challenger.shape and control.ndim == 1 and control.size > 0, "paired bootstrap inputs differ")
     delta = challenger - control
@@ -63,7 +69,7 @@ def load_values(path: Path) -> dict[str, numpy.ndarray]:
         return {name: archive[name].copy() for name in archive.files}
 
 
-def bootstrap_report(contract: dict[str, Any], challenger_m: int, seed: int, control_path: Path, challenger_path: Path) -> dict[str, Any]:
+def bootstrap_report(contract: dict[str, Any], control_m: int, challenger_m: int, seed: int, control_path: Path, challenger_path: Path) -> dict[str, Any]:
     control, challenger = load_values(control_path), load_values(challenger_path)
     require(control["query_ids"].tobytes() == challenger["query_ids"].tobytes() and control["identity_json"].tobytes() == challenger["identity_json"].tobytes(), "paired bootstrap identities differ")
     metrics = {
@@ -78,7 +84,7 @@ def bootstrap_report(contract: dict[str, Any], challenger_m: int, seed: int, con
     return {
         "schema_version": 1,
         "family": "mih_canonical_arbitrary_m_frontier_paired_bootstrap_v1",
-        "control": "m16-minimum-probe-r56",
+        "control": f"m{control_m}-minimum-probe-r56",
         "challenger": f"m{challenger_m}-minimum-probe-r56",
         "seed": seed,
         "replicates": contract["decision_rule"]["bootstrap_replicates"],
@@ -97,14 +103,16 @@ def run(args: Any) -> None:
     expected_rows = [{"id": row["id"], "treatment": row["treatment"]["id"], "seed": row["seed"], "report_sha256": sha256(args.matrix_root / "reports" / f"{row['id']}.json"), "contribution_sha256": sha256(args.matrix_root / "contributions" / f"{row['id']}.npz")} for row in runner.rows(contract)]
     require(matrix.get("rows") == expected_rows, "canonical arbitrary-m matrix rows differ")
     args.output_root.mkdir(parents=True, exist_ok=True)
-    for challenger_m in contract["m_values"]:
-        if challenger_m == 16:
-            continue
+    comparisons = [(16, challenger_m) for challenger_m in contract["m_values"] if challenger_m != 16]
+    if args.diagnostic_contract is not None:
+        comparisons.extend(load_diagnostics(args.diagnostic_contract, contract, args.contract))
+    require(len(comparisons) == len(set(comparisons)), "canonical arbitrary-m bootstrap comparisons differ")
+    for control_m, challenger_m in comparisons:
         for seed in contract["seeds"]:
-            control = args.matrix_root / "contributions" / f"m16-minimum-probe-r56-seed{seed}.npz"
+            control = args.matrix_root / "contributions" / f"m{control_m}-minimum-probe-r56-seed{seed}.npz"
             challenger = args.matrix_root / "contributions" / f"m{challenger_m}-minimum-probe-r56-seed{seed}.npz"
-            output = bootstrap_report(contract, challenger_m, seed, control, challenger)
-            (args.output_root / f"m{challenger_m}-minus-m16-seed{seed}.json").write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+            output = bootstrap_report(contract, control_m, challenger_m, seed, control, challenger)
+            (args.output_root / f"m{challenger_m}-minus-m{control_m}-seed{seed}.json").write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def self_test() -> int:
@@ -117,9 +125,13 @@ def self_test() -> int:
             changed = {name: value.copy() for name, value in values.items()}
             changed["candidate_count"] += 2
             numpy.savez(challenger, **changed)
-            contract = runner.load_contract(THIS.with_name("mih-canonical-arbitrary-m-frontier.example.json"))
-            report = bootstrap_report(contract, 17, 52, control, challenger)
+            contract_path = THIS.with_name("mih-canonical-arbitrary-m-frontier.example.json")
+            contract = runner.load_contract(contract_path)
+            report = bootstrap_report(contract, 16, 17, 52, control, challenger)
             require(report["metrics"]["candidates_per_query"]["mean_delta"] == 2.0 and report["challenger"] == "m17-minimum-probe-r56", "paired bootstrap differs")
+            diagnostic = path / "diagnostic.json"
+            diagnostic.write_text(json.dumps({"schema_version": 1, "family": "mih_canonical_arbitrary_m_frontier_post_hoc_diagnostics_v1", "matrix_contract_sha256": sha256(contract_path), "comparisons": [{"id": "m18-versus-m19", "control_m": 18, "challenger_m": 19, "purpose": "post_hoc_local_frontier_clarification_not_selection"}]}), encoding="utf-8")
+            require(load_diagnostics(diagnostic, contract, contract_path) == [(18, 19)], "diagnostic contract differs")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         print(f"bootstrap-mih-canonical-arbitrary-m-frontier self-test failed: {error}", file=sys.stderr)
         return 1
@@ -134,6 +146,7 @@ def main(argv: list[str]) -> int:
     run_parser.add_argument("--contract", type=Path, required=True)
     run_parser.add_argument("--matrix-root", type=Path, required=True)
     run_parser.add_argument("--output-root", type=Path, required=True)
+    run_parser.add_argument("--diagnostic-contract", type=Path)
     sub.add_parser("self-test")
     args = parser.parse_args(argv)
     try:
