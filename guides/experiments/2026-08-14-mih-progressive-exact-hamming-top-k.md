@@ -61,6 +61,11 @@ an existing row.
 The staged archive is
 [`mih-progressive-exact-hamming-top-k-evidence-v3.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/mih-progressive-exact-hamming-top-k-v3).
 
+The v4 verifier additionally binds the supplied contract bytes to the measured
+source snapshot and requires both materialization manifest hashes to equal the
+frozen contract. This is necessary because the preserved top-K values are
+document positions whose meaning is defined by the exact evaluation root.
+
 **Limitations.** This is a Python conformance experiment, not a native latency
 benchmark. It does not rule out other admissible bounds, alternate partitions,
 or a different corpus/scale regime.

@@ -37,9 +37,15 @@ def load_runner() -> Any:
 runner=load_runner()
 
 
+def validate_contract_materializations(contract_path: Path, contract_snapshot: bytes, contract: dict[str, Any], calibration: dict[str, Any], evaluation: dict[str, Any]) -> None:
+    require(contract_path.read_bytes() == contract_snapshot, "progressive contract snapshot differs")
+    require(calibration.get("manifest_sha256") == contract.get("calibration_materialization_manifest_sha256"), "progressive calibration provenance differs")
+    require(evaluation.get("manifest_sha256") == contract.get("evaluation_materialization_manifest_sha256"), "progressive evaluation provenance differs")
+
+
 def collect(args: Any) -> dict[str, bytes]:
     contract=runner.load_contract(args.contract); calibration=runner.shared.load_root(args.calibration_root); evaluation=runner.shared.load_root(args.evaluation_root); runner.shared.validate_calibration_evaluation_pair(calibration,evaluation)
-    matrix_path=args.matrix_root/"matrix-manifest.json"; matrix=json.loads(matrix_path.read_text(encoding="utf-8")); names=("run-mih-progressive-exact-hamming-top-k.py","mih-progressive-exact-hamming-top-k.example.json","evaluate-mih-banding.py","evaluate-projection-quantization.py"); expected={name:sha256_bytes(snapshot(args.measured_source_ref,f"tools/agent-memory-bench/{name}")) for name in names}
+    matrix_path=args.matrix_root/"matrix-manifest.json"; matrix=json.loads(matrix_path.read_text(encoding="utf-8")); names=("run-mih-progressive-exact-hamming-top-k.py","mih-progressive-exact-hamming-top-k.example.json","evaluate-mih-banding.py","evaluate-projection-quantization.py"); contract_snapshot=snapshot(args.measured_source_ref,"tools/agent-memory-bench/mih-progressive-exact-hamming-top-k.example.json"); validate_contract_materializations(args.contract, contract_snapshot, contract, calibration, evaluation); expected={name:sha256_bytes(snapshot(args.measured_source_ref,f"tools/agent-memory-bench/{name}")) for name in names}
     require(matrix.get("schema_version")==1 and matrix.get("family")==runner.FAMILY and matrix.get("contract_sha256")==sha256(args.contract) and matrix.get("source_files_sha256")==expected and matrix.get("source_bundle_sha256")==digest(expected),"progressive matrix provenance differs")
     expected_rows=[]; files={"bundle/contract.json":args.contract.read_bytes(),"bundle/matrix-manifest.json":matrix_path.read_bytes(),"bundle/experiment-note.md":args.note.read_bytes()}
     for seed in contract["seeds"]:
@@ -68,6 +74,18 @@ def self_test() -> int:
             path=Path(directory)/"archive.zip"
             with zipfile.ZipFile(path,"w") as archive: archive.writestr("bundle/a",b"a")
             with zipfile.ZipFile(path) as archive: require(archive.read("bundle/a")==b"a","archive reopen differs")
+            contract_path=Path(directory)/"contract.json"; contract_path.write_bytes(b"contract")
+            contract={"calibration_materialization_manifest_sha256":"calibration","evaluation_materialization_manifest_sha256":"evaluation"}; calibration={"manifest_sha256":"calibration"}; evaluation={"manifest_sha256":"evaluation"}
+            validate_contract_materializations(contract_path,b"contract",contract,calibration,evaluation)
+            for value in (b"wrong",):
+                try: validate_contract_materializations(contract_path,value,contract,calibration,evaluation)
+                except ValueError: pass
+                else: raise ValueError("contract snapshot mutation was accepted")
+            for root, key in ((calibration,"manifest_sha256"),(evaluation,"manifest_sha256")):
+                changed=dict(root); changed[key]="wrong"
+                try: validate_contract_materializations(contract_path,b"contract",contract,changed if root is calibration else calibration,changed if root is evaluation else evaluation)
+                except ValueError: pass
+                else: raise ValueError("materialization manifest mutation was accepted")
         contract = {"pipeline": {"top_k_values": [1, 2], "global_radius": 0, "band_count": 1}}; query_ids = numpy.asarray(["q0", "q1"], dtype=numpy.str_)
         values = {"query_ids": query_ids, "top_k_values": numpy.asarray([1, 2], dtype=numpy.int32), "total_probe_count": numpy.asarray([3, 3], dtype=numpy.int32), "total_posting_visits": numpy.asarray([4, 4], dtype=numpy.int32), "total_unique_candidate_count": numpy.asarray([2, 2], dtype=numpy.int32), "total_hamming_computations": numpy.asarray([2, 2], dtype=numpy.int32), "probe_count_at_proof": numpy.asarray([[3, 3], [3, 3]], dtype=numpy.int32), "posting_visits_at_proof": numpy.asarray([[4, 4], [4, 4]], dtype=numpy.int32), "unique_candidates_at_proof": numpy.asarray([[2, 2], [2, 2]], dtype=numpy.int32), "hamming_computations_at_proof": numpy.asarray([[2, 2], [2, 2]], dtype=numpy.int32), "global_lower_bound_at_proof": numpy.asarray([[3, 3], [3, 3]], dtype=numpy.int32), "early_proof": numpy.asarray([[False, False], [False, False]], dtype=numpy.bool_), "full_union_top_k_match": numpy.asarray([[True, True], [True, True]], dtype=numpy.bool_), "progressive_top_768_document_positions": numpy.asarray([[0, 1], [2, 3]], dtype=numpy.int32), "full_union_top_768_document_positions": numpy.asarray([[0, 1], [2, 3]], dtype=numpy.int32), "progressive_cutoff_hamming_distance": numpy.asarray([[1, 2], [1, 2]], dtype=numpy.int32), "full_union_cutoff_hamming_distance": numpy.asarray([[1, 2], [1, 2]], dtype=numpy.int32)}
         with tempfile.TemporaryDirectory() as directory:
