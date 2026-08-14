@@ -77,7 +77,7 @@ All six challenger-vs-`m=16` comparisons have per-seed paired bootstraps with
 for every seed: `m=15` is lower by about 0.0286/0.0284, while `m=17..21` are
 higher by 0.0204..0.0711 / 0.0201..0.0692 respectively. The nDCG difference
 is not uniformly separated from zero for `m=15..20`; `m=21` is positive for
-all five seed-level intervals. This evidence supports a smooth quality/work
+all five seed-level intervals. This evidence supports a structured work/quality
 frontier, not selection of a production point.
 
 **Interpretation.** `m=19` is not a hidden optimum. It is one attractive
@@ -103,5 +103,8 @@ advantage is not established as dominance. The result reinforces the term
 `ad2c7f469fa88f2389c320f9bd0c8963765493d603770552f5c827cfb9b05239` and
 contract SHA-256
 `14fc5023b7797334997b1b0f62a23fbcd603c744798009e55df4bd9238e55f85`.
-The raw matrix and bootstrap files remain outside Git pending evidence-package
-validation and release staging.
+The fail-closed evidence packager revalidates all 35 report/contribution rows,
+all 30 predeclared `m`-versus-`m=16` paired bootstraps, and all five post-hoc
+`m=19`-versus-`m=18` diagnostic replays before writing a deterministic ZIP.
+The resulting archive is staged in the corresponding draft evidence release;
+the raw matrix and bootstrap files remain outside Git.

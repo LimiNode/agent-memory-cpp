@@ -542,6 +542,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mih_canonical_arbitrary_m_frontier_evidence_packager_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-canonical-arbitrary-m-frontier-evidence.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_mih_progressive_exact_hamming_top_k_self_test
             COMMAND
                 ${Python3_EXECUTABLE}
