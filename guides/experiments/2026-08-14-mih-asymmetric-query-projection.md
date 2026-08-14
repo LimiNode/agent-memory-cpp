@@ -13,3 +13,19 @@ shared-W treatment, and this asymmetric treatment across five fixed seeds.
 
 The complete numeric result, paired bootstrap, evidence archive, and follow-up
 interpretation will be added only after the predeclared matrix completes.
+
+## Result
+
+The five-seed fixed matrix rejects this v1 asymmetric objective. Relative to
+matched ordinary ITQ, frozen-document asymmetric query routing changes ADC-K2
+E5-oracle survival by `-0.013403`, reranked nDCG@10 by `-0.006110`, candidates
+by `+582.97/query`, and posting visits by `+718.87/query`. All five seed-level
+ADC deltas are negative (`-0.013259`, `-0.020687`, `-0.013099`, `-0.012700`,
+`-0.007268`). It is also worse than the matched shared-W treatment.
+
+This is a useful no-go rather than a refutation of query-aware learning:
+query-side freedom alone can route into many more frozen document buckets
+without moving relevant documents into the desired ones. Train MIH
+false-positive mining is therefore not enough under the simple Hamming-radius
+loss. A future asymmetric branch needs an explicit candidate/posting work term
+or a routing-aware objective, rather than more epochs of this loss.
