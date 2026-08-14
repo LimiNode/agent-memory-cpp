@@ -27,7 +27,14 @@ work. No failure requires relaxing the drift cap. Thus a schedule-aware work
 proxy fixes a concrete modeling error but does not make asymmetric routing
 stable across all ITQ rotations.
 
-Draft evidence is tied to `735efe3df6f6e9763840d10307c32ba0d119850d`:
-archive SHA-256 `6ed28bc103b165642ba648e307790e46220874a42f17c407a23f30c3d3c6220c`,
+The earlier draft bundle is historical. A fresh v2 replay records the complete
+normalized execution contract for both accepted and rejected rows and confirms
+the same `2/5` result without opening held-out data.
+
+Draft evidence v2 is tied to `79d745c2e8979609c899a6a42e955f1c645d966a`:
+archive SHA-256 `8865f58334aac4634133abdb6010fbc7d2e2e13076edd688903418549bc8ad9b`,
 bundle-root SHA-256
-`055afc7750558cb79e77e6a7d5f366c03f34e3373f6934f01a13ed67ecca7c90`.
+`7f2583ebfe2120f5df63618bc1f9334384fc2f59a0675c73ab591c9aa493c68d`.
+Its packager derives the matrix source hashes from that exact commit through
+`git show`, separately snapshots the evidence source, and is covered by CTest
+and CI self-tests.
