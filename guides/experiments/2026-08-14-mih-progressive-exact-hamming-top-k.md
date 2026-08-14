@@ -46,6 +46,21 @@ proof, dataset and schedule, rather than a rejection based on the former local
 bound. Generation-array first discovery remains a correct full-union baseline;
 the global stopping proof itself does not reduce work here, even for top-10.
 
+### Evidence replay hardening (v3)
+
+The original v2 draft evidence records the result but is historical only. The
+v3 replay retains, for every seed and query, both the progressive and canonical
+full-union top-768 document-position sequences, their cutoff Hamming distances,
+and all work/proof arrays. Document positions are bound to the evaluation
+materialization manifest. The evidence packager independently checks sequence
+equality for every predeclared K prefix and recomputes every report aggregate
+from the NPZ contribution; it does not trust the report's summary or a runner
+boolean. Resume now performs the same fail-closed validation before accepting
+an existing row.
+
+The staged archive is
+[`mih-progressive-exact-hamming-top-k-evidence-v3.zip`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/mih-progressive-exact-hamming-top-k-v3).
+
 **Limitations.** This is a Python conformance experiment, not a native latency
 benchmark. It does not rule out other admissible bounds, alternate partitions,
 or a different corpus/scale regime.

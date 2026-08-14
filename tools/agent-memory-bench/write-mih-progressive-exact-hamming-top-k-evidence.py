@@ -14,6 +14,8 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
+import numpy
+
 sys.dont_write_bytecode = True
 THIS = Path(__file__).resolve(); ROOT = THIS.parents[2]
 
@@ -42,8 +44,7 @@ def collect(args: Any) -> dict[str, bytes]:
     expected_rows=[]; files={"bundle/contract.json":args.contract.read_bytes(),"bundle/matrix-manifest.json":matrix_path.read_bytes(),"bundle/experiment-note.md":args.note.read_bytes()}
     for seed in contract["seeds"]:
         report_path=args.matrix_root/"reports"/f"m16-r56-seed{seed}.json"; contribution_path=args.matrix_root/"contributions"/f"m16-r56-seed{seed}.npz"; report=json.loads(report_path.read_text(encoding="utf-8"))
-        expected_curve = {str(limit) for limit in contract["pipeline"]["top_k_values"]}
-        require(report.get("schema_version")==2 and report.get("family")==runner.FAMILY and report.get("source_files_sha256")==expected and report.get("source_bundle_sha256")==digest(expected) and report.get("calibration_materialization_manifest_sha256")==calibration["manifest_sha256"] and report.get("evaluation_materialization_manifest_sha256")==evaluation["manifest_sha256"] and report.get("seed")==seed and report.get("query_count")==len(evaluation["query_ids"]) and report.get("contribution_sha256")==sha256(contribution_path) and set(report.get("by_top_k",{}))==expected_curve and all(row.get("full_union_top_k_match_fraction")==1.0 for row in report["by_top_k"].values()),"progressive report differs")
+        runner.validate_report(report, contribution_path, contract, numpy.asarray(evaluation["query_ids"], dtype=numpy.str_), len(evaluation["document_ids"]), calibration["manifest_sha256"], evaluation["manifest_sha256"], expected, seed)
         expected_rows.append({"seed":seed,"report_sha256":sha256(report_path),"contribution_sha256":sha256(contribution_path)}); files[f"bundle/reports/{report_path.name}"]=report_path.read_bytes(); files[f"bundle/contributions/{contribution_path.name}"]=contribution_path.read_bytes()
     require(matrix.get("rows")==expected_rows,"progressive matrix rows differ")
     for name in names: files[f"bundle/sources/{name}"]=snapshot(args.measured_source_ref,f"tools/agent-memory-bench/{name}")
@@ -51,7 +52,7 @@ def collect(args: Any) -> dict[str, bytes]:
 
 
 def package(args: Any) -> None:
-    files=collect(args); members={name:{"sha256":sha256_bytes(value),"size":len(value)} for name,value in sorted(files.items())}; root=digest({name:item["sha256"] for name,item in members.items()}); manifest={"schema_version":2,"family":"mih_progressive_exact_hamming_top_k_evidence_v2","measured_source_ref":args.measured_source_ref,"bundle_root_sha256":root,"members":members}; files["bundle/evidence-manifest.json"]=(json.dumps(manifest,indent=2,sort_keys=True)+"\n").encode(); args.output.parent.mkdir(parents=True,exist_ok=True)
+    files=collect(args); members={name:{"sha256":sha256_bytes(value),"size":len(value)} for name,value in sorted(files.items())}; root=digest({name:item["sha256"] for name,item in members.items()}); manifest={"schema_version":3,"family":"mih_progressive_exact_hamming_top_k_evidence_v3","measured_source_ref":args.measured_source_ref,"bundle_root_sha256":root,"members":members}; files["bundle/evidence-manifest.json"]=(json.dumps(manifest,indent=2,sort_keys=True)+"\n").encode(); args.output.parent.mkdir(parents=True,exist_ok=True)
     with zipfile.ZipFile(args.output,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=9) as archive:
         for name,value in sorted(files.items()): info=zipfile.ZipInfo(name); info.date_time=(1980,1,1,0,0,0); info.external_attr=0o100644<<16; archive.writestr(info,value)
     with zipfile.ZipFile(args.output) as archive:
@@ -67,6 +68,17 @@ def self_test() -> int:
             path=Path(directory)/"archive.zip"
             with zipfile.ZipFile(path,"w") as archive: archive.writestr("bundle/a",b"a")
             with zipfile.ZipFile(path) as archive: require(archive.read("bundle/a")==b"a","archive reopen differs")
+        contract = {"pipeline": {"top_k_values": [1, 2], "global_radius": 0, "band_count": 1}}; query_ids = numpy.asarray(["q0", "q1"], dtype=numpy.str_)
+        values = {"query_ids": query_ids, "top_k_values": numpy.asarray([1, 2], dtype=numpy.int32), "total_probe_count": numpy.asarray([3, 3], dtype=numpy.int32), "total_posting_visits": numpy.asarray([4, 4], dtype=numpy.int32), "total_unique_candidate_count": numpy.asarray([2, 2], dtype=numpy.int32), "total_hamming_computations": numpy.asarray([2, 2], dtype=numpy.int32), "probe_count_at_proof": numpy.asarray([[3, 3], [3, 3]], dtype=numpy.int32), "posting_visits_at_proof": numpy.asarray([[4, 4], [4, 4]], dtype=numpy.int32), "unique_candidates_at_proof": numpy.asarray([[2, 2], [2, 2]], dtype=numpy.int32), "hamming_computations_at_proof": numpy.asarray([[2, 2], [2, 2]], dtype=numpy.int32), "global_lower_bound_at_proof": numpy.asarray([[3, 3], [3, 3]], dtype=numpy.int32), "early_proof": numpy.asarray([[False, False], [False, False]], dtype=numpy.bool_), "full_union_top_k_match": numpy.asarray([[True, True], [True, True]], dtype=numpy.bool_), "progressive_top_768_document_positions": numpy.asarray([[0, 1], [2, 3]], dtype=numpy.int32), "full_union_top_768_document_positions": numpy.asarray([[0, 1], [2, 3]], dtype=numpy.int32), "progressive_cutoff_hamming_distance": numpy.asarray([[1, 2], [1, 2]], dtype=numpy.int32), "full_union_cutoff_hamming_distance": numpy.asarray([[1, 2], [1, 2]], dtype=numpy.int32)}
+        with tempfile.TemporaryDirectory() as directory:
+            contribution = Path(directory) / "contribution.npz"; numpy.savez_compressed(contribution, **values); summary = runner.contribution_summary(contribution, contract, query_ids, 4)
+            report = {"schema_version": 3, "family": runner.FAMILY, "source_files_sha256": {}, "source_bundle_sha256": runner.source_bundle({}), "calibration_materialization_manifest_sha256": "calibration", "evaluation_materialization_manifest_sha256": "evaluation", "seed": 52, "query_count": 2, "pipeline": contract["pipeline"], "band_probe_radii": [0], "contribution_sha256": runner.sha256(contribution), **summary}
+            runner.validate_report(report, contribution, contract, query_ids, 4, "calibration", "evaluation", {}, 52)
+            for field, index, replacement in (("full_union_top_k_match", (0, 0), False), ("total_probe_count", (0,), 2), ("query_ids", (0,), "wrong"), ("early_proof", (0, 0), True), ("progressive_top_768_document_positions", (0, 0), 3)):
+                mutated = {name: value.copy() for name, value in values.items()}; mutated[field][index] = replacement; numpy.savez_compressed(contribution, **mutated)
+                try: runner.validate_report(report, contribution, contract, query_ids, 4, "calibration", "evaluation", {}, 52)
+                except ValueError: pass
+                else: raise ValueError(f"contribution mutation was accepted: {field}")
     except (OSError,ValueError): print("MIH progressive exact Hamming evidence packager self-test failed",file=sys.stderr); return 1
     print("MIH progressive exact Hamming evidence packager self-test passed"); return 0
 
