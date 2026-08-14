@@ -37,11 +37,16 @@ final epoch was used without a train-validation work gate. The result is thus a
 no-go for that static initial-MIH-negative Hamming objective, not a refutation
 of query-aware learning.
 
-The replayed archive is staged as draft evidence and is tied to source commit
-`9b16fba6880eaa2cc675f0a4fba33871c24c87ea`: archive SHA-256
-`b1ccb56d0ddf705db889108f7cc501e7b99bb4f23d79d67fd0725d057f94115d`,
+Draft evidence v3 is tied to commit
+`ab142a5c7171b06ac8e05bfd4119e7b08b101c59`: archive SHA-256
+`7838f7544d322e77943f1998a2f37fa1c31c0f6062d10314ab983da022597f97`,
 bundle-root SHA-256
-`8e0c5f9ce4b3b60cb58851d126be9d35bca8422821a5bfec345776618589cded`.
+`9009f497b2d66d684b21972f399865f1cd312e7bf7451321ed5ceb96854e24d5`.
+It validates the exact #137 contract, canonical matrix source identity, every
+reused baseline contribution and W0 anchor payload, and equality of #137 and
+#138 calibration-materialization manifests. The matrix itself was executed at
+`9b16fba6880eaa2cc675f0a4fba33871c24c87ea`; v3 adds portable provenance
+validation and does not reinterpret or rerun that measurement.
 
 The next predeclared asymmetric branch must instead constrain query-code drift,
 re-mine current-query false positives by downstream danger, add an explicit
