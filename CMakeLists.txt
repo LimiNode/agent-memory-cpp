@@ -524,6 +524,16 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_mih_progressive_exact_hamming_top_k_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mih-progressive-exact-hamming-top-k.py
+                self-test
+                --contract
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/mih-progressive-exact-hamming-top-k.example.json
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_mih_calibrated_weighted_hamming_matrix_self_test
             COMMAND
                 ${Python3_EXECUTABLE}
