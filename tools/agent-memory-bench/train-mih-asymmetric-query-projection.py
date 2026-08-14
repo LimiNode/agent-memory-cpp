@@ -48,8 +48,12 @@ def train(args:Any)->None:
  for key,path,shape in (('projection_weights',doc_path,[256,384]),('query_projection_weights',query_path,[256,384]),('thresholds',threshold_path,[256])): artifact['weights'][key]={'path':path.name,'sha256':digest(path),'shape':shape,'layout':'row_major_out_by_in' if len(shape)==2 else None,'dtype':'float32_le'}
  (args.output_root/'artifact.json').write_text(json.dumps(artifact,indent=2,sort_keys=True)+'\n')
 def main(argv:list[str])->int:
- p=argparse.ArgumentParser();p.add_argument('--materialization-root',type=Path);p.add_argument('--output-root',type=Path);p.add_argument('--seed',type=int,default=52);p.add_argument('--epochs',type=int,default=4);p.add_argument('--batch-size',type=int,default=192);p.add_argument('--learning-rate',type=float,default=1e-5);p.add_argument('--itq-iterations',type=int,default=50);p.add_argument('--hard-negative-count',type=int,default=4);p.add_argument('--anchor-weight',type=float,default=50.);a=p.parse_args(argv)
- try: train(a)
+ p=argparse.ArgumentParser();p.add_argument('--self-test',action='store_true');p.add_argument('--materialization-root',type=Path);p.add_argument('--output-root',type=Path);p.add_argument('--seed',type=int,default=52);p.add_argument('--epochs',type=int,default=4);p.add_argument('--batch-size',type=int,default=192);p.add_argument('--learning-rate',type=float,default=1e-5);p.add_argument('--itq-iterations',type=int,default=50);p.add_argument('--hard-negative-count',type=int,default=4);p.add_argument('--anchor-weight',type=float,default=50.);a=p.parse_args(argv)
+ try:
+  if a.self_test:
+   require(source_hashes()==source_hashes(),'trainer source digest is unstable')
+   print('MIH asymmetric query-projection trainer self-test passed');return 0
+  train(a)
  except (TrainingError,OSError,ValueError,json.JSONDecodeError) as e: print(f'train-mih-asymmetric-query-projection: {e}',file=sys.stderr);return 1
  return 0
 if __name__=='__main__':raise SystemExit(main(sys.argv[1:]))

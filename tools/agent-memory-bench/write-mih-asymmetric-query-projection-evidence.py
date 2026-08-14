@@ -1,32 +1,170 @@
 #!/usr/bin/env python3
-"""Validate and package the frozen-document asymmetric MIH experiment."""
+"""Fail-closed packaging for frozen-document asymmetric MIH evidence."""
+
 from __future__ import annotations
-import argparse, hashlib, importlib.util, json, sys, tempfile
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import subprocess
+import sys
+import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
-THIS=Path(__file__).resolve()
-def load(name:str,key:str)->Any:
- spec=importlib.util.spec_from_file_location(key,THIS.with_name(name)); assert spec and spec.loader
- module=importlib.util.module_from_spec(spec);sys.modules[key]=module;spec.loader.exec_module(module);return module
-archive=load('write-mih-rerank-cost-evidence.py','asymmetric_evidence_archive')
-def sha(path:Path)->str:return hashlib.sha256(path.read_bytes()).hexdigest()
-def need(value:bool,message:str)->None:
- if not value:raise ValueError(message)
-def main()->int:
- p=argparse.ArgumentParser();p.add_argument('--root',type=Path,required=True);p.add_argument('--shared-root',type=Path,required=True);p.add_argument('--contract',type=Path,required=True);p.add_argument('--output',type=Path,required=True);p.add_argument('--source-commit',required=True);a=p.parse_args()
- try:
-  contract=json.loads(a.contract.read_text());need(contract['family']=='mih_asymmetric_query_projection_confirmatory_v1','contract family differs');files=[(a.contract,'bundle/contract.json')]
-  for seed in contract['seeds']:
-   artifact=a.root/f'seed{seed}'/'artifact.json';report=a.root/f'asymmetric-seed{seed}.json';contrib=a.root/f'asymmetric-seed{seed}.npz';need(artifact.is_file() and report.is_file() and contrib.is_file(),'asymmetric row is incomplete')
-   value=json.loads(artifact.read_text());training=value.get('training',{});need(value['architecture']['family']=='mih_query_aware_asymmetric_projection_v1' and value.get('input_materialization_manifest_sha256')==contract['training_materialization_manifest_sha256'] and training.get('seed')==seed and training.get('epochs')==contract['training']['epochs'] and training.get('batch_size')==contract['training']['batch_size'] and training.get('learning_rate')==contract['training']['learning_rate'] and training.get('anchor_weight')==contract['training']['anchor_weight'] and training.get('hard_negative_mining',{}).get('id')=='train_mih_candidate_union_false_positive_v1','artifact contract differs')
-   need((a.root/f'seed{seed}'/'projection-weights.f32').read_bytes()==(a.shared_root/'artifacts'/f'query-aware-hamming-target-seed{seed}'/'initial-itq-projection-weights.f32').read_bytes() and (a.root/f'seed{seed}'/'thresholds.f32').read_bytes()==(a.shared_root/'artifacts'/f'query-aware-hamming-target-seed{seed}'/'initial-itq-thresholds.f32').read_bytes(),'frozen W0 differs from #137 anchor')
-   report_value=json.loads(report.read_text());need(report_value.get('calibration_materialization_manifest_sha256')==contract['training_materialization_manifest_sha256'] and report_value.get('evaluation_materialization_manifest_sha256')==contract['held_out_evaluation_manifest_sha256'] and report_value.get('seed')==seed and report_value.get('band_count')==16 and report_value.get('band_width_bits')==[16]*16 and report_value.get('global_radius')==56 and report_value.get('candidate_limit')==512 and report_value.get('hamming_limit')==768 and report_value.get('second_stage')=='binary-adc' and report_value.get('second_limit')==256 and report_value.get('oracle_k')==10 and report_value.get('encoder_artifact_sha256')==sha(artifact),'report contract differs')
-   for path,name in ((artifact,f'bundle/artifacts/seed{seed}/artifact.json'),(a.root/f'seed{seed}'/'projection-weights.f32',f'bundle/artifacts/seed{seed}/projection-weights.f32'),(a.root/f'seed{seed}'/'query-projection-weights.f32',f'bundle/artifacts/seed{seed}/query-projection-weights.f32'),(a.root/f'seed{seed}'/'thresholds.f32',f'bundle/artifacts/seed{seed}/thresholds.f32'),(report,f'bundle/reports/asymmetric-seed{seed}.json'),(contrib,f'bundle/contributions/asymmetric-seed{seed}.npz'),(a.root/'bootstrap'/f'itq-vs-asymmetric-seed{seed}.json',f'bundle/bootstrap/itq-vs-asymmetric-seed{seed}.json'),(a.root/'bootstrap'/f'shared-vs-asymmetric-seed{seed}.json',f'bundle/bootstrap/shared-vs-asymmetric-seed{seed}.json'),(a.shared_root/'contributions'/f'itq-control--16x16-r56-seed{seed}.npz',f'bundle/baselines/itq-seed{seed}.npz'),(a.shared_root/'contributions'/f'query-aware-hamming-target--16x16-r56-seed{seed}.npz',f'bundle/baselines/shared-seed{seed}.npz')):
-    need(path.is_file(),'evidence member is missing');files.append((path,name))
-  for name in (THIS.name,'train-mih-asymmetric-query-projection.py','bootstrap-mih-asymmetric-query-projection.py','evaluate-mih-banding.py','evaluate-projection-quantization.py','train-nlb-qrels-supervised.py','mih-asymmetric-query-projection.example.json','write-mih-rerank-cost-evidence.py'):files.append((THIS.with_name(name),f'bundle/sources/{name}'))
-  with tempfile.TemporaryDirectory() as temp:
-   compact=Path(temp)/'manifest.json';compact.write_text(json.dumps({'schema_version':1,'family':'mih_asymmetric_query_projection_evidence_v1','source_commit':a.source_commit,'contract_sha256':sha(a.contract),'baseline_policy':'#137_matched_anchor_v2_contributions'},indent=2,sort_keys=True)+'\n');files.append((compact,'bundle/compact-manifest.json'));manifest=archive.archive_manifest(files);manifest['family']='mih_asymmetric_query_projection_evidence_v1';a.output.parent.mkdir(parents=True,exist_ok=True);archive.write_archive(a.output,files,manifest)
-  print(json.dumps({'sha256':sha(a.output),'bundle_root_sha256':manifest['bundle_root_sha256']},sort_keys=True))
- except (OSError,ValueError,json.JSONDecodeError) as e:print(f'write-mih-asymmetric-query-projection-evidence: {e}',file=sys.stderr);return 1
- return 0
-if __name__=='__main__':raise SystemExit(main())
+
+THIS = Path(__file__).resolve()
+ROOT = THIS.parents[2]
+SEEDS = (52, 53, 54, 55, 56)
+SOURCE_NAMES = (
+    THIS.name, "run-mih-asymmetric-query-projection.py", "train-mih-asymmetric-query-projection.py",
+    "bootstrap-mih-asymmetric-query-projection.py", "diagnose-mih-asymmetric-query-projection.py",
+    "mih-asymmetric-query-projection.example.json", "evaluate-mih-banding.py",
+    "evaluate-projection-quantization.py", "train-nlb-qrels-supervised.py",
+    "requirements-binary-autoencoder-trainer.txt", "write-mih-rerank-cost-evidence.py",
+)
+
+
+def load(name: str, key: str) -> Any:
+    spec = importlib.util.spec_from_file_location(key, THIS.with_name(name))
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {name}")
+    module = importlib.util.module_from_spec(spec); sys.modules[key] = module; spec.loader.exec_module(module)
+    return module
+
+
+archive = load("write-mih-rerank-cost-evidence.py", "asymmetric_evidence_archive")
+runner = load("run-mih-asymmetric-query-projection.py", "asymmetric_evidence_runner")
+bootstrap = load("bootstrap-mih-asymmetric-query-projection.py", "asymmetric_evidence_bootstrap")
+shared = load("evaluate-projection-quantization.py", "asymmetric_evidence_shared")
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def require(value: bool, message: str) -> None:
+    if not value:
+        raise ValueError(message)
+
+
+def comparison_id(baseline: str, seed: int) -> str:
+    return f"{baseline}-vs-asymmetric--16x16-r56-seed{seed}"
+
+
+def validate_bootstrap(root: Path, shared_root: Path, seed: int, baseline: str) -> None:
+    left = shared_root / "contributions" / f"{baseline}--16x16-r56-seed{seed}.npz"
+    right = root / "contributions" / f"asymmetric--16x16-r56-seed{seed}.npz"
+    expected_path = root / "bootstrap" / f"{comparison_id(baseline, seed)}.json"
+    expected = json.loads(expected_path.read_text(encoding="utf-8"))
+    with tempfile.TemporaryDirectory() as directory:
+        output = Path(directory) / "bootstrap.json"
+        bootstrap.bootstrap(SimpleNamespace(left_contributions=left, right_contributions=right, output=output, comparison_id=comparison_id(baseline, seed), replicates=10000, seed=20260814))
+        actual = json.loads(output.read_text(encoding="utf-8"))
+    require(actual == expected, f"bootstrap replay differs: {baseline} seed{seed}")
+
+
+def validate(args: Any) -> dict[str, Any]:
+    contract = runner.load_contract(args.contract)
+    training = shared.load_root(args.training_materialization_root)
+    calibration = shared.load_root(args.calibration_root)
+    evaluation = shared.load_root(args.evaluation_root)
+    shared.validate_calibration_evaluation_pair(calibration, evaluation)
+    manifest = json.loads((args.matrix_root / "matrix-manifest.json").read_text(encoding="utf-8"))
+    require(manifest.get("family") == runner.FAMILY and manifest.get("contract_sha256") == sha256(args.contract), "matrix contract provenance differs")
+    require(manifest.get("training_materialization_manifest_sha256") == training["manifest_sha256"] and manifest.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and manifest.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"], "matrix materialization provenance differs")
+    files = runner.source_files()
+    require(manifest.get("source_files_sha256") == files and manifest.get("source_bundle_sha256") == runner.source_bundle(files), "matrix runner source identity differs")
+    entries = {entry.get("id"): entry for entry in manifest.get("rows", [])}
+    require(len(entries) == 5, "matrix row IDs differ")
+    for row in runner.rows(contract):
+        identifier = row["id"]
+        report = args.matrix_root / "reports" / f"{identifier}.json"
+        contribution = args.matrix_root / "contributions" / f"{identifier}.npz"
+        artifact = runner.artifact_path(args.matrix_root, row["seed"])
+        entry = entries.get(identifier, {})
+        require(runner.complete(args.matrix_root, row, contract, args.training_materialization_root, calibration, evaluation, args.shared_root), f"matrix row is incomplete: {identifier}")
+        require(entry.get("report_sha256") == sha256(report) and entry.get("contribution_sha256") == sha256(contribution) and entry.get("artifact_sha256") == sha256(artifact), f"matrix row digest differs: {identifier}")
+        for baseline in ("itq-control", "query-aware-hamming-target"):
+            validate_bootstrap(args.matrix_root, args.shared_root, row["seed"], baseline)
+    diagnostic = args.matrix_root / "asymmetric-diagnostic.json"
+    value = json.loads(diagnostic.read_text(encoding="utf-8"))
+    require(value.get("family") == "mih_asymmetric_query_projection_post_hoc_diagnostic_v1" and value.get("contract_sha256") == sha256(args.contract) and len(value.get("rows", [])) == 5, "asymmetric diagnostic differs")
+    return contract
+
+
+def verify_source_commit(source_commit: str) -> None:
+    require(len(source_commit) == 40 and all(value in "0123456789abcdef" for value in source_commit), "source commit must be a full lowercase SHA-1")
+    result = subprocess.run(("git", "cat-file", "-e", f"{source_commit}^{{commit}}"), cwd=ROOT, capture_output=True, text=True)
+    require(result.returncode == 0, "source commit is not present in this repository")
+
+
+def snapshot_sources(source_commit: str, directory: Path) -> list[tuple[Path, str]]:
+    verify_source_commit(source_commit)
+    files: list[tuple[Path, str]] = []
+    for name in SOURCE_NAMES:
+        repo_path = f"tools/agent-memory-bench/{name}"
+        result = subprocess.run(("git", "show", f"{source_commit}:{repo_path}"), cwd=ROOT, capture_output=True)
+        require(result.returncode == 0 and result.stdout, f"source commit does not contain {repo_path}")
+        path = directory / name; path.write_bytes(result.stdout); files.append((path, f"bundle/sources/{name}"))
+    return files
+
+
+def make_bundle(args: Any) -> dict[str, str]:
+    validate(args)
+    files: list[tuple[Path, str]] = [(args.contract, "bundle/contract.json"), (args.matrix_root / "matrix-manifest.json", "bundle/matrix-manifest.json"), (args.matrix_root / "asymmetric-diagnostic.json", "bundle/asymmetric-diagnostic.json")]
+    for seed in SEEDS:
+        identifier = f"asymmetric--16x16-r56-seed{seed}"
+        files += [(args.matrix_root / "reports" / f"{identifier}.json", f"bundle/reports/{identifier}.json"), (args.matrix_root / "contributions" / f"{identifier}.npz", f"bundle/contributions/{identifier}.npz")]
+        artifact = args.matrix_root / "artifacts" / f"asymmetric-seed{seed}"
+        for name in ("artifact.json", "projection-weights.f32", "query-projection-weights.f32", "thresholds.f32"):
+            files.append((artifact / name, f"bundle/artifacts/seed{seed}/{name}"))
+        for baseline in ("itq-control", "query-aware-hamming-target"):
+            comparison = comparison_id(baseline, seed)
+            files.append((args.matrix_root / "bootstrap" / f"{comparison}.json", f"bundle/bootstrap/{comparison}.json"))
+            files.append((args.shared_root / "contributions" / f"{baseline}--16x16-r56-seed{seed}.npz", f"bundle/baselines/{baseline}-seed{seed}.npz"))
+    with tempfile.TemporaryDirectory() as directory:
+        temporary = Path(directory); files.extend(snapshot_sources(args.source_commit, temporary))
+        compact = temporary / "compact-manifest.json"
+        compact.write_text(json.dumps({"schema_version": 2, "family": "mih_asymmetric_query_projection_evidence_v2", "contract_sha256": sha256(args.contract), "matrix_manifest_sha256": sha256(args.matrix_root / "matrix-manifest.json"), "source_commit": args.source_commit, "source_snapshot_policy": "git_show_exact_measured_commit_v1", "static_v1_scope": "initial_w0_union_first_materialized_false_positives_final_epoch_no_validation_selection"}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+        files.append((compact, "bundle/compact-manifest.json")); manifest = archive.archive_manifest(files); manifest["family"] = "mih_asymmetric_query_projection_evidence_v2"; args.output.parent.mkdir(parents=True, exist_ok=True); archive.write_archive(args.output, files, manifest)
+    return {"sha256": sha256(args.output), "bundle_root_sha256": manifest["bundle_root_sha256"]}
+
+
+def self_test() -> int:
+    try:
+        if archive.self_test() != 0:
+            return 1
+        try:
+            verify_source_commit("0" * 40)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("invalid source commit was accepted")
+    except (OSError, ValueError, json.JSONDecodeError) as error:
+        print(f"write-mih-asymmetric-query-projection-evidence self-test failed: {error}", file=sys.stderr)
+        return 1
+    print("MIH asymmetric query-projection evidence packager self-test passed")
+    return 0
+
+
+def main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true")
+    for name in ("contract", "matrix-root", "training-materialization-root", "calibration-root", "evaluation-root", "shared-root", "output"):
+        parser.add_argument(f"--{name}", type=Path)
+    parser.add_argument("--source-commit")
+    args = parser.parse_args(argv)
+    try:
+        if args.self_test:
+            return self_test()
+        require(all((args.contract, args.matrix_root, args.training_materialization_root, args.calibration_root, args.evaluation_root, args.shared_root, args.output, args.source_commit)), "evidence paths and source commit are required")
+        print(json.dumps(make_bundle(args), sort_keys=True))
+    except (OSError, ValueError, json.JSONDecodeError, subprocess.SubprocessError, shared.EvaluationError) as error:
+        print(f"write-mih-asymmetric-query-projection-evidence: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))
