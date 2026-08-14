@@ -1,44 +1,55 @@
 # Progressive exact Hamming top-K
 
-## 2026-08-14 — strict lower-bound termination on the m=16 radius-56 union
+## Historical v1 — local-depth bound diagnostic
 
-**Context.** Research branch `agent/mih-progressive-exact-hamming-top-k`.
-This is deliberately an execution diagnostic, separate from arbitrary-m
-partition selection.
+The original v1 compared a full-code Hamming threshold with the next local
+substring depth. That is a valid but deliberately weak bound; its zero
+early-stop outcome must not be interpreted as a test of canonical progressive
+MIH stopping.
 
-**Question.** Can the current `collect union -> deduplicate -> Hamming ->
-top-768` stage stop early while preserving exactly the same stable Hamming
-top-768 IDs as the complete radius-56 MIH union?
+## 2026-08-14 — global pigeonhole-bound K sweep (v2)
 
-**Protocol.** For the predeclared five ITQ-256 seeds (52--56), stream the
-existing 16 x 16 radius-56 pigeonhole schedule in increasing local Hamming
-depth. A generation array accepts each document only at first discovery, and
-full 256-bit Hamming is computed exactly once for it. The run may stop only
-when the worst current top-768 distance is strictly below the minimum local
-Hamming distance of every unvisited posting. Every final ID sequence is
-compared against the old full-union stable Hamming order.
+**Question.** Does the canonical MIH lower bound permit exact early stopping
+on the m=16 canonical r56 schedule, and how does it scale with top-K?
 
-**Result.** The strict gate did not terminate early for any query in any seed.
-All 1,252 queries in all five seeds consumed all 7,232 scheduled probes and
-all corresponding posting visits before proof; the final IDs matched the
-complete stable Hamming top-768 exactly in every case. Across seeds, the
-reference union contained 3,061.0 unique candidates/query and 3,356.3 posting
-visits/query, so exactly one full Hamming computation was performed per unique
-candidate.
+**Protocol.** Fixed ITQ-256/50 seeds 52--56, 25k training vectors, untouched
+22,607 documents / 1,252 queries. The schedule is nine 16-bit radius-3 and
+seven 16-bit radius-2 bands. Postings are processed by completed `(band,depth)`
+groups. If `t_b` is the largest fully processed local radius in a band, every
+undiscovered document has full Hamming distance at least:
 
-**Interpretation.** First-discovery generation-array dedup is a correct
-full-union implementation baseline. The particular local-depth lower bound is
-not a useful early-termination mechanism for this schedule: after every depth
-group the worst top-768 distance remains above the minimum distance possible
-for still-unseen postings. This rejects a claimed latency improvement without
-weakening the exactness contract.
+`L_unseen = sum_b (t_b + 1)`.
 
-**Limitations.** The Python implementation validates algorithmic conformance,
-not native hot-path latency. A negative result would not reject progressive
-execution in general; it rejects this particular lower bound for the current
-MIH schedule and K.
+A result is accepted only when the current Kth full-code Hamming distance is
+strictly smaller than `L_unseen`; strictness preserves stable document-ID tie
+ordering. First-discovery generation-array dedup computes each discovered
+document's full Hamming distance once. The predeclared K values are 10, 64,
+128, 256, 512 and 768.
 
-**Next checks.** If the strict gate reaches proof only after all probes, retain
-the generation-array first-discovery implementation as a clean full-union
-baseline and look for a stronger admissible global bound or a different index
-structure before making production claims.
+**Result.** All 6,260 query/seed rows exactly reproduce the full-union stable
+Hamming top-K at every K. The global proof nonetheless reaches no early stop
+for any K in this dataset: every row reaches all 7,232 probes, the complete
+3,356.3 posting visits/query and 3,061.0 Hamming computations/query before
+the final lower bound of 57.
+
+| K | Probes at proof | Posting visits at proof | Candidates/Hamming at proof | Early-proof fraction |
+|---:|---:|---:|---:|---:|
+| 10 | 7,232 | 3,356.3 | 3,061.0 | 0.0 |
+| 64 | 7,232 | 3,356.3 | 3,061.0 | 0.0 |
+| 128 | 7,232 | 3,356.3 | 3,061.0 | 0.0 |
+| 256 | 7,232 | 3,356.3 | 3,061.0 | 0.0 |
+| 512 | 7,232 | 3,356.3 | 3,061.0 | 0.0 |
+| 768 | 7,232 | 3,356.3 | 3,061.0 | 0.0 |
+
+**Interpretation.** This is now a real negative result for this exact global
+proof, dataset and schedule, rather than a rejection based on the former local
+bound. Generation-array first discovery remains a correct full-union baseline;
+the global stopping proof itself does not reduce work here, even for top-10.
+
+**Limitations.** This is a Python conformance experiment, not a native latency
+benchmark. It does not rule out other admissible bounds, alternate partitions,
+or a different corpus/scale regime.
+
+**Next checks.** Combine the matched m frontier with native lookup/posting
+costs before choosing a storage layout. Treat other global bounds or index
+structures as separate predeclared work.
