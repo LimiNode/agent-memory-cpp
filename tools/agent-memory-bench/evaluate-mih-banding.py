@@ -532,7 +532,7 @@ def document_id_set_sha256(document_ids: Any) -> str:
     return hashlib.sha256("".join(f"{value}\n" for value in sorted(values)).encode("utf-8")).hexdigest()
 
 
-def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: dict[str, Any], code_bits: int, band_count: int, band_widths: list[int]) -> tuple[dict[str, Any], Any, Any]:
+def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: dict[str, Any], code_bits: int, band_count: int, band_widths: list[int]) -> tuple[dict[str, Any], Any, Any, Any]:
     """Load a document-only or train-query-supervised MIH projection safely."""
     try:
         artifact = json.loads(path.read_text(encoding="utf-8"))
@@ -547,17 +547,18 @@ def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: d
     repaired = family == "mih_aware_itq_repaired_control_v1"
     itq_anchor = family == "itq_anchor_projection_v1"
     query_aware = family == "mih_query_aware_hamming_target_shared_w_v1"
-    if family not in ("mih_aware_itq_v1", "mih_aware_itq_repaired_control_v1", "mih_query_aware_hamming_target_shared_w_v1", "itq_anchor_projection_v1") or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or (not repaired and architecture.get("band_count") != band_count):
+    asymmetric = family == "mih_query_aware_asymmetric_projection_v1"
+    if family not in ("mih_aware_itq_v1", "mih_aware_itq_repaired_control_v1", "mih_query_aware_hamming_target_shared_w_v1", "itq_anchor_projection_v1", "mih_query_aware_asymmetric_projection_v1") or architecture.get("input_dimension") != data["dimension"] or architecture.get("bit_count") != code_bits or (not repaired and architecture.get("band_count") != band_count):
         raise EvaluationError("MIH-aware artifact architecture differs from evaluation")
     if not repaired and band_widths != [architecture.get("band_width_bits")] * band_count:
         raise EvaluationError("MIH-aware artifact band widths differ from evaluation")
     if not query_aware and (artifact.get("input_materialization_manifest_sha256") != calibration["manifest_sha256"] or artifact.get("prepared_study_manifest_sha256") != calibration["prepared_study_manifest_sha256"]):
         raise EvaluationError("MIH-aware artifact calibration provenance differs")
-    if query_aware:
+    if query_aware or asymmetric:
         exclusion = training.get("held_out_exclusion")
         if (training.get("queries_or_qrels_used") is not True or
-                training.get("objective") != "shared_w_qrels_hamming_radius_target_with_mih_frontier_gate_v1" or
-                not architecture.get("shared_projection") or
+                training.get("objective") not in ("shared_w_qrels_hamming_radius_target_with_mih_frontier_gate_v1", "frozen_document_itq_query_projection_with_train_mih_false_positive_mining_v1") or
+                (not asymmetric and not architecture.get("shared_projection")) or
                 not isinstance(exclusion, dict) or
                 exclusion.get("id") != "external_excluded_document_ids_set_v1" or
                 exclusion.get("document_ids_set_sha256") != document_id_set_sha256(data["document_ids"])):
@@ -566,7 +567,8 @@ def load_mih_aware_itq_artifact(path: Path, calibration: dict[str, Any], data: d
         raise EvaluationError("MIH-aware artifact is not document-only")
     projection = shared.require_artifact_weight(path.parent, weights.get("projection_weights"), [code_bits, data["dimension"]], "row_major_out_by_in", "projection_weights")
     thresholds = shared.require_artifact_weight(path.parent, weights.get("thresholds"), [code_bits], None, "thresholds")
-    return artifact, projection, thresholds
+    query_projection = projection if not asymmetric else shared.require_artifact_weight(path.parent, weights.get("query_projection_weights"), [code_bits, data["dimension"]], "row_major_out_by_in", "query_projection_weights")
+    return artifact, projection, thresholds, query_projection
 
 
 def write_result(args: Any, report: dict[str, Any], contributions: dict[str, Any], data: dict[str, Any]) -> None:
@@ -625,10 +627,10 @@ def evaluate(args: Any) -> None:
         weights = shared.itq_weights(numpy.asarray(calibration["train"]), args.code_bits, args.seed, args.itq_iterations)
         thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
     else:
-        artifact, weights, thresholds = load_mih_aware_itq_artifact(args.encoder_artifact, calibration, data, args.code_bits, args.band_count, widths)
+        artifact, weights, thresholds, query_weights = load_mih_aware_itq_artifact(args.encoder_artifact, calibration, data, args.code_bits, args.band_count, widths)
     calibration_projection = numpy.asarray(calibration["train"]) @ weights.T + thresholds
     document_projection = numpy.asarray(data["documents"]) @ weights.T + thresholds
-    query_projection = numpy.asarray(data["queries"]) @ weights.T + thresholds
+    query_projection = numpy.asarray(data["queries"]) @ (query_weights if artifact is not None else weights).T + thresholds
     calibration_codes = calibration_projection >= 0.0
     codes = document_projection >= 0.0
     query_codes = query_projection >= 0.0
