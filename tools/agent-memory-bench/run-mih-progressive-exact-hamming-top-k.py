@@ -69,7 +69,10 @@ def progressive_top_k(index: list[dict[int, numpy.ndarray]], codes: numpy.ndarra
             candidate = int(candidate)
             if generation[candidate] == generation_id: continue
             generation[candidate] = generation_id; discovered.append(candidate); distances.append(int(numpy.count_nonzero(codes[candidate] != query)))
-        if len(discovered) < limit or number == len(probes): continue
+        # The unseen-candidate lower bound changes only when the local Hamming
+        # depth changes, so checking within a depth group would add sorting work
+        # without strengthening the proof.
+        if len(discovered) < limit or (number < len(probes) and probes[number][0] == depth): continue
         order = numpy.lexsort((document_ids[numpy.asarray(discovered, dtype=numpy.int32)], numpy.asarray(distances, dtype=numpy.int32)))[:limit]
         worst = distances[int(order[-1])]
         next_lower_bound = probes[number][0] if number < len(probes) else 1 << 30
