@@ -129,6 +129,25 @@ def diagnostic(root: Path, contract: dict[str, Any]) -> dict[str, Any]:
     return {"schema_version": 1, "family": "mih_query_trust_region_gate_failure_diagnostic_v1", "contract_sha256": sha256(THIS.with_name("mih-query-trust-region.example.json")), "rows": rows}
 
 
+def expected_execution_contract(contract: dict[str, Any], training_root: Path) -> dict[str, Any]:
+    train = contract["training"]
+    materialization = shared.load_root(training_root)
+    validation_total = max(1, int(round(len(materialization["query_ids"]) * train["validation_fraction"])))
+    prepared = json.loads((training_root / "prepared-study-manifest.json").read_text(encoding="utf-8"))
+    values = {
+        "epochs": train["epochs"], "batch_size": train["batch_size"], "learning_rate": train["learning_rate"],
+        "itq_iterations": train["itq_iterations"], "hard_negative_count": train["hard_negative_count"],
+        "validation_fraction": train["validation_fraction"], "positive_radius": train["positive_radius"],
+        "negative_radius": train["negative_radius"], "code_drift_weight": train["code_drift_weight"],
+        "routing_work_weight": train["routing_work_weight"], "routing_pool_size": train["routing_pool_size"],
+        "routing_temperature": train["routing_temperature"], "routing_radius": train["routing_radius"],
+        "maximum_work_multiplier": train["pareto"]["maximum_work_multiplier"],
+        "maximum_mean_hamming_drift": train["pareto"]["maximum_mean_hamming_drift"],
+    }
+    exclusion = {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": prepared["split"]["external_excluded_document_ids_set_sha256"]}
+    return trainer.execution_contract(values, len(materialization["query_ids"]) - validation_total, train["validation_query_count"], exclusion)
+
+
 def row_status(root: Path, contract: dict[str, Any], training_root: Path, seed: int, trainer_sources: dict[str, str] | None = None) -> dict[str, Any] | None:
     directory = output_dir(root, seed); history = directory / "training-history.json"; artifact = directory / "artifact.json"; rejection = directory / "gate-rejection.json"
     if not history.is_file() or (artifact.is_file() == rejection.is_file()):
@@ -137,13 +156,14 @@ def row_status(root: Path, contract: dict[str, Any], training_root: Path, seed: 
     baseline, selected = replay_gate(history_value, contract)
     expected_sources = trainer.source_hashes() if trainer_sources is None else trainer_sources
     expected_gate = {"minimum_adc_delta": contract["training"]["pareto"]["minimum_adc_delta"], "maximum_work_multiplier": contract["training"]["pareto"]["maximum_work_multiplier"], "maximum_mean_hamming_drift": contract["training"]["pareto"]["maximum_mean_hamming_drift"]}
+    expected_execution = expected_execution_contract(contract, training_root)
     if rejection.is_file():
         value = json.loads(rejection.read_text(encoding="utf-8"))
-        require(selected is None and value.get("family") == "mih_query_trust_region_gate_rejection_v1" and value.get("trainer_source_files_sha256") == expected_sources and value.get("input_materialization_manifest_sha256") == contract["training_materialization_manifest_sha256"] == sha256(training_root / "manifest.json") and value.get("seed") == seed and value.get("history_path") == history.name and value.get("history_sha256") == sha256(history) and value.get("baseline") == baseline and value.get("gate") == expected_gate and value.get("reason") == "no_train_validation_pareto_admissible_learned_checkpoint", "gate rejection differs")
+        require(selected is None and value.get("schema_version") == 2 and value.get("family") == "mih_query_trust_region_gate_rejection_v2" and value.get("trainer_source_files_sha256") == expected_sources and value.get("input_materialization_manifest_sha256") == contract["training_materialization_manifest_sha256"] == sha256(training_root / "manifest.json") and value.get("seed") == seed and value.get("history_path") == history.name and value.get("history_sha256") == sha256(history) and value.get("baseline") == baseline and value.get("gate") == expected_gate and value.get("execution_contract") == expected_execution and value.get("reason") == "no_train_validation_pareto_admissible_learned_checkpoint", "gate rejection differs")
         return {"seed": seed, "status": "gate_rejected", "history_sha256": sha256(history), "gate_rejection_sha256": sha256(rejection)}
     value = json.loads(artifact.read_text(encoding="utf-8")); training = value.get("training", {})
     checkpoint = training.get("checkpoint", {})
-    require(selected is not None and value.get("trainer", {}).get("id") == "agent-memory-cpp:mih-query-trust-region-trainer" and value.get("trainer", {}).get("source_files_sha256") == expected_sources and value.get("input_materialization_manifest_sha256") == contract["training_materialization_manifest_sha256"] == sha256(training_root / "manifest.json") and training.get("seed") == seed and training.get("epochs") == contract["training"]["epochs"] and training.get("batch_size") == contract["training"]["batch_size"] and training.get("learning_rate") == contract["training"]["learning_rate"] and training.get("itq_iterations") == contract["training"]["itq_iterations"] and training.get("hard_negative_mining", {}).get("count") == contract["training"]["hard_negative_count"] and training.get("routing_work_surrogate", {}).get("pool_size") == contract["training"]["routing_pool_size"] and training.get("routing_work_surrogate", {}).get("temperature") == contract["training"]["routing_temperature"] and training.get("routing_work_surrogate", {}).get("radius") == contract["training"]["routing_radius"] and training.get("checkpoint", {}).get("policy") == "deterministic_train_validation_pareto_gate_v1" and checkpoint.get("baseline") == baseline and checkpoint.get("selected_epoch") == selected[0] and checkpoint.get("selected") == selected[1] and checkpoint.get("minimum_adc_delta") == expected_gate["minimum_adc_delta"] and checkpoint.get("maximum_work_multiplier") == expected_gate["maximum_work_multiplier"] and checkpoint.get("maximum_mean_hamming_drift") == expected_gate["maximum_mean_hamming_drift"] and training.get("training_history", {}).get("path") == history.name and training.get("training_history", {}).get("sha256") == sha256(history), "accepted artifact differs")
+    require(selected is not None and value.get("trainer", {}).get("id") == "agent-memory-cpp:mih-query-trust-region-trainer" and value.get("trainer", {}).get("source_files_sha256") == expected_sources and value.get("input_materialization_manifest_sha256") == contract["training_materialization_manifest_sha256"] == sha256(training_root / "manifest.json") and training.get("seed") == seed and training.get("execution_contract") == expected_execution and training.get("checkpoint", {}).get("policy") == "deterministic_train_validation_pareto_gate_v1" and checkpoint.get("baseline") == baseline and checkpoint.get("selected_epoch") == selected[0] and checkpoint.get("selected") == selected[1] and checkpoint.get("minimum_adc_delta") == expected_gate["minimum_adc_delta"] and checkpoint.get("maximum_work_multiplier") == expected_gate["maximum_work_multiplier"] and checkpoint.get("maximum_mean_hamming_drift") == expected_gate["maximum_mean_hamming_drift"] and training.get("training_history", {}).get("path") == history.name and training.get("training_history", {}).get("sha256") == sha256(history), "accepted artifact differs")
     for key, name, shape in (("projection_weights", "projection-weights.f32", [256, 384]), ("query_projection_weights", "query-projection-weights.f32", [256, 384]), ("thresholds", "thresholds.f32", [256])):
         descriptor = value.get("weights", {}).get(key, {}); payload = directory / name
         require(descriptor.get("path") == name and descriptor.get("sha256") == sha256(payload) and descriptor.get("shape") == shape and descriptor.get("dtype") == "float32_le", f"accepted payload differs: {key}")

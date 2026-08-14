@@ -46,6 +46,23 @@ def source_hashes() -> dict[str, str]:
     return {name: digest(THIS.with_name(name)) for name in names}
 
 
+def execution_contract(values: dict[str, Any], train_query_count: int, validation_query_count: int, held_out_exclusion: dict[str, Any]) -> dict[str, Any]:
+    """Return the complete frozen invocation identity for either gate outcome."""
+    return {
+        "epochs": values["epochs"], "batch_size": values["batch_size"],
+        "learning_rate": values["learning_rate"], "itq_iterations": values["itq_iterations"],
+        "positive_radius": values["positive_radius"], "negative_radius": values["negative_radius"],
+        "objective": "dynamic_current_wq_danger_mining_code_trust_region_routing_surrogate_v1",
+        "hard_negative_mining": {"id": "dynamic_current_wq_ranked_downstream_danger_v1", "count": values["hard_negative_count"], "ranking": "low_hamming_high_e5_high_posting_mass_then_row_v1"},
+        "code_trust_region": {"id": "direct_soft_query_code_drift_to_w0_v1", "weight": values["code_drift_weight"]},
+        "routing_work_surrogate": {"id": "sampled_band_radius_soft_collision_log_work_proxy_v1", "weight": values["routing_work_weight"], "pool_size": values["routing_pool_size"], "temperature": values["routing_temperature"], "radius": values["routing_radius"]},
+        "train_validation_split": {"id": "sha256_seeded_query_split_v1", "validation_fraction": values["validation_fraction"], "train_query_count": train_query_count, "validation_query_count": validation_query_count},
+        "checkpoint_policy": "deterministic_train_validation_pareto_gate_v1",
+        "pareto": {"minimum_adc_delta": 0.0, "maximum_work_multiplier": values["maximum_work_multiplier"], "maximum_mean_hamming_drift": values["maximum_mean_hamming_drift"]},
+        "held_out_exclusion": held_out_exclusion,
+    }
+
+
 def write_f32(path: Path, value: Any) -> None:
     path.write_bytes(value.astype("<f4", copy=False).tobytes())
 
@@ -168,12 +185,15 @@ def train(args: Any) -> None:
             selected = epoch, weight.detach().numpy().copy(), metrics
     args.output_root.mkdir(parents=True)
     history_path = args.output_root / "training-history.json"; history_path.write_text(json.dumps(history, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    held_out_exclusion = {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": prepared["split"]["external_excluded_document_ids_set_sha256"]}
+    values = {"epochs": args.epochs, "batch_size": args.batch_size, "learning_rate": args.learning_rate, "itq_iterations": args.itq_iterations, "hard_negative_count": args.hard_negative_count, "validation_fraction": args.validation_fraction, "positive_radius": args.positive_radius, "negative_radius": args.negative_radius, "code_drift_weight": args.code_drift_weight, "routing_work_weight": args.routing_work_weight, "routing_pool_size": int(pool_rows.size), "routing_temperature": args.routing_temperature, "routing_radius": args.routing_radius, "maximum_work_multiplier": args.maximum_work_multiplier, "maximum_mean_hamming_drift": args.maximum_mean_hamming_drift}
+    frozen_execution = execution_contract(values, len(train_ids), len(validation_ids), held_out_exclusion)
     if selected is None:
-        rejection = {"schema_version": 1, "family": "mih_query_trust_region_gate_rejection_v1", "trainer_source_files_sha256": source_hashes(), "input_materialization_manifest_sha256": data["manifest_sha256"], "seed": args.seed, "history_path": history_path.name, "history_sha256": digest(history_path), "baseline": baseline, "gate": {"minimum_adc_delta": 0.0, "maximum_work_multiplier": args.maximum_work_multiplier, "maximum_mean_hamming_drift": args.maximum_mean_hamming_drift}, "reason": "no_train_validation_pareto_admissible_learned_checkpoint"}
+        rejection = {"schema_version": 2, "family": "mih_query_trust_region_gate_rejection_v2", "trainer_source_files_sha256": source_hashes(), "input_materialization_manifest_sha256": data["manifest_sha256"], "seed": args.seed, "history_path": history_path.name, "history_sha256": digest(history_path), "baseline": baseline, "gate": frozen_execution["pareto"], "execution_contract": frozen_execution, "reason": "no_train_validation_pareto_admissible_learned_checkpoint"}
         (args.output_root / "gate-rejection.json").write_text(json.dumps(rejection, indent=2, sort_keys=True) + "\n", encoding="utf-8")
         return
     write_f32(args.output_root / "projection-weights.f32", document_weights); write_f32(args.output_root / "query-projection-weights.f32", selected[1]); write_f32(args.output_root / "thresholds.f32", thresholds)
-    artifact = {"schema_version": 1, "trainer": {"id": "agent-memory-cpp:mih-query-trust-region-trainer", "source_files_sha256": source_hashes()}, "input_materialization_manifest_sha256": data["manifest_sha256"], "prepared_study_manifest_sha256": data["manifest"]["prepared_study_manifest_sha256"], "architecture": {"family": "mih_query_trust_region_projection_v1", "input_dimension": 384, "bit_count": 256, "band_count": 16, "band_width_bits": 16, "shared_projection": False, "document_side": "frozen_full_itq_w0_v1", "query_side": "learned_trust_region_projection_v1"}, "training": {"seed": args.seed, "epochs": args.epochs, "batch_size": args.batch_size, "learning_rate": args.learning_rate, "itq_iterations": args.itq_iterations, "queries_or_qrels_used": True, "objective": "dynamic_current_wq_danger_mining_code_trust_region_routing_surrogate_v1", "hard_negative_mining": {"id": "dynamic_current_wq_ranked_downstream_danger_v1", "count": args.hard_negative_count, "ranking": "low_hamming_high_e5_high_posting_mass_then_row_v1"}, "code_trust_region": {"id": "direct_soft_query_code_drift_to_w0_v1", "weight": args.code_drift_weight}, "routing_work_surrogate": {"id": "sampled_band_radius_soft_collision_log_work_proxy_v1", "weight": args.routing_work_weight, "pool_size": int(pool_rows.size), "temperature": args.routing_temperature, "radius": args.routing_radius}, "train_validation_split": {"id": "sha256_seeded_query_split_v1", "validation_fraction": args.validation_fraction, "train_query_count": len(train_ids), "validation_query_count": len(validation_ids)}, "checkpoint": {"policy": "deterministic_train_validation_pareto_gate_v1", "selected_epoch": selected[0], "baseline": baseline, "selected": selected[2], "minimum_adc_delta": 0.0, "maximum_work_multiplier": args.maximum_work_multiplier, "maximum_mean_hamming_drift": args.maximum_mean_hamming_drift}, "held_out_exclusion": {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": prepared["split"]["external_excluded_document_ids_set_sha256"]}, "training_history": {"path": history_path.name, "sha256": digest(history_path)}}, "weights": {}}
+    artifact = {"schema_version": 1, "trainer": {"id": "agent-memory-cpp:mih-query-trust-region-trainer", "source_files_sha256": source_hashes()}, "input_materialization_manifest_sha256": data["manifest_sha256"], "prepared_study_manifest_sha256": data["manifest"]["prepared_study_manifest_sha256"], "architecture": {"family": "mih_query_trust_region_projection_v1", "input_dimension": 384, "bit_count": 256, "band_count": 16, "band_width_bits": 16, "shared_projection": False, "document_side": "frozen_full_itq_w0_v1", "query_side": "learned_trust_region_projection_v1"}, "training": {"seed": args.seed, "queries_or_qrels_used": True, "execution_contract": frozen_execution, **frozen_execution, "checkpoint": {"policy": "deterministic_train_validation_pareto_gate_v1", "selected_epoch": selected[0], "baseline": baseline, "selected": selected[2], "minimum_adc_delta": 0.0, "maximum_work_multiplier": args.maximum_work_multiplier, "maximum_mean_hamming_drift": args.maximum_mean_hamming_drift}, "training_history": {"path": history_path.name, "sha256": digest(history_path)}}, "weights": {}}
     for key, name, shape in (("projection_weights", "projection-weights.f32", [256, 384]), ("query_projection_weights", "query-projection-weights.f32", [256, 384]), ("thresholds", "thresholds.f32", [256])):
         artifact["weights"][key] = {"path": name, "sha256": digest(args.output_root / name), "shape": shape, "layout": "row_major_out_by_in" if len(shape) == 2 else None, "dtype": "float32_le"}
     (args.output_root / "artifact.json").write_text(json.dumps(artifact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
@@ -186,7 +206,10 @@ def main(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     try:
         if args.self_test:
-            require(source_hashes() == source_hashes(), "trainer source digest is unstable"); print("MIH query trust-region trainer self-test passed"); return 0
+            values = {"epochs": 6, "batch_size": 192, "learning_rate": 5e-6, "itq_iterations": 50, "hard_negative_count": 4, "validation_fraction": .2, "positive_radius": 56, "negative_radius": 80, "code_drift_weight": 8.0, "routing_work_weight": 1.0, "routing_pool_size": 1024, "routing_temperature": 3.0, "routing_radius": 3, "maximum_work_multiplier": 1.02, "maximum_mean_hamming_drift": 8.0}
+            exclusion = {"id": "external_excluded_document_ids_set_v1", "document_ids_set_sha256": "a" * 64}
+            frozen = execution_contract(values, 3461, 64, exclusion); changed = dict(values); changed["learning_rate"] = 1e-5
+            require(source_hashes() == source_hashes() and frozen != execution_contract(changed, 3461, 64, exclusion), "trainer execution contract is unstable"); print("MIH query trust-region trainer self-test passed"); return 0
         train(args)
     except (TrainingError, OSError, ValueError, json.JSONDecodeError) as error:
         print(f"train-mih-query-trust-region: {error}", file=sys.stderr); return 1
