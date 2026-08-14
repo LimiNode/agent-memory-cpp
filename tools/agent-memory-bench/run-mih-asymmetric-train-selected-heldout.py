@@ -13,6 +13,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import numpy
@@ -43,6 +44,7 @@ def load(name: str, key: str) -> Any:
 shared = load("evaluate-projection-quantization.py", "train_selected_shared")
 schedule = load("run-mih-schedule-aware-routing.py", "train_selected_schedule")
 evaluator = load("evaluate-mih-banding.py", "train_selected_evaluator")
+bootstrap = load("bootstrap-mih-asymmetric-query-projection.py", "train_selected_bootstrap")
 
 
 def require(value: bool, message: str) -> None:
@@ -167,6 +169,8 @@ def run(args: Any) -> None:
         rows.append({"id": f"{label}--16x16-r56-seed{seed}", "label": label, "seed": seed, "report_sha256": sha256(report), "contribution_sha256": sha256(contribution), "artifact_sha256": sha256(artifact)})
     manifest = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "schedule_aware_matrix_manifest_sha256": selection["schedule_aware_matrix_manifest_sha256"], "training_materialization_manifest_sha256": training["manifest_sha256"], "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "evaluation_materialization_manifest_sha256": evaluation_root["manifest_sha256"], "source_files_sha256": source_files(), "source_bundle_sha256": source_bundle(source_files()), "selected": chosen, "selection_sha256": sha256(choice_path), "rows": rows}
     (args.output_root / "matrix-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    bootstrap_root = args.output_root / "bootstrap"; bootstrap_root.mkdir(exist_ok=True)
+    bootstrap.bootstrap(SimpleNamespace(left_contributions=args.output_root / "contributions" / f"matched-w0--16x16-r56-seed{seed}.npz", right_contributions=args.output_root / "contributions" / f"selected-wq--16x16-r56-seed{seed}.npz", output=bootstrap_root / f"matched-w0-vs-selected-wq--16x16-r56-seed{seed}.json", comparison_id=f"matched-w0-vs-selected-wq--16x16-r56-seed{seed}", replicates=10000, seed=20260814))
 
 
 def self_test(contract_path: Path) -> int:
