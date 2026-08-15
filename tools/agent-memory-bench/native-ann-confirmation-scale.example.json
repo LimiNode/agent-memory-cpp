@@ -3,8 +3,8 @@
   "family": "native_ann_confirmation_scale_v1",
   "frozen_calibration": {
     "measured_source_ref": "7022e5927f26c0c3ef36e31edc5ca9dab1722de0",
-    "selection_sha256": "1a78651b06a89e97fe63abcad0c2d34555e880620895e9413f1624726725dc1d",
-    "evidence_zip_sha256": "f5e920fca9274330e0fccb1a8b44e5a4e0063a6c7eb32905c10ec772889636c6"
+    "selection_sha256": "368d3dce5c8fc566c234c033f9f581e4df24800f65ee495238d55ae075c6d083",
+    "evidence_zip_sha256": "e7dcb9f0c56e10f5794f24a1f630b5fb5a699bbcc498e76040d9a43abd8be220"
   },
   "frozen_representation": {"itq_seed": 52, "itq_iterations": 50, "code_bits": 256},
   "frozen_backends": {

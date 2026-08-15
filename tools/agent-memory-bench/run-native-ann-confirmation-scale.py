@@ -29,7 +29,7 @@ def load_contract(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(value.get("schema_version") == 1 and value.get("family") == FAMILY, "native ANN confirmation contract identity differs")
     frozen = value.get("frozen_calibration")
-    require(frozen == {"measured_source_ref": "7022e5927f26c0c3ef36e31edc5ca9dab1722de0", "selection_sha256": "1a78651b06a89e97fe63abcad0c2d34555e880620895e9413f1624726725dc1d", "evidence_zip_sha256": "f5e920fca9274330e0fccb1a8b44e5a4e0063a6c7eb32905c10ec772889636c6"}, "native ANN frozen calibration provenance differs")
+    require(frozen == {"measured_source_ref": "7022e5927f26c0c3ef36e31edc5ca9dab1722de0", "selection_sha256": "368d3dce5c8fc566c234c033f9f581e4df24800f65ee495238d55ae075c6d083", "evidence_zip_sha256": "e7dcb9f0c56e10f5794f24a1f630b5fb5a699bbcc498e76040d9a43abd8be220"}, "native ANN frozen calibration provenance differs")
     require(value.get("frozen_representation") == {"itq_seed": 52, "itq_iterations": 50, "code_bits": 256}, "native ANN frozen representation differs")
     backends = value.get("frozen_backends", {})
     require(backends.get("mih", {}).get("band_widths") == [14] * 9 + [13] * 10 and backends["mih"].get("local_radii") == [2] * 19, "native ANN frozen MIH differs")
