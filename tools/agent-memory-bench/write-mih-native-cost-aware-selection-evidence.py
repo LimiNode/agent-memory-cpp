@@ -67,6 +67,12 @@ SOURCES = (
     "CMakeLists.txt",
     ".github/workflows/ci.yml",
 )
+BENCHMARK_SOURCES = (
+    "tools/agent-memory-bench/mih_native_sparse_arbitrary_m.cpp",
+    "tools/agent-memory-bench/materialize-mih-storage-input.py",
+    "src/agent_memory/index/VectorSimilarityComputer.cpp",
+    "src/agent_memory/index/BinarySignature.cpp",
+)
 
 
 def collect(args: Any) -> tuple[dict[str, bytes], str]:
@@ -83,6 +89,8 @@ def collect(args: Any) -> tuple[dict[str, bytes], str]:
     source_files = runner.source_files()
     require(selection.get("source_files_sha256") == source_files and selection.get("source_bundle_sha256") == runner.source_bundle(source_files), "cost-aware selection runner provenance differs")
     code_store_bytes = int(json.loads(input_manifest_path.read_text(encoding="utf-8"))["document_count"]) * 32
+    benchmark_sources = {name: sha256_bytes(snapshot(args.measured_source_ref, name)) for name in BENCHMARK_SOURCES}
+    benchmark_bundle = sha256_bytes("".join(f"{name}:{benchmark_sources[name]}\n" for name in BENCHMARK_SOURCES).encode("utf-8"))
     rows: list[dict[str, Any]] = []
     files: dict[str, bytes] = {"bundle/contract.json": args.contract.read_bytes(), "bundle/selection.json": selection_path.read_bytes(), "bundle/input-manifest.json": input_manifest_path.read_bytes(), "bundle/experiment-note.md": args.note.read_bytes()}
     for ordinal, treatment in enumerate(runner.treatments(contract)):
@@ -98,6 +106,7 @@ def collect(args: Any) -> tuple[dict[str, bytes], str]:
         expected_bootstrap = runner.bootstrap_report(contract, contributions_path, identifier, ordinal)
         require(json.loads(bootstrap_path.read_text(encoding="utf-8")) == expected_bootstrap, f"cost-aware selection bootstrap differs: {identifier}")
         native_report = json.loads(native_path.read_text(encoding="utf-8"))
+        require(native_report.get("benchmark_source_files_sha256") == benchmark_sources and native_report.get("benchmark_source_bundle_sha256") == benchmark_bundle, f"cost-aware selection native source provenance differs: {identifier}")
         rows.append({"id": identifier, "band_count": treatment["band_count"], "band_widths": treatment["widths"], "local_radii": treatment["local_radii"], "exact_r56_checked": native_report["conformance"]["candidate_union_fixed_r56_checked"], "adc_oracle_survival_lower_bound": expected_bootstrap["metrics"]["adc_oracle_survival"]["lower_bound"], "reranked_ndcg_retention_lower_bound": expected_bootstrap["metrics"]["reranked_ndcg_retention"]["lower_bound"], "backend_specific_bytes": native_report["index_logical_bytes"], "shared_itq_256_code_store_bytes": code_store_bytes, "total_resident_bytes": code_store_bytes + native_report["index_logical_bytes"], "candidate_generator_p50_ms_per_query": native_report["latency_ms_per_query"]["candidate_generator_total"]["p50"], "cascade_p50_ms_per_query": native_report["latency_ms_per_query"]["cascade_total"]["p50"], "quality_report_sha256": sha256(quality_path), "contributions_sha256": sha256(contributions_path), "native_config_sha256": sha256(config_path), "native_report_sha256": sha256(native_path), "bootstrap_sha256": sha256(bootstrap_path)})
         for prefix, path in (("quality-reports", quality_path), ("quality-contributions", contributions_path), ("native-configs", config_path), ("native-reports", native_path), ("bootstrap", bootstrap_path)):
             files[f"bundle/{prefix}/{path.name}"] = path.read_bytes()
@@ -105,9 +114,7 @@ def collect(args: Any) -> tuple[dict[str, bytes], str]:
     for source in SOURCES:
         files[f"bundle/sources/{source}"] = snapshot(args.measured_source_ref, source)
     files[f"bundle/sources/{THIS.name}"] = THIS.read_bytes()
-    benchmark_sources = {name: sha256_bytes(snapshot(args.measured_source_ref, name)) for name in ("tools/agent-memory-bench/mih_native_sparse_arbitrary_m.cpp", "tools/agent-memory-bench/materialize-mih-storage-input.py", "src/agent_memory/index/VectorSimilarityComputer.cpp", "src/agent_memory/index/BinarySignature.cpp")}
-    bundle = sha256_bytes("".join(f"{name}:{benchmark_sources[name]}\n" for name in sorted(benchmark_sources)).encode("utf-8"))
-    return files, bundle
+    return files, benchmark_bundle
 
 
 def package(args: Any) -> None:
