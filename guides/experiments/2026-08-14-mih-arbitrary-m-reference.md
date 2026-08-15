@@ -51,7 +51,8 @@ exact contract-bound calibration and evaluation materialization manifests. The
 bootstrap reports retain the source-file bundle identity used for that replay.
 This hardening changes neither matrix rows nor the reported frontier.
 
-Draft evidence v4 archives measured source
+Published [evidence v4](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/mih-arbitrary-m-reference-v4)
+archives measured source
 `5ec7c933c4410fc028a4c1db7f010fc903cd5786`: archive SHA-256
 `efa3bcd584a952bbfc74a623ad5a1ef3778acb6b632e7c46e4f155c5f8946e78`,
 bundle-root SHA-256
@@ -64,3 +65,43 @@ lookup implementation.
 **Next checks.** Predeclare a minimal-schedule `m=15..21` sweep and report
 probes, postings, candidates and quality together. Keep that separate from the
 global-bound progressive execution study.
+
+## 2026-08-15 - research synthesis and corrected direction
+
+The earlier research direction was too narrow. It treated the canonical
+`16 x 16` partition and, later, candidate-union reduction as though either
+were an adequate proxy for the MIH design space. The matched replay shows that
+this is false: `m=16` and `m=19` are distinct Pareto points with the same
+Hamming-56 guarantee. A lower candidate count alone is therefore not an
+optimization objective.
+
+An MIH production path has six separable stages:
+
+`query code -> substring-key enumeration -> bucket lookup -> posting traversal
+-> generation-array deduplication -> full Hamming shortlist -> ADC -> E5`.
+
+The reference architecture in Norouzi et al., *Fast Search in Hamming Space
+with Multi-Index Hashing*, is the relevant binary-space pattern: split one
+binary code into `m` substrings, maintain one immutable hash directory per
+substring, enumerate bounded local Hamming neighborhoods, union postings, and
+perform full-code Hamming ranking only after the union. In contrast, Faiss
+`IndexBinaryHNSW` and USearch's Hamming configuration are graph-ANN designs:
+they traverse a bounded-degree graph over binary codes and tune graph/search
+parameters rather than a substring-table count. They are useful latency and
+quality challengers, but not evidence for a universal MIH `m`.
+
+Sources: [Norouzi et al.](https://www.cs.toronto.edu/~norouzi/research/papers/multi_index_hashing.pdf),
+[Faiss IndexBinaryHNSW](https://faiss.ai/cpp_api/struct/structfaiss_1_1IndexBinaryHNSW.html),
+and [USearch C++ documentation](https://unum-cloud.github.io/usearch/cpp/).
+
+Classical MIH analysis provides a useful uniform-code baseline: under a
+simplified equal-cost model, the substring length is near `log2(N)`, or
+`m ≈ b / log2(N)` for a `b`-bit code. We do not treat it as a universal
+production rule. At a fixed code length, increasing `m` shortens substring
+keys and tends to enlarge their buckets, but can reduce the number of local
+keys that an exact schedule probes; increasing `N` raises posting occupancy.
+Real code geometry, radius, bit assignment, memory layout, and hardware alter
+the optimum.
+The only current recommendation is empirical: measure a multi-dimensional
+frontier at each intended scale and select a point using a predeclared latency,
+memory, and quality budget.

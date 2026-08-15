@@ -79,7 +79,7 @@ def variable_band_ranges(code_bits: int, widths: list[int]) -> list[tuple[int, i
     if (
         not widths
         or sum(widths) != code_bits
-        or any(not isinstance(width, int) or width <= 0 or width > 16 for width in widths)
+        or any(not isinstance(width, int) or width <= 0 or width > code_bits for width in widths)
     ):
         raise EvaluationError("MIH variable band widths are invalid")
     result: list[tuple[int, int]] = []
@@ -255,7 +255,11 @@ def mean_intraband_absolute_correlation(codes: Any, bands: int | list[tuple[int,
 
 def band_key(code: Any, start: int, stop: int) -> int:
     values = numpy.asarray(code[start:stop], dtype=numpy.uint8)
-    return int(numpy.dot(values, 1 << numpy.arange(values.size, dtype=numpy.uint32)))
+    key = 0
+    for position, value in enumerate(values):
+        if value:
+            key |= 1 << position
+    return key
 
 
 def probe_keys(key: int, width: int, radius: int) -> list[int]:
@@ -819,6 +823,9 @@ def self_test() -> int:
         print("self-test failed: uneven band partition is invalid", file=sys.stderr); return 1
     if variable_band_ranges(12, [2, 4, 6]) != [(0, 2), (2, 6), (6, 12)] or parse_band_widths("2,4,6", 12, 3) != [2, 4, 6]:
         print("self-test failed: variable band ranges are invalid", file=sys.stderr); return 1
+    wide_code = numpy.zeros(18, dtype=bool); wide_code[17] = True
+    if variable_band_ranges(35, [18, 17]) != [(0, 18), (18, 35)] or band_key(wide_code, 0, 18) != (1 << 17):
+        print("self-test failed: wide variable band keys are invalid", file=sys.stderr); return 1
     layout_codes = numpy.asarray([[False, False, False, False], [False, False, True, True], [True, True, False, False], [True, True, True, True]], dtype=bool)
     layout = calibrated_band_permutation(layout_codes, 2)
     if layout.shape != (4,) or not numpy.array_equal(numpy.sort(layout), numpy.arange(4)) or not band_layout_sha256(layout):

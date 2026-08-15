@@ -165,6 +165,10 @@ jobs:
           --contract tools/agent-memory-bench/mih-arbitrary-m-reference.example.json &&
           python tools/agent-memory-bench/bootstrap-mih-arbitrary-m-reference.py self-test &&
           python tools/agent-memory-bench/write-mih-arbitrary-m-reference-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-mih-canonical-arbitrary-m-frontier.py self-test
+          --contract tools/agent-memory-bench/mih-canonical-arbitrary-m-frontier.example.json &&
+          python tools/agent-memory-bench/bootstrap-mih-canonical-arbitrary-m-frontier.py self-test &&
+          python tools/agent-memory-bench/write-mih-canonical-arbitrary-m-frontier-evidence.py --self-test &&
           python tools/agent-memory-bench/run-mih-progressive-exact-hamming-top-k.py self-test
           --contract tools/agent-memory-bench/mih-progressive-exact-hamming-top-k.example.json &&
           python tools/agent-memory-bench/write-mih-progressive-exact-hamming-top-k-evidence.py --self-test &&

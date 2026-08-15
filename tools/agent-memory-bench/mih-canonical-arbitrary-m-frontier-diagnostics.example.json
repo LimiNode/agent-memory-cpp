@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "family": "mih_canonical_arbitrary_m_frontier_post_hoc_diagnostics_v1",
+  "matrix_contract_sha256": "14fc5023b7797334997b1b0f62a23fbcd603c744798009e55df4bd9238e55f85",
+  "comparisons": [
+    {
+      "id": "m18-versus-m19",
+      "control_m": 18,
+      "challenger_m": 19,
+      "purpose": "post_hoc_local_frontier_clarification_not_selection"
+    }
+  ]
+}
