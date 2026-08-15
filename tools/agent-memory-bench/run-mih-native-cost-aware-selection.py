@@ -176,7 +176,7 @@ def run_native(contract: dict[str, Any], executable: Path, input_root: Path, out
 def lower_bootstrap(values: numpy.ndarray, reference: numpy.ndarray | None, replicates: int, seed: int, confidence_level: float) -> tuple[float, float]:
     require(values.ndim == 1 and values.size > 0 and numpy.isfinite(values).all(), "cost-aware selection bootstrap values differ")
     if reference is not None:
-        require(reference.shape == values.shape and numpy.isfinite(reference).all() and numpy.all(reference > 0.0), "cost-aware selection bootstrap reference differs")
+        require(reference.shape == values.shape and numpy.isfinite(reference).all() and numpy.all(reference >= 0.0), "cost-aware selection bootstrap reference differs")
     rng = numpy.random.default_rng(seed)
     estimates: list[numpy.ndarray] = []
     remaining = replicates
@@ -184,7 +184,12 @@ def lower_bootstrap(values: numpy.ndarray, reference: numpy.ndarray | None, repl
         count = min(250, remaining)
         indices = rng.integers(0, values.size, size=(count, values.size), endpoint=False)
         numerator = values[indices].mean(axis=1)
-        estimates.append(numerator if reference is None else numerator / reference[indices].mean(axis=1))
+        if reference is None:
+            estimates.append(numerator)
+        else:
+            denominator = reference[indices].mean(axis=1)
+            require(numpy.all(denominator > 0.0), "cost-aware selection bootstrap retention denominator differs")
+            estimates.append(numerator / denominator)
         remaining -= count
     result = numpy.concatenate(estimates)
     lower = float(numpy.quantile(result, (1.0 - confidence_level) / 2.0, method="higher"))
