@@ -255,13 +255,16 @@ def write_vectors(
     prefix: str,
     batch_size: int,
     encode: Callable[[list[str]], list[list[float]]],
+    progress_label: str = "",
+    progress_every: int = 0,
 ) -> tuple[int, int]:
     count = 0
     dimension = 0
+    next_progress = progress_every
     pending: list[tuple[str, str]] = []
     with output_records_path.open("w", encoding="utf-8", newline="\n") as ids, output_vectors_path.open("wb") as vectors:
         def flush() -> None:
-            nonlocal count, dimension
+            nonlocal count, dimension, next_progress
             if not pending:
                 return
             encoded = encode([prefix + text for _, text in pending])
@@ -281,6 +284,12 @@ def write_vectors(
                 vectors.write(b"".join(F32.pack(value) for value in vector))
                 count += 1
             pending.clear()
+            if progress_every > 0 and count >= next_progress:
+                ids.flush()
+                vectors.flush()
+                print(f"materialize-prepared-e5: {progress_label} records={count}", flush=True)
+                while count >= next_progress:
+                    next_progress += progress_every
 
         for item in records:
             pending.append(item)
@@ -305,11 +314,14 @@ def materialize(
     batch_size: int,
     encoder_factory: Callable[[dict[str, Any]], Callable[[list[str]], list[list[float]]]],
     execution: dict[str, Any],
+    progress_every: int = 0,
 ) -> dict[str, Any]:
     if output_root.exists():
         raise MaterializationError(f"output directory already exists: {output_root}")
     if batch_size <= 0:
         raise MaterializationError("batch_size must be positive")
+    if progress_every < 0:
+        raise MaterializationError("progress_every must not be negative")
     if execution.get("batch_size") != batch_size:
         raise MaterializationError("execution.batch_size must match materialization batch_size")
     for field, expected in (
@@ -339,6 +351,8 @@ def materialize(
         prefix=require_string(embedding["document_prefix"], "embedding.document_prefix"),
         batch_size=batch_size,
         encode=encode,
+        progress_label="train_documents",
+        progress_every=progress_every,
     )
     evaluation_records = ((require_string(row.get("id"), "evaluation document.id"), document_text(row)) for row in iter_jsonl(evaluation_path))
     evaluation_count, evaluation_dimension = write_vectors(
@@ -348,6 +362,8 @@ def materialize(
         prefix=require_string(embedding["document_prefix"], "embedding.document_prefix"),
         batch_size=batch_size,
         encode=encode,
+        progress_label="evaluation_documents",
+        progress_every=progress_every,
     )
     query_count, query_dimension = write_vectors(
         records=iter_queries(queries_path),
@@ -356,6 +372,8 @@ def materialize(
         prefix=require_string(embedding["query_prefix"], "embedding.query_prefix"),
         batch_size=batch_size,
         encode=encode,
+        progress_label="evaluation_queries",
+        progress_every=progress_every,
     )
     if dimension != evaluation_dimension or dimension != query_dimension:
         raise MaterializationError("train, evaluation, and query dimensions differ")
@@ -469,6 +487,7 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--prepared-root", type=Path)
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--progress-every", type=int, default=10000)
     parser.add_argument("--thread-count", type=int, default=1)
     parser.add_argument("--cache-dir", type=Path)
     parser.add_argument("--local-files-only", action="store_true")
@@ -499,6 +518,7 @@ def main(argv: list[str]) -> int:
             batch_size=args.batch_size,
             encoder_factory=lambda _: encoder.encode,
             execution=encoder.execution_metadata(args.batch_size),
+            progress_every=args.progress_every,
         )
     except MaterializationError as exc:
         print(f"materialize-prepared-e5: {exc}", file=sys.stderr)
