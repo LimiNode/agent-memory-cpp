@@ -188,6 +188,23 @@ target_link_libraries(agent-memory-mih-native-hot-path
         agent_memory::json
 )
 
+add_executable(agent-memory-mih-native-sparse-arbitrary-m
+    mih_native_sparse_arbitrary_m.cpp
+)
+
+agent_memory_set_evaluator_source_manifest(agent-memory-mih-native-sparse-arbitrary-m
+    "${CMAKE_CURRENT_SOURCE_DIR}/mih_native_sparse_arbitrary_m.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/materialize-mih-storage-input.py"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/BinarySignature.cpp"
+)
+agent_memory_set_evaluator_build_environment(agent-memory-mih-native-sparse-arbitrary-m)
+
+target_link_libraries(agent-memory-mih-native-sparse-arbitrary-m
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 if(AGENT_MEMORY_ENABLE_MDBX)
     set(agent_memory_storage_provenance_authoritative 0)
     set(agent_memory_storage_provenance_reason "non_pinned_dependency_resolution")
