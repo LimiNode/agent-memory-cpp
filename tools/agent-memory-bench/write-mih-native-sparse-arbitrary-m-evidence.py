@@ -154,7 +154,7 @@ def collect(args: Any) -> tuple[dict[str, bytes], str]:
         config_path = args.matrix_root / "configs" / f"{current['id']}.json"
         report_path = args.matrix_root / "reports" / f"{current['id']}.json"
         config = json.loads(config_path.read_text(encoding="utf-8")); report = json.loads(report_path.read_text(encoding="utf-8"))
-        require(config == runner.config_for(contract, args.matrix_root / "input", current), f"native sparse arbitrary-m config differs: {current['id']}")
+        require(config == runner.config_for(contract, (args.matrix_root / "input").resolve(), current), f"native sparse arbitrary-m config differs: {current['id']}")
         validate_report(report, config, input_manifest, input_manifest_sha256, benchmark_sources, expected_source_bundle)
         expected_rows.append({"id": current["id"], "band_count": band_count, "local_key_count": current["local_key_count"], "config_sha256": sha256(config_path), "report_sha256": sha256(report_path)})
         files[f"bundle/configs/{config_path.name}"] = config_path.read_bytes()
@@ -164,7 +164,7 @@ def collect(args: Any) -> tuple[dict[str, bytes], str]:
         files[f"bundle/sources/{name}"] = snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")
     for name in BENCHMARK_SOURCES + EXTRA_SOURCES:
         files[f"bundle/sources/{name}"] = snapshot(args.measured_source_ref, name)
-    files[f"bundle/sources/{THIS.name}"] = snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{THIS.name}")
+    files[f"bundle/sources/{THIS.name}"] = THIS.read_bytes()
     return files, expected_source_bundle
 
 
