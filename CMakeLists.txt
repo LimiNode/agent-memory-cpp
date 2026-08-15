@@ -162,6 +162,10 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND agent-memory-mih-native-hot-path --self-test
         )
         add_test(
+            NAME agent_memory_mih_native_sparse_arbitrary_m_self_test
+            COMMAND agent-memory-mih-native-sparse-arbitrary-m --self-test
+        )
+        add_test(
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
             COMMAND agent-memory-standard-binary-eval --self-test
         )
@@ -670,6 +674,22 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/materialize-mih-storage-input.py
                 self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mih_native_sparse_arbitrary_m_runner_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mih-native-sparse-arbitrary-m.py
+                self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mih_native_sparse_arbitrary_m_evidence_packager_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-mih-native-sparse-arbitrary-m-evidence.py
+                --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(

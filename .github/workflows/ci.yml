@@ -139,10 +139,13 @@ jobs:
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build native MIH benchmark harness
-        run: cmake --build build-native-mih --config Release --target agent-memory-mih-native-hot-path
+        run: >
+          cmake --build build-native-mih --config Release --target
+          agent-memory-mih-native-hot-path
+          agent-memory-mih-native-sparse-arbitrary-m
 
       - name: Test native MIH benchmark harness
-        run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_hot_path
+        run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
 
   ann-cascade:
     name: ANN cascade harness
@@ -236,7 +239,9 @@ jobs:
           python tools/agent-memory-bench/write-mih-aware-itq-repaired-heldout-evidence.py --self-test &&
           python tools/agent-memory-bench/diagnose-mih-aware-itq-r56-funnel.py --self-test
           --contract tools/agent-memory-bench/mih-aware-itq-r56-funnel.example.json &&
-          python tools/agent-memory-bench/write-mih-aware-itq-r56-funnel-evidence.py --self-test
+          python tools/agent-memory-bench/write-mih-aware-itq-r56-funnel-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-mih-native-sparse-arbitrary-m.py self-test &&
+          python tools/agent-memory-bench/write-mih-native-sparse-arbitrary-m-evidence.py --self-test
       - name: Exercise ANN evidence bootstrap contract
         run: >
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&

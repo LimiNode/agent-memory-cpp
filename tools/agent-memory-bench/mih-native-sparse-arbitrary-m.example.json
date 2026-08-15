@@ -1,0 +1,12 @@
+{
+  "input_directory": "tmp/mih-native-input",
+  "band_widths": [14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13],
+  "local_radii": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
+  "query_count": 1252,
+  "query_seed": 20260815,
+  "warmup_count": 1,
+  "repeat_count": 7,
+  "hamming_limit": 768,
+  "adc_limit": 256,
+  "exact_limit": 256
+}
