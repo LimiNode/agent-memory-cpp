@@ -518,6 +518,11 @@ candidate sets is a separate benchmark hypothesis, not a default pipeline.
 `BinaryFlat` is an exact baseline in binary Hamming space, not a replacement
 for the final float-quality oracle.
 
+A future coarse locator code is a MIH representation variant, not a fourth
+general backend: a short binary code may generate candidates while a retained
+full binary code supplies Hamming/ADC ranking. It remains deferred until the
+native arbitrary-m MIH frontier and cost-aware schedule selection are complete.
+
 Do not introduce a public `BinaryAnnBackend` API yet. `BinaryFlat` is not ANN,
 and the candidate-generator result contract must first be informed by the
 native benchmark. A future internal boundary may be named

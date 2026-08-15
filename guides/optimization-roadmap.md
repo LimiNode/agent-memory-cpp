@@ -2429,6 +2429,46 @@ scale ladder. Required evidence includes index bytes, build/rebuild and update
 cost, p50/p95/p99 end-to-end and candidate-generator latency, candidate work,
 quality after each cascade stage, and memory/read-amplification budgets.
 
+### Deferred coarse-locator MIH challenger
+
+After the native arbitrary-m frontier and calibration-only schedule selection,
+the next representation-level challenger may separate the binary locator from
+the binary ranking code:
+
+```text
+coarse locator code (for example, 64/80/96 bits) -> MIH -> candidate positions
+full ITQ-256 ranking code                         -> Hamming -> ADC -> exact rerank
+```
+
+The full 256-bit code remains unchanged for Hamming and ADC. The coarse code
+exists only to control MIH key enumeration and bucket occupancy, so it is not
+a new global candidate-generator family and must not change the final ranking
+metric. This separates the locator-address objective from the ranking-geometry
+objective; it is motivated by, but is not an implementation of, the
+ElasticHash image-retrieval design of short-code filtering followed by full-code
+reranking.
+
+The first predeclared experiment must compare a frozen native arbitrary-m
+MIH-256 control against coarse locator widths 64, 80, and 96 on the same full
+ITQ-256 ranking code. Locator-bit construction is an ablation axis, beginning
+with random subsets, calibration-only low-correlation subsets, balanced
+decorrelated groups, and a calibration-selected subset. Correlation is a
+candidate heuristic, not evidence that a subset is better; selection must use
+calibration data only and held-out quality/work results must be reported once.
+
+This challenger is admitted only if the selected native MIH-256 configuration
+misses a predeclared latency, memory, or candidate-work budget. It must measure
+the same end-to-end and per-stage metrics as the native MIH control, include
+the full-code Hamming/ADC survival funnel, preserve exact code/bit-selection
+provenance, and compare index bytes and rebuild cost. No ElasticHash code,
+dependency, image-retrieval threshold, or learned-bit assumption is adopted by
+this roadmap.
+
+References: [ElasticHash approach](https://nik-ko.github.io/elastichash/approach.html)
+and [ElasticHash paper](https://arxiv.org/abs/2305.04710). They are design
+references from a different image-retrieval workload, not evidence for this
+text-embedding pipeline.
+
 For `m` bands and requested global Hamming radius `r`, the query-time schedule
 uses `r = m * r_prime + a`: probe radius `r_prime` in `a + 1` bands and
 `r_prime - 1` in the remaining bands; a negative radius means no probe. Every
