@@ -110,6 +110,30 @@ def materialize(args: Any, prepared_root: Path, current: dict[str, Any]) -> Path
     return root
 
 
+def write_result(contract_path: Path, contract: dict[str, Any], current: dict[str, Any], fresh_root: Path, output: Path, rows: list[dict[str, Any]]) -> None:
+    result = {"schema_version": 1, "family": "native_ann_confirmation_scale_result_v1", "contract_sha256": sha256(contract_path), "scale": current, "fresh_e5_manifest_sha256": sha256(fresh_root / "manifest.json"), "fresh_prepared_manifest_sha256": sha256(fresh_root.parent / "prepared" / "manifest.json"), "fresh_identifier_disjointness_checked": True, "frozen_backends": backend_treatments(contract), "rows": rows, "selection": "forbidden"}
+    (output / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+
+
+def completed_rows(contract: dict[str, Any], output: Path, input_root: Path, query_count: int) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for treatment in backend_treatments(contract):
+        identifier = treatment["id"]
+        config_path = output / "configs" / f"{identifier}.json"
+        report_path = output / "native-reports" / f"{identifier}.json"
+        export_path = output / "shortlists" / f"{identifier}.json"
+        quality_path = output / "quality" / f"{identifier}.json"
+        contributions = output / "contributions" / f"{identifier}.npz"
+        config = native_config(contract, input_root, export_path, query_count, treatment)
+        require(json.loads(config_path.read_text(encoding="utf-8")) == config, f"confirmation native config differs: {identifier}")
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        require(report.get("hamming_shortlist_export", {}).get("sha256") == sha256(export_path) and report.get("backend", {}).get("name") == treatment["backend"], f"confirmation native report differs: {identifier}")
+        quality = json.loads(quality_path.read_text(encoding="utf-8"))
+        require(quality.get("shortlist_export_sha256") == sha256(export_path) and quality.get("per_query_contributions_sha256") == sha256(contributions), f"confirmation quality provenance differs: {identifier}")
+        rows.append({"id": identifier, "backend": treatment["backend"], "native_config_sha256": sha256(config_path), "native_report_sha256": sha256(report_path), "shortlist_export_sha256": sha256(export_path), "quality_report_sha256": sha256(quality_path), "contributions_sha256": sha256(contributions), "backend_specific_bytes": report["backend"]["backend_index_logical_bytes"], "candidate_generator_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"], "cascade_ms_per_query": report["latency_ms_per_query"]["cascade_total"]})
+    return rows
+
+
 def compare(args: Any, contract: dict[str, Any], current: dict[str, Any], fresh_root: Path) -> None:
     manifest = validate_fresh_root(args.calibration_root, fresh_root, current["expected_evaluation_documents"])
     output = args.output_root / current["id"] / "comparison"; output.mkdir(parents=True, exist_ok=True)
@@ -129,8 +153,15 @@ def compare(args: Any, contract: dict[str, Any], current: dict[str, Any], fresh_
         require(report.get("hamming_shortlist_export", {}).get("sha256") == sha256(export_path) and report.get("backend", {}).get("name") == treatment["backend"], f"confirmation native report differs: {treatment['id']}")
         subprocess.run([str(args.python), str(THIS / "evaluate-native-ann-shortlists.py"), "evaluate", "--evaluation-root", str(fresh_root), "--shortlist-export", str(export_path), "--output", str(quality_path), "--contributions-output", str(contributions), "--hamming-limit", str(contract["cascade"]["hamming_limit"]), "--adc-limit", str(contract["cascade"]["adc_limit"]), "--oracle-k", str(contract["cascade"]["oracle_k"]), "--oracle-cache", str(output / "quality" / "full-e5-oracle.npz")], check=True)
         rows.append({"id": treatment["id"], "backend": treatment["backend"], "native_config_sha256": sha256(config_path), "native_report_sha256": sha256(report_path), "shortlist_export_sha256": sha256(export_path), "quality_report_sha256": sha256(quality_path), "contributions_sha256": sha256(contributions), "backend_specific_bytes": report["backend"]["backend_index_logical_bytes"], "candidate_generator_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"], "cascade_ms_per_query": report["latency_ms_per_query"]["cascade_total"]})
-    result = {"schema_version": 1, "family": "native_ann_confirmation_scale_result_v1", "contract_sha256": sha256(args.contract), "scale": current, "fresh_e5_manifest_sha256": sha256(fresh_root / "manifest.json"), "fresh_prepared_manifest_sha256": sha256(fresh_root.parent / "prepared" / "manifest.json"), "fresh_identifier_disjointness_checked": True, "frozen_backends": backend_treatments(contract), "rows": rows, "selection": "forbidden"}
-    (output / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    write_result(args.contract, contract, current, fresh_root, output, rows)
+
+
+def finalize(args: Any, contract: dict[str, Any], current: dict[str, Any], fresh_root: Path) -> None:
+    validate_fresh_root(args.calibration_root, fresh_root, current["expected_evaluation_documents"])
+    output = args.output_root / current["id"] / "comparison"
+    input_manifest = json.loads((output / "input" / "manifest.json").read_text(encoding="utf-8"))
+    rows = completed_rows(contract, output, output / "input", int(input_manifest["query_count"]))
+    write_result(args.contract, contract, current, fresh_root, output, rows)
 
 
 def self_test() -> int:
@@ -151,21 +182,24 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("self-test")
-    for name in ("prepare", "materialize", "compare"):
+    for name in ("prepare", "materialize", "compare", "finalize"):
         command = commands.add_parser(name)
         command.add_argument("--scale", required=True)
         command.add_argument("--output-root", type=Path, required=True)
         command.add_argument("--python", type=Path, default=Path(sys.executable))
+        command.add_argument("--contract", type=Path, default=THIS / "native-ann-confirmation-scale.example.json")
         if name == "prepare": command.add_argument("--source-root", type=Path, required=True)
         if name == "materialize": command.add_argument("--batch-size", type=int, default=64); command.add_argument("--thread-count", type=int, default=8); command.add_argument("--cache-dir", type=Path, required=True)
-        if name == "compare": command.add_argument("--calibration-root", type=Path, required=True); command.add_argument("--executable", type=Path, required=True)
+        if name in ("compare", "finalize"): command.add_argument("--calibration-root", type=Path, required=True)
+        if name == "compare": command.add_argument("--executable", type=Path, required=True)
     args = parser.parse_args(argv)
     try:
         if args.command == "self-test": return self_test()
-        contract = load_contract(THIS / "native-ann-confirmation-scale.example.json"); current = scale(contract, args.scale)
+        contract = load_contract(args.contract); current = scale(contract, args.scale)
         if args.command == "prepare": prepare(args, contract, current)
         elif args.command == "materialize": materialize(args, args.output_root / current["id"] / "prepared", current)
-        else: compare(args, contract, current, args.output_root / current["id"] / "e5")
+        elif args.command == "compare": compare(args, contract, current, args.output_root / current["id"] / "e5")
+        else: finalize(args, contract, current, args.output_root / current["id"] / "e5")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
         print(f"run-native-ann-confirmation-scale: {error}", file=sys.stderr); return 1
     return 0
