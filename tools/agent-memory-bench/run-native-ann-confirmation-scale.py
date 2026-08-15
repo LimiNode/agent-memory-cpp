@@ -60,9 +60,17 @@ def read_ids(path: Path) -> set[str]:
     return {json.loads(line)["id"] for line in path.read_text(encoding="utf-8").splitlines() if line}
 
 
+def validate_materialized_scale(manifest: dict[str, Any], prepared_manifest: dict[str, Any], prepared_sha: str, expected_documents: int) -> None:
+    outputs = manifest.get("outputs", {})
+    require(manifest.get("prepared_study_manifest_sha256") == prepared_sha and outputs.get("prepared_study_manifest", {}).get("sha256") == prepared_sha, "native ANN fresh materialization provenance differs")
+    require(outputs.get("evaluation_document_ids", {}).get("count") == expected_documents and outputs.get("evaluation_document_vectors", {}).get("count") == expected_documents and prepared_manifest.get("outputs", {}).get("evaluation_documents", {}).get("count") == expected_documents, "native ANN fresh document count differs")
+
+
 def validate_fresh_root(calibration_root: Path, fresh_root: Path, expected_documents: int) -> dict[str, Any]:
     manifest = json.loads((fresh_root / "manifest.json").read_text(encoding="utf-8"))
-    require(manifest["outputs"]["evaluation_documents"]["count"] == expected_documents, "native ANN fresh document count differs")
+    prepared_path = fresh_root / "prepared-study-manifest.json"
+    prepared_manifest = json.loads(prepared_path.read_text(encoding="utf-8"))
+    validate_materialized_scale(manifest, prepared_manifest, sha256(prepared_path), expected_documents)
     calibration_documents = read_ids(calibration_root / "evaluation-document-ids.jsonl")
     calibration_queries = {json.loads(line)["id"] for line in (calibration_root / "evaluation-query-ids.jsonl").read_text(encoding="utf-8").splitlines() if line}
     fresh_documents = read_ids(fresh_root / "evaluation-document-ids.jsonl")
@@ -130,6 +138,8 @@ def self_test() -> int:
         contract = load_contract(THIS / "native-ann-confirmation-scale.example.json")
         require(preparation_config(contract, scale(contract, "de-25k"))["sampling"]["evaluation_distractors_per_language"] == 21897, "confirmation preparation scale differs")
         require([item["id"] for item in backend_treatments(contract)] == ["mih-m19-fixed-r56", "binary-flat-256", "binary-hnsw-m16-ef768"], "confirmation frozen backend order differs")
+        prepared_sha = "prepared"
+        validate_materialized_scale({"prepared_study_manifest_sha256": prepared_sha, "outputs": {"prepared_study_manifest": {"sha256": prepared_sha}, "evaluation_document_ids": {"count": 2}, "evaluation_document_vectors": {"count": 2}}}, {"outputs": {"evaluation_documents": {"count": 2}}}, prepared_sha, 2)
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         print(f"run-native-ann-confirmation-scale self-test failed: {error}", file=sys.stderr)
         return 1
