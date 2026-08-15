@@ -2409,15 +2409,26 @@ Sparse MIH: deterministic immutable posting-directory candidate generator
 Binary HNSW: optional graph-ANN challenger for high-recall/latency workloads
 ```
 
-All three feed one common cascade of full Hamming, optional ADC, and final
-exact-embedding rerank. This is deliberately not a public backend API yet;
-the future internal boundary is a candidate-position-and-diagnostics result,
-not an ANN-only abstraction. A MIH-plus-HNSW union is a later independent
-recall/diversity experiment, not a default two-index cascade.
+Sparse MIH and Binary HNSW may return a pool that then receives exact
+full-code HammingTopK. BinaryFlat is the exhaustive exact HammingTopK baseline
+and may fuse that work rather than materializing an unscored pool. All backends
+then feed optional ADC and final exact-embedding rerank. This is deliberately
+not a public backend API yet; the future internal boundary is a
+segment-qualified-candidate-and-diagnostics result, not an ANN-only
+abstraction. A MIH-plus-HNSW union is a later independent recall/diversity
+experiment, not a default two-index cascade.
+
+Benchmark accounting must distinguish a backend-local locator/generator
+diagnostic, a through-Hamming-shortlist total, and a full cascade total.
+Backends may fuse stages, so a `candidate-generator latency` label alone is
+not comparable across Flat, MIH, and HNSW.
 
 Future persistent layouts may search heterogeneous immutable segments (for
 example, a small Flat delta segment and larger MIH or HNSW segments), then
-merge candidate positions before global reranking. Derived indexes remain
+merge segment-qualified candidate references before global reranking. A local
+position carries its segment identity and immutable segment generation, and is
+resolved by that segment to a stable `ChunkId`/`KnowledgeUnitId`; bare positions
+are never valid across segments or after rebuild. Derived indexes remain
 rebuildable from canonical storage and must enforce scope, active projection,
 generation, and tombstone checks. Backend-local scores are not final
 cross-segment ranking scores.
@@ -2425,9 +2436,11 @@ cross-segment ranking scores.
 No corpus-size threshold selects a backend or MIH band count. Before such a
 policy may be proposed, a locked benchmark must measure BinaryFlat, native
 sparse MIH, and Binary HNSW controls on an untouched evaluation split and a
-scale ladder. Required evidence includes index bytes, build/rebuild and update
-cost, p50/p95/p99 end-to-end and candidate-generator latency, candidate work,
-quality after each cascade stage, and memory/read-amplification budgets.
+scale ladder. Required evidence includes shared ITQ-256 code-store bytes,
+backend-specific bytes, and total resident bytes separately; build/rebuild and
+update cost; p50/p95/p99 through-Hamming-shortlist and full-cascade latency;
+candidate work; quality after each cascade stage; and memory/read-amplification
+budgets.
 
 ### Native sparse MIH baseline and cost-aware selection
 
@@ -2456,12 +2469,22 @@ deduplication, and Hamming work on the target CPU.
 
 Only after this native frontier is measured may a new optimizer use
 calibration-only native cost estimates to select `m` and a local-radius
-schedule. Its hard inclusion constraint remains `sum_b(r_b + 1) >= 57`; its
-objective may estimate candidate-generator cost from measured lookup, posting,
-deduplication, and Hamming components. Freeze the selected configuration, then
-evaluate it once on a new untouched split or dataset before comparing MIH with
-BinaryFlat and Binary HNSW. The current fixed-r56 progressive-stopping branch
-is closed for that architecture only; it is not a general impossibility claim.
+schedule. Its frozen feasibility constraints must include exact inclusion
+`sum_b(r_b + 1) >= 57`, a predeclared calibration quality floor or
+non-inferiority rule against the reference (for example ADC-survival and nDCG
+floors with a lower bootstrap bound), and a memory ceiling expressed as shared
+ITQ code-store, backend-specific, and total-resident bytes. Its objective may
+then estimate candidate-generator cost from measured lookup, posting,
+deduplication, and Hamming components.
+
+On calibration data, freeze the selected MIH configuration, Binary HNSW
+parameters (such as `M`/`efSearch`) under the same quality/budget contract, and
+BinaryFlat/common-cascade limits. Then run one locked untouched backend
+benchmark: Flat versus frozen MIH versus frozen HNSW. No result from that
+untouched set may tune a backend, determine whether another backend runs, or
+change the interpretation of the comparison. The current fixed-r56
+progressive-stopping branch is closed for that architecture only; it is not a
+general impossibility claim.
 
 ### Deferred coarse-locator MIH challenger
 
@@ -2490,13 +2513,16 @@ decorrelated groups, and a calibration-selected subset. Correlation is a
 candidate heuristic, not evidence that a subset is better; selection must use
 calibration data only and held-out quality/work results must be reported once.
 
-This challenger is admitted only if the selected native MIH-256 configuration
-misses a predeclared latency, memory, or candidate-work budget. It must measure
-the same end-to-end and per-stage metrics as the native MIH control, include
-the full-code Hamming/ADC survival funnel, preserve exact code/bit-selection
-provenance, and compare index bytes and rebuild cost. No ElasticHash code,
-dependency, image-retrieval threshold, or learned-bit assumption is adopted by
-this roadmap.
+This challenger is admitted only if calibration/native-selection evidence says
+that the selected MIH-256 configuration misses a predeclared latency, memory,
+or candidate-work budget. If a miss is first observed on the locked untouched
+benchmark, a coarse locator becomes a new post-hoc hypothesis and requires a
+new untouched evaluation set. It must measure the same end-to-end and per-stage
+metrics as the native MIH control, include the full-code Hamming/ADC survival
+funnel, preserve exact code/bit-selection provenance, and compare shared code
+store, backend-specific, total-resident bytes, and rebuild cost. No ElasticHash
+code, dependency, image-retrieval threshold, or learned-bit assumption is
+adopted by this roadmap.
 
 References: [ElasticHash approach](https://nik-ko.github.io/elastichash/approach.html)
 and [ElasticHash paper](https://arxiv.org/abs/2305.04710). They are design
