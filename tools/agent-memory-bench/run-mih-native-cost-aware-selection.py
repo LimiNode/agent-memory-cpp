@@ -40,6 +40,19 @@ def load_module(name: str, module_name: str) -> Any:
 
 
 native = load_module("run-mih-native-sparse-arbitrary-m.py", "mih_native_cost_native")
+shared = load_module("evaluate-projection-quantization.py", "mih_native_cost_shared")
+quality_evaluator = load_module("evaluate-mih-banding.py", "mih_native_cost_quality_evaluator")
+
+QUALITY_FIELDS = {
+    "hamming_top_k_recall", "coverage_at_candidate_limit", "reranked_ndcg_at_10",
+    "full_e5_ndcg_at_10", "candidate_count", "exact_bucket_floor_candidate_count",
+    "bucket_probe_count", "posting_visit_count", "e5_oracle_raw_union_coverage",
+    "e5_oracle_hamming_top_k_coverage", "e5_oracle_second_stage_coverage",
+    "e5_oracle_mean_full_hamming_distance", "e5_oracle_hamming_within_48",
+    "e5_oracle_hamming_within_56", "e5_oracle_hamming_within_64",
+    "probe_count_by_flip_depth", "posting_visit_count_by_flip_depth", "stop_reason",
+    "query_ids", "identity_json",
+}
 
 
 def source_files() -> dict[str, str]:
@@ -110,15 +123,54 @@ def materialize(contract: dict[str, Any], root: Path, output: Path, python: Path
     return manifest
 
 
-def quality_complete(path: Path, contributions: Path, contract: dict[str, Any], root_sha256: str, treatment: dict[str, Any]) -> bool:
+def quality_summary(values: dict[str, Any]) -> dict[str, Any]:
+    mean = lambda name: float(numpy.mean(values[name]))
+    return {
+        "hamming_top_k_recall": mean("hamming_top_k_recall"),
+        "exact_top_k_candidate_coverage": mean("coverage_at_candidate_limit"),
+        "reranked_ndcg_at_10": mean("reranked_ndcg_at_10"),
+        "full_e5_ndcg_at_10": mean("full_e5_ndcg_at_10"),
+        "mean_candidates_per_query": mean("candidate_count"),
+        "mean_exact_bucket_floor_candidates_per_query": mean("exact_bucket_floor_candidate_count"),
+        "mean_bucket_probes_per_query": mean("bucket_probe_count"),
+        "mean_posting_visits_per_query": mean("posting_visit_count"),
+        "mean_full_hamming_scores_per_query": mean("candidate_count"),
+        "e5_oracle_survival": {
+            "raw_union": mean("e5_oracle_raw_union_coverage"),
+            "hamming_top_k": mean("e5_oracle_hamming_top_k_coverage"),
+            "second_stage": mean("e5_oracle_second_stage_coverage"),
+            "mean_full_hamming_distance": mean("e5_oracle_mean_full_hamming_distance"),
+            "hamming_within_radius": {str(radius): mean(f"e5_oracle_hamming_within_{radius}") for radius in (48, 56, 64)},
+        },
+        "mean_probe_count_by_flip_depth": [float(numpy.mean(values["probe_count_by_flip_depth"][:, depth])) for depth in range(3)],
+        "mean_posting_visits_by_flip_depth": [float(numpy.mean(values["posting_visit_count_by_flip_depth"][:, depth])) for depth in range(3)],
+        "stop_reason_fractions": {reason: float(numpy.mean(values["stop_reason"] == reason)) for reason in ("candidate", "posting", "exhausted", "fixed-radius")},
+    }
+
+
+def quality_identity_matches(report: dict[str, Any], values: dict[str, Any], expected_query_ids: Any, expected_identity: dict[str, Any], quality_sources: dict[str, str]) -> bool:
+    return bool(
+        numpy.array_equal(values["query_ids"], numpy.asarray(expected_query_ids))
+        and json.loads(str(values["identity_json"].item())) == expected_identity
+        and report.get("per_query_contribution_identity") == expected_identity
+        and report.get("evaluator_source_files_sha256") == quality_sources
+        and report.get("evaluator_source_bundle_sha256") == quality_evaluator.source_bundle_sha256(quality_sources)
+    )
+
+
+def quality_complete(path: Path, contributions: Path, contract: dict[str, Any], calibration: dict[str, Any], treatment: dict[str, Any]) -> bool:
     if not path.is_file() or not contributions.is_file():
         return False
     try:
         report = json.loads(path.read_text(encoding="utf-8"))
         with numpy.load(contributions, allow_pickle=False) as archive:
-            fields = set(archive.files)
+            values = {name: archive[name].copy() for name in archive.files}
             count = archive["reranked_ndcg_at_10"].shape[0]
         cascade = contract["cascade"]
+        root_sha256 = calibration["manifest_sha256"]
+        expected_identity = shared.contribution_identity(calibration, cascade["hamming_limit"], cascade["oracle_k"])
+        quality_sources = {name: sha256(THIS / name) for name in ("evaluate-mih-banding.py", "evaluate-projection-quantization.py")}
+        summary = quality_summary(values)
         return bool(
             report.get("schema_version") == 6 and report.get("family") == "mih_banding_reference_v6"
             and report.get("calibration_materialization_manifest_sha256") == root_sha256
@@ -130,23 +182,25 @@ def quality_complete(path: Path, contributions: Path, contract: dict[str, Any], 
             and report.get("second_limit") == cascade["adc_limit"] and report.get("oracle_k") == cascade["oracle_k"]
             and report.get("candidate_limit") == cascade["hamming_limit"] and report.get("query_count") == contract["native_timing"]["query_count"]
             and report.get("per_query_contributions_sha256") == sha256(contributions)
-            and {"e5_oracle_second_stage_coverage", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "query_ids", "identity_json"}.issubset(fields)
+            and set(values) == QUALITY_FIELDS
             and count == contract["native_timing"]["query_count"]
+            and quality_identity_matches(report, values, calibration["query_ids"], expected_identity, quality_sources)
+            and all(report.get(name) == value for name, value in summary.items())
         )
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         return False
 
 
-def run_quality(contract: dict[str, Any], root: Path, output_root: Path, treatment: dict[str, Any], python: Path, root_sha256: str, resume: bool) -> tuple[Path, Path]:
+def run_quality(contract: dict[str, Any], root: Path, output_root: Path, treatment: dict[str, Any], python: Path, calibration: dict[str, Any], resume: bool) -> tuple[Path, Path]:
     report = output_root / "quality-reports" / f"{treatment['id']}.json"
     contributions = output_root / "quality-contributions" / f"{treatment['id']}.npz"
-    if resume and quality_complete(report, contributions, contract, root_sha256, treatment):
+    if resume and quality_complete(report, contributions, contract, calibration, treatment):
         return report, contributions
     report.parent.mkdir(parents=True, exist_ok=True); contributions.parent.mkdir(parents=True, exist_ok=True)
     cascade = contract["cascade"]
     command = [str(python), str(THIS / "evaluate-mih-banding.py"), "evaluate", "--calibration-root", str(root), "--evaluation-root", str(root), "--output", str(report), "--contributions-output", str(contributions), "--code-bits", "256", "--band-count", str(treatment["band_count"]), "--band-widths", ",".join(map(str, treatment["widths"])), "--band-probe-radii", ",".join(map(str, treatment["local_radii"])), "--global-radius", "56", "--probe-policy", "uniform-radius", "--hamming-policy", "uniform", "--seed", str(contract["itq_seed"]), "--itq-iterations", str(contract["itq_iterations"]), "--candidate-limit", str(cascade["hamming_limit"]), "--hamming-limit", str(cascade["hamming_limit"]), "--second-stage", "binary-adc", "--second-limit", str(cascade["adc_limit"]), "--oracle-k", str(cascade["oracle_k"])]
     subprocess.run(command, check=True)
-    require(quality_complete(report, contributions, contract, root_sha256, treatment), f"cost-aware selection quality report differs: {treatment['id']}")
+    require(quality_complete(report, contributions, contract, calibration, treatment), f"cost-aware selection quality report differs: {treatment['id']}")
     return report, contributions
 
 
@@ -220,6 +274,7 @@ def select(rows: list[dict[str, Any]], contract: dict[str, Any]) -> dict[str, An
 def run(args: Any) -> None:
     contract = load_contract(args.contract)
     root_manifest = args.calibration_root / "manifest.json"
+    calibration = shared.load_root(args.calibration_root)
     root_sha256 = sha256(root_manifest)
     require(root_sha256 == contract["calibration_materialization_manifest_sha256"], "cost-aware selection calibration provenance differs")
     args.output_root.mkdir(parents=True, exist_ok=True)
@@ -230,7 +285,7 @@ def run(args: Any) -> None:
     rows: list[dict[str, Any]] = []
     for ordinal, treatment in enumerate(treatments(contract)):
         print(f"[{ordinal + 1}/{len(contract['m_values'])}] quality {treatment['id']}", flush=True)
-        quality_path, contributions_path = run_quality(contract, args.calibration_root, args.output_root, treatment, args.python, root_sha256, args.resume)
+        quality_path, contributions_path = run_quality(contract, args.calibration_root, args.output_root, treatment, args.python, calibration, args.resume)
         print(f"[{ordinal + 1}/{len(contract['m_values'])}] native {treatment['id']}", flush=True)
         config_path, native_path = run_native(contract, args.executable, input_root, args.output_root, treatment, input_manifest_sha256, args.resume)
         bootstrap = bootstrap_report(contract, contributions_path, treatment["id"], ordinal)
@@ -253,6 +308,15 @@ def self_test(contract_path: Path) -> int:
         sample = numpy.asarray([0.9, 1.0, 0.8], dtype=numpy.float64)
         mean, lower = lower_bootstrap(sample, None, 100, 7, 0.95)
         require(0.0 < lower <= mean <= 1.0, "cost-aware selection bootstrap differs")
+        identity = {"schema_version": 1, "ordered_query_ids_sha256": "a" * 64, "evaluation_materialization_manifest_sha256": "b" * 64, "evaluation_qrels_sha256": "c" * 64, "query_count": 2, "oracle_k": 10, "candidate_limit": 768}
+        sources = {"evaluate-mih-banding.py": "d" * 64, "evaluate-projection-quantization.py": "e" * 64}
+        report = {"per_query_contribution_identity": identity, "evaluator_source_files_sha256": sources, "evaluator_source_bundle_sha256": quality_evaluator.source_bundle_sha256(sources)}
+        values = {"query_ids": numpy.asarray(["q0", "q1"]), "identity_json": numpy.asarray(json.dumps(identity, sort_keys=True))}
+        require(quality_identity_matches(report, values, ["q0", "q1"], identity, sources), "cost-aware selection quality identity differs")
+        values["query_ids"][1] = "other"
+        require(not quality_identity_matches(report, values, ["q0", "q1"], identity, sources), "cost-aware selection query identity mutation was accepted")
+        values["query_ids"][1] = "q1"; report["evaluator_source_files_sha256"] = {}
+        require(not quality_identity_matches(report, values, ["q0", "q1"], identity, sources), "cost-aware selection evaluator source mutation was accepted")
         rows = [{"id": "m19", "exact_r56_checked": True, "adc_oracle_survival_lower_bound": 0.91, "reranked_ndcg_retention_lower_bound": 0.99, "backend_specific_bytes": 1, "total_resident_bytes": 2, "candidate_generator_p50_ms_per_query": 0.4, "cascade_p50_ms_per_query": 0.6, "band_widths": [256], "local_radii": [56]}, {"id": "m20", "exact_r56_checked": True, "adc_oracle_survival_lower_bound": 0.89, "reranked_ndcg_retention_lower_bound": 0.99, "backend_specific_bytes": 1, "total_resident_bytes": 2, "candidate_generator_p50_ms_per_query": 0.1, "cascade_p50_ms_per_query": 0.2, "band_widths": [256], "local_radii": [56]}]
         require(select(rows, contract)["selected_id"] == "m19", "cost-aware selection quality gate differs")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:

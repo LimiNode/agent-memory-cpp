@@ -81,6 +81,7 @@ def collect(args: Any) -> tuple[dict[str, bytes], str]:
     contract = runner.load_contract(args.contract)
     root_sha256 = sha256(args.calibration_root / "manifest.json")
     require(root_sha256 == contract["calibration_materialization_manifest_sha256"], "cost-aware selection calibration root differs")
+    calibration = runner.shared.load_root(args.calibration_root)
     selection_path = args.output_root / "selection.json"
     selection = json.loads(selection_path.read_text(encoding="utf-8"))
     input_manifest_path = args.output_root / "input" / "manifest.json"
@@ -100,7 +101,7 @@ def collect(args: Any) -> tuple[dict[str, bytes], str]:
         config_path = args.output_root / "native-configs" / f"{identifier}.json"
         native_path = args.output_root / "native-reports" / f"{identifier}.json"
         bootstrap_path = args.output_root / "bootstrap" / f"{identifier}.json"
-        require(runner.quality_complete(quality_path, contributions_path, contract, root_sha256, treatment), f"cost-aware selection quality evidence differs: {identifier}")
+        require(runner.quality_complete(quality_path, contributions_path, contract, calibration, treatment), f"cost-aware selection quality evidence differs: {identifier}")
         config = json.loads(config_path.read_text(encoding="utf-8"))
         require(config == runner.native_config(contract, args.output_root / "input", treatment) and runner.native_complete(native_path, config, input_manifest_sha256), f"cost-aware selection native evidence differs: {identifier}")
         expected_bootstrap = runner.bootstrap_report(contract, contributions_path, identifier, ordinal)
