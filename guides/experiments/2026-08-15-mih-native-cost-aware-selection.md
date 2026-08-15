@@ -83,6 +83,33 @@ evaluation set.
 
 ## Result
 
-Pending the predeclared calibration replay. Raw reports and NPZ contributions
-remain external evidence; the final archive will bind their hashes, source
-snapshots, contract, and this note.
+The complete seven-row calibration replay passed the per-query fixed-r56 union
+and Hamming shortlist conformance checks. The lower bounds below are the
+predeclared 95% query-bootstrap bounds; binary memory is shared ITQ-256 codes
+plus the backend-specific immutable sparse directory.
+
+| m | ADC survival lower | nDCG retention lower | backend MiB | total MiB | generator p50 ms | cascade p50 ms | gate |
+|---:|---:|---:|---:|---:|---:|---:|:---|
+| 15 | 0.8397 | 0.9663 | 5.612 | 6.757 | 1.2292 | 1.4559 | fail quality |
+| 16 | 0.8688 | 0.9749 | 5.418 | 6.564 | 1.0073 | 1.2447 | fail quality |
+| 17 | 0.8879 | 0.9778 | 5.048 | 6.194 | 0.7625 | 0.9735 | fail quality |
+| 18 | 0.9020 | 0.9826 | 4.608 | 5.754 | 0.6028 | 0.8120 | admissible |
+| 19 | 0.9034 | 0.9852 | 4.234 | 5.380 | **0.4652** | **0.6667** | **selected** |
+| 20 | 0.9260 | 0.9890 | 3.938 | 5.083 | 0.5276 | 0.7432 | admissible |
+| 21 | 0.9426 | 0.9933 | 3.774 | 4.919 | 0.5798 | 0.8009 | admissible |
+
+The locked rule selects `m19-minimum-probe-r56`: nine 14-bit bands, ten
+13-bit bands, and local radius two in every band. `m20` and `m21` improve the
+quality and binary-index footprint, but their additional posting, deduplication
+and Hamming work makes the measured candidate generator slower on this sorted
+directory representation. Conversely, `m15..17` would look attractive to a
+cost-only selector but fail the independent quality gate. This is a calibration
+selection result, not a production or cross-backend claim.
+
+The frozen `m19` configuration is now the MIH arm for the later locked
+confirmation. The next predeclared study still has to tune BinaryFlat/common
+cascade and Binary HNSW on calibration under comparable contracts, then use a
+new untouched evaluation dataset or split once for the Flat-versus-MIH-versus-
+HNSW comparison. Raw reports and NPZ contributions remain external evidence;
+the release archive binds their hashes, source snapshots, contract, and this
+note.
