@@ -125,6 +125,35 @@ def contribution_fields() -> set[str]:
     return {"hamming_top_k_recall", "coverage_at_candidate_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "candidate_count", "exact_bucket_floor_candidate_count", "bucket_probe_count", "posting_visit_count", "e5_oracle_raw_union_coverage", "e5_oracle_hamming_top_k_coverage", "e5_oracle_second_stage_coverage", "e5_oracle_mean_full_hamming_distance", "e5_oracle_hamming_within_48", "e5_oracle_hamming_within_56", "e5_oracle_hamming_within_64", "probe_count_by_flip_depth", "posting_visit_count_by_flip_depth", "stop_reason", "query_ids", "identity_json"}
 
 
+def contribution_summary(values: dict[str, Any]) -> dict[str, Any]:
+    mean = lambda name: float(numpy.mean(values[name]))
+    return {
+        "hamming_top_k_recall": mean("hamming_top_k_recall"),
+        "exact_top_k_candidate_coverage": mean("coverage_at_candidate_limit"),
+        "reranked_ndcg_at_10": mean("reranked_ndcg_at_10"),
+        "full_e5_ndcg_at_10": mean("full_e5_ndcg_at_10"),
+        "mean_candidates_per_query": mean("candidate_count"),
+        "mean_exact_bucket_floor_candidates_per_query": mean("exact_bucket_floor_candidate_count"),
+        "mean_bucket_probes_per_query": mean("bucket_probe_count"),
+        "mean_posting_visits_per_query": mean("posting_visit_count"),
+        "mean_full_hamming_scores_per_query": mean("candidate_count"),
+        "e5_oracle_survival": {
+            "raw_union": mean("e5_oracle_raw_union_coverage"),
+            "hamming_top_k": mean("e5_oracle_hamming_top_k_coverage"),
+            "second_stage": mean("e5_oracle_second_stage_coverage"),
+            "mean_full_hamming_distance": mean("e5_oracle_mean_full_hamming_distance"),
+            "hamming_within_radius": {str(radius): mean(f"e5_oracle_hamming_within_{radius}") for radius in (48, 56, 64)},
+        },
+        "mean_probe_count_by_flip_depth": [float(numpy.mean(values["probe_count_by_flip_depth"][:, depth])) for depth in range(3)],
+        "mean_posting_visits_by_flip_depth": [float(numpy.mean(values["posting_visit_count_by_flip_depth"][:, depth])) for depth in range(3)],
+        "stop_reason_fractions": {reason: float(numpy.mean(values["stop_reason"] == reason)) for reason in ("candidate", "posting", "exhausted", "fixed-radius")},
+    }
+
+
+def report_matches_contribution_summary(report: dict[str, Any], summary: dict[str, Any]) -> bool:
+    return all(report.get(name) == value for name, value in summary.items())
+
+
 def complete(root: Path, row: dict[str, Any], contract: dict[str, Any], calibration: dict[str, Any], evaluation: dict[str, Any]) -> bool:
     report_path = root / "reports" / f"{row['id']}.json"
     contribution_path = root / "contributions" / f"{row['id']}.npz"
@@ -141,7 +170,7 @@ def complete(root: Path, row: dict[str, Any], contract: dict[str, Any], calibrat
         require(values["query_ids"].shape == (count,) and values["probe_count_by_flip_depth"].shape == (count, 3) and values["posting_visit_count_by_flip_depth"].shape == (count, 3), "canonical arbitrary-m contribution shape differs")
         identity = json.loads(str(values["identity_json"].item()))
         expected_identity = shared.contribution_identity(evaluation, pipeline["candidate_limit"], pipeline["oracle_k"])
-        survival = {"raw_union": float(numpy.mean(values["e5_oracle_raw_union_coverage"])), "hamming_top_k": float(numpy.mean(values["e5_oracle_hamming_top_k_coverage"])), "second_stage": float(numpy.mean(values["e5_oracle_second_stage_coverage"])), "mean_full_hamming_distance": float(numpy.mean(values["e5_oracle_mean_full_hamming_distance"])), "hamming_within_radius": {str(radius): float(numpy.mean(values[f"e5_oracle_hamming_within_{radius}"])) for radius in (48, 56, 64)}}
+        summary = contribution_summary(values)
         return bool(
             report.get("schema_version") == 6 and report.get("family") == "mih_banding_reference_v6"
             and report.get("evaluator_source_files_sha256") == {name: source_files()[name] for name in ("evaluate-mih-banding.py", "evaluate-projection-quantization.py")}
@@ -150,10 +179,12 @@ def complete(root: Path, row: dict[str, Any], contract: dict[str, Any], calibrat
             and report.get("global_radius") == pipeline["global_radius"] and report.get("band_probe_radii") == treatment["local_radii"] and report.get("fixed_radius_exact_guarantee") is True
             and report.get("probe_policy") == "uniform-radius" and report.get("hamming_policy") == "uniform" and report.get("seed") == row["seed"] and report.get("itq_iterations") == 50
             and report.get("candidate_limit") == pipeline["candidate_limit"] and report.get("hamming_limit") == pipeline["hamming_limit"] and report.get("second_stage") == pipeline["second_stage"] and report.get("second_limit") == pipeline["second_limit"] and report.get("oracle_k") == pipeline["oracle_k"]
-            and report.get("query_count") == count and report.get("mean_bucket_probes_per_query") == float(treatment["local_key_count"])
+            and report.get("query_count") == count and summary["mean_bucket_probes_per_query"] == float(treatment["local_key_count"])
             and report.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and report.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"]
             and report.get("per_query_contributions_sha256") == sha256(contribution_path) and report.get("per_query_contribution_identity") == identity == expected_identity
-            and report.get("mean_candidates_per_query") == float(numpy.mean(values["candidate_count"])) and report.get("mean_posting_visits_per_query") == float(numpy.mean(values["posting_visit_count"])) and report.get("e5_oracle_survival") == survival
+            and numpy.array_equal(values["query_ids"], numpy.asarray(evaluation["query_ids"]))
+            and numpy.all(values["probe_count_by_flip_depth"] == 0) and numpy.all(values["posting_visit_count_by_flip_depth"] == 0) and numpy.all(values["stop_reason"] == "fixed-radius")
+            and report_matches_contribution_summary(report, summary)
         )
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
         return False
@@ -187,8 +218,14 @@ def run(args: Any) -> None:
         for future in concurrent.futures.as_completed([pool.submit(execute, number, row) for number, row in enumerate(matrix, 1)]):
             future.result()
     entries = [{"id": row["id"], "treatment": row["treatment"]["id"], "seed": row["seed"], "report_sha256": sha256(args.output_root / "reports" / f"{row['id']}.json"), "contribution_sha256": sha256(args.output_root / "contributions" / f"{row['id']}.npz")} for row in matrix]
+    manifest_path = args.output_root / "matrix-manifest.json"
+    if args.resume and manifest_path.is_file():
+        historical = json.loads(manifest_path.read_text(encoding="utf-8"))
+        require(historical.get("schema_version") == 1 and historical.get("family") == FAMILY and historical.get("contract_sha256") == sha256(args.contract), "canonical arbitrary-m historical matrix manifest differs")
+        require(historical.get("calibration_materialization_manifest_sha256") == calibration["manifest_sha256"] and historical.get("evaluation_materialization_manifest_sha256") == evaluation["manifest_sha256"] and historical.get("rows") == entries, "canonical arbitrary-m historical matrix rows differ")
+        return
     manifest = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "calibration_materialization_manifest_sha256": calibration["manifest_sha256"], "evaluation_materialization_manifest_sha256": evaluation["manifest_sha256"], "source_files_sha256": source_files(), "source_bundle_sha256": source_bundle(source_files()), "rows": entries}
-    (args.output_root / "matrix-manifest.json").write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    manifest_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def self_test(contract_path: Path) -> int:
@@ -211,6 +248,14 @@ def self_test(contract_path: Path) -> int:
                 pass
             else:
                 raise ValueError("changed canonical arbitrary-m contract was accepted")
+        values = {name: numpy.asarray([0.0, 1.0]) for name in contribution_fields() - {"query_ids", "identity_json", "probe_count_by_flip_depth", "posting_visit_count_by_flip_depth", "stop_reason"}}
+        values.update({"query_ids": numpy.asarray(["q0", "q1"]), "identity_json": numpy.asarray("{}"), "probe_count_by_flip_depth": numpy.zeros((2, 3), dtype=numpy.int32), "posting_visit_count_by_flip_depth": numpy.zeros((2, 3), dtype=numpy.int32), "stop_reason": numpy.asarray(["fixed-radius", "fixed-radius"])})
+        summary = contribution_summary(values)
+        require(report_matches_contribution_summary(summary, summary), "canonical arbitrary-m contribution summary differs")
+        mutated = dict(summary); mutated["reranked_ndcg_at_10"] = 0.0
+        require(not report_matches_contribution_summary(mutated, summary), "canonical arbitrary-m nDCG mutation was accepted")
+        mutated = dict(summary); mutated["mean_bucket_probes_per_query"] = 0.0
+        require(not report_matches_contribution_summary(mutated, summary), "canonical arbitrary-m probe mutation was accepted")
     except (OSError, ValueError, json.JSONDecodeError) as error:
         print(f"run-mih-canonical-arbitrary-m-frontier self-test failed: {error}", file=sys.stderr)
         return 1

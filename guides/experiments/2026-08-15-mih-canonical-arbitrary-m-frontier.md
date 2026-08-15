@@ -117,3 +117,24 @@ which did not describe the metric-specific RNG streams. The matrix was not
 replayed because this correction changes bootstrap metadata/provenance only.
 The resulting archive is staged in the corresponding draft evidence release;
 the raw matrix and bootstrap files remain outside Git.
+
+## 2026-08-15 - post-merge evidence verifier hardening
+
+**Context.** The published v2 evidence correctly bound the 35 historical
+report/contribution pairs, source snapshots, materialization manifests, and
+all bootstrap replays. A post-merge audit found that the row verifier
+recomputed only a subset of the report's NPZ-derived aggregates.
+
+**Change.** The verifier now recomputes every headline aggregate represented
+by a contribution array: quality, work, E5-oracle survival, depth means, and
+stop-reason fractions. It also checks the exact ordered query IDs and the
+historical fixed-radius diagnostics: zero depth-accounting arrays and the
+`fixed-radius` stop reason for every query. The latter is the actual semantic
+contract of this uniform fixed-radius evaluator; it is not an omitted
+per-depth probe count.
+
+**Result.** A `--resume` verification accepted the unchanged 35 historical
+report/NPZ pairs. No evaluator rows or bootstrap results were recomputed, and
+the frontier interpretation is unchanged. Evidence v3 supersedes v2 as the
+portable archive for this experiment because its verifier rejects a mutation
+of any headline metric derived from a saved per-query contribution.
