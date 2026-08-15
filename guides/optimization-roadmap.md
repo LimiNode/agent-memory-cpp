@@ -2429,6 +2429,40 @@ scale ladder. Required evidence includes index bytes, build/rebuild and update
 cost, p50/p95/p99 end-to-end and candidate-generator latency, candidate work,
 quality after each cascade stage, and memory/read-amplification budgets.
 
+### Native sparse MIH baseline and cost-aware selection
+
+The first native arbitrary-m implementation is deliberately one immutable
+baseline only: sorted unique keys, offsets, and contiguous `uint32_t` postings
+per band; query-time local key enumeration; generation-array deduplication;
+full Hamming; top-K; ADC. Do not add a flat/open-addressing directory or other
+storage-layout challenger until profiling shows bucket lookup materially
+dominates the candidate-generator total.
+
+For every `m=15..21` arm, preserve per-query and repeated aggregate measures
+for key enumeration, bucket lookup, posting traversal, generation dedup,
+Hamming scoring, top-K selection, ADC, candidate-generator total, and cascade
+total. Record p50/p95 and p99 where the sample budget permits, plus index
+logical bytes; non-empty and empty probes; mean/p95 touched posting length;
+unique candidates divided by posting visits; candidate checksum; and stable
+candidate/shortlist conformance checks. The candidate-generator total is a
+first-class measurement: isolated stage timings are diagnostic and need not
+sum to end-to-end latency because of allocation and cache effects.
+
+The exploratory Python frontier is structured rather than monotone. In
+particular, the post-hoc `m=18` versus `m=19` diagnostic does not establish
+dominance, and `m=20`/`m=21` are native benchmark candidates rather than
+winners. Python work counters cannot price bucket lookups against posting,
+deduplication, and Hamming work on the target CPU.
+
+Only after this native frontier is measured may a new optimizer use
+calibration-only native cost estimates to select `m` and a local-radius
+schedule. Its hard inclusion constraint remains `sum_b(r_b + 1) >= 57`; its
+objective may estimate candidate-generator cost from measured lookup, posting,
+deduplication, and Hamming components. Freeze the selected configuration, then
+evaluate it once on a new untouched split or dataset before comparing MIH with
+BinaryFlat and Binary HNSW. The current fixed-r56 progressive-stopping branch
+is closed for that architecture only; it is not a general impossibility claim.
+
 ### Deferred coarse-locator MIH challenger
 
 After the native arbitrary-m frontier and calibration-only schedule selection,
