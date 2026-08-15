@@ -51,6 +51,24 @@ def load(name: str, module_name: str) -> Any:
     return module
 
 
+def load_snapshot_bootstrap(measured_source_ref: str, bootstrap_source_ref: str) -> tuple[tempfile.TemporaryDirectory[str], Any]:
+    directory = tempfile.TemporaryDirectory()
+    root = Path(directory.name)
+    for name in SOURCE_NAMES:
+        (root / name).write_bytes(snapshot(measured_source_ref, f"tools/agent-memory-bench/{name}"))
+    bootstrap_name = "bootstrap-mih-canonical-arbitrary-m-frontier.py"
+    bootstrap_path = root / bootstrap_name
+    bootstrap_path.write_bytes(snapshot(bootstrap_source_ref, f"tools/agent-memory-bench/{bootstrap_name}"))
+    spec = importlib.util.spec_from_file_location("canonical_arbitrary_m_historical_bootstrap", bootstrap_path)
+    if spec is None or spec.loader is None:
+        directory.cleanup()
+        raise RuntimeError("cannot load canonical arbitrary-m historical bootstrap")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return directory, module
+
+
 runner = load("run-mih-canonical-arbitrary-m-frontier.py", "canonical_arbitrary_m_evidence_runner")
 bootstrap = load("bootstrap-mih-canonical-arbitrary-m-frontier.py", "canonical_arbitrary_m_evidence_bootstrap")
 
@@ -110,12 +128,16 @@ def collect(args: Any) -> dict[str, bytes]:
         "bootstrap-mih-canonical-arbitrary-m-frontier.py": sha256_bytes(snapshot(args.bootstrap_source_ref, "tools/agent-memory-bench/bootstrap-mih-canonical-arbitrary-m-frontier.py")),
         **{name: expected_sources[name] for name in ("run-mih-canonical-arbitrary-m-frontier.py", "evaluate-mih-banding.py", "evaluate-projection-quantization.py")},
     }
-    for control_m, challenger_m, seed, name in expected_bootstrap_paths(contract):
-        path = args.bootstrap_root / name
-        expected = bootstrap.bootstrap_report(contract, control_m, challenger_m, seed, args.matrix_root / "contributions" / f"m{control_m}-minimum-probe-r56-seed{seed}.npz", args.matrix_root / "contributions" / f"m{challenger_m}-minimum-probe-r56-seed{seed}.npz")
-        value = json.loads(path.read_text(encoding="utf-8"))
-        require(expected.get("bootstrap_source_files_sha256") == expected_bootstrap_sources and expected.get("bootstrap_source_bundle_sha256") == bootstrap.source_bundle(expected_bootstrap_sources) and value == expected, f"canonical arbitrary-m bootstrap replay differs: {name}")
-        files[f"bundle/bootstrap/{name}"] = path.read_bytes()
+    temporary, historical_bootstrap = load_snapshot_bootstrap(args.measured_source_ref, args.bootstrap_source_ref)
+    try:
+        for control_m, challenger_m, seed, name in expected_bootstrap_paths(contract):
+            path = args.bootstrap_root / name
+            expected = historical_bootstrap.bootstrap_report(contract, control_m, challenger_m, seed, args.matrix_root / "contributions" / f"m{control_m}-minimum-probe-r56-seed{seed}.npz", args.matrix_root / "contributions" / f"m{challenger_m}-minimum-probe-r56-seed{seed}.npz")
+            value = json.loads(path.read_text(encoding="utf-8"))
+            require(expected.get("bootstrap_source_files_sha256") == expected_bootstrap_sources and expected.get("bootstrap_source_bundle_sha256") == historical_bootstrap.source_bundle(expected_bootstrap_sources) and value == expected, f"canonical arbitrary-m bootstrap replay differs: {name}")
+            files[f"bundle/bootstrap/{name}"] = path.read_bytes()
+    finally:
+        temporary.cleanup()
     for name in SOURCE_NAMES:
         files[f"bundle/sources/{name}"] = snapshot(args.measured_source_ref, f"tools/agent-memory-bench/{name}")
     files["bundle/sources/bootstrap-mih-canonical-arbitrary-m-frontier.py"] = snapshot(args.bootstrap_source_ref, "tools/agent-memory-bench/bootstrap-mih-canonical-arbitrary-m-frontier.py")
