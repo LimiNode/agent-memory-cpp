@@ -56,6 +56,16 @@ def source_bundle(files: dict[str, str]) -> str:
     return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
+def quality_contribution_identity(data: dict[str, Any], contract: dict[str, Any]) -> dict[str, Any]:
+    cascade = contract["cascade"]
+    identity = shared.contribution_identity(data, cascade["hamming_limit"], cascade["oracle_k"])
+    identity.update({
+        "adc_limit": cascade["adc_limit"],
+        "final_rerank_source": "binary_adc_shortlist",
+    })
+    return identity
+
+
 def load_contract(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(value.get("schema_version") == 1 and value.get("family") == FAMILY, "native ANN calibration contract identity differs")
@@ -132,6 +142,48 @@ def choose(rows: list[dict[str, Any]], backend: str) -> dict[str, Any]:
     return min(candidates, key=lambda row: (row["candidate_generator_p50_ms_per_query"], row["cascade_p50_ms_per_query"], row["total_resident_bytes"], row["id"]))
 
 
+def write_selection(contract_path: Path, contract: dict[str, Any], calibration_root: Path, output_root: Path, input_sha: str, rows: list[dict[str, Any]]) -> None:
+    selected = {backend: choose(rows, backend)["id"] for backend in ("mih", "flat", "hnsw")}
+    result = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(contract_path), "calibration_manifest_sha256": sha256(calibration_root / "manifest.json"), "input_manifest_sha256": input_sha, "source_files_sha256": source_files(), "source_bundle_sha256": source_bundle(source_files()), "rows": rows, "frozen_backend_ids": selected, "decision": "Calibration-only selection; no backend claim is valid until one new untouched split is evaluated once without retuning."}
+    (output_root / "selection.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+
+
+def row_from_artifacts(contract: dict[str, Any], output_root: Path, input_sha: str, treatment: dict[str, Any], ordinal: int, python: Path, calibration_root: Path, oracle_cache: Path) -> dict[str, Any]:
+    identifier = treatment["id"]
+    config_path = output_root / "configs" / f"{identifier}.json"
+    report_path = output_root / "native-reports" / f"{identifier}.json"
+    export_path = output_root / "shortlists" / f"{identifier}.json"
+    quality_path = output_root / "quality" / f"{identifier}.json"
+    contributions_path = output_root / "contributions" / f"{identifier}.npz"
+    config = native_config(contract, output_root / "input", export_path, treatment)
+    require(json.loads(config_path.read_text(encoding="utf-8")) == config, f"native ANN replay config differs: {identifier}")
+    native_report = json.loads(report_path.read_text(encoding="utf-8"))
+    require(native_report.get("input_manifest_sha256") == input_sha and native_report.get("backend", {}).get("name") == treatment["backend"] and native_report.get("hamming_shortlist_export", {}).get("sha256") == sha256(export_path), f"native ANN replay report provenance differs: {identifier}")
+    if treatment["backend"] == "hnsw":
+        require(native_report["backend"].get("hnswlib_revision") == contract["hnsw"]["pinned_revision"], "native ANN replay HNSW revision differs")
+    subprocess.run([str(python), str(THIS / "evaluate-native-ann-shortlists.py"), "evaluate", "--evaluation-root", str(calibration_root), "--shortlist-export", str(export_path), "--output", str(quality_path), "--contributions-output", str(contributions_path), "--hamming-limit", str(contract["cascade"]["hamming_limit"]), "--adc-limit", str(contract["cascade"]["adc_limit"]), "--oracle-k", str(contract["cascade"]["oracle_k"]), "--oracle-cache", str(oracle_cache)], check=True)
+    bootstrap = quality_bootstrap(contract, contributions_path, ordinal)
+    bootstrap_path = output_root / "bootstrap" / f"{identifier}.json"
+    bootstrap_path.parent.mkdir(parents=True, exist_ok=True)
+    bootstrap_path.write_text(json.dumps(bootstrap, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    input_manifest = json.loads((output_root / "input" / "manifest.json").read_text(encoding="utf-8"))
+    backend_bytes = int(native_report["backend"]["backend_index_logical_bytes"])
+    row = {"id": identifier, "backend": treatment["backend"], "native_config": {name: value for name, value in config.items() if name not in ("input_directory", "shortlist_output")}, "backend_specific_bytes": backend_bytes, "shared_itq_256_code_store_bytes": int(input_manifest["document_count"]) * 32, "total_resident_bytes": backend_bytes + int(input_manifest["document_count"]) * 32, "candidate_generator_p50_ms_per_query": native_report["latency_ms_per_query"]["candidate_generator_total"]["p50"], "cascade_p50_ms_per_query": native_report["latency_ms_per_query"]["cascade_total"]["p50"], "adc_oracle_survival_lower_bound": bootstrap["metrics"]["adc_oracle_survival"]["lower_bound"], "reranked_ndcg_retention_lower_bound": bootstrap["metrics"]["reranked_ndcg_retention"]["lower_bound"], "native_config_sha256": sha256(config_path), "native_report_sha256": sha256(report_path), "shortlist_export_sha256": sha256(export_path), "quality_report_sha256": sha256(quality_path), "contributions_sha256": sha256(contributions_path), "bootstrap_sha256": sha256(bootstrap_path)}
+    row["admissible"] = admissible(row, contract)
+    return row
+
+
+def replay_quality(args: Any) -> None:
+    contract = load_contract(args.contract)
+    shared.load_root(args.calibration_root)
+    require(sha256(args.calibration_root / "manifest.json") == contract["calibration_materialization_manifest_sha256"], "native ANN replay calibration manifest differs")
+    input_sha = sha256(args.output_root / "input" / "manifest.json")
+    oracle_cache = args.output_root / "quality" / "full-e5-oracle.npz"
+    rows = [row_from_artifacts(contract, args.output_root, input_sha, treatment, ordinal, args.python, args.calibration_root, oracle_cache) for ordinal, treatment in enumerate(treatments(contract))]
+    write_selection(args.contract, contract, args.calibration_root, args.output_root, input_sha, rows)
+    print(json.dumps({"frozen_backend_ids": {backend: choose(rows, backend)["id"] for backend in ("mih", "flat", "hnsw")}, "native_execution": "not_run"}, sort_keys=True))
+
+
 def run(args: Any) -> None:
     contract = load_contract(args.contract)
     root = shared.load_root(args.calibration_root)
@@ -166,10 +218,8 @@ def run(args: Any) -> None:
         row = {"id": treatment["id"], "backend": treatment["backend"], "native_config": {name: value for name, value in config.items() if name not in ("input_directory", "shortlist_output")}, "backend_specific_bytes": backend_bytes, "shared_itq_256_code_store_bytes": code_store_bytes, "total_resident_bytes": backend_bytes + code_store_bytes, "candidate_generator_p50_ms_per_query": native_report["latency_ms_per_query"]["candidate_generator_total"]["p50"], "cascade_p50_ms_per_query": native_report["latency_ms_per_query"]["cascade_total"]["p50"], "adc_oracle_survival_lower_bound": bootstrap["metrics"]["adc_oracle_survival"]["lower_bound"], "reranked_ndcg_retention_lower_bound": bootstrap["metrics"]["reranked_ndcg_retention"]["lower_bound"], "native_config_sha256": sha256(config_path), "native_report_sha256": sha256(report_path), "shortlist_export_sha256": sha256(export_path), "quality_report_sha256": sha256(quality_path), "contributions_sha256": sha256(contributions_path), "bootstrap_sha256": sha256(bootstrap_path)}
         row["admissible"] = admissible(row, contract)
         rows.append(row)
-    selected = {backend: choose(rows, backend)["id"] for backend in ("mih", "flat", "hnsw")}
-    result = {"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "calibration_manifest_sha256": sha256(args.calibration_root / "manifest.json"), "input_manifest_sha256": input_sha, "source_files_sha256": source_files(), "source_bundle_sha256": source_bundle(source_files()), "rows": rows, "frozen_backend_ids": selected, "decision": "Calibration-only selection; no backend claim is valid until one new untouched split is evaluated once without retuning."}
-    (args.output_root / "selection.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-    print(json.dumps(selected, sort_keys=True))
+    write_selection(args.contract, contract, args.calibration_root, args.output_root, input_sha, rows)
+    print(json.dumps({backend: choose(rows, backend)["id"] for backend in ("mih", "flat", "hnsw")}, sort_keys=True))
 
 
 def self_test(contract_path: Path) -> int:
@@ -193,6 +243,11 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("self-test")
+    replay = commands.add_parser("replay-quality")
+    replay.add_argument("--contract", type=Path, default=THIS / "native-ann-backend-calibration.example.json")
+    replay.add_argument("--calibration-root", type=Path, required=True)
+    replay.add_argument("--output-root", type=Path, required=True)
+    replay.add_argument("--python", type=Path, default=Path(sys.executable))
     command = commands.add_parser("run")
     command.add_argument("--contract", type=Path, default=THIS / "native-ann-backend-calibration.example.json")
     command.add_argument("--calibration-root", type=Path, required=True)
@@ -201,7 +256,9 @@ def main(argv: list[str]) -> int:
     command.add_argument("--python", type=Path, default=Path(sys.executable))
     args = parser.parse_args(argv)
     try:
-        return self_test(THIS / "native-ann-backend-calibration.example.json") if args.command == "self-test" else (run(args) or 0)
+        if args.command == "self-test":
+            return self_test(THIS / "native-ann-backend-calibration.example.json")
+        return (replay_quality(args) if args.command == "replay-quality" else run(args)) or 0
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, subprocess.CalledProcessError) as error:
         print(f"run-native-ann-backend-calibration: {error}", file=sys.stderr)
         return 1

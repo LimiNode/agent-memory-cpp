@@ -73,6 +73,15 @@ def oracle_cache_identity(data: dict[str, Any], oracle_k: int) -> dict[str, Any]
     }
 
 
+def contribution_identity(data: dict[str, Any], hamming_limit: int, adc_limit: int, oracle_k: int) -> dict[str, Any]:
+    identity = shared.contribution_identity(data, hamming_limit, oracle_k)
+    identity.update({
+        "adc_limit": adc_limit,
+        "final_rerank_source": "binary_adc_shortlist",
+    })
+    return identity
+
+
 def load_or_create_oracle_cache(data: dict[str, Any], path: Path, oracle_k: int) -> tuple[numpy.ndarray, numpy.ndarray]:
     identity = oracle_cache_identity(data, oracle_k)
     if path.is_file():
@@ -107,23 +116,24 @@ def evaluate(data: dict[str, Any], rows: dict[int, tuple[numpy.ndarray, numpy.nd
     for position, query_id in enumerate(data["query_ids"]):
         query = numpy.asarray(data["queries"][position], dtype=numpy.float32)
         hamming, adc = rows[position]
-        candidates = hamming[:hamming_limit]
+        hamming_candidates = hamming[:hamming_limit]
+        rerank_candidates = adc[:adc_limit]
         if exact_top_positions is None or full_e5_ndcg is None:
             exact_scores = documents @ query
             exact_order = numpy.lexsort((document_ids, -exact_scores))
             exact_top = exact_order[:oracle_k]
             current_full_ndcg = shared.dcg_at_10(document_ids[exact_order], data["qrels"][query_id])
-            candidate_scores = exact_scores[candidates]
+            candidate_scores = exact_scores[rerank_candidates]
         else:
             exact_top = exact_top_positions[position]
             current_full_ndcg = float(full_e5_ndcg[position])
-            candidate_scores = documents[candidates] @ query
-        coverage.append(float(numpy.isin(exact_top, candidates).sum()) / oracle_k)
-        rerank_order = candidates[numpy.lexsort((document_ids[candidates], -candidate_scores))]
+            candidate_scores = documents[rerank_candidates] @ query
+        coverage.append(float(numpy.isin(exact_top, hamming_candidates).sum()) / oracle_k)
+        rerank_order = rerank_candidates[numpy.lexsort((document_ids[rerank_candidates], -candidate_scores))]
         grades = data["qrels"][query_id]
         rerank_ndcg.append(shared.dcg_at_10(document_ids[rerank_order], grades))
         full_ndcg.append(current_full_ndcg)
-        adc_oracle.append(float(numpy.isin(exact_top, adc[:adc_limit]).sum()) / oracle_k)
+        adc_oracle.append(float(numpy.isin(exact_top, rerank_candidates).sum()) / oracle_k)
     contributions = {
         "coverage_at_hamming_limit": numpy.asarray(coverage, dtype=numpy.float64),
         "reranked_ndcg_at_10": numpy.asarray(rerank_ndcg, dtype=numpy.float64),
@@ -145,7 +155,7 @@ def run(args: Any) -> None:
     export, rows = load_export(args.shortlist_export, len(data["query_ids"]), len(data["document_ids"]), args.hamming_limit, args.adc_limit)
     exact_top, full_ndcg = load_or_create_oracle_cache(data, args.oracle_cache, args.oracle_k) if args.oracle_cache is not None else (None, None)
     report, contributions = evaluate(data, rows, args.hamming_limit, args.adc_limit, args.oracle_k, exact_top, full_ndcg)
-    identity = shared.contribution_identity(data, args.hamming_limit, args.oracle_k)
+    identity = contribution_identity(data, args.hamming_limit, args.adc_limit, args.oracle_k)
     args.contributions_output.parent.mkdir(parents=True, exist_ok=True)
     numpy.savez_compressed(
         args.contributions_output,
@@ -177,10 +187,10 @@ def run(args: Any) -> None:
 
 def self_test() -> int:
     try:
-        rows = {0: (numpy.asarray([0, 1]), numpy.asarray([0])), 1: (numpy.asarray([1, 0]), numpy.asarray([1]))}
-        data = {"documents": numpy.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=numpy.float32), "document_ids": numpy.asarray(["a", "b"]), "queries": numpy.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=numpy.float32), "query_ids": ["q0", "q1"], "qrels": {"q0": {"a": 1}, "q1": {"b": 1}}}
+        rows = {0: (numpy.asarray([0, 1]), numpy.asarray([1]))}
+        data = {"documents": numpy.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=numpy.float32), "document_ids": numpy.asarray(["a", "b"]), "queries": numpy.asarray([[1.0, 0.0]], dtype=numpy.float32), "query_ids": ["q0"], "qrels": {"q0": {"a": 1}}}
         report, contributions = evaluate(data, rows, 2, 1, 1)
-        require(report["exact_top_k_hamming_coverage"] == 1.0 and report["e5_oracle_survival_after_adc"] == 1.0 and contributions["reranked_ndcg_at_10"].shape == (2,), "native ANN quality evaluation differs")
+        require(report["exact_top_k_hamming_coverage"] == 1.0 and report["e5_oracle_survival_after_adc"] == 0.0 and report["reranked_ndcg_at_10"] == 0.0 and report["full_e5_ndcg_at_10"] == 1.0 and contributions["reranked_ndcg_at_10"].shape == (1,), "native ANN quality evaluation must rerank the ADC shortlist")
     except (ValueError, KeyError, TypeError) as error:
         print(f"evaluate-native-ann-shortlists self-test failed: {error}", file=sys.stderr)
         return 1

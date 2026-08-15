@@ -1,7 +1,7 @@
 # Native Binary ANN Backend Calibration
 
 Date: 2026-08-15  
-Measured source: `7022e5927f26c0c3ef36e31edc5ca9dab1722de0`  
+Native measurement source: `7022e5927f26c0c3ef36e31edc5ca9dab1722de0`
 Scope: calibration only; this is not a backend or production claim.
 
 ## Hypothesis
@@ -31,13 +31,21 @@ candidate inclusion. Flat has no routing parameter. HNSW is a predeclared native
 
 Every native run exports its own Hamming and ADC shortlists. A separate evaluator
 uses those exports and the E5/qrels root; it does not substitute a Python HNSW
-implementation. Admissibility requires 95% bootstrap lower bounds of at least
-0.90 for E5-oracle survival after ADC and at least 0.98 for reranked/full-E5
-nDCG retention, auxiliary index bytes at most 8 MiB, and total resident bytes at
-most 10 MiB. HNSW selection is then deterministic by candidate-generator p50,
-cascade p50, total bytes, and identifier.
+implementation. It measures Hamming coverage at Hamming top-768, then computes
+the final reranked nDCG by exact E5 sorting the production ADC top-256 shortlist.
+Admissibility requires 95% bootstrap lower bounds of at least 0.90 for E5-oracle
+survival after ADC and at least 0.98 for reranked/full-E5 nDCG retention,
+auxiliary index bytes at most 8 MiB, and total resident bytes at most 10 MiB.
+HNSW selection is then deterministic by candidate-generator p50, cascade p50,
+total bytes, and identifier.
 
-## Results
+The first draft evidence mistakenly reranked Hamming top-768 when calculating
+the nDCG gate. That draft is superseded. The corrected quality replay reuses the
+unchanged native reports and exported Hamming/ADC shortlists; it does not rerun
+native timing or candidate generation. Its evidence bundle binds the replay
+evaluator separately from the historical native measurement source.
+
+## Corrected results
 
 | treatment | admissible | candidate-generator p50 ms/query | cascade p50 ms/query | auxiliary bytes | ADC oracle lower 95% | nDCG-retention lower 95% |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
