@@ -497,6 +497,65 @@ public exact-index implementation from a contiguous compute-oriented exact
 baseline; otherwise container layout and result-materialization overhead can be
 mistaken for an arithmetic advantage of binary search.
 
+### Planned Binary Candidate-Generator Direction
+
+Binary retrieval is a replaceable candidate-generator layer, not a single
+universal index choice. The planned candidates are an exhaustive
+`BinaryFlat` Hamming scan, immutable sparse Multi-Index Hashing (MIH), and an
+optional binary HNSW adapter. Each receives the same binary query code and
+returns segment-qualified candidate references plus backend work diagnostics;
+none owns final retrieval ranking. A local position is valid only under its
+immutable segment identity and generation, for example
+`{segment_id, segment_generation, local_position}`. The owning segment maps
+that reference to a stable `ChunkId`/`KnowledgeUnitId` before results cross a
+segment boundary.
+
+```text
+Sparse MIH: locator -> segment-qualified candidate pool -> exact HammingTopK
+Binary HNSW: graph Hamming traversal -> returned pool -> exact HammingTopK
+BinaryFlat: exhaustive exact HammingTopK (fused)
+                                      -> ADC -> exact embedding rerank
+```
+
+Backends may fuse physical stages. In particular, BinaryFlat already performs
+the exhaustive full-code HammingTopK and must not be represented as generating
+positions that a common stage scores again. Benchmark reports therefore retain
+both a backend-local locator/generator diagnostic (where applicable) and a
+through-Hamming-shortlist total, plus the full cascade total; the latter two
+are comparable even when a backend fuses work.
+
+MIH is a self-contained candidate generator: it must not be cascaded through
+HNSW before full Hamming. A future union of independently cheap MIH and HNSW
+candidate sets is a separate benchmark hypothesis, not a default pipeline.
+`BinaryFlat` is an exact baseline in binary Hamming space, not a replacement
+for the final float-quality oracle.
+
+A future coarse locator code is a MIH representation variant, not a fourth
+general backend: a short binary code may generate candidates while a retained
+full binary code supplies Hamming/ADC ranking. It remains deferred until the
+native arbitrary-m MIH frontier and cost-aware schedule selection are complete.
+
+Do not introduce a public `BinaryAnnBackend` API yet. `BinaryFlat` is not ANN,
+and the candidate-generator result contract must first be informed by the
+native benchmark. A future internal boundary may be named
+`BinaryCandidateGenerator`; at minimum it must preserve segment-qualified
+candidate references, binary-code identity, query/index work diagnostics, and
+the metadata needed to reject stale or inaccessible records before final
+reranking.
+
+Mutable collections should remain canonical-storage-first. The expected future
+physical shape is a small mutable/delta segment and rebuildable immutable
+segments; individual segments may use different candidate generators.
+Segment-qualified candidate references from all searched segments are merged
+and reranked globally, so a backend-local score is never treated as a final
+cross-segment ranking. Exact scope/access filters and tombstone or generation
+checks apply before and after candidate generation.
+
+Backend selection and segment thresholds are benchmark-gated. Corpus scale,
+code geometry, radius schedule, update pattern, memory budget, quality floor,
+and p50/p95/p99 latency all matter; no corpus-size-only threshold is a product
+contract before a locked workload demonstrates it.
+
 The knowledge base layers (lexical field postings, graph edges, temporal
 events, metadata filters) share a common primary-table-plus-secondary-index
 pattern. The pattern, the index catalog, the cross-table transaction

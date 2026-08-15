@@ -2397,6 +2397,138 @@ second approximate payload:
 ITQ binary code -> MIH/bands -> full Hamming -> binary ADC -> exact embedding rerank
 ```
 
+### Candidate-generator portfolio and evidence gate
+
+MIH is intended to be a self-contained binary candidate generator, not an
+upstream filter for binary HNSW. The eventual binary-search portfolio may
+contain three mutually substitutable generators:
+
+```text
+BinaryFlat: exact Hamming baseline and small-segment control
+Sparse MIH: deterministic immutable posting-directory candidate generator
+Binary HNSW: optional graph-ANN challenger for high-recall/latency workloads
+```
+
+Sparse MIH and Binary HNSW may return a pool that then receives exact
+full-code HammingTopK. BinaryFlat is the exhaustive exact HammingTopK baseline
+and may fuse that work rather than materializing an unscored pool. All backends
+then feed optional ADC and final exact-embedding rerank. This is deliberately
+not a public backend API yet; the future internal boundary is a
+segment-qualified-candidate-and-diagnostics result, not an ANN-only
+abstraction. A MIH-plus-HNSW union is a later independent recall/diversity
+experiment, not a default two-index cascade.
+
+Benchmark accounting must distinguish a backend-local locator/generator
+diagnostic, a through-Hamming-shortlist total, and a full cascade total.
+Backends may fuse stages, so a `candidate-generator latency` label alone is
+not comparable across Flat, MIH, and HNSW.
+
+Future persistent layouts may search heterogeneous immutable segments (for
+example, a small Flat delta segment and larger MIH or HNSW segments), then
+merge segment-qualified candidate references before global reranking. A local
+position carries its segment identity and immutable segment generation, and is
+resolved by that segment to a stable `ChunkId`/`KnowledgeUnitId`; bare positions
+are never valid across segments or after rebuild. Derived indexes remain
+rebuildable from canonical storage and must enforce scope, active projection,
+generation, and tombstone checks. Backend-local scores are not final
+cross-segment ranking scores.
+
+No corpus-size threshold selects a backend or MIH band count. Before such a
+policy may be proposed, a locked benchmark must measure BinaryFlat, native
+sparse MIH, and Binary HNSW controls on an untouched evaluation split and a
+scale ladder. Required evidence includes shared ITQ-256 code-store bytes,
+backend-specific bytes, and total resident bytes separately; build/rebuild and
+update cost; p50/p95/p99 through-Hamming-shortlist and full-cascade latency;
+candidate work; quality after each cascade stage; and memory/read-amplification
+budgets.
+
+### Native sparse MIH baseline and cost-aware selection
+
+The first native arbitrary-m implementation is deliberately one immutable
+baseline only: sorted unique keys, offsets, and contiguous `uint32_t` postings
+per band; query-time local key enumeration; generation-array deduplication;
+full Hamming; top-K; ADC. Do not add a flat/open-addressing directory or other
+storage-layout challenger until profiling shows bucket lookup materially
+dominates the candidate-generator total.
+
+For every `m=15..21` arm, preserve per-query and repeated aggregate measures
+for key enumeration, bucket lookup, posting traversal, generation dedup,
+Hamming scoring, top-K selection, ADC, candidate-generator total, and cascade
+total. Record p50/p95 and p99 where the sample budget permits, plus index
+logical bytes; non-empty and empty probes; mean/p95 touched posting length;
+unique candidates divided by posting visits; candidate checksum; and stable
+candidate/shortlist conformance checks. The candidate-generator total is a
+first-class measurement: isolated stage timings are diagnostic and need not
+sum to end-to-end latency because of allocation and cache effects.
+
+The exploratory Python frontier is structured rather than monotone. In
+particular, the post-hoc `m=18` versus `m=19` diagnostic does not establish
+dominance, and `m=20`/`m=21` are native benchmark candidates rather than
+winners. Python work counters cannot price bucket lookups against posting,
+deduplication, and Hamming work on the target CPU.
+
+Only after this native frontier is measured may a new optimizer use
+calibration-only native cost estimates to select `m` and a local-radius
+schedule. Its frozen feasibility constraints must include exact inclusion
+`sum_b(r_b + 1) >= 57`, a predeclared calibration quality floor or
+non-inferiority rule against the reference (for example ADC-survival and nDCG
+floors with a lower bootstrap bound), and a memory ceiling expressed as shared
+ITQ code-store, backend-specific, and total-resident bytes. Its objective may
+then estimate candidate-generator cost from measured lookup, posting,
+deduplication, and Hamming components.
+
+On calibration data, freeze the selected MIH configuration, Binary HNSW
+parameters (such as `M`/`efSearch`) under the same quality/budget contract, and
+BinaryFlat/common-cascade limits. Then run one locked untouched backend
+benchmark: Flat versus frozen MIH versus frozen HNSW. No result from that
+untouched set may tune a backend, determine whether another backend runs, or
+change the interpretation of the comparison. The current fixed-r56
+progressive-stopping branch is closed for that architecture only; it is not a
+general impossibility claim.
+
+### Deferred coarse-locator MIH challenger
+
+After the native arbitrary-m frontier and calibration-only schedule selection,
+the next representation-level challenger may separate the binary locator from
+the binary ranking code:
+
+```text
+coarse locator code (for example, 64/80/96 bits) -> MIH -> candidate positions
+full ITQ-256 ranking code                         -> Hamming -> ADC -> exact rerank
+```
+
+The full 256-bit code remains unchanged for Hamming and ADC. The coarse code
+exists only to control MIH key enumeration and bucket occupancy, so it is not
+a new global candidate-generator family and must not change the final ranking
+metric. This separates the locator-address objective from the ranking-geometry
+objective; it is motivated by, but is not an implementation of, the
+ElasticHash image-retrieval design of short-code filtering followed by full-code
+reranking.
+
+The first predeclared experiment must compare a frozen native arbitrary-m
+MIH-256 control against coarse locator widths 64, 80, and 96 on the same full
+ITQ-256 ranking code. Locator-bit construction is an ablation axis, beginning
+with random subsets, calibration-only low-correlation subsets, balanced
+decorrelated groups, and a calibration-selected subset. Correlation is a
+candidate heuristic, not evidence that a subset is better; selection must use
+calibration data only and held-out quality/work results must be reported once.
+
+This challenger is admitted only if calibration/native-selection evidence says
+that the selected MIH-256 configuration misses a predeclared latency, memory,
+or candidate-work budget. If a miss is first observed on the locked untouched
+benchmark, a coarse locator becomes a new post-hoc hypothesis and requires a
+new untouched evaluation set. It must measure the same end-to-end and per-stage
+metrics as the native MIH control, include the full-code Hamming/ADC survival
+funnel, preserve exact code/bit-selection provenance, and compare shared code
+store, backend-specific, total-resident bytes, and rebuild cost. No ElasticHash
+code, dependency, image-retrieval threshold, or learned-bit assumption is
+adopted by this roadmap.
+
+References: [ElasticHash approach](https://nik-ko.github.io/elastichash/approach.html)
+and [ElasticHash paper](https://arxiv.org/abs/2305.04710). They are design
+references from a different image-retrieval workload, not evidence for this
+text-embedding pipeline.
+
 For `m` bands and requested global Hamming radius `r`, the query-time schedule
 uses `r = m * r_prime + a`: probe radius `r_prime` in `a + 1` bands and
 `r_prime - 1` in the remaining bands; a negative radius means no probe. Every
