@@ -190,6 +190,7 @@ class E5Encoder:
         try:
             import torch
             import torch.nn.functional as torch_functional
+            import transformers
             from transformers import AutoModel, AutoTokenizer
         except ImportError as exc:
             raise MaterializationError(
@@ -202,6 +203,7 @@ class E5Encoder:
         if cache_dir is not None:
             options["cache_dir"] = str(cache_dir)
         self._torch = torch
+        self._transformers_version = transformers.__version__
         self._functional = torch_functional
         self._device = torch.device(EXECUTION_DEVICE)
         self._thread_count = thread_count
@@ -221,6 +223,7 @@ class E5Encoder:
             "backend": "pytorch_cpu",
             "platform": platform.platform(),
             "torch_version": self._torch.__version__,
+            "transformers_version": self._transformers_version,
             "policy": DETERMINISM_POLICY,
         }
 
