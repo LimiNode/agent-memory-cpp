@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "family": "native_ann_confirmation_scale_v1",
+  "frozen_calibration": {
+    "measured_source_ref": "7022e5927f26c0c3ef36e31edc5ca9dab1722de0",
+    "selection_sha256": "1a78651b06a89e97fe63abcad0c2d34555e880620895e9413f1624726725dc1d",
+    "evidence_zip_sha256": "f5e920fca9274330e0fccb1a8b44e5a4e0063a6c7eb32905c10ec772889636c6"
+  },
+  "frozen_representation": {"itq_seed": 52, "itq_iterations": 50, "code_bits": 256},
+  "frozen_backends": {
+    "mih": {"id": "mih-m19-fixed-r56", "band_widths": [14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13], "local_radii": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]},
+    "flat": {"id": "binary-flat-256"},
+    "hnsw": {"id": "binary-hnsw-m16-ef768", "connectivity": 16, "ef_construction": 200, "ef_search": 768, "seed": 20260815, "pinned_revision": "3f3429661187e4c24a490a0f148fc6bc89042b3d"}
+  },
+  "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "native_timing": {"query_seed": 20260822, "warmup_count": 1, "repeat_count": 7},
+  "fresh_miracl": {
+    "language": "de",
+    "dataset": {
+      "corpus": {"id": "miracl/miracl-corpus", "revision": "d921ec7e349ce0d28daf30b2da9da5ee698bef0d"},
+      "judgments": {"id": "miracl/miracl", "revision": "5be20db9509754dadad47689368639fcec739c00"}
+    },
+    "layout": {
+      "corpus": "miracl-corpus-v1.0-{language}/docs-*.jsonl.gz",
+      "queries": "miracl-v1.0-{language}/topics/topics.miracl-v1.0-{language}-dev.tsv",
+      "qrels": "miracl-v1.0-{language}/qrels/qrels.miracl-v1.0-{language}-dev.tsv"
+    },
+    "sampling": {"strategy": "balanced_stable_hash", "seed": 20260822, "train_documents_per_language": 25000, "evaluation_queries_per_language": 0},
+    "embedding": {"model_id": "intfloat/multilingual-e5-small", "model_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3", "document_prefix": "passage: ", "query_prefix": "query: ", "normalized": true}
+  },
+  "scales": [
+    {"id": "de-25k", "evaluation_distractors_per_language": 21897, "expected_evaluation_documents": 25000},
+    {"id": "de-100k", "evaluation_distractors_per_language": 96897, "expected_evaluation_documents": 100000},
+    {"id": "de-1m", "evaluation_distractors_per_language": 996897, "expected_evaluation_documents": 1000000}
+  ],
+  "selection": "forbidden_on_fresh_data_or_per_scale",
+  "comparison": "one_frozen_backend_comparison_per_scale_after_materialization"
+}
