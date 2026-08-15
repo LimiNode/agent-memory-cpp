@@ -195,9 +195,21 @@ add_executable(agent-memory-mih-native-sparse-arbitrary-m
 agent_memory_set_evaluator_source_manifest(agent-memory-mih-native-sparse-arbitrary-m
     "${CMAKE_CURRENT_SOURCE_DIR}/mih_native_sparse_arbitrary_m.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/materialize-mih-storage-input.py"
+    "${PROJECT_SOURCE_DIR}/src/agent_memory/index/VectorSimilarityComputer.cpp"
     "${PROJECT_SOURCE_DIR}/src/agent_memory/index/BinarySignature.cpp"
 )
 agent_memory_set_evaluator_build_environment(agent-memory-mih-native-sparse-arbitrary-m)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/mih_native_sparse_arbitrary_m.cpp" agent_memory_native_sparse_arbitrary_m_source_sha256)
+file(SHA256 "${CMAKE_CURRENT_SOURCE_DIR}/materialize-mih-storage-input.py" agent_memory_native_sparse_arbitrary_m_materializer_source_sha256)
+file(SHA256 "${PROJECT_SOURCE_DIR}/src/agent_memory/index/VectorSimilarityComputer.cpp" agent_memory_native_sparse_arbitrary_m_vector_similarity_source_sha256)
+file(SHA256 "${PROJECT_SOURCE_DIR}/src/agent_memory/index/BinarySignature.cpp" agent_memory_native_sparse_arbitrary_m_binary_signature_source_sha256)
+target_compile_definitions(agent-memory-mih-native-sparse-arbitrary-m
+    PRIVATE
+        AGENT_MEMORY_NATIVE_SPARSE_ARBITRARY_M_SOURCE_SHA256="${agent_memory_native_sparse_arbitrary_m_source_sha256}"
+        AGENT_MEMORY_NATIVE_SPARSE_ARBITRARY_M_MATERIALIZER_SOURCE_SHA256="${agent_memory_native_sparse_arbitrary_m_materializer_source_sha256}"
+        AGENT_MEMORY_NATIVE_SPARSE_ARBITRARY_M_VECTOR_SIMILARITY_SOURCE_SHA256="${agent_memory_native_sparse_arbitrary_m_vector_similarity_source_sha256}"
+        AGENT_MEMORY_NATIVE_SPARSE_ARBITRARY_M_BINARY_SIGNATURE_SOURCE_SHA256="${agent_memory_native_sparse_arbitrary_m_binary_signature_source_sha256}"
+)
 
 target_link_libraries(agent-memory-mih-native-sparse-arbitrary-m
     PRIVATE
