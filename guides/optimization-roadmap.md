@@ -2397,6 +2397,38 @@ second approximate payload:
 ITQ binary code -> MIH/bands -> full Hamming -> binary ADC -> exact embedding rerank
 ```
 
+### Candidate-generator portfolio and evidence gate
+
+MIH is intended to be a self-contained binary candidate generator, not an
+upstream filter for binary HNSW. The eventual binary-search portfolio may
+contain three mutually substitutable generators:
+
+```text
+BinaryFlat: exact Hamming baseline and small-segment control
+Sparse MIH: deterministic immutable posting-directory candidate generator
+Binary HNSW: optional graph-ANN challenger for high-recall/latency workloads
+```
+
+All three feed one common cascade of full Hamming, optional ADC, and final
+exact-embedding rerank. This is deliberately not a public backend API yet;
+the future internal boundary is a candidate-position-and-diagnostics result,
+not an ANN-only abstraction. A MIH-plus-HNSW union is a later independent
+recall/diversity experiment, not a default two-index cascade.
+
+Future persistent layouts may search heterogeneous immutable segments (for
+example, a small Flat delta segment and larger MIH or HNSW segments), then
+merge candidate positions before global reranking. Derived indexes remain
+rebuildable from canonical storage and must enforce scope, active projection,
+generation, and tombstone checks. Backend-local scores are not final
+cross-segment ranking scores.
+
+No corpus-size threshold selects a backend or MIH band count. Before such a
+policy may be proposed, a locked benchmark must measure BinaryFlat, native
+sparse MIH, and Binary HNSW controls on an untouched evaluation split and a
+scale ladder. Required evidence includes index bytes, build/rebuild and update
+cost, p50/p95/p99 end-to-end and candidate-generator latency, candidate work,
+quality after each cascade stage, and memory/read-amplification budgets.
+
 For `m` bands and requested global Hamming radius `r`, the query-time schedule
 uses `r = m * r_prime + a`: probe radius `r_prime` in `a + 1` bands and
 `r_prime - 1` in the remaining bands; a negative radius means no probe. Every
