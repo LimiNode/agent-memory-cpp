@@ -217,6 +217,35 @@ target_link_libraries(agent-memory-mih-native-sparse-arbitrary-m
         agent_memory::json
 )
 
+if(AGENT_MEMORY_ENABLE_HNSW_BENCHMARK)
+    if(NOT EXISTS "${PROJECT_SOURCE_DIR}/external/hnswlib/hnswlib/hnswlib.h")
+        message(FATAL_ERROR
+            "AGENT_MEMORY_ENABLE_HNSW_BENCHMARK requires external/hnswlib")
+    endif()
+    execute_process(
+        COMMAND git -C "${PROJECT_SOURCE_DIR}/external/hnswlib" rev-parse HEAD
+        RESULT_VARIABLE agent_memory_hnswlib_revision_result
+        OUTPUT_VARIABLE agent_memory_hnswlib_revision
+        OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+    string(LENGTH "${agent_memory_hnswlib_revision}" agent_memory_hnswlib_revision_length)
+    if(NOT agent_memory_hnswlib_revision_result EQUAL 0 OR
+       NOT agent_memory_hnswlib_revision MATCHES "^[0-9a-f]+$" OR
+       NOT agent_memory_hnswlib_revision_length EQUAL 40)
+        message(FATAL_ERROR
+            "AGENT_MEMORY_ENABLE_HNSW_BENCHMARK requires a pinned hnswlib Git revision")
+    endif()
+    target_include_directories(agent-memory-mih-native-sparse-arbitrary-m
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/external/hnswlib"
+    )
+    target_compile_definitions(agent-memory-mih-native-sparse-arbitrary-m
+        PRIVATE
+            AGENT_MEMORY_ENABLE_HNSW_BENCHMARK=1
+            AGENT_MEMORY_HNSWLIB_REVISION="${agent_memory_hnswlib_revision}"
+    )
+endif()
+
 if(AGENT_MEMORY_ENABLE_MDBX)
     set(agent_memory_storage_provenance_authoritative 0)
     set(agent_memory_storage_provenance_reason "non_pinned_dependency_resolution")
