@@ -918,20 +918,38 @@ Integration:
 ### 8.5. Chunk-Neighbour Context Expansion (M2)
 
 Retrieval normally ranks one chunk, while a useful answer may span its nearby
-source context. A future `ChunkPolicy` therefore records enough source order
-to expand a selected chunk deterministically: parent resource/revision, chunk
-ordinal, byte or token span, and the policy fingerprint that produced the
-sequence. The expansion resolver obtains predecessor/successor chunks from
-that source-order projection; it does not rely on mutable raw pointer links
-embedded in a hit.
+source context. A future `ChunkPolicy` first performs source-aware structural
+splitting into atomic pieces, then greedily packs undersized pieces into
+retrieval chunks. Markdown uses headings, paragraphs and code blocks; plain
+text uses paragraphs and sentences; conversations use turns; and code uses
+symbols or AST nodes. A generic character or token window is only the fallback.
+
+Packing has a target token size, a maximum token size and a model-aware token
+counter. It must not use character counts as a proxy for an embedder's context
+limit. An optional trailing overlap is a target budget, not a requirement to
+cut an atomic piece: retain the largest useful suffix of complete pieces, and
+permit one slightly oversized sentence or small paragraph when preserving its
+structural boundary is preferable to a zero-length overlap.
+
+The policy also records enough source order to expand a selected chunk
+deterministically: parent resource/revision, chunk ordinal, byte or token span,
+and the policy fingerprint that produced the sequence. The expansion resolver
+obtains predecessor/successor chunks from that source-order projection; it does
+not rely on mutable raw pointer links embedded in a hit.
 
 Expansion is bounded by a separate chunk/token budget, keeps every included
 neighbour's own citation, and is recorded in the retrieval trace as derived
-context rather than an independently retrieved result. Chunking remains
-source-aware: markdown uses heading structure, code uses symbol/AST boundaries,
-conversations use turns, and a generic token/character window is only the
-fallback. This roadmap does not introduce a universal recursive splitter or a
-production context-expansion implementation.
+context rather than an independently retrieved result. This roadmap does not
+introduce a universal recursive splitter or a production context-expansion
+implementation.
+
+Overlap and neighbour expansion solve related but independent problems. Overlap
+duplicates context in indexed text and embeddings to improve boundary recall;
+neighbour expansion keeps the retrieval representation compact and supplies
+adjacent context only after a hit is selected. A future frozen evaluation must
+compare no overlap, bounded overlap, neighbour-only expansion and their
+combination, reporting retrieval quality, duplicate indexed tokens, index
+bytes, retrieved-context tokens and end-to-end latency.
 
 ## 9. Evaluation & Tracing
 
