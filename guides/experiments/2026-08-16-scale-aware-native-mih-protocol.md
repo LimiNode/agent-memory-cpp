@@ -24,6 +24,13 @@ after all Spanish choices are frozen. Both materializations will pin the E5
 model and MIRACL source revisions and add their manifest SHA-256 values before
 execution; no result is eligible without those frozen manifests.
 
+The Spanish scale corpora are nested (`25k ⊂ 100k ⊂ 1M`): a deterministic
+ascending SHA-256 ordering of the seeded document identifier supplies the first
+25,000, 100,000 and 1,000,000 documents. ITQ-256 is trained once on the
+declared 25,000 Spanish calibration-train documents and that exact artifact is
+reused unchanged at every retrieval scale. Thus the scale sweep changes corpus
+size rather than document sampling or representation training.
+
 Every MIH treatment keeps ITQ-256 seed 52, 50 iterations, Hamming top-768,
 binary ADC top-256, exact rerank top-256, and the exact fixed-r56 inclusion
 condition:
@@ -42,17 +49,20 @@ the obsolete rule "all bands have local radius two".
 | 100k | 13–19 |
 | 1M | 10–16, subject to exact-probe preflight |
 
-Each candidate is measured with the legacy sorted/lower-bound plus two-pass
-generation-array pipeline and the flat/open-address plus streaming-generation
-dedup challenger. The challenger must preserve candidate order and Hamming
-top-K identity; the native self-test establishes that invariant before the
-matrix is allowed to run.
+Each candidate is measured with the complete 2×2 directory × deduplication
+matrix: sorted/lower-bound or flat/open-address directory, crossed with
+two-pass or streaming generation-array deduplication. This separates the
+directory and traversal effects rather than treating one diagonal comparison
+as their individual causal attribution. Every combination must preserve
+candidate order and Hamming top-K identity; the native self-test establishes
+that invariant before the matrix is allowed to run.
 
 Binary HNSW receives the same calibration-only per-scale selection privilege:
-`M ∈ {16, 24, 32}` and `efSearch ∈ {256, 512, 768, 1024}`, with fixed
+`M ∈ {16, 24, 32}` and `efSearch ∈ {768, 1024}`, with fixed
 `efConstruction=200` and seed 20260815. Flat is evaluated as its exact binary
-candidate baseline. No quality or latency result on French data may alter any
-of these choices.
+candidate baseline. `efSearch` is never below the frozen Hamming candidate
+depth of 768, so every predeclared HNSW row is executable. No quality or
+latency result on French data may alter any of these choices.
 
 ## Exact-Probe Feasibility Gate
 
@@ -76,8 +86,14 @@ non-empty/empty probes, mean/p95 touched posting lengths, posting visits,
 unique candidates, candidate fraction, and unique candidates per posting visit.
 
 Within each scale, choose MIH and HNSW only from calibration rows satisfying
-the same quality and memory gates, by candidate-generator p50 then cascade p50,
-resident bytes, and a stable identifier. Freeze the resulting configurations,
+all of these predeclared gates: ADC-oracle bootstrap LB95 ≥ 0.90, nDCG
+retention bootstrap LB95 ≥ 0.98, and auxiliary resident bytes/document ≤ 256.
+Auxiliary resident bytes include backend-specific immutable index structures
+(directory keys/slots, offsets, postings or HNSW graph) but exclude the shared
+32-byte binary-code store and transient query scratch. This normalized memory
+gate is intentionally scale-independent; it replaces the small-corpus absolute
+byte gate from #149. Choose by candidate-generator p50, then cascade p50,
+resident bytes and a stable identifier. Freeze the resulting configurations,
 then execute one French confirmation per family without retuning.
 
 ## Limits And Follow-up
