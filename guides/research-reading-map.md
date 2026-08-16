@@ -388,6 +388,19 @@ runtime, while the document-side learned sparse representation remains an
 offline indexing artifact. It is therefore neither BM25 with renamed IDF nor a
 complete replacement of the document encoder.
 
+The lifecycle is deliberately asymmetric:
+
+```text
+training:          train the token-weight table and document sparse encoder
+document indexing: run the document encoder offline and publish postings
+query runtime:     tokenize -> token-weight lookup -> inverted-index traversal
+```
+
+The third line requires neither BERT/SPLADE inference nor E5 inference for the
+sparse branch. A parallel semantic route may still run E5 -> ITQ -> MIH, but it
+is an independently measured candidate generator; it is not a hidden query
+encoder dependency of inference-free sparse retrieval.
+
 The trade-off is equally important: a static token weight cannot provide the
 context-sensitive query expansion of a full SPLADE-style encoder. Any future
 experiment must compare three declared paths on the same qrels and corpus:
@@ -416,7 +429,7 @@ baselines on the target corpus and hardware.
 | Dynamic lexical top-K | [WAND](https://research.ibm.com/publications/efficient-query-evaluation-using-a-two-level-retrieval-process) | Historical two-level/pruning reference for an exact lexical path. |
 | Learned sparse baseline | [SPLADE-v3](https://arxiv.org/abs/2403.06789), [multilingual IR extension](https://arxiv.org/abs/2302.14723) | Candidate learned-sparse models; neither replaces the lexical baseline automatically. |
 | Learned-sparse index layouts | [Seismic](https://arxiv.org/abs/2404.18812), [Block-Max Pruning](https://arxiv.org/abs/2405.01117) | Sparse-posting geometry and pruning challengers after a reference harness exists. |
-| Index-aware sparse learning | [DF-FLOPS](https://arxiv.org/abs/2505.15070), [Li-LSR](https://arxiv.org/abs/2505.01452) | Later research on document-frequency distribution and an inference-free query-side sparse arm. |
+| Index-aware sparse learning | [DF-FLOPS](https://arxiv.org/abs/2505.15070), [Li-LSR](https://arxiv.org/abs/2505.01452), [competitive inference-free sparse retrieval](https://arxiv.org/abs/2411.04403) | Later research on document-frequency distribution and an inference-free query-side sparse arm. |
 | Dense/sparse fusion | [Fusion-function analysis](https://arxiv.org/abs/2210.11934) | Motivation to measure RRF against calibrated fusion rather than assume either wins. |
 | Bounded reranking | [Cross-encoders vs LLM rerankers](https://arxiv.org/abs/2403.10407) | Candidate-pool ceiling and latency-quality comparison design. |
 | Late interaction | [ColBERTv2](https://arxiv.org/abs/2112.01488), [PLAID reproduction](https://arxiv.org/abs/2404.14989) | Separate multi-vector challenger, not a free replacement for a cross-encoder. |
