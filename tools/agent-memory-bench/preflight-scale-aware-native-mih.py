@@ -72,7 +72,7 @@ def load_contract(path: Path) -> dict[str, Any]:
     require(value.get("native_implementation_matrix") == [{"directory_mode": "sorted_lower_bound", "deduplication_mode": "two_pass_generation_array"}, {"directory_mode": "sorted_lower_bound", "deduplication_mode": "streaming_generation_array"}, {"directory_mode": "flat_open_address", "deduplication_mode": "two_pass_generation_array"}, {"directory_mode": "flat_open_address", "deduplication_mode": "streaming_generation_array"}], "scale-aware native implementation matrix differs")
     require(value.get("hnsw_calibration") == {"connectivity": [16, 24, 32], "ef_construction": 200, "ef_search": [768, 1024], "seed": 20260815}, "scale-aware HNSW contract differs")
     require(value.get("cascade") == {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10}, "scale-aware cascade contract differs")
-    require(value.get("selection_gates") == {"adc_oracle_lb95_min": 0.90, "ndcg_retention_lb95_min": 0.98, "auxiliary_resident_bytes_per_document_max": 256, "auxiliary_resident_bytes_definition": "backend_specific_immutable_index_bytes_excluding_shared_binary_code_store_and_transient_query_scratch"}, "scale-aware selection gates differ")
+    require(value.get("selection_gates") == {"bootstrap_replicates": 10000, "bootstrap_seed_base": 20260827, "confidence_level": 0.95, "adc_oracle_lb95_min": 0.90, "ndcg_retention_lb95_min": 0.98, "auxiliary_resident_bytes_per_document_max": 256, "auxiliary_resident_bytes_definition": "backend_specific_immutable_index_bytes_excluding_shared_binary_code_store_and_transient_query_scratch"}, "scale-aware selection gates differ")
     return value
 
 

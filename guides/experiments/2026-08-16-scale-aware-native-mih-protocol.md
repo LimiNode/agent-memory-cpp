@@ -88,6 +88,8 @@ unique candidates, candidate fraction, and unique candidates per posting visit.
 Within each scale, choose MIH and HNSW only from calibration rows satisfying
 all of these predeclared gates: ADC-oracle bootstrap LB95 ≥ 0.90, nDCG
 retention bootstrap LB95 ≥ 0.98, and auxiliary resident bytes/document ≤ 256.
+The bootstrap uses 10,000 replicates, confidence 0.95 and deterministic metric
+seeds derived from base seed 20260827.
 Auxiliary resident bytes include backend-specific immutable index structures
 (directory keys/slots, offsets, postings or HNSW graph) but exclude the shared
 32-byte binary-code store and transient query scratch. This normalized memory
