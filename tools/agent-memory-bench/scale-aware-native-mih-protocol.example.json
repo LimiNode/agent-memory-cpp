@@ -4,8 +4,9 @@
   "purpose": "calibration_only_scale_specific_m_and_hnsw_selection",
   "representation": {"model_id": "intfloat/multilingual-e5-small", "model_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3", "code_bits": 256, "itq_seed": 52, "itq_iterations": 50},
   "fixed_radius_contract": {"global_hamming_radius": 56, "coverage": "sum_local_radius_plus_one_equals_57", "schedule": "near_equal_width_minimum_enumerated_keys"},
-  "calibration_dataset": {"language": "es", "split": "dev", "sampling_seed": 20260825, "status": "pending_materialization_manifest_freeze"},
-  "untouched_confirmation_dataset": {"language": "fr", "split": "dev", "sampling_seed": 20260826, "status": "not_available_for_selection"},
+  "miracl_source": {"corpus": {"id": "miracl/miracl-corpus", "revision": "d921ec7e349ce0d28daf30b2da9da5ee698bef0d"}, "judgments": {"id": "miracl/miracl", "revision": "5be20db9509754dadad47689368639fcec739c00"}, "layout": {"corpus": "miracl-corpus-v1.0-{language}/docs-*.jsonl.gz", "queries": "miracl-v1.0-{language}/topics/topics.miracl-v1.0-{language}-dev.tsv", "qrels": "miracl-v1.0-{language}/qrels/qrels.miracl-v1.0-{language}-dev.tsv"}},
+  "calibration_dataset": {"language": "es", "split": "dev", "sampling_seed": 20260825, "train_documents": 25000, "evaluation_queries": 0, "status": "pending_materialization_manifest_freeze"},
+  "untouched_confirmation_dataset": {"language": "fr", "split": "dev", "sampling_seed": 20260826, "train_documents": 25000, "evaluation_queries": 0, "status": "not_available_for_selection"},
   "scales": [
     {"id": "es-25k", "documents": 25000, "mih_m_values": [15, 16, 17, 18, 19, 20, 21], "maximum_exact_local_keys": 20000},
     {"id": "es-100k", "documents": 100000, "mih_m_values": [13, 14, 15, 16, 17, 18, 19], "maximum_exact_local_keys": 50000},
