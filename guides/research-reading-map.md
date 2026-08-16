@@ -338,7 +338,63 @@ Phase 5a — playbook follow-ups:
 | arXiv:2310.11511 (Self-RAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 | arXiv:2401.15884 (CRAG) | memory-stacks-roadmap.md | IRetrievalEvaluator hook |
 
-## 12. Open Research Questions
+## 12. Deferred Post-MIH Retrieval Research Portfolio
+
+> **Status (2026-08): deferred reading and protocol portfolio, not an
+> implementation plan.** It is not an automatic successor to the frozen ANN
+> confirmation in PR #150 and must not change its corpus, parameters, metrics
+> or interpretation. Any future line starts only after the current MIH evidence
+> is completed and reviewed, with a separately approved hypothesis, frozen
+> dataset/split and evidence package.
+
+The architectural hypothesis is a multi-retriever cascade: lexical and dense
+candidate generators search independently, their ranked pools are fused, and
+bounded later stages improve ordering. A shared strict metadata/scope filter is
+valid before both branches; using MIH as a BM25 prefilter, or BM25 as an MIH
+prefilter, is not. The complementarity experiment must use qrels rather than
+the E5 oracle, because an oracle defined by one branch cannot measure what the
+other branch contributes.
+
+### Suggested research order
+
+1. **Native lexical reference.** Establish exact DAAT BM25/BM25F, then
+   MaxScore/WAND and Block-Max WAND on the same scale ladder. Compare quality
+   against exhaustive lexical ranking and report p50/p95/p99, index bytes,
+   posting integers/blocks visited and documents fully scored.
+2. **Complementarity before optimisation.** Measure `dense top-K`, `BM25 top-K`
+   and their union against qrels. Then compare RRF with a calibration-only
+   score-normalized convex fusion; held-out data evaluates the selected rule
+   once.
+3. **Learned sparse as a separate challenger.** Start with a reproducible
+   SPLADE or multilingual learned-sparse adapter and its inverted-index
+   reference path. Only if its quality/work frontier warrants it, compare
+   learned-sparse-oriented pruning/layout methods such as Block-Max Pruning
+   and Seismic. DF-FLOPS and inference-free learned-sparse query encoders are
+   later representation/inference research, not prerequisites.
+4. **Reranking ladder.** First establish candidate-pool ceilings for a bounded
+   cross-encoder at several declared E5 depths. ColBERT/PLAID is an independent
+   late-interaction challenger with a separate storage and latency contract.
+   Listwise LLM reranking is last: it remains a host-owned optional adapter
+   after smaller rerankers justify neither the quality target nor the budget.
+
+No paper below is a production-default claim. Native implementation, external
+adapter choice and every stage depth remain evidence-gated against simpler
+baselines on the target corpus and hardware.
+
+### Added reading map
+
+| Topic | Source | Why it is tracked |
+|---|---|---|
+| Dynamic lexical top-K | [WAND](https://research.ibm.com/publications/efficient-query-evaluation-using-a-two-level-retrieval-process) | Historical two-level/pruning reference for an exact lexical path. |
+| Learned sparse baseline | [SPLADE-v3](https://arxiv.org/abs/2403.06789), [multilingual IR extension](https://arxiv.org/abs/2302.14723) | Candidate learned-sparse models; neither replaces the lexical baseline automatically. |
+| Learned-sparse index layouts | [Seismic](https://arxiv.org/abs/2404.18812), [Block-Max Pruning](https://arxiv.org/abs/2405.01117) | Sparse-posting geometry and pruning challengers after a reference harness exists. |
+| Index-aware sparse learning | [DF-FLOPS](https://arxiv.org/abs/2505.15070), [Li-LSR](https://arxiv.org/abs/2505.01452) | Later research on document-frequency distribution and query-inference cost. |
+| Dense/sparse fusion | [Fusion-function analysis](https://arxiv.org/abs/2210.11934) | Motivation to measure RRF against calibrated fusion rather than assume either wins. |
+| Bounded reranking | [Cross-encoders vs LLM rerankers](https://arxiv.org/abs/2403.10407) | Candidate-pool ceiling and latency-quality comparison design. |
+| Late interaction | [ColBERTv2](https://arxiv.org/abs/2112.01488), [PLAID reproduction](https://arxiv.org/abs/2404.14989) | Separate multi-vector challenger, not a free replacement for a cross-encoder. |
+| Listwise LLM reranking | [RankGPT](https://arxiv.org/abs/2305.02156), [Rank-without-GPT](https://arxiv.org/abs/2312.02969) | Deferred host-side final-stage research only. |
+
+## 13. Open Research Questions
 
 - FreshDiskANN-style disk-based ANN для on-disk storage mode (M3+).
 - Adaptive RAG: model-driven выбор retrieval strategy per query.

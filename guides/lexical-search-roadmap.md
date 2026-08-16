@@ -1207,6 +1207,15 @@ vector active projection_kinds = { Original, DenseContextual }
 graph  active projection_kinds  = { Original }
 ```
 
+Lexical and dense branches are independent candidate generators and may run in
+parallel. A shared strict `CandidateSet` can enforce scope, access, lifecycle
+or metadata constraints before either branch spends work, but MIH/dense
+candidates must never become a prefilter for BM25F, nor may lexical candidates
+become a prefilter for dense retrieval. Such a cascade would erase the
+complementarity that lets exact identifiers, symbols and rare terms survive
+when a semantic branch misses them. Fusion happens only after each eligible
+branch has produced its own bounded ranking.
+
 When `TranslationProjection` is enabled, planners may add
 `TranslatedCanonical` to BM25F/vector projection sets for cross-lingual recall,
 but lexical search must use a translated `ProjectionQueryVariant` for that

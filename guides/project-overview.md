@@ -129,7 +129,8 @@ The retrieval-stack roadmap is kept in the repository, split by the boundary
 each decision belongs to: role-aware embedding input in `guides/embedding.md`,
 retrieval planning, metadata/namespace selection and context assembly in
 `guides/knowledge-base-roadmap.md`, and index/reranking choices in
-`guides/optimization-roadmap.md`. This keeps a future external model adapter,
+`guides/optimization-roadmap.md`. The evidence-gated research reading map is
+`guides/research-reading-map.md`. This keeps a future external model adapter,
 cross-encoder, chunk-expansion policy, or ANN backend from becoming an
 implicit core dependency. Each remains optional and must be promoted through
 its own frozen evaluation evidence.
