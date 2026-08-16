@@ -44,6 +44,14 @@ A text E5 space and a CLIP-like visual space are different embedding spaces
 even when their dimensions match; they cannot share an index or be directly
 score-fused without an explicit calibrated contract.
 
+The artifact digest remains the byte-identical duplicate test. A perceptual
+hash instead answers whether two separately encoded artifacts are near copies;
+it is not a weaker semantic embedding and cannot act as the coarse locator for
+a semantic-image route. pHash, dHash, aHash, Haar-wavelet hashes and
+crop-resistant hashes have different perturbation contracts. Their descriptor
+therefore records the algorithm and revision, image conversion, resize and
+crop policy, and hash length.
+
 ## Candidate Architecture
 
 Strict access, scope, lifecycle and metadata constraints construct the common
@@ -75,6 +83,26 @@ truth.
 document text. It is useful for fusion and context expansion but does not turn
 an image file into a text-only unit or assert that a generated description is
 authoritative.
+
+## Perceptual Duplicate Route
+
+Perceptual matching is useful for deduplicating re-encoded screenshots,
+resized pictures and similar ingest artifacts. It needs its own labelled
+near-duplicate protocol: byte-identical copies, resize, JPEG recompression,
+brightness or colour changes, overlays and crop variants must be reported as
+separate perturbation classes. A poor crop result is not evidence against a
+hash designed only for resize or recompression; it calls for a crop-resistant
+hash or local-feature method.
+
+Do not assume that MIH is faster for a short perceptual code. For example, a
+64-bit `BinaryFlat` scan is a sequential XOR/popcount pass and may beat index
+construction and sparse probing at the project scale. Each accepted code and
+corpus size therefore compares the exact flat baseline with native MIH; Binary
+HNSW is a later challenger only when its backend and build/memory contract are
+available. A classical multi-stage image matcher, such as `Simd::ImageMatcher`,
+is also a useful non-neural baseline: it has a different descriptor and cascade
+contract, so it must be measured as a separate route rather than described as
+an MIH implementation.
 
 ## Visual Binary And MIH Research
 
@@ -116,14 +144,17 @@ evidence for the current text MIH configuration.
 2. **Text-derived baselines.** Measure OCR and caption routes independently;
    distinguish exact-text, generated-description and visual-semantic query
    classes instead of reporting one blended score.
-3. **Visual embedding reference.** Establish a compatible visual
+3. **Perceptual baseline.** Establish byte-identical and near-duplicate
+   controls; compare the selected perceptual hash against BinaryFlat before
+   introducing an index.
+4. **Visual embedding reference.** Establish a compatible visual
    embedding/index baseline for image-to-image and text-to-image queries before
    binary compression or MIH. Measure cross-modal quality and artifact-region
    citation correctness.
-4. **Binary/MIH challenger.** Only after the reference, test the frozen visual
+5. **Binary/MIH challenger.** Only after the reference, test the frozen visual
    binary arms above against its quality, latency, memory and write/rebuild
    gates.
-5. **Multimodal fusion and reranking.** Compare independent-route fusion with
+6. **Multimodal fusion and reranking.** Compare independent-route fusion with
    each single route. A vision or cross-modal reranker is host-owned and can
    only reorder a supplied pool; it cannot recover an image lost by all
    candidate generators.
@@ -142,5 +173,11 @@ published projection.
   image/text embedding-space reference.
 - [Multi-Index Hashing](https://www.cs.toronto.edu/~norouzi/research/papers/multi_index_hashing.pdf):
   compact binary-descriptor candidate-generation reference.
+- [Image perceptual hashing](https://github.com/JohannesBuchner/imagehash):
+  pHash, dHash, aHash, Haar-wavelet hash and crop-resistant hash reference;
+  useful for the distinct near-duplicate route.
+- [ErmIg's ImageMatcher article](https://habr.com/ru/articles/122372/):
+  classical coarse-to-fine image-matching reference, not a semantic or MIH
+  result.
 - [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md): normative
   artifact, representation, segment and evidence-anchor contracts.
