@@ -392,7 +392,8 @@ The lifecycle is deliberately asymmetric:
 
 ```text
 training:          train the token-weight table and document sparse encoder
-document indexing: run the document encoder offline and publish postings
+document indexing: run the document encoder for each new/changed document
+                    and publish its sparse postings
 query runtime:     tokenize -> token-weight lookup -> inverted-index traversal
 ```
 
@@ -400,6 +401,31 @@ The third line requires neither BERT/SPLADE inference nor E5 inference for the
 sparse branch. A parallel semantic route may still run E5 -> ITQ -> MIH, but it
 is an independently measured candidate generator; it is not a hidden query
 encoder dependency of inference-free sparse retrieval.
+
+The query table is not hand-written IDF: during training, a small learned
+projection maps each token's non-contextual pretrained word embedding to one
+scalar. The trained projection can then be compiled into the versioned
+`token_id -> learned_weight` table. In contrast, the Li-LSR document path uses
+a full contextual learned-sparse encoder (the paper's reference setup starts
+from a Co-Condenser checkpoint), which can activate useful expansion dimensions
+not literally present in the source text. These document-side semantic
+activations are the reason to compare the method with BM25 rather than treating
+the lookup table alone as the retrieval model.
+
+For a static corpus, document encoding is a bulk offline preparation step. For
+mutable agent memory it is a write-path cost: each insertion, relevant source
+revision or model migration must encode the document before its learned-sparse
+postings become active. The intended exchange is many query-time neural sparse
+encodes avoided for fewer write-time document encodes; it must be measured with
+the workload's write/query ratio, ingest/reindex throughput and publication
+latency, not assumed from a static-corpus result.
+
+An experiment may use a compatible pretrained document encoder instead of
+training Li-LSR from scratch, but that is a distinct model/adaptation decision.
+Its checkpoint, tokenizer/vocabulary, sparse-output semantics, language
+coverage, license and training provenance are frozen descriptor inputs. Changing
+any of them creates a new derived projection and requires the existing
+generation-aware dual-publish/reindex protocol before it can serve queries.
 
 The trade-off is equally important: a static token weight cannot provide the
 context-sensitive query expansion of a full SPLADE-style encoder. Any future
