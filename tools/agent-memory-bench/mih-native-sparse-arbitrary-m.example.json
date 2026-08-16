@@ -1,5 +1,7 @@
 {
   "input_directory": "tmp/mih-native-input",
+  "directory_mode": "sorted_lower_bound",
+  "deduplication_mode": "two_pass_generation_array",
   "band_widths": [14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13],
   "local_radii": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2],
   "query_count": 1252,

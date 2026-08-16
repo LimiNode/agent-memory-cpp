@@ -102,6 +102,8 @@ struct Config final {
     std::size_t hnsw_ef_search = 768;
     std::uint64_t hnsw_seed = 20260815;
     std::filesystem::path shortlist_output;
+    std::string directory_mode = "sorted_lower_bound";
+    std::string deduplication_mode = "two_pass_generation_array";
     std::string sha256;
 };
 
@@ -124,6 +126,7 @@ struct Band final { std::size_t offset = 0; std::size_t width = 0; };
 struct Entry final { std::uint32_t key = 0; std::uint32_t position = 0; };
 struct Span final { const std::uint32_t* values = nullptr; std::size_t first = 0; std::size_t last = 0; };
 struct KeyProbe final { std::size_t band = 0; std::uint32_t key = 0; };
+struct HashSlot final { std::uint32_t key = 0; std::uint32_t index = std::numeric_limits<std::uint32_t>::max(); };
 struct Scored final { std::uint32_t position = 0; std::size_t distance = 0; };
 struct AdcScored final { std::uint32_t position = 0; float distance = 0.0F; };
 struct ExactScored final { std::uint32_t position = 0; float similarity = 0.0F; };
@@ -163,11 +166,28 @@ struct QueryWorkspace final {
     }
 };
 
+enum class DirectoryMode { SortedLowerBound, FlatOpenAddress };
+enum class DeduplicationMode { TwoPassGenerationArray, StreamingGenerationArray };
+
+[[nodiscard]] DirectoryMode directory_mode(const std::string& value) {
+    if(value == "sorted_lower_bound") return DirectoryMode::SortedLowerBound;
+    if(value == "flat_open_address") return DirectoryMode::FlatOpenAddress;
+    throw std::invalid_argument("native sparse MIH directory mode is invalid");
+}
+
+[[nodiscard]] DeduplicationMode deduplication_mode(const std::string& value) {
+    if(value == "two_pass_generation_array") return DeduplicationMode::TwoPassGenerationArray;
+    if(value == "streaming_generation_array") return DeduplicationMode::StreamingGenerationArray;
+    throw std::invalid_argument("native sparse MIH deduplication mode is invalid");
+}
+
 void validate_config(const Config& value) {
     if((value.backend != "mih" && value.backend != "flat" && value.backend != "hnsw") || value.band_widths.empty() || value.band_widths.size() != value.local_radii.size() || value.query_count == 0 || value.repeat_count == 0 || value.hamming_limit == 0 || value.adc_limit == 0 || value.exact_limit == 0 || value.adc_limit > value.hamming_limit || value.exact_limit > value.adc_limit || std::accumulate(value.band_widths.begin(), value.band_widths.end(), std::size_t{0}) != kCodeBits) throw std::invalid_argument("native sparse MIH config is invalid");
     for(std::size_t index = 0; index < value.band_widths.size(); ++index) if(value.band_widths[index] == 0 || value.band_widths[index] > 32 || value.local_radii[index] < 0 || value.local_radii[index] > static_cast<int>(value.band_widths[index])) throw std::invalid_argument("native sparse MIH schedule is invalid");
     if(std::accumulate(value.local_radii.begin(), value.local_radii.end(), std::size_t{0}, [](const std::size_t total, const int radius) { return total + static_cast<std::size_t>(radius) + 1U; }) < 57U) throw std::invalid_argument("native sparse MIH schedule does not preserve fixed-r56 inclusion");
     if(value.backend == "hnsw" && (value.hnsw_connectivity == 0 || value.hnsw_ef_construction < value.hnsw_connectivity || value.hnsw_ef_search < value.hamming_limit)) throw std::invalid_argument("native HNSW configuration is invalid");
+    static_cast<void>(directory_mode(value.directory_mode));
+    static_cast<void>(deduplication_mode(value.deduplication_mode));
 }
 
 [[nodiscard]] double milliseconds(const Clock::time_point start, const Clock::time_point end) {
@@ -261,6 +281,8 @@ template<class Value>
     result.hnsw_ef_search = value.value("hnsw_ef_search", result.hnsw_ef_search);
     result.hnsw_seed = value.value("hnsw_seed", result.hnsw_seed);
     result.shortlist_output = value.value("shortlist_output", std::string{});
+    result.directory_mode = value.value("directory_mode", result.directory_mode);
+    result.deduplication_mode = value.value("deduplication_mode", result.deduplication_mode);
     validate_config(result);
     return result;
 }
@@ -282,12 +304,31 @@ template<class Value>
     return result;
 }
 
-struct Directory final { std::vector<std::uint32_t> keys; std::vector<std::uint32_t> offsets; std::vector<std::uint32_t> postings; };
+struct Directory final {
+    std::vector<std::uint32_t> keys;
+    std::vector<std::uint32_t> offsets;
+    std::vector<std::uint32_t> postings;
+    std::vector<HashSlot> hash_slots;
+};
+
+[[nodiscard]] std::size_t flat_hash_capacity(const std::size_t key_count) {
+    std::size_t capacity = 1;
+    const auto minimum = key_count + key_count / 2U;
+    while(capacity < minimum) {
+        if(capacity > std::numeric_limits<std::size_t>::max() / 2U) throw std::overflow_error("native sparse MIH flat directory capacity overflows");
+        capacity <<= 1U;
+    }
+    return capacity;
+}
+
+[[nodiscard]] std::size_t flat_hash_start(const std::uint32_t key, const std::size_t mask) noexcept {
+    return (static_cast<std::size_t>(key) * 2654435761U) & mask;
+}
 
 class SparseIndex final {
 public:
-    SparseIndex(const std::vector<std::uint64_t>& codes, const std::size_t document_count, std::vector<Band> bands)
-        : m_bands(std::move(bands)), m_directories(m_bands.size()) {
+    SparseIndex(const std::vector<std::uint64_t>& codes, const std::size_t document_count, std::vector<Band> bands, const DirectoryMode mode)
+        : m_bands(std::move(bands)), m_mode(mode), m_directories(m_bands.size()) {
         if(document_count == 0 || codes.size() != document_count * kWordCount || m_bands.empty()) throw std::invalid_argument("native sparse MIH input is invalid");
         std::size_t expected_offset = 0;
         for(const auto& band : m_bands) { if(band.offset != expected_offset || band.width == 0 || band.width > 32) throw std::invalid_argument("native sparse MIH band partition is invalid"); expected_offset += band.width; }
@@ -299,32 +340,55 @@ public:
             auto& directory = m_directories[band_index]; directory.keys.reserve(document_count); directory.offsets.reserve(document_count + 1U); directory.postings.reserve(document_count);
             for(const auto& entry : entries) { if(directory.keys.empty() || directory.keys.back() != entry.key) { directory.keys.push_back(entry.key); directory.offsets.push_back(static_cast<std::uint32_t>(directory.postings.size())); } directory.postings.push_back(entry.position); }
             directory.offsets.push_back(static_cast<std::uint32_t>(directory.postings.size()));
+            if(m_mode == DirectoryMode::FlatOpenAddress) {
+                directory.hash_slots.assign(flat_hash_capacity(directory.keys.size()), {});
+                const auto mask = directory.hash_slots.size() - 1U;
+                for(std::size_t index = 0; index < directory.keys.size(); ++index) {
+                    auto slot = flat_hash_start(directory.keys[index], mask);
+                    while(directory.hash_slots[slot].index != std::numeric_limits<std::uint32_t>::max()) slot = (slot + 1U) & mask;
+                    directory.hash_slots[slot] = {directory.keys[index], static_cast<std::uint32_t>(index)};
+                }
+                directory.keys.clear();
+                directory.keys.shrink_to_fit();
+            }
         }
     }
 
     [[nodiscard]] bool find(const std::size_t band_index, const std::uint32_t key, Span& result) const {
         const auto& directory = m_directories.at(band_index);
-        const auto found = std::lower_bound(directory.keys.begin(), directory.keys.end(), key);
-        if(found == directory.keys.end() || *found != key) return false;
-        const auto index = static_cast<std::size_t>(found - directory.keys.begin());
+        std::size_t index = 0;
+        if(m_mode == DirectoryMode::SortedLowerBound) {
+            const auto found = std::lower_bound(directory.keys.begin(), directory.keys.end(), key);
+            if(found == directory.keys.end() || *found != key) return false;
+            index = static_cast<std::size_t>(found - directory.keys.begin());
+        } else {
+            const auto mask = directory.hash_slots.size() - 1U;
+            auto slot = flat_hash_start(key, mask);
+            while(directory.hash_slots[slot].index != std::numeric_limits<std::uint32_t>::max()) {
+                if(directory.hash_slots[slot].key == key) { index = directory.hash_slots[slot].index; break; }
+                slot = (slot + 1U) & mask;
+            }
+            if(directory.hash_slots[slot].index == std::numeric_limits<std::uint32_t>::max()) return false;
+        }
         result = {directory.postings.data(), directory.offsets[index], directory.offsets[index + 1U]};
         return true;
     }
 
     [[nodiscard]] std::size_t logical_bytes() const noexcept {
         std::size_t result = 0;
-        for(const auto& directory : m_directories) result += directory.keys.size() * sizeof(std::uint32_t) + directory.offsets.size() * sizeof(std::uint32_t) + directory.postings.size() * sizeof(std::uint32_t);
+        for(const auto& directory : m_directories) result += directory.keys.size() * sizeof(std::uint32_t) + directory.hash_slots.size() * sizeof(HashSlot) + directory.offsets.size() * sizeof(std::uint32_t) + directory.postings.size() * sizeof(std::uint32_t);
         return result;
     }
 
     [[nodiscard]] nlohmann::json logical_byte_breakdown() const {
-        std::size_t keys = 0, offsets = 0, postings = 0;
-        for(const auto& directory : m_directories) { keys += directory.keys.size() * sizeof(std::uint32_t); offsets += directory.offsets.size() * sizeof(std::uint32_t); postings += directory.postings.size() * sizeof(std::uint32_t); }
-        return {{"sorted_unique_keys", keys}, {"offsets", offsets}, {"contiguous_uint32_postings", postings}, {"total", keys + offsets + postings}};
+        std::size_t keys = 0, slots = 0, offsets = 0, postings = 0;
+        for(const auto& directory : m_directories) { keys += directory.keys.size() * sizeof(std::uint32_t); slots += directory.hash_slots.size() * sizeof(HashSlot); offsets += directory.offsets.size() * sizeof(std::uint32_t); postings += directory.postings.size() * sizeof(std::uint32_t); }
+        return {{"sorted_unique_keys", keys}, {"flat_open_address_slots", slots}, {"offsets", offsets}, {"contiguous_uint32_postings", postings}, {"total", keys + slots + offsets + postings}};
     }
 
 private:
     std::vector<Band> m_bands;
+    DirectoryMode m_mode;
     std::vector<Directory> m_directories;
 };
 
@@ -449,7 +513,7 @@ private:
 }
 #endif
 
-[[nodiscard]] QueryResult run_query(const SparseIndex& index, const Input& input, const std::uint64_t* query, const std::vector<Band>& bands, const std::vector<int>& radii, GenerationDeduplicator& deduplicator, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit, QueryWorkspace& workspace, Diagnostics& diagnostics, std::vector<std::uint32_t>* raw_candidates = nullptr) {
+[[nodiscard]] QueryResult run_query(const SparseIndex& index, const Input& input, const std::uint64_t* query, const std::vector<Band>& bands, const std::vector<int>& radii, const DeduplicationMode deduplication, GenerationDeduplicator& deduplicator, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit, QueryWorkspace& workspace, Diagnostics& diagnostics, std::vector<std::uint32_t>* raw_candidates = nullptr) {
     workspace.clear();
     const auto candidate_start = Clock::now();
     const auto enumeration_start = Clock::now();
@@ -463,13 +527,31 @@ private:
         else ++diagnostics.empty_probes;
     }
     const auto lookup_end = Clock::now();
-    const auto traversal_start = Clock::now();
-    for(const auto& span : workspace.spans) { diagnostics.posting_visits += span.last - span.first; workspace.visited.insert(workspace.visited.end(), span.values + static_cast<std::ptrdiff_t>(span.first), span.values + static_cast<std::ptrdiff_t>(span.last)); }
-    const auto traversal_end = Clock::now();
     deduplicator.next_query();
-    const auto dedup_start = Clock::now();
-    for(const auto position : workspace.visited) if(deduplicator.visit(position)) workspace.candidates.push_back(position);
-    const auto dedup_end = Clock::now();
+    double traversal_ms = 0.0;
+    double deduplication_ms = 0.0;
+    if(deduplication == DeduplicationMode::TwoPassGenerationArray) {
+        const auto traversal_start = Clock::now();
+        for(const auto& span : workspace.spans) {
+            diagnostics.posting_visits += span.last - span.first;
+            workspace.visited.insert(workspace.visited.end(), span.values + static_cast<std::ptrdiff_t>(span.first), span.values + static_cast<std::ptrdiff_t>(span.last));
+        }
+        traversal_ms = milliseconds(traversal_start, Clock::now());
+        const auto deduplication_start = Clock::now();
+        for(const auto position : workspace.visited) if(deduplicator.visit(position)) workspace.candidates.push_back(position);
+        deduplication_ms = milliseconds(deduplication_start, Clock::now());
+    } else {
+        const auto combined_start = Clock::now();
+        for(const auto& span : workspace.spans) {
+            diagnostics.posting_visits += span.last - span.first;
+            for(auto offset = span.first; offset < span.last; ++offset) {
+                const auto position = span.values[offset];
+                if(deduplicator.visit(position)) workspace.candidates.push_back(position);
+            }
+        }
+        traversal_ms = milliseconds(combined_start, Clock::now());
+        deduplication_ms = traversal_ms;
+    }
     diagnostics.unique_candidates += workspace.candidates.size();
     for(const auto position : workspace.candidates) diagnostics.candidate_checksum += static_cast<std::uint64_t>(position) + 1U;
     if(raw_candidates != nullptr) *raw_candidates = workspace.candidates;
@@ -482,7 +564,7 @@ private:
     const auto top_k_end = Clock::now();
     for(const auto& item : workspace.scored) diagnostics.shortlist_checksum += static_cast<std::uint64_t>(item.position) + 1U;
     QueryResult result;
-    result.timings = {milliseconds(enumeration_start, enumeration_end), milliseconds(lookup_start, lookup_end), milliseconds(traversal_start, traversal_end), milliseconds(dedup_start, dedup_end), milliseconds(hamming_start, hamming_end), milliseconds(top_k_start, top_k_end), milliseconds(candidate_start, top_k_end)};
+    result.timings = {milliseconds(enumeration_start, enumeration_end), milliseconds(lookup_start, lookup_end), traversal_ms, deduplication_ms, milliseconds(hamming_start, hamming_end), milliseconds(top_k_start, top_k_end), milliseconds(candidate_start, top_k_end)};
     result.shortlist = workspace.scored;
     return result;
 }
@@ -539,7 +621,9 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
     const auto input = load_input(config.input_directory);
     if(config.query_count > input.query_count || config.hamming_limit > input.document_count) throw std::invalid_argument("native sparse MIH query or Hamming limit exceeds input");
     const auto bands = make_bands(config.band_widths);
-    const SparseIndex index(input.documents, input.document_count, bands);
+    const auto selected_directory = directory_mode(config.directory_mode);
+    const auto selected_deduplication = deduplication_mode(config.deduplication_mode);
+    const SparseIndex index(input.documents, input.document_count, bands, selected_directory);
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
     std::unique_ptr<HnswIndex> hnsw_index;
     if(config.backend == "hnsw") hnsw_index = std::make_unique<HnswIndex>(input, config);
@@ -563,7 +647,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
             std::vector<std::uint32_t> raw_candidates;
             const auto* query = input.queries.data() + position * kWordCount;
             const auto result = config.backend == "mih"
-                ? run_query(index, input, query, bands, config.local_radii, deduplicator, hamming, config.hamming_limit, workspace, local, verify ? &raw_candidates : nullptr)
+                ? run_query(index, input, query, bands, config.local_radii, selected_deduplication, deduplicator, hamming, config.hamming_limit, workspace, local, verify ? &raw_candidates : nullptr)
                 : (config.backend == "flat"
                     ? run_flat_query(input, query, hamming, config.hamming_limit, workspace, local, verify ? &raw_candidates : nullptr)
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
@@ -606,7 +690,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
             std::vector<std::uint32_t> raw_candidates;
             const auto* query = input.queries.data() + position * kWordCount;
             const auto result = config.backend == "mih"
-                ? run_query(index, input, query, bands, config.local_radii, verification_deduplicator, hamming, config.hamming_limit, verification_workspace, verification_diagnostics, &raw_candidates)
+                ? run_query(index, input, query, bands, config.local_radii, selected_deduplication, verification_deduplicator, hamming, config.hamming_limit, verification_workspace, verification_diagnostics, &raw_candidates)
                 : (config.backend == "flat"
                     ? run_flat_query(input, query, hamming, config.hamming_limit, verification_workspace, verification_diagnostics, &raw_candidates)
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
@@ -644,7 +728,10 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
     const auto shared_code_store_bytes = input.document_count * kWordCount * sizeof(std::uint64_t);
     nlohmann::json backend_report{{"name", config.backend}, {"shared_code_store_bytes", shared_code_store_bytes}};
     if(is_mih) {
-        backend_report["index_representation"] = "sorted_unique_uint32_keys_plus_uint32_offsets_plus_contiguous_uint32_postings_v1";
+        backend_report["index_representation"] = selected_directory == DirectoryMode::SortedLowerBound
+            ? "sorted_unique_uint32_keys_plus_uint32_offsets_plus_contiguous_uint32_postings_v1"
+            : "flat_open_address_uint32_key_directory_plus_uint32_offsets_plus_contiguous_uint32_postings_v1";
+        backend_report["directory_mode"] = config.directory_mode;
         backend_report["backend_index_logical_bytes"] = index.logical_bytes();
         backend_report["backend_index_logical_byte_breakdown"] = index.logical_byte_breakdown();
     } else if(config.backend == "flat") {
@@ -676,12 +763,12 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
         {"band_widths", config.band_widths}, {"local_radii", config.local_radii}, {"fixed_radius", is_mih ? nlohmann::json(56) : nlohmann::json(nullptr)}, {"fixed_radius_exact_inclusion", is_mih ? nlohmann::json("sum_local_radius_plus_one_at_least_57_v1") : nlohmann::json(nullptr)},
         {"hamming_limit", config.hamming_limit}, {"adc_limit", config.adc_limit}, {"exact_limit", config.exact_limit},
         {"hamming_shortlist_export", config.shortlist_output.empty() ? nlohmann::json(nullptr) : nlohmann::json({{"path", config.shortlist_output.string()}, {"sha256", shortlist_export_sha256}, {"schema_version", 1}})},
-        {"deduplication", "uint32_generation_array_v1"}, {"hamming_backend", std::string(agent_memory::hamming_distance_backend_name(hamming.backend()))}, {"exact_vector_similarity_backend", std::string(agent_memory::vector_similarity_backend_name(vector_computer.backend()))},
+        {"deduplication", selected_deduplication == DeduplicationMode::TwoPassGenerationArray ? "two_pass_uint32_generation_array_v1" : "streaming_uint32_generation_array_v1"}, {"deduplication_mode", config.deduplication_mode}, {"hamming_backend", std::string(agent_memory::hamming_distance_backend_name(hamming.backend()))}, {"exact_vector_similarity_backend", std::string(agent_memory::vector_similarity_backend_name(vector_computer.backend()))},
         {"counters_per_query", {{"bucket_probes", static_cast<double>(diagnostics.probes) / per_query}, {"non_empty_probes", static_cast<double>(diagnostics.non_empty_probes) / per_query}, {"empty_probes", static_cast<double>(diagnostics.empty_probes) / per_query}, {"posting_visits", static_cast<double>(diagnostics.posting_visits) / per_query}, {"unique_candidates", static_cast<double>(diagnostics.unique_candidates) / per_query}, {"unique_candidates_per_posting_visit", diagnostics.posting_visits == 0 ? 0.0 : static_cast<double>(diagnostics.unique_candidates) / static_cast<double>(diagnostics.posting_visits)}, {"mean_posting_length_touched", mean_posting_length}, {"p95_posting_length_touched", posting_length_values.empty() ? 0.0 : percentile(posting_length_values, 0.95)}, {"candidate_checksum", diagnostics.candidate_checksum}, {"shortlist_checksum", diagnostics.shortlist_checksum}}},
         {"latency_ms_per_query", {{"key_enumeration", percentiles(keys)}, {"bucket_lookup", percentiles(lookups)}, {"posting_traversal", percentiles(traversal)}, {"generation_dedup", percentiles(deduplication)}, {"full_hamming_scoring", percentiles(hamming_samples)}, {"top_k_selection", percentiles(top_k)}, {"binary_adc", percentiles(adc)}, {"exact_rerank", percentiles(exact)}, {"candidate_generator_total", percentiles(candidate_generator)}, {"cascade_total", percentiles(cascade)}}},
         {"timing_ms_per_query_samples", {{"key_enumeration", timing_series(keys)}, {"bucket_lookup", timing_series(lookups)}, {"posting_traversal", timing_series(traversal)}, {"generation_dedup", timing_series(deduplication)}, {"full_hamming_scoring", timing_series(hamming_samples)}, {"top_k_selection", timing_series(top_k)}, {"binary_adc", timing_series(adc)}, {"exact_rerank", timing_series(exact)}, {"candidate_generator_total", timing_series(candidate_generator)}, {"cascade_total", timing_series(cascade)}}},
         {"conformance", {{"candidate_union_fixed_r56_checked", is_mih}, {"hamming_shortlist_checked", true}, {"checked_query_count", config.query_count}}},
-        {"timing_scope", "Warm in-memory immutable backend. Candidate-generator total is independently timed from backend candidate generation through stable Hamming top-K; cascade total independently times that generator plus ADC and exact rerank. Stage values are separately timed components and must not be summed as a latency replacement. Excludes query encoding, full-corpus conformance scan, cold-cache I/O, index build, and process-wide memory."},
+        {"timing_scope", "Warm in-memory immutable backend. Candidate-generator total is independently timed from backend candidate generation through stable Hamming top-K; cascade total independently times that generator plus ADC and exact rerank. Stage values are separately timed components and must not be summed as a latency replacement. For streaming generation deduplication, posting traversal and generation-dedup stage values intentionally cover the same combined loop and must not be added. Excludes query encoding, full-corpus conformance scan, cold-cache I/O, index build, and process-wide memory."},
     };
     if(is_mih) {
         report["index_representation"] = backend_report["index_representation"];
@@ -697,12 +784,25 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
     try {
         std::vector<std::uint64_t> codes(3U * kWordCount, 0); codes[kWordCount] = std::uint64_t{1} << 18U; codes[2U * kWordCount] = (std::uint64_t{1} << 63U) | 1U;
         const std::vector<std::size_t> widths{18, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17, 17};
-        const auto bands = make_bands(widths); const SparseIndex index(codes, 3, bands);
-        Span span; if(!index.find(0, 0, span) || span.last - span.first != 2 || span.values[span.first] != 0 || span.values[span.first + 1U] != 1 || extract_key(codes.data() + 2U * kWordCount, bands[3]) != (std::uint32_t{1} << 11U) || index.logical_bytes() == 0) throw std::runtime_error("sparse directory lookup differs");
+        const auto bands = make_bands(widths);
+        const SparseIndex sorted_index(codes, 3, bands, DirectoryMode::SortedLowerBound);
+        const SparseIndex flat_index(codes, 3, bands, DirectoryMode::FlatOpenAddress);
+        for(const auto* index : {&sorted_index, &flat_index}) {
+            Span span;
+            if(!index->find(0, 0, span) || span.last - span.first != 2 || span.values[span.first] != 0 || span.values[span.first + 1U] != 1 || index->find(0, 2, span) || extract_key(codes.data() + 2U * kWordCount, bands[3]) != (std::uint32_t{1} << 11U) || index->logical_bytes() == 0) throw std::runtime_error("sparse directory lookup differs");
+        }
         Input input; input.document_count = 3; input.documents = codes;
-        GenerationDeduplicator deduplicator(3); QueryWorkspace workspace; Diagnostics diagnostics; const auto hamming = agent_memory::HammingDistanceComputer(kWordCount);
-        const auto result = run_query(index, input, codes.data(), bands, std::vector<int>(bands.size(), 0), deduplicator, hamming, 3, workspace, diagnostics);
-        if(diagnostics.probes != bands.size() || diagnostics.unique_candidates != 3 || result.shortlist.size() != 3 || result.shortlist.front().position != 0 || result.timings.candidate_generator_total_ms < 0.0) throw std::runtime_error("native sparse MIH candidate pipeline differs");
+        const auto hamming = agent_memory::HammingDistanceComputer(kWordCount);
+        std::vector<std::uint32_t> reference_candidates;
+        std::vector<Scored> reference_shortlist;
+        for(const auto* index : {&sorted_index, &flat_index}) for(const auto mode : {DeduplicationMode::TwoPassGenerationArray, DeduplicationMode::StreamingGenerationArray}) {
+            GenerationDeduplicator deduplicator(3); QueryWorkspace workspace; Diagnostics diagnostics; std::vector<std::uint32_t> candidates;
+            const auto result = run_query(*index, input, codes.data(), bands, std::vector<int>(bands.size(), 0), mode, deduplicator, hamming, 3, workspace, diagnostics, &candidates);
+            if(diagnostics.probes != bands.size() || diagnostics.unique_candidates != 3 || result.shortlist.size() != 3 || result.shortlist.front().position != 0 || result.timings.candidate_generator_total_ms < 0.0) throw std::runtime_error("native sparse MIH candidate pipeline differs");
+            if(reference_candidates.empty()) { reference_candidates = candidates; reference_shortlist = result.shortlist; }
+            else if(candidates != reference_candidates || result.shortlist.size() != reference_shortlist.size()) throw std::runtime_error("native sparse MIH challenger candidate union differs");
+            else for(std::size_t position = 0; position < result.shortlist.size(); ++position) if(result.shortlist[position].position != reference_shortlist[position].position || result.shortlist[position].distance != reference_shortlist[position].distance) throw std::runtime_error("native sparse MIH challenger Hamming shortlist differs");
+        }
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
         Config hnsw_config; hnsw_config.backend = "hnsw"; hnsw_config.hnsw_connectivity = 2; hnsw_config.hnsw_ef_construction = 4; hnsw_config.hnsw_ef_search = 3;
         const HnswIndex hnsw(input, hnsw_config);
@@ -713,6 +813,9 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
         Config invalid; invalid.band_widths = widths; invalid.local_radii.assign(widths.size(), 0); invalid.query_count = 1; invalid.repeat_count = 1; invalid.hamming_limit = 1; invalid.adc_limit = 1; invalid.exact_limit = 1;
         bool rejected = false; try { validate_config(invalid); } catch(const std::invalid_argument&) { rejected = true; }
         if(!rejected) throw std::runtime_error("native sparse MIH invalid schedule was accepted");
+        invalid.local_radii.assign(widths.size(), 3); invalid.directory_mode = "unknown";
+        rejected = false; try { validate_config(invalid); } catch(const std::invalid_argument&) { rejected = true; }
+        if(!rejected) throw std::runtime_error("native sparse MIH invalid directory mode was accepted");
     } catch(const std::exception& error) { std::cerr << "native sparse arbitrary-m MIH self-test failed: " << error.what() << '\n'; return 1; }
     std::cout << "native sparse arbitrary-m MIH self-test passed\n"; return 0;
 }
