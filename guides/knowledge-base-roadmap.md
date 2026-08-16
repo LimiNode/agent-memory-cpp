@@ -869,25 +869,6 @@ Perspective-safe context assembly must not collapse local interpretations into
 omniscient facts. Blocks should use labels such as `User stated`,
 `Planner believed`, `RiskNode inferred` and `System reconstruction estimates`.
 
-### 8.3.1. Effective Context And Omission Provenance (M2+)
-
-`Context` is the deterministic assembly requested by this library. An external
-LLM/runtime host may subsequently add system instructions, tool schemas,
-dialogue, skills, provider compaction or other material, and may transform the
-assembled input before model execution. The host therefore records an optional,
-inspectable effective-context artifact rather than pretending that its final
-provider payload was the same object as `Context`.
-
-That artifact must distinguish planned versus effective token accounting by
-semantic class, preserve the `Context.trace_id`, and list omissions with typed
-reasons such as budget trimming, policy denial, unavailable provenance,
-compression, provider-side compaction or host substitution. It is sufficient
-to retain redacted counts/fingerprints when content itself is sensitive. A
-provider-reported transformation is evidence reported by that provider, not a
-locally verified fact. This makes questions such as "why was this citation not
-shown?" auditable without putting provider SDKs or prompt execution into the
-core library.
-
 ### 8.4. IContextCompressor Hook (M2+)
 
 Reference: RECOMP (arXiv:2310.04408), LLMLingua (arXiv:2310.05736).
