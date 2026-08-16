@@ -427,6 +427,16 @@ coverage, license and training provenance are frozen descriptor inputs. Changing
 any of them creates a new derived projection and requires the existing
 generation-aware dual-publish/reindex protocol before it can serve queries.
 
+This admits a useful deployment split: the neural model acts as an index
+compiler, while a ready immutable learned-sparse index may be served by a pure
+C++ read path containing only the compatible tokenizer, immutable token-weight
+table and inverted-index executor. Query execution then needs no ONNX, PyTorch
+or GPU model inference. Such a deployment can search already published
+documents without the encoder; adding a document with learned expansion, or
+changing the sparse model, still requires the optional write-path adapter and
+publication protocol above. A BM25-style fallback remains necessary when that
+adapter is unavailable for a new document.
+
 The trade-off is equally important: a static token weight cannot provide the
 context-sensitive query expansion of a full SPLADE-style encoder. Any future
 experiment must compare three declared paths on the same qrels and corpus:
@@ -454,6 +464,7 @@ baselines on the target corpus and hardware.
 |---|---|---|
 | Dynamic lexical top-K | [WAND](https://research.ibm.com/publications/efficient-query-evaluation-using-a-two-level-retrieval-process) | Historical two-level/pruning reference for an exact lexical path. |
 | Learned sparse baseline | [SPLADE-v3](https://arxiv.org/abs/2403.06789), [multilingual IR extension](https://arxiv.org/abs/2302.14723) | Candidate learned-sparse models; neither replaces the lexical baseline automatically. |
+| Learned sparse semantics | [unified learned sparse framework](https://arxiv.org/abs/2303.13416), [asymmetric inference-free sparsification](https://arxiv.org/abs/2504.14839) | Document expansion and asymmetric sparse-retrieval reading for the optional write/read split. |
 | Learned-sparse index layouts | [Seismic](https://arxiv.org/abs/2404.18812), [Block-Max Pruning](https://arxiv.org/abs/2405.01117) | Sparse-posting geometry and pruning challengers after a reference harness exists. |
 | Index-aware sparse learning | [DF-FLOPS](https://arxiv.org/abs/2505.15070), [Li-LSR](https://arxiv.org/abs/2505.01452), [competitive inference-free sparse retrieval](https://arxiv.org/abs/2411.04403) | Later research on document-frequency distribution and an inference-free query-side sparse arm. |
 | Dense/sparse fusion | [Fusion-function analysis](https://arxiv.org/abs/2210.11934) | Motivation to measure RRF against calibrated fusion rather than assume either wins. |
