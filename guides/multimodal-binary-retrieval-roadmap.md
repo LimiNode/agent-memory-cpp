@@ -4,7 +4,7 @@
 > change the frozen text ANN confirmation or schedule a successor experiment.
 > The reusable subject is a descriptor-scoped Hamming candidate engine and its
 > evaluation method, not an assumption that one binary representation or MIH
-> configuration works for text, images and audio.
+> configuration works for text, images, audio and video.
 
 ## Purpose And Boundary
 
@@ -13,8 +13,8 @@ defines immutable artifacts, versioned derived representations, segments and
 typed locators. [`visual-retrieval-roadmap.md`](visual-retrieval-roadmap.md)
 defines image-specific retrieval routes. This document records the broader
 research opportunity: foundation-model representations can be projected or
-learned directly in a Hamming space for semantic image and audio retrieval,
-including compatible text-to-image or text-to-audio retrieval.
+learned directly in a Hamming space for semantic image, audio and video
+retrieval, including compatible cross-modal retrieval.
 
 The C++ core remains an artifact, descriptor, index and retrieval layer. ASR,
 audio encoders, image encoders, binary projection training and neural hash
@@ -41,7 +41,8 @@ search only under one exact binary-space descriptor, including:
   to hydrate after a candidate position is found.
 
 This is an internal descriptor-scoped implementation direction, not a public
-`TextMihIndex`, `ImageMihIndex` or `AudioMihIndex` API commitment. Existing
+`TextMihIndex`, `ImageMihIndex`, `AudioMihIndex` or `VideoMihIndex` API
+commitment. Existing
 binary-index work already keeps candidate positions segment-qualified and
 resolves them to stable identities before final ranking. A modality adapter
 publishes a compatible descriptor; the candidate engine is deliberately
@@ -51,8 +52,8 @@ Two code spaces of equal width cannot share postings, a Hamming threshold or a
 score without that descriptor declaring them compatible. In particular, an
 E5-derived text code, a perceptual image hash, a semantic visual hash, an audio
 fingerprint and a semantic audio hash are different spaces. A common text,
-image and audio Hamming space is a future trained-and-evaluated hypothesis, not
-an architectural default.
+image, audio and video Hamming space is a future trained-and-evaluated
+hypothesis, not an architectural default.
 
 ## Retrieval Families
 
@@ -63,6 +64,8 @@ an architectural default.
 | Audio semantic | Audio encoder or matched text/audio encoders -> binary code | Audio-event similarity or text-to-audio relevance | Full Hamming and optional compatible float rerank. |
 | Image identity | Perceptual hash | Near-copy under a declared perturbation set | Exact Hamming/threshold decision; no semantic rerank claim. |
 | Audio identity | Windowed audio fingerprints | The same recording or fragment at a time offset | Hamming candidate lookup plus temporal sequence/offset verification. |
+| Video semantic | Global and clip-level video codes | Video-to-video or text-to-video relevance | Full Hamming and optional compatible float rerank. |
+| Video identity | Frame/audio fingerprint sequences | The same or edited clip at a temporal offset | Hamming candidate lookup plus temporal sequence verification. |
 | Text derived from media | OCR, ASR transcript or caption | Exact and semantic text access | The ordinary lexical/text-dense stack. |
 
 Identity and semantic tasks must have separate data, ground truth, metrics and
@@ -124,6 +127,50 @@ fragment-localisation precision and robustness to declared transformations
 (for example compression, pitch or time change) in addition to ordinary
 retrieval metrics.
 
+Speaker identity is a third audio space. Speaker embeddings, including a future
+binary variant, answer "is this the same speaker?" and must not be searched
+under the relevance contract for audio events such as rain, alarms or speech
+content. A speaker route has its own consent, access-control, error-cost and
+verification protocol before it can be considered.
+
+## Video-Specific Contracts
+
+Video is not an image artifact with a larger byte payload. It may expose global
+video semantics, temporal visual clips, temporal audio clips, ASR intervals,
+frame OCR regions, keyframes and identity fingerprints simultaneously. A single
+global semantic code is a possible coarse artifact route, but it cannot stand
+in for retrieval over a long recording with several unrelated scenes.
+
+The primary retrieval unit for long video is therefore a versioned temporal
+segment, fixed-duration only when that is the declared baseline and otherwise a
+shot, scene or semantic boundary. Semantic binary and float projections bind to
+that segment and hydrate via the existing `TimeRangeLocator`. Frame-level OCR
+and keyframe projections additionally retain their frame/image locator. A
+global code, clip code, audio code and transcript are independent projections;
+none silently replaces another.
+
+```text
+video artifact
+    -> global video representation               -> artifact-level route
+    -> temporal video segments -> visual code    -> semantic clip route
+                              -> audio code      -> semantic sound route
+                              -> ASR             -> lexical/text route
+                              -> frame OCR       -> lexical screenshot route
+    -> frame/audio fingerprints                  -> near-duplicate verifier
+```
+
+For example, a search for "where was `MDBX_MAP_FULL` shown?" is an ASR or
+frame-OCR route; "where is a red graphics card demonstrated?" requires a
+compatible text-to-video or clip-visual route; "where is a dog barking?" is a
+text-to-audio clip route; and "find the edited copy of this clip" is an
+identity-fingerprint sequence route. These examples are route-selection tests,
+not a claim that one encoder covers every query.
+
+Semantic video hashing research, including learned frame selection, is a useful
+future representation challenger. A training-free projection from a capable
+video encoder into a binary code is a separate hypothesis: image/audio results
+do not establish its quality for video.
+
 ## Cross-Modal Hamming Hypothesis
 
 Matched encoder families such as CLIP-like image/text or CLAP-like audio/text
@@ -140,6 +187,33 @@ on one task does not license another. A unified text+image+audio code space is
 an additional hypothesis after those pairwise controls, with no implicit score
 fusion across incompatible spaces.
 
+A common text+image+audio+video code space is later still. It requires a
+declared multimodal training or projection objective and direct controls for
+text-to-video, video-to-video and video-to-audio where those tasks are in
+scope. Shared continuous spaces, such as LanguageBind, motivate the experiment;
+they do not prove that thresholded codes retain all of those relationships.
+
+## Predeclared Experiment Families
+
+Each family starts with a new approved protocol, frozen calibration and
+evaluation split, recorded encoder and preprocessing descriptor, reference
+implementation, raw evidence package, and a separate confirmation set after
+selection. No number from the current text MIH line selects a code width, band
+layout or backend for these families.
+
+| Family | Question and controls | Required outcome evidence |
+|---|---|---|
+| Semantic audio | Does a frozen CLAP-like float reference retain useful audio-to-audio and text-to-audio quality after simple projection, ITQ-style quantization or a learned hash head? Compare float exact/controlled search, symmetric Hamming and declared asymmetric rerank. | Recall@K/mAP by query type, code and index bytes, candidate funnel, p50/p95/p99, and a calibration-only selected binary backend on untouched queries. |
+| Audio identity | Can window fingerprints find the same clip after declared compression, noise, pitch/time change and fragment offsets? Compare a classical fingerprint and a later neural fingerprint only under the same localisation protocol. | Pair precision/recall, false-match rate, offset/localisation error, sequence-verifier work and latency. |
+| Semantic video | Does global-plus-clip representation beat either global-only or uniform fixed-window clips for video-to-video and text-to-video retrieval? Controls are a compatible float video baseline, fixed windows, then declared shot/scene segmentation. | Quality per query family, temporal localisation accuracy, clip count and bytes per source minute, build time, and through-cascade latency. |
+| Video identity | Can frame/audio fingerprint sequences recover edited or re-encoded copies without claiming semantic similarity? Test crops, overlays, transcoding, inserted intros, frame-rate changes and speed changes as labelled perturbations. | Pair precision/recall, temporal overlap/offset accuracy, verifier false positives and candidate cost. |
+| Cross-modal binary | Does a paired text-image, text-audio or text-video code space preserve relevance better than single-modality binary projections at the selected memory/latency budget? A unified four-way code is a separate final arm, not a pooled metric. | Task-separated Recall@K/mAP, continuous-space control, calibration/held-out chronology, cross-space compatibility checks and per-route coverage. |
+
+An index comparison is nested inside every semantic family only after the code
+has been frozen: `BinaryFlat` versus native sparse MIH versus Binary HNSW when
+available. Identity families may use a specialised lookup and temporal verifier
+instead; their result must never be reported as a semantic ANN win.
+
 ## Evidence Sequence
 
 1. **Artifact and dataset gate.** Freeze licensing, artifact identities,
@@ -147,7 +221,8 @@ fusion across incompatible spaces.
    provenance anchors.
 2. **Continuous reference.** Establish exact or controlled float retrieval for
    the specific modality and task before binary compression; include a matched
-   cross-modal reference where applicable.
+   cross-modal reference where applicable. For video, establish the segment
+   policy and global-only control first.
 3. **Binary representation.** Compare a recorded simple projection baseline,
    direct learned binary code and, where justified, coarse-to-full-code routing.
    Tune representation, width and all bit selections on calibration only.
@@ -177,8 +252,20 @@ that a derived text representation is the original media truth.
   multimodal shared-space references.
 - [AudioNet](https://arxiv.org/abs/2511.01372): learned semantic audio hashing
   reference.
+- [ECAPA-TDNN](https://arxiv.org/abs/2005.07143) and
+  [Binary Speaker Embedding](https://arxiv.org/abs/1510.05937): speaker-space
+  references, separate from semantic-audio retrieval.
 - [Audio fingerprinting reproduction](https://transactions.ismir.net/articles/10.5334/tismir.4):
   Hamming candidate retrieval with temporal sequence verification.
+- [AutoSSVH](https://arxiv.org/abs/2504.03587),
+  [ConMH](https://arxiv.org/abs/2211.11210) and
+  [S5VH](https://arxiv.org/abs/2412.14518): semantic video-hashing and frame or
+  temporal-structure research references.
+- [LanguageBind](https://arxiv.org/abs/2310.01852) and
+  [VideoPrism](https://arxiv.org/abs/2402.13217): continuous multimodal and
+  video-retrieval reference spaces.
+- [Near-duplicate video detection](https://arxiv.org/abs/2005.07356): temporal
+  and perceptual visual identity-retrieval reference.
 - [`visual-retrieval-roadmap.md`](visual-retrieval-roadmap.md) and
   [`optimization-roadmap.md`](optimization-roadmap.md): image-specific and
   current binary-candidate-generation contracts.
