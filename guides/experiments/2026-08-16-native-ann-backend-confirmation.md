@@ -1,7 +1,7 @@
 # Frozen Native ANN Backend Confirmation
 
-Date: 2026-08-16  
-PR context: #150 draft, `agent/ann-backend-confirmation`  
+Date: 2026-08-16
+PR context: #150 draft, `agent/ann-backend-confirmation`
 Contract: `tools/agent-memory-bench/native-ann-confirmation-scale.example.json`
 
 ## Question
