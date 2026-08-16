@@ -502,6 +502,22 @@ class SummaryPromotionJob : public ICompactionJob {
 };
 ```
 
+#### Consolidation Output Generations (M2+)
+
+Consolidation is a derived-materialization operation, not an unnamed mutation
+of the knowledge base. A non-trivial merge, summary tree, community summary or
+future wiki-style consolidation run must identify its complete input frontier,
+policy/model version and output generation. Its output retains derivation links
+to the input units; the input generation remains addressable until the normal
+lifecycle/retention policy retires it. Unresolved questions are retained as
+explicit unresolved or escalated units rather than filled with invented
+answers. Read-only retrieval selects an active generation/profile explicitly.
+
+This rule applies equally to extractive and model-generated consolidation and
+is compatible with the existing checkpoint and supersession contracts. It does
+not require a separate "dreaming" subsystem or make the compaction worker an
+agent runtime.
+
 ### 4.6. EmbeddingRecomputeJob
 
 Пересчёт embeddings с `source_model` на `target_model`. Используется при model upgrade.

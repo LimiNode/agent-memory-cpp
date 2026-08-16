@@ -77,6 +77,9 @@ runtime integration lane is cross-listed there as ADR-019..ADR-025.
 12. Core contracts do not include ADELIA headers.
 13. `KnowledgeUnitId` is a local storage key, not a replicated identity.
 14. Runtime sequence values are ordered only within one runtime/replica origin.
+15. A capability being discoverable, available, permitted, admitted by
+    authority, attempted and completed are separate facts. A stored capability
+    descriptor or prior receipt never grants current authority.
 
 ## Neutral Runtime References
 
@@ -325,6 +328,60 @@ struct AuthorityEvidenceRef {
     std::optional<std::int64_t> expires_at_ms;
 };
 ```
+
+### External Host Governance And Tool Lifecycle
+
+An external runtime may describe a capability's declared operational effects so
+that planning, UI and policy can reason about them without treating discovery
+as permission:
+
+```cpp
+struct EffectSemantics {
+    bool read_only = false;
+    bool destructive = false;
+    bool reversible = false;
+    bool external_world = false;
+    bool creates_commitment = false;
+};
+```
+
+`EffectSemantics` is provider-declared metadata, not authority evidence and not
+a security proof. A host combines declared semantics, its provider profile,
+live policy and current authority before it admits an action.
+
+The durable model distinguishes this lifecycle:
+
+```text
+discoverable descriptor
+  -> live availability
+  -> action intent draft
+  -> authority/policy admission or rejection
+  -> execution attempt
+  -> execution receipt or failure evidence
+```
+
+An external host may expose deterministic interception points such as
+`BeforeAuthorityEvaluation`, `BeforeExecutionAttempt`,
+`AfterExecutionAttempt`, `BeforeMemoryAdmission`, `BeforeProviderEgress` and
+`BeforeProcedureActivation`. The interceptor is visible host-governance code:
+it may reject or annotate a transition and attach evidence, but it is neither a
+hidden graph node nor a substitute executor. The core stores declared
+capability/procedure requirements and historical evidence only; it does not
+discover live tools, run hooks, make authority decisions or invoke tools.
+
+### Message And Provider Provenance
+
+Runtime-facing inputs must preserve the difference between a sender assertion,
+a verified principal and an observation reported by a provider. An adapter may
+therefore retain a `MessageOriginKind`, an optional asserted sender, an optional
+verified sender, a provider/source reference and a verification status. This
+allows retrieval and presentation to say, for example, "a peer asserted X",
+"the runtime observed X" or "verified principal P reported X" without silently
+promoting any of them to an omniscient fact.
+
+Provider-side context compaction, retries and other transformations are also
+observations with provenance. They must not be reconstructed from an apparent
+message shape or treated as equivalent to an authenticated identity claim.
 
 ### PerspectiveComponent
 
@@ -815,6 +872,29 @@ trace episodes
 Memory records proposals and evaluations. Promotion to active procedure is a
 runtime/operator policy decision.
 
+Long-running runtime work may persist a problem, procedure state, checkpoint
+and trajectory as durable evidence, while the active LLM session, scheduler and
+executor remain ephemeral host concerns. A resumed run must bind its new
+execution to the prior checkpoint/trajectory explicitly; no stored procedure
+or trace is an implicit instruction to resume or execute work.
+
+## Optional Graph-View Architecture Reference
+
+If an external runtime later represents workflows, conversations or agent
+state as graphs, use `mockturtle` as an architectural reference rather than a
+core dependency. Prefer small capability/trait requirements and generic
+algorithms over one virtual `IGraph` hierarchy, and layer read-only views such
+as context, trace, cost, permission, cache or UI views over a base graph.
+This keeps storage, execution, rendering and observability separately owned.
+
+Graph rewrites that are sound for pure Boolean networks are unsafe by default
+for LLM calls, tool calls, memory writes and external commits. Any external
+runtime optimization pass must first require declared traits such as purity,
+determinism, idempotence, side effects and cacheability; effectful nodes may be
+removed, duplicated, reordered or retried only under the corresponding
+host-governed semantics. This roadmap neither adds a graph executor nor adopts
+`mockturtle` as a dependency.
+
 ## Partition And Reconciliation
 
 Transport and consensus are out of scope, but memory needs neutral records for
@@ -995,3 +1075,12 @@ ADELIA procedure proposals                  -> ProcedurePayload candidates
 ```
 
 The adapter may depend on ADELIA. `agent-memory-cpp` core must not.
+
+Reference patterns, not dependencies:
+
+- Anthropic Agent SDK: https://github.com/anthropics/claude-agent-sdk-python
+- Anthropic quickstarts (including the knowledge-wiki example):
+  https://github.com/anthropics/claude-quickstarts
+- Anthropic skills and plugins: https://github.com/anthropics/skills and
+  https://github.com/anthropics/claude-plugins-official
+- mockturtle: https://github.com/lsils/mockturtle

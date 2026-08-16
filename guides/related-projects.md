@@ -127,6 +127,15 @@ Disclaimer:
   useful for ADELIA and runtime layers; core `agent-memory-cpp` stores
   evidence and derived units, not application-owned mental models or workflow
   engines.
+- **Anthropic Agent SDK / quickstarts / skills**: reference patterns for an
+  external host's tool lifecycle, context/provenance introspection, immutable
+  consolidation outputs and procedure artifacts. They do not justify adding a
+  planner, executor or provider SDK to the core library; see
+  `agent-runtime-integration-roadmap.md`.
+- **mockturtle**: graph-library architecture reference (capability traits,
+  generic algorithms, composable views and change events), not a retrieval or
+  agent-runtime dependency. Effectful runtime actions remain outside the
+  pure-graph rewrite model.
 
 ## 7. Open questions / roadmap items (из конкурентного анализа)
 
@@ -186,3 +195,7 @@ Disclaimer:
 - codebase-memory-mcp: https://github.com/DeusData/codebase-memory-mcp (MIT; 9 patterns extracted in [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md))
 - Argos Translate: https://github.com/argosopentech/argos-translate
 - Gigatoken: https://github.com/marcelroed/gigatoken
+- Anthropic Agent SDK: https://github.com/anthropics/claude-agent-sdk-python
+- Anthropic quickstarts: https://github.com/anthropics/claude-quickstarts
+- Anthropic skills: https://github.com/anthropics/skills
+- mockturtle: https://github.com/lsils/mockturtle
