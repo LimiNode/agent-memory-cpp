@@ -36,6 +36,29 @@ The current dependency-free contract types are:
 - `PoolingMode`;
 - `IEmbedder`.
 
+## Role-Aware Model Input
+
+`EmbeddingPurpose` is part of the retrieval contract, not an annotation that a
+backend may ignore. A retrieval model can use distinct query and document input
+templates (for example, E5 query/document prefixes); a symmetric model may
+deliberately use the same template for both roles.
+
+The caller supplies the original text and its intended role. The selected
+embedder owns model-specific rendering, tokenization, and any required prefix
+or task instruction. Application code must not silently hard-code a string
+such as `query:` because that mixes a model descriptor into generic retrieval
+logic and makes later model replacement unsafe.
+
+When the contract grows, model metadata should declare the supported roles and
+the versioned input-template policy. Retrieval must embed a user query with
+the `Query` role and indexed source text with the `Document` role; a testable
+adapter trace should make the effective rendered input and model descriptor
+auditable without treating provider-specific templates as public API.
+
+This is an architectural requirement, not a claim that one prefix scheme is
+universally better. It keeps asymmetric retrieval encoders compatible with
+future symmetric encoders and task-instruction models.
+
 ## Backends
 
 Concrete backends should live behind adapter boundaries, for example:

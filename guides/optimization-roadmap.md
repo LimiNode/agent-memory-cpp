@@ -1159,6 +1159,15 @@ library dependency. Benchmarks compare every enabled tier with the exact
 per-projection baseline and report stage survivor counts, direct-score time,
 decoded bytes, recall and final answer/citation quality.
 
+A cross-encoder is one possible final model reranker, not a recovery mechanism
+for an earlier candidate-generation loss: it can only reorder its supplied
+pool. Before adding an adapter, establish its ceiling with a frozen evaluation
+set by reranking E5 candidate pools of several declared depths (for example
+20/50/100/256) and reporting nDCG@10, MRR, Recall and the pool's oracle
+coverage. Compare that ceiling with the same exact-vector pool before
+attributing a result to the cross-encoder. The experiment may use an external
+multilingual model, but production inference remains host-owned and optional.
+
 The returned `VectorHit` remains only a candidate. The retrieval engine
 hydrates the active envelope/payload, validates scope, lifecycle, authority,
 `unit_revision`, optional resource generation, and provenance before context
@@ -1397,6 +1406,12 @@ Cross-link: encoder_id в DenseIndexConfig резолвится через
 Encoder ID taxonomy (parallel enum) живёт в §"Future Encodings" выше:
 `RandomHyperplaneLSH = 0`, `AutoencoderBinarizer = 1`,
 `HaarLikeExperimental = 2`.
+
+`ExactVectorIndex` remains the quality oracle, a practical backend for small
+or selectively routed partitions, and a correct fallback when a strict filter
+leaves only a small eligible set. It is not assumed to be the million-scale
+default; the selected backend must still win its measured latency, memory,
+update and quality gates on the target workload.
 
 ### Storage Estimates Per Mode (1M units × 768-dim)
 

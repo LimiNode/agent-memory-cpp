@@ -592,6 +592,22 @@ defined in
 They use generic `metadata_filters` and range-index substrates rather than
 per-component DBIs.
 
+### 7.1.3. Metadata And Namespace Selection Before ANN (M2)
+
+Metadata and namespace routing is a retrieval-planning concern, not merely a
+post-processing convenience. For a strict filter, the planner must construct
+an exact eligible `CandidateSet` (or select an index/immutable segment that is
+known to contain only that partition) before ANN work begins. Running a global
+approximate search and discarding non-matching hits afterwards is not
+equivalent: it can consume the whole candidate budget and silently reduce
+recall within the requested partition.
+
+Soft fields such as topic or audience may broaden, prioritize, or boost
+partitions. They remain recoverable preferences unless the profile explicitly
+promotes them to a strict filter. The trace records whether a route was global,
+partition-selected, or exact-filtered, together with the eligible count and
+the read frontier, so quality and latency effects remain measurable.
+
 ### 7.2. IUnitRetriever
 
 ```cpp
@@ -898,6 +914,24 @@ Integration:
 - M0/M1: `None` (raw context).
 - M2+: optional per `RetrievalPlan`.
 - Default для long-context LLMs: `Extractive` или `Abstractive`.
+
+### 8.5. Chunk-Neighbour Context Expansion (M2)
+
+Retrieval normally ranks one chunk, while a useful answer may span its nearby
+source context. A future `ChunkPolicy` therefore records enough source order
+to expand a selected chunk deterministically: parent resource/revision, chunk
+ordinal, byte or token span, and the policy fingerprint that produced the
+sequence. The expansion resolver obtains predecessor/successor chunks from
+that source-order projection; it does not rely on mutable raw pointer links
+embedded in a hit.
+
+Expansion is bounded by a separate chunk/token budget, keeps every included
+neighbour's own citation, and is recorded in the retrieval trace as derived
+context rather than an independently retrieved result. Chunking remains
+source-aware: markdown uses heading structure, code uses symbol/AST boundaries,
+conversations use turns, and a generic token/character window is only the
+fallback. This roadmap does not introduce a universal recursive splitter or a
+production context-expansion implementation.
 
 ## 9. Evaluation & Tracing
 
