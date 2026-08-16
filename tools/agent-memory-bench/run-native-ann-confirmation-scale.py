@@ -56,6 +56,19 @@ def preparation_config(contract: dict[str, Any], current: dict[str, Any]) -> dic
     return {"schema_version": 1, "dataset": fresh["dataset"], "languages": [fresh["language"]], "layout": fresh["layout"], "sampling": {**fresh["sampling"], "evaluation_distractors_per_language": current["evaluation_distractors_per_language"]}, "split": {"purpose": "evaluation", "evaluation_qrels_split": "dev"}, "embedding": fresh["embedding"]}
 
 
+def preparation_config_hash(config: dict[str, Any]) -> str:
+    canonical = {**config, "sampling": {**config["sampling"]}}
+    canonical["sampling"].setdefault("evaluation_queries_per_language", 0)
+    return hashlib.sha256(json.dumps(canonical, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def validate_prepared_contract(contract: dict[str, Any], current: dict[str, Any], prepared_config: dict[str, Any], prepared_manifest: dict[str, Any]) -> None:
+    expected_config = preparation_config(contract, current)
+    require(prepared_config == expected_config, "native ANN prepared config differs")
+    require(prepared_manifest.get("input_config_hash") == preparation_config_hash(prepared_config), "native ANN prepared manifest config binding differs")
+    require(prepared_manifest.get("outputs", {}).get("evaluation_documents", {}).get("count") == current["expected_evaluation_documents"], "native ANN prepared document count differs")
+
+
 def read_ids(path: Path) -> set[str]:
     return {json.loads(line)["id"] for line in path.read_text(encoding="utf-8").splitlines() if line}
 
@@ -66,11 +79,16 @@ def validate_materialized_scale(manifest: dict[str, Any], prepared_manifest: dic
     require(outputs.get("evaluation_document_ids", {}).get("count") == expected_documents and outputs.get("evaluation_document_vectors", {}).get("count") == expected_documents and prepared_manifest.get("outputs", {}).get("evaluation_documents", {}).get("count") == expected_documents, "native ANN fresh document count differs")
 
 
-def validate_fresh_root(calibration_root: Path, fresh_root: Path, expected_documents: int) -> dict[str, Any]:
+def validate_fresh_root(calibration_root: Path, fresh_root: Path, contract: dict[str, Any], current: dict[str, Any]) -> dict[str, Any]:
     manifest = json.loads((fresh_root / "manifest.json").read_text(encoding="utf-8"))
     prepared_path = fresh_root / "prepared-study-manifest.json"
     prepared_manifest = json.loads(prepared_path.read_text(encoding="utf-8"))
-    validate_materialized_scale(manifest, prepared_manifest, sha256(prepared_path), expected_documents)
+    scale_root = fresh_root.parent
+    prepared_config = json.loads((scale_root / "prepared-config.json").read_text(encoding="utf-8"))
+    original_prepared_path = scale_root / "prepared" / "manifest.json"
+    require(sha256(original_prepared_path) == sha256(prepared_path), "native ANN copied prepared manifest differs")
+    validate_prepared_contract(contract, current, prepared_config, prepared_manifest)
+    validate_materialized_scale(manifest, prepared_manifest, sha256(prepared_path), current["expected_evaluation_documents"])
     calibration_documents = read_ids(calibration_root / "evaluation-document-ids.jsonl")
     calibration_queries = {json.loads(line)["id"] for line in (calibration_root / "evaluation-query-ids.jsonl").read_text(encoding="utf-8").splitlines() if line}
     fresh_documents = read_ids(fresh_root / "evaluation-document-ids.jsonl")
@@ -100,7 +118,7 @@ def prepare(args: Any, contract: dict[str, Any], current: dict[str, Any]) -> Pat
     config_path.write_text(json.dumps(preparation_config(contract, current), ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     subprocess.run([str(args.python), str(THIS / "prepare-miracl-ae-study.py"), "--config", str(config_path), "--input-root", str(args.source_root), "--output-root", str(root)], check=True)
     manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
-    require(manifest["outputs"]["evaluation_documents"]["count"] == current["expected_evaluation_documents"], "prepared confirmation scale count differs")
+    validate_prepared_contract(contract, current, json.loads(config_path.read_text(encoding="utf-8")), manifest)
     return root
 
 
@@ -135,7 +153,7 @@ def completed_rows(contract: dict[str, Any], output: Path, input_root: Path, que
 
 
 def compare(args: Any, contract: dict[str, Any], current: dict[str, Any], fresh_root: Path) -> None:
-    manifest = validate_fresh_root(args.calibration_root, fresh_root, current["expected_evaluation_documents"])
+    manifest = validate_fresh_root(args.calibration_root, fresh_root, contract, current)
     output = args.output_root / current["id"] / "comparison"; output.mkdir(parents=True, exist_ok=True)
     input_root = output / "input"
     representation = contract["frozen_representation"]
@@ -157,7 +175,7 @@ def compare(args: Any, contract: dict[str, Any], current: dict[str, Any], fresh_
 
 
 def finalize(args: Any, contract: dict[str, Any], current: dict[str, Any], fresh_root: Path) -> None:
-    validate_fresh_root(args.calibration_root, fresh_root, current["expected_evaluation_documents"])
+    validate_fresh_root(args.calibration_root, fresh_root, contract, current)
     output = args.output_root / current["id"] / "comparison"
     input_manifest = json.loads((output / "input" / "manifest.json").read_text(encoding="utf-8"))
     rows = completed_rows(contract, output, output / "input", int(input_manifest["query_count"]))
@@ -167,10 +185,29 @@ def finalize(args: Any, contract: dict[str, Any], current: dict[str, Any], fresh
 def self_test() -> int:
     try:
         contract = load_contract(THIS / "native-ann-confirmation-scale.example.json")
-        require(preparation_config(contract, scale(contract, "de-25k"))["sampling"]["evaluation_distractors_per_language"] == 21897, "confirmation preparation scale differs")
+        current = scale(contract, "de-25k")
+        config = preparation_config(contract, current)
+        require(config["sampling"]["evaluation_distractors_per_language"] == 21897, "confirmation preparation scale differs")
         require([item["id"] for item in backend_treatments(contract)] == ["mih-m19-fixed-r56", "binary-flat-256", "binary-hnsw-m16-ef768"], "confirmation frozen backend order differs")
+        test_current = {**current, "expected_evaluation_documents": 2}
         prepared_sha = "prepared"
-        validate_materialized_scale({"prepared_study_manifest_sha256": prepared_sha, "outputs": {"prepared_study_manifest": {"sha256": prepared_sha}, "evaluation_document_ids": {"count": 2}, "evaluation_document_vectors": {"count": 2}}}, {"outputs": {"evaluation_documents": {"count": 2}}}, prepared_sha, 2)
+        prepared_manifest = {"input_config_hash": preparation_config_hash(config), "outputs": {"evaluation_documents": {"count": 2}}}
+        validate_prepared_contract(contract, test_current, config, prepared_manifest)
+        validate_materialized_scale({"prepared_study_manifest_sha256": prepared_sha, "outputs": {"prepared_study_manifest": {"sha256": prepared_sha}, "evaluation_document_ids": {"count": 2}, "evaluation_document_vectors": {"count": 2}}}, prepared_manifest, prepared_sha, 2)
+        for mutated in ({**config, "sampling": {**config["sampling"], "seed": config["sampling"]["seed"] + 1}}, {**config, "sampling": {**config["sampling"], "evaluation_distractors_per_language": config["sampling"]["evaluation_distractors_per_language"] + 1}}):
+            try:
+                validate_prepared_contract(contract, current, mutated, prepared_manifest)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("confirmation prepared config mutation was accepted")
+        wrong_manifest = {**prepared_manifest, "input_config_hash": "0" * 64}
+        try:
+            validate_prepared_contract(contract, current, config, wrong_manifest)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("confirmation prepared manifest mutation was accepted")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         print(f"run-native-ann-confirmation-scale self-test failed: {error}", file=sys.stderr)
         return 1

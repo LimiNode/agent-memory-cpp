@@ -110,7 +110,7 @@ def validate_quality(quality: dict[str, Any], values: dict[str, numpy.ndarray], 
 def collect_scale(contract: dict[str, Any], contract_path: Path, calibration_root: Path, output_root: Path, current: dict[str, Any], files: dict[str, bytes]) -> dict[str, Any]:
     scale_root = output_root / current["id"]
     prepared_root, e5_root, comparison_root = scale_root / "prepared", scale_root / "e5", scale_root / "comparison"
-    runner.validate_fresh_root(calibration_root, e5_root, current["expected_evaluation_documents"])
+    runner.validate_fresh_root(calibration_root, e5_root, contract, current)
     prepared_config_path = scale_root / "prepared-config.json"
     require(json.loads(prepared_config_path.read_text(encoding="utf-8")) == runner.preparation_config(contract, current), f"confirmation preparation config differs: {current['id']}")
     result_path = comparison_root / "result.json"
