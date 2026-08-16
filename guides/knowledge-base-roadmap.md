@@ -489,10 +489,12 @@ evaluation can distinguish a true primary-route hit from a recovery path.
 
 ### 7.1.2. CandidateSet And Physical I/O Budget (M2)
 
-`CandidateSet` is an execution-local set of eligible canonical unit ids after
-scope, strict authority, lifecycle, temporal, speaker, source, and other
-pushdown-safe filters. It is not a durable index and never replaces final
-revision/provenance validation during hydration.
+`CandidateSet` is one execution-local materialized representation of eligible
+canonical unit ids after scope, strict authority, lifecycle, temporal, speaker,
+source, and other pushdown-safe filters. It is not a durable index and never
+replaces final revision/provenance validation during hydration. Exact
+eligibility is the contract; materializing every eligible id is one physical
+plan, not the contract itself.
 
 ```cpp
 enum class CandidateSetRepresentation : uint8_t {
@@ -503,11 +505,11 @@ enum class CandidateSetRepresentation : uint8_t {
 };
 ```
 
-The planner chooses `SortedIds` for sparse sets and an implementation-selected
-bitmap representation for dense sets; a Roaring-compatible implementation is
-an optional optimisation, not a core dependency. Retrievers intersect their
-candidates with the set before expensive vector decode, lexical scoring or
-graph expansion only under one of two contracts:
+When it materializes a set, the planner chooses `SortedIds` for sparse sets and
+an implementation-selected bitmap representation for dense sets; a
+Roaring-compatible implementation is an optional optimisation, not a core
+dependency. A materialized set can intersect candidates before expensive vector
+decode, lexical scoring or graph expansion only under one of two contracts:
 
 1. CandidateSet construction and canonical hydration use the same consistent
    read snapshot/frontier, and every pushed-down secondary row is confirmed for
@@ -595,18 +597,21 @@ per-component DBIs.
 ### 7.1.3. Metadata And Namespace Selection Before ANN (M2)
 
 Metadata and namespace routing is a retrieval-planning concern, not merely a
-post-processing convenience. For a strict filter, the planner must construct
-an exact eligible `CandidateSet` (or select an index/immutable segment that is
-known to contain only that partition) before ANN work begins. Running a global
-approximate search and discarding non-matching hits afterwards is not
-equivalent: it can consume the whole candidate budget and silently reduce
-recall within the requested partition.
+post-processing convenience. A strict filter must be enforced as an exact
+eligibility constraint during candidate generation. The physical plan may
+materialize an exact `CandidateSet`, select an index/immutable segment known to
+contain only the partition, intersect an exact bitmap/posting/range constraint,
+use filter-aware ANN traversal, or run exact search over a sufficiently small
+eligible partition. Running a global approximate search and discarding
+non-matching hits afterwards is not equivalent: it can consume the whole
+candidate budget and silently reduce recall within the requested partition.
 
 Soft fields such as topic or audience may broaden, prioritize, or boost
 partitions. They remain recoverable preferences unless the profile explicitly
 promotes them to a strict filter. The trace records whether a route was global,
-partition-selected, or exact-filtered, together with the eligible count and
-the read frontier, so quality and latency effects remain measurable.
+partition-selected, exact-set-filtered, bitmap/posting/range-filtered or
+filter-aware, together with the eligible count when available and the read
+frontier, so quality and latency effects remain measurable.
 
 ### 7.2. IUnitRetriever
 
@@ -924,12 +929,24 @@ retrieval chunks. Markdown uses headings, paragraphs and code blocks; plain
 text uses paragraphs and sentences; conversations use turns; and code uses
 symbols or AST nodes. A generic character or token window is only the fallback.
 
-Packing has a target token size, a maximum token size and a model-aware token
-counter. It must not use character counts as a proxy for an embedder's context
-limit. An optional trailing overlap is a target budget, not a requirement to
-cut an atomic piece: retain the largest useful suffix of complete pieces, and
-permit one slightly oversized sentence or small paragraph when preserving its
-structural boundary is preferable to a zero-length overlap.
+Canonical packing has a target token size, a maximum token size and a stable
+source-token counting policy. By default that policy is independent of the
+currently selected embedder, so changing an embedding model does not silently
+replace cited `Chunk` boundaries, lexical postings or graph links. An optional
+trailing overlap is a target budget, not a requirement to cut an atomic piece:
+retain the largest useful suffix of complete pieces, and permit one slightly
+oversized sentence or small paragraph when preserving its structural boundary
+is preferable to a zero-length overlap.
+
+Embedding preparation separately applies the selected model's tokenizer,
+context budget and overflow policy to a canonical chunk; it must not use
+character counts as an exact proxy for that model's limit. Its model-specific
+subwindows, truncation or pooling are derived projection inputs and retain
+their descriptor provenance; they do not redefine the canonical source chunk.
+If a profile deliberately adopts a model-aware canonical packing policy, its
+tokenizer id and revision are mandatory parts of the chunk-policy fingerprint.
+Changing either then creates a new immutable chunk materialization rather than
+silently mutating the old one.
 
 The policy also records enough source order to expand a selected chunk
 deterministically: parent resource/revision, chunk ordinal, byte or token span,

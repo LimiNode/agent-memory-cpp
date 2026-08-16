@@ -372,10 +372,13 @@ other branch contributes.
    and Seismic. DF-FLOPS and inference-free learned-sparse query encoders are
    later representation/inference research, not prerequisites.
 4. **Reranking ladder.** First establish candidate-pool ceilings for a bounded
-   cross-encoder at several declared E5 depths. ColBERT/PLAID is an independent
-   late-interaction challenger with a separate storage and latency contract.
-   Listwise LLM reranking is last: it remains a host-owned optional adapter
-   after smaller rerankers justify neither the quality target nor the budget.
+   cross-encoder at several declared E5-only depths. After independent lexical
+   and dense retrieval establish a frozen hybrid pool, repeat the reranker
+   evaluation on that pool; the E5-only ceiling is not the target production
+   architecture. ColBERT/PLAID is an independent late-interaction challenger
+   with a separate storage and latency contract. Listwise LLM reranking is last:
+   it remains a host-owned optional adapter after smaller rerankers justify
+   neither the quality target nor the budget.
 
 ### Inference-Free Learned-Sparse Query Arm
 
