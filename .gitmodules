@@ -4,3 +4,6 @@
 [submodule "external/mdbx-containers"]
 	path = external/mdbx-containers
 	url = https://github.com/NewYaroslav/mdbx-containers.git
+[submodule "external/hnswlib"]
+	path = external/hnswlib
+	url = https://github.com/nmslib/hnswlib.git
