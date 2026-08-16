@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "family": "scale_aware_native_mih_protocol_v1",
+  "purpose": "calibration_only_scale_specific_m_and_hnsw_selection",
+  "representation": {"model_id": "intfloat/multilingual-e5-small", "model_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3", "code_bits": 256, "itq_seed": 52, "itq_iterations": 50},
+  "fixed_radius_contract": {"global_hamming_radius": 56, "coverage": "sum_local_radius_plus_one_equals_57", "schedule": "near_equal_width_minimum_enumerated_keys"},
+  "calibration_dataset": {"language": "es", "split": "dev", "sampling_seed": 20260825, "status": "pending_materialization_manifest_freeze"},
+  "untouched_confirmation_dataset": {"language": "fr", "split": "dev", "sampling_seed": 20260826, "status": "not_available_for_selection"},
+  "scales": [
+    {"id": "es-25k", "documents": 25000, "mih_m_values": [15, 16, 17, 18, 19, 20, 21], "maximum_exact_local_keys": 20000},
+    {"id": "es-100k", "documents": 100000, "mih_m_values": [13, 14, 15, 16, 17, 18, 19], "maximum_exact_local_keys": 50000},
+    {"id": "es-1m", "documents": 1000000, "mih_m_values": [10, 11, 12, 13, 14, 15, 16], "maximum_exact_local_keys": 100000}
+  ],
+  "native_implementation_matrix": [
+    {"directory_mode": "sorted_lower_bound", "deduplication_mode": "two_pass_generation_array"},
+    {"directory_mode": "flat_open_address", "deduplication_mode": "streaming_generation_array"}
+  ],
+  "hnsw_calibration": {"connectivity": [16, 24, 32], "ef_construction": 200, "ef_search": [256, 512, 768, 1024], "seed": 20260815},
+  "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "native_timing": {"warmup_count": 1, "repeat_count": 7, "percentiles": ["p50", "p95", "p99"]},
+  "selection_rule": {"scope": "calibration_only_per_scale", "mih_objective": "minimum_candidate_generator_p50_under_quality_and_memory_gates", "hnsw_objective": "minimum_candidate_generator_p50_under_same_quality_and_memory_gates", "confirmation": "one_frozen_configuration_per_family_on_french_without_retuning"}
+}
