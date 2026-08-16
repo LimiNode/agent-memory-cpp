@@ -68,10 +68,53 @@ does not beat Flat on this fresh 1M latency/quality pair and adds about 74.2 MiB
 of backend-specific logical storage.
 
 This is evidence about these three frozen configurations on this corpus and
-hardware, not a general declaration that one ANN family wins. It does establish
-that the predeclared backend frontier changes with scale, and that a production
-choice needs an explicit latency, memory and quality budget rather than a
-single corpus-size rule.
+hardware, not a general declaration that one ANN family wins. It establishes
+that the frontier among the three frozen calibration-selected representatives
+changes with scale, and that a production choice needs an explicit latency,
+memory and quality budget rather than a single corpus-size rule.
+
+It does **not** estimate a scale-optimal MIH frontier. The MIH substring count
+and exact fixed-r56 radius schedule were intentionally frozen while corpus size
+grew 40x. In particular, `m19` retains nine 14-bit and ten 13-bit bands at all
+three scales. A fixed-width sparse directory naturally accumulates larger
+postings as `N` grows, so this confirmation should be read as a failed transfer
+of the RU-calibration-selected `m19/r56` configuration, not as a conclusion
+that the MIH family intrinsically loses to Flat or HNSW at 1M. Its failure to
+beat Flat already at the fresh 25k scale is separately useful evidence that
+this configuration is not corpus-geometry-robust even near its original scale.
+
+The standard MIH starting heuristic is substring width `s ≈ log2(N)`, or
+equivalently `m ≈ 256 / log2(N)`. It suggests approximately `m=17–18` at 25k,
+`m=15` at 100k, and `m=13` at 1M. This is a uniform-code/equal-cost starting
+point, not a production selection rule: code geometry, radius schedule, bit
+assignment, directory implementation and hardware costs still require
+calibration-only measurement.
+
+## Post-hoc Diagnostics
+
+The evidence package adds descriptive paired bootstrap intervals over the same
+305 frozen fresh queries. They are effect-size diagnostics, not a new selection
+gate. Each delta below is `right - MIH`; the intervals are percentile 95% CIs
+from 10,000 paired resamples.
+
+| Scale | Right backend | Δ ADC survival [95% CI] | Δ nDCG@10 [95% CI] |
+| --- | --- | ---: | ---: |
+| 25k | Flat | +0.0203 [+0.0148, +0.0262] | +0.0023 [-0.0009, +0.0060] |
+| 25k | HNSW | +0.0203 [+0.0148, +0.0262] | +0.0023 [-0.0009, +0.0060] |
+| 100k | Flat | +0.0138 [+0.0089, +0.0193] | +0.0024 [-0.0005, +0.0057] |
+| 100k | HNSW | +0.0102 [+0.0043, +0.0167] | +0.0032 [-0.0002, +0.0071] |
+| 1M | Flat | +0.0043 [+0.0010, +0.0075] | -0.0024 [-0.0064, +0.0008] |
+| 1M | HNSW | -0.0161 [-0.0269, -0.0056] | -0.0020 [-0.0117, +0.0059] |
+
+The intervals support ADC-survival differences but do not support an nDCG rank
+among the three backends at any scale. The raw fixed-MIH work diagnostics make
+the scale mismatch concrete: mean unique candidates remain about 34% of the
+corpus (8,605 / 25k; 33,977 / 100k; 338,820 / 1M), while mean postings touched
+grow from 10,712 to 42,062 to 418,819 per query. The 1M candidate-generator
+time is consequently dominated by full Hamming scoring (p50 13.4310 ms), with
+generation deduplication (3.4808 ms) and top-K selection (2.9259 ms) also
+material. This is evidence about the frozen `m19` work profile, not a measured
+profile of a scale-adaptive MIH configuration.
 
 ## Limits And Follow-up
 
@@ -81,6 +124,22 @@ single corpus-size rule.
   breadth, code width or cascade limits on fresh results.
 - Candidate-generator, cascade and per-stage values must not be summed to
   construct a replacement latency.
-- Package the three scale roots through the fail-closed evidence validator,
-  retain the resulting evidence release, then review the frozen comparison
-  before proposing any new backend policy or experiment.
+- Evidence finalization independently replays the exhaustive E5 oracle from the
+  stored vectors and rejects any cache whose exact top positions or full-E5
+  nDCG values differ. It also packages the exact preparer, materializer and
+  requirements-lock source snapshots named by each scale's manifests; the
+  25k/100k materializer is therefore intentionally a historical snapshot,
+  rather than an unverified copy of the later 1M producer.
+- The post-hoc bootstrap intervals describe only these 305 queries and do not
+  license new ranking or configuration selection.
+- The next experiment requires a new calibration-only corpus/split with a
+  separate untouched corpus/language for confirmation. Give MIH a per-scale
+  grid (initially 25k `m=16…20`, 100k `m=13…18`, 1M `m=10…15`, retaining exact
+  r56 before adding radius variation) and HNSW an equal per-scale calibration
+  budget for `M` and `efSearch`.
+- At the same time, compare the present sorted-`lower_bound` directory with a
+  flat/open-address directory, especially around `m≈13`, and measure streaming
+  generation deduplication in place of the current visited-list then dedup pass.
+  Freeze the selected scale-specific representatives before one new untouched
+  confirmation. Do not add a coarse locator before this full ITQ-256 MIH
+  baseline is resolved.

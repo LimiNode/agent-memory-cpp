@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import zipfile
@@ -24,11 +25,11 @@ SOURCE_PATHS = {
     "src/agent_memory/index/VectorSimilarityComputer.cpp": ROOT / "src/agent_memory/index/VectorSimilarityComputer.cpp",
     "tools/agent-memory-bench/evaluate-native-ann-shortlists.py": THIS.with_name("evaluate-native-ann-shortlists.py"),
     "tools/agent-memory-bench/evaluate-projection-quantization.py": THIS.with_name("evaluate-projection-quantization.py"),
+    "tools/agent-memory-bench/bootstrap-native-ann-confirmation.py": THIS.with_name("bootstrap-native-ann-confirmation.py"),
+    "tools/agent-memory-bench/diagnose-native-ann-confirmation-mih.py": THIS.with_name("diagnose-native-ann-confirmation-mih.py"),
     "tools/agent-memory-bench/materialize-mih-storage-input.py": THIS.with_name("materialize-mih-storage-input.py"),
-    "tools/agent-memory-bench/materialize-prepared-e5.py": THIS.with_name("materialize-prepared-e5.py"),
     "tools/agent-memory-bench/mih_native_sparse_arbitrary_m.cpp": THIS.with_name("mih_native_sparse_arbitrary_m.cpp"),
     "tools/agent-memory-bench/native-ann-confirmation-scale.example.json": THIS.with_name("native-ann-confirmation-scale.example.json"),
-    "tools/agent-memory-bench/prepare-miracl-ae-study.py": THIS.with_name("prepare-miracl-ae-study.py"),
     "tools/agent-memory-bench/run-native-ann-confirmation-scale.py": THIS.with_name("run-native-ann-confirmation-scale.py"),
     "tools/agent-memory-bench/write-native-ann-confirmation-evidence.py": THIS,
 }
@@ -78,10 +79,75 @@ def load_module(filename: str, name: str) -> Any:
 
 runner = load_module("run-native-ann-confirmation-scale.py", "native_ann_confirmation_evidence_runner")
 evaluator = load_module("evaluate-native-ann-shortlists.py", "native_ann_confirmation_evidence_evaluator")
+bootstrap = load_module("bootstrap-native-ann-confirmation.py", "native_ann_confirmation_evidence_bootstrap")
+diagnostic = load_module("diagnose-native-ann-confirmation-mih.py", "native_ann_confirmation_evidence_diagnostic")
 
 
 def source_files() -> dict[str, str]:
     return {name: sha256(path) for name, path in SOURCE_PATHS.items()}
+
+
+def historical_source(relative_path: str, expected_sha256: str) -> bytes:
+    current = ROOT / relative_path
+    if current.is_file() and sha256(current) == expected_sha256:
+        return current.read_bytes()
+    revisions = subprocess.run(
+        ["git", "-C", str(ROOT), "rev-list", "--all", "--", relative_path],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
+    for revision in revisions:
+        value = subprocess.run(
+            ["git", "-C", str(ROOT), "show", f"{revision}:{relative_path}"],
+            check=True,
+            capture_output=True,
+        ).stdout
+        if sha256_bytes(value) == expected_sha256:
+            return value
+    raise ValueError(f"producer source snapshot is unavailable: {relative_path}")
+
+
+def producer_sources(prepared_manifest: dict[str, Any], e5_manifest: dict[str, Any]) -> dict[str, bytes]:
+    preparer = prepared_manifest.get("preparer", {})
+    materializer = e5_manifest.get("materializer", {})
+    require(preparer.get("id") == "agent-memory-cpp:miracl-ae-preparer" and preparer.get("version") == "v2" and isinstance(preparer.get("source_hash"), str), "confirmation preparer provenance differs")
+    require(materializer.get("id") == "agent-memory-cpp:multilingual-e5-materializer" and materializer.get("version") == "v1" and isinstance(materializer.get("source_hash"), str), "confirmation materializer provenance differs")
+    prefix = "requirements-e5-materializer.txt;sha256="
+    lock = materializer.get("requirements_lock")
+    require(isinstance(lock, str) and lock.startswith(prefix) and len(lock.removeprefix(prefix)) == 64, "confirmation materializer lock provenance differs")
+    sources = {
+        "prepare-miracl-ae-study.py": historical_source("tools/agent-memory-bench/prepare-miracl-ae-study.py", preparer["source_hash"]),
+        "materialize-prepared-e5.py": historical_source("tools/agent-memory-bench/materialize-prepared-e5.py", materializer["source_hash"]),
+        "requirements-e5-materializer.txt": historical_source("tools/agent-memory-bench/requirements-e5-materializer.txt", lock.removeprefix(prefix)),
+    }
+    require(sha256_bytes(sources["prepare-miracl-ae-study.py"]) == preparer["source_hash"] and sha256_bytes(sources["materialize-prepared-e5.py"]) == materializer["source_hash"] and sha256_bytes(sources["requirements-e5-materializer.txt"]) == lock.removeprefix(prefix), "confirmation producer source bytes differ")
+    return sources
+
+
+def recompute_oracle(data: dict[str, Any], oracle_k: int) -> tuple[numpy.ndarray, numpy.ndarray]:
+    require(oracle_k > 0 and oracle_k <= len(data["document_ids"]), "confirmation oracle K differs")
+    documents = numpy.asarray(data["documents"], dtype=numpy.float32)
+    document_ids = data["document_ids"]
+    top_positions = numpy.empty((len(data["query_ids"]), oracle_k), dtype=numpy.int64)
+    full_ndcg = numpy.empty(len(data["query_ids"]), dtype=numpy.float64)
+    for position, query_id in enumerate(data["query_ids"]):
+        exact_scores = documents @ numpy.asarray(data["queries"][position], dtype=numpy.float32)
+        exact_order = numpy.lexsort((document_ids, -exact_scores))
+        top_positions[position] = exact_order[:oracle_k]
+        full_ndcg[position] = evaluator.shared.dcg_at_10(document_ids[exact_order], data["qrels"][query_id])
+    return top_positions, full_ndcg
+
+
+def load_and_replay_oracle(path: Path, data: dict[str, Any], oracle_k: int) -> tuple[numpy.ndarray, numpy.ndarray]:
+    with numpy.load(path, allow_pickle=False) as archive:
+        top_positions = numpy.asarray(archive["exact_top_positions"]).copy()
+        full_ndcg = numpy.asarray(archive["full_e5_ndcg_at_10"]).copy()
+        identity = json.loads(str(archive["identity_json"].item()))
+        require(set(archive.files) == {"exact_top_positions", "full_e5_ndcg_at_10", "identity_json"} and identity == evaluator.oracle_cache_identity(data, oracle_k) and top_positions.shape == (len(data["query_ids"]), oracle_k) and full_ndcg.shape == (len(data["query_ids"]),) and numpy.isfinite(full_ndcg).all(), "confirmation oracle provenance differs")
+    replay_top_positions, replay_full_ndcg = recompute_oracle(data, oracle_k)
+    require(numpy.array_equal(top_positions, replay_top_positions) and numpy.array_equal(full_ndcg, replay_full_ndcg), "confirmation oracle cache replay differs")
+    return top_positions, full_ndcg
 
 
 def load_contributions(path: Path, query_ids: list[str], identity: dict[str, Any]) -> dict[str, numpy.ndarray]:
@@ -107,6 +173,14 @@ def validate_quality(quality: dict[str, Any], values: dict[str, numpy.ndarray], 
         require(quality.get(report_field) == float(numpy.mean(values[contribution_field])), f"confirmation quality aggregate differs: {report_field}")
 
 
+def bootstrap_specs() -> tuple[tuple[str, str], ...]:
+    return (
+        ("mih-m19-fixed-r56", "binary-flat-256"),
+        ("mih-m19-fixed-r56", "binary-hnsw-m16-ef768"),
+        ("binary-flat-256", "binary-hnsw-m16-ef768"),
+    )
+
+
 def collect_scale(contract: dict[str, Any], contract_path: Path, calibration_root: Path, output_root: Path, current: dict[str, Any], files: dict[str, bytes]) -> dict[str, Any]:
     scale_root = output_root / current["id"]
     prepared_root, e5_root, comparison_root = scale_root / "prepared", scale_root / "e5", scale_root / "comparison"
@@ -122,10 +196,7 @@ def collect_scale(contract: dict[str, Any], contract_path: Path, calibration_roo
     require(int(input_manifest["query_count"]) == len(data["query_ids"]) and input_manifest.get("evaluation_materialization_manifest_sha256") == sha256(e5_root / "manifest.json") and input_manifest.get("calibration_materialization_manifest_sha256") == sha256(calibration_root / "manifest.json"), f"confirmation input manifest differs: {current['id']}")
     oracle_path = comparison_root / "quality" / "full-e5-oracle.npz"
     oracle_sha = sha256(oracle_path)
-    with numpy.load(oracle_path, allow_pickle=False) as archive:
-        top_positions = numpy.asarray(archive["exact_top_positions"])
-        full_ndcg = numpy.asarray(archive["full_e5_ndcg_at_10"])
-        require(set(archive.files) == {"exact_top_positions", "full_e5_ndcg_at_10", "identity_json"} and json.loads(str(archive["identity_json"].item())) == evaluator.oracle_cache_identity(data, contract["cascade"]["oracle_k"]) and top_positions.shape == (len(data["query_ids"]), contract["cascade"]["oracle_k"]) and full_ndcg.shape == (len(data["query_ids"]),) and numpy.isfinite(full_ndcg).all(), f"confirmation oracle provenance differs: {current['id']}")
+    load_and_replay_oracle(oracle_path, data, contract["cascade"]["oracle_k"])
     result_rows: list[dict[str, Any]] = []
     for treatment in runner.backend_treatments(contract):
         identifier = treatment["id"]
@@ -149,6 +220,22 @@ def collect_scale(contract: dict[str, Any], contract_path: Path, calibration_roo
     require(result.get("rows") == result_rows, f"confirmation result rows differ: {current['id']}")
     for path in (prepared_config_path, prepared_root / "manifest.json", e5_root / "manifest.json", e5_root / "prepared-study-manifest.json", input_root / "manifest.json", oracle_path, result_path):
         files[f"bundle/scales/{current['id']}/{path.relative_to(scale_root).as_posix()}"] = path.read_bytes()
+    prepared_manifest = json.loads((prepared_root / "manifest.json").read_text(encoding="utf-8"))
+    e5_manifest = json.loads((e5_root / "manifest.json").read_text(encoding="utf-8"))
+    for name, value in producer_sources(prepared_manifest, e5_manifest).items():
+        files[f"bundle/scales/{current['id']}/producer-sources/{name}"] = value
+    diagnostics_root = comparison_root / "diagnostics"
+    for left_id, right_id in bootstrap_specs():
+        bootstrap_path = diagnostics_root / "bootstrap" / f"{left_id}--{right_id}.json"
+        expected_bootstrap = bootstrap.report(
+            comparison_root / "contributions" / f"{left_id}.npz",
+            comparison_root / "contributions" / f"{right_id}.npz",
+            f"{current['id']}:{left_id}--{right_id}",
+            10000,
+            20260827,
+        )
+        require(json.loads(bootstrap_path.read_text(encoding="utf-8")) == expected_bootstrap, f"confirmation bootstrap diagnostic differs: {current['id']}:{left_id}--{right_id}")
+        files[f"bundle/scales/{current['id']}/comparison/diagnostics/bootstrap/{bootstrap_path.name}"] = bootstrap_path.read_bytes()
     return {"id": current["id"], "prepared_manifest_sha256": sha256(prepared_root / "manifest.json"), "e5_manifest_sha256": sha256(e5_root / "manifest.json"), "result_sha256": sha256(result_path), "rows": result_rows}
 
 
@@ -158,6 +245,9 @@ def package(args: Any) -> None:
     require(sha256(args.calibration_selection) == contract["frozen_calibration"]["selection_sha256"] and sha256(args.calibration_evidence) == contract["frozen_calibration"]["evidence_zip_sha256"] and selection.get("frozen_backend_ids") == {"mih": "mih-m19-fixed-r56", "flat": "binary-flat-256", "hnsw": "binary-hnsw-m16-ef768"}, "confirmation frozen calibration binding differs")
     files: dict[str, bytes] = {"bundle/contract.json": args.contract.read_bytes(), "bundle/calibration-selection.json": args.calibration_selection.read_bytes(), "bundle/experiment-note.md": args.note.read_bytes()}
     scales = [collect_scale(contract, args.contract, args.calibration_root, args.output_root, current, files) for current in contract["scales"]]
+    diagnosis_path = args.output_root / "diagnostics" / "mih-work.json"
+    require(json.loads(diagnosis_path.read_text(encoding="utf-8")) == diagnostic.summary(contract, args.output_root), "confirmation MIH work diagnostic differs")
+    files["bundle/diagnostics/mih-work.json"] = diagnosis_path.read_bytes()
     for name, path in SOURCE_PATHS.items():
         files[f"bundle/sources/{name}"] = path.read_bytes()
     members = {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}
@@ -235,6 +325,34 @@ def self_test() -> int:
                 pass
             else:
                 raise ValueError("confirmation contribution query-id mutation was accepted")
+            oracle_data = {
+                "documents": numpy.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=numpy.float32),
+                "document_ids": numpy.asarray(["a", "b"]),
+                "queries": numpy.asarray([[1.0, 0.0]], dtype=numpy.float32),
+                "query_ids": ["q0"],
+                "qrels": {"q0": {"a": 1}},
+                "manifest_sha256": "3" * 64,
+                "evaluation_qrels_sha256": "4" * 64,
+            }
+            oracle_path = Path(directory) / "oracle.npz"
+            top, ndcg = recompute_oracle(oracle_data, 1)
+            oracle_identity = evaluator.oracle_cache_identity(oracle_data, 1)
+            numpy.savez_compressed(oracle_path, exact_top_positions=top, full_e5_ndcg_at_10=ndcg, identity_json=numpy.asarray(json.dumps(oracle_identity, sort_keys=True, separators=(",", ":"))))
+            load_and_replay_oracle(oracle_path, oracle_data, 1)
+            numpy.savez_compressed(oracle_path, exact_top_positions=numpy.asarray([[1]]), full_e5_ndcg_at_10=ndcg, identity_json=numpy.asarray(json.dumps(oracle_identity, sort_keys=True, separators=(",", ":"))))
+            try:
+                load_and_replay_oracle(oracle_path, oracle_data, 1)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("confirmation oracle top-position mutation was accepted")
+            numpy.savez_compressed(oracle_path, exact_top_positions=top, full_e5_ndcg_at_10=numpy.asarray([0.0]), identity_json=numpy.asarray(json.dumps(oracle_identity, sort_keys=True, separators=(",", ":"))))
+            try:
+                load_and_replay_oracle(oracle_path, oracle_data, 1)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("confirmation oracle nDCG mutation was accepted")
     except (OSError, ValueError, zipfile.BadZipFile) as error:
         print(f"native ANN confirmation evidence packager self-test failed: {error}", file=sys.stderr)
         return 1
