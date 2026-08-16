@@ -164,6 +164,12 @@ rules. A failed OCR or caption representation simply removes that route; it
 does not invalidate the original image, visual embedding or a separately
 published projection.
 
+Cross-modal semantic codes and the shared descriptor-scoped binary-engine
+direction are described in
+[`multimodal-binary-retrieval-roadmap.md`](multimodal-binary-retrieval-roadmap.md).
+They are not evidence that an image code is compatible with the current text
+binary space.
+
 ## References
 
 - [ElasticHash approach](https://nik-ko.github.io/elastichash/approach.html)

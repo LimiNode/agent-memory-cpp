@@ -860,6 +860,11 @@ projections is in [`visual-retrieval-roadmap.md`](visual-retrieval-roadmap.md).
 It extends this artifact contract but does not authorize a media-processing
 runtime in the core.
 
+The descriptor-scoped semantic-binary and audio-fingerprint research direction
+is documented in
+[`multimodal-binary-retrieval-roadmap.md`](multimodal-binary-retrieval-roadmap.md).
+It is likewise deferred and does not make a model adapter part of the core.
+
 `Context` carries text, `SourceRefSummary`, and typed
 `MaterializationInstruction` values by default. An instruction names its stable
 anchor, source revision, original artifact and original locator, and constrains
