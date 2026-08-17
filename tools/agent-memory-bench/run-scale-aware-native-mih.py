@@ -9,6 +9,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -98,7 +99,11 @@ def preparation_config(contract: dict[str, Any], current: dict[str, Any], qrel_c
 
 
 def read_ids(path: Path) -> set[str]:
-    return {json.loads(line)["id"] for line in path.read_text(encoding="utf-8").splitlines() if line}
+    # JSONL records are delimited by physical LF/CRLF bytes.  str.splitlines()
+    # additionally treats valid Unicode text characters such as U+0085 as a
+    # record boundary, which corrupts documents containing those characters.
+    with path.open("r", encoding="utf-8", newline=None) as stream:
+        return {json.loads(line)["id"] for line in stream if line.strip()}
 
 
 def prepare(args: Any, contract: dict[str, Any]) -> None:
@@ -231,6 +236,15 @@ def self_test() -> int:
         require({value["hnsw_ef_search"] for value in values if value["backend"] == "hnsw"} == {768, 1024}, "scale-aware HNSW treatment grid differs")
         lower = bootstrap(numpy.asarray([0.8, 0.9, 1.0], dtype=numpy.float64), None, 100, 7, 0.95)
         require(0.0 < lower <= 1.0, "scale-aware bootstrap differs")
+        with tempfile.TemporaryDirectory() as temporary:
+            ids_path = Path(temporary) / "documents.jsonl"
+            ids_path.write_text(
+                json.dumps({"id": "first", "text": "valid U+0085: \u0085"}, ensure_ascii=False) + "\n"
+                + json.dumps({"id": "second"}) + "\n",
+                encoding="utf-8",
+                newline="\n",
+            )
+            require(read_ids(ids_path) == {"first", "second"}, "scale-aware JSONL reader splits Unicode document text")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         print(f"run-scale-aware-native-mih self-test failed: {error}", file=sys.stderr)
         return 1
