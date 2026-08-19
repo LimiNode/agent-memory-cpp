@@ -117,10 +117,22 @@ then execute one French confirmation per family without retuning.
 Status: completed calibration-only sweep; French confirmation was not run.
 
 Measured source: PR #155, commit `f9aa210` (with the HNSW-enabled native
-benchmark build).  Raw, uncommitted outputs are under
-`tmp/scale-aware-es-calibration/`; each scale's `results/result.json` binds
-the protocol, input manifest, frozen ITQ artifact, native reports, shortlists,
-quality reports, and bootstrap gates.
+benchmark build). Each scale's `results/result.json` binds the protocol, input
+manifest, frozen ITQ artifact, native reports, shortlists, quality reports, and
+bootstrap gates.
+
+Evidence is retained for review in the draft release
+[`[Evidence] Scale-aware native MIH calibration v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/untagged-8f47f4d8a19e6b24a0fa).
+Its single ZIP has SHA-256
+`6966074f347b15761eb596fe5689046f3fc57fba7207009f1069d60f0e6b6456` and
+bundle-root SHA-256
+`1f2d58a5c2addfcb9e7bb1a1366630bc28dfc4976eba76e99d927992965b724c`.
+The archive contains the protocol/preflight, ITQ artifact, per-scale result,
+input and E5 manifests, configs, native reports, quality reports, oracle
+caches, contributions, and measured-source snapshots. The approximately 1 GB
+shortlist JSON payload is omitted by design; every included quality report
+binds its shortlist by SHA-256, and the archive independently replays every
+bootstrap gate from the included per-query contributions.
 
 The shared ITQ-256 artifact was trained once from the same 25,000 Spanish
 training documents at every scale.  Its v2 identity binds ordered training
