@@ -76,10 +76,12 @@ def pack_vectors(vectors: Any, dimension: int) -> bytes:
 
 def itq_artifact_identity(calibration: dict[str, Any], code_bits: int, seed: int, iterations: int) -> dict[str, Any]:
     return {
-        "schema_version": 1,
-        "family": "mih_storage_itq_artifact_v1",
-        "calibration_materialization_manifest_sha256": calibration["manifest_sha256"],
+        "schema_version": 2,
+        "family": "mih_storage_itq_artifact_v2",
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
+        "calibration_train_vectors_sha256": calibration["output_hashes"]["train_vectors"],
+        "embedding_identity": calibration["embedding_identity"],
+        "dimension": calibration["dimension"],
         "code_bits": code_bits,
         "seed": seed,
         "itq_iterations": iterations,
@@ -173,6 +175,7 @@ def materialize(args: Any) -> None:
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"],
         "evaluation_materialization_manifest_sha256": evaluation["manifest_sha256"],
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
+        "calibration_train_vectors_sha256": calibration["output_hashes"]["train_vectors"],
         "document_count": int(document_codes.shape[0]),
         "query_count": int(query_codes.shape[0]),
         "document_codes_file": document_path.name,
@@ -224,12 +227,27 @@ def self_test() -> int:
             "train_ids": ["a", "b", "c", "d"],
             "dimension": 2,
             "train": numpy.asarray([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]], dtype=numpy.float32),
+            "output_hashes": {"train_vectors": "a" * 64},
+            "embedding_identity": {"model_id": "test", "model_revision": "a" * 40, "query_prefix": "query: ", "document_prefix": "passage: ", "normalized": True},
         }
         artifact = root / "itq-artifact.npz"
         weights, thresholds, centers, written_sha256 = load_or_train_itq(calibration, 2, 7, 2, None, artifact)
         loaded_weights, loaded_thresholds, loaded_centers, loaded_sha256 = load_or_train_itq(calibration, 2, 7, 2, artifact, None)
         if written_sha256 != loaded_sha256 or not numpy.array_equal(weights, loaded_weights) or not numpy.array_equal(thresholds, loaded_thresholds) or not numpy.array_equal(centers, loaded_centers):
             print("self-test failed: frozen ITQ artifact differs", file=sys.stderr)
+            return 1
+        changed = {**calibration, "manifest_sha256": "b" * 64}
+        different_weights, different_thresholds, different_centers, _ = load_or_train_itq(changed, 2, 7, 2, artifact, None)
+        if not numpy.array_equal(weights, different_weights) or not numpy.array_equal(thresholds, different_thresholds) or not numpy.array_equal(centers, different_centers):
+            print("self-test failed: shared ITQ artifact does not transfer across evaluation manifests", file=sys.stderr)
+            return 1
+        changed = {**calibration, "output_hashes": {**calibration["output_hashes"], "train_vectors": "b" * 64}}
+        try:
+            load_or_train_itq(changed, 2, 7, 2, artifact, None)
+        except EvaluationError:
+            pass
+        else:
+            print("self-test failed: ITQ artifact accepted changed training vectors", file=sys.stderr)
             return 1
     print("MIH storage input materializer self-test passed")
     return 0

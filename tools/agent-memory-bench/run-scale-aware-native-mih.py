@@ -222,6 +222,7 @@ def run(args: Any, contract: dict[str, Any]) -> None:
     subprocess.run([str(args.python), str(THIS / "preflight-scale-aware-native-mih.py"), "--contract", str(args.contract), "--output", str(preflight_path)], check=True)
     probe_report = json.loads(preflight_path.read_text(encoding="utf-8"))
     artifact = args.output_root / "itq-256-artifact.npz"
+    previous_training_identity: tuple[str, str] | None = None
     for current in contract["scales"]:
         root = args.output_root / current["id"]
         input_root = root / "input"
@@ -231,13 +232,20 @@ def run(args: Any, contract: dict[str, Any]) -> None:
         else:
             materialize_command.extend(["--write-itq-artifact", str(artifact)])
         subprocess.run(materialize_command, check=True)
+        input_manifest = json.loads((input_root / "manifest.json").read_text(encoding="utf-8"))
+        training_identity = (
+            input_manifest["calibration_train_ids_sha256"],
+            input_manifest["calibration_train_vectors_sha256"],
+        )
+        if previous_training_identity is not None:
+            require(previous_training_identity == training_identity, "scale-aware ITQ training inputs differ across scales")
+        previous_training_identity = training_identity
         rows: list[dict[str, Any]] = []
         for ordinal, treatment in enumerate(treatments(contract, current, probe_report)):
             output = root / "results"
             config_path, report_path, shortlist = output / "configs" / f"{treatment['id']}.json", output / "native-reports" / f"{treatment['id']}.json", output / "shortlists" / f"{treatment['id']}.json"
             config_path.parent.mkdir(parents=True, exist_ok=True); report_path.parent.mkdir(parents=True, exist_ok=True); shortlist.parent.mkdir(parents=True, exist_ok=True)
             config = native_config(contract, input_root, shortlist, treatment)
-            input_manifest = json.loads((input_root / "manifest.json").read_text(encoding="utf-8"))
             config["query_count"] = input_manifest["query_count"]
             config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
             quality = output / "quality" / f"{treatment['id']}.json"; contributions = output / "contributions" / f"{treatment['id']}.npz"
