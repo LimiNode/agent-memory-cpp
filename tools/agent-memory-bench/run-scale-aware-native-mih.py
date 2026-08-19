@@ -182,6 +182,41 @@ def native_config(contract: dict[str, Any], input_root: Path, output: Path, trea
     return result
 
 
+def completed_row(
+    config_path: Path,
+    report_path: Path,
+    shortlist_path: Path,
+    quality_path: Path,
+    contributions_path: Path,
+    input_manifest_sha256: str,
+) -> bool:
+    """Return whether a prior row is complete and bound to this exact input.
+
+    This permits an interrupted sweep to continue without overwriting a
+    completed timing sample.  Missing or malformed artifacts deliberately
+    return false, so the caller regenerates the whole row instead.
+    """
+    if not all(path.is_file() for path in (report_path, shortlist_path, quality_path, contributions_path)):
+        return False
+    try:
+        report = json.loads(report_path.read_text(encoding="utf-8"))
+        shortlist = json.loads(shortlist_path.read_text(encoding="utf-8"))
+        quality = json.loads(quality_path.read_text(encoding="utf-8"))
+        with numpy.load(contributions_path, allow_pickle=False) as archive:
+            required = {"e5_oracle_survival_after_adc", "reranked_ndcg_at_10", "full_e5_ndcg_at_10"}
+            if not required.issubset(archive.files):
+                return False
+        return (
+            report.get("benchmark_config_sha256") == sha256(config_path)
+            and report.get("input_manifest_sha256") == input_manifest_sha256
+            and shortlist.get("input_manifest_sha256") == input_manifest_sha256
+            and quality.get("shortlist_export_sha256") == sha256(shortlist_path)
+            and quality.get("per_query_contributions_sha256") == sha256(contributions_path)
+        )
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return False
+
+
 def run(args: Any, contract: dict[str, Any]) -> None:
     preflight_path = args.output_root / "preflight.json"
     subprocess.run([str(args.python), str(THIS / "preflight-scale-aware-native-mih.py"), "--contract", str(args.contract), "--output", str(preflight_path)], check=True)
@@ -205,11 +240,15 @@ def run(args: Any, contract: dict[str, Any]) -> None:
             input_manifest = json.loads((input_root / "manifest.json").read_text(encoding="utf-8"))
             config["query_count"] = input_manifest["query_count"]
             config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
-            print(f"[{current['id']} {ordinal + 1}] {treatment['id']}", flush=True)
-            subprocess.run([str(args.executable), str(config_path), str(report_path)], check=True)
             quality = output / "quality" / f"{treatment['id']}.json"; contributions = output / "contributions" / f"{treatment['id']}.npz"
             quality.parent.mkdir(parents=True, exist_ok=True); contributions.parent.mkdir(parents=True, exist_ok=True)
-            subprocess.run([str(args.python), str(THIS / "evaluate-native-ann-shortlists.py"), "evaluate", "--evaluation-root", str(root / "e5"), "--shortlist-export", str(shortlist), "--output", str(quality), "--contributions-output", str(contributions), "--hamming-limit", str(contract["cascade"]["hamming_limit"]), "--adc-limit", str(contract["cascade"]["adc_limit"]), "--oracle-k", str(contract["cascade"]["oracle_k"]), "--oracle-cache", str(output / "quality" / "full-e5-oracle.npz")], check=True)
+            input_manifest_sha256 = sha256(input_root / "manifest.json")
+            if completed_row(config_path, report_path, shortlist, quality, contributions, input_manifest_sha256):
+                print(f"[{current['id']} {ordinal + 1}] {treatment['id']} (resume)", flush=True)
+            else:
+                print(f"[{current['id']} {ordinal + 1}] {treatment['id']}", flush=True)
+                subprocess.run([str(args.executable), str(config_path), str(report_path)], check=True)
+                subprocess.run([str(args.python), str(THIS / "evaluate-native-ann-shortlists.py"), "evaluate", "--evaluation-root", str(root / "e5"), "--shortlist-export", str(shortlist), "--output", str(quality), "--contributions-output", str(contributions), "--hamming-limit", str(contract["cascade"]["hamming_limit"]), "--adc-limit", str(contract["cascade"]["adc_limit"]), "--oracle-k", str(contract["cascade"]["oracle_k"]), "--oracle-cache", str(output / "quality" / "full-e5-oracle.npz")], check=True)
             with numpy.load(contributions, allow_pickle=False) as archive:
                 adc, reranked, full = (numpy.asarray(archive[name], dtype=numpy.float64) for name in ("e5_oracle_survival_after_adc", "reranked_ndcg_at_10", "full_e5_ndcg_at_10"))
             gates = contract["selection_gates"]
@@ -237,7 +276,8 @@ def self_test() -> int:
         lower = bootstrap(numpy.asarray([0.8, 0.9, 1.0], dtype=numpy.float64), None, 100, 7, 0.95)
         require(0.0 < lower <= 1.0, "scale-aware bootstrap differs")
         with tempfile.TemporaryDirectory() as temporary:
-            ids_path = Path(temporary) / "documents.jsonl"
+            root = Path(temporary)
+            ids_path = root / "documents.jsonl"
             ids_path.write_text(
                 json.dumps({"id": "first", "text": "valid U+0085: \u0085"}, ensure_ascii=False) + "\n"
                 + json.dumps({"id": "second"}) + "\n",
@@ -245,6 +285,16 @@ def self_test() -> int:
                 newline="\n",
             )
             require(read_ids(ids_path) == {"first", "second"}, "scale-aware JSONL reader splits Unicode document text")
+            config_path, report_path, shortlist_path = root / "config.json", root / "report.json", root / "shortlist.json"
+            quality_path, contributions_path = root / "quality.json", root / "contributions.npz"
+            config_path.write_text("{}", encoding="utf-8")
+            shortlist_path.write_text(json.dumps({"input_manifest_sha256": "input"}), encoding="utf-8")
+            numpy.savez(contributions_path, e5_oracle_survival_after_adc=numpy.asarray([1.0]), reranked_ndcg_at_10=numpy.asarray([1.0]), full_e5_ndcg_at_10=numpy.asarray([1.0]))
+            report_path.write_text(json.dumps({"benchmark_config_sha256": sha256(config_path), "input_manifest_sha256": "input"}), encoding="utf-8")
+            quality_path.write_text(json.dumps({"shortlist_export_sha256": sha256(shortlist_path), "per_query_contributions_sha256": sha256(contributions_path)}), encoding="utf-8")
+            require(completed_row(config_path, report_path, shortlist_path, quality_path, contributions_path, "input"), "scale-aware complete row was not resumed")
+            report_path.write_text("{}", encoding="utf-8")
+            require(not completed_row(config_path, report_path, shortlist_path, quality_path, contributions_path, "input"), "scale-aware invalid row was resumed")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         print(f"run-scale-aware-native-mih self-test failed: {error}", file=sys.stderr)
         return 1
