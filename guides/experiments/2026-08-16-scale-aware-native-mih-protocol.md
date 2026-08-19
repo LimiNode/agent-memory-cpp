@@ -87,15 +87,19 @@ unique candidates, candidate fraction, and unique candidates per posting visit.
 
 Within each scale, choose MIH and HNSW only from calibration rows satisfying
 all of these predeclared gates: ADC-oracle bootstrap LB95 ≥ 0.90, nDCG
-retention bootstrap LB95 ≥ 0.98, and auxiliary resident bytes/document ≤ 256.
+retention bootstrap LB95 ≥ 0.98, and auxiliary logical index bytes/document
+≤ 256.  The frozen machine-contract field is named
+`auxiliary_resident_bytes_per_document` for compatibility, but its measured
+value is `backend_index_logical_bytes / document_count`; allocator and process
+RSS footprint were not a gate.
 The bootstrap uses 10,000 replicates, confidence 0.95 and deterministic metric
 seeds derived from base seed 20260827.
-Auxiliary resident bytes include backend-specific immutable index structures
+Auxiliary logical index bytes include backend-specific immutable index structures
 (directory keys/slots, offsets, postings or HNSW graph) but exclude the shared
 32-byte binary-code store and transient query scratch. This normalized memory
 gate is intentionally scale-independent; it replaces the small-corpus absolute
 byte gate from #149. Choose by candidate-generator p50, then cascade p50,
-resident bytes and a stable identifier. Freeze the resulting configurations,
+logical index bytes and a stable identifier. Freeze the resulting configurations,
 then execute one French confirmation per family without retuning.
 
 ## Limits And Follow-up
@@ -140,21 +144,22 @@ The 1M protocol has 27 rows because exact-probe preflight excluded `m10` and
 `candidate-generator p50` is the selection objective.  The selected rows and
 their gate statistics are:
 
-| Scale | Backend | Candidate-generator p50 | Cascade p50 | ADC-oracle LB95 | nDCG retention LB95 | Auxiliary bytes/doc |
+| Scale | Backend | Candidate-generator p50 | Cascade p50 | ADC-oracle LB95 | nDCG retention LB95 | Auxiliary logical index bytes/doc |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | 25k | MIH `m21` flat/two-pass | 0.3105 ms | 0.4952 ms | 0.9551 | 0.9833 | 165.40 |
 | 25k | Flat | 0.4488 ms | 0.6411 ms | 0.9918 | 1.0000 | 0.00 |
-| 25k | HNSW `m16/ef768` | 0.7688 ms | 0.9684 ms | 0.9909 | 1.0000 | 180.65 |
+| 25k | HNSW `M16/ef768` | 0.7688 ms | 0.9684 ms | 0.9909 | 1.0000 | 180.65 |
 | 100k | Flat | 1.6479 ms | 1.8853 ms | 0.9778 | 0.9944 | 0.00 |
-| 100k | HNSW `m16/ef768` | 1.0318 ms | 1.2572 ms | 0.9759 | 0.9936 | 180.60 |
+| 100k | HNSW `M16/ef768` | 1.0318 ms | 1.2572 ms | 0.9759 | 0.9936 | 180.60 |
 | 1M | Flat | 15.5583 ms | 15.8819 ms | 0.9403 | 0.9842 | 0.00 |
-| 1M | HNSW `m24/ef1024` | 3.3344 ms | 3.5719 ms | 0.9353 | 0.9819 | 244.35 |
+| 1M | HNSW `M24/ef1024` | 3.3344 ms | 3.5719 ms | 0.9353 | 0.9819 | 244.35 |
 
 ### MIH Interpretation
 
-This sweep confirms the scale mechanism rather than a stable full-code MIH
-winner.  At 25k, the selected `m21` row is faster than Flat under the frozen
-quality and memory gates.  At 100k, the fastest MIH row is `m19` with the flat
+This sweep supports the scale-mismatch diagnosis rather than identifying a
+stable full-code MIH winner.  At 25k, the selected `m21` row is faster than
+Flat under the frozen quality and logical-index-memory gates.  At 100k, the
+fastest MIH row is `m19` with the flat
 directory and two-pass deduplication (0.6961 ms candidate-generator p50), but
 its nDCG-retention LB95 is 0.9710, below the predeclared 0.98 gate.  No 100k
 MIH row passes all gates.
@@ -185,7 +190,7 @@ Do not run the planned French confirmatory comparison for MIH from this
 calibration.  It would be a post-hoc choice without an admissible Spanish MIH
 configuration.  The valid conclusion is narrower: under the current full
 ITQ-256, fixed-r56 exact-inclusion, top-768/top-256 cascade, and 256 bytes/doc
-auxiliary-memory contract, native arbitrary-`m` MIH is admissible at 25k but
+auxiliary-logical-index-memory contract, native arbitrary-`m` MIH is admissible at 25k but
 not at 100k or 1M.
 
 Flat and HNSW have admissible per-scale calibration rows, but this experiment
