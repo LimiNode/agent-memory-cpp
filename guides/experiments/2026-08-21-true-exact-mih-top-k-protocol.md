@@ -64,6 +64,19 @@ fixture must state the upstream build command, compiler version, binary
 encoding, tie rule, and its SHA-256 outputs; a changed upstream commit or
 fixture requires a new predeclared revision.
 
+The checked fixture records the Linux GCC container digest and can be replayed
+without the upstream HDF5 command-line interface:
+
+```text
+py -3 tools/agent-memory-bench/verify-norouzi-mih-conformance.py \
+  --upstream <pinned-norouzi-mih-checkout> \
+  --docker-image gcc@sha256:056fa682471704249f619f65ccec87d671ad5f1b20878da54d60b0b863486621
+```
+
+The runner compiles the upstream MIH core itself, constructs the fixture with
+the documented little-endian byte encoding, and canonicalizes returned IDs
+with freshly computed Hamming distances before requiring the recorded SHA-256.
+
 ## Decision boundary
 
 This protocol cannot select a production backend.  After reproducible exact
