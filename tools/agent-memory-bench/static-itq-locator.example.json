@@ -5,6 +5,10 @@
   "ranking_representation": "frozen_itq_256_v1",
   "routing_representation": "static_selected_subset_of_frozen_itq_256_bits_v1",
   "scale": {"id": "es-25k", "documents": 25000, "language": "es", "split": "dev"},
+  "frozen_manifests": {
+    "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987",
+    "evaluation_manifest_sha256": "f020bc77f7b534e45a596683eabfb30fcd71220268b0cf244f29152abd262c84"
+  },
   "bit_counts": [64, 80, 96],
   "subset_variants": ["random_seeded_v1", "low_correlation_greedy_v1", "partitioned_decorrelation_v1"],
   "random_seed": 20260830,

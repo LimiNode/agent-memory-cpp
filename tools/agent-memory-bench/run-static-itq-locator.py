@@ -37,6 +37,7 @@ def load_contract(path: Path) -> dict[str, Any]:
     require(value.get("bands") == {"width_bits": 16, "local_radius": 3}, "static locator band contract differs")
     require(value.get("cascade") == {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10}, "static locator cascade contract differs")
     require(value.get("scale") == {"id": "es-25k", "documents": 25000, "language": "es", "split": "dev"}, "static locator calibration scope differs")
+    require(value.get("frozen_manifests") == {"input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987", "evaluation_manifest_sha256": "f020bc77f7b534e45a596683eabfb30fcd71220268b0cf244f29152abd262c84"}, "static locator frozen manifests differ")
     return value
 
 
@@ -122,8 +123,12 @@ def hamming_recall(reference_path: Path, current_path: Path, limit: int) -> floa
 
 def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     input_root = args.input_root / "input"
-    manifest = json.loads((input_root / "manifest.json").read_text(encoding="utf-8"))
+    input_manifest_path = input_root / "manifest.json"
+    manifest = json.loads(input_manifest_path.read_text(encoding="utf-8"))
     require(manifest.get("document_count") == contract["scale"]["documents"] and manifest.get("query_count") == 648, "static locator frozen input differs")
+    require(sha256(input_manifest_path) == contract["frozen_manifests"]["input_manifest_sha256"], "static locator input manifest SHA differs")
+    evaluation_manifest_path = args.evaluation_root / "manifest.json"
+    require(evaluation_manifest_path.is_file() and sha256(evaluation_manifest_path) == contract["frozen_manifests"]["evaluation_manifest_sha256"], "static locator evaluation manifest SHA differs")
     corr = correlation(codes(input_root / manifest["document_codes_file"], manifest["document_count"]))
     flat_config_path, flat_report_path, flat_shortlist_path = args.output_root / "configs" / "flat-itq256-hamming-reference.json", args.output_root / "native-reports" / "flat-itq256-hamming-reference.json", args.output_root / "shortlists" / "flat-itq256-hamming-reference.json"
     for path in (flat_config_path, flat_report_path, flat_shortlist_path): path.parent.mkdir(parents=True, exist_ok=True)
@@ -146,7 +151,7 @@ def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
             require(report.get("mih_search_mode") == "approximate_locator" and report.get("locator_bit_positions") == positions and report.get("fixed_radius") is None and report.get("conformance", {}).get("candidate_union_fixed_r56_checked") is False, f"static locator report differs: {identifier}")
             rows.append({"id": identifier, "bit_count": bit_count, "variant": variant, "locator_bit_positions": positions, "config_sha256": sha256(config_path), "report_sha256": sha256(report_path), "quality_sha256": sha256(quality_path), "candidate_fraction": report["counters_per_query"]["unique_candidates"] / manifest["document_count"], "candidate_generator_p50_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"]["p50"], "full_itq256_flat_hamming_top768_recall": hamming_recall(flat_shortlist_path, shortlist_path, 768), "e5_oracle_survival_after_adc": quality["e5_oracle_survival_after_adc"]})
     args.output_root.mkdir(parents=True, exist_ok=True)
-    (args.output_root / "summary.json").write_text(json.dumps({"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "input_manifest_sha256": sha256(input_root / "manifest.json"), "rows": rows}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    (args.output_root / "summary.json").write_text(json.dumps({"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "input_manifest_sha256": sha256(input_manifest_path), "evaluation_manifest_sha256": sha256(evaluation_manifest_path), "rows": rows}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
 
 def self_test() -> None:

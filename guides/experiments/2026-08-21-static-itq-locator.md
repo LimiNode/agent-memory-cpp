@@ -20,10 +20,15 @@ selection.
 
 The native harness then reranked the selected candidates with full ITQ-256
 Hamming, ADC, and E5.  A separate Flat-ITQ256 Hamming top-768 export supplied
-the binary-recall reference.  Raw local outputs are intentionally untracked;
-the reproducible contract and runner are
-`tools/agent-memory-bench/static-itq-locator.example.json` and
-`run-static-itq-locator.py`.
+the binary-recall reference. The contract pins the Spanish input and E5
+materialization manifests. Raw local outputs are intentionally untracked, but
+the fail-closed evidence packager includes the Flat reference plus all nine
+configs, native reports, shortlists, quality reports, and per-query
+contributions. It independently recomputes each E5 survival and refuses an
+archive unless the nine-row matrix and negative learned-routing permission
+result replay exactly. The reproducible contract, runner, and packager are
+`static-itq-locator.example.json`, `run-static-itq-locator.py`, and
+`write-static-itq-locator-evidence.py`.
 
 The predeclared permission gate for a separate learned-routing PR required
 E5-oracle survival after ADC of at least 0.90, candidate fraction at most 0.25,
@@ -34,15 +39,15 @@ It is a permission gate only, not a production selection rule.
 
 | Locator | Subset policy | Candidate fraction | Generator p50 (ms/query) | Full-ITQ256 Hamming top-768 recall | E5-oracle survival after ADC |
 | --- | --- | ---: | ---: | ---: | ---: |
-| 64 bit | random | 0.0478 | 0.2232 | 0.2021 | 0.5818 |
-| 64 bit | low correlation | 0.0461 | 0.2318 | 0.1867 | 0.5583 |
-| 64 bit | partitioned | 0.0453 | 0.2179 | 0.1886 | 0.5608 |
-| 80 bit | random | 0.0609 | 0.2736 | 0.2535 | 0.6486 |
-| 80 bit | low correlation | 0.0571 | 0.2690 | 0.2278 | 0.6432 |
-| 80 bit | partitioned | 0.0562 | 0.2704 | 0.2287 | 0.6440 |
-| 96 bit | random | 0.0700 | 0.3060 | 0.2836 | **0.7000** |
-| 96 bit | low correlation | 0.0676 | 0.3071 | 0.2658 | 0.6948 |
-| 96 bit | partitioned | 0.0674 | 0.3066 | 0.2697 | 0.6980 |
+| 64 bit | random | 0.0478 | 0.2204 | 0.2021 | 0.5818 |
+| 64 bit | low correlation | 0.0461 | 0.2197 | 0.1867 | 0.5583 |
+| 64 bit | partitioned | 0.0453 | 0.2257 | 0.1886 | 0.5608 |
+| 80 bit | random | 0.0609 | 0.2549 | 0.2535 | 0.6486 |
+| 80 bit | low correlation | 0.0571 | 0.2656 | 0.2278 | 0.6432 |
+| 80 bit | partitioned | 0.0562 | 0.2387 | 0.2287 | 0.6440 |
+| 96 bit | random | 0.0700 | 0.3214 | 0.2836 | **0.7000** |
+| 96 bit | low correlation | 0.0676 | 0.3085 | 0.2658 | 0.6948 |
+| 96 bit | partitioned | 0.0674 | 0.3162 | 0.2697 | 0.6980 |
 
 ## Interpretation
 
