@@ -121,18 +121,21 @@ benchmark build). Each scale's `results/result.json` binds the protocol, input
 manifest, frozen ITQ artifact, native reports, shortlists, quality reports, and
 bootstrap gates.
 
-Evidence is retained for review in the draft release
-[`[Evidence] Scale-aware native MIH calibration v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/untagged-8f47f4d8a19e6b24a0fa).
+Evidence is retained for review in the superseding draft release
+[`[Evidence] Scale-aware native MIH calibration v2`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/untagged-3eb83b047d77048f9e8a).
 Its single ZIP has SHA-256
-`6966074f347b15761eb596fe5689046f3fc57fba7207009f1069d60f0e6b6456` and
+`b0651dda1f9d8f632162c1ee811047f7e0ca76df8d3aeab8b392929b58993c60` and
 bundle-root SHA-256
-`1f2d58a5c2addfcb9e7bb1a1366630bc28dfc4976eba76e99d927992965b724c`.
+`f7841d210bd5a194bc584c2cae65a647822c02e82e27c3e71458b9770ae4cebd`.
 The archive contains the protocol/preflight, ITQ artifact, per-scale result,
 input and E5 manifests, configs, native reports, quality reports, oracle
 caches, contributions, and measured-source snapshots. The approximately 1 GB
 shortlist JSON payload is omitted by design; every included quality report
-binds its shortlist by SHA-256, and the archive independently replays every
-bootstrap gate from the included per-query contributions.
+binds its shortlist by SHA-256.  The v2 packager independently derives logical
+index bytes and latency from each bound native report, replays every bootstrap
+and memory gate from the included artifacts, and reproduces deterministic
+per-backend selection.  It supersedes v1 without replaying or changing the
+measured matrix.
 
 The shared ITQ-256 artifact was trained once from the same 25,000 Spanish
 training documents at every scale.  Its v2 identity binds ordered training
