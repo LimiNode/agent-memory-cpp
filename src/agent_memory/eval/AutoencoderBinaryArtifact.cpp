@@ -1064,6 +1064,10 @@ namespace agent_memory {
         return sha256_hex(read_file_bytes(path));
     }
 
+    std::string sha256_bytes_hex(const std::vector<std::uint8_t>& bytes) {
+        return sha256_hex(bytes);
+    }
+
     MaterializedAutoencoderEvaluationDataset
     load_materialized_autoencoder_evaluation_dataset(
         const std::filesystem::path& materialization_root

@@ -165,6 +165,9 @@ struct CandidateDiagnostic final {
     std::size_t mih_shortlist_exact_hamming_top_k_overlap = 0;
     std::size_t exact_hamming_top_k_max_distance = 0;
     std::array<std::size_t, 6> exact_hamming_distances_at_k{};
+    std::string raw_candidate_sequence_sha256;
+    std::string raw_candidate_set_sha256;
+    std::string hamming_shortlist_sequence_sha256;
 };
 
 struct QueryWorkspace final {
@@ -206,6 +209,23 @@ void validate_config(const Config& value) {
 
 [[nodiscard]] double milliseconds(const Clock::time_point start, const Clock::time_point end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+void append_u32_le(std::vector<std::uint8_t>& output, const std::uint32_t value) {
+    for(std::size_t shift = 0; shift < 32U; shift += 8U) output.push_back(static_cast<std::uint8_t>((value >> shift) & 0xFFU));
+}
+
+void append_u64_le(std::vector<std::uint8_t>& output, const std::uint64_t value) {
+    for(std::size_t shift = 0; shift < 64U; shift += 8U) output.push_back(static_cast<std::uint8_t>((value >> shift) & 0xFFU));
+}
+
+[[nodiscard]] std::string position_sequence_sha256(const std::uint32_t query_position, const std::vector<std::uint32_t>& positions) {
+    std::vector<std::uint8_t> encoded;
+    encoded.reserve(12U + positions.size() * 4U);
+    append_u32_le(encoded, query_position);
+    append_u64_le(encoded, positions.size());
+    for(const auto position : positions) append_u32_le(encoded, position);
+    return agent_memory::sha256_bytes_hex(encoded);
 }
 
 [[nodiscard]] double percentile(std::vector<double> values, const double fraction) {
@@ -632,13 +652,21 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
     for(std::size_t index = 0; index < expected.size(); ++index) if(expected[index].position != shortlist[index].position || expected[index].distance != shortlist[index].distance) throw std::runtime_error("native sparse MIH Hamming shortlist differs");
 }
 
-[[nodiscard]] CandidateDiagnostic diagnose_fixed_r56_candidate_union(const Input& input, const std::uint64_t* query, const std::vector<std::uint32_t>& candidates, const std::vector<Scored>& shortlist, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit) {
+[[nodiscard]] CandidateDiagnostic diagnose_fixed_r56_candidate_union(const Input& input, const std::uint32_t query_position, const std::uint64_t* query, const std::vector<std::uint32_t>& candidates, const std::vector<Scored>& shortlist, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit) {
     std::vector<bool> candidate_present(input.document_count, false);
     for(const auto position : candidates) candidate_present[position] = true;
     std::vector<Scored> exact;
     exact.reserve(input.document_count);
     CandidateDiagnostic result;
     result.candidate_union_size = candidates.size();
+    result.raw_candidate_sequence_sha256 = position_sequence_sha256(query_position, candidates);
+    auto sorted_candidates = candidates;
+    std::sort(sorted_candidates.begin(), sorted_candidates.end());
+    result.raw_candidate_set_sha256 = position_sequence_sha256(query_position, sorted_candidates);
+    std::vector<std::uint32_t> shortlist_positions;
+    shortlist_positions.reserve(shortlist.size());
+    for(const auto& item : shortlist) shortlist_positions.push_back(item.position);
+    result.hamming_shortlist_sequence_sha256 = position_sequence_sha256(query_position, shortlist_positions);
     for(std::size_t position = 0; position < input.document_count; ++position) {
         const auto distance = hamming.distance_words(query, input.documents.data() + position * kWordCount);
         if(distance <= 56U) {
@@ -764,7 +792,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
                 ;
             verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih");
             if(!config.candidate_diagnostic_output.empty()) {
-                const auto diagnostic = diagnose_fixed_r56_candidate_union(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit);
+                const auto diagnostic = diagnose_fixed_r56_candidate_union(input, static_cast<std::uint32_t>(position), query, raw_candidates, result.shortlist, hamming, config.hamming_limit);
                 candidate_diagnostics.push_back({
                     {"query_position", position},
                     {"candidate_union_size", diagnostic.candidate_union_size},
@@ -776,6 +804,10 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
                     {"mih_shortlist_exact_hamming_top_k_overlap", diagnostic.mih_shortlist_exact_hamming_top_k_overlap},
                     {"exact_hamming_top_k_max_distance", diagnostic.exact_hamming_top_k_max_distance},
                     {"exact_hamming_distances_at_k", {{"10", diagnostic.exact_hamming_distances_at_k[0]}, {"64", diagnostic.exact_hamming_distances_at_k[1]}, {"128", diagnostic.exact_hamming_distances_at_k[2]}, {"256", diagnostic.exact_hamming_distances_at_k[3]}, {"512", diagnostic.exact_hamming_distances_at_k[4]}, {"768", diagnostic.exact_hamming_distances_at_k[5]}}},
+                    {"sequence_digest_encoding", "query_position_u32_le|count_u64_le|positions_u32_le_v1"},
+                    {"raw_candidate_sequence_sha256", diagnostic.raw_candidate_sequence_sha256},
+                    {"raw_candidate_set_sha256", diagnostic.raw_candidate_set_sha256},
+                    {"hamming_shortlist_sequence_sha256", diagnostic.hamming_shortlist_sequence_sha256},
                 });
             }
             if(!config.shortlist_output.empty()) {
@@ -895,7 +927,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
             else if(candidates != reference_candidates || result.shortlist.size() != reference_shortlist.size()) throw std::runtime_error("native sparse MIH challenger candidate union differs");
             else for(std::size_t position = 0; position < result.shortlist.size(); ++position) if(result.shortlist[position].position != reference_shortlist[position].position || result.shortlist[position].distance != reference_shortlist[position].distance) throw std::runtime_error("native sparse MIH challenger Hamming shortlist differs");
         }
-        const auto diagnostic = diagnose_fixed_r56_candidate_union(input, codes.data(), reference_candidates, reference_shortlist, hamming, 3);
+        const auto diagnostic = diagnose_fixed_r56_candidate_union(input, 0U, codes.data(), reference_candidates, reference_shortlist, hamming, 3);
         if(diagnostic.candidate_union_size != 3U || diagnostic.global_fixed_r56_count != 3U || diagnostic.candidate_union_fixed_r56_count != 3U || diagnostic.exact_hamming_top_k_fixed_r56_count != 3U || diagnostic.candidate_union_exact_hamming_top_k_overlap != 3U || diagnostic.mih_shortlist_exact_hamming_top_k_overlap != 3U) throw std::runtime_error("native fixed-r56 candidate diagnostic differs");
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
         Config hnsw_config; hnsw_config.backend = "hnsw"; hnsw_config.hnsw_connectivity = 2; hnsw_config.hnsw_ef_construction = 4; hnsw_config.hnsw_ef_search = 3;

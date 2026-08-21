@@ -30,6 +30,14 @@ per-query counts and overlaps, rather than exporting candidate lists.  It
 asserts that every full-corpus match at Hamming distance `<=56` is present in
 the raw union.
 
+Each diagnostic row additionally stores three SHA-256 values over a canonical
+query-bounded little-endian stream: `query_position`, sequence count, and
+document positions.  The raw candidate sequence digest preserves traversal
+order; the raw candidate-set digest hashes sorted positions; and the Hamming
+shortlist sequence digest preserves its deterministic `(distance, position)`
+order.  The original #155 sum-based checksums remain regression guards only;
+they are not set-identity evidence.
+
 This is a mechanism diagnostic only: no E5 gates or bootstrap are replayed,
 no backend is selected, the original matrix is not rerun, and French
 confirmation data is not read.
@@ -50,6 +58,23 @@ recall” is raw MIH candidate-union overlap with that exact Flat top-768;
 The exact inclusion assertion passed for every query.  Yet the raw unions are
 also almost entirely spillover: their fractions of candidates above radius 56
 are respectively `0.999980`, `0.999992`, and `0.999999`.
+
+The native export also records the deterministic exact Flat distance at every
+downstream Hamming boundary needed by the planned exact-MIH protocol.  The
+evidence aggregator validates that the ordered keys are exactly
+`d10,d64,d128,d256,d512,d768`, that the distances are monotonic for every
+query, and that `d768` equals the already reported top-768 maximum.
+
+| Scale | `d10`, p50 / p95 | `d64`, p50 / p95 | `d128`, p50 / p95 | `d256`, p50 / p95 | `d512`, p50 / p95 | `d768`, p50 / p95 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 25k | 87 / 94 | 98 / 102 | 101 / 104 | 104 / 107 | 107 / 109 | 109 / 111 |
+| 100k | 85 / 92 | 94 / 98 | 97 / 100 | 100 / 103 | 102 / 105 | 104 / 106 |
+| 1M | 80 / 87 | 88 / 92 | 90 / 94 | 92 / 96 | 94 / 98 | 96 / 99 |
+
+These are descriptive Flat reference distances, not a stopping rule and not
+an exact-MIH performance result.  They establish the observed scale of the
+K-dependent search frontier before an exact candidate-generation algorithm is
+designed.
 
 ## Interpretation
 

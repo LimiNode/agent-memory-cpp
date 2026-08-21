@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 import tempfile
@@ -18,6 +19,9 @@ import numpy
 sys.dont_write_bytecode = True
 FAMILY = "scale_aware_native_mih_fixed_r56_spillover_diagnostic_v1"
 NATIVE_FAMILY = "native_mih_fixed_r56_candidate_union_diagnostic_v1"
+SPECTRUM_KS = (10, 64, 128, 256, 512, 768)
+SPECTRUM_KEYS = tuple(str(k) for k in SPECTRUM_KS)
+SEQUENCE_DIGEST_ENCODING = "query_position_u32_le|count_u64_le|positions_u32_le_v1"
 
 
 def require(condition: bool, message: str) -> None:
@@ -66,6 +70,14 @@ def validate_rows(rows: list[dict[str, Any]], hamming_limit: int) -> None:
         for field in ("exact_hamming_top_k_fixed_r56_count", "candidate_union_exact_hamming_top_k_overlap", "mih_shortlist_fixed_r56_count", "mih_shortlist_exact_hamming_top_k_overlap"):
             require(0 <= row[field] <= hamming_limit, f"fixed-r56 spillover top-K count differs: {field}")
         require(row["exact_hamming_top_k_max_distance"] >= 0, "fixed-r56 spillover top-K distance differs")
+        distances = row.get("exact_hamming_distances_at_k")
+        require(isinstance(distances, dict) and set(distances) == set(SPECTRUM_KEYS), "fixed-r56 exact Hamming distance spectrum keys differ")
+        require(all(isinstance(distances[key], int) and distances[key] >= 0 for key in SPECTRUM_KEYS), "fixed-r56 exact Hamming distance spectrum type differs")
+        require(all(distances[left] <= distances[right] for left, right in zip(SPECTRUM_KEYS, SPECTRUM_KEYS[1:])), "fixed-r56 exact Hamming distance spectrum is not monotonic")
+        require(distances["768"] == row["exact_hamming_top_k_max_distance"], "fixed-r56 d768 differs from exact Hamming top-K maximum distance")
+        require(row.get("sequence_digest_encoding") == SEQUENCE_DIGEST_ENCODING, "fixed-r56 sequence digest encoding differs")
+        for field in ("raw_candidate_sequence_sha256", "raw_candidate_set_sha256", "hamming_shortlist_sequence_sha256"):
+            require(isinstance(row.get(field), str) and re.fullmatch(r"[0-9a-f]{64}", row[field]) is not None, f"fixed-r56 sequence digest differs: {field}")
 
 
 def summarize(rows: list[dict[str, Any]], hamming_limit: int) -> dict[str, Any]:
@@ -78,6 +90,14 @@ def summarize(rows: list[dict[str, Any]], hamming_limit: int) -> dict[str, Any]:
     shortlist_fixed = values("mih_shortlist_fixed_r56_count")
     shortlist_overlap = values("mih_shortlist_exact_hamming_top_k_overlap")
     top_distance = values("exact_hamming_top_k_max_distance")
+    spectrum = {}
+    for key in SPECTRUM_KEYS:
+        spectrum_values = numpy.asarray([row["exact_hamming_distances_at_k"][key] for row in rows], dtype=numpy.float64)
+        spectrum[key] = {
+            "mean": float(spectrum_values.mean()),
+            "median": float(numpy.median(spectrum_values)),
+            "p95": float(numpy.percentile(spectrum_values, 95)),
+        }
     return {
         "query_count": len(rows),
         "candidate_union_size": {"mean": float(candidate_union.mean()), "median": float(numpy.median(candidate_union)), "p95": float(numpy.percentile(candidate_union, 95))},
@@ -88,6 +108,7 @@ def summarize(rows: list[dict[str, Any]], hamming_limit: int) -> dict[str, Any]:
             "probability_max_distance_at_most_56": float(numpy.mean(top_distance <= 56.0)),
             "mean_items_at_or_below_56": float(exact_fixed.mean()),
         },
+        "exact_flat_hamming_distance_spectrum": spectrum,
         "candidate_union_recall_against_exact_flat_hamming_top_k": float(union_overlap.mean() / hamming_limit),
         "mih_hamming_shortlist_recall_against_exact_flat_hamming_top_k": float(shortlist_overlap.mean() / hamming_limit),
         "mih_hamming_shortlist_spillover_fraction_above_56": float(1.0 - shortlist_fixed.mean() / hamming_limit),
@@ -142,11 +163,11 @@ def run(args: Any) -> None:
 def self_test() -> int:
     try:
         rows = [
-            {"query_position": 0, "candidate_union_size": 8, "global_fixed_r56_count": 2, "candidate_union_fixed_r56_count": 2, "exact_hamming_top_k_fixed_r56_count": 2, "candidate_union_exact_hamming_top_k_overlap": 3, "mih_shortlist_fixed_r56_count": 2, "mih_shortlist_exact_hamming_top_k_overlap": 2, "exact_hamming_top_k_max_distance": 57},
-            {"query_position": 1, "candidate_union_size": 10, "global_fixed_r56_count": 1, "candidate_union_fixed_r56_count": 1, "exact_hamming_top_k_fixed_r56_count": 1, "candidate_union_exact_hamming_top_k_overlap": 4, "mih_shortlist_fixed_r56_count": 1, "mih_shortlist_exact_hamming_top_k_overlap": 3, "exact_hamming_top_k_max_distance": 58},
+            {"query_position": 0, "candidate_union_size": 8, "global_fixed_r56_count": 2, "candidate_union_fixed_r56_count": 2, "exact_hamming_top_k_fixed_r56_count": 2, "candidate_union_exact_hamming_top_k_overlap": 3, "mih_shortlist_fixed_r56_count": 2, "mih_shortlist_exact_hamming_top_k_overlap": 2, "exact_hamming_top_k_max_distance": 57, "exact_hamming_distances_at_k": {"10": 50, "64": 51, "128": 52, "256": 53, "512": 54, "768": 57}, "sequence_digest_encoding": SEQUENCE_DIGEST_ENCODING, "raw_candidate_sequence_sha256": "0" * 64, "raw_candidate_set_sha256": "1" * 64, "hamming_shortlist_sequence_sha256": "2" * 64},
+            {"query_position": 1, "candidate_union_size": 10, "global_fixed_r56_count": 1, "candidate_union_fixed_r56_count": 1, "exact_hamming_top_k_fixed_r56_count": 1, "candidate_union_exact_hamming_top_k_overlap": 4, "mih_shortlist_fixed_r56_count": 1, "mih_shortlist_exact_hamming_top_k_overlap": 3, "exact_hamming_top_k_max_distance": 58, "exact_hamming_distances_at_k": {"10": 51, "64": 52, "128": 53, "256": 54, "512": 55, "768": 58}, "sequence_digest_encoding": SEQUENCE_DIGEST_ENCODING, "raw_candidate_sequence_sha256": "3" * 64, "raw_candidate_set_sha256": "4" * 64, "hamming_shortlist_sequence_sha256": "5" * 64},
         ]
         result = summarize(rows, 4)
-        require(result["candidate_union_recall_against_exact_flat_hamming_top_k"] == 0.875 and result["mih_hamming_shortlist_spillover_fraction_above_56"] == 0.625, "fixed-r56 spillover summary differs")
+        require(result["candidate_union_recall_against_exact_flat_hamming_top_k"] == 0.875 and result["mih_hamming_shortlist_spillover_fraction_above_56"] == 0.625 and result["exact_flat_hamming_distance_spectrum"]["512"]["median"] == 54.5, "fixed-r56 spillover summary differs")
         rows[1]["candidate_union_fixed_r56_count"] = 0
         try:
             validate_rows(rows, 4)
@@ -154,6 +175,14 @@ def self_test() -> int:
             pass
         else:
             raise ValueError("fixed-r56 spillover inclusion mutation was accepted")
+        rows[1]["candidate_union_fixed_r56_count"] = 1
+        rows[1]["exact_hamming_distances_at_k"]["256"] = 59
+        try:
+            validate_rows(rows, 4)
+        except ValueError:
+            pass
+        else:
+            raise ValueError("fixed-r56 spillover spectrum mutation was accepted")
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError) as error:
         print(f"diagnose-scale-aware-fixed-r56-spillover self-test failed: {error}", file=sys.stderr)
         return 1
