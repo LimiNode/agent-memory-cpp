@@ -41,6 +41,23 @@ continues unless a stronger tie-aware proof is exported.  Only after that
 proof does the discovered prefix become Flat-equivalent.  The exactness proof
 and all enumerated/unvisited-bucket assumptions must be exported per query.
 
+Each measured row writes a verification-only certificate outside the timed
+section. For every selected query it records the covered radius, the integer
+unseen lower bound, the Kth discovered distance, and both ordered
+`(position, distance)` prefixes. The evidence packager independently requires
+the strict certificate and exact equality of the MIH and Flat prefixes; an
+aggregate report boolean is only a convenience field, never the source of the
+exactness claim. The runner pins each Spanish input-manifest SHA before a row
+starts and rejects resumed reports unless their native source-bundle SHA equals
+the current measured source snapshot.
+
+The external runner imposes a predeclared 12-hour wall-clock ceiling per row.
+If it expires, the runner records the fail-closed outcome
+`exact_search_resource_exhausted`; it records no latency, candidate count, or
+approximate substitute for that row. A resource outcome is evidence that the
+exact method did not finish within the declared resource envelope, not an
+approximate-MIH measurement.
+
 Record native p50/p95/p99 and index bytes, plus key enumeration, bucket
 lookup, posting traversal, generation deduplication, Hamming, top-K,
 candidate-generator total, cascade total, non-empty/empty probes, posting
@@ -58,11 +75,25 @@ reference repository `https://github.com/norouzi/mih` at commit
 our tie rule: obtain all upstream candidates through the cutoff distance,
 canonicalize them by `(distance, document_position)`, then compare.  The
 fixture must also assert its expected cutoff is at most 128, the upstream
-implementation's declared `ceil(256/2)` limit.  The comparison is for
-canonical outputs only, never a cross-language performance comparison.  The
-fixture must state the upstream build command, compiler version, binary
-encoding, tie rule, and its SHA-256 outputs; a changed upstream commit or
-fixture requires a new predeclared revision.
+implementation's declared `ceil(256/2)` limit. It varies all four 64-bit words
+of every 256-bit code, so packing and band splitting are checked beyond word
+zero. The comparison is for canonical outputs only, never a cross-language
+performance comparison. The fixture must state the upstream build command,
+compiler version, binary encoding, tie rule, and its SHA-256 outputs; a changed
+upstream commit or fixture requires a new predeclared revision.
+
+The checked fixture records the Linux GCC container digest and can be replayed
+without the upstream HDF5 command-line interface:
+
+```text
+py -3 tools/agent-memory-bench/verify-norouzi-mih-conformance.py \
+  --upstream <pinned-norouzi-mih-checkout> \
+  --docker-image gcc@sha256:056fa682471704249f619f65ccec87d671ad5f1b20878da54d60b0b863486621
+```
+
+The runner compiles the upstream MIH core itself, constructs the fixture with
+the documented little-endian byte encoding, and canonicalizes returned IDs
+with freshly computed Hamming distances before requiring the recorded SHA-256.
 
 ## Decision boundary
 

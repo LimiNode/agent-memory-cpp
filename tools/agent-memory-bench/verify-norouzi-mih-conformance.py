@@ -1,0 +1,192 @@
+#!/usr/bin/env python3
+"""Compile and canonicalize the pinned upstream MIH fixture result."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import subprocess
+import sys
+import tempfile
+from pathlib import Path
+
+
+THIS = Path(__file__).resolve().parent
+FIXTURE = THIS.parent.parent / "tests" / "eval" / "fixtures" / "mih-global-exact-conformance-v1.json"
+MASK = (1 << 64) - 1
+
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise ValueError(message)
+
+
+def splitmix64(state: int) -> tuple[int, int]:
+    state = (state + 0x9E3779B97F4A7C15) & MASK
+    value = state
+    value = ((value ^ (value >> 30)) * 0xBF58476D1CE4E5B9) & MASK
+    value = ((value ^ (value >> 27)) * 0x94D049BB133111EB) & MASK
+    return state, (value ^ (value >> 31)) & MASK
+
+
+def words(seed: str, count: int) -> list[tuple[int, int, int, int]]:
+    state, result = int(seed, 16), []
+    bases = (0x6A09E667F3BCC909, 0xBB67AE8584CAA73B, 0x3C6EF372FE94F82B, 0xA54FF53A5F1D36F1)
+    for _ in range(count):
+        code: list[int] = []
+        for base in bases:
+            state, first = splitmix64(state)
+            state, second = splitmix64(state)
+            code.append(base ^ (first & second))
+        result.append(tuple(code))
+    return result
+
+
+HARNESS = r'''
+#include <cstdint>
+#include <iostream>
+#include <vector>
+#include "mihasher.h"
+
+static std::uint64_t next(std::uint64_t& state) {
+    state += 0x9e3779b97f4a7c15ULL;
+    std::uint64_t value = state;
+    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31U);
+}
+static void put(std::vector<UINT8>& values, const std::size_t row, const std::size_t word, const std::uint64_t value) {
+    for(std::size_t byte = 0; byte < 8U; ++byte) values[row * 32U + word * 8U + byte] = static_cast<UINT8>((value >> (byte * 8U)) & 0xffU);
+}
+int main() {
+    constexpr UINT32 documents = 800U, queries = 4U;
+    std::vector<UINT8> database(documents * 32U, 0U), query(queries * 32U, 0U);
+    std::uint64_t document_state = 0x6a09e667f3bcc909ULL, query_state = 0xbb67ae8584caa73bULL;
+    constexpr std::uint64_t bases[4] = {0x6a09e667f3bcc909ULL, 0xbb67ae8584caa73bULL, 0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL};
+    for(UINT32 row = 0; row < documents; ++row) for(UINT32 word = 0; word < 4U; ++word) put(database, row, word, bases[word] ^ (next(document_state) & next(document_state)));
+    for(UINT32 row = 0; row < queries; ++row) for(UINT32 word = 0; word < 4U; ++word) put(query, row, word, bases[word] ^ (next(query_state) & next(query_state)));
+    mihasher index(256, 16); index.populate(database.data(), documents, 32);
+    index.setK(documents); std::vector<UINT32> results(queries * documents), counts(queries * 257U); std::vector<qstat> stats(queries);
+    index.batchquery(results.data(), counts.data(), stats.data(), query.data(), queries, 32);
+    for(UINT32 row = 0; row < queries; ++row) {
+        std::cout << "RESULT " << row;
+        for(UINT32 item = 0; item < documents; ++item) std::cout << ' ' << results[row * documents + item];
+        std::cout << '\n';
+        std::cout << "HISTOGRAM " << row;
+        for(UINT32 distance = 0; distance <= 256U; ++distance) std::cout << ' ' << counts[row * 257U + distance];
+        std::cout << '\n';
+    }
+}
+'''
+
+
+def output_digest(lines: list[str], fixture: dict[str, object]) -> str:
+    documents = words(str(fixture["document_seed"]), int(fixture["document_count"]))
+    queries = words(str(fixture["query_seed"]), int(fixture["query_count"]))
+    expected_ks = tuple(fixture["ks"])
+    required_cutoff_max = int(dict(fixture["upstream_reference"])["required_cutoff_max"])
+    require(all(int(value) <= required_cutoff_max for value in fixture["expected_cutoff_at_k768_per_query"]), "upstream MIH fixture cutoff contract differs")
+    results: dict[int, list[int]] = {}
+    histograms: dict[int, list[int]] = {}
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 3 or fields[0] not in {"RESULT", "HISTOGRAM"}:
+            continue
+        try:
+            query, *payload = [int(item) for item in fields[1:]]
+        except ValueError as error:
+            raise ValueError("upstream MIH marked output is not integral") from error
+        if fields[0] == "RESULT":
+            require(query not in results and len(payload) == len(documents), "upstream MIH result shape differs")
+            results[query] = payload
+        else:
+            require(query not in histograms and len(payload) == 257, "upstream MIH histogram shape differs")
+            histograms[query] = payload
+    require(set(results) == set(range(len(queries))) and set(histograms) == set(range(len(queries))), "upstream MIH output coverage differs")
+    digest = hashlib.sha256(b"agent-memory-global-exact-mih-fixture-output-v1")
+    for query, code in enumerate(queries):
+        positions, histogram = results[query], histograms[query]
+        require(all(1 <= position <= len(documents) for position in positions) and set(positions) == set(range(1, len(documents) + 1)), "upstream MIH complete candidate set differs")
+        expected_by_distance = [0] * 257
+        for document in documents:
+            expected_by_distance[sum((left ^ right).bit_count() for left, right in zip(code, document))] += 1
+        require(histogram == expected_by_distance and sum(histogram) == len(documents), "upstream MIH distance histogram differs")
+        expected_ordered = sorted((sum((left ^ right).bit_count() for left, right in zip(code, document)), position) for position, document in enumerate(documents))
+        for k in expected_ks:
+            cutoff = expected_ordered[k - 1][0]
+            require(cutoff <= required_cutoff_max, "upstream MIH fixture exceeds the reference cutoff limit")
+            cutoff_count = sum(histogram[:cutoff + 1])
+            upstream_prefix = positions[:cutoff_count]
+            expected_cutoff_set = {position + 1 for distance, position in expected_ordered if distance <= cutoff}
+            require(set(upstream_prefix) == expected_cutoff_set and len(upstream_prefix) == len(expected_cutoff_set), "upstream MIH complete cutoff candidate set differs")
+            prefix = sorted((sum((left ^ right).bit_count() for left, right in zip(code, documents[position - 1])), position - 1) for position in upstream_prefix)[:k]
+            digest.update(query.to_bytes(4, "little")); digest.update(k.to_bytes(4, "little")); digest.update(k.to_bytes(8, "little"))
+            for distance, position in prefix: digest.update(distance.to_bytes(4, "little")); digest.update(position.to_bytes(4, "little"))
+    return digest.hexdigest()
+
+
+def receipt_value(fixture: dict[str, object], commit: str, docker_image: str, digest: str) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "family": "norouzi_mih_conformance_receipt_v1",
+        "fixture_sha256": hashlib.sha256(FIXTURE.read_bytes()).hexdigest(),
+        "upstream_reference": fixture["upstream_reference"],
+        "upstream_commit": commit,
+        "docker_image": docker_image,
+        "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "canonical_output_sha256": digest,
+        "passed": True,
+    }
+
+
+def run(upstream: Path, compiler: str, docker_image: str | None, receipt_output: Path | None) -> None:
+    fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    reference = fixture["upstream_reference"]
+    require(fixture.get("construction") == "splitmix64_four_sparse_xor_masks_per_code_little_endian_v2", "upstream MIH fixture construction differs")
+    require(reference == {"repository": "https://github.com/norouzi/mih", "commit": "96a629de834c1b974b0c5e378ab1037ee42120ab", "binary_encoding": "N_by_B_uint8_bits_lsb_first_v1", "tie_rule": "canonicalize_complete_cutoff_candidates_by_hamming_distance_then_document_position_v1", "required_cutoff_max": 128, "build": {"compiler": "g++ -std=c++17 -O2", "container_image": "gcc@sha256:056fa682471704249f619f65ccec87d671ad5f1b20878da54d60b0b863486621", "runner": "tools/agent-memory-bench/verify-norouzi-mih-conformance.py"}}, "upstream MIH fixture contract differs")
+    commit = subprocess.check_output(["git", "-C", str(upstream), "rev-parse", "HEAD"], text=True).strip()
+    require(commit == reference["commit"], "upstream MIH commit differs")
+    sources = [upstream / "src" / name for name in ("mihasher.cpp", "sparse_hashtable.cpp", "bucket_group.cpp", "array32.cpp")]
+    require(all(path.is_file() for path in sources), "upstream MIH sources are incomplete")
+    with tempfile.TemporaryDirectory() as temporary:
+        executable = Path(temporary) / ("mih-conformance.exe" if sys.platform == "win32" else "mih-conformance")
+        if docker_image is None:
+            subprocess.run([compiler, "-std=c++17", "-O2", "-I", str(upstream / "include"), "-x", "c++", "-", *map(str, sources), "-o", str(executable)], input=HARNESS, text=True, check=True)
+            completed = subprocess.run([str(executable)], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        else:
+            temporary_path = Path(temporary); harness_path = temporary_path / "mih-conformance.cpp"; harness_path.write_text(HARNESS, encoding="utf-8", newline="\n")
+            linux_sources = [f"/upstream/src/{path.name}" for path in sources]
+            mounts = ["--mount", f"type=bind,source={upstream.resolve()},target=/upstream,readonly", "--mount", f"type=bind,source={temporary_path},target=/work"]
+            subprocess.run(["docker", "run", "--rm", *mounts, "-w", "/work", docker_image, "g++", "-std=c++17", "-O2", "-I", "/upstream/include", "/work/mih-conformance.cpp", *linux_sources, "-o", "/work/mih-conformance"], check=True)
+            completed = subprocess.run(["docker", "run", "--rm", *mounts, "-w", "/work", docker_image, "/work/mih-conformance"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+    digest = output_digest(completed.stdout.splitlines(), fixture)
+    require(digest == fixture["canonical_outputs_sha256"], "upstream MIH canonical output differs")
+    if receipt_output is not None:
+        require(docker_image is not None, "external conformance receipt requires the pinned Docker replay")
+        receipt_output.parent.mkdir(parents=True, exist_ok=True)
+        receipt_output.write_text(json.dumps(receipt_value(fixture, commit, docker_image, digest), indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+    print("pinned upstream norouzi/mih conformance fixture passed")
+
+
+def self_test() -> None:
+    fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    require(words(str(fixture["document_seed"]), 1)[0] == (0x2A0EA047FABCA989, 0xB343ECC134C206B7, 0x3CDDF3F2EF1CD0EB, 0xB90FB0B35E3D57B8), "upstream MIH fixture generator differs")
+    require(fixture["expected_cutoff_at_k768_per_query"] == [107, 114, 110, 108] and fixture["canonical_outputs_sha256"] == "42b7c3569043ae184a654700e918489192da3b0adced5fed80a9f93f3f98e104", "upstream MIH fixture cutoff differs")
+    receipt = receipt_value(fixture, str(dict(fixture["upstream_reference"])["commit"]), str(dict(fixture["upstream_reference"])["build"]["container_image"]), str(fixture["canonical_outputs_sha256"]))
+    require(receipt["passed"] is True and receipt["runner_sha256"] == hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "upstream MIH receipt differs")
+    print("pinned upstream norouzi/mih conformance runner self-test passed")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(); parser.add_argument("--upstream", type=Path); parser.add_argument("--compiler", default="g++"); parser.add_argument("--docker-image"); parser.add_argument("--receipt-output", type=Path); parser.add_argument("--self-test", action="store_true"); args = parser.parse_args()
+    try:
+        if args.self_test: self_test(); return 0
+        if args.upstream is None: parser.error("--upstream is required unless --self-test is used")
+        run(args.upstream, args.compiler, args.docker_image, args.receipt_output); return 0
+    except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
+        print(f"verify-norouzi-mih-conformance: {error}", file=sys.stderr); return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
