@@ -67,6 +67,19 @@ def load_runner() -> Any:
 runner = load_runner()
 
 
+def load_evaluator() -> Any:
+    spec = importlib.util.spec_from_file_location("static_itq_locator_evaluator", THIS / "evaluate-native-ann-shortlists.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load static ITQ locator evaluator")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+evaluator = load_evaluator()
+
+
 def cmake_source_bundle(files: dict[str, str]) -> str:
     return hashlib.sha256("".join(f"{name}:{files[name]}\n" for name in NATIVE_SOURCES).encode("utf-8")).hexdigest()
 
@@ -75,12 +88,28 @@ def expected_ids(contract: dict[str, Any]) -> set[str]:
     return {f"{variant}-b{bit_count}" for bit_count in runner.BITS for variant in runner.VARIANTS}
 
 
-def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, contract: dict[str, Any], evaluation_manifest_sha256: str) -> float:
+def evaluator_source_files() -> dict[str, str]:
+    return {
+        "evaluate-native-ann-shortlists.py": sha256(THIS / "evaluate-native-ann-shortlists.py"),
+        "evaluate-projection-quantization.py": sha256(THIS / "evaluate-projection-quantization.py"),
+    }
+
+
+def evaluator_source_bundle(files: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
+def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, contract: dict[str, Any], evaluation_data: dict[str, Any]) -> float:
     quality = json.loads(quality_path.read_text(encoding="utf-8"))
-    require(quality.get("schema_version") == 1 and quality.get("family") == "native_ann_shortlist_quality_v1" and quality.get("query_count") == 648 and quality.get("hamming_limit") == contract["cascade"]["hamming_limit"] and quality.get("adc_limit") == contract["cascade"]["adc_limit"] and quality.get("oracle_k") == contract["cascade"]["oracle_k"] and quality.get("evaluation_materialization_manifest_sha256") == evaluation_manifest_sha256 and quality.get("per_query_contributions_sha256") == sha256(contribution_path) and quality.get("shortlist_export_sha256") == sha256(shortlist_path), "static locator quality binding differs")
+    sources = evaluator_source_files()
+    identity = evaluator.contribution_identity(evaluation_data, contract["cascade"]["hamming_limit"], contract["cascade"]["adc_limit"], contract["cascade"]["oracle_k"])
+    require(quality.get("schema_version") == 1 and quality.get("family") == "native_ann_shortlist_quality_v1" and quality.get("query_count") == 648 and quality.get("hamming_limit") == contract["cascade"]["hamming_limit"] and quality.get("adc_limit") == contract["cascade"]["adc_limit"] and quality.get("oracle_k") == contract["cascade"]["oracle_k"] and quality.get("evaluation_materialization_manifest_sha256") == evaluation_data["manifest_sha256"] and quality.get("evaluation_qrels_sha256") == evaluation_data["evaluation_qrels_sha256"] and quality.get("per_query_contributions_sha256") == sha256(contribution_path) and quality.get("shortlist_export_sha256") == sha256(shortlist_path) and quality.get("per_query_contribution_identity") == identity and quality.get("evaluator_source_files_sha256") == sources and quality.get("evaluator_source_bundle_sha256") == evaluator_source_bundle(sources), "static locator quality binding differs")
     with numpy.load(contribution_path, allow_pickle=False) as contribution:
         values = contribution["e5_oracle_survival_after_adc"]
-        require(values.shape == (648,) and contribution["query_ids"].shape == (648,), "static locator contribution shape differs")
+        require(set(contribution.files) == {"coverage_at_hamming_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "e5_oracle_survival_after_adc", "query_ids", "identity_json"}, "static locator contribution fields differ")
+        query_ids = contribution["query_ids"]
+        contribution_identity = json.loads(str(contribution["identity_json"].item()))
+        require(values.shape == (648,) and query_ids.shape == (648,) and query_ids.tolist() == evaluation_data["query_ids"] and contribution_identity == identity and numpy.isfinite(values).all(), "static locator contribution identity differs")
         mean = float(numpy.mean(values, dtype=numpy.float64))
     require(abs(mean - float(quality["e5_oracle_survival_after_adc"])) <= 1e-12, "static locator E5 survival does not replay from contributions")
     return mean
@@ -90,6 +119,11 @@ def validate(result_root: Path, evaluation_root: Path, contract_path: Path) -> d
     contract = runner.load_contract(contract_path)
     evaluation_manifest_path = evaluation_root / "manifest.json"
     require(evaluation_manifest_path.is_file() and sha256(evaluation_manifest_path) == contract["frozen_manifests"]["evaluation_manifest_sha256"], "static locator frozen evaluation manifest differs")
+    try:
+        evaluation_data = evaluator.shared.load_root(evaluation_root)
+    except evaluator.EvaluationError as error:
+        raise ValueError("static locator frozen evaluation payload differs") from error
+    require(evaluation_data["manifest_sha256"] == contract["frozen_manifests"]["evaluation_manifest_sha256"], "static locator frozen evaluation payload identity differs")
     summary_path = result_root / "summary.json"
     summary = json.loads(summary_path.read_text(encoding="utf-8"))
     require(summary.get("schema_version") == 1 and summary.get("family") == FAMILY and summary.get("contract_sha256") == sha256(contract_path) and summary.get("input_manifest_sha256") == contract["frozen_manifests"]["input_manifest_sha256"] and summary.get("evaluation_manifest_sha256") == sha256(evaluation_manifest_path), "static locator summary identity differs")
@@ -126,7 +160,7 @@ def validate(result_root: Path, evaluation_root: Path, contract_path: Path) -> d
         expected_config["shortlist_output"] = str(shortlist_path.resolve())
         require(config == expected_config, f"static locator config differs: {identifier}")
         require(report.get("schema_version") == 1 and report.get("family") == NATIVE_FAMILY and report.get("benchmark_config_sha256") == sha256(config_path) and report.get("input_manifest_sha256") == contract["frozen_manifests"]["input_manifest_sha256"] and report.get("benchmark_source_files_sha256") == source_files and report.get("benchmark_source_bundle_sha256") == source_bundle and report.get("mih_search_mode") == "approximate_locator" and report.get("locator_bit_positions") == expected_positions and report.get("fixed_radius") is None and report.get("fixed_radius_exact_inclusion") is None and report.get("conformance", {}).get("candidate_union_fixed_r56_checked") is False, f"static locator report differs: {identifier}")
-        survival = validate_quality(quality_path, contribution_path, shortlist_path, contract, sha256(evaluation_manifest_path))
+        survival = validate_quality(quality_path, contribution_path, shortlist_path, contract, evaluation_data)
         expected_row = {"id": identifier, "bit_count": bit_count, "variant": variant, "locator_bit_positions": expected_positions, "config_sha256": sha256(config_path), "report_sha256": sha256(report_path), "quality_sha256": sha256(quality_path), "candidate_fraction": report["counters_per_query"]["unique_candidates"] / contract["scale"]["documents"], "candidate_generator_p50_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"]["p50"], "full_itq256_flat_hamming_top768_recall": runner.hamming_recall(result_root / "shortlists" / "flat-itq256-hamming-reference.json", shortlist_path, 768), "e5_oracle_survival_after_adc": survival}
         require(row == expected_row, f"static locator summary replay differs: {identifier}")
         for category, path in (("configs", config_path), ("native-reports", report_path), ("shortlists", shortlist_path), ("quality", quality_path), ("contributions", contribution_path)):
@@ -137,6 +171,9 @@ def validate(result_root: Path, evaluation_root: Path, contract_path: Path) -> d
     flat_shortlist = result_root / "shortlists" / "flat-itq256-hamming-reference.json"
     require(input_root is not None and all(path.is_file() for path in (flat_config, flat_report, flat_shortlist)), "static locator Flat reference is missing")
     require(json.loads(flat_config.read_text(encoding="utf-8")) == runner.flat_config(contract, input_root, flat_shortlist), "static locator Flat config differs")
+    flat_report_value, flat_shortlist_value = json.loads(flat_report.read_text(encoding="utf-8")), json.loads(flat_shortlist.read_text(encoding="utf-8"))
+    flat_export = flat_report_value.get("hamming_shortlist_export")
+    require(flat_report_value.get("schema_version") == 1 and flat_report_value.get("family") == NATIVE_FAMILY and flat_report_value.get("backend", {}).get("name") == "flat" and flat_report_value.get("benchmark_config_sha256") == sha256(flat_config) and flat_report_value.get("input_manifest_sha256") == contract["frozen_manifests"]["input_manifest_sha256"] and flat_report_value.get("benchmark_source_files_sha256") == source_files and flat_report_value.get("benchmark_source_bundle_sha256") == source_bundle and flat_report_value.get("hamming_limit") == contract["cascade"]["hamming_limit"] and isinstance(flat_export, dict) and flat_export == {"schema_version": 1, "path": str(flat_shortlist.resolve()), "sha256": sha256(flat_shortlist)} and flat_shortlist_value.get("schema_version") == 1 and flat_shortlist_value.get("family") == "native_ann_hamming_shortlist_export_v1" and flat_shortlist_value.get("backend") == "flat" and flat_shortlist_value.get("input_manifest_sha256") == contract["frozen_manifests"]["input_manifest_sha256"] and flat_shortlist_value.get("hamming_limit") == contract["cascade"]["hamming_limit"], "static locator Flat provenance differs")
     for category, path in (("configs", flat_config), ("native-reports", flat_report), ("shortlists", flat_shortlist)):
         files[f"bundle/{category}/{path.name}"] = path.read_bytes()
     best_survival = max(float(row["e5_oracle_survival_after_adc"]) for row in normalized)
