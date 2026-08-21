@@ -64,8 +64,11 @@ int main() {
     index.setK(documents); std::vector<UINT32> results(queries * documents), counts(queries * 257U); std::vector<qstat> stats(queries);
     index.batchquery(results.data(), counts.data(), stats.data(), query.data(), queries, 32);
     for(UINT32 row = 0; row < queries; ++row) {
-        std::cout << row;
+        std::cout << "RESULT " << row;
         for(UINT32 item = 0; item < documents; ++item) std::cout << ' ' << results[row * documents + item];
+        std::cout << '\n';
+        std::cout << "HISTOGRAM " << row;
+        for(UINT32 distance = 0; distance <= 256U; ++distance) std::cout << ' ' << counts[row * 257U + distance];
         std::cout << '\n';
     }
 }
@@ -78,26 +81,40 @@ def output_digest(lines: list[str], fixture: dict[str, object]) -> str:
     expected_ks = tuple(fixture["ks"])
     required_cutoff_max = int(dict(fixture["upstream_reference"])["required_cutoff_max"])
     require(all(int(value) <= required_cutoff_max for value in fixture["expected_cutoff_at_k768_per_query"]), "upstream MIH fixture cutoff contract differs")
-    values: dict[int, list[int]] = {}
+    results: dict[int, list[int]] = {}
+    histograms: dict[int, list[int]] = {}
     for line in lines:
+        fields = line.split()
+        if len(fields) < 3 or fields[0] not in {"RESULT", "HISTOGRAM"}:
+            continue
         try:
-            fields = [int(item) for item in line.split()]
-        except ValueError:
-            continue
-        if len(fields) < 2:
-            continue
-        query, *positions = fields
-        require(query not in values and len(positions) == len(documents), "upstream MIH output shape differs")
-        values[query] = positions
-    require(set(values) == set(range(len(queries))), "upstream MIH output coverage differs")
+            query, *payload = [int(item) for item in fields[1:]]
+        except ValueError as error:
+            raise ValueError("upstream MIH marked output is not integral") from error
+        if fields[0] == "RESULT":
+            require(query not in results and len(payload) == len(documents), "upstream MIH result shape differs")
+            results[query] = payload
+        else:
+            require(query not in histograms and len(payload) == 257, "upstream MIH histogram shape differs")
+            histograms[query] = payload
+    require(set(results) == set(range(len(queries))) and set(histograms) == set(range(len(queries))), "upstream MIH output coverage differs")
     digest = hashlib.sha256(b"agent-memory-global-exact-mih-fixture-output-v1")
     for query, code in enumerate(queries):
-        positions = values[query]
+        positions, histogram = results[query], histograms[query]
         require(all(1 <= position <= len(documents) for position in positions) and set(positions) == set(range(1, len(documents) + 1)), "upstream MIH complete candidate set differs")
-        ordered = sorted(((code ^ document).bit_count(), position) for position, document in enumerate(documents))
+        expected_by_distance = [0] * 257
+        for document in documents:
+            expected_by_distance[(code ^ document).bit_count()] += 1
+        require(histogram == expected_by_distance and sum(histogram) == len(documents), "upstream MIH distance histogram differs")
+        expected_ordered = sorted(((code ^ document).bit_count(), position) for position, document in enumerate(documents))
         for k in expected_ks:
-            prefix = ordered[:k]
-            require(prefix[-1][0] <= required_cutoff_max, "upstream MIH fixture exceeds the reference cutoff limit")
+            cutoff = expected_ordered[k - 1][0]
+            require(cutoff <= required_cutoff_max, "upstream MIH fixture exceeds the reference cutoff limit")
+            cutoff_count = sum(histogram[:cutoff + 1])
+            upstream_prefix = positions[:cutoff_count]
+            expected_cutoff_set = {position + 1 for distance, position in expected_ordered if distance <= cutoff}
+            require(set(upstream_prefix) == expected_cutoff_set and len(upstream_prefix) == len(expected_cutoff_set), "upstream MIH complete cutoff candidate set differs")
+            prefix = sorted(((code ^ documents[position - 1]).bit_count(), position - 1) for position in upstream_prefix)[:k]
             digest.update(query.to_bytes(4, "little")); digest.update(k.to_bytes(4, "little")); digest.update(k.to_bytes(8, "little"))
             for distance, position in prefix: digest.update(distance.to_bytes(4, "little")); digest.update(position.to_bytes(4, "little"))
     return digest.hexdigest()

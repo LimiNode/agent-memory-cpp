@@ -79,7 +79,7 @@ def validate_certificate(path: Path, report: dict[str, Any], config: dict[str, A
         require(all(isinstance(value, list) and len(value) == k for value in (exact_positions, exact_distances, flat_positions, flat_distances)), "global exact certificate sequence shape differs")
         require(exact_positions == flat_positions and exact_distances == flat_distances and exact_distances[-1] == kth_distance, "global exact certificate Flat replay differs")
         require(all(isinstance(position, int) and position >= 0 for position in exact_positions) and len(set(exact_positions)) == k, "global exact certificate positions differ")
-        require(all(isinstance(distance, int) and 0 <= distance <= 256 for distance in exact_distances) and exact_distances == sorted(exact_distances), "global exact certificate distances differ")
+        require(all(isinstance(distance, int) and 0 <= distance <= 256 for distance in exact_distances) and list(zip(exact_distances, exact_positions)) == sorted(zip(exact_distances, exact_positions)), "global exact certificate canonical ordering differs")
 
 
 def validate(result_root: Path, contract_path: Path) -> dict[str, Any]:
