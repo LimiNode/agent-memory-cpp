@@ -164,6 +164,7 @@ struct CandidateDiagnostic final {
     std::size_t mih_shortlist_fixed_r56_count = 0;
     std::size_t mih_shortlist_exact_hamming_top_k_overlap = 0;
     std::size_t exact_hamming_top_k_max_distance = 0;
+    std::array<std::size_t, 6> exact_hamming_distances_at_k{};
 };
 
 struct QueryWorkspace final {
@@ -653,6 +654,9 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
     static_cast<void>(select_top_k(exact, hamming_limit));
     if(exact.empty()) throw std::runtime_error("native fixed-r56 diagnostic exact Hamming top-K is empty");
     result.exact_hamming_top_k_max_distance = exact.back().distance;
+    for(const auto [index, k] : std::array<std::pair<std::size_t, std::size_t>, 6>{{{0U, 10U}, {1U, 64U}, {2U, 128U}, {3U, 256U}, {4U, 512U}, {5U, 768U}}}) {
+        result.exact_hamming_distances_at_k[index] = k <= exact.size() ? exact[k - 1U].distance : 0U;
+    }
     std::vector<bool> exact_top_k_present(input.document_count, false);
     for(const auto& item : exact) {
         exact_top_k_present[item.position] = true;
@@ -771,6 +775,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
                     {"mih_shortlist_fixed_r56_count", diagnostic.mih_shortlist_fixed_r56_count},
                     {"mih_shortlist_exact_hamming_top_k_overlap", diagnostic.mih_shortlist_exact_hamming_top_k_overlap},
                     {"exact_hamming_top_k_max_distance", diagnostic.exact_hamming_top_k_max_distance},
+                    {"exact_hamming_distances_at_k", {{"10", diagnostic.exact_hamming_distances_at_k[0]}, {"64", diagnostic.exact_hamming_distances_at_k[1]}, {"128", diagnostic.exact_hamming_distances_at_k[2]}, {"256", diagnostic.exact_hamming_distances_at_k[3]}, {"512", diagnostic.exact_hamming_distances_at_k[4]}, {"768", diagnostic.exact_hamming_distances_at_k[5]}}},
                 });
             }
             if(!config.shortlist_output.empty()) {
