@@ -33,6 +33,10 @@ MEASURED_SOURCES = (
     "CMakeLists.txt",
     ".gitmodules",
 )
+REPLAY_SOURCES = (
+    "tools/agent-memory-bench/preflight-scale-aware-native-mih.py",
+    "tools/agent-memory-bench/run-scale-aware-native-mih.py",
+)
 CONTRIBUTION_FIELDS = {
     "coverage_at_hamming_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10",
     "e5_oracle_survival_after_adc", "query_ids", "identity_json",
@@ -86,13 +90,26 @@ def verify_archive(path: Path) -> dict[str, Any]:
     return manifest
 
 
+def selected_identifier(rows: list[dict[str, Any]], backend: str) -> str | None:
+    eligible = [row for row in rows if row["backend"] == backend and row["admissible"]]
+    if not eligible:
+        return None
+    return min(
+        eligible,
+        key=lambda row: (
+            row["candidate_generator_p50_ms_per_query"],
+            row["cascade_p50_ms_per_query"],
+            row["auxiliary_resident_bytes_per_document"],
+            row["id"],
+        ),
+    )["id"]
+
+
 def collect(args: Any) -> tuple[dict[str, bytes], dict[str, Any]]:
     contract_rel = "tools/agent-memory-bench/scale-aware-native-mih-protocol.example.json"
     require(args.contract.read_bytes() == snapshot(args.measured_source_ref, contract_rel), "scale-aware contract snapshot differs")
-    for relative in MEASURED_SOURCES:
-        if relative.startswith("tools/agent-memory-bench/") and relative != contract_rel:
-            local = ROOT / relative
-            require(local.read_bytes() == snapshot(args.measured_source_ref, relative), f"scale-aware replay source differs: {relative}")
+    for relative in REPLAY_SOURCES:
+        require((ROOT / relative).read_bytes() == snapshot(args.measured_source_ref, relative), f"scale-aware replay source differs: {relative}")
     contract = runner.load_contract(args.contract)
     preflight_path = args.calibration_root / "preflight.json"
     preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
@@ -110,6 +127,8 @@ def collect(args: Any) -> tuple[dict[str, bytes], dict[str, Any]]:
         result = json.loads(result_path.read_text(encoding="utf-8"))
         input_path = scale_root / "input" / "manifest.json"
         input_sha = sha256(input_path)
+        input_manifest = json.loads(input_path.read_text(encoding="utf-8"))
+        document_count = input_manifest["document_count"]
         require(result.get("contract_sha256") == sha256(args.contract) and result.get("preflight_sha256") == sha256(preflight_path) and result.get("input_manifest_sha256") == input_sha, f"scale-aware result provenance differs: {current['id']}")
         require(result.get("itq_artifact_sha256") == sha256(args.calibration_root / "itq-256-artifact.npz"), f"scale-aware ITQ artifact differs: {current['id']}")
         expected = runner.treatments(contract, current, preflight)
@@ -123,21 +142,26 @@ def collect(args: Any) -> tuple[dict[str, bytes], dict[str, Any]]:
             identifier = treatment["id"]; results = scale_root / "results"
             config_path = results / "configs" / f"{identifier}.json"; report_path = results / "native-reports" / f"{identifier}.json"; shortlist_path = results / "shortlists" / f"{identifier}.json"; quality_path = results / "quality" / f"{identifier}.json"; contribution_path = results / "contributions" / f"{identifier}.npz"
             config = json.loads(config_path.read_text(encoding="utf-8")); report = json.loads(report_path.read_text(encoding="utf-8")); quality = json.loads(quality_path.read_text(encoding="utf-8")); shortlist = json.loads(shortlist_path.read_text(encoding="utf-8"))
-            require(config == runner.native_config(contract, scale_root / "input", shortlist_path, treatment) | {"query_count": json.loads(input_path.read_text(encoding="utf-8"))["query_count"]}, f"scale-aware config differs: {identifier}")
+            require(config == runner.native_config(contract, scale_root / "input", shortlist_path, treatment) | {"query_count": input_manifest["query_count"]}, f"scale-aware config differs: {identifier}")
             require(report.get("benchmark_config_sha256") == sha256(config_path) and report.get("input_manifest_sha256") == input_sha and shortlist.get("input_manifest_sha256") == input_sha, f"scale-aware native row provenance differs: {identifier}")
-            require(quality.get("shortlist_export_sha256") == sha256(shortlist_path) and quality.get("per_query_contributions_sha256") == sha256(contribution_path), f"scale-aware quality binding differs: {identifier}")
+            shortlist_sha = sha256(shortlist_path)
+            require(quality.get("shortlist_export_sha256") == shortlist_sha and row.get("shortlist_export_sha256") == shortlist_sha and quality.get("per_query_contributions_sha256") == sha256(contribution_path), f"scale-aware quality binding differs: {identifier}")
             with numpy.load(contribution_path, allow_pickle=False) as archive:
                 require(set(archive.files) == CONTRIBUTION_FIELDS, f"scale-aware contribution fields differ: {identifier}")
                 adc = numpy.asarray(archive["e5_oracle_survival_after_adc"], dtype=numpy.float64); reranked = numpy.asarray(archive["reranked_ndcg_at_10"], dtype=numpy.float64); full = numpy.asarray(archive["full_e5_ndcg_at_10"], dtype=numpy.float64)
             gates = contract["selection_gates"]
             adc_lb = runner.bootstrap(adc, None, gates["bootstrap_replicates"], gates["bootstrap_seed_base"] + ordinal * 2, gates["confidence_level"])
             ndcg_lb = runner.bootstrap(reranked, full, gates["bootstrap_replicates"], gates["bootstrap_seed_base"] + ordinal * 2 + 1, gates["confidence_level"])
-            require(row.get("adc_oracle_lb95") == adc_lb and row.get("ndcg_retention_lb95") == ndcg_lb and row.get("native_config_sha256") == sha256(config_path) and row.get("native_report_sha256") == sha256(report_path) and row.get("quality_report_sha256") == sha256(quality_path) and row.get("contributions_sha256") == sha256(contribution_path), f"scale-aware row replay differs: {identifier}")
-            expected_admissible = adc_lb >= gates["adc_oracle_lb95_min"] and ndcg_lb >= gates["ndcg_retention_lb95_min"] and row.get("auxiliary_resident_bytes_per_document") <= gates["auxiliary_resident_bytes_per_document_max"]
+            logical_bytes = int(report["backend"]["backend_index_logical_bytes"])
+            logical_bytes_per_document = logical_bytes / document_count
+            generator_p50 = report["latency_ms_per_query"]["candidate_generator_total"]["p50"]
+            cascade_p50 = report["latency_ms_per_query"]["cascade_total"]["p50"]
+            require(row.get("adc_oracle_lb95") == adc_lb and row.get("ndcg_retention_lb95") == ndcg_lb and row.get("auxiliary_resident_bytes") == logical_bytes and row.get("auxiliary_resident_bytes_per_document") == logical_bytes_per_document and row.get("candidate_generator_p50_ms_per_query") == generator_p50 and row.get("cascade_p50_ms_per_query") == cascade_p50 and row.get("native_config_sha256") == sha256(config_path) and row.get("native_report_sha256") == sha256(report_path) and row.get("quality_report_sha256") == sha256(quality_path) and row.get("contributions_sha256") == sha256(contribution_path), f"scale-aware row replay differs: {identifier}")
+            expected_admissible = adc_lb >= gates["adc_oracle_lb95_min"] and ndcg_lb >= gates["ndcg_retention_lb95_min"] and logical_bytes_per_document <= gates["auxiliary_resident_bytes_per_document_max"]
             require(row.get("admissible") == expected_admissible, f"scale-aware row gate differs: {identifier}")
             for kind, path in (("configs", config_path), ("native-reports", report_path), ("quality", quality_path), ("contributions", contribution_path)):
                 files[f"bundle/{current['id']}/{kind}/{path.name}"] = path.read_bytes()
-        summaries[current["id"]] = {"row_count": len(rows), "admissible_mih_rows": sum(row["backend"] == "mih" and row["admissible"] for row in rows)}
+        summaries[current["id"]] = {"row_count": len(rows), "admissible_mih_rows": sum(row["backend"] == "mih" and row["admissible"] for row in rows), "selected_backend_ids": {backend: selected_identifier(rows, backend) for backend in ("mih", "flat", "hnsw")}}
     for relative in MEASURED_SOURCES:
         files[f"bundle/measured-sources/{relative}"] = snapshot(args.measured_source_ref, relative)
     files[f"bundle/replay-sources/{THIS.name}"] = THIS.read_bytes()
@@ -168,6 +192,11 @@ def self_test() -> int:
             try: verify_archive(path)
             except ValueError: pass
             else: raise ValueError("scale-aware evidence digest mutation was accepted")
+            rows = [
+                {"id": "slow", "backend": "mih", "admissible": True, "candidate_generator_p50_ms_per_query": 2.0, "cascade_p50_ms_per_query": 1.0, "auxiliary_resident_bytes_per_document": 1.0},
+                {"id": "winner", "backend": "mih", "admissible": True, "candidate_generator_p50_ms_per_query": 1.0, "cascade_p50_ms_per_query": 2.0, "auxiliary_resident_bytes_per_document": 2.0},
+            ]
+            require(selected_identifier(rows, "mih") == "winner" and selected_identifier(rows, "hnsw") is None, "scale-aware selection replay differs")
     except (OSError, ValueError, json.JSONDecodeError, zipfile.BadZipFile) as error:
         print(f"scale-aware evidence packager self-test failed: {error}", file=sys.stderr); return 1
     print("scale-aware evidence packager self-test passed"); return 0
