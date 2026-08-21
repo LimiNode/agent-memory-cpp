@@ -41,6 +41,16 @@ continues unless a stronger tie-aware proof is exported.  Only after that
 proof does the discovered prefix become Flat-equivalent.  The exactness proof
 and all enumerated/unvisited-bucket assumptions must be exported per query.
 
+Each measured row writes a verification-only certificate outside the timed
+section. For every selected query it records the covered radius, the integer
+unseen lower bound, the Kth discovered distance, and both ordered
+`(position, distance)` prefixes. The evidence packager independently requires
+the strict certificate and exact equality of the MIH and Flat prefixes; an
+aggregate report boolean is only a convenience field, never the source of the
+exactness claim. The runner pins each Spanish input-manifest SHA before a row
+starts and rejects resumed reports unless their native source-bundle SHA equals
+the current measured source snapshot.
+
 Record native p50/p95/p99 and index bytes, plus key enumeration, bucket
 lookup, posting traversal, generation deduplication, Hamming, top-K,
 candidate-generator total, cascade total, non-empty/empty probes, posting

@@ -12,9 +12,9 @@
   "deduplication_mode": "streaming_generation_array",
   "ks": [10, 64, 128, 256, 512, 768],
   "scales": [
-    {"id": "es-25k", "documents": 25000, "m_values": [15, 16, 17, 18, 19, 20, 21]},
-    {"id": "es-100k", "documents": 100000, "m_values": [13, 14, 15, 16, 17, 18, 19]},
-    {"id": "es-1m", "documents": 1000000, "m_values": [10, 11, 12, 13, 14, 15, 16]}
+    {"id": "es-25k", "documents": 25000, "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987", "m_values": [15, 16, 17, 18, 19, 20, 21]},
+    {"id": "es-100k", "documents": 100000, "input_manifest_sha256": "720fead487f3a7caec62ad190cd93fa79969effd1d0fe825c865ab5d0d437d15", "m_values": [13, 14, 15, 16, 17, 18, 19]},
+    {"id": "es-1m", "documents": 1000000, "input_manifest_sha256": "697f81bc66b37feb47b413fa168f4ae5efd030b9dbbaeb8d0c67ac8d224a9ae7", "m_values": [10, 11, 12, 13, 14, 15, 16]}
   ],
   "exactness": {
     "reference": "flat_hamming_ordered_by_distance_then_document_position_v1",

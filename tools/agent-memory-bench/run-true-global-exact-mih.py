@@ -20,6 +20,13 @@ EXPECTED_SCALES = {
     "es-100k": tuple(range(13, 20)),
     "es-1m": tuple(range(10, 17)),
 }
+ROOT = Path(__file__).resolve().parents[2]
+BENCHMARK_SOURCES = (
+    "tools/agent-memory-bench/mih_native_sparse_arbitrary_m.cpp",
+    "tools/agent-memory-bench/materialize-mih-storage-input.py",
+    "src/agent_memory/index/VectorSimilarityComputer.cpp",
+    "src/agent_memory/index/BinarySignature.cpp",
+)
 
 
 def require(condition: bool, message: str) -> None:
@@ -29,6 +36,14 @@ def require(condition: bool, message: str) -> None:
 
 def sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def benchmark_source_files() -> dict[str, str]:
+    return {name: sha256(ROOT / name) for name in BENCHMARK_SOURCES}
+
+
+def benchmark_source_bundle(files: dict[str, str]) -> str:
+    return hashlib.sha256("".join(f"{name}:{files[name]}\n" for name in BENCHMARK_SOURCES).encode("utf-8")).hexdigest()
 
 
 def widths(m: int) -> list[int]:
@@ -51,12 +66,15 @@ def load_contract(path: Path) -> dict[str, Any]:
     }, "global exact MIH correctness contract differs")
     scales = value.get("scales")
     require(isinstance(scales, list) and {current.get("id"): tuple(current.get("m_values", [])) for current in scales} == EXPECTED_SCALES, "global exact MIH scale matrix differs")
+    for scale in scales:
+        expected_manifest = scale.get("input_manifest_sha256")
+        require(isinstance(expected_manifest, str) and len(expected_manifest) == 64 and all(character in "0123456789abcdef" for character in expected_manifest), "global exact MIH frozen input manifest differs")
     require(value.get("directory_mode") in {"sorted_lower_bound", "flat_open_address"} and value.get("deduplication_mode") in {"two_pass_generation_array", "streaming_generation_array"}, "global exact MIH implementation mode differs")
     require(value.get("query_count", 0) > 0 and value.get("repeat_count", 0) > 0 and value.get("warmup_count", -1) >= 0, "global exact MIH timing contract differs")
     return value
 
 
-def native_config(contract: dict[str, Any], input_root: Path, m: int, k: int) -> dict[str, Any]:
+def native_config(contract: dict[str, Any], input_root: Path, m: int, k: int, certificate_output: Path) -> dict[str, Any]:
     return {
         "input_directory": str(input_root.resolve()),
         "backend": "mih",
@@ -64,6 +82,7 @@ def native_config(contract: dict[str, Any], input_root: Path, m: int, k: int) ->
         "band_widths": widths(m),
         "local_radii": [],
         "global_exact_max_cover_radius": 256,
+        "global_exact_certificate_output": str(certificate_output.resolve()),
         "query_count": contract["query_count"],
         "query_seed": contract["query_seed"],
         "warmup_count": contract["warmup_count"],
@@ -76,7 +95,7 @@ def native_config(contract: dict[str, Any], input_root: Path, m: int, k: int) ->
     }
 
 
-def completed(config_path: Path, report_path: Path, input_manifest_sha256: str, k: int) -> bool:
+def completed(config_path: Path, report_path: Path, input_manifest_sha256: str, source_files: dict[str, str], source_bundle: str, k: int) -> bool:
     if not config_path.is_file() or not report_path.is_file():
         return False
     try:
@@ -85,6 +104,8 @@ def completed(config_path: Path, report_path: Path, input_manifest_sha256: str, 
         return (
             report.get("benchmark_config_sha256") == sha256(config_path)
             and report.get("input_manifest_sha256") == input_manifest_sha256
+            and report.get("benchmark_source_files_sha256") == source_files
+            and report.get("benchmark_source_bundle_sha256") == source_bundle
             and report.get("mih_search_mode") == "global_exact"
             and report.get("hamming_limit") == k
             and report.get("fixed_radius") is None
@@ -98,6 +119,8 @@ def completed(config_path: Path, report_path: Path, input_manifest_sha256: str, 
 
 def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     rows: list[dict[str, Any]] = []
+    source_files = benchmark_source_files()
+    source_bundle = benchmark_source_bundle(source_files)
     for scale in contract["scales"]:
         scale_id = scale["id"]
         input_root = args.input_root / scale_id / "input"
@@ -106,21 +129,23 @@ def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         require(manifest.get("document_count") == scale["documents"], f"global exact MIH input cardinality differs: {scale_id}")
         manifest_sha = sha256(manifest_path)
+        require(manifest_sha == scale["input_manifest_sha256"], f"global exact MIH frozen input manifest differs: {scale_id}")
         for m in scale["m_values"]:
             for k in contract["ks"]:
                 identifier = f"m{m}-k{k}"
                 root = args.output_root / scale_id
-                config_path, report_path = root / "configs" / f"{identifier}.json", root / "native-reports" / f"{identifier}.json"
+                config_path, report_path, certificate_path = root / "configs" / f"{identifier}.json", root / "native-reports" / f"{identifier}.json", root / "global-exact-certificates" / f"{identifier}.json"
                 config_path.parent.mkdir(parents=True, exist_ok=True)
                 report_path.parent.mkdir(parents=True, exist_ok=True)
-                expected = native_config(contract, input_root, m, k)
+                certificate_path.parent.mkdir(parents=True, exist_ok=True)
+                expected = native_config(contract, input_root, m, k, certificate_path)
                 encoded = json.dumps(expected, indent=2, sort_keys=True) + "\n"
                 if not config_path.is_file() or config_path.read_text(encoding="utf-8") != encoded:
                     config_path.write_text(encoded, encoding="utf-8", newline="\n")
-                if not completed(config_path, report_path, manifest_sha, k):
+                if not completed(config_path, report_path, manifest_sha, source_files, source_bundle, k):
                     subprocess.run([str(args.bench_exe), str(config_path), str(report_path)], check=True)
                 report = json.loads(report_path.read_text(encoding="utf-8"))
-                require(completed(config_path, report_path, manifest_sha, k), f"global exact MIH row is incomplete: {scale_id}/{identifier}")
+                require(completed(config_path, report_path, manifest_sha, source_files, source_bundle, k) and certificate_path.is_file() and report.get("global_exact_certificate_sha256") == sha256(certificate_path), f"global exact MIH row is incomplete: {scale_id}/{identifier}")
                 rows.append({
                     "scale": scale_id,
                     "m": m,
@@ -128,6 +153,7 @@ def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
                     "input_manifest_sha256": manifest_sha,
                     "config_sha256": sha256(config_path),
                     "report_sha256": sha256(report_path),
+                    "global_exact_certificate_sha256": sha256(certificate_path),
                     "candidate_generator_p50_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"]["p50"],
                     "unique_candidates_per_query": report["counters_per_query"]["unique_candidates"],
                     "mean_global_exact_cover_radius": report["conformance"]["global_exact_cover_radius_mean"],
@@ -136,6 +162,8 @@ def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
         "schema_version": 1,
         "family": FAMILY,
         "contract_sha256": sha256(args.contract),
+        "benchmark_source_files_sha256": source_files,
+        "benchmark_source_bundle_sha256": source_bundle,
         "row_count": len(rows),
         "rows": rows,
     }
@@ -151,8 +179,9 @@ def self_test() -> None:
         contract_path.write_text(json.dumps(value), encoding="utf-8")
         contract = load_contract(contract_path)
         require(widths(15) == [18] + [17] * 14 and widths(16) == [16] * 16 and sum(widths(21)) == 256, "global exact MIH width split differs")
-        config = native_config(contract, root / "es-1m" / "input", 13, 768)
+        config = native_config(contract, root / "es-1m" / "input", 13, 768, root / "certificate.json")
         require(config["mih_search_mode"] == "global_exact" and config["local_radii"] == [] and config["global_exact_max_cover_radius"] == 256 and sum(config["band_widths"]) == 256, "global exact MIH native config differs")
+        require(benchmark_source_bundle(benchmark_source_files()) == benchmark_source_bundle(dict(reversed(benchmark_source_files().items()))), "global exact MIH source bundle is not canonical")
     print("true global exact MIH runner self-test passed")
 
 

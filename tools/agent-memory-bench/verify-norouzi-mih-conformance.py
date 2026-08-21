@@ -61,14 +61,12 @@ int main() {
     for(UINT32 row = 0; row < documents; ++row) put(database, row, next(document_state));
     for(UINT32 row = 0; row < queries; ++row) put(query, row, next(query_state));
     mihasher index(256, 16); index.populate(database.data(), documents, 32);
-    for(const UINT32 k : {10U, 64U, 128U, 256U, 512U, 768U}) {
-        index.setK(k); std::vector<UINT32> results(queries * k), counts(queries * 257U); std::vector<qstat> stats(queries);
-        index.batchquery(results.data(), counts.data(), stats.data(), query.data(), queries, 32);
-        for(UINT32 row = 0; row < queries; ++row) {
-            std::cout << row << ' ' << k;
-            for(UINT32 item = 0; item < k; ++item) std::cout << ' ' << results[row * k + item];
-            std::cout << '\n';
-        }
+    index.setK(documents); std::vector<UINT32> results(queries * documents), counts(queries * 257U); std::vector<qstat> stats(queries);
+    index.batchquery(results.data(), counts.data(), stats.data(), query.data(), queries, 32);
+    for(UINT32 row = 0; row < queries; ++row) {
+        std::cout << row;
+        for(UINT32 item = 0; item < documents; ++item) std::cout << ' ' << results[row * documents + item];
+        std::cout << '\n';
     }
 }
 '''
@@ -78,27 +76,30 @@ def output_digest(lines: list[str], fixture: dict[str, object]) -> str:
     documents = words(str(fixture["document_seed"]), int(fixture["document_count"]))
     queries = words(str(fixture["query_seed"]), int(fixture["query_count"]))
     expected_ks = tuple(fixture["ks"])
-    values: dict[tuple[int, int], list[int]] = {}
+    required_cutoff_max = int(dict(fixture["upstream_reference"])["required_cutoff_max"])
+    require(all(int(value) <= required_cutoff_max for value in fixture["expected_cutoff_at_k768_per_query"]), "upstream MIH fixture cutoff contract differs")
+    values: dict[int, list[int]] = {}
     for line in lines:
         try:
             fields = [int(item) for item in line.split()]
         except ValueError:
             continue
-        if len(fields) < 3:
+        if len(fields) < 2:
             continue
-        query, k, *positions = fields
-        if k in expected_ks:
-            require((query, k) not in values and len(positions) == k, "upstream MIH output shape differs")
-            values[query, k] = positions
-    require(set(values) == {(query, k) for query in range(len(queries)) for k in expected_ks}, "upstream MIH output coverage differs")
+        query, *positions = fields
+        require(query not in values and len(positions) == len(documents), "upstream MIH output shape differs")
+        values[query] = positions
+    require(set(values) == set(range(len(queries))), "upstream MIH output coverage differs")
     digest = hashlib.sha256(b"agent-memory-global-exact-mih-fixture-output-v1")
     for query, code in enumerate(queries):
+        positions = values[query]
+        require(all(1 <= position <= len(documents) for position in positions) and set(positions) == set(range(1, len(documents) + 1)), "upstream MIH complete candidate set differs")
+        ordered = sorted(((code ^ document).bit_count(), position) for position, document in enumerate(documents))
         for k in expected_ks:
-            positions = values[query, k]
-            require(all(1 <= position <= len(documents) for position in positions) and len(set(positions)) == k, "upstream MIH returned positions differ")
-            ordered = sorted(((sum((code ^ documents[position - 1]).bit_count() for _ in (0,)), position - 1) for position in positions))
+            prefix = ordered[:k]
+            require(prefix[-1][0] <= required_cutoff_max, "upstream MIH fixture exceeds the reference cutoff limit")
             digest.update(query.to_bytes(4, "little")); digest.update(k.to_bytes(4, "little")); digest.update(k.to_bytes(8, "little"))
-            for distance, position in ordered: digest.update(distance.to_bytes(4, "little")); digest.update(position.to_bytes(4, "little"))
+            for distance, position in prefix: digest.update(distance.to_bytes(4, "little")); digest.update(position.to_bytes(4, "little"))
     return digest.hexdigest()
 
 

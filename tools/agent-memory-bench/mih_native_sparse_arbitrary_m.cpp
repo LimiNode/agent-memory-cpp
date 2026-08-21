@@ -105,6 +105,7 @@ struct Config final {
     std::uint64_t hnsw_seed = 20260815;
     std::filesystem::path shortlist_output;
     std::filesystem::path candidate_diagnostic_output;
+    std::filesystem::path global_exact_certificate_output;
     std::string directory_mode = "sorted_lower_bound";
     std::string deduplication_mode = "two_pass_generation_array";
     std::string sha256;
@@ -220,6 +221,7 @@ void validate_config(const Config& value) {
     }
     if(value.backend == "hnsw" && (value.hnsw_connectivity == 0 || value.hnsw_ef_construction < value.hnsw_connectivity || value.hnsw_ef_search < value.hamming_limit)) throw std::invalid_argument("native HNSW configuration is invalid");
     if(!value.candidate_diagnostic_output.empty() && (value.backend != "mih" || value.mih_search_mode != "fixed_r56")) throw std::invalid_argument("native fixed-r56 candidate diagnostic requires fixed-r56 MIH");
+    if(!value.global_exact_certificate_output.empty() && (value.backend != "mih" || value.mih_search_mode != "global_exact")) throw std::invalid_argument("native global exact certificate requires global-exact MIH");
     static_cast<void>(directory_mode(value.directory_mode));
     static_cast<void>(deduplication_mode(value.deduplication_mode));
 }
@@ -348,6 +350,7 @@ template<class Value>
     result.hnsw_seed = value.value("hnsw_seed", result.hnsw_seed);
     result.shortlist_output = value.value("shortlist_output", std::string{});
     result.candidate_diagnostic_output = value.value("candidate_diagnostic_output", std::string{});
+    result.global_exact_certificate_output = value.value("global_exact_certificate_output", std::string{});
     result.directory_mode = value.value("directory_mode", result.directory_mode);
     result.deduplication_mode = value.value("deduplication_mode", result.deduplication_mode);
     validate_config(result);
@@ -780,7 +783,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
     for(std::size_t index = 0; index < expected.size(); ++index) if(expected[index].position != shortlist[index].position || expected[index].distance != shortlist[index].distance) throw std::runtime_error("native sparse MIH Hamming shortlist differs");
 }
 
-void verify_global_exact_conformance(const Input& input, const std::uint64_t* query, const std::vector<Scored>& shortlist, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit, const GlobalExactCertificate& certificate) {
+[[nodiscard]] std::vector<Scored> global_exact_flat_shortlist(const Input& input, const std::uint64_t* query, const std::vector<Scored>& shortlist, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit, const GlobalExactCertificate& certificate) {
     if(!certificate.strict_unseen_lower_bound_proved || shortlist.size() != hamming_limit || shortlist.empty() || shortlist.back().distance != certificate.kth_distance || certificate.kth_distance >= certificate.covered_radius + 1U) throw std::runtime_error("native global exact MIH stopping certificate differs");
     std::vector<Scored> expected;
     expected.reserve(input.document_count);
@@ -788,6 +791,11 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
     static_cast<void>(select_top_k(expected, hamming_limit));
     if(expected.size() != shortlist.size()) throw std::runtime_error("native global exact MIH Flat size differs");
     for(std::size_t position = 0; position < expected.size(); ++position) if(expected[position].position != shortlist[position].position || expected[position].distance != shortlist[position].distance) throw std::runtime_error("native global exact MIH Flat ordering differs");
+    return expected;
+}
+
+void verify_global_exact_conformance(const Input& input, const std::uint64_t* query, const std::vector<Scored>& shortlist, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit, const GlobalExactCertificate& certificate) {
+    static_cast<void>(global_exact_flat_shortlist(input, query, shortlist, hamming, hamming_limit, certificate));
 }
 
 [[nodiscard]] CandidateDiagnostic diagnose_fixed_r56_candidate_union(const Input& input, const std::uint32_t query_position, const std::uint64_t* query, const std::vector<std::uint32_t>& candidates, const std::vector<Scored>& shortlist, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit) {
@@ -914,6 +922,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
     }
     nlohmann::json exported_shortlists = nlohmann::json::array();
     nlohmann::json candidate_diagnostics = nlohmann::json::array();
+    nlohmann::json global_exact_certificates = nlohmann::json::array();
     {
         GenerationDeduplicator verification_deduplicator(input.document_count);
         QueryWorkspace verification_workspace;
@@ -937,8 +946,26 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
                     : throw std::runtime_error("native HNSW benchmark support was not configured"))
 #endif
                 ;
-            if(global_exact_mih) verify_global_exact_conformance(input, query, result.shortlist, hamming, config.hamming_limit, result.global_exact);
-            else verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih");
+            if(global_exact_mih) {
+                const auto flat_shortlist = global_exact_flat_shortlist(input, query, result.shortlist, hamming, config.hamming_limit, result.global_exact);
+                if(!config.global_exact_certificate_output.empty()) {
+                    nlohmann::json exact_positions = nlohmann::json::array(), exact_distances = nlohmann::json::array();
+                    nlohmann::json flat_positions = nlohmann::json::array(), flat_distances = nlohmann::json::array();
+                    for(const auto& item : result.shortlist) { exact_positions.push_back(item.position); exact_distances.push_back(item.distance); }
+                    for(const auto& item : flat_shortlist) { flat_positions.push_back(item.position); flat_distances.push_back(item.distance); }
+                    global_exact_certificates.push_back({
+                        {"query_position", position},
+                        {"covered_radius", result.global_exact.covered_radius},
+                        {"unseen_lower_bound", result.global_exact.covered_radius + 1U},
+                        {"kth_distance", result.global_exact.kth_distance},
+                        {"strict_unseen_lower_bound_proved", result.global_exact.strict_unseen_lower_bound_proved},
+                        {"exact_mih_positions", std::move(exact_positions)},
+                        {"exact_mih_distances", std::move(exact_distances)},
+                        {"flat_positions", std::move(flat_positions)},
+                        {"flat_distances", std::move(flat_distances)},
+                    });
+                }
+            } else verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih");
             if(!config.candidate_diagnostic_output.empty()) {
                 const auto diagnostic = diagnose_fixed_r56_candidate_union(input, static_cast<std::uint32_t>(position), query, raw_candidates, result.shortlist, hamming, config.hamming_limit);
                 candidate_diagnostics.push_back({
@@ -987,6 +1014,15 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         output.close();
         candidate_diagnostic_sha256 = agent_memory::sha256_file_hex(config.candidate_diagnostic_output);
     }
+    std::string global_exact_certificate_sha256;
+    if(!config.global_exact_certificate_output.empty()) {
+        const nlohmann::json certificate_export{{"schema_version", 1}, {"family", "native_mih_global_exact_certificate_v1"}, {"input_manifest_sha256", input.manifest_sha256}, {"benchmark_config_sha256", config.sha256}, {"backend", config.backend}, {"mih_search_mode", config.mih_search_mode}, {"query_seed", config.query_seed}, {"selected_query_positions", query_positions}, {"hamming_limit", config.hamming_limit}, {"rows", global_exact_certificates}};
+        std::ofstream output(config.global_exact_certificate_output);
+        if(!output) throw std::runtime_error("cannot write native global exact MIH certificate");
+        output << certificate_export.dump(2) << '\n';
+        output.close();
+        global_exact_certificate_sha256 = agent_memory::sha256_file_hex(config.global_exact_certificate_output);
+    }
 
     const auto per_query = static_cast<double>(config.query_count);
     const auto mean_posting_length = diagnostics.non_empty_probes == 0 ? 0.0 : static_cast<double>(diagnostics.posting_visits) / static_cast<double>(diagnostics.non_empty_probes);
@@ -1028,6 +1064,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         {"query_count", config.query_count}, {"query_seed", config.query_seed}, {"query_selection_algorithm", "std_mt19937_64_shuffle_v1"}, {"selected_query_positions", query_positions},
         {"warmup_count", config.warmup_count}, {"repeat_count", config.repeat_count},
         {"band_widths", config.band_widths}, {"mih_search_mode", config.mih_search_mode}, {"local_radii", config.local_radii}, {"fixed_radius", is_mih && !global_exact_mih ? nlohmann::json(56) : nlohmann::json(nullptr)}, {"fixed_radius_exact_inclusion", is_mih && !global_exact_mih ? nlohmann::json("sum_local_radius_plus_one_at_least_57_v1") : nlohmann::json(nullptr)},
+        {"global_exact_certificate_sha256", global_exact_certificate_sha256.empty() ? nlohmann::json(nullptr) : nlohmann::json(global_exact_certificate_sha256)},
         {"hamming_limit", config.hamming_limit}, {"adc_limit", config.adc_limit}, {"exact_limit", config.exact_limit},
         {"hamming_shortlist_export", config.shortlist_output.empty() ? nlohmann::json(nullptr) : nlohmann::json({{"path", config.shortlist_output.string()}, {"sha256", shortlist_export_sha256}, {"schema_version", 1}})},
         {"fixed_r56_candidate_diagnostic", config.candidate_diagnostic_output.empty() ? nlohmann::json(nullptr) : nlohmann::json({{"path", config.candidate_diagnostic_output.string()}, {"sha256", candidate_diagnostic_sha256}, {"schema_version", 1}})},
