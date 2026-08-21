@@ -116,6 +116,10 @@ def run(args: Any) -> None:
         source_config_path = source_root / "configs" / f"{identifier}.json"
         source_report_path = source_root / "native-reports" / f"{identifier}.json"
         source_config, source_report = load_json(source_config_path), load_json(source_report_path)
+        source_result_path = source_root / "result.json"
+        source_result = load_json(source_result_path)
+        source_rows = [row for row in source_result.get("rows", []) if row.get("id") == identifier]
+        require(len(source_rows) == 1 and source_rows[0].get("native_config_sha256") == sha256(source_config_path) and source_rows[0].get("native_report_sha256") == sha256(source_report_path), f"fixed-r56 spillover source result binding differs: {scale}")
         require(source_config.get("backend") == "mih" and source_config.get("hamming_limit") == plan["source_protocol"]["hamming_limit"], f"fixed-r56 spillover source config differs: {scale}")
         destination = args.output_root / scale
         destination.mkdir(parents=True, exist_ok=True)
@@ -124,12 +128,12 @@ def run(args: Any) -> None:
         config_path.write_text(json.dumps(config, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
         subprocess.run([str(args.native_executable), str(config_path), str(report_path)], check=True, stdout=subprocess.DEVNULL)
         report, diagnostic = load_json(report_path), load_json(diagnostic_path)
-        require(report.get("input_manifest_sha256") == source_report.get("input_manifest_sha256") and report.get("selected_query_positions") == source_report.get("selected_query_positions"), f"fixed-r56 spillover query identity differs: {scale}")
+        require(report.get("input_manifest_sha256") == source_report.get("input_manifest_sha256") and report.get("selected_query_positions") == source_report.get("selected_query_positions") and report.get("counters_per_query", {}).get("candidate_checksum") == source_report.get("counters_per_query", {}).get("candidate_checksum") and report.get("counters_per_query", {}).get("shortlist_checksum") == source_report.get("counters_per_query", {}).get("shortlist_checksum"), f"fixed-r56 spillover candidate identity differs: {scale}")
         require(report.get("fixed_r56_candidate_diagnostic", {}).get("sha256") == sha256(diagnostic_path), f"fixed-r56 spillover native diagnostic binding differs: {scale}")
         require(diagnostic.get("schema_version") == 1 and diagnostic.get("family") == NATIVE_FAMILY and diagnostic.get("input_manifest_sha256") == source_report.get("input_manifest_sha256") and diagnostic.get("benchmark_config_sha256") == sha256(config_path) and diagnostic.get("selected_query_positions") == source_report.get("selected_query_positions") and diagnostic.get("fixed_radius") == 56 and diagnostic.get("hamming_limit") == source_config["hamming_limit"], f"fixed-r56 spillover diagnostic provenance differs: {scale}")
         rows = diagnostic.get("rows")
         validate_rows(rows, source_config["hamming_limit"])
-        output_rows.append({"scale": scale, "id": identifier, "role": representative["role"], "source_config_sha256": sha256(source_config_path), "source_report_sha256": sha256(source_report_path), "diagnostic_config_sha256": sha256(config_path), "diagnostic_report_sha256": sha256(report_path), "candidate_union_sha256": sha256(diagnostic_path), "summary": summarize(rows, source_config["hamming_limit"])})
+        output_rows.append({"scale": scale, "id": identifier, "role": representative["role"], "source_result_sha256": sha256(source_result_path), "source_config_sha256": sha256(source_config_path), "source_report_sha256": sha256(source_report_path), "source_candidate_checksum": source_report["counters_per_query"]["candidate_checksum"], "source_shortlist_checksum": source_report["counters_per_query"]["shortlist_checksum"], "diagnostic_config_sha256": sha256(config_path), "diagnostic_report_sha256": sha256(report_path), "candidate_union_sha256": sha256(diagnostic_path), "summary": summarize(rows, source_config["hamming_limit"])})
     result = {"schema_version": 1, "family": FAMILY, "plan_sha256": sha256(args.plan), "protocol_sha256": sha256(args.protocol), "native_executable": str(args.native_executable.resolve()), "scales": output_rows, "interpretation_limit": "This diagnostic measures fixed-r56 candidate-union coverage and m-dependent spillover against deterministic exact Flat Hamming top-768. It does not replay E5 gates, select an index, or establish an exact-top-K MIH algorithm."}
     args.output_root.mkdir(parents=True, exist_ok=True)
     (args.output_root / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
