@@ -711,6 +711,7 @@ private:
                 if(deduplicator.visit(position)) workspace.candidates.push_back(position);
             }
         }
+        workspace.spans.clear();
         posting_traversal_ms += milliseconds(traversal_start, Clock::now());
         deduplication_ms = posting_traversal_ms;
         diagnostics.unique_candidates += workspace.candidates.size() - candidate_first;
