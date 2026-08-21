@@ -85,6 +85,8 @@ def run(args: Any) -> None:
         input_root, e5_root = source / "input", source / "e5"
         manifest = json.loads((input_root / "manifest.json").read_text(encoding="utf-8"))
         input_sha = sha256(input_root / "manifest.json")
+        frozen = plan["frozen_roots"][scale["id"]]
+        require(input_sha == frozen["input_manifest_sha256"] and sha256(e5_root / "manifest.json") == frozen["e5_manifest_sha256"] and manifest.get("itq_artifact_sha256") == plan["frozen_roots"]["itq_artifact_sha256"], f"fixed-r56 m24 frozen root differs: {scale['id']}")
         rows: list[dict[str, Any]] = []
         for ordinal, m in enumerate(scale["new_m_values"]):
             current = treatment(scale, m)
@@ -105,7 +107,7 @@ def run(args: Any) -> None:
             quality_contract = plan["quality_reporting"]
             adc_lb = runner.bootstrap(adc, None, quality_contract["bootstrap_replicates"], quality_contract["bootstrap_seed_base"] + ordinal * 2, quality_contract["confidence_level"])
             ndcg_lb = runner.bootstrap(reranked, full, quality_contract["bootstrap_replicates"], quality_contract["bootstrap_seed_base"] + ordinal * 2 + 1, quality_contract["confidence_level"])
-            rows.append({"id": current["id"], "m": m, "local_key_count": current["local_key_count"], "config_sha256": sha256(config), "report_sha256": sha256(report), "shortlist_sha256": sha256(shortlist), "quality_sha256": sha256(quality), "contribution_sha256": sha256(contribution), "candidate_generator_p50_ms_per_query": native["latency_ms_per_query"]["candidate_generator_total"]["p50"], "cascade_p50_ms_per_query": native["latency_ms_per_query"]["cascade_total"]["p50"], "unique_candidates_per_query": native["counters_per_query"]["unique_candidates"], "adc_oracle_lb95": adc_lb, "ndcg_retention_lb95": ndcg_lb, "meets_original_quality_gates": adc_lb >= quality_contract["adc_oracle_lb95_min"] and ndcg_lb >= quality_contract["ndcg_retention_lb95_min"]})
+            rows.append({"id": current["id"], "m": m, "local_key_count": current["local_key_count"], "config_sha256": sha256(config), "report_sha256": sha256(report), "shortlist_sha256": sha256(shortlist), "quality_sha256": sha256(quality), "contribution_sha256": sha256(contribution), "candidate_generator_p50_ms_per_query": native["latency_ms_per_query"]["candidate_generator_total"]["p50"], "cascade_p50_ms_per_query": native["latency_ms_per_query"]["cascade_total"]["p50"], "unique_candidates_per_query": native["counters_per_query"]["unique_candidates"], "adc_oracle_lb95": adc_lb, "ndcg_retention_lb95": ndcg_lb, "meets_exploratory_reporting_thresholds": adc_lb >= quality_contract["adc_oracle_lb95_min"] and ndcg_lb >= quality_contract["ndcg_retention_lb95_min"]})
         output_scales.append({"id": scale["id"], "input_manifest_sha256": input_sha, "e5_manifest_sha256": sha256(e5_root / "manifest.json"), "rows": rows})
     args.output_root.mkdir(parents=True, exist_ok=True)
     result = {"schema_version": 1, "family": FAMILY, "plan_sha256": sha256(args.plan), "source_protocol_sha256": sha256(args.protocol), "selection": "forbidden", "confirmation": "forbidden", "scales": output_scales}
