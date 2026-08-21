@@ -313,7 +313,7 @@ struct Directory final {
 
 [[nodiscard]] std::size_t flat_hash_capacity(const std::size_t key_count) {
     std::size_t capacity = 1;
-    const auto minimum = key_count + key_count / 2U;
+    const auto minimum = key_count + std::max<std::size_t>(1U, key_count / 2U);
     while(capacity < minimum) {
         if(capacity > std::numeric_limits<std::size_t>::max() / 2U) throw std::overflow_error("native sparse MIH flat directory capacity overflows");
         capacity <<= 1U;
@@ -345,8 +345,16 @@ public:
                 const auto mask = directory.hash_slots.size() - 1U;
                 for(std::size_t index = 0; index < directory.keys.size(); ++index) {
                     auto slot = flat_hash_start(directory.keys[index], mask);
-                    while(directory.hash_slots[slot].index != std::numeric_limits<std::uint32_t>::max()) slot = (slot + 1U) & mask;
-                    directory.hash_slots[slot] = {directory.keys[index], static_cast<std::uint32_t>(index)};
+                    bool inserted = false;
+                    for(std::size_t probes = 0; probes < directory.hash_slots.size(); ++probes) {
+                        if(directory.hash_slots[slot].index == std::numeric_limits<std::uint32_t>::max()) {
+                            directory.hash_slots[slot] = {directory.keys[index], static_cast<std::uint32_t>(index)};
+                            inserted = true;
+                            break;
+                        }
+                        slot = (slot + 1U) & mask;
+                    }
+                    if(!inserted) throw std::runtime_error("native sparse MIH flat directory has no empty slot");
                 }
                 directory.keys.clear();
                 directory.keys.shrink_to_fit();
@@ -364,11 +372,12 @@ public:
         } else {
             const auto mask = directory.hash_slots.size() - 1U;
             auto slot = flat_hash_start(key, mask);
-            while(directory.hash_slots[slot].index != std::numeric_limits<std::uint32_t>::max()) {
+            for(std::size_t probes = 0; probes < directory.hash_slots.size(); ++probes) {
+                if(directory.hash_slots[slot].index == std::numeric_limits<std::uint32_t>::max()) return false;
                 if(directory.hash_slots[slot].key == key) { index = directory.hash_slots[slot].index; break; }
                 slot = (slot + 1U) & mask;
             }
-            if(directory.hash_slots[slot].index == std::numeric_limits<std::uint32_t>::max()) return false;
+            if(directory.hash_slots[slot].index != std::numeric_limits<std::uint32_t>::max() && directory.hash_slots[slot].key != key) return false;
         }
         result = {directory.postings.data(), directory.offsets[index], directory.offsets[index + 1U]};
         return true;
@@ -787,6 +796,10 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
         const auto bands = make_bands(widths);
         const SparseIndex sorted_index(codes, 3, bands, DirectoryMode::SortedLowerBound);
         const SparseIndex flat_index(codes, 3, bands, DirectoryMode::FlatOpenAddress);
+        const std::vector<std::uint64_t> singleton_codes(kWordCount, 0U);
+        const SparseIndex singleton_flat_index(singleton_codes, 1, bands, DirectoryMode::FlatOpenAddress);
+        Span singleton_span;
+        if(flat_hash_capacity(1U) < 2U || !singleton_flat_index.find(0, 0, singleton_span) || singleton_span.last - singleton_span.first != 1U || singleton_flat_index.find(0, 1U, singleton_span)) throw std::runtime_error("native sparse MIH singleton flat directory differs");
         for(const auto* index : {&sorted_index, &flat_index}) {
             Span span;
             if(!index->find(0, 0, span) || span.last - span.first != 2 || span.values[span.first] != 0 || span.values[span.first + 1U] != 1 || index->find(0, 2, span) || extract_key(codes.data() + 2U * kWordCount, bands[3]) != (std::uint32_t{1} << 11U) || index->logical_bytes() == 0) throw std::runtime_error("sparse directory lookup differs");
