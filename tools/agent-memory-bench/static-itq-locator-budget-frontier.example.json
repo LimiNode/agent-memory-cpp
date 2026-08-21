@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "family": "static_itq_locator_budget_frontier_v1",
+  "purpose": "calibration_only_static_locator_r3_to_r4_budget_frontier_not_selection_or_confirmation",
+  "ranking_representation": "frozen_itq_256_v1",
+  "routing_representation": "random_selected_subset_of_frozen_itq_256_bits_v1",
+  "scale": {"id": "es-25k", "documents": 25000, "language": "es", "split": "dev"},
+  "frozen_manifests": {
+    "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987",
+    "evaluation_manifest_sha256": "f020bc77f7b534e45a596683eabfb30fcd71220268b0cf244f29152abd262c84"
+  },
+  "bit_counts": [64, 80, 96, 112, 128],
+  "subset": {"variant": "random_seeded_v1", "random_seed": 20260830},
+  "bands": {"width_bits": 16, "initial_local_radius": 3, "expanded_local_radius": 4, "schedule": "sorted_locator_band_prefix_expands_from_r3_to_r4_v1"},
+  "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "native_timing": {"query_seed": 20260825, "warmup_count": 1, "repeat_count": 7},
+  "baseline": {
+    "id": "fresh_full_itq256_m19_uniform_radius2",
+    "band_widths": [14, 14, 14, 14, 14, 14, 14, 14, 14, 13, 13, 13, 13, 13, 13, 13, 13, 13, 13],
+    "local_radii": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+  },
+  "budget": {
+    "maximum_candidate_fraction": 0.25,
+    "maximum_candidate_generator_p50_ratio_to_fresh_baseline": 1.0,
+    "stop_after_first_observed_budget_exhaustion_per_bit_count": true,
+    "do_not_measure_schedule_with_independent_null_candidate_fraction_above_budget": true
+  },
+  "confirmation": "forbidden_until_a_calibration_selected_locator_is_frozen_and_evaluated_on_a_new_untouched_split",
+  "learned_locator": "forbidden_in_this_protocol"
+}
