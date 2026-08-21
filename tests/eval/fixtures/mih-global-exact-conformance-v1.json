@@ -6,11 +6,11 @@
   "query_count": 4,
   "document_seed": "6a09e667f3bcc909",
   "query_seed": "bb67ae8584caa73b",
-  "construction": "splitmix64_word0_only_zero_extend_to_256_v1",
+  "construction": "splitmix64_four_sparse_xor_masks_per_code_little_endian_v2",
   "band_count": 16,
   "ks": [10, 64, 128, 256, 512, 768],
   "canonical_order": "hamming_distance_ascending_then_document_position_ascending_v1",
-  "expected_cutoff_at_k768_per_query": [39, 39, 38, 39],
+  "expected_cutoff_at_k768_per_query": [107, 114, 110, 108],
   "upstream_reference": {
     "repository": "https://github.com/norouzi/mih",
     "commit": "96a629de834c1b974b0c5e378ab1037ee42120ab",
@@ -23,5 +23,5 @@
       "runner": "tools/agent-memory-bench/verify-norouzi-mih-conformance.py"
     }
   },
-  "canonical_outputs_sha256": "0c4e467b35ea4279fcb805208ca1f96cf21134f7a14bcbc274dc43d0e59b1daa"
+  "canonical_outputs_sha256": "42b7c3569043ae184a654700e918489192da3b0adced5fed80a9f93f3f98e104"
 }

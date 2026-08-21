@@ -70,6 +70,11 @@ def load_contract(path: Path) -> dict[str, Any]:
         expected_manifest = scale.get("input_manifest_sha256")
         require(isinstance(expected_manifest, str) and len(expected_manifest) == 64 and all(character in "0123456789abcdef" for character in expected_manifest), "global exact MIH frozen input manifest differs")
     require(value.get("directory_mode") in {"sorted_lower_bound", "flat_open_address"} and value.get("deduplication_mode") in {"two_pass_generation_array", "streaming_generation_array"}, "global exact MIH implementation mode differs")
+    require(value.get("resource_contract") == {
+        "maximum_wall_clock_seconds_per_row": 43200,
+        "timeout_outcome": "exact_search_resource_exhausted",
+        "approximate_result": "forbidden",
+    }, "global exact MIH resource contract differs")
     require(value.get("query_count", 0) > 0 and value.get("repeat_count", 0) > 0 and value.get("warmup_count", -1) >= 0, "global exact MIH timing contract differs")
     return value
 
@@ -117,10 +122,44 @@ def completed(config_path: Path, report_path: Path, input_manifest_sha256: str, 
         return False
 
 
+def resource_outcome(scale: str, m: int, k: int, config_path: Path, input_manifest_sha256: str, source_files: dict[str, str], source_bundle: str, maximum_wall_clock_seconds: int) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "family": FAMILY,
+        "scale": scale,
+        "m": m,
+        "k": k,
+        "status": "exact_search_resource_exhausted",
+        "reason": "wall_clock_timeout",
+        "maximum_wall_clock_seconds": maximum_wall_clock_seconds,
+        "approximate_result": "forbidden",
+        "input_manifest_sha256": input_manifest_sha256,
+        "config_sha256": sha256(config_path),
+        "benchmark_source_files_sha256": source_files,
+        "benchmark_source_bundle_sha256": source_bundle,
+    }
+
+
+def exact_row(scale: str, m: int, k: int, manifest_sha: str, config_path: Path, report_path: Path, certificate_path: Path, report: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "scale": scale,
+        "m": m,
+        "k": k,
+        "input_manifest_sha256": manifest_sha,
+        "config_sha256": sha256(config_path),
+        "report_sha256": sha256(report_path),
+        "global_exact_certificate_sha256": sha256(certificate_path),
+        "candidate_generator_p50_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"]["p50"],
+        "unique_candidates_per_query": report["counters_per_query"]["unique_candidates"],
+        "mean_global_exact_cover_radius": report["conformance"]["global_exact_cover_radius_mean"],
+    }
+
+
 def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     rows: list[dict[str, Any]] = []
     source_files = benchmark_source_files()
     source_bundle = benchmark_source_bundle(source_files)
+    maximum_wall_clock_seconds = contract["resource_contract"]["maximum_wall_clock_seconds_per_row"]
     for scale in contract["scales"]:
         scale_id = scale["id"]
         input_root = args.input_root / scale_id / "input"
@@ -134,30 +173,35 @@ def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
             for k in contract["ks"]:
                 identifier = f"m{m}-k{k}"
                 root = args.output_root / scale_id
-                config_path, report_path, certificate_path = root / "configs" / f"{identifier}.json", root / "native-reports" / f"{identifier}.json", root / "global-exact-certificates" / f"{identifier}.json"
+                config_path, report_path, certificate_path, outcome_path = root / "configs" / f"{identifier}.json", root / "native-reports" / f"{identifier}.json", root / "global-exact-certificates" / f"{identifier}.json", root / "resource-outcomes" / f"{identifier}.json"
                 config_path.parent.mkdir(parents=True, exist_ok=True)
                 report_path.parent.mkdir(parents=True, exist_ok=True)
                 certificate_path.parent.mkdir(parents=True, exist_ok=True)
+                outcome_path.parent.mkdir(parents=True, exist_ok=True)
                 expected = native_config(contract, input_root, m, k, certificate_path)
                 encoded = json.dumps(expected, indent=2, sort_keys=True) + "\n"
                 if not config_path.is_file() or config_path.read_text(encoding="utf-8") != encoded:
                     config_path.write_text(encoded, encoding="utf-8", newline="\n")
-                if not completed(config_path, report_path, manifest_sha, source_files, source_bundle, k):
-                    subprocess.run([str(args.bench_exe), str(config_path), str(report_path)], check=True)
-                report = json.loads(report_path.read_text(encoding="utf-8"))
-                require(completed(config_path, report_path, manifest_sha, source_files, source_bundle, k) and certificate_path.is_file() and report.get("global_exact_certificate_sha256") == sha256(certificate_path), f"global exact MIH row is incomplete: {scale_id}/{identifier}")
-                rows.append({
-                    "scale": scale_id,
-                    "m": m,
-                    "k": k,
-                    "input_manifest_sha256": manifest_sha,
-                    "config_sha256": sha256(config_path),
-                    "report_sha256": sha256(report_path),
-                    "global_exact_certificate_sha256": sha256(certificate_path),
-                    "candidate_generator_p50_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"]["p50"],
-                    "unique_candidates_per_query": report["counters_per_query"]["unique_candidates"],
-                    "mean_global_exact_cover_radius": report["conformance"]["global_exact_cover_radius_mean"],
-                })
+                expected_outcome = resource_outcome(scale_id, m, k, config_path, manifest_sha, source_files, source_bundle, maximum_wall_clock_seconds)
+                if completed(config_path, report_path, manifest_sha, source_files, source_bundle, k):
+                    report = json.loads(report_path.read_text(encoding="utf-8"))
+                    require(certificate_path.is_file() and report.get("global_exact_certificate_sha256") == sha256(certificate_path), f"global exact MIH certificate is incomplete: {scale_id}/{identifier}")
+                    rows.append(exact_row(scale_id, m, k, manifest_sha, config_path, report_path, certificate_path, report))
+                elif outcome_path.is_file():
+                    require(json.loads(outcome_path.read_text(encoding="utf-8")) == expected_outcome, f"global exact MIH resource outcome differs: {scale_id}/{identifier}")
+                    rows.append(expected_outcome)
+                else:
+                    try:
+                        subprocess.run([str(args.bench_exe), str(config_path), str(report_path)], check=True, timeout=maximum_wall_clock_seconds)
+                    except subprocess.TimeoutExpired:
+                        outcome_path.write_text(json.dumps(expected_outcome, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
+                    if completed(config_path, report_path, manifest_sha, source_files, source_bundle, k):
+                        report = json.loads(report_path.read_text(encoding="utf-8"))
+                        require(certificate_path.is_file() and report.get("global_exact_certificate_sha256") == sha256(certificate_path), f"global exact MIH certificate is incomplete: {scale_id}/{identifier}")
+                        rows.append(exact_row(scale_id, m, k, manifest_sha, config_path, report_path, certificate_path, report))
+                    else:
+                        require(outcome_path.is_file() and json.loads(outcome_path.read_text(encoding="utf-8")) == expected_outcome, f"global exact MIH row is incomplete: {scale_id}/{identifier}")
+                        rows.append(expected_outcome)
     summary = {
         "schema_version": 1,
         "family": FAMILY,

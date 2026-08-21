@@ -10,6 +10,11 @@
   "repeat_count": 7,
   "directory_mode": "flat_open_address",
   "deduplication_mode": "streaming_generation_array",
+  "resource_contract": {
+    "maximum_wall_clock_seconds_per_row": 43200,
+    "timeout_outcome": "exact_search_resource_exhausted",
+    "approximate_result": "forbidden"
+  },
   "ks": [10, 64, 128, 256, 512, 768],
   "scales": [
     {"id": "es-25k", "documents": 25000, "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987", "m_values": [15, 16, 17, 18, 19, 20, 21]},

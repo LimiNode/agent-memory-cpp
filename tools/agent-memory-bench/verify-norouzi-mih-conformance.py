@@ -30,11 +30,16 @@ def splitmix64(state: int) -> tuple[int, int]:
     return state, (value ^ (value >> 31)) & MASK
 
 
-def words(seed: str, count: int) -> list[int]:
+def words(seed: str, count: int) -> list[tuple[int, int, int, int]]:
     state, result = int(seed, 16), []
+    bases = (0x6A09E667F3BCC909, 0xBB67AE8584CAA73B, 0x3C6EF372FE94F82B, 0xA54FF53A5F1D36F1)
     for _ in range(count):
-        state, value = splitmix64(state)
-        result.append(value)
+        code: list[int] = []
+        for base in bases:
+            state, first = splitmix64(state)
+            state, second = splitmix64(state)
+            code.append(base ^ (first & second))
+        result.append(tuple(code))
     return result
 
 
@@ -51,15 +56,16 @@ static std::uint64_t next(std::uint64_t& state) {
     value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
     return value ^ (value >> 31U);
 }
-static void put(std::vector<UINT8>& values, const std::size_t row, const std::uint64_t value) {
-    for(std::size_t byte = 0; byte < 8U; ++byte) values[row * 32U + byte] = static_cast<UINT8>((value >> (byte * 8U)) & 0xffU);
+static void put(std::vector<UINT8>& values, const std::size_t row, const std::size_t word, const std::uint64_t value) {
+    for(std::size_t byte = 0; byte < 8U; ++byte) values[row * 32U + word * 8U + byte] = static_cast<UINT8>((value >> (byte * 8U)) & 0xffU);
 }
 int main() {
     constexpr UINT32 documents = 800U, queries = 4U;
     std::vector<UINT8> database(documents * 32U, 0U), query(queries * 32U, 0U);
     std::uint64_t document_state = 0x6a09e667f3bcc909ULL, query_state = 0xbb67ae8584caa73bULL;
-    for(UINT32 row = 0; row < documents; ++row) put(database, row, next(document_state));
-    for(UINT32 row = 0; row < queries; ++row) put(query, row, next(query_state));
+    constexpr std::uint64_t bases[4] = {0x6a09e667f3bcc909ULL, 0xbb67ae8584caa73bULL, 0x3c6ef372fe94f82bULL, 0xa54ff53a5f1d36f1ULL};
+    for(UINT32 row = 0; row < documents; ++row) for(UINT32 word = 0; word < 4U; ++word) put(database, row, word, bases[word] ^ (next(document_state) & next(document_state)));
+    for(UINT32 row = 0; row < queries; ++row) for(UINT32 word = 0; word < 4U; ++word) put(query, row, word, bases[word] ^ (next(query_state) & next(query_state)));
     mihasher index(256, 16); index.populate(database.data(), documents, 32);
     index.setK(documents); std::vector<UINT32> results(queries * documents), counts(queries * 257U); std::vector<qstat> stats(queries);
     index.batchquery(results.data(), counts.data(), stats.data(), query.data(), queries, 32);
@@ -104,9 +110,9 @@ def output_digest(lines: list[str], fixture: dict[str, object]) -> str:
         require(all(1 <= position <= len(documents) for position in positions) and set(positions) == set(range(1, len(documents) + 1)), "upstream MIH complete candidate set differs")
         expected_by_distance = [0] * 257
         for document in documents:
-            expected_by_distance[(code ^ document).bit_count()] += 1
+            expected_by_distance[sum((left ^ right).bit_count() for left, right in zip(code, document))] += 1
         require(histogram == expected_by_distance and sum(histogram) == len(documents), "upstream MIH distance histogram differs")
-        expected_ordered = sorted(((code ^ document).bit_count(), position) for position, document in enumerate(documents))
+        expected_ordered = sorted((sum((left ^ right).bit_count() for left, right in zip(code, document)), position) for position, document in enumerate(documents))
         for k in expected_ks:
             cutoff = expected_ordered[k - 1][0]
             require(cutoff <= required_cutoff_max, "upstream MIH fixture exceeds the reference cutoff limit")
@@ -114,7 +120,7 @@ def output_digest(lines: list[str], fixture: dict[str, object]) -> str:
             upstream_prefix = positions[:cutoff_count]
             expected_cutoff_set = {position + 1 for distance, position in expected_ordered if distance <= cutoff}
             require(set(upstream_prefix) == expected_cutoff_set and len(upstream_prefix) == len(expected_cutoff_set), "upstream MIH complete cutoff candidate set differs")
-            prefix = sorted(((code ^ documents[position - 1]).bit_count(), position - 1) for position in upstream_prefix)[:k]
+            prefix = sorted((sum((left ^ right).bit_count() for left, right in zip(code, documents[position - 1])), position - 1) for position in upstream_prefix)[:k]
             digest.update(query.to_bytes(4, "little")); digest.update(k.to_bytes(4, "little")); digest.update(k.to_bytes(8, "little"))
             for distance, position in prefix: digest.update(distance.to_bytes(4, "little")); digest.update(position.to_bytes(4, "little"))
     return digest.hexdigest()
@@ -137,6 +143,7 @@ def receipt_value(fixture: dict[str, object], commit: str, docker_image: str, di
 def run(upstream: Path, compiler: str, docker_image: str | None, receipt_output: Path | None) -> None:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     reference = fixture["upstream_reference"]
+    require(fixture.get("construction") == "splitmix64_four_sparse_xor_masks_per_code_little_endian_v2", "upstream MIH fixture construction differs")
     require(reference == {"repository": "https://github.com/norouzi/mih", "commit": "96a629de834c1b974b0c5e378ab1037ee42120ab", "binary_encoding": "N_by_B_uint8_bits_lsb_first_v1", "tie_rule": "canonicalize_complete_cutoff_candidates_by_hamming_distance_then_document_position_v1", "required_cutoff_max": 128, "build": {"compiler": "g++ -std=c++17 -O2", "container_image": "gcc@sha256:056fa682471704249f619f65ccec87d671ad5f1b20878da54d60b0b863486621", "runner": "tools/agent-memory-bench/verify-norouzi-mih-conformance.py"}}, "upstream MIH fixture contract differs")
     commit = subprocess.check_output(["git", "-C", str(upstream), "rev-parse", "HEAD"], text=True).strip()
     require(commit == reference["commit"], "upstream MIH commit differs")
@@ -164,8 +171,8 @@ def run(upstream: Path, compiler: str, docker_image: str | None, receipt_output:
 
 def self_test() -> None:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
-    require(words(str(fixture["document_seed"]), 1)[0] == 0x63CFC62A2B097592, "upstream MIH fixture generator differs")
-    require(fixture["expected_cutoff_at_k768_per_query"] == [39, 39, 38, 39], "upstream MIH fixture cutoff differs")
+    require(words(str(fixture["document_seed"]), 1)[0] == (0x2A0EA047FABCA989, 0xB343ECC134C206B7, 0x3CDDF3F2EF1CD0EB, 0xB90FB0B35E3D57B8), "upstream MIH fixture generator differs")
+    require(fixture["expected_cutoff_at_k768_per_query"] == [107, 114, 110, 108] and fixture["canonical_outputs_sha256"] == "42b7c3569043ae184a654700e918489192da3b0adced5fed80a9f93f3f98e104", "upstream MIH fixture cutoff differs")
     receipt = receipt_value(fixture, str(dict(fixture["upstream_reference"])["commit"]), str(dict(fixture["upstream_reference"])["build"]["container_image"]), str(fixture["canonical_outputs_sha256"]))
     require(receipt["passed"] is True and receipt["runner_sha256"] == hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "upstream MIH receipt differs")
     print("pinned upstream norouzi/mih conformance runner self-test passed")
