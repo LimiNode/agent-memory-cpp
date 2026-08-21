@@ -91,6 +91,7 @@ struct Config final {
     std::string mih_search_mode = "fixed_r56";
     std::vector<std::size_t> band_widths;
     std::vector<int> local_radii;
+    std::vector<std::size_t> locator_bit_positions;
     std::size_t global_exact_max_cover_radius = kCodeBits;
     std::size_t query_count = 0;
     std::size_t warmup_count = 1;
@@ -209,15 +210,23 @@ enum class DeduplicationMode { TwoPassGenerationArray, StreamingGenerationArray 
 }
 
 void validate_config(const Config& value) {
-    if((value.backend != "mih" && value.backend != "flat" && value.backend != "hnsw") || value.band_widths.empty() || value.query_count == 0 || value.repeat_count == 0 || value.hamming_limit == 0 || value.adc_limit == 0 || value.exact_limit == 0 || value.adc_limit > value.hamming_limit || value.exact_limit > value.adc_limit || std::accumulate(value.band_widths.begin(), value.band_widths.end(), std::size_t{0}) != kCodeBits) throw std::invalid_argument("native sparse MIH config is invalid");
+    const auto locator_code_bits = value.locator_bit_positions.empty() ? kCodeBits : value.locator_bit_positions.size();
+    if((value.backend != "mih" && value.backend != "flat" && value.backend != "hnsw") || value.band_widths.empty() || value.query_count == 0 || value.repeat_count == 0 || value.hamming_limit == 0 || value.adc_limit == 0 || value.exact_limit == 0 || value.adc_limit > value.hamming_limit || value.exact_limit > value.adc_limit || std::accumulate(value.band_widths.begin(), value.band_widths.end(), std::size_t{0}) != locator_code_bits) throw std::invalid_argument("native sparse MIH config is invalid");
     for(const auto width : value.band_widths) if(width == 0 || width > 32) throw std::invalid_argument("native sparse MIH band is invalid");
-    if(value.mih_search_mode != "fixed_r56" && value.mih_search_mode != "global_exact") throw std::invalid_argument("native sparse MIH search mode is invalid");
+    if(value.mih_search_mode != "fixed_r56" && value.mih_search_mode != "global_exact" && value.mih_search_mode != "approximate_locator") throw std::invalid_argument("native sparse MIH search mode is invalid");
+    if(!value.locator_bit_positions.empty()) {
+        if(value.locator_bit_positions.size() > kCodeBits || !std::is_sorted(value.locator_bit_positions.begin(), value.locator_bit_positions.end()) || std::adjacent_find(value.locator_bit_positions.begin(), value.locator_bit_positions.end()) != value.locator_bit_positions.end() || value.locator_bit_positions.back() >= kCodeBits) throw std::invalid_argument("native sparse MIH locator bit positions are invalid");
+    }
     if(value.mih_search_mode == "fixed_r56") {
         if(value.band_widths.size() != value.local_radii.size()) throw std::invalid_argument("native sparse MIH schedule is invalid");
         for(std::size_t index = 0; index < value.band_widths.size(); ++index) if(value.local_radii[index] < 0 || value.local_radii[index] > static_cast<int>(value.band_widths[index])) throw std::invalid_argument("native sparse MIH schedule is invalid");
         if(std::accumulate(value.local_radii.begin(), value.local_radii.end(), std::size_t{0}, [](const std::size_t total, const int radius) { return total + static_cast<std::size_t>(radius) + 1U; }) < 57U) throw std::invalid_argument("native sparse MIH schedule does not preserve fixed-r56 inclusion");
-    } else if(value.backend != "mih" || !value.local_radii.empty() || value.global_exact_max_cover_radius != kCodeBits) {
+    } else if(value.mih_search_mode == "global_exact" && (value.backend != "mih" || !value.locator_bit_positions.empty() || !value.local_radii.empty() || value.global_exact_max_cover_radius != kCodeBits)) {
         throw std::invalid_argument("native global exact MIH config is invalid");
+    } else if(value.mih_search_mode == "approximate_locator" && (value.backend != "mih" || value.locator_bit_positions.empty() || value.band_widths.size() != value.local_radii.size())) {
+        throw std::invalid_argument("native approximate locator MIH config is invalid");
+    } else if(value.mih_search_mode == "approximate_locator") {
+        for(std::size_t index = 0; index < value.band_widths.size(); ++index) if(value.local_radii[index] < 0 || value.local_radii[index] > static_cast<int>(value.band_widths[index])) throw std::invalid_argument("native approximate locator MIH schedule is invalid");
     }
     if(value.backend == "hnsw" && (value.hnsw_connectivity == 0 || value.hnsw_ef_construction < value.hnsw_connectivity || value.hnsw_ef_search < value.hamming_limit)) throw std::invalid_argument("native HNSW configuration is invalid");
     if(!value.candidate_diagnostic_output.empty() && (value.backend != "mih" || value.mih_search_mode != "fixed_r56")) throw std::invalid_argument("native fixed-r56 candidate diagnostic requires fixed-r56 MIH");
@@ -336,6 +345,7 @@ template<class Value>
     result.mih_search_mode = value.value("mih_search_mode", result.mih_search_mode);
     result.band_widths = value.at("band_widths").get<std::vector<std::size_t>>();
     result.local_radii = value.value("local_radii", std::vector<int>{});
+    result.locator_bit_positions = value.value("locator_bit_positions", std::vector<std::size_t>{});
     result.global_exact_max_cover_radius = value.value("global_exact_max_cover_radius", result.global_exact_max_cover_radius);
     result.query_count = value.at("query_count").get<std::size_t>();
     result.warmup_count = value.value("warmup_count", result.warmup_count);
@@ -397,12 +407,12 @@ struct Directory final {
 
 class SparseIndex final {
 public:
-    SparseIndex(const std::vector<std::uint64_t>& codes, const std::size_t document_count, std::vector<Band> bands, const DirectoryMode mode)
-        : m_bands(std::move(bands)), m_mode(mode), m_directories(m_bands.size()) {
+    SparseIndex(const std::vector<std::uint64_t>& codes, const std::size_t document_count, std::vector<Band> bands, const DirectoryMode mode, const std::size_t code_bits = kCodeBits)
+        : m_bands(std::move(bands)), m_mode(mode), m_code_bits(code_bits), m_directories(m_bands.size()) {
         if(document_count == 0 || codes.size() != document_count * kWordCount || m_bands.empty()) throw std::invalid_argument("native sparse MIH input is invalid");
         std::size_t expected_offset = 0;
         for(const auto& band : m_bands) { if(band.offset != expected_offset || band.width == 0 || band.width > 32) throw std::invalid_argument("native sparse MIH band partition is invalid"); expected_offset += band.width; }
-        if(expected_offset != kCodeBits) throw std::invalid_argument("native sparse MIH band coverage differs");
+        if(expected_offset != m_code_bits || m_code_bits == 0 || m_code_bits > kCodeBits) throw std::invalid_argument("native sparse MIH band coverage differs");
         for(std::size_t band_index = 0; band_index < m_bands.size(); ++band_index) {
             std::vector<Entry> entries; entries.reserve(document_count);
             for(std::size_t position = 0; position < document_count; ++position) entries.push_back({extract_key(codes.data() + position * kWordCount, m_bands[band_index]), static_cast<std::uint32_t>(position)});
@@ -468,8 +478,25 @@ public:
 private:
     std::vector<Band> m_bands;
     DirectoryMode m_mode;
+    std::size_t m_code_bits = kCodeBits;
     std::vector<Directory> m_directories;
 };
+
+[[nodiscard]] std::vector<std::uint64_t> pack_locator_codes(const std::vector<std::uint64_t>& full_codes, const std::vector<std::size_t>& bit_positions) {
+    if(bit_positions.empty()) return full_codes;
+    if(!std::is_sorted(bit_positions.begin(), bit_positions.end()) || bit_positions.back() >= kCodeBits) throw std::invalid_argument("native sparse MIH locator pack bits are invalid");
+    if(full_codes.size() % kWordCount != 0U) throw std::invalid_argument("native sparse MIH locator source codes are invalid");
+    std::vector<std::uint64_t> result(full_codes.size(), 0U);
+    for(std::size_t row = 0; row < full_codes.size() / kWordCount; ++row) {
+        const auto* source = full_codes.data() + row * kWordCount;
+        auto* target = result.data() + row * kWordCount;
+        for(std::size_t bit = 0; bit < bit_positions.size(); ++bit) {
+            const auto source_bit = bit_positions[bit];
+            if(((source[source_bit / 64U] >> (source_bit % 64U)) & 1U) != 0U) target[bit / 64U] |= std::uint64_t{1} << (bit % 64U);
+        }
+    }
+    return result;
+}
 
 class GenerationDeduplicator final {
 public:
@@ -615,11 +642,11 @@ private:
 }
 #endif
 
-[[nodiscard]] QueryResult run_query(const SparseIndex& index, const Input& input, const std::uint64_t* query, const std::vector<Band>& bands, const std::vector<int>& radii, const DeduplicationMode deduplication, GenerationDeduplicator& deduplicator, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit, QueryWorkspace& workspace, Diagnostics& diagnostics, std::vector<std::uint32_t>* raw_candidates = nullptr) {
+[[nodiscard]] QueryResult run_query(const SparseIndex& index, const Input& input, const std::uint64_t* query, const std::uint64_t* locator_query, const std::vector<Band>& bands, const std::vector<int>& radii, const DeduplicationMode deduplication, GenerationDeduplicator& deduplicator, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit, QueryWorkspace& workspace, Diagnostics& diagnostics, std::vector<std::uint32_t>* raw_candidates = nullptr) {
     workspace.clear();
     const auto candidate_start = Clock::now();
     const auto enumeration_start = Clock::now();
-    for(std::size_t band = 0; band < bands.size(); ++band) enumerate_keys(extract_key(query, bands[band]), bands[band].width, radii[band], [&](const std::uint32_t key) { workspace.probes.push_back({band, key}); });
+    for(std::size_t band = 0; band < bands.size(); ++band) enumerate_keys(extract_key(locator_query, bands[band]), bands[band].width, radii[band], [&](const std::uint32_t key) { workspace.probes.push_back({band, key}); });
     const auto enumeration_end = Clock::now();
     const auto lookup_start = Clock::now();
     for(const auto& probe : workspace.probes) {
@@ -861,7 +888,10 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
     const auto selected_directory = directory_mode(config.directory_mode);
     const auto selected_deduplication = deduplication_mode(config.deduplication_mode);
     const bool global_exact_mih = config.backend == "mih" && config.mih_search_mode == "global_exact";
-    const SparseIndex index(input.documents, input.document_count, bands, selected_directory);
+    const auto locator_code_bits = config.locator_bit_positions.empty() ? kCodeBits : config.locator_bit_positions.size();
+    const auto locator_documents = pack_locator_codes(input.documents, config.locator_bit_positions);
+    const auto locator_queries = pack_locator_codes(input.queries, config.locator_bit_positions);
+    const SparseIndex index(locator_documents, input.document_count, bands, selected_directory, locator_code_bits);
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
     std::unique_ptr<HnswIndex> hnsw_index;
     if(config.backend == "hnsw") hnsw_index = std::make_unique<HnswIndex>(input, config);
@@ -887,7 +917,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
             const auto result = config.backend == "mih"
                 ? (global_exact_mih
                     ? run_global_exact_query(index, input, query, bands, deduplicator, hamming, config.hamming_limit, config.global_exact_max_cover_radius, workspace, local, verify ? &raw_candidates : nullptr)
-                    : run_query(index, input, query, bands, config.local_radii, selected_deduplication, deduplicator, hamming, config.hamming_limit, workspace, local, verify ? &raw_candidates : nullptr))
+                    : run_query(index, input, query, locator_queries.data() + position * kWordCount, bands, config.local_radii, selected_deduplication, deduplicator, hamming, config.hamming_limit, workspace, local, verify ? &raw_candidates : nullptr))
                 : (config.backend == "flat"
                     ? run_flat_query(input, query, hamming, config.hamming_limit, workspace, local, verify ? &raw_candidates : nullptr)
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
@@ -904,7 +934,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
             const auto cascade_ms = milliseconds(cascade_start, Clock::now());
             if(verify) {
                 if(global_exact_mih) verify_global_exact_conformance(input, query, result.shortlist, hamming, config.hamming_limit, result.global_exact);
-                else verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih");
+                else verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih" && config.mih_search_mode == "fixed_r56");
             }
             if(key_samples != nullptr) { key_samples->push_back(result.timings.key_enumeration_ms); lookup_samples->push_back(result.timings.bucket_lookup_ms); traversal_samples->push_back(result.timings.posting_traversal_ms); dedup_samples->push_back(result.timings.deduplication_ms); hamming_samples->push_back(result.timings.hamming_ms); top_samples->push_back(result.timings.top_k_ms); adc_samples->push_back(adc_ms); exact_samples->push_back(exact_ms); generator_samples->push_back(result.timings.candidate_generator_total_ms); cascade_samples->push_back(cascade_ms); }
         }
@@ -937,7 +967,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
             const auto result = config.backend == "mih"
                 ? (global_exact_mih
                     ? run_global_exact_query(index, input, query, bands, verification_deduplicator, hamming, config.hamming_limit, config.global_exact_max_cover_radius, verification_workspace, verification_diagnostics, &raw_candidates)
-                    : run_query(index, input, query, bands, config.local_radii, selected_deduplication, verification_deduplicator, hamming, config.hamming_limit, verification_workspace, verification_diagnostics, &raw_candidates))
+                    : run_query(index, input, query, locator_queries.data() + position * kWordCount, bands, config.local_radii, selected_deduplication, verification_deduplicator, hamming, config.hamming_limit, verification_workspace, verification_diagnostics, &raw_candidates))
                 : (config.backend == "flat"
                     ? run_flat_query(input, query, hamming, config.hamming_limit, verification_workspace, verification_diagnostics, &raw_candidates)
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
@@ -965,7 +995,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
                         {"flat_distances", std::move(flat_distances)},
                     });
                 }
-            } else verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih");
+            } else verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih" && config.mih_search_mode == "fixed_r56");
             if(!config.candidate_diagnostic_output.empty()) {
                 const auto diagnostic = diagnose_fixed_r56_candidate_union(input, static_cast<std::uint32_t>(position), query, raw_candidates, result.shortlist, hamming, config.hamming_limit);
                 candidate_diagnostics.push_back({
@@ -1037,6 +1067,9 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         backend_report["directory_mode"] = config.directory_mode;
         backend_report["backend_index_logical_bytes"] = index.logical_bytes();
         backend_report["backend_index_logical_byte_breakdown"] = index.logical_byte_breakdown();
+        backend_report["locator_representation"] = config.locator_bit_positions.empty() ? "full_itq_256_code_v1" : "selected_itq_256_bit_subset_packed_lsb_first_v1";
+        backend_report["locator_code_bits"] = locator_code_bits;
+        backend_report["locator_bit_positions"] = config.locator_bit_positions;
     } else if(config.backend == "flat") {
         backend_report["index_representation"] = "no_auxiliary_index_full_scan_v1";
         backend_report["backend_index_logical_bytes"] = 0;
@@ -1063,7 +1096,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         {"backend", backend_report},
         {"query_count", config.query_count}, {"query_seed", config.query_seed}, {"query_selection_algorithm", "std_mt19937_64_shuffle_v1"}, {"selected_query_positions", query_positions},
         {"warmup_count", config.warmup_count}, {"repeat_count", config.repeat_count},
-        {"band_widths", config.band_widths}, {"mih_search_mode", config.mih_search_mode}, {"local_radii", config.local_radii}, {"fixed_radius", is_mih && !global_exact_mih ? nlohmann::json(56) : nlohmann::json(nullptr)}, {"fixed_radius_exact_inclusion", is_mih && !global_exact_mih ? nlohmann::json("sum_local_radius_plus_one_at_least_57_v1") : nlohmann::json(nullptr)},
+        {"band_widths", config.band_widths}, {"mih_search_mode", config.mih_search_mode}, {"local_radii", config.local_radii}, {"locator_bit_positions", config.locator_bit_positions}, {"fixed_radius", is_mih && config.mih_search_mode == "fixed_r56" ? nlohmann::json(56) : nlohmann::json(nullptr)}, {"fixed_radius_exact_inclusion", is_mih && config.mih_search_mode == "fixed_r56" ? nlohmann::json("sum_local_radius_plus_one_at_least_57_v1") : nlohmann::json(nullptr)},
         {"global_exact_certificate_sha256", global_exact_certificate_sha256.empty() ? nlohmann::json(nullptr) : nlohmann::json(global_exact_certificate_sha256)},
         {"hamming_limit", config.hamming_limit}, {"adc_limit", config.adc_limit}, {"exact_limit", config.exact_limit},
         {"hamming_shortlist_export", config.shortlist_output.empty() ? nlohmann::json(nullptr) : nlohmann::json({{"path", config.shortlist_output.string()}, {"sha256", shortlist_export_sha256}, {"schema_version", 1}})},
@@ -1072,7 +1105,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         {"counters_per_query", {{"bucket_probes", static_cast<double>(diagnostics.probes) / per_query}, {"non_empty_probes", static_cast<double>(diagnostics.non_empty_probes) / per_query}, {"empty_probes", static_cast<double>(diagnostics.empty_probes) / per_query}, {"posting_visits", static_cast<double>(diagnostics.posting_visits) / per_query}, {"unique_candidates", static_cast<double>(diagnostics.unique_candidates) / per_query}, {"unique_candidates_per_posting_visit", diagnostics.posting_visits == 0 ? 0.0 : static_cast<double>(diagnostics.unique_candidates) / static_cast<double>(diagnostics.posting_visits)}, {"mean_posting_length_touched", mean_posting_length}, {"p95_posting_length_touched", posting_length_values.empty() ? 0.0 : percentile(posting_length_values, 0.95)}, {"candidate_checksum", diagnostics.candidate_checksum}, {"shortlist_checksum", diagnostics.shortlist_checksum}}},
         {"latency_ms_per_query", {{"key_enumeration", percentiles(keys)}, {"bucket_lookup", percentiles(lookups)}, {"posting_traversal", percentiles(traversal)}, {"generation_dedup", percentiles(deduplication)}, {"full_hamming_scoring", percentiles(hamming_samples)}, {"top_k_selection", percentiles(top_k)}, {"binary_adc", percentiles(adc)}, {"exact_rerank", percentiles(exact)}, {"candidate_generator_total", percentiles(candidate_generator)}, {"cascade_total", percentiles(cascade)}}},
         {"timing_ms_per_query_samples", {{"key_enumeration", timing_series(keys)}, {"bucket_lookup", timing_series(lookups)}, {"posting_traversal", timing_series(traversal)}, {"generation_dedup", timing_series(deduplication)}, {"full_hamming_scoring", timing_series(hamming_samples)}, {"top_k_selection", timing_series(top_k)}, {"binary_adc", timing_series(adc)}, {"exact_rerank", timing_series(exact)}, {"candidate_generator_total", timing_series(candidate_generator)}, {"cascade_total", timing_series(cascade)}}},
-        {"conformance", {{"candidate_union_fixed_r56_checked", is_mih && !global_exact_mih}, {"global_exact_flat_ordering_checked", global_exact_mih}, {"global_exact_strict_stop_rule", global_exact_mih ? nlohmann::json("kth_distance_strictly_less_than_covered_radius_plus_one_v1") : nlohmann::json(nullptr)}, {"global_exact_cover_radius_mean", diagnostics.global_exact_stop_count == 0 ? nlohmann::json(nullptr) : nlohmann::json(static_cast<double>(diagnostics.global_exact_cover_radius_sum) / static_cast<double>(diagnostics.global_exact_stop_count))}, {"hamming_shortlist_checked", true}, {"checked_query_count", config.query_count}}},
+        {"conformance", {{"candidate_union_fixed_r56_checked", is_mih && config.mih_search_mode == "fixed_r56"}, {"global_exact_flat_ordering_checked", global_exact_mih}, {"global_exact_strict_stop_rule", global_exact_mih ? nlohmann::json("kth_distance_strictly_less_than_covered_radius_plus_one_v1") : nlohmann::json(nullptr)}, {"global_exact_cover_radius_mean", diagnostics.global_exact_stop_count == 0 ? nlohmann::json(nullptr) : nlohmann::json(static_cast<double>(diagnostics.global_exact_cover_radius_sum) / static_cast<double>(diagnostics.global_exact_stop_count))}, {"hamming_shortlist_checked", true}, {"checked_query_count", config.query_count}}},
         {"timing_scope", "Warm in-memory immutable backend. Candidate-generator total is independently timed from backend candidate generation through stable Hamming top-K; cascade total independently times that generator plus ADC and exact rerank. Stage values are separately timed components and must not be summed as a latency replacement. For streaming generation deduplication, posting traversal and generation-dedup stage values intentionally cover the same combined loop and must not be added. Global exact MIH extends a coverage certificate until the Kth discovered distance is strictly less than the integer lower bound for every unseen document. Excludes query encoding, full-corpus conformance scan, cold-cache I/O, index build, and process-wide memory."},
     };
     if(is_mih) {
@@ -1149,7 +1182,7 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         std::vector<Scored> reference_shortlist;
         for(const auto* index : {&sorted_index, &flat_index}) for(const auto mode : {DeduplicationMode::TwoPassGenerationArray, DeduplicationMode::StreamingGenerationArray}) {
             GenerationDeduplicator deduplicator(3); QueryWorkspace workspace; Diagnostics diagnostics; std::vector<std::uint32_t> candidates;
-            const auto result = run_query(*index, input, codes.data(), bands, std::vector<int>(bands.size(), 0), mode, deduplicator, hamming, 3, workspace, diagnostics, &candidates);
+            const auto result = run_query(*index, input, codes.data(), codes.data(), bands, std::vector<int>(bands.size(), 0), mode, deduplicator, hamming, 3, workspace, diagnostics, &candidates);
             if(diagnostics.probes != bands.size() || diagnostics.unique_candidates != 3 || result.shortlist.size() != 3 || result.shortlist.front().position != 0 || result.timings.candidate_generator_total_ms < 0.0) throw std::runtime_error("native sparse MIH candidate pipeline differs");
             if(reference_candidates.empty()) { reference_candidates = candidates; reference_shortlist = result.shortlist; }
             else if(candidates != reference_candidates || result.shortlist.size() != reference_shortlist.size()) throw std::runtime_error("native sparse MIH challenger candidate union differs");
@@ -1167,6 +1200,14 @@ void verify_global_exact_conformance(const Input& input, const std::uint64_t* qu
         const auto exact_result = run_global_exact_query(exact_index, exact_input, exact_codes.data(), bands, exact_deduplicator, hamming, 2U, kCodeBits, exact_workspace, exact_diagnostics);
         if(exact_result.shortlist.size() != 2U || exact_result.shortlist[0].position != 0U || exact_result.shortlist[1].position != 1U || exact_result.shortlist[0].distance != 0U || exact_result.shortlist[1].distance != 1U || !exact_result.global_exact.strict_unseen_lower_bound_proved || exact_result.global_exact.kth_distance >= exact_result.global_exact.covered_radius + 1U) throw std::runtime_error("native global exact MIH tie-safe stop differs");
         verify_global_exact_conformance(exact_input, exact_codes.data(), exact_result.shortlist, hamming, 2U, exact_result.global_exact);
+        const std::vector<std::size_t> locator_bits{0U, 1U, 18U, 63U};
+        const auto locator_codes = pack_locator_codes(codes, locator_bits);
+        const std::vector<std::size_t> locator_widths{4U};
+        const auto locator_bands = make_bands(locator_widths);
+        const SparseIndex locator_index(locator_codes, 3U, locator_bands, DirectoryMode::FlatOpenAddress, locator_bits.size());
+        GenerationDeduplicator locator_deduplicator(3U); QueryWorkspace locator_workspace; Diagnostics locator_diagnostics;
+        const auto locator_result = run_query(locator_index, input, codes.data(), locator_codes.data(), locator_bands, std::vector<int>{0}, DeduplicationMode::StreamingGenerationArray, locator_deduplicator, hamming, 3U, locator_workspace, locator_diagnostics);
+        if(locator_result.shortlist.size() != 1U || locator_result.shortlist[0].position != 0U || locator_diagnostics.unique_candidates != 1U) throw std::runtime_error("native static locator MIH candidate pipeline differs");
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
         Config hnsw_config; hnsw_config.backend = "hnsw"; hnsw_config.hnsw_connectivity = 2; hnsw_config.hnsw_ef_construction = 4; hnsw_config.hnsw_ef_search = 3;
         const HnswIndex hnsw(input, hnsw_config);
