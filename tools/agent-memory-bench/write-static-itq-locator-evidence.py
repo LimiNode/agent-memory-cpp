@@ -99,20 +99,23 @@ def evaluator_source_bundle(files: dict[str, str]) -> str:
     return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
 
 
-def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, contract: dict[str, Any], evaluation_data: dict[str, Any]) -> float:
+def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, contract: dict[str, Any], evaluation_data: dict[str, Any]) -> tuple[float, float]:
     quality = json.loads(quality_path.read_text(encoding="utf-8"))
     sources = evaluator_source_files()
     identity = evaluator.contribution_identity(evaluation_data, contract["cascade"]["hamming_limit"], contract["cascade"]["adc_limit"], contract["cascade"]["oracle_k"])
     require(quality.get("schema_version") == 1 and quality.get("family") == "native_ann_shortlist_quality_v1" and quality.get("query_count") == 648 and quality.get("hamming_limit") == contract["cascade"]["hamming_limit"] and quality.get("adc_limit") == contract["cascade"]["adc_limit"] and quality.get("oracle_k") == contract["cascade"]["oracle_k"] and quality.get("evaluation_materialization_manifest_sha256") == evaluation_data["manifest_sha256"] and quality.get("evaluation_qrels_sha256") == evaluation_data["evaluation_qrels_sha256"] and quality.get("per_query_contributions_sha256") == sha256(contribution_path) and quality.get("shortlist_export_sha256") == sha256(shortlist_path) and quality.get("per_query_contribution_identity") == identity and quality.get("evaluator_source_files_sha256") == sources and quality.get("evaluator_source_bundle_sha256") == evaluator_source_bundle(sources), "static locator quality binding differs")
     with numpy.load(contribution_path, allow_pickle=False) as contribution:
-        values = contribution["e5_oracle_survival_after_adc"]
+        survival_values = contribution["e5_oracle_survival_after_adc"]
+        ndcg_values = contribution["reranked_ndcg_at_10"]
         require(set(contribution.files) == {"coverage_at_hamming_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "e5_oracle_survival_after_adc", "query_ids", "identity_json"}, "static locator contribution fields differ")
         query_ids = contribution["query_ids"]
         contribution_identity = json.loads(str(contribution["identity_json"].item()))
-        require(values.shape == (648,) and query_ids.shape == (648,) and query_ids.tolist() == evaluation_data["query_ids"] and contribution_identity == identity and numpy.isfinite(values).all(), "static locator contribution identity differs")
-        mean = float(numpy.mean(values, dtype=numpy.float64))
-    require(abs(mean - float(quality["e5_oracle_survival_after_adc"])) <= 1e-12, "static locator E5 survival does not replay from contributions")
-    return mean
+        require(survival_values.shape == (648,) and ndcg_values.shape == (648,) and query_ids.shape == (648,) and query_ids.tolist() == evaluation_data["query_ids"] and contribution_identity == identity and numpy.isfinite(survival_values).all() and numpy.isfinite(ndcg_values).all(), "static locator contribution identity differs")
+        survival_mean = float(numpy.mean(survival_values, dtype=numpy.float64))
+        ndcg_mean = float(numpy.mean(ndcg_values, dtype=numpy.float64))
+    require(abs(survival_mean - float(quality["e5_oracle_survival_after_adc"])) <= 1e-12, "static locator E5 survival does not replay from contributions")
+    require(abs(ndcg_mean - float(quality["reranked_ndcg_at_10"])) <= 1e-12, "static locator reranked nDCG does not replay from contributions")
+    return survival_mean, ndcg_mean
 
 
 def validate(result_root: Path, evaluation_root: Path, contract_path: Path) -> dict[str, Any]:
@@ -160,12 +163,12 @@ def validate(result_root: Path, evaluation_root: Path, contract_path: Path) -> d
         expected_config["shortlist_output"] = str(shortlist_path.resolve())
         require(config == expected_config, f"static locator config differs: {identifier}")
         require(report.get("schema_version") == 1 and report.get("family") == NATIVE_FAMILY and report.get("benchmark_config_sha256") == sha256(config_path) and report.get("input_manifest_sha256") == contract["frozen_manifests"]["input_manifest_sha256"] and report.get("benchmark_source_files_sha256") == source_files and report.get("benchmark_source_bundle_sha256") == source_bundle and report.get("mih_search_mode") == "approximate_locator" and report.get("locator_bit_positions") == expected_positions and report.get("fixed_radius") is None and report.get("fixed_radius_exact_inclusion") is None and report.get("conformance", {}).get("candidate_union_fixed_r56_checked") is False, f"static locator report differs: {identifier}")
-        survival = validate_quality(quality_path, contribution_path, shortlist_path, contract, evaluation_data)
+        survival, reranked_ndcg = validate_quality(quality_path, contribution_path, shortlist_path, contract, evaluation_data)
         expected_row = {"id": identifier, "bit_count": bit_count, "variant": variant, "locator_bit_positions": expected_positions, "config_sha256": sha256(config_path), "report_sha256": sha256(report_path), "quality_sha256": sha256(quality_path), "candidate_fraction": report["counters_per_query"]["unique_candidates"] / contract["scale"]["documents"], "candidate_generator_p50_ms_per_query": report["latency_ms_per_query"]["candidate_generator_total"]["p50"], "full_itq256_flat_hamming_top768_recall": runner.hamming_recall(result_root / "shortlists" / "flat-itq256-hamming-reference.json", shortlist_path, 768), "e5_oracle_survival_after_adc": survival}
         require(row == expected_row, f"static locator summary replay differs: {identifier}")
         for category, path in (("configs", config_path), ("native-reports", report_path), ("shortlists", shortlist_path), ("quality", quality_path), ("contributions", contribution_path)):
             files[f"bundle/{category}/{identifier}{path.suffix}"] = path.read_bytes()
-        normalized.append(row)
+        normalized.append({**row, "reranked_ndcg_at_10": reranked_ndcg})
     flat_config = result_root / "configs" / "flat-itq256-hamming-reference.json"
     flat_report = result_root / "native-reports" / "flat-itq256-hamming-reference.json"
     flat_shortlist = result_root / "shortlists" / "flat-itq256-hamming-reference.json"
