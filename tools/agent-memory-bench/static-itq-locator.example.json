@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "family": "static_itq_locator_exploration_v1",
+  "purpose": "calibration_only_static_locator_viability_before_learned_routing",
+  "ranking_representation": "frozen_itq_256_v1",
+  "routing_representation": "static_selected_subset_of_frozen_itq_256_bits_v1",
+  "scale": {"id": "es-25k", "documents": 25000, "language": "es", "split": "dev"},
+  "bit_counts": [64, 80, 96],
+  "subset_variants": ["random_seeded_v1", "low_correlation_greedy_v1", "partitioned_decorrelation_v1"],
+  "random_seed": 20260830,
+  "bands": {"width_bits": 16, "local_radius": 3},
+  "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "native_timing": {"query_seed": 20260825, "warmup_count": 1, "repeat_count": 7},
+  "viability_gate": {
+    "purpose": "permission_to_start_a_separate_learned_locator_pr_not_production_selection",
+    "minimum_e5_oracle_survival_after_adc": 0.9,
+    "maximum_candidate_fraction": 0.25,
+    "required_candidate_generator_p50_improvement_vs_full_itq_m19": 1.0
+  },
+  "confirmation": "forbidden_until_one_calibration_selected_static_locator_is_frozen_and_evaluated_on_a_new_untouched_split"
+}
