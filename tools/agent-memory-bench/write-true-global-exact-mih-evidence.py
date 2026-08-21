@@ -17,6 +17,8 @@ from typing import Any
 THIS = Path(__file__).resolve().parent
 FAMILY = "true_global_exact_mih_top_k_v1"
 NATIVE_FAMILY = "mih_native_sparse_arbitrary_m_v1"
+CONFORMANCE_FIXTURE = THIS.parent.parent / "tests" / "eval" / "fixtures" / "mih-global-exact-conformance-v1.json"
+CONFORMANCE_RUNNER = THIS / "verify-norouzi-mih-conformance.py"
 
 
 def require(condition: bool, message: str) -> None:
@@ -51,6 +53,23 @@ runner = load_runner()
 
 def expected_rows(contract: dict[str, Any]) -> set[tuple[str, int, int]]:
     return {(scale["id"], m, k) for scale in contract["scales"] for m in scale["m_values"] for k in contract["ks"]}
+
+
+def validate_conformance_receipt(path: Path) -> None:
+    fixture = json.loads(CONFORMANCE_FIXTURE.read_text(encoding="utf-8"))
+    reference = fixture["upstream_reference"]
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    require(receipt == {
+        "schema_version": 1,
+        "family": "norouzi_mih_conformance_receipt_v1",
+        "fixture_sha256": sha256(CONFORMANCE_FIXTURE),
+        "upstream_reference": reference,
+        "upstream_commit": reference["commit"],
+        "docker_image": reference["build"]["container_image"],
+        "runner_sha256": sha256(CONFORMANCE_RUNNER),
+        "canonical_output_sha256": fixture["canonical_outputs_sha256"],
+        "passed": True,
+    }, "global exact external conformance receipt differs")
 
 
 def validate_certificate(path: Path, report: dict[str, Any], config: dict[str, Any], query_count: int, k: int) -> None:
@@ -94,8 +113,13 @@ def validate(result_root: Path, contract_path: Path) -> dict[str, Any]:
     files: dict[str, bytes] = {
         "bundle/contract.json": contract_path.read_bytes(),
         "bundle/summary.json": summary_path.read_bytes(),
-        "bundle/conformance-fixture.json": (THIS.parent.parent / "tests" / "eval" / "fixtures" / "mih-global-exact-conformance-v1.json").read_bytes(),
+        "bundle/conformance-fixture.json": CONFORMANCE_FIXTURE.read_bytes(),
+        "bundle/conformance-runner.py": CONFORMANCE_RUNNER.read_bytes(),
     }
+    receipt_path = result_root / "external-conformance-receipt.json"
+    require(receipt_path.is_file(), "global exact external conformance receipt is missing")
+    validate_conformance_receipt(receipt_path)
+    files["bundle/external-conformance-receipt.json"] = receipt_path.read_bytes()
     for source in runner.BENCHMARK_SOURCES:
         files[f"bundle/measured-source/{source}"] = (runner.ROOT / source).read_bytes()
     normalized: list[dict[str, Any]] = []
@@ -140,6 +164,10 @@ def self_test() -> None:
         manifest = {"schema_version": 1, "family": "true_global_exact_mih_evidence_v1", "members": {"bundle/value": {"sha256": sha256_bytes(b"value"), "size": 5}}, "_files": files}
         write_archive(path, manifest)
         require(path.is_file() and zipfile.ZipFile(path).read("bundle/value") == b"value", "global exact evidence self-test differs")
+        fixture = json.loads(CONFORMANCE_FIXTURE.read_text(encoding="utf-8")); reference = fixture["upstream_reference"]
+        receipt_path = Path(temporary) / "receipt.json"
+        receipt_path.write_bytes(canonical({"schema_version": 1, "family": "norouzi_mih_conformance_receipt_v1", "fixture_sha256": sha256(CONFORMANCE_FIXTURE), "upstream_reference": reference, "upstream_commit": reference["commit"], "docker_image": reference["build"]["container_image"], "runner_sha256": sha256(CONFORMANCE_RUNNER), "canonical_output_sha256": fixture["canonical_outputs_sha256"], "passed": True}))
+        validate_conformance_receipt(receipt_path)
     print("true global exact MIH evidence packager self-test passed")
 
 

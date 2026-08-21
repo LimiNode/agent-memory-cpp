@@ -120,7 +120,21 @@ def output_digest(lines: list[str], fixture: dict[str, object]) -> str:
     return digest.hexdigest()
 
 
-def run(upstream: Path, compiler: str, docker_image: str | None) -> None:
+def receipt_value(fixture: dict[str, object], commit: str, docker_image: str, digest: str) -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "family": "norouzi_mih_conformance_receipt_v1",
+        "fixture_sha256": hashlib.sha256(FIXTURE.read_bytes()).hexdigest(),
+        "upstream_reference": fixture["upstream_reference"],
+        "upstream_commit": commit,
+        "docker_image": docker_image,
+        "runner_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "canonical_output_sha256": digest,
+        "passed": True,
+    }
+
+
+def run(upstream: Path, compiler: str, docker_image: str | None, receipt_output: Path | None) -> None:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     reference = fixture["upstream_reference"]
     require(reference == {"repository": "https://github.com/norouzi/mih", "commit": "96a629de834c1b974b0c5e378ab1037ee42120ab", "binary_encoding": "N_by_B_uint8_bits_lsb_first_v1", "tie_rule": "canonicalize_complete_cutoff_candidates_by_hamming_distance_then_document_position_v1", "required_cutoff_max": 128, "build": {"compiler": "g++ -std=c++17 -O2", "container_image": "gcc@sha256:056fa682471704249f619f65ccec87d671ad5f1b20878da54d60b0b863486621", "runner": "tools/agent-memory-bench/verify-norouzi-mih-conformance.py"}}, "upstream MIH fixture contract differs")
@@ -141,6 +155,10 @@ def run(upstream: Path, compiler: str, docker_image: str | None) -> None:
             completed = subprocess.run(["docker", "run", "--rm", *mounts, "-w", "/work", docker_image, "/work/mih-conformance"], text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
     digest = output_digest(completed.stdout.splitlines(), fixture)
     require(digest == fixture["canonical_outputs_sha256"], "upstream MIH canonical output differs")
+    if receipt_output is not None:
+        require(docker_image is not None, "external conformance receipt requires the pinned Docker replay")
+        receipt_output.parent.mkdir(parents=True, exist_ok=True)
+        receipt_output.write_text(json.dumps(receipt_value(fixture, commit, docker_image, digest), indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
     print("pinned upstream norouzi/mih conformance fixture passed")
 
 
@@ -148,15 +166,17 @@ def self_test() -> None:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     require(words(str(fixture["document_seed"]), 1)[0] == 0x63CFC62A2B097592, "upstream MIH fixture generator differs")
     require(fixture["expected_cutoff_at_k768_per_query"] == [39, 39, 38, 39], "upstream MIH fixture cutoff differs")
+    receipt = receipt_value(fixture, str(dict(fixture["upstream_reference"])["commit"]), str(dict(fixture["upstream_reference"])["build"]["container_image"]), str(fixture["canonical_outputs_sha256"]))
+    require(receipt["passed"] is True and receipt["runner_sha256"] == hashlib.sha256(Path(__file__).read_bytes()).hexdigest(), "upstream MIH receipt differs")
     print("pinned upstream norouzi/mih conformance runner self-test passed")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(); parser.add_argument("--upstream", type=Path); parser.add_argument("--compiler", default="g++"); parser.add_argument("--docker-image"); parser.add_argument("--self-test", action="store_true"); args = parser.parse_args()
+    parser = argparse.ArgumentParser(); parser.add_argument("--upstream", type=Path); parser.add_argument("--compiler", default="g++"); parser.add_argument("--docker-image"); parser.add_argument("--receipt-output", type=Path); parser.add_argument("--self-test", action="store_true"); args = parser.parse_args()
     try:
         if args.self_test: self_test(); return 0
         if args.upstream is None: parser.error("--upstream is required unless --self-test is used")
-        run(args.upstream, args.compiler, args.docker_image); return 0
+        run(args.upstream, args.compiler, args.docker_image, args.receipt_output); return 0
     except (OSError, ValueError, subprocess.CalledProcessError, json.JSONDecodeError) as error:
         print(f"verify-norouzi-mih-conformance: {error}", file=sys.stderr); return 1
 
