@@ -137,7 +137,7 @@ def validate(result_root: Path, evaluation_root: Path, contract_path: Path) -> d
         "bundle/summary.json": summary_path.read_bytes(),
         "bundle/frozen-evaluation-manifest.json": evaluation_manifest_path.read_bytes(),
     }
-    for source in SOURCE_PATHS:
+    for source in sorted(set(SOURCE_PATHS) | set(NATIVE_SOURCES)):
         files[f"bundle/measured-source/{source}"] = (ROOT / source).read_bytes()
     normalized: list[dict[str, Any]] = []
     for row in sorted(rows, key=lambda value: value["id"]):

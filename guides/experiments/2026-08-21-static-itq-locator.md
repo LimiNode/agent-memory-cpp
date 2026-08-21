@@ -1,6 +1,9 @@
 # Static ITQ locator feasibility
 
-Date: 2026-08-21.  Context: draft PR #159, `a06e3e2`.
+Date: 2026-08-21. Context: draft PR #159. The predeclared static-locator
+protocol and initial implementation are `a06e3e2`; final evidence hardening
+is `d6828e8`. Each native report and the evidence bundle record the exact
+measured-source identity for the rerun matrix.
 
 ## Question
 
