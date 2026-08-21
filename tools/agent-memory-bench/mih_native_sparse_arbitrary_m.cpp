@@ -102,6 +102,7 @@ struct Config final {
     std::size_t hnsw_ef_search = 768;
     std::uint64_t hnsw_seed = 20260815;
     std::filesystem::path shortlist_output;
+    std::filesystem::path candidate_diagnostic_output;
     std::string directory_mode = "sorted_lower_bound";
     std::string deduplication_mode = "two_pass_generation_array";
     std::string sha256;
@@ -154,6 +155,21 @@ struct Timings final {
 
 struct QueryResult final { Timings timings; std::vector<Scored> shortlist; };
 
+struct CandidateDiagnostic final {
+    std::size_t candidate_union_size = 0;
+    std::size_t global_fixed_r56_count = 0;
+    std::size_t candidate_union_fixed_r56_count = 0;
+    std::size_t exact_hamming_top_k_fixed_r56_count = 0;
+    std::size_t candidate_union_exact_hamming_top_k_overlap = 0;
+    std::size_t mih_shortlist_fixed_r56_count = 0;
+    std::size_t mih_shortlist_exact_hamming_top_k_overlap = 0;
+    std::size_t exact_hamming_top_k_max_distance = 0;
+    std::array<std::size_t, 6> exact_hamming_distances_at_k{};
+    std::string raw_candidate_sequence_sha256;
+    std::string raw_candidate_set_sha256;
+    std::string hamming_shortlist_sequence_sha256;
+};
+
 struct QueryWorkspace final {
     std::vector<KeyProbe> probes;
     std::vector<Span> spans;
@@ -186,12 +202,30 @@ void validate_config(const Config& value) {
     for(std::size_t index = 0; index < value.band_widths.size(); ++index) if(value.band_widths[index] == 0 || value.band_widths[index] > 32 || value.local_radii[index] < 0 || value.local_radii[index] > static_cast<int>(value.band_widths[index])) throw std::invalid_argument("native sparse MIH schedule is invalid");
     if(std::accumulate(value.local_radii.begin(), value.local_radii.end(), std::size_t{0}, [](const std::size_t total, const int radius) { return total + static_cast<std::size_t>(radius) + 1U; }) < 57U) throw std::invalid_argument("native sparse MIH schedule does not preserve fixed-r56 inclusion");
     if(value.backend == "hnsw" && (value.hnsw_connectivity == 0 || value.hnsw_ef_construction < value.hnsw_connectivity || value.hnsw_ef_search < value.hamming_limit)) throw std::invalid_argument("native HNSW configuration is invalid");
+    if(!value.candidate_diagnostic_output.empty() && value.backend != "mih") throw std::invalid_argument("native fixed-r56 candidate diagnostic requires the MIH backend");
     static_cast<void>(directory_mode(value.directory_mode));
     static_cast<void>(deduplication_mode(value.deduplication_mode));
 }
 
 [[nodiscard]] double milliseconds(const Clock::time_point start, const Clock::time_point end) {
     return std::chrono::duration<double, std::milli>(end - start).count();
+}
+
+void append_u32_le(std::vector<std::uint8_t>& output, const std::uint32_t value) {
+    for(std::size_t shift = 0; shift < 32U; shift += 8U) output.push_back(static_cast<std::uint8_t>((value >> shift) & 0xFFU));
+}
+
+void append_u64_le(std::vector<std::uint8_t>& output, const std::uint64_t value) {
+    for(std::size_t shift = 0; shift < 64U; shift += 8U) output.push_back(static_cast<std::uint8_t>((value >> shift) & 0xFFU));
+}
+
+[[nodiscard]] std::string position_sequence_sha256(const std::uint32_t query_position, const std::vector<std::uint32_t>& positions) {
+    std::vector<std::uint8_t> encoded;
+    encoded.reserve(12U + positions.size() * 4U);
+    append_u32_le(encoded, query_position);
+    append_u64_le(encoded, positions.size());
+    for(const auto position : positions) append_u32_le(encoded, position);
+    return agent_memory::sha256_bytes_hex(encoded);
 }
 
 [[nodiscard]] double percentile(std::vector<double> values, const double fraction) {
@@ -281,6 +315,7 @@ template<class Value>
     result.hnsw_ef_search = value.value("hnsw_ef_search", result.hnsw_ef_search);
     result.hnsw_seed = value.value("hnsw_seed", result.hnsw_seed);
     result.shortlist_output = value.value("shortlist_output", std::string{});
+    result.candidate_diagnostic_output = value.value("candidate_diagnostic_output", std::string{});
     result.directory_mode = value.value("directory_mode", result.directory_mode);
     result.deduplication_mode = value.value("deduplication_mode", result.deduplication_mode);
     validate_config(result);
@@ -617,6 +652,52 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
     for(std::size_t index = 0; index < expected.size(); ++index) if(expected[index].position != shortlist[index].position || expected[index].distance != shortlist[index].distance) throw std::runtime_error("native sparse MIH Hamming shortlist differs");
 }
 
+[[nodiscard]] CandidateDiagnostic diagnose_fixed_r56_candidate_union(const Input& input, const std::uint32_t query_position, const std::uint64_t* query, const std::vector<std::uint32_t>& candidates, const std::vector<Scored>& shortlist, const agent_memory::HammingDistanceComputer& hamming, const std::size_t hamming_limit) {
+    std::vector<bool> candidate_present(input.document_count, false);
+    for(const auto position : candidates) candidate_present[position] = true;
+    std::vector<Scored> exact;
+    exact.reserve(input.document_count);
+    CandidateDiagnostic result;
+    result.candidate_union_size = candidates.size();
+    result.raw_candidate_sequence_sha256 = position_sequence_sha256(query_position, candidates);
+    auto sorted_candidates = candidates;
+    std::sort(sorted_candidates.begin(), sorted_candidates.end());
+    result.raw_candidate_set_sha256 = position_sequence_sha256(query_position, sorted_candidates);
+    std::vector<std::uint32_t> shortlist_positions;
+    shortlist_positions.reserve(shortlist.size());
+    for(const auto& item : shortlist) shortlist_positions.push_back(item.position);
+    result.hamming_shortlist_sequence_sha256 = position_sequence_sha256(query_position, shortlist_positions);
+    for(std::size_t position = 0; position < input.document_count; ++position) {
+        const auto distance = hamming.distance_words(query, input.documents.data() + position * kWordCount);
+        if(distance <= 56U) {
+            ++result.global_fixed_r56_count;
+            if(!candidate_present[position]) throw std::runtime_error("native fixed-r56 diagnostic found a missing guaranteed candidate");
+        }
+        exact.push_back({static_cast<std::uint32_t>(position), distance});
+    }
+    for(const auto position : candidates) {
+        const auto distance = hamming.distance_words(query, input.documents.data() + static_cast<std::size_t>(position) * kWordCount);
+        if(distance <= 56U) ++result.candidate_union_fixed_r56_count;
+    }
+    static_cast<void>(select_top_k(exact, hamming_limit));
+    if(exact.empty()) throw std::runtime_error("native fixed-r56 diagnostic exact Hamming top-K is empty");
+    result.exact_hamming_top_k_max_distance = exact.back().distance;
+    for(const auto [index, k] : std::array<std::pair<std::size_t, std::size_t>, 6>{{{0U, 10U}, {1U, 64U}, {2U, 128U}, {3U, 256U}, {4U, 512U}, {5U, 768U}}}) {
+        result.exact_hamming_distances_at_k[index] = k <= exact.size() ? exact[k - 1U].distance : 0U;
+    }
+    std::vector<bool> exact_top_k_present(input.document_count, false);
+    for(const auto& item : exact) {
+        exact_top_k_present[item.position] = true;
+        if(item.distance <= 56U) ++result.exact_hamming_top_k_fixed_r56_count;
+        if(candidate_present[item.position]) ++result.candidate_union_exact_hamming_top_k_overlap;
+    }
+    for(const auto& item : shortlist) {
+        if(item.distance <= 56U) ++result.mih_shortlist_fixed_r56_count;
+        if(exact_top_k_present[item.position]) ++result.mih_shortlist_exact_hamming_top_k_overlap;
+    }
+    return result;
+}
+
 [[nodiscard]] nlohmann::json timing_series(const std::vector<double>& values) { return values; }
 
 [[nodiscard]] bool same_candidate_diagnostics(const Diagnostics& left, const Diagnostics& right) {
@@ -687,6 +768,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
         if(!same_candidate_diagnostics(diagnostics, repeat_diagnostics)) throw std::runtime_error("native sparse MIH warm repeats differ in candidate pipeline");
     }
     nlohmann::json exported_shortlists = nlohmann::json::array();
+    nlohmann::json candidate_diagnostics = nlohmann::json::array();
     {
         GenerationDeduplicator verification_deduplicator(input.document_count);
         QueryWorkspace verification_workspace;
@@ -709,6 +791,25 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
 #endif
                 ;
             verify_candidate_conformance(input, query, raw_candidates, result.shortlist, hamming, config.hamming_limit, config.backend == "mih");
+            if(!config.candidate_diagnostic_output.empty()) {
+                const auto diagnostic = diagnose_fixed_r56_candidate_union(input, static_cast<std::uint32_t>(position), query, raw_candidates, result.shortlist, hamming, config.hamming_limit);
+                candidate_diagnostics.push_back({
+                    {"query_position", position},
+                    {"candidate_union_size", diagnostic.candidate_union_size},
+                    {"global_fixed_r56_count", diagnostic.global_fixed_r56_count},
+                    {"candidate_union_fixed_r56_count", diagnostic.candidate_union_fixed_r56_count},
+                    {"exact_hamming_top_k_fixed_r56_count", diagnostic.exact_hamming_top_k_fixed_r56_count},
+                    {"candidate_union_exact_hamming_top_k_overlap", diagnostic.candidate_union_exact_hamming_top_k_overlap},
+                    {"mih_shortlist_fixed_r56_count", diagnostic.mih_shortlist_fixed_r56_count},
+                    {"mih_shortlist_exact_hamming_top_k_overlap", diagnostic.mih_shortlist_exact_hamming_top_k_overlap},
+                    {"exact_hamming_top_k_max_distance", diagnostic.exact_hamming_top_k_max_distance},
+                    {"exact_hamming_distances_at_k", {{"10", diagnostic.exact_hamming_distances_at_k[0]}, {"64", diagnostic.exact_hamming_distances_at_k[1]}, {"128", diagnostic.exact_hamming_distances_at_k[2]}, {"256", diagnostic.exact_hamming_distances_at_k[3]}, {"512", diagnostic.exact_hamming_distances_at_k[4]}, {"768", diagnostic.exact_hamming_distances_at_k[5]}}},
+                    {"sequence_digest_encoding", "query_position_u32_le|count_u64_le|positions_u32_le_v1"},
+                    {"raw_candidate_sequence_sha256", diagnostic.raw_candidate_sequence_sha256},
+                    {"raw_candidate_set_sha256", diagnostic.raw_candidate_set_sha256},
+                    {"hamming_shortlist_sequence_sha256", diagnostic.hamming_shortlist_sequence_sha256},
+                });
+            }
             if(!config.shortlist_output.empty()) {
                 std::uint64_t verification_checksum = 0;
                 static_cast<void>(binary_adc_rerank(input, input.query_projections.data() + position * kCodeBits, result.shortlist, config.adc_limit, verification_adc_scored, verification_adc_positions, verification_checksum));
@@ -728,6 +829,15 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
         output << shortlist_export.dump(2) << '\n';
         output.close();
         shortlist_export_sha256 = agent_memory::sha256_file_hex(config.shortlist_output);
+    }
+    std::string candidate_diagnostic_sha256;
+    if(!config.candidate_diagnostic_output.empty()) {
+        const nlohmann::json diagnostic_export{{"schema_version", 1}, {"family", "native_mih_fixed_r56_candidate_union_diagnostic_v1"}, {"input_manifest_sha256", input.manifest_sha256}, {"benchmark_config_sha256", config.sha256}, {"backend", config.backend}, {"query_seed", config.query_seed}, {"selected_query_positions", query_positions}, {"fixed_radius", 56}, {"hamming_limit", config.hamming_limit}, {"rows", candidate_diagnostics}};
+        std::ofstream output(config.candidate_diagnostic_output);
+        if(!output) throw std::runtime_error("cannot write native fixed-r56 candidate diagnostic");
+        output << diagnostic_export.dump(2) << '\n';
+        output.close();
+        candidate_diagnostic_sha256 = agent_memory::sha256_file_hex(config.candidate_diagnostic_output);
     }
 
     const auto per_query = static_cast<double>(config.query_count);
@@ -772,6 +882,7 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
         {"band_widths", config.band_widths}, {"local_radii", config.local_radii}, {"fixed_radius", is_mih ? nlohmann::json(56) : nlohmann::json(nullptr)}, {"fixed_radius_exact_inclusion", is_mih ? nlohmann::json("sum_local_radius_plus_one_at_least_57_v1") : nlohmann::json(nullptr)},
         {"hamming_limit", config.hamming_limit}, {"adc_limit", config.adc_limit}, {"exact_limit", config.exact_limit},
         {"hamming_shortlist_export", config.shortlist_output.empty() ? nlohmann::json(nullptr) : nlohmann::json({{"path", config.shortlist_output.string()}, {"sha256", shortlist_export_sha256}, {"schema_version", 1}})},
+        {"fixed_r56_candidate_diagnostic", config.candidate_diagnostic_output.empty() ? nlohmann::json(nullptr) : nlohmann::json({{"path", config.candidate_diagnostic_output.string()}, {"sha256", candidate_diagnostic_sha256}, {"schema_version", 1}})},
         {"deduplication", selected_deduplication == DeduplicationMode::TwoPassGenerationArray ? "two_pass_uint32_generation_array_v1" : "streaming_uint32_generation_array_v1"}, {"deduplication_mode", config.deduplication_mode}, {"hamming_backend", std::string(agent_memory::hamming_distance_backend_name(hamming.backend()))}, {"exact_vector_similarity_backend", std::string(agent_memory::vector_similarity_backend_name(vector_computer.backend()))},
         {"counters_per_query", {{"bucket_probes", static_cast<double>(diagnostics.probes) / per_query}, {"non_empty_probes", static_cast<double>(diagnostics.non_empty_probes) / per_query}, {"empty_probes", static_cast<double>(diagnostics.empty_probes) / per_query}, {"posting_visits", static_cast<double>(diagnostics.posting_visits) / per_query}, {"unique_candidates", static_cast<double>(diagnostics.unique_candidates) / per_query}, {"unique_candidates_per_posting_visit", diagnostics.posting_visits == 0 ? 0.0 : static_cast<double>(diagnostics.unique_candidates) / static_cast<double>(diagnostics.posting_visits)}, {"mean_posting_length_touched", mean_posting_length}, {"p95_posting_length_touched", posting_length_values.empty() ? 0.0 : percentile(posting_length_values, 0.95)}, {"candidate_checksum", diagnostics.candidate_checksum}, {"shortlist_checksum", diagnostics.shortlist_checksum}}},
         {"latency_ms_per_query", {{"key_enumeration", percentiles(keys)}, {"bucket_lookup", percentiles(lookups)}, {"posting_traversal", percentiles(traversal)}, {"generation_dedup", percentiles(deduplication)}, {"full_hamming_scoring", percentiles(hamming_samples)}, {"top_k_selection", percentiles(top_k)}, {"binary_adc", percentiles(adc)}, {"exact_rerank", percentiles(exact)}, {"candidate_generator_total", percentiles(candidate_generator)}, {"cascade_total", percentiles(cascade)}}},
@@ -816,6 +927,8 @@ void verify_candidate_conformance(const Input& input, const std::uint64_t* query
             else if(candidates != reference_candidates || result.shortlist.size() != reference_shortlist.size()) throw std::runtime_error("native sparse MIH challenger candidate union differs");
             else for(std::size_t position = 0; position < result.shortlist.size(); ++position) if(result.shortlist[position].position != reference_shortlist[position].position || result.shortlist[position].distance != reference_shortlist[position].distance) throw std::runtime_error("native sparse MIH challenger Hamming shortlist differs");
         }
+        const auto diagnostic = diagnose_fixed_r56_candidate_union(input, 0U, codes.data(), reference_candidates, reference_shortlist, hamming, 3);
+        if(diagnostic.candidate_union_size != 3U || diagnostic.global_fixed_r56_count != 3U || diagnostic.candidate_union_fixed_r56_count != 3U || diagnostic.exact_hamming_top_k_fixed_r56_count != 3U || diagnostic.candidate_union_exact_hamming_top_k_overlap != 3U || diagnostic.mih_shortlist_exact_hamming_top_k_overlap != 3U) throw std::runtime_error("native fixed-r56 candidate diagnostic differs");
 #ifdef AGENT_MEMORY_ENABLE_HNSW_BENCHMARK
         Config hnsw_config; hnsw_config.backend = "hnsw"; hnsw_config.hnsw_connectivity = 2; hnsw_config.hnsw_ef_construction = 4; hnsw_config.hnsw_ef_search = 3;
         const HnswIndex hnsw(input, hnsw_config);
