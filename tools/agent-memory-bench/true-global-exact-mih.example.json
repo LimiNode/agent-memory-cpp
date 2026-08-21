@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "family": "true_global_exact_mih_top_k_v1",
+  "purpose": "calibration_only_global_exact_hamming_characterization",
+  "code_bits": 256,
+  "language": "es",
+  "query_count": 648,
+  "query_seed": 20260825,
+  "warmup_count": 1,
+  "repeat_count": 7,
+  "directory_mode": "flat_open_address",
+  "deduplication_mode": "streaming_generation_array",
+  "ks": [10, 64, 128, 256, 512, 768],
+  "scales": [
+    {"id": "es-25k", "documents": 25000, "m_values": [15, 16, 17, 18, 19, 20, 21]},
+    {"id": "es-100k", "documents": 100000, "m_values": [13, 14, 15, 16, 17, 18, 19]},
+    {"id": "es-1m", "documents": 1000000, "m_values": [10, 11, 12, 13, 14, 15, 16]}
+  ],
+  "exactness": {
+    "reference": "flat_hamming_ordered_by_distance_then_document_position_v1",
+    "stop_rule": "kth_distance_strictly_less_than_covered_radius_plus_one_v1",
+    "global_exact_max_cover_radius": 256,
+    "quality_selection": "forbidden"
+  }
+}

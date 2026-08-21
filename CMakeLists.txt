@@ -166,6 +166,12 @@ if(AGENT_MEMORY_BUILD_TESTS)
             COMMAND agent-memory-mih-native-sparse-arbitrary-m --self-test
         )
         add_test(
+            NAME agent_memory_mih_global_exact_fixture
+            COMMAND agent-memory-mih-native-sparse-arbitrary-m
+                --global-exact-fixture
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/eval/fixtures/mih-global-exact-conformance-v1.json"
+        )
+        add_test(
             NAME agent_memory_standard_binary_encoder_evaluator_self_test
             COMMAND agent-memory-standard-binary-eval --self-test
         )
@@ -682,6 +688,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 ${Python3_EXECUTABLE}
                 ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mih-native-sparse-arbitrary-m.py
                 self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_true_global_exact_mih_runner_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-true-global-exact-mih.py
+                --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(

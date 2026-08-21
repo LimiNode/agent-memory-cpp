@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "family": "mih_global_exact_conformance_fixture_v1",
+  "code_bits": 256,
+  "document_count": 800,
+  "query_count": 4,
+  "document_seed": "6a09e667f3bcc909",
+  "query_seed": "bb67ae8584caa73b",
+  "construction": "splitmix64_word0_only_zero_extend_to_256_v1",
+  "band_count": 16,
+  "ks": [10, 64, 128, 256, 512, 768],
+  "canonical_order": "hamming_distance_ascending_then_document_position_ascending_v1",
+  "expected_cutoff_at_k768_per_query": [39, 39, 38, 39],
+  "upstream_reference": {
+    "repository": "https://github.com/norouzi/mih",
+    "commit": "96a629de834c1b974b0c5e378ab1037ee42120ab",
+    "binary_encoding": "N_by_B_uint8_bits_lsb_first_v1",
+    "tie_rule": "canonicalize_complete_cutoff_candidates_by_hamming_distance_then_document_position_v1",
+    "required_cutoff_max": 128
+  },
+  "canonical_outputs_sha256": "0c4e467b35ea4279fcb805208ca1f96cf21134f7a14bcbc274dc43d0e59b1daa"
+}
