@@ -74,23 +74,77 @@ def pack_vectors(vectors: Any, dimension: int) -> bytes:
     return values.tobytes(order="C")
 
 
+def itq_artifact_identity(calibration: dict[str, Any], code_bits: int, seed: int, iterations: int) -> dict[str, Any]:
+    return {
+        "schema_version": 2,
+        "family": "mih_storage_itq_artifact_v2",
+        "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
+        "calibration_train_vectors_sha256": calibration["output_hashes"]["train_vectors"],
+        "embedding_identity": calibration["embedding_identity"],
+        "dimension": calibration["dimension"],
+        "code_bits": code_bits,
+        "seed": seed,
+        "itq_iterations": iterations,
+    }
+
+
+def load_or_train_itq(
+    calibration: dict[str, Any],
+    code_bits: int,
+    seed: int,
+    iterations: int,
+    artifact: Path | None,
+    write_artifact: Path | None,
+) -> tuple[Any, Any, Any, str | None]:
+    identity = itq_artifact_identity(calibration, code_bits, seed, iterations)
+    if artifact is not None:
+        with numpy.load(artifact, allow_pickle=False) as archive:
+            artifact_identity = json.loads(str(archive["identity_json"].item()))
+            weights = numpy.asarray(archive["weights"], dtype=numpy.float32)
+            thresholds = numpy.asarray(archive["thresholds"], dtype=numpy.float32)
+            centers = numpy.asarray(archive["centers"], dtype=numpy.float32)
+        if artifact_identity != identity or weights.shape != (code_bits, calibration["dimension"]) or thresholds.shape != (code_bits,) or centers.shape != (code_bits, 2):
+            raise EvaluationError("storage benchmark ITQ artifact differs")
+        return weights, thresholds, centers, sha256_file(artifact)
+    weights = shared.itq_weights(numpy.asarray(calibration["train"]), code_bits, seed, iterations)
+    thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
+    calibration_projection = numpy.asarray(calibration["train"]) @ weights.T + thresholds
+    centers = shared.conditional_centers(calibration_projection, (calibration_projection >= 0.0).astype(numpy.uint8), 2)
+    artifact_sha256 = None
+    if write_artifact is not None:
+        write_artifact.parent.mkdir(parents=True, exist_ok=True)
+        numpy.savez_compressed(
+            write_artifact,
+            identity_json=numpy.asarray(json.dumps(identity, sort_keys=True, separators=(",", ":"))),
+            weights=numpy.asarray(weights, dtype=numpy.float32),
+            thresholds=numpy.asarray(thresholds, dtype=numpy.float32),
+            centers=numpy.asarray(centers, dtype=numpy.float32),
+        )
+        artifact_sha256 = sha256_file(write_artifact)
+    return weights, thresholds, centers, artifact_sha256
+
+
 def materialize(args: Any) -> None:
     if args.code_bits != 256 or args.itq_iterations != 50 or args.seed < 0:
         raise EvaluationError("storage benchmark input contract is invalid")
+    if args.itq_artifact is not None and args.write_itq_artifact is not None:
+        raise EvaluationError("storage benchmark cannot both load and write an ITQ artifact")
     calibration = shared.load_root(args.calibration_root)
     evaluation = shared.load_root(args.evaluation_root)
     shared.validate_calibration_evaluation_pair(calibration, evaluation)
     if calibration["dimension"] != evaluation["dimension"] or args.code_bits > calibration["dimension"]:
         raise EvaluationError("storage benchmark roots are incompatible")
-    weights = shared.itq_weights(
-        numpy.asarray(calibration["train"]), args.code_bits, args.seed, args.itq_iterations
+    weights, thresholds, centers, artifact_sha256 = load_or_train_itq(
+        calibration,
+        args.code_bits,
+        args.seed,
+        args.itq_iterations,
+        args.itq_artifact,
+        args.write_itq_artifact,
     )
-    thresholds = shared.binary_thresholds(numpy.asarray(calibration["train"]), weights)
-    calibration_projection = numpy.asarray(calibration["train"]) @ weights.T + thresholds
     document_codes = numpy.asarray(evaluation["documents"]) @ weights.T + thresholds >= 0.0
     query_codes = numpy.asarray(evaluation["queries"]) @ weights.T + thresholds >= 0.0
     query_projection = numpy.asarray(evaluation["queries"]) @ weights.T + thresholds
-    centers = shared.conditional_centers(calibration_projection, (calibration_projection >= 0.0).astype(numpy.uint8), 2)
     documents = pack_codes(document_codes, args.code_bits)
     queries = pack_codes(query_codes, args.code_bits)
     document_vectors = pack_vectors(evaluation["documents"], evaluation["dimension"])
@@ -117,9 +171,11 @@ def materialize(args: Any) -> None:
         "word_count": args.code_bits // 64,
         "seed": args.seed,
         "itq_iterations": args.itq_iterations,
+        "itq_artifact_sha256": artifact_sha256,
         "calibration_materialization_manifest_sha256": calibration["manifest_sha256"],
         "evaluation_materialization_manifest_sha256": evaluation["manifest_sha256"],
         "calibration_train_ids_sha256": shared.ordered_ids_sha256(calibration["train_ids"]),
+        "calibration_train_vectors_sha256": calibration["output_hashes"]["train_vectors"],
         "document_count": int(document_codes.shape[0]),
         "query_count": int(query_codes.shape[0]),
         "document_codes_file": document_path.name,
@@ -164,6 +220,35 @@ def self_test() -> int:
     if source_bundle_sha256(files) != source_bundle_sha256(dict(reversed(files.items()))):
         print("self-test failed: source bundle is not canonical", file=sys.stderr)
         return 1
+    with tempfile.TemporaryDirectory() as raw_root:
+        root = Path(raw_root)
+        calibration = {
+            "manifest_sha256": "a" * 64,
+            "train_ids": ["a", "b", "c", "d"],
+            "dimension": 2,
+            "train": numpy.asarray([[1.0, 0.0], [0.0, 1.0], [-1.0, 0.0], [0.0, -1.0]], dtype=numpy.float32),
+            "output_hashes": {"train_vectors": "a" * 64},
+            "embedding_identity": {"model_id": "test", "model_revision": "a" * 40, "query_prefix": "query: ", "document_prefix": "passage: ", "normalized": True},
+        }
+        artifact = root / "itq-artifact.npz"
+        weights, thresholds, centers, written_sha256 = load_or_train_itq(calibration, 2, 7, 2, None, artifact)
+        loaded_weights, loaded_thresholds, loaded_centers, loaded_sha256 = load_or_train_itq(calibration, 2, 7, 2, artifact, None)
+        if written_sha256 != loaded_sha256 or not numpy.array_equal(weights, loaded_weights) or not numpy.array_equal(thresholds, loaded_thresholds) or not numpy.array_equal(centers, loaded_centers):
+            print("self-test failed: frozen ITQ artifact differs", file=sys.stderr)
+            return 1
+        changed = {**calibration, "manifest_sha256": "b" * 64}
+        different_weights, different_thresholds, different_centers, _ = load_or_train_itq(changed, 2, 7, 2, artifact, None)
+        if not numpy.array_equal(weights, different_weights) or not numpy.array_equal(thresholds, different_thresholds) or not numpy.array_equal(centers, different_centers):
+            print("self-test failed: shared ITQ artifact does not transfer across evaluation manifests", file=sys.stderr)
+            return 1
+        changed = {**calibration, "output_hashes": {**calibration["output_hashes"], "train_vectors": "b" * 64}}
+        try:
+            load_or_train_itq(changed, 2, 7, 2, artifact, None)
+        except EvaluationError:
+            pass
+        else:
+            print("self-test failed: ITQ artifact accepted changed training vectors", file=sys.stderr)
+            return 1
     print("MIH storage input materializer self-test passed")
     return 0
 
@@ -178,6 +263,8 @@ def main(argv: list[str]) -> int:
     run.add_argument("--code-bits", type=int, default=256)
     run.add_argument("--seed", type=int, default=42)
     run.add_argument("--itq-iterations", type=int, default=50)
+    run.add_argument("--itq-artifact", type=Path)
+    run.add_argument("--write-itq-artifact", type=Path)
     sub.add_parser("self-test")
     args = parser.parse_args(argv)
     try:
