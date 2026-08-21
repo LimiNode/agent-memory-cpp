@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import sys
 import zipfile
@@ -14,6 +15,7 @@ from typing import Any
 
 sys.dont_write_bytecode = True
 FAMILY = "fixed_r56_spillover_evidence_v1"
+THIS = Path(__file__).resolve().parent
 
 
 def require(condition: bool, message: str) -> None:
@@ -33,6 +35,27 @@ def load(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(isinstance(value, dict), f"spillover evidence JSON object differs: {path}")
     return value
+
+
+def load_spillover() -> Any:
+    spec = importlib.util.spec_from_file_location("fixed_r56_spillover", THIS / "diagnose-scale-aware-fixed-r56-spillover.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load fixed-r56 spillover diagnostic")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+spillover = load_spillover()
+
+
+def require_summary_replay(path: Path, summary: Any) -> None:
+    raw = load(path)
+    require(raw.get("family") == spillover.NATIVE_FAMILY, "spillover evidence raw diagnostic family differs")
+    rows = raw.get("rows")
+    spillover.validate_rows(rows, 768)
+    require(summary == spillover.summarize(rows, 768), "spillover evidence summary does not replay from raw diagnostic rows")
 
 
 def canonical(value: Any) -> bytes:
@@ -58,6 +81,9 @@ def run(args: Any) -> None:
     plan, source, diagnostic = load(args.plan), load(args.source_result), load(args.diagnostic_result)
     require(diagnostic.get("plan_sha256") == sha256(args.plan) and diagnostic.get("source_result_sha256") == sha256(args.source_result), "spillover evidence result binding differs")
     require(source.get("plan_sha256") == sha256(args.plan), "spillover evidence source plan binding differs")
+    expected_m = {scale["id"]: set(scale["new_m_values"]) for scale in plan.get("scales", [])}
+    observed_m = {scale.get("id"): {row.get("m") for row in scale.get("rows", [])} for scale in diagnostic.get("scales", [])}
+    require(observed_m == expected_m and sum(len(values) for values in observed_m.values()) == 16, "spillover evidence predeclared 16-row matrix differs")
     files: dict[str, bytes] = {
         "bundle/plan.json": args.plan.read_bytes(),
         "bundle/source-result.json": args.source_result.read_bytes(),
@@ -74,6 +100,8 @@ def run(args: Any) -> None:
             for category, field in (("configs", "diagnostic_config_sha256"), ("native-reports", "diagnostic_report_sha256"), ("candidate-unions", "candidate_union_sha256")):
                 path = root / category / f"{identifier}.json"
                 require(path.is_file() and sha256(path) == row.get(field), f"spillover evidence diagnostic member differs: {scale_id}/{identifier}/{category}")
+                if category == "candidate-unions":
+                    require_summary_replay(path, row.get("summary"))
                 files[f"bundle/diagnostics/{scale_id}/{category}/{identifier}.json"] = path.read_bytes()
     members = {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}
     manifest = {"schema_version": 1, "family": FAMILY, "measured_source_ref": args.measured_source_ref, "bundle_root_sha256": sha256_bytes(canonical(members)), "members": members}
@@ -107,6 +135,16 @@ def self_test() -> int:
                 pass
             else:
                 raise ValueError("spillover evidence mutation was accepted")
+            rows = [{"query_position": 0, "candidate_union_size": 8, "global_fixed_r56_count": 2, "candidate_union_fixed_r56_count": 2, "exact_hamming_top_k_fixed_r56_count": 2, "candidate_union_exact_hamming_top_k_overlap": 3, "mih_shortlist_fixed_r56_count": 2, "mih_shortlist_exact_hamming_top_k_overlap": 2, "exact_hamming_top_k_max_distance": 57, "exact_hamming_distances_at_k": {"10": 50, "64": 51, "128": 52, "256": 53, "512": 54, "768": 57}, "sequence_digest_encoding": spillover.SEQUENCE_DIGEST_ENCODING, "raw_candidate_sequence_sha256": "0" * 64, "raw_candidate_set_sha256": "1" * 64, "hamming_shortlist_sequence_sha256": "2" * 64}]
+            raw_path = Path(temporary) / "candidate-union.json"; raw_path.write_bytes(canonical({"family": spillover.NATIVE_FAMILY, "rows": rows}))
+            summary = spillover.summarize(rows, 768); require_summary_replay(raw_path, summary)
+            summary["query_count"] = 2
+            try:
+                require_summary_replay(raw_path, summary)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("spillover evidence summary mutation was accepted")
     except (OSError, ValueError, json.JSONDecodeError, zipfile.BadZipFile) as error:
         print(f"fixed-r56 spillover evidence packager self-test failed: {error}", file=sys.stderr)
         return 1
