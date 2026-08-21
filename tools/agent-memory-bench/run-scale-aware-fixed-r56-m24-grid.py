@@ -66,6 +66,14 @@ def treatment(scale: dict[str, Any], band_count: int) -> dict[str, Any]:
     return {"id": f"mih-m{band_count}-flat_open_address-two_pass_generation_array", "backend": "mih", "band_widths": widths, "local_radii": radii, "directory_mode": "flat_open_address", "deduplication_mode": "two_pass_generation_array", "local_key_count": local_keys}
 
 
+def verify_e5_payloads(root: Path) -> None:
+    manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
+    outputs = manifest.get("outputs")
+    require(isinstance(outputs, dict) and outputs, "fixed-r56 m24 E5 output manifest differs")
+    for name, entry in outputs.items():
+        require(isinstance(entry, dict) and isinstance(entry.get("path"), str) and isinstance(entry.get("sha256"), str) and sha256(root / entry["path"]) == entry["sha256"], f"fixed-r56 m24 E5 payload differs: {name}")
+
+
 def complete(report: Path, shortlist: Path, quality: Path, contribution: Path, config: Path, input_sha: str) -> bool:
     if not all(path.is_file() for path in (report, shortlist, quality, contribution)):
         return False
@@ -79,6 +87,7 @@ def complete(report: Path, shortlist: Path, quality: Path, contribution: Path, c
 def run(args: Any) -> None:
     plan, protocol = load_plan(args.plan), runner.load_contract(args.protocol)
     require(plan["source_protocol_sha256"] == sha256(args.protocol) and protocol["calibration_dataset"]["language"] == "es", "fixed-r56 m24 source protocol differs")
+    require(sha256(args.calibration_root / "itq-256-artifact.npz") == plan["frozen_roots"]["itq_artifact_sha256"], "fixed-r56 m24 ITQ artifact bytes differ")
     output_scales: list[dict[str, Any]] = []
     for scale in plan["scales"]:
         source = args.calibration_root / scale["id"]
@@ -87,6 +96,7 @@ def run(args: Any) -> None:
         input_sha = sha256(input_root / "manifest.json")
         frozen = plan["frozen_roots"][scale["id"]]
         require(input_sha == frozen["input_manifest_sha256"] and sha256(e5_root / "manifest.json") == frozen["e5_manifest_sha256"] and manifest.get("itq_artifact_sha256") == plan["frozen_roots"]["itq_artifact_sha256"], f"fixed-r56 m24 frozen root differs: {scale['id']}")
+        verify_e5_payloads(e5_root)
         rows: list[dict[str, Any]] = []
         for ordinal, m in enumerate(scale["new_m_values"]):
             current = treatment(scale, m)
