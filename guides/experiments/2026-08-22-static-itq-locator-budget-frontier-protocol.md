@@ -71,3 +71,43 @@ that comparison and uses a new training and evidence contract.
 `static-itq-locator-budget-frontier.example.json` pins the scope, baseline,
 and stop rules. `plan-static-itq-locator-budget-frontier.py` validates and
 prints the 34 planned nested rows without invoking the native executable.
+
+## Results
+
+Measured on 2026-08-23 in the predeclared Spanish 25k calibration scope. The
+fresh full-code ITQ-256 `m19` candidate-generator comparator was `0.3491 ms`
+at p50. The generator-latency stop, rather than the 25% candidate cap, ended
+every width's nested sequence. Thus the rows labelled exhausted below are
+boundary observations, not selected approximate configurations.
+
+| routing bits | r4 prefix bands | candidates | generator p50 / p95 (ms) | Flat Hamming@768 recall | E5 survival after ADC | reranked nDCG@10 | status |
+| ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| 64 | 0 | 4.784% | 0.2258 / 0.2782 | 20.21% | 58.18% | 0.6087 | within budget |
+| 64 | 1 | 7.761% | 0.3214 / 0.3792 | 28.36% | 67.11% | 0.6610 | within budget |
+| 64 | 2 | 10.558% | 0.4145 / 0.4862 | 35.64% | 74.34% | 0.7029 | exhausted: p50 |
+| 80 | 0 | 6.092% | 0.2576 / 0.3018 | 25.35% | 64.86% | 0.6467 | within budget |
+| 80 | 1 | 8.911% | 0.3593 / 0.4210 | 32.67% | 72.45% | 0.6902 | exhausted: p50 |
+| 96 | 0 | 6.996% | 0.2950 / 0.3488 | 28.36% | 70.00% | 0.6836 | within budget |
+| 96 | 1 | 9.775% | 0.3922 / 0.4647 | 35.39% | 76.39% | 0.7174 | exhausted: p50 |
+| 112 | 0 | 8.115% | 0.3516 / 0.4171 | 32.62% | 76.10% | 0.7228 | exhausted: p50 |
+| 128 | 0 | 9.178% | 0.3981 / 0.4733 | 36.64% | 80.31% | 0.7373 | exhausted: p50 |
+
+The first radius-four expansion is productive in retrieval terms, but it
+already loses the fresh `m19` latency budget at every tested width. Larger
+static codes enrich routing substantially above a random candidate sample, yet
+the tested random-subset family does not meet the intended strict quality
+frontier inside that budget. This is calibration evidence only: it neither
+selects a production locator nor evaluates French confirmation data.
+
+The fail-closed evidence archive replayed the native source/config bindings,
+Flat recall, E5 survival, and reranked nDCG from per-query contributions. Two
+independently written deterministic archives had SHA-256
+`87cd9b647b93e3849426dafc67616c42c42ef96e4e2a7ec16f32e7047727cd5c`.
+
+## Follow-up
+
+The next locator study remains a task-aware non-neural selector trained and
+selected on disjoint calibration partitions. It must compare against this
+random frontier without reusing these evaluation queries for selection. A
+learned locator is a later, separately pinned protocol, not a conclusion of
+this calibration result.
