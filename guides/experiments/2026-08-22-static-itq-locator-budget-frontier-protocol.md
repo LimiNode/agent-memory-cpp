@@ -92,12 +92,15 @@ boundary observations, not selected approximate configurations.
 | 112 | 0 | 8.115% | 0.3516 / 0.4171 | 32.62% | 76.10% | 0.7228 | exhausted: p50 |
 | 128 | 0 | 9.178% | 0.3981 / 0.4733 | 36.64% | 80.31% | 0.7373 | exhausted: p50 |
 
-The first radius-four expansion is productive in retrieval terms, but it
-already loses the fresh `m19` latency budget at every tested width. Larger
-static codes enrich routing substantially above a random candidate sample, yet
-the tested random-subset family does not meet the intended strict quality
-frontier inside that budget. This is calibration evidence only: it neither
-selects a production locator nor evaluates French confirmation data.
+The first radius-four expansion is productive in retrieval terms. The 64-bit
+locator can afford one radius-four band within the fresh `m19` budget, but its
+67.11% E5 survival remains below the 96-bit r3 point. For 80 and 96 bits, the
+first radius-four expansion exceeds the latency budget; 112 and 128 bits
+already exceed it at r3. Larger static codes enrich routing substantially
+above a random candidate sample, yet the tested random-subset family does not
+meet the intended strict quality frontier inside that budget. This is
+calibration evidence only: it neither selects a production locator nor
+evaluates French confirmation data.
 
 The fail-closed evidence archive replayed the native source/config bindings,
 Flat recall, E5 survival, and reranked nDCG from per-query contributions. Two
