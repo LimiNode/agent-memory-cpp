@@ -114,14 +114,18 @@ def hamming_positions(document_codes: numpy.ndarray, query_code: numpy.ndarray, 
     return candidates[numpy.lexsort((candidates, distances))[:768]]
 
 
-def export_shortlist(centroid_index: faiss.IndexFlatIP, document_codes: numpy.ndarray, query_codes: numpy.ndarray, document_bits: numpy.ndarray, projections: numpy.ndarray, adc_centroids: numpy.ndarray, query_vectors: numpy.ndarray, list_order: numpy.ndarray, offsets: numpy.ndarray, nprobe: int) -> tuple[list[dict[str, Any]], list[int], list[float]]:
+def export_shortlist(centroid_index: faiss.IndexFlatIP, document_codes: numpy.ndarray, query_codes: numpy.ndarray, document_bits: numpy.ndarray, projections: numpy.ndarray, adc_centroids: numpy.ndarray, query_vectors: numpy.ndarray, list_order: numpy.ndarray, offsets: numpy.ndarray, target_count: int) -> tuple[list[dict[str, Any]], list[int], list[int], list[float]]:
     rows: list[dict[str, Any]] = []
     counts: list[int] = []
+    probes: list[int] = []
     times: list[float] = []
     for position, query in enumerate(query_vectors):
         started = time.perf_counter()
         scores, identifiers = centroid_index.search(query.reshape(1, -1), centroid_index.ntotal)
-        selected = stable_centroid_order(scores[0], identifiers[0])[:nprobe]
+        ranked = stable_centroid_order(scores[0], identifiers[0])
+        list_sizes = offsets[ranked + 1] - offsets[ranked]
+        nprobe = int(numpy.searchsorted(numpy.cumsum(list_sizes), target_count, side="left") + 1)
+        selected = ranked[:nprobe]
         parts = [list_order[offsets[item]:offsets[item + 1]] for item in selected]
         candidates = numpy.sort(numpy.concatenate(parts, dtype=numpy.int64))
         times.append((time.perf_counter() - started) * 1000.0)
@@ -129,7 +133,8 @@ def export_shortlist(centroid_index: faiss.IndexFlatIP, document_codes: numpy.nd
         require(candidates.size >= 768, "float semantic IVF candidates below Hamming@768")
         hamming = hamming_positions(document_codes, query_codes[position], candidates)
         rows.append({"query_position": position, "selected_centroid_ids": selected.tolist(), "hamming_shortlist_positions": hamming.tolist(), "binary_adc_positions": adc_positions(document_bits, projections[position], adc_centroids, hamming).tolist()})
-    return rows, counts, times
+        probes.append(nprobe)
+    return rows, counts, probes, times
 
 
 def evaluator_sources() -> dict[str, str]:
@@ -180,18 +185,18 @@ def run(args: argparse.Namespace) -> None:
             list_order, offsets = build_lists(assignments, centroid_count)
             centroid_hash, assignment_hash = sha256(index_path), sha256(assignments_path)
             for fraction in contract["target_candidate_fractions"]:
-                nprobe = max(1, round(fraction * centroid_count))
-                identifier = f"floativf-k{centroid_count}-nprobe{nprobe}"
-                config = {"schema_version": 1, "family": FAMILY, "scale": scale_id, "centroid_count": centroid_count, "nprobe": nprobe, "target_candidate_fraction": fraction, "input_manifest_sha256": sha256(input_manifest), "evaluation_manifest_sha256": sha256(evaluation_manifest), "train_vectors_sha256": sha256(train_path), "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "cascade": contract["cascade"], "centroid_tie_rule": "score_descending_then_centroid_id_ascending_v1", "candidate_union_rule": "document_position_ascending_v1"}
+                target_count = int(numpy.ceil(fraction * document_count))
+                identifier = f"floativf-k{centroid_count}-target{target_count}"
+                config = {"schema_version": 1, "family": FAMILY, "scale": scale_id, "centroid_count": centroid_count, "target_candidate_fraction": fraction, "target_candidate_count": target_count, "input_manifest_sha256": sha256(input_manifest), "evaluation_manifest_sha256": sha256(evaluation_manifest), "train_vectors_sha256": sha256(train_path), "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "cascade": contract["cascade"], "centroid_tie_rule": "score_descending_then_centroid_id_ascending_v1", "candidate_selection_rule": "ranked_centroid_lists_until_target_count_v1", "candidate_union_rule": "document_position_ascending_v1"}
                 config_path, shortlist_path = output / "configs" / f"{identifier}.json", output / "shortlists" / f"{identifier}.json"
                 quality_path, contribution_path = output / "quality" / f"{identifier}.json", output / "contributions" / f"{identifier}.npz"
                 config_path.parent.mkdir(parents=True, exist_ok=True)
                 config_path.write_bytes(canonical(config))
-                rows, counts, routing_times = export_shortlist(index, document_codes, query_codes, document_bits, projections, adc_centroids, numpy.asarray(data["queries"], dtype=numpy.float32), list_order, offsets, nprobe)
+                rows, counts, probes, routing_times = export_shortlist(index, document_codes, query_codes, document_bits, projections, adc_centroids, numpy.asarray(data["queries"], dtype=numpy.float32), list_order, offsets, target_count)
                 shortlist_path.parent.mkdir(parents=True, exist_ok=True)
-                shortlist_path.write_bytes(canonical({"schema_version": 1, "family": "native_ann_hamming_shortlist_export_v1", "backend": "float_semantic_ivf_exact_centroid_scan", "input_manifest_sha256": sha256(input_manifest), "hamming_limit": 768, "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "centroid_count": centroid_count, "nprobe": nprobe, "centroid_tie_rule": "score_descending_then_centroid_id_ascending_v1", "candidate_union_rule": "document_position_ascending_v1", "rows": rows}))
+                shortlist_path.write_bytes(canonical({"schema_version": 1, "family": "native_ann_hamming_shortlist_export_v1", "backend": "float_semantic_ivf_exact_centroid_scan", "input_manifest_sha256": sha256(input_manifest), "hamming_limit": 768, "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "centroid_count": centroid_count, "target_candidate_count": target_count, "centroid_tie_rule": "score_descending_then_centroid_id_ascending_v1", "candidate_selection_rule": "ranked_centroid_lists_until_target_count_v1", "candidate_union_rule": "document_position_ascending_v1", "rows": rows}))
                 measured = write_quality(data, shortlist_path, contribution_path, quality_path, oracle)
-                summary_rows.append({"scale": scale_id, "id": identifier, "centroid_count": centroid_count, "nprobe": nprobe, "target_candidate_fraction": fraction, "actual_candidate_fraction": float(numpy.mean(counts)) / document_count, "candidate_count_p95": percentile([float(count) for count in counts], .95), "centroid_routing_p50_ms_per_query": percentile(routing_times, .50), "centroid_routing_p95_ms_per_query": percentile(routing_times, .95), "config_sha256": sha256(config_path), "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "shortlist_sha256": sha256(shortlist_path), "quality_sha256": sha256(quality_path), "contribution_sha256": sha256(contribution_path), "e5_oracle_survival_after_adc": measured["e5_oracle_survival_after_adc"], "reranked_ndcg_at_10": measured["reranked_ndcg_at_10"]})
+                summary_rows.append({"scale": scale_id, "id": identifier, "centroid_count": centroid_count, "target_candidate_fraction": fraction, "target_candidate_count": target_count, "actual_candidate_fraction": float(numpy.mean(counts)) / document_count, "candidate_count_p95": percentile([float(count) for count in counts], .95), "selected_centroid_count_p50": percentile([float(probe) for probe in probes], .50), "selected_centroid_count_p95": percentile([float(probe) for probe in probes], .95), "centroid_routing_p50_ms_per_query": percentile(routing_times, .50), "centroid_routing_p95_ms_per_query": percentile(routing_times, .95), "config_sha256": sha256(config_path), "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "shortlist_sha256": sha256(shortlist_path), "quality_sha256": sha256(quality_path), "contribution_sha256": sha256(contribution_path), "e5_oracle_survival_after_adc": measured["e5_oracle_survival_after_adc"], "reranked_ndcg_at_10": measured["reranked_ndcg_at_10"]})
     args.output_root.mkdir(parents=True, exist_ok=True)
     args.output_root.joinpath("summary.json").write_bytes(canonical({"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "faiss_version": faiss.__version__, "rows": summary_rows}))
 
