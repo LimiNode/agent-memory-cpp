@@ -76,9 +76,8 @@ def hamming_distances(codes: numpy.ndarray, query: numpy.ndarray) -> numpy.ndarr
     return POPCOUNT[numpy.bitwise_xor(codes, query)].sum(axis=1, dtype=numpy.uint16)
 
 
-def stable_order(scores: numpy.ndarray) -> numpy.ndarray:
-    identifiers = numpy.arange(scores.size, dtype=numpy.int64)
-    return numpy.lexsort((identifiers, -scores))
+def stable_order(scores: numpy.ndarray, identifiers: numpy.ndarray) -> numpy.ndarray:
+    return identifiers[numpy.lexsort((identifiers, -scores))]
 
 
 def build_lists(assignments: numpy.ndarray, centroid_count: int) -> tuple[numpy.ndarray, numpy.ndarray]:
@@ -154,8 +153,8 @@ def run(args: argparse.Namespace) -> None:
                         rows: list[dict[str, Any]] = []; counts: list[int] = []; scan_times: list[float] = []; rerank_times: list[float] = []; recalls: list[float] = []
                         for query_position, query in enumerate(numpy.asarray(data["queries"], dtype=numpy.float32)):
                             started = time.perf_counter(); distances = hamming_distances(centroid_codes, query_binary[query_position]); hamming_order = numpy.lexsort((numpy.arange(centroid_count), distances)); binary_selected = hamming_order[:min(centroid_count, multiplier * nprobe)]; scan_times.append((time.perf_counter() - started) * 1000.0)
-                            started = time.perf_counter(); selected = binary_selected[stable_order(centroids[binary_selected] @ query)[:nprobe]]; rerank_times.append((time.perf_counter() - started) * 1000.0)
-                            exact_scores, _ = index.search(query.reshape(1, -1), centroid_count); exact_selected = stable_order(exact_scores[0])[:nprobe]
+                            started = time.perf_counter(); selected = stable_order(centroids[binary_selected] @ query, binary_selected)[:nprobe]; rerank_times.append((time.perf_counter() - started) * 1000.0)
+                            exact_scores, exact_ids = index.search(query.reshape(1, -1), centroid_count); exact_selected = stable_order(exact_scores[0], exact_ids[0])[:nprobe]
                             recalls.append(float(numpy.isin(exact_selected, selected).sum()) / nprobe)
                             candidates = numpy.sort(numpy.concatenate([list_order[offsets[item]:offsets[item + 1]] for item in selected], dtype=numpy.int64)); require(candidates.size >= 768, "binary centroid routing candidates below Hamming@768")
                             hamming = hamming_positions(document_codes, query_codes[query_position], candidates)
@@ -169,7 +168,7 @@ def run(args: argparse.Namespace) -> None:
 
 def self_test() -> None:
     load_contract(THIS / "binary-centroid-routing.example.json")
-    require(stable_order(numpy.asarray([.5, .5, .8], dtype=numpy.float32)).tolist() == [2, 0, 1], "binary centroid routing tie rule differs")
+    require(stable_order(numpy.asarray([.5, .5, .8], dtype=numpy.float32), numpy.asarray([9, 3, 7], dtype=numpy.int64)).tolist() == [7, 3, 9], "binary centroid routing tie rule differs")
     print("binary centroid routing runner self-test passed")
 
 
