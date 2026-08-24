@@ -161,9 +161,15 @@ def run(args: argparse.Namespace) -> None:
                             exact_selected = numpy.asarray(float_rows[query_position]["selected_centroid_ids"], dtype=numpy.int64)
                             nprobe = int(exact_selected.size)
                             started = time.perf_counter(); distances = hamming_distances(centroid_codes, query_binary[query_position]); hamming_order = numpy.lexsort((numpy.arange(centroid_count), distances)); binary_selected = hamming_order[:min(centroid_count, multiplier * nprobe)]; scan_times.append((time.perf_counter() - started) * 1000.0)
-                            started = time.perf_counter(); selected = stable_order(centroids[binary_selected] @ query, binary_selected)[:nprobe]; rerank_times.append((time.perf_counter() - started) * 1000.0)
+                            started = time.perf_counter()
+                            reranked = stable_order(centroids[binary_selected] @ query, binary_selected)
+                            reranked_sizes = offsets[reranked + 1] - offsets[reranked]
+                            selected_count = int(numpy.searchsorted(numpy.cumsum(reranked_sizes), target_count, side="left") + 1)
+                            require(selected_count <= reranked.size, "binary centroid routing shortlist cannot reach target candidate mass")
+                            selected = reranked[:selected_count]
+                            rerank_times.append((time.perf_counter() - started) * 1000.0)
                             recalls.append(float(numpy.isin(exact_selected, selected).sum()) / nprobe)
-                            candidates = numpy.sort(numpy.concatenate([list_order[offsets[item]:offsets[item + 1]] for item in selected], dtype=numpy.int64)); require(candidates.size >= 768, "binary centroid routing candidates below Hamming@768")
+                            candidates = numpy.sort(numpy.concatenate([list_order[offsets[item]:offsets[item + 1]] for item in selected], dtype=numpy.int64)); require(candidates.size >= target_count >= 768, "binary centroid routing candidates below target mass")
                             hamming = hamming_positions(document_codes, query_codes[query_position], candidates)
                             rows.append({"query_position": query_position, "binary_centroid_shortlist_ids": binary_selected.tolist(), "selected_centroid_ids": selected.tolist(), "hamming_shortlist_positions": hamming.tolist(), "binary_adc_positions": adc_positions(document_bits, projections[query_position], adc_centroids, hamming).tolist()}); counts.append(int(candidates.size))
                         config = {"schema_version": 1, "family": FAMILY, "scale": scale_id, "centroid_count": centroid_count, "code_length": length, "binary_shortlist_multiplier": multiplier, "target_candidate_fraction": fraction, "target_candidate_count": target_count, "float_shortlist_sha256": sha256(float_shortlist_path), "float_centroid_index_sha256": float_index_hash, "assignment_sha256": assignment_hash, "centroid_codes_sha256": sha256(code_path), "projection_sha256": sha256(matrix_path), "float_evidence_sha256": sha256(args.float_evidence), "cascade": contract["cascade"]}
