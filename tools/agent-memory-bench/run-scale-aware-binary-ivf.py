@@ -1,44 +1,189 @@
 #!/usr/bin/env python3
-"""Run frozen-scale external BinaryIVF candidate/E5-survival calibration."""
+"""Evidence-bound external BinaryIVF calibration at frozen corpus scales."""
+
 from __future__ import annotations
-import argparse, hashlib, json, time
+
+import argparse
+import hashlib
+import importlib.util
+import json
+import sys
+import time
 from pathlib import Path
 from typing import Any
-import faiss, numpy
 
-THIS=Path(__file__).resolve().parent
+import faiss
+import numpy
 
-def require(v: bool,m: str)->None:
-    if not v: raise ValueError(m)
-def sha256(p: Path)->str:return hashlib.sha256(p.read_bytes()).hexdigest()
-def load(p: Path)->dict[str,Any]:
-    v=json.loads(p.read_text(encoding='utf-8')); require(v['family']=='scale_aware_binary_ivf_v1' and v['faiss_version']=='1.13.2' and faiss.__version__=='1.13.2' and v['candidate_fractions']==[.05,.10,.25] and v['cascade']=={'hamming_limit':768,'adc_limit':256,'oracle_k':10},'scale BinaryIVF contract differs');return v
-def codes(p:Path,n:int)->numpy.ndarray:return numpy.fromfile(p,dtype='<u8').reshape(n,4).view(numpy.uint8).reshape(n,32).copy()
-def pc_table()->numpy.ndarray:return numpy.asarray([x.bit_count() for x in range(256)],dtype=numpy.uint8)
-def adc(bits,projection,centroids,candidates):
-    table=(projection[:,None]-centroids)**2; distance=table[numpy.arange(256)[None,:],bits[candidates]].sum(axis=1);return candidates[numpy.lexsort((candidates,distance))[:256]]
-def exact_oracle(document_path:Path,query_path:Path,n:int,q:int,d:int)->numpy.ndarray:
-    docs=numpy.memmap(document_path,dtype='<f4',mode='r',shape=(n,d)); queries=numpy.memmap(query_path,dtype='<f4',mode='r',shape=(q,d)); best_scores=numpy.full((q,10),-numpy.inf,dtype=numpy.float32); best_ids=numpy.full((q,10),n,dtype=numpy.int64)
-    for start in range(0,n,20000):
-        scores=numpy.asarray(queries@docs[start:min(n,start+20000)].T,dtype=numpy.float32); ids=numpy.arange(start,start+scores.shape[1],dtype=numpy.int64)
-        total_scores=numpy.concatenate((best_scores,scores),axis=1); total_ids=numpy.concatenate((best_ids,numpy.broadcast_to(ids,(q,ids.size))),axis=1)
-        order=numpy.argsort(-total_scores,axis=1,kind='stable')[:,:10]; best_scores=numpy.take_along_axis(total_scores,order,axis=1); best_ids=numpy.take_along_axis(total_ids,order,axis=1)
-    return best_ids
-def run(a):
-    c=load(a.contract); out=[]
-    for s in c['scales']:
-        root=a.scale_root/s['id']; inp=root/'input'; ev=root/'e5'; im=inp/'manifest.json'; em=ev/'manifest.json'; m=json.loads(im.read_text()); e=json.loads(em.read_text());n=s['documents'];q=m['query_count'];require(sha256(im)==s['input_manifest_sha256'] and sha256(em)==s['evaluation_manifest_sha256'] and n==m['document_count']==e['outputs']['evaluation_document_vectors']['count'] and q==648,'scale frozen manifests differ')
-        docs=codes(inp/m['document_codes_file'],n); queries=codes(inp/m['query_codes_file'],q);bits=numpy.unpackbits(docs,bitorder='little',axis=1); projections=numpy.fromfile(inp/m['query_itq_projections_file'],dtype='<f4').reshape(q,256);centroids=numpy.fromfile(inp/m['binary_adc_centroids_file'],dtype='<f4').reshape(256,2); oracle=exact_oracle(ev/e['outputs']['evaluation_document_vectors']['path'],ev/e['outputs']['evaluation_query_vectors']['path'],n,q,e['outputs']['evaluation_document_vectors']['dimension'])
-        for nl in s['nlist_values']:
-            index=faiss.IndexBinaryIVF(faiss.IndexBinaryFlat(256),256,nl);index.cp.seed=c['training_seed'];index.train(docs);index.add(docs);path=a.output_root/s['id']/ 'indexes'/f'nlist{nl}.faiss';path.parent.mkdir(parents=True,exist_ok=True);faiss.write_index_binary(index,str(path));index=faiss.read_index_binary(str(path)); ih=sha256(path)
-            for f in c['candidate_fractions']:
-                np=max(1,round(f*nl));index.nprobe=np;_,lids=index.quantizer.search(queries,np);counts=[sum(index.invlists.list_size(int(x)) for x in row if x>=0) for row in lids];survival=[];samples=[]
-                for i,query in enumerate(queries):
-                    st=time.perf_counter();dist,ids=index.search(query.reshape(1,-1),768);samples.append((time.perf_counter()-st)*1000);valid=ids[0]>=0;order=numpy.lexsort((ids[0,valid],dist[0,valid]));candidate=ids[0,valid][order].astype(numpy.int64);require(candidate.size==768,'BinaryIVF candidates below 768'); final=adc(bits,projections[i],centroids,candidate);survival.append(float(numpy.isin(oracle[i],final).sum())/10)
-                out.append({'scale':s['id'],'nlist':nl,'nprobe':np,'index_sha256':ih,'target_candidate_fraction':f,'actual_candidate_fraction':float(numpy.mean(counts))/n,'candidate_count_p95':float(numpy.quantile(counts,.95)),'search_p50_ms_per_query':float(numpy.quantile(samples,.5)),'search_p95_ms_per_query':float(numpy.quantile(samples,.95)),'e5_oracle_survival_after_adc':float(numpy.mean(survival))})
-    a.output_root.mkdir(parents=True,exist_ok=True);(a.output_root/'summary.json').write_text(json.dumps({'schema_version':1,'family':'scale_aware_binary_ivf_v1','contract_sha256':sha256(a.contract),'faiss_version':faiss.__version__,'rows':out},indent=2,sort_keys=True)+'\n',encoding='utf-8',newline='\n')
-def main():
- p=argparse.ArgumentParser();p.add_argument('--contract',type=Path,default=THIS/'scale-aware-binary-ivf.example.json');p.add_argument('--scale-root',type=Path,required=True);p.add_argument('--output-root',type=Path,required=True);a=p.parse_args()
- try:run(a);return 0
- except (OSError,ValueError,KeyError,TypeError,json.JSONDecodeError) as e:print(f'run-scale-aware-binary-ivf: {e}');return 1
-if __name__=='__main__':raise SystemExit(main())
+
+THIS = Path(__file__).resolve().parent
+FAMILY = "scale_aware_binary_ivf_v2"
+
+
+def require(value: bool, message: str) -> None:
+    if not value:
+        raise ValueError(message)
+
+
+def sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def canonical(value: Any) -> bytes:
+    return (json.dumps(value, indent=2, sort_keys=True) + "\n").encode("utf-8")
+
+
+def load_evaluator() -> Any:
+    spec = importlib.util.spec_from_file_location("scale_aware_binary_ivf_evaluator", THIS / "evaluate-native-ann-shortlists.py")
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load native ANN shortlist evaluator")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+evaluator = load_evaluator()
+
+
+def load_contract(path: Path) -> dict[str, Any]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    require(value["family"] == FAMILY and value["faiss_version"] == "1.13.2" and faiss.__version__ == "1.13.2", "scale BinaryIVF contract differs")
+    require(value["candidate_fractions"] == [0.05, 0.10, 0.25] and value["cascade"] == {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10}, "scale BinaryIVF cascade differs")
+    return value
+
+
+def codes(path: Path, count: int) -> numpy.ndarray:
+    words = numpy.fromfile(path, dtype="<u8")
+    require(words.size == count * 4, "scale BinaryIVF code payload differs")
+    return words.reshape(count, 4).view(numpy.uint8).reshape(count, 32).copy()
+
+
+def percentile(values: list[float], fraction: float) -> float:
+    return float(numpy.quantile(numpy.asarray(values, dtype=numpy.float64), fraction, method="linear"))
+
+
+def train_and_reload(documents: numpy.ndarray, nlist: int, seed: int, path: Path) -> faiss.IndexBinaryIVF:
+    index = faiss.IndexBinaryIVF(faiss.IndexBinaryFlat(256), 256, nlist)
+    index.cp.seed = seed
+    index.train(documents)
+    index.add(documents)
+    require(index.is_trained and index.ntotal == documents.shape[0], "scale BinaryIVF training differs")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    faiss.write_index_binary(index, str(path))
+    loaded = faiss.read_index_binary(str(path))
+    require(loaded.d == 256 and loaded.ntotal == documents.shape[0] and loaded.nlist == nlist, "scale BinaryIVF serialized index differs")
+    return loaded
+
+
+def adc_positions(document_bits: numpy.ndarray, query_projection: numpy.ndarray, centroids: numpy.ndarray, candidates: numpy.ndarray) -> numpy.ndarray:
+    table = (query_projection[:, None] - centroids) ** 2
+    distances = table[numpy.arange(256)[None, :], document_bits[candidates]].sum(axis=1)
+    return candidates[numpy.lexsort((candidates, distances))[:256]]
+
+
+def export_shortlist(index: faiss.IndexBinaryIVF, document_bits: numpy.ndarray, queries: numpy.ndarray, projections: numpy.ndarray, centroids: numpy.ndarray, nprobe: int) -> tuple[list[dict[str, Any]], list[int], list[float]]:
+    index.nprobe = nprobe
+    _, list_ids = index.quantizer.search(queries, nprobe)
+    counts = [sum(index.invlists.list_size(int(item)) for item in row if item >= 0) for row in list_ids]
+    rows: list[dict[str, Any]] = []
+    samples: list[float] = []
+    for position, query in enumerate(queries):
+        start = time.perf_counter()
+        distances, identifiers = index.search(query.reshape(1, -1), 768)
+        samples.append((time.perf_counter() - start) * 1000.0)
+        valid = identifiers[0] >= 0
+        order = numpy.lexsort((identifiers[0, valid], distances[0, valid]))
+        hamming = identifiers[0, valid][order].astype(numpy.int64)
+        require(hamming.size == 768, "scale BinaryIVF candidates below Hamming@768")
+        rows.append({"query_position": position, "hamming_shortlist_positions": hamming.tolist(), "binary_adc_positions": adc_positions(document_bits, projections[position], centroids, hamming).tolist()})
+    return rows, counts, samples
+
+
+def evaluator_sources() -> dict[str, str]:
+    return {"evaluate-native-ann-shortlists.py": sha256(THIS / "evaluate-native-ann-shortlists.py"), "evaluate-projection-quantization.py": sha256(THIS / "evaluate-projection-quantization.py")}
+
+
+def write_quality(data: dict[str, Any], shortlist: Path, contribution: Path, quality: Path, oracle: Path, backend: str) -> dict[str, Any]:
+    _, rows = evaluator.load_export(shortlist, len(data["query_ids"]), len(data["document_ids"]), 768, 256)
+    exact_top, full_ndcg = evaluator.load_or_create_oracle_cache(data, oracle, 10)
+    report, contributions = evaluator.evaluate(data, rows, 768, 256, 10, exact_top, full_ndcg)
+    identity = evaluator.contribution_identity(data, 768, 256, 10)
+    contribution.parent.mkdir(parents=True, exist_ok=True)
+    numpy.savez_compressed(contribution, **contributions, query_ids=numpy.asarray(data["query_ids"], dtype=numpy.str_), identity_json=numpy.asarray(json.dumps(identity, ensure_ascii=False, sort_keys=True, separators=(",", ":"))))
+    sources = evaluator_sources()
+    payload = {"schema_version": 1, "family": "native_ann_shortlist_quality_v1", "evaluation_materialization_manifest_sha256": data["manifest_sha256"], "evaluation_qrels_sha256": data["evaluation_qrels_sha256"], "shortlist_export_sha256": sha256(shortlist), "shortlist_export_backend": backend, "oracle_cache_sha256": sha256(oracle), "hamming_limit": 768, "adc_limit": 256, "oracle_k": 10, "per_query_contributions_path": str(contribution), "per_query_contributions_sha256": sha256(contribution), "per_query_contribution_identity": identity, "evaluator_source_files_sha256": sources, "evaluator_source_bundle_sha256": hashlib.sha256(json.dumps(sources, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest(), **report}
+    quality.parent.mkdir(parents=True, exist_ok=True)
+    quality.write_bytes(canonical(payload))
+    return payload
+
+
+def run(args: argparse.Namespace) -> None:
+    contract = load_contract(args.contract)
+    all_rows: list[dict[str, Any]] = []
+    for scale in contract["scales"]:
+        scale_id, count = scale["id"], scale["documents"]
+        root = args.scale_root / scale_id
+        input_root, evaluation_root = root / "input", root / "e5"
+        input_manifest, evaluation_manifest = input_root / "manifest.json", evaluation_root / "manifest.json"
+        manifest = json.loads(input_manifest.read_text(encoding="utf-8"))
+        require(sha256(input_manifest) == scale["input_manifest_sha256"] and sha256(evaluation_manifest) == scale["evaluation_manifest_sha256"] and manifest["document_count"] == count and manifest["query_count"] == 648, "scale BinaryIVF frozen manifests differ")
+        data = evaluator.shared.load_root(evaluation_root)
+        require(data["manifest_sha256"] == scale["evaluation_manifest_sha256"] and len(data["document_ids"]) == count and len(data["query_ids"]) == 648, "scale BinaryIVF evaluation payload differs")
+        documents, queries = codes(input_root / manifest["document_codes_file"], count), codes(input_root / manifest["query_codes_file"], 648)
+        document_bits = numpy.unpackbits(documents, bitorder="little", axis=1)
+        projections = numpy.fromfile(input_root / manifest["query_itq_projections_file"], dtype="<f4").reshape(648, 256)
+        centroids = numpy.fromfile(input_root / manifest["binary_adc_centroids_file"], dtype="<f4").reshape(256, 2)
+        scale_output = args.output_root / scale_id
+        oracle = scale_output / "oracle.npz"
+        for nlist in scale["nlist_values"]:
+            index_path = scale_output / "indexes" / f"nlist{nlist}.faiss"
+            index = train_and_reload(documents, nlist, contract["training_seed"], index_path)
+            index_hash = sha256(index_path)
+            for fraction in contract["candidate_fractions"]:
+                nprobe = max(1, round(fraction * nlist))
+                identifier = f"binaryivf-nlist{nlist}-nprobe{nprobe}"
+                config = {"schema_version": 1, "family": FAMILY, "scale": scale_id, "nlist": nlist, "nprobe": nprobe, "target_candidate_fraction": fraction, "input_manifest_sha256": sha256(input_manifest), "evaluation_manifest_sha256": sha256(evaluation_manifest), "index_sha256": index_hash, "cascade": contract["cascade"]}
+                config_path = scale_output / "configs" / f"{identifier}.json"
+                shortlist = scale_output / "shortlists" / f"{identifier}.json"
+                quality = scale_output / "quality" / f"{identifier}.json"
+                contribution = scale_output / "contributions" / f"{identifier}.npz"
+                config_path.parent.mkdir(parents=True, exist_ok=True)
+                config_path.write_bytes(canonical(config))
+                exports, counts, samples = export_shortlist(index, document_bits, queries, projections, centroids, nprobe)
+                shortlist.parent.mkdir(parents=True, exist_ok=True)
+                shortlist.write_bytes(canonical({"schema_version": 1, "family": "native_ann_hamming_shortlist_export_v1", "backend": "binary_ivf_faiss", "input_manifest_sha256": sha256(input_manifest), "hamming_limit": 768, "binaryivf_index_sha256": index_hash, "nlist": nlist, "nprobe": nprobe, "rows": exports}))
+                measured = write_quality(data, shortlist, contribution, quality, oracle, "binary_ivf_faiss")
+                all_rows.append({"scale": scale_id, "id": identifier, "nlist": nlist, "nprobe": nprobe, "target_candidate_fraction": fraction, "actual_candidate_fraction": float(numpy.mean(counts)) / count, "candidate_count_p95": percentile([float(value) for value in counts], .95), "search_p50_ms_per_query": percentile(samples, .50), "search_p95_ms_per_query": percentile(samples, .95), "config_sha256": sha256(config_path), "index_sha256": index_hash, "shortlist_sha256": sha256(shortlist), "quality_sha256": sha256(quality), "contribution_sha256": sha256(contribution), "e5_oracle_survival_after_adc": measured["e5_oracle_survival_after_adc"], "reranked_ndcg_at_10": measured["reranked_ndcg_at_10"]})
+    args.output_root.mkdir(parents=True, exist_ok=True)
+    args.output_root.joinpath("summary.json").write_bytes(canonical({"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "faiss_version": faiss.__version__, "rows": all_rows}))
+
+
+def self_test() -> None:
+    contract = load_contract(THIS / "scale-aware-binary-ivf.example.json")
+    require([scale["id"] for scale in contract["scales"]] == ["es-100k", "es-1m"], "scale BinaryIVF contract self-test differs")
+    print("scale-aware BinaryIVF runner self-test passed")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--contract", type=Path, default=THIS / "scale-aware-binary-ivf.example.json")
+    parser.add_argument("--scale-root", type=Path)
+    parser.add_argument("--output-root", type=Path)
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    try:
+        if args.self_test:
+            self_test()
+            return 0
+        if args.scale_root is None or args.output_root is None:
+            parser.error("--scale-root and --output-root are required")
+        run(args)
+        return 0
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, evaluator.EvaluationError) as error:
+        print(f"run-scale-aware-binary-ivf: {error}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
