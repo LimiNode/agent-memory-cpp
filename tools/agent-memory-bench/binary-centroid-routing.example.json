@@ -4,7 +4,7 @@
   "purpose": "external_calibration_only_binary_centroid_routing_surrogate_against_frozen_float_semantic_ivf_control",
   "faiss_version": "1.13.2",
   "centroid_source": "frozen_serialized_float_semantic_ivf_centroid_indexes_and_document_assignments_only",
-  "binary_code": {"lengths": [128, 256, 512], "construction": "centroid_component_sign_after_deterministic_orthogonal_projection_v1", "seed": 20260825},
+  "binary_code": {"lengths": [128, 256, 512], "construction": "centroid_component_sign_after_deterministic_rademacher_projection_v1", "seed": 20260825},
   "scales": [
     {"id": "es-100k", "documents": 100000, "centroid_counts": [1024, 4096]},
     {"id": "es-1m", "documents": 1000000, "centroid_counts": [4096, 16384]}

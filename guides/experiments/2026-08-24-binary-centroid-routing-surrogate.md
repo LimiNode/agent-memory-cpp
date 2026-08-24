@@ -5,8 +5,8 @@ control. It does not train a new semantic partition: every centroid and every
 document assignment is loaded byte-for-byte from the completed float-control
 artifact.
 
-For each frozen float centroid set, a deterministic orthogonal projection and
-sign produces 128-, 256-, or 512-bit centroid codes. A query scans all centroid
+For each frozen float centroid set, a deterministic seeded Rademacher projection
+and sign produces 128-, 256-, or 512-bit centroid codes. A query scans all centroid
 codes by Hamming distance, takes `2 x nprobe` or `4 x nprobe`, then computes
 exact float inner products only for that shortlist and selects the original
 `nprobe` semantic lists. The downstream ITQ-256 Hamming@768, ADC@256, and E5
