@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "family": "task_aware_static_locator_protocol_v1",
+  "purpose": "calibration_only_task_aware_static_locator_before_learned_locator",
+  "frozen_inputs": {
+    "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987",
+    "evaluation_manifest_sha256": "f020bc77f7b534e45a596683eabfb30fcd71220268b0cf244f29152abd262c84",
+    "evaluation_qrels_sha256": "9ddf5dbd1a721ffd4cbfcb7896ecc7bb2838d1ec0245116a81be5ee9f086e43b",
+    "oracle_cache_sha256": "e5b9a1a74e68d2cf45ff27a7fc991fa06fe2094fcdfb107de4b54fedc72e7159",
+    "oracle_family": "native_ann_shortlist_quality_v1",
+    "oracle_k": 10
+  },
+  "partitions": {
+    "algorithm": "sha256_first_8_little_endian_v1",
+    "prefix_utf8": "task-aware-static-locator-v1\\u0000",
+    "query_count": 648,
+    "selector_training": 324,
+    "configuration_selection": 162,
+    "internal_evaluation": 162
+  },
+  "negative_sampling": {
+    "algorithm": "numpy_pcg64_per_query_without_replacement_v1",
+    "prefix_utf8": "task-aware-static-locator-v1-negative\\u0000",
+    "negative_count_per_query": 128,
+    "source_partition": "selector_training",
+    "exclude": "deterministic_exact_e5_top10"
+  },
+  "selector": {
+    "ranking_representation": "frozen_itq_256_v1",
+    "routing_representation": "task_aware_selected_subset_of_frozen_itq_256_bits_v1",
+    "primary_score": "mean_positive_bit_match_minus_mean_negative_bit_match_v1",
+    "redundancy": "absolute_pearson_document_bit_correlation_v1",
+    "redundancy_weight": 0.25,
+    "tie_break": "ascending_bit_position",
+    "selection": "greedy_nested_ordered_128_bit_sequence_v1"
+  },
+  "grid": {
+    "bit_counts": [64, 80, 96, 112, 128],
+    "band_width_bits": 16,
+    "radius_schedule": "all_r3_then_nested_r4_prefixes_including_first_budget_exceedance_v1",
+    "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10}
+  },
+  "comparators": {
+    "random_static": {"required": true, "selection_and_internal_evaluation_only": true, "same_partitions": true, "same_grid": true, "variant": "random_seeded_v1", "seed": 20260830},
+    "binary_ivf": {"required": true, "selection_and_internal_evaluation_only": true, "same_partitions": true, "serialized_index_sha256_by_nlist": {"1024": "5f32249faa2c257731177ed7aecc0674a057d0be1a397294687bd52cf5039edf", "4096": "1e94935ec84cb190d6d564209fae5ba416028c1289d76a1f16c5c644781b0d24"}, "candidate_fraction_targets": [0.05, 0.1, 0.25]}
+  },
+  "selection": {
+    "partition": "configuration_selection",
+    "candidate_fraction_maximum": 0.25,
+    "latency_budget": "fresh_full_itq256_m19_p50_measured_on_configuration_selection_only",
+    "selection_key": ["e5_oracle_survival_after_adc", "reranked_ndcg_at_10", "negative_candidate_fraction", "negative_p50", "negative_width", "negative_r4_prefix"],
+    "internal_evaluation_may_not_select_latency_or_configuration": true,
+    "no_feasible_row": "emit_no_selection"
+  },
+  "learned_locator_permission": {
+    "default": "forbidden",
+    "requires": ["task_aware_static_internal_evaluation", "leakage_safe_random_static_internal_evaluation", "leakage_safe_binary_ivf_internal_evaluation"],
+    "predicate": "task_aware_static_strictly_beats_both_comparators_on_e5_survival_within_its_candidate_and_fresh_latency_budgets_v1"
+  },
+  "evidence": {
+    "must_bind": ["input_and_evaluation_manifests", "ordered_query_ids_and_all_partition_memberships", "oracle_identity", "negative_samples", "selector_scores_and_ordered_bit_sequence", "grid", "comparator_shortlists_quality_and_contributions", "selection_decision", "native_source_and_config_hashes", "per_query_e5_and_ndcg_replay"],
+    "confirmation": "forbidden; Spanish internal evaluation is not an untouched project-level confirmation split"
+  }
+}
