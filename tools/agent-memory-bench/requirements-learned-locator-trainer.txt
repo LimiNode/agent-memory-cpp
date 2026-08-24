@@ -1,0 +1,5 @@
+# Regeneration environment for the external learned locator protocol.
+# This is deliberately not a CI dependency list.
+# python-version: 3.12.13
+torch==2.8.0
+numpy==2.4.6

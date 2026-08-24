@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "family": "learned_locator_protocol_v1",
+  "purpose": "calibration_only_symmetric_learned_locator_after_task_aware_static_permission",
+  "upstream_task_aware_contract_sha256": "62224c26f930512a26db2575eb576953f532af9988b8978b48c6be15b3cae480",
+  "execution_guard": {
+    "required_permission_family": "task_aware_static_locator_permission_v1",
+    "required_predicate": "task_aware_static_strictly_beats_both_comparators_on_e5_survival_within_its_candidate_and_fresh_latency_budgets_v1",
+    "required_field": "learned_locator_permission",
+    "required_value": true
+  },
+  "frozen_inputs": {
+    "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987",
+    "evaluation_manifest_sha256": "f020bc77f7b534e45a596683eabfb30fcd71220268b0cf244f29152abd262c84",
+    "ranking_representation": "frozen_itq_256_v1",
+    "routing_input": "frozen_itq_256_signs_minus_one_plus_one_v1"
+  },
+  "runtime_scope": {
+    "document_encoding": "offline_cpu_matrix_multiply_plus_hard_sign_v1",
+    "query_encoding": "cpu_B_by_256_matrix_multiply_plus_hard_sign_v1",
+    "transformer_inference": false,
+    "core_cpp_dependency": "forbidden"
+  },
+  "architecture": {
+    "family": "bias_free_symmetric_linear_binary_remapping_v1",
+    "input_bits": 256,
+    "output_bits": [64, 80, 96, 112, 128],
+    "bias": false,
+    "initialization": "xavier_uniform_v1"
+  },
+  "binary_estimator": {
+    "forward": "b_i=+1_if_z_i_greater_or_equal_zero_else_minus_1",
+    "backward": "db_i/dz_i=1_if_abs_z_i_less_or_equal_1_else_0",
+    "hamming": "H_STE(q,d)=(B-dot(b_q,b_d))/2"
+  },
+  "training": {
+    "framework": {"python": "3.12.13", "torch": "2.8.0", "numpy": "2.4.6", "requirements_file": "requirements-learned-locator-trainer.txt"},
+    "determinism": {"torch_use_deterministic_algorithms": true, "torch_threads": 1, "device": "cpu", "batch_order": "numpy_pcg64_seed_20260901_plus_epoch_fisher_yates_v1"},
+    "seeds": [20260901, 20260902, 20260903],
+    "epochs": 40,
+    "checkpoint": "every_epoch_bytes_and_hash_v1",
+    "batch_size": 64,
+    "optimizer": {"id": "adamw", "learning_rate": 0.001, "weight_decay": 0.0001},
+    "supervision": {"partition": "selector_training", "positives": "deterministic_exact_e5_top10", "negatives": "task_aware_contract_deterministic_128_non_positives_v1"}
+  },
+  "loss": {
+    "pairwise": "mean_over_batch_positive_negative_pairs_softplus(2+H_STE(q,p)-H_STE(q,n))",
+    "balance": "0.01*mean_b(mu_b^2),_mu_b=mean_examples(b_example_b)",
+    "decorrelation": "0.01*mean_off_diagonal(C_bc^2),_C=(b-mu)^T(b-mu)/example_count",
+    "hard_marginal_gate": {"minimum": 0.05, "maximum": 0.95, "scope": "document_side_each_bit"}
+  },
+  "routing_grid": {"band_width_bits": 16, "radius_schedule": "task_aware_static_nested_r3_to_r4_prefixes_v1", "candidate_fraction_maximum": 0.25, "hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "selection": {"partition": "configuration_selection", "key": ["e5_oracle_survival_after_adc", "reranked_ndcg_at_10", "negative_candidate_fraction", "negative_p50", "negative_output_bits", "negative_r4_prefix", "negative_seed", "negative_epoch"], "latency_budget": "fresh_full_itq256_m19_p50_measured_on_configuration_selection_only", "internal_evaluation_may_not_select": true, "no_feasible_row": "emit_no_selection"},
+  "comparators": ["leakage_safe_random_static", "leakage_safe_task_aware_static", "leakage_safe_binary_ivf"],
+  "evidence": {"must_bind": ["permission_artifact", "all_partitions", "model_optimizer_and_training_source_hashes", "checkpoint_bytes_and_hashes", "materialized_codes_hash", "query_encoding_runtime", "comparator_shortlists_quality_and_contributions", "selection_decision", "per_query_e5_and_ndcg_replay"], "Spanish_internal_evaluation": "internal_holdout_not_project_level_untouched_confirmation"}
+}
