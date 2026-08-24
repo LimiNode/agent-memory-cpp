@@ -52,7 +52,7 @@ def hamming_ball_volume(length: int, radius: int) -> int:
     return sum(math.comb(length, index) for index in range(radius + 1))
 
 
-def minimum_covering_radius(length: int, center_count: int) -> int:
+def sphere_covering_radius_lower_bound(length: int, center_count: int) -> int:
     require(length > 0 and center_count > 0, "covering-bound dimensions differ")
     target = 1 << length
     for radius in range(length + 1):
@@ -69,7 +69,7 @@ def perfect_control(value: dict[str, Any]) -> dict[str, Any]:
 
 def diagnose(contract: dict[str, Any]) -> dict[str, Any]:
     ambient = int(contract["ambient_bits"])
-    covering = [{"center_count": value, "minimum_radius_by_sphere_covering_lower_bound": minimum_covering_radius(ambient, value)} for value in contract["coarse_center_counts"]]
+    covering = [{"center_count": value, "sphere_covering_radius_lower_bound": sphere_covering_radius_lower_bound(ambient, value)} for value in contract["coarse_center_counts"]]
     generic = contract["generic_linear_code_case"]
     require((1 << int(generic["center_dimension"])) == int(generic["center_count"]) and ambient - int(generic["center_dimension"]) == int(generic["syndrome_bits"]), "generic syndrome duality differs")
     return {
@@ -87,7 +87,7 @@ def diagnose(contract: dict[str, Any]) -> dict[str, Any]:
 def self_test() -> None:
     contract = load_contract(THIS / "syndrome-perfect-code-diagnostic.example.json")
     require(hamming_ball_volume(7, 1) == 8 and hamming_ball_volume(23, 3) == 2048, "Hamming-ball calculation differs")
-    require([minimum_covering_radius(256, count) for count in contract["coarse_center_counts"]] == [107, 103, 100, 97, 95], "coarse covering lower bounds differ")
+    require([sphere_covering_radius_lower_bound(256, count) for count in contract["coarse_center_counts"]] == [107, 103, 100, 97, 95], "coarse covering lower bounds differ")
     result = diagnose(contract)
     require(all(item["perfect_sphere_identity_holds"] for item in result["perfect_code_controls"]), "perfect-code control identity differs")
     print("syndrome/perfect-code diagnostic self-test passed")

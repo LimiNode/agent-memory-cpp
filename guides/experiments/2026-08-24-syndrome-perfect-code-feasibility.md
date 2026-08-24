@@ -41,7 +41,7 @@ thousand cells.
 
 Even ignoring decoding, the full-cube sphere-covering lower bound is broad:
 
-| desired centers | minimum possible covering radius |
+| desired centers | sphere-covering lower bound on radius |
 | ---: | ---: |
 | 256 | 107 |
 | 1,024 | 103 |
