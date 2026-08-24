@@ -65,9 +65,8 @@ def percentile(values: list[float], fraction: float) -> float:
     return float(numpy.quantile(numpy.asarray(values, dtype=numpy.float64), fraction, method="linear"))
 
 
-def stable_centroid_order(scores: numpy.ndarray) -> numpy.ndarray:
-    identifiers = numpy.arange(scores.size, dtype=numpy.int64)
-    return numpy.lexsort((identifiers, -scores))
+def stable_centroid_order(scores: numpy.ndarray, identifiers: numpy.ndarray) -> numpy.ndarray:
+    return identifiers[numpy.lexsort((identifiers, -scores))]
 
 
 def train_centroids(train_vectors: numpy.ndarray, centroid_count: int, training: dict[str, Any], index_path: Path) -> tuple[faiss.IndexFlatIP, numpy.ndarray]:
@@ -121,8 +120,8 @@ def export_shortlist(centroid_index: faiss.IndexFlatIP, document_codes: numpy.nd
     times: list[float] = []
     for position, query in enumerate(query_vectors):
         started = time.perf_counter()
-        scores, _ = centroid_index.search(query.reshape(1, -1), centroid_index.ntotal)
-        selected = stable_centroid_order(scores[0])[:nprobe]
+        scores, identifiers = centroid_index.search(query.reshape(1, -1), centroid_index.ntotal)
+        selected = stable_centroid_order(scores[0], identifiers[0])[:nprobe]
         parts = [list_order[offsets[item]:offsets[item + 1]] for item in selected]
         candidates = numpy.sort(numpy.concatenate(parts, dtype=numpy.int64))
         times.append((time.perf_counter() - started) * 1000.0)
@@ -200,7 +199,7 @@ def run(args: argparse.Namespace) -> None:
 def self_test() -> None:
     contract = load_contract(THIS / "float-semantic-ivf.example.json")
     require(sum(len(scale["centroid_counts"]) * len(contract["target_candidate_fractions"]) for scale in contract["scales"]) == 12, "float semantic IVF matrix differs")
-    require(stable_centroid_order(numpy.asarray([.5, .5, .8], dtype=numpy.float32)).tolist() == [2, 0, 1], "float semantic IVF centroid tie rule differs")
+    require(stable_centroid_order(numpy.asarray([.5, .5, .8], dtype=numpy.float32), numpy.asarray([9, 3, 7], dtype=numpy.int64)).tolist() == [7, 3, 9], "float semantic IVF centroid tie rule differs")
     print("float semantic IVF runner self-test passed")
 
 
