@@ -35,6 +35,7 @@ canonical = shared.canonical
 percentile = shared.percentile
 load_codes = shared.load_codes
 load_words = shared.load_words
+input_payloads = shared.input_payloads
 hamming_shortlist = shared.hamming_shortlist
 adc_positions = shared.adc_positions
 
@@ -45,9 +46,11 @@ def load_contract(path: Path) -> dict[str, Any]:
         "schema_version": 1,
         "family": FAMILY,
         "purpose": "external_calibration_only_structured_full_length_locator_not_selection_or_confirmation",
+        "amends_measurement_contract_sha256": "b9a518db2ec48b89e957d260feb2badba5b0a1f18298cb124a9f78b7ea7c9579",
         "input": {"document_count": 25000, "query_count": 648, "code_bits": 256, "manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987"},
         "reference_flat_shortlist_sha256": "48da713381f0b7b9c36635f6c286541311c524083be4c7bf56223ca2be840ce5",
         "code": {"family": "RM(1,8)", "length": 256, "dimension": 9, "center_count": 512, "assignment": "fast_walsh_hadamard_nearest_codeword_with_lowest_center_id_ties_v1"},
+        "probing_order": "hamming_distance_then_center_id_v1",
         "target_candidate_fractions": [0.05, 0.10, 0.25],
         "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
         "confirmation": "forbidden_french_and_any_external_confirmation_split_are_out_of_scope",
@@ -122,6 +125,7 @@ def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     require(sha256(args.reference_shortlist) == contract["reference_flat_shortlist_sha256"], "RM/Hadamard Flat reference differs")
     reference = json.loads(args.reference_shortlist.read_text(encoding="utf-8")); positions = [int(row["query_position"]) for row in reference["rows"]]
     require(reference.get("backend") == "flat" and len(positions) == 648 and len(set(positions)) == 648, "RM/Hadamard reference query order differs")
+    input_payloads(args.input_root, manifest)
     document_path = args.input_root / manifest["document_codes_file"]; query_path = args.input_root / manifest["query_codes_file"]
     document_bits, query_bits = load_codes(document_path, 25000), load_codes(query_path, 648); document_words, query_words = load_words(document_path, 25000), load_words(query_path, 648)
     document_correlation, query_correlation = correlations(document_bits), correlations(query_bits)

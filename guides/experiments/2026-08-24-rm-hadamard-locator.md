@@ -14,8 +14,9 @@ routing for frozen ITQ-256 codes?
 The runner converts a binary code to signs and obtains all 256 affine
 correlations with an in-place fast Walsh-Hadamard transform. For each affine
 function, the two complement choices give 512 RM(1,8) centers. Assignment uses
-the nearest center with the lowest center ID on ties. Query cells are visited
-in exact `(distance-to-center, center-ID)` order until they contain at least
+the nearest center with the lowest center ID on ties. The machine-readable
+contract separately pins query probing as exact `(distance-to-center, center-ID)`
+order until cells contain at least
 the 5%, 10%, or 25% candidate budget, then receive the unchanged ITQ-256
 Hamming, ADC, and E5 cascade.
 
@@ -48,9 +49,10 @@ implementation latency comparison. Together with the static product result,
 it strengthens the evidence that cheap mathematical partition structure alone
 does not substitute for the data-dependent routing learned by BinaryIVF.
 
-The fail-closed packager recomputes FWHT correlations, assignments, cell order,
-candidate unions, Hamming and ADC shortlists, and all persisted per-query E5
-and nDCG contributions before creating its deterministic archive. Raw results
-and archives remain untracked under `tmp/`. Two independently generated
-archives had SHA-256
-`f38c268274af711f2d66bea3d4b944d493b33d9dd89ef0e64c75bb99d03b367e`.
+The runner validates every input payload against its manifest SHA-256. The
+fail-closed packager archives those payloads and recomputes FWHT correlations,
+assignments, cell order, candidate unions, Hamming and ADC shortlists, and all
+per-query E5/nDCG contributions from replayed ADC shortlists and frozen
+evaluation data. Raw results and archives remain untracked under `tmp/`. The
+previous local archive digest is historical; a new archive should be generated
+after this provenance hardening.

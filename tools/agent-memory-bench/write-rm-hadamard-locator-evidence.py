@@ -58,14 +58,20 @@ runner = load("rm_hadamard_runner", "run-rm-hadamard-locator.py")
 evaluator = load("rm_hadamard_evaluator", "evaluate-native-ann-shortlists.py")
 
 
-def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, contract: dict[str, Any], evaluation: dict[str, Any]) -> tuple[float, float]:
+def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, oracle_path: Path, contract: dict[str, Any], evaluation: dict[str, Any]) -> tuple[float, float]:
     cascade = contract["cascade"]; quality = json.loads(quality_path.read_text(encoding="utf-8"))
     identity = evaluator.contribution_identity(evaluation, cascade["hamming_limit"], cascade["adc_limit"], cascade["oracle_k"])
     with numpy.load(contribution_path, allow_pickle=False) as values:
         require(set(values.files) == {"coverage_at_hamming_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "e5_oracle_survival_after_adc", "query_ids", "identity_json"}, "RM/Hadamard contribution fields differ")
         require(values["query_ids"].tolist() == evaluation["query_ids"] and json.loads(str(values["identity_json"].item())) == identity, "RM/Hadamard contribution identity differs")
         survival, ndcg = float(numpy.mean(values["e5_oracle_survival_after_adc"], dtype=numpy.float64)), float(numpy.mean(values["reranked_ndcg_at_10"], dtype=numpy.float64))
-    require(quality.get("schema_version") == 1 and quality.get("family") == "native_ann_shortlist_quality_v1" and quality.get("shortlist_export_sha256") == sha256(shortlist_path) and quality.get("per_query_contributions_sha256") == sha256(contribution_path) and quality.get("per_query_contribution_identity") == identity and abs(float(quality["e5_oracle_survival_after_adc"]) - survival) <= 1e-12 and abs(float(quality["reranked_ndcg_at_10"]) - ndcg) <= 1e-12, "RM/Hadamard quality replay differs")
+        persisted = {name: values[name].copy() for name in ("coverage_at_hamming_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "e5_oracle_survival_after_adc")}
+    _, replayed_rows = evaluator.load_export(shortlist_path, len(evaluation["query_ids"]), len(evaluation["document_ids"]), cascade["hamming_limit"], cascade["adc_limit"])
+    exact_top, full_ndcg = evaluator.load_or_create_oracle_cache(evaluation, oracle_path, cascade["oracle_k"])
+    _, replayed = evaluator.evaluate(evaluation, replayed_rows, cascade["hamming_limit"], cascade["adc_limit"], cascade["oracle_k"], exact_top, full_ndcg)
+    require(all(numpy.array_equal(persisted[name], replayed[name]) for name in persisted), "RM/Hadamard per-query quality replay differs")
+    sources = {"evaluate-native-ann-shortlists.py": sha256(THIS / "evaluate-native-ann-shortlists.py"), "evaluate-projection-quantization.py": sha256(THIS / "evaluate-projection-quantization.py")}
+    require(quality.get("schema_version") == 1 and quality.get("family") == "native_ann_shortlist_quality_v1" and quality.get("shortlist_export_sha256") == sha256(shortlist_path) and quality.get("oracle_cache_sha256") == sha256(oracle_path) and quality.get("per_query_contributions_sha256") == sha256(contribution_path) and quality.get("per_query_contribution_identity") == identity and quality.get("evaluator_source_files_sha256") == sources and quality.get("evaluator_source_bundle_sha256") == hashlib.sha256(json.dumps(sources, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest() and abs(float(quality["e5_oracle_survival_after_adc"]) - survival) <= 1e-12 and abs(float(quality["reranked_ndcg_at_10"]) - ndcg) <= 1e-12, "RM/Hadamard quality replay differs")
     return survival, ndcg
 
 
@@ -74,12 +80,15 @@ def validate(result_root: Path, input_root: Path, evaluation_root: Path, referen
     require(sha256(manifest_path) == contract["input"]["manifest_sha256"] and sha256(reference_path) == contract["reference_flat_shortlist_sha256"], "RM/Hadamard frozen source differs")
     reference = json.loads(reference_path.read_text(encoding="utf-8")); positions = [int(row["query_position"]) for row in reference["rows"]]; evaluation = evaluator.shared.load_root(evaluation_root)
     summary_path = result_root / "summary.json"; summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    require(summary.get("schema_version") == 1 and summary.get("family") == runner.FAMILY and summary.get("contract_sha256") == sha256(contract_path) and summary.get("input_manifest_sha256") == sha256(manifest_path) and summary.get("reference_shortlist_sha256") == sha256(reference_path), "RM/Hadamard summary identity differs")
+    require(summary.get("schema_version") == 1 and summary.get("family") == runner.FAMILY and summary.get("contract_sha256") in {sha256(contract_path), contract["amends_measurement_contract_sha256"]} and summary.get("input_manifest_sha256") == sha256(manifest_path) and summary.get("reference_shortlist_sha256") == sha256(reference_path), "RM/Hadamard summary identity differs")
     document_path = input_root / manifest["document_codes_file"]; query_path = input_root / manifest["query_codes_file"]; document_bits, query_bits = runner.load_codes(document_path, 25000), runner.load_codes(query_path, 648); document_words, query_words = runner.load_words(document_path, 25000), runner.load_words(query_path, 648)
     document_correlation, query_correlation = runner.correlations(document_bits), runner.correlations(query_bits); postings = runner.posting_lists(runner.nearest_cells(document_correlation)); sizes = [int(value.size) for value in postings.values()]
     metadata = {"center_count": 512, "occupied_cell_count": len(postings), "occupied_cell_size_p50": runner.percentile(sizes, .50), "occupied_cell_size_p95": runner.percentile(sizes, .95), "occupied_cell_size_max": max(sizes)}
     projections = numpy.fromfile(input_root / manifest["query_itq_projections_file"], dtype="<f4").reshape(648, 256); centroids = numpy.fromfile(input_root / manifest["binary_adc_centroids_file"], dtype="<f4").reshape(256, 2)
+    input_payloads(input_root, manifest)
     files: dict[str, bytes] = {"bundle/contract.json": contract_path.read_bytes(), "bundle/summary.json": summary_path.read_bytes(), "bundle/frozen-input-manifest.json": manifest_path.read_bytes(), "bundle/frozen-evaluation-manifest.json": (evaluation_root / "manifest.json").read_bytes(), "bundle/frozen-flat-shortlist.json": reference_path.read_bytes()}
+    for filename_key, _ in input_payloads(input_root, manifest):
+        files[f"bundle/frozen-input/{manifest[filename_key]}"] = (input_root / manifest[filename_key]).read_bytes()
     for source in SOURCE_PATHS:
         files[f"bundle/measured-source/{source}"] = (ROOT / source).read_bytes()
     rows = summary.get("rows"); require(isinstance(rows, list) and len(rows) == len(contract["target_candidate_fractions"]), "RM/Hadamard summary row count differs")
@@ -93,7 +102,7 @@ def validate(result_root: Path, input_root: Path, evaluation_root: Path, referen
         identifier = f"rm1-8-target{int(fraction * 100)}"; shortlist = result_root / "shortlists" / f"{identifier}.json"; quality = result_root / "quality" / f"{identifier}.json"; contribution = result_root / "contributions" / f"{identifier}.npz"; require(all(path.is_file() for path in (shortlist, quality, contribution)), f"RM/Hadamard row member missing: {identifier}")
         expected_export = {"schema_version": 1, "family": runner.EXPORT_FAMILY, "backend": "rm_1_8_hadamard_static", "input_manifest_sha256": sha256(manifest_path), "query_seed": reference["query_seed"], "hamming_limit": cascade["hamming_limit"], "code": contract["code"], "target_candidate_fraction": fraction, "rows": exports}
         require(json.loads(shortlist.read_text(encoding="utf-8")) == expected_export, f"RM/Hadamard shortlist replay differs: {identifier}")
-        survival, ndcg = validate_quality(quality, contribution, shortlist, contract, evaluation)
+        survival, ndcg = validate_quality(quality, contribution, shortlist, result_root / "oracle.npz", contract, evaluation)
         expected = {"id": identifier, "target_candidate_fraction": fraction, "actual_candidate_fraction": float(numpy.mean(counts)) / 25000.0, "candidate_count_p95": runner.percentile(counts, .95), "centroid_probes_p50": runner.percentile(probes, .50), "centroid_probes_p95": runner.percentile(probes, .95), "nonempty_centroid_probes_p50": runner.percentile(nonempty, .50), "nonempty_centroid_probes_p95": runner.percentile(nonempty, .95), "index_metadata": metadata, "shortlist_sha256": sha256(shortlist), "quality_sha256": sha256(quality), "e5_oracle_survival_after_adc": survival, "reranked_ndcg_at_10": ndcg}
         require(row == expected, f"RM/Hadamard summary replay differs: {identifier}")
         for category, path in (("shortlists", shortlist), ("quality", quality), ("contributions", contribution)):
