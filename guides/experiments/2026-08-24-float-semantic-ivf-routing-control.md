@@ -20,3 +20,16 @@ IDs, candidate and cascade shortlists, E5 oracle identity, per-query
 contributions, and a deterministic replay archive. A binary-centroid surrogate
 must use these frozen centroids and assignments, then report centroid-list
 recall against this control and the same end-to-end cascade metrics.
+
+The runner pins both the E5 and ITQ-input manifests, trains only from the shared
+25k training vectors, serializes and reloads each float centroid index, and
+persists/reloads document-to-centroid assignments. Centroid ranking is exact
+inner-product scan with `score descending, centroid id ascending` ties; candidate
+unions are canonical document-position order. The evidence replay recomputes
+these choices plus each Hamming@768 and ADC@256 shortlist before recomputing the
+per-query E5/nDCG aggregates.
+
+The 16,384-centroid one-million-document arm intentionally has only 25,000
+training vectors. Its training-vector/centroid ratio and any Faiss low-sample
+warning will be retained in the measured report; this arm is an exploratory
+routing control, not a claim that this training budget is generally sufficient.
