@@ -14,7 +14,7 @@
   "binary_routing": "full_hamming_scan_all_centroid_codes_then_exact_float_rerank_v1",
   "float_rerank": "exact_inner_product_on_binary_shortlist_only_v1",
   "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
-  "required_metrics": ["float_top_nprobe_centroid_recall", "candidate_fraction", "candidate_count_p95", "binary_centroid_scan_p50_ms_per_query", "binary_centroid_scan_p95_ms_per_query", "float_centroid_rerank_p50_ms_per_query", "float_centroid_rerank_p95_ms_per_query", "e5_oracle_survival_after_adc", "reranked_ndcg_at_10"],
+  "required_metrics": ["routing_status", "queries_below_target_candidate_count", "float_top_nprobe_centroid_recall", "candidate_fraction", "candidate_count_p95", "binary_centroid_scan_p50_ms_per_query", "binary_centroid_scan_p95_ms_per_query", "float_centroid_rerank_p50_ms_per_query", "float_centroid_rerank_p95_ms_per_query", "e5_oracle_survival_after_adc", "reranked_ndcg_at_10"],
   "confirmation": "forbidden",
   "library_dependency": "forbidden_faiss_is_external_benchmark_only"
 }

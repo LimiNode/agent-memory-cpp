@@ -27,3 +27,10 @@ semantic partition.
 The runner and archive packager may only accept a complete, validated float
 semantic IVF result root. This protocol neither opens French confirmation data
 nor makes Faiss a production library dependency.
+
+The fixed `2 x nprobe` and `4 x nprobe` budgets are part of the treatment, not
+an implementation hint. A binary shortlist can therefore be unable to cover
+the target candidate count for one or more queries. Such a treatment is
+recorded as `infeasible_target_candidate_mass`, with a complete per-query
+routing audit and no downstream cascade quality claim. The runner must not
+silently widen its shortlist or substitute a different candidate budget.
