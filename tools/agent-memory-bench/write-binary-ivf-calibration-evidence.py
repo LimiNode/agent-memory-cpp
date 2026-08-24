@@ -57,14 +57,26 @@ runner = load("binary_ivf_runner", "run-binary-ivf-calibration.py")
 evaluator = load("binary_ivf_evaluator", "evaluate-native-ann-shortlists.py")
 
 
+def evaluator_source_files() -> dict[str, str]:
+    return {
+        "evaluate-native-ann-shortlists.py": sha256(THIS / "evaluate-native-ann-shortlists.py"),
+        "evaluate-projection-quantization.py": sha256(THIS / "evaluate-projection-quantization.py"),
+    }
+
+
+def evaluator_source_bundle(files: dict[str, str]) -> str:
+    return hashlib.sha256(json.dumps(files, sort_keys=True, separators=(",", ":")).encode("utf-8")).hexdigest()
+
+
 def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, contract: dict[str, Any], evaluation: dict[str, Any]) -> tuple[float, float]:
     quality = json.loads(quality_path.read_text(encoding="utf-8"))
+    sources = evaluator_source_files()
     identity = evaluator.contribution_identity(evaluation, contract["cascade"]["hamming_limit"], contract["cascade"]["adc_limit"], contract["cascade"]["oracle_k"])
     with numpy.load(contribution_path, allow_pickle=False) as data:
         require(set(data.files) == {"coverage_at_hamming_limit", "reranked_ndcg_at_10", "full_e5_ndcg_at_10", "e5_oracle_survival_after_adc", "query_ids", "identity_json"}, "BinaryIVF contribution fields differ")
         require(data["query_ids"].tolist() == evaluation["query_ids"] and json.loads(str(data["identity_json"].item())) == identity, "BinaryIVF contribution identity differs")
         survival, ndcg = float(numpy.mean(data["e5_oracle_survival_after_adc"], dtype=numpy.float64)), float(numpy.mean(data["reranked_ndcg_at_10"], dtype=numpy.float64))
-    require(quality.get("schema_version") == 1 and quality.get("family") == "native_ann_shortlist_quality_v1" and quality.get("shortlist_export_sha256") == sha256(shortlist_path) and quality.get("per_query_contributions_sha256") == sha256(contribution_path) and quality.get("per_query_contribution_identity") == identity and abs(survival - float(quality["e5_oracle_survival_after_adc"])) <= 1e-12 and abs(ndcg - float(quality["reranked_ndcg_at_10"])) <= 1e-12, "BinaryIVF quality replay differs")
+    require(quality.get("schema_version") == 1 and quality.get("family") == "native_ann_shortlist_quality_v1" and quality.get("shortlist_export_sha256") == sha256(shortlist_path) and quality.get("per_query_contributions_sha256") == sha256(contribution_path) and quality.get("per_query_contribution_identity") == identity and quality.get("evaluator_source_files_sha256") == sources and quality.get("evaluator_source_bundle_sha256") == evaluator_source_bundle(sources) and abs(survival - float(quality["e5_oracle_survival_after_adc"])) <= 1e-12 and abs(ndcg - float(quality["reranked_ndcg_at_10"])) <= 1e-12, "BinaryIVF quality replay differs")
     return survival, ndcg
 
 
