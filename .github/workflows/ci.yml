@@ -250,6 +250,7 @@ jobs:
           && python tools/agent-memory-bench/run-rm-hadamard-locator.py --self-test
           && python tools/agent-memory-bench/write-rm-hadamard-locator-evidence.py --self-test
           && python tools/agent-memory-bench/plan-float-semantic-ivf.py --self-test
+          && python tools/agent-memory-bench/plan-binary-centroid-routing.py --self-test
       - name: Exercise ANN evidence bootstrap contract
         run: >
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&
