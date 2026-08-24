@@ -10,8 +10,8 @@ The planned treatments are deliberately progressive:
 
 1. contiguous balanced ITQ-bit blocks with train-only local Hamming medoids;
 2. a train-only bit permutation before the same local-medoids treatment;
-3. local float k-means on frozen pre-ITQ projections, retaining the frozen
-   ranking ITQ-256 code for the downstream cascade.
+3. local float k-means on frozen E5 vectors, retaining the frozen ranking
+   ITQ-256 code for the downstream cascade.
 
 Each runs at controlled implicit-cell budgets of 4,096, 16,384, and 65,536,
 rather than assuming a sparse `16 blocks x 8` product space is useful. Query
@@ -26,3 +26,10 @@ exploratory gate is predeclared: at 5% candidate mass, a treatment below 70%
 E5 survival after ADC does not justify native trie or empty-cell traversal
 engineering. Passing that gate would only justify a follow-up implementation
 study; it is not a production-selection or confirmation claim.
+
+The frozen storage input has no document-side pre-ITQ projection payload: it
+contains E5 document vectors, packed ITQ codes, and query-side ITQ projections.
+Consequently, the float treatment is explicitly defined over frozen E5 vectors
+and its codebook is fit only on the corresponding frozen calibration E5 train
+vectors. This avoids inventing an unavailable payload while preserving the
+intended data-dependent float-routing control.
