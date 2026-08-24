@@ -83,8 +83,8 @@ def validate_shortlist(payload: dict[str, Any], index: faiss.IndexFlatIP, assign
     for position, row in enumerate(rows):
         require(row.get("query_position") == position, "float semantic IVF shortlist query order differs")
         started = runner.time.perf_counter()
-        scores, _ = index.search(query_vectors[position:position + 1], index.ntotal)
-        selected = runner.stable_centroid_order(scores[0])[:nprobe]
+        scores, identifiers = index.search(query_vectors[position:position + 1], index.ntotal)
+        selected = runner.stable_centroid_order(scores[0], identifiers[0])[:nprobe]
         expected_candidates = numpy.sort(numpy.concatenate([order[offsets[item]:offsets[item + 1]] for item in selected], dtype=numpy.int64))
         routing_times.append((runner.time.perf_counter() - started) * 1000.0)
         require(row.get("selected_centroid_ids") == selected.tolist(), "float semantic IVF selected centroids differ")
