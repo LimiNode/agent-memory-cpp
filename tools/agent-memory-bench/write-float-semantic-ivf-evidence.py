@@ -73,10 +73,10 @@ def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path
     return survival, ndcg
 
 
-def validate_shortlist(payload: dict[str, Any], index: faiss.IndexFlatIP, assignments: numpy.ndarray, document_codes: numpy.ndarray, query_codes: numpy.ndarray, document_bits: numpy.ndarray, projections: numpy.ndarray, adc_centroids: numpy.ndarray, query_vectors: numpy.ndarray, nprobe: int, centroid_hash: str, assignment_hash: str, input_hash: str) -> tuple[list[int], list[float]]:
-    require(payload.get("schema_version") == 1 and payload.get("family") == "native_ann_hamming_shortlist_export_v1" and payload.get("backend") == "float_semantic_ivf_exact_centroid_scan" and payload.get("input_manifest_sha256") == input_hash and payload.get("hamming_limit") == 768 and payload.get("centroid_index_sha256") == centroid_hash and payload.get("assignment_sha256") == assignment_hash and payload.get("nprobe") == nprobe and payload.get("centroid_tie_rule") == "score_descending_then_centroid_id_ascending_v1" and payload.get("candidate_union_rule") == "document_position_ascending_v1", "float semantic IVF shortlist identity differs")
+def validate_shortlist(payload: dict[str, Any], index: faiss.IndexFlatIP, assignments: numpy.ndarray, document_codes: numpy.ndarray, query_codes: numpy.ndarray, document_bits: numpy.ndarray, projections: numpy.ndarray, adc_centroids: numpy.ndarray, query_vectors: numpy.ndarray, target_count: int, centroid_hash: str, assignment_hash: str, input_hash: str) -> tuple[list[int], list[int], list[float]]:
+    require(payload.get("schema_version") == 1 and payload.get("family") == "native_ann_hamming_shortlist_export_v1" and payload.get("backend") == "float_semantic_ivf_exact_centroid_scan" and payload.get("input_manifest_sha256") == input_hash and payload.get("hamming_limit") == 768 and payload.get("centroid_index_sha256") == centroid_hash and payload.get("assignment_sha256") == assignment_hash and payload.get("target_candidate_count") == target_count and payload.get("centroid_tie_rule") == "score_descending_then_centroid_id_ascending_v1" and payload.get("candidate_selection_rule") == "ranked_centroid_lists_until_target_count_v1" and payload.get("candidate_union_rule") == "document_position_ascending_v1", "float semantic IVF shortlist identity differs")
     order, offsets = runner.build_lists(assignments, index.ntotal)
-    counts: list[int] = []
+    counts: list[int] = []; probes: list[int] = []
     routing_times: list[float] = []
     rows = payload.get("rows")
     require(isinstance(rows, list) and len(rows) == len(query_vectors), "float semantic IVF shortlist rows differ")
@@ -84,7 +84,10 @@ def validate_shortlist(payload: dict[str, Any], index: faiss.IndexFlatIP, assign
         require(row.get("query_position") == position, "float semantic IVF shortlist query order differs")
         started = runner.time.perf_counter()
         scores, identifiers = index.search(query_vectors[position:position + 1], index.ntotal)
-        selected = runner.stable_centroid_order(scores[0], identifiers[0])[:nprobe]
+        ranked = runner.stable_centroid_order(scores[0], identifiers[0])
+        list_sizes = offsets[ranked + 1] - offsets[ranked]
+        nprobe = int(numpy.searchsorted(numpy.cumsum(list_sizes), target_count, side="left") + 1)
+        selected = ranked[:nprobe]
         expected_candidates = numpy.sort(numpy.concatenate([order[offsets[item]:offsets[item + 1]] for item in selected], dtype=numpy.int64))
         routing_times.append((runner.time.perf_counter() - started) * 1000.0)
         require(row.get("selected_centroid_ids") == selected.tolist(), "float semantic IVF selected centroids differ")
@@ -92,8 +95,8 @@ def validate_shortlist(payload: dict[str, Any], index: faiss.IndexFlatIP, assign
         require(row.get("hamming_shortlist_positions") == expected_hamming.tolist(), "float semantic IVF Hamming replay differs")
         expected_adc = runner.adc_positions(document_bits, projections[position], adc_centroids, expected_hamming)
         require(row.get("binary_adc_positions") == expected_adc.tolist(), "float semantic IVF ADC replay differs")
-        counts.append(int(expected_candidates.size))
-    return counts, routing_times
+        counts.append(int(expected_candidates.size)); probes.append(nprobe)
+    return counts, probes, routing_times
 
 
 def validate(result_root: Path, scale_root: Path, contract_path: Path) -> dict[str, Any]:
@@ -135,19 +138,19 @@ def validate(result_root: Path, scale_root: Path, contract_path: Path) -> dict[s
             files[f"bundle/{scale_id}/indexes/{index_path.name}"] = index_path.read_bytes()
             files[f"bundle/{scale_id}/assignments/{assignments_path.name}"] = assignments_path.read_bytes()
             for fraction in contract["target_candidate_fractions"]:
-                nprobe = max(1, round(fraction * centroid_count))
-                identifier = f"floativf-k{centroid_count}-nprobe{nprobe}"
+                target_count = int(numpy.ceil(fraction * count))
+                identifier = f"floativf-k{centroid_count}-target{target_count}"
                 config_path = result_root / scale_id / "configs" / f"{identifier}.json"
                 shortlist_path = result_root / scale_id / "shortlists" / f"{identifier}.json"
                 quality_path = result_root / scale_id / "quality" / f"{identifier}.json"
                 contribution_path = result_root / scale_id / "contributions" / f"{identifier}.npz"
                 require(all(path.is_file() for path in (config_path, shortlist_path, quality_path, contribution_path)), f"float semantic IVF row member missing: {scale_id}/{identifier}")
                 config = json.loads(config_path.read_text(encoding="utf-8"))
-                require(config == {"schema_version": 1, "family": runner.FAMILY, "scale": scale_id, "centroid_count": centroid_count, "nprobe": nprobe, "target_candidate_fraction": fraction, "input_manifest_sha256": sha256(input_manifest), "evaluation_manifest_sha256": sha256(evaluation_manifest), "train_vectors_sha256": sha256(evaluation_root / "train-vectors.f32"), "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "cascade": contract["cascade"], "centroid_tie_rule": "score_descending_then_centroid_id_ascending_v1", "candidate_union_rule": "document_position_ascending_v1"}, f"float semantic IVF config differs: {scale_id}/{identifier}")
-                counts, routing_times = validate_shortlist(json.loads(shortlist_path.read_text(encoding="utf-8")), index, assignments, document_codes, query_codes, document_bits, projections, adc_centroids, numpy.asarray(data["queries"], dtype=numpy.float32), nprobe, centroid_hash, assignment_hash, sha256(input_manifest))
+                require(config == {"schema_version": 1, "family": runner.FAMILY, "scale": scale_id, "centroid_count": centroid_count, "target_candidate_fraction": fraction, "target_candidate_count": target_count, "input_manifest_sha256": sha256(input_manifest), "evaluation_manifest_sha256": sha256(evaluation_manifest), "train_vectors_sha256": sha256(evaluation_root / "train-vectors.f32"), "centroid_index_sha256": centroid_hash, "assignment_sha256": assignment_hash, "cascade": contract["cascade"], "centroid_tie_rule": "score_descending_then_centroid_id_ascending_v1", "candidate_selection_rule": "ranked_centroid_lists_until_target_count_v1", "candidate_union_rule": "document_position_ascending_v1"}, f"float semantic IVF config differs: {scale_id}/{identifier}")
+                counts, probes, routing_times = validate_shortlist(json.loads(shortlist_path.read_text(encoding="utf-8")), index, assignments, document_codes, query_codes, document_bits, projections, adc_centroids, numpy.asarray(data["queries"], dtype=numpy.float32), target_count, centroid_hash, assignment_hash, sha256(input_manifest))
                 survival, ndcg = validate_quality(quality_path, contribution_path, shortlist_path, oracle, data)
                 row = next((item for item in summary["rows"] if item.get("scale") == scale_id and item.get("id") == identifier), None)
-                require(row is not None and row["config_sha256"] == sha256(config_path) and row["centroid_index_sha256"] == centroid_hash and row["assignment_sha256"] == assignment_hash and row["shortlist_sha256"] == sha256(shortlist_path) and row["quality_sha256"] == sha256(quality_path) and row["contribution_sha256"] == sha256(contribution_path) and abs(float(row["actual_candidate_fraction"]) - float(numpy.mean(counts)) / count) <= 1e-15 and abs(float(row["candidate_count_p95"]) - runner.percentile([float(item) for item in counts], .95)) <= 1e-12 and abs(float(row["centroid_routing_p50_ms_per_query"]) - runner.percentile(routing_times, .50)) <= 25.0 and abs(float(row["centroid_routing_p95_ms_per_query"]) - runner.percentile(routing_times, .95)) <= 25.0 and row["e5_oracle_survival_after_adc"] == survival and row["reranked_ndcg_at_10"] == ndcg, f"float semantic IVF summary replay differs: {scale_id}/{identifier}")
+                require(row is not None and row["config_sha256"] == sha256(config_path) and row["centroid_index_sha256"] == centroid_hash and row["assignment_sha256"] == assignment_hash and row["shortlist_sha256"] == sha256(shortlist_path) and row["quality_sha256"] == sha256(quality_path) and row["contribution_sha256"] == sha256(contribution_path) and abs(float(row["actual_candidate_fraction"]) - float(numpy.mean(counts)) / count) <= 1e-15 and abs(float(row["candidate_count_p95"]) - runner.percentile([float(item) for item in counts], .95)) <= 1e-12 and abs(float(row["selected_centroid_count_p50"]) - runner.percentile([float(item) for item in probes], .50)) <= 1e-12 and abs(float(row["selected_centroid_count_p95"]) - runner.percentile([float(item) for item in probes], .95)) <= 1e-12 and abs(float(row["centroid_routing_p50_ms_per_query"]) - runner.percentile(routing_times, .50)) <= 25.0 and abs(float(row["centroid_routing_p95_ms_per_query"]) - runner.percentile(routing_times, .95)) <= 25.0 and row["e5_oracle_survival_after_adc"] == survival and row["reranked_ndcg_at_10"] == ndcg, f"float semantic IVF summary replay differs: {scale_id}/{identifier}")
                 expected.append(row)
                 for category, path in (("configs", config_path), ("shortlists", shortlist_path), ("quality", quality_path), ("contributions", contribution_path)):
                     files[f"bundle/{scale_id}/{category}/{path.name}"] = path.read_bytes()
