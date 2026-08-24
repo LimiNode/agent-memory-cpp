@@ -34,3 +34,38 @@ the target candidate count for one or more queries. Such a treatment is
 recorded as `infeasible_target_candidate_mass`, with a complete per-query
 routing audit and no downstream cascade quality claim. The runner must not
 silently widen its shortlist or substitute a different candidate budget.
+
+## 2026-08-24 result
+
+The completed 72-row Spanish calibration matrix produced 32 feasible rows and
+40 rows that could not attain their predeclared candidate mass from the fixed
+binary shortlist. The latter are retained as routing-audit evidence rather than
+being expanded after the fact. In particular, every 1M `K=16384` treatment and
+every 1M `2 x nprobe` treatment was infeasible; the viable 1M frontier was
+limited to `K=4096`, `4 x nprobe`, primarily at 256 and 512 bits.
+
+The best feasible binary code in every candidate-mass cell was the 512-bit,
+`4 x nprobe`, `K=1024` (100k) or `K=4096` (1M) treatment:
+
+| scale | candidate mass | E5 survival after ADC | reranked nDCG@10 | frozen exact-float control survival / nDCG@10 |
+| --- | ---: | ---: | ---: | ---: |
+| Spanish 100k | 5% | 76.56% | 0.6791 | 84.27% / 0.7250 |
+| Spanish 100k | 10% | 86.96% | 0.7377 | 90.69% / 0.7569 |
+| Spanish 100k | 25% | 95.62% | 0.7799 | 95.74% / 0.7810 |
+| Spanish 1M | 5% | 73.13% | 0.5992 | 82.67% / 0.6480 |
+| Spanish 1M | 10% | 82.58% | 0.6440 | 87.69% / 0.6724 |
+| Spanish 1M | 25% | 91.39% | 0.6837 | 92.41% / 0.6883 |
+
+Thus a longer random-projection binary centroid code retains useful semantic
+routing signal, but this surrogate does not reproduce the float control at the
+low candidate budgets where a locator must be most selective. Its apparent
+near-parity only occurs at 25% candidate mass, after a full centroid-code scan
+and a four-times-larger exact-float centroid rerank. It is consequently a
+negative result for this particular non-learned binary-centroid surrogate, not
+evidence that semantic IVF itself is weak or that learned routing is ruled out.
+
+The local deterministic evidence archive is
+`tmp/binary-centroid-routing-v2-evidence.zip`, SHA-256
+`8a3ebd7e933de0c24d653bfa1e47109d4c31b72ed93b13b0753e6b7a0ea916ee`.
+It is intentionally untracked pending review and any separately approved
+evidence-release decision.
