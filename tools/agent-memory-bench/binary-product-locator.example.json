@@ -2,6 +2,7 @@
   "schema_version": 1,
   "family": "binary_product_locator_static_calibration_v1",
   "purpose": "external_calibration_only_static_binary_product_locator_not_selection_or_confirmation",
+  "amends_measurement_contract_sha256": "c53ac1cf997a9e21ade429223d29dae7a5eddb5ab9c7396d2073b010cd248af4",
   "input": {
     "document_count": 25000,
     "query_count": 648,
@@ -16,6 +17,7 @@
     {"id": "walsh-b4-c8", "block_count": 4, "centers_per_block": 8, "prototype_family": "walsh_complement_prefix_v1"}
   ],
   "target_candidate_fractions": [0.05, 0.10, 0.25],
+  "global_cell_order": "sum_local_hamming_then_lexicographic_local_cost_rank_tuple_v1",
   "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
   "confirmation": "forbidden_french_and_any_external_confirmation_split_are_out_of_scope",
   "library_dependency": "forbidden_external_python_calibration_harness_only"

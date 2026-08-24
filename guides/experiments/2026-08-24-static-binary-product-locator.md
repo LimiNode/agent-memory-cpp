@@ -34,7 +34,9 @@ learned prototypes:
 | `walsh-b4-c8` | 4 blocks, fixed Walsh/complement local centers | 4,096 |
 
 `binary-product-locator.example.json` pins that matrix, the frozen input and
-Flat-reference SHA-256 values, and the cascade limits. The Python runner is an
+Flat-reference SHA-256 values, cascade limits, and the actual product-cell
+order: sum of local Hamming costs, then lexicographic local-cost-rank tuple.
+The Python runner is an
 external calibration harness, so it reports routing work and quality but makes
 no native C++ latency claim.
 
@@ -78,13 +80,14 @@ scale-aware BinaryIVF.
 
 ## Evidence and limitations
 
-`run-binary-product-locator.py` records canonical candidate shortlists. Its
-companion evidence packager recomputes every local assignment, best-first cell
-order, candidate union, full Hamming ordering, ADC order, and the persisted
-per-query E5/nDCG contributions before writing a deterministic archive. Raw
-shortlists, contribution arrays, and archives remain untracked under `tmp/`.
-Two independently generated archives had SHA-256
-`a209d896a0d63b16b5858f297fab871bbaa74f37a3d5d0de2aaf5a0a28531c4a`.
+`run-binary-product-locator.py` validates every input payload against its
+manifest SHA-256 before use. Its companion evidence packager includes those
+payloads in the archive and recomputes every local assignment, best-first cell
+order, candidate union, full Hamming ordering, ADC order, and every per-query
+E5/nDCG contribution from the replayed ADC shortlist and frozen evaluation
+data. Raw shortlists, contribution arrays, and archives remain untracked under
+`tmp/`. The previous local archive digest is historical; a new archive should
+be generated after this provenance hardening.
 
 The measurements use only one frozen Spanish calibration corpus. They are not
 a selection result, a confirmation result, or a latency comparison with native

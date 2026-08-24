@@ -35,7 +35,8 @@ def canonical(value: Any) -> bytes:
 
 def load_contract(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
-    require(value.get("schema_version") == 1 and value.get("family") == FAMILY, "binary-product contract identity differs")
+    require(value.get("schema_version") == 1 and value.get("family") == FAMILY and value.get("purpose") == "external_calibration_only_static_binary_product_locator_not_selection_or_confirmation" and value.get("confirmation") == "forbidden_french_and_any_external_confirmation_split_are_out_of_scope" and value.get("library_dependency") == "forbidden_external_python_calibration_harness_only", "binary-product contract identity differs")
+    require(value.get("amends_measurement_contract_sha256") == "c53ac1cf997a9e21ade429223d29dae7a5eddb5ab9c7396d2073b010cd248af4" and value.get("global_cell_order") == "sum_local_hamming_then_lexicographic_local_cost_rank_tuple_v1", "binary-product cell-order contract differs")
     require(value.get("input") == {"document_count": 25000, "query_count": 648, "code_bits": 256, "manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987"}, "binary-product input contract differs")
     require(value.get("reference_flat_shortlist_sha256") == "48da713381f0b7b9c36635f6c286541311c524083be4c7bf56223ca2be840ce5", "binary-product Flat reference differs")
     require(value.get("target_candidate_fractions") == [0.05, 0.10, 0.25], "binary-product candidate budgets differ")
@@ -60,6 +61,18 @@ def load_words(path: Path, count: int) -> numpy.ndarray:
     words = numpy.fromfile(path, dtype="<u8")
     require(words.size == count * 4, "binary-product word payload differs")
     return words.reshape(count, 4)
+
+
+def input_payloads(input_root: Path, manifest: dict[str, Any]) -> tuple[tuple[str, str], ...]:
+    pairs = (
+        ("document_codes_file", "document_codes_sha256"),
+        ("query_codes_file", "query_codes_sha256"),
+        ("query_itq_projections_file", "query_itq_projections_sha256"),
+        ("binary_adc_centroids_file", "binary_adc_centroids_sha256"),
+    )
+    for filename_key, digest_key in pairs:
+        require(isinstance(manifest.get(filename_key), str) and isinstance(manifest.get(digest_key), str) and sha256(input_root / manifest[filename_key]) == manifest[digest_key], f"binary-product input payload differs: {filename_key}")
+    return pairs
 
 
 def block_bounds(block_count: int) -> list[tuple[int, int]]:
@@ -171,6 +184,7 @@ def run(args: argparse.Namespace, contract: dict[str, Any]) -> None:
     require(sha256(args.reference_shortlist) == contract["reference_flat_shortlist_sha256"], "binary-product Flat reference differs")
     reference = json.loads(args.reference_shortlist.read_text(encoding="utf-8")); query_positions = [int(row["query_position"]) for row in reference["rows"]]
     require(reference.get("backend") == "flat" and len(query_positions) == 648 and len(set(query_positions)) == 648, "binary-product reference query order differs")
+    input_payloads(args.input_root, manifest)
     document_code_path = args.input_root / manifest["document_codes_file"]; query_code_path = args.input_root / manifest["query_codes_file"]
     document_bits = load_codes(document_code_path, 25000); query_bits = load_codes(query_code_path, 648)
     document_words = load_words(document_code_path, 25000); query_words = load_words(query_code_path, 648)
