@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "family": "syndrome_perfect_code_locator_feasibility_v1",
+  "purpose": "mathematical_feasibility_diagnostic_not_a_retrieval_measurement_or_index_implementation",
+  "ambient_bits": 256,
+  "coarse_center_counts": [256, 1024, 4096, 16384, 65536],
+  "generic_linear_code_case": {"center_count": 4096, "center_dimension": 12, "syndrome_bits": 244},
+  "perfect_code_controls": [
+    {"id": "hamming-7-4-3", "length": 7, "dimension": 4, "radius": 1},
+    {"id": "hamming-15-11-3", "length": 15, "dimension": 11, "radius": 1},
+    {"id": "golay-23-12-7", "length": 23, "dimension": 12, "radius": 3}
+  ],
+  "interpretation": "covering_bound_is_a_lower_bound_over_the_full_binary_cube_and_does_not_measure_the_observed_document_manifold"
+}
