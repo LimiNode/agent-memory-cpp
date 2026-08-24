@@ -83,6 +83,8 @@ companion evidence packager recomputes every local assignment, best-first cell
 order, candidate union, full Hamming ordering, ADC order, and the persisted
 per-query E5/nDCG contributions before writing a deterministic archive. Raw
 shortlists, contribution arrays, and archives remain untracked under `tmp/`.
+Two independently generated archives had SHA-256
+`a209d896a0d63b16b5858f297fab871bbaa74f37a3d5d0de2aaf5a0a28531c4a`.
 
 The measurements use only one frozen Spanish calibration corpus. They are not
 a selection result, a confirmation result, or a latency comparison with native
