@@ -33,6 +33,15 @@ def codes(path: Path, count: int) -> numpy.ndarray:
     return numpy.fromfile(path, dtype="<u8").reshape(count, 4).view(numpy.uint8).reshape(count, 32).copy()
 
 
+def actual_list_ids(index: Any, list_id: int) -> numpy.ndarray:
+    size = int(index.invlists.list_size(list_id))
+    pointer = index.invlists.get_ids(list_id)
+    try:
+        return faiss.rev_swig_ptr(pointer, size).copy()
+    finally:
+        index.invlists.release_ids(list_id, pointer)
+
+
 def load_contract(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(value == {"schema_version": 1, "family": FAMILY, "purpose": "single_centroid_max_radius_triangle_bound_feasibility_only_not_an_exact_index_claim", "faiss_version": "1.13.2", "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987", "reference_flat_shortlist_sha256": "48da713381f0b7b9c36635f6c286541311c524083be4c7bf56223ca2be840ce5", "index_sha256_by_nlist": {"1024": "5f32249faa2c257731177ed7aecc0674a057d0be1a397294687bd52cf5039edf", "4096": "1e94935ec84cb190d6d564209fae5ba416028c1289d76a1f16c5c644781b0d24"}, "k_values": [10, 64, 128, 256, 512, 768], "strict_pruning_rule": "max(0,signed_hamming_query_centroid-list_radius)>flat_dk_v2"}, "Ball-IVF contract differs")
@@ -53,11 +62,22 @@ def run(args: argparse.Namespace) -> None:
         nlist = int(nlist_text); artifact = args.index_root / f"binaryivf-nlist{nlist}.faiss"
         require(artifact.is_file() and sha256(artifact) == expected_hash, f"Ball-IVF index artifact differs: nlist{nlist}")
         index = faiss.read_index_binary(str(artifact)); require(index.d == 256 and index.ntotal == 25000 and index.nlist == nlist, f"Ball-IVF index metadata differs: nlist{nlist}")
-        _, assignments = index.quantizer.search(documents, 1); assignments = assignments[:, 0]
         centroids = numpy.vstack([index.quantizer.reconstruct(item) for item in range(nlist)])
-        document_to_centroid = hamming(documents, centroids[assignments])
-        radii = numpy.zeros(nlist, dtype=numpy.uint16); numpy.maximum.at(radii, assignments, document_to_centroid)
-        sizes = numpy.bincount(assignments, minlength=nlist)
+        stored_assignments = numpy.full(25000, -1, dtype=numpy.int64)
+        sizes = numpy.zeros(nlist, dtype=numpy.int64)
+        radii = numpy.zeros(nlist, dtype=numpy.uint16)
+        for list_id in range(nlist):
+            ids = actual_list_ids(index, list_id)
+            require(ids.ndim == 1 and numpy.all((0 <= ids) & (ids < 25000)), f"Ball-IVF stored IDs differ: nlist{nlist}/list{list_id}")
+            require(numpy.all(stored_assignments[ids] == -1), f"Ball-IVF stored IDs overlap: nlist{nlist}/list{list_id}")
+            stored_assignments[ids] = list_id
+            sizes[list_id] = ids.size
+            if ids.size:
+                radii[list_id] = int(hamming(documents[ids], centroids[list_id]).max())
+        require(numpy.all(stored_assignments >= 0), f"Ball-IVF stored IDs are incomplete: nlist{nlist}")
+        _, reconstructed_assignments = index.quantizer.search(documents, 1)
+        require(numpy.array_equal(stored_assignments, reconstructed_assignments[:, 0]), f"Ball-IVF reconstructed assignments differ from stored invlists: nlist{nlist}")
+        non_empty = sizes > 0
         list_values = {k: [] for k in contract["k_values"]}; document_values = {k: [] for k in contract["k_values"]}
         for position in positions:
             distances = hamming(documents, queries[position]); cutoffs = {k: int(numpy.partition(distances, k - 1)[k - 1]) for k in contract["k_values"]}
@@ -65,8 +85,8 @@ def run(args: argparse.Namespace) -> None:
             lower_bounds = numpy.maximum(0, centroid_distance - radii.astype(numpy.int32))
             for k, cutoff in cutoffs.items():
                 mask = lower_bounds > cutoff
-                list_values[k].append(float(mask.mean())); document_values[k].append(float(sizes[mask].sum()) / 25000.0)
-        result.append({"nlist": nlist, "index_sha256": expected_hash, "non_empty_lists": int(numpy.count_nonzero(sizes)), "mean_list_radius": float(radii[sizes > 0].mean()), "p95_list_radius": float(numpy.quantile(radii[sizes > 0], .95)), "prunable_list_fraction": {str(k): float(numpy.mean(list_values[k])) for k in contract["k_values"]}, "prunable_document_fraction": {str(k): float(numpy.mean(document_values[k])) for k in contract["k_values"]}})
+                list_values[k].append(float(mask[non_empty].mean())); document_values[k].append(float(sizes[mask].sum()) / 25000.0)
+        result.append({"nlist": nlist, "index_sha256": expected_hash, "non_empty_lists": int(numpy.count_nonzero(non_empty)), "non_empty_list_fraction": float(numpy.mean(non_empty)), "mean_list_radius": float(radii[non_empty].mean()), "p95_list_radius": float(numpy.quantile(radii[non_empty], .95)), "prunable_non_empty_list_fraction": {str(k): float(numpy.mean(list_values[k])) for k in contract["k_values"]}, "prunable_document_fraction": {str(k): float(numpy.mean(document_values[k])) for k in contract["k_values"]}})
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps({"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "faiss_version": faiss.__version__, "input_manifest_sha256": sha256(manifest_path), "reference_shortlist_sha256": sha256(args.reference_shortlist), "strict_pruning_rule": contract["strict_pruning_rule"], "rows": result}, indent=2, sort_keys=True) + "\n", encoding="utf-8", newline="\n")
 
