@@ -28,6 +28,12 @@ construction. It does not reject other overcomplete encoders or an operational
 matched-candidate-mass cascade. The next protocol should inspect code diversity
 and inter-block correlation before considering a different construction.
 
+More generally, this gate failure concerns intrinsic float-centroid-ID
+imitation only. It does not establish that a binary route loses the same
+document candidates, because centroid-list cardinalities and relevance can
+vary. Any operational continuation must be held-out and evaluate the complete
+matched-document-mass cascade rather than reopen dev data after this result.
+
 The local deterministic evidence archive is
 `tmp/overcomplete-centroid-encoder-v1-evidence.zip`, SHA-256
 `d7faa39789f8d34f6ba64029d6abcec5c3f73ebbdcb3f0bc474383f537a76a9a`.
