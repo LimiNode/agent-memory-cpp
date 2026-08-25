@@ -9,7 +9,6 @@ import importlib.util
 import json
 import sys
 import time
-import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +43,7 @@ def load(name: str, filename: str) -> Any:
 
 
 evaluator = load("binary_centroid_routing_evaluator", "evaluate-native-ann-shortlists.py")
+float_evidence = load("binary_centroid_routing_float_evidence", "float_semantic_ivf_evidence.py")
 
 
 def load_contract(path: Path) -> dict[str, Any]:
@@ -98,9 +98,7 @@ def adc_positions(document_bits: numpy.ndarray, query_projection: numpy.ndarray,
 
 
 def float_evidence_members(path: Path) -> dict[str, Any]:
-    with zipfile.ZipFile(path) as archive:
-        manifest = json.loads(archive.read("bundle/evidence-manifest.json"))
-    require(manifest.get("family") == "float_semantic_ivf_evidence_v1" and manifest.get("row_count") == 12, "binary centroid routing float evidence differs")
+    manifest, _ = float_evidence.validate_archive(path)
     return manifest["members"]
 
 
@@ -214,6 +212,7 @@ def run(args: argparse.Namespace) -> None:
 
 
 def self_test() -> None:
+    float_evidence.self_test()
     load_contract(THIS / "binary-centroid-routing.example.json")
     require(stable_order(numpy.asarray([.5, .5, .8], dtype=numpy.float32), numpy.asarray([9, 3, 7], dtype=numpy.int64)).tolist() == [7, 3, 9], "binary centroid routing tie rule differs")
     print("binary centroid routing runner self-test passed")

@@ -1,0 +1,64 @@
+"""Shared fail-closed validation for float semantic-IVF evidence archives."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import tempfile
+import zipfile
+from pathlib import Path
+from typing import Any
+
+
+def _sha256(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
+def validate_archive(path: Path) -> tuple[dict[str, Any], bytes]:
+    """Return a validated manifest and exact archive bytes.
+
+    Both measurement and packaging must reject an archive whose declared member
+    digests do not match its actual ZIP membership and payload bytes.
+    """
+    if not path.is_file():
+        raise ValueError("binary centroid routing frozen float evidence ZIP missing")
+    payload = path.read_bytes()
+    with zipfile.ZipFile(path) as archive:
+        manifest = json.loads(archive.read("bundle/evidence-manifest.json"))
+        members = manifest.get("members")
+        if not (manifest.get("schema_version") == 1 and manifest.get("family") == "float_semantic_ivf_evidence_v1" and manifest.get("row_count") == 12 and isinstance(members, dict)):
+            raise ValueError("binary centroid routing frozen float evidence manifest differs")
+        names = archive.namelist()
+        if len(names) != len(set(names)) or set(names) != set(members) | {"bundle/evidence-manifest.json"}:
+            raise ValueError("binary centroid routing frozen float evidence ZIP membership differs")
+        for name, metadata in members.items():
+            value = archive.read(name)
+            if metadata != {"sha256": _sha256(value), "size": len(value)}:
+                raise ValueError(f"binary centroid routing frozen float evidence member differs: {name}")
+    return manifest, payload
+
+
+def self_test() -> None:
+    with tempfile.TemporaryDirectory() as temporary:
+        path = Path(temporary) / "evidence.zip"
+        value = b"value"
+        manifest = {
+            "schema_version": 1,
+            "family": "float_semantic_ivf_evidence_v1",
+            "row_count": 12,
+            "members": {"bundle/value": {"sha256": _sha256(value), "size": len(value)}},
+        }
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("bundle/value", value)
+            archive.writestr("bundle/evidence-manifest.json", json.dumps(manifest, sort_keys=True))
+        parsed, payload = validate_archive(path)
+        if parsed != manifest or payload != path.read_bytes():
+            raise ValueError("binary centroid routing float evidence validator differs")
+        with zipfile.ZipFile(path, "w") as archive:
+            archive.writestr("bundle/value", b"tampered")
+            archive.writestr("bundle/evidence-manifest.json", json.dumps(manifest, sort_keys=True))
+        try:
+            validate_archive(path)
+        except ValueError:
+            return
+        raise ValueError("binary centroid routing tampered float evidence was accepted")

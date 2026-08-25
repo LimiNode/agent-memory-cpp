@@ -21,6 +21,7 @@ THIS = Path(__file__).resolve().parent
 ROOT = THIS.parents[1]
 SOURCE_PATHS = (
     "tools/agent-memory-bench/binary-centroid-routing.example.json",
+    "tools/agent-memory-bench/float_semantic_ivf_evidence.py",
     "tools/agent-memory-bench/plan-binary-centroid-routing.py",
     "tools/agent-memory-bench/run-binary-centroid-routing.py",
     "tools/agent-memory-bench/write-binary-centroid-routing-evidence.py",
@@ -58,6 +59,7 @@ def load(name: str, filename: str) -> Any:
 
 runner = load("binary_centroid_routing_evidence_runner", "run-binary-centroid-routing.py")
 evaluator = load("binary_centroid_routing_evidence_evaluator", "evaluate-native-ann-shortlists.py")
+float_evidence = load("binary_centroid_routing_evidence_float_evidence", "float_semantic_ivf_evidence.py")
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -70,17 +72,7 @@ def add_file(files: dict[str, bytes], name: str, path: Path) -> None:
 
 
 def validate_float_evidence(path: Path) -> tuple[dict[str, Any], bytes]:
-    require(path.is_file(), "binary centroid routing frozen float evidence ZIP missing")
-    payload = path.read_bytes()
-    with zipfile.ZipFile(path) as archive:
-        manifest = json.loads(archive.read("bundle/evidence-manifest.json"))
-        members = manifest.get("members")
-        require(manifest.get("schema_version") == 1 and manifest.get("family") == "float_semantic_ivf_evidence_v1" and manifest.get("row_count") == 12 and isinstance(members, dict), "binary centroid routing frozen float evidence manifest differs")
-        require(set(archive.namelist()) == set(members) | {"bundle/evidence-manifest.json"}, "binary centroid routing frozen float evidence ZIP membership differs")
-        for name, metadata in members.items():
-            value = archive.read(name)
-            require(metadata == {"sha256": sha256_bytes(value), "size": len(value)}, f"binary centroid routing frozen float evidence member differs: {name}")
-    return manifest, payload
+    return float_evidence.validate_archive(path)
 
 
 def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, oracle_path: Path, data: dict[str, Any]) -> tuple[float, float]:
@@ -244,6 +236,7 @@ def write_archive(path: Path, manifest: dict[str, Any]) -> None:
 
 
 def self_test() -> None:
+    float_evidence.self_test()
     with tempfile.TemporaryDirectory() as temporary:
         first, second = Path(temporary) / "one.zip", Path(temporary) / "two.zip"
         manifest = {"schema_version": 1, "family": "binary_centroid_routing_evidence_v1", "members": {"bundle/value": {"sha256": sha256_bytes(b"value"), "size": 5}}, "_files": {"bundle/value": b"value"}}
