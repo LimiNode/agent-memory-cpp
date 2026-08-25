@@ -54,5 +54,8 @@ fail-closed packager archives those payloads and recomputes FWHT correlations,
 assignments, cell order, candidate unions, Hamming and ADC shortlists, and all
 per-query E5/nDCG contributions from replayed ADC shortlists and frozen
 evaluation data. Raw results and archives remain untracked under `tmp/`. The
-previous local archive digest is historical; a new archive should be generated
-after this provenance hardening.
+post-hardening full replay completed successfully and produced
+`tmp/rm-hadamard-locator-es25k/evidence-c.zip`, SHA-256
+`2c54bed52f8a7e49a18f960a1d109b4194d7fd5bb53ea8cff3b97bf8d68848ef`.
+It remains local pending review and any separately approved evidence-release
+decision.
