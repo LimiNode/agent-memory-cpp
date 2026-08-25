@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -60,13 +61,14 @@ def self_test() -> None:
             "schema_version": 1,
             "family": "float_semantic_ivf_evidence_v1",
             "row_count": 12,
-            "members": {"bundle/value": {"sha256": _sha256(value), "size": len(value)}},
+            "members": {"bundle/value": {"sha256": _sha256(value), "size": len(value)}, "bundle/es-100k/frozen-evaluation-manifest.json": {"sha256": _sha256(b"evaluation"), "size": 10}},
         }
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("bundle/value", value)
+            archive.writestr("bundle/es-100k/frozen-evaluation-manifest.json", b"evaluation")
             archive.writestr("bundle/evidence-manifest.json", json.dumps(manifest, sort_keys=True))
         parsed, payload = validate_archive(path)
-        if parsed != manifest or payload != path.read_bytes():
+        if parsed != manifest or payload != path.read_bytes() or frozen_evaluation_manifest_sha256(path, parsed, "es-100k") != _sha256(b"evaluation"):
             raise ValueError("binary centroid routing float evidence validator differs")
         with zipfile.ZipFile(path, "w") as archive:
             archive.writestr("bundle/value", b"tampered")
@@ -76,3 +78,13 @@ def self_test() -> None:
         except ValueError:
             return
         raise ValueError("binary centroid routing tampered float evidence was accepted")
+
+
+if __name__ == "__main__":
+    try:
+        if sys.argv[1:] != ["--self-test"]:
+            raise ValueError("expected --self-test")
+        self_test()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, zipfile.BadZipFile) as error:
+        print(f"float-semantic-ivf-evidence: {error}", file=sys.stderr)
+        raise SystemExit(1)
