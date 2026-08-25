@@ -244,13 +244,28 @@ if(AGENT_MEMORY_ENABLE_HNSW_BENCHMARK)
         message(FATAL_ERROR
             "AGENT_MEMORY_ENABLE_HNSW_BENCHMARK requires a pinned hnswlib Git revision")
     endif()
+    add_executable(agent-memory-native-centroid-routing
+        native_centroid_routing.cpp
+    )
+    target_link_libraries(agent-memory-native-centroid-routing
+        PRIVATE
+            agent_memory::json
+    )
     target_include_directories(agent-memory-mih-native-sparse-arbitrary-m
+        PRIVATE
+            "${PROJECT_SOURCE_DIR}/external/hnswlib"
+    )
+    target_include_directories(agent-memory-native-centroid-routing
         PRIVATE
             "${PROJECT_SOURCE_DIR}/external/hnswlib"
     )
     target_compile_definitions(agent-memory-mih-native-sparse-arbitrary-m
         PRIVATE
             AGENT_MEMORY_ENABLE_HNSW_BENCHMARK=1
+            AGENT_MEMORY_HNSWLIB_REVISION="${agent_memory_hnswlib_revision}"
+    )
+    target_compile_definitions(agent-memory-native-centroid-routing
+        PRIVATE
             AGENT_MEMORY_HNSWLIB_REVISION="${agent_memory_hnswlib_revision}"
     )
 endif()

@@ -20,15 +20,15 @@ centroid lists until the same 5%, 10%, or 25% document mass is reached.
 | int8 | symmetric per-centroid int8 payload and scale | matched-mass teacher overlap |
 | symmetric binary | 512-bit Rademacher Hamming shortlist then exact float rerank | 2x/4x shortlist |
 | asymmetric binary | same stored 512-bit codes, continuous query projection score then exact float rerank | 2x/4x shortlist |
-| HNSW | external hnswlib FP32 graph then exact float rerank | `M={8,16}`, `efSearch={128,512,2048,4096}` |
+| HNSW | external hnswlib FP32 graph then exact float rerank | `M={8,16}`, `efSearch={256,512,2048,8192}` |
 
 For the binary arms, the exact FP32 rerank shortlist is
-`ceil(multiplier * target_fraction * centroid_count)`. HNSW has no multiplier:
-it returns `ceil(target_fraction * centroid_count)` centroids and reranks them
-in exact FP32. This makes feasibility explicit instead of silently asking an
-`efSearch` of 16--128 to produce thousands of centroids. The runner uses one
-native routing thread and must mark a row infeasible when an HNSW search cannot
-produce its declared shortlist.
+`ceil(multiplier * target_fraction * centroid_count)`. HNSW uses a fixed 2x
+mass shortlist before exact FP32 rerank. This accounts for differing inverted
+list sizes: a 1x centroid count can fall just short of the requested document
+mass despite returning exactly the requested number of centroids. The runner
+uses one native routing thread and must mark a row infeasible when an HNSW
+search cannot produce its declared shortlist.
 
 The runner must preserve raw timing samples, centroid-payload bytes,
 backend-specific index bytes, feasibility, selected-centroid recall, and
@@ -52,10 +52,12 @@ cross-platform latency or retrieval quality after the document cascade.
 
 ### Pre-measurement protocol clarification
 
-The initial draft used `efSearch={16,32,64,128}` and treated every
-`then_exact_fp32_rerank` treatment as if it had a binary shortlist multiplier.
-That made the HNSW arm unable to provide the required centroid-list mass for
-the larger configurations. Before any row of the matched-mass matrix was run,
-the protocol was corrected to the explicit binary/HNSW rules above and to the
-feasible `efSearch={128,512,2048,4096}` grid. The separately run C++ scan
-preflight is diagnostic-only and is not a row of this matrix.
+The initial draft used `efSearch={16,32,64,128}` and left the HNSW shortlist
+mass ambiguous. That made the HNSW arm unable to provide the required
+centroid-list mass for the larger configurations. The diagnostic smoke run also
+showed that an exactly 1x centroid shortlist occasionally falls short because
+the frozen inverted lists are not equal-sized. Before any row of the
+matched-mass matrix was run, the protocol was corrected to the explicit 2x
+HNSW rule above and to the feasible `efSearch={256,512,2048,8192}` grid. The
+separately run C++ scan preflight and smoke run are diagnostic-only and are not
+rows of this matrix.
