@@ -147,6 +147,7 @@ def validate(result_root: Path, scale_root: Path, float_root: Path, float_eviden
         input_root, evaluation_root = scale_root / scale_id / "input", scale_root / scale_id / "e5"
         input_manifest, evaluation_manifest = input_root / "manifest.json", evaluation_root / "manifest.json"
         input_data = json.loads(input_manifest.read_text(encoding="utf-8"))
+        runner.validate_storage_input_payloads(input_root, input_data)
         data = evaluator.shared.load_root(evaluation_root)
         expected_input = "720fead487f3a7caec62ad190cd93fa79969effd1d0fe825c865ab5d0d437d15" if scale_id == "es-100k" else "697f81bc66b37feb47b413fa168f4ae5efd030b9dbbaeb8d0c67ac8d224a9ae7"
         expected_evaluation = runner.float_evidence.frozen_evaluation_manifest_sha256(float_evidence, float_manifest, scale_id)

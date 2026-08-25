@@ -60,6 +60,23 @@ def codes(path: Path, count: int) -> numpy.ndarray:
     return words.reshape(count, 4).view(numpy.uint8).reshape(count, 32).copy()
 
 
+def validate_storage_input_payloads(input_root: Path, input_manifest: dict[str, Any]) -> None:
+    """Bind every binary-routing input payload to the frozen input manifest."""
+    payloads = (
+        ("document_codes_file", "document_codes_sha256"),
+        ("query_codes_file", "query_codes_sha256"),
+        ("query_itq_projections_file", "query_itq_projections_sha256"),
+        ("binary_adc_centroids_file", "binary_adc_centroids_sha256"),
+    )
+    for filename_key, digest_key in payloads:
+        filename, digest = input_manifest.get(filename_key), input_manifest.get(digest_key)
+        require(isinstance(filename, str) and isinstance(digest, str),
+                f"binary centroid routing input payload metadata differs: {filename_key}")
+        path = input_root / filename
+        require(path.is_file() and sha256(path) == digest,
+                f"binary centroid routing input payload differs: {filename_key}")
+
+
 def percentile(values: list[float], fraction: float) -> float:
     return float(numpy.quantile(numpy.asarray(values, dtype=numpy.float64), fraction, method="linear"))
 
@@ -139,6 +156,7 @@ def run(args: argparse.Namespace) -> None:
         expected_evaluation = float_evidence.frozen_evaluation_manifest_sha256(args.float_evidence, float_manifest, scale_id)
         require(sha256(evaluation_manifest) == expected_evaluation, f"binary centroid routing evaluation root differs: {scale_id}")
         input_data, data = json.loads(input_manifest.read_text(encoding="utf-8")), evaluator.shared.load_root(evaluation_root)
+        validate_storage_input_payloads(input_root, input_data)
         document_codes = codes(input_root / input_data["document_codes_file"], document_count)
         query_codes = codes(input_root / input_data["query_codes_file"], 648)
         document_bits = numpy.unpackbits(document_codes, bitorder="little", axis=1)
