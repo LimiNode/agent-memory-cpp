@@ -389,15 +389,16 @@ nlohmann::json run_row(const Input& input, const QuantizedCentroids& quantized,
         return row;
     }
 
-    std::vector<double> samples;
-    Quality total;
+    std::vector<double> repeat_mean_samples;
+    std::vector<double> per_query_samples;
+    std::vector<Selection> final_selected(input.m_query_count);
     bool all_queries_feasible = true;
     std::size_t feasible_query_count = 0U;
     for (std::size_t pass = 0U; pass < warmups + repeats; ++pass) {
-        Quality current;
         std::size_t current_feasible_query_count = 0U;
-        const auto begin = Clock::now();
+        double repeat_total_ms = 0.0;
         for (std::size_t query = 0U; query < input.m_query_count; ++query) {
+            const auto begin = Clock::now();
             std::vector<std::uint32_t> ranked;
             if (method == Method::Hnsw) {
                 ranked = exact_rerank(input, query, hnsw->search(input.m_queries.data() + query * kDimension,
@@ -409,31 +410,42 @@ nlohmann::json run_row(const Input& input, const QuantizedCentroids& quantized,
                 }
             }
             const auto selected = select_mass(input, ranked, fraction);
+            const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+            repeat_total_ms += elapsed;
+            if (pass >= warmups) {
+                per_query_samples.push_back(elapsed);
+            }
             if (!selected.m_feasible) {
                 all_queries_feasible = false;
                 continue;
             }
-            const auto quality = compare(input, oracle[query], selected);
-            current.m_selected_centroid_recall += quality.m_selected_centroid_recall;
-            current.m_teacher_document_overlap += quality.m_teacher_document_overlap;
-            current.m_actual_candidate_fraction += quality.m_actual_candidate_fraction;
             ++current_feasible_query_count;
+            if (pass + 1U == warmups + repeats) {
+                final_selected[query] = selected;
+            }
         }
-        const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count() /
-            static_cast<double>(input.m_query_count);
         if (pass >= warmups) {
-            samples.push_back(elapsed);
-            total = current;
+            repeat_mean_samples.push_back(repeat_total_ms / static_cast<double>(input.m_query_count));
             feasible_query_count = current_feasible_query_count;
         }
     }
     row["target_mass_feasible"] = all_queries_feasible;
     row["feasible_query_count"] = feasible_query_count;
-    row["raw_timing_samples_ms_per_query"] = samples;
-    row["routing_p50_ms_per_query"] = percentile(samples, 0.50);
-    row["routing_p95_ms_per_query"] = percentile(samples, 0.95);
+    row["raw_repeat_mean_ms_per_query"] = repeat_mean_samples;
+    row["raw_per_query_ms"] = per_query_samples;
+    row["routing_repeat_mean_p50_ms_per_query"] = percentile(repeat_mean_samples, 0.50);
+    row["routing_repeat_mean_p95_ms_per_query"] = percentile(repeat_mean_samples, 0.95);
+    row["routing_per_query_p50_ms"] = percentile(per_query_samples, 0.50);
+    row["routing_per_query_p95_ms"] = percentile(per_query_samples, 0.95);
     if (!all_queries_feasible) {
         return row;
+    }
+    Quality total;
+    for (std::size_t query = 0U; query < input.m_query_count; ++query) {
+        const auto quality = compare(input, oracle[query], final_selected[query]);
+        total.m_selected_centroid_recall += quality.m_selected_centroid_recall;
+        total.m_teacher_document_overlap += quality.m_teacher_document_overlap;
+        total.m_actual_candidate_fraction += quality.m_actual_candidate_fraction;
     }
     row["exact_float_selected_centroid_recall_at_matched_candidate_mass"] =
         total.m_selected_centroid_recall / static_cast<double>(input.m_query_count);

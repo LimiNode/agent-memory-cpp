@@ -92,21 +92,22 @@ def validate_raw(path: Path, centroid_count: int, contract: dict[str, Any]) -> d
     for row in rows:
         require(isinstance(row, dict) and isinstance(row.get("target_mass_feasible"), bool),
                 f"native centroid raw row differs: {path}")
-        samples = row.get("raw_timing_samples_ms_per_query")
-        require(isinstance(samples, list), f"native centroid raw samples differ: {path}")
+        repeat_samples = row.get("raw_repeat_mean_ms_per_query")
+        per_query_samples = row.get("raw_per_query_ms")
+        require(isinstance(repeat_samples, list) and isinstance(per_query_samples, list), f"native centroid raw samples differ: {path}")
         if row["target_mass_feasible"]:
             require(
-                len(samples) == contract["timing"]["measured_repeats"]
-                and all(isinstance(value, float) and value > 0.0 for value in samples)
-                and isinstance(row.get("routing_p50_ms_per_query"), float)
-                and isinstance(row.get("routing_p95_ms_per_query"), float)
+                len(repeat_samples) == contract["timing"]["measured_repeats"]
+                and len(per_query_samples) == contract["timing"]["measured_repeats"] * contract["evaluation"]["query_count"]
+                and all(isinstance(value, float) and value > 0.0 for value in repeat_samples + per_query_samples)
+                and all(isinstance(row.get(name), float) for name in ("routing_repeat_mean_p50_ms_per_query", "routing_repeat_mean_p95_ms_per_query", "routing_per_query_p50_ms", "routing_per_query_p95_ms"))
                 and isinstance(row.get("exact_float_selected_centroid_recall_at_matched_candidate_mass"), float)
                 and isinstance(row.get("teacher_candidate_document_overlap_at_matched_candidate_mass"), float),
                 f"native centroid feasible raw row differs: {path}",
             )
         else:
             require(
-                len(samples) in (0, contract["timing"]["measured_repeats"]),
+                len(repeat_samples) in (0, contract["timing"]["measured_repeats"]),
                 f"native centroid infeasible raw row samples differ: {path}",
             )
     return raw
