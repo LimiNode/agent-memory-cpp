@@ -94,10 +94,11 @@ def validate_raw(path: Path, centroid_count: int, contract: dict[str, Any]) -> d
                 f"native centroid raw row differs: {path}")
         repeat_samples = row.get("raw_repeat_mean_ms_per_query")
         per_query_samples = row.get("raw_per_query_ms")
-        require(isinstance(repeat_samples, list) and isinstance(per_query_samples, list), f"native centroid raw samples differ: {path}")
         if row["target_mass_feasible"]:
             require(
-                len(repeat_samples) == contract["timing"]["measured_repeats"]
+                isinstance(repeat_samples, list)
+                and isinstance(per_query_samples, list)
+                and len(repeat_samples) == contract["timing"]["measured_repeats"]
                 and len(per_query_samples) == contract["timing"]["measured_repeats"] * contract["evaluation"]["query_count"]
                 and all(isinstance(value, float) and value > 0.0 for value in repeat_samples + per_query_samples)
                 and all(isinstance(row.get(name), float) for name in ("routing_repeat_mean_p50_ms_per_query", "routing_repeat_mean_p95_ms_per_query", "routing_per_query_p50_ms", "routing_per_query_p95_ms"))
@@ -107,7 +108,8 @@ def validate_raw(path: Path, centroid_count: int, contract: dict[str, Any]) -> d
             )
         else:
             require(
-                len(repeat_samples) in (0, contract["timing"]["measured_repeats"]),
+                repeat_samples is None
+                and per_query_samples is None,
                 f"native centroid infeasible raw row samples differ: {path}",
             )
     return raw
