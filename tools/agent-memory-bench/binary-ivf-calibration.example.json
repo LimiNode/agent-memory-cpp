@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "family": "binary_ivf_faiss_calibration_v2",
+  "purpose": "external_calibration_only_binary_ivf_quality_candidate_frontier_not_native_latency_or_confirmation",
+  "faiss_version": "1.13.2",
+  "training_seed": 20260823,
+  "input": {
+    "document_count": 25000,
+    "query_count": 648,
+    "code_bits": 256,
+    "manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987"
+  },
+  "reference_flat_shortlist_sha256": "48da713381f0b7b9c36635f6c286541311c524083be4c7bf56223ca2be840ce5",
+  "nlist_values": [1024, 4096],
+  "target_candidate_fractions": [0.05, 0.10, 0.25],
+  "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "confirmation": "forbidden",
+  "library_dependency": "forbidden_faiss_is_external_benchmark_only"
+}
