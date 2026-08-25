@@ -2,6 +2,7 @@
   "schema_version": 1,
   "family": "data_dependent_product_locator_v1",
   "purpose": "external_calibration_only_data_dependent_product_locator_before_native_traversal_engineering",
+  "amends_measurement_contract_sha256": "0ce223f825adc5b55ef5662ca628b0ddd5d5fcf8b40ea9aa2345414f26809aadb",
   "training_source": "frozen_train_itq256_codes_derived_only_from_pinned_artifact_and_frozen_train_e5_vectors_only",
   "faiss_version": "1.13.2",
   "scales": [
@@ -16,6 +17,15 @@
   "implicit_cell_budgets": [4096, 16384, 65536],
   "target_candidate_fractions": [0.05, 0.10, 0.25],
   "routing": "best_first_sum_local_hamming_then_cell_key_lexicographic_v1",
+  "routing_by_treatment": {
+    "local_binary_medoids": "best_first_sum_local_hamming_then_cell_key_lexicographic_v1",
+    "permuted_binary_medoids": "best_first_sum_local_hamming_then_cell_key_lexicographic_v1",
+    "float_e5_product": "best_first_sum_local_squared_l2_e5_then_cell_key_lexicographic_v1"
+  },
+  "training": {
+    "binary_hamming_kmedoids": {"sample": "deterministic_evenly_spaced_train_positions_v1", "sample_count": 1024, "iterations": 4, "initialization": "farthest_first_hamming_with_lowest_position_ties_v1"},
+    "float_e5_kmeans": {"clusters_per_block": 4, "iterations": 25, "restarts": 1, "seed": 20260826, "spherical": false}
+  },
   "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
   "exploratory_gate": {"candidate_fraction": 0.05, "minimum_e5_oracle_survival_after_adc": 0.70, "meaning": "below_this_gate_do_not_add_native_empty_cell_or_trie_engineering"},
   "confirmation": "forbidden",

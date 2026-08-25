@@ -15,9 +15,10 @@ The planned treatments are deliberately progressive:
 
 Each runs at controlled implicit-cell budgets of 4,096, 16,384, and 65,536,
 rather than assuming a sparse `16 blocks x 8` product space is useful. Query
-cells are expanded best-first by summed local Hamming cost, with a lexical cell
-key as the deterministic tie break, until the requested candidate mass is
-reached. The unchanged downstream treatment is Hamming@768, binary ADC@256,
+cells are expanded best-first with a lexical cell-key tie break until the
+requested candidate mass is reached. The two binary treatments use summed
+local Hamming cost; `float_e5_product` uses summed squared L2 cost in its local
+E5 blocks. The unchanged downstream treatment is Hamming@768, binary ADC@256,
 and exact E5 rerank.
 
 The 54-row 100k/1M plan reports candidate mass, E5 survival, reranked nDCG,
@@ -74,3 +75,20 @@ The untracked local deterministic evidence archive is
 `af8a6864f59d31fa098cad7e9ef4f1c34911232ed57c82e69085630fca3b8d03`
 (667,612,546 bytes; 301 members). It remains local pending review and any
 separately approved evidence-release decision.
+
+## 2026-08-25 provenance amendment
+
+The completed measurement used squared local E5 distance for
+`float_e5_product`, not local Hamming distance. The amended machine contract
+states that routing rule per treatment, while retaining the original contract
+SHA as `amends_measurement_contract_sha256`; this is a provenance clarification
+of the completed treatment, not a replacement measurement.
+
+The amendment also pins the deterministic 1,024-position Hamming-medoid train
+sample, its four update iterations, and the float k-means iteration/restart/
+seed settings. Future and resumed runs persist one complete measured row per
+matrix entry, including timing summaries captured at measurement time. Resume
+therefore restores the original `measured` row rather than emitting an
+incomplete `reused_complete` surrogate. Existing complete rows may be adopted
+from a byte-bound prior summary and are still independently replayed by the
+evidence packager.

@@ -120,7 +120,8 @@ def validate_row(context: dict[str, Any], output: Path, contract: dict[str, Any]
     documents = numpy.asarray(context["data"]["documents"], dtype=numpy.float32)
     queries = numpy.asarray(context["data"]["queries"], dtype=numpy.float32)
     for position, (audit_row, shortlist_row) in enumerate(zip(audit["rows"], shortlist["rows"], strict=True)):
-        costs = runner.local_float_costs(queries[position], positions, books) if treatment_id == "float_e5_product" else runner.local_binary_costs(context["query_bits"][position], positions, books)
+        require(contract["routing_by_treatment"].get(treatment_id) == runner.routing_rule(treatment_id), f"product locator routing metric differs: {treatment_id}")
+        costs = runner.local_costs(treatment_id, queries[position], context["query_bits"][position], positions, books)
         candidates, visited, current_probes, current_nonempty, _ = runner.route(costs, index, target)
         require(audit_row == {"query_position": position, "selected_cell_keys": visited, "candidate_count": int(candidates.size), "target_candidate_count": target, "cell_probes": current_probes, "nonempty_cells": current_nonempty}, f"product locator audit replay differs: {scale['id']}/{identifier}/{position}")
         hamming = runner.hamming_positions(context["document_codes"], context["query_codes"][position], candidates)
@@ -139,7 +140,7 @@ def validate_row(context: dict[str, Any], output: Path, contract: dict[str, Any]
 def validate(result_root: Path, scale_root: Path, itq_artifact: Path, contract_path: Path) -> dict[str, Any]:
     contract = runner.load_contract(contract_path)
     summary_path = result_root / "summary.json"; summary = json.loads(summary_path.read_text(encoding="utf-8"))
-    require(summary.get("schema_version") == 1 and summary.get("family") == runner.FAMILY and summary.get("contract_sha256") == sha256(contract_path) and summary.get("itq_artifact_sha256") == sha256(itq_artifact), "product locator summary identity differs")
+    require(summary.get("schema_version") == 1 and summary.get("family") == runner.FAMILY and summary.get("contract_sha256") in {sha256(contract_path), contract["amends_measurement_contract_sha256"]} and summary.get("itq_artifact_sha256") == sha256(itq_artifact), "product locator summary identity differs")
     files: dict[str, bytes] = {"bundle/contract.json": contract_path.read_bytes(), "bundle/itq-256-artifact.npz": itq_artifact.read_bytes(), "bundle/summary.json": summary_path.read_bytes()}
     expected: list[dict[str, Any]] = []
     for scale in contract["scales"]:
@@ -154,11 +155,15 @@ def validate(result_root: Path, scale_root: Path, itq_artifact: Path, contract_p
                     require(actual is not None and all(actual.get(name) == value for name, value in row.items()), f"product locator summary replay differs: {row['scale']}/{row['id']}")
                     for name in ("routing_p50_ms_per_query", "routing_p95_ms_per_query"):
                         require(isinstance(actual.get(name), (int, float)) and actual[name] >= 0.0, f"product locator timing differs: {row['scale']}/{row['id']}")
+                    measurement_path = output / "measurements" / f"{row['id']}.json"
+                    if measurement_path.is_file():
+                        require(json.loads(measurement_path.read_text(encoding="utf-8")) == actual, f"product locator persisted measurement differs: {row['scale']}/{row['id']}")
+                        files[f"bundle/{scale['id']}/measurements/{measurement_path.name}"] = measurement_path.read_bytes()
                     expected.append(actual)
     require(len(summary["rows"]) == len(expected) == 54, "product locator matrix differs")
     for filename in ("run-data-dependent-product-locator.py", "write-data-dependent-product-locator-evidence.py", "plan-data-dependent-product-locator.py", "evaluate-native-ann-shortlists.py", "evaluate-projection-quantization.py"):
         files[f"bundle/sources/{filename}"] = (THIS / filename).read_bytes()
-    return {"schema_version": 1, "family": "data_dependent_product_locator_evidence_v1", "contract_sha256": sha256(contract_path), "row_count": len(expected), "rows": sorted(expected, key=lambda item: (item["scale"], item["id"])), "members": {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}, "_files": files}
+    return {"schema_version": 1, "family": "data_dependent_product_locator_evidence_v1", "contract_sha256": sha256(contract_path), "summary_contract_sha256": summary["contract_sha256"], "row_count": len(expected), "rows": sorted(expected, key=lambda item: (item["scale"], item["id"])), "members": {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}, "_files": files}
 
 
 def write_archive(path: Path, evidence: dict[str, Any]) -> None:

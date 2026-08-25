@@ -60,7 +60,9 @@ def load_contract(path: Path) -> dict[str, Any]:
     require(value.get("faiss_version") == faiss.__version__ == "1.13.2", "product locator Faiss version differs")
     require(value.get("training_source") == "frozen_train_itq256_codes_derived_only_from_pinned_artifact_and_frozen_train_e5_vectors_only", "product locator training source differs")
     require(value.get("implicit_cell_budgets") == [4096, 16384, 65536] and value.get("target_candidate_fractions") == [.05, .10, .25], "product locator matrix differs")
-    require(value.get("routing") == "best_first_sum_local_hamming_then_cell_key_lexicographic_v1", "product locator routing differs")
+    require(value.get("amends_measurement_contract_sha256") == "0ce223f825adc5b55ef5662ca628b0ddd5d5fcf8b40ea9aa2345414f26809aadb", "product locator measurement-contract amendment differs")
+    require(value.get("routing") == "best_first_sum_local_hamming_then_cell_key_lexicographic_v1" and value.get("routing_by_treatment") == {"local_binary_medoids": "best_first_sum_local_hamming_then_cell_key_lexicographic_v1", "permuted_binary_medoids": "best_first_sum_local_hamming_then_cell_key_lexicographic_v1", "float_e5_product": "best_first_sum_local_squared_l2_e5_then_cell_key_lexicographic_v1"}, "product locator routing differs")
+    require(value.get("training") == {"binary_hamming_kmedoids": {"sample": "deterministic_evenly_spaced_train_positions_v1", "sample_count": MEDOID_SAMPLE_COUNT, "iterations": MEDOID_ITERATIONS, "initialization": "farthest_first_hamming_with_lowest_position_ties_v1"}, "float_e5_kmeans": {"clusters_per_block": 4, "iterations": KMEANS_ITERATIONS, "restarts": 1, "seed": KMEANS_SEED, "spherical": False}}, "product locator training parameters differ")
     require(value.get("cascade") == {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10}, "product locator cascade differs")
     return value
 
@@ -190,6 +192,14 @@ def local_float_costs(query: numpy.ndarray, positions: list[numpy.ndarray], cent
     return [((local - query[part]) ** 2).sum(axis=1, dtype=numpy.float64) for part, local in zip(positions, centers, strict=True)]
 
 
+def routing_rule(treatment_id: str) -> str:
+    return "best_first_sum_local_squared_l2_e5_then_cell_key_lexicographic_v1" if treatment_id == "float_e5_product" else "best_first_sum_local_hamming_then_cell_key_lexicographic_v1"
+
+
+def local_costs(treatment_id: str, query: numpy.ndarray, query_bits: numpy.ndarray, positions: list[numpy.ndarray], codebooks: list[numpy.ndarray]) -> list[numpy.ndarray]:
+    return local_float_costs(query, positions, codebooks) if treatment_id == "float_e5_product" else local_binary_costs(query_bits, positions, codebooks)
+
+
 def best_first_cells(local_costs: list[numpy.ndarray]):
     """Yield every product cell by cost, then lexical base-four cell key."""
     orders = [numpy.lexsort((numpy.arange(4), costs)) for costs in local_costs]
@@ -301,6 +311,27 @@ def complete(config_path: Path, config: dict[str, Any], shortlist: Path, quality
         return False
 
 
+def prior_measurements(output_root: Path, contract: dict[str, Any], itq_artifact: Path) -> dict[tuple[str, str], dict[str, Any]]:
+    """Recover complete rows without changing their measured status or metrics."""
+    path = output_root / "summary.json"
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        accepted_contracts = {sha256(Path(contract["_path"])), contract["amends_measurement_contract_sha256"]}
+        require(payload.get("schema_version") == 1 and payload.get("family") == FAMILY and payload.get("contract_sha256") in accepted_contracts and payload.get("itq_artifact_sha256") == sha256(itq_artifact) and isinstance(payload.get("rows"), list), "product locator prior summary differs")
+        rows = {(str(row["scale"]), str(row["id"])): row for row in payload["rows"]}
+        require(len(rows) == len(payload["rows"]), "product locator prior summary contains duplicate rows")
+        return rows
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return {}
+
+
+def reusable_row(row: Any, expected: dict[str, Any]) -> bool:
+    metric_names = ("actual_candidate_fraction", "candidate_count_p95", "cell_probes_p50", "cell_probes_p95", "nonempty_cells_p50", "nonempty_cells_p95", "routing_p50_ms_per_query", "routing_p95_ms_per_query", "e5_oracle_survival_after_adc", "reranked_ndcg_at_10")
+    return isinstance(row, dict) and row.get("status") == "measured" and all(row.get(name) == value for name, value in expected.items()) and all(isinstance(row.get(name), (int, float)) and not isinstance(row.get(name), bool) and row[name] >= 0.0 for name in metric_names)
+
+
 def route(local_costs: list[numpy.ndarray], index: dict[int, numpy.ndarray], target: int) -> tuple[numpy.ndarray, list[int], int, int, float]:
     started = time.perf_counter()
     selected: list[numpy.ndarray] = []
@@ -322,6 +353,8 @@ def route(local_costs: list[numpy.ndarray], index: dict[int, numpy.ndarray], tar
 
 def run(args: argparse.Namespace) -> None:
     contract = load_contract(args.contract)
+    contract["_path"] = str(args.contract)
+    prior = prior_measurements(args.output_root, contract, args.itq_artifact)
     summary: list[dict[str, Any]] = []
     for scale in contract["scales"]:
         scale_id, document_count = scale["id"], scale["documents"]
@@ -357,15 +390,27 @@ def run(args: argparse.Namespace) -> None:
                     config_path, shortlist_path = output / "configs" / f"{identifier}.json", output / "shortlists" / f"{identifier}.json"
                     quality_path, contribution_path = output / "quality" / f"{identifier}.json", output / "contributions" / f"{identifier}.npz"
                     audit_path = output / "routing-audits" / f"{identifier}.json"
+                    measurement_path = output / "measurements" / f"{identifier}.json"
                     if complete(config_path, config, shortlist_path, quality_path, contribution_path) and audit_path.is_file():
                         quality = json.loads(quality_path.read_text(encoding="utf-8"))
-                        summary.append({"scale": scale_id, "id": identifier, "treatment": treatment_id, "implicit_cell_budget": budget, "target_candidate_fraction": fraction, "target_candidate_count": target, "status": "reused_complete", "config_sha256": sha256(config_path), "artifact_sha256": sha256(artifact_path), "shortlist_sha256": sha256(shortlist_path), "quality_sha256": sha256(quality_path), "contribution_sha256": sha256(contribution_path), "routing_audit_sha256": sha256(audit_path), "e5_oracle_survival_after_adc": quality["e5_oracle_survival_after_adc"], "reranked_ndcg_at_10": quality["reranked_ndcg_at_10"]})
-                        continue
+                        expected = {"scale": scale_id, "id": identifier, "treatment": treatment_id, "implicit_cell_budget": budget, "target_candidate_fraction": fraction, "target_candidate_count": target, "config_sha256": sha256(config_path), "artifact_sha256": sha256(artifact_path), "shortlist_sha256": sha256(shortlist_path), "quality_sha256": sha256(quality_path), "contribution_sha256": sha256(contribution_path), "routing_audit_sha256": sha256(audit_path), "e5_oracle_survival_after_adc": quality["e5_oracle_survival_after_adc"], "reranked_ndcg_at_10": quality["reranked_ndcg_at_10"]}
+                        stored = None
+                        if measurement_path.is_file():
+                            try:
+                                stored = json.loads(measurement_path.read_text(encoding="utf-8"))
+                            except (OSError, json.JSONDecodeError):
+                                stored = None
+                        row = stored if reusable_row(stored, expected) else prior.get((scale_id, identifier))
+                        if reusable_row(row, expected):
+                            measurement_path.parent.mkdir(parents=True, exist_ok=True)
+                            measurement_path.write_bytes(canonical(row))
+                            summary.append(row)
+                            continue
                     config_path.parent.mkdir(parents=True, exist_ok=True); config_path.write_bytes(canonical(config))
                     rows: list[dict[str, Any]] = []; counts: list[float] = []; probes: list[float] = []; nonempty: list[float] = []; times: list[float] = []
                     audit_rows: list[dict[str, Any]] = []
                     for query_position in range(648):
-                        local = local_float_costs(queries[query_position], local_positions, codebooks) if treatment_id == "float_e5_product" else local_binary_costs(query_bits[query_position], local_positions, codebooks)
+                        local = local_costs(treatment_id, queries[query_position], query_bits[query_position], local_positions, codebooks)
                         candidates, visited, current_probes, current_nonempty, elapsed = route(local, index, target)
                         require(candidates.size >= 768, "product locator candidates below Hamming@768")
                         hamming = hamming_positions(document_codes, query_codes[query_position], candidates)
@@ -376,7 +421,10 @@ def run(args: argparse.Namespace) -> None:
                     audit_path.parent.mkdir(parents=True, exist_ok=True); audit_path.write_bytes(canonical({"schema_version": 1, "family": FAMILY, "config_sha256": sha256(config_path), "artifact_sha256": sha256(artifact_path), "rows": audit_rows}))
                     shortlist_path.parent.mkdir(parents=True, exist_ok=True); shortlist_path.write_bytes(canonical({"schema_version": 1, "family": "native_ann_hamming_shortlist_export_v1", "backend": "data_dependent_product_locator", "input_manifest_sha256": sha256(input_manifest_path), "hamming_limit": 768, "config_sha256": sha256(config_path), "artifact_sha256": sha256(artifact_path), "rows": rows}))
                     measured = write_quality(data, shortlist_path, contribution_path, quality_path, output / "oracle.npz")
-                    summary.append({"scale": scale_id, "id": identifier, "treatment": treatment_id, "implicit_cell_budget": budget, "target_candidate_fraction": fraction, "target_candidate_count": target, "status": "measured", "actual_candidate_fraction": float(numpy.mean(counts)) / document_count, "candidate_count_p95": percentile(counts, .95), "cell_probes_p50": percentile(probes, .50), "cell_probes_p95": percentile(probes, .95), "nonempty_cells_p50": percentile(nonempty, .50), "nonempty_cells_p95": percentile(nonempty, .95), "routing_p50_ms_per_query": percentile(times, .50), "routing_p95_ms_per_query": percentile(times, .95), "config_sha256": sha256(config_path), "artifact_sha256": sha256(artifact_path), "shortlist_sha256": sha256(shortlist_path), "quality_sha256": sha256(quality_path), "contribution_sha256": sha256(contribution_path), "routing_audit_sha256": sha256(audit_path), "e5_oracle_survival_after_adc": measured["e5_oracle_survival_after_adc"], "reranked_ndcg_at_10": measured["reranked_ndcg_at_10"]})
+                    row = {"scale": scale_id, "id": identifier, "treatment": treatment_id, "implicit_cell_budget": budget, "target_candidate_fraction": fraction, "target_candidate_count": target, "status": "measured", "actual_candidate_fraction": float(numpy.mean(counts)) / document_count, "candidate_count_p95": percentile(counts, .95), "cell_probes_p50": percentile(probes, .50), "cell_probes_p95": percentile(probes, .95), "nonempty_cells_p50": percentile(nonempty, .50), "nonempty_cells_p95": percentile(nonempty, .95), "routing_p50_ms_per_query": percentile(times, .50), "routing_p95_ms_per_query": percentile(times, .95), "config_sha256": sha256(config_path), "artifact_sha256": sha256(artifact_path), "shortlist_sha256": sha256(shortlist_path), "quality_sha256": sha256(quality_path), "contribution_sha256": sha256(contribution_path), "routing_audit_sha256": sha256(audit_path), "e5_oracle_survival_after_adc": measured["e5_oracle_survival_after_adc"], "reranked_ndcg_at_10": measured["reranked_ndcg_at_10"]}
+                    measurement_path.parent.mkdir(parents=True, exist_ok=True)
+                    measurement_path.write_bytes(canonical(row))
+                    summary.append(row)
     args.output_root.mkdir(parents=True, exist_ok=True)
     args.output_root.joinpath("summary.json").write_bytes(canonical({"schema_version": 1, "family": FAMILY, "contract_sha256": sha256(args.contract), "itq_artifact_sha256": sha256(args.itq_artifact), "rows": summary}))
 
@@ -397,6 +445,10 @@ def self_test() -> None:
     index = cell_index(assigned)
     routed, visited, probe_count, nonempty, _ = route(local_float_costs(vectors[0], local_blocks, centers), index, 2)
     require(routed.size >= 2 and visited and probe_count >= nonempty >= 1, "product locator float routing differs")
+    require(routing_rule("local_binary_medoids") == contract["routing_by_treatment"]["local_binary_medoids"] and routing_rule("float_e5_product") == contract["routing_by_treatment"]["float_e5_product"], "product locator routing amendment differs")
+    expected = {"scale": "test", "id": "test", "treatment": "float_e5_product"}
+    measured = {**expected, "status": "measured", "actual_candidate_fraction": .05, "candidate_count_p95": 1.0, "cell_probes_p50": 1.0, "cell_probes_p95": 1.0, "nonempty_cells_p50": 1.0, "nonempty_cells_p95": 1.0, "routing_p50_ms_per_query": 1.0, "routing_p95_ms_per_query": 1.0, "e5_oracle_survival_after_adc": .5, "reranked_ndcg_at_10": .5}
+    require(reusable_row(measured, expected) and not reusable_row({**measured, "status": "reused_complete"}, expected), "product locator resume row differs")
     print("data-dependent product locator runner self-test passed")
 
 
