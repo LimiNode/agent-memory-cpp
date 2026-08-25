@@ -8,6 +8,7 @@
 #include <agent_memory/index/AutoencoderBinaryEncoder.hpp>
 #include <agent_memory/eval/Evaluation.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -21,6 +22,9 @@ namespace agent_memory {
     /// \brief Returns the lowercase SHA-256 digest of a complete regular file.
     /// \throws std::runtime_error when the file cannot be read.
     [[nodiscard]] std::string sha256_file_hex(const std::filesystem::path& path);
+
+    /// \brief Returns the lowercase SHA-256 digest of the supplied bytes.
+    [[nodiscard]] std::string sha256_bytes_hex(const std::vector<std::uint8_t>& bytes);
 
     /// \brief ID-bearing float vector loaded from a materialized E5 study.
     struct MaterializedEmbeddingRecord final {

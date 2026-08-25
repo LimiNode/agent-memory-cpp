@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "family": "scale_aware_native_mih_fixed_r56_spillover_diagnostic_v1",
+  "purpose": "diagnose_fixed_r56_candidate_union_before_expanding_exploratory_grid",
+  "scope": "Spanish calibration artifacts only; diagnostic, not selection or confirmation",
+  "source_protocol": {
+    "family": "scale_aware_native_mih_protocol_v1",
+    "measured_source_ref": "f9aa210",
+    "fixed_radius": 56,
+    "hamming_limit": 768
+  },
+  "representatives": [
+    {"scale": "es-25k", "id": "mih-m21-flat_open_address-two_pass_generation_array", "role": "calibration_selected_mih"},
+    {"scale": "es-100k", "id": "mih-m19-flat_open_address-two_pass_generation_array", "role": "fastest_examined_fixed_r56_mih_not_admissible"},
+    {"scale": "es-1m", "id": "mih-m16-flat_open_address-two_pass_generation_array", "role": "largest_examined_fixed_r56_mih_not_admissible"}
+  ],
+  "measurements": [
+    "raw_candidate_union_size",
+    "global_and_union_count_at_or_below_hamming_radius_56",
+    "deterministic_exact_flat_hamming_top_768_max_distance",
+    "candidate_union_recall_against_deterministic_exact_flat_hamming_top_768",
+    "final_mih_hamming_shortlist_recall_against_deterministic_exact_flat_hamming_top_768",
+    "final_mih_hamming_shortlist_spillover_fraction_above_radius_56"
+  ],
+  "prohibitions": [
+    "no_e5_quality_gate_replay_or_selection",
+    "no_french_confirmation_data",
+    "no_change_to_fixed_r56_schedule_or_original_measured_matrix",
+    "no_retrospective_claim_of_exact_hamming_top_k"
+  ]
+}
