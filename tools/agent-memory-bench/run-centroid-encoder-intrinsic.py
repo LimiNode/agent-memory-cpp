@@ -214,6 +214,12 @@ def self_test() -> None:
     values = numpy.asarray([[1., -1.], [-1., 1.]], dtype=numpy.float32); codes = pack(values)
     require(hamming_distances(codes, codes[0]).tolist() == [0, 2], "Hamming calculation differs")
     matrix = deterministic_orthogonal(4, 52); require(matrix.shape == (4, 4) and numpy.allclose(matrix.T @ matrix, numpy.eye(4), atol=1e-5), "orthogonal construction differs")
+    binary = numpy.asarray([[1., 1.], [1., -1.], [-1., 1.]], dtype=numpy.float32)
+    target = numpy.asarray([[1.5, .2], [.4, -1.3], [-.8, .9]], dtype=numpy.float32)
+    left, _, right = numpy.linalg.svd(binary.T @ target, full_matrices=False)
+    procrustes = left @ right
+    transposed = right.T @ left.T
+    require(numpy.linalg.norm(binary @ procrustes - target) < numpy.linalg.norm(binary @ transposed - target), "ITQ Procrustes update orientation differs")
     print("centroid encoder intrinsic runner self-test passed")
 
 

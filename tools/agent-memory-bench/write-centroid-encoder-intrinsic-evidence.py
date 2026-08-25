@@ -118,7 +118,17 @@ def validate(args: argparse.Namespace) -> dict[str, Any]:
     selected_rows.sort(key=lambda row: (-row["float_top16_recall_at_binary_top64"], -row["float_top16_recall_at_binary_top32"], row["config"]["bit_count"], row["config"]["encoder"]))
     expected_selected = [{"id": row["config"]["id"], "report_sha256": sha256(args.result_root / row["config"]["id"] / "report.json"), "artifact_sha256": row["artifact_sha256"], "top32": row["float_top16_recall_at_binary_top32"], "top64": row["float_top16_recall_at_binary_top64"]} for row in selected_rows[:gate["maximum_selected_configurations"]]]
     require(summary.get("selected") == expected_selected, "centroid encoder selection replay differs")
-    return {"schema_version": 1, "family": "centroid_encoder_intrinsic_evidence_v1", "contract_sha256": sha256(args.contract), "row_count": len(expected_rows), "selected_count": len(expected_selected), "rows": expected_rows, "members": {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}, "_files": files}
+    strict_improvements: list[dict[str, Any]] = []
+    for encoder in contract["encoders"]:
+        if encoder == "rademacher_sign_control":
+            continue
+        at_256 = next(row for row in expected_rows if row["config"]["encoder"] == encoder and row["config"]["bit_count"] == 256)
+        at_384 = next(row for row in expected_rows if row["config"]["encoder"] == encoder and row["config"]["bit_count"] == 384)
+        if at_384["float_top16_recall_at_binary_top64"] > at_256["float_top16_recall_at_binary_top64"]:
+            strict_improvements.append({"encoder": encoder, "from_id": at_256["config"]["id"], "from_top64": at_256["float_top16_recall_at_binary_top64"], "to_id": at_384["config"]["id"], "to_top64": at_384["float_top16_recall_at_binary_top64"]})
+    permission = {"predicate": contract["overcomplete_follow_up"]["permitted_only_if"], "permitted": bool(strict_improvements), "supporting_rows": strict_improvements}
+    frozen_inputs = {**float_identity, **scale_identity, **query_identity}
+    return {"schema_version": 1, "family": "centroid_encoder_intrinsic_evidence_v1", "contract_sha256": sha256(args.contract), "frozen_inputs": frozen_inputs, "overcomplete_follow_up": permission, "row_count": len(expected_rows), "selected_count": len(expected_selected), "rows": expected_rows, "members": {name: {"sha256": sha256_bytes(value), "size": len(value)} for name, value in sorted(files.items())}, "_files": files}
 
 
 def write_archive(path: Path, manifest: dict[str, Any]) -> None:

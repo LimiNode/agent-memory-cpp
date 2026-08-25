@@ -38,12 +38,13 @@ top-64 (64.65%).
 
 Both ITQ variants improved from 256 to 384 bits (60.54% to 64.88% for
 centroid-only ITQ), satisfying the predeclared condition for a separate
-overcomplete encoder follow-up. No strict-dimension configuration meets the
+overcomplete encoder follow-up. The evidence archive records that permission,
+its predicate, and the supporting 256/384 rows. No strict-dimension configuration meets the
 95%/85% end-to-end selection gate, so this result intentionally makes no claim
 about downstream dev E5 survival or nDCG.
 
 The local deterministic evidence archive is
-`tmp/centroid-encoder-intrinsic-v1-evidence.zip`, SHA-256
-`edad3119c95708101f4064270b244f9b6af7842dc32f9d1ab1bd9f142f6615e4`.
+`tmp/centroid-encoder-intrinsic-v1-evidence.zip`; its digest is regenerated
+with the explicit follow-up-permission provenance amendment.
 It is intentionally untracked pending review and a separately approved
 evidence-release decision.
