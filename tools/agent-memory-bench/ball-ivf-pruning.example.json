@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "family": "ball_ivf_pruning_diagnostic_v2",
+  "purpose": "single_centroid_max_radius_triangle_bound_feasibility_only_not_an_exact_index_claim",
+  "faiss_version": "1.13.2",
+  "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987",
+  "reference_flat_shortlist_sha256": "48da713381f0b7b9c36635f6c286541311c524083be4c7bf56223ca2be840ce5",
+  "index_sha256_by_nlist": {
+    "1024": "5f32249faa2c257731177ed7aecc0674a057d0be1a397294687bd52cf5039edf",
+    "4096": "1e94935ec84cb190d6d564209fae5ba416028c1289d76a1f16c5c644781b0d24"
+  },
+  "k_values": [10, 64, 128, 256, 512, 768],
+  "strict_pruning_rule": "max(0,signed_hamming_query_centroid-list_radius)>flat_dk_v2"
+}
