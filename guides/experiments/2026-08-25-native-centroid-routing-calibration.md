@@ -90,14 +90,16 @@ the exact FP32 centroid-order teacher after the declared list-mass selection.
 | es-1m / K=16384 | exact FP32 scan | 8.236 | 1.0000 |
 | es-1m / K=16384 | HNSW M8, ef2048 | 3.401 | 0.9992 |
 
-The simple payload controls do not provide a better native frontier. Per-
-centroid int8 preserved roughly 98.3--99.3% teacher document overlap, but was
-slightly slower than the compiler-vectorized FP32 scan. The scalar software
-FP16 conversion in this diagnostic is much slower; it is not evidence against
-a future platform-specific hardware-FP16 implementation. The static 512-bit
-Rademacher routes were also slower than FP32: at K=16384 their 5% p50 values
-were 11.3--12.7 ms for symmetric Hamming and 47.2--48.2 ms for asymmetric
-sign-dot, even before a production document cascade.
+Algorithmically, asymmetric binary scoring improves substantially over
+symmetric Hamming at the same shortlist, so query-side sign quantization is a
+material source of binary ranking error. The reference implementation still
+does not establish a production latency frontier: FP32, int8, software-FP16,
+and byte-at-a-time Hamming are scalar diagnostic kernels. In particular, the
+slower int8 and binary times are not evidence that optimized SIMD int8 dot or
+hardware POPCNT/AVX2 Hamming would be slower than FP32. At K=16384, the
+reference 5% p50 values were 11.3--12.7 ms for symmetric Hamming and
+47.2--48.2 ms for asymmetric sign-dot, versus 8.236 ms for the scalar FP32
+control; treat this as a current implementation measurement only.
 
 The HNSW feasibility flags are evidence, not failures of the runner. At K1024,
 `efSearch=256` cannot return the declared 512-centroid 2x shortlist for the
@@ -109,11 +111,10 @@ substituting a different candidate mass.
 Interpretation: for these frozen semantic centroids, native exhaustive FP32
 routing remains a strong and simple baseline through K4096. External FP32
 HNSW is a viable latency control at larger K, but remains research-only and is
-not a library dependency or a production selection. This experiment rejects
-the specific static 512-bit Rademacher surrogate as a useful replacement for
-the centroid scan. It does not reject a supervised or hierarchical semantic
-router: those must be trained/evaluated on a separate calibration partition
-against the same matched-mass contract.
+not a library dependency or a production selection. The experiment does not
+yet reject the static Rademacher surrogate on production-optimized latency, and
+does not make a decision about a learned router. It only establishes its
+algorithmic matched-mass quality and the cost of this reference implementation.
 
 Limitations: all timing is one-machine, single-native-thread, warm-routing
 diagnostic evidence; it excludes E5 query encoding, HNSW build time, document
@@ -121,7 +122,8 @@ cascade work, memory high-water marks, and cross-platform measurements. The
 matrix is calibration-only and cannot select a production configuration or
 claim end-to-end retrieval quality.
 
-Next check: predeclare a held-out protocol for a hierarchical semantic-centroid
-router (or a small supervised classifier) that reproduces the frozen centroid
-partition. Compare it with FP32 scan and the external HNSW control at identical
-candidate-document mass; do not continue the static Rademacher binary line.
+Next check: predeclare an optimized native-kernel follow-up with the same
+frozen centroids and matched-mass contract: vectorized FP32, SIMD int8 dot,
+hardware POPCNT/AVX2 Hamming, and a platform-appropriate FP16 path. Only after
+that comparison may the project choose quantized exhaustive scan, external
+HNSW for large K, or reopen a held-out learned/hierarchical semantic router.
