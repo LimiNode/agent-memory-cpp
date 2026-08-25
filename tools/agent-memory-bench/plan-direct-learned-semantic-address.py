@@ -35,13 +35,27 @@ def load_contract(path: Path) -> dict[str, Any]:
             and addressing.get("semantic_prefix_bits") == [8, 10, 12, 14, 16]
             and addressing.get("query_probes") == [1, 2, 4, 8, 16]
             and addressing.get("document_replication") == [1, 2, 4]
-            and addressing.get("query_routing") == "scored_top_p_addresses_or_prefixes_v1"
-            and addressing.get("document_placement") == "asymmetric_learned_top_r_addresses_v1",
+            and addressing.get("query_routing") == "confidence_ranked_subset_flip_addresses_v1"
+            and addressing.get("document_placement") == "document_only_pca_median_nested_prefixes_with_margin_replication_v1",
             "direct semantic address routing grid differs")
+    training = value.get("router_training")
+    require(isinstance(training, dict)
+            and training.get("family") == "deterministic_mlp_384_128_16_v1"
+            and training.get("checkpoint") == "fixed_final_epoch"
+            and training.get("target") == "mean_document_address_bit_probability_over_exact_e5_top10_v1",
+            "direct semantic address training contract differs")
     require(value.get("candidate_mass_targets") == [0.05, 0.1, 0.25]
-            and value.get("controls") == ["direct_address_postings", "hierarchical_prefix_postings",
-                                          "address_then_float_centroid_refinement", "frozen_float_semantic_ivf"],
+            and value.get("controls") == ["symmetric_document_head_control",
+                                          "learned_direct_address_postings",
+                                          "learned_address_then_float_bucket_centroid_refinement",
+                                          "exact_float_bucket_centroid_scan_same_postings"],
             "direct semantic address controls differ")
+    selection = value.get("selection")
+    require(isinstance(selection, dict)
+            and selection.get("headline_treatment") == "learned_direct_address_postings"
+            and selection.get("candidate_mass_target") == 0.1
+            and selection.get("internal_evaluation_may_not_select") is True,
+            "direct semantic address selection contract differs")
     return value
 
 
