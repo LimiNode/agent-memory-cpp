@@ -28,6 +28,11 @@ E5 survival after ADC does not justify native trie or empty-cell traversal
 engineering. Passing that gate would only justify a follow-up implementation
 study; it is not a production-selection or confirmation claim.
 
+The recorded p50 routing times are single-host diagnostic observations from the
+deterministic routing replay. They expose the relative cost of exhaustive
+best-first empty-cell traversal, but are not repeated native latency evidence
+and must not be used to select a production backend.
+
 The frozen storage input has no document-side pre-ITQ projection payload: it
 contains E5 document vectors, packed ITQ codes, and query-side ITQ projections.
 Consequently, the float treatment is explicitly defined over frozen E5 vectors
@@ -61,8 +66,8 @@ The train-only entropy bit permutation produced distinct serialized artifacts
 and candidate traces, but the same aggregate quality as contiguous binary
 medoids in this matrix. It is therefore not a promising selector by itself.
 
-The experiment is a negative result for the proposed native product-locator
-follow-up: none of its 5% rows reaches the exploratory quality gate, and the
+The experiment is a negative result for this local, sampled-medoid product
+locator follow-up: none of its 5% rows reaches the exploratory quality gate, and the
 quality improvement from more cells comes with an increasingly expensive
 best-first empty-cell traversal. It does not invalidate data-dependent
 semantic partitions in general; the float semantic IVF control remains the
