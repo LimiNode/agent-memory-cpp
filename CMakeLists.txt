@@ -811,6 +811,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_syndrome_perfect_code_diagnostic_self_test
+            COMMAND
+                ${Python3_EXECUTABLE}
+                ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/diagnose-syndrome-perfect-codes.py
+                --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_native_ann_backend_calibration_self_test
             COMMAND
                 ${Python3_EXECUTABLE}
