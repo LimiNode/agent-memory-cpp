@@ -20,7 +20,15 @@ centroid lists until the same 5%, 10%, or 25% document mass is reached.
 | int8 | symmetric per-centroid int8 payload and scale | matched-mass teacher overlap |
 | symmetric binary | 512-bit Rademacher Hamming shortlist then exact float rerank | 2x/4x shortlist |
 | asymmetric binary | same stored 512-bit codes, continuous query projection score then exact float rerank | 2x/4x shortlist |
-| HNSW | external hnswlib FP32 graph then exact float rerank | `M={8,16}`, `efSearch={16,32,64,128}` |
+| HNSW | external hnswlib FP32 graph then exact float rerank | `M={8,16}`, `efSearch={128,512,2048,4096}` |
+
+For the binary arms, the exact FP32 rerank shortlist is
+`ceil(multiplier * target_fraction * centroid_count)`. HNSW has no multiplier:
+it returns `ceil(target_fraction * centroid_count)` centroids and reranks them
+in exact FP32. This makes feasibility explicit instead of silently asking an
+`efSearch` of 16--128 to produce thousands of centroids. The runner uses one
+native routing thread and must mark a row infeasible when an HNSW search cannot
+produce its declared shortlist.
 
 The runner must preserve raw timing samples, centroid-payload bytes,
 backend-specific index bytes, feasibility, selected-centroid recall, and
@@ -39,5 +47,15 @@ Expected outcomes:
 - HNSW is only a graph-cost/latency control, not a default dependency.
 
 Limitations: this is one hardware environment and calibration-only data.
-Repeated warm routing measurements establish a local performance frontier, not
+Repeated warm single-thread routing measurements establish a local performance frontier, not
 cross-platform latency or retrieval quality after the document cascade.
+
+### Pre-measurement protocol clarification
+
+The initial draft used `efSearch={16,32,64,128}` and treated every
+`then_exact_fp32_rerank` treatment as if it had a binary shortlist multiplier.
+That made the HNSW arm unable to provide the required centroid-list mass for
+the larger configurations. Before any row of the matched-mass matrix was run,
+the protocol was corrected to the explicit binary/HNSW rules above and to the
+feasible `efSearch={128,512,2048,4096}` grid. The separately run C++ scan
+preflight is diagnostic-only and is not a row of this matrix.
