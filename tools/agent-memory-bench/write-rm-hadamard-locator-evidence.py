@@ -56,6 +56,7 @@ def load(name: str, filename: str) -> Any:
 
 runner = load("rm_hadamard_runner", "run-rm-hadamard-locator.py")
 evaluator = load("rm_hadamard_evaluator", "evaluate-native-ann-shortlists.py")
+input_payloads = runner.input_payloads
 
 
 def validate_quality(quality_path: Path, contribution_path: Path, shortlist_path: Path, oracle_path: Path, contract: dict[str, Any], evaluation: dict[str, Any]) -> tuple[float, float]:
@@ -119,6 +120,7 @@ def write_archive(path: Path, manifest: dict[str, Any]) -> None:
 
 
 def self_test() -> None:
+    require(input_payloads is runner.input_payloads, "RM/Hadamard input payload helper differs")
     with tempfile.TemporaryDirectory() as temporary:
         path = Path(temporary) / "evidence.zip"; write_archive(path, {"schema_version": 1, "_files": {"bundle/value": b"value"}}); require(zipfile.ZipFile(path).read("bundle/value") == b"value", "RM/Hadamard evidence self-test differs")
     print("RM(1,8)/Hadamard evidence packager self-test passed")
