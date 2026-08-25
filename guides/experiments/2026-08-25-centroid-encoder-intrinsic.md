@@ -19,6 +19,12 @@ the binary top-16/32/64/128 for five encoders and 128/256/384-bit codes:
 - centroid-only PCA/ITQ;
 - centroid-plus-calibration-query PCA/ITQ.
 
+This is an intrinsic calibration score, not the operational matched-candidate-
+mass route used by the binary-centroid surrogate. The query-adapted variant is
+fit and evaluated on this calibration bundle, so it is explicitly a training-
+set observation. Bit-count comparisons also use one deterministic seed; a
+future operational protocol must use held-out selection and multiple seeds.
+
 Strict orthogonal/PCA/ITQ transforms cannot exceed the 384 E5 dimensions.
 Overcomplete 512+-bit projections are outside this matrix and are permitted
 only if a non-Rademacher encoder strictly improves top-64 coverage from 256 to
@@ -41,7 +47,8 @@ centroid-only ITQ), satisfying the predeclared condition for a separate
 overcomplete encoder follow-up. The evidence archive records that permission,
 its predicate, and the supporting 256/384 rows. No strict-dimension configuration meets the
 95%/85% end-to-end selection gate, so this result intentionally makes no claim
-about downstream dev E5 survival or nDCG.
+about downstream dev E5 survival or nDCG, nor does it close an operational
+2x/4x matched-mass cascade.
 
 The local deterministic evidence archive is
 `tmp/centroid-encoder-intrinsic-v1-evidence.zip`; its digest is regenerated
