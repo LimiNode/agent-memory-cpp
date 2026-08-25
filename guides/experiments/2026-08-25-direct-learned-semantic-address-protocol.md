@@ -126,6 +126,43 @@ whether the gain came from query ranking or from a new partition. Until that
 follow-up succeeds, the float-refined address pool is the viable treatment and
 the fully centroid-free path remains negative evidence.
 
+### Additive pool diagnostic
+
+The near-equivalence of the learned-pool refinement (`75.74%`) and the full
+occupied-centroid scan (`75.99%`) is useful but does not by itself establish
+that the learned pool is selective: at the headline point it contains 64 of
+the 256 possible 8-bit addresses. The follow-up diagnostic is intentionally
+separate from the measured v1 runner and its 450 selection rows. It binds the
+published v1 result and model, retains the same `8-bit / 16-probe /
+replication-4 / 10%` substrate, and compares centroid-refined final addresses
+from three equally sized pools:
+
+- the learned confidence pool;
+- the symmetric document-head confidence pool;
+- eight query-specific cryptographically deterministic random pools.
+
+It reports containment of the exact-centroid top-16 addresses, coverage of the
+replicated exact-E5 oracle addresses, and the same raw/ADC/nDCG cascade
+metrics. These are post-hoc explanatory controls, not a replacement for the
+predeclared v1 evaluation or a new confirmation claim.
+
+On the existing internal partition, the learned pool was substantially enriched
+over the eight deterministic random pools, but was not stronger than the
+symmetric pool:
+
+| 64-address pool, then identical centroid refinement | Exact-centroid top-16 containment | E5 survival after ADC | nDCG@10 |
+| --- | ---: | ---: | ---: |
+| Learned confidence pool | 83.76% | 75.74% | 0.6994 |
+| Symmetric confidence pool | 96.26% | 75.86% | 0.6841 |
+| Deterministic random pool mean (p05--p95) | 25.17% (24.40--26.01%) | 52.03% (50.97--53.64%) | 0.5324 (0.5149--0.5532) |
+
+Thus the learned pool is informative relative to random routing, but this
+additional diagnostic does not support a claim that the v1 learned pool is
+better than the document-head symmetric control. The higher learned-pool nDCG
+at essentially tied survival is directional only. The next protocol must retain
+both controls and test direct address ranking rather than infer a learned-pool
+advantage from the full-centroid comparison alone.
+
 ## Evidence and limitations
 
 The local evidence bundle contains the frozen manifests, exact split members,
