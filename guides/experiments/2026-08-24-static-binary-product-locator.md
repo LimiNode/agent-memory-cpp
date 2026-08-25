@@ -86,8 +86,11 @@ payloads in the archive and recomputes every local assignment, best-first cell
 order, candidate union, full Hamming ordering, ADC order, and every per-query
 E5/nDCG contribution from the replayed ADC shortlist and frozen evaluation
 data. Raw shortlists, contribution arrays, and archives remain untracked under
-`tmp/`. The previous local archive digest is historical; a new archive should
-be generated after this provenance hardening.
+`tmp/`. The hardened deterministic archive was regenerated twice from the
+completed result root; both outputs have SHA-256
+`b43a518f2bce50e6c09e182c799f2943e66092a628ec1818d389b10df1d80637`
+(`tmp/binary-product-locator-es25k-v2-evidence.zip`). It remains local pending
+review and any separately approved evidence-release decision.
 
 The measurements use only one frozen Spanish calibration corpus. They are not
 a selection result, a confirmation result, or a latency comparison with native
