@@ -61,3 +61,67 @@ matched-mass matrix was run, the protocol was corrected to the explicit 2x
 HNSW rule above and to the feasible `efSearch={256,512,2048,8192}` grid. The
 separately run C++ scan preflight and smoke run are diagnostic-only and are not
 rows of this matrix.
+
+## 2026-08-25 calibration result
+
+The completed matrix contains 180 predeclared rows: four frozen
+`(scale, centroid_count)` materializations, three document-mass targets, and
+the declared FP32/FP16/int8/binary/HNSW controls. Each feasible row has two
+warmups and seven retained warm in-memory timing samples. The fail-closed
+evidence archive was reproduced twice byte-for-byte locally:
+
+```text
+native-centroid-routing-v1-evidence.zip
+SHA-256 e71d0be96597f120ef3b3c75c82f4fa008837a3a2c1cebe12181921cc2d69f76
+```
+
+The compact frontier below uses the 5% document-candidate target, where
+sublinear routing is most useful. `overlap` is candidate-document overlap with
+the exact FP32 centroid-order teacher after the declared list-mass selection.
+
+| frozen materialization | treatment | p50 ms/query | overlap |
+| --- | --- | ---: | ---: |
+| es-100k / K=1024 | exact FP32 scan | 0.482 | 1.0000 |
+| es-100k / K=1024 | HNSW M16, ef256 | 0.247 | 1.0000 |
+| es-100k / K=4096 | exact FP32 scan | 1.975 | 1.0000 |
+| es-100k / K=4096 | HNSW M16, ef512 | 0.814 | 0.9992 |
+| es-1m / K=4096 | exact FP32 scan | 1.972 | 1.0000 |
+| es-1m / K=4096 | HNSW M16, ef512 | 0.807 | 0.9994 |
+| es-1m / K=16384 | exact FP32 scan | 8.236 | 1.0000 |
+| es-1m / K=16384 | HNSW M8, ef2048 | 3.401 | 0.9992 |
+
+The simple payload controls do not provide a better native frontier. Per-
+centroid int8 preserved roughly 98.3--99.3% teacher document overlap, but was
+slightly slower than the compiler-vectorized FP32 scan. The scalar software
+FP16 conversion in this diagnostic is much slower; it is not evidence against
+a future platform-specific hardware-FP16 implementation. The static 512-bit
+Rademacher routes were also slower than FP32: at K=16384 their 5% p50 values
+were 11.3--12.7 ms for symmetric Hamming and 47.2--48.2 ms for asymmetric
+sign-dot, even before a production document cascade.
+
+The HNSW feasibility flags are evidence, not failures of the runner. At K1024,
+`efSearch=256` cannot return the declared 512-centroid 2x shortlist for the
+25% row. At K4096 and K16384, lower-ef configurations are likewise marked
+infeasible whenever their required shortlist is larger than `efSearch`. They
+are retained so the archive records the boundary rather than silently
+substituting a different candidate mass.
+
+Interpretation: for these frozen semantic centroids, native exhaustive FP32
+routing remains a strong and simple baseline through K4096. External FP32
+HNSW is a viable latency control at larger K, but remains research-only and is
+not a library dependency or a production selection. This experiment rejects
+the specific static 512-bit Rademacher surrogate as a useful replacement for
+the centroid scan. It does not reject a supervised or hierarchical semantic
+router: those must be trained/evaluated on a separate calibration partition
+against the same matched-mass contract.
+
+Limitations: all timing is one-machine, single-native-thread, warm-routing
+diagnostic evidence; it excludes E5 query encoding, HNSW build time, document
+cascade work, memory high-water marks, and cross-platform measurements. The
+matrix is calibration-only and cannot select a production configuration or
+claim end-to-end retrieval quality.
+
+Next check: predeclare a held-out protocol for a hierarchical semantic-centroid
+router (or a small supervised classifier) that reproduces the frozen centroid
+partition. Compare it with FP32 scan and the external HNSW control at identical
+candidate-document mass; do not continue the static Rademacher binary line.
