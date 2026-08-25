@@ -18,7 +18,7 @@
   ],
   "binary_code": {"bits": 512, "construction": "centroid_component_sign_after_deterministic_rademacher_projection_v1", "seed": 20260825},
   "shortlist_multipliers": [2, 4],
-  "hnsw": {"connectivity": [8, 16], "ef_construction": 200, "ef_search": [256, 512, 2048, 8192]},
+  "hnsw": {"connectivity": [8, 16], "ef_construction": 200, "ef_search": [256, 512, 2048, 8192], "seed": 20260825, "pinned_revision": "3f3429661187e4c24a490a0f148fc6bc89042b3d"},
   "timing": {"warmup_repeats": 2, "measured_repeats": 7, "concurrency": "single_native_routing_thread_v1", "scope": "warm_in_memory_native_centroid_routing_only_excludes_query_embedding_document_cascade_and_index_build_v1"},
   "required_metrics": ["exact_float_selected_centroid_recall_at_matched_candidate_mass", "teacher_candidate_document_overlap_at_matched_candidate_mass", "target_mass_feasibility", "centroid_payload_bytes", "index_bytes", "routing_p50_ms_per_query", "routing_p95_ms_per_query", "raw_timing_samples_ms_per_query"],
   "selection": "forbidden_results_describe_a_calibration_frontier_only",

@@ -516,6 +516,7 @@ int run(const std::filesystem::path& root, const std::filesystem::path& report,
         {"measured_repeats", repeats},
         {"concurrency", "single_native_routing_thread_v1"},
         {"hnswlib_revision", AGENT_MEMORY_HNSWLIB_REVISION},
+        {"hnsw_seed", 20260825},
         {"centroid_payload_bytes", {
             {"fp32", input.m_centroid_count * kDimension * sizeof(float)},
             {"fp16", input.m_centroid_count * kDimension * sizeof(std::uint16_t)},
