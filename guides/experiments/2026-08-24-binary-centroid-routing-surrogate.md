@@ -8,8 +8,9 @@ artifact.
 For each frozen float centroid set, a deterministic seeded Rademacher projection
 and sign produces 128-, 256-, or 512-bit centroid codes. A query scans all centroid
 codes by Hamming distance, takes `2 x nprobe` or `4 x nprobe`, then computes
-exact float inner products only for that shortlist and selects the original
-`nprobe` semantic lists. The downstream ITQ-256 Hamming@768, ADC@256, and E5
+exact float inner products only for that shortlist and selects as many
+float-reranked semantic lists as are needed to reach the predeclared candidate
+mass. The downstream ITQ-256 Hamming@768, ADC@256, and E5
 rerank cascade is unchanged.
 
 | scale | centroid counts | candidate targets | code lengths | binary shortlist multiplier |
@@ -17,7 +18,9 @@ rerank cascade is unchanged.
 | Spanish 100k | 1024, 4096 | 5%, 10%, 25% | 128, 256, 512 | 2x, 4x |
 | Spanish 1M | 4096, 16384 | 5%, 10%, 25% | 128, 256, 512 | 2x, 4x |
 
-The 72 rows report recall of the exact-float control’s selected centroid lists,
+The 72 rows report recall of the exact-float control's selected centroid lists
+at matched candidate mass (the historical JSON field
+`float_top_nprobe_centroid_recall` has that meaning),
 the separate binary-scan and float-rerank timing distributions, candidate mass,
 and the final E5 survival/nDCG. It is deliberately not a centroid HNSW, MIH,
 or ADC experiment. Those optimizations would obscure the first question:

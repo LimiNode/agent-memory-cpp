@@ -38,6 +38,20 @@ def validate_archive(path: Path) -> tuple[dict[str, Any], bytes]:
     return manifest, payload
 
 
+def frozen_evaluation_manifest_sha256(path: Path, manifest: dict[str, Any], scale: str) -> str:
+    """Return the archived evaluation-manifest identity for one frozen scale."""
+    name = f"bundle/{scale}/frozen-evaluation-manifest.json"
+    members = manifest.get("members")
+    if not isinstance(members, dict) or name not in members:
+        raise ValueError(f"float semantic IVF evidence lacks frozen evaluation manifest: {scale}")
+    with zipfile.ZipFile(path) as archive:
+        value = archive.read(name)
+    metadata = members[name]
+    if metadata != {"sha256": _sha256(value), "size": len(value)}:
+        raise ValueError(f"float semantic IVF frozen evaluation manifest differs: {scale}")
+    return metadata["sha256"]
+
+
 def self_test() -> None:
     with tempfile.TemporaryDirectory() as temporary:
         path = Path(temporary) / "evidence.zip"

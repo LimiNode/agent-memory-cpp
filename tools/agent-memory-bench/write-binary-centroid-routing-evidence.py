@@ -149,7 +149,8 @@ def validate(result_root: Path, scale_root: Path, float_root: Path, float_eviden
         input_data = json.loads(input_manifest.read_text(encoding="utf-8"))
         data = evaluator.shared.load_root(evaluation_root)
         expected_input = "720fead487f3a7caec62ad190cd93fa79969effd1d0fe825c865ab5d0d437d15" if scale_id == "es-100k" else "697f81bc66b37feb47b413fa168f4ae5efd030b9dbbaeb8d0c67ac8d224a9ae7"
-        require(sha256(input_manifest) == expected_input and len(data["document_ids"]) == count and len(data["query_ids"]) == 648, f"binary centroid routing frozen root differs: {scale_id}")
+        expected_evaluation = runner.float_evidence.frozen_evaluation_manifest_sha256(float_evidence, float_manifest, scale_id)
+        require(sha256(input_manifest) == expected_input and sha256(evaluation_manifest) == expected_evaluation and len(data["document_ids"]) == count and len(data["query_ids"]) == 648, f"binary centroid routing frozen root differs: {scale_id}")
         add_file(files, f"bundle/{scale_id}/frozen-input-manifest.json", input_manifest)
         add_file(files, f"bundle/{scale_id}/frozen-evaluation-manifest.json", evaluation_manifest)
         oracle_path = result_root / scale_id / "oracle.npz"

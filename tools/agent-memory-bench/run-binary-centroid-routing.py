@@ -9,6 +9,7 @@ import importlib.util
 import json
 import sys
 import time
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -44,12 +45,12 @@ def load(name: str, filename: str) -> Any:
 
 evaluator = load("binary_centroid_routing_evaluator", "evaluate-native-ann-shortlists.py")
 float_evidence = load("binary_centroid_routing_float_evidence", "float_semantic_ivf_evidence.py")
+planner = load("binary_centroid_routing_planner", "plan-binary-centroid-routing.py")
 
 
 def load_contract(path: Path) -> dict[str, Any]:
-    value = json.loads(path.read_text(encoding="utf-8"))
-    require(value.get("schema_version") == 1 and value.get("family") == FAMILY and value.get("faiss_version") == faiss.__version__ == "1.13.2", "binary centroid routing contract differs")
-    require(value.get("binary_code") == {"lengths": [128, 256, 512], "construction": "centroid_component_sign_after_deterministic_rademacher_projection_v1", "seed": 20260825} and value.get("binary_shortlist_multipliers") == [2, 4] and value.get("target_candidate_fractions") == [.05, .10, .25], "binary centroid routing grid differs")
+    value = planner.load_contract(path)
+    require(value.get("faiss_version") == faiss.__version__, "binary centroid routing Faiss version differs")
     return value
 
 
@@ -97,9 +98,9 @@ def adc_positions(document_bits: numpy.ndarray, query_projection: numpy.ndarray,
     return candidates[numpy.lexsort((candidates, distances))[:256]]
 
 
-def float_evidence_members(path: Path) -> dict[str, Any]:
+def float_evidence_members(path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     manifest, _ = float_evidence.validate_archive(path)
-    return manifest["members"]
+    return manifest, manifest["members"]
 
 
 def artifact_from_float(float_root: Path, members: dict[str, Any], scale: str, count: int) -> tuple[faiss.IndexFlatIP, numpy.ndarray, str, str]:
@@ -125,7 +126,8 @@ def write_quality(data: dict[str, Any], shortlist: Path, contribution: Path, qua
 
 
 def run(args: argparse.Namespace) -> None:
-    contract, members = load_contract(args.contract), float_evidence_members(args.float_evidence)
+    contract = load_contract(args.contract)
+    float_manifest, members = float_evidence_members(args.float_evidence)
     summary: list[dict[str, Any]] = []
     for scale in contract["scales"]:
         scale_id, document_count = scale["id"], scale["documents"]
@@ -134,6 +136,8 @@ def run(args: argparse.Namespace) -> None:
         input_manifest, evaluation_manifest = input_root / "manifest.json", evaluation_root / "manifest.json"
         expected_input = "720fead487f3a7caec62ad190cd93fa79969effd1d0fe825c865ab5d0d437d15" if scale_id == "es-100k" else "697f81bc66b37feb47b413fa168f4ae5efd030b9dbbaeb8d0c67ac8d224a9ae7"
         require(sha256(input_manifest) == expected_input, f"binary centroid routing input differs: {scale_id}")
+        expected_evaluation = float_evidence.frozen_evaluation_manifest_sha256(args.float_evidence, float_manifest, scale_id)
+        require(sha256(evaluation_manifest) == expected_evaluation, f"binary centroid routing evaluation root differs: {scale_id}")
         input_data, data = json.loads(input_manifest.read_text(encoding="utf-8")), evaluator.shared.load_root(evaluation_root)
         document_codes = codes(input_root / input_data["document_codes_file"], document_count)
         query_codes = codes(input_root / input_data["query_codes_file"], 648)
