@@ -253,6 +253,14 @@ jobs:
           && python tools/agent-memory-bench/float_semantic_ivf_evidence.py --self-test
           && python tools/agent-memory-bench/plan-binary-centroid-routing.py --self-test
           && python tools/agent-memory-bench/plan-data-dependent-product-locator.py --self-test
+          && python tools/agent-memory-bench/plan-centroid-encoder-intrinsic.py --self-test
+          && python tools/agent-memory-bench/materialize-centroid-calibration-queries.py --self-test
+          && python tools/agent-memory-bench/run-centroid-encoder-intrinsic.py --self-test
+          && python tools/agent-memory-bench/write-centroid-encoder-intrinsic-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-centroid-encoder-intrinsic.py --self-test
+          && python tools/agent-memory-bench/materialize-centroid-calibration-queries.py --self-test
+          && python tools/agent-memory-bench/run-centroid-encoder-intrinsic.py --self-test
+          && python tools/agent-memory-bench/write-centroid-encoder-intrinsic-evidence.py --self-test
       - name: Exercise ANN evidence bootstrap contract
         run: >
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&
