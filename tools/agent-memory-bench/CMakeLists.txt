@@ -188,6 +188,15 @@ target_link_libraries(agent-memory-mih-native-hot-path
         agent_memory::json
 )
 
+add_executable(agent-memory-native-centroid-routing-scan
+    native_centroid_routing_scan.cpp
+)
+
+target_link_libraries(agent-memory-native-centroid-routing-scan
+    PRIVATE
+        agent_memory::json
+)
+
 add_executable(agent-memory-mih-native-sparse-arbitrary-m
     mih_native_sparse_arbitrary_m.cpp
 )
