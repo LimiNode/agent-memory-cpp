@@ -50,6 +50,13 @@ its predicate, and the supporting 256/384 rows. No strict-dimension configuratio
 about downstream dev E5 survival or nDCG, nor does it close an operational
 2x/4x matched-mass cascade.
 
+The failed gate is evidence only that strict binary centroid-ID imitation did
+not meet this deliberately selective intrinsic threshold. It is not evidence
+that binary centroid routing cannot preserve useful document candidates: a
+future operational protocol must measure candidate-union E5 survival, Hamming
+and ADC survival, and reranked quality at matched document mass on held-out
+queries.
+
 The local deterministic evidence archive is
 `tmp/centroid-encoder-intrinsic-v1-evidence.zip`; its digest is regenerated
 with the explicit follow-up-permission provenance amendment.
