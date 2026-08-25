@@ -23,12 +23,13 @@ The ensemble improves monotonically, but not enough at the selective frontier:
 
 No row meets the same predeclared 95% top-64 / 85% top-32 gate. Therefore no
 Spanish dev cascade is evaluated from this family. This closes the inexpensive
-unsupervised overcomplete ensemble check and authorizes a separately scoped
-routing-aware learned-router protocol rather than extending code length
-indefinitely.
+unsupervised overcomplete ensemble check for this specific concatenated-PCA-block
+construction. It does not reject other overcomplete encoders or an operational
+matched-candidate-mass cascade. The next protocol should inspect code diversity
+and inter-block correlation before considering a different construction.
 
 The local deterministic evidence archive is
 `tmp/overcomplete-centroid-encoder-v1-evidence.zip`, SHA-256
-`909ad400db4553bc8cc892c6bbd6ad790cd831903081a74bb364373eb8327990`.
+`d7faa39789f8d34f6ba64029d6abcec5c3f73ebbdcb3f0bc474383f537a76a9a`.
 It is intentionally untracked pending review and a separately approved
 evidence-release decision.

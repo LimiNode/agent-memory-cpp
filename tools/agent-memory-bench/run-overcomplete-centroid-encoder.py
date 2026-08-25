@@ -66,11 +66,23 @@ def ensemble(encoder: str, bit_count: int, seed: int, iterations: int, centroids
     return mean, projection, {"training_source": "frozen_centroids_only_v1" if encoder == "itq_centroids_ensemble" else "frozen_centroids_plus_train_split_calibration_queries_v1", "construction": "concatenated_seeded_strict_itq_rotation_blocks_v1", "block_widths": block_widths(bit_count)}
 
 
-def parent_evidence(path: Path, expected_sha256: str) -> None:
+def parent_evidence(path: Path, expected_sha256: str) -> dict[str, Any]:
     require(path.is_file() and sha256(path) == expected_sha256, "overcomplete centroid parent evidence archive differs")
     with zipfile.ZipFile(path) as archive:
         manifest = json.loads(archive.read("bundle/evidence-manifest.json"))
-    require(manifest.get("family") == "centroid_encoder_intrinsic_evidence_v1" and manifest.get("row_count") == 15 and manifest.get("selected_count") == 0, "overcomplete centroid parent result does not authorize follow-up")
+        members = manifest.get("members")
+        require(isinstance(members, dict) and len(archive.namelist()) == len(set(archive.namelist())) and set(archive.namelist()) == set(members) | {"bundle/evidence-manifest.json"}, "overcomplete centroid parent evidence membership differs")
+        for name, metadata in members.items():
+            value = archive.read(name)
+            require(metadata == {"sha256": hashlib.sha256(value).hexdigest(), "size": len(value)}, f"overcomplete centroid parent evidence member differs: {name}")
+    permission = manifest.get("overcomplete_follow_up")
+    rows = manifest.get("rows")
+    require(manifest.get("family") == "centroid_encoder_intrinsic_evidence_v1" and manifest.get("row_count") == 15 and manifest.get("selected_count") == 0 and isinstance(rows, list) and isinstance(permission, dict) and permission.get("predicate") == "a_non_rademacher_encoder_strictly_improves_top64_recall_from_256_to_384_bits_v1" and permission.get("permitted") is True and isinstance(permission.get("supporting_rows"), list) and permission["supporting_rows"], "overcomplete centroid parent result does not authorize follow-up")
+    for support in permission["supporting_rows"]:
+        before = next((row for row in rows if row.get("config", {}).get("id") == support.get("from_id")), None)
+        after = next((row for row in rows if row.get("config", {}).get("id") == support.get("to_id")), None)
+        require(before is not None and after is not None and before["config"].get("encoder") == after["config"].get("encoder") == support.get("encoder") and before["config"].get("bit_count") == 256 and after["config"].get("bit_count") == 384 and before.get("float_top16_recall_at_binary_top64") == support.get("from_top64") and after.get("float_top16_recall_at_binary_top64") == support.get("to_top64") and float(support["to_top64"]) > float(support["from_top64"]), "overcomplete centroid parent permission evidence differs")
+    return manifest
 
 
 def complete(root: Path, config: dict[str, Any]) -> bool:
@@ -85,11 +97,12 @@ def complete(root: Path, config: dict[str, Any]) -> bool:
 
 
 def run(args: argparse.Namespace) -> None:
-    contract = planner.load_contract(args.contract); parent_evidence(args.parent_intrinsic_evidence, contract["parent_intrinsic_evidence_sha256"])
+    contract = planner.load_contract(args.contract); parent = parent_evidence(args.parent_intrinsic_evidence, contract["parent_intrinsic_evidence_sha256"])
     parent_contract = base.planner.load_contract(THIS / "centroid-encoder-intrinsic.example.json")
     centroids, _, float_identity = base.load_float_artifact(args.float_root, args.float_evidence)
     _, scale_identity = base.load_train(args.scale_root, parent_contract)
     queries, query_identity = base.load_calibration_queries(args.calibration_query_root, parent_contract)
+    require(parent.get("frozen_inputs") == {**float_identity, **scale_identity, **query_identity}, "overcomplete centroid inputs differ from parent evidence")
     float_orders = numpy.empty((queries.shape[0], 16), dtype=numpy.int16)
     for position, query in enumerate(queries): float_orders[position] = base.stable_score_order(centroids @ query)[:16]
     reports: list[dict[str, Any]] = []

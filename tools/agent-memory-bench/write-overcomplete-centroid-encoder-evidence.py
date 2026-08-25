@@ -52,11 +52,12 @@ def add(files: dict[str, bytes], name: str, path: Path) -> None:
 
 
 def validate(args: argparse.Namespace) -> dict[str, Any]:
-    contract = runner.planner.load_contract(args.contract); runner.parent_evidence(args.parent_intrinsic_evidence, contract["parent_intrinsic_evidence_sha256"])
+    contract = runner.planner.load_contract(args.contract); parent = runner.parent_evidence(args.parent_intrinsic_evidence, contract["parent_intrinsic_evidence_sha256"])
     parent_contract = runner.base.planner.load_contract(THIS / "centroid-encoder-intrinsic.example.json")
     centroids, _, float_identity = runner.base.load_float_artifact(args.float_root, args.float_evidence)
     _, scale_identity = runner.base.load_train(args.scale_root, parent_contract)
     queries, query_identity = runner.base.load_calibration_queries(args.calibration_query_root, parent_contract)
+    require(parent.get("frozen_inputs") == {**float_identity, **scale_identity, **query_identity}, "overcomplete centroid inputs differ from parent evidence")
     summary_path = args.result_root / "summary.json"; summary = json.loads(summary_path.read_text(encoding="utf-8"))
     require(summary.get("schema_version") == 1 and summary.get("family") == contract["family"] and summary.get("contract_sha256") == sha256(args.contract) and summary.get("query_count") == 2162 and summary.get("selection_gate") == contract["selection"], "overcomplete centroid summary identity differs")
     float_orders = numpy.empty((2162, 16), dtype=numpy.int16)
