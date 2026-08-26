@@ -37,7 +37,11 @@ The full six-model matrix completed on the frozen 25k German root. The compact
 result has SHA-256
 `231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286`.
 The independent evidence receipt replayed every model byte, all 24
-configuration-frontier rows, all internal contributions, and the PCA control.
+configuration-frontier rows, recomputed each document-median threshold and
+the internal means, replayed all internal contributions and the PCA control.
+The schema-v2 receipt has SHA-256
+`b24a03c40b8cc7e5fb4b54259f10860012018558538d5325cb53ea691c366dae` and
+separates `integrity_replay_passed` from `quality_gates_passed`.
 
 At the predeclared 512-probe / hard-10% headline, the three-seed means on the
 fresh 76-query internal split are:
