@@ -105,3 +105,40 @@ No French retuning, width selection, scale transfer, or binary-aware loss is
 licensed by this result. The next legitimate decision is whether to register a
 second independent external confirmation with the same frozen recipe, not to
 search French hyperparameters until the gate passes.
+
+## 2026-08-28 Japanese third-confirmation protocol
+
+Japanese MIRACL dev is the third, previously unused external language. It has
+860 dev queries, substantially more than the 343-query French dev set. Its
+full immutable qrels closure has 8,066 distinct documents; stable-hash
+distractors are fixed at 16,934, producing exactly 25,000 evaluation
+documents. The source revisions remain corpus
+`d921ec7e349ce0d28daf30b2da9da5ee698bef0d` and judgments
+`5be20db9509754dadad47689368639fcec739c00`.
+
+This is a fresh confirmation, not a response to the French result. The full
+German v3 recipe remains frozen: `384 -> 96 -> 64 -> 12`, three fixed seeds,
+80 epochs, the identical dynamic-mining schedule and objective, 512 probes,
+and the per-query ten-percent candidate ceiling. The deterministic Japanese
+query partition is `430 / 215 / 215`; the last partition is untouched until
+the final evaluation.
+
+The required decision rule is intentionally unchanged. Dynamic mining must
+first reproduce its positive-only causal survival gain. It may license the
+frozen 12-bit scale transfer only if dynamic v3 also exceeds the symmetric PCA
+control in both ADC E5-top-10 survival and reranked nDCG@10, with strictly
+positive paired 95% bootstrap lower bounds. A failed or inconclusive gate is a
+completed negative result: Japanese data must not be retuned, and neither
+scale nor width-by-budget work may begin.
+
+Before models run, the committed contract is bound to the prepared, E5, and
+ITQ/ADC manifest bytes. The companion evidence writer independently reloads
+all six models, replays configuration and internal rows, recomputes the PCA
+control and paired gates, and rejects any candidate set above the frozen
+ceiling.
+
+The Japanese prepared, E5, and ITQ/ADC input manifest SHA-256 values are,
+respectively,
+`76d822add28ee1c4149eeb9c90653115de7a9957a8c60f51bdaff47485ef4571`,
+`acd308b0ce18ee322f7ef68b8efe0aa2cabdfa175302cfda51cf7e9e509accb1`, and
+`09ebdd4354d0c4fc98620da8e5e09f109804e525e8199099d38cf5f814386b99`.
