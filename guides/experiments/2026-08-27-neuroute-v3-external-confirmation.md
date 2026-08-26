@@ -59,7 +59,9 @@ configuration rows, per-query internal contributions, input-root identities,
 and hashes of the external runner plus all algorithmic dependencies. Its
 evidence writer independently reloads every model, replays each result and
 the PCA control, checks the candidate ceiling, and then recomputes both paired
-bootstrap comparisons.
+bootstrap comparisons. Its receipt separates `integrity_replay_passed` from
+`quality_gates_passed`, so a sound negative result remains auditable rather
+than being misreported as a replay failure.
 
 ## 2026-08-27 French result
 
@@ -71,7 +73,11 @@ root. The prepared, E5, and ITQ/ADC input manifests have SHA-256 values
 The compact result has SHA-256
 `4da270f9b48f100763850a618c3de052f572aa788126ea1683b2803cdbe307f0`.
 Independent replay of all six model bytes, all 24 configuration rows, every
-internal contribution, and the PCA control succeeded.
+internal contribution, the recomputed median thresholds and internal means,
+and the PCA control succeeded. The schema-v2 integrity receipt has SHA-256
+`93f941fd45fe43788c2b17c1125255d31ef7e533fcefea26d816985ed9f7791a`;
+its integrity replay passes while its quality-gate field correctly remains
+false for this inconclusive architecture result.
 
 At the fixed 512-probe / hard-10% headline on the untouched 86-query French
 partition, the three-seed means were:
