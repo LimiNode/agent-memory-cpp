@@ -265,6 +265,29 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
             add_test(
+                NAME agent_memory_neuroute_v3_alignment_planner
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/plan-neuroute-v3-alignment-audit.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_v3_alignment_runner_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-v3-alignment-audit.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_v3_alignment_evidence_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-v3-alignment-audit-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
                 NAME agent_memory_mih_rerank_cost_evidence_packager_self_test
                 COMMAND
                     ${Python3_EXECUTABLE}
