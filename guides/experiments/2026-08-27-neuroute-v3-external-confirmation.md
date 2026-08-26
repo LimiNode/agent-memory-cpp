@@ -153,7 +153,7 @@ result SHA-256 is
 An independent replay of every model byte, all 24 configuration rows, every
 215-query internal contribution, recomputed threshold and internal means, and
 the symmetric PCA control succeeded. The schema-v2 receipt has SHA-256
-`a2be4e54025c7e50e3c3421063a936c28d45e362d52c2e3903fcce87baa13003`;
+`3da9e143a290a940b46c41015c1ee205da04c8c61191ee3e944b95217b622ebe`;
 `integrity_replay_passed` is true while `quality_gates_passed` is correctly
 false.
 
