@@ -133,9 +133,11 @@ scale nor width-by-budget work may begin.
 
 Before models run, the committed contract is bound to the prepared, E5, and
 ITQ/ADC manifest bytes. The companion evidence writer independently reloads
-all six models, replays configuration and internal rows, recomputes the PCA
-control and paired gates, and rejects any candidate set above the frozen
-ceiling.
+all six models, recomputes their median thresholds and internal means, replays
+the exact configuration and internal matrices, recomputes the PCA control and
+paired gates, and rejects any candidate set above the frozen ceiling. Its
+receipt separates replay integrity from the quality decision, preserving a
+sound negative architecture result as auditable evidence.
 
 The Japanese prepared, E5, and ITQ/ADC input manifest SHA-256 values are,
 respectively,
@@ -149,9 +151,11 @@ The frozen six-model matrix completed without any protocol change. The compact
 result SHA-256 is
 `2265396b4d486d7c168c1e1a55ab8cd046bdda3d3d16b46166c41afb6a11fb28`.
 An independent replay of every model byte, all 24 configuration rows, every
-215-query internal contribution, and the symmetric PCA control succeeded; its
-receipt SHA-256 is
-`7a566e577ed1afb04029d2120e4e727058972ae2c0a8cc4398918ac70058fb03`.
+215-query internal contribution, recomputed threshold and internal means, and
+the symmetric PCA control succeeded. The schema-v2 receipt has SHA-256
+`a2be4e54025c7e50e3c3421063a936c28d45e362d52c2e3903fcce87baa13003`;
+`integrity_replay_passed` is true while `quality_gates_passed` is correctly
+false.
 
 At the fixed 512-probe / per-query hard-10% candidate ceiling, three-seed
 means on the untouched Japanese internal partition were:
