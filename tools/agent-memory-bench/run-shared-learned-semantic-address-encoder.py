@@ -149,10 +149,17 @@ def run(contract_path: Path, e5_root: Path, input_root: Path, output_root: Path)
     for bits in contract["encoder"]["bits"]:
         artifact, training = train(data["documents"], bits, contract["encoder"])
         path = output_root / f"model-{bits}-bit.npz"
-        save(path, artifact, {"schema_version": 1, "family": "shared_learned_semantic_address_model_v1", "contract_sha256": sha256(contract_path), "training": training})
-        models.append({"bits": bits, "model_sha256": sha256(path), "training": training})
-        document_logits = pad_logits(infer(data["documents"], artifact))
-        query_logits = pad_logits(infer(data["queries"], artifact))
+        document_raw = infer(data["documents"], artifact)
+        threshold = numpy.median(document_raw, axis=0).astype(numpy.float32)
+        save(path, {**artifact, "threshold": threshold}, {"schema_version": 2,
+             "family": "shared_learned_semantic_address_model_v2",
+             "contract_sha256": sha256(contract_path), "training": training,
+             "threshold_policy": "full_document_median_logit_centering_v1"})
+        models.append({"bits": bits, "model_sha256": sha256(path), "training": training,
+                       "threshold": threshold.tolist(),
+                       "threshold_policy": "full_document_median_logit_centering_v1"})
+        document_logits = pad_logits(document_raw - threshold)
+        query_logits = pad_logits(infer(data["queries"], artifact) - threshold)
         indexes: dict[int, dict[str, Any]] = {}
         for replication in contract["routing"]["document_replication"]:
             indexes[replication] = runner.build_index(document_logits, data["documents"], bits, replication)
@@ -169,7 +176,7 @@ def run(contract_path: Path, e5_root: Path, input_root: Path, output_root: Path)
                                          "learned_direct_address_postings", bits, selected["query_probes"], selected["candidate_mass_target"], False, True)
         selected_internal.append({"selected_on_configuration": selected, "internal_evaluation": metrics})
         (output_root / f"internal-audit-{bits}-bit.json").write_bytes(canonical({"schema_version": 1, "bits": bits, "rows": audit}))
-    report = {"schema_version": 1, "family": "shared_learned_semantic_address_result_v1", "contract_sha256": sha256(contract_path),
+    report = {"schema_version": 2, "family": "shared_learned_semantic_address_result_v2", "contract_sha256": sha256(contract_path),
               "e5_manifest_sha256": data["manifest_sha256"], "input_manifest_sha256": data["input_manifest_sha256"],
               "split_ids": split_ids, "models": models, "selection_rows": rows, "selected_internal": selected_internal}
     (output_root / "result.json").write_bytes(canonical(report))
@@ -179,6 +186,9 @@ def self_test() -> None:
     values = numpy.asarray([[1.0] * 8, [-1.0] * 8], dtype=numpy.float32)
     padded = pad_logits(values)
     require(padded.shape == (2, 16) and numpy.array_equal(padded[:, :8], values) and not padded[:, 8:].any(), "shared address padding differs")
+    threshold = numpy.median(values, axis=0).astype(numpy.float32)
+    require(numpy.array_equal(threshold, numpy.zeros(8, dtype=numpy.float32))
+            and numpy.array_equal(pad_logits(values - threshold), padded), "shared address median centering differs")
     print("shared learned semantic address encoder self-test passed")
 
 
