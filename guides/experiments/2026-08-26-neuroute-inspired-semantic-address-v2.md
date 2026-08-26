@@ -103,11 +103,14 @@ fails decisively.
 
 The diversity mechanism itself worked. Full 12-bit models occupied
 `4064--4067` of 4096 addresses with about `11.83` bits of code entropy and mean
-off-diagonal latent correlation near `0.02`; the 16-bit no-covariance ablation
-had noticeably larger correlation (`0.032--0.039`). Thus the failure is not the
-old median-threshold address collapse. These selected source-pair and
-query-to-document geometry objectives produced diverse codes that were still
-poor semantic routers.
+off-diagonal latent correlation near `0.02`. The same-width 16-bit
+no-covariance ablation had larger correlation (`0.032--0.039` versus
+`0.021--0.022` with the full loss), but broadly similar occupancy and entropy.
+It therefore supports the narrow claim that covariance reduces measured latent
+correlation, not a stronger causal claim that it alone created useful code
+diversity or routing quality. The failure is nevertheless not the old
+median-threshold address collapse: these objectives produced diverse codes that
+were still poor semantic routers.
 
 There is one precise limitation: 256 probes reached only 6.12% candidate mass
 for the selected 12-bit model, below the permitted 10% ceiling and below the
