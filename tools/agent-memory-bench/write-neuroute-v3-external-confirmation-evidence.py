@@ -70,6 +70,17 @@ def validate_matrix(result: dict[str, Any], contract: dict[str, Any]) -> set[tup
     return expected
 
 
+def validate_split(recorded: Any, expected: dict[str, list[str]]) -> None:
+    require(recorded == expected, "external evidence split differs")
+
+
+def validate_threshold(raw: numpy.ndarray, recorded: Any) -> numpy.ndarray:
+    threshold = numpy.median(raw, axis=0).astype(numpy.float32)
+    require(numpy.array_equal(threshold, numpy.asarray(recorded, dtype=numpy.float32)),
+            "external confirmation threshold replay differs")
+    return threshold
+
+
 def means(entries: list[dict[str, Any]], treatment: str) -> dict[str, float]:
     values = [entry["metrics"] for entry in entries if entry["treatment"] == treatment]
     require(len(values) == 3, "external evidence treatment seed count differs")
@@ -105,9 +116,27 @@ def main() -> int:
             try:
                 validate_matrix({"models": planned[:-1], "internal": planned, "configuration_frontier": configuration}, contract)
             except ValueError:
+                pass
+            else:
+                raise ValueError("external evidence self-test accepted incomplete model matrix")
+            try:
+                validate_matrix({"models": planned, "internal": planned, "configuration_frontier": configuration[:-1]}, contract)
+            except ValueError:
+                pass
+            else:
+                raise ValueError("external evidence self-test accepted incomplete configuration matrix")
+            try:
+                validate_split({"query_ids": ["q1"]}, {"query_ids": ["q0"]})
+            except ValueError:
+                pass
+            else:
+                raise ValueError("external evidence self-test accepted split mutation")
+            try:
+                validate_threshold(numpy.asarray([[1.0, 3.0], [5.0, 7.0]], dtype=numpy.float32), [3.0, 6.0])
+            except ValueError:
                 print("NeuRoute v3 external evidence self-test passed")
                 return 0
-            raise ValueError("external evidence self-test accepted incomplete matrix")
+            raise ValueError("external evidence self-test accepted threshold mutation")
         require(all((args.result_root, args.e5_root, args.input_root, args.output)), "external evidence paths are required")
         result_path = args.result_root / "result.json"
         result = json.loads(result_path.read_text(encoding="utf-8"))
@@ -118,7 +147,7 @@ def main() -> int:
         validate_matrix(result, contract)
         data = runner.base.load_data(args.e5_root, args.input_root, contract)
         split = runner.partitions(data["query_ids"], contract)
-        require(result.get("split") == split, "external evidence split differs")
+        validate_split(result.get("split"), split)
         positions = {value: index for index, value in enumerate(data["query_ids"])}
         internal_positions = [positions[value] for value in split["internal_evaluation_query_ids"]]
         configuration_positions = [positions[value] for value in split["configuration_selection_query_ids"]]
@@ -129,9 +158,7 @@ def main() -> int:
             path = args.result_root / f"model-{model['treatment']}-{model['seed']}.npz"
             require(path.is_file() and sha256(path) == model["model_sha256"], "external confirmation model bytes differ")
             document_raw = runner.base.v2.infer(data["documents"], artifact(path))
-            threshold = numpy.median(document_raw, axis=0).astype(numpy.float32)
-            require(numpy.array_equal(threshold, numpy.asarray(model["threshold"], dtype=numpy.float32)),
-                    "external confirmation threshold replay differs")
+            threshold = validate_threshold(document_raw, model["threshold"])
             document_logits = document_raw - threshold
             query_logits = runner.base.v2.infer(data["queries"], artifact(path)) - threshold
             index = runner.base.direct.build_index(document_logits, data["documents"], 12, 1)
