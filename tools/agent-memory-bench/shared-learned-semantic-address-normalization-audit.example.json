@@ -1,0 +1,12 @@
+{
+  "schema_version": 2,
+  "family": "shared_learned_semantic_address_normalization_audit_v2",
+  "source_result_family": "shared_learned_semantic_address_result_v2",
+  "source_result_sha256": "ae6dc029ee809c62b553b5b8b59ec64c9fe67b8bd16ba87bd8fd9bd23955f601",
+  "e5_manifest_sha256": "f020bc77f7b534e45a596683eabfb30fcd71220268b0cf244f29152abd262c84",
+  "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987",
+  "expected_document_count": 25000,
+  "expected_query_count": 648,
+  "expected_dimensions": 384,
+  "l2_tolerance": 1e-05
+}
