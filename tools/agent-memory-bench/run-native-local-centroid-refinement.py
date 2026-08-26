@@ -22,6 +22,8 @@ QUERY_COUNT = 648
 TOP_K = 16
 WARMUPS = 5
 REPEATS = 15
+BASELINE_RESULT_SHA256 = "bb87d490290ce27a8dc696a1f565c03811df5ef0888246a0bd96e2be5ef838e8"
+BASELINE_MODEL_SHA256 = "2a27216ae825acad15e440845fdb3e7ace180d8078849f63e3fe19acccce41c5"
 
 
 def load(name: str, filename: str) -> Any:
@@ -74,12 +76,26 @@ def run_native(executable: Path, centroids: Path, queries: Path, pools: Path, po
             and isinstance(checksums, list) and len(checksums) == REPEATS and len(set(checksums)) == 1,
             "native local centroid result differs")
     require(all(isinstance(sample, float) and sample > 0.0 for sample in samples), "native local centroid timing differs")
-    return {"pool_size": pool_size, "samples_ms_per_query": samples, "p50_ms_per_query": percentile(samples, 0.5),
-            "p95_ms_per_query": percentile(samples, 0.95), "checksum": checksums[0]}
+    return {"pool_size": pool_size, "repeat_mean_samples_ms_per_query": samples,
+            "repeat_mean_p50_ms_per_query": percentile(samples, 0.5),
+            "repeat_mean_p95_ms_per_query": percentile(samples, 0.95), "checksum": checksums[0]}
 
 
 def run(baseline_root: Path, e5_root: Path, input_root: Path, output_root: Path, compiler: Path) -> None:
     data = runner.load_inputs(e5_root, input_root)
+    baseline_result = baseline_root / "result.json"
+    require(baseline_result.is_file() and sha256(baseline_result) == BASELINE_RESULT_SHA256,
+            "native local centroid baseline result differs")
+    baseline = json.loads(baseline_result.read_text(encoding="utf-8"))
+    require(baseline.get("family") == "direct_learned_semantic_address_result_v1"
+            and baseline.get("model_sha256") == BASELINE_MODEL_SHA256
+            and baseline.get("e5_manifest_sha256") == data["manifest_sha256"]
+            and baseline.get("input_manifest_sha256") == data["input_manifest_sha256"]
+            and baseline.get("selected_headline") == {
+                **baseline.get("selected_headline", {}), "treatment": "learned_direct_address_postings",
+                "semantic_prefix_bits": 8, "document_replication": 4, "query_probes": 16,
+                "candidate_mass_target": 0.1},
+            "native local centroid baseline selection differs")
     artifact = load_model(baseline_root / "model.npz")
     document_logits, document_artifact = runner.document_head(data["documents"])
     for name, value in document_artifact.items():
@@ -105,16 +121,18 @@ def run(baseline_root: Path, e5_root: Path, input_root: Path, output_root: Path,
         addresses.tofile(path)
         row = run_native(executable, centroid_path, query_path, path, addresses.shape[1])
         rows.append({"treatment": name, **row})
-    report = {"schema_version": 1, "family": "native_local_centroid_refinement_v1",
-              "baseline_model_sha256": sha256(baseline_root / "model.npz"), "e5_manifest_sha256": data["manifest_sha256"],
+    report = {"schema_version": 2, "family": "native_local_centroid_refinement_v2",
+              "baseline_result_sha256": sha256(baseline_result), "baseline_model_sha256": sha256(baseline_root / "model.npz"), "e5_manifest_sha256": data["manifest_sha256"],
               "input_manifest_sha256": data["input_manifest_sha256"], "compiler": str(compiler), "executable_sha256": sha256(executable),
               "source_sha256": sha256(THIS / "native-local-centroid-refinement.cpp"),
-              "timing_scope": "warm_native_scalar_fp32_centroid_dot_and_top16_only_excludes_e5_and_posting_cascade_v1", "rows": rows}
+              "timing_scope": "warm_native_scalar_fp32_centroid_dot_vector_allocation_and_top16_only_excludes_e5_and_posting_cascade_v2",
+              "timing_statistic": "p50_p95_across_repeat_mean_ms_per_query_not_per_query_tail_latency_v1", "rows": rows}
     (output_root / "result.json").write_text(json.dumps(report, ensure_ascii=False, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 def self_test() -> None:
-    require(TOP_K < 64 and QUERY_COUNT == 648 and DIMENSIONS == 384, "native local centroid constants differ")
+    require(TOP_K < 64 and QUERY_COUNT == 648 and DIMENSIONS == 384 and len(BASELINE_RESULT_SHA256) == 64
+            and len(BASELINE_MODEL_SHA256) == 64, "native local centroid constants differ")
     print("native local centroid refinement self-test passed")
 
 
