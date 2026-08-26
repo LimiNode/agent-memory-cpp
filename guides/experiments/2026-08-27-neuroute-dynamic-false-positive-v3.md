@@ -40,7 +40,7 @@ The independent evidence receipt replayed every model byte, all 24
 configuration-frontier rows, recomputed each document-median threshold and
 the internal means, replayed all internal contributions and the PCA control.
 The schema-v2 receipt has SHA-256
-`b24a03c40b8cc7e5fb4b54259f10860012018558538d5325cb53ea691c366dae` and
+`4fe43618260b76b402ac0a8621cd07ace42efd0a3d2fa6aa4d4fba380045ae52` and
 separates `integrity_replay_passed` from `quality_gates_passed`.
 
 At the predeclared 512-probe / hard-10% headline, the three-seed means on the
