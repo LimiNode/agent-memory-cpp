@@ -78,10 +78,12 @@ hyperparameter search.
 
 The runner completed all fifteen planned training runs on the frozen roots.
 Its compact `result.json` has SHA-256
-`74f910f040bbf73e159ddf124bb16cd9c6f8918814bc3bf9f2c22c32d8f3c63b`.
-It binds the source L2 audit, deterministic query split, mined-pair digests,
-every saved model hash, all configuration rows, and per-query internal cascade
-contributions.
+`9c85f49baf79d56d3431909e45a92d5813269a10e4e024731c77f92679a80671`.
+Before any training, it validates the pinned schema-v2 normalization receipt:
+the receipt contract, source-result, manifests, and audit-writer hashes must
+all agree with the local frozen roots. It then binds that receipt, deterministic
+query split, mined-pair digests, every saved model hash, all configuration rows,
+and per-query internal cascade contributions.
 
 The configuration partition selected the full-loss 12-bit encoder with
 independent-logit best-first order and the predeclared maximum 256 probes. The
