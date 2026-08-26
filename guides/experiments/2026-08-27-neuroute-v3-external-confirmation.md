@@ -75,7 +75,7 @@ The compact result has SHA-256
 Independent replay of all six model bytes, all 24 configuration rows, every
 internal contribution, the recomputed median thresholds and internal means,
 and the PCA control succeeded. The schema-v2 integrity receipt has SHA-256
-`93f941fd45fe43788c2b17c1125255d31ef7e533fcefea26d816985ed9f7791a`;
+`4ad145a94ad0f3491cf38492fe06c6747af8daa295d40578da04b900b37615b9`;
 its integrity replay passes while its quality-gate field correctly remains
 false for this inconclusive architecture result.
 
