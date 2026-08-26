@@ -62,9 +62,12 @@ def summarize(vectors: numpy.ndarray, tolerance: float) -> dict[str, float | int
 def load_contract(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(value == {
-        "schema_version": 1,
-        "family": "shared_learned_semantic_address_normalization_audit_v1",
-        "source_result_family": "shared_learned_semantic_address_result_v1",
+        "schema_version": 2,
+        "family": "shared_learned_semantic_address_normalization_audit_v2",
+        "source_result_family": "shared_learned_semantic_address_result_v2",
+        "source_result_sha256": "ae6dc029ee809c62b553b5b8b59ec64c9fe67b8bd16ba87bd8fd9bd23955f601",
+        "e5_manifest_sha256": "f020bc77f7b534e45a596683eabfb30fcd71220268b0cf244f29152abd262c84",
+        "input_manifest_sha256": "1d3e210edfca62d9019c2849fdb1494566556efd3e57f264d9ef31d599dee987",
         "expected_document_count": 25000,
         "expected_query_count": 648,
         "expected_dimensions": 384,
@@ -77,7 +80,8 @@ def run(contract_path: Path, result_root: Path, e5_root: Path, input_root: Path,
     contract = load_contract(contract_path)
     result_path = result_root / "result.json"
     result = json.loads(result_path.read_text(encoding="utf-8"))
-    require(result.get("family") == contract["source_result_family"], "shared learned-address source result family differs")
+    require(result.get("family") == contract["source_result_family"] and sha256(result_path) == contract["source_result_sha256"],
+            "shared learned-address source result differs")
     data = runner.load_inputs(e5_root, input_root)
     documents = data["documents"]
     queries = data["queries"]
@@ -85,21 +89,22 @@ def run(contract_path: Path, result_root: Path, e5_root: Path, input_root: Path,
             "shared learned-address document shape differs")
     require(queries.shape == (contract["expected_query_count"], contract["expected_dimensions"]),
             "shared learned-address query shape differs")
-    require(result.get("e5_manifest_sha256") == data["manifest_sha256"]
-            and result.get("input_manifest_sha256") == data["input_manifest_sha256"],
+    require(result.get("e5_manifest_sha256") == data["manifest_sha256"] == contract["e5_manifest_sha256"]
+            and result.get("input_manifest_sha256") == data["input_manifest_sha256"] == contract["input_manifest_sha256"],
             "shared learned-address audit frozen roots differ")
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_bytes(canonical({
-        "schema_version": 1,
+        "schema_version": 2,
         "family": contract["family"],
         "contract_sha256": sha256(contract_path),
         "source_result_sha256": sha256(result_path),
+        "audit_writer_sha256": sha256(Path(__file__)),
         "e5_manifest_sha256": data["manifest_sha256"],
         "input_manifest_sha256": data["input_manifest_sha256"],
         "l2_tolerance": contract["l2_tolerance"],
         "documents": summarize(documents, contract["l2_tolerance"]),
         "queries": summarize(queries, contract["l2_tolerance"]),
-        "passed": True,
+        "integrity_replay_passed": True,
     }))
 
 
