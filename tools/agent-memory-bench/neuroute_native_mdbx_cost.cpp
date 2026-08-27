@@ -11,6 +11,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <functional>
@@ -29,10 +30,19 @@ namespace {
 
 using Clock = std::chrono::steady_clock;
 
+constexpr std::size_t kCodeBits = 256;
+constexpr std::size_t kCodeBytes = kCodeBits / 8;
+constexpr std::size_t kCodeWordCount = kCodeBits / 64;
+
 struct StageTiming final {
     double address_generation = 0.0;
     double mdbx_lookup_and_decode = 0.0;
     double generation_array_dedup_and_ceiling = 0.0;
+    double hamming_score_materialization = 0.0;
+    double hamming_sparse_distance = 0.0;
+    double hamming_top_k_partition = 0.0;
+    double hamming_top_k_sort = 0.0;
+    double hamming_result_materialization = 0.0;
     double hamming_and_top_k = 0.0;
     double binary_adc_and_top_k = 0.0;
     double exact_e5_and_top_k = 0.0;
@@ -64,8 +74,8 @@ struct QueryResult final {
 struct CommonInput final {
     std::size_t document_count = 0;
     std::size_t query_count = 0;
-    std::vector<std::uint8_t> document_codes;
-    std::vector<std::uint8_t> query_codes;
+    std::vector<std::uint64_t> document_codes;
+    std::vector<std::uint64_t> query_codes;
     std::vector<float> query_projection;
     std::vector<float> adc_centroids;
     std::vector<std::uint32_t> document_id_rank;
@@ -316,15 +326,6 @@ private:
     std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> m_table;
 };
 
-std::uint16_t hamming_distance(const std::uint8_t* left, const std::uint8_t* right) {
-    std::uint16_t result = 0;
-    for(std::size_t byte = 0; byte < 32; ++byte) {
-        auto value = static_cast<std::uint8_t>(left[byte] ^ right[byte]);
-        while(value != 0) { result += value & 1U; value >>= 1U; }
-    }
-    return result;
-}
-
 float numpy_pairwise_sum(const float* values, std::size_t count) {
     if(count < 8) {
         float result = -0.0F;
@@ -364,6 +365,7 @@ QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
                       const float* logits, std::size_t bits, bool learned,
                       std::size_t probes, std::size_t query, std::size_t candidate_limit,
                       std::size_t hamming_top_k, std::size_t adc_top_k, std::size_t exact_top_k,
+                      const agent_memory::HammingDistanceComputer& hamming_computer,
                       std::vector<std::uint32_t>& generations, std::uint32_t& generation) {
     QueryResult result;
     const auto total_start = Clock::now();
@@ -405,23 +407,36 @@ QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
     result.timing.generation_array_dedup_and_ceiling += milliseconds(start, Clock::now());
     result.counters.unique_candidates = result.candidates.size();
 
-    start = Clock::now();
+    const auto hamming_start = Clock::now();
     std::vector<Scored<std::uint16_t>> hamming;
     hamming.reserve(result.candidates.size());
-    const auto* query_code = input.query_codes.data() + query * 32;
+    start = Clock::now();
     for(const auto position : result.candidates)
-        hamming.push_back({hamming_distance(input.document_codes.data() + position * 32, query_code),
-                           position, input.document_id_rank[position]});
+        hamming.push_back({0, position, input.document_id_rank[position]});
+    result.timing.hamming_score_materialization = milliseconds(start, Clock::now());
+    start = Clock::now();
+    const auto* query_code = input.query_codes.data() + query * kCodeWordCount;
+    for(auto& value : hamming)
+        value.score = static_cast<std::uint16_t>(hamming_computer.distance_words(
+            input.document_codes.data() + static_cast<std::size_t>(value.position) * kCodeWordCount,
+            query_code));
+    result.timing.hamming_sparse_distance = milliseconds(start, Clock::now());
     const auto hamming_limit = std::min(hamming_top_k, hamming.size());
+    start = Clock::now();
     if(hamming_limit < hamming.size()) {
         std::nth_element(hamming.begin(), hamming.begin() + static_cast<std::ptrdiff_t>(hamming_limit),
                          hamming.end(), lower_score<std::uint16_t>);
         hamming.resize(hamming_limit);
     }
+    result.timing.hamming_top_k_partition = milliseconds(start, Clock::now());
+    start = Clock::now();
     std::sort(hamming.begin(), hamming.end(), lower_score<std::uint16_t>);
+    result.timing.hamming_top_k_sort = milliseconds(start, Clock::now());
+    start = Clock::now();
     result.hamming.reserve(hamming.size());
     for(const auto& value : hamming) result.hamming.push_back(value.position);
-    result.timing.hamming_and_top_k = milliseconds(start, Clock::now());
+    result.timing.hamming_result_materialization = milliseconds(start, Clock::now());
+    result.timing.hamming_and_top_k = milliseconds(hamming_start, Clock::now());
     result.counters.hamming_count = result.hamming.size();
 
     start = Clock::now();
@@ -430,7 +445,8 @@ QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
     const auto* projection = input.query_projection.data() + query * 256;
     for(const auto position : result.hamming) {
         std::array<float, 256> components{};
-        const auto* code = input.document_codes.data() + position * 32;
+        const auto* code = reinterpret_cast<const std::uint8_t*>(
+            input.document_codes.data() + static_cast<std::size_t>(position) * kCodeWordCount);
         for(std::size_t bit = 0; bit < 256; ++bit) {
             const auto symbol = (code[bit / 8] >> (bit % 8)) & 1U;
             const auto delta = projection[bit] - input.adc_centroids[bit * 2 + symbol];
@@ -538,6 +554,11 @@ nlohmann::json summarize_timing(const std::vector<std::vector<StageTiming>>& sam
         {"address_generation", collect(&StageTiming::address_generation)},
         {"mdbx_lookup_and_decode", collect(&StageTiming::mdbx_lookup_and_decode)},
         {"generation_array_dedup_and_ceiling", collect(&StageTiming::generation_array_dedup_and_ceiling)},
+        {"hamming_score_materialization", collect(&StageTiming::hamming_score_materialization)},
+        {"hamming_sparse_distance", collect(&StageTiming::hamming_sparse_distance)},
+        {"hamming_top_k_partition", collect(&StageTiming::hamming_top_k_partition)},
+        {"hamming_top_k_sort", collect(&StageTiming::hamming_top_k_sort)},
+        {"hamming_result_materialization", collect(&StageTiming::hamming_result_materialization)},
         {"hamming_and_top_k", collect(&StageTiming::hamming_and_top_k)},
         {"binary_adc_and_top_k", collect(&StageTiming::binary_adc_and_top_k)},
         {"exact_e5_and_top_k", collect(&StageTiming::exact_e5_and_top_k)},
@@ -570,8 +591,15 @@ CommonInput load_common(const std::filesystem::path& root, const nlohmann::json&
     result.document_count = dataset.at("document_count").get<std::size_t>();
     result.query_count = dataset.at("query_count").get<std::size_t>();
     const auto& common = dataset.at("common");
-    result.document_codes = read_array<std::uint8_t>(root, common.at("document_codes"));
-    result.query_codes = read_array<std::uint8_t>(root, common.at("query_codes"));
+    const auto document_code_bytes = read_array<std::uint8_t>(root, common.at("document_codes"));
+    const auto query_code_bytes = read_array<std::uint8_t>(root, common.at("query_codes"));
+    if(document_code_bytes.size() % sizeof(std::uint64_t) != 0
+       || query_code_bytes.size() % sizeof(std::uint64_t) != 0)
+        throw std::runtime_error("native MDBX packed-code byte count differs");
+    result.document_codes.resize(document_code_bytes.size() / sizeof(std::uint64_t));
+    result.query_codes.resize(query_code_bytes.size() / sizeof(std::uint64_t));
+    std::memcpy(result.document_codes.data(), document_code_bytes.data(), document_code_bytes.size());
+    std::memcpy(result.query_codes.data(), query_code_bytes.data(), query_code_bytes.size());
     result.query_projection = read_array<float>(root, common.at("query_projection"));
     result.adc_centroids = read_array<float>(root, common.at("adc_centroids"));
     result.document_id_rank = read_array<std::uint32_t>(root, common.at("document_id_rank"));
@@ -579,8 +607,8 @@ CommonInput load_common(const std::filesystem::path& root, const nlohmann::json&
         result.document_vectors = read_array<float>(root, common.at("document_vectors"));
         result.query_vectors = read_array<float>(root, common.at("query_vectors"));
     }
-    if(result.document_codes.size() != result.document_count * 32
-       || result.query_codes.size() != result.query_count * 32
+    if(result.document_codes.size() != result.document_count * kCodeWordCount
+       || result.query_codes.size() != result.query_count * kCodeWordCount
        || result.query_projection.size() != result.query_count * 256
        || result.adc_centroids.size() != 512
        || result.document_id_rank.size() != result.document_count)
@@ -642,7 +670,9 @@ std::size_t exact_limit(const nlohmann::json& contract) {
 nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dataset,
                        const nlohmann::json& route, const nlohmann::json& expected,
                        const CommonInput& input, const std::vector<float>& logits,
-                       const MdbxAddressIndex& index, bool timings) {
+                       const MdbxAddressIndex& index,
+                       const agent_memory::HammingDistanceComputer& hamming_computer,
+                       bool timings) {
     const auto probes = expected.at("probes").get<std::size_t>();
     const auto bits = route.at("bits").get<std::size_t>();
     const auto logit_dimensions = route.at("logit_dimensions").get<std::size_t>();
@@ -656,7 +686,7 @@ nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dat
     for(std::size_t query = 0; query < input.query_count; ++query) {
         const auto actual = run_query(index, input, logits.data() + query * logit_dimensions, bits, learned,
                                       probes, query, candidate_limit, hamming_limit(contract), adc_limit(contract),
-                                      exact_limit(contract), generations, generation);
+                                      exact_limit(contract), hamming_computer, generations, generation);
         validate_query(actual, expected.at("queries").at(query));
         deterministic.push_back(actual.counters);
         append_query_sequence(candidate_bytes, query, actual.candidates);
@@ -684,13 +714,13 @@ nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dat
             for(std::size_t query = 0; query < input.query_count; ++query)
                 static_cast<void>(run_query(index, input, logits.data() + query * logit_dimensions, bits, learned,
                                             probes, query, candidate_limit, hamming_limit(contract), adc_limit(contract),
-                                            exact_limit(contract), generations, generation));
+                                            exact_limit(contract), hamming_computer, generations, generation));
         std::vector<std::vector<StageTiming>> samples(input.query_count);
         for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
             for(std::size_t query = 0; query < input.query_count; ++query) {
                 const auto actual = run_query(index, input, logits.data() + query * logit_dimensions, bits, learned,
                                               probes, query, candidate_limit, hamming_limit(contract), adc_limit(contract),
-                                              exact_limit(contract), generations, generation);
+                                              exact_limit(contract), hamming_computer, generations, generation);
                 if(!same_counters(actual.counters, deterministic[query])
                    || sequence_sha256(actual.candidates)
                         != require_sha256(expected.at("queries").at(query), "candidate_sha256")
@@ -740,6 +770,13 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
        || (!frozen_scale && adc_limit(contract) != 256)
        || (frozen_scale && (adc_limit(contract) != 64 || exact_limit(contract) != 10)))
         throw std::runtime_error("native MDBX fixed pipeline differs");
+    const auto hamming_computer = agent_memory::HammingDistanceComputer(kCodeWordCount);
+    const auto hamming_backend = std::string(
+        agent_memory::hamming_distance_backend_name(hamming_computer.backend()));
+    if(frozen_scale
+       && contract.at("native_timing").at("required_hamming_backend").get<std::string>()
+            != hamming_backend)
+        throw std::runtime_error("native MDBX Hamming backend differs");
     nlohmann::json rows = nlohmann::json::array(), indexes = nlohmann::json::array();
     std::uint8_t route_number = 0;
     const auto root = manifest_path.parent_path();
@@ -766,7 +803,8 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
                                {"posting_entry_count", route.at("posting_entry_count")},
                                {"occupied_address_count", route.at("occupied_address_count")}});
             for(const auto& expected : route.at("expected"))
-                rows.push_back(run_row(contract, dataset, route, expected, input, logits, index, timings));
+                rows.push_back(run_row(contract, dataset, route, expected, input, logits, index,
+                                       hamming_computer, timings));
         }
     }
     return {
@@ -775,6 +813,7 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
         {"claim_scope", contract.at("claim_scope")},
         {"contract_sha256", agent_memory::sha256_file_hex(contract_path)},
         {"materialization_sha256", agent_memory::sha256_file_hex(manifest_path)},
+        {"hamming_backend", hamming_backend},
         {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
         {"evaluator_build_environment", evaluator_build_environment()},
         {"storage_stack", {{"provenance_authoritative", AGENT_MEMORY_STORAGE_PROVENANCE_AUTHORITATIVE != 0},
@@ -795,6 +834,8 @@ void validate_report(const nlohmann::json& expected, const nlohmann::json& repla
        || expected.at("materialization_sha256") != replay.at("materialization_sha256")
        || expected.at("evaluator_source_manifest_sha256") != replay.at("evaluator_source_manifest_sha256")
        || expected.at("storage_stack") != replay.at("storage_stack")
+       || (expected.contains("hamming_backend")
+           && expected.at("hamming_backend") != replay.at("hamming_backend"))
        || expected.at("rows").size() != replay.at("rows").size())
         throw std::runtime_error("native MDBX report replay binding differs");
     for(std::size_t index = 0; index < replay.at("rows").size(); ++index) {
@@ -814,6 +855,11 @@ void validate_report(const nlohmann::json& expected, const nlohmann::json& repla
 
 int self_test(const std::filesystem::path& database_path) {
     try {
+        const auto hamming_computer = agent_memory::HammingDistanceComputer(kCodeWordCount);
+        const std::array<std::uint64_t, kCodeWordCount> zero{};
+        const std::array<std::uint64_t, kCodeWordCount> bits{1, 2, 4, 8};
+        if(hamming_computer.distance_words(zero.data(), bits.data()) != 4)
+            throw std::runtime_error("native MDBX optimized Hamming self-test differs");
         const std::vector<float> logits{0.1F, -0.2F, 0.3F, -0.4F};
         const auto learned = learned_addresses(logits.data(), 4, 8);
         if(learned.size() != 8 || learned.front() != 5 || sequence_sha256({7, 2, 99})

@@ -45,9 +45,13 @@ exact-E5@64 nDCG, full-E5 nDCG, and deterministic sequences.
 
 The same routes are materialized into repository-pinned MDBX. Native warm-path
 timing is split into address generation, lookup/decode, generation dedup and
-ceiling, Hamming, ADC, resident exact-E5@64, and total. Exact E5 reads the bound
-external FP32 matrix and therefore measures warm resident access; cold-storage
-fetch remains outside scope. Index bytes and FP32 hot bytes are explicit. The
+ceiling, Hamming score materialization, optimized sparse Hamming distance,
+top-768 partition, selected-prefix sort, result materialization, ADC, resident
+exact-E5@64, and total. The Hamming path must use the library's runtime-selected
+`hardware_popcount` backend; portable bit-at-a-time timing is rejected by the
+evidence gate. Exact E5 reads the bound external FP32 matrix and therefore
+measures warm resident access; cold-storage fetch remains outside scope. Index
+bytes and FP32 hot bytes are explicit. The
 evidence gate requires the exact `external/libmdbx` and
 `external/mdbx-containers` commits frozen in the contract; an AUTO/system
 dependency resolution is not admissible evidence.
@@ -62,3 +66,17 @@ policy post hoc.
 
 A pass licenses a separate 12/14/16-bit `width x scale x native-budget` study.
 A failure requires mechanism diagnosis before width tuning.
+
+## Engineering correction before final timing
+
+The first local draft timing used a benchmark-local byte/shift population-count
+loop instead of the already available optimized library kernel. Its candidate,
+Hamming shortlist, ADC, exact-E5, and quality sequences were correct, but its
+Hamming and total latency were not representative of the intended native
+backend. That timing is superseded and cannot license or block a width study.
+
+The correction changes no treatment, threshold, candidate budget, shortlist
+depth, or decision gate. It replaces only the defective distance kernel, adds
+the component timers above, binds the selected Hamming backend in the native
+report, and requires byte-identical deterministic sequences when the final
+native measurement is replayed.

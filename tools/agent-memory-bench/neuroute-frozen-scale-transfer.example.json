@@ -55,7 +55,8 @@
     "cache_state": "warm",
     "warmup_passes": 2,
     "measured_passes": 9,
-    "stages": ["address_generation", "mdbx_lookup_and_decode", "generation_array_dedup_and_ceiling", "hamming_and_top_k", "binary_adc_and_top_k", "exact_e5_and_top_k", "total"],
+    "required_hamming_backend": "hardware_popcount",
+    "stages": ["address_generation", "mdbx_lookup_and_decode", "generation_array_dedup_and_ceiling", "hamming_score_materialization", "hamming_sparse_distance", "hamming_top_k_partition", "hamming_top_k_sort", "hamming_result_materialization", "hamming_and_top_k", "binary_adc_and_top_k", "exact_e5_and_top_k", "total"],
     "native_python_sequence_replay_required": true
   },
   "decision": {
