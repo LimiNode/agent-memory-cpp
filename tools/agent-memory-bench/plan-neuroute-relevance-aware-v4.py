@@ -109,15 +109,19 @@ def load_contract(path: Path) -> dict[str, Any]:
         "oracle_k": 10, "hamming_limit": 768, "adc_limit": 256, "exact_limit": 256,
     }, "relevance-aware v4 cascade differs")
     require(value.get("storage") == {
-        "engine": "repository_pinned_libmdbx_via_mdbx_containers",
-        "layout": "route_u8_address_u16_to_ordered_u32_postings_v1",
-        "page_entries": 256, "lookup": "exact_key_cursor_lookup_v1",
+        "backend": "libmdbx_via_mdbx_containers_key_value_table",
+        "table": "neuroute_postings",
+        "key_layout": "route_u8_address_u16be_kind_u8_page_u32be_v1",
+        "posting_encoding": "packed_u32le", "page_entries": 256,
+        "transaction_scope": "one_read_only_transaction_per_query",
+        "directory_entry": "u32le_posting_count_and_u32le_page_count",
     }, "relevance-aware v4 storage differs")
     require(value.get("native_timing") == {
         "database": "repository_pinned_mdbx", "cache_state": "warm",
         "warmup_passes": 2, "measured_passes": 9,
-        "stages": ["address_generation", "mdbx_lookup_decode", "generation_dedup_ceiling",
-                   "hamming_top_k", "adc_top_k", "total"],
+        "stages": ["address_generation", "mdbx_lookup_and_decode",
+                   "generation_array_dedup_and_ceiling", "hamming_and_top_k",
+                   "binary_adc_and_top_k", "total"],
         "native_python_sequence_replay_required": True,
     }, "relevance-aware v4 native timing differs")
     require(value.get("decision") == {

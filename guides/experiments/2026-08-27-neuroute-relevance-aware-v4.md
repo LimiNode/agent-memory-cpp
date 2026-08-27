@@ -61,7 +61,8 @@ nDCG@10, candidate/posting work, exact-address reachability, and deterministic
 query/address/candidate/Hamming/ADC sequence digests.
 
 The same routes are materialized into repository-pinned MDBX with the frozen
-route/address-to-ordered-u32-postings layout and 256-entry pages, then measured
+route/address/page key layout, packed-u32 posting pages of 256 entries, and one
+read-only transaction per query, then measured
 after two warmups over nine passes. Timing is split into address generation,
 lookup/decode, generation dedup/ceiling, Hamming, ADC, and total. Native output
 must replay the Python address, candidate, Hamming, and ADC sequences exactly.
