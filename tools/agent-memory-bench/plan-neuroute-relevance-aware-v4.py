@@ -108,6 +108,11 @@ def load_contract(path: Path) -> dict[str, Any]:
     require(value.get("cascade") == {
         "oracle_k": 10, "hamming_limit": 768, "adc_limit": 256, "exact_limit": 256,
     }, "relevance-aware v4 cascade differs")
+    require(value.get("storage") == {
+        "engine": "repository_pinned_libmdbx_via_mdbx_containers",
+        "layout": "route_u8_address_u16_to_ordered_u32_postings_v1",
+        "page_entries": 256, "lookup": "exact_key_cursor_lookup_v1",
+    }, "relevance-aware v4 storage differs")
     require(value.get("native_timing") == {
         "database": "repository_pinned_mdbx", "cache_state": "warm",
         "warmup_passes": 2, "measured_passes": 9,
