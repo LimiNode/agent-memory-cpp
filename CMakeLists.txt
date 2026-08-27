@@ -318,6 +318,22 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
             add_test(
+                NAME agent_memory_neuroute_native_mdbx_cost_materializer_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/materialize-neuroute-native-mdbx-cost.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_native_mdbx_cost_evidence_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-native-mdbx-cost-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
                 NAME agent_memory_mih_rerank_cost_evidence_packager_self_test
                 COMMAND
                     ${Python3_EXECUTABLE}
@@ -1171,6 +1187,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     $<TARGET_FILE:agent-memory-mih-storage-bench>
                     --self-test
                     ${CMAKE_CURRENT_BINARY_DIR}/mih-storage-benchmark-self-test.mdbx
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_native_mdbx_cost_self_test
+                COMMAND
+                    $<TARGET_FILE:agent-memory-neuroute-native-mdbx-cost>
+                    --self-test
+                    ${CMAKE_CURRENT_BINARY_DIR}/neuroute-native-mdbx-cost-self-test.mdbx
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
         endif()
