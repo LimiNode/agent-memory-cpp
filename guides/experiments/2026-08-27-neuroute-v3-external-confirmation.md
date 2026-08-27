@@ -116,8 +116,10 @@ documents. The source revisions remain corpus
 `d921ec7e349ce0d28daf30b2da9da5ee698bef0d` and judgments
 `5be20db9509754dadad47689368639fcec739c00`.
 
-This is a fresh confirmation, not a response to the French result. The full
-German v3 recipe remains frozen: `384 -> 96 -> 64 -> 12`, three fixed seeds,
+This is a sequential external confirmation motivated by the inconclusive
+French architecture gate; no model, loss, routing, or gate hyperparameter was
+changed in response to the French result. The full German v3 recipe remains
+frozen: `384 -> 96 -> 64 -> 12`, three fixed seeds,
 80 epochs, the identical dynamic-mining schedule and objective, 512 probes,
 and the per-query ten-percent candidate ceiling. The deterministic Japanese
 query partition is `430 / 215 / 215`; the last partition is untouched until
