@@ -21,9 +21,12 @@ The three full 12-bit seeds have a smooth but weak configuration frontier:
 | 512 | 10.00% | 36.54% | .4378 |
 | 1024 | 10.00% | 36.54% | .4378 |
 
-Thus a 512-probe run reaches the hard ceiling but still remains far below the
-PCA control's internal 66.36% survival. It does not justify a retroactive
-confirmation rerun on the already observed v2 internal split.
+Thus a 512-probe run reaches the hard ceiling. The 36.54% value is measured on
+the configuration partition, whereas the recorded 66.36% PCA value belongs to
+the internal partition; those two numbers are not a valid numerical
+comparison. This calibration-only diagnostic therefore neither establishes a
+matched-mass architecture comparison nor licenses a retroactive confirmation
+run on the already observed internal split.
 
 Collision evidence identifies the mechanism. At 12 bits, only about 0.11% of
 each document's E5 top-10 neighbours share its learned address; their learned

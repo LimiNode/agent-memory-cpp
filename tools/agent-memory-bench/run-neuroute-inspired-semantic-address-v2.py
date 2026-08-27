@@ -50,6 +50,21 @@ def canonical(value: Any) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode("utf-8")
 
 
+def validate_normalization_receipt(path: Path, data: dict[str, Any]) -> dict[str, Any]:
+    receipt = json.loads(path.read_text(encoding="utf-8"))
+    audit_contract = normalization_audit.load_contract(
+        THIS / "shared-learned-semantic-address-normalization-audit.example.json")
+    require(receipt.get("schema_version") == 2 and receipt.get("family") == audit_contract["family"]
+            and receipt.get("contract_sha256") == sha256(THIS / "shared-learned-semantic-address-normalization-audit.example.json")
+            and receipt.get("source_result_sha256") == audit_contract["source_result_sha256"]
+            and receipt.get("audit_writer_sha256") == sha256(THIS / "audit-shared-learned-semantic-address-normalization.py")
+            and receipt.get("e5_manifest_sha256") == data["manifest_sha256"] == audit_contract["e5_manifest_sha256"]
+            and receipt.get("input_manifest_sha256") == data["input_manifest_sha256"] == audit_contract["input_manifest_sha256"]
+            and receipt.get("integrity_replay_passed") is True,
+            "NeuRoute-inspired normalization receipt differs")
+    return receipt
+
+
 def save(path: Path, arrays: dict[str, numpy.ndarray], metadata: dict[str, Any]) -> None:
     numpy.savez_compressed(path, metadata_json=numpy.asarray(json.dumps(metadata, ensure_ascii=False, sort_keys=True, separators=(",", ":"))), **arrays)
     with numpy.load(path, allow_pickle=False) as stored:
@@ -256,12 +271,15 @@ def bootstrap(control: list[dict[str, Any]], treatments: list[list[dict[str, Any
                       and ndcg_mean >= -gate["maximum_ndcg_at_10_absolute_loss"] and float(numpy.quantile(ndcg_means, 0.025)) >= -gate["maximum_ndcg_at_10_absolute_loss"]}
 
 
-def run(contract_path: Path, e5_root: Path, input_root: Path, output_root: Path) -> None:
+def run(contract_path: Path, e5_root: Path, input_root: Path, normalization_receipt: Path, output_root: Path) -> None:
     contract = planner.load_contract(contract_path)
     data = runner.load_inputs(e5_root, input_root)
     documents, queries = data["documents"], data["queries"]
-    document_norms = normalization_audit.summarize(documents, 1.0e-5)
-    query_norms = normalization_audit.summarize(queries, 1.0e-5)
+    normalization = validate_normalization_receipt(normalization_receipt, data)
+    document_norms = normalization_audit.summarize(documents, normalization["l2_tolerance"])
+    query_norms = normalization_audit.summarize(queries, normalization["l2_tolerance"])
+    require(document_norms == normalization["documents"] and query_norms == normalization["queries"],
+            "NeuRoute-inspired normalization replay differs")
     source_contract = json.loads((THIS / "direct-learned-semantic-address.example.json").read_text(encoding="utf-8"))
     split_ids = splitter.materialize(data["query_ids"], source_contract)
     positions = {value: index for index, value in enumerate(data["query_ids"])}
@@ -325,7 +343,9 @@ def run(contract_path: Path, e5_root: Path, input_root: Path, output_root: Path)
     comparison = bootstrap(control_rows, [row["rows"] for row in internal], contract["success_gate"])
     report = {"schema_version": 1, "family": "neuroute_inspired_semantic_address_result_v2", "contract_sha256": sha256(contract_path),
               "e5_manifest_sha256": data["manifest_sha256"], "input_manifest_sha256": data["input_manifest_sha256"], "split_ids": split_ids,
-              "source_l2_audit": {"documents": document_norms, "queries": query_norms, "passed": True},
+              "source_l2_audit": {"receipt_sha256": sha256(normalization_receipt),
+                                  "documents": document_norms, "queries": query_norms,
+                                  "integrity_replay_passed": True},
               "pair_mining": {"document_neighbour_sha256": hashlib.sha256(document_neighbours.tobytes()).hexdigest(), "query_neighbour_sha256": hashlib.sha256(query_neighbours.tobytes()).hexdigest()},
               "models": models, "selection_rows": selection_rows, "selected_full_configuration": selected,
               "internal_full": internal, "selected_no_covariance_ablation": ablation_selected, "internal_no_covariance_ablation": no_covariance_internal,
@@ -345,15 +365,16 @@ def main() -> int:
     parser.add_argument("--contract", type=Path, default=THIS / "neuroute-inspired-semantic-address-v2.example.json")
     parser.add_argument("--e5-root", type=Path)
     parser.add_argument("--input-root", type=Path)
+    parser.add_argument("--normalization-receipt", type=Path)
     parser.add_argument("--output-root", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     try:
         if args.self_test:
             self_test(); return 0
-        if any(value is None for value in (args.e5_root, args.input_root, args.output_root)):
-            parser.error("--e5-root, --input-root, and --output-root are required")
-        run(args.contract, args.e5_root, args.input_root, args.output_root)
+        if any(value is None for value in (args.e5_root, args.input_root, args.normalization_receipt, args.output_root)):
+            parser.error("--e5-root, --input-root, --normalization-receipt, and --output-root are required")
+        run(args.contract, args.e5_root, args.input_root, args.normalization_receipt, args.output_root)
         return 0
     except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError, numpy.linalg.LinAlgError) as error:
         print(f"run-neuroute-inspired-semantic-address-v2: {error}", file=sys.stderr)

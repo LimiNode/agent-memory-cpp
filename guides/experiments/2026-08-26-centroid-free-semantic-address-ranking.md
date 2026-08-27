@@ -31,7 +31,7 @@ successful treatment requires new external confirmation.
 | Symmetric document-head control | Existing document PCA logits with confidence subset flips |
 | Bitwise BCE v1 control | Published `384 -> 128 -> 16` learned bit logits and confidence flips |
 | Address multi-label BCE | `384 -> 128 -> 256` logits; one output per physical address, weighted E5-top-10 address membership |
-| Address listwise marginal gain | Same 256 logits; a normalized greedy sequence of marginal oracle coverage divided by fresh posting cost |
+| Address listwise marginal gain | Same 256 logits; a normalized greedy sequence of marginal oracle coverage divided by the square root of fresh posting count |
 | Semantic-tree beam | A document-only balanced semantic tree over the 256 physical buckets; `384 -> 128 -> 255` branch logits and best-first beam to 16 leaves |
 
 All learned treatments score only addresses and then use identical MDBX-like
