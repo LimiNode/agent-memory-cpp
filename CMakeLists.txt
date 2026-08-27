@@ -365,6 +365,29 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
             add_test(
+                NAME agent_memory_neuroute_exact_e5_rerank_planner
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/plan-neuroute-exact-e5-rerank.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_exact_e5_rerank_runner_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-exact-e5-rerank.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_exact_e5_rerank_evidence_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-exact-e5-rerank-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
                 NAME agent_memory_mih_rerank_cost_evidence_packager_self_test
                 COMMAND
                     ${Python3_EXECUTABLE}
@@ -1226,6 +1249,15 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     $<TARGET_FILE:agent-memory-neuroute-native-mdbx-cost>
                     --self-test
                     ${CMAKE_CURRENT_BINARY_DIR}/neuroute-native-mdbx-cost-self-test.mdbx
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+        endif()
+        if(AGENT_MEMORY_BUILD_BENCHMARKS)
+            add_test(
+                NAME agent_memory_neuroute_exact_e5_rerank_native_self_test
+                COMMAND
+                    $<TARGET_FILE:agent-memory-neuroute-exact-e5-rerank>
+                    --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
         endif()
