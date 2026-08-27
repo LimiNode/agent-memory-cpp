@@ -81,9 +81,11 @@ requires byte-identical canonical output.
 
 ## Expected interpretation
 
-Raw-Euclidean improvement alone would support the loss/magnitude hypothesis.
-Additional dual-mask improvement would support in-batch anti-collapse over the
-explicit v3 miner. A further BatchNorm gain would identify architecture-level
-calibration. Query-mining gains would isolate the current document-only mining
-gap. Failure of all four new treatments would move the research priority to
-relevance/ranking-aware supervision rather than further E5-geometry tuning.
+T2 cleanly tests magnitude-aligned raw-Euclidean supervision against frozen v3.
+T3 is a bundled paper-inspired alternative: it simultaneously replaces
+explicit document mining, removes diversity regularization, and changes the
+pair objective, so T3 minus T2 does not isolate a causal dual-mask effect.
+T4 minus T3 isolates BatchNorm, while T5 minus T4 isolates query-to-document
+hard-negative mining. Failure of all four new treatments would move the
+research priority to relevance/ranking-aware supervision rather than further
+E5-geometry tuning.
