@@ -35,6 +35,7 @@ struct StageTiming final {
     double generation_array_dedup_and_ceiling = 0.0;
     double hamming_and_top_k = 0.0;
     double binary_adc_and_top_k = 0.0;
+    double exact_e5_and_top_k = 0.0;
     double total = 0.0;
 };
 
@@ -57,6 +58,7 @@ struct QueryResult final {
     std::vector<std::uint32_t> candidates;
     std::vector<std::uint32_t> hamming;
     std::vector<std::uint32_t> adc;
+    std::vector<std::uint32_t> exact;
 };
 
 struct CommonInput final {
@@ -67,6 +69,8 @@ struct CommonInput final {
     std::vector<float> query_projection;
     std::vector<float> adc_centroids;
     std::vector<std::uint32_t> document_id_rank;
+    std::vector<float> document_vectors;
+    std::vector<float> query_vectors;
 };
 
 nlohmann::json evaluator_build_environment() {
@@ -359,6 +363,7 @@ bool lower_score(const Scored<Score>& left, const Scored<Score>& right) {
 QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
                       const float* logits, std::size_t bits, bool learned,
                       std::size_t probes, std::size_t query, std::size_t candidate_limit,
+                      std::size_t hamming_top_k, std::size_t adc_top_k, std::size_t exact_top_k,
                       std::vector<std::uint32_t>& generations, std::uint32_t& generation) {
     QueryResult result;
     const auto total_start = Clock::now();
@@ -407,7 +412,7 @@ QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
     for(const auto position : result.candidates)
         hamming.push_back({hamming_distance(input.document_codes.data() + position * 32, query_code),
                            position, input.document_id_rank[position]});
-    const auto hamming_limit = std::min<std::size_t>(768, hamming.size());
+    const auto hamming_limit = std::min(hamming_top_k, hamming.size());
     if(hamming_limit < hamming.size()) {
         std::nth_element(hamming.begin(), hamming.begin() + static_cast<std::ptrdiff_t>(hamming_limit),
                          hamming.end(), lower_score<std::uint16_t>);
@@ -434,7 +439,7 @@ QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
         const auto distance = numpy_pairwise_sum(components.data(), components.size());
         adc.push_back({distance, position, input.document_id_rank[position]});
     }
-    const auto adc_limit = std::min<std::size_t>(256, adc.size());
+    const auto adc_limit = std::min(adc_top_k, adc.size());
     if(adc_limit < adc.size()) {
         std::nth_element(adc.begin(), adc.begin() + static_cast<std::ptrdiff_t>(adc_limit),
                          adc.end(), lower_score<float>);
@@ -445,6 +450,31 @@ QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
     for(const auto& value : adc) result.adc.push_back(value.position);
     result.timing.binary_adc_and_top_k = milliseconds(start, Clock::now());
     result.counters.adc_count = result.adc.size();
+
+    if(!input.document_vectors.empty()) {
+        start = Clock::now();
+        std::vector<Scored<float>> exact;
+        exact.reserve(result.adc.size());
+        const auto* query_vector = input.query_vectors.data() + query * 384;
+        for(const auto position : result.adc) {
+            std::array<float, 384> components{};
+            const auto* document = input.document_vectors.data() + static_cast<std::size_t>(position) * 384;
+            for(std::size_t dimension = 0; dimension < 384; ++dimension)
+                components[dimension] = document[dimension] * query_vector[dimension];
+            exact.push_back({-numpy_pairwise_sum(components.data(), components.size()),
+                             position, input.document_id_rank[position]});
+        }
+        const auto limit = std::min(exact_top_k, exact.size());
+        if(limit < exact.size()) {
+            std::nth_element(exact.begin(), exact.begin() + static_cast<std::ptrdiff_t>(limit),
+                             exact.end(), lower_score<float>);
+            exact.resize(limit);
+        }
+        std::sort(exact.begin(), exact.end(), lower_score<float>);
+        result.exact.reserve(exact.size());
+        for(const auto& value : exact) result.exact.push_back(value.position);
+        result.timing.exact_e5_and_top_k = milliseconds(start, Clock::now());
+    }
     result.timing.total = milliseconds(total_start, Clock::now());
     return result;
 }
@@ -464,6 +494,8 @@ void validate_query(const QueryResult& actual, const nlohmann::json& expected) {
     if(sequence_sha256(actual.hamming) != require_sha256(expected, "hamming_sha256")) fail("hamming_sha256");
     if(actual.adc.size() != expected.at("adc_count").get<std::size_t>()) fail("adc_count");
     if(sequence_sha256(actual.adc) != require_sha256(expected, "adc_sha256")) fail("adc_sha256");
+    if(expected.contains("exact_sha256")
+       && sequence_sha256(actual.exact) != require_sha256(expected, "exact_sha256")) fail("exact_sha256");
 }
 
 bool same_counters(const Counters& left, const Counters& right) {
@@ -508,6 +540,7 @@ nlohmann::json summarize_timing(const std::vector<std::vector<StageTiming>>& sam
         {"generation_array_dedup_and_ceiling", collect(&StageTiming::generation_array_dedup_and_ceiling)},
         {"hamming_and_top_k", collect(&StageTiming::hamming_and_top_k)},
         {"binary_adc_and_top_k", collect(&StageTiming::binary_adc_and_top_k)},
+        {"exact_e5_and_top_k", collect(&StageTiming::exact_e5_and_top_k)},
         {"total", collect(&StageTiming::total)},
     };
 }
@@ -542,12 +575,20 @@ CommonInput load_common(const std::filesystem::path& root, const nlohmann::json&
     result.query_projection = read_array<float>(root, common.at("query_projection"));
     result.adc_centroids = read_array<float>(root, common.at("adc_centroids"));
     result.document_id_rank = read_array<std::uint32_t>(root, common.at("document_id_rank"));
+    if(common.contains("document_vectors")) {
+        result.document_vectors = read_array<float>(root, common.at("document_vectors"));
+        result.query_vectors = read_array<float>(root, common.at("query_vectors"));
+    }
     if(result.document_codes.size() != result.document_count * 32
        || result.query_codes.size() != result.query_count * 32
        || result.query_projection.size() != result.query_count * 256
        || result.adc_centroids.size() != 512
        || result.document_id_rank.size() != result.document_count)
         throw std::runtime_error("native MDBX common input shape differs");
+    if(!result.document_vectors.empty()
+       && (result.document_vectors.size() != result.document_count * 384
+           || result.query_vectors.size() != result.query_count * 384))
+        throw std::runtime_error("native MDBX exact-E5 input shape differs");
     return result;
 }
 
@@ -555,34 +596,47 @@ bool is_relevance_v4(const nlohmann::json& contract) {
     return contract.value("family", "") == "neuroute_relevance_aware_v4_config_only";
 }
 
+bool is_frozen_scale(const nlohmann::json& contract) {
+    return contract.value("family", "") == "neuroute_frozen_scale_transfer";
+}
+
+bool is_modern(const nlohmann::json& contract) {
+    return is_relevance_v4(contract) || is_frozen_scale(contract);
+}
+
 double candidate_mass_target(const nlohmann::json& contract) {
-    return (is_relevance_v4(contract) ? contract.at("routing")
+    return (is_modern(contract) ? (is_frozen_scale(contract) ? contract.at("route") : contract.at("routing"))
                                       : contract.at("candidate_pipeline"))
         .at("candidate_mass_target").get<double>();
 }
 
 std::size_t warmup_passes(const nlohmann::json& contract) {
-    return (is_relevance_v4(contract)
+    return (is_modern(contract)
         ? contract.at("native_timing").at("warmup_passes")
         : contract.at("timing").at("warmup_full_query_passes")).get<std::size_t>();
 }
 
 std::size_t measured_passes(const nlohmann::json& contract) {
-    return (is_relevance_v4(contract)
+    return (is_modern(contract)
         ? contract.at("native_timing").at("measured_passes")
         : contract.at("timing").at("measured_full_query_passes")).get<std::size_t>();
 }
 
 std::size_t hamming_limit(const nlohmann::json& contract) {
-    return (is_relevance_v4(contract) ? contract.at("cascade")
+    return (is_modern(contract) ? contract.at("cascade")
                                       : contract.at("candidate_pipeline"))
         .at("hamming_limit").get<std::size_t>();
 }
 
 std::size_t adc_limit(const nlohmann::json& contract) {
-    return (is_relevance_v4(contract) ? contract.at("cascade")
+    return (is_modern(contract) ? contract.at("cascade")
                                       : contract.at("candidate_pipeline"))
         .at("adc_limit").get<std::size_t>();
+}
+
+std::size_t exact_limit(const nlohmann::json& contract) {
+    if(is_frozen_scale(contract)) return contract.at("cascade").at("result_k").get<std::size_t>();
+    return 0;
 }
 
 nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dataset,
@@ -598,23 +652,29 @@ nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dat
     std::vector<std::uint32_t> generations(input.document_count);
     std::uint32_t generation = 0;
     std::vector<Counters> deterministic;
-    std::vector<std::uint8_t> candidate_bytes, hamming_bytes, adc_bytes;
+    std::vector<std::uint8_t> candidate_bytes, hamming_bytes, adc_bytes, exact_bytes;
     for(std::size_t query = 0; query < input.query_count; ++query) {
         const auto actual = run_query(index, input, logits.data() + query * logit_dimensions, bits, learned,
-                                      probes, query, candidate_limit, generations, generation);
+                                      probes, query, candidate_limit, hamming_limit(contract), adc_limit(contract),
+                                      exact_limit(contract), generations, generation);
         validate_query(actual, expected.at("queries").at(query));
         deterministic.push_back(actual.counters);
         append_query_sequence(candidate_bytes, query, actual.candidates);
         append_query_sequence(hamming_bytes, query, actual.hamming);
         append_query_sequence(adc_bytes, query, actual.adc);
+        if(!actual.exact.empty()) append_query_sequence(exact_bytes, query, actual.exact);
     }
     const auto candidate_digest = agent_memory::sha256_bytes_hex(candidate_bytes);
     const auto hamming_digest = agent_memory::sha256_bytes_hex(hamming_bytes);
     const auto adc_digest = agent_memory::sha256_bytes_hex(adc_bytes);
+    const auto exact_digest = exact_bytes.empty() ? std::string{} : agent_memory::sha256_bytes_hex(exact_bytes);
     if(candidate_digest != require_sha256(expected, "candidate_sequence_sha256")
        || hamming_digest != require_sha256(expected, "hamming_sequence_sha256")
        || adc_digest != require_sha256(expected, "adc_sequence_sha256"))
         throw std::runtime_error("native MDBX global sequence replay differs");
+    if(expected.contains("exact_sequence_sha256")
+       && exact_digest != require_sha256(expected, "exact_sequence_sha256"))
+        throw std::runtime_error("native MDBX global exact-E5 replay differs");
 
     nlohmann::json timing = nullptr;
     if(timings) {
@@ -623,19 +683,24 @@ nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dat
         for(std::size_t warmup = 0; warmup < warmups; ++warmup)
             for(std::size_t query = 0; query < input.query_count; ++query)
                 static_cast<void>(run_query(index, input, logits.data() + query * logit_dimensions, bits, learned,
-                                            probes, query, candidate_limit, generations, generation));
+                                            probes, query, candidate_limit, hamming_limit(contract), adc_limit(contract),
+                                            exact_limit(contract), generations, generation));
         std::vector<std::vector<StageTiming>> samples(input.query_count);
         for(std::size_t repeat = 0; repeat < repeats; ++repeat) {
             for(std::size_t query = 0; query < input.query_count; ++query) {
                 const auto actual = run_query(index, input, logits.data() + query * logit_dimensions, bits, learned,
-                                              probes, query, candidate_limit, generations, generation);
+                                              probes, query, candidate_limit, hamming_limit(contract), adc_limit(contract),
+                                              exact_limit(contract), generations, generation);
                 if(!same_counters(actual.counters, deterministic[query])
                    || sequence_sha256(actual.candidates)
                         != require_sha256(expected.at("queries").at(query), "candidate_sha256")
                    || sequence_sha256(actual.hamming)
                         != require_sha256(expected.at("queries").at(query), "hamming_sha256")
-                   || sequence_sha256(actual.adc)
-                        != require_sha256(expected.at("queries").at(query), "adc_sha256"))
+                    || sequence_sha256(actual.adc)
+                         != require_sha256(expected.at("queries").at(query), "adc_sha256")
+                    || (expected.at("queries").at(query).contains("exact_sha256")
+                        && sequence_sha256(actual.exact)
+                           != require_sha256(expected.at("queries").at(query), "exact_sha256")))
                     throw std::runtime_error("native MDBX measured repeat differs");
                 samples[query].push_back(actual.timing);
             }
@@ -648,6 +713,7 @@ nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dat
         {"query_count", input.query_count}, {"work", summarize_work(deterministic)},
         {"candidate_sequence_sha256", candidate_digest},
         {"hamming_sequence_sha256", hamming_digest}, {"adc_sequence_sha256", adc_digest},
+        {"exact_sequence_sha256", exact_digest},
         {"timing_ms", timing},
     };
 }
@@ -663,12 +729,16 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
         && manifest.value("family", "") == "neuroute_native_mdbx_cost_materialization";
     const auto relevance_v4 = is_relevance_v4(contract)
         && manifest.value("family", "") == "neuroute_relevance_aware_v4_native_materialization";
+    const auto frozen_scale = is_frozen_scale(contract)
+        && manifest.value("family", "") == "neuroute_frozen_scale_transfer_native_materialization";
     if(contract.value("schema_version", 0) != 1 || manifest.value("schema_version", 0) != 1
-       || (!legacy && !relevance_v4)
+       || (!legacy && !relevance_v4 && !frozen_scale)
        || manifest.at("contract_sha256").get<std::string>() != agent_memory::sha256_file_hex(contract_path))
         throw std::runtime_error("native MDBX contract/materialization binding differs");
     if(contract.at("storage").at("page_entries").get<std::size_t>() != 256
-       || hamming_limit(contract) != 768 || adc_limit(contract) != 256)
+       || hamming_limit(contract) != 768
+       || (!frozen_scale && adc_limit(contract) != 256)
+       || (frozen_scale && (adc_limit(contract) != 64 || exact_limit(contract) != 10)))
         throw std::runtime_error("native MDBX fixed pipeline differs");
     nlohmann::json rows = nlohmann::json::array(), indexes = nlohmann::json::array();
     std::uint8_t route_number = 0;
@@ -700,8 +770,8 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
         }
     }
     return {
-        {"schema_version", 1}, {"family", relevance_v4
-            ? "neuroute_relevance_aware_v4_native_result" : "neuroute_native_mdbx_cost_result"},
+        {"schema_version", 1}, {"family", frozen_scale ? "neuroute_frozen_scale_transfer_native_result"
+            : (relevance_v4 ? "neuroute_relevance_aware_v4_native_result" : "neuroute_native_mdbx_cost_result")},
         {"claim_scope", contract.at("claim_scope")},
         {"contract_sha256", agent_memory::sha256_file_hex(contract_path)},
         {"materialization_sha256", agent_memory::sha256_file_hex(manifest_path)},
@@ -719,7 +789,8 @@ void validate_report(const nlohmann::json& expected, const nlohmann::json& repla
     if(expected.value("schema_version", 0) != 1
        || expected.value("family", "") != replay.value("family", "")
        || (expected.value("family", "") != "neuroute_native_mdbx_cost_result"
-           && expected.value("family", "") != "neuroute_relevance_aware_v4_native_result")
+            && expected.value("family", "") != "neuroute_relevance_aware_v4_native_result"
+            && expected.value("family", "") != "neuroute_frozen_scale_transfer_native_result")
        || expected.at("contract_sha256") != replay.at("contract_sha256")
        || expected.at("materialization_sha256") != replay.at("materialization_sha256")
        || expected.at("evaluator_source_manifest_sha256") != replay.at("evaluator_source_manifest_sha256")
@@ -730,10 +801,13 @@ void validate_report(const nlohmann::json& expected, const nlohmann::json& repla
         const auto& left = expected.at("rows").at(index);
         const auto& right = replay.at("rows").at(index);
         for(const auto* field : {"dataset", "route", "kind", "seed", "probes", "query_count",
-                                 "work", "candidate_sequence_sha256", "hamming_sequence_sha256",
-                                 "adc_sequence_sha256"})
+                                  "work", "candidate_sequence_sha256", "hamming_sequence_sha256",
+                                  "adc_sequence_sha256"})
             if(left.at(field) != right.at(field))
                 throw std::runtime_error(std::string("native MDBX report replay differs: ") + field);
+        if(left.contains("exact_sequence_sha256")
+           && left.at("exact_sequence_sha256") != right.at("exact_sequence_sha256"))
+            throw std::runtime_error("native MDBX report replay differs: exact_sequence_sha256");
         if(!left.at("timing_ms").is_object()) throw std::runtime_error("native MDBX report timing is absent");
     }
 }
