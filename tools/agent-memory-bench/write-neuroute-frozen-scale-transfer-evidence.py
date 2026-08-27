@@ -87,6 +87,7 @@ def validate_native(native: dict[str, Any], manifest_sha256: str, contract: dict
     require(native.get("schema_version") == 1
             and native.get("family") == "neuroute_frozen_scale_transfer_native_result"
             and native.get("materialization_sha256") == manifest_sha256
+            and native.get("hamming_backend") == contract["native_timing"]["required_hamming_backend"]
             and native.get("timings_recorded") is True
             and len(native.get("rows", [])) == 18,
             "frozen scale evidence native binding differs")
@@ -100,8 +101,7 @@ def validate_native(native: dict[str, Any], manifest_sha256: str, contract: dict
     for row in native["rows"]:
         require(len(row.get("exact_sequence_sha256", "")) == 64
                 and all(isinstance(row.get("timing_ms", {}).get(stage, {}).get("p95"), (int, float))
-                        for stage in ("mdbx_lookup_and_decode", "hamming_and_top_k",
-                                      "binary_adc_and_top_k", "exact_e5_and_top_k", "total")),
+                        for stage in contract["native_timing"]["stages"]),
                 "frozen scale evidence native row differs")
 
 
@@ -144,6 +144,7 @@ def run(args: argparse.Namespace) -> None:
                "materialization_sha256": runner.sha256(manifest_path),
                "native_report_sha256": runner.sha256(args.native_report),
                "native_executable_sha256": runner.sha256(args.native_executable),
+               "hamming_backend": native["hamming_backend"],
                "quality_source_files_sha256": runner.source_hashes(),
                "native_evaluator_source_manifest_sha256": native["evaluator_source_manifest_sha256"],
                "quality_replay_byte_identical": True, "materialization_replay_byte_identical": True,

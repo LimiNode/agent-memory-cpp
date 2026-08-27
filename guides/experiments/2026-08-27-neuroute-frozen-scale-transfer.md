@@ -45,9 +45,13 @@ exact-E5@64 nDCG, full-E5 nDCG, and deterministic sequences.
 
 The same routes are materialized into repository-pinned MDBX. Native warm-path
 timing is split into address generation, lookup/decode, generation dedup and
-ceiling, Hamming, ADC, resident exact-E5@64, and total. Exact E5 reads the bound
-external FP32 matrix and therefore measures warm resident access; cold-storage
-fetch remains outside scope. Index bytes and FP32 hot bytes are explicit. The
+ceiling, Hamming score materialization, optimized sparse Hamming distance,
+top-768 partition, selected-prefix sort, result materialization, ADC, resident
+exact-E5@64, and total. The Hamming path must use the library's runtime-selected
+`hardware_popcount` backend; portable bit-at-a-time timing is rejected by the
+evidence gate. Exact E5 reads the bound external FP32 matrix and therefore
+measures warm resident access; cold-storage fetch remains outside scope. Index
+bytes and FP32 hot bytes are explicit. The
 evidence gate requires the exact `external/libmdbx` and
 `external/mdbx-containers` commits frozen in the contract; an AUTO/system
 dependency resolution is not admissible evidence.
@@ -63,10 +67,29 @@ policy post hoc.
 A pass licenses a separate 12/14/16-bit `width x scale x native-budget` study.
 A failure requires mechanism diagnosis before width tuning.
 
-## Measurement result
+## Engineering correction before final timing
 
-Date: 2026-08-27. Measured protocol/source commit: `e22717a`. Status:
-completed negative serving-gate result with positive quality transfer.
+The first local draft timing used a benchmark-local byte/shift population-count
+loop instead of the already available optimized library kernel. Its candidate,
+Hamming shortlist, ADC, exact-E5, and quality sequences were correct, but its
+Hamming and total latency were not representative of the intended native
+backend. That timing is superseded and cannot license or block a width study.
+
+The correction changes no treatment, threshold, candidate budget, shortlist
+depth, or decision gate. It replaces only the defective distance kernel, adds
+the component timers above, binds the selected Hamming backend in the native
+report, and requires byte-identical deterministic sequences when the final
+native measurement is replayed.
+
+The superseded draft reported 19.4-19.9 ms p95 for Hamming and up to 25.955 ms
+p95 total at 1M. Those values describe the defective bit-at-a-time kernel only;
+they are retained here for provenance and are not benchmark evidence for the
+native backend.
+
+## Corrected measurement result
+
+Date: 2026-08-28. Measured protocol/source commit: `a99456f`. Status:
+completed positive quality and native serving-gate result.
 
 The quality runner completed all 18 predeclared rows. The three corpora have
 identical query-vector, query-code, and query-projection bytes; their canonical
@@ -74,7 +97,9 @@ document-ID sets satisfy `25k subset 100k subset 1M`. The independent evidence
 replay reproduced the quality result and materialization byte for byte, then
 replayed every native candidate, Hamming, ADC, and exact-E5 sequence. Native
 storage provenance resolves authoritatively to the two submodule commits frozen
-in the contract.
+in the contract. The report records `hamming_backend = hardware_popcount`, and
+the evaluator source manifest binds `BinarySignature.cpp` as well as the
+benchmark driver.
 
 ### Primary-policy quality
 
@@ -92,34 +117,39 @@ in the contract.
 
 All nine primary rows pass the predeclared candidate, survival, and exact-E5
 retention gates. Reusing the frozen 25k medians instead of recalibrating them at
-each scale changes candidate fraction only modestly and does not rescue native
-latency; those diagnostic rows were not eligible to replace the primary policy.
+each scale changes candidate fraction only modestly; those diagnostic rows were
+not eligible to replace the primary policy.
 
 ### Native warm-path result
 
 | Scale | Candidate range/query | Total p50 range | Maximum total p95 | Hamming p95 range | Exact-E5 p95 range |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| 25k | 1,554-1,589 | 1.378-1.413 ms | 1.486 ms | .491-.507 ms | .039-.041 ms |
-| 100k | 6,117-6,235 | 2.768-3.082 ms | 3.353 ms | 1.802-1.944 ms | .042-.046 ms |
-| 1M | 60,799-62,141 | 22.351-23.108 ms | 25.955 ms | 19.416-19.874 ms | .049-.049 ms |
+| 25k | 1,554-1,589 | .953-.987 ms | 1.038 ms | .099-.100 ms | .037-.038 ms |
+| 100k | 6,117-6,235 | 1.278-1.353 ms | 1.482 ms | .219-.232 ms | .040-.042 ms |
+| 1M | 60,799-62,141 | 6.885-7.371 ms | 8.247 ms | 2.755-2.803 ms | .048-.050 ms |
 
-The overall decision is therefore `selected = null`. Quality transfer passes,
-but the maximum 1M p95 is 25.955 ms, well above the frozen 10 ms gate, so the
-general width-by-scale-by-budget study is not licensed by this protocol.
+At 1M, Hamming p95 decomposes as follows across the three primary seeds:
 
-The failure mechanism is localized. A 12-bit address space has all 4,096
-buckets occupied at 1M. Two hundred and fifty-six probes return about 61k
-single-placement candidates and 238-243 KiB of postings per query. Hamming
-selection over that pool alone costs about 19.4-19.9 ms p95, whereas resident
-exact E5 over 64 vectors costs only about .049 ms p95. Exact reranking is not
-the scale blocker; fixed-width coarse routing is.
+| Component | p95 range |
+| --- | ---: |
+| score materialization | .376-.461 ms |
+| optimized sparse distance | 1.434-1.579 ms |
+| top-768 partition | .822-.874 ms |
+| selected-prefix sort | .047-.049 ms |
+| result materialization | .003-.004 ms |
 
-The next protocol should first test the mechanism directly with frozen model
-bytes: wider addresses and lower probe/candidate budgets at 1M, with the same
-quality stages and no treatment learning. Only if that focused diagnostic finds
-an admissible region should it expand into the full width x scale x budget
-matrix. This is a protocol consequence, not a post-hoc selection from these
-rows.
+The corrected overall decision is `selected = frozen_A_12bit_256`. Quality
+transfer passes and the maximum primary 1M p95 is 8.247 ms, below the frozen
+10 ms gate. The separate `width x scale x native-budget` study is therefore
+licensed.
+
+The remaining scale cost is also clearer. At 1M, generation-array dedup and the
+candidate ceiling cost 3.876-4.237 ms p95, optimized Hamming plus top-K costs
+2.755-2.803 ms, and resident exact E5 over 64 vectors costs only .048-.050 ms.
+Exact reranking is not the scale blocker in this warm-resident setup. Wider
+addresses and smaller candidate budgets remain worth testing because the
+12-bit route still admits roughly 61k candidates per query, but they are now an
+optimization study rather than a rescue from a failed serving gate.
 
 ### Reproduction and retained artifacts
 
@@ -129,10 +159,10 @@ the repository raw-artifact policy:
 
 | Artifact | SHA-256 |
 | --- | --- |
-| `result.json` | `22a9b263a287fe4224c2181b23458fdfdeeb50704eee063748b290c52b48de3b` |
-| `materialized/manifest.json` | `33e726274d02d799eae180d80f15c997951a8e9da80bf43565d3e270a8e9d04f` |
-| `native-result.json` | `70c4e82ccf623cee69c42856b83b038b48af49700965c01d47a10ec9fe15e937` |
-| `evidence.json` | `8738ae7a6aeec9e3ada6c9a552694843f84431244d3766e6a67634540b65925d` |
+| `result.json` | `7cf6f48e8167bbe9ce27b935e0b67369365070e541e525ec9e61b2e301c15316` |
+| `materialized/manifest.json` | `39119ab6fe95b3b470bed383790f5cc177b35965ba40928766de7b219cefd57d` |
+| `native-result.json` | `3218ca48d1ba151f2831042d17e5f0954bc60cf458b91e1bb5ae83430aaf5de6` |
+| `evidence.json` | `82bb1d46e6a0da4b55cfeeb2a9df85f03b549045453fbcf90ccbaa4793dafa98` |
 
 Timing is directional: one Windows AMD64 host, MinGW Makefiles, GCC 15.2.0,
 Release C++17, two warm-up passes, and nine measured passes. Cold FP32 fetch,

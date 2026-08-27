@@ -41,6 +41,16 @@ def load_contract(path: Path) -> dict[str, Any]:
         "mdbx_containers_commit": "e9e9f2fd5139f7fb386afd458fcdd8e20d7ec6e3",
         "required_resolution": "repository_pinned_external_submodules",
     }, "frozen scale-transfer storage provenance differs")
+    require(value.get("native_timing") == {
+        "cache_state": "warm", "warmup_passes": 2, "measured_passes": 9,
+        "required_hamming_backend": "hardware_popcount",
+        "stages": ["address_generation", "mdbx_lookup_and_decode",
+                   "generation_array_dedup_and_ceiling", "hamming_score_materialization",
+                   "hamming_sparse_distance", "hamming_top_k_partition",
+                   "hamming_top_k_sort", "hamming_result_materialization",
+                   "hamming_and_top_k", "binary_adc_and_top_k", "exact_e5_and_top_k", "total"],
+        "native_python_sequence_replay_required": True,
+    }, "frozen scale-transfer native timing differs")
     require([row.get("seed") for row in value.get("frozen_models", [])]
             == [2026082701, 2026082702, 2026082703], "frozen scale-transfer seeds differ")
     return value
