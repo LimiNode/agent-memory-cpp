@@ -135,12 +135,53 @@ scale nor width-by-budget work may begin.
 
 Before models run, the committed contract is bound to the prepared, E5, and
 ITQ/ADC manifest bytes. The companion evidence writer independently reloads
-all six models, replays configuration and internal rows, recomputes the PCA
-control and paired gates, and rejects any candidate set above the frozen
-ceiling.
+all six models, recomputes their median thresholds and internal means, replays
+the exact configuration and internal matrices, recomputes the PCA control and
+paired gates, and rejects any candidate set above the frozen ceiling. Its
+receipt separates replay integrity from the quality decision, preserving a
+sound negative architecture result as auditable evidence.
 
 The Japanese prepared, E5, and ITQ/ADC input manifest SHA-256 values are,
 respectively,
 `76d822add28ee1c4149eeb9c90653115de7a9957a8c60f51bdaff47485ef4571`,
 `acd308b0ce18ee322f7ef68b8efe0aa2cabdfa175302cfda51cf7e9e509accb1`, and
 `09ebdd4354d0c4fc98620da8e5e09f109804e525e8199099d38cf5f814386b99`.
+
+### Japanese result
+
+The frozen six-model matrix completed without any protocol change. The compact
+result SHA-256 is
+`2265396b4d486d7c168c1e1a55ab8cd046bdda3d3d16b46166c41afb6a11fb28`.
+An independent replay of every model byte, all 24 configuration rows, every
+215-query internal contribution, recomputed threshold and internal means, and
+the symmetric PCA control succeeded. The schema-v2 receipt has SHA-256
+`3da9e143a290a940b46c41015c1ee205da04c8c61191ee3e944b95217b622ebe`;
+`integrity_replay_passed` is true while `quality_gates_passed` is correctly
+false.
+
+At the fixed 512-probe / per-query hard-10% candidate ceiling, three-seed
+means on the untouched Japanese internal partition were:
+
+| Treatment | Candidate fraction | ADC E5 top-10 survival | nDCG@10 |
+| --- | ---: | ---: | ---: |
+| Positive-only shared encoder | 10.00% | 39.43% | .4982 |
+| Dynamic false-positive encoder | 9.99% | 71.95% | .6982 |
+| Symmetric PCA control | 9.79% | 67.53% | .7006 |
+
+The causal mechanism confirms strongly: dynamic mining gains `+32.53`
+survival points over the identical positive-only control (paired 95% bootstrap
+`[+29.92, +35.19]`) and `+0.1999` nDCG (`[+0.1631, +0.2366]`). The
+predeclared mechanism gate passes.
+
+The architecture comparison does not pass. Dynamic v3 has a `+4.42` survival
+point advantage over PCA (`[+0.85, +8.00]`), but nDCG is `-0.0024` with paired
+95% interval `[-0.0429, +0.0406]`. The strict gate required strictly positive
+lower bounds for both metrics, so it fails. This is a valid negative
+confirmation of the stronger architecture claim, not a reason to tune Japan.
+
+Consequently the proposed frozen 12-bit `25k -> 100k -> 1M` scale transfer and
+the separate width × scale × budget study do **not** begin under this batch.
+The result strengthens the causal dynamic-mining finding over two external
+languages but leaves dynamic learned routing versus PCA inconclusive at the
+fixed quality contract. A future protocol must be independently preregistered
+before changing the quality target, control, data size, or architecture.
