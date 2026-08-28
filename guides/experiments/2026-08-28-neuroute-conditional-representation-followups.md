@@ -71,3 +71,48 @@ INT6 native report SHA-256:  f347424fd3ef4095a6886ca1afaa348179fef7d6279548d042c
 The quality evidence regenerated all 108 rows byte-for-byte. The native report
 was then replayed timing-free from the packed pool-local INT6 payload and
 matched all twelve dataset/seed sequence digests.
+
+## Additive evidence-closure requirement
+
+The original contract freezes 10,000 bootstrap replicates but the first runner
+revision did not consume them, and its three parent artifact hashes alone do
+not bind the separately supplied v4/scale contracts, dataset roots, or German
+split. The measured treatment matrix remains frozen; the measurement PR must
+therefore publish a separate additive closure receipt that:
+
+- follows the final-representation activation back through exact -> v4 and
+  scale -> German split/root manifests;
+- requires exactly `108 treatment + 12 FP32 reference = 120 total` rows;
+- computes the predeclared 10,000-replicate interval for the equal-weight mean
+  of the four dataset means; and
+- binds any legacy pool-local native materialization to both the quality result
+  and the passed closure receipt.
+
+This closure is evidence hardening only. It may not change treatment rows,
+quality point estimates, or select a different representation post hoc.
+
+## Additive closure result
+
+The additive auditor followed the frozen activation chain through the exact,
+v4, and scale contracts, verified all four dataset roots and the German split,
+and required the complete `108 treatment + 12 FP32 reference = 120` row
+matrix. Two independent runs produced the same canonical receipt:
+
+```text
+conditional additive closure SHA-256: 56a409796609cbf0dea3650de446966ddd2cd70e43e22359392cfc2a6b00451f
+INT6 pool-local closure SHA-256:       1737a388e9e50c3f07dfee67c4aeb64f326588162d22bf05d49d6f89cfc72cbe
+INT6 mean loss 10k bootstrap CI95:    [-.008683, -.001348]
+```
+
+The legacy native timing measured decode and score after gathering each
+contiguous 64-document pool. It is therefore a pool-local lower bound, not an
+end-to-end random-fetch serving result; the full-corpus experiment in PR #215
+is the authoritative successor for that serving question.
+
+The original compact native evaluator also used a quantile interpolation that
+returned zero at integer order-statistic positions. For rows with an odd number
+of samples this invalidates the previously reported row p50 values. The p95
+values and all ranking/quality evidence are unaffected. The evaluator now uses
+the standard linear interpolation weight and its self-test covers the integer
+position explicitly; the frozen native report remains preserved as historical
+evidence rather than being silently rewritten.
