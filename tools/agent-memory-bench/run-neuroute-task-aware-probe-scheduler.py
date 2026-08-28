@@ -135,8 +135,8 @@ def infer_hidden(vectors: numpy.ndarray, arrays: dict[str, numpy.ndarray]) -> nu
 
 
 def address_signs(addresses: numpy.ndarray, bits: int) -> numpy.ndarray:
-    shifts = numpy.arange(bits, dtype=numpy.uint32)[None, :]
-    return (((addresses.astype(numpy.uint32)[:, None] >> shifts) & 1).astype(numpy.float32)
+    shifts = numpy.arange(bits, dtype=numpy.uint32)
+    return (((addresses.astype(numpy.uint32)[..., None] >> shifts) & 1).astype(numpy.float32)
             * 2.0 - 1.0)
 
 
