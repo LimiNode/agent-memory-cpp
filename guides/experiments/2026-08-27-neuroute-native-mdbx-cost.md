@@ -128,3 +128,21 @@ These are directional warm-cache timings from one machine. They exclude E5
 query encoding and exact E5 reranking, and they do not license confirmation or
 scale transfer. Their scientific role is to replace probe count with a measured
 serving-cost axis for the next configuration-only study.
+
+## Additive evidence-status correction
+
+Review after the hardware-POPCNT correction in #198/#199 found that this
+measurement used a benchmark-local byte/shift population-count loop. Candidate,
+Hamming-shortlist, ADC, and quality sequences remain deterministic evidence, but
+the latency table above and the resulting `256 probes` cost-knee interpretation
+are historical only. They are not authoritative native-backend timing and must
+not be used to claim that learned 256 is PCA-cost.
+
+The corrected #199 scale-transfer measurement uses the library's runtime-selected
+`hardware_popcount` backend and establishes that frozen 12-bit/256-probe routing
+passes its separate warm 1M serving gate. It does not replay the complete
+PCA/128/256/512 matrix here, so it does not restore the old knee claim. Until a
+hardware-POPCNT replay of this 57-row materialization is published, 256 probes is
+best described as the preregistered v4 evaluation point, not a proven practical
+cost-quality knee. No training or quality result is invalidated by this status
+correction.
