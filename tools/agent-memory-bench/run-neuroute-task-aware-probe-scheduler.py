@@ -80,7 +80,8 @@ def validate_activation(contract: dict[str, Any], args: argparse.Namespace) -> t
         "width_evidence_sha256": sha256(args.width_evidence),
         "width_materialization_sha256": sha256(args.width_materialization_root / "manifest.json"),
     }
-    require(actual == contract["activation"], "task-aware scheduler activation bytes differ")
+    require(actual == contract["activation"],
+            f"task-aware scheduler activation bytes differ: {actual!r}")
     mechanism = json.loads(args.diagnostic_result.read_text(encoding="utf-8"))
     mechanism_evidence = json.loads(args.diagnostic_evidence.read_text(encoding="utf-8"))
     result = json.loads(args.width_result.read_text(encoding="utf-8"))

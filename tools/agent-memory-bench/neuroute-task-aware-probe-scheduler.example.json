@@ -3,7 +3,7 @@
   "family": "neuroute_task_aware_probe_scheduler",
   "claim_scope": "frozen_document_addresses_query_side_scheduler_quality_only",
   "activation": {
-    "diagnostic_result_sha256": "95816d8181f4af8eb7f17244926069e0fed5375c2ef40803bc0bd4b475a2b28",
+    "diagnostic_result_sha256": "95816d8181f4af8eb7f17244926069e0fed5375c2ef40803bc0cbd4b475a2b28",
     "diagnostic_evidence_sha256": "9bca5286284a57775752ee9db0eb5328b8b003bb87e7d06801b2d27dc308f769",
     "width_result_sha256": "3f948b7bd0313d926270fe5d3097e914609e85004a7bd404d98d299cb3bd54fb",
     "width_evidence_sha256": "71d22efe7a7669f4d89f4e2ee9763359654b27cb9b9c0f53f031c9e1a05f24bb",
