@@ -1,6 +1,6 @@
 # NeuRoute block-sequential student activation closure
 
-Date: 2026-08-29. Frozen fail-closed protocol; audit pending.
+Date: 2026-08-29. Frozen implementation `0686ac4`; audit complete.
 
 ## Question
 
@@ -34,3 +34,15 @@ The dormant protocol retains direct and centroid initializations, teacher
 forcing, 16/32/64-address blocks, deployable state only, configuration-only
 selection, separate internal evaluation, and scheduler/cascade runtime metrics.
 No native implementation or production selection is licensed.
+
+## Result
+
+The audit passed twice with identical bytes:
+
+```text
+closure SHA-256: 5af661a3a96baf8aa1a0da7e2ec1a6540fc11b77f6baf0ba8ebc9955ffbe12ed
+```
+
+It bound #225 result `d8478ed65569...` and evidence `6857b3bbcab0...`,
+confirmed all 54 rows and the negative gate, and emitted zero models and zero
+student measurement rows. The internal-evaluation partition was not opened.
