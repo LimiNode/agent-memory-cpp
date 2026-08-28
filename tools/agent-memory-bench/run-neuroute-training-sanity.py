@@ -154,7 +154,7 @@ def build_torch_model(batch_norm: bool, contract: dict[str, Any]) -> Any:
             self.linear2 = torch.nn.Linear(96, 64)
             self.bn2 = torch.nn.BatchNorm1d(64, eps=encoder["batch_norm_epsilon"],
                                            momentum=encoder["batch_norm_momentum"]) if batch_norm else None
-            self.linear3 = torch.nn.Linear(64, 12)
+            self.linear3 = torch.nn.Linear(64, encoder["bits"])
 
         def forward(self, values: Any) -> Any:
             values = self.linear1(values)

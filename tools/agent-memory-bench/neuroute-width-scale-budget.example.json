@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_width_scale_budget_frontier",
+  "claim_scope": "same_language_width_by_nested_scale_by_probe_budget_configuration_only",
+  "activation": {
+    "training_contract_sha256": "6b08bb7ccdcf03ded8cc7f25326e7e9b56d140f42217ae217248b58baba2859b",
+    "training_result_sha256": "02985871f9fd70d3a8634ef42840f7e799957f24fd0797278560a22dc848c5d6",
+    "frozen_scale_result_sha256": "7cf6f48e8167bbe9ce27b935e0b67369365070e541e525ec9e61b2e301c15316",
+    "frozen_scale_evidence_sha256": "82bb1d46e6a0da4b55cfeeb2a9df85f03b549045453fbcf90ccbaa4793dafa98",
+    "frozen_scale_materialization_sha256": "39119ab6fe95b3b470bed383790f5cc177b35965ba40928766de7b219cefd57d",
+    "final_representation_evidence_sha256": "e48b1c546a0edf817009f823891d7fdfcd75e1f68fb0426a50be2acef238a448",
+    "german_split_result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286"
+  },
+  "scales": [
+    {"id": "de-25k", "documents": 25000, "e5_manifest_sha256": "34720383b0da7013a5bbb0c8d72cffa38d6f9d5a891b37ead5e4e4b768a4b351", "input_manifest_sha256": "befa019c788a7325adeb545f560557e830426dc54d1c6a69873a86a2208b434c"},
+    {"id": "de-100k", "documents": 100000, "e5_manifest_sha256": "836af554357e031d07598fa650f8927fedf35322de90c7209b6dcf09b89cd757", "input_manifest_sha256": "87d7c4a93804ec77ef06e799b1dbca2b362f2c1cdd99fb601d38b053490a1da9"},
+    {"id": "de-1m", "documents": 1000000, "e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a", "input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"}
+  ],
+  "training": {
+    "source_dataset": "de-25k",
+    "partition": "frozen_training_query_ids",
+    "treatment": "raw_euclidean_mined_pairs",
+    "widths": [12, 14, 16, 18],
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "width_specific_full_output_heads": true,
+    "appending_bits_to_a_12_bit_artifact_forbidden": true,
+    "reuse_base_recipe_except_output_width": true
+  },
+  "calibration": {
+    "partition": "frozen_training_query_ids",
+    "evaluation_partition_forbidden": true,
+    "probe_budgets": [64, 128, 256, 512, 1024, 2048, 4096],
+    "minimum_cross_seed_mean_raw_e5_oracle_survival": 0.78,
+    "minimum_per_seed_raw_e5_oracle_survival": 0.75,
+    "minimum_per_seed_exact64_ndcg_retention_vs_full_e5": 0.85,
+    "maximum_candidate_fraction": 0.1,
+    "selection": "smallest_probe_budget_passing_all_gates_else_highest_minimum_survival_then_lowest_budget"
+  },
+  "evaluation": {
+    "partition": "frozen_configuration_selection_query_ids",
+    "queries": 76,
+    "fixed_mechanism_probe_budget": 256,
+    "budget_roles": ["fixed_256", "calibration_selected"]
+  },
+  "route": {
+    "threshold_policy": "per_scale_document_median",
+    "candidate_mass_target": 0.1
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "exact_limit": 64,
+    "result_k": 10
+  },
+  "storage": {
+    "backend": "libmdbx_via_mdbx_containers_key_value_table",
+    "table": "neuroute_postings",
+    "key_layout": "route_u8_address_u32be_kind_u8_page_u32be_v2",
+    "posting_encoding": "packed_u32le",
+    "document_address_encoding": "u32le",
+    "page_entries": 256,
+    "transaction_scope": "one_read_only_transaction_per_query",
+    "dependency_provenance": {
+      "libmdbx_commit": "fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f",
+      "mdbx_containers_commit": "e9e9f2fd5139f7fb386afd458fcdd8e20d7ec6e3",
+      "required_resolution": "repository_pinned_external_submodules"
+    }
+  },
+  "native_timing": {
+    "cache_state": "warm",
+    "warmup_passes": 2,
+    "measured_passes": 9,
+    "required_hamming_backend": "hardware_popcount",
+    "stages": ["address_generation", "mdbx_lookup_and_decode", "generation_array_dedup_and_ceiling", "hamming_score_materialization", "hamming_sparse_distance", "hamming_top_k_partition", "hamming_top_k_sort", "hamming_result_materialization", "hamming_and_top_k", "binary_adc_and_top_k", "exact_e5_and_top_k", "total"],
+    "native_python_sequence_replay_required": true
+  },
+  "decision": {
+    "evaluated_role": "calibration_selected",
+    "maximum_candidate_fraction": 0.1,
+    "minimum_adc64_e5_oracle_survival": 0.65,
+    "minimum_exact64_ndcg_retention_vs_full_e5": 0.85,
+    "requires_all_scales_and_seeds": true,
+    "selection_order": "lowest_de_1m_native_total_p95_then_width",
+    "fixed_256_rows_are_mechanism_only": true
+  }
+}
