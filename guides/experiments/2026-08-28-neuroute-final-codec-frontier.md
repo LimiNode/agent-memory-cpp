@@ -83,3 +83,12 @@ checks passed.
 Native timing is warm and pool-local. It does not model random full-corpus
 fetch, page-cache state, MDBX payload access, or end-to-end routing. Those are
 reserved for the later stored-code protocol.
+
+The original native evaluator's linear-quantile expression returned zero when
+the requested position was an exact order statistic. Consequently, per-row
+p50 values from rows with odd sample counts are not valid timing evidence. The
+frozen selection used maximum p95, whose non-integer positions were unaffected,
+so the INT5/SIMDComp decision and every quality or sequence result remain
+unchanged. The source now uses the standard interpolation weight and tests the
+integer-position case explicitly. PR #215 supersedes this pool-local result for
+full-corpus serving interpretation.
