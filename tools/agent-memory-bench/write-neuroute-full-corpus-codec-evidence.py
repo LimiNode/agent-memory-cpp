@@ -45,7 +45,8 @@ def validate_sample(args: argparse.Namespace, expected: dict[str, Any], output: 
             f"full-corpus codec evidence cold replay failed: {completed.stderr.strip()}")
     actual = json.loads(output.read_text(encoding="utf-8"))
     keys = ("family", "representation", "request", "seed", "query", "ranked_sha256",
-            "storage_sha256_declared", "logical_fetch_bytes", "random_reads", "passed")
+            "storage_sha256_declared", "logical_fetch_bytes", "random_reads",
+            "evaluator_source_manifest_sha256", "evaluator_build_environment", "passed")
     require({key: actual[key] for key in keys} == {key: expected[key] for key in keys},
             "full-corpus codec evidence cold receipt differs")
 
@@ -71,7 +72,8 @@ def run(args: argparse.Namespace) -> None:
             }, "full-corpus codec evidence decision differs")
     samples = result["process_cold"]["samples"]
     require(len(samples) == 124 and
-            [row["representation"] for row in result["process_cold"]["summaries"]] == ids,
+            result["process_cold"]["summaries"] ==
+            runner.summarize_samples(contract, ids, samples),
             "full-corpus codec evidence cold matrix differs")
     with tempfile.TemporaryDirectory(prefix="neuroute-full-corpus-evidence-") as directory:
         root = Path(directory)
@@ -86,6 +88,10 @@ def run(args: argparse.Namespace) -> None:
         "input_manifest_sha256": runner.sha256(args.input_manifest),
         "storage_manifest_sha256": runner.sha256(args.storage_manifest),
         "warm_report_sha256": runner.sha256(args.warm_report),
+        "native_executable_sha256": runner.sha256(args.native_executable),
+        "native_evaluator_source_manifest_sha256":
+            runner.native_source_manifest_sha256(),
+        "native_build_environment": storage["evaluator_build_environment"],
         "source_files_sha256": {
             **runner.source_hashes(),
             "write-neuroute-full-corpus-codec-evidence.py": runner.sha256(Path(__file__)),
@@ -95,7 +101,10 @@ def run(args: argparse.Namespace) -> None:
                            for row in storage["representations"]],
         "quality_replay_requests": 912,
         "fresh_process_receipts_replayed": len(samples),
-        "timing_replay_policy": "timings_not_byte_replayed_correctness_receipts_replayed",
+        "paired_fresh_process_request_ids": runner.selected_requests(contract),
+        "fresh_process_summary_recomputed": True,
+        "timing_replay_policy":
+            "saved_timings_not_remeasured_summaries_recomputed_correctness_receipts_replayed",
         "decision": result["decision"],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

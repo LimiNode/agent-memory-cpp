@@ -62,6 +62,19 @@ def source_hashes() -> dict[str, str]:
     return {name: sha256(THIS / name) for name in names}
 
 
+def native_source_manifest_sha256() -> str:
+    root = THIS.parent.parent
+    paths = (
+        THIS / "neuroute_full_corpus_codec.cpp",
+        THIS / "neuroute_final_codec.cpp",
+        root / "external" / "simdcomp" / "src" / "simdbitpacking.c",
+        root / "external" / "simdcomp" / "include" / "simdbitpacking.h",
+    )
+    manifest = "".join(
+        f"{path.relative_to(root).as_posix()}:{sha256(path)}\n" for path in paths)
+    return hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+
+
 def quantile(values: list[float], fraction: float) -> float:
     ordered = sorted(values)
     position = fraction * (len(ordered) - 1)
@@ -77,9 +90,9 @@ def summary(values: list[float]) -> dict[str, Any]:
             "samples": len(values)}
 
 
-def selected_requests(representation: str, contract: dict[str, Any]) -> list[int]:
+def selected_requests(contract: dict[str, Any]) -> list[int]:
     cold = contract["process_cold"]
-    prefix = (cold["selection_prefix_utf8"] + "\n" + representation + "\n").encode()
+    prefix = (cold["selection_prefix_utf8"] + "\n").encode()
     ordered = sorted(range(228), key=lambda value: (
         hashlib.sha256(prefix + str(value).encode()).digest(), value))
     return ordered[:cold["samples_per_representation"]]
@@ -118,6 +131,13 @@ def validate_native(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str,
             storage.get("simdcomp_available") is True and
             warm.get("simdcomp_available") is True,
             "full-corpus codec native matrix differs")
+    source_manifest = native_source_manifest_sha256()
+    require(storage.get("evaluator_source_manifest_sha256") == source_manifest and
+            warm.get("evaluator_source_manifest_sha256") == source_manifest and
+            storage.get("evaluator_build_environment") ==
+            warm.get("evaluator_build_environment") and
+            isinstance(storage.get("evaluator_build_environment"), dict),
+            "full-corpus codec native provenance differs")
     completed = subprocess.run([
         str(args.native_executable), "--validate", str(args.storage_manifest),
         str(args.input_manifest), str(args.warm_report),
@@ -127,33 +147,18 @@ def validate_native(args: argparse.Namespace) -> tuple[dict[str, Any], dict[str,
     return storage, warm, ids
 
 
-def collect_cold(contract: dict[str, Any], ids: list[str],
-                 args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    samples = []
-    with tempfile.TemporaryDirectory(prefix="neuroute-full-corpus-cold-") as directory:
-        root = Path(directory)
-        for representation in ids:
-            for request in selected_requests(representation, contract):
-                output = root / f"{representation}-{request}.json"
-                started = time.perf_counter()
-                completed = subprocess.run([
-                    str(args.native_executable), "--cold-sample",
-                    str(args.storage_manifest), str(args.input_manifest),
-                    representation, str(request), str(output),
-                ], check=False, capture_output=True, text=True)
-                launch_ms = (time.perf_counter() - started) * 1000.0
-                require(completed.returncode == 0,
-                        f"full-corpus codec cold sample failed: {completed.stderr.strip()}")
-                row = json.loads(output.read_text(encoding="utf-8"))
-                require(row.get("passed") is True and row.get("representation") == representation
-                        and int(row.get("request", -1)) == request,
-                        "full-corpus codec cold sample receipt differs")
-                samples.append({**row, "process_launch_total_ms": launch_ms})
+def summarize_samples(contract: dict[str, Any], ids: list[str],
+                      samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    common_requests = selected_requests(contract)
+    expected = [(representation, request) for representation in ids
+                for request in common_requests]
+    require([(row["representation"], row["request"]) for row in samples] == expected,
+            "full-corpus codec fresh-process paired matrix differs")
     summaries = []
     for representation in ids:
         rows = [row for row in samples if row["representation"] == representation]
-        require([row["request"] for row in rows] == selected_requests(representation, contract),
-                "full-corpus codec cold sample selection differs")
+        require([row["request"] for row in rows] == common_requests,
+                "full-corpus codec fresh-process selection differs")
         summaries.append({
             "representation": representation,
             "samples": len(rows),
@@ -169,7 +174,33 @@ def collect_cold(contract: dict[str, Any], ids: list[str],
                 for key in ("minor", "major", "total")
             },
         })
-    return samples, summaries
+    return summaries
+
+
+def collect_cold(contract: dict[str, Any], ids: list[str],
+                 args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    samples = []
+    common_requests = selected_requests(contract)
+    with tempfile.TemporaryDirectory(prefix="neuroute-full-corpus-cold-") as directory:
+        root = Path(directory)
+        for representation in ids:
+            for request in common_requests:
+                output = root / f"{representation}-{request}.json"
+                started = time.perf_counter()
+                completed = subprocess.run([
+                    str(args.native_executable), "--cold-sample",
+                    str(args.storage_manifest), str(args.input_manifest),
+                    representation, str(request), str(output),
+                ], check=False, capture_output=True, text=True)
+                launch_ms = (time.perf_counter() - started) * 1000.0
+                require(completed.returncode == 0,
+                        f"full-corpus codec cold sample failed: {completed.stderr.strip()}")
+                row = json.loads(output.read_text(encoding="utf-8"))
+                require(row.get("passed") is True and row.get("representation") == representation
+                        and int(row.get("request", -1)) == request,
+                        "full-corpus codec cold sample receipt differs")
+                samples.append({**row, "process_launch_total_ms": launch_ms})
+    return samples, summarize_samples(contract, ids, samples)
 
 
 def run(args: argparse.Namespace) -> None:
@@ -212,9 +243,17 @@ def run(args: argparse.Namespace) -> None:
 
 def self_test() -> None:
     contract = planner.load_contract(THIS / "neuroute-full-corpus-codec.example.json")
-    values = selected_requests("int5_simdcomp_bp128", contract)
+    values = selected_requests(contract)
+    samples = [{
+        "representation": representation, "request": request,
+        "logical_fetch_bytes": 1, "random_reads": 64,
+        "fetch_ms": 1.0, "decode_and_dot_ms": 2.0, "rank_top10_ms": 3.0,
+        "total_ms": 4.0, "process_launch_total_ms": 5.0,
+        "page_fault_delta": {"minor": 0, "major": 0, "total": 0},
+    } for representation in ("a", "b") for request in values]
     require(len(values) == 31 and len(set(values)) == 31 and
-            summary([1.0, 2.0, 3.0])["p50"] == 2.0,
+            summary([1.0, 2.0, 3.0])["p50"] == 2.0 and
+            len(summarize_samples(contract, ["a", "b"], samples)) == 2,
             "full-corpus codec runner self-test differs")
     print("NeuRoute full-corpus codec runner self-test passed")
 

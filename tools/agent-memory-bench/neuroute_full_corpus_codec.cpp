@@ -200,6 +200,25 @@ nlohmann::json native_environment() {
             {"simdcomp_available", AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP != 0}};
 }
 
+nlohmann::json evaluator_build_environment() {
+    const std::string build_configuration = AGENT_MEMORY_EVALUATOR_BUILD_CONFIGURATION;
+    return {
+        {"configured_environment_sha256", AGENT_MEMORY_EVALUATOR_CONFIGURED_ENVIRONMENT_SHA256},
+        {"compiler_id", AGENT_MEMORY_EVALUATOR_COMPILER_ID},
+        {"compiler_version", AGENT_MEMORY_EVALUATOR_COMPILER_VERSION},
+        {"cxx_standard", AGENT_MEMORY_EVALUATOR_CXX_STANDARD},
+        {"cxx_extensions", AGENT_MEMORY_EVALUATOR_CXX_EXTENSIONS != 0},
+        {"generator", AGENT_MEMORY_EVALUATOR_GENERATOR},
+        {"build_configuration", build_configuration.empty() ? "unspecified" : build_configuration},
+        {"system_name", AGENT_MEMORY_EVALUATOR_SYSTEM_NAME},
+        {"system_processor", AGENT_MEMORY_EVALUATOR_SYSTEM_PROCESSOR},
+        {"pointer_bits", AGENT_MEMORY_EVALUATOR_POINTER_BITS},
+        {"base_cxx_flags_sha256", AGENT_MEMORY_EVALUATOR_BASE_CXX_FLAGS_SHA256},
+        {"active_configuration_flags_sha256",
+         AGENT_MEMORY_EVALUATOR_ACTIVE_CONFIGURATION_FLAGS_SHA256},
+    };
+}
+
 nlohmann::json fault_delta(const Faults& begin, const Faults& end) {
     return {{"minor", end.minor - begin.minor}, {"major", end.major - begin.major},
             {"total", end.total - begin.total}};
@@ -339,6 +358,8 @@ void build_storage(const std::filesystem::path& input_path,
         {"document_source_sha256", documents.at("sha256")},
         {"documents", 1000000}, {"dimensions", dimensions},
         {"simdcomp_available", true}, {"representations", rows},
+        {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
+        {"evaluator_build_environment", evaluator_build_environment()},
         {"build_timing_ms", {
             {"source_validation", milliseconds(validation_begin, validation_end)},
             {"materialization", milliseconds(materialization_begin, materialization_end)},
@@ -555,6 +576,8 @@ void benchmark_warm(const std::filesystem::path& storage_path,
         {"input_manifest_sha256", agent_memory::sha256_file_hex(input_path)},
         {"cache_state", "sequentially_prefaulted_selected_file"},
         {"simdcomp_available", AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP != 0},
+        {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
+        {"evaluator_build_environment", evaluator_build_environment()},
         {"environment", native_environment()},
         {"rows", rows},
     });
@@ -586,6 +609,8 @@ void cold_sample(const std::filesystem::path& storage_path,
         {"random_reads", pool_size}, {"fetch_ms", sample.fetch_ms},
         {"decode_and_dot_ms", sample.decode_ms}, {"rank_top10_ms", sample.rank_ms},
         {"total_ms", sample.total_ms}, {"page_fault_delta", fault_delta(begin, end)},
+        {"evaluator_source_manifest_sha256", AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
+        {"evaluator_build_environment", evaluator_build_environment()},
         {"passed", true},
     });
 }
@@ -613,6 +638,11 @@ void validate_report(const std::filesystem::path& storage_path,
 }
 
 void self_test() {
+    const auto build = evaluator_build_environment();
+    require(build.value("configured_environment_sha256", std::string{}).size() == 64 &&
+            build.value("cxx_standard", 0) == 17 &&
+            build.value("pointer_bits", 0) == static_cast<int>(sizeof(void*) * 8U),
+            "full-corpus codec build-environment self-test differs");
     require(quantile({1.0, 2.0, 3.0}, 0.5) == 2.0,
             "full-corpus codec quantile self-test differs");
     std::array<std::uint32_t, dimensions> input{};
