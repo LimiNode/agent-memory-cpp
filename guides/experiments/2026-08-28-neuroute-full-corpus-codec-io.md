@@ -113,6 +113,15 @@ checks, and started fresh
 processes to independently replay the deterministic identity/top-10 fields of
 all 124 process-cold receipts.
 
+The native linear-quantile helper has also been corrected for exact integer
+order-statistic positions and now carries an explicit three-sample median
+self-test. This source defect does not change the published warm results: each
+representation aggregates `15 * 228 = 3420` samples, so the p50, p95, and p99
+positions are respectively `1709.5`, `3248.05`, and `3384.81`, all
+non-integers. Process-cold quantiles were computed independently in Python and
+are unaffected. The frozen reports and their evidence hashes therefore remain
+the authoritative measured bytes.
+
 ## Expected result and decision boundary
 
 SIMDComp should retain its decode advantage, while real random reads may make

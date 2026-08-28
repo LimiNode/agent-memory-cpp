@@ -476,8 +476,8 @@ double quantile(std::vector<double> values, double fraction) {
     const auto position = fraction * static_cast<double>(values.size() - 1);
     const auto lower = static_cast<std::size_t>(std::floor(position));
     const auto upper = static_cast<std::size_t>(std::ceil(position));
-    return values[lower] * (static_cast<double>(upper) - position) +
-           values[upper] * (position - static_cast<double>(lower));
+    const auto weight = position - static_cast<double>(lower);
+    return values[lower] * (1.0 - weight) + values[upper] * weight;
 }
 
 nlohmann::json summary(const std::vector<double>& values) {
@@ -613,6 +613,8 @@ void validate_report(const std::filesystem::path& storage_path,
 }
 
 void self_test() {
+    require(quantile({1.0, 2.0, 3.0}, 0.5) == 2.0,
+            "full-corpus codec quantile self-test differs");
     std::array<std::uint32_t, dimensions> input{};
     std::array<std::uint32_t, dimensions> output{};
     for (std::size_t index = 0; index != dimensions; ++index) input[index] = index % 31;
