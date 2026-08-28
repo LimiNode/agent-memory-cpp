@@ -29,17 +29,19 @@ def canonical(value: Any) -> bytes:
     return (json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
 
 
-def resolve_payload(root: Path, dataset_id: str, payload: dict[str, Any]) -> Path:
+def resolve_payload(root: Path, dataset_id: str, payload: dict[str, Any],
+                    relative_root: str = "") -> Path:
     path = Path(payload["file"])
     if not payload.get("external_frozen_root", False):
-        path = root / dataset_id / path
+        path = root / dataset_id / relative_root / path
     require(path.is_file() and sha256(path) == payload["sha256"],
             "final-codec source payload differs")
     return path
 
 
-def read_payload(root: Path, dataset_id: str, payload: dict[str, Any], dtype: str) -> numpy.ndarray:
-    values = numpy.fromfile(resolve_payload(root, dataset_id, payload), dtype=dtype)
+def read_payload(root: Path, dataset_id: str, payload: dict[str, Any], dtype: str,
+                 relative_root: str = "") -> numpy.ndarray:
+    values = numpy.fromfile(resolve_payload(root, dataset_id, payload, relative_root), dtype=dtype)
     return values.reshape(payload["shape"])
 
 
@@ -89,7 +91,7 @@ def run(args: argparse.Namespace) -> None:
         for route in dataset["routes"]:
             seed = int(route["seed"])
             pools = read_payload(args.final_materialization_root, dataset_id,
-                                 route["pool"], "<u4")
+                                 route["pool"], "<u4", str(seed))
             route_root = dataset_root / str(seed)
             quantizers = []
             for bits in (5, 6, 7, 8):
