@@ -177,6 +177,35 @@ def summarize_samples(contract: dict[str, Any], ids: list[str],
     return summaries
 
 
+def paired_comparisons(contract: dict[str, Any],
+                       samples: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    request_ids = selected_requests(contract)
+    rows = {(row["representation"], row["request"]): row for row in samples}
+    output = []
+    for layout in ("simdcomp_bp128", "scalar_bp128"):
+        int5 = f"int5_{layout}"
+        int6 = f"int6_{layout}"
+        require(all((int5, request) in rows and (int6, request) in rows
+                    for request in request_ids),
+                f"full-corpus codec paired comparison differs: {layout}")
+        metrics = {}
+        for metric in ("fetch_ms", "decode_and_dot_ms", "rank_top10_ms", "total_ms"):
+            deltas = [rows[(int5, request)][metric] - rows[(int6, request)][metric]
+                      for request in request_ids]
+            metrics[metric] = {
+                "int5_minus_int6_ms": summary(deltas),
+                "int5_faster_fraction": sum(value < 0.0 for value in deltas) / len(deltas),
+            }
+        output.append({
+            "layout": layout,
+            "int5_representation": int5,
+            "int6_representation": int6,
+            "paired_request_ids": request_ids,
+            "metrics": metrics,
+        })
+    return output
+
+
 def collect_cold(contract: dict[str, Any], ids: list[str],
                  args: argparse.Namespace) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     samples = []
@@ -231,6 +260,7 @@ def run(args: argparse.Namespace) -> None:
             "os_page_cache_controlled": False,
             "samples": samples,
             "summaries": summaries,
+            "paired_comparisons": paired_comparisons(contract, samples),
         },
         "decision": {
             "quality_replayed_all_requests": True,
@@ -244,16 +274,19 @@ def run(args: argparse.Namespace) -> None:
 def self_test() -> None:
     contract = planner.load_contract(THIS / "neuroute-full-corpus-codec.example.json")
     values = selected_requests(contract)
+    ids = ("int5_simdcomp_bp128", "int5_scalar_bp128",
+           "int6_simdcomp_bp128", "int6_scalar_bp128")
     samples = [{
         "representation": representation, "request": request,
         "logical_fetch_bytes": 1, "random_reads": 64,
         "fetch_ms": 1.0, "decode_and_dot_ms": 2.0, "rank_top10_ms": 3.0,
         "total_ms": 4.0, "process_launch_total_ms": 5.0,
         "page_fault_delta": {"minor": 0, "major": 0, "total": 0},
-    } for representation in ("a", "b") for request in values]
+    } for representation in ids for request in values]
     require(len(values) == 31 and len(set(values)) == 31 and
             summary([1.0, 2.0, 3.0])["p50"] == 2.0 and
-            len(summarize_samples(contract, ["a", "b"], samples)) == 2,
+            len(summarize_samples(contract, list(ids), samples)) == 4 and
+            len(paired_comparisons(contract, samples)) == 2,
             "full-corpus codec runner self-test differs")
     print("NeuRoute full-corpus codec runner self-test passed")
 

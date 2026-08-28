@@ -73,7 +73,9 @@ def run(args: argparse.Namespace) -> None:
     samples = result["process_cold"]["samples"]
     require(len(samples) == 124 and
             result["process_cold"]["summaries"] ==
-            runner.summarize_samples(contract, ids, samples),
+            runner.summarize_samples(contract, ids, samples) and
+            result["process_cold"]["paired_comparisons"] ==
+            runner.paired_comparisons(contract, samples),
             "full-corpus codec evidence cold matrix differs")
     with tempfile.TemporaryDirectory(prefix="neuroute-full-corpus-evidence-") as directory:
         root = Path(directory)
@@ -103,6 +105,7 @@ def run(args: argparse.Namespace) -> None:
         "fresh_process_receipts_replayed": len(samples),
         "paired_fresh_process_request_ids": runner.selected_requests(contract),
         "fresh_process_summary_recomputed": True,
+        "paired_comparisons_recomputed": True,
         "timing_replay_policy":
             "saved_timings_not_remeasured_summaries_recomputed_correctness_receipts_replayed",
         "decision": result["decision"],
