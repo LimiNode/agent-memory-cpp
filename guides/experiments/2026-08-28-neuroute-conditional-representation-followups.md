@@ -1,6 +1,6 @@
 # NeuRoute conditional representation follow-ups
 
-Date: 2026-08-28. Protocol PR; measurements are intentionally absent.
+Date: 2026-08-28. Frozen protocol and completed measurement.
 
 The final-representation evidence licensed two independent follow-ups. Both use
 the identical frozen ADC256 top-64 pools and therefore make no router,
@@ -54,8 +54,10 @@ The overcomplete random-projection ADC screen did not pass:
 
 More bits help through 768/1024, but do not close the FP32 gap. The predeclared
 native overcomplete implementation is therefore not licensed. This result
-closes random overcomplete ADC, not a future supervised or reconstruction-
-trained encoder.
+removes the measured random-overcomplete recipe from production consideration.
+A later quality-only asymptote diagnostic may extend the random curve, but it
+cannot select a native implementation. The result does not close a future
+supervised or reconstruction-trained encoder.
 
 ## Evidence
 

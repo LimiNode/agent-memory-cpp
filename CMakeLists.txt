@@ -442,6 +442,15 @@ if(AGENT_MEMORY_BUILD_TESTS)
             add_test(NAME agent_memory_neuroute_conditional_followups_evidence_self_test
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-conditional-followups-evidence.py --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_final_codec_planner
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/plan-neuroute-final-codec.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_final_codec_runner_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-final-codec.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_final_codec_evidence_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-final-codec-evidence.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(
                 NAME agent_memory_neuroute_frozen_scale_transfer_planner
                 COMMAND
@@ -1347,6 +1356,9 @@ if(AGENT_MEMORY_BUILD_TESTS)
             )
             add_test(NAME agent_memory_neuroute_int6_codec_native_self_test
                 COMMAND $<TARGET_FILE:agent-memory-neuroute-int6-codec> --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_final_codec_native_self_test
+                COMMAND $<TARGET_FILE:agent-memory-neuroute-final-codec> --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         endif()
         add_test(
