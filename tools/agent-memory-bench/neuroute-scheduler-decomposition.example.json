@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_scheduler_decomposition",
+  "claim_scope": "frozen_16bit_scheduler_teacher_basis_mapping_decomposition",
+  "activation": {
+    "listwise_result_sha256": "79c9e261e5a2037a41a4f5e3ff846839f3622b36053d0f26a9fb2717230cb9ea",
+    "listwise_evidence_sha256": "db677e801cb4240a26d4070afa525b6a370a346371f83be5de18d5e40df8aaab"
+  },
+  "route": {
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "document_addresses": "frozen_per_scale_from_width_materialization"
+  },
+  "partitions": [
+    {"id": "training", "source": "training_query_ids", "queries": 153},
+    {"id": "held_out", "source": "configuration_selection_query_ids", "queries": 76}
+  ],
+  "stages": [
+    "occupied_logit",
+    "direct_teacher",
+    "best_per_query_quadratic",
+    "learned_quadratic"
+  ],
+  "teacher": {
+    "exact_e5_top_k": 100,
+    "rank_discount": "inverse_log2_v1",
+    "positive_address_weight": 256.0,
+    "quadratic_ridge": 0.0001,
+    "feature_basis": "joint_singleton_and_pairwise_address_signs_v1",
+    "feature_count": 136
+  },
+  "evaluation": {
+    "scales": ["de-25k", "de-100k", "de-1m"],
+    "probe_budgets": [128, 256, 512, 1024, 2048, 4096],
+    "primary_probe_budget": 2048,
+    "candidate_mass_target": 0.1
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "decision": {
+    "basis_capacity_ratio_at_primary_budget": 0.9,
+    "training_mapping_capture_ratio": 0.8,
+    "held_out_mapping_capture_ratio": 0.5,
+    "production_selection_forbidden": true
+  }
+}
