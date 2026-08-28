@@ -413,7 +413,7 @@ def run(args: argparse.Namespace) -> None:
     wider_result = json.loads(args.wider_result.read_text(encoding="utf-8"))
     manifest_path = args.width_materialization_root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    require(width_result.get("family") == "neuroute_width_scale_budget_result" and
+    require(width_result.get("family") == "neuroute_width_scale_budget_quality_result" and
             wider_result.get("family") == "neuroute_wider_training_sufficiency_result" and
             manifest.get("family") == "neuroute_width_scale_budget_native_materialization",
             "router mechanism parent family differs")
