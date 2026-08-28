@@ -187,3 +187,25 @@ These timings remain directional single-machine warm-cache evidence. They
 exclude E5 query encoding and exact-E5 reranking, make no cold-cache claim, and
 do not justify selecting the French B row post hoc as a deployable common
 recipe.
+
+## Additive cost-evidence correction
+
+The later hardware-POPCNT audit supersedes the native latency evidence that
+motivated the 256-probe point above. The old runner used a benchmark-local
+byte/shift population-count loop, so neither the `current cost-quality knee`
+description nor the native p95 ratio to PCA is authoritative. The frozen
+256-probe comparison remains the preregistered common treatment point; it is not
+relabelled or selected post hoc.
+
+Accordingly, the quality, candidate-mass, reachability, and deterministic
+sequence gates remain interpretable, while the old serving-cost gate is
+reported as historical diagnostic evidence only. The corrected #199 result
+later shows that frozen A at 256 probes passes a separate hardware-POPCNT warm
+1M gate, but it does not replay the PCA/128/256/512 frontier and therefore does
+not re-establish a cost knee for this protocol.
+
+The measured outcome `selected = null` is unchanged: B misses the frozen
+cross-language quality gain and C damages address reachability before any
+latency criterion is applied. Statements above that B was approximately
+PCA-cost or was not rejected on serving cost are retained as historical wording,
+not as conclusions supported by the corrected native backend.
