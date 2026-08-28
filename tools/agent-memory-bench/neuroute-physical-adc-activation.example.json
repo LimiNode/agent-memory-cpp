@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_physical_adc_benchmark_activation",
+  "claim_scope": "conditional_physical_random_adc_benchmark_activation_only",
+  "activation": {
+    "nested_adc_result_sha256": "4c44765d9ec274ef37c6fab605295bda4ea96bc4aa821a2868fb4b19f9e7d4aa",
+    "nested_adc_evidence_sha256": "577f7360a4a2ae22a14e61ef21190b668615c6681986fe49a268cd73764c6979"
+  },
+  "required_parent_decision": {
+    "selected_candidate_width": null,
+    "physical_benchmark_licensed": false,
+    "production_selection_licensed": false,
+    "held_out_seed_cherry_picking_performed": false
+  },
+  "benchmark_if_activated": {
+    "dataset": "de-1m",
+    "same_top64_ids_and_paired_requests": true,
+    "full_physical_files_required": true,
+    "cache_scenarios": ["warm_page_cache", "fresh_process_first_fetch"],
+    "stages": [
+      "query_projection", "lut_construction", "random_fetch",
+      "packed_adc_scoring", "top10", "total"
+    ],
+    "quality_replay_required": true,
+    "document_reprojection_at_query_time_forbidden": true,
+    "control": "int5_simdcomp_244_bytes_per_document"
+  },
+  "decision": {
+    "benchmark_must_not_run_without_parent_license": true,
+    "synthetic_timing_substitution_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
