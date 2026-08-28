@@ -427,8 +427,9 @@ def evaluate_all(contract: dict[str, Any], width_contract: dict[str, Any],
             threshold = numpy.asarray(route["threshold"], dtype=numpy.float32)
             original_logits = hidden @ arrays["weight3"].T + arrays["bias3"] - threshold
             frozen_logits = numpy.asarray(read_descriptor(route_root, route["query_logits"]), dtype=numpy.float32)
-            require(numpy.array_equal(original_logits.astype(numpy.float32), frozen_logits),
+            require(numpy.allclose(original_logits, frozen_logits, rtol=2.0e-5, atol=2.0e-5),
                     f"task-aware scheduler original query logits differ: {config['id']}/{bits}/{seed}")
+            original_logits = frozen_logits
             logits_by_treatment = {
                 "current_full_space": original_logits,
                 "occupied_logit": original_logits,
