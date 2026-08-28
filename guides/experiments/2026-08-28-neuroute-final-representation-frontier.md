@@ -95,3 +95,29 @@ then replayed every per-query ranking from persisted representation bytes in
 the independent C++ evaluator. The final decision is `int8_symmetric`; both
 `codec_layout_followup_licensed` and `overcomplete_adc_followup_licensed` are
 true.
+
+## Additive provenance and statistics closure
+
+The original measured bytes remain frozen. A separate closure audit now binds
+the supplied v4 contract to the exact-rerank contract, validates all three 25k
+result/E5/input roots through their frozen manifests, and validates the DE-1M
+E5/input manifests plus the frozen German split through the scale contract.
+This closes the earlier possibility of replaying self-consistent but different
+roots.
+
+The audit also corrects two reporting semantics without changing selection:
+
+- the legacy JSON field `kendall_tau_b_on_pool` is inversion count over two
+  deterministic total orders and therefore means tie-broken Kendall tau-a, not
+  general tau-b;
+- the original pooled query-by-seed bootstrap interval is retained as legacy
+  evidence, while the closure resamples within each dataset and then gives the
+  four dataset means equal weight, matching the primary estimand.
+
+For INT8 the corrected stratified 95% interval is
+`[-.005015, .000955]`, still including zero. The point estimate, all frozen
+quality gates, and `int8_symmetric` selection are unchanged.
+
+```text
+additive closure SHA-256: 01ed500b8e96175f1a314b530f5f6f50679022957ab5176343240f6098b31525
+```
