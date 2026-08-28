@@ -11,6 +11,7 @@ import importlib.util
 import json
 import math
 import sys
+import zipfile
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,14 @@ decomposition = load("neuroute_nonlinear_scheduler_parent",
 listwise = decomposition.listwise
 task = listwise.task
 scale = listwise.scale
+
+MODEL_ARRAY_NAMES = (
+    "query_w1",
+    "query_b1",
+    "query_w2",
+    "query_b2",
+    "address_embeddings",
+)
 
 
 def require(value: bool, message: str) -> None:
@@ -296,9 +305,29 @@ def score_model(hidden: numpy.ndarray, occupied: numpy.ndarray,
     return decomposition.rank_scores(query @ addresses.T, occupied, maximum)
 
 
+def read_model(path: Path) -> tuple[dict[str, numpy.ndarray], dict[str, Any]]:
+    with numpy.load(path, allow_pickle=False) as stored:
+        require(sorted(stored.files) == sorted((*MODEL_ARRAY_NAMES, "metadata_json")),
+                "nonlinear scheduler model members differ")
+        arrays = {name: stored[name] for name in MODEL_ARRAY_NAMES}
+        metadata = json.loads(str(stored["metadata_json"].item()))
+    return arrays, metadata
+
+
 def save_model(path: Path, arrays: dict[str, numpy.ndarray], metadata: dict[str, Any]) -> str:
-    task.save_head(path, arrays, metadata)
-    replay, replay_metadata = task.read_head(path)
+    require(sorted(arrays) == sorted(MODEL_ARRAY_NAMES),
+            "nonlinear scheduler model arrays differ")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payloads = {**arrays, "metadata_json": numpy.asarray(json.dumps(
+        metadata, ensure_ascii=False, separators=(",", ":"), sort_keys=True))}
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED,
+                         compresslevel=9) as archive:
+        for name in sorted(payloads):
+            info = zipfile.ZipInfo(f"{name}.npy", date_time=(1980, 1, 1, 0, 0, 0))
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o600 << 16
+            archive.writestr(info, task.array_npy_bytes(payloads[name]))
+    replay, replay_metadata = read_model(path)
     require(replay_metadata == metadata
             and all(numpy.array_equal(replay[name], arrays[name]) for name in arrays),
             "nonlinear scheduler model serialization differs")
@@ -440,7 +469,7 @@ def load_selected_models(selected: list[dict[str, Any]], root: Path) -> dict[
         path = root / row["model_file"]
         require(path.is_file() and sha256(path) == row["model_sha256"],
                 "nonlinear scheduler selected model bytes differ")
-        arrays, metadata = task.read_head(path)
+        arrays, metadata = read_model(path)
         require(metadata["seed"] == row["seed"] and metadata["variant"] == row["variant"]
                 and metadata["training_query_count"] == row["training_query_count"],
                 "nonlinear scheduler selected model metadata differs")

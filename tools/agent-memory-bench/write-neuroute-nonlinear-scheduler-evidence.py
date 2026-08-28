@@ -75,7 +75,7 @@ def run(args: argparse.Namespace) -> None:
         path = args.model_root / model["file"]
         require(path.is_file() and runner.sha256(path) == model["sha256"],
                 "nonlinear scheduler model bytes differ")
-        arrays, metadata = runner.task.read_head(path)
+        arrays, metadata = runner.read_model(path)
         require(metadata == model["metadata"]
                 and arrays["address_embeddings"].shape == (65536, 64),
                 "nonlinear scheduler model payload differs")
