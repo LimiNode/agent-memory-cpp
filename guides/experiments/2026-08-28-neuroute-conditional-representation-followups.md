@@ -17,3 +17,22 @@ the asymmetric binary score; qrels never train the projection. This is an
 overcomplete ADC mechanism test, not a claim that the encoder is learned or
 production-ready. Native implementation is licensed only if a width reaches
 the parent FP32 quality gate.
+
+## Additive evidence-closure requirement
+
+The original contract freezes 10,000 bootstrap replicates but the first runner
+revision did not consume them, and its three parent artifact hashes alone do
+not bind the separately supplied v4/scale contracts, dataset roots, or German
+split. The measured treatment matrix remains frozen; the measurement PR must
+therefore publish a separate additive closure receipt that:
+
+- follows the final-representation activation back through exact -> v4 and
+  scale -> German split/root manifests;
+- requires exactly `108 treatment + 12 FP32 reference = 120 total` rows;
+- computes the predeclared 10,000-replicate interval for the equal-weight mean
+  of the four dataset means; and
+- binds any legacy pool-local native materialization to both the quality result
+  and the passed closure receipt.
+
+This closure is evidence hardening only. It may not change treatment rows,
+quality point estimates, or select a different representation post hoc.
