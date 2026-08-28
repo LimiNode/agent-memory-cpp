@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import neuroute_authoritative_qrels as authoritative
+
 
 sys.dont_write_bytecode = True
 THIS = Path(__file__).resolve().parent
@@ -69,6 +71,10 @@ def run(args: argparse.Namespace) -> None:
             result["decision"]["native_implementation_licensed"] is False and
             len(result["decision"]["curve"]) == 6,
             "random-ADC ceiling evidence decision differs")
+    authoritative_roots = authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ])
     with tempfile.TemporaryDirectory(prefix="neuroute-random-adc-ceiling-replay-") as directory:
         replay = Path(directory) / "result.json"
         completed = subprocess.run(replay_command(args, replay), check=False,
@@ -77,11 +83,20 @@ def run(args: argparse.Namespace) -> None:
                 f"random-ADC ceiling replay failed: {completed.stderr.strip()}")
         require(replay.read_bytes() == args.result.read_bytes(),
                 "random-ADC ceiling replay bytes differ")
+    require(authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ]) == authoritative_roots,
+            "random-ADC authoritative roots changed during replay")
     output = {
         "schema_version": 1, "family": "neuroute_random_overcomplete_adc_ceiling_evidence",
         "passed": True, "contract_sha256": runner.sha256(args.contract),
         "result_sha256": runner.sha256(args.result),
         "source_files_sha256": runner.source_hashes(),
+        "authoritative_qrels_validator_sha256": runner.sha256(
+            THIS / "neuroute_authoritative_qrels.py"),
+        "authoritative_roots": authoritative_roots,
+        "authoritative_qrels_to_quality_replay_passed": True,
         "decision": result["decision"],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

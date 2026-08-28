@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import neuroute_authoritative_qrels as authoritative
+
 
 sys.dont_write_bytecode = True
 THIS = Path(__file__).resolve().parent
@@ -77,6 +79,10 @@ def run(args: argparse.Namespace) -> None:
     require(result["decision"]["production_selection_licensed"] is False
             and result["decision"]["held_out_seed_cherry_picking_performed"] is False,
             "nested ADC evidence decision differs")
+    authoritative_roots = authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ])
     with tempfile.TemporaryDirectory(prefix="neuroute-nested-adc-replay-") as directory:
         replay = Path(directory) / "result.json"
         completed = subprocess.run(replay_command(args, replay), check=False,
@@ -85,11 +91,20 @@ def run(args: argparse.Namespace) -> None:
                 f"nested ADC replay failed: {completed.stderr.strip()}")
         require(replay.read_bytes() == args.result.read_bytes(),
                 "nested ADC result is not byte-replayable")
+    require(authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ]) == authoritative_roots,
+            "nested ADC authoritative roots changed during replay")
     evidence = {"schema_version": 1, "family": "neuroute_nested_multiseed_adc_replication_evidence",
                 "passed": True, "contract_sha256": runner.sha256(args.contract),
                 "result_sha256": runner.sha256(args.result),
                 "source_files_sha256": {**runner.source_hashes(),
                     "write-neuroute-nested-adc-replication-evidence.py": runner.sha256(Path(__file__))},
+                "authoritative_qrels_validator_sha256": runner.sha256(
+                    THIS / "neuroute_authoritative_qrels.py"),
+                "authoritative_roots": authoritative_roots,
+                "authoritative_qrels_to_quality_replay_passed": True,
                 "matrix": result["matrix"], "decision": result["decision"],
                 "projection_prefix_replay_passed": True, "result_byte_replay_passed": True}
     args.output.parent.mkdir(parents=True, exist_ok=True)
