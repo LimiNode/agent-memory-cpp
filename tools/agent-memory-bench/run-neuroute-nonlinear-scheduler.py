@@ -478,6 +478,7 @@ def load_selected_models(selected: list[dict[str, Any]], root: Path) -> dict[
 
 
 def evaluate(contract: dict[str, Any], width_contract: dict[str, Any],
+             oracle_contract: dict[str, Any],
              entries: list[dict[str, Any]], models: dict[tuple[int, int], dict[str, numpy.ndarray]],
              materialization: dict[str, Any], split: dict[str, Any],
              selection: dict[str, Any], args: argparse.Namespace) -> list[dict[str, Any]]:
@@ -514,7 +515,7 @@ def evaluate(contract: dict[str, Any], width_contract: dict[str, Any],
             evaluated = task.evaluate_requested(data, positions, baseline_orders, index,
                                                  oracle, full_ndcg, contract)
             listwise.add_oracle_regret(evaluated, data, positions, oracle, addresses, index,
-                                       contract)
+                                       oracle_contract)
             rows.append({"seed": seed, "treatment": "occupied_logit", "probes": int(
                 baseline_choice["probes"]), "training_query_count": 0,
                 "calibration_gate_passed": baseline_choice["calibration_gate_passed"],
@@ -527,7 +528,7 @@ def evaluate(contract: dict[str, Any], width_contract: dict[str, Any],
                 evaluated = task.evaluate_requested(data, positions, requested, index,
                                                      oracle, full_ndcg, contract)
                 listwise.add_oracle_regret(evaluated, data, positions, oracle, addresses,
-                                           index, contract)
+                                           index, oracle_contract)
                 rows.append({"seed": seed, "treatment": variant,
                              "probes": int(choice["probes"]),
                              "training_query_count": int(choice["training_query_count"]),
@@ -603,14 +604,16 @@ def run(args: argparse.Namespace) -> None:
      external_ids, external_vectors) = validate_activation(contract, args)
     width_contract = listwise.width.planner.load_contract(
         THIS / "neuroute-width-scale-budget.example.json")
+    oracle_contract = listwise.planner.load_contract(
+        THIS / "neuroute-listwise-probe-scheduler.example.json")
     entries = [row for row in task.model_entries(width_result, task.planner.load_contract(
         THIS / "neuroute-task-aware-probe-scheduler.example.json")) if int(row["width"]) == 16]
     models = task.load_models(entries, args.width_model_root)
     calibration, model_entries, selection = train_and_calibrate(
         contract, width_contract, entries, models, materialization, split,
         external_ids, external_vectors, args)
-    datasets = evaluate(contract, width_contract, entries, models, materialization, split,
-                        selection, args)
+    datasets = evaluate(contract, width_contract, oracle_contract, entries, models,
+                        materialization, split, selection, args)
     result = {
         "schema_version": 1,
         "family": "neuroute_nonlinear_scheduler_result",
@@ -646,6 +649,10 @@ def self_test() -> None:
             and int(mask.sum()) == 3,
             "nonlinear scheduler sampled teacher self-test differs")
     planner.load_contract(THIS / "neuroute-nonlinear-scheduler.example.json")
+    oracle_contract = listwise.planner.load_contract(
+        THIS / "neuroute-listwise-probe-scheduler.example.json")
+    require("coverage_target" in oracle_contract["evaluation"],
+            "nonlinear scheduler oracle-regret parent contract differs")
     print("NeuRoute nonlinear scheduler self-test passed")
 
 
