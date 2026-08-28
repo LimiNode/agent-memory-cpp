@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import neuroute_authoritative_qrels as authoritative
+
 
 sys.dont_write_bytecode = True
 THIS = Path(__file__).resolve().parent
@@ -98,6 +100,10 @@ def run(args: argparse.Namespace) -> None:
     contract = runner.planner.load_contract(args.contract)
     result = json.loads(args.result.read_text(encoding="utf-8"))
     validate_result(result, contract, args)
+    authoritative_roots = authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ])
     with tempfile.TemporaryDirectory(prefix="neuroute-learned-final-replay-") as directory:
         replay = Path(directory) / "result.json"
         completed = subprocess.run(replay_command(args, replay), check=False,
@@ -106,6 +112,11 @@ def run(args: argparse.Namespace) -> None:
                 f"learned-final replay failed: {completed.stderr.strip()}")
         require(replay.read_bytes() == args.result.read_bytes(),
                 "learned-final replay bytes differ")
+    require(authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ]) == authoritative_roots,
+            "learned-final authoritative roots changed during replay")
     output = {
         "schema_version": 1,
         "family": "neuroute_learned_final_binary_reranker_evidence",
@@ -116,6 +127,10 @@ def run(args: argparse.Namespace) -> None:
             **runner.source_hashes(),
             "write-neuroute-learned-final-reranker-evidence.py": runner.sha256(Path(__file__)),
         },
+        "authoritative_qrels_validator_sha256": runner.sha256(
+            THIS / "neuroute_authoritative_qrels.py"),
+        "authoritative_roots": authoritative_roots,
+        "authoritative_qrels_to_quality_replay_passed": True,
         "query_partition": result["query_partition"],
         "model_files": [{key: row[key] for key in
                          ("width", "seed", "file", "sha256", "bytes_per_document")}

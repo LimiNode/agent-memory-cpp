@@ -12,6 +12,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import neuroute_authoritative_qrels as authoritative
+
 
 sys.dont_write_bytecode = True
 THIS = Path(__file__).resolve().parent
@@ -73,6 +75,10 @@ def run(args: argparse.Namespace) -> None:
         selected = [row for row in dataset["rows"] if "calibration_selected" in row["budget_roles"]]
         require(len(selected) == 30 and all(len(row.get("queries", [])) == 76 for row in selected),
                 "task-aware scheduler held-out matrix differs")
+    authoritative_roots = authoritative.validate_roots([
+        ("de-25k", args.de_25k_e5_root), ("de-100k", args.de_100k_e5_root),
+        ("de-1m", args.de_1m_e5_root),
+    ])
     with tempfile.TemporaryDirectory(prefix="neuroute-task-scheduler-") as directory:
         root = Path(directory)
         replay_result = root / "result.json"
@@ -84,12 +90,21 @@ def run(args: argparse.Namespace) -> None:
             require((replay_heads / head["file"]).read_bytes()
                     == (args.head_root / head["file"]).read_bytes(),
                     "task-aware scheduler head is not byte-replayable")
+    require(authoritative.validate_roots([
+        ("de-25k", args.de_25k_e5_root), ("de-100k", args.de_100k_e5_root),
+        ("de-1m", args.de_1m_e5_root),
+    ]) == authoritative_roots,
+            "task-aware scheduler authoritative roots changed during replay")
     evidence = {"schema_version": 1, "family": "neuroute_task_aware_probe_scheduler_evidence",
                 "passed": True, "contract_sha256": runner.sha256(args.contract),
                 "result_sha256": runner.sha256(args.result), "activation": result["activation"],
                 "source_files_sha256": {**result["source_files_sha256"],
                     "write-neuroute-task-aware-probe-scheduler-evidence.py":
                         runner.sha256(THIS / "write-neuroute-task-aware-probe-scheduler-evidence.py")},
+                "authoritative_qrels_validator_sha256": runner.sha256(
+                    THIS / "neuroute_authoritative_qrels.py"),
+                "authoritative_roots": authoritative_roots,
+                "authoritative_qrels_to_quality_replay_passed": True,
                 "head_artifacts": [{"file": row["file"], "sha256": row["sha256"]}
                                    for row in result["heads"]],
                 "matrix": result["matrix"], "decision": result["decision"],

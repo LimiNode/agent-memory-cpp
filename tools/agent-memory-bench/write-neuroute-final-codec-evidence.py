@@ -11,6 +11,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import neuroute_authoritative_qrels as authoritative
+
 sys.dont_write_bytecode = True
 THIS = Path(__file__).resolve().parent
 
@@ -78,6 +80,11 @@ def run(args: argparse.Namespace) -> None:
             {row["id"] for row in contract["quantizers"]},
             "final-codec evidence decision differs")
 
+    authoritative_roots = authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ])
+
     with tempfile.TemporaryDirectory(prefix="neuroute-final-codec-replay-") as directory:
         replay_path = Path(directory) / "quality.json"
         completed = subprocess.run(quality_command(args, replay_path), check=False,
@@ -86,6 +93,11 @@ def run(args: argparse.Namespace) -> None:
                 f"final-codec quality replay failed: {completed.stderr.strip()}")
         require(replay_path.read_bytes() == args.quality_result.read_bytes(),
                 "final-codec quality replay bytes differ")
+    require(authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ]) == authoritative_roots,
+            "final-codec authoritative roots changed during replay")
 
     manifest_path = args.native_materialization_root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -110,11 +122,18 @@ def run(args: argparse.Namespace) -> None:
     output = {
         "schema_version": 1,
         "family": "neuroute_final_codec_evidence",
+        "passed": True,
         "contract_sha256": runner.sha256(args.contract),
         "quality_result_sha256": runner.sha256(args.quality_result),
         "native_materialization_sha256": runner.sha256(manifest_path),
         "native_report_sha256": runner.sha256(args.native_report),
         "source_files_sha256": runner.source_hashes(),
+        "authoritative_qrels_validator_sha256": runner.sha256(
+            THIS / "neuroute_authoritative_qrels.py"),
+        "authoritative_roots": authoritative_roots,
+        "authoritative_qrels_to_quality_replay_passed": True,
+        "quality_replay_byte_identical": True,
+        "native_replay_passed": True,
         "simdcomp": contract["simdcomp"],
         "decision": {
             "selected_quantizer": quality["decision"]["selected_quantizer"],
