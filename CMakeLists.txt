@@ -1345,6 +1345,9 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(NAME agent_memory_neuroute_int6_codec_native_self_test
+                COMMAND $<TARGET_FILE:agent-memory-neuroute-int6-codec> --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
         endif()
         add_test(
             NAME agent_memory_pq_opq_evaluator_self_test
