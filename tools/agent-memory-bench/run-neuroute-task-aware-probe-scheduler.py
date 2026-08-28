@@ -239,7 +239,8 @@ def candidate_summary(index: dict[str, Any], requested: list[numpy.ndarray],
             candidates, _, _ = scale.candidate_union(
                 requested[local][:budget].tolist(), index,
                 int(math.floor(document_count * contract["calibration"]["candidate_mass_target"])))
-            survival = float(numpy.isin(oracle[position], candidates).sum()) / contract["cascade"]["oracle_k"]
+            target = oracle[position][:contract["cascade"]["oracle_k"]]
+            survival = float(numpy.isin(target, candidates).sum()) / contract["cascade"]["oracle_k"]
             fractions.append(candidates.size / document_count)
             survivals.append(survival)
             scale.update_sequence(digest, local, candidates)
