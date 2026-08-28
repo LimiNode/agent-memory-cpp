@@ -53,6 +53,8 @@ def load_contract(path: Path) -> dict[str, Any]:
             cold.get("must_not_claim_os_cache_cold") is True,
             "full-corpus codec process-cold protocol differs")
     require(value.get("simdcomp", {}).get("measurement_requires_simdcomp") is True and
+            value.get("decision", {}).get(
+                "compare_int5_vs_int6_at_identical_requests") is True and
             value.get("decision", {}).get("production_storage_selection_deferred") is True,
             "full-corpus codec decision differs")
     return value

@@ -40,13 +40,14 @@ passes. Fetch, decode-and-dot, top-10 selection, total time, logical bytes,
 random-read count, and available process page-fault counters are reported
 separately.
 
-The process-cold treatment starts a fresh executable for each of 31
-predeclared requests per representation. Timing begins after small query,
-pool, and rank metadata is loaded and the physical file is opened; it measures
-the first top-64 fetch in that process. Child launch wall time is also reported.
-The OS page cache is deliberately uncontrolled, so this treatment must never be
-described as cold-disk or OS-cache-cold evidence. A true cold-device study would
-need an isolated host or privileged cache-reset procedure.
+The fresh-process-first-fetch treatment starts a fresh executable for each of
+31 predeclared request IDs. The same paired request set is used for all four
+representations. Timing begins after small query, pool, and rank metadata is
+loaded and the physical file is opened; it measures the first top-64 fetch in
+that process. Child launch wall time is also reported. The OS page cache is
+deliberately uncontrolled, so this treatment must never be described as
+cold-disk or OS-cache-cold evidence. A true cold-device study would need an
+isolated host or privileged cache-reset procedure.
 
 ## Expected result and decision boundary
 
@@ -62,6 +63,9 @@ The input manifest binds the #207 quality/evidence/native artifacts, the
 parent INT6 result, the final-representation materialization, full DE-1M vector
 bytes, query vectors, document-id ranks, pools, and all expected top-10
 sequences. The evidence writer revalidates every storage hash and all 912 warm
-quality rows, then starts a new process to replay the deterministic identity
-and top-10 receipt for all 124 process-cold samples. Timing values are not
-required to reproduce byte-for-byte.
+quality rows, requires the paired 31-request matrix, recomputes every saved
+fresh-process timing and page-fault summary from its 124 samples, then starts a
+new process to replay each deterministic identity and top-10 receipt. The
+native source manifest, build environment, and executable SHA-256 are bound to
+the evidence. Timing values are not required to reproduce byte-for-byte across
+independent measurement runs.
