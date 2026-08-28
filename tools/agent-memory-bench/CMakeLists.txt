@@ -409,6 +409,41 @@ agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-int6-codec
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_int6_codec.cpp")
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-int6-codec)
 target_link_libraries(agent-memory-neuroute-int6-codec PRIVATE agent_memory::agent_memory agent_memory::json)
+
+set(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP 0)
+set(AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_codec.cpp")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$"
+        AND EXISTS "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdbitpacking.c")
+    add_library(agent_memory_neuroute_simdcomp STATIC
+        "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdbitpacking.c")
+    set_source_files_properties(
+        "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdbitpacking.c"
+        PROPERTIES LANGUAGE CXX)
+    target_include_directories(agent_memory_neuroute_simdcomp PUBLIC
+        "${PROJECT_SOURCE_DIR}/external/simdcomp/include")
+    target_compile_features(agent_memory_neuroute_simdcomp PRIVATE cxx_std_17)
+    if(NOT MSVC)
+        target_compile_options(agent_memory_neuroute_simdcomp PRIVATE -msse2)
+    endif()
+    set(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP 1)
+    list(APPEND AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES
+        "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdbitpacking.c"
+        "${PROJECT_SOURCE_DIR}/external/simdcomp/include/simdbitpacking.h")
+endif()
+
+add_executable(agent-memory-neuroute-final-codec neuroute_final_codec.cpp)
+target_compile_definitions(agent-memory-neuroute-final-codec PRIVATE
+    AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP=${AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP})
+target_link_libraries(agent-memory-neuroute-final-codec PRIVATE
+    agent_memory::agent_memory agent_memory::json)
+if(TARGET agent_memory_neuroute_simdcomp)
+    target_link_libraries(agent-memory-neuroute-final-codec PRIVATE
+        agent_memory_neuroute_simdcomp)
+endif()
+agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-codec
+    ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
+agent_memory_set_evaluator_build_environment(agent-memory-neuroute-final-codec)
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-representation
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_representation.cpp"
 )
