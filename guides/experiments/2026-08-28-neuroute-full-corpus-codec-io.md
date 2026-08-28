@@ -143,3 +143,66 @@ new process to replay each deterministic identity and top-10 receipt. The
 native source manifest, build environment, and executable SHA-256 are bound to
 the evidence. Timing values are not required to reproduce byte-for-byte across
 independent measurement runs.
+
+## Paired-evidence correction (v2, authoritative)
+
+The original run above remains historical evidence for the physical-file and
+quality-replay result. A protocol review found that its 31 fresh-process
+requests were sampled independently per representation, so the apparent INT5
+versus INT6 fresh-process latency difference was not a paired comparison. The
+v2 correction keeps the frozen inputs and all four physical files, but measures
+the same predeclared 31 request IDs for every representation. It also binds the
+native source manifest, Release build environment, and executable bytes, and
+fail-closed evidence independently recomputes all timing, page-fault, and paired
+summaries from the saved samples.
+
+The corrected warm-page-cache totals are:
+
+| Representation | Total p50 ms | Total p95 ms |
+| --- | ---: | ---: |
+| INT5 SIMDComp | .60265 | .703525 |
+| INT5 scalar | .63370 | .729400 |
+| INT6 SIMDComp | .60335 | .694115 |
+| INT6 scalar | .64755 | .738930 |
+
+The paired fresh-process-first-fetch totals are:
+
+| Representation | Total p50 ms | Total p95 ms |
+| --- | ---: | ---: |
+| INT5 SIMDComp | .70970 | .827350 |
+| INT5 scalar | .76370 | .895800 |
+| INT6 SIMDComp | .71710 | .810400 |
+| INT6 scalar | .77160 | .921600 |
+
+For each common request, v2 subtracts INT6 time from INT5 time. Positive values
+therefore favor INT6 and negative values favor INT5:
+
+| Layout | Mean delta ms | p50 delta ms | p95 delta ms | INT5 faster |
+| --- | ---: | ---: | ---: | ---: |
+| SIMDComp BP128 | +.013113 | -.004000 | +.145850 | 58.1% |
+| Scalar BP128 | -.001694 | +.001400 | +.171050 | 48.4% |
+
+These paired samples do not establish a stable latency winner between INT5 and
+INT6: the signs differ across summary statistics and INT5 wins only 18/31 SIMD
+requests and 15/31 scalar requests. The engineering decision is consequently
+based on equivalent measured latency plus physical size, not on a claimed
+latency advantage. INT5 remains the preferred candidate because it preserves
+the frozen quality result while using and fetching 16.4% fewer bytes. Production
+selection remains deferred for the same MDBX and end-to-end limitations stated
+above.
+
+The v2 provenance identities are:
+
+```text
+storage manifest SHA-256: 172ca39fc7fb86d4d92d72eb4b89ef0c0985bd92fb4609607c6c29d2c22ae21e
+warm report SHA-256:      72b4d37c6b07ab0c26032c757607f782ae75726765a995936b131784796fed50
+paired result SHA-256:    b5ed920ace2ad78ae9a39bf1c50663bf4c6a1a6f40c2464fe0ca560474d92a13
+paired evidence SHA-256:  d57de9cccec79c9ff33a63fbc2b1930d146799da29f914ca2c5d097b619584e7
+native source manifest:   77a839c68c255bc23ca58d44fc6d7b2c75de1816362fab3551a2441379df20b8
+native executable:        6d982d72acf01de0f45da9344ddc1aec3afc361db6a9326d84b32e48bc5ae619
+```
+
+The paired evidence was generated twice from the same saved measurement and
+was byte-identical. This v2 section is authoritative for fresh-process timing,
+paired INT5-versus-INT6 comparisons, and native provenance; the earlier
+fresh-process table must not be used for comparative claims.
