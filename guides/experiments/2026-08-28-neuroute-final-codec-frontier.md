@@ -92,3 +92,15 @@ so the INT5/SIMDComp decision and every quality or sequence result remain
 unchanged. The source now uses the standard interpolation weight and tests the
 integer-position case explicitly. PR #215 supersedes this pool-local result for
 full-corpus serving interpretation.
+
+An additive downstream closure now binds this frozen result and native evidence
+to the passed conditional closure from PR #205. It verifies the original
+conditional result/evidence hashes, follows the closure to the frozen final
+materialization, and then binds the INT5 quality, 84-row native report, and
+selected SIMDComp layout without changing any measured bytes:
+
+```text
+final-codec additive closure SHA-256: ea3a17cb061396df4c652465b70a7e4185ae3f003a2e3566f58d3609a93af35a
+```
+
+Two independent runs produced the same canonical receipt.
