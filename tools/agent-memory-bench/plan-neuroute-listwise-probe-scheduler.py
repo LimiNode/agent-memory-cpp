@@ -35,6 +35,8 @@ def load_contract(path: Path) -> dict[str, Any]:
             training.get("queries") == 153 and
             training.get("teacher_exact_e5_top_k") == 100 and
             training.get("feature_count") == 136 and
+            training.get("heads") == ["listwise_gain", "cascade_aware"] and
+            training.get("positive_address_weight") == 256.0 and
             training.get("updated_parameters") ==
             "query_side_joint_address_feature_head_only",
             "listwise scheduler training differs")
@@ -63,10 +65,9 @@ def load_contract(path: Path) -> dict[str, Any]:
 
 def plan(contract: dict[str, Any]) -> dict[str, Any]:
     seeds = len(contract["route"]["seeds"])
-    learned = len(contract["treatments"]) - 1
     return {
         "frozen_routes": seeds,
-        "learned_query_heads": seeds * learned,
+        "learned_query_heads": seeds * len(contract["training"]["heads"]),
         "calibration_rows": seeds * (
             len(contract["calibration"]["probe_budgets"]) * 3
             + len(contract["calibration"]["probe_budgets"])
@@ -85,7 +86,7 @@ def main() -> int:
     args = parser.parse_args()
     try:
         result = plan(load_contract(args.contract))
-        require(result == {"frozen_routes": 3, "learned_query_heads": 9,
+        require(result == {"frozen_routes": 3, "learned_query_heads": 6,
                            "calibration_rows": 108, "held_out_route_treatments": 36,
                            "native_rows": 0},
                 "listwise scheduler plan differs")

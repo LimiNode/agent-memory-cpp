@@ -40,7 +40,10 @@ another independent-bit regression.
 For each training query, a deterministic address-utility ridge fit projects the
 whole exact-E5 top-100 discounted gain vector into that joint basis. A second
 anchored ridge maps the frozen 64-dimensional query hidden state to those joint
-utility coefficients.
+utility coefficients. Positive teacher addresses receive a frozen 256x weight
+so the sparse top-100 signal is not erased by the many occupied negative
+addresses. The cost treatment reuses the listwise semantic head; it does not
+train a second copy.
 
 The cost treatment subtracts a calibration-only multiple of standardized
 `log1p(posting_count)` after semantic scoring. It never divides semantic gain by
