@@ -14,7 +14,7 @@
     "document_addresses": "frozen_per_scale_from_width_materialization"
   },
   "partition": {
-    "source": "german_configuration_selection_query_ids",
+    "source": "configuration_selection_query_ids",
     "queries": 76,
     "student_evaluation_partition_forbidden": true
   },

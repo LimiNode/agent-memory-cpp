@@ -39,7 +39,7 @@ def load_contract(path: Path) -> dict[str, Any]:
             and len(contract["route"]["seeds"]) == 3,
             "sequential-oracle route differs")
     require(contract["partition"] == {
-        "source": "german_configuration_selection_query_ids",
+        "source": "configuration_selection_query_ids",
         "queries": 76,
         "student_evaluation_partition_forbidden": True,
     }, "sequential-oracle partition differs")
