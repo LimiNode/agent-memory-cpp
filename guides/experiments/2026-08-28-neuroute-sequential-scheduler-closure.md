@@ -1,6 +1,6 @@
 # NeuRoute sequential scheduler activation closure
 
-Date: 2026-08-28. Frozen fail-closed protocol; audit pending.
+Date: 2026-08-28. Frozen implementation `34deaca`; audit complete.
 
 ## Question
 
@@ -34,3 +34,15 @@ It is dormant rather than measured.
 
 No sequential model, measurement row, native implementation, or production
 selection is licensed by this closure.
+
+## Result
+
+The audit passed twice with identical bytes:
+
+```text
+closure SHA-256: b0898b61965685987829f777707bb657919e1f33707868892931432eddff10a2
+```
+
+It bound parent result `4a7054c12607...` and evidence `268d1f533a3b...`,
+confirmed the complete matrix and negative decision, and emitted zero sequential
+models and zero measurement rows. The dormant protocol was not executed.
