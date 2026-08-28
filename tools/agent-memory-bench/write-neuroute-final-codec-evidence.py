@@ -122,6 +122,7 @@ def run(args: argparse.Namespace) -> None:
     output = {
         "schema_version": 1,
         "family": "neuroute_final_codec_evidence",
+        "passed": True,
         "contract_sha256": runner.sha256(args.contract),
         "quality_result_sha256": runner.sha256(args.quality_result),
         "native_materialization_sha256": runner.sha256(manifest_path),
@@ -131,6 +132,8 @@ def run(args: argparse.Namespace) -> None:
             THIS / "neuroute_authoritative_qrels.py"),
         "authoritative_roots": authoritative_roots,
         "authoritative_qrels_to_quality_replay_passed": True,
+        "quality_replay_byte_identical": True,
+        "native_replay_passed": True,
         "simdcomp": contract["simdcomp"],
         "decision": {
             "selected_quantizer": quality["decision"]["selected_quantizer"],
