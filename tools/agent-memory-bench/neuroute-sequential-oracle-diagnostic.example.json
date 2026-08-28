@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_sequential_oracle_diagnostic",
+  "claim_scope": "independently_frozen_16bit_state_dependent_actionable_gain_oracle",
+  "activation": {
+    "nonlinear_result_sha256": "4a7054c126079545e95a12cb819c9c1fc166c172d4c4cf26f6349a8ab5dccec9",
+    "nonlinear_evidence_sha256": "268d1f533a3bc3c0f138dc1712a8d27836b2b24c7271262e84991489cd512ebf",
+    "conditional_closure_sha256": "b0898b61965685987829f777707bb657919e1f33707868892931432eddff10a2"
+  },
+  "route": {
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "document_replication": 1,
+    "document_addresses": "frozen_per_scale_from_width_materialization"
+  },
+  "partition": {
+    "source": "german_configuration_selection_query_ids",
+    "queries": 76,
+    "student_evaluation_partition_forbidden": true
+  },
+  "evaluation": {
+    "scales": ["de-25k", "de-100k", "de-1m"],
+    "treatments": [
+      "occupied_logit",
+      "direct_id",
+      "centroid_initialized_id",
+      "static_target_gain",
+      "static_target_gain_density",
+      "cascade_marginal_gain_density"
+    ],
+    "candidate_mass_target": 0.1,
+    "coverage_targets": [0.5, 0.75, 0.9, 0.95],
+    "teacher_target": "discounted_exact_e5_top10_survival_after_hamming768_adc64",
+    "privileged_action_pool": "occupied_addresses_containing_exact_e5_top10",
+    "static_cost": "posting_count",
+    "sequential_cost": "incremental_posting_count",
+    "unreached_target_policy": "right_censor_at_candidate_mass_target"
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "work_accounting": {
+    "deterministic_counts": [
+      "address_scores",
+      "sequential_rounds",
+      "cascade_evaluations",
+      "hamming_distance_evaluations",
+      "adc_distance_evaluations"
+    ],
+    "wall_clock_timing_excluded_from_replayable_claim": true
+  },
+  "decision": {
+    "primary_coverage_target": 0.75,
+    "minimum_mass_reduction_vs_static_density": 0.1,
+    "minimum_mass_reduction_vs_occupied_logit": 0.25,
+    "minimum_reach_rate": 0.9,
+    "all_scales_and_seeds_must_pass": true,
+    "student_followup_only_if_passed": true,
+    "production_selection_forbidden": true
+  }
+}
