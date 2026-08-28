@@ -551,6 +551,40 @@ CommonInput load_common(const std::filesystem::path& root, const nlohmann::json&
     return result;
 }
 
+bool is_relevance_v4(const nlohmann::json& contract) {
+    return contract.value("family", "") == "neuroute_relevance_aware_v4_config_only";
+}
+
+double candidate_mass_target(const nlohmann::json& contract) {
+    return (is_relevance_v4(contract) ? contract.at("routing")
+                                      : contract.at("candidate_pipeline"))
+        .at("candidate_mass_target").get<double>();
+}
+
+std::size_t warmup_passes(const nlohmann::json& contract) {
+    return (is_relevance_v4(contract)
+        ? contract.at("native_timing").at("warmup_passes")
+        : contract.at("timing").at("warmup_full_query_passes")).get<std::size_t>();
+}
+
+std::size_t measured_passes(const nlohmann::json& contract) {
+    return (is_relevance_v4(contract)
+        ? contract.at("native_timing").at("measured_passes")
+        : contract.at("timing").at("measured_full_query_passes")).get<std::size_t>();
+}
+
+std::size_t hamming_limit(const nlohmann::json& contract) {
+    return (is_relevance_v4(contract) ? contract.at("cascade")
+                                      : contract.at("candidate_pipeline"))
+        .at("hamming_limit").get<std::size_t>();
+}
+
+std::size_t adc_limit(const nlohmann::json& contract) {
+    return (is_relevance_v4(contract) ? contract.at("cascade")
+                                      : contract.at("candidate_pipeline"))
+        .at("adc_limit").get<std::size_t>();
+}
+
 nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dataset,
                        const nlohmann::json& route, const nlohmann::json& expected,
                        const CommonInput& input, const std::vector<float>& logits,
@@ -560,7 +594,7 @@ nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dat
     const auto logit_dimensions = route.at("logit_dimensions").get<std::size_t>();
     const auto learned = route.at("kind").get<std::string>() == "learned";
     const auto candidate_limit = static_cast<std::size_t>(std::floor(
-        input.document_count * contract.at("candidate_pipeline").at("candidate_mass_target").get<double>()));
+        input.document_count * candidate_mass_target(contract)));
     std::vector<std::uint32_t> generations(input.document_count);
     std::uint32_t generation = 0;
     std::vector<Counters> deterministic;
@@ -584,8 +618,8 @@ nlohmann::json run_row(const nlohmann::json& contract, const nlohmann::json& dat
 
     nlohmann::json timing = nullptr;
     if(timings) {
-        const auto warmups = contract.at("timing").at("warmup_full_query_passes").get<std::size_t>();
-        const auto repeats = contract.at("timing").at("measured_full_query_passes").get<std::size_t>();
+        const auto warmups = warmup_passes(contract);
+        const auto repeats = measured_passes(contract);
         for(std::size_t warmup = 0; warmup < warmups; ++warmup)
             for(std::size_t query = 0; query < input.query_count; ++query)
                 static_cast<void>(run_query(index, input, logits.data() + query * logit_dimensions, bits, learned,
@@ -625,15 +659,16 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
     nlohmann::json contract, manifest;
     contract_stream >> contract;
     manifest_stream >> manifest;
-    if(contract.value("schema_version", 0) != 1
-       || contract.value("family", "") != "neuroute_native_mdbx_cost_protocol"
-       || manifest.value("schema_version", 0) != 1
-       || manifest.value("family", "") != "neuroute_native_mdbx_cost_materialization"
+    const auto legacy = contract.value("family", "") == "neuroute_native_mdbx_cost_protocol"
+        && manifest.value("family", "") == "neuroute_native_mdbx_cost_materialization";
+    const auto relevance_v4 = is_relevance_v4(contract)
+        && manifest.value("family", "") == "neuroute_relevance_aware_v4_native_materialization";
+    if(contract.value("schema_version", 0) != 1 || manifest.value("schema_version", 0) != 1
+       || (!legacy && !relevance_v4)
        || manifest.at("contract_sha256").get<std::string>() != agent_memory::sha256_file_hex(contract_path))
         throw std::runtime_error("native MDBX contract/materialization binding differs");
     if(contract.at("storage").at("page_entries").get<std::size_t>() != 256
-       || contract.at("candidate_pipeline").at("hamming_limit").get<std::size_t>() != 768
-       || contract.at("candidate_pipeline").at("adc_limit").get<std::size_t>() != 256)
+       || hamming_limit(contract) != 768 || adc_limit(contract) != 256)
         throw std::runtime_error("native MDBX fixed pipeline differs");
     nlohmann::json rows = nlohmann::json::array(), indexes = nlohmann::json::array();
     std::uint8_t route_number = 0;
@@ -665,7 +700,8 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
         }
     }
     return {
-        {"schema_version", 1}, {"family", "neuroute_native_mdbx_cost_result"},
+        {"schema_version", 1}, {"family", relevance_v4
+            ? "neuroute_relevance_aware_v4_native_result" : "neuroute_native_mdbx_cost_result"},
         {"claim_scope", contract.at("claim_scope")},
         {"contract_sha256", agent_memory::sha256_file_hex(contract_path)},
         {"materialization_sha256", agent_memory::sha256_file_hex(manifest_path)},
@@ -681,7 +717,9 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
 
 void validate_report(const nlohmann::json& expected, const nlohmann::json& replay) {
     if(expected.value("schema_version", 0) != 1
-       || expected.value("family", "") != "neuroute_native_mdbx_cost_result"
+       || expected.value("family", "") != replay.value("family", "")
+       || (expected.value("family", "") != "neuroute_native_mdbx_cost_result"
+           && expected.value("family", "") != "neuroute_relevance_aware_v4_native_result")
        || expected.at("contract_sha256") != replay.at("contract_sha256")
        || expected.at("materialization_sha256") != replay.at("materialization_sha256")
        || expected.at("evaluator_source_manifest_sha256") != replay.at("evaluator_source_manifest_sha256")
