@@ -179,6 +179,10 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_autoencoder_evaluator_self_test
             COMMAND agent-memory-autoencoder-eval --self-test
         )
+        add_test(
+            NAME agent_memory_neuroute_full_corpus_codec_native_self_test
+            COMMAND agent-memory-neuroute-full-corpus-codec --self-test
+        )
     endif()
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
     execute_process(
@@ -477,6 +481,18 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(NAME agent_memory_neuroute_learned_final_reranker_evidence_self_test
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-learned-final-reranker-evidence.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_full_corpus_codec_planner
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/plan-neuroute-full-corpus-codec.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_full_corpus_codec_materializer_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/materialize-neuroute-full-corpus-codec.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_full_corpus_codec_runner_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-full-corpus-codec.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_full_corpus_codec_evidence_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-full-corpus-codec-evidence.py --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(
                 NAME agent_memory_neuroute_frozen_scale_transfer_planner
