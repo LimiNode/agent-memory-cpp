@@ -386,6 +386,19 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     )
 endif()
 
+add_executable(agent-memory-neuroute-exact-e5-rerank
+    neuroute_exact_e5_rerank.cpp
+)
+agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-exact-e5-rerank
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_exact_e5_rerank.cpp"
+)
+agent_memory_set_evaluator_build_environment(agent-memory-neuroute-exact-e5-rerank)
+target_link_libraries(agent-memory-neuroute-exact-e5-rerank
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 add_executable(agent-memory-aggregate-signature-bench
     aggregate_signature.cpp
 )
