@@ -1,98 +1,83 @@
-# NeuRoute address-centroid teacher learnability
+# NeuRoute address-centroid learnability diagnostic
 
 Date: 2026-08-29. Frozen implementation `9eddea4`; measurement complete.
 
 ## Question
 
-#225 showed that privileged static actionable gain divided by posting count is
-almost identical to the more expensive sequential oracle. The remaining
-problem is therefore static: predict useful occupied postings for a query.
-This diagnostic asks where that prediction fails when each frozen 16-bit
-address is represented by its normalized mean E5 document centroid.
+#225 localized the remaining 16-bit routing problem to static prediction of
+actionable gain per posting cost. This diagnostic asks where that prediction
+fails and whether a normalized mean E5 centroid per occupied address is a
+useful non-learned baseline.
 
-The study separates three difficulties instead of training another generic
-scheduler:
+The study keeps the 76 German configuration queries and all three frozen route
+seeds at DE-25k, DE-100k, and DE-1M. The disjoint German internal-evaluation
+partition remains forbidden. It separates relevant-address ordering,
+hard-negative discrimination, global sparse retrieval, and the resulting
+actionable candidate-mass frontier.
 
-1. ranking relevant addresses among themselves;
-2. separating relevant addresses from hard semantic negatives;
-3. retrieving the sparse relevant addresses from the complete occupied space.
+## Frozen treatments
 
-The earlier #176 control scanned mean centroids for an 8-bit replicated Spanish
-25k substrate. This experiment is different: it binds the frozen 16-bit,
-single-assignment German partitions from #225, covers 25k/100k/1M, includes
-posting-cost exponents, and measures the actionable Hamming768 -> ADC64
-candidate-mass frontier.
-
-## Frozen protocol
-
-The 76 configuration-selection queries are the only query partition opened.
-The separate German internal-evaluation partition remains forbidden. For every
-scale and each of the three frozen routing seeds, the runner constructs one
-normalized mean E5 centroid per occupied address and evaluates
+For every occupied 16-bit address, documents are reduced to one normalized
+mean E5 centroid. Addresses are ranked by
 
 ```text
-cosine(query, centroid) / posting_count^alpha
-alpha in {0, .25, .5, .75, 1}
+cosine(query, address_centroid) / posting_count(address)^alpha
 ```
 
-The complete matrix contains 45 rows and 76 queries per row. It reports global
-average precision, pairwise AUC against the top 1,024 hard negatives,
-relevant-only gain-density pairwise accuracy, discounted target-gain coverage
-at 256/512/1,024 addresses, and candidate mass required for 50/75/90/95%
-actionable gain after the frozen cascade.
+for `alpha = 0, .25, .5, .75, 1`. The target is the discounted exact-E5 top-10
+survival after the frozen Hamming768 -> ADC64 cascade from #225.
 
-## Results
+## Result
 
-All nine configuration selections chose `alpha=0`; cost normalization did not
-repair a weak relevance score. Means below are across the three frozen seeds.
+The complete matrix contains 45 rows (`3 scales x 3 seeds x 5 alpha values`)
+and 76 configuration queries per row. Alpha zero was selected for every
+scale/seed: posting-cost normalization degrades the already imperfect semantic
+signal instead of improving it.
 
-| Scale | Global AP | Hard-negative AUC | Relevant-only pairwise | Gain at 256 | Gain at 1,024 | Candidate mass at 75% | `occupied_logit` mass |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| DE-25k | .8133 | .9935 | .7620 | .9992 | 1.0000 | .00136 | .03928 |
-| DE-100k | .5607 | .9485 | .6255 | .9554 | .9908 | .00426 | .03652 |
-| DE-1M | .1426 | .6497 | .5479 | .6172 | .8076 | .03207 | .03899 |
+At the primary 75% actionable-gain target:
 
-At DE-1M the 75% target reach rate is only .8026--.8421 under the frozen 10%
-candidate-mass censoring limit, so the predeclared `<=1%` useful-single-centroid
-gate fails. The mean candidate reduction against `occupied_logit` is only about
-17%, despite a much stronger result at the smaller scales.
+| Scale | Mean centroid candidate fraction | Mean occupied-logit fraction | Mean AP | Reach rate range |
+| --- | ---: | ---: | ---: | ---: |
+| DE-25k | .001359 | .039282 | .8133 | 1.000 |
+| DE-100k | .004263 | .036522 | .5607 | .974-.1000 |
+| DE-1M | .032070 | .038991 | .1426 | .803-.842 |
 
-The decomposition localizes the failure. Relevant-only ordering at 1M is only
-slightly above random, global AP is .133--.150, and the hard-negative AUC falls
-to .634--.669. Nevertheless, exact centroid ranking still concentrates about
-80.8% of discounted target gain into the top 1,024 addresses. The prototype is
-therefore informative as a coarse shortlist generator, but is not a sufficient
-final sparse router.
+The decomposition makes the scale failure explicit:
 
-## Decision and interpretation
+| Scale | Hard-negative AUC | Relevant-only density pairwise accuracy | Discounted gain in top-256 | Discounted gain in top-1024 |
+| --- | ---: | ---: | ---: | ---: |
+| DE-25k | .9935 | .7620 | .9992 | 1.0000 |
+| DE-100k | .9485 | .6255 | .9554 | .9908 |
+| DE-1M | .6497 | .5479 | .6172 | .8076 |
 
-`single_centroid_useful=false`. The result supports the scale-dependent
-multimodality hypothesis: averaging a larger posting list into one vector loses
-the semantic islands that remain separable at 25k and partly separable at 100k.
-It does not show that address semantics are unpredictable.
+Thus one centroid is highly informative at 25k, remains a useful coarse signal
+at 100k, and does not satisfy the frozen useful-frontier gate at 1M. On DE-1M,
+relevant-only ordering is only slightly above chance and global AP is
+`.1326-.1501`, but top-1024 centroid-ranked addresses still preserve
+`.7961-.8282` of discounted target gain. The semantic signal is therefore
+concentrated but insufficient as the final sparse scheduler.
 
-The independently predeclared multi-prototype follow-up is licensed. It will
-compare 1/2/4/8 deterministic prototypes per occupied address and report both
-quality saturation and storage/score work. A learned gain-density reranker and
-native ANN activation remain downstream questions; neither is licensed for a
-production claim by this configuration-only diagnostic.
+## Decision
 
-## Evidence
+`single_centroid_useful = false`. The internal-evaluation partition was not
+opened and production selection remains forbidden. The predeclared
+multi-prototype follow-up is licensed to distinguish within-address
+multimodality from a more general failure of centroid geometry.
 
 ```text
 result SHA-256:   707088287b6bb2e84bd956ed15b42a5fdcb147e96e381c6042e9415fc703a3e7
 evidence SHA-256: 2773ba8f86576ec9e947fed2c19e9f53bb69c8a159b2c54a0016afeb93ed74a0
 ```
 
-The evidence writer rebuilt every centroid table, recomputed all exact-E5
-targets and cascades from authoritative roots, and reproduced the complete
-result byte for byte. Authoritative qrels replay passed. The internal partition
-was not opened, and production selection remains forbidden.
+The evidence writer rebuilt every centroid table, reran all rows, reproduced
+the complete result byte for byte, and retained the authoritative qrels
+binding inherited from #225.
 
-## Limitations
+## Limitations and next check
 
-- These are exact NumPy centroid scans, not native latency measurements.
-- The cost exponent is a configuration frontier, not a held-out selection.
-- One mean prototype deliberately compresses all within-address modes.
-- The 1M result licenses a representation diagnostic, not immediate ANN or
-  learned-scheduler deployment.
+The result is a configuration-only diagnostic, not held-out production
+evidence. A mean centroid compresses every occupied posting list to one mode.
+The next frozen study must compare deterministic `1/2/4/8` prototypes per
+address at fixed global address budgets and retain single-centroid,
+occupied-logit, and privileged gain-density controls. A learned gain-density
+reranker is justified only after that study shows a useful coarse shortlist.
