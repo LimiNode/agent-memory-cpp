@@ -293,4 +293,7 @@ jobs:
           python tools/agent-memory-bench/write-neuroute-prototype-gain-density-reranker-evidence.py --self-test &&
           python tools/agent-memory-bench/plan-neuroute-nonlinear-listwise-reranker.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-nonlinear-listwise-reranker.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-nonlinear-listwise-reranker-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-nonlinear-listwise-reranker-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-teacher-objective-ablation.py &&
+          python tools/agent-memory-bench/run-neuroute-teacher-objective-ablation.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-teacher-objective-ablation-evidence.py --self-test
