@@ -336,7 +336,8 @@ def evaluate_treatment(treatment: str, shortlists: numpy.ndarray,
             order = ordered(values, shortlist)
         elif treatment == "learned_pairwise_gain_density":
             order = ordered(learned[local], shortlist)
-        elif treatment == "privileged_gain_density_teacher":
+        elif treatment in ("privileged_gain_density_teacher",
+                           "privileged_gain_density_teacher_maximum_shortlist"):
             order = ordered(targets[local], shortlist, index["counts"])
         else:
             raise ValueError(f"unknown prototype gain-density treatment: {treatment}")
@@ -498,25 +499,32 @@ def evaluate(contract: dict[str, Any], materialization: dict[str, Any],
             internal_shortlists, internal_features = query_shortlists(
                 internal_queries, internal_maximum, occupied, prototypes, effective,
                 index["counts"], maximum_shortlist, len(data["document_ids"]))
-            internal_shortlists = internal_shortlists[:, :selected_shortlist]
-            internal_features = internal_features[:, :selected_shortlist]
-            internal_targets = density_targets(
+            full_internal_targets = density_targets(
                 internal_shortlists, oracle, positions["internal_evaluation"],
                 addresses, index["counts"], discounts)
             for treatment in contract["treatments"]:
+                if treatment == "privileged_gain_density_teacher_maximum_shortlist":
+                    treatment_shortlists = internal_shortlists
+                    treatment_features = internal_features
+                    treatment_targets = full_internal_targets
+                else:
+                    treatment_shortlists = internal_shortlists[:, :selected_shortlist]
+                    treatment_features = internal_features[:, :selected_shortlist]
+                    treatment_targets = full_internal_targets[:, :selected_shortlist]
                 row = evaluate_treatment(
-                    treatment, internal_shortlists, internal_features,
-                    internal_targets, models[selected_alpha], feature_mean,
+                    treatment, treatment_shortlists, treatment_features,
+                    treatment_targets, models[selected_alpha], feature_mean,
                     feature_deviation, addresses, index, data,
                     positions["internal_evaluation"], oracle, discounts, contract)
                 internal_rows.append({
                     "dataset": config["id"], "seed": seed,
                     "selected_ridge_alpha": selected_alpha,
                     "selected_shortlist_size": selected_shortlist,
+                    "evaluated_shortlist_size": int(treatment_shortlists.shape[1]),
                     **row,
                 })
             del internal_queries, internal_maximum, internal_shortlists
-            del internal_features, internal_targets, models
+            del internal_features, full_internal_targets, models
             del addresses, index, occupied, prototypes, effective, members
             gc.collect()
         datasets.append({
@@ -553,7 +561,8 @@ def decision(datasets: list[dict[str, Any]], selections: list[dict[str, Any]],
                        and row["treatment"] == "learned_pairwise_gain_density")
         teacher = next(row for row in dataset["internal_rows"]
                        if row["seed"] == seed
-                       and row["treatment"] == "privileged_gain_density_teacher")
+                       and row["treatment"]
+                       == "privileged_gain_density_teacher_maximum_shortlist")
         prototype_budget = budget(prototype, 256)
         learned_budget = budget(learned, 256)
         teacher_budget = budget(teacher, 256)

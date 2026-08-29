@@ -45,7 +45,8 @@
     "prototype_score",
     "posting_cost_heuristic",
     "learned_pairwise_gain_density",
-    "privileged_gain_density_teacher"
+    "privileged_gain_density_teacher",
+    "privileged_gain_density_teacher_maximum_shortlist"
   ],
   "diagnostic": {
     "posting_cost_heuristic_alpha": 0.25,

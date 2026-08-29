@@ -103,7 +103,7 @@ def write(args: argparse.Namespace) -> None:
 def self_test() -> None:
     contract = runner.planner.load_contract(
         THIS / "neuroute-prototype-gain-density-reranker.example.json")
-    require(runner.planner.plan(contract)["total_internal_rows"] == 36,
+    require(runner.planner.plan(contract)["total_internal_rows"] == 45,
             "prototype gain-density evidence self-test differs")
     print("NeuRoute prototype gain-density evidence self-test passed")
 

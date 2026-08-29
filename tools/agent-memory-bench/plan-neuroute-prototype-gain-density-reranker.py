@@ -60,6 +60,7 @@ def load_contract(path: Path) -> dict[str, Any]:
     require(contract["treatments"] == [
         "prototype_score", "posting_cost_heuristic",
         "learned_pairwise_gain_density", "privileged_gain_density_teacher",
+        "privileged_gain_density_teacher_maximum_shortlist",
     ], "prototype gain-density treatments differ")
     require(contract["diagnostic"]["address_budgets"] == [128, 256, 512, 1024]
             and contract["diagnostic"]["selection_address_budget"] == 256
@@ -101,8 +102,8 @@ def self_test() -> None:
         "seeds_per_dataset": 3,
         "calibration_rows_per_seed": 8,
         "total_calibration_rows": 72,
-        "internal_treatments_per_seed": 4,
-        "total_internal_rows": 36,
+        "internal_treatments_per_seed": 5,
+        "total_internal_rows": 45,
         "training_queries_per_model": 153,
         "configuration_queries_per_row": 76,
         "internal_queries_per_row": 76,
