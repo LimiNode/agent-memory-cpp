@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_representation_ambiguity_diagnostic",
+  "claim_scope": "frozen_de_1m_r0_within_query_collision_and_local_recoverability_diagnostic",
+  "activation": {
+    "nonlinear_result_sha256": "57e316b4590255bb7f0df63064cb9fd217017d7a990f1747fad2c68f545e7072",
+    "nonlinear_evidence_sha256": "e9a5968b02153c5fdd0b2faddca8b53c3e81259ef4e2d3e55c1788692323d6cc",
+    "teacher_objective_result_sha256": "6fb06a01bc3dbcf2ec5db4fb408246be9af17e21d2cd03c039d574e8c467513c",
+    "teacher_objective_evidence_sha256": "8d3464899c14fcb5cac332bca660eb25e63d213fbf6709d2e4e0a5e121c11a9b"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "representation": {
+    "id": "r0",
+    "feature_count": 22,
+    "source": "frozen_k8_query_address_scalar_features",
+    "scope": "within_query_top1024",
+    "query_vector_constant_within_scope": true,
+    "normalization": "all_8141_frozen_training_rows_per_seed",
+    "exact_collision_encoding": "raw_float32_bytes",
+    "quantization_bits": [8, 12],
+    "quantization_clip_standard_deviations": 4.0
+  },
+  "teacher": {
+    "source": "frozen_static_exact_e5_discounted_gain_density",
+    "positive": "target_greater_than_zero",
+    "privileged_membership_budget": 256,
+    "zero_target_queries_excluded_from_recoverability_only": true
+  },
+  "diagnostic": {
+    "all_queries_for_collision_counts": true,
+    "sampled_queries_per_seed": 256,
+    "sample_selection": "seeded_permutation_without_teacher_access",
+    "sample_seed": 23220260829,
+    "nearest_neighbor_counts": [1, 4, 8, 16],
+    "distance_metric": "rms_euclidean_in_normalized_r0",
+    "distance_bin_upper_bounds": [0.125, 0.25, 0.5, 1.0, 2.0, 4.0],
+    "cross_validation_folds": 5,
+    "cross_validation_selection": "highest_training_fold_gain_coverage_then_smaller_k",
+    "shuffled_control": "within_query_target_permutation",
+    "null_control": "prototype_shortlist_order"
+  },
+  "decision": {
+    "formal_insufficiency_requires_exact_or_quantized_positive_negative_collision": true,
+    "approximate_knn_is_empirical_ambiguity_only": true,
+    "representation_ladder_predeclared": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  },
+  "cache_manifest_sha256": {
+    "2026082701": "fe995751dbf54c407a9ec21711835e5cfa0464868f4b48b92e0bb4b886bd3f54",
+    "2026082702": "da6edee1fc3b6c1858bb1766a06112a13c16d10154598f5d97637ec64b17fbb8",
+    "2026082703": "eb9bc382c88a6a4ba74bb778d75b5c9e56ae8690b5cd476f340a6f86e95475d6"
+  }
+}
