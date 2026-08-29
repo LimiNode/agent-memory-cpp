@@ -77,10 +77,10 @@ licenses the predeclared R3 experiment with deterministic document-level bucket
 summaries. It does not yet license a stateful policy.
 
 Result SHA-256 is
-`ceb62bc88be717b19bc5669373bd97ee72390c8f73e8df1a91934367f6388e71`.
+`cb0ad8e6d528fdeca7ee0f6a473b5425be20cb5380c2058304a411652d293e00`.
 Independent replay regenerated all nine model archives and reproduced the
 complete result byte for byte; evidence SHA-256 is
-`23efd2fbdea99d745b70566f503665896dda97045fbdf3c0c8f54c3edc8d33ae`.
+`38a27cd77f8380ff7d4599b4dbaafd978767c89a9131af213e5d5053d2d83366`.
 
 ## Limitations
 

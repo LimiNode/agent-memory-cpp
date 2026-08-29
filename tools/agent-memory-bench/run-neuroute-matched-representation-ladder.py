@@ -746,24 +746,26 @@ def self_test() -> None:
     require(state["projected"].shape == (8, 2, 64)
             and state["normalized_summary"].shape == (2, 192),
             "matched-representation state self-test differs")
-    torch = importlib.import_module("torch")
-    queries = torch.from_numpy(numpy.zeros((1, 384), dtype=numpy.float32))
+    queries = numpy.zeros((1, 384), dtype=numpy.float32)
     shortlists = numpy.asarray([[1, 2]], dtype=numpy.uint32)
     scalar = numpy.zeros((1, 2, 22), dtype=numpy.float32)
-    lookup = numpy.full(1 << 16, -1, dtype=numpy.int32)
-    lookup[[1, 2]] = [0, 1]
-    tensors = training_state_tensors(
-        state, projection, numpy.asarray([1, 2], dtype=numpy.int32))
     for variant in contract["representations"]["variants"]:
-        raw = initialized_arrays(variant, contract, 17)
-        parameters = {name: torch.nn.Parameter(torch.from_numpy(value.copy()))
-                      for name, value in raw.items()}
-        local = torch_local(
-            variant, queries, shortlists, scalar, lookup, tensors,
+        arrays = initialized_arrays(variant, contract, 17)
+        arrays["shared_projection"] = projection
+        local = numpy_local(
+            variant, queries, shortlists, scalar,
+            numpy.asarray([1, 2], dtype=numpy.uint32), prototypes,
+            numpy.asarray([1, 2], dtype=numpy.int32), arrays,
             numpy.zeros(22, dtype=numpy.float32),
-            numpy.ones(22, dtype=numpy.float32), parameters)
-        scores = score_torch(queries, local, parameters, 8.0)
-        require(tuple(local.shape[:2]) == (1, 2) and tuple(scores.shape) == (1, 2),
+            numpy.ones(22, dtype=numpy.float32))
+        scores = numpy_scores(
+            variant, queries, shortlists, scalar,
+            numpy.asarray([1, 2], dtype=numpy.uint32), prototypes,
+            numpy.asarray([1, 2], dtype=numpy.int32), arrays,
+            numpy.zeros(22, dtype=numpy.float32),
+            numpy.ones(22, dtype=numpy.float32))
+        require(local.shape[:2] == (1, 2) and scores.shape == (1, 2)
+                and numpy.all(numpy.isfinite(scores)),
                 f"matched-representation forward self-test differs: {variant}")
     print("NeuRoute matched-representation runner self-test passed")
 
