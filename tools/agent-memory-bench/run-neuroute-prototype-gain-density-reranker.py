@@ -185,6 +185,18 @@ def density_targets(shortlists: numpy.ndarray, oracle: dict[int, numpy.ndarray],
     return targets
 
 
+def global_density_totals(oracle: dict[int, numpy.ndarray], positions: list[int],
+                          document_addresses: numpy.ndarray,
+                          counts: numpy.ndarray,
+                          discounts: numpy.ndarray) -> numpy.ndarray:
+    totals = numpy.empty(len(positions), dtype=numpy.float64)
+    for local, position in enumerate(positions):
+        gains = sequential.target_gains(oracle[position], document_addresses, discounts)
+        totals[local] = sum(gain / max(int(counts[address]), 1)
+                            for address, gain in gains.items())
+    return totals
+
+
 def fit_pairwise_models(features: numpy.ndarray, targets: numpy.ndarray,
                         alphas: list[float], negatives_per_positive: int) -> tuple[
                             dict[float, numpy.ndarray], numpy.ndarray, numpy.ndarray,
@@ -249,7 +261,7 @@ def static_calibration(shortlists: numpy.ndarray, features: numpy.ndarray,
                        targets: numpy.ndarray, weights: numpy.ndarray,
                        mean: numpy.ndarray, deviation: numpy.ndarray,
                        counts: numpy.ndarray, document_count: int,
-                       budget: int) -> dict[str, float]:
+                       budget: int, target_totals: numpy.ndarray) -> dict[str, float]:
     scores = learned_scores(features, weights, mean, deviation)
     gain = []
     candidate = []
@@ -258,7 +270,7 @@ def static_calibration(shortlists: numpy.ndarray, features: numpy.ndarray,
         selected = order[:budget]
         positions = {int(value): index
                      for index, value in enumerate(shortlists[query_index].tolist())}
-        total = float(targets[query_index].sum(dtype=numpy.float64))
+        total = float(target_totals[query_index])
         gain.append(sum(targets[query_index, positions[int(value)]]
                         for value in selected.tolist()) / max(total, 1.0e-30))
         candidate.append(int(counts[selected].sum(dtype=numpy.int64)) / document_count)
@@ -435,6 +447,9 @@ def evaluate(contract: dict[str, Any], materialization: dict[str, Any],
             configuration_targets = density_targets(
                 configuration_shortlists, oracle, positions["configuration"],
                 addresses, index["counts"], discounts)
+            configuration_target_totals = global_density_totals(
+                oracle, positions["configuration"], addresses,
+                index["counts"], discounts)
             local_calibration = []
             for alpha in contract["model"]["ridge_alphas"]:
                 for shortlist_size in contract["prototype_shortlist"][
@@ -445,7 +460,8 @@ def evaluate(contract: dict[str, Any], materialization: dict[str, Any],
                         configuration_targets[:, :shortlist_size], models[alpha],
                         feature_mean, feature_deviation, index["counts"],
                         len(data["document_ids"]),
-                        contract["diagnostic"]["selection_address_budget"])
+                        contract["diagnostic"]["selection_address_budget"],
+                        configuration_target_totals)
                     row = {
                         "dataset": config["id"], "seed": seed,
                         "ridge_alpha": alpha, "shortlist_size": shortlist_size,
@@ -472,7 +488,8 @@ def evaluate(contract: dict[str, Any], materialization: dict[str, Any],
                 "document_addresses_sha256": route["document_addresses"]["sha256"],
             })
             del configuration_queries, configuration_maximum
-            del configuration_shortlists, configuration_features, configuration_targets
+            del configuration_shortlists, configuration_features
+            del configuration_targets, configuration_target_totals
             gc.collect()
 
             internal_queries = numpy.asarray(
@@ -633,6 +650,13 @@ def self_test() -> None:
         numpy.asarray([3, 1, 2], dtype=numpy.uint32))
     require(ordered_values.tolist() == [1, 3, 2],
             "prototype gain-density ordering self-test differs")
+    totals = global_density_totals(
+        {0: numpy.asarray([0, 1], dtype=numpy.int32)}, [0],
+        numpy.asarray([1, 2], dtype=numpy.uint32),
+        numpy.asarray([0, 1, 2], dtype=numpy.int64),
+        numpy.asarray([1.0, 0.5], dtype=numpy.float64))
+    require(numpy.allclose(totals, [1.25]),
+            "prototype gain-density global denominator self-test differs")
     planner.load_contract(
         THIS / "neuroute-prototype-gain-density-reranker.example.json")
     print("NeuRoute prototype gain-density runner self-test passed")
