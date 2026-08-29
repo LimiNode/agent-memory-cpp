@@ -5,7 +5,7 @@
   "activation": {
     "sequential_result_sha256": "d8478ed6556934a7e305d45a0c6aef3518fd0cf00d11052f76c554843f3cf80f",
     "sequential_evidence_sha256": "6857b3bbcab0ec8815e4ec14fc171757315c88667c0315cbcecac0b7552cb74c",
-    "width_materialization_sha256": "39119ab6fe95b3b470bed383790f5cc177b35965ba40928766de7b219cefd57d",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
     "german_split_result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286"
   },
   "route": {
