@@ -1,6 +1,6 @@
 # NeuRoute nonlinear listwise prototype-shortlist reranker
 
-Date: 2026-08-29. Frozen protocol; measurement pending.
+Date: 2026-08-29. Full DE-1M measurement and independent replay complete.
 
 ## Question
 
@@ -75,6 +75,55 @@ bundle, the German split, the width materialization, every model archive and
 the authoritative-qrels parent chain. The evidence writer must regenerate all
 shortlists, pseudo-teachers, models, configuration rows and internal rows in a
 temporary directory and reproduce the result byte for byte.
+
+## Results
+
+The selected internal means are below. Candidate fraction, actionable gain
+after Hamming/ADC, and final exact-E5 nDCG@10 are reported in that order.
+
+| Treatment | Budget | Candidate fraction | Actionable gain | nDCG@10 |
+|---|---:|---:|---:|---:|
+| Prototype order | 128 | .002742 | .7621 | .5915 |
+| Prototype order | 256 | .005415 | .8213 | .6219 |
+| Prototype order | 512 | .010637 | .8566 | .6375 |
+| Ridge control | 128 | .001653 | .3080 | .2996 |
+| Ridge control | 256 | .003670 | .4153 | .3791 |
+| Ridge control | 512 | .008375 | .5409 | .4434 |
+| Pointwise ListNet | 128 | .002586 | .7920 | .5994 |
+| Pointwise ListNet | 256 | .005578 | .8453 | .6383 |
+| Pointwise ListNet | 512 | .011607 | .8725 | .6415 |
+| Context DeepSets ListNet | 128 | .002924 | .8014 | .6026 |
+| Context DeepSets ListNet | 256 | .006115 | .8500 | .6375 |
+| Context DeepSets ListNet | 512 | .012283 | .8751 | .6430 |
+| Privileged teacher | 128 | .000993 | .9247 | .6481 |
+| Privileged teacher | 256 | .002263 | .9197 | .6494 |
+| Privileged teacher | 512 | .005780 | .9127 | .6498 |
+
+Configuration selected pointwise training counts `2048/8141/8141` and context
+counts `8141/2048/153` for the three route seeds. Nested training density is
+therefore not monotonic: more pseudo-supervised topics do not consistently
+improve German configuration quality.
+
+Neither nonlinear model passes the absolute or directional progress gate on
+all seeds. At budget 256, pointwise ListNet improves mean actionable gain from
+`.8213` to `.8453`, and the context model to `.8500`, but their candidate mass
+rises to `.00558` and `.00612`. Thus they recover only about one quarter to
+one third of the prototype-to-teacher gap while the progress rule requires one
+half without materially increasing candidate mass. The old ridge failure is
+also reproduced at larger training sizes, so additional linear supervision is
+not the missing ingredient.
+
+The privileged teacher's actionable gain declines slightly as the address
+budget grows. This is expected in the fixed Hamming768/ADC64 cascade: adding
+nonessential candidates can displace target documents from the bounded ADC
+shortlist. It reinforces that the remaining target is cascade-aware ordering,
+not static address coverage alone.
+
+The result SHA-256 before evidence replay is
+`57e316b4590255bb7f0df63064cb9fd217017d7a990f1747fad2c68f545e7072`.
+The replay reproduced all three caches, all 45 model archives, configuration
+selections, internal rows, and the result byte for byte. Evidence SHA-256 is
+`e9a5968b02153c5fdd0b2faddca8b53c3e81259ef4e2d3e55c1788692323d6cc`.
 
 ## Limitations
 
