@@ -462,6 +462,21 @@ agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-full-corpus-cod
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_full_corpus_codec.cpp"
     ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-full-corpus-codec)
+
+add_executable(agent-memory-neuroute-r4-representative-codec
+    neuroute_r4_representative_codec.cpp)
+target_compile_definitions(agent-memory-neuroute-r4-representative-codec PRIVATE
+    AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP=${AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP})
+target_link_libraries(agent-memory-neuroute-r4-representative-codec PRIVATE
+    agent_memory::agent_memory agent_memory::json)
+if(TARGET agent_memory_neuroute_simdcomp)
+    target_link_libraries(agent-memory-neuroute-r4-representative-codec PRIVATE
+        agent_memory_neuroute_simdcomp)
+endif()
+agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-representative-codec
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_representative_codec.cpp"
+    ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
+agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-representative-codec)
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-representation
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_representation.cpp"
 )
