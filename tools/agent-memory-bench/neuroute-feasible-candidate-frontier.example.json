@@ -1,0 +1,48 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_feasible_candidate_frontier",
+  "claim_scope": "frozen_de_1m_strict_prefix_candidate_work_frontier",
+  "activation": {
+    "r3_matched_result_sha256": "ae4a7d1f4fe30f42b21643a60e4ef2ebf1a5f5855492872c51f2c77d678ee5b9",
+    "r3_matched_evidence_sha256": "7db66e05e94ea37a98ce90a26e30e3fd7ea3cc56eaefcaf0915594848429a1fb"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "prototypes_per_address": 8,
+    "address_shortlist": 1024
+  },
+  "evaluation": {
+    "candidate_fraction_budgets": [0.002, 0.0025, 0.003, 0.0035, 0.004, 0.005, 0.00625],
+    "headline_candidate_fraction": 0.005,
+    "strict_prefix": true,
+    "report_last_feasible_and_first_crossing": true,
+    "interpolation_is_descriptive_only": true,
+    "unique_candidate_union_required": true
+  },
+  "treatments": [
+    "prototype_order",
+    "r0_scalar",
+    "r3a_occupancy",
+    "r3b_residual_mean",
+    "r3c_residual_shape",
+    "privileged_gain_density",
+    "privileged_budget_aware_marginal"
+  ],
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "decision": {
+    "fixed_256_r3c_minus_r0_actionable": 0.0319,
+    "minimum_surviving_improvement_fraction": 0.5,
+    "maximum_candidate_fraction": 0.005,
+    "retraining_forbidden": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
