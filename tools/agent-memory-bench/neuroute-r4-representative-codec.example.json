@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_representative_codec_frontier",
+  "claim_scope": "frozen_ff32_k32_physical_representative_codec_quality_only",
+  "activation": {
+    "coverage_saturation_result_sha256": "b4ff2e63b40c8349fb70264221746a71ff22687afb43727bf9c44007047e0c83",
+    "coverage_saturation_evidence_sha256": "7b8c9057248f5da43a1cf5723848582a916e34d3c7f02cc8f21dccd59074aca2",
+    "conditional_set_result_sha256": "7e7b9546bb4a34a047ba446407aae8166f8e2402f293594039e4098d83d95b27",
+    "conditional_set_evidence_sha256": "8ef68cf98d3529b1f3e56d5c518618ccee45343fa71e5843abdf4a297dab1f56",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
+    "de_1m_e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "de_1m_input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "frozen_algorithm": {
+    "representative_recipe": "centroid_nearest_actual_then_deterministic_farthest_first",
+    "representatives_per_address": 32,
+    "shortlist": "exact_current_k8_prototype_top1024",
+    "scorer": "frozen_learned_r0_plus_normalized_max_cosine",
+    "candidate_fraction_budgets": [0.003, 0.004, 0.005],
+    "headline_candidate_fraction": 0.005,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "representations": [
+    {"id": "fp32", "bits": 32, "record_bytes": 1536, "layout": "raw_fp32"},
+    {"id": "fp16", "bits": 16, "record_bytes": 768, "layout": "raw_fp16"},
+    {"id": "int8", "bits": 8, "record_bytes": 388, "layout": "raw_unsigned_plus_f32_scale"},
+    {"id": "int6", "bits": 6, "record_bytes": 292, "layout": "simdcomp_bp128_plus_f32_scale"},
+    {"id": "int5", "bits": 5, "record_bytes": 244, "layout": "simdcomp_bp128_plus_f32_scale"}
+  ],
+  "quantization": {
+    "dimensions": 384,
+    "blocks": 3,
+    "block_values": 128,
+    "scale_policy": "symmetric_per_document_max_abs_f32",
+    "rounding": "nearest_even",
+    "simdcomp_commit": "009c67807670d16f8984c0534aef0e630e5465a4",
+    "non_x86_policy": "fail_closed_measurement_scalar_self_test_only"
+  },
+  "query_partitions": {
+    "configuration_queries": 76,
+    "internal_evaluation_queries": 76,
+    "weights_frozen_before_configuration": true,
+    "internal_opened_after_configuration_selection": true
+  },
+  "configuration_gates": {
+    "maximum_mean_actionable_loss": 0.003,
+    "maximum_every_seed_actionable_loss": 0.006,
+    "maximum_mean_ndcg_loss": 0.002,
+    "maximum_every_seed_ndcg_loss": 0.004,
+    "selection": "smallest_record_bytes_passing_all_gates_else_fp32"
+  },
+  "diagnostics": {
+    "score_error_percentiles": [0.5, 0.95, 0.99],
+    "margin_bins": [0.0001, 0.001, 0.01],
+    "accepted_address_overlap_required": true,
+    "argmax_identity_required": true,
+    "address_order_agreement_required": true
+  },
+  "decision": {
+    "physical_layout_benchmark_licensed_only_if_selected_codec_passes_internal_gates": true,
+    "retraining_forbidden": true,
+    "representative_reselection_forbidden": true,
+    "production_selection_forbidden": true
+  },
+  "cache_manifest_sha256": {
+    "2026082701": "fe995751dbf54c407a9ec21711835e5cfa0464868f4b48b92e0bb4b886bd3f54",
+    "2026082702": "da6edee1fc3b6c1858bb1766a06112a13c16d10154598f5d97637ec64b17fbb8",
+    "2026082703": "eb9bc382c88a6a4ba74bb778d75b5c9e56ae8690b5cd476f340a6f86e95475d6"
+  }
+}
