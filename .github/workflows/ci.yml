@@ -215,7 +215,9 @@ jobs:
           python tools/agent-memory-bench/run-neuroute-r4-int5-kernel-frontier.py --self-test &&
           python tools/agent-memory-bench/write-neuroute-r4-int5-kernel-frontier-evidence.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-dense-performance-audit.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-dense-performance-audit-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-dense-performance-audit-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-rerank-ceiling.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-rerank-ceiling-evidence.py --self-test
 
   ann-cascade:
     name: ANN cascade harness
