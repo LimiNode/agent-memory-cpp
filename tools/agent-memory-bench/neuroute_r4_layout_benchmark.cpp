@@ -411,9 +411,111 @@ std::vector<float> address_scores(const SeedContext& seed, std::size_t request,
     return output;
 }
 
+std::vector<float> address_scores_batched_avx2(
+        const SeedContext& seed, std::size_t request,
+        const std::vector<float>& maximums) {
+#if !AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    return address_scores(seed, request, maximums);
+#else
+    const auto& model = seed.model;
+    const float* query = seed.queries.data() + request * dimensions;
+    const float* features = seed.features.data() +
+                            request * addresses_per_query * scalar_features;
+    std::array<float, local_hidden> query_hidden{};
+    for (std::size_t column = 0; column != local_hidden; ++column) {
+        float value = model.query_bias[column];
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+            value += query[dimension] * model.query_weight[
+                dimension * local_hidden + column];
+        }
+        query_hidden[column] = std::tanh(value);
+    }
+
+    std::vector<float> normalized(23 * addresses_per_query);
+    for (std::size_t address = 0; address != addresses_per_query; ++address) {
+        for (std::size_t feature = 0; feature != scalar_features; ++feature) {
+            normalized[feature * addresses_per_query + address] =
+                (features[address * scalar_features + feature] -
+                 model.feature_mean[feature]) / model.feature_deviation[feature];
+        }
+        normalized[22 * addresses_per_query + address] =
+            (maximums[address] - model.aggregate_mean[0]) /
+            model.aggregate_deviation[0];
+    }
+
+    std::vector<float> local(addresses_per_query * local_hidden);
+    alignas(32) std::array<float, 8> lanes{};
+    for (std::size_t address = 0; address != addresses_per_query; address += 8) {
+        for (std::size_t column = 0; column != local_hidden; ++column) {
+            auto value = _mm256_set1_ps(model.local_bias[column]);
+            for (std::size_t feature = 0; feature != 23; ++feature) {
+                value = _mm256_add_ps(value, _mm256_mul_ps(
+                    _mm256_loadu_ps(normalized.data() +
+                                    feature * addresses_per_query + address),
+                    _mm256_set1_ps(model.local_weight[
+                        feature * local_hidden + column])));
+            }
+            _mm256_store_ps(lanes.data(), value);
+            for (std::size_t lane = 0; lane != 8; ++lane) {
+                local[(address + lane) * local_hidden + column] =
+                    std::tanh(lanes[lane]);
+            }
+        }
+    }
+
+    std::array<float, local_hidden> mean{};
+    std::array<float, local_hidden> maximum_context{};
+    maximum_context.fill(-std::numeric_limits<float>::infinity());
+    for (std::size_t address = 0; address != addresses_per_query; ++address) {
+        for (std::size_t column = 0; column != local_hidden; ++column) {
+            const auto value = local[address * local_hidden + column];
+            mean[column] += value;
+            maximum_context[column] = std::max(maximum_context[column], value);
+        }
+    }
+    for (auto& value : mean) value /= static_cast<float>(addresses_per_query);
+
+    std::vector<float> joined(joined_dimensions * addresses_per_query);
+    for (std::size_t address = 0; address != addresses_per_query; ++address) {
+        for (std::size_t column = 0; column != local_hidden; ++column) {
+            const auto value = local[address * local_hidden + column];
+            joined[column * addresses_per_query + address] = value;
+            joined[(32 + column) * addresses_per_query + address] =
+                query_hidden[column];
+            joined[(64 + column) * addresses_per_query + address] =
+                value * query_hidden[column];
+            joined[(96 + column) * addresses_per_query + address] = mean[column];
+            joined[(128 + column) * addresses_per_query + address] =
+                maximum_context[column];
+        }
+    }
+
+    std::vector<float> output(addresses_per_query, model.score_bias2[0]);
+    for (std::size_t address = 0; address != addresses_per_query; address += 8) {
+        for (std::size_t hidden = 0; hidden != score_hidden; ++hidden) {
+            auto value = _mm256_set1_ps(model.score_bias1[hidden]);
+            for (std::size_t input = 0; input != joined_dimensions; ++input) {
+                value = _mm256_add_ps(value, _mm256_mul_ps(
+                    _mm256_loadu_ps(joined.data() +
+                                    input * addresses_per_query + address),
+                    _mm256_set1_ps(model.score_weight1[
+                        input * score_hidden + hidden])));
+            }
+            _mm256_store_ps(lanes.data(), value);
+            for (std::size_t lane = 0; lane != 8; ++lane) {
+                output[address + lane] += std::tanh(lanes[lane]) *
+                                          model.score_weight2[hidden];
+            }
+        }
+    }
+    return output;
+#endif
+}
+
 Sample measure(const SeedContext& seed, const std::string& layout,
                std::size_t request,
-               const std::string& kernel = "decode_fp32_scalar_dot") {
+               const std::string& kernel = "decode_fp32_scalar_dot",
+               const std::string& scorer = "scalar_r0") {
     const auto& descriptor = layout_row(seed, layout);
     const auto file = payload_path(seed.root, descriptor);
     const auto record_bytes = descriptor.at("record_bytes").get<std::size_t>();
@@ -426,6 +528,8 @@ Sample measure(const SeedContext& seed, const std::string& layout,
             kernel == "fused_int8_scalar" || kernel == "fused_int8_avx2" ||
             kernel == "fused_int8_avx2_ordered",
             "R4 representative kernel differs");
+    require(scorer == "scalar_r0" || scorer == "batched_avx2_r0",
+            "R4 address scorer differs");
     std::ifstream stream(file, std::ios::binary);
     require(static_cast<bool>(stream), "R4 layout physical file open failed");
     std::vector<std::size_t> starts(addresses_per_query + 1);
@@ -514,7 +618,9 @@ Sample measure(const SeedContext& seed, const std::string& layout,
     }
     const auto dot_end = Clock::now();
     const auto score_begin = Clock::now();
-    const auto scores = address_scores(seed, request, measured.values);
+    const auto scores = scorer == "batched_avx2_r0"
+        ? address_scores_batched_avx2(seed, request, measured.values)
+        : address_scores(seed, request, measured.values);
     const auto score_end = Clock::now();
     const auto state_end = process_state();
     std::vector<std::uint8_t> digest(scores.size() * sizeof(float));
@@ -567,6 +673,15 @@ nlohmann::json kernel_sample_json(const Sample& value, std::uint64_t seed,
                                   std::size_t request, std::size_t pass) {
     auto result = sample_json(value, seed, "address_major_int8", request, pass);
     result["kernel"] = kernel;
+    return result;
+}
+
+nlohmann::json scorer_sample_json(const Sample& value, std::uint64_t seed,
+                                  const std::string& scorer,
+                                  std::size_t request, std::size_t pass) {
+    auto result = sample_json(value, seed, "address_major_int8", request, pass);
+    result["kernel"] = "fused_int8_scalar";
+    result["scorer"] = scorer;
     return result;
 }
 
@@ -648,6 +763,40 @@ void kernel_warm(const std::filesystem::path& manifest_path,
         {"samples", samples}});
 }
 
+void scorer_warm(const std::filesystem::path& manifest_path,
+                 const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    std::vector<SeedContext> seeds;
+    for (const auto& row : manifest.at("seeds")) seeds.push_back(load_seed(manifest_path, row));
+    const std::array<std::string, 2> scorers = {"scalar_r0", "batched_avx2_r0"};
+    for (const auto& seed : seeds) {
+        prefault(payload_path(seed.root, layout_row(seed, "address_major_int8")));
+        for (const auto& scorer : scorers)
+            for (std::size_t request = 0; request != 152; ++request)
+                (void)measure(seed, "address_major_int8", request,
+                              "fused_int8_scalar", scorer);
+    }
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>> schedule;
+    for (std::size_t pass = 0; pass != 3; ++pass)
+        for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+            for (std::size_t scorer = 0; scorer != scorers.size(); ++scorer)
+                for (std::size_t request = 0; request != 152; ++request)
+                    schedule.emplace_back(pass, seed, scorer, request);
+    std::mt19937_64 random(2026083103);
+    std::shuffle(schedule.begin(), schedule.end(), random);
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto& [pass, seed, scorer, request] : schedule) {
+        samples.push_back(scorer_sample_json(measure(seeds[seed],
+            "address_major_int8", request, "fused_int8_scalar", scorers[scorer]),
+            seeds[seed].seed, scorers[scorer], request, pass));
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_batched_scorer_warm_samples"},
+        {"manifest_sha256", agent_memory::sha256_file_hex(manifest_path)},
+        {"simd_available", static_cast<bool>(AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2)},
+        {"samples", samples}});
+}
+
 void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
           const std::string& layout, std::size_t request,
           const std::filesystem::path& output_path) {
@@ -689,9 +838,11 @@ int main(int argc, char** argv) {
         else if (argc == 4 && std::string(argv[1]) == "--warm") warm(argv[2], argv[3]);
         else if (argc == 4 && std::string(argv[1]) == "--kernel-warm")
             kernel_warm(argv[2], argv[3]);
+        else if (argc == 4 && std::string(argv[1]) == "--scorer-warm")
+            scorer_warm(argv[2], argv[3]);
         else if (argc == 7 && std::string(argv[1]) == "--cold")
             cold(argv[2], std::stoull(argv[3]), argv[4], std::stoull(argv[5]), argv[6]);
-        else throw std::runtime_error("usage: --self-test | --warm MANIFEST OUTPUT | --kernel-warm MANIFEST OUTPUT | --cold MANIFEST SEED LAYOUT REQUEST OUTPUT");
+        else throw std::runtime_error("usage: --self-test | --warm MANIFEST OUTPUT | --kernel-warm MANIFEST OUTPUT | --scorer-warm MANIFEST OUTPUT | --cold MANIFEST SEED LAYOUT REQUEST OUTPUT");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-layout-benchmark: " << error.what() << '\n';
