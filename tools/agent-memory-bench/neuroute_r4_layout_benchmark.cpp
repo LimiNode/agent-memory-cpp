@@ -12,7 +12,9 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <numeric>
 #include <random>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
@@ -21,6 +23,10 @@
 
 #if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
 #include <immintrin.h>
+#endif
+
+#if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
+#include <simdbitpacking.h>
 #endif
 
 #if defined(_WIN32)
@@ -410,6 +416,174 @@ double top_overlap(const std::vector<float>& left,
     std::set_intersection(a.begin(), a.end(), b.begin(), b.end(),
                           std::back_inserter(common));
     return static_cast<double>(common.size()) / static_cast<double>(count);
+}
+
+unsigned required_bits(std::uint32_t value) {
+    unsigned bits = 0;
+    while (value != 0) {
+        ++bits;
+        value >>= 1U;
+    }
+    return bits;
+}
+
+void simdcomp_pack_block(const std::uint32_t* values, unsigned bits,
+                         std::ostream& output) {
+#if !AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
+    (void)values;
+    (void)bits;
+    (void)output;
+    throw std::runtime_error("R4 INT8 compression requires SIMDComp");
+#else
+    if (bits == 0) return;
+    alignas(16) std::array<__m128i, 8> packed{};
+    simdpackwithoutmask(values, packed.data(), bits);
+    output.write(reinterpret_cast<const char*>(packed.data()),
+                 static_cast<std::streamsize>(bits * 16U));
+    require(static_cast<bool>(output), "R4 SIMDComp pack output failed");
+#endif
+}
+
+void simdcomp_unpack_block(const std::uint8_t* bytes, unsigned bits,
+                           std::uint32_t* output) {
+#if !AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
+    (void)bytes;
+    (void)bits;
+    (void)output;
+    throw std::runtime_error("R4 INT8 compression requires SIMDComp");
+#else
+    if (bits == 0) {
+        std::fill_n(output, 128, 0U);
+        return;
+    }
+    alignas(16) std::array<__m128i, 8> packed{};
+    std::memcpy(packed.data(), bytes, bits * 16U);
+    simdunpack(packed.data(), output, bits);
+#endif
+}
+
+void compress_int8_store(const std::filesystem::path& raw_path,
+                         const std::filesystem::path& counts_path,
+                         std::size_t rows,
+                         const std::filesystem::path& fixed_path,
+                         const std::filesystem::path& for_path,
+                         const std::filesystem::path& for_offsets_path,
+                         const std::filesystem::path& zigzag_path,
+                         const std::filesystem::path& zigzag_offsets_path,
+                         const std::filesystem::path& receipt_path) {
+    const auto counts = read_values<std::uint32_t>(counts_path);
+    require(!counts.empty() && counts.size() <= 65536 &&
+            std::accumulate(counts.begin(), counts.end(), std::uint64_t{0}) == rows,
+            "R4 compression address counts differ");
+    std::ifstream raw(raw_path, std::ios::binary);
+    std::ofstream fixed(fixed_path, std::ios::binary);
+    std::ofstream adaptive(for_path, std::ios::binary);
+    std::ofstream for_offsets(for_offsets_path, std::ios::binary);
+    std::ofstream zigzag(zigzag_path, std::ios::binary);
+    std::ofstream zigzag_offsets(zigzag_offsets_path, std::ios::binary);
+    require(raw && fixed && adaptive && for_offsets && zigzag && zigzag_offsets,
+            "R4 compression file open failed");
+    std::array<std::uint8_t, dimensions> codes{};
+    std::array<std::uint32_t, dimensions> values{};
+    std::array<std::uint32_t, dimensions> residuals{};
+    std::array<std::uint64_t, 9> fixed_hist{}, for_hist{}, zigzag_hist{};
+    std::uint64_t for_position = 0, zigzag_position = 0;
+    std::uint64_t for_record_min = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t for_record_max = 0, zigzag_record_min = for_record_min;
+    std::uint64_t zigzag_record_max = 0;
+    for (const auto count : counts) {
+        for_offsets.write(reinterpret_cast<const char*>(&for_position),
+                          sizeof(for_position));
+        zigzag_offsets.write(reinterpret_cast<const char*>(&zigzag_position),
+                             sizeof(zigzag_position));
+        for (std::size_t row = 0; row != count; ++row) {
+            float scale = 0.0F;
+            raw.read(reinterpret_cast<char*>(codes.data()), codes.size());
+            raw.read(reinterpret_cast<char*>(&scale), sizeof(scale));
+            require(static_cast<bool>(raw), "R4 compression raw record truncated");
+            std::copy(codes.begin(), codes.end(), values.begin());
+            for (std::size_t block = 0; block != 3; ++block) {
+                simdcomp_pack_block(values.data() + block * 128, 8, fixed);
+                ++fixed_hist[8];
+            }
+            fixed.write(reinterpret_cast<const char*>(&scale), sizeof(scale));
+
+            std::array<std::uint8_t, 3> minima{}, for_bits{}, zigzag_bits{};
+            for (std::size_t block = 0; block != 3; ++block) {
+                const auto begin = codes.begin() + static_cast<std::ptrdiff_t>(block * 128);
+                const auto [minimum, maximum] = std::minmax_element(begin, begin + 128);
+                minima[block] = *minimum;
+                for_bits[block] = static_cast<std::uint8_t>(
+                    required_bits(static_cast<std::uint32_t>(*maximum - *minimum)));
+                std::uint32_t zigzag_max = 0;
+                for (std::size_t lane = 0; lane != 128; ++lane) {
+                    const auto index = block * 128 + lane;
+                    residuals[index] = static_cast<std::uint32_t>(
+                        codes[index] - minima[block]);
+                    const auto centered = static_cast<int>(codes[index]) - 127;
+                    values[index] = static_cast<std::uint32_t>(centered >= 0
+                        ? centered * 2 : -centered * 2 - 1);
+                    zigzag_max = std::max(zigzag_max, values[index]);
+                }
+                zigzag_bits[block] = static_cast<std::uint8_t>(required_bits(zigzag_max));
+                ++for_hist[for_bits[block]];
+                ++zigzag_hist[zigzag_bits[block]];
+            }
+            adaptive.write(reinterpret_cast<const char*>(&scale), sizeof(scale));
+            adaptive.write(reinterpret_cast<const char*>(minima.data()), minima.size());
+            adaptive.write(reinterpret_cast<const char*>(for_bits.data()), for_bits.size());
+            zigzag.write(reinterpret_cast<const char*>(&scale), sizeof(scale));
+            zigzag.write(reinterpret_cast<const char*>(zigzag_bits.data()),
+                          zigzag_bits.size());
+            for (std::size_t block = 0; block != 3; ++block) {
+                simdcomp_pack_block(residuals.data() + block * 128,
+                                    for_bits[block], adaptive);
+                simdcomp_pack_block(values.data() + block * 128,
+                                    zigzag_bits[block], zigzag);
+            }
+            const auto for_record = 10U + 16U * (for_bits[0] + for_bits[1] +
+                                                  for_bits[2]);
+            const auto zigzag_record = 7U + 16U * (zigzag_bits[0] +
+                                                    zigzag_bits[1] +
+                                                    zigzag_bits[2]);
+            for_position += for_record;
+            zigzag_position += zigzag_record;
+            for_record_min = std::min(for_record_min,
+                                      static_cast<std::uint64_t>(for_record));
+            for_record_max = std::max(for_record_max,
+                                      static_cast<std::uint64_t>(for_record));
+            zigzag_record_min = std::min(zigzag_record_min,
+                                         static_cast<std::uint64_t>(zigzag_record));
+            zigzag_record_max = std::max(zigzag_record_max,
+                                         static_cast<std::uint64_t>(zigzag_record));
+        }
+    }
+    require(raw.peek() == std::ifstream::traits_type::eof(),
+            "R4 compression raw store has trailing bytes");
+    fixed.close();
+    adaptive.close();
+    for_offsets.close();
+    zigzag.close();
+    zigzag_offsets.close();
+    const auto histogram = [](const auto& values) {
+        nlohmann::json result = nlohmann::json::array();
+        for (std::size_t bits = 0; bits != values.size(); ++bits)
+            result.push_back({{"bits", bits}, {"blocks", values[bits]}});
+        return result;
+    };
+    write_json(receipt_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int8_compression_pack_receipt"},
+        {"rows", rows}, {"raw_bytes", rows * 388U},
+        {"fixed8_bytes", std::filesystem::file_size(fixed_path)},
+        {"adaptive_for_bytes", std::filesystem::file_size(for_path)},
+        {"adaptive_zigzag_bytes", std::filesystem::file_size(zigzag_path)},
+        {"adaptive_for_record_min", for_record_min},
+        {"adaptive_for_record_max", for_record_max},
+        {"adaptive_zigzag_record_min", zigzag_record_min},
+        {"adaptive_zigzag_record_max", zigzag_record_max},
+        {"fixed8_bit_histogram", histogram(fixed_hist)},
+        {"adaptive_for_bit_histogram", histogram(for_hist)},
+        {"adaptive_zigzag_bit_histogram", histogram(zigzag_hist)}});
 }
 
 std::vector<float> address_scores(const SeedContext& seed, std::size_t request,
@@ -813,6 +987,133 @@ Sample measure_mapped(const SeedContext& seed, const MappedFile& mapped,
     return sample;
 }
 
+float compressed_int8_dot(const std::uint8_t* record,
+                          const std::string& treatment, const float* query,
+                          std::size_t& consumed) {
+    std::array<std::uint32_t, dimensions> values{};
+    float scale = 0.0F;
+    if (treatment == "simdcomp_fixed8") {
+        for (std::size_t block = 0; block != 3; ++block) {
+            simdcomp_unpack_block(record + block * 128, 8,
+                                  values.data() + block * 128);
+        }
+        std::memcpy(&scale, record + dimensions, sizeof(scale));
+        consumed = 388;
+    } else if (treatment == "simdcomp_adaptive_for") {
+        std::memcpy(&scale, record, sizeof(scale));
+        const auto* minima = record + 4;
+        const auto* bits = record + 7;
+        const auto* payload = record + 10;
+        for (std::size_t block = 0; block != 3; ++block) {
+            simdcomp_unpack_block(payload, bits[block],
+                                  values.data() + block * 128);
+            for (std::size_t lane = 0; lane != 128; ++lane)
+                values[block * 128 + lane] += minima[block];
+            payload += static_cast<std::size_t>(bits[block]) * 16;
+        }
+        consumed = static_cast<std::size_t>(payload - record);
+    } else {
+        require(treatment == "simdcomp_adaptive_zigzag",
+                "R4 compressed dot treatment differs");
+        std::memcpy(&scale, record, sizeof(scale));
+        const auto* bits = record + 4;
+        const auto* payload = record + 7;
+        for (std::size_t block = 0; block != 3; ++block) {
+            simdcomp_unpack_block(payload, bits[block],
+                                  values.data() + block * 128);
+            for (std::size_t lane = 0; lane != 128; ++lane) {
+                const auto encoded = values[block * 128 + lane];
+                const auto centered = (encoded & 1U) != 0
+                    ? -static_cast<int>((encoded + 1U) / 2U)
+                    : static_cast<int>(encoded / 2U);
+                values[block * 128 + lane] = static_cast<std::uint32_t>(
+                    centered + 127);
+            }
+            payload += static_cast<std::size_t>(bits[block]) * 16;
+        }
+        consumed = static_cast<std::size_t>(payload - record);
+    }
+    float score = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const float decoded = static_cast<float>(
+            static_cast<int>(values[dimension]) - 127) * scale;
+        score += decoded * query[dimension];
+    }
+    return score;
+}
+
+Sample measure_compressed(const SeedContext& seed, const MappedFile& mapped,
+                          const std::vector<std::uint64_t>* byte_offsets,
+                          const std::string& treatment, std::size_t request) {
+    require(treatment == "simdcomp_fixed8" ||
+            treatment == "simdcomp_adaptive_for" ||
+            treatment == "simdcomp_adaptive_zigzag",
+            "R4 compressed access treatment differs");
+    const auto state_begin = process_state();
+    const auto total_begin = Clock::now();
+    const auto access_begin = Clock::now();
+    std::vector<AddressSpan> spans;
+    spans.reserve(addresses_per_query);
+    std::uint64_t representatives = 0;
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = seed.shortlists[request * addresses_per_query + local];
+        const auto count = static_cast<std::size_t>(seed.representative_counts[row]);
+        const auto offset = treatment == "simdcomp_fixed8"
+            ? static_cast<std::size_t>(seed.address_offsets[row]) * 388U
+            : static_cast<std::size_t>((*byte_offsets)[row]);
+        spans.push_back({local, offset, count, 0});
+        representatives += count;
+    }
+    std::sort(spans.begin(), spans.end(), [](const auto& left, const auto& right) {
+        return left.byte_offset < right.byte_offset;
+    });
+    const auto access_end = Clock::now();
+    const auto dot_begin = Clock::now();
+    const float* query = seed.queries.data() + request * dimensions;
+    Maximums maximums;
+    maximums.values.assign(addresses_per_query,
+                           -std::numeric_limits<float>::infinity());
+    maximums.winners.assign(addresses_per_query, 0);
+    std::uint64_t logical_bytes = 0;
+    for (const auto& span : spans) {
+        const auto* record = mapped.data() + span.byte_offset;
+        for (std::size_t slot = 0; slot != span.byte_count; ++slot) {
+            std::size_t consumed = 0;
+            const auto score = compressed_int8_dot(record, treatment, query, consumed);
+            require(consumed != 0 && record >= mapped.data() &&
+                    record + consumed <= mapped.data() + mapped.size(),
+                    "R4 compressed record differs");
+            if (score > maximums.values[span.local]) {
+                maximums.values[span.local] = score;
+                maximums.winners[span.local] = static_cast<std::uint8_t>(slot);
+            }
+            record += consumed;
+            logical_bytes += consumed;
+        }
+    }
+    const auto dot_end = Clock::now();
+    const auto score_begin = Clock::now();
+    const auto scores = address_scores_batched_avx2(seed, request, maximums.values);
+    const auto score_end = Clock::now();
+    const auto state_end = process_state();
+    std::vector<std::uint8_t> digest(scores.size() * sizeof(float));
+    std::memcpy(digest.data(), scores.data(), digest.size());
+    Sample sample;
+    sample.fetch_ms = milliseconds(access_begin, access_end);
+    sample.dot_ms = milliseconds(dot_begin, dot_end);
+    sample.score_ms = milliseconds(score_begin, score_end);
+    sample.total_ms = milliseconds(total_begin, score_end);
+    sample.logical_bytes = logical_bytes;
+    sample.random_reads = 0;
+    sample.address_spans = spans.size();
+    sample.representatives = representatives;
+    sample.page_faults = state_end.faults - state_begin.faults;
+    sample.rss_delta = static_cast<std::int64_t>(state_end.rss) -
+                       static_cast<std::int64_t>(state_begin.rss);
+    sample.score_sha256 = agent_memory::sha256_bytes_hex(digest);
+    return sample;
+}
+
 nlohmann::json sample_json(const Sample& value, std::uint64_t seed,
                            const std::string& layout, std::size_t request,
                            std::size_t pass) {
@@ -838,6 +1139,17 @@ nlohmann::json access_sample_json(const Sample& value, std::uint64_t seed,
     result["kernel"] = "fused_int8_scalar";
     result["scorer"] = "batched_avx2_r0";
     result["access"] = treatment;
+    return result;
+}
+
+nlohmann::json compression_sample_json(const Sample& value, std::uint64_t seed,
+                                       const std::string& treatment,
+                                       std::size_t request, std::size_t pass) {
+    auto result = sample_json(value, seed, "address_major_int8", request, pass);
+    result["kernel"] = "fused_int8_scalar_or_lossless_simdcomp_unpack";
+    result["scorer"] = "batched_avx2_r0";
+    result["access"] = "mmap_direct_offset_order";
+    result["compression"] = treatment;
     return result;
 }
 
@@ -1034,6 +1346,133 @@ void access_cold(const std::filesystem::path& manifest_path,
         {"sample", access_sample_json(sample, wanted_seed, treatment, request, 0)}});
 }
 
+struct CompressionMaps {
+    std::filesystem::path raw_path, fixed_path, for_path, zigzag_path;
+    std::unique_ptr<MappedFile> raw, fixed, adaptive_for, adaptive_zigzag;
+    std::vector<std::uint64_t> for_offsets, zigzag_offsets;
+};
+
+std::unique_ptr<CompressionMaps> load_compression_maps(
+        const SeedContext& seed, const std::filesystem::path& compression_manifest_path,
+        const nlohmann::json& compression_seed) {
+    const auto root = compression_manifest_path.parent_path() /
+                      ("seed-" + std::to_string(seed.seed));
+    const auto& files = compression_seed.at("files");
+    const auto path = [&](const std::string& name) {
+        return payload_path(root, role(files, name));
+    };
+    auto result = std::make_unique<CompressionMaps>();
+    result->raw_path = payload_path(seed.root,
+                                    layout_row(seed, "address_major_int8"));
+    result->fixed_path = path("simdcomp_fixed8");
+    result->for_path = path("simdcomp_adaptive_for");
+    result->zigzag_path = path("simdcomp_adaptive_zigzag");
+    result->raw = std::make_unique<MappedFile>(result->raw_path);
+    result->fixed = std::make_unique<MappedFile>(result->fixed_path);
+    result->adaptive_for = std::make_unique<MappedFile>(result->for_path);
+    result->adaptive_zigzag = std::make_unique<MappedFile>(result->zigzag_path);
+    result->for_offsets = read_values<std::uint64_t>(path("adaptive_for_offsets"));
+    result->zigzag_offsets = read_values<std::uint64_t>(
+        path("adaptive_zigzag_offsets"));
+    require(result->for_offsets.size() == seed.address_counts.size() &&
+            result->zigzag_offsets.size() == seed.address_counts.size(),
+            "R4 compression offset count differs");
+    return result;
+}
+
+Sample invoke_compression(const SeedContext& seed, const CompressionMaps& maps,
+                          const std::string& treatment, std::size_t request) {
+    if (treatment == "raw_int8")
+        return measure_mapped(seed, *maps.raw, "mmap_direct_offset_order", request);
+    if (treatment == "simdcomp_fixed8")
+        return measure_compressed(seed, *maps.fixed, nullptr, treatment, request);
+    if (treatment == "simdcomp_adaptive_for")
+        return measure_compressed(seed, *maps.adaptive_for, &maps.for_offsets,
+                                  treatment, request);
+    require(treatment == "simdcomp_adaptive_zigzag",
+            "R4 compression treatment differs");
+    return measure_compressed(seed, *maps.adaptive_zigzag, &maps.zigzag_offsets,
+                              treatment, request);
+}
+
+void compression_warm(const std::filesystem::path& manifest_path,
+                      const std::filesystem::path& compression_manifest_path,
+                      const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    const auto compression_manifest = read_json(compression_manifest_path);
+    std::vector<SeedContext> seeds;
+    std::vector<std::unique_ptr<CompressionMaps>> maps;
+    for (const auto& row : manifest.at("seeds")) {
+        seeds.push_back(load_seed(manifest_path, row));
+        const auto seed_value = seeds.back().seed;
+        const auto found = std::find_if(compression_manifest.at("seeds").begin(),
+            compression_manifest.at("seeds").end(), [&](const auto& value) {
+                return value.at("seed").get<std::uint64_t>() == seed_value;
+            });
+        require(found != compression_manifest.at("seeds").end(),
+                "R4 compression manifest seed differs");
+        maps.push_back(load_compression_maps(seeds.back(), compression_manifest_path,
+                                             *found));
+        prefault(maps.back()->raw_path);
+        prefault(maps.back()->fixed_path);
+        prefault(maps.back()->for_path);
+        prefault(maps.back()->zigzag_path);
+    }
+    const std::array<std::string, 4> treatments = {"raw_int8", "simdcomp_fixed8",
+        "simdcomp_adaptive_for", "simdcomp_adaptive_zigzag"};
+    for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+        for (const auto& treatment : treatments)
+            for (std::size_t request = 0; request != 152; ++request)
+                (void)invoke_compression(seeds[seed], *maps[seed], treatment, request);
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>> schedule;
+    for (std::size_t pass = 0; pass != 3; ++pass)
+        for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+            for (std::size_t treatment = 0; treatment != treatments.size(); ++treatment)
+                for (std::size_t request = 0; request != 152; ++request)
+                    schedule.emplace_back(pass, seed, treatment, request);
+    std::mt19937_64 random(2026083105);
+    std::shuffle(schedule.begin(), schedule.end(), random);
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto& [pass, seed, treatment, request] : schedule) {
+        samples.push_back(compression_sample_json(invoke_compression(seeds[seed],
+            *maps[seed], treatments[treatment], request), seeds[seed].seed,
+            treatments[treatment], request, pass));
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int8_compression_warm_samples"},
+        {"manifest_sha256", agent_memory::sha256_file_hex(manifest_path)},
+        {"compression_manifest_sha256",
+         agent_memory::sha256_file_hex(compression_manifest_path)},
+        {"simdcomp_available", static_cast<bool>(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP)},
+        {"samples", samples}});
+}
+
+void compression_cold(const std::filesystem::path& manifest_path,
+                      const std::filesystem::path& compression_manifest_path,
+                      std::uint64_t wanted_seed, const std::string& treatment,
+                      std::size_t request, const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    const auto compression_manifest = read_json(compression_manifest_path);
+    const auto found = std::find_if(manifest.at("seeds").begin(), manifest.at("seeds").end(),
+        [&](const auto& row) { return row.at("seed").get<std::uint64_t>() == wanted_seed; });
+    const auto compression_found = std::find_if(compression_manifest.at("seeds").begin(),
+        compression_manifest.at("seeds").end(), [&](const auto& row) {
+            return row.at("seed").get<std::uint64_t>() == wanted_seed;
+        });
+    require(found != manifest.at("seeds").end() &&
+            compression_found != compression_manifest.at("seeds").end(),
+            "R4 compression cold seed differs");
+    const auto seed = load_seed(manifest_path, *found);
+    const auto maps = load_compression_maps(seed, compression_manifest_path,
+                                            *compression_found);
+    const auto sample = invoke_compression(seed, *maps, treatment, request);
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int8_compression_process_cold_sample"},
+        {"definition", "fresh_process_first_request_os_page_cache_uncontrolled"},
+        {"sample", compression_sample_json(sample, wanted_seed, treatment,
+                                             request, 0)}});
+}
+
 void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
           const std::string& layout, std::size_t request,
           const std::filesystem::path& output_path) {
@@ -1064,6 +1503,18 @@ void self_test() {
     require(int8_dot_scalar(codes.data(), 0.007F, query.data()) ==
             int8_dot_avx2_ordered(codes.data(), 0.007F, query.data()),
             "R4 ordered AVX2 INT8 kernel differs");
+#if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
+    std::array<std::uint32_t, 128> input{}, decoded{};
+    for (std::size_t index = 0; index != input.size(); ++index)
+        input[index] = static_cast<std::uint32_t>(index % 73U);
+    std::ostringstream packed;
+    simdcomp_pack_block(input.data(), 7, packed);
+    const auto bytes = packed.str();
+    require(bytes.size() == 112, "R4 adaptive SIMDComp size differs");
+    simdcomp_unpack_block(reinterpret_cast<const std::uint8_t*>(bytes.data()),
+                          7, decoded.data());
+    require(input == decoded, "R4 adaptive SIMDComp round trip differs");
+#endif
     std::cout << "NeuRoute R4 layout native self-test passed\n";
 }
 
@@ -1082,9 +1533,17 @@ int main(int argc, char** argv) {
         else if (argc == 7 && std::string(argv[1]) == "--access-cold")
             access_cold(argv[2], std::stoull(argv[3]), argv[4],
                         std::stoull(argv[5]), argv[6]);
+        else if (argc == 11 && std::string(argv[1]) == "--compress-pack")
+            compress_int8_store(argv[2], argv[3], std::stoull(argv[4]), argv[5],
+                                argv[6], argv[7], argv[8], argv[9], argv[10]);
+        else if (argc == 5 && std::string(argv[1]) == "--compression-warm")
+            compression_warm(argv[2], argv[3], argv[4]);
+        else if (argc == 8 && std::string(argv[1]) == "--compression-cold")
+            compression_cold(argv[2], argv[3], std::stoull(argv[4]), argv[5],
+                             std::stoull(argv[6]), argv[7]);
         else if (argc == 7 && std::string(argv[1]) == "--cold")
             cold(argv[2], std::stoull(argv[3]), argv[4], std::stoull(argv[5]), argv[6]);
-        else throw std::runtime_error("usage: --self-test | --warm MANIFEST OUTPUT | --kernel-warm MANIFEST OUTPUT | --scorer-warm MANIFEST OUTPUT | --access-warm MANIFEST OUTPUT | --access-cold MANIFEST SEED TREATMENT REQUEST OUTPUT | --cold MANIFEST SEED LAYOUT REQUEST OUTPUT");
+        else throw std::runtime_error("usage: --self-test | --compress-pack RAW COUNTS ROWS FIXED FOR FOR_OFFSETS ZIGZAG ZIGZAG_OFFSETS RECEIPT | --compression-warm MANIFEST COMPRESSION_MANIFEST OUTPUT | --compression-cold MANIFEST COMPRESSION_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-layout-benchmark: " << error.what() << '\n';
