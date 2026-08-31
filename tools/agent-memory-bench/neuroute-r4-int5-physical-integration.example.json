@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_int5_physical_integration",
+  "claim_scope": "frozen_de_1m_r4_nonlinear_int5_side_store_vs_mixed_address_major_full_cascade",
+  "activation": {
+    "nonlinear_result_sha256": "2242611de3ca1e9bfb833d68bf54ec1222dbfdfb9050a53ad3a1bad0f9cb505a",
+    "nonlinear_evidence_sha256": "893cafd7b26366459364985dfd00e40fc6c28404459a2d0ba00e2084658751df",
+    "nonlinear_materialization_sha256": "d906cfd2c6521d735753e757953c1ba5a7c617d5de45471321249d9d13ae851b",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "native_end_to_end_result_sha256": "da6d824c1025836abf180231c9abc473927c0d06057300c3820ce2f0e25b0ba5",
+    "native_end_to_end_evidence_sha256": "fbfdd3e14babf9fb7fdfad40b36e80bd290aaa472f48895a1e34cf13d57e8fec",
+    "native_end_to_end_protocol_sha256": "c194671e509f6d177994e615dfd933a10a5d46e17966d523d4a309142bd84e2d",
+    "native_input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "partition": "internal",
+    "queries_per_seed": 76,
+    "layout_request_offset": 76,
+    "shortlist_addresses": 1024,
+    "candidate_fraction": 0.005
+  },
+  "codec": {
+    "id": "int5_power_050",
+    "bits": 5,
+    "compander": {"kind": "power", "parameter": 0.5},
+    "record_bytes": 244,
+    "uniform_int8_record_bytes": 388
+  },
+  "treatments": [
+    "homogeneous_int8",
+    "int5_side_store",
+    "int5_mixed"
+  ],
+  "cascade": {
+    "candidate_limit": 5000,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "exact_limit": 10
+  },
+  "warm_page_cache": {"warmup_passes": 1, "measured_passes": 3},
+  "process_cold": {
+    "definition": "fresh_process_first_query_with_os_page_cache_uncontrolled_not_cold_disk",
+    "paired_requests_per_seed": 15,
+    "selection_prefix_utf8": "neuroute-r4-int5-physical-integration-process-cold-v1"
+  },
+  "quality_gates": {
+    "maximum_mean_ndcg_loss_vs_int8": 0.002,
+    "maximum_every_seed_ndcg_loss_vs_int8": 0.004,
+    "side_and_mixed_score_and_sequence_identity_required": true
+  },
+  "system_gates": {
+    "maximum_mixed_warm_p95_ratio_vs_int8": 1.10,
+    "maximum_mixed_warm_p99_ratio_vs_int8": 1.10,
+    "mixed_full_store_smaller_than_int8_required": true
+  },
+  "selection": {
+    "rule": "smallest_full_physical_footprint_among_quality_and_system_gate_passing_layouts",
+    "production_selection_forbidden": true
+  }
+}
