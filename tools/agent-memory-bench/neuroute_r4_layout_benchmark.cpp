@@ -2,6 +2,8 @@
 #include <agent_memory/eval/AutoencoderBinaryArtifact.hpp>
 #include <nlohmann/json.hpp>
 
+#include "neuroute_record_codec.hpp"
+
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -302,6 +304,41 @@ float int8_dot_scalar(const std::uint8_t* codes, float scale,
     return score;
 }
 
+float fp32_dot_fast(const float* values, const float* query) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
+    for (std::size_t dimension = 0; dimension != dimensions;
+         dimension += 32U) {
+        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(
+            _mm256_loadu_ps(values + dimension),
+            _mm256_loadu_ps(query + dimension)));
+        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(
+            _mm256_loadu_ps(values + dimension + 8U),
+            _mm256_loadu_ps(query + dimension + 8U)));
+        sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(
+            _mm256_loadu_ps(values + dimension + 16U),
+            _mm256_loadu_ps(query + dimension + 16U)));
+        sum3 = _mm256_add_ps(sum3, _mm256_mul_ps(
+            _mm256_loadu_ps(values + dimension + 24U),
+            _mm256_loadu_ps(query + dimension + 24U)));
+    }
+    alignas(32) std::array<float, 8> lanes{};
+    _mm256_store_ps(lanes.data(), _mm256_add_ps(
+        _mm256_add_ps(sum0, sum1), _mm256_add_ps(sum2, sum3)));
+    float result = 0.0F;
+    for (const auto value : lanes) result += value;
+    return result;
+#else
+    float result = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+        result += values[dimension] * query[dimension];
+    return result;
+#endif
+}
+
 float int8_dot_avx2(const std::uint8_t* codes, float scale,
                     const float* query) {
 #if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
@@ -477,6 +514,22 @@ float int5_power_half_dot_avx2(const std::uint8_t* record,
         result += table[unpacked[dimension]] * query[dimension];
     return result * amplitude;
 #endif
+}
+
+agent_memory::neuroute::RecordExecutionKernel record_execution_kernel(
+        const std::string& value) {
+    const auto suffix = [&](const char* wanted) {
+        const std::string text(wanted);
+        return value.size() >= text.size() && value.compare(
+            value.size() - text.size(), text.size(), text) == 0;
+    };
+    if (suffix("portable"))
+        return agent_memory::neuroute::RecordExecutionKernel::Portable;
+    if (suffix("sse2"))
+        return agent_memory::neuroute::RecordExecutionKernel::Sse2;
+    if (suffix("avx2"))
+        return agent_memory::neuroute::RecordExecutionKernel::Avx2;
+    throw std::runtime_error("R4 record execution kernel differs");
 }
 
 #if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
@@ -1370,10 +1423,13 @@ void pack_lossless_int8_blocks(const std::filesystem::path& raw_path,
 }
 
 std::vector<float> address_scores(const SeedContext& seed, std::size_t request,
-                                  const std::vector<float>& maximums) {
+                                  const std::vector<float>& maximums,
+                                  const float* feature_override = nullptr) {
     const auto& model = seed.model;
     const float* query = seed.queries.data() + request * dimensions;
-    const float* features = seed.features.data() + request * addresses_per_query * scalar_features;
+    const float* features = feature_override != nullptr
+        ? feature_override
+        : seed.features.data() + request * addresses_per_query * scalar_features;
     std::array<float, local_hidden> query_hidden{};
     for (std::size_t column = 0; column != local_hidden; ++column) {
         float value = model.query_bias[column];
@@ -1439,9 +1495,10 @@ struct BatchedAddressScoreWorkspace final {
 
 void address_scores_batched_avx2_into(
         const SeedContext& seed, std::size_t request,
-        const std::vector<float>& maximums, std::vector<float>& output) {
+        const std::vector<float>& maximums, std::vector<float>& output,
+        const float* feature_override = nullptr) {
 #if !AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
-    output = address_scores(seed, request, maximums);
+    output = address_scores(seed, request, maximums, feature_override);
 #else
     thread_local BatchedAddressScoreWorkspace workspace;
     workspace.normalized.resize(23 * addresses_per_query);
@@ -1452,8 +1509,10 @@ void address_scores_batched_avx2_into(
     auto& joined = workspace.joined;
     const auto& model = seed.model;
     const float* query = seed.queries.data() + request * dimensions;
-    const float* features = seed.features.data() +
-                            request * addresses_per_query * scalar_features;
+    const float* features = feature_override != nullptr
+        ? feature_override
+        : seed.features.data() +
+            request * addresses_per_query * scalar_features;
     std::array<float, local_hidden> query_hidden{};
     for (std::size_t column = 0; column != local_hidden; ++column) {
         float value = model.query_bias[column];
@@ -1544,9 +1603,11 @@ void address_scores_batched_avx2_into(
 
 std::vector<float> address_scores_batched_avx2(
         const SeedContext& seed, std::size_t request,
-        const std::vector<float>& maximums) {
+        const std::vector<float>& maximums,
+        const float* feature_override = nullptr) {
     std::vector<float> output;
-    address_scores_batched_avx2_into(seed, request, maximums, output);
+    address_scores_batched_avx2_into(seed, request, maximums, output,
+                                     feature_override);
     return output;
 }
 
@@ -1803,7 +1864,7 @@ struct NativeCascadeInput {
     std::vector<std::uint32_t> document_id_rank;
 };
 
-struct FinalInt5Input {
+struct FinalQuantizedInput {
     std::unique_ptr<MappedFile> records;
     std::size_t record_bytes = 0;
     std::string sha256;
@@ -1857,7 +1918,7 @@ NativeCascadeInput load_native_input(const std::filesystem::path& manifest_path,
     return value;
 }
 
-FinalInt5Input load_final_int5_input(
+FinalQuantizedInput load_final_int5_input(
         const std::filesystem::path& manifest_path,
         const std::string& representation_id) {
     const auto manifest = read_json(manifest_path);
@@ -1883,12 +1944,44 @@ FinalInt5Input load_final_int5_input(
             agent_memory::sha256_file_hex(path) ==
                 found->at("sha256").get<std::string>(),
             "R4 final INT5 stored bytes differ");
-    FinalInt5Input result;
+    FinalQuantizedInput result;
     result.records = std::make_unique<MappedFile>(path);
     result.record_bytes = found->at("record_bytes").get<std::size_t>();
     result.sha256 = found->at("sha256").get<std::string>();
     require(result.records->size() == 1000000 * result.record_bytes,
             "R4 final INT5 payload shape differs");
+    return result;
+}
+
+FinalQuantizedInput load_final_int8_input(
+        const std::filesystem::path& manifest_path) {
+    const auto manifest = read_json(manifest_path);
+    require(manifest.value("family", "") ==
+                "neuroute_r4_layout_materialization" &&
+            manifest.at("schema_version").get<int>() == 1,
+            "R4 final INT8 storage identity differs");
+    const auto found = std::find_if(manifest.at("global_layouts").begin(),
+        manifest.at("global_layouts").end(), [](const nlohmann::json& row) {
+            return row.at("role").get<std::string>() ==
+                   "document_major_int8";
+        });
+    require(found != manifest.at("global_layouts").end() &&
+            found->at("records").get<std::size_t>() == 1000000 &&
+            found->at("record_bytes").get<std::size_t>() == 388,
+            "R4 final INT8 representation differs");
+    const auto path = manifest_path.parent_path() /
+                      found->at("file").get<std::string>();
+    require(std::filesystem::file_size(path) ==
+                found->at("bytes").get<std::uint64_t>() &&
+            agent_memory::sha256_file_hex(path) ==
+                found->at("sha256").get<std::string>(),
+            "R4 final INT8 stored bytes differ");
+    FinalQuantizedInput result;
+    result.records = std::make_unique<MappedFile>(path);
+    result.record_bytes = found->at("record_bytes").get<std::size_t>();
+    result.sha256 = found->at("sha256").get<std::string>();
+    require(result.records->size() == 1000000 * result.record_bytes,
+            "R4 final INT8 payload shape differs");
     return result;
 }
 
@@ -1944,6 +2037,8 @@ bool lower_e2e_score(const E2eScored<Score>& left,
 }
 
 struct EndToEndTiming {
+    double coarse_dot_and_max = 0.0;
+    double coarse_order_and_features = 0.0;
     double representative_fetch = 0.0;
     double representative_decode = 0.0;
     double representative_dot = 0.0;
@@ -1968,6 +2063,9 @@ struct EndToEndResult {
     std::vector<std::uint32_t> adc;
     std::vector<std::uint32_t> exact;
     std::string score_sha256;
+    std::uint64_t coarse_logical_bytes = 0;
+    std::size_t coarse_shortlist_overlap = 0;
+    bool coarse_shortlist_sequence_matches = false;
     std::size_t representatives = 0;
     std::uint64_t logical_bytes = 0;
     std::size_t final_documents = 0;
@@ -2116,16 +2214,21 @@ EndToEndResult finish_end_to_end_query(
         const agent_memory::HammingDistanceComputer& hamming,
         RoutingValues route, std::size_t request, std::size_t native_query,
         Clock::time_point total_begin,
-        const FinalInt5Input* final_int5 = nullptr,
-        const std::string& final_kernel = "fp32_pairwise") {
+        const FinalQuantizedInput* final_quantized = nullptr,
+        const std::string& final_kernel = "fp32_pairwise",
+        const std::uint32_t* shortlist_override = nullptr) {
     require(request < 152 && native_query < input.query_count,
             "R4 end-to-end query row differs");
     require(final_kernel == "fp32_pairwise" ||
             final_kernel == "int5_decode_buffer" ||
-            final_kernel == "int5_fused_blocks",
+            final_kernel == "int5_fused_blocks" ||
+            final_kernel == "int5_canonical_portable" ||
+            final_kernel == "int5_canonical_sse2" ||
+            final_kernel == "int5_canonical_avx2" ||
+            final_kernel == "int8_fused",
             "R4 final-rerank kernel differs");
-    require(final_kernel == "fp32_pairwise" || final_int5 != nullptr,
-            "R4 final-rerank INT5 input is missing");
+    require(final_kernel == "fp32_pairwise" || final_quantized != nullptr,
+            "R4 final-rerank quantized input is missing");
     EndToEndResult result;
     result.timing = route.timing;
     result.representatives = route.representatives;
@@ -2147,6 +2250,11 @@ EndToEndResult finish_end_to_end_query(
     workspace.final_records.clear();
     workspace.final_decoded.clear();
     workspace.final_scales.clear();
+    const auto shortlist_row = [&](std::size_t local) {
+        return shortlist_override != nullptr
+            ? shortlist_override[local]
+            : seed.shortlists[request * addresses_per_query + local];
+    };
 
     auto begin = Clock::now();
     std::iota(workspace.address_order.begin(), workspace.address_order.end(), 0);
@@ -2154,13 +2262,13 @@ EndToEndResult finish_end_to_end_query(
               [&](std::size_t left, std::size_t right) {
         if (route.scores[left] != route.scores[right])
             return route.scores[left] > route.scores[right];
-        const auto left_row = seed.shortlists[request * addresses_per_query + left];
-        const auto right_row = seed.shortlists[request * addresses_per_query + right];
+        const auto left_row = shortlist_row(left);
+        const auto right_row = shortlist_row(right);
         return seed.occupied_addresses[left_row] < seed.occupied_addresses[right_row];
     });
     std::size_t candidate_count = 0;
     for (const auto local : workspace.address_order) {
-        const auto row = seed.shortlists[request * addresses_per_query + local];
+        const auto row = shortlist_row(local);
         const auto count = static_cast<std::size_t>(seed.address_counts[row]);
         if (candidate_count + count > 5000) break;
         candidate_count += count;
@@ -2245,7 +2353,7 @@ EndToEndResult finish_end_to_end_query(
     result.final_documents = workspace.adc.size();
     result.final_logical_bytes = workspace.adc.size() *
         (final_kernel == "fp32_pairwise"
-            ? dimensions * sizeof(float) : final_int5->record_bytes);
+            ? dimensions * sizeof(float) : final_quantized->record_bytes);
     const auto* query_vector = input.query_vectors.data() + native_query * dimensions;
     if (final_kernel == "fp32_pairwise") {
         begin = Clock::now();
@@ -2265,24 +2373,55 @@ EndToEndResult finish_end_to_end_query(
     } else {
         begin = Clock::now();
         workspace.final_records.resize(workspace.adc.size() *
-                                       final_int5->record_bytes);
+                                       final_quantized->record_bytes);
         for (std::size_t row = 0; row != workspace.adc.size(); ++row) {
             const auto document = workspace.adc[row];
             std::memcpy(workspace.final_records.data() +
-                            row * final_int5->record_bytes,
-                        final_int5->records->data() +
+                             row * final_quantized->record_bytes,
+                         final_quantized->records->data() +
                             static_cast<std::size_t>(document) *
-                                final_int5->record_bytes,
-                        final_int5->record_bytes);
+                                final_quantized->record_bytes,
+                        final_quantized->record_bytes);
         }
         result.timing.final_fetch = milliseconds(begin, Clock::now());
         workspace.final_scales.resize(workspace.adc.size());
-        if (final_kernel == "int5_decode_buffer") {
+        const bool canonical_final =
+            final_kernel == "int5_canonical_portable" ||
+            final_kernel == "int5_canonical_sse2" ||
+            final_kernel == "int5_canonical_avx2";
+        if (final_kernel == "int8_fused") {
+            begin = Clock::now();
+            for (std::size_t row = 0; row != workspace.adc.size(); ++row) {
+                const auto* record = workspace.final_records.data() +
+                                     row * final_quantized->record_bytes;
+                float scale = 0.0F;
+                std::memcpy(&scale, record + dimensions, sizeof(scale));
+                const auto score = int8_dot_avx2(record, scale, query_vector);
+                const auto document = workspace.adc[row];
+                workspace.exact_rows.push_back({-score, document,
+                    input.document_id_rank[document]});
+            }
+            result.timing.final_dot = milliseconds(begin, Clock::now());
+        } else if (canonical_final) {
+            begin = Clock::now();
+            for (std::size_t row = 0; row != workspace.adc.size(); ++row) {
+                const auto* record = workspace.final_records.data() +
+                                     row * final_quantized->record_bytes;
+                const auto score =
+                    agent_memory::neuroute::score_nonlinear_int5_power_half(
+                        record, query_vector,
+                        record_execution_kernel(final_kernel));
+                const auto document = workspace.adc[row];
+                workspace.exact_rows.push_back({-score, document,
+                    input.document_id_rank[document]});
+            }
+            result.timing.final_dot = milliseconds(begin, Clock::now());
+        } else if (final_kernel == "int5_decode_buffer") {
             begin = Clock::now();
             workspace.final_decoded.resize(workspace.adc.size() * dimensions);
             for (std::size_t row = 0; row != workspace.adc.size(); ++row) {
                 const auto* record = workspace.final_records.data() +
-                                     row * final_int5->record_bytes;
+                                     row * final_quantized->record_bytes;
                 for (std::size_t block = 0; block != 3; ++block) {
                     simdcomp_unpack_block(record + block * 80U, 5,
                         workspace.final_decoded.data() + row * dimensions +
@@ -2314,7 +2453,7 @@ EndToEndResult finish_end_to_end_query(
             workspace.final_decoded.resize(128);
             for (std::size_t row = 0; row != workspace.adc.size(); ++row) {
                 const auto* record = workspace.final_records.data() +
-                                     row * final_int5->record_bytes;
+                                     row * final_quantized->record_bytes;
                 float score = 0.0F;
                 for (std::size_t block = 0; block != 3; ++block) {
                     simdcomp_unpack_block(record + block * 80U, 5,
@@ -2375,10 +2514,16 @@ EndToEndResult end_to_end_query(const SeedContext& seed, const MappedFile& mappe
 
 nlohmann::json end_to_end_json(const EndToEndResult& value, std::uint64_t seed,
                                const std::string& treatment, std::size_t request,
-                               std::size_t native_query, std::size_t pass) {
-    return {{"seed", seed}, {"treatment", treatment}, {"request", request},
+                               std::size_t native_query, std::size_t pass,
+                               bool include_candidate_documents = false) {
+    nlohmann::json result = {{"seed", seed}, {"treatment", treatment},
+        {"request", request},
         {"native_query", native_query}, {"pass", pass},
         {"representatives_scored", value.representatives},
+        {"coarse_logical_bytes_touched", value.coarse_logical_bytes},
+        {"coarse_shortlist_overlap", value.coarse_shortlist_overlap},
+        {"coarse_shortlist_sequence_matches",
+            value.coarse_shortlist_sequence_matches},
         {"logical_bytes_touched", value.logical_bytes},
         {"final_documents_scored", value.final_documents},
         {"final_logical_bytes_touched", value.final_logical_bytes},
@@ -2395,6 +2540,9 @@ nlohmann::json end_to_end_json(const EndToEndResult& value, std::uint64_t seed,
         {"exact_sha256", u32_sequence_sha256(value.exact)},
         {"exact_documents", value.exact},
         {"timing_ms", {
+            {"coarse_dot_and_max", value.timing.coarse_dot_and_max},
+            {"coarse_order_and_features",
+                value.timing.coarse_order_and_features},
             {"representative_fetch", value.timing.representative_fetch},
             {"representative_decode", value.timing.representative_decode},
             {"representative_dot", value.timing.representative_dot},
@@ -2409,6 +2557,9 @@ nlohmann::json end_to_end_json(const EndToEndResult& value, std::uint64_t seed,
             {"final_top10", value.timing.final_top10},
             {"exact_e5_and_top10", value.timing.exact_e5_and_top10},
             {"total", value.timing.total}}}};
+    if (include_candidate_documents)
+        result["candidate_documents"] = value.candidates;
+    return result;
 }
 
 float compressed_int8_dot(const std::uint8_t* record,
@@ -3424,6 +3575,165 @@ struct Int5IntegrationContext {
     std::vector<std::size_t> routing_representatives;
 };
 
+struct CoarseK8Input {
+    std::unique_ptr<MappedFile> prototypes;
+    std::vector<std::uint64_t> record_offsets;
+    std::string sha256;
+    std::uint64_t bytes = 0;
+};
+
+struct CoarseK8Result {
+    std::vector<std::uint32_t> rows;
+    std::vector<float> features;
+    double dot_and_max_ms = 0.0;
+    double order_and_features_ms = 0.0;
+    std::size_t frozen_shortlist_overlap = 0;
+    bool frozen_shortlist_sequence_matches = false;
+};
+
+CoarseK8Input load_coarse_k8_input(
+        const std::filesystem::path& manifest_path,
+        const SeedContext& seed) {
+    const auto manifest = read_json(manifest_path);
+    require(manifest.value("schema_version", 0) == 1 &&
+            manifest.value("family", "") ==
+                "neuroute_current_k8_physical_materialization",
+            "R4 coarse K8 manifest differs");
+    const auto found = std::find_if(manifest.at("seeds").begin(),
+        manifest.at("seeds").end(), [&](const nlohmann::json& row) {
+            return row.at("seed").get<std::uint64_t>() == seed.seed;
+        });
+    require(found != manifest.at("seeds").end() &&
+            found->at("occupied_addresses").get<std::size_t>() ==
+                seed.occupied_addresses.size() &&
+            found->at("slots").get<std::size_t>() == 8 &&
+            found->at("dimensions").get<std::size_t>() == dimensions &&
+            found->at("record_bytes").get<std::size_t>() ==
+                dimensions * sizeof(float) &&
+            found->at("layout").get<std::string>() ==
+                "address_major_effective_prefix_fp32le",
+            "R4 coarse K8 seed descriptor differs");
+    const auto path = std::filesystem::path(
+        found->at("path").get<std::string>());
+    const auto bytes = found->at("bytes").get<std::uint64_t>();
+    const auto digest = found->at("sha256").get<std::string>();
+    require(path.is_absolute() && std::filesystem::file_size(path) == bytes &&
+            agent_memory::sha256_file_hex(path) == digest,
+            "R4 coarse K8 physical payload differs");
+    CoarseK8Input result;
+    result.record_offsets.resize(seed.address_counts.size() + 1);
+    for (std::size_t row = 0; row != seed.address_counts.size(); ++row) {
+        result.record_offsets[row + 1] = result.record_offsets[row] +
+            std::min<std::uint32_t>(seed.address_counts[row], 8U);
+    }
+    require(result.record_offsets.back() ==
+                found->at("active_prototypes").get<std::uint64_t>() &&
+            result.record_offsets.back() * dimensions * sizeof(float) == bytes,
+            "R4 coarse K8 record count differs");
+    result.prototypes = std::make_unique<MappedFile>(path);
+    result.sha256 = digest;
+    result.bytes = bytes;
+    return result;
+}
+
+CoarseK8Result coarse_k8_query(const SeedContext& seed,
+                               const CoarseK8Input& input,
+                               std::size_t request) {
+    require(request < 152 && input.record_offsets.size() ==
+                seed.address_counts.size() + 1,
+            "R4 coarse K8 request differs");
+    const auto* query = seed.queries.data() + request * dimensions;
+    std::vector<float> cosines(seed.address_counts.size() * 8U, -1.0F);
+    std::vector<float> maximums(seed.address_counts.size(),
+        -std::numeric_limits<float>::infinity());
+    auto begin = Clock::now();
+    for (std::size_t row = 0; row != seed.address_counts.size(); ++row) {
+        const auto count = static_cast<std::size_t>(
+            std::min<std::uint32_t>(seed.address_counts[row], 8U));
+        const auto first = static_cast<std::size_t>(input.record_offsets[row]);
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto* prototype = reinterpret_cast<const float*>(
+                input.prototypes->data() +
+                (first + slot) * dimensions * sizeof(float));
+            const auto score = fp32_dot_fast(prototype, query);
+            cosines[row * 8U + slot] = score;
+            maximums[row] = std::max(maximums[row], score);
+        }
+    }
+    CoarseK8Result result;
+    result.dot_and_max_ms = milliseconds(begin, Clock::now());
+    begin = Clock::now();
+    std::vector<std::uint32_t> order(seed.address_counts.size());
+    std::iota(order.begin(), order.end(), 0U);
+    const auto lower = [&](std::uint32_t left, std::uint32_t right) {
+        if (maximums[left] != maximums[right])
+            return maximums[left] > maximums[right];
+        return seed.occupied_addresses[left] < seed.occupied_addresses[right];
+    };
+    std::partial_sort(order.begin(), order.begin() + addresses_per_query,
+                      order.end(), lower);
+    result.rows.assign(order.begin(), order.begin() + addresses_per_query);
+    result.features.resize(addresses_per_query * scalar_features);
+    const auto log_denominator = std::log1p(1000000.0F);
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = result.rows[local];
+        const auto count = static_cast<std::size_t>(
+            std::min<std::uint32_t>(seed.address_counts[row], 8U));
+        std::array<float, 8> sorted{};
+        std::copy_n(cosines.data() + row * 8U, 8U, sorted.data());
+        std::sort(sorted.begin(), sorted.end(), std::greater<float>());
+        float mean = 0.0F;
+        for (std::size_t slot = 0; slot != count; ++slot)
+            mean += cosines[row * 8U + slot];
+        mean /= static_cast<float>(count);
+        float variance = 0.0F;
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto delta = cosines[row * 8U + slot] - mean;
+            variance += delta * delta;
+        }
+        const auto deviation = std::sqrt(variance / static_cast<float>(count));
+        const auto maximum = sorted[0];
+        const auto second = sorted[1];
+        const auto margin = maximum - second;
+        const auto log_cost = std::log1p(static_cast<float>(
+            seed.address_counts[row])) / log_denominator;
+        const auto rank = static_cast<float>(local) /
+            static_cast<float>(addresses_per_query - 1);
+        const auto capacity = static_cast<float>(count) / 8.0F;
+        auto* features = result.features.data() + local * scalar_features;
+        std::copy(sorted.begin(), sorted.end(), features);
+        features[8] = maximum;
+        features[9] = second;
+        features[10] = mean;
+        features[11] = deviation;
+        features[12] = margin;
+        features[13] = log_cost;
+        features[14] = rank;
+        features[15] = capacity;
+        features[16] = maximum * log_cost;
+        features[17] = second * log_cost;
+        features[18] = margin * log_cost;
+        features[19] = mean * log_cost;
+        features[20] = maximum * maximum;
+        features[21] = deviation * deviation;
+    }
+    const auto* frozen = seed.shortlists.data() +
+        request * addresses_per_query;
+    result.frozen_shortlist_sequence_matches = std::equal(
+        result.rows.begin(), result.rows.end(), frozen);
+    std::vector<std::uint32_t> generated = result.rows;
+    std::sort(generated.begin(), generated.end());
+    std::vector<std::uint32_t> expected(frozen,
+        frozen + addresses_per_query);
+    std::sort(expected.begin(), expected.end());
+    std::vector<std::uint32_t> intersection;
+    std::set_intersection(generated.begin(), generated.end(),
+        expected.begin(), expected.end(), std::back_inserter(intersection));
+    result.frozen_shortlist_overlap = intersection.size();
+    result.order_and_features_ms = milliseconds(begin, Clock::now());
+    return result;
+}
+
 void validate_int5_integration_protocol(const nlohmann::json& protocol) {
     require(protocol.value("schema_version", 0) == 1 &&
             protocol.value("family", "") ==
@@ -3624,7 +3934,9 @@ void materialize_int5_avx2_mixed(
 
 RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
                                 std::size_t request,
-                                const std::string& kernel) {
+                                const std::string& kernel,
+                                const std::uint32_t* shortlist_override = nullptr,
+                                const float* feature_override = nullptr) {
     require(request < 152, "R4 INT5 kernel request differs");
     const bool baseline = kernel == "homogeneous_int8";
     const bool legacy = kernel == "int5_direct_square_legacy";
@@ -3637,15 +3949,43 @@ RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
     const bool quantized = kernel == "int5_bitsliced_q8_lut";
     const bool direct_q8 = kernel == "int5_direct_q8_integer";
     const bool direct_q16 = kernel == "int5_direct_q16_integer";
+    const bool canonical = kernel == "int5_canonical_portable" ||
+                           kernel == "int5_canonical_sse2" ||
+                           kernel == "int5_canonical_avx2";
     require(baseline || legacy || direct || fused_sse || fused_avx2 ||
             fused_avx2_q8 || shuffle || bitsliced || quantized || direct_q8 ||
-            direct_q16,
+            direct_q16 || canonical,
             "R4 INT5 kernel differs");
     require(context.routing_spans.size() == 152 &&
             context.routing_representatives.size() == 152,
             "R4 INT5 prepared routing context differs");
-    const auto& spans = context.routing_spans[request];
-    const auto representatives = context.routing_representatives[request];
+    thread_local std::vector<AddressSpan> dynamic_spans;
+    const std::vector<AddressSpan>* spans_ptr = &context.routing_spans[request];
+    std::size_t representatives = context.routing_representatives[request];
+    if (shortlist_override != nullptr) {
+        dynamic_spans.clear();
+        dynamic_spans.reserve(addresses_per_query);
+        representatives = 0;
+        for (std::size_t local = 0; local != addresses_per_query; ++local) {
+            const auto row = shortlist_override[local];
+            const auto count = static_cast<std::size_t>(
+                context.seed.representative_counts[row]);
+            const auto byte_offset = baseline
+                ? static_cast<std::size_t>(
+                    context.seed.address_offsets[row]) * 388U
+                : static_cast<std::size_t>(
+                    context.mixed_address_byte_offsets[row]);
+            dynamic_spans.push_back({local, byte_offset,
+                count * context.record_bytes, 0});
+            representatives += count;
+        }
+        std::sort(dynamic_spans.begin(), dynamic_spans.end(),
+            [](const auto& left, const auto& right) {
+                return left.byte_offset < right.byte_offset;
+            });
+        spans_ptr = &dynamic_spans;
+    }
+    const auto& spans = *spans_ptr;
     RoutingValues result;
     result.representatives = representatives;
     result.logical_bytes = representatives * context.record_bytes;
@@ -3694,6 +4034,11 @@ RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
             } else if (direct_q8) {
                 score = int5_power_half_integer_dot(record,
                     query_luts->direct_int8.data(), query_luts->int8_scale);
+            } else if (canonical) {
+                score = kernel == "int5_canonical_avx2"
+                    ? int5_power_half_dot_avx2(record, query)
+                    : agent_memory::neuroute::score_nonlinear_int5_power_half_fast(
+                        record, query, record_execution_kernel(kernel));
             } else {
                 score = int5_power_half_integer_dot(record,
                     query_luts->direct_int16.data(), query_luts->int16_scale);
@@ -3707,7 +4052,8 @@ RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
     result.timing.representative_dot = milliseconds(begin, Clock::now());
     begin = Clock::now();
     result.scores = address_scores_batched_avx2(context.seed, request,
-                                                maximums.values);
+                                                maximums.values,
+                                                feature_override);
     result.timing.address_score = milliseconds(begin, Clock::now());
     return result;
 }
@@ -4327,7 +4673,7 @@ void validate_final_rerank_protocol(const nlohmann::json& protocol) {
 
 EndToEndResult final_rerank_query(
         const Int5IntegrationContext& context, const NativeCascadeInput& input,
-        const FinalInt5Input& final_int5,
+        const FinalQuantizedInput& final_int5,
         const agent_memory::HammingDistanceComputer& hamming,
         const std::string& routing_kernel, const std::string& final_kernel,
         std::size_t request, std::size_t native_query) {
@@ -4341,7 +4687,7 @@ EndToEndResult final_rerank_query(
 
 std::vector<EndToEndResult> final_rerank_batch(
         const Int5IntegrationContext& context, const NativeCascadeInput& input,
-        const FinalInt5Input& final_int5,
+        const FinalQuantizedInput& final_int5,
         const agent_memory::HammingDistanceComputer& hamming,
         const nlohmann::json& parent_protocol,
         const std::vector<std::size_t>& trace, std::size_t workers,
@@ -4360,6 +4706,65 @@ std::vector<EndToEndResult> final_rerank_batch(
                     const auto& request = parent_protocol.at("requests").at(
                         trace[index]);
                     values[index] = final_rerank_query(context, input,
+                        final_int5, hamming, routing_kernel, final_kernel,
+                        request.at("request").get<std::size_t>(),
+                        request.at("native_query").get<std::size_t>());
+                }
+            } catch (...) {
+                failures[worker] = std::current_exception();
+            }
+        });
+    }
+    for (auto& thread : threads) thread.join();
+    for (const auto& failure : failures)
+        if (failure) std::rethrow_exception(failure);
+    return values;
+}
+
+EndToEndResult full_r4_query(
+        const Int5IntegrationContext& context, const CoarseK8Input& coarse_input,
+        const NativeCascadeInput& input, const FinalQuantizedInput& final_int5,
+        const agent_memory::HammingDistanceComputer& hamming,
+        const std::string& routing_kernel, const std::string& final_kernel,
+        std::size_t request, std::size_t native_query) {
+    const auto total_begin = Clock::now();
+    auto coarse = coarse_k8_query(context.seed, coarse_input, request);
+    auto route = int5_kernel_route(context, request, routing_kernel,
+        coarse.rows.data(), coarse.features.data());
+    route.timing.coarse_dot_and_max = coarse.dot_and_max_ms;
+    route.timing.coarse_order_and_features = coarse.order_and_features_ms;
+    auto result = finish_end_to_end_query(context.seed, input, hamming,
+        std::move(route), request, native_query, total_begin,
+        final_kernel == "fp32_pairwise" ? nullptr : &final_int5,
+        final_kernel, coarse.rows.data());
+    result.coarse_logical_bytes = coarse_input.bytes;
+    result.coarse_shortlist_overlap = coarse.frozen_shortlist_overlap;
+    result.coarse_shortlist_sequence_matches =
+        coarse.frozen_shortlist_sequence_matches;
+    return result;
+}
+
+std::vector<EndToEndResult> full_r4_batch(
+        const Int5IntegrationContext& context, const CoarseK8Input& coarse_input,
+        const NativeCascadeInput& input, const FinalQuantizedInput& final_int5,
+        const agent_memory::HammingDistanceComputer& hamming,
+        const nlohmann::json& parent_protocol,
+        const std::vector<std::size_t>& trace, std::size_t workers,
+        const std::string& routing_kernel, const std::string& final_kernel) {
+    std::vector<EndToEndResult> values(trace.size());
+    std::atomic<std::size_t> following{0};
+    std::vector<std::thread> threads;
+    std::vector<std::exception_ptr> failures(workers);
+    threads.reserve(workers);
+    for (std::size_t worker = 0; worker != workers; ++worker) {
+        threads.emplace_back([&, worker] {
+            try {
+                for (;;) {
+                    const auto index = following.fetch_add(1);
+                    if (index >= trace.size()) break;
+                    const auto& request = parent_protocol.at("requests").at(
+                        trace[index]);
+                    values[index] = full_r4_query(context, coarse_input, input,
                         final_int5, hamming, routing_kernel, final_kernel,
                         request.at("request").get<std::size_t>(),
                         request.at("native_query").get<std::size_t>());
@@ -4468,6 +4873,100 @@ void final_rerank_ceiling(const std::filesystem::path& protocol_path,
         {"trace_queries", trace.size()},
         {"final_store_sha256", final_int5.sha256},
         {"final_record_bytes", final_int5.record_bytes},
+        {"hamming_backend", agent_memory::hamming_distance_backend_name(
+            hamming.backend())}, {"samples", samples}});
+}
+
+void external_comparison_r4(const std::filesystem::path& protocol_path,
+                            std::uint64_t seed,
+                            const std::string& storage_mode,
+                            const std::string& execution,
+                            std::size_t workers,
+                            const std::filesystem::path& output_path) {
+    const auto protocol = read_json(protocol_path);
+    require(protocol.value("schema_version", 0) == 1 &&
+            protocol.value("family", "") ==
+                "neuroute_external_ann_comparison_r4_protocol" &&
+            (storage_mode == "int8" || storage_mode ==
+                "nonlinear_int5_power_half") &&
+            (execution == "portable" || execution == "sse2" ||
+                execution == "avx2") &&
+            std::find(protocol.at("workers").begin(),
+                      protocol.at("workers").end(), workers) !=
+                protocol.at("workers").end(),
+            "R4 external comparison invocation differs");
+    const auto kernel_protocol = read_json(
+        protocol.at("routing_kernel_protocol").get<std::string>());
+    validate_int5_kernel_protocol(kernel_protocol);
+    const auto parent = read_json(
+        kernel_protocol.at("parent_protocol").get<std::string>());
+    validate_int5_integration_protocol(parent);
+    const auto input = load_native_input(
+        parent.at("native_input_manifest").get<std::string>(),
+        parent.at("document_id_rank_file").get<std::string>());
+    const auto final_int8 = load_final_int8_input(
+        protocol.at("final_int8_layout_manifest").get<std::string>());
+    const auto routing_kernel = storage_mode == "int8"
+        ? std::string("homogeneous_int8")
+        : std::string("int5_canonical_") + execution;
+    const auto final_kernel = std::string("int8_fused");
+    require(agent_memory::neuroute::execution_kernel_supported(
+                record_execution_kernel(std::string("int5_canonical_") +
+                                        execution)),
+            "R4 external comparison execution kernel is unavailable");
+    const auto context = load_int5_kernel_context(kernel_protocol, parent,
+                                                   seed, routing_kernel);
+    const auto coarse_input = load_coarse_k8_input(
+        protocol.at("coarse_k8_manifest").get<std::string>(), context.seed);
+    const agent_memory::HammingDistanceComputer hamming(binary_code_words);
+    const auto trace = stress_trace(parent,
+        protocol.at("trace_repetitions").get<std::size_t>());
+    for (std::size_t pass = 0;
+         pass != protocol.at("warmup_batches").get<std::size_t>(); ++pass) {
+        static_cast<void>(full_r4_batch(context, coarse_input, input,
+            final_int8, hamming, parent, trace, workers, routing_kernel,
+            final_kernel));
+    }
+    nlohmann::json samples = nlohmann::json::array();
+    for (std::size_t pass = 0;
+         pass != protocol.at("measured_batches").get<std::size_t>(); ++pass) {
+        const auto before = process_state();
+        const auto batch_begin = Clock::now();
+        const auto values = full_r4_batch(context, coarse_input, input,
+            final_int8, hamming, parent, trace, workers, routing_kernel,
+            final_kernel);
+        const auto wall_ms = milliseconds(batch_begin, Clock::now());
+        const auto after = process_state();
+        nlohmann::json queries = nlohmann::json::array();
+        for (std::size_t index = 0; index != values.size(); ++index) {
+            const auto& request = parent.at("requests").at(trace[index]);
+            queries.push_back(end_to_end_json(values[index], seed,
+                storage_mode + "/" + execution,
+                request.at("request").get<std::size_t>(),
+                request.at("native_query").get<std::size_t>(), pass,
+                workers == 1));
+        }
+        samples.push_back({{"pass", pass}, {"query_count", values.size()},
+            {"wall_ms", wall_ms},
+            {"throughput_queries_per_second",
+                1000.0 * static_cast<double>(values.size()) / wall_ms},
+            {"page_faults", after.faults - before.faults},
+            {"working_set_bytes_before", before.rss},
+            {"working_set_bytes_after", after.rss},
+            {"result_sha256", stress_result_sha256(values)},
+            {"queries", queries}});
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_external_ann_comparison_r4_samples"},
+        {"protocol_sha256", agent_memory::sha256_file_hex(protocol_path)},
+        {"seed", seed}, {"storage_mode", storage_mode},
+        {"execution_kernel", execution}, {"workers", workers},
+        {"trace_queries", trace.size()},
+        {"coarse_k8_store_sha256", coarse_input.sha256},
+        {"coarse_k8_store_bytes", coarse_input.bytes},
+        {"final_codec", "symmetric_per_document_int8"},
+        {"final_store_sha256", final_int8.sha256},
+        {"final_record_bytes", final_int8.record_bytes},
         {"hamming_backend", agent_memory::hamming_distance_backend_name(
             hamming.backend())}, {"samples", samples}});
 }
@@ -4660,6 +5159,10 @@ int main(int argc, char** argv) {
                  "--final-rerank-ceiling")
             final_rerank_ceiling(argv[2], std::stoull(argv[3]), argv[4],
                                  argv[5], std::stoull(argv[6]), argv[7]);
+        else if (argc == 8 && std::string(argv[1]) ==
+                 "--external-comparison-r4")
+            external_comparison_r4(argv[2], std::stoull(argv[3]), argv[4],
+                                   argv[5], std::stoull(argv[6]), argv[7]);
         else throw std::runtime_error("usage: --self-test | --compress-pack ... | --lossless-block-pack RAW COUNTS ROWS LEVEL DICT_BYTES TRAIN_BLOCKS ZSTD ZSTD_OFFSETS DICT ZSTD_DICT ZSTD_DICT_OFFSETS VBYTE VBYTE_OFFSETS RECEIPT | --lossless-block-warm MANIFEST BLOCK_MANIFEST OUTPUT | --lossless-block-cold MANIFEST BLOCK_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
         return 0;
     } catch (const std::exception& error) {
