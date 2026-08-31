@@ -166,3 +166,35 @@ For the measured dense branch:
 - close the current dense research batch with #263 interpretation, while
   recording approximate/compressed K8 as the only material dense latency
   reopening condition.
+
+## #263 dense-policy closure
+
+#263 binds the replayed #259--#262 evidence without adding another workload or
+silently broadening the claim. The closed policy for the current DE-1M R4
+design is:
+
+| Concern | Policy |
+| --- | --- |
+| Routing storage | User explicitly selects `int8` or `nonlinear_int5_power_half` |
+| Automatic memory selector | Disabled; not licensed by the measured crossover alone |
+| Default execution | Portable C++17 |
+| Optional execution | SSE2 when available; AVX2 only after explicit CMake opt-in |
+| Persisted format | Independent of the selected execution kernel |
+| Final document codec | Symmetric per-document INT8 |
+| Uniform final INT5 | Negative actual-pool transfer control |
+| Current K8 | Persisted FP32 full scan, included in the complete timer |
+| Dense status | Closed for the current exact-K8 design |
+
+“Closed” means that the measured branch has a recorded algorithm, physical
+format, execution policy, full timer, and external comparison. It does not mean
+that R4 is a universal winner or that the post-hoc final INT8 correction has
+independent held-out licensing.
+
+The dense branch reopens only for one of four explicit reasons:
+
+1. an independent held-out evaluation invalidates final INT8;
+2. approximate or compressed K8 is proposed with a full-cascade quality gate;
+3. a new workload or hardware target changes the Pareto frontier;
+4. ScaNN or DiskANN is explicitly brought into scope.
+
+Lexical BM25/WAND/BMW work remains deferred and was not started by #263.
