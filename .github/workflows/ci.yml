@@ -229,7 +229,11 @@ jobs:
           python tools/agent-memory-bench/summarize-neuroute-external-comparison.py --self-test &&
           python tools/agent-memory-bench/write-neuroute-external-comparison-evidence.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-dense-policy-closure.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-dense-policy-closure-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-dense-policy-closure-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-actual-r4-codec-frontier.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-actual-r4-codec-frontier.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-actual-r4-final-codec-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-actual-r4-final-codec-evidence.py --self-test
 
   ann-cascade:
     name: ANN cascade harness
