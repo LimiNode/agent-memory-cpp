@@ -18,6 +18,10 @@
 #include <tuple>
 #include <vector>
 
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+#include <immintrin.h>
+#endif
+
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -189,7 +193,161 @@ struct Sample {
     std::uint64_t page_faults = 0;
     std::int64_t rss_delta = 0;
     std::string score_sha256;
+    double maximum_max_abs_error = 0, address_score_max_abs_error = 0;
+    double representative_winner_agreement = 1, address_top128_overlap = 1;
 };
+
+struct Maximums {
+    std::vector<float> values;
+    std::vector<std::uint8_t> winners;
+};
+
+float int8_dot_scalar(const std::uint8_t* codes, float scale,
+                      const float* query) {
+    float score = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const float decoded = static_cast<float>(
+            static_cast<int>(codes[dimension]) - 127) * scale;
+        score += decoded * query[dimension];
+    }
+    return score;
+}
+
+float int8_dot_avx2(const std::uint8_t* codes, float scale,
+                    const float* query) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto offset = _mm256_set1_epi32(127);
+    const auto scale8 = _mm256_set1_ps(scale);
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 32) {
+        const auto load = [&](std::size_t lane) {
+            const auto bytes = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(
+                codes + dimension + lane));
+            return _mm256_cvtepi32_ps(_mm256_sub_epi32(
+                _mm256_cvtepu8_epi32(bytes), offset));
+        };
+        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(
+            _mm256_mul_ps(load(0), scale8),
+            _mm256_loadu_ps(query + dimension)));
+        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(
+            _mm256_mul_ps(load(8), scale8),
+            _mm256_loadu_ps(query + dimension + 8)));
+        sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(
+            _mm256_mul_ps(load(16), scale8),
+            _mm256_loadu_ps(query + dimension + 16)));
+        sum3 = _mm256_add_ps(sum3, _mm256_mul_ps(
+            _mm256_mul_ps(load(24), scale8),
+            _mm256_loadu_ps(query + dimension + 24)));
+    }
+    const auto sum = _mm256_add_ps(_mm256_add_ps(sum0, sum1),
+                                   _mm256_add_ps(sum2, sum3));
+    alignas(32) std::array<float, 8> lanes{};
+    _mm256_store_ps(lanes.data(), sum);
+    float result = 0.0F;
+    for (const auto value : lanes) result += value;
+    return result;
+#else
+    return int8_dot_scalar(codes, scale, query);
+#endif
+}
+
+float int8_dot_avx2_ordered(const std::uint8_t* codes, float scale,
+                            const float* query) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto offset = _mm256_set1_epi32(127);
+    const auto scale8 = _mm256_set1_ps(scale);
+    alignas(32) std::array<float, 8> products{};
+    float result = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 8) {
+        const auto bytes = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(
+            codes + dimension));
+        const auto values = _mm256_cvtepi32_ps(_mm256_sub_epi32(
+            _mm256_cvtepu8_epi32(bytes), offset));
+        _mm256_store_ps(products.data(), _mm256_mul_ps(
+            _mm256_mul_ps(values, scale8),
+            _mm256_loadu_ps(query + dimension)));
+        for (const auto value : products) result += value;
+    }
+    return result;
+#else
+    return int8_dot_scalar(codes, scale, query);
+#endif
+}
+
+Maximums fused_int8_maximums(const std::vector<std::uint8_t>& bytes,
+                             const std::vector<std::size_t>& starts,
+                             std::size_t record_bytes, const float* query,
+                             const std::string& kernel) {
+    Maximums result{{}, {}};
+    result.values.assign(addresses_per_query,
+                         -std::numeric_limits<float>::infinity());
+    result.winners.assign(addresses_per_query, 0);
+    for (std::size_t address = 0; address != addresses_per_query; ++address) {
+        std::uint8_t winner = 0;
+        for (std::size_t offset = starts[address], slot = 0;
+             offset != starts[address + 1]; offset += record_bytes, ++slot) {
+            float scale = 0.0F;
+            std::memcpy(&scale, bytes.data() + offset + dimensions, sizeof(float));
+            const auto score = kernel == "fused_int8_avx2"
+                ? int8_dot_avx2(bytes.data() + offset, scale, query)
+                : kernel == "fused_int8_avx2_ordered"
+                    ? int8_dot_avx2_ordered(bytes.data() + offset, scale, query)
+                    : int8_dot_scalar(bytes.data() + offset, scale, query);
+            if (score > result.values[address]) {
+                result.values[address] = score;
+                winner = static_cast<std::uint8_t>(slot);
+            }
+        }
+        result.winners[address] = winner;
+    }
+    return result;
+}
+
+double max_abs_error(const std::vector<float>& left,
+                     const std::vector<float>& right) {
+    require(left.size() == right.size(), "R4 kernel comparison size differs");
+    double result = 0.0;
+    for (std::size_t index = 0; index != left.size(); ++index) {
+        result = std::max(result, static_cast<double>(
+            std::abs(left[index] - right[index])));
+    }
+    return result;
+}
+
+double agreement(const std::vector<std::uint8_t>& left,
+                 const std::vector<std::uint8_t>& right) {
+    require(left.size() == right.size(), "R4 kernel winner size differs");
+    std::size_t equal = 0;
+    for (std::size_t index = 0; index != left.size(); ++index) {
+        equal += left[index] == right[index] ? 1U : 0U;
+    }
+    return static_cast<double>(equal) / static_cast<double>(left.size());
+}
+
+double top_overlap(const std::vector<float>& left,
+                   const std::vector<float>& right, std::size_t count) {
+    const auto top = [&](const std::vector<float>& values) {
+        std::vector<std::size_t> order(values.size());
+        for (std::size_t index = 0; index != order.size(); ++index) order[index] = index;
+        std::partial_sort(order.begin(), order.begin() + count, order.end(),
+            [&](std::size_t a, std::size_t b) {
+                if (values[a] != values[b]) return values[a] > values[b];
+                return a < b;
+            });
+        order.resize(count);
+        std::sort(order.begin(), order.end());
+        return order;
+    };
+    const auto a = top(left);
+    const auto b = top(right);
+    std::vector<std::size_t> common;
+    std::set_intersection(a.begin(), a.end(), b.begin(), b.end(),
+                          std::back_inserter(common));
+    return static_cast<double>(common.size()) / static_cast<double>(count);
+}
 
 std::vector<float> address_scores(const SeedContext& seed, std::size_t request,
                                   const std::vector<float>& maximums) {
@@ -254,12 +412,20 @@ std::vector<float> address_scores(const SeedContext& seed, std::size_t request,
 }
 
 Sample measure(const SeedContext& seed, const std::string& layout,
-               std::size_t request) {
+               std::size_t request,
+               const std::string& kernel = "decode_fp32_scalar_dot") {
     const auto& descriptor = layout_row(seed, layout);
     const auto file = payload_path(seed.root, descriptor);
     const auto record_bytes = descriptor.at("record_bytes").get<std::size_t>();
     const bool fp32 = layout == "address_major_fp32";
     const bool indirect = layout == "document_major_int8_indirect";
+    const bool fused = kernel != "decode_fp32_scalar_dot";
+    require(!fused || (!fp32 && !indirect),
+            "R4 fused kernel requires address-major INT8");
+    require(kernel == "decode_fp32_scalar_dot" ||
+            kernel == "fused_int8_scalar" || kernel == "fused_int8_avx2" ||
+            kernel == "fused_int8_avx2_ordered",
+            "R4 representative kernel differs");
     std::ifstream stream(file, std::ios::binary);
     require(static_cast<bool>(stream), "R4 layout physical file open failed");
     std::vector<std::size_t> starts(addresses_per_query + 1);
@@ -299,9 +465,9 @@ Sample measure(const SeedContext& seed, const std::string& layout,
     starts[addresses_per_query] = bytes.size();
     const auto fetch_end = Clock::now();
     const auto decode_begin = Clock::now();
-    std::vector<float> decoded(representatives * dimensions);
+    std::vector<float> decoded(fused ? 0 : representatives * dimensions);
     std::size_t vector_index = 0;
-    for (std::size_t address = 0; address != addresses_per_query; ++address) {
+    for (std::size_t address = 0; !fused && address != addresses_per_query; ++address) {
         for (std::size_t offset = starts[address]; offset != starts[address + 1];
              offset += record_bytes, ++vector_index) {
             float* output = decoded.data() + vector_index * dimensions;
@@ -320,24 +486,35 @@ Sample measure(const SeedContext& seed, const std::string& layout,
     const auto decode_end = Clock::now();
     const auto dot_begin = Clock::now();
     const float* query = seed.queries.data() + request * dimensions;
-    std::vector<float> maximums(addresses_per_query, -1.0F);
-    vector_index = 0;
-    for (std::size_t address = 0; address != addresses_per_query; ++address) {
-        const auto count = (starts[address + 1] - starts[address]) / record_bytes;
-        float maximum = -std::numeric_limits<float>::infinity();
-        for (std::size_t slot = 0; slot != count; ++slot, ++vector_index) {
-            const float* value = decoded.data() + vector_index * dimensions;
-            float score = 0.0F;
-            for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
-                score += value[dimension] * query[dimension];
+    Maximums measured;
+    if (fused) {
+        measured = fused_int8_maximums(bytes, starts, record_bytes, query, kernel);
+    } else {
+        measured.values.assign(addresses_per_query, -1.0F);
+        measured.winners.assign(addresses_per_query, 0);
+        vector_index = 0;
+        for (std::size_t address = 0; address != addresses_per_query; ++address) {
+            const auto count = (starts[address + 1] - starts[address]) / record_bytes;
+            float maximum = -std::numeric_limits<float>::infinity();
+            std::uint8_t winner = 0;
+            for (std::size_t slot = 0; slot != count; ++slot, ++vector_index) {
+                const float* value = decoded.data() + vector_index * dimensions;
+                float score = 0.0F;
+                for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+                    score += value[dimension] * query[dimension];
+                }
+                if (score > maximum) {
+                    maximum = score;
+                    winner = static_cast<std::uint8_t>(slot);
+                }
             }
-            maximum = std::max(maximum, score);
+            measured.values[address] = maximum;
+            measured.winners[address] = winner;
         }
-        maximums[address] = maximum;
     }
     const auto dot_end = Clock::now();
     const auto score_begin = Clock::now();
-    const auto scores = address_scores(seed, request, maximums);
+    const auto scores = address_scores(seed, request, measured.values);
     const auto score_end = Clock::now();
     const auto state_end = process_state();
     std::vector<std::uint8_t> digest(scores.size() * sizeof(float));
@@ -355,6 +532,16 @@ Sample measure(const SeedContext& seed, const std::string& layout,
     sample.rss_delta = static_cast<std::int64_t>(state_end.rss) -
                        static_cast<std::int64_t>(state_begin.rss);
     sample.score_sha256 = agent_memory::sha256_bytes_hex(digest);
+    if (fused) {
+        const auto reference = fused_int8_maximums(bytes, starts, record_bytes,
+                                                   query, "fused_int8_scalar");
+        const auto reference_scores = address_scores(seed, request, reference.values);
+        sample.maximum_max_abs_error = max_abs_error(reference.values, measured.values);
+        sample.address_score_max_abs_error = max_abs_error(reference_scores, scores);
+        sample.representative_winner_agreement = agreement(reference.winners,
+                                                            measured.winners);
+        sample.address_top128_overlap = top_overlap(reference_scores, scores, 128);
+    }
     return sample;
 }
 
@@ -368,7 +555,19 @@ nlohmann::json sample_json(const Sample& value, std::uint64_t seed,
             {"rss_delta_bytes", value.rss_delta}, {"logical_bytes", value.logical_bytes},
             {"random_reads", value.random_reads}, {"addresses_scored", 1024},
             {"representatives_scored", value.representatives},
-            {"score_sha256", value.score_sha256}};
+            {"score_sha256", value.score_sha256},
+            {"maximum_max_abs_error", value.maximum_max_abs_error},
+            {"address_score_max_abs_error", value.address_score_max_abs_error},
+            {"representative_winner_agreement", value.representative_winner_agreement},
+            {"address_top128_overlap", value.address_top128_overlap}};
+}
+
+nlohmann::json kernel_sample_json(const Sample& value, std::uint64_t seed,
+                                  const std::string& kernel,
+                                  std::size_t request, std::size_t pass) {
+    auto result = sample_json(value, seed, "address_major_int8", request, pass);
+    result["kernel"] = kernel;
+    return result;
 }
 
 void prefault(const std::filesystem::path& path) {
@@ -415,6 +614,40 @@ void warm(const std::filesystem::path& manifest_path,
         {"samples", samples}});
 }
 
+void kernel_warm(const std::filesystem::path& manifest_path,
+                 const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    std::vector<SeedContext> seeds;
+    for (const auto& row : manifest.at("seeds")) seeds.push_back(load_seed(manifest_path, row));
+    const std::array<std::string, 4> kernels = {"decode_fp32_scalar_dot",
+        "fused_int8_scalar", "fused_int8_avx2", "fused_int8_avx2_ordered"};
+    for (const auto& seed : seeds) {
+        prefault(payload_path(seed.root, layout_row(seed, "address_major_int8")));
+        for (const auto& kernel : kernels)
+            for (std::size_t request = 0; request != 152; ++request)
+                (void)measure(seed, "address_major_int8", request, kernel);
+    }
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>> schedule;
+    for (std::size_t pass = 0; pass != 3; ++pass)
+        for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+            for (std::size_t kernel = 0; kernel != kernels.size(); ++kernel)
+                for (std::size_t request = 0; request != 152; ++request)
+                    schedule.emplace_back(pass, seed, kernel, request);
+    std::mt19937_64 random(2026083102);
+    std::shuffle(schedule.begin(), schedule.end(), random);
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto& [pass, seed, kernel, request] : schedule) {
+        samples.push_back(kernel_sample_json(measure(seeds[seed],
+            "address_major_int8", request, kernels[kernel]), seeds[seed].seed,
+            kernels[kernel], request, pass));
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int8_kernel_warm_samples"},
+        {"manifest_sha256", agent_memory::sha256_file_hex(manifest_path)},
+        {"simd_available", static_cast<bool>(AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2)},
+        {"samples", samples}});
+}
+
 void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
           const std::string& layout, std::size_t request,
           const std::filesystem::path& output_path) {
@@ -433,6 +666,18 @@ void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
 
 void self_test() {
     require(std::tanh(0.0F) == 0.0F, "R4 layout math self-test differs");
+    std::array<std::uint8_t, dimensions> codes{};
+    std::array<float, dimensions> query{};
+    for (std::size_t index = 0; index != dimensions; ++index) {
+        codes[index] = static_cast<std::uint8_t>((index * 17U) % 255U);
+        query[index] = static_cast<float>(static_cast<int>(index % 19U) - 9) / 19.0F;
+    }
+    require(std::abs(int8_dot_scalar(codes.data(), 0.007F, query.data()) -
+                     int8_dot_avx2(codes.data(), 0.007F, query.data())) < 1.0e-4F,
+            "R4 fused INT8 kernel differs");
+    require(int8_dot_scalar(codes.data(), 0.007F, query.data()) ==
+            int8_dot_avx2_ordered(codes.data(), 0.007F, query.data()),
+            "R4 ordered AVX2 INT8 kernel differs");
     std::cout << "NeuRoute R4 layout native self-test passed\n";
 }
 
@@ -442,9 +687,11 @@ int main(int argc, char** argv) {
     try {
         if (argc == 2 && std::string(argv[1]) == "--self-test") self_test();
         else if (argc == 4 && std::string(argv[1]) == "--warm") warm(argv[2], argv[3]);
+        else if (argc == 4 && std::string(argv[1]) == "--kernel-warm")
+            kernel_warm(argv[2], argv[3]);
         else if (argc == 7 && std::string(argv[1]) == "--cold")
             cold(argv[2], std::stoull(argv[3]), argv[4], std::stoull(argv[5]), argv[6]);
-        else throw std::runtime_error("usage: --self-test | --warm MANIFEST OUTPUT | --cold MANIFEST SEED LAYOUT REQUEST OUTPUT");
+        else throw std::runtime_error("usage: --self-test | --warm MANIFEST OUTPUT | --kernel-warm MANIFEST OUTPUT | --cold MANIFEST SEED LAYOUT REQUEST OUTPUT");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-layout-benchmark: " << error.what() << '\n';

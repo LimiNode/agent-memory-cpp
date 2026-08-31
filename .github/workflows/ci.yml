@@ -341,3 +341,6 @@ jobs:
           && python tools/agent-memory-bench/materialize-neuroute-r4-layout-benchmark.py --self-test
           && python tools/agent-memory-bench/run-neuroute-r4-layout-benchmark.py --self-test
           && python tools/agent-memory-bench/write-neuroute-r4-layout-benchmark-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-neuroute-r4-int8-kernel.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-r4-int8-kernel.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-r4-int8-kernel-evidence.py --self-test
