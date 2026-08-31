@@ -97,7 +97,8 @@ std::vector<T> read_values(const std::filesystem::path& path) {
 }
 
 const nlohmann::json& role(const nlohmann::json& rows, const std::string& value) {
-    const auto found = std::find_if(rows.begin(), rows.end(), [&](const auto& row) {
+    const auto found = std::find_if(rows.begin(), rows.end(),
+        [&](const nlohmann::json& row) {
         return row.at("role").get<std::string>() == value;
     });
     require(found != rows.end(), "R4 layout role differs");
@@ -2761,7 +2762,9 @@ void access_cold(const std::filesystem::path& manifest_path,
                  std::size_t request, const std::filesystem::path& output_path) {
     const auto manifest = read_json(manifest_path);
     const auto found = std::find_if(manifest.at("seeds").begin(), manifest.at("seeds").end(),
-        [&](const auto& row) { return row.at("seed").get<std::uint64_t>() == wanted_seed; });
+        [&](const nlohmann::json& row) {
+            return row.at("seed").get<std::uint64_t>() == wanted_seed;
+        });
     require(found != manifest.at("seeds").end(), "R4 access cold seed differs");
     const auto seed = load_seed(manifest_path, *found);
     const auto path = payload_path(seed.root, layout_row(seed, "address_major_int8"));
@@ -2835,8 +2838,10 @@ void compression_warm(const std::filesystem::path& manifest_path,
         seeds.push_back(load_seed(manifest_path, row));
         const auto seed_value = seeds.back().seed;
         const auto found = std::find_if(compression_manifest.at("seeds").begin(),
-            compression_manifest.at("seeds").end(), [&](const auto& value) {
-                return value.at("seed").get<std::uint64_t>() == seed_value;
+            compression_manifest.at("seeds").end(),
+            [&](const nlohmann::json& value) {
+                return value.at("seed").get<std::uint64_t>() ==
+                       seed_value;
             });
         require(found != compression_manifest.at("seeds").end(),
                 "R4 compression manifest seed differs");
@@ -2883,9 +2888,12 @@ void compression_cold(const std::filesystem::path& manifest_path,
     const auto manifest = read_json(manifest_path);
     const auto compression_manifest = read_json(compression_manifest_path);
     const auto found = std::find_if(manifest.at("seeds").begin(), manifest.at("seeds").end(),
-        [&](const auto& row) { return row.at("seed").get<std::uint64_t>() == wanted_seed; });
+        [&](const nlohmann::json& row) {
+            return row.at("seed").get<std::uint64_t>() == wanted_seed;
+        });
     const auto compression_found = std::find_if(compression_manifest.at("seeds").begin(),
-        compression_manifest.at("seeds").end(), [&](const auto& row) {
+        compression_manifest.at("seeds").end(),
+        [&](const nlohmann::json& row) {
             return row.at("seed").get<std::uint64_t>() == wanted_seed;
         });
     require(found != manifest.at("seeds").end() &&
@@ -2906,7 +2914,7 @@ const nlohmann::json& seed_row(const nlohmann::json& manifest,
                                std::uint64_t wanted_seed,
                                const char* message) {
     const auto found = std::find_if(manifest.at("seeds").begin(),
-        manifest.at("seeds").end(), [&](const auto& row) {
+        manifest.at("seeds").end(), [&](const nlohmann::json& row) {
             return row.at("seed").get<std::uint64_t>() == wanted_seed;
         });
     require(found != manifest.at("seeds").end(), message);
@@ -2987,7 +2995,9 @@ void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
           const std::filesystem::path& output_path) {
     const auto manifest = read_json(manifest_path);
     const auto found = std::find_if(manifest.at("seeds").begin(), manifest.at("seeds").end(),
-        [&](const auto& row) { return row.at("seed").get<std::uint64_t>() == wanted_seed; });
+        [&](const nlohmann::json& row) {
+            return row.at("seed").get<std::uint64_t>() == wanted_seed;
+        });
     require(found != manifest.at("seeds").end(), "R4 layout cold seed differs");
     const auto seed = load_seed(manifest_path, *found);
     require(request < 152, "R4 layout cold request differs");
@@ -3031,7 +3041,7 @@ EndToEndContext load_end_to_end_seed(const nlohmann::json& protocol,
         protocol.at("layout_manifest").get<std::string>());
     const auto manifest = read_json(manifest_path);
     const auto found = std::find_if(manifest.at("seeds").begin(),
-        manifest.at("seeds").end(), [&](const auto& row) {
+        manifest.at("seeds").end(), [&](const nlohmann::json& row) {
             return row.at("seed").get<std::uint64_t>() == wanted_seed;
         });
     require(found != manifest.at("seeds").end(), "R4 end-to-end seed differs");
@@ -3043,7 +3053,7 @@ EndToEndContext load_end_to_end_seed(const nlohmann::json& protocol,
 std::pair<std::size_t, std::size_t> end_to_end_request(
         const nlohmann::json& protocol, std::size_t request) {
     const auto found = std::find_if(protocol.at("requests").begin(),
-        protocol.at("requests").end(), [&](const auto& row) {
+        protocol.at("requests").end(), [&](const nlohmann::json& row) {
             return row.at("request").get<std::size_t>() == request;
         });
     require(found != protocol.at("requests").end(),
@@ -3233,7 +3243,7 @@ Int5IntegrationContext load_int5_integration_context(
         protocol.at("layout_manifest").get<std::string>());
     const auto layout_manifest = read_json(layout_manifest_path);
     const auto layout_seed = std::find_if(layout_manifest.at("seeds").begin(),
-        layout_manifest.at("seeds").end(), [&](const auto& row) {
+        layout_manifest.at("seeds").end(), [&](const nlohmann::json& row) {
             return row.at("seed").get<std::uint64_t>() == wanted_seed;
         });
     require(layout_seed != layout_manifest.at("seeds").end(),
@@ -3243,7 +3253,8 @@ Int5IntegrationContext load_int5_integration_context(
         protocol.at("integration_manifest").get<std::string>());
     const auto integration_seed = std::find_if(
         integration_manifest.at("seeds").begin(),
-        integration_manifest.at("seeds").end(), [&](const auto& row) {
+        integration_manifest.at("seeds").end(),
+        [&](const nlohmann::json& row) {
             return row.at("seed").get<std::uint64_t>() == wanted_seed;
         });
     require(integration_seed != integration_manifest.at("seeds").end(),
@@ -3844,7 +3855,7 @@ Int5IntegrationContext load_int5_kernel_context(
         const auto& layouts = protocol.at(bitsliced ? "bitsliced_layouts" :
                                                      "avx2_layouts");
         const auto found = std::find_if(layouts.begin(), layouts.end(),
-            [&](const auto& row) {
+            [&](const nlohmann::json& row) {
                 return row.at("seed").get<std::uint64_t>() == seed;
             });
         require(found != layouts.end(), "R4 INT5 alternate kernel seed differs");

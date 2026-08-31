@@ -497,6 +497,10 @@ def decision(summaries: list[dict[str, Any]],
             direct_integer_ratio,
         "direct_integer_gate_passed": direct_integer_pass,
         "aosoa_followup_licensed": direct_integer_pass,
+        "optimized_exact_kernel_licensed_for_compact_production":
+            concurrency_pass and pressure_pass,
+        "production_compact_kernel": selected if concurrency_pass and
+            pressure_pass else "int5_direct_square",
         "selected_policy": "resident_and_compact_nonlinear_int5" if
             resident_pass and concurrency_pass and pressure_pass else
             "resident_int8_compact_nonlinear_int5",

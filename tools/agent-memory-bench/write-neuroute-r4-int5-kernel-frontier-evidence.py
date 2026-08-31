@@ -63,13 +63,17 @@ def run(args: argparse.Namespace) -> None:
             result["source_files_sha256"] == runner.source_hashes(),
             "R4 INT5 kernel evidence binding differs")
     decision = result["decision"]
-    require(decision["selected_exact_kernel"] in {
-                "int5_direct_square", "int5_fused_sse", "int5_fused_avx2"} and
+    require(decision["selected_exact_kernel"] == "int5_fused_avx2" and
             decision["resident_gate_passed"] is False and
             decision["concurrency_gate_passed"] is True and
-            decision["pressure_gate_passed"] is True and
+            decision["pressure_gate_passed"] is False and
             decision["direct_integer_gate_passed"] is False and
             decision["aosoa_followup_licensed"] is False and
+            decision[
+                "optimized_exact_kernel_licensed_for_compact_production"] is
+                False and
+            decision["production_compact_kernel"] ==
+                "int5_direct_square" and
             len(decision["memory_crossover"]["points"]) == 9 and
             decision["memory_crossover"][
                 "automatic_runtime_selection_licensed"] is False and

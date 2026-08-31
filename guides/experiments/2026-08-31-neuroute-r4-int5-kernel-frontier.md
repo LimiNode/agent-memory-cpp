@@ -50,22 +50,22 @@ Single-worker resident p95 values from the final matched run were:
 
 | Kernel | Representative p95 ms | Full cascade p95 ms |
 | --- | ---: | ---: |
-| homogeneous INT8 | 2.470 | 10.594 |
-| historical INT5 direct-square | 4.087 | 12.051 |
-| optimized same-layout INT5 | 3.535 | 11.522 |
-| fused SSE INT5 | 4.531 | 12.788 |
-| fused AVX2 INT5 | 3.304 | 11.257 |
-| fused AVX2 Q8 | 3.693 | 11.732 |
-| direct Q8 integer | 3.308 | 11.306 |
-| direct Q16 integer | 3.341 | 11.204 |
+| homogeneous INT8 | 2.444 | 10.523 |
+| historical INT5 direct-square | 4.169 | 12.130 |
+| optimized same-layout INT5 | 3.575 | 11.385 |
+| fused SSE INT5 | 4.372 | 12.312 |
+| fused AVX2 INT5 | 3.265 | 11.238 |
+| fused AVX2 Q8 | 3.712 | 11.653 |
+| direct Q8 integer | 3.353 | 11.393 |
+| direct Q16 integer | 3.363 | 11.391 |
 
-Removing implementation overhead reduced representative p95 by 13.5% versus
-the historical path. The AVX2 fused layout reduced it by 19.2% and is the
-fastest exact INT5 implementation. It is still 1.337x the INT8 representative
-p95 and 1.063x the full-cascade p95, so it does not pass the preregistered 1.02
+Removing implementation overhead reduced representative p95 by 14.2% versus
+the historical path. The AVX2 fused layout reduced it by 21.7% and is the
+fastest exact INT5 implementation. It is still 1.336x the INT8 representative
+p95 and 1.068x the full-cascade p95, so it does not pass the preregistered 1.02
 resident gate.
 
-The fastest quality-eligible integer sensitivity path is direct Q8 at 1.339x
+The fastest quality-eligible integer sensitivity path is direct Q8 at 1.372x
 INT8 representative p95. It misses the preregistered 1.10 gate, so the AoSoA
 follow-up is not opened. This is a hard stop for this branch, not evidence that
 all batched or AoSoA formulations are intrinsically slow. The earlier result
@@ -78,19 +78,19 @@ finite working-set caps:
 
 | Working-set cap | INT8 rep p95 ms | INT5 rep p95 ms | INT5 / INT8 |
 | --- | ---: | ---: | ---: |
-| 128 MiB | 56.267 | 33.505 | 0.595 |
-| 192 MiB | 33.037 | 17.089 | 0.517 |
-| 256 MiB | 18.467 | 3.452 | 0.187 |
-| 320 MiB | 2.930 | 3.498 | 1.194 |
-| 384 MiB | 3.050 | 3.524 | 1.155 |
-| 512 MiB | 3.141 | 3.461 | 1.102 |
-| 768 MiB | 2.905 | 3.509 | 1.208 |
-| 1 GiB | 2.906 | 3.467 | 1.193 |
-| resident | 3.002 | 3.474 | 1.157 |
+| 128 MiB | 52.443 | 33.390 | 0.637 |
+| 192 MiB | 35.886 | 15.378 | 0.429 |
+| 256 MiB | 17.148 | 3.423 | 0.200 |
+| 320 MiB | 2.957 | 3.430 | 1.160 |
+| 384 MiB | 2.964 | 3.446 | 1.162 |
+| 512 MiB | 2.912 | 3.419 | 1.174 |
+| 768 MiB | 2.932 | 3.472 | 1.184 |
+| 1 GiB | 3.011 | 3.420 | 1.136 |
+| resident | 2.915 | 3.407 | 1.169 |
 
 The measured representative-stage crossover is therefore bracketed between
-256 and 320 MiB on this machine. At 256 MiB the full-cascade p95 is 37.097 ms
-for INT8 and 12.457 ms for INT5, a 2.98x advantage for the compact path.
+256 and 320 MiB on this machine. At 256 MiB the full-cascade p95 is 34.077 ms
+for INT8 and 12.516 ms for INT5, a 2.72x advantage for the compact path.
 
 Full-cascade p95 is not monotone above 320 MiB because downstream variance is
 larger than the small codec difference near parity. It is reported as a
@@ -103,8 +103,9 @@ automatic runtime selector.
 The dense routing policy remains explicit:
 
 - resident mode: homogeneous INT8;
-- compact or memory-pressure mode: nonlinear INT5 power 0.5 using the fused
-  AVX2 layout when available;
+- compact or memory-pressure mode: nonlinear INT5 power 0.5 using optimized
+  direct-square; fused AVX2 remains experimental because its page-fault ratio
+  versus direct-square was 1.198, above the preregistered 1.05 pressure gate;
 - no AoSoA materialization, because the registered direct-integer gate failed;
 - no automatic RAM-based mode switching from this one-host crossover curve.
 
