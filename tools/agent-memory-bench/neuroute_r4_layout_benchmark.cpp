@@ -32,6 +32,11 @@
 #include <simdbitpacking.h>
 #endif
 
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
+#include <zdict.h>
+#include <zstd.h>
+#endif
+
 #if defined(_WIN32)
 #ifndef NOMINMAX
 #define NOMINMAX
@@ -593,6 +598,197 @@ void compress_int8_store(const std::filesystem::path& raw_path,
         {"fixed8_bit_histogram", histogram(fixed_hist)},
         {"adaptive_for_bit_histogram", histogram(for_hist)},
         {"adaptive_zigzag_bit_histogram", histogram(zigzag_hist)}});
+}
+
+std::uint64_t splitmix64(std::uint64_t value) {
+    value += 0x9e3779b97f4a7c15ULL;
+    value = (value ^ (value >> 30U)) * 0xbf58476d1ce4e5b9ULL;
+    value = (value ^ (value >> 27U)) * 0x94d049bb133111ebULL;
+    return value ^ (value >> 31U);
+}
+
+void write_u64_offsets(const std::filesystem::path& path,
+                       const std::vector<std::uint64_t>& values) {
+    std::ofstream stream(path, std::ios::binary);
+    require(static_cast<bool>(stream), "R4 lossless offset output open failed");
+    stream.write(reinterpret_cast<const char*>(values.data()),
+                 static_cast<std::streamsize>(values.size() * sizeof(values[0])));
+    require(static_cast<bool>(stream), "R4 lossless offset output failed");
+}
+
+void append_vbyte(std::uint32_t value, std::vector<std::uint8_t>& output) {
+    while (value >= 128U) {
+        output.push_back(static_cast<std::uint8_t>((value & 127U) | 128U));
+        value >>= 7U;
+    }
+    output.push_back(static_cast<std::uint8_t>(value));
+}
+
+void pack_lossless_int8_blocks(const std::filesystem::path& raw_path,
+                               const std::filesystem::path& counts_path,
+                               std::size_t rows, int zstd_level,
+                               std::size_t dictionary_capacity,
+                               std::size_t dictionary_training_blocks,
+                               const std::filesystem::path& zstd_path,
+                               const std::filesystem::path& zstd_offsets_path,
+                               const std::filesystem::path& dictionary_path,
+                               const std::filesystem::path& zstd_dictionary_path,
+                               const std::filesystem::path& zstd_dictionary_offsets_path,
+                               const std::filesystem::path& vbyte_path,
+                               const std::filesystem::path& vbyte_offsets_path,
+                               const std::filesystem::path& receipt_path) {
+#if !AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
+    (void)raw_path; (void)counts_path; (void)rows; (void)zstd_level;
+    (void)dictionary_capacity; (void)dictionary_training_blocks;
+    (void)zstd_path; (void)zstd_offsets_path; (void)dictionary_path;
+    (void)zstd_dictionary_path; (void)zstd_dictionary_offsets_path;
+    (void)vbyte_path; (void)vbyte_offsets_path; (void)receipt_path;
+    throw std::runtime_error("R4 lossless block codec requires Zstd");
+#else
+    const auto counts = read_values<std::uint32_t>(counts_path);
+    require(!counts.empty() && counts.size() <= 65536 && zstd_level >= 1 &&
+            dictionary_capacity >= 1024 && dictionary_training_blocks >= 8 &&
+            std::accumulate(counts.begin(), counts.end(), std::uint64_t{0}) == rows,
+            "R4 lossless block codec contract differs");
+    MappedFile raw(raw_path);
+    require(raw.size() == rows * 388U, "R4 lossless raw store size differs");
+    std::vector<std::uint64_t> raw_offsets(counts.size() + 1, 0);
+    for (std::size_t row = 0; row != counts.size(); ++row)
+        raw_offsets[row + 1] = raw_offsets[row] + counts[row] * 388ULL;
+
+    std::vector<std::size_t> sample_rows(counts.size());
+    std::iota(sample_rows.begin(), sample_rows.end(), 0U);
+    std::sort(sample_rows.begin(), sample_rows.end(), [](const auto left,
+                                                         const auto right) {
+        const auto left_hash = splitmix64(left ^ 0x52345f7a9d31ULL);
+        const auto right_hash = splitmix64(right ^ 0x52345f7a9d31ULL);
+        return std::tie(left_hash, left) < std::tie(right_hash, right);
+    });
+    sample_rows.resize(std::min(dictionary_training_blocks, sample_rows.size()));
+    std::vector<std::size_t> sample_sizes;
+    std::vector<std::uint8_t> sample_bytes;
+    for (const auto row : sample_rows) {
+        const auto size = static_cast<std::size_t>(raw_offsets[row + 1] -
+                                                   raw_offsets[row]);
+        sample_sizes.push_back(size);
+        sample_bytes.insert(sample_bytes.end(), raw.data() + raw_offsets[row],
+                            raw.data() + raw_offsets[row + 1]);
+    }
+    std::vector<std::uint8_t> dictionary(dictionary_capacity);
+    const auto dictionary_size = ZDICT_trainFromBuffer(
+        dictionary.data(), dictionary.size(), sample_bytes.data(),
+        sample_sizes.data(), static_cast<unsigned>(sample_sizes.size()));
+    require(ZDICT_isError(dictionary_size) == 0,
+            ZDICT_getErrorName(dictionary_size));
+    dictionary.resize(dictionary_size);
+    {
+        std::ofstream stream(dictionary_path, std::ios::binary);
+        stream.write(reinterpret_cast<const char*>(dictionary.data()),
+                     static_cast<std::streamsize>(dictionary.size()));
+        require(static_cast<bool>(stream), "R4 Zstd dictionary output failed");
+    }
+
+    std::ofstream zstd_output(zstd_path, std::ios::binary);
+    std::ofstream dictionary_output(zstd_dictionary_path, std::ios::binary);
+    std::ofstream vbyte_output(vbyte_path, std::ios::binary);
+    require(zstd_output && dictionary_output && vbyte_output,
+            "R4 lossless payload output open failed");
+    std::unique_ptr<ZSTD_CCtx, decltype(&ZSTD_freeCCtx)> context(
+        ZSTD_createCCtx(), &ZSTD_freeCCtx);
+    std::unique_ptr<ZSTD_CDict, decltype(&ZSTD_freeCDict)> compiled_dictionary(
+        ZSTD_createCDict(dictionary.data(), dictionary.size(), zstd_level),
+        &ZSTD_freeCDict);
+    require(context != nullptr && compiled_dictionary != nullptr,
+            "R4 Zstd compression context failed");
+    std::vector<std::uint64_t> zstd_offsets{0}, dictionary_offsets{0},
+        vbyte_offsets{0};
+    std::vector<std::uint8_t> compressed;
+    std::vector<std::uint8_t> vbyte;
+    std::uint64_t raw_block_min = std::numeric_limits<std::uint64_t>::max();
+    std::uint64_t raw_block_max = 0, zstd_block_min = raw_block_min;
+    std::uint64_t zstd_block_max = 0, dictionary_block_min = raw_block_min;
+    std::uint64_t dictionary_block_max = 0, vbyte_block_min = raw_block_min;
+    std::uint64_t vbyte_block_max = 0;
+    for (std::size_t row = 0; row != counts.size(); ++row) {
+        const auto* source = raw.data() + raw_offsets[row];
+        const auto source_size = static_cast<std::size_t>(raw_offsets[row + 1] -
+                                                          raw_offsets[row]);
+        compressed.resize(ZSTD_compressBound(source_size));
+        auto compressed_size = ZSTD_compressCCtx(
+            context.get(), compressed.data(), compressed.size(), source,
+            source_size, zstd_level);
+        require(ZSTD_isError(compressed_size) == 0,
+                ZSTD_getErrorName(compressed_size));
+        zstd_output.write(reinterpret_cast<const char*>(compressed.data()),
+                          static_cast<std::streamsize>(compressed_size));
+        zstd_offsets.push_back(zstd_offsets.back() + compressed_size);
+
+        compressed_size = ZSTD_compress_usingCDict(
+            context.get(), compressed.data(), compressed.size(), source,
+            source_size, compiled_dictionary.get());
+        require(ZSTD_isError(compressed_size) == 0,
+                ZSTD_getErrorName(compressed_size));
+        dictionary_output.write(reinterpret_cast<const char*>(compressed.data()),
+                                static_cast<std::streamsize>(compressed_size));
+        dictionary_offsets.push_back(dictionary_offsets.back() + compressed_size);
+
+        vbyte.clear();
+        vbyte.reserve(source_size + source_size / 2);
+        for (std::size_t record = 0; record != counts[row]; ++record) {
+            const auto* current = source + record * 388U;
+            vbyte.insert(vbyte.end(), current + dimensions, current + 388U);
+            for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+                const auto centered = static_cast<int>(current[dimension]) - 127;
+                const auto zigzag = static_cast<std::uint32_t>(centered >= 0
+                    ? centered * 2 : -centered * 2 - 1);
+                append_vbyte(zigzag, vbyte);
+            }
+        }
+        vbyte_output.write(reinterpret_cast<const char*>(vbyte.data()),
+                           static_cast<std::streamsize>(vbyte.size()));
+        vbyte_offsets.push_back(vbyte_offsets.back() + vbyte.size());
+
+        const auto update = [](std::uint64_t value, std::uint64_t& minimum,
+                               std::uint64_t& maximum) {
+            minimum = std::min(minimum, value);
+            maximum = std::max(maximum, value);
+        };
+        update(source_size, raw_block_min, raw_block_max);
+        update(zstd_offsets.back() - zstd_offsets[zstd_offsets.size() - 2],
+               zstd_block_min, zstd_block_max);
+        update(dictionary_offsets.back() -
+                   dictionary_offsets[dictionary_offsets.size() - 2],
+               dictionary_block_min, dictionary_block_max);
+        update(vbyte.size(), vbyte_block_min, vbyte_block_max);
+    }
+    require(zstd_output && dictionary_output && vbyte_output,
+            "R4 lossless payload output failed");
+    zstd_output.close();
+    dictionary_output.close();
+    vbyte_output.close();
+    write_u64_offsets(zstd_offsets_path, zstd_offsets);
+    write_u64_offsets(zstd_dictionary_offsets_path, dictionary_offsets);
+    write_u64_offsets(vbyte_offsets_path, vbyte_offsets);
+    write_json(receipt_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int8_lossless_block_pack_receipt"},
+        {"rows", rows}, {"addresses", counts.size()},
+        {"zstd_version", ZSTD_versionString()}, {"zstd_level", zstd_level},
+        {"dictionary_capacity", dictionary_capacity},
+        {"dictionary_bytes", dictionary.size()},
+        {"dictionary_training_blocks", sample_rows.size()},
+        {"dictionary_training_bytes", sample_bytes.size()},
+        {"raw_bytes", raw.size()},
+        {"zstd_bytes", std::filesystem::file_size(zstd_path)},
+        {"zstd_dictionary_bytes", std::filesystem::file_size(zstd_dictionary_path)},
+        {"vbyte_bytes", std::filesystem::file_size(vbyte_path)},
+        {"offset_bytes", zstd_offsets.size() * sizeof(std::uint64_t)},
+        {"raw_block_min", raw_block_min}, {"raw_block_max", raw_block_max},
+        {"zstd_block_min", zstd_block_min}, {"zstd_block_max", zstd_block_max},
+        {"zstd_dictionary_block_min", dictionary_block_min},
+        {"zstd_dictionary_block_max", dictionary_block_max},
+        {"vbyte_block_min", vbyte_block_min},
+        {"vbyte_block_max", vbyte_block_max}});
+#endif
 }
 
 std::vector<float> address_scores(const SeedContext& seed, std::size_t request,
@@ -1534,6 +1730,221 @@ Sample measure_compressed(const SeedContext& seed, const MappedFile& mapped,
     return sample;
 }
 
+struct LosslessBlockMaps {
+    std::filesystem::path raw_path, zstd_path, zstd_dictionary_path, vbyte_path;
+    std::unique_ptr<MappedFile> raw, zstd, zstd_dictionary, vbyte;
+    std::vector<std::uint64_t> zstd_offsets, zstd_dictionary_offsets,
+        vbyte_offsets;
+    std::vector<std::uint8_t> dictionary;
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
+    ZSTD_DCtx* zstd_context = nullptr;
+    ZSTD_DDict* compiled_dictionary = nullptr;
+#endif
+
+    ~LosslessBlockMaps() {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
+        if (compiled_dictionary != nullptr) ZSTD_freeDDict(compiled_dictionary);
+        if (zstd_context != nullptr) ZSTD_freeDCtx(zstd_context);
+#endif
+    }
+};
+
+std::unique_ptr<LosslessBlockMaps> load_lossless_block_maps(
+        const SeedContext& seed, const std::filesystem::path& materialization_path,
+        const nlohmann::json& row) {
+    auto result = std::make_unique<LosslessBlockMaps>();
+    result->raw_path = payload_path(seed.root,
+        layout_row(seed, "address_major_int8"));
+    result->raw = std::make_unique<MappedFile>(result->raw_path);
+    const auto root = materialization_path.parent_path() /
+        ("seed-" + std::to_string(seed.seed));
+    const auto path = [&](const std::string& name) {
+        return payload_path(root, role(row.at("files"), name));
+    };
+    result->zstd_path = path("zstd_block");
+    result->zstd_dictionary_path = path("zstd_dictionary_block");
+    result->vbyte_path = path("vbyte_zigzag");
+    result->zstd = std::make_unique<MappedFile>(result->zstd_path);
+    result->zstd_dictionary = std::make_unique<MappedFile>(
+        result->zstd_dictionary_path);
+    result->vbyte = std::make_unique<MappedFile>(result->vbyte_path);
+    result->zstd_offsets = read_values<std::uint64_t>(path("zstd_block_offsets"));
+    result->zstd_dictionary_offsets = read_values<std::uint64_t>(
+        path("zstd_dictionary_block_offsets"));
+    result->vbyte_offsets = read_values<std::uint64_t>(path("vbyte_offsets"));
+    result->dictionary = read_values<std::uint8_t>(path("zstd_dictionary"));
+    require(result->zstd_offsets.size() == seed.address_counts.size() + 1 &&
+            result->zstd_dictionary_offsets.size() == result->zstd_offsets.size() &&
+            result->vbyte_offsets.size() == result->zstd_offsets.size(),
+            "R4 lossless block offset count differs");
+#if !AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
+    throw std::runtime_error("R4 lossless block codec requires Zstd");
+#else
+    result->zstd_context = ZSTD_createDCtx();
+    result->compiled_dictionary = ZSTD_createDDict(
+        result->dictionary.data(), result->dictionary.size());
+    require(result->zstd_context != nullptr &&
+            result->compiled_dictionary != nullptr,
+            "R4 lossless Zstd decode context failed");
+#endif
+    return result;
+}
+
+std::uint32_t decode_vbyte(const std::uint8_t*& current,
+                           const std::uint8_t* end) {
+    std::uint32_t value = 0;
+    unsigned shift = 0;
+    while (true) {
+        require(current != end && shift <= 28U, "R4 VByte payload truncated");
+        const auto byte = *current++;
+        value |= static_cast<std::uint32_t>(byte & 127U) << shift;
+        if ((byte & 128U) == 0) return value;
+        shift += 7U;
+    }
+}
+
+Sample measure_lossless_block(const SeedContext& seed, LosslessBlockMaps& maps,
+                              const std::string& treatment,
+                              std::size_t request) {
+    require(treatment == "raw_int8" || treatment == "zstd_block" ||
+            treatment == "zstd_dictionary_block" ||
+            treatment == "vbyte_zigzag", "R4 lossless treatment differs");
+    const auto state_begin = process_state();
+    const auto total_begin = Clock::now();
+    const auto access_begin = Clock::now();
+    const auto* offsets = treatment == "zstd_block" ? &maps.zstd_offsets
+        : treatment == "zstd_dictionary_block" ? &maps.zstd_dictionary_offsets
+        : treatment == "vbyte_zigzag" ? &maps.vbyte_offsets : nullptr;
+    const auto* mapped = treatment == "raw_int8" ? maps.raw.get()
+        : treatment == "zstd_block" ? maps.zstd.get()
+        : treatment == "zstd_dictionary_block" ? maps.zstd_dictionary.get()
+        : maps.vbyte.get();
+    std::vector<AddressSpan> spans;
+    spans.reserve(addresses_per_query);
+    std::uint64_t representatives = 0, decoded_records = 0;
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = seed.shortlists[request * addresses_per_query + local];
+        const auto count = static_cast<std::size_t>(seed.representative_counts[row]);
+        const auto offset = offsets == nullptr
+            ? static_cast<std::size_t>(seed.address_offsets[row]) * 388U
+            : static_cast<std::size_t>((*offsets)[row]);
+        spans.push_back({local, offset, count, static_cast<std::size_t>(row)});
+        representatives += count;
+        decoded_records += seed.address_counts[row];
+    }
+    std::sort(spans.begin(), spans.end(), [](const auto& left, const auto& right) {
+        return left.byte_offset < right.byte_offset;
+    });
+    const auto access_end = Clock::now();
+
+    const auto decode_begin = Clock::now();
+    std::vector<std::uint8_t> staged;
+    std::vector<std::size_t> staged_offsets(addresses_per_query, 0);
+    std::uint64_t logical_bytes = 0;
+    if (treatment != "raw_int8") staged.resize(decoded_records * 388U);
+    std::size_t staged_position = 0;
+    for (const auto& span : spans) {
+        staged_offsets[span.local] = staged_position;
+        const auto raw_size = static_cast<std::size_t>(
+            seed.address_counts[span.destination]) * 388U;
+        if (treatment == "raw_int8") {
+            logical_bytes += span.byte_count * 388U;
+            continue;
+        }
+        const auto source_end = static_cast<std::size_t>(
+            (*offsets)[span.destination + 1]);
+        const auto source_size = source_end - span.byte_offset;
+        require(source_end <= mapped->size(), "R4 lossless block range differs");
+        const auto* source = mapped->data() + span.byte_offset;
+        auto* destination = staged.data() + staged_position;
+        if (treatment == "vbyte_zigzag") {
+            const auto* current = source;
+            const auto* end = source + source_size;
+            for (std::size_t record = 0;
+                 record != seed.address_counts[span.destination]; ++record) {
+                auto* output = destination + record * 388U;
+                require(static_cast<std::size_t>(end - current) >= sizeof(float),
+                        "R4 VByte scale truncated");
+                std::memcpy(output + dimensions, current, sizeof(float));
+                current += sizeof(float);
+                for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+                    const auto encoded = decode_vbyte(current, end);
+                    const auto centered = (encoded & 1U) != 0
+                        ? -static_cast<int>((encoded + 1U) / 2U)
+                        : static_cast<int>(encoded / 2U);
+                    require(centered >= -127 && centered <= 127,
+                            "R4 VByte code range differs");
+                    output[dimension] = static_cast<std::uint8_t>(centered + 127);
+                }
+            }
+            require(current == end, "R4 VByte address block has trailing bytes");
+        } else {
+#if !AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
+            throw std::runtime_error("R4 lossless block codec requires Zstd");
+#else
+            const auto decoded = treatment == "zstd_block"
+                ? ZSTD_decompressDCtx(maps.zstd_context, destination, raw_size,
+                                      source, source_size)
+                : ZSTD_decompress_usingDDict(
+                    maps.zstd_context, destination, raw_size, source, source_size,
+                    maps.compiled_dictionary);
+            require(ZSTD_isError(decoded) == 0 && decoded == raw_size,
+                    ZSTD_isError(decoded) != 0 ? ZSTD_getErrorName(decoded)
+                                               : "R4 Zstd decoded size differs");
+#endif
+        }
+        staged_position += raw_size;
+        logical_bytes += source_size;
+    }
+    require(treatment == "raw_int8" || staged_position == staged.size(),
+            "R4 lossless staged byte count differs");
+    const auto decode_end = Clock::now();
+
+    const auto dot_begin = Clock::now();
+    const float* query = seed.queries.data() + request * dimensions;
+    Maximums maximums;
+    maximums.values.assign(addresses_per_query,
+                           -std::numeric_limits<float>::infinity());
+    maximums.winners.assign(addresses_per_query, 0);
+    for (const auto& span : spans) {
+        const auto* record = treatment == "raw_int8"
+            ? mapped->data() + span.byte_offset
+            : staged.data() + staged_offsets[span.local];
+        for (std::size_t slot = 0; slot != span.byte_count; ++slot) {
+            float scale = 0.0F;
+            std::memcpy(&scale, record + dimensions, sizeof(scale));
+            const auto score = int8_dot_scalar(record, scale, query);
+            if (score > maximums.values[span.local]) {
+                maximums.values[span.local] = score;
+                maximums.winners[span.local] = static_cast<std::uint8_t>(slot);
+            }
+            record += 388U;
+        }
+    }
+    const auto dot_end = Clock::now();
+    const auto score_begin = Clock::now();
+    const auto scores = address_scores_batched_avx2(seed, request, maximums.values);
+    const auto score_end = Clock::now();
+    const auto state_end = process_state();
+    std::vector<std::uint8_t> digest(scores.size() * sizeof(float));
+    std::memcpy(digest.data(), scores.data(), digest.size());
+    Sample sample;
+    sample.fetch_ms = milliseconds(access_begin, access_end);
+    sample.decode_ms = milliseconds(decode_begin, decode_end);
+    sample.dot_ms = milliseconds(dot_begin, dot_end);
+    sample.score_ms = milliseconds(score_begin, score_end);
+    sample.total_ms = milliseconds(total_begin, score_end);
+    sample.logical_bytes = logical_bytes;
+    sample.random_reads = addresses_per_query;
+    sample.address_spans = spans.size();
+    sample.representatives = representatives;
+    sample.page_faults = state_end.faults - state_begin.faults;
+    sample.rss_delta = static_cast<std::int64_t>(state_end.rss) -
+                       static_cast<std::int64_t>(state_begin.rss);
+    sample.score_sha256 = agent_memory::sha256_bytes_hex(digest);
+    return sample;
+}
+
 nlohmann::json sample_json(const Sample& value, std::uint64_t seed,
                            const std::string& layout, std::size_t request,
                            std::size_t pass) {
@@ -1569,6 +1980,19 @@ nlohmann::json compression_sample_json(const Sample& value, std::uint64_t seed,
     result["kernel"] = "fused_int8_scalar_or_lossless_simdcomp_unpack";
     result["scorer"] = "batched_avx2_r0";
     result["access"] = "mmap_direct_offset_order";
+    result["compression"] = treatment;
+    return result;
+}
+
+nlohmann::json lossless_block_sample_json(const Sample& value,
+                                           std::uint64_t seed,
+                                           const std::string& treatment,
+                                           std::size_t request,
+                                           std::size_t pass) {
+    auto result = sample_json(value, seed, "address_major_int8", request, pass);
+    result["kernel"] = "lossless_decode_then_fused_int8_scalar";
+    result["scorer"] = "batched_avx2_r0";
+    result["access"] = "mmap_address_block_offset_order";
     result["compression"] = treatment;
     return result;
 }
@@ -1893,6 +2317,86 @@ void compression_cold(const std::filesystem::path& manifest_path,
                                              request, 0)}});
 }
 
+const nlohmann::json& seed_row(const nlohmann::json& manifest,
+                               std::uint64_t wanted_seed,
+                               const char* message) {
+    const auto found = std::find_if(manifest.at("seeds").begin(),
+        manifest.at("seeds").end(), [&](const auto& row) {
+            return row.at("seed").get<std::uint64_t>() == wanted_seed;
+        });
+    require(found != manifest.at("seeds").end(), message);
+    return *found;
+}
+
+void lossless_block_warm(const std::filesystem::path& manifest_path,
+                         const std::filesystem::path& block_manifest_path,
+                         const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    const auto block_manifest = read_json(block_manifest_path);
+    std::vector<SeedContext> seeds;
+    std::vector<std::unique_ptr<LosslessBlockMaps>> maps;
+    for (const auto& row : manifest.at("seeds")) {
+        seeds.push_back(load_seed(manifest_path, row));
+        const auto& block_row = seed_row(block_manifest, seeds.back().seed,
+                                          "R4 lossless manifest seed differs");
+        maps.push_back(load_lossless_block_maps(seeds.back(), block_manifest_path,
+                                                block_row));
+        prefault(maps.back()->raw_path);
+        prefault(maps.back()->zstd_path);
+        prefault(maps.back()->zstd_dictionary_path);
+        prefault(maps.back()->vbyte_path);
+    }
+    const std::array<std::string, 4> treatments = {"raw_int8", "zstd_block",
+        "zstd_dictionary_block", "vbyte_zigzag"};
+    for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+        for (const auto& treatment : treatments)
+            for (std::size_t request = 0; request != 152; ++request)
+                (void)measure_lossless_block(seeds[seed], *maps[seed], treatment,
+                                             request);
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>>
+        schedule;
+    for (std::size_t pass = 0; pass != 3; ++pass)
+        for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+            for (std::size_t treatment = 0; treatment != treatments.size(); ++treatment)
+                for (std::size_t request = 0; request != 152; ++request)
+                    schedule.emplace_back(pass, seed, treatment, request);
+    std::mt19937_64 random(2026083111);
+    std::shuffle(schedule.begin(), schedule.end(), random);
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto& [pass, seed, treatment, request] : schedule) {
+        samples.push_back(lossless_block_sample_json(measure_lossless_block(
+            seeds[seed], *maps[seed], treatments[treatment], request),
+            seeds[seed].seed, treatments[treatment], request, pass));
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int8_lossless_block_warm_samples"},
+        {"manifest_sha256", agent_memory::sha256_file_hex(manifest_path)},
+        {"block_manifest_sha256", agent_memory::sha256_file_hex(block_manifest_path)},
+        {"zstd_available", static_cast<bool>(AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD)},
+        {"samples", samples}});
+}
+
+void lossless_block_cold(const std::filesystem::path& manifest_path,
+                         const std::filesystem::path& block_manifest_path,
+                         std::uint64_t wanted_seed,
+                         const std::string& treatment,
+                         std::size_t request,
+                         const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    const auto block_manifest = read_json(block_manifest_path);
+    const auto seed = load_seed(manifest_path, seed_row(
+        manifest, wanted_seed, "R4 lossless cold seed differs"));
+    const auto maps = load_lossless_block_maps(seed, block_manifest_path,
+        seed_row(block_manifest, wanted_seed,
+                 "R4 lossless cold materialization seed differs"));
+    const auto sample = measure_lossless_block(seed, *maps, treatment, request);
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int8_lossless_block_process_cold_sample"},
+        {"definition", "fresh_process_first_request_os_page_cache_uncontrolled"},
+        {"sample", lossless_block_sample_json(sample, wanted_seed, treatment,
+                                                request, 0)}});
+}
+
 void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
           const std::string& layout, std::size_t request,
           const std::filesystem::path& output_path) {
@@ -2119,6 +2623,28 @@ void self_test() {
                           7, decoded.data());
     require(input == decoded, "R4 adaptive SIMDComp round trip differs");
 #endif
+    std::vector<std::uint8_t> vbyte;
+    for (const auto value : {0U, 1U, 127U, 128U, 254U, 16384U})
+        append_vbyte(value, vbyte);
+    const auto* current = vbyte.data();
+    const auto* end = current + vbyte.size();
+    for (const auto value : {0U, 1U, 127U, 128U, 254U, 16384U})
+        require(decode_vbyte(current, end) == value,
+                "R4 VByte self-test differs");
+    require(current == end, "R4 VByte self-test has trailing bytes");
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
+    const std::array<std::uint8_t, 16> zstd_input = {
+        1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4, 1, 2, 3, 4};
+    std::array<std::uint8_t, 128> zstd_compressed{};
+    std::array<std::uint8_t, 16> zstd_decoded{};
+    const auto zstd_size = ZSTD_compress(zstd_compressed.data(),
+        zstd_compressed.size(), zstd_input.data(), zstd_input.size(), 3);
+    require(ZSTD_isError(zstd_size) == 0, "R4 Zstd self-test pack failed");
+    const auto zstd_decoded_size = ZSTD_decompress(zstd_decoded.data(),
+        zstd_decoded.size(), zstd_compressed.data(), zstd_size);
+    require(zstd_decoded_size == zstd_input.size() && zstd_decoded == zstd_input,
+            "R4 Zstd self-test round trip differs");
+#endif
     std::cout << "NeuRoute R4 layout native self-test passed\n";
 }
 
@@ -2145,6 +2671,16 @@ int main(int argc, char** argv) {
         else if (argc == 8 && std::string(argv[1]) == "--compression-cold")
             compression_cold(argv[2], argv[3], std::stoull(argv[4]), argv[5],
                              std::stoull(argv[6]), argv[7]);
+        else if (argc == 16 && std::string(argv[1]) == "--lossless-block-pack")
+            pack_lossless_int8_blocks(argv[2], argv[3], std::stoull(argv[4]),
+                std::stoi(argv[5]), std::stoull(argv[6]), std::stoull(argv[7]),
+                argv[8], argv[9], argv[10], argv[11], argv[12], argv[13],
+                argv[14], argv[15]);
+        else if (argc == 5 && std::string(argv[1]) == "--lossless-block-warm")
+            lossless_block_warm(argv[2], argv[3], argv[4]);
+        else if (argc == 8 && std::string(argv[1]) == "--lossless-block-cold")
+            lossless_block_cold(argv[2], argv[3], std::stoull(argv[4]), argv[5],
+                                std::stoull(argv[6]), argv[7]);
         else if (argc == 7 && std::string(argv[1]) == "--cold")
             cold(argv[2], std::stoull(argv[3]), argv[4], std::stoull(argv[5]), argv[6]);
         else if (argc == 4 && std::string(argv[1]) == "--end-to-end-warm")
@@ -2152,7 +2688,7 @@ int main(int argc, char** argv) {
         else if (argc == 7 && std::string(argv[1]) == "--end-to-end-cold")
             end_to_end_cold(argv[2], std::stoull(argv[3]), argv[4],
                             std::stoull(argv[5]), argv[6]);
-        else throw std::runtime_error("usage: --self-test | --compress-pack RAW COUNTS ROWS FIXED FOR FOR_OFFSETS ZIGZAG ZIGZAG_OFFSETS RECEIPT | --compression-warm MANIFEST COMPRESSION_MANIFEST OUTPUT | --compression-cold MANIFEST COMPRESSION_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
+        else throw std::runtime_error("usage: --self-test | --compress-pack ... | --lossless-block-pack RAW COUNTS ROWS LEVEL DICT_BYTES TRAIN_BLOCKS ZSTD ZSTD_OFFSETS DICT ZSTD_DICT ZSTD_DICT_OFFSETS VBYTE VBYTE_OFFSETS RECEIPT | --lossless-block-warm MANIFEST BLOCK_MANIFEST OUTPUT | --lossless-block-cold MANIFEST BLOCK_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-layout-benchmark: " << error.what() << '\n';

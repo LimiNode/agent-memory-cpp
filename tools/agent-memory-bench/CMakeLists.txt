@@ -481,6 +481,18 @@ agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-representa
 add_executable(agent-memory-neuroute-r4-layout-benchmark
     neuroute_r4_layout_benchmark.cpp)
 set(AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2 0)
+set(AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD 0)
+if(EXISTS "${PROJECT_SOURCE_DIR}/external/zstd/build/cmake/CMakeLists.txt")
+    set(ZSTD_BUILD_PROGRAMS OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_SHARED OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_STATIC ON CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+    set(ZSTD_BUILD_DICTBUILDER ON CACHE BOOL "" FORCE)
+    add_subdirectory("${PROJECT_SOURCE_DIR}/external/zstd/build/cmake"
+        "${CMAKE_CURRENT_BINARY_DIR}/zstd" EXCLUDE_FROM_ALL)
+    set(AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD 1)
+endif()
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
     set(AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2 1)
     if(MSVC)
@@ -491,12 +503,17 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
 endif()
 target_compile_definitions(agent-memory-neuroute-r4-layout-benchmark PRIVATE
     AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2}
+    AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD=${AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD}
     AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP=${AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP})
 target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
     agent_memory::agent_memory agent_memory::json)
 if(TARGET agent_memory_neuroute_simdcomp)
     target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
         agent_memory_neuroute_simdcomp)
+endif()
+if(TARGET libzstd_static)
+    target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
+        libzstd_static)
 endif()
 if(WIN32)
     target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE Psapi)
