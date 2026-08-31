@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_final_nonlinear_int5",
+  "claim_scope": "frozen_adc256_top64_uniform_vs_nonlinear_int5_final_rerank_only",
+  "activation": {
+    "legacy_final_codec_quality_sha256": "6bd85bc64231ac036a68b337f9e2f95ab364e316176364310e57c6b14f0eb363",
+    "legacy_final_codec_evidence_sha256": "47c8138a28143c8f924a127d6bfec8f7eddc5291976bfa8c165e4dee7eb96379",
+    "final_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c",
+    "e5_manifest_sha256": {
+      "de-25k": "e20e967afb292439113e09888224c23b6a1ff47c193546052105b0b6d68fb9a3",
+      "fr-25k": "5aff7bfb7088006adce88f213a1ded381f7efc212bd2b5b7ffca6f105399948f",
+      "ja-25k": "acd308b0ce18ee322f7ef68b8efe0aa2cabdfa175302cfda51cf7e9e509accb1",
+      "de-1m": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a"
+    },
+    "native_executable_sha256": null
+  },
+  "datasets": [
+    {"id": "de-25k", "queries": 76},
+    {"id": "fr-25k", "queries": 85},
+    {"id": "ja-25k", "queries": 215},
+    {"id": "de-1m", "queries": 76}
+  ],
+  "query_partition": {
+    "parameter_selection": "even_local_query_indices",
+    "heldout_confirmation": "odd_local_query_indices",
+    "selection_opened_before_confirmation": true
+  },
+  "query_vector_collision_resolution": [
+    {
+      "datasets": ["de-25k", "de-1m"],
+      "local_query": 32,
+      "query_id": "de:5643730#0",
+      "reason": "the frozen configuration split contains this member of the sole exact E5 query-vector collision"
+    }
+  ],
+  "treatments": [
+    {"id": "int5_uniform", "kind": "uniform", "parameter": 1.0},
+    {"id": "int5_power_050", "kind": "power", "parameter": 0.5},
+    {"id": "int5_power_075", "kind": "power", "parameter": 0.75},
+    {"id": "int5_mulaw_15", "kind": "mulaw", "parameter": 15.0},
+    {"id": "int5_mulaw_63", "kind": "mulaw", "parameter": 63.0}
+  ],
+  "representation": {
+    "bits": 5,
+    "dimensions": 384,
+    "vectors_per_query": 64,
+    "result_k": 10,
+    "bytes_per_document": 244,
+    "scale": "per_document_fp32_max_abs",
+    "rounding": "nearest_even",
+    "packing": "simdcomp_bp128"
+  },
+  "quality": {
+    "maximum_cross_dataset_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_per_dataset_ndcg_loss_vs_fp32": 0.0075,
+    "maximum_confirmation_mean_ndcg_regression_vs_uniform": 0.0,
+    "maximum_confirmation_per_dataset_regression_vs_uniform": 0.002
+  },
+  "diagnostics": {
+    "fp32_pair_margin_bins": [0.0001, 0.001, 0.01],
+    "report_all_pairs_tau_a": true,
+    "report_top10_vs_rest_inversions": true,
+    "report_positions_9_to_12_flip_rate": true,
+    "report_top1_agreement": true
+  },
+  "native_timing": {
+    "run_condition": "selected_nonlinear_passes_heldout_quality",
+    "cache_state": "warm_resident",
+    "warmup_passes": 3,
+    "measured_passes": 21,
+    "microbatch": 32,
+    "maximum_selected_p95_ratio_vs_uniform": 1.05
+  },
+  "decision": {
+    "parameter_selection": "lowest_selection_mean_ndcg_loss_then_top10_cross_inversions_then_id",
+    "replacement_requires_heldout_quality_and_native_latency": true,
+    "full_corpus_followup_only_for_confirmed_nonlinear_winner": true,
+    "production_selection_forbidden": true
+  }
+}
