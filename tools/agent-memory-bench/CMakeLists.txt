@@ -427,7 +427,8 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$"
     if(NOT MSVC)
         target_compile_options(agent_memory_neuroute_simdcomp PRIVATE -msse2)
     endif()
-    if(EXISTS "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c")
+    if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+            AND EXISTS "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c")
         target_sources(agent_memory_neuroute_simdcomp PRIVATE
             "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c"
             "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdcomputil.c")
@@ -514,7 +515,8 @@ if(EXISTS "${PROJECT_SOURCE_DIR}/external/zstd/build/cmake/CMakeLists.txt")
         "${CMAKE_CURRENT_BINARY_DIR}/zstd" EXCLUDE_FROM_ALL)
     set(AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD 1)
 endif()
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
     set(AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2 1)
     if(MSVC)
         target_compile_options(agent-memory-neuroute-r4-layout-benchmark PRIVATE /arch:AVX2)
@@ -544,6 +546,62 @@ agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-layout-bench
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_layout_benchmark.cpp"
     ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-layout-benchmark)
+
+set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 0)
+set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 0)
+add_library(agent_memory_neuroute_record_codec STATIC
+    neuroute_record_codec.cpp
+    neuroute_record_codec.hpp)
+target_compile_features(agent_memory_neuroute_record_codec PRIVATE cxx_std_17)
+target_include_directories(agent_memory_neuroute_record_codec PUBLIC
+    "${CMAKE_CURRENT_SOURCE_DIR}")
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+    target_sources(agent_memory_neuroute_record_codec PRIVATE
+        neuroute_record_codec_sse2.cpp)
+    if(NOT MSVC)
+        set_source_files_properties(neuroute_record_codec_sse2.cpp
+            PROPERTIES COMPILE_OPTIONS "-msse2")
+    endif()
+    set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 1)
+    if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2)
+        target_sources(agent_memory_neuroute_record_codec PRIVATE
+            neuroute_record_codec_avx2.cpp)
+        if(MSVC)
+            set_source_files_properties(neuroute_record_codec_avx2.cpp
+                PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+        else()
+            set_source_files_properties(neuroute_record_codec_avx2.cpp
+                PROPERTIES COMPILE_OPTIONS "-mavx2")
+        endif()
+        set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 1)
+    endif()
+endif()
+target_compile_definitions(agent_memory_neuroute_record_codec PRIVATE
+    AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2=${AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2}
+    AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2})
+
+add_executable(agent-memory-neuroute-record-codec-contract
+    neuroute_record_codec_contract.cpp)
+target_compile_definitions(agent-memory-neuroute-record-codec-contract PRIVATE
+    AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2=${AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2}
+    AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2}
+    AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP=${AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP})
+target_link_libraries(agent-memory-neuroute-record-codec-contract PRIVATE
+    agent_memory::agent_memory agent_memory::json
+    agent_memory_neuroute_record_codec)
+if(TARGET agent_memory_neuroute_simdcomp)
+    target_link_libraries(agent-memory-neuroute-record-codec-contract PRIVATE
+        agent_memory_neuroute_simdcomp)
+endif()
+agent_memory_set_evaluator_source_manifest(
+    agent-memory-neuroute-record-codec-contract
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec_sse2.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec_avx2.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec_contract.cpp")
+agent_memory_set_evaluator_build_environment(
+    agent-memory-neuroute-record-codec-contract)
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-representation
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_representation.cpp"
 )

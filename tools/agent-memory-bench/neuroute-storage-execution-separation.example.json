@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_storage_execution_separation",
+  "claim_scope": "canonical_cpu_independent_record_format_explicit_single_codec_store_and_opt_in_execution_kernel",
+  "activation": {
+    "final_rerank_result_sha256": "e4a0f7c9d3d306a7e7e7229011f5241439c32a64638c1fe6bb14a8753fb2f9e6",
+    "final_rerank_evidence_sha256": "f1bfcba21a55400dac94434ba8a7a5ddd9471345346aab0de7ceb0c99548dcff",
+    "physical_storage_manifest_sha256": "172ca39fc7fb86d4d92d72eb4b89ef0c0985bd92fb4609607c6c29d2c22ae21e",
+    "safe_executable_sha256": "1e2a04e07dd4874d8b379503e2eb57af495ff1ce45515afb0dffd133cb278bc0",
+    "avx2_executable_sha256": "44ec64b558d84f9b9e4c7629fcf0eca97b365ad28c988f804511537a74f1c623"
+  },
+  "storage_modes": ["int8", "nonlinear_int5_power_half"],
+  "materialization_policy": "exactly_one_store_selected_by_explicit_configuration",
+  "existing_index_policy": "manifest_codec_overrides_build_default",
+  "canonical_formats": {
+    "int8": {
+      "format_version": 1,
+      "dimensions": 384,
+      "codec": "int8",
+      "record_bytes": 388,
+      "code_layout": "biased_signed_int8",
+      "scale_layout": "ieee754_binary32_little_endian",
+      "compander": "none"
+    },
+    "nonlinear_int5_power_half": {
+      "format_version": 1,
+      "dimensions": 384,
+      "codec": "nonlinear_int5_power_half",
+      "record_bytes": 244,
+      "code_layout": "simdcomp_bp128_le_v1",
+      "scale_layout": "ieee754_binary32_little_endian",
+      "compander": "power_0.5_signed_square"
+    }
+  },
+  "execution_kernels": ["portable", "sse2", "avx2"],
+  "physical_verification": {
+    "representation_id": "int5_simdcomp_bp128",
+    "store_sha256": "a49da89c1d79815af718fb3a41d8d2fb3e9644e98f48ac5b4323cf561b5bbbbb",
+    "sample_records": 65536
+  },
+  "build_policy": {
+    "default_avx2": false,
+    "cmake_option": "AGENT_MEMORY_NEUROUTE_ENABLE_AVX2",
+    "runtime_capability_check_required": true,
+    "avx2_translation_unit_isolated": true
+  },
+  "gates": {
+    "require_cross_build_portable_digest_identity": true,
+    "require_all_available_kernel_digest_identity": true,
+    "require_safe_build_without_avx2": true,
+    "require_opt_in_build_with_runtime_supported_avx2": true,
+    "require_one_materialized_store": true
+  }
+}
