@@ -186,19 +186,26 @@ jobs:
           cmake --build build-r4 --config Release --target
           agent-memory-neuroute-r4-layout-benchmark
           agent-memory-neuroute-r4-representative-codec
+          agent-memory-neuroute-final-representation
 
       - name: Run R4 native self-test (Ubuntu)
         if: runner.os == 'Linux'
-        run: ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-r4-layout-benchmark --self-test
+        run: |
+          ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-r4-layout-benchmark --self-test
+          ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-final-representation --self-test
 
       - name: Run R4 native self-test (Windows)
         if: runner.os == 'Windows'
-        run: .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-r4-layout-benchmark.exe --self-test
+        run: |
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-r4-layout-benchmark.exe --self-test
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-final-representation.exe --self-test
 
       - name: Exercise R4 dense closure contracts
         run: >
           python tools/agent-memory-bench/plan-neuroute-final-nonlinear-int5.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-final-nonlinear-int5.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-nonlinear-int5-native-sensitivity.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-nonlinear-int5-native-sensitivity-evidence.py --self-test &&
           python tools/agent-memory-bench/write-neuroute-final-nonlinear-int5-evidence.py --self-test &&
           python tools/agent-memory-bench/plan-neuroute-final-full-corpus-codec.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-final-full-corpus-codec.py --self-test &&

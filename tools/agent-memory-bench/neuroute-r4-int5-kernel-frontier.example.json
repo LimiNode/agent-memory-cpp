@@ -14,7 +14,7 @@
     "layout_stress_evidence_sha256": "f789b675e4d9eea41c736fc0584e3bc66f9030362d38be180753a90b64f6852b",
     "quantization_anatomy_result_sha256": "6f6986d66e4159eb4e956d1a623bff74c7b92aace9d647fb11d201490870b39a",
     "quantization_anatomy_evidence_sha256": "8036ddc09a65df00373fcb5e5067f61175bcf61d61c7b0f4668a3d8f2153267d",
-    "native_executable_sha256": "329a5ff9793074334b4e24f98c3e2d99f0cebb0238167fce78d164c5f2307e85"
+    "native_executable_sha256": "50eab80275c2d91eeae7f8d92dfed64e78dcf8d23a6c44ede96ad11705360713"
   },
   "route": {
     "dataset": "de-1m",
@@ -43,6 +43,7 @@
     "working_set_cap_bytes": 268435456
   },
   "memory_crossover": {
+    "int5_kernel_rule": "production_compact_kernel_from_matched_gates",
     "caps_bytes": [134217728, 201326592, 268435456, 335544320, 402653184, 536870912, 805306368, 1073741824],
     "include_resident": true,
     "workers": 8,

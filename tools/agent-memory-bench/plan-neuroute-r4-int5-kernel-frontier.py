@@ -36,6 +36,8 @@ def load_contract(path: Path) -> dict[str, Any]:
                 "working_set_cap_bytes": 268435456},
             "R4 INT5 kernel execution matrix differs")
     require(value["memory_crossover"] == {
+                "int5_kernel_rule":
+                    "production_compact_kernel_from_matched_gates",
                 "caps_bytes": [134217728, 201326592, 268435456,
                     335544320, 402653184, 536870912, 805306368,
                     1073741824],
@@ -55,6 +57,10 @@ def load_contract(path: Path) -> dict[str, Any]:
             True and value["selection"][
                 "aosoa_followup_only_if_direct_integer_gate_passes"] is True,
             "R4 INT5 kernel decision boundary differs")
+    require(value["system_gates"][
+                "maximum_selected_pressure_page_fault_ratio_vs_direct"] ==
+            1.10,
+            "R4 INT5 kernel pressure-fault boundary differs")
     return value
 
 

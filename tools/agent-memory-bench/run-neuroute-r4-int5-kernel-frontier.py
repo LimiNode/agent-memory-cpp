@@ -169,14 +169,14 @@ def summarize(reports: list[dict[str, Any]],
 
 def collect_crossover_reports(contract: dict[str, Any],
                               args: argparse.Namespace,
-                              selected: str) -> list[dict[str, Any]]:
+                              int5_kernel: str) -> list[dict[str, Any]]:
     reports = []
     crossover = contract["memory_crossover"]
     caps: list[int | None] = list(crossover["caps_bytes"])
     if crossover["include_resident"]:
         caps.append(None)
     for seed in contract["route"]["seeds"]:
-        for kernel in ("homogeneous_int8", selected):
+        for kernel in ("homogeneous_int8", int5_kernel):
             for cap_bytes in caps:
                 path = crossover_report_path(args.report_root, seed, kernel,
                                              cap_bytes)
@@ -535,14 +535,18 @@ def run(args: argparse.Namespace) -> None:
     comparisons = quality_comparisons(qualities, contract)
     agreements = routing_agreements(samples, contract)
     base_decision = decision(summaries, comparisons, contract)
+    require(contract["memory_crossover"]["int5_kernel_rule"] ==
+            "production_compact_kernel_from_matched_gates",
+            "R4 INT5 crossover kernel rule differs")
+    crossover_kernel = base_decision["production_compact_kernel"]
     crossover_reports = collect_crossover_reports(
-        contract, args, base_decision["selected_exact_kernel"])
+        contract, args, crossover_kernel)
     require(len(crossover_reports) == planner.plan(contract)[
                 "crossover_native_invocations"],
             "R4 INT5 crossover report count differs")
     crossover_summaries = summarize_crossover(crossover_reports, contract)
     crossover = analyze_crossover(crossover_summaries,
-        base_decision["selected_exact_kernel"], contract)
+        crossover_kernel, contract)
     base_decision["memory_crossover"] = crossover
     output = {"schema_version": 1,
         "family": "neuroute_r4_int5_kernel_frontier_result",

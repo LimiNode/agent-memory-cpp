@@ -745,38 +745,57 @@ float int5_power_half_dot_pshufb(const std::uint8_t* record,
 }
 
 struct PowerHalfQueryLuts {
-    std::array<std::array<float, 16>, dimensions / 4> fp32{};
-    std::array<std::array<std::int32_t, 16>, dimensions / 4> int8{};
-    alignas(32) std::array<std::int16_t, dimensions> direct_int8{};
-    alignas(32) std::array<std::int16_t, dimensions> direct_int16{};
+    std::array<std::array<float, 16>, dimensions / 4> fp32;
+    std::array<std::array<std::int32_t, 16>, dimensions / 4> int8;
+    alignas(32) std::array<std::int16_t, dimensions> direct_int8;
+    alignas(32) std::array<std::int16_t, dimensions> direct_int16;
     float int8_scale = 1.0F;
     float int16_scale = 1.0F;
 };
 
-PowerHalfQueryLuts power_half_query_luts(const float* query) {
+PowerHalfQueryLuts power_half_query_luts(
+        const float* query, bool fp32_lut, bool int8_lut,
+        bool direct_int8, bool direct_int16) {
     PowerHalfQueryLuts result;
-    float maximum = 0.0F;
-    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
-        maximum = std::max(maximum, std::abs(query[dimension]));
-    result.int8_scale = maximum == 0.0F ? 1.0F : maximum / 127.0F;
-    result.int16_scale = maximum == 0.0F ? 1.0F : maximum / 32767.0F;
-    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
-        result.direct_int8[dimension] = static_cast<std::int16_t>(
-            std::nearbyint(query[dimension] / result.int8_scale));
-        result.direct_int16[dimension] = static_cast<std::int16_t>(
-            std::nearbyint(query[dimension] / result.int16_scale));
+    const bool needs_int8 = int8_lut || direct_int8;
+    if (needs_int8 || direct_int16) {
+        float maximum = 0.0F;
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+            maximum = std::max(maximum, std::abs(query[dimension]));
+        if (needs_int8)
+            result.int8_scale = maximum == 0.0F ? 1.0F : maximum / 127.0F;
+        if (direct_int16)
+            result.int16_scale = maximum == 0.0F ? 1.0F : maximum / 32767.0F;
     }
-    for (std::size_t group = 0; group != dimensions / 4; ++group) {
-        std::array<std::int32_t, 4> quantized{};
-        for (std::size_t lane = 0; lane != 4; ++lane) {
-            quantized[lane] = static_cast<std::int32_t>(std::nearbyint(
-                query[group * 4 + lane] / result.int8_scale));
-        }
-        for (std::size_t mask = 0; mask != 16; ++mask) {
-            for (std::size_t lane = 0; lane != 4; ++lane) {
-                if ((mask & (1U << lane)) == 0) continue;
-                result.fp32[group][mask] += query[group * 4 + lane];
-                result.int8[group][mask] += quantized[lane];
+    if (direct_int8) {
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+            result.direct_int8[dimension] = static_cast<std::int16_t>(
+                std::nearbyint(query[dimension] / result.int8_scale));
+    }
+    if (direct_int16) {
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+            result.direct_int16[dimension] = static_cast<std::int16_t>(
+                std::nearbyint(query[dimension] / result.int16_scale));
+    }
+    if (fp32_lut) result.fp32 = {};
+    if (int8_lut) result.int8 = {};
+    if (fp32_lut || int8_lut) {
+        for (std::size_t group = 0; group != dimensions / 4; ++group) {
+            std::array<std::int32_t, 4> quantized{};
+            if (int8_lut) {
+                for (std::size_t lane = 0; lane != 4; ++lane) {
+                    quantized[lane] = static_cast<std::int32_t>(std::nearbyint(
+                        query[group * 4 + lane] / result.int8_scale));
+                }
+            }
+            for (std::size_t mask = 0; mask != 16; ++mask) {
+                for (std::size_t lane = 0; lane != 4; ++lane) {
+                    if ((mask & (1U << lane)) == 0) continue;
+                    if (fp32_lut)
+                        result.fp32[group][mask] += query[group * 4 + lane];
+                    if (int8_lut)
+                        result.int8[group][mask] += quantized[lane];
+                }
             }
         }
     }
@@ -3433,11 +3452,14 @@ RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
     if (legacy || shuffle) table.emplace(int5_power_half_decode_table());
     std::optional<PowerHalfQueryLuts> query_luts;
     if (bitsliced || quantized || direct_q8 || direct_q16 || fused_avx2_q8)
-        query_luts.emplace(power_half_query_luts(query));
-    Maximums maximums;
-    maximums.values.assign(addresses_per_query,
-                           -std::numeric_limits<float>::infinity());
-    maximums.winners.assign(addresses_per_query, 0);
+        query_luts.emplace(power_half_query_luts(query, bitsliced, quantized,
+            direct_q8 || fused_avx2_q8, direct_q16));
+    thread_local Maximums maximums;
+    maximums.values.resize(addresses_per_query);
+    maximums.winners.resize(addresses_per_query);
+    std::fill(maximums.values.begin(), maximums.values.end(),
+              -std::numeric_limits<float>::infinity());
+    std::fill(maximums.winners.begin(), maximums.winners.end(), 0);
     auto begin = Clock::now();
     for (const auto& span : spans) {
         const auto count = span.byte_count / context.record_bytes;
@@ -4127,7 +4149,8 @@ void self_test() {
     int5_power_half_avx2_record(int5_record.data(), avx2_record.data());
     const auto fused_avx2_score = int5_power_half_fused_avx2_dot(
         avx2_record.data(), query.data());
-    const auto query_luts = power_half_query_luts(query.data());
+    const auto query_luts = power_half_query_luts(
+        query.data(), true, true, true, true);
     const auto bitsliced_score = int5_power_half_bitsliced_dot_fp32(
         bitsliced_record.data(), query_luts);
     const auto q8_score = int5_power_half_bitsliced_dot_q8(
