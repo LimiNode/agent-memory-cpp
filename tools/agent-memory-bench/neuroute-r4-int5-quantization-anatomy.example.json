@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_int5_quantization_anatomy",
+  "claim_scope": "frozen_de_1m_ff32_uniform_vs_power_half_int5_component_query_and_boundary_error_mechanism",
+  "activation": {
+    "nonlinear_result_sha256": "2242611de3ca1e9bfb833d68bf54ec1222dbfdfb9050a53ad3a1bad0f9cb505a",
+    "nonlinear_evidence_sha256": "893cafd7b26366459364985dfd00e40fc6c28404459a2d0ba00e2084658751df",
+    "nonlinear_materialization_sha256": "d906cfd2c6521d735753e757953c1ba5a7c617d5de45471321249d9d13ae851b",
+    "representative_codec_materialization_sha256": "1566688756f1922c9f3cce83c46c9623d2231f221bbe496b12ae978c0cdad8db",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "coverage_saturation_result_sha256": "b4ff2e63b40c8349fb70264221746a71ff22687afb43727bf9c44007047e0c83",
+    "layout_stress_result_sha256": "2c7f5de97f83619b0a86e28aa7dc9f196f5ed1e74bffaf91f082a7c84de570bc",
+    "layout_stress_evidence_sha256": "f789b675e4d9eea41c736fc0584e3bc66f9030362d38be180753a90b64f6852b",
+    "native_executable_sha256": "895007f6840a53cb6fbd17247e143a6ac1617ef09ee8464c4b6c2f22ca5f40cb"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "partition": "internal",
+    "layout_request_offset": 76,
+    "queries_per_seed": 76,
+    "shortlist_addresses": 1024,
+    "candidate_limit": 5000
+  },
+  "codecs": [
+    {"id": "int5_uniform", "bits": 5, "compander": "uniform"},
+    {"id": "int5_power_050", "bits": 5, "compander": "power", "parameter": 0.5}
+  ],
+  "component_diagnostics": {
+    "normalized_magnitude_histogram_bins": 4096,
+    "reported_quantiles": [0.5, 0.9, 0.99, 0.999],
+    "equal_frequency_deciles": 10,
+    "central_absolute_code_thresholds": [1, 3]
+  },
+  "routing_diagnostics": {
+    "fp32_margin_bins": [0.0001, 0.001, 0.01],
+    "stable_margin_threshold": 0.01,
+    "top_address_count": 128
+  },
+  "learned_codebook_license": {
+    "maximum_normalized_code_entropy": 0.75,
+    "minimum_single_decile_query_error_fraction": 0.50,
+    "minimum_stable_margin_argmax_disagreement": 0.01,
+    "minimum_stable_boundary_query_count": 20,
+    "maximum_material_boundary_jaccard": 0.80,
+    "minimum_stable_boundary_query_difference_fraction": 0.05,
+    "production_selection_forbidden": true
+  }
+}
