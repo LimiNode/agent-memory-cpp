@@ -85,6 +85,12 @@ def report_path(root: Path, seed: int, kernel: str,
     return root / f"{seed}-{kernel}-{condition}-w{workers}.json"
 
 
+def crossover_report_path(root: Path, seed: int, kernel: str,
+                          cap_bytes: int | None) -> Path:
+    condition = "resident" if cap_bytes is None else f"cap-{cap_bytes}"
+    return root / "crossover" / f"{seed}-{kernel}-{condition}.json"
+
+
 def collect_reports(contract: dict[str, Any], protocol: dict[str, Any],
                     args: argparse.Namespace) -> list[dict[str, Any]]:
     args.report_root.mkdir(parents=True, exist_ok=True)
@@ -161,6 +167,157 @@ def summarize(reports: list[dict[str, Any]],
     return output
 
 
+def collect_crossover_reports(contract: dict[str, Any],
+                              args: argparse.Namespace,
+                              selected: str) -> list[dict[str, Any]]:
+    reports = []
+    crossover = contract["memory_crossover"]
+    caps: list[int | None] = list(crossover["caps_bytes"])
+    if crossover["include_resident"]:
+        caps.append(None)
+    for seed in contract["route"]["seeds"]:
+        for kernel in ("homogeneous_int8", selected):
+            for cap_bytes in caps:
+                path = crossover_report_path(args.report_root, seed, kernel,
+                                             cap_bytes)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                if not args.reuse_reports or not path.is_file():
+                    completed = subprocess.run([str(args.native_executable),
+                        "--int5-kernel-crossover", str(args.protocol),
+                        str(seed), kernel, "resident" if cap_bytes is None else
+                        str(cap_bytes), str(path)], check=False,
+                        capture_output=True, text=True)
+                    require(completed.returncode == 0,
+                        "R4 INT5 crossover native run failed: " +
+                        completed.stderr.strip())
+                value = json.loads(path.read_text(encoding="utf-8"))
+                require(value["family"] ==
+                        "neuroute_r4_int5_kernel_crossover_native_samples" and
+                        value["protocol_sha256"] == sha256(args.protocol) and
+                        value["seed"] == seed and
+                        value["kernel"] == kernel and
+                        value["condition"] == ("resident" if cap_bytes is None
+                                                else "working_set_cap") and
+                        value["working_set_cap_bytes"] == cap_bytes and
+                        value["workers"] == crossover["workers"] and
+                        len(value["samples"]) ==
+                            crossover["measured_batches"] and
+                        all(len(row["queries"]) ==
+                            planner.plan(contract)["trace_queries_per_batch"]
+                            for row in value["samples"]),
+                        "R4 INT5 crossover native report differs")
+                reports.append({"seed": seed, "kernel": kernel,
+                    "cap_bytes": cap_bytes, "path": str(path.resolve()),
+                    "sha256": sha256(path), "samples": value["samples"]})
+    return reports
+
+
+def summarize_crossover(reports: list[dict[str, Any]],
+                        contract: dict[str, Any]) -> list[dict[str, Any]]:
+    output = []
+    caps: list[int | None] = list(contract["memory_crossover"]["caps_bytes"])
+    if contract["memory_crossover"]["include_resident"]:
+        caps.append(None)
+    for kernel in sorted({row["kernel"] for row in reports}):
+        for cap_bytes in caps:
+            rows = [row for row in reports if row["kernel"] == kernel and
+                    row["cap_bytes"] == cap_bytes]
+            samples = [sample for row in rows for sample in row["samples"]]
+            totals = [float(value) for sample in samples
+                      for value in sample["per_query_total_ms"]]
+            dots = [float(value) for sample in samples
+                    for value in sample["per_query_representative_dot_ms"]]
+            output.append({"kernel": kernel, "cap_bytes": cap_bytes,
+                "condition": "resident" if cap_bytes is None else
+                    "working_set_cap", "workers": contract[
+                        "memory_crossover"]["workers"],
+                "batches": len(samples),
+                "per_query_total_ms": summary(totals),
+                "per_query_representative_dot_ms": summary(dots),
+                "throughput_queries_per_second": summary([float(
+                    row["throughput_queries_per_second"])
+                    for row in samples]),
+                "page_faults_per_query": summary([float(row["page_faults"]) /
+                    float(row["query_count"]) for row in samples]),
+                "working_set_bytes_before": summary([float(
+                    row["working_set_bytes_before"]) for row in samples]),
+                "working_set_bytes_after": summary([float(
+                    row["working_set_bytes_after"]) for row in samples])})
+    return output
+
+
+def analyze_crossover(rows: list[dict[str, Any]], selected: str,
+                      contract: dict[str, Any]) -> dict[str, Any]:
+    points = []
+    caps: list[int | None] = list(contract["memory_crossover"]["caps_bytes"])
+    if contract["memory_crossover"]["include_resident"]:
+        caps.append(None)
+    for cap_bytes in caps:
+        int8 = next(row for row in rows if row["kernel"] ==
+                    "homogeneous_int8" and row["cap_bytes"] == cap_bytes)
+        int5 = next(row for row in rows if row["kernel"] == selected and
+                    row["cap_bytes"] == cap_bytes)
+        ratio = (int5["per_query_total_ms"]["p95"] /
+                 int8["per_query_total_ms"]["p95"])
+        representative_ratio = (
+            int5["per_query_representative_dot_ms"]["p95"] /
+            int8["per_query_representative_dot_ms"]["p95"])
+        points.append({"cap_bytes": cap_bytes,
+            "int8_total_p95_ms": int8["per_query_total_ms"]["p95"],
+            "int5_total_p95_ms": int5["per_query_total_ms"]["p95"],
+            "int5_to_int8_total_p95_ratio": ratio,
+            "int5_to_int8_representative_p95_ratio": representative_ratio,
+            "int8_representative_p95_ms":
+                int8["per_query_representative_dot_ms"]["p95"],
+            "int5_representative_p95_ms":
+                int5["per_query_representative_dot_ms"]["p95"],
+            "int8_page_faults_per_query_p50":
+                int8["page_faults_per_query"]["p50"],
+            "int5_page_faults_per_query_p50":
+                int5["page_faults_per_query"]["p50"],
+            "total_winner": "nonlinear_int5" if ratio <= 1.0 else
+                "homogeneous_int8",
+            "representative_winner": "nonlinear_int5" if
+                representative_ratio <= 1.0 else
+                "homogeneous_int8"})
+    representative_transitions = []
+    total_transitions = []
+    for left, right in zip(points, points[1:]):
+        if left["representative_winner"] != right[
+                "representative_winner"]:
+            representative_transitions.append({
+                "lower_cap_bytes": left["cap_bytes"],
+                "upper_cap_bytes": right["cap_bytes"],
+                "lower_winner": left["representative_winner"],
+                "upper_winner": right["representative_winner"]})
+        if left["total_winner"] != right["total_winner"]:
+            total_transitions.append({"lower_cap_bytes": left["cap_bytes"],
+                "upper_cap_bytes": right["cap_bytes"],
+                "lower_winner": left["total_winner"],
+                "upper_winner": right["total_winner"]})
+    finite = [row for row in points if row["cap_bytes"] is not None]
+    representative_winners = [row["representative_winner"] for row in finite]
+    total_winners = [row["total_winner"] for row in finite]
+    representative_monotone = representative_winners == sorted(
+        representative_winners, key=lambda item:
+        0 if item == "nonlinear_int5" else 1)
+    total_monotone = total_winners == sorted(total_winners, key=lambda item:
+        0 if item == "nonlinear_int5" else 1)
+    return {"selected_int5_kernel": selected, "points": points,
+        "representative_transitions": representative_transitions,
+        "total_cascade_transitions": total_transitions,
+        "primary_representative_crossover_interval": next((row for row in
+            representative_transitions
+            if row["lower_winner"] == "nonlinear_int5" and
+            row["upper_winner"] == "homogeneous_int8"), None),
+        "finite_cap_representative_winners_are_monotone":
+            representative_monotone,
+        "finite_cap_total_winners_are_monotone": total_monotone,
+        "automatic_runtime_selection_licensed": False,
+        "policy_interpretation":
+            "explicit_int8_resident_and_int5_memory_pressure_modes"}
+
+
 def unique_quality_samples(reports: list[dict[str, Any]],
                            contract: dict[str, Any]) -> list[dict[str, Any]]:
     output = []
@@ -191,7 +348,7 @@ def direct_parent_replay(samples: list[dict[str, Any]],
                 for row in old_warm["samples"]
                 if row["treatment"] == "int5_mixed" and row["pass"] == 0}
     direct = [row for row in samples
-              if row["treatment"] == "int5_direct_square"]
+              if row["treatment"] == "int5_direct_square_legacy"]
     fields = (*parent.parent.HASH_FIELDS, "candidate_count")
     equal = sum(all(row[field] == expected[(row["seed"], row["request"])][field]
                     for field in fields) for row in direct)
@@ -277,6 +434,19 @@ def decision(summaries: list[dict[str, Any]],
     chosen = selected_row(summaries, selected, "resident", 1)
     resident_ratio = (chosen["per_query_total_ms"]["p95"] /
                       int8["per_query_total_ms"]["p95"])
+    direct_integer = [row for row in comparisons if row["kernel"] in
+        ("int5_fused_avx2_q8", "int5_direct_q8_integer",
+         "int5_direct_q16_integer") and
+        row["quality_eligible"]]
+    fastest_direct_integer = min(direct_integer, key=lambda row:
+        (selected_row(summaries, row["kernel"], "resident", 1)
+            ["per_query_representative_dot_ms"]["p95"], row["kernel"])) \
+        if direct_integer else None
+    direct_integer_ratio = (selected_row(summaries,
+        fastest_direct_integer["kernel"], "resident", 1)
+        ["per_query_representative_dot_ms"]["p95"] /
+        int8["per_query_representative_dot_ms"]["p95"]) \
+        if fastest_direct_integer is not None else None
     concurrency_p95, concurrency_throughput = [], []
     for workers in (8, 16):
         current = selected_row(summaries, selected, "resident", workers)
@@ -307,6 +477,9 @@ def decision(summaries: list[dict[str, Any]],
         "maximum_selected_pressure_p95_ratio_vs_direct"] and
         pressure_fault <= gates[
             "maximum_selected_pressure_page_fault_ratio_vs_direct"])
+    direct_integer_pass = (direct_integer_ratio is not None and
+        direct_integer_ratio <= gates[
+            "maximum_direct_integer_resident_w1_representative_p95_ratio_vs_int8"])
     return {"selected_exact_kernel": selected,
         "selected_resident_w1_total_p95_ratio_vs_int8": resident_ratio,
         "selected_w8_w16_p95_ratios_vs_direct": concurrency_p95,
@@ -317,6 +490,13 @@ def decision(summaries: list[dict[str, Any]],
         "resident_gate_passed": resident_pass,
         "concurrency_gate_passed": concurrency_pass,
         "pressure_gate_passed": pressure_pass,
+        "fastest_quality_eligible_direct_integer_kernel":
+            fastest_direct_integer["kernel"] if
+            fastest_direct_integer is not None else None,
+        "fastest_direct_integer_resident_w1_representative_p95_ratio_vs_int8":
+            direct_integer_ratio,
+        "direct_integer_gate_passed": direct_integer_pass,
+        "aosoa_followup_licensed": direct_integer_pass,
         "selected_policy": "resident_and_compact_nonlinear_int5" if
             resident_pass and concurrency_pass and pressure_pass else
             "resident_int8_compact_nonlinear_int5",
@@ -350,6 +530,16 @@ def run(args: argparse.Namespace) -> None:
     qualities = quality_rows(samples, parent_protocol, contract)
     comparisons = quality_comparisons(qualities, contract)
     agreements = routing_agreements(samples, contract)
+    base_decision = decision(summaries, comparisons, contract)
+    crossover_reports = collect_crossover_reports(
+        contract, args, base_decision["selected_exact_kernel"])
+    require(len(crossover_reports) == planner.plan(contract)[
+                "crossover_native_invocations"],
+            "R4 INT5 crossover report count differs")
+    crossover_summaries = summarize_crossover(crossover_reports, contract)
+    crossover = analyze_crossover(crossover_summaries,
+        base_decision["selected_exact_kernel"], contract)
+    base_decision["memory_crossover"] = crossover
     output = {"schema_version": 1,
         "family": "neuroute_r4_int5_kernel_frontier_result",
         "claim_scope": contract["claim_scope"],
@@ -365,11 +555,16 @@ def run(args: argparse.Namespace) -> None:
         "reports": [{key: row[key] for key in
             ("seed", "kernel", "condition", "workers", "path", "sha256")}
             for row in reports],
+        "crossover_reports": [{key: row[key] for key in
+            ("seed", "kernel", "cap_bytes", "path", "sha256")}
+            for row in crossover_reports],
         "summaries": summaries, "direct_parent_replay": replay,
+        "crossover_summaries": crossover_summaries,
         "routing_agreements": agreements,
         "physical_layouts": manifest["layouts"],
+        "avx2_physical_layouts": manifest["avx2_layouts"],
         "quality": qualities, "quality_comparisons": comparisons,
-        "decision": decision(summaries, comparisons, contract)}
+        "decision": base_decision}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(canonical(output))
 
@@ -377,6 +572,10 @@ def run(args: argparse.Namespace) -> None:
 def self_test() -> None:
     require(report_path(Path("x"), 1, "k", "c", 8).name ==
             "1-k-c-w8.json", "R4 INT5 kernel report path differs")
+    require(crossover_report_path(Path("x"), 1, "k", 128).name ==
+            "1-k-cap-128.json" and
+            crossover_report_path(Path("x"), 1, "k", None).name ==
+            "1-k-resident.json", "R4 INT5 crossover report path differs")
     print("NeuRoute R4 INT5 kernel-frontier runner self-test passed")
 
 

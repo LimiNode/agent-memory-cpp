@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "family": "neuroute_r4_int5_kernel_frontier",
-  "claim_scope": "frozen_de_1m_power_half_int5_physical_kernel_resident_concurrency_pressure_closure",
+  "claim_scope": "frozen_de_1m_power_half_int5_optimized_physical_kernel_direct_integer_resident_concurrency_pressure_crossover_closure",
   "activation": {
     "dense_policy_result_sha256": "103de34ac69faad6bb9478928e42670ffc11036652c7ee0ae97f060097829dc7",
     "dense_policy_evidence_sha256": "10134a60b78be2bf90a1a9437c31a69bcb37c0147cf3e572646c30b6ea42095a",
@@ -14,7 +14,7 @@
     "layout_stress_evidence_sha256": "f789b675e4d9eea41c736fc0584e3bc66f9030362d38be180753a90b64f6852b",
     "quantization_anatomy_result_sha256": "6f6986d66e4159eb4e956d1a623bff74c7b92aace9d647fb11d201490870b39a",
     "quantization_anatomy_evidence_sha256": "8036ddc09a65df00373fcb5e5067f61175bcf61d61c7b0f4668a3d8f2153267d",
-    "native_executable_sha256": "c06b1722499e53ab79d586d2d205ff6c44e33b607a75c1625f44ba77c1370a31"
+    "native_executable_sha256": "04540e620a277b017a83ae6952f442a3424893ca928bbbe91e3aa347473f852b"
   },
   "route": {
     "dataset": "de-1m",
@@ -26,10 +26,13 @@
   },
   "kernels": [
     {"id": "homogeneous_int8", "class": "resident_control", "query": "fp32", "physical": "int8_vector_major"},
-    {"id": "int5_direct_square", "class": "exact", "query": "fp32", "physical": "simdcomp_vector_major"},
-    {"id": "int5_pshufb_square", "class": "exact", "query": "fp32", "physical": "simdcomp_vector_major"},
-    {"id": "int5_bitsliced_fp32_lut", "class": "exact", "query": "fp32", "physical": "five_plane_vector_major"},
-    {"id": "int5_bitsliced_q8_lut", "class": "sensitivity", "query": "int8_per_query", "physical": "five_plane_vector_major"}
+    {"id": "int5_direct_square_legacy", "class": "exact_control", "query": "fp32", "physical": "simdcomp_sse_vector_major"},
+    {"id": "int5_direct_square", "class": "exact", "query": "fp32", "physical": "simdcomp_sse_vector_major"},
+    {"id": "int5_fused_sse", "class": "exact", "query": "fp32", "physical": "simdcomp_sse_vector_major"},
+    {"id": "int5_fused_avx2", "class": "exact", "query": "fp32", "physical": "simdcomp_avx2_256_sse_128_vector_major"},
+    {"id": "int5_fused_avx2_q8", "class": "sensitivity", "query": "int8_per_query", "physical": "simdcomp_avx2_256_sse_128_vector_major"},
+    {"id": "int5_direct_q8_integer", "class": "sensitivity", "query": "int8_per_query", "physical": "simdcomp_vector_major"},
+    {"id": "int5_direct_q16_integer", "class": "sensitivity", "query": "int16_per_query", "physical": "simdcomp_vector_major"}
   ],
   "conditions": ["resident", "working_set_cap"],
   "workers": [1, 8, 16],
@@ -39,6 +42,14 @@
     "measured_batches": 2,
     "working_set_cap_bytes": 268435456
   },
+  "memory_crossover": {
+    "caps_bytes": [134217728, 201326592, 268435456, 335544320, 402653184, 536870912, 805306368, 1073741824],
+    "include_resident": true,
+    "workers": 8,
+    "trace_repetitions": 2,
+    "warmup_batches": 1,
+    "measured_batches": 3
+  },
   "quality_gates": {
     "maximum_exact_mean_ndcg_loss_vs_direct": 0.002,
     "maximum_exact_every_seed_ndcg_loss_vs_direct": 0.004,
@@ -47,6 +58,7 @@
   },
   "system_gates": {
     "maximum_selected_resident_w1_total_p95_ratio_vs_int8": 1.02,
+    "maximum_direct_integer_resident_w1_representative_p95_ratio_vs_int8": 1.10,
     "maximum_selected_w8_w16_p95_ratio_vs_direct": 1.05,
     "minimum_selected_w8_w16_throughput_ratio_vs_direct": 0.95,
     "maximum_selected_pressure_p95_ratio_vs_direct": 1.05,
@@ -55,6 +67,7 @@
   "selection": {
     "exact_kernel_rule": "quality_eligible_then_lowest_resident_w1_total_p95_then_id",
     "sensitivity_kernel_never_exact_implementation_control": true,
+    "aosoa_followup_only_if_direct_integer_gate_passes": true,
     "pass_policy": "resident_and_compact_int5_if_resident_gate_passes_else_resident_int8_compact_int5",
     "production_selection_licensed": true
   }

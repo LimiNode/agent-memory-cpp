@@ -147,6 +147,67 @@ jobs:
       - name: Test native MIH benchmark harness
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
 
+  r4-native-benchmark:
+    name: R4 native benchmark harness (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Init SIMDComp
+        run: git submodule update --init external/simdcomp
+
+      - name: Configure R4 benchmark harness
+        run: >
+          cmake -S . -B build-r4
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=OFF
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build R4 benchmark harness
+        run: >
+          cmake --build build-r4 --config Release --target
+          agent-memory-neuroute-r4-layout-benchmark
+          agent-memory-neuroute-r4-representative-codec
+
+      - name: Run R4 native self-test (Ubuntu)
+        if: runner.os == 'Linux'
+        run: ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-r4-layout-benchmark --self-test
+
+      - name: Run R4 native self-test (Windows)
+        if: runner.os == 'Windows'
+        run: .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-r4-layout-benchmark.exe --self-test
+
+      - name: Exercise R4 dense closure contracts
+        run: >
+          python tools/agent-memory-bench/plan-neuroute-final-nonlinear-int5.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-nonlinear-int5.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-nonlinear-int5-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-final-full-corpus-codec.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-full-corpus-codec.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-full-corpus-codec-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-int5-kernel-frontier.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-r4-int5-kernel-frontier.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-int5-kernel-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-int5-kernel-frontier-evidence.py --self-test
+
   ann-cascade:
     name: ANN cascade harness
     runs-on: ubuntu-latest

@@ -62,6 +62,7 @@ def run(args: argparse.Namespace) -> None:
             "neuroute_r4_int5_physical_integration_protocol",
             "R4 INT5 kernel materializer parent differs")
     layouts = []
+    avx2_layouts = []
     for seed in contract["route"]["seeds"]:
         root = args.output_root / f"seed-{seed}"
         root.mkdir(parents=True, exist_ok=True)
@@ -88,13 +89,40 @@ def run(args: argparse.Namespace) -> None:
             "record_bytes": 244, "physical": "five_plane_vector_major",
             "receipt": str(receipt.resolve()),
             "receipt_sha256": sha256(receipt)})
+        avx2_output = root / "mixed-int5-avx2-prefix-int8-remainder.records"
+        avx2_receipt = root / "avx2-receipt.json"
+        if (not args.reuse or not avx2_output.is_file() or
+                not avx2_receipt.is_file()):
+            completed = subprocess.run([str(args.native_executable),
+                "--int5-avx2-materialize", str(args.parent_protocol),
+                str(seed), str(avx2_output), str(avx2_receipt)], check=False,
+                capture_output=True, text=True)
+            require(completed.returncode == 0,
+                    "R4 INT5 AVX2 materialization failed: " +
+                    completed.stderr.strip())
+        avx2_value = json.loads(avx2_receipt.read_text(encoding="utf-8"))
+        require(avx2_value["family"] ==
+                "neuroute_r4_int5_avx2_materialization_receipt" and
+                avx2_value["seed"] == seed and
+                avx2_value["record_bytes"] == 244 and
+                avx2_value["output_sha256"] == sha256(avx2_output) and
+                avx2_value["bytes"] == avx2_output.stat().st_size,
+                "R4 INT5 AVX2 materialization receipt differs")
+        avx2_layouts.append({"seed": seed,
+            "path": str(avx2_output.resolve()),
+            "sha256": avx2_value["output_sha256"],
+            "bytes": avx2_value["bytes"],
+            "representatives": avx2_value["representatives"],
+            "record_bytes": 244, "physical": "avx2_256_sse_128_vector_major",
+            "receipt": str(avx2_receipt.resolve()),
+            "receipt_sha256": sha256(avx2_receipt)})
     manifest = {"schema_version": 1,
         "family": "neuroute_r4_int5_kernel_frontier_materialization",
         "contract_sha256": sha256(args.contract),
         "activation": contract["activation"],
         "parent_protocol_sha256": sha256(args.parent_protocol),
         "native_executable_sha256": sha256(args.native_executable),
-        "layouts": layouts}
+        "layouts": layouts, "avx2_layouts": avx2_layouts}
     args.output_root.mkdir(parents=True, exist_ok=True)
     manifest_path = args.output_root / "manifest.json"
     manifest_path.write_bytes(canonical(manifest))
@@ -105,6 +133,8 @@ def run(args: argparse.Namespace) -> None:
         "parent_protocol": str(args.parent_protocol.resolve()),
         "bitsliced_layouts": [{key: row[key] for key in
             ("seed", "path", "sha256", "bytes")} for row in layouts],
+        "avx2_layouts": [{key: row[key] for key in
+            ("seed", "path", "sha256", "bytes")} for row in avx2_layouts],
         "kernels": [row["id"] for row in contract["kernels"]],
         "conditions": contract["conditions"],
         "workers": contract["workers"],
@@ -112,7 +142,8 @@ def run(args: argparse.Namespace) -> None:
         "warmup_batches": contract["trace"]["warmup_batches"],
         "measured_batches": contract["trace"]["measured_batches"],
         "working_set_cap_bytes":
-            contract["trace"]["working_set_cap_bytes"]}
+            contract["trace"]["working_set_cap_bytes"],
+        "memory_crossover": contract["memory_crossover"]}
     (args.output_root / "protocol.json").write_bytes(canonical(protocol))
 
 

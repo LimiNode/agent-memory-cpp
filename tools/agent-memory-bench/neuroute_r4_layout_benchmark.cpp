@@ -15,6 +15,7 @@
 #include <limits>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -22,6 +23,7 @@
 #include <thread>
 #include <tuple>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
@@ -30,6 +32,9 @@
 
 #if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
 #include <simdbitpacking.h>
+#endif
+#if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2
+#include <avxbitpacking.h>
 #endif
 
 #if AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD
@@ -375,9 +380,9 @@ std::array<float, 32> int5_power_half_decode_table() {
     return result;
 }
 
-float int5_power_half_dot_avx2(const std::uint8_t* record,
-                               const std::array<float, 32>& table,
-                               const float* query) {
+float int5_power_half_dot_avx2_legacy(const std::uint8_t* record,
+                                      const std::array<float, 32>& table,
+                                      const float* query) {
     alignas(32) std::array<std::uint32_t, dimensions> unpacked{};
     for (std::size_t block = 0; block != 3; ++block) {
         simdcomp_unpack_block(record + block * 80U, 5,
@@ -425,6 +430,261 @@ float int5_power_half_dot_avx2(const std::uint8_t* record,
         result += table[unpacked[dimension]] * amplitude * query[dimension];
     }
     return result;
+#endif
+}
+
+float int5_power_half_dot_avx2(const std::uint8_t* record,
+                               const float* query) {
+    alignas(32) std::array<std::uint32_t, dimensions> unpacked;
+    for (std::size_t block = 0; block != 3; ++block)
+        simdcomp_unpack_block(record + block * 80U, 5,
+                              unpacked.data() + block * 128U);
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + 240U, sizeof(amplitude));
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto center = _mm256_set1_epi32(15);
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 32) {
+        const auto load = [&](std::size_t lane) {
+            const auto signed_values = _mm256_sub_epi32(_mm256_load_si256(
+                reinterpret_cast<const __m256i*>(
+                    unpacked.data() + dimension + lane)), center);
+            return _mm256_cvtepi32_ps(_mm256_mullo_epi32(
+                signed_values, _mm256_abs_epi32(signed_values)));
+        };
+        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(
+            load(0), _mm256_loadu_ps(query + dimension)));
+        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(
+            load(8), _mm256_loadu_ps(query + dimension + 8)));
+        sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(
+            load(16), _mm256_loadu_ps(query + dimension + 16)));
+        sum3 = _mm256_add_ps(sum3, _mm256_mul_ps(
+            load(24), _mm256_loadu_ps(query + dimension + 24)));
+    }
+    alignas(32) std::array<float, 8> lanes;
+    _mm256_store_ps(lanes.data(), _mm256_add_ps(
+        _mm256_add_ps(sum0, sum1), _mm256_add_ps(sum2, sum3)));
+    return std::accumulate(lanes.begin(), lanes.end(), 0.0F) *
+           amplitude / 225.0F;
+#else
+    const auto table = int5_power_half_decode_table();
+    float result = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+        result += table[unpacked[dimension]] * query[dimension];
+    return result * amplitude;
+#endif
+}
+
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+template <std::size_t Group>
+__m128i int5_sse_group(const std::array<__m128i, 5>& words) {
+    constexpr std::size_t bit = Group * 5U;
+    constexpr std::size_t word = bit / 32U;
+    constexpr int shift = static_cast<int>(bit % 32U);
+    const auto mask = _mm_set1_epi32(31);
+    if constexpr (shift <= 27) {
+        return _mm_and_si128(mask, _mm_srli_epi32(words[word], shift));
+    } else {
+        return _mm_and_si128(mask, _mm_or_si128(
+            _mm_srli_epi32(words[word], shift),
+            _mm_slli_epi32(words[word + 1], 32 - shift)));
+    }
+}
+
+template <std::size_t Group>
+__m256i int5_avx_group(const std::array<__m256i, 5>& words) {
+    constexpr std::size_t bit = Group * 5U;
+    constexpr std::size_t word = bit / 32U;
+    constexpr int shift = static_cast<int>(bit % 32U);
+    const auto mask = _mm256_set1_epi32(31);
+    if constexpr (shift <= 27) {
+        return _mm256_and_si256(mask,
+                                _mm256_srli_epi32(words[word], shift));
+    } else {
+        return _mm256_and_si256(mask, _mm256_or_si256(
+            _mm256_srli_epi32(words[word], shift),
+            _mm256_slli_epi32(words[word + 1], 32 - shift)));
+    }
+}
+
+template <std::size_t Group>
+void accumulate_int5_sse_group(const std::array<__m128i, 5>& words,
+                               const float* query,
+                               std::array<__m128, 4>& sums) {
+    const auto signed_values = _mm_sub_epi32(
+        int5_sse_group<Group>(words), _mm_set1_epi32(15));
+    const auto squared = _mm_mullo_epi32(signed_values,
+                                         _mm_abs_epi32(signed_values));
+    sums[Group % sums.size()] = _mm_add_ps(sums[Group % sums.size()],
+        _mm_mul_ps(_mm_cvtepi32_ps(squared),
+                   _mm_loadu_ps(query + Group * 4U)));
+}
+
+template <std::size_t... Groups>
+float int5_sse_fused_block(const std::uint8_t* packed, const float* query,
+                           std::index_sequence<Groups...>) {
+    std::array<__m128i, 5> words;
+    for (std::size_t word = 0; word != words.size(); ++word)
+        words[word] = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+            packed + word * sizeof(__m128i)));
+    std::array<__m128, 4> sums = {_mm_setzero_ps(), _mm_setzero_ps(),
+        _mm_setzero_ps(), _mm_setzero_ps()};
+    (accumulate_int5_sse_group<Groups>(words, query, sums), ...);
+    const auto sum = _mm_add_ps(_mm_add_ps(sums[0], sums[1]),
+                                _mm_add_ps(sums[2], sums[3]));
+    alignas(16) std::array<float, 4> lanes;
+    _mm_store_ps(lanes.data(), sum);
+    return std::accumulate(lanes.begin(), lanes.end(), 0.0F);
+}
+
+template <std::size_t Group>
+void accumulate_int5_avx_group(const std::array<__m256i, 5>& words,
+                               const float* query,
+                               std::array<__m256, 4>& sums) {
+    const auto signed_values = _mm256_sub_epi32(
+        int5_avx_group<Group>(words), _mm256_set1_epi32(15));
+    const auto squared = _mm256_mullo_epi32(
+        signed_values, _mm256_abs_epi32(signed_values));
+    sums[Group % sums.size()] = _mm256_add_ps(sums[Group % sums.size()],
+        _mm256_mul_ps(_mm256_cvtepi32_ps(squared),
+                      _mm256_loadu_ps(query + Group * 8U)));
+}
+
+template <std::size_t... Groups>
+float int5_avx_fused_block(const std::uint8_t* packed, const float* query,
+                           std::index_sequence<Groups...>) {
+    std::array<__m256i, 5> words;
+    for (std::size_t word = 0; word != words.size(); ++word)
+        words[word] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+            packed + word * sizeof(__m256i)));
+    std::array<__m256, 4> sums = {_mm256_setzero_ps(), _mm256_setzero_ps(),
+        _mm256_setzero_ps(), _mm256_setzero_ps()};
+    (accumulate_int5_avx_group<Groups>(words, query, sums), ...);
+    const auto sum = _mm256_add_ps(_mm256_add_ps(sums[0], sums[1]),
+                                   _mm256_add_ps(sums[2], sums[3]));
+    alignas(32) std::array<float, 8> lanes;
+    _mm256_store_ps(lanes.data(), sum);
+    return std::accumulate(lanes.begin(), lanes.end(), 0.0F);
+}
+
+template <std::size_t Group>
+void accumulate_int5_sse_integer_group(
+        const std::array<__m128i, 5>& words, const std::int16_t* query,
+        std::array<__m128i, 4>& sums) {
+    const auto signed_values = _mm_sub_epi32(
+        int5_sse_group<Group>(words), _mm_set1_epi32(15));
+    const auto squared = _mm_mullo_epi32(signed_values,
+                                         _mm_abs_epi32(signed_values));
+    const auto coefficients = _mm_packs_epi32(squared, _mm_setzero_si128());
+    const auto query4 = _mm_loadl_epi64(reinterpret_cast<const __m128i*>(
+        query + Group * 4U));
+    sums[Group % sums.size()] = _mm_add_epi32(sums[Group % sums.size()],
+        _mm_madd_epi16(coefficients, query4));
+}
+
+template <std::size_t... Groups>
+std::int64_t int5_sse_fused_integer_block(
+        const std::uint8_t* packed, const std::int16_t* query,
+        std::index_sequence<Groups...>) {
+    std::array<__m128i, 5> words;
+    for (std::size_t word = 0; word != words.size(); ++word)
+        words[word] = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+            packed + word * sizeof(__m128i)));
+    std::array<__m128i, 4> sums = {_mm_setzero_si128(), _mm_setzero_si128(),
+        _mm_setzero_si128(), _mm_setzero_si128()};
+    (accumulate_int5_sse_integer_group<Groups>(words, query, sums), ...);
+    const auto sum = _mm_add_epi32(_mm_add_epi32(sums[0], sums[1]),
+                                   _mm_add_epi32(sums[2], sums[3]));
+    alignas(16) std::array<std::int32_t, 4> lanes;
+    _mm_store_si128(reinterpret_cast<__m128i*>(lanes.data()), sum);
+    return std::accumulate(lanes.begin(), lanes.end(), std::int64_t{0});
+}
+
+template <std::size_t Group>
+void accumulate_int5_avx_integer_group(
+        const std::array<__m256i, 5>& words, const std::int16_t* query,
+        std::array<__m128i, 4>& sums) {
+    const auto signed_values = _mm256_sub_epi32(
+        int5_avx_group<Group>(words), _mm256_set1_epi32(15));
+    const auto squared = _mm256_mullo_epi32(
+        signed_values, _mm256_abs_epi32(signed_values));
+    const auto coefficients = _mm_packs_epi32(
+        _mm256_castsi256_si128(squared),
+        _mm256_extracti128_si256(squared, 1));
+    const auto query8 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+        query + Group * 8U));
+    sums[Group % sums.size()] = _mm_add_epi32(sums[Group % sums.size()],
+        _mm_madd_epi16(coefficients, query8));
+}
+
+template <std::size_t... Groups>
+std::int64_t int5_avx_fused_integer_block(
+        const std::uint8_t* packed, const std::int16_t* query,
+        std::index_sequence<Groups...>) {
+    std::array<__m256i, 5> words;
+    for (std::size_t word = 0; word != words.size(); ++word)
+        words[word] = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+            packed + word * sizeof(__m256i)));
+    std::array<__m128i, 4> sums = {_mm_setzero_si128(), _mm_setzero_si128(),
+        _mm_setzero_si128(), _mm_setzero_si128()};
+    (accumulate_int5_avx_integer_group<Groups>(words, query, sums), ...);
+    const auto sum = _mm_add_epi32(_mm_add_epi32(sums[0], sums[1]),
+                                   _mm_add_epi32(sums[2], sums[3]));
+    alignas(16) std::array<std::int32_t, 4> lanes;
+    _mm_store_si128(reinterpret_cast<__m128i*>(lanes.data()), sum);
+    return std::accumulate(lanes.begin(), lanes.end(), std::int64_t{0});
+}
+#endif
+
+float int5_power_half_fused_sse_dot(const std::uint8_t* record,
+                                    const float* query) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + 240U, sizeof(amplitude));
+    float sum = 0.0F;
+    for (std::size_t block = 0; block != 3; ++block)
+        sum += int5_sse_fused_block(record + block * 80U,
+            query + block * 128U, std::make_index_sequence<32>{});
+    return sum * amplitude / 225.0F;
+#else
+    return int5_power_half_dot_avx2(record, query);
+#endif
+}
+
+float int5_power_half_fused_avx2_dot(const std::uint8_t* record,
+                                     const float* query) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + 240U, sizeof(amplitude));
+    const auto sum = int5_avx_fused_block(record, query,
+        std::make_index_sequence<32>{}) +
+        int5_sse_fused_block(record + 160U, query + 256U,
+            std::make_index_sequence<32>{});
+    return sum * amplitude / 225.0F;
+#else
+    return int5_power_half_dot_avx2(record, query);
+#endif
+}
+
+float int5_power_half_fused_avx2_integer_dot(
+        const std::uint8_t* record, const std::int16_t* query,
+        float query_scale) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + 240U, sizeof(amplitude));
+    const auto sum = int5_avx_fused_integer_block(record, query,
+        std::make_index_sequence<32>{}) +
+        int5_sse_fused_integer_block(record + 160U, query + 256U,
+            std::make_index_sequence<32>{});
+    return static_cast<float>(sum) * query_scale * amplitude / 225.0F;
+#else
+    (void)record;
+    (void)query;
+    (void)query_scale;
+    throw std::runtime_error("R4 nonlinear INT5 fused integer dot requires AVX2");
 #endif
 }
 
@@ -486,7 +746,10 @@ float int5_power_half_dot_pshufb(const std::uint8_t* record,
 struct PowerHalfQueryLuts {
     std::array<std::array<float, 16>, dimensions / 4> fp32{};
     std::array<std::array<std::int32_t, 16>, dimensions / 4> int8{};
+    alignas(32) std::array<std::int16_t, dimensions> direct_int8{};
+    alignas(32) std::array<std::int16_t, dimensions> direct_int16{};
     float int8_scale = 1.0F;
+    float int16_scale = 1.0F;
 };
 
 PowerHalfQueryLuts power_half_query_luts(const float* query) {
@@ -495,6 +758,13 @@ PowerHalfQueryLuts power_half_query_luts(const float* query) {
     for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
         maximum = std::max(maximum, std::abs(query[dimension]));
     result.int8_scale = maximum == 0.0F ? 1.0F : maximum / 127.0F;
+    result.int16_scale = maximum == 0.0F ? 1.0F : maximum / 32767.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        result.direct_int8[dimension] = static_cast<std::int16_t>(
+            std::nearbyint(query[dimension] / result.int8_scale));
+        result.direct_int16[dimension] = static_cast<std::int16_t>(
+            std::nearbyint(query[dimension] / result.int16_scale));
+    }
     for (std::size_t group = 0; group != dimensions / 4; ++group) {
         std::array<std::int32_t, 4> quantized{};
         for (std::size_t lane = 0; lane != 4; ++lane) {
@@ -534,6 +804,27 @@ void int5_power_half_bitslice_record(const std::uint8_t* source,
         std::memcpy(destination + block * 20U, planes.data(), 20U);
     }
     std::memcpy(destination + 240U, source + 240U, sizeof(float));
+}
+
+void int5_power_half_avx2_record(const std::uint8_t* source,
+                                 std::uint8_t* destination) {
+#if !AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2
+    (void)source;
+    (void)destination;
+    throw std::runtime_error("R4 nonlinear INT5 AVX2 layout requires SIMDComp AVX2");
+#else
+    alignas(32) std::array<std::uint32_t, dimensions> unpacked;
+    for (std::size_t block = 0; block != 3; ++block)
+        simdcomp_unpack_block(source + block * 80U, 5,
+                              unpacked.data() + block * 128U);
+    alignas(32) std::array<__m256i, 5> leading;
+    avxpackwithoutmask(unpacked.data(), leading.data(), 5);
+    std::memcpy(destination, leading.data(), 160U);
+    alignas(16) std::array<__m128i, 5> tail;
+    simdpackwithoutmask(unpacked.data() + 256U, tail.data(), 5);
+    std::memcpy(destination + 160U, tail.data(), 80U);
+    std::memcpy(destination + 240U, source + 240U, sizeof(float));
+#endif
 }
 
 template <typename Value, typename Lut>
@@ -580,6 +871,51 @@ float int5_power_half_bitsliced_dot_q8(
     std::memcpy(&amplitude, record + 240U, sizeof(amplitude));
     return static_cast<float>(int5_power_half_bitsliced_sum<std::int64_t>(
         record, query.int8)) * query.int8_scale * amplitude / 225.0F;
+}
+
+float int5_power_half_integer_dot(
+        const std::uint8_t* record, const std::int16_t* query,
+        float query_scale) {
+    alignas(32) std::array<std::uint32_t, dimensions> unpacked;
+    for (std::size_t block = 0; block != 3; ++block)
+        simdcomp_unpack_block(record + block * 80U, 5,
+                              unpacked.data() + block * 128U);
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + 240U, sizeof(amplitude));
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto center = _mm256_set1_epi32(15);
+    auto sum = _mm256_setzero_si256();
+    for (std::size_t dimension = 0; dimension != dimensions;
+         dimension += 16) {
+        const auto signed0 = _mm256_sub_epi32(_mm256_load_si256(
+            reinterpret_cast<const __m256i*>(unpacked.data() + dimension)),
+            center);
+        const auto signed1 = _mm256_sub_epi32(_mm256_load_si256(
+            reinterpret_cast<const __m256i*>(
+                unpacked.data() + dimension + 8)), center);
+        const auto squared0 = _mm256_mullo_epi32(
+            signed0, _mm256_abs_epi32(signed0));
+        const auto squared1 = _mm256_mullo_epi32(
+            signed1, _mm256_abs_epi32(signed1));
+        auto coefficients = _mm256_packs_epi32(squared0, squared1);
+        coefficients = _mm256_permute4x64_epi64(coefficients, 0xD8);
+        sum = _mm256_add_epi32(sum, _mm256_madd_epi16(coefficients,
+            _mm256_load_si256(reinterpret_cast<const __m256i*>(
+                query + dimension))));
+    }
+    alignas(32) std::array<std::int32_t, 8> lanes{};
+    _mm256_store_si256(reinterpret_cast<__m256i*>(lanes.data()), sum);
+    const auto integer_sum = std::accumulate(lanes.begin(), lanes.end(),
+        std::int64_t{0});
+#else
+    std::int64_t integer_sum = 0;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const auto code = static_cast<std::int32_t>(unpacked[dimension]) - 15;
+        integer_sum += static_cast<std::int64_t>(code * std::abs(code)) *
+                       query[dimension];
+    }
+#endif
+    return static_cast<float>(integer_sum) * query_scale * amplitude / 225.0F;
 }
 
 Maximums fused_int8_maximums(const std::vector<std::uint8_t>& bytes,
@@ -672,7 +1008,7 @@ void simdcomp_pack_block(const std::uint32_t* values, unsigned bits,
     throw std::runtime_error("R4 INT8 compression requires SIMDComp");
 #else
     if (bits == 0) return;
-    alignas(16) std::array<__m128i, 8> packed{};
+    alignas(16) std::array<__m128i, 8> packed;
     simdpackwithoutmask(values, packed.data(), bits);
     output.write(reinterpret_cast<const char*>(packed.data()),
                  static_cast<std::streamsize>(bits * 16U));
@@ -692,7 +1028,7 @@ void simdcomp_unpack_block(const std::uint8_t* bytes, unsigned bits,
         std::fill_n(output, 128, 0U);
         return;
     }
-    alignas(16) std::array<__m128i, 8> packed{};
+    alignas(16) std::array<__m128i, 8> packed;
     std::memcpy(packed.data(), bytes, bits * 16U);
     simdunpack(packed.data(), output, bits);
 #endif
@@ -2852,6 +3188,8 @@ struct Int5IntegrationContext {
     std::vector<std::uint64_t> mixed_address_byte_offsets;
     std::string treatment;
     std::size_t record_bytes = 0;
+    std::vector<std::vector<AddressSpan>> routing_spans;
+    std::vector<std::size_t> routing_representatives;
 };
 
 void validate_int5_integration_protocol(const nlohmann::json& protocol) {
@@ -2989,43 +3327,102 @@ void materialize_int5_bitsliced_mixed(
         {"output_sha256", agent_memory::sha256_file_hex(output_path)}});
 }
 
+void materialize_int5_avx2_mixed(
+        const std::filesystem::path& parent_protocol_path,
+        std::uint64_t seed, const std::filesystem::path& output_path,
+        const std::filesystem::path& receipt_path) {
+    const auto protocol = read_json(parent_protocol_path);
+    validate_int5_integration_protocol(protocol);
+    const auto context = load_int5_integration_context(protocol, seed,
+                                                        "int5_mixed");
+    require(context.record_bytes == 244 &&
+            context.mixed_address_byte_offsets.size() ==
+                context.seed.representative_counts.size(),
+            "R4 INT5 AVX2 materialization shape differs");
+    std::ofstream output(output_path, std::ios::binary);
+    require(static_cast<bool>(output),
+            "R4 INT5 AVX2 materialization output open failed");
+    std::array<std::uint8_t, 244> converted;
+    std::size_t cursor = 0;
+    std::uint64_t representatives = 0;
+    for (std::size_t row = 0;
+         row != context.mixed_address_byte_offsets.size(); ++row) {
+        const auto begin = static_cast<std::size_t>(
+            context.mixed_address_byte_offsets[row]);
+        const auto end = row + 1 == context.mixed_address_byte_offsets.size()
+            ? context.representatives->size()
+            : static_cast<std::size_t>(
+                context.mixed_address_byte_offsets[row + 1]);
+        require(begin == cursor && begin <= end,
+                "R4 INT5 AVX2 address offsets differ");
+        const auto count = static_cast<std::size_t>(
+            context.seed.representative_counts[row]);
+        require(begin + count * 244U <= end,
+                "R4 INT5 AVX2 representative prefix differs");
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            int5_power_half_avx2_record(context.representatives->data() +
+                begin + slot * 244U, converted.data());
+            output.write(reinterpret_cast<const char*>(converted.data()),
+                         static_cast<std::streamsize>(converted.size()));
+            ++representatives;
+        }
+        const auto remainder = begin + count * 244U;
+        output.write(reinterpret_cast<const char*>(
+            context.representatives->data() + remainder),
+            static_cast<std::streamsize>(end - remainder));
+        require(static_cast<bool>(output),
+                "R4 INT5 AVX2 materialization write failed");
+        cursor = end;
+    }
+    output.close();
+    require(std::filesystem::file_size(output_path) ==
+            context.representatives->size(),
+            "R4 INT5 AVX2 materialization size differs");
+    write_json(receipt_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int5_avx2_materialization_receipt"},
+        {"parent_protocol_sha256",
+            agent_memory::sha256_file_hex(parent_protocol_path)},
+        {"seed", seed}, {"representatives", representatives},
+        {"bytes", std::filesystem::file_size(output_path)},
+        {"record_bytes", 244}, {"leading_avx2_dimensions", 256},
+        {"tail_sse_dimensions", 128},
+        {"output_sha256", agent_memory::sha256_file_hex(output_path)}});
+}
+
 RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
                                 std::size_t request,
                                 const std::string& kernel) {
     require(request < 152, "R4 INT5 kernel request differs");
     const bool baseline = kernel == "homogeneous_int8";
+    const bool legacy = kernel == "int5_direct_square_legacy";
     const bool direct = kernel == "int5_direct_square";
+    const bool fused_sse = kernel == "int5_fused_sse";
+    const bool fused_avx2 = kernel == "int5_fused_avx2";
+    const bool fused_avx2_q8 = kernel == "int5_fused_avx2_q8";
     const bool shuffle = kernel == "int5_pshufb_square";
     const bool bitsliced = kernel == "int5_bitsliced_fp32_lut";
     const bool quantized = kernel == "int5_bitsliced_q8_lut";
-    require(baseline || direct || shuffle || bitsliced || quantized,
+    const bool direct_q8 = kernel == "int5_direct_q8_integer";
+    const bool direct_q16 = kernel == "int5_direct_q16_integer";
+    require(baseline || legacy || direct || fused_sse || fused_avx2 ||
+            fused_avx2_q8 || shuffle || bitsliced || quantized || direct_q8 ||
+            direct_q16,
             "R4 INT5 kernel differs");
-    const auto before = process_state();
-    std::vector<AddressSpan> spans;
-    spans.reserve(addresses_per_query);
-    std::size_t representatives = 0;
-    for (std::size_t local = 0; local != addresses_per_query; ++local) {
-        const auto row = context.seed.shortlists[
-            request * addresses_per_query + local];
-        const auto count = static_cast<std::size_t>(
-            context.seed.representative_counts[row]);
-        const auto byte_offset = baseline
-            ? static_cast<std::size_t>(context.seed.address_offsets[row]) * 388U
-            : static_cast<std::size_t>(context.mixed_address_byte_offsets[row]);
-        spans.push_back({local, byte_offset, count * context.record_bytes, 0});
-        representatives += count;
-    }
-    std::sort(spans.begin(), spans.end(), [](const auto& left,
-                                             const auto& right) {
-        return left.byte_offset < right.byte_offset;
-    });
+    require(context.routing_spans.size() == 152 &&
+            context.routing_representatives.size() == 152,
+            "R4 INT5 prepared routing context differs");
+    const auto& spans = context.routing_spans[request];
+    const auto representatives = context.routing_representatives[request];
     RoutingValues result;
     result.representatives = representatives;
     result.logical_bytes = representatives * context.record_bytes;
     result.address_spans = spans.size();
     const auto* query = context.seed.queries.data() + request * dimensions;
-    const auto table = int5_power_half_decode_table();
-    const auto query_luts = power_half_query_luts(query);
+    std::optional<std::array<float, 32>> table;
+    if (legacy || shuffle) table.emplace(int5_power_half_decode_table());
+    std::optional<PowerHalfQueryLuts> query_luts;
+    if (bitsliced || quantized || direct_q8 || direct_q16 || fused_avx2_q8)
+        query_luts.emplace(power_half_query_luts(query));
     Maximums maximums;
     maximums.values.assign(addresses_per_query,
                            -std::numeric_limits<float>::infinity());
@@ -3041,14 +3438,29 @@ RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
                 float scale = 0.0F;
                 std::memcpy(&scale, record + dimensions, sizeof(scale));
                 score = int8_dot_avx2(record, scale, query);
+            } else if (legacy) {
+                score = int5_power_half_dot_avx2_legacy(record, *table, query);
             } else if (direct) {
-                score = int5_power_half_dot_avx2(record, table, query);
+                score = int5_power_half_dot_avx2(record, query);
+            } else if (fused_sse) {
+                score = int5_power_half_fused_sse_dot(record, query);
+            } else if (fused_avx2) {
+                score = int5_power_half_fused_avx2_dot(record, query);
+            } else if (fused_avx2_q8) {
+                score = int5_power_half_fused_avx2_integer_dot(record,
+                    query_luts->direct_int8.data(), query_luts->int8_scale);
             } else if (shuffle) {
-                score = int5_power_half_dot_pshufb(record, table, query);
+                score = int5_power_half_dot_pshufb(record, *table, query);
             } else if (bitsliced) {
-                score = int5_power_half_bitsliced_dot_fp32(record, query_luts);
+                score = int5_power_half_bitsliced_dot_fp32(record, *query_luts);
+            } else if (quantized) {
+                score = int5_power_half_bitsliced_dot_q8(record, *query_luts);
+            } else if (direct_q8) {
+                score = int5_power_half_integer_dot(record,
+                    query_luts->direct_int8.data(), query_luts->int8_scale);
             } else {
-                score = int5_power_half_bitsliced_dot_q8(record, query_luts);
+                score = int5_power_half_integer_dot(record,
+                    query_luts->direct_int16.data(), query_luts->int16_scale);
             }
             if (score > maximums.values[span.local]) {
                 maximums.values[span.local] = score;
@@ -3061,10 +3473,6 @@ RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
     result.scores = address_scores_batched_avx2(context.seed, request,
                                                 maximums.values);
     result.timing.address_score = milliseconds(begin, Clock::now());
-    const auto after = process_state();
-    result.page_faults = after.faults - before.faults;
-    result.rss_delta = static_cast<std::int64_t>(after.rss) -
-                       static_cast<std::int64_t>(before.rss);
     return result;
 }
 
@@ -3115,7 +3523,7 @@ RoutingValues int5_integration_route(const Int5IntegrationContext& context,
                 std::memcpy(&scale, record + dimensions, sizeof(scale));
                 score = int8_dot_avx2(record, scale, query);
             } else {
-                score = int5_power_half_dot_avx2(record, table, query);
+                score = int5_power_half_dot_avx2_legacy(record, table, query);
             }
             if (score > maximums.values[span.local]) {
                 maximums.values[span.local] = score;
@@ -3401,15 +3809,24 @@ void validate_int5_kernel_protocol(const nlohmann::json& protocol) {
                     "physical_integration_protocol_sha256").get<std::string>(),
             "R4 INT5 kernel parent protocol differs");
     require(protocol.at("kernels") == nlohmann::json::array({
-                "homogeneous_int8", "int5_direct_square",
-                "int5_pshufb_square", "int5_bitsliced_fp32_lut",
-                "int5_bitsliced_q8_lut"}) &&
+                "homogeneous_int8", "int5_direct_square_legacy",
+                "int5_direct_square", "int5_fused_sse",
+                "int5_fused_avx2", "int5_fused_avx2_q8",
+                "int5_direct_q8_integer", "int5_direct_q16_integer"}) &&
             protocol.at("conditions") == nlohmann::json::array({
                 "resident", "working_set_cap"}) &&
             protocol.at("workers") == nlohmann::json::array({1, 8, 16}) &&
             protocol.at("bitsliced_layouts").size() == 3 &&
+            protocol.at("avx2_layouts").size() == 3 &&
             protocol.at("trace_repetitions").get<std::size_t>() >= 2 &&
-            protocol.at("measured_batches").get<std::size_t>() >= 1,
+            protocol.at("measured_batches").get<std::size_t>() >= 1 &&
+            protocol.at("memory_crossover").at("caps_bytes").size() == 8 &&
+            protocol.at("memory_crossover").at("include_resident") == true &&
+            protocol.at("memory_crossover").at("workers") == 8 &&
+            protocol.at("memory_crossover").at(
+                "trace_repetitions").get<std::size_t>() >= 2 &&
+            protocol.at("memory_crossover").at(
+                "measured_batches").get<std::size_t>() >= 1,
             "R4 INT5 kernel matrix differs");
 }
 
@@ -3419,14 +3836,18 @@ Int5IntegrationContext load_int5_kernel_context(
     const bool baseline = kernel == "homogeneous_int8";
     auto context = load_int5_integration_context(parent, seed,
         baseline ? "homogeneous_int8" : "int5_mixed");
-    if (kernel == "int5_bitsliced_fp32_lut" ||
-        kernel == "int5_bitsliced_q8_lut") {
-        const auto found = std::find_if(protocol.at("bitsliced_layouts").begin(),
-            protocol.at("bitsliced_layouts").end(), [&](const auto& row) {
+    const bool bitsliced = kernel == "int5_bitsliced_fp32_lut" ||
+                           kernel == "int5_bitsliced_q8_lut";
+    const bool avx2 = kernel == "int5_fused_avx2" ||
+                      kernel == "int5_fused_avx2_q8";
+    if (bitsliced || avx2) {
+        const auto& layouts = protocol.at(bitsliced ? "bitsliced_layouts" :
+                                                     "avx2_layouts");
+        const auto found = std::find_if(layouts.begin(), layouts.end(),
+            [&](const auto& row) {
                 return row.at("seed").get<std::uint64_t>() == seed;
             });
-        require(found != protocol.at("bitsliced_layouts").end(),
-                "R4 INT5 bitsliced kernel seed differs");
+        require(found != layouts.end(), "R4 INT5 alternate kernel seed differs");
         const auto path = std::filesystem::path(
             found->at("path").get<std::string>());
         require(path.is_absolute() &&
@@ -3434,8 +3855,34 @@ Int5IntegrationContext load_int5_kernel_context(
                     found->at("sha256").get<std::string>() &&
                 std::filesystem::file_size(path) ==
                     found->at("bytes").get<std::uint64_t>(),
-                "R4 INT5 bitsliced kernel layout differs");
+                "R4 INT5 alternate kernel layout differs");
         context.representatives = std::make_unique<MappedFile>(path);
+    }
+    context.routing_spans.resize(152);
+    context.routing_representatives.resize(152);
+    for (std::size_t request = 0; request != 152; ++request) {
+        auto& spans = context.routing_spans[request];
+        spans.reserve(addresses_per_query);
+        std::size_t representatives = 0;
+        for (std::size_t local = 0; local != addresses_per_query; ++local) {
+            const auto row = context.seed.shortlists[
+                request * addresses_per_query + local];
+            const auto count = static_cast<std::size_t>(
+                context.seed.representative_counts[row]);
+            const auto byte_offset = baseline
+                ? static_cast<std::size_t>(context.seed.address_offsets[row]) *
+                    388U
+                : static_cast<std::size_t>(
+                    context.mixed_address_byte_offsets[row]);
+            spans.push_back({local, byte_offset,
+                count * context.record_bytes, 0});
+            representatives += count;
+        }
+        std::sort(spans.begin(), spans.end(), [](const auto& left,
+                                                 const auto& right) {
+            return left.byte_offset < right.byte_offset;
+        });
+        context.routing_representatives[request] = representatives;
     }
     return context;
 }
@@ -3485,10 +3932,15 @@ std::vector<EndToEndResult> int5_kernel_batch(
     return values;
 }
 
-void int5_kernel_frontier(const std::filesystem::path& protocol_path,
-                          std::uint64_t seed, const std::string& kernel,
-                          const std::string& condition, std::size_t workers,
-                          const std::filesystem::path& output_path) {
+void int5_kernel_measure(const std::filesystem::path& protocol_path,
+                         std::uint64_t seed, const std::string& kernel,
+                         const std::string& condition, std::size_t workers,
+                         std::size_t trace_repetitions,
+                         std::size_t warmup_batches,
+                         std::size_t measured_batches,
+                         std::optional<std::size_t> working_set_cap,
+                         const std::string& family,
+                         const std::filesystem::path& output_path) {
     const auto protocol = read_json(protocol_path);
     validate_int5_kernel_protocol(protocol);
     const auto parent = read_json(
@@ -3507,18 +3959,18 @@ void int5_kernel_frontier(const std::filesystem::path& protocol_path,
     const auto context = load_int5_kernel_context(protocol, parent, seed,
                                                    kernel);
     const agent_memory::HammingDistanceComputer hamming(binary_code_words);
-    const auto trace = stress_trace(parent,
-        protocol.at("trace_repetitions").get<std::size_t>());
+    const auto trace = stress_trace(parent, trace_repetitions);
+    require((condition == "resident" && !working_set_cap.has_value()) ||
+            (condition == "working_set_cap" && working_set_cap.has_value()),
+            "R4 INT5 kernel working-set condition differs");
     const auto cap_applied = apply_working_set_condition(condition,
-        protocol.at("working_set_cap_bytes").get<std::size_t>());
-    for (std::size_t pass = 0;
-         pass != protocol.at("warmup_batches").get<std::size_t>(); ++pass) {
+        working_set_cap.value_or(0));
+    for (std::size_t pass = 0; pass != warmup_batches; ++pass) {
         static_cast<void>(int5_kernel_batch(context, input, hamming, parent,
             trace, workers, kernel));
     }
     nlohmann::json samples = nlohmann::json::array();
-    for (std::size_t pass = 0;
-         pass != protocol.at("measured_batches").get<std::size_t>(); ++pass) {
+    for (std::size_t pass = 0; pass != measured_batches; ++pass) {
         const auto before = process_state();
         const auto begin = Clock::now();
         const auto values = int5_kernel_batch(context, input, hamming, parent,
@@ -3552,15 +4004,62 @@ void int5_kernel_frontier(const std::filesystem::path& protocol_path,
             {"queries", queries}});
     }
     write_json(output_path, {{"schema_version", 1},
-        {"family", "neuroute_r4_int5_kernel_frontier_native_samples"},
+        {"family", family},
         {"protocol_sha256", agent_memory::sha256_file_hex(protocol_path)},
         {"seed", seed}, {"kernel", kernel}, {"condition", condition},
         {"workers", workers}, {"working_set_cap_applied", cap_applied},
+        {"working_set_cap_bytes", working_set_cap.has_value()
+            ? nlohmann::json(*working_set_cap) : nlohmann::json(nullptr)},
         {"trace_queries", trace.size()},
         {"quantized_query_sensitivity", kernel ==
-            "int5_bitsliced_q8_lut"},
+            "int5_bitsliced_q8_lut" || kernel ==
+            "int5_fused_avx2_q8" || kernel ==
+            "int5_direct_q8_integer" || kernel ==
+            "int5_direct_q16_integer"},
         {"hamming_backend", agent_memory::hamming_distance_backend_name(
             hamming.backend())}, {"samples", samples}});
+}
+
+void int5_kernel_frontier(const std::filesystem::path& protocol_path,
+                          std::uint64_t seed, const std::string& kernel,
+                          const std::string& condition, std::size_t workers,
+                          const std::filesystem::path& output_path) {
+    const auto protocol = read_json(protocol_path);
+    const auto cap = condition == "working_set_cap"
+        ? std::optional<std::size_t>(protocol.at(
+            "working_set_cap_bytes").get<std::size_t>())
+        : std::nullopt;
+    int5_kernel_measure(protocol_path, seed, kernel, condition, workers,
+        protocol.at("trace_repetitions").get<std::size_t>(),
+        protocol.at("warmup_batches").get<std::size_t>(),
+        protocol.at("measured_batches").get<std::size_t>(), cap,
+        "neuroute_r4_int5_kernel_frontier_native_samples", output_path);
+}
+
+void int5_kernel_crossover(const std::filesystem::path& protocol_path,
+                           std::uint64_t seed, const std::string& kernel,
+                           const std::string& cap_text,
+                           const std::filesystem::path& output_path) {
+    const auto protocol = read_json(protocol_path);
+    const auto& crossover = protocol.at("memory_crossover");
+    const bool resident = cap_text == "resident";
+    const auto cap = resident ? std::nullopt :
+        std::optional<std::size_t>(std::stoull(cap_text));
+    if (cap.has_value()) {
+        const auto& caps = crossover.at("caps_bytes");
+        require(std::find(caps.begin(), caps.end(), *cap) != caps.end(),
+                "R4 INT5 crossover cap differs");
+    } else {
+        require(crossover.at("include_resident").get<bool>(),
+                "R4 INT5 crossover resident condition differs");
+    }
+    int5_kernel_measure(protocol_path, seed, kernel,
+        resident ? "resident" : "working_set_cap",
+        crossover.at("workers").get<std::size_t>(),
+        crossover.at("trace_repetitions").get<std::size_t>(),
+        crossover.at("warmup_batches").get<std::size_t>(),
+        crossover.at("measured_batches").get<std::size_t>(), cap,
+        "neuroute_r4_int5_kernel_crossover_native_samples", output_path);
 }
 
 void self_test() {
@@ -3588,7 +4087,8 @@ void self_test() {
     simdcomp_unpack_block(reinterpret_cast<const std::uint8_t*>(bytes.data()),
                           7, decoded.data());
     require(input == decoded, "R4 adaptive SIMDComp round trip differs");
-    std::array<std::uint8_t, 244> int5_record{}, bitsliced_record{};
+    std::array<std::uint8_t, 244> int5_record{}, bitsliced_record{},
+        avx2_record{};
     std::ostringstream int5_packed;
     for (std::size_t block = 0; block != 3; ++block) {
         for (std::size_t lane = 0; lane != 128; ++lane)
@@ -3603,20 +4103,42 @@ void self_test() {
     const float amplitude = 0.73F;
     std::memcpy(int5_record.data() + 240, &amplitude, sizeof(amplitude));
     const auto power_table = int5_power_half_decode_table();
-    const auto direct_score = int5_power_half_dot_avx2(
+    const auto legacy_score = int5_power_half_dot_avx2_legacy(
         int5_record.data(), power_table, query.data());
+    const auto direct_score = int5_power_half_dot_avx2(
+        int5_record.data(), query.data());
+    const auto fused_sse_score = int5_power_half_fused_sse_dot(
+        int5_record.data(), query.data());
     const auto shuffle_score = int5_power_half_dot_pshufb(
         int5_record.data(), power_table, query.data());
     int5_power_half_bitslice_record(int5_record.data(),
                                     bitsliced_record.data());
+    int5_power_half_avx2_record(int5_record.data(), avx2_record.data());
+    const auto fused_avx2_score = int5_power_half_fused_avx2_dot(
+        avx2_record.data(), query.data());
     const auto query_luts = power_half_query_luts(query.data());
     const auto bitsliced_score = int5_power_half_bitsliced_dot_fp32(
         bitsliced_record.data(), query_luts);
     const auto q8_score = int5_power_half_bitsliced_dot_q8(
         bitsliced_record.data(), query_luts);
-    require(std::abs(direct_score - shuffle_score) < 1.0e-5F &&
+    const auto direct_q8_score = int5_power_half_integer_dot(
+        int5_record.data(), query_luts.direct_int8.data(),
+        query_luts.int8_scale);
+    const auto fused_avx2_q8_score = int5_power_half_fused_avx2_integer_dot(
+        avx2_record.data(), query_luts.direct_int8.data(),
+        query_luts.int8_scale);
+    const auto direct_q16_score = int5_power_half_integer_dot(
+        int5_record.data(), query_luts.direct_int16.data(),
+        query_luts.int16_scale);
+    require(std::abs(legacy_score - direct_score) < 1.0e-4F &&
+            std::abs(legacy_score - fused_sse_score) < 1.0e-4F &&
+            std::abs(legacy_score - fused_avx2_score) < 1.0e-4F &&
+            std::abs(legacy_score - shuffle_score) < 1.0e-5F &&
             std::abs(direct_score - bitsliced_score) < 1.0e-4F &&
-            std::abs(direct_score - q8_score) < 0.02F,
+            std::abs(direct_score - q8_score) < 0.02F &&
+            std::abs(q8_score - direct_q8_score) < 1.0e-5F &&
+            std::abs(direct_q8_score - fused_avx2_q8_score) < 1.0e-5F &&
+            std::abs(direct_score - direct_q16_score) < 1.0e-4F,
             "R4 nonlinear INT5 kernel self-test differs");
 #endif
     std::vector<std::uint8_t> vbyte;
@@ -3698,13 +4220,21 @@ int main(int argc, char** argv) {
             int5_stress(argv[2], std::stoull(argv[3]), argv[4], argv[5],
                         std::stoull(argv[6]), argv[7]);
         else if (argc == 6 && std::string(argv[1]) ==
-                 "--int5-bitslice-materialize")
+                  "--int5-bitslice-materialize")
             materialize_int5_bitsliced_mixed(argv[2], std::stoull(argv[3]),
                                               argv[4], argv[5]);
+        else if (argc == 6 && std::string(argv[1]) ==
+                  "--int5-avx2-materialize")
+            materialize_int5_avx2_mixed(argv[2], std::stoull(argv[3]),
+                                         argv[4], argv[5]);
         else if (argc == 8 && std::string(argv[1]) ==
                  "--int5-kernel-frontier")
             int5_kernel_frontier(argv[2], std::stoull(argv[3]), argv[4],
                                  argv[5], std::stoull(argv[6]), argv[7]);
+        else if (argc == 7 && std::string(argv[1]) ==
+                 "--int5-kernel-crossover")
+            int5_kernel_crossover(argv[2], std::stoull(argv[3]), argv[4],
+                                  argv[5], argv[6]);
         else throw std::runtime_error("usage: --self-test | --compress-pack ... | --lossless-block-pack RAW COUNTS ROWS LEVEL DICT_BYTES TRAIN_BLOCKS ZSTD ZSTD_OFFSETS DICT ZSTD_DICT ZSTD_DICT_OFFSETS VBYTE VBYTE_OFFSETS RECEIPT | --lossless-block-warm MANIFEST BLOCK_MANIFEST OUTPUT | --lossless-block-cold MANIFEST BLOCK_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
         return 0;
     } catch (const std::exception& error) {
