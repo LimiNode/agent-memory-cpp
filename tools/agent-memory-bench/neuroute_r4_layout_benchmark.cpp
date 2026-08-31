@@ -4748,7 +4748,7 @@ std::vector<EndToEndResult> full_r4_batch(
         const Int5IntegrationContext& context, const CoarseK8Input& coarse_input,
         const NativeCascadeInput& input, const FinalQuantizedInput& final_int5,
         const agent_memory::HammingDistanceComputer& hamming,
-        const nlohmann::json& parent_protocol,
+        const nlohmann::json& request_protocol,
         const std::vector<std::size_t>& trace, std::size_t workers,
         const std::string& routing_kernel, const std::string& final_kernel) {
     std::vector<EndToEndResult> values(trace.size());
@@ -4762,7 +4762,7 @@ std::vector<EndToEndResult> full_r4_batch(
                 for (;;) {
                     const auto index = following.fetch_add(1);
                     if (index >= trace.size()) break;
-                    const auto& request = parent_protocol.at("requests").at(
+                    const auto& request = request_protocol.at("requests").at(
                         trace[index]);
                     values[index] = full_r4_query(context, coarse_input, input,
                         final_int5, hamming, routing_kernel, final_kernel,
@@ -4919,12 +4919,17 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
     const auto coarse_input = load_coarse_k8_input(
         protocol.at("coarse_k8_manifest").get<std::string>(), context.seed);
     const agent_memory::HammingDistanceComputer hamming(binary_code_words);
-    const auto trace = stress_trace(parent,
+    const auto& request_protocol = protocol.contains("requests")
+        ? protocol
+        : parent;
+    require(request_protocol.at("requests").size() == 76,
+            "R4 external comparison request partition differs");
+    const auto trace = stress_trace(request_protocol,
         protocol.at("trace_repetitions").get<std::size_t>());
     for (std::size_t pass = 0;
          pass != protocol.at("warmup_batches").get<std::size_t>(); ++pass) {
         static_cast<void>(full_r4_batch(context, coarse_input, input,
-            final_int8, hamming, parent, trace, workers, routing_kernel,
+            final_int8, hamming, request_protocol, trace, workers, routing_kernel,
             final_kernel));
     }
     nlohmann::json samples = nlohmann::json::array();
@@ -4933,13 +4938,13 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
         const auto before = process_state();
         const auto batch_begin = Clock::now();
         const auto values = full_r4_batch(context, coarse_input, input,
-            final_int8, hamming, parent, trace, workers, routing_kernel,
+            final_int8, hamming, request_protocol, trace, workers, routing_kernel,
             final_kernel);
         const auto wall_ms = milliseconds(batch_begin, Clock::now());
         const auto after = process_state();
         nlohmann::json queries = nlohmann::json::array();
         for (std::size_t index = 0; index != values.size(); ++index) {
-            const auto& request = parent.at("requests").at(trace[index]);
+            const auto& request = request_protocol.at("requests").at(trace[index]);
             queries.push_back(end_to_end_json(values[index], seed,
                 storage_mode + "/" + execution,
                 request.at("request").get<std::size_t>(),
