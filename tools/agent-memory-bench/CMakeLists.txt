@@ -544,6 +544,10 @@ if(WIN32)
 endif()
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-layout-benchmark
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_layout_benchmark.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec.hpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec_sse2.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_record_codec_avx2.cpp"
     ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-layout-benchmark)
 
@@ -579,6 +583,8 @@ endif()
 target_compile_definitions(agent_memory_neuroute_record_codec PRIVATE
     AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2=${AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2}
     AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2})
+target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
+    agent_memory_neuroute_record_codec)
 
 add_executable(agent-memory-neuroute-record-codec-contract
     neuroute_record_codec_contract.cpp)

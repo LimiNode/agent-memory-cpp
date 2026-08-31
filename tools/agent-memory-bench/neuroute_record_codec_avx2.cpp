@@ -54,4 +54,39 @@ void decode_nonlinear_int5_codes_avx2(const std::uint8_t* record,
                      std::make_index_sequence<16>{});
 }
 
+float score_nonlinear_int5_power_half_avx2(const std::uint8_t* record,
+                                           const float* query) {
+    alignas(32) std::array<std::uint32_t, record_dimensions> codes{};
+    decode_nonlinear_int5_codes_avx2(record, codes.data());
+    const auto center = _mm256_set1_epi32(15);
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
+    for (std::size_t dimension = 0; dimension != record_dimensions;
+         dimension += 32U) {
+        const auto values = [&](std::size_t lane) {
+            const auto signed_values = _mm256_sub_epi32(
+                _mm256_load_si256(reinterpret_cast<const __m256i*>(
+                    codes.data() + dimension + lane)), center);
+            return _mm256_cvtepi32_ps(_mm256_mullo_epi32(
+                signed_values, _mm256_abs_epi32(signed_values)));
+        };
+        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(values(0),
+            _mm256_loadu_ps(query + dimension)));
+        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(values(8),
+            _mm256_loadu_ps(query + dimension + 8U)));
+        sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(values(16),
+            _mm256_loadu_ps(query + dimension + 16U)));
+        sum3 = _mm256_add_ps(sum3, _mm256_mul_ps(values(24),
+            _mm256_loadu_ps(query + dimension + 24U)));
+    }
+    alignas(32) std::array<float, 8> lanes{};
+    _mm256_store_ps(lanes.data(), _mm256_add_ps(
+        _mm256_add_ps(sum0, sum1), _mm256_add_ps(sum2, sum3)));
+    float score = 0.0F;
+    for (const auto value : lanes) score += value;
+    return score * nonlinear_int5_amplitude(record) / 225.0F;
+}
+
 }  // namespace agent_memory::neuroute

@@ -58,6 +58,10 @@ float score_nonlinear_int5_power_half(
     const std::uint8_t* record, const float* query,
     RecordExecutionKernel kernel = RecordExecutionKernel::Portable);
 
+float score_nonlinear_int5_power_half_fast(
+    const std::uint8_t* record, const float* query,
+    RecordExecutionKernel kernel = RecordExecutionKernel::Portable);
+
 float score_int8(const std::uint8_t* record, const float* query);
 
 }  // namespace agent_memory::neuroute
