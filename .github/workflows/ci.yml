@@ -186,18 +186,21 @@ jobs:
           cmake --build build-r4 --config Release --target
           agent-memory-neuroute-r4-layout-benchmark
           agent-memory-neuroute-r4-representative-codec
+          agent-memory-neuroute-record-codec-contract
           agent-memory-neuroute-final-representation
 
       - name: Run R4 native self-test (Ubuntu)
         if: runner.os == 'Linux'
         run: |
           ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-r4-layout-benchmark --self-test
+          ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-record-codec-contract --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-final-representation --self-test
 
       - name: Run R4 native self-test (Windows)
         if: runner.os == 'Windows'
         run: |
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-r4-layout-benchmark.exe --self-test
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-record-codec-contract.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-final-representation.exe --self-test
 
       - name: Exercise R4 dense closure contracts
@@ -217,7 +220,9 @@ jobs:
           python tools/agent-memory-bench/run-neuroute-dense-performance-audit.py --self-test &&
           python tools/agent-memory-bench/write-neuroute-dense-performance-audit-evidence.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-final-rerank-ceiling.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-final-rerank-ceiling-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-final-rerank-ceiling-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-storage-execution-separation.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-storage-execution-separation-evidence.py --self-test
 
   ann-cascade:
     name: ANN cascade harness

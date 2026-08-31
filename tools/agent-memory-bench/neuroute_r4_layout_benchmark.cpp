@@ -4523,9 +4523,14 @@ void self_test() {
         int5_record.data(), power_table, query.data());
     int5_power_half_bitslice_record(int5_record.data(),
                                     bitsliced_record.data());
+#if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2 && \
+    AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
     int5_power_half_avx2_record(int5_record.data(), avx2_record.data());
     const auto fused_avx2_score = int5_power_half_fused_avx2_dot(
         avx2_record.data(), query.data());
+#else
+    const auto fused_avx2_score = legacy_score;
+#endif
     const auto query_luts = power_half_query_luts(
         query.data(), true, true, true, true);
     const auto bitsliced_score = int5_power_half_bitsliced_dot_fp32(
@@ -4535,9 +4540,14 @@ void self_test() {
     const auto direct_q8_score = int5_power_half_integer_dot(
         int5_record.data(), query_luts.direct_int8.data(),
         query_luts.int8_scale);
+#if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2 && \
+    AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
     const auto fused_avx2_q8_score = int5_power_half_fused_avx2_integer_dot(
         avx2_record.data(), query_luts.direct_int8.data(),
         query_luts.int8_scale);
+#else
+    const auto fused_avx2_q8_score = direct_q8_score;
+#endif
     const auto direct_q16_score = int5_power_half_integer_dot(
         int5_record.data(), query_luts.direct_int16.data(),
         query_luts.int16_scale);
