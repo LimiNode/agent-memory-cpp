@@ -1,8 +1,10 @@
+#include <agent_memory.hpp>
 #include <agent_memory/eval/AutoencoderBinaryArtifact.hpp>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
@@ -19,6 +21,7 @@
 #include <string>
 #include <thread>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 #if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
@@ -189,6 +192,8 @@ struct SeedContext {
     std::vector<std::uint32_t> representative_offsets;
     std::vector<std::uint8_t> representative_counts;
     std::vector<std::int32_t> representative_documents;
+    std::vector<std::uint32_t> occupied_addresses;
+    std::vector<std::int32_t> physical_to_document;
     std::vector<float> queries, features;
     std::vector<std::uint32_t> shortlists;
     Model model;
@@ -223,12 +228,16 @@ SeedContext load_seed(const std::filesystem::path& manifest_path,
     }
     value.representative_documents = read_values<std::int32_t>(
         path("representative_documents"));
+    value.occupied_addresses = read_values<std::uint32_t>(path("occupied_addresses"));
+    value.physical_to_document = read_values<std::int32_t>(path("physical_to_document"));
     value.queries = read_values<float>(path("query_vectors"));
     value.shortlists = read_values<std::uint32_t>(path("shortlist_rows"));
     value.features = read_values<float>(path("scalar_features"));
     require(value.queries.size() == 152 * dimensions &&
             value.shortlists.size() == 152 * addresses_per_query &&
-            value.features.size() == 152 * addresses_per_query * scalar_features,
+            value.features.size() == 152 * addresses_per_query * scalar_features &&
+            value.occupied_addresses.size() == value.address_counts.size() &&
+            value.physical_to_document.size() == 1000000,
             "R4 layout request payload differs");
     const auto& model = row.at("model");
     const auto model_path = [&](const std::string& name) {
@@ -987,6 +996,417 @@ Sample measure_mapped(const SeedContext& seed, const MappedFile& mapped,
     return sample;
 }
 
+constexpr std::size_t binary_code_bytes = 32;
+constexpr std::size_t binary_code_words = binary_code_bytes / sizeof(std::uint64_t);
+
+struct NativeCascadeInput {
+    std::size_t document_count = 0;
+    std::size_t query_count = 0;
+    std::unique_ptr<MappedFile> document_codes;
+    std::unique_ptr<MappedFile> document_vectors;
+    std::vector<std::uint64_t> query_codes;
+    std::vector<float> query_projections;
+    std::vector<float> adc_centroids;
+    std::vector<float> query_vectors;
+    std::vector<std::uint32_t> document_id_rank;
+};
+
+std::filesystem::path native_payload(const std::filesystem::path& manifest_path,
+                                     const nlohmann::json& manifest,
+                                     const std::string& name) {
+    return manifest_path.parent_path() /
+           manifest.at(name + "_file").get<std::string>();
+}
+
+NativeCascadeInput load_native_input(const std::filesystem::path& manifest_path,
+                                     const std::filesystem::path& rank_path) {
+    const auto manifest = read_json(manifest_path);
+    require(manifest.value("family", "") == "mih_storage_benchmark_input_v1" &&
+            manifest.at("code_bits").get<std::size_t>() == 256 &&
+            manifest.at("embedding_dimension").get<std::size_t>() == dimensions,
+            "R4 end-to-end native input identity differs");
+    NativeCascadeInput value;
+    value.document_count = manifest.at("document_count");
+    value.query_count = manifest.at("query_count");
+    require(value.document_count == 1000000 && value.query_count == 305,
+            "R4 end-to-end native input shape differs");
+    value.document_codes = std::make_unique<MappedFile>(
+        native_payload(manifest_path, manifest, "document_codes"));
+    value.document_vectors = std::make_unique<MappedFile>(
+        native_payload(manifest_path, manifest, "document_vectors"));
+    const auto query_code_bytes = read_values<std::uint8_t>(
+        native_payload(manifest_path, manifest, "query_codes"));
+    require(query_code_bytes.size() % sizeof(std::uint64_t) == 0,
+            "R4 end-to-end query-code alignment differs");
+    value.query_codes.resize(query_code_bytes.size() / sizeof(std::uint64_t));
+    std::memcpy(value.query_codes.data(), query_code_bytes.data(),
+                query_code_bytes.size());
+    value.query_projections = read_values<float>(
+        native_payload(manifest_path, manifest, "query_itq_projections"));
+    value.adc_centroids = read_values<float>(
+        native_payload(manifest_path, manifest, "binary_adc_centroids"));
+    value.query_vectors = read_values<float>(
+        native_payload(manifest_path, manifest, "query_vectors"));
+    value.document_id_rank = read_values<std::uint32_t>(rank_path);
+    require(value.document_codes->size() == value.document_count * binary_code_bytes &&
+            value.document_vectors->size() == value.document_count * dimensions * sizeof(float) &&
+            value.query_codes.size() == value.query_count * binary_code_words &&
+            value.query_projections.size() == value.query_count * 256 &&
+            value.adc_centroids.size() == 512 &&
+            value.query_vectors.size() == value.query_count * dimensions &&
+            value.document_id_rank.size() == value.document_count,
+            "R4 end-to-end native payload shape differs");
+    return value;
+}
+
+std::string u32_sequence_sha256(const std::vector<std::uint32_t>& values) {
+    std::vector<std::uint8_t> bytes(values.size() * sizeof(std::uint32_t));
+    for (std::size_t index = 0; index != values.size(); ++index) {
+        for (std::size_t byte = 0; byte != sizeof(std::uint32_t); ++byte) {
+            bytes[index * sizeof(std::uint32_t) + byte] = static_cast<std::uint8_t>(
+                values[index] >> (8U * byte));
+        }
+    }
+    return agent_memory::sha256_bytes_hex(bytes);
+}
+
+double pairwise_sum(const float* values, std::size_t count) {
+    if (count < 8) {
+        float result = -0.0F;
+        for (std::size_t index = 0; index != count; ++index) result += values[index];
+        return result;
+    }
+    if (count <= 128) {
+        std::array<float, 8> accumulators{values[0], values[1], values[2], values[3],
+                                          values[4], values[5], values[6], values[7]};
+        std::size_t index = 8;
+        for (; index + 7 < count - (count % 8); index += 8) {
+            for (std::size_t lane = 0; lane != 8; ++lane)
+                accumulators[lane] += values[index + lane];
+        }
+        float result = ((accumulators[0] + accumulators[1]) +
+                        (accumulators[2] + accumulators[3])) +
+                       ((accumulators[4] + accumulators[5]) +
+                        (accumulators[6] + accumulators[7]));
+        for (; index != count; ++index) result += values[index];
+        return result;
+    }
+    auto first = count / 2;
+    first -= first % 8;
+    return pairwise_sum(values, first) + pairwise_sum(values + first, count - first);
+}
+
+template <typename Score>
+struct E2eScored {
+    Score score;
+    std::uint32_t document;
+    std::uint32_t rank;
+};
+
+template <typename Score>
+bool lower_e2e_score(const E2eScored<Score>& left,
+                     const E2eScored<Score>& right) {
+    return left.score == right.score ? left.rank < right.rank
+                                     : left.score < right.score;
+}
+
+struct EndToEndTiming {
+    double representative_fetch = 0.0;
+    double representative_decode = 0.0;
+    double representative_dot = 0.0;
+    double address_score = 0.0;
+    double address_order_and_boundary = 0.0;
+    double candidate_materialization = 0.0;
+    double hamming_and_top768 = 0.0;
+    double adc_and_top64 = 0.0;
+    double exact_e5_and_top10 = 0.0;
+    double total = 0.0;
+};
+
+struct EndToEndResult {
+    EndToEndTiming timing;
+    std::vector<std::uint32_t> selected_addresses;
+    std::vector<std::uint32_t> candidates;
+    std::vector<std::uint32_t> hamming;
+    std::vector<std::uint32_t> adc;
+    std::vector<std::uint32_t> exact;
+    std::string score_sha256;
+    std::size_t representatives = 0;
+};
+
+struct RoutingValues {
+    std::vector<float> scores;
+    EndToEndTiming timing;
+    std::size_t representatives = 0;
+};
+
+RoutingValues end_to_end_route(const SeedContext& seed, const MappedFile& mapped,
+                               const std::string& treatment,
+                               std::size_t request) {
+    const bool baseline = treatment == "baseline_seek_decode_scalar";
+    const bool strict = treatment == "strict_mmap_fused_scalar_batched";
+    const bool fast = treatment == "fast_mmap_fused_avx2_batched";
+    require(baseline || strict || fast, "R4 end-to-end treatment differs");
+    const auto& descriptor = layout_row(seed, "address_major_int8");
+    const auto record_bytes = descriptor.at("record_bytes").get<std::size_t>();
+    std::vector<std::size_t> starts(addresses_per_query + 1);
+    std::vector<AddressSpan> spans;
+    spans.reserve(addresses_per_query);
+    std::size_t representatives = 0;
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = seed.shortlists[request * addresses_per_query + local];
+        const auto count = static_cast<std::size_t>(seed.representative_counts[row]);
+        starts[local] = representatives * record_bytes;
+        spans.push_back({local,
+            static_cast<std::size_t>(seed.address_offsets[row]) * record_bytes,
+            count * record_bytes, starts[local]});
+        representatives += count;
+    }
+    starts[addresses_per_query] = representatives * record_bytes;
+    std::sort(spans.begin(), spans.end(), [](const auto& left, const auto& right) {
+        return left.byte_offset < right.byte_offset;
+    });
+    RoutingValues result;
+    result.representatives = representatives;
+    std::vector<std::uint8_t> staged;
+    auto begin = Clock::now();
+    if (baseline) {
+        std::ifstream stream(payload_path(seed.root, descriptor), std::ios::binary);
+        require(static_cast<bool>(stream), "R4 end-to-end baseline store open failed");
+        staged.resize(representatives * record_bytes);
+        for (const auto& span : spans) {
+            stream.seekg(static_cast<std::streamoff>(span.byte_offset));
+            stream.read(reinterpret_cast<char*>(staged.data() + span.destination),
+                        static_cast<std::streamsize>(span.byte_count));
+            require(static_cast<bool>(stream), "R4 end-to-end baseline fetch failed");
+        }
+    }
+    result.timing.representative_fetch = milliseconds(begin, Clock::now());
+    const float* query = seed.queries.data() + request * dimensions;
+    Maximums maximums;
+    if (baseline) {
+        begin = Clock::now();
+        std::vector<float> decoded(representatives * dimensions);
+        std::size_t vector = 0;
+        for (std::size_t local = 0; local != addresses_per_query; ++local) {
+            for (std::size_t offset = starts[local]; offset != starts[local + 1];
+                 offset += record_bytes, ++vector) {
+                float scale = 0.0F;
+                std::memcpy(&scale, staged.data() + offset + dimensions, sizeof(scale));
+                for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+                    decoded[vector * dimensions + dimension] = static_cast<float>(
+                        static_cast<int>(staged[offset + dimension]) - 127) * scale;
+                }
+            }
+        }
+        result.timing.representative_decode = milliseconds(begin, Clock::now());
+        begin = Clock::now();
+        maximums.values.assign(addresses_per_query,
+                               -std::numeric_limits<float>::infinity());
+        maximums.winners.assign(addresses_per_query, 0);
+        vector = 0;
+        for (std::size_t local = 0; local != addresses_per_query; ++local) {
+            const auto count = (starts[local + 1] - starts[local]) / record_bytes;
+            for (std::size_t slot = 0; slot != count; ++slot, ++vector) {
+                float score = 0.0F;
+                for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+                    score += decoded[vector * dimensions + dimension] * query[dimension];
+                if (score > maximums.values[local]) {
+                    maximums.values[local] = score;
+                    maximums.winners[local] = static_cast<std::uint8_t>(slot);
+                }
+            }
+        }
+    } else {
+        begin = Clock::now();
+        maximums.values.assign(addresses_per_query,
+                               -std::numeric_limits<float>::infinity());
+        maximums.winners.assign(addresses_per_query, 0);
+        for (const auto& span : spans) {
+            const auto count = span.byte_count / record_bytes;
+            for (std::size_t slot = 0; slot != count; ++slot) {
+                const auto* record = mapped.data() + span.byte_offset + slot * record_bytes;
+                float scale = 0.0F;
+                std::memcpy(&scale, record + dimensions, sizeof(scale));
+                const auto score = fast ? int8_dot_avx2(record, scale, query)
+                                        : int8_dot_scalar(record, scale, query);
+                if (score > maximums.values[span.local]) {
+                    maximums.values[span.local] = score;
+                    maximums.winners[span.local] = static_cast<std::uint8_t>(slot);
+                }
+            }
+        }
+    }
+    result.timing.representative_dot = milliseconds(begin, Clock::now());
+    begin = Clock::now();
+    result.scores = baseline ? address_scores(seed, request, maximums.values)
+                             : address_scores_batched_avx2(seed, request,
+                                                          maximums.values);
+    result.timing.address_score = milliseconds(begin, Clock::now());
+    return result;
+}
+
+EndToEndResult end_to_end_query(const SeedContext& seed, const MappedFile& mapped,
+                                const NativeCascadeInput& input,
+                                const agent_memory::HammingDistanceComputer& hamming,
+                                const std::string& treatment, std::size_t request,
+                                std::size_t native_query) {
+    require(request < 152 && native_query < input.query_count,
+            "R4 end-to-end query row differs");
+    EndToEndResult result;
+    const auto total_begin = Clock::now();
+    auto route = end_to_end_route(seed, mapped, treatment, request);
+    result.timing = route.timing;
+    result.representatives = route.representatives;
+    std::vector<std::uint8_t> score_bytes(route.scores.size() * sizeof(float));
+    std::memcpy(score_bytes.data(), route.scores.data(), score_bytes.size());
+    result.score_sha256 = agent_memory::sha256_bytes_hex(score_bytes);
+
+    auto begin = Clock::now();
+    std::vector<std::size_t> order(addresses_per_query);
+    std::iota(order.begin(), order.end(), 0);
+    std::sort(order.begin(), order.end(), [&](std::size_t left, std::size_t right) {
+        if (route.scores[left] != route.scores[right])
+            return route.scores[left] > route.scores[right];
+        const auto left_row = seed.shortlists[request * addresses_per_query + left];
+        const auto right_row = seed.shortlists[request * addresses_per_query + right];
+        return seed.occupied_addresses[left_row] < seed.occupied_addresses[right_row];
+    });
+    std::size_t candidate_count = 0;
+    for (const auto local : order) {
+        const auto row = seed.shortlists[request * addresses_per_query + local];
+        const auto count = static_cast<std::size_t>(seed.address_counts[row]);
+        if (candidate_count + count > 5000) break;
+        candidate_count += count;
+        result.selected_addresses.push_back(seed.occupied_addresses[row]);
+    }
+    result.timing.address_order_and_boundary = milliseconds(begin, Clock::now());
+
+    begin = Clock::now();
+    result.candidates.reserve(candidate_count);
+    for (const auto address : result.selected_addresses) {
+        const auto found = std::lower_bound(seed.occupied_addresses.begin(),
+                                            seed.occupied_addresses.end(), address);
+        require(found != seed.occupied_addresses.end() && *found == address,
+                "R4 end-to-end selected address differs");
+        const auto row = static_cast<std::size_t>(found - seed.occupied_addresses.begin());
+        const auto first = seed.address_offsets[row];
+        const auto count = seed.address_counts[row];
+        for (std::size_t offset = 0; offset != count; ++offset) {
+            const auto document = seed.physical_to_document[first + offset];
+            require(document >= 0, "R4 end-to-end physical document differs");
+            result.candidates.push_back(static_cast<std::uint32_t>(document));
+        }
+    }
+    std::sort(result.candidates.begin(), result.candidates.end());
+    result.timing.candidate_materialization = milliseconds(begin, Clock::now());
+
+    begin = Clock::now();
+    std::vector<E2eScored<std::uint16_t>> hamming_rows;
+    hamming_rows.reserve(result.candidates.size());
+    const auto* query_code = input.query_codes.data() + native_query * binary_code_words;
+    for (const auto document : result.candidates) {
+        const auto* document_code = reinterpret_cast<const std::uint64_t*>(
+            input.document_codes->data() + static_cast<std::size_t>(document) *
+                                             binary_code_bytes);
+        hamming_rows.push_back({static_cast<std::uint16_t>(
+            hamming.distance_words(document_code, query_code)), document,
+            input.document_id_rank[document]});
+    }
+    const auto hamming_count = std::min<std::size_t>(768, hamming_rows.size());
+    if (hamming_count < hamming_rows.size()) {
+        std::nth_element(hamming_rows.begin(), hamming_rows.begin() + hamming_count,
+                         hamming_rows.end(), lower_e2e_score<std::uint16_t>);
+        hamming_rows.resize(hamming_count);
+    }
+    std::sort(hamming_rows.begin(), hamming_rows.end(),
+              lower_e2e_score<std::uint16_t>);
+    for (const auto& row : hamming_rows) result.hamming.push_back(row.document);
+    result.timing.hamming_and_top768 = milliseconds(begin, Clock::now());
+
+    begin = Clock::now();
+    std::vector<E2eScored<float>> adc_rows;
+    adc_rows.reserve(result.hamming.size());
+    const auto* projection = input.query_projections.data() + native_query * 256;
+    for (const auto document : result.hamming) {
+        std::array<float, 256> components{};
+        const auto* code = input.document_codes->data() +
+                           static_cast<std::size_t>(document) * binary_code_bytes;
+        for (std::size_t bit = 0; bit != 256; ++bit) {
+            const auto symbol = (code[bit / 8] >> (bit % 8)) & 1U;
+            const auto delta = projection[bit] - input.adc_centroids[bit * 2 + symbol];
+            components[bit] = delta * delta;
+        }
+        adc_rows.push_back({static_cast<float>(pairwise_sum(components.data(),
+                                                            components.size())),
+                            document, input.document_id_rank[document]});
+    }
+    const auto adc_count = std::min<std::size_t>(64, adc_rows.size());
+    if (adc_count < adc_rows.size()) {
+        std::nth_element(adc_rows.begin(), adc_rows.begin() + adc_count,
+                         adc_rows.end(), lower_e2e_score<float>);
+        adc_rows.resize(adc_count);
+    }
+    std::sort(adc_rows.begin(), adc_rows.end(), lower_e2e_score<float>);
+    for (const auto& row : adc_rows) result.adc.push_back(row.document);
+    result.timing.adc_and_top64 = milliseconds(begin, Clock::now());
+
+    begin = Clock::now();
+    std::vector<E2eScored<float>> exact_rows;
+    exact_rows.reserve(result.adc.size());
+    const auto* query_vector = input.query_vectors.data() + native_query * dimensions;
+    for (const auto document : result.adc) {
+        std::array<float, dimensions> components{};
+        const auto* document_vector = reinterpret_cast<const float*>(
+            input.document_vectors->data() + static_cast<std::size_t>(document) *
+                                               dimensions * sizeof(float));
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+            components[dimension] = document_vector[dimension] * query_vector[dimension];
+        exact_rows.push_back({-static_cast<float>(pairwise_sum(components.data(),
+                                                               components.size())),
+                              document, input.document_id_rank[document]});
+    }
+    const auto exact_count = std::min<std::size_t>(10, exact_rows.size());
+    if (exact_count < exact_rows.size()) {
+        std::nth_element(exact_rows.begin(), exact_rows.begin() + exact_count,
+                         exact_rows.end(), lower_e2e_score<float>);
+        exact_rows.resize(exact_count);
+    }
+    std::sort(exact_rows.begin(), exact_rows.end(), lower_e2e_score<float>);
+    for (const auto& row : exact_rows) result.exact.push_back(row.document);
+    result.timing.exact_e5_and_top10 = milliseconds(begin, Clock::now());
+    result.timing.total = milliseconds(total_begin, Clock::now());
+    return result;
+}
+
+nlohmann::json end_to_end_json(const EndToEndResult& value, std::uint64_t seed,
+                               const std::string& treatment, std::size_t request,
+                               std::size_t native_query, std::size_t pass) {
+    return {{"seed", seed}, {"treatment", treatment}, {"request", request},
+        {"native_query", native_query}, {"pass", pass},
+        {"representatives_scored", value.representatives},
+        {"selected_address_count", value.selected_addresses.size()},
+        {"candidate_count", value.candidates.size()},
+        {"score_sha256", value.score_sha256},
+        {"selected_address_sha256", u32_sequence_sha256(value.selected_addresses)},
+        {"candidate_sha256", u32_sequence_sha256(value.candidates)},
+        {"hamming_sha256", u32_sequence_sha256(value.hamming)},
+        {"adc_sha256", u32_sequence_sha256(value.adc)},
+        {"exact_sha256", u32_sequence_sha256(value.exact)},
+        {"exact_documents", value.exact},
+        {"timing_ms", {
+            {"representative_fetch", value.timing.representative_fetch},
+            {"representative_decode", value.timing.representative_decode},
+            {"representative_dot", value.timing.representative_dot},
+            {"address_score", value.timing.address_score},
+            {"address_order_and_boundary", value.timing.address_order_and_boundary},
+            {"candidate_materialization", value.timing.candidate_materialization},
+            {"hamming_and_top768", value.timing.hamming_and_top768},
+            {"adc_and_top64", value.timing.adc_and_top64},
+            {"exact_e5_and_top10", value.timing.exact_e5_and_top10},
+            {"total", value.timing.total}}}};
+}
+
 float compressed_int8_dot(const std::uint8_t* record,
                           const std::string& treatment, const float* query,
                           std::size_t& consumed) {
@@ -1489,6 +1909,190 @@ void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
                                 layout, request, 0)}});
 }
 
+struct EndToEndContext {
+    SeedContext seed;
+    std::unique_ptr<MappedFile> representatives;
+};
+
+void validate_end_to_end_protocol(const nlohmann::json& protocol) {
+    require(protocol.value("schema_version", 0) == 1 &&
+            protocol.value("family", "") == "neuroute_r4_native_end_to_end_protocol",
+            "R4 end-to-end protocol identity differs");
+    require(agent_memory::sha256_file_hex(
+                protocol.at("layout_manifest").get<std::string>()) ==
+                protocol.at("activation").at("layout_manifest_sha256").get<std::string>() &&
+            agent_memory::sha256_file_hex(
+                protocol.at("native_input_manifest").get<std::string>()) ==
+                protocol.at("activation").at("native_input_manifest_sha256").get<std::string>() &&
+            agent_memory::sha256_file_hex(
+                protocol.at("document_id_rank_file").get<std::string>()) ==
+                protocol.at("document_id_rank_sha256").get<std::string>(),
+            "R4 end-to-end protocol activation differs");
+    require(protocol.at("candidate_limit").get<std::size_t>() == 5000 &&
+            protocol.at("hamming_limit").get<std::size_t>() == 768 &&
+            protocol.at("adc_limit").get<std::size_t>() == 64 &&
+            protocol.at("exact_limit").get<std::size_t>() == 10 &&
+            protocol.at("requests").size() == 76,
+            "R4 end-to-end frozen cascade differs");
+}
+
+EndToEndContext load_end_to_end_seed(const nlohmann::json& protocol,
+                                     std::uint64_t wanted_seed) {
+    const auto manifest_path = std::filesystem::path(
+        protocol.at("layout_manifest").get<std::string>());
+    const auto manifest = read_json(manifest_path);
+    const auto found = std::find_if(manifest.at("seeds").begin(),
+        manifest.at("seeds").end(), [&](const auto& row) {
+            return row.at("seed").get<std::uint64_t>() == wanted_seed;
+        });
+    require(found != manifest.at("seeds").end(), "R4 end-to-end seed differs");
+    auto seed = load_seed(manifest_path, *found);
+    const auto store = payload_path(seed.root, layout_row(seed, "address_major_int8"));
+    return {std::move(seed), std::make_unique<MappedFile>(store)};
+}
+
+std::pair<std::size_t, std::size_t> end_to_end_request(
+        const nlohmann::json& protocol, std::size_t request) {
+    const auto found = std::find_if(protocol.at("requests").begin(),
+        protocol.at("requests").end(), [&](const auto& row) {
+            return row.at("request").get<std::size_t>() == request;
+        });
+    require(found != protocol.at("requests").end(),
+            "R4 end-to-end requested query differs");
+    return {found->at("request").get<std::size_t>(),
+            found->at("native_query").get<std::size_t>()};
+}
+
+std::vector<EndToEndResult> end_to_end_batch(
+        const EndToEndContext& context, const NativeCascadeInput& input,
+        const agent_memory::HammingDistanceComputer& hamming,
+        const nlohmann::json& protocol, const std::string& treatment,
+        std::size_t workers) {
+    const auto& requests = protocol.at("requests");
+    std::vector<EndToEndResult> values(requests.size());
+    std::atomic<std::size_t> following{0};
+    std::vector<std::thread> threads;
+    std::vector<std::exception_ptr> failures(workers);
+    threads.reserve(workers);
+    for (std::size_t worker = 0; worker != workers; ++worker) {
+        threads.emplace_back([&, worker] {
+            try {
+                for (;;) {
+                    const auto index = following.fetch_add(1);
+                    if (index >= requests.size()) break;
+                    const auto request = requests.at(index).at("request").get<std::size_t>();
+                    const auto native_query = requests.at(index).at("native_query").get<std::size_t>();
+                    values[index] = end_to_end_query(context.seed,
+                        *context.representatives, input, hamming, treatment,
+                        request, native_query);
+                }
+            } catch (...) {
+                failures[worker] = std::current_exception();
+            }
+        });
+    }
+    for (auto& thread : threads) thread.join();
+    for (const auto& failure : failures) if (failure) std::rethrow_exception(failure);
+    return values;
+}
+
+void end_to_end_warm(const std::filesystem::path& protocol_path,
+                     const std::filesystem::path& output_path) {
+    const auto protocol = read_json(protocol_path);
+    validate_end_to_end_protocol(protocol);
+    const auto input = load_native_input(
+        protocol.at("native_input_manifest").get<std::string>(),
+        protocol.at("document_id_rank_file").get<std::string>());
+    const agent_memory::HammingDistanceComputer hamming(binary_code_words);
+    nlohmann::json samples = nlohmann::json::array();
+    nlohmann::json concurrency = nlohmann::json::array();
+    for (const auto& seed_value : protocol.at("seeds")) {
+        const auto seed = seed_value.get<std::uint64_t>();
+        const auto context = load_end_to_end_seed(protocol, seed);
+        for (const auto& treatment_value : protocol.at("treatments")) {
+            const auto treatment = treatment_value.get<std::string>();
+            for (std::size_t pass = 0;
+                 pass != protocol.at("warmup_passes").get<std::size_t>(); ++pass) {
+                static_cast<void>(end_to_end_batch(context, input, hamming,
+                                                   protocol, treatment, 1));
+            }
+            for (std::size_t pass = 0;
+                 pass != protocol.at("measured_passes").get<std::size_t>(); ++pass) {
+                const auto values = end_to_end_batch(context, input, hamming,
+                                                     protocol, treatment, 1);
+                for (std::size_t index = 0; index != values.size(); ++index) {
+                    const auto request = protocol.at("requests").at(index)
+                        .at("request").get<std::size_t>();
+                    const auto native_query = protocol.at("requests").at(index)
+                        .at("native_query").get<std::size_t>();
+                    samples.push_back(end_to_end_json(values[index], seed, treatment,
+                                                      request, native_query, pass));
+                }
+            }
+        }
+        for (const auto& treatment_value : protocol.at("concurrency_treatments")) {
+            const auto treatment = treatment_value.get<std::string>();
+            for (const auto worker_value : protocol.at("workers")) {
+                const auto workers = worker_value.get<std::size_t>();
+                static_cast<void>(end_to_end_batch(context, input, hamming,
+                                                   protocol, treatment, workers));
+                for (std::size_t pass = 0;
+                     pass != protocol.at("concurrency_passes").get<std::size_t>(); ++pass) {
+                    const auto begin = Clock::now();
+                    const auto values = end_to_end_batch(context, input, hamming,
+                                                         protocol, treatment, workers);
+                    const auto wall_ms = milliseconds(begin, Clock::now());
+                    std::vector<double> query_ms;
+                    std::vector<std::uint8_t> exact_digest;
+                    query_ms.reserve(values.size());
+                    for (std::size_t index = 0; index != values.size(); ++index) {
+                        query_ms.push_back(values[index].timing.total);
+                        const auto digest = u32_sequence_sha256(values[index].exact);
+                        exact_digest.insert(exact_digest.end(), digest.begin(), digest.end());
+                    }
+                    concurrency.push_back({{"seed", seed}, {"treatment", treatment},
+                        {"workers", workers}, {"pass", pass},
+                        {"query_count", values.size()}, {"wall_ms", wall_ms},
+                        {"throughput_queries_per_second",
+                            1000.0 * static_cast<double>(values.size()) / wall_ms},
+                        {"per_query_total_ms", query_ms},
+                        {"exact_batch_sha256",
+                            agent_memory::sha256_bytes_hex(exact_digest)}});
+                }
+            }
+        }
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_native_end_to_end_warm_samples"},
+        {"protocol_sha256", agent_memory::sha256_file_hex(protocol_path)},
+        {"hamming_backend", agent_memory::hamming_distance_backend_name(
+            hamming.backend())}, {"samples", samples},
+        {"concurrency_samples", concurrency}});
+}
+
+void end_to_end_cold(const std::filesystem::path& protocol_path,
+                     std::uint64_t seed, const std::string& treatment,
+                     std::size_t request,
+                     const std::filesystem::path& output_path) {
+    const auto protocol = read_json(protocol_path);
+    validate_end_to_end_protocol(protocol);
+    const auto [local_request, native_query] = end_to_end_request(protocol, request);
+    const auto input = load_native_input(
+        protocol.at("native_input_manifest").get<std::string>(),
+        protocol.at("document_id_rank_file").get<std::string>());
+    const auto context = load_end_to_end_seed(protocol, seed);
+    const agent_memory::HammingDistanceComputer hamming(binary_code_words);
+    const auto value = end_to_end_query(context.seed, *context.representatives,
+                                        input, hamming, treatment, local_request,
+                                        native_query);
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_native_end_to_end_process_cold_sample"},
+        {"definition", "fresh_process_first_query_os_page_cache_uncontrolled"},
+        {"protocol_sha256", agent_memory::sha256_file_hex(protocol_path)},
+        {"sample", end_to_end_json(value, seed, treatment, local_request,
+                                    native_query, 0)}});
+}
+
 void self_test() {
     require(std::tanh(0.0F) == 0.0F, "R4 layout math self-test differs");
     std::array<std::uint8_t, dimensions> codes{};
@@ -1543,6 +2147,11 @@ int main(int argc, char** argv) {
                              std::stoull(argv[6]), argv[7]);
         else if (argc == 7 && std::string(argv[1]) == "--cold")
             cold(argv[2], std::stoull(argv[3]), argv[4], std::stoull(argv[5]), argv[6]);
+        else if (argc == 4 && std::string(argv[1]) == "--end-to-end-warm")
+            end_to_end_warm(argv[2], argv[3]);
+        else if (argc == 7 && std::string(argv[1]) == "--end-to-end-cold")
+            end_to_end_cold(argv[2], std::stoull(argv[3]), argv[4],
+                            std::stoull(argv[5]), argv[6]);
         else throw std::runtime_error("usage: --self-test | --compress-pack RAW COUNTS ROWS FIXED FOR FOR_OFFSETS ZIGZAG ZIGZAG_OFFSETS RECEIPT | --compression-warm MANIFEST COMPRESSION_MANIFEST OUTPUT | --compression-cold MANIFEST COMPRESSION_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
         return 0;
     } catch (const std::exception& error) {
