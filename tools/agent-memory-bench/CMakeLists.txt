@@ -490,14 +490,20 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
     endif()
 endif()
 target_compile_definitions(agent-memory-neuroute-r4-layout-benchmark PRIVATE
-    AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2})
+    AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2}
+    AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP=${AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP})
 target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
     agent_memory::agent_memory agent_memory::json)
+if(TARGET agent_memory_neuroute_simdcomp)
+    target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
+        agent_memory_neuroute_simdcomp)
+endif()
 if(WIN32)
     target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE Psapi)
 endif()
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-layout-benchmark
-    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_layout_benchmark.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_layout_benchmark.cpp"
+    ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-layout-benchmark)
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-representation
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_representation.cpp"
