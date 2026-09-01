@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_k32_physical_codec_frontier",
+  "activation": {
+    "scalar_codec_contract_sha256": "fc314e8ed95ff9e3b9bdeeff7839cea630e069ba7d7e2eb7087ddfa628be6360",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "r4_protocol_sha256": "a1e1d5c050be2ba9f94e88ecc07286cac8dc3cd23738c9b4adb13dbd4061e189"
+  },
+  "treatments": [
+    "k32_fp32",
+    "int8",
+    "nonlinear_int5_power_half",
+    "k32_int4_uniform",
+    "k32_int4_power_625"
+  ],
+  "resident_workers": [1, 8, 16],
+  "pressure": {
+    "workers": 8,
+    "caps_mib": [256, 320]
+  },
+  "timing": {
+    "trace_repetitions": 1,
+    "warmup_batches": 1,
+    "measured_batches": 2
+  },
+  "quality_gates": {
+    "maximum_mean_ndcg_loss": 0.004,
+    "maximum_every_seed_mean_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_candidate_reference_retention": 0.99,
+    "minimum_mean_hamming_reference_overlap": 0.98,
+    "minimum_mean_adc_reference_overlap": 0.95
+  },
+  "decision": {
+    "selection": "quality_passing_pareto_latency_and_bytes",
+    "production_licensed": false,
+    "reason": "internal_partition_was_previously_opened"
+  }
+}

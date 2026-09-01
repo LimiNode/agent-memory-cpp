@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <condition_variable>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -16,6 +17,7 @@
 #include <iostream>
 #include <limits>
 #include <memory>
+#include <mutex>
 #include <numeric>
 #include <optional>
 #include <random>
@@ -293,8 +295,8 @@ struct Maximums {
     std::vector<std::uint8_t> winners;
 };
 
-float int8_dot_scalar(const std::uint8_t* codes, float scale,
-                      const float* query) {
+float int8_dot_scalar_ordered(const std::uint8_t* codes, float scale,
+                              const float* query) {
     float score = 0.0F;
     for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
         const float decoded = static_cast<float>(
@@ -302,6 +304,16 @@ float int8_dot_scalar(const std::uint8_t* codes, float scale,
         score += decoded * query[dimension];
     }
     return score;
+}
+
+float int8_dot_scalar(const std::uint8_t* codes, float scale,
+                      const float* query) {
+    float score = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        score += static_cast<float>(static_cast<int>(codes[dimension]) - 127) *
+                 query[dimension];
+    }
+    return score * scale;
 }
 
 float fp32_dot_fast(const float* values, const float* query) {
@@ -343,7 +355,6 @@ float int8_dot_avx2(const std::uint8_t* codes, float scale,
                     const float* query) {
 #if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
     const auto offset = _mm256_set1_epi32(127);
-    const auto scale8 = _mm256_set1_ps(scale);
     __m256 sum0 = _mm256_setzero_ps();
     __m256 sum1 = _mm256_setzero_ps();
     __m256 sum2 = _mm256_setzero_ps();
@@ -356,16 +367,16 @@ float int8_dot_avx2(const std::uint8_t* codes, float scale,
                 _mm256_cvtepu8_epi32(bytes), offset));
         };
         sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(
-            _mm256_mul_ps(load(0), scale8),
+            load(0),
             _mm256_loadu_ps(query + dimension)));
         sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(
-            _mm256_mul_ps(load(8), scale8),
+            load(8),
             _mm256_loadu_ps(query + dimension + 8)));
         sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(
-            _mm256_mul_ps(load(16), scale8),
+            load(16),
             _mm256_loadu_ps(query + dimension + 16)));
         sum3 = _mm256_add_ps(sum3, _mm256_mul_ps(
-            _mm256_mul_ps(load(24), scale8),
+            load(24),
             _mm256_loadu_ps(query + dimension + 24)));
     }
     const auto sum = _mm256_add_ps(_mm256_add_ps(sum0, sum1),
@@ -374,7 +385,7 @@ float int8_dot_avx2(const std::uint8_t* codes, float scale,
     _mm256_store_ps(lanes.data(), sum);
     float result = 0.0F;
     for (const auto value : lanes) result += value;
-    return result;
+    return result * scale;
 #else
     return int8_dot_scalar(codes, scale, query);
 #endif
@@ -399,7 +410,7 @@ float int8_dot_avx2_ordered(const std::uint8_t* codes, float scale,
     }
     return result;
 #else
-    return int8_dot_scalar(codes, scale, query);
+    return int8_dot_scalar_ordered(codes, scale, query);
 #endif
 }
 
@@ -1081,7 +1092,7 @@ void simdcomp_pack_block(const std::uint32_t* values, unsigned bits,
     throw std::runtime_error("R4 INT8 compression requires SIMDComp");
 #else
     if (bits == 0) return;
-    alignas(16) std::array<__m128i, 8> packed;
+    alignas(16) std::array<__m128i, 12> packed;
     simdpackwithoutmask(values, packed.data(), bits);
     output.write(reinterpret_cast<const char*>(packed.data()),
                  static_cast<std::streamsize>(bits * 16U));
@@ -1101,7 +1112,7 @@ void simdcomp_unpack_block(const std::uint8_t* bytes, unsigned bits,
         std::fill_n(output, 128, 0U);
         return;
     }
-    alignas(16) std::array<__m128i, 8> packed;
+    alignas(16) std::array<__m128i, 12> packed;
     std::memcpy(packed.data(), bytes, bits * 16U);
     simdunpack(packed.data(), output, bits);
 #endif
@@ -2068,6 +2079,9 @@ struct EndToEndResult {
     std::uint64_t coarse_logical_bytes = 0;
     std::size_t coarse_shortlist_overlap = 0;
     bool coarse_shortlist_sequence_matches = false;
+    float coarse_cutoff_score = 0.0F;
+    float coarse_next_score = 0.0F;
+    float coarse_cutoff_margin = 0.0F;
     std::size_t representatives = 0;
     std::uint64_t logical_bytes = 0;
     std::size_t final_documents = 0;
@@ -2526,6 +2540,9 @@ nlohmann::json end_to_end_json(const EndToEndResult& value, std::uint64_t seed,
         {"coarse_shortlist_overlap", value.coarse_shortlist_overlap},
         {"coarse_shortlist_sequence_matches",
             value.coarse_shortlist_sequence_matches},
+        {"coarse_cutoff_score", value.coarse_cutoff_score},
+        {"coarse_next_score", value.coarse_next_score},
+        {"coarse_cutoff_margin", value.coarse_cutoff_margin},
         {"logical_bytes_touched", value.logical_bytes},
         {"final_documents_scored", value.final_documents},
         {"final_logical_bytes_touched", value.final_logical_bytes},
@@ -2559,8 +2576,11 @@ nlohmann::json end_to_end_json(const EndToEndResult& value, std::uint64_t seed,
             {"final_top10", value.timing.final_top10},
             {"exact_e5_and_top10", value.timing.exact_e5_and_top10},
             {"total", value.timing.total}}}};
-    if (include_candidate_documents)
+    if (include_candidate_documents) {
         result["candidate_documents"] = value.candidates;
+        result["hamming_documents"] = value.hamming;
+        result["adc_documents"] = value.adc;
+    }
     return result;
 }
 
@@ -3580,6 +3600,21 @@ struct Int5IntegrationContext {
 struct CoarseK8Input {
     std::unique_ptr<MappedFile> prototypes;
     std::vector<std::uint64_t> record_offsets;
+    std::string treatment = "fp32";
+    std::string kind = "fp32";
+    std::string compander = "uniform";
+    std::string packing = "byte_linear";
+    std::string addressing = "effective_prefix";
+    float compander_parameter = 0.0F;
+    unsigned bits = 32;
+    std::size_t prototype_limit = 8;
+    std::size_t record_bytes = dimensions * sizeof(float);
+    std::vector<float> decode_table;
+    std::vector<std::int16_t> decode_table_int16;
+    std::vector<std::int8_t> decode_table_int8;
+    alignas(16) std::array<std::uint8_t, 16> decode_low_bytes{};
+    alignas(16) std::array<std::uint8_t, 16> decode_high_bytes{};
+    std::string query_arithmetic = "fp32";
     std::string sha256;
     std::uint64_t bytes = 0;
 };
@@ -3591,15 +3626,23 @@ struct CoarseK8Result {
     double order_and_features_ms = 0.0;
     std::size_t frozen_shortlist_overlap = 0;
     bool frozen_shortlist_sequence_matches = false;
+    float cutoff_score = 0.0F;
+    float next_score = 0.0F;
+    float cutoff_margin = 0.0F;
+    std::uint64_t logical_bytes = 0;
 };
 
 CoarseK8Input load_coarse_k8_input(
         const std::filesystem::path& manifest_path,
-        const SeedContext& seed) {
+        const SeedContext& seed,
+        const std::string& treatment = "fp32",
+        const std::string& query_arithmetic = "fp32") {
     const auto manifest = read_json(manifest_path);
+    const auto family = manifest.value("family", "");
     require(manifest.value("schema_version", 0) == 1 &&
-            manifest.value("family", "") ==
-                "neuroute_current_k8_physical_materialization",
+            (family == "neuroute_current_k8_physical_materialization" ||
+             family == "neuroute_k8_codec_materialization" ||
+             family == "neuroute_k32_codec_materialization"),
             "R4 coarse K8 manifest differs");
     const auto found = std::find_if(manifest.at("seeds").begin(),
         manifest.at("seeds").end(), [&](const nlohmann::json& row) {
@@ -3608,34 +3651,472 @@ CoarseK8Input load_coarse_k8_input(
     require(found != manifest.at("seeds").end() &&
             found->at("occupied_addresses").get<std::size_t>() ==
                 seed.occupied_addresses.size() &&
-            found->at("slots").get<std::size_t>() == 8 &&
-            found->at("dimensions").get<std::size_t>() == dimensions &&
-            found->at("record_bytes").get<std::size_t>() ==
-                dimensions * sizeof(float) &&
-            found->at("layout").get<std::string>() ==
-                "address_major_effective_prefix_fp32le",
+            found->at("dimensions").get<std::size_t>() == dimensions,
             "R4 coarse K8 seed descriptor differs");
+    nlohmann::json representation;
+    std::size_t prototype_limit = 8;
+    if (family == "neuroute_current_k8_physical_materialization") {
+        require(treatment == "fp32" && found->at("slots").get<std::size_t>() == 8 &&
+                found->at("record_bytes").get<std::size_t>() ==
+                    dimensions * sizeof(float) &&
+                found->at("layout").get<std::string>() ==
+                    "address_major_effective_prefix_fp32le",
+                "R4 legacy coarse K8 treatment differs");
+        representation = {{"id", "fp32"}, {"kind", "fp32"},
+            {"record_bytes", dimensions * sizeof(float)},
+            {"path", found->at("path")}, {"bytes", found->at("bytes")},
+            {"sha256", found->at("sha256")}};
+    } else {
+        prototype_limit = found->at("prototype_limit").get<std::size_t>();
+        require((family == "neuroute_k32_codec_materialization" &&
+                    prototype_limit == 32) ||
+                (family == "neuroute_k8_codec_materialization" &&
+                    (prototype_limit == 1 || prototype_limit == 2 ||
+                     prototype_limit == 4 || prototype_limit == 8)),
+                "R4 coarse prototype limit differs");
+        const auto row = std::find_if(found->at("representations").begin(),
+            found->at("representations").end(), [&](const nlohmann::json& value) {
+                return value.at("id").get<std::string>() == treatment;
+            });
+        require(row != found->at("representations").end(),
+                "R4 coarse codec treatment is absent");
+        representation = *row;
+    }
     const auto path = std::filesystem::path(
-        found->at("path").get<std::string>());
-    const auto bytes = found->at("bytes").get<std::uint64_t>();
-    const auto digest = found->at("sha256").get<std::string>();
+        representation.at("path").get<std::string>());
+    const auto bytes = representation.at("bytes").get<std::uint64_t>();
+    const auto digest = representation.at("sha256").get<std::string>();
     require(path.is_absolute() && std::filesystem::file_size(path) == bytes &&
             agent_memory::sha256_file_hex(path) == digest,
             "R4 coarse K8 physical payload differs");
     CoarseK8Input result;
-    result.record_offsets.resize(seed.address_counts.size() + 1);
-    for (std::size_t row = 0; row != seed.address_counts.size(); ++row) {
-        result.record_offsets[row + 1] = result.record_offsets[row] +
-            std::min<std::uint32_t>(seed.address_counts[row], 8U);
+    result.treatment = treatment;
+    result.query_arithmetic = query_arithmetic;
+    result.kind = representation.at("kind").get<std::string>();
+    result.addressing = representation.value("addressing",
+                                              std::string("effective_prefix"));
+    result.prototype_limit = prototype_limit;
+    result.record_bytes = representation.at("record_bytes").get<std::size_t>();
+    if (result.kind == "integer") {
+        result.bits = representation.at("bits").get<unsigned>();
+        result.packing = representation.value("packing",
+            result.bits == 8 ? std::string("byte_linear") :
+                               std::string("simdcomp_bp128"));
+        result.compander = representation.at("compander").at("kind").get<std::string>();
+        result.compander_parameter = representation.at("compander").at(
+            "parameter").get<float>();
+        require(result.bits >= 4 && result.bits <= 12 &&
+                result.record_bytes == dimensions * result.bits / 8U +
+                    sizeof(float),
+                "R4 coarse integer descriptor differs");
+        const auto maximum = static_cast<int>((1U << (result.bits - 1U)) - 1U);
+        result.decode_table.resize(1U << result.bits, 0.0F);
+        result.decode_table_int16.resize(1U << result.bits, 0);
+        result.decode_table_int8.resize(1U << result.bits, 0);
+        for (int code = 0; code <= 2 * maximum; ++code) {
+            const auto signed_code = code - maximum;
+            const auto magnitude = static_cast<float>(std::abs(signed_code)) /
+                static_cast<float>(maximum);
+            float decoded = magnitude;
+            if (result.compander == "power") {
+                decoded = std::pow(magnitude, 1.0F / result.compander_parameter);
+            } else if (result.compander == "mulaw") {
+                decoded = std::expm1(magnitude * std::log1p(
+                    result.compander_parameter)) / result.compander_parameter;
+            } else require(result.compander == "uniform",
+                           "R4 coarse compander differs");
+            result.decode_table[static_cast<std::size_t>(code)] =
+                std::copysign(decoded, static_cast<float>(signed_code));
+            result.decode_table_int16[static_cast<std::size_t>(code)] =
+                static_cast<std::int16_t>(std::lround(
+                    result.decode_table[static_cast<std::size_t>(code)] *
+                    32767.0F));
+            result.decode_table_int8[static_cast<std::size_t>(code)] =
+                static_cast<std::int8_t>(std::lround(
+                    result.decode_table[static_cast<std::size_t>(code)] *
+                    127.0F));
+            if (code < 16) {
+                const auto value = static_cast<std::uint16_t>(
+                    result.decode_table_int16[static_cast<std::size_t>(code)]);
+                result.decode_low_bytes[static_cast<std::size_t>(code)] =
+                    static_cast<std::uint8_t>(value & 0xffU);
+                result.decode_high_bytes[static_cast<std::size_t>(code)] =
+                    static_cast<std::uint8_t>(value >> 8U);
+            }
+        }
+    } else {
+        require((result.kind == "fp32" && result.record_bytes ==
+                    dimensions * sizeof(float)) ||
+                (result.kind == "fp16" && result.record_bytes ==
+                    dimensions * sizeof(std::uint16_t)),
+                "R4 coarse floating descriptor differs");
     }
-    require(result.record_offsets.back() ==
+    require(result.query_arithmetic == "fp32" ||
+            ((result.query_arithmetic == "int16" ||
+              result.query_arithmetic == "int8") &&
+             result.kind == "integer"),
+            "R4 coarse query arithmetic differs");
+    result.record_offsets.resize(seed.address_counts.size() + 1);
+    std::uint64_t active_prototypes = 0;
+    if (family == "neuroute_k32_codec_materialization" &&
+        result.addressing == "full_address_prefix") {
+        for (std::size_t row = 0; row != seed.address_counts.size(); ++row) {
+            result.record_offsets[row] = seed.address_offsets[row];
+            active_prototypes += seed.representative_counts[row];
+        }
+        result.record_offsets.back() = seed.address_offsets.back() +
+            seed.address_counts.back();
+    } else {
+        require(family != "neuroute_k32_codec_materialization" ||
+                result.addressing == "representative_side_store",
+                "R4 K32 codec addressing differs");
+        for (std::size_t row = 0; row != seed.address_counts.size(); ++row) {
+            const auto count = family == "neuroute_k32_codec_materialization"
+                ? static_cast<std::uint32_t>(seed.representative_counts[row])
+                : std::min<std::uint32_t>(seed.address_counts[row],
+                    static_cast<std::uint32_t>(prototype_limit));
+            result.record_offsets[row + 1] = result.record_offsets[row] + count;
+            active_prototypes += count;
+        }
+    }
+    require(active_prototypes ==
                 found->at("active_prototypes").get<std::uint64_t>() &&
-            result.record_offsets.back() * dimensions * sizeof(float) == bytes,
-            "R4 coarse K8 record count differs");
+            result.record_offsets.back() * result.record_bytes == bytes,
+            "R4 scalar codec record count differs");
     result.prototypes = std::make_unique<MappedFile>(path);
     result.sha256 = digest;
     result.bytes = bytes;
     return result;
+}
+
+float coarse_half_to_float(std::uint16_t value) {
+    const auto sign = static_cast<std::uint32_t>(value & 0x8000U) << 16U;
+    auto exponent = static_cast<std::uint32_t>((value >> 10U) & 0x1fU);
+    auto mantissa = static_cast<std::uint32_t>(value & 0x03ffU);
+    std::uint32_t bits = 0;
+    if (exponent == 0U) {
+        if (mantissa == 0U) bits = sign;
+        else {
+            exponent = 127U - 15U + 1U;
+            while ((mantissa & 0x0400U) == 0U) {
+                mantissa <<= 1U;
+                --exponent;
+            }
+            mantissa &= 0x03ffU;
+            bits = sign | (exponent << 23U) | (mantissa << 13U);
+        }
+    } else if (exponent == 0x1fU) {
+        bits = sign | 0x7f800000U | (mantissa << 13U);
+    } else {
+        bits = sign | ((exponent + (127U - 15U)) << 23U) |
+            (mantissa << 13U);
+    }
+    float result = 0.0F;
+    std::memcpy(&result, &bits, sizeof(result));
+    return result;
+}
+
+float coarse_int8_query_int16_dot(const std::uint8_t* codes,
+                                  const std::int16_t* query,
+                                  float scale) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto center = _mm256_set1_epi16(127);
+    __m256i sum = _mm256_setzero_si256();
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 16) {
+        const auto bytes = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+            codes + dimension));
+        const auto documents = _mm256_sub_epi16(
+            _mm256_cvtepu8_epi16(bytes), center);
+        const auto queries = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(query + dimension));
+        sum = _mm256_add_epi32(sum, _mm256_madd_epi16(documents, queries));
+    }
+    auto reduced = _mm_add_epi32(_mm256_castsi256_si128(sum),
+                                 _mm256_extracti128_si256(sum, 1));
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    return static_cast<float>(_mm_cvtsi128_si32(reduced)) * scale;
+#else
+    std::int64_t total = 0;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+        total += (static_cast<int>(codes[dimension]) - 127) *
+            static_cast<int>(query[dimension]);
+    return static_cast<float>(total) * scale;
+#endif
+}
+
+float coarse_signed_int8_query_int8_dot(const std::int8_t* documents,
+                                        const std::int8_t* query,
+                                        float scale) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto ones = _mm256_set1_epi16(1);
+    __m256i sum = _mm256_setzero_si256();
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 32) {
+        const auto document = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(documents + dimension));
+        const auto query_value = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(query + dimension));
+        const auto magnitudes = _mm256_abs_epi8(document);
+        const auto signed_query = _mm256_sign_epi8(query_value, document);
+        const auto pairs = _mm256_maddubs_epi16(magnitudes, signed_query);
+        sum = _mm256_add_epi32(sum, _mm256_madd_epi16(pairs, ones));
+    }
+    auto reduced = _mm_add_epi32(_mm256_castsi256_si128(sum),
+                                 _mm256_extracti128_si256(sum, 1));
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    return static_cast<float>(_mm_cvtsi128_si32(reduced)) * scale;
+#else
+    std::int64_t total = 0;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+        total += static_cast<int>(documents[dimension]) *
+            static_cast<int>(query[dimension]);
+    return static_cast<float>(total) * scale;
+#endif
+}
+
+float coarse_int8_query_int8_dot(const std::uint8_t* codes,
+                                 const std::int8_t* query,
+                                 float scale) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto center = _mm256_set1_epi8(127);
+    const auto ones = _mm256_set1_epi16(1);
+    __m256i sum = _mm256_setzero_si256();
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 32) {
+        const auto values = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(codes + dimension));
+        const auto documents = _mm256_sub_epi8(values, center);
+        const auto query_value = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(query + dimension));
+        const auto pairs = _mm256_maddubs_epi16(
+            _mm256_abs_epi8(documents),
+            _mm256_sign_epi8(query_value, documents));
+        sum = _mm256_add_epi32(sum, _mm256_madd_epi16(pairs, ones));
+    }
+    auto reduced = _mm_add_epi32(_mm256_castsi256_si128(sum),
+                                 _mm256_extracti128_si256(sum, 1));
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    const auto total = _mm_cvtsi128_si32(reduced);
+    return static_cast<float>(total) * scale;
+#else
+    std::int64_t total = 0;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+        total += (static_cast<int>(codes[dimension]) - 127) *
+            static_cast<int>(query[dimension]);
+    return static_cast<float>(total) * scale;
+#endif
+}
+
+float coarse_int4_query_int16_dot(const CoarseK8Input& input,
+                                  const std::uint8_t* packed,
+                                  const std::int16_t* query,
+                                  float amplitude,
+                                  float query_scale) {
+    if (input.compander != "uniform") {
+        std::int64_t total = 0;
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+            const auto byte = packed[dimension / 2];
+            const auto code = static_cast<std::size_t>(
+                dimension % 2 == 0 ? byte & 0x0fU : byte >> 4U);
+            total += static_cast<std::int64_t>(input.decode_table_int16[code]) *
+                query[dimension];
+        }
+        return static_cast<float>(total) * amplitude * query_scale / 32767.0F;
+    }
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto nibble = _mm_set1_epi8(0x0f);
+    __m256i sum = _mm256_setzero_si256();
+    const auto center = _mm_set1_epi8(7);
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 32) {
+        const auto bytes = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+            packed + dimension / 2));
+        const auto low = _mm_and_si128(bytes, nibble);
+        const auto high = _mm_and_si128(_mm_srli_epi16(bytes, 4), nibble);
+        const auto codes0 = _mm_unpacklo_epi8(low, high);
+        const auto codes1 = _mm_unpackhi_epi8(low, high);
+        const auto decode = [&](const __m128i codes) {
+            return _mm256_cvtepi8_epi16(_mm_sub_epi8(codes, center));
+        };
+        const auto values0 = decode(codes0);
+        const auto values1 = decode(codes1);
+        const auto query0 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+            query + dimension));
+        const auto query1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+            query + dimension + 16));
+        sum = _mm256_add_epi32(sum, _mm256_madd_epi16(values0, query0));
+        sum = _mm256_add_epi32(sum, _mm256_madd_epi16(values1, query1));
+    }
+    auto reduced = _mm_add_epi32(_mm256_castsi256_si128(sum),
+                                 _mm256_extracti128_si256(sum, 1));
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    const auto total = _mm_cvtsi128_si32(reduced);
+    return static_cast<float>(total) * amplitude * query_scale / 7.0F;
+#else
+    std::int64_t total = 0;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const auto byte = packed[dimension / 2];
+        const auto code = static_cast<std::size_t>(
+            dimension % 2 == 0 ? byte & 0x0fU : byte >> 4U);
+        const auto value = static_cast<std::int16_t>(
+            static_cast<int>(code) - 7);
+        total += static_cast<std::int32_t>(value) * query[dimension];
+    }
+    return static_cast<float>(total) * amplitude * query_scale / 7.0F;
+#endif
+}
+
+float coarse_int4_query_int8_dot(const CoarseK8Input& input,
+                                 const std::uint8_t* packed,
+                                 const std::int8_t* query,
+                                 float amplitude,
+                                 float query_scale) {
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto nibble = _mm_set1_epi8(0x0f);
+    alignas(16) std::array<std::int8_t, 16> table{};
+    std::copy_n(input.decode_table_int8.begin(), 16, table.begin());
+    const auto lut = _mm_load_si128(reinterpret_cast<const __m128i*>(
+        table.data()));
+    const auto center = _mm_set1_epi8(7);
+    const auto ones = _mm256_set1_epi16(1);
+    __m256i sum = _mm256_setzero_si256();
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 32) {
+        const auto bytes = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+            packed + dimension / 2));
+        const auto low = _mm_and_si128(bytes, nibble);
+        const auto high = _mm_and_si128(_mm_srli_epi16(bytes, 4), nibble);
+        auto codes0 = _mm_unpacklo_epi8(low, high);
+        auto codes1 = _mm_unpackhi_epi8(low, high);
+        if (input.compander == "uniform") {
+            codes0 = _mm_sub_epi8(codes0, center);
+            codes1 = _mm_sub_epi8(codes1, center);
+        } else {
+            codes0 = _mm_shuffle_epi8(lut, codes0);
+            codes1 = _mm_shuffle_epi8(lut, codes1);
+        }
+        const auto documents = _mm256_inserti128_si256(
+            _mm256_castsi128_si256(codes0), codes1, 1);
+        const auto query_value = _mm256_loadu_si256(
+            reinterpret_cast<const __m256i*>(query + dimension));
+        const auto pairs = _mm256_maddubs_epi16(
+            _mm256_abs_epi8(documents),
+            _mm256_sign_epi8(query_value, documents));
+        sum = _mm256_add_epi32(sum, _mm256_madd_epi16(pairs, ones));
+    }
+    auto reduced = _mm_add_epi32(_mm256_castsi256_si128(sum),
+                                 _mm256_extracti128_si256(sum, 1));
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    reduced = _mm_hadd_epi32(reduced, reduced);
+    const auto total = _mm_cvtsi128_si32(reduced);
+#else
+    std::int64_t total = 0;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const auto byte = packed[dimension / 2];
+        const auto code = static_cast<std::size_t>(
+            dimension % 2 == 0 ? byte & 0x0fU : byte >> 4U);
+        const auto document = input.compander == "uniform"
+            ? static_cast<std::int8_t>(static_cast<int>(code) - 7)
+            : input.decode_table_int8[code];
+        total += static_cast<int>(document) * static_cast<int>(query[dimension]);
+    }
+#endif
+    const auto denominator = input.compander == "uniform" ? 7.0F : 127.0F;
+    return static_cast<float>(total) * amplitude * query_scale / denominator;
+}
+
+float coarse_codec_dot(const CoarseK8Input& input, const std::uint8_t* record,
+                       const float* query, const std::int16_t* query_int16,
+                       float query_int16_scale, const std::int8_t* query_int8,
+                       float query_int8_scale,
+                       std::array<std::uint32_t, dimensions>& unpacked) {
+    if (input.kind == "fp32")
+        return fp32_dot_fast(reinterpret_cast<const float*>(record), query);
+    if (input.kind == "fp16") {
+        float result = 0.0F;
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+            std::uint16_t half = 0;
+            std::memcpy(&half, record + dimension * sizeof(half), sizeof(half));
+            result += coarse_half_to_float(half) * query[dimension];
+        }
+        return result;
+    }
+    require(input.kind == "integer", "R4 coarse codec kind differs");
+    const auto packed_bytes = dimensions * input.bits / 8U;
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + packed_bytes, sizeof(amplitude));
+    if (input.bits == 4 && input.packing == "nibble_linear") {
+        if (input.query_arithmetic == "int8")
+            return coarse_int4_query_int8_dot(input, record, query_int8,
+                                              amplitude, query_int8_scale);
+        if (input.query_arithmetic == "int16")
+            return coarse_int4_query_int16_dot(input, record, query_int16,
+                                               amplitude, query_int16_scale);
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+            const auto byte = record[dimension / 2];
+            unpacked[dimension] = dimension % 2 == 0
+                ? byte & 0x0fU : byte >> 4U;
+        }
+    } else if (input.bits == 8) {
+        if (input.query_arithmetic == "int8" &&
+            input.compander == "uniform")
+            return coarse_int8_query_int8_dot(record, query_int8,
+                amplitude / 127.0F * query_int8_scale);
+        if (input.query_arithmetic == "int16" &&
+            input.compander == "uniform")
+            return coarse_int8_query_int16_dot(record, query_int16,
+                amplitude / 127.0F * query_int16_scale);
+        if (input.compander == "uniform")
+            return int8_dot_avx2(record, amplitude / 127.0F, query);
+        std::copy_n(record, dimensions, unpacked.begin());
+    } else {
+        for (std::size_t block = 0; block != 3; ++block)
+            simdcomp_unpack_block(record + block * input.bits * 16U,
+                                  input.bits,
+                                  unpacked.data() + block * 128U);
+    }
+    if (input.query_arithmetic == "int8") {
+        std::int64_t total = 0;
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+            total += static_cast<std::int64_t>(
+                input.decode_table_int8[unpacked[dimension]]) *
+                query_int8[dimension];
+        return static_cast<float>(total) * amplitude * query_int8_scale /
+            127.0F;
+    }
+    if (input.query_arithmetic == "int16") {
+        std::int64_t total = 0;
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+            total += static_cast<std::int64_t>(
+                input.decode_table_int16[unpacked[dimension]]) *
+                query_int16[dimension];
+        return static_cast<float>(total) * amplitude * query_int16_scale /
+            32767.0F;
+    }
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    for (std::size_t dimension = 0; dimension != dimensions; dimension += 16) {
+        const auto code0 = _mm256_load_si256(reinterpret_cast<const __m256i*>(
+            unpacked.data() + dimension));
+        const auto code1 = _mm256_load_si256(reinterpret_cast<const __m256i*>(
+            unpacked.data() + dimension + 8));
+        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(
+            _mm256_i32gather_ps(input.decode_table.data(), code0, 4),
+            _mm256_loadu_ps(query + dimension)));
+        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(
+            _mm256_i32gather_ps(input.decode_table.data(), code1, 4),
+            _mm256_loadu_ps(query + dimension + 8)));
+    }
+    alignas(32) std::array<float, 8> lanes{};
+    _mm256_store_ps(lanes.data(), _mm256_add_ps(sum0, sum1));
+    return std::accumulate(lanes.begin(), lanes.end(), 0.0F) * amplitude;
+#else
+    float result = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+        result += input.decode_table[unpacked[dimension]] * query[dimension];
+    return result * amplitude;
+#endif
 }
 
 CoarseK8Result coarse_k8_query(const SeedContext& seed,
@@ -3645,44 +4126,82 @@ CoarseK8Result coarse_k8_query(const SeedContext& seed,
                 seed.address_counts.size() + 1,
             "R4 coarse K8 request differs");
     const auto* query = seed.queries.data() + request * dimensions;
-    std::vector<float> cosines(seed.address_counts.size() * 8U, -1.0F);
-    std::vector<float> maximums(seed.address_counts.size(),
-        -std::numeric_limits<float>::infinity());
+    std::array<std::int16_t, dimensions> query_int16{};
+    std::array<std::int8_t, dimensions> query_int8{};
+    float query_int16_scale = 1.0F;
+    float query_int8_scale = 1.0F;
+    if (input.query_arithmetic == "int16" ||
+        input.query_arithmetic == "int8") {
+        const auto maximum = *std::max_element(query, query + dimensions,
+            [](float left, float right) {
+                return std::abs(left) < std::abs(right);
+            });
+        const auto amplitude = std::abs(maximum);
+        if (input.query_arithmetic == "int16") {
+            const auto inverse = amplitude == 0.0F ? 0.0F : 32767.0F / amplitude;
+            query_int16_scale = amplitude == 0.0F ? 0.0F : amplitude / 32767.0F;
+            for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+                query_int16[dimension] = static_cast<std::int16_t>(std::lround(
+                    query[dimension] * inverse));
+        } else {
+            const auto inverse = amplitude == 0.0F ? 0.0F : 127.0F / amplitude;
+            query_int8_scale = amplitude == 0.0F ? 0.0F : amplitude / 127.0F;
+            for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+                query_int8[dimension] = static_cast<std::int8_t>(std::lround(
+                    query[dimension] * inverse));
+        }
+    }
+    thread_local std::vector<float> cosines;
+    thread_local std::vector<float> maximums;
+    cosines.resize(seed.address_counts.size() * 8U);
+    maximums.resize(seed.address_counts.size());
     auto begin = Clock::now();
+    std::array<std::uint32_t, dimensions> unpacked{};
     for (std::size_t row = 0; row != seed.address_counts.size(); ++row) {
         const auto count = static_cast<std::size_t>(
-            std::min<std::uint32_t>(seed.address_counts[row], 8U));
+            std::min<std::uint32_t>(seed.address_counts[row],
+                static_cast<std::uint32_t>(input.prototype_limit)));
         const auto first = static_cast<std::size_t>(input.record_offsets[row]);
+        maximums[row] = -std::numeric_limits<float>::infinity();
         for (std::size_t slot = 0; slot != count; ++slot) {
-            const auto* prototype = reinterpret_cast<const float*>(
-                input.prototypes->data() +
-                (first + slot) * dimensions * sizeof(float));
-            const auto score = fp32_dot_fast(prototype, query);
+            const auto* prototype = input.prototypes->data() +
+                (first + slot) * input.record_bytes;
+            const auto score = coarse_codec_dot(input, prototype, query,
+                query_int16.data(), query_int16_scale, query_int8.data(),
+                query_int8_scale, unpacked);
             cosines[row * 8U + slot] = score;
             maximums[row] = std::max(maximums[row], score);
         }
     }
     CoarseK8Result result;
+    result.logical_bytes = input.bytes;
     result.dot_and_max_ms = milliseconds(begin, Clock::now());
     begin = Clock::now();
-    std::vector<std::uint32_t> order(seed.address_counts.size());
+    thread_local std::vector<std::uint32_t> order;
+    order.resize(seed.address_counts.size());
     std::iota(order.begin(), order.end(), 0U);
     const auto lower = [&](std::uint32_t left, std::uint32_t right) {
         if (maximums[left] != maximums[right])
             return maximums[left] > maximums[right];
         return seed.occupied_addresses[left] < seed.occupied_addresses[right];
     };
-    std::partial_sort(order.begin(), order.begin() + addresses_per_query,
-                      order.end(), lower);
+    std::nth_element(order.begin(), order.begin() + addresses_per_query,
+                     order.end(), lower);
+    std::sort(order.begin(), order.begin() + addresses_per_query, lower);
     result.rows.assign(order.begin(), order.begin() + addresses_per_query);
+    result.cutoff_score = maximums[result.rows.back()];
+    result.next_score = maximums[order[addresses_per_query]];
+    result.cutoff_margin = result.cutoff_score - result.next_score;
     result.features.resize(addresses_per_query * scalar_features);
     const auto log_denominator = std::log1p(1000000.0F);
     for (std::size_t local = 0; local != addresses_per_query; ++local) {
         const auto row = result.rows[local];
         const auto count = static_cast<std::size_t>(
-            std::min<std::uint32_t>(seed.address_counts[row], 8U));
-        std::array<float, 8> sorted{};
-        std::copy_n(cosines.data() + row * 8U, 8U, sorted.data());
+            std::min<std::uint32_t>(seed.address_counts[row],
+                static_cast<std::uint32_t>(input.prototype_limit)));
+        std::array<float, 8> sorted;
+        sorted.fill(-1.0F);
+        std::copy_n(cosines.data() + row * 8U, count, sorted.data());
         std::sort(sorted.begin(), sorted.end(), std::greater<float>());
         float mean = 0.0F;
         for (std::size_t slot = 0; slot != count; ++slot)
@@ -3733,6 +4252,326 @@ CoarseK8Result coarse_k8_query(const SeedContext& seed,
         expected.begin(), expected.end(), std::back_inserter(intersection));
     result.frozen_shortlist_overlap = intersection.size();
     result.order_and_features_ms = milliseconds(begin, Clock::now());
+    return result;
+}
+
+CoarseK8Result approximate_coarse_k8_query(
+        const SeedContext& seed, const CoarseK8Input& prefilter,
+        const CoarseK8Input& refine, std::size_t request,
+        std::size_t prefilter_prototypes, std::size_t refine_addresses) {
+    require(request < 152 && prefilter.query_arithmetic == "fp32" &&
+            refine.query_arithmetic == "fp32" &&
+            prefilter.prototype_limit == prefilter_prototypes &&
+            refine.prototype_limit == 8 &&
+            (prefilter_prototypes == 1 || prefilter_prototypes == 2 ||
+             prefilter_prototypes == 4) &&
+            refine_addresses > addresses_per_query &&
+            refine_addresses < seed.address_counts.size(),
+            "R4 approximate K8 invocation differs");
+    const auto* query = seed.queries.data() + request * dimensions;
+    std::array<std::int16_t, dimensions> query_int16{};
+    std::array<std::int8_t, dimensions> query_int8{};
+    std::array<std::uint32_t, dimensions> unpacked{};
+    thread_local std::vector<float> prefilter_maximums;
+    thread_local std::vector<float> maximums;
+    thread_local std::vector<float> cosines;
+    thread_local std::vector<std::uint32_t> order;
+    prefilter_maximums.assign(seed.address_counts.size(),
+        -std::numeric_limits<float>::infinity());
+    maximums.assign(seed.address_counts.size(),
+        -std::numeric_limits<float>::infinity());
+    cosines.resize(seed.address_counts.size() * 8U);
+    order.resize(seed.address_counts.size());
+    std::iota(order.begin(), order.end(), 0U);
+    std::uint64_t logical_bytes = 0;
+    auto begin = Clock::now();
+    for (std::size_t row = 0; row != seed.address_counts.size(); ++row) {
+        const auto count = std::min<std::size_t>(seed.address_counts[row],
+                                                prefilter_prototypes);
+        const auto first = static_cast<std::size_t>(
+            prefilter.record_offsets[row]);
+        logical_bytes += count * prefilter.record_bytes;
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto* record = prefilter.prototypes->data() +
+                (first + slot) * prefilter.record_bytes;
+            prefilter_maximums[row] = std::max(prefilter_maximums[row],
+                coarse_codec_dot(prefilter, record, query, query_int16.data(),
+                    1.0F, query_int8.data(), 1.0F, unpacked));
+        }
+    }
+    const auto prefilter_lower = [&](std::uint32_t left, std::uint32_t right) {
+        if (prefilter_maximums[left] != prefilter_maximums[right])
+            return prefilter_maximums[left] > prefilter_maximums[right];
+        return seed.occupied_addresses[left] < seed.occupied_addresses[right];
+    };
+    std::nth_element(order.begin(), order.begin() + refine_addresses,
+                     order.end(), prefilter_lower);
+    for (std::size_t index = 0; index != refine_addresses; ++index) {
+        const auto row = order[index];
+        const auto count = static_cast<std::size_t>(
+            std::min<std::uint32_t>(seed.address_counts[row], 8U));
+        const auto first = static_cast<std::size_t>(refine.record_offsets[row]);
+        logical_bytes += count * refine.record_bytes;
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto* record = refine.prototypes->data() +
+                (first + slot) * refine.record_bytes;
+            const auto score = coarse_codec_dot(refine, record, query,
+                query_int16.data(), 1.0F, query_int8.data(), 1.0F, unpacked);
+            cosines[row * 8U + slot] = score;
+            maximums[row] = std::max(maximums[row], score);
+        }
+    }
+    const auto lower = [&](std::uint32_t left, std::uint32_t right) {
+        if (maximums[left] != maximums[right])
+            return maximums[left] > maximums[right];
+        return seed.occupied_addresses[left] < seed.occupied_addresses[right];
+    };
+    std::nth_element(order.begin(), order.begin() + addresses_per_query,
+                     order.begin() + refine_addresses, lower);
+    std::sort(order.begin(), order.begin() + addresses_per_query, lower);
+    CoarseK8Result result;
+    result.dot_and_max_ms = milliseconds(begin, Clock::now());
+    result.logical_bytes = logical_bytes;
+    begin = Clock::now();
+    result.rows.assign(order.begin(), order.begin() + addresses_per_query);
+    result.cutoff_score = maximums[result.rows.back()];
+    result.next_score = maximums[order[addresses_per_query]];
+    result.cutoff_margin = result.cutoff_score - result.next_score;
+    result.features.resize(addresses_per_query * scalar_features);
+    const auto log_denominator = std::log1p(1000000.0F);
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = result.rows[local];
+        const auto count = static_cast<std::size_t>(
+            std::min<std::uint32_t>(seed.address_counts[row], 8U));
+        std::array<float, 8> sorted;
+        sorted.fill(-1.0F);
+        std::copy_n(cosines.data() + row * 8U, count, sorted.data());
+        std::sort(sorted.begin(), sorted.end(), std::greater<float>());
+        const auto mean = std::accumulate(sorted.begin(),
+            sorted.begin() + count, 0.0F) / static_cast<float>(count);
+        float variance = 0.0F;
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto delta = cosines[row * 8U + slot] - mean;
+            variance += delta * delta;
+        }
+        const auto deviation = std::sqrt(variance / static_cast<float>(count));
+        const auto maximum = sorted[0];
+        const auto second = sorted[1];
+        const auto margin = maximum - second;
+        const auto log_cost = std::log1p(static_cast<float>(
+            seed.address_counts[row])) / log_denominator;
+        const auto rank = static_cast<float>(local) /
+            static_cast<float>(addresses_per_query - 1);
+        const auto capacity = static_cast<float>(count) / 8.0F;
+        auto* features = result.features.data() + local * scalar_features;
+        std::copy(sorted.begin(), sorted.end(), features);
+        features[8] = maximum;
+        features[9] = second;
+        features[10] = mean;
+        features[11] = deviation;
+        features[12] = margin;
+        features[13] = log_cost;
+        features[14] = rank;
+        features[15] = capacity;
+        features[16] = maximum * log_cost;
+        features[17] = second * log_cost;
+        features[18] = margin * log_cost;
+        features[19] = mean * log_cost;
+        features[20] = maximum * maximum;
+        features[21] = deviation * deviation;
+    }
+    const auto* frozen = seed.shortlists.data() +
+        request * addresses_per_query;
+    result.frozen_shortlist_sequence_matches = std::equal(
+        result.rows.begin(), result.rows.end(), frozen);
+    std::vector<std::uint32_t> generated = result.rows;
+    std::sort(generated.begin(), generated.end());
+    std::vector<std::uint32_t> expected(frozen,
+        frozen + addresses_per_query);
+    std::sort(expected.begin(), expected.end());
+    std::vector<std::uint32_t> intersection;
+    std::set_intersection(generated.begin(), generated.end(),
+        expected.begin(), expected.end(), std::back_inserter(intersection));
+    result.frozen_shortlist_overlap = intersection.size();
+    result.order_and_features_ms = milliseconds(begin, Clock::now());
+    return result;
+}
+
+float representative_int4_uniform_dot(const std::uint8_t* record,
+                                       const float* query) {
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + dimensions / 2U, sizeof(amplitude));
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto nibble = _mm_set1_epi8(0x0f);
+    const auto center = _mm_set1_epi8(7);
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
+    for (std::size_t dimension = 0; dimension != dimensions;
+         dimension += 32U) {
+        const auto bytes = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+            record + dimension / 2U));
+        const auto low = _mm_and_si128(bytes, nibble);
+        const auto high = _mm_and_si128(_mm_srli_epi16(bytes, 4), nibble);
+        const auto codes0 = _mm_sub_epi8(_mm_unpacklo_epi8(low, high), center);
+        const auto codes1 = _mm_sub_epi8(_mm_unpackhi_epi8(low, high), center);
+        const auto values0 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(codes0));
+        const auto values1 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(
+            _mm_srli_si128(codes0, 8)));
+        const auto values2 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(codes1));
+        const auto values3 = _mm256_cvtepi32_ps(_mm256_cvtepi8_epi32(
+            _mm_srli_si128(codes1, 8)));
+        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(values0,
+            _mm256_loadu_ps(query + dimension)));
+        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(values1,
+            _mm256_loadu_ps(query + dimension + 8U)));
+        sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(values2,
+            _mm256_loadu_ps(query + dimension + 16U)));
+        sum3 = _mm256_add_ps(sum3, _mm256_mul_ps(values3,
+            _mm256_loadu_ps(query + dimension + 24U)));
+    }
+    alignas(32) std::array<float, 8> lanes{};
+    _mm256_store_ps(lanes.data(), _mm256_add_ps(
+        _mm256_add_ps(sum0, sum1), _mm256_add_ps(sum2, sum3)));
+    return std::accumulate(lanes.begin(), lanes.end(), 0.0F) *
+        amplitude / 7.0F;
+#else
+    float result = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const auto byte = record[dimension / 2U];
+        const auto code = static_cast<int>(dimension % 2U == 0
+            ? byte & 0x0fU : byte >> 4U);
+        result += static_cast<float>(code - 7) * query[dimension];
+    }
+    return result * amplitude / 7.0F;
+#endif
+}
+
+float representative_int4_nonlinear_dot(const CoarseK8Input& input,
+                                         const std::uint8_t* record,
+                                         const float* query) {
+    require(input.bits == 4 && input.compander == "power" &&
+            input.decode_table.size() == 16,
+            "R4 nonlinear INT4 representative codec differs");
+    float amplitude = 0.0F;
+    std::memcpy(&amplitude, record + dimensions / 2U, sizeof(amplitude));
+#if AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
+    const auto nibble = _mm_set1_epi8(0x0f);
+    __m256 sum0 = _mm256_setzero_ps();
+    __m256 sum1 = _mm256_setzero_ps();
+    __m256 sum2 = _mm256_setzero_ps();
+    __m256 sum3 = _mm256_setzero_ps();
+    for (std::size_t dimension = 0; dimension != dimensions;
+         dimension += 32U) {
+        const auto bytes = _mm_loadu_si128(reinterpret_cast<const __m128i*>(
+            record + dimension / 2U));
+        const auto low = _mm_and_si128(bytes, nibble);
+        const auto high = _mm_and_si128(_mm_srli_epi16(bytes, 4), nibble);
+        const auto codes0 = _mm_unpacklo_epi8(low, high);
+        const auto codes1 = _mm_unpackhi_epi8(low, high);
+        const auto indices0 = _mm256_cvtepu8_epi32(codes0);
+        const auto indices1 = _mm256_cvtepu8_epi32(
+            _mm_srli_si128(codes0, 8));
+        const auto indices2 = _mm256_cvtepu8_epi32(codes1);
+        const auto indices3 = _mm256_cvtepu8_epi32(
+            _mm_srli_si128(codes1, 8));
+        const auto values0 = _mm256_i32gather_ps(input.decode_table.data(),
+                                                 indices0, 4);
+        const auto values1 = _mm256_i32gather_ps(input.decode_table.data(),
+                                                 indices1, 4);
+        const auto values2 = _mm256_i32gather_ps(input.decode_table.data(),
+                                                 indices2, 4);
+        const auto values3 = _mm256_i32gather_ps(input.decode_table.data(),
+                                                 indices3, 4);
+        sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(values0,
+            _mm256_loadu_ps(query + dimension)));
+        sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(values1,
+            _mm256_loadu_ps(query + dimension + 8U)));
+        sum2 = _mm256_add_ps(sum2, _mm256_mul_ps(values2,
+            _mm256_loadu_ps(query + dimension + 16U)));
+        sum3 = _mm256_add_ps(sum3, _mm256_mul_ps(values3,
+            _mm256_loadu_ps(query + dimension + 24U)));
+    }
+    alignas(32) std::array<float, 8> lanes{};
+    _mm256_store_ps(lanes.data(), _mm256_add_ps(
+        _mm256_add_ps(sum0, sum1), _mm256_add_ps(sum2, sum3)));
+    return std::accumulate(lanes.begin(), lanes.end(), 0.0F) * amplitude;
+#else
+    float result = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const auto byte = record[dimension / 2U];
+        const auto code = static_cast<std::size_t>(dimension % 2U == 0
+            ? byte & 0x0fU : byte >> 4U);
+        result += input.decode_table[code] * query[dimension];
+    }
+    return result * amplitude;
+#endif
+}
+
+RoutingValues representative_codec_route(const SeedContext& seed,
+        const CoarseK8Input& input, std::size_t request,
+        const std::uint32_t* shortlist_override = nullptr,
+        const float* feature_override = nullptr) {
+    require(request < 152 && input.prototype_limit == 32 &&
+            (input.kind == "fp32" ||
+                (input.kind == "integer" && input.bits == 4)) &&
+            input.query_arithmetic == "fp32" &&
+            input.record_offsets.size() == seed.address_counts.size() + 1,
+            "R4 K32 codec request differs");
+    thread_local std::vector<AddressSpan> spans;
+    spans.clear();
+    spans.reserve(addresses_per_query);
+    std::size_t representatives = 0;
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = shortlist_override == nullptr
+            ? seed.shortlists[request * addresses_per_query + local]
+            : shortlist_override[local];
+        const auto count = static_cast<std::size_t>(
+            seed.representative_counts[row]);
+        spans.push_back({local,
+            static_cast<std::size_t>(input.record_offsets[row]) *
+                input.record_bytes,
+            count * input.record_bytes, 0});
+        representatives += count;
+    }
+    std::sort(spans.begin(), spans.end(), [](const auto& left,
+                                             const auto& right) {
+        return left.byte_offset < right.byte_offset;
+    });
+    RoutingValues result;
+    result.representatives = representatives;
+    result.logical_bytes = representatives * input.record_bytes;
+    result.address_spans = spans.size();
+    const auto* query = seed.queries.data() + request * dimensions;
+    thread_local Maximums maximums;
+    maximums.values.assign(addresses_per_query,
+                           -std::numeric_limits<float>::infinity());
+    maximums.winners.assign(addresses_per_query, 0);
+    auto begin = Clock::now();
+    for (const auto& span : spans) {
+        const auto count = span.byte_count / input.record_bytes;
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto* record = input.prototypes->data() +
+                span.byte_offset + slot * input.record_bytes;
+            const auto score = input.kind == "fp32"
+                ? fp32_dot_fast(reinterpret_cast<const float*>(record), query)
+                : input.compander == "uniform"
+                    ? representative_int4_uniform_dot(record, query)
+                    : representative_int4_nonlinear_dot(input, record, query);
+            if (score > maximums.values[span.local]) {
+                maximums.values[span.local] = score;
+                maximums.winners[span.local] =
+                    static_cast<std::uint8_t>(slot);
+            }
+        }
+    }
+    result.timing.representative_dot = milliseconds(begin, Clock::now());
+    begin = Clock::now();
+    result.scores = address_scores_batched_avx2(seed, request,
+                                                maximums.values,
+                                                feature_override);
+    result.timing.address_score = milliseconds(begin, Clock::now());
     return result;
 }
 
@@ -3995,10 +4834,11 @@ RoutingValues int5_kernel_route(const Int5IntegrationContext& context,
     const auto* query = context.seed.queries.data() + request * dimensions;
     std::optional<std::array<float, 32>> table;
     if (legacy || shuffle) table.emplace(int5_power_half_decode_table());
-    std::optional<PowerHalfQueryLuts> query_luts;
+    std::unique_ptr<PowerHalfQueryLuts> query_luts;
     if (bitsliced || quantized || direct_q8 || direct_q16 || fused_avx2_q8)
-        query_luts.emplace(power_half_query_luts(query, bitsliced, quantized,
-            direct_q8 || fused_avx2_q8, direct_q16));
+        query_luts = std::make_unique<PowerHalfQueryLuts>(
+            power_half_query_luts(query, bitsliced, quantized,
+                direct_q8 || fused_avx2_q8, direct_q16));
     thread_local Maximums maximums;
     maximums.values.resize(addresses_per_query);
     maximums.winners.resize(addresses_per_query);
@@ -4482,39 +5322,115 @@ EndToEndResult int5_kernel_query(
         total_begin);
 }
 
-std::vector<EndToEndResult> int5_kernel_batch(
-        const Int5IntegrationContext& context, const NativeCascadeInput& input,
-        const agent_memory::HammingDistanceComputer& hamming,
-        const nlohmann::json& parent_protocol,
-        const std::vector<std::size_t>& trace, std::size_t workers,
-        const std::string& kernel) {
-    std::vector<EndToEndResult> values(trace.size());
-    std::atomic<std::size_t> following{0};
-    std::vector<std::thread> threads;
-    std::vector<std::exception_ptr> failures(workers);
-    threads.reserve(workers);
-    for (std::size_t worker = 0; worker != workers; ++worker) {
-        threads.emplace_back([&, worker] {
+class Int5KernelBatchExecutor {
+public:
+    Int5KernelBatchExecutor(
+            const Int5IntegrationContext& context,
+            const NativeCascadeInput& input,
+            const agent_memory::HammingDistanceComputer& hamming,
+            const nlohmann::json& parent_protocol, std::size_t worker_count,
+            const std::string& kernel)
+        : context_(context), input_(input), hamming_(hamming),
+          parent_protocol_(parent_protocol), kernel_(kernel),
+          failures_(worker_count) {
+        require(worker_count != 0, "R4 INT5 kernel workers differ");
+        workers_.reserve(worker_count);
+        try {
+            for (std::size_t worker = 0; worker != worker_count; ++worker)
+                workers_.emplace_back([this, worker] { work(worker); });
+        } catch (...) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                stopping_ = true;
+            }
+            ready_.notify_all();
+            for (auto& worker : workers_) worker.join();
+            throw;
+        }
+    }
+
+    Int5KernelBatchExecutor(const Int5KernelBatchExecutor&) = delete;
+    Int5KernelBatchExecutor& operator=(const Int5KernelBatchExecutor&) = delete;
+
+    ~Int5KernelBatchExecutor() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+        }
+        ready_.notify_all();
+        for (auto& worker : workers_) worker.join();
+    }
+
+    std::vector<EndToEndResult> run(const std::vector<std::size_t>& trace) {
+        std::vector<EndToEndResult> values(trace.size());
+        std::unique_lock<std::mutex> lock(mutex_);
+        require(remaining_ == 0, "R4 INT5 kernel batch overlap differs");
+        trace_ = &trace;
+        values_ = &values;
+        std::fill(failures_.begin(), failures_.end(), nullptr);
+        following_.store(0, std::memory_order_relaxed);
+        remaining_ = workers_.size();
+        ++generation_;
+        ready_.notify_all();
+        finished_.wait(lock, [this] { return remaining_ == 0; });
+        trace_ = nullptr;
+        values_ = nullptr;
+        const auto failures = failures_;
+        lock.unlock();
+        for (const auto& failure : failures)
+            if (failure) std::rethrow_exception(failure);
+        return values;
+    }
+
+private:
+    void work(std::size_t worker) {
+        std::size_t observed_generation = 0;
+        for (;;) {
+            std::unique_lock<std::mutex> lock(mutex_);
+            ready_.wait(lock, [this, observed_generation] {
+                return stopping_ || generation_ != observed_generation;
+            });
+            if (stopping_) return;
+            observed_generation = generation_;
+            lock.unlock();
             try {
                 for (;;) {
-                    const auto index = following.fetch_add(1);
-                    if (index >= trace.size()) break;
-                    const auto& request = parent_protocol.at("requests").at(
-                        trace[index]);
-                    values[index] = int5_kernel_query(context, input, hamming,
-                        kernel, request.at("request").get<std::size_t>(),
+                    const auto index = following_.fetch_add(
+                        1, std::memory_order_relaxed);
+                    if (index >= trace_->size()) break;
+                    const auto& request = parent_protocol_.at("requests").at(
+                        (*trace_)[index]);
+                    (*values_)[index] = int5_kernel_query(
+                        context_, input_, hamming_, kernel_,
+                        request.at("request").get<std::size_t>(),
                         request.at("native_query").get<std::size_t>());
                 }
             } catch (...) {
-                failures[worker] = std::current_exception();
+                failures_[worker] = std::current_exception();
             }
-        });
+            lock.lock();
+            --remaining_;
+            if (remaining_ == 0) finished_.notify_one();
+        }
     }
-    for (auto& thread : threads) thread.join();
-    for (const auto& failure : failures)
-        if (failure) std::rethrow_exception(failure);
-    return values;
-}
+
+    const Int5IntegrationContext& context_;
+    const NativeCascadeInput& input_;
+    const agent_memory::HammingDistanceComputer& hamming_;
+    const nlohmann::json& parent_protocol_;
+    const std::string& kernel_;
+    std::vector<std::thread> workers_;
+    std::vector<std::exception_ptr> failures_;
+    std::atomic<std::size_t> following_{0};
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    std::condition_variable finished_;
+    const std::vector<std::size_t>* trace_ = nullptr;
+    std::vector<EndToEndResult>* values_ = nullptr;
+    std::size_t generation_ = 0;
+    std::size_t remaining_ = 0;
+    bool stopping_ = false;
+};
 
 void int5_kernel_measure(const std::filesystem::path& protocol_path,
                          std::uint64_t seed, const std::string& kernel,
@@ -4549,16 +5465,16 @@ void int5_kernel_measure(const std::filesystem::path& protocol_path,
             "R4 INT5 kernel working-set condition differs");
     const auto cap_applied = apply_working_set_condition(condition,
         working_set_cap.value_or(0));
+    Int5KernelBatchExecutor executor(context, input, hamming, parent, workers,
+                                     kernel);
     for (std::size_t pass = 0; pass != warmup_batches; ++pass) {
-        static_cast<void>(int5_kernel_batch(context, input, hamming, parent,
-            trace, workers, kernel));
+        static_cast<void>(executor.run(trace));
     }
     nlohmann::json samples = nlohmann::json::array();
     for (std::size_t pass = 0; pass != measured_batches; ++pass) {
         const auto before = process_state();
         const auto begin = Clock::now();
-        const auto values = int5_kernel_batch(context, input, hamming, parent,
-            trace, workers, kernel);
+        const auto values = executor.run(trace);
         const auto wall_ms = milliseconds(begin, Clock::now());
         const auto after = process_state();
         std::vector<double> query_ms, representative_ms;
@@ -4592,6 +5508,7 @@ void int5_kernel_measure(const std::filesystem::path& protocol_path,
         {"protocol_sha256", agent_memory::sha256_file_hex(protocol_path)},
         {"seed", seed}, {"kernel", kernel}, {"condition", condition},
         {"workers", workers}, {"working_set_cap_applied", cap_applied},
+        {"worker_lifecycle", "persistent_across_warmup_and_measurement"},
         {"working_set_cap_bytes", working_set_cap.has_value()
             ? nlohmann::json(*working_set_cap) : nlohmann::json(nullptr)},
         {"trace_queries", trace.size()},
@@ -4728,61 +5645,169 @@ EndToEndResult full_r4_query(
         const NativeCascadeInput& input, const FinalQuantizedInput& final_int5,
         const agent_memory::HammingDistanceComputer& hamming,
         const std::string& routing_kernel, const std::string& final_kernel,
-        std::size_t request, std::size_t native_query) {
+        std::size_t request, std::size_t native_query,
+        const CoarseK8Input* representative_input = nullptr,
+        const CoarseK8Input* coarse_prefilter_input = nullptr,
+        std::size_t prefilter_prototypes = 0,
+        std::size_t refine_addresses = 0) {
     const auto total_begin = Clock::now();
-    auto coarse = coarse_k8_query(context.seed, coarse_input, request);
-    auto route = int5_kernel_route(context, request, routing_kernel,
-        coarse.rows.data(), coarse.features.data());
+    auto coarse = coarse_prefilter_input == nullptr
+        ? coarse_k8_query(context.seed, coarse_input, request)
+        : approximate_coarse_k8_query(context.seed, *coarse_prefilter_input,
+            coarse_input, request, prefilter_prototypes, refine_addresses);
+    auto route = representative_input == nullptr
+        ? int5_kernel_route(context, request, routing_kernel,
+            coarse.rows.data(), coarse.features.data())
+        : representative_codec_route(context.seed, *representative_input,
+            request, coarse.rows.data(), coarse.features.data());
     route.timing.coarse_dot_and_max = coarse.dot_and_max_ms;
     route.timing.coarse_order_and_features = coarse.order_and_features_ms;
     auto result = finish_end_to_end_query(context.seed, input, hamming,
         std::move(route), request, native_query, total_begin,
         final_kernel == "fp32_pairwise" ? nullptr : &final_int5,
         final_kernel, coarse.rows.data());
-    result.coarse_logical_bytes = coarse_input.bytes;
+    result.coarse_logical_bytes = coarse.logical_bytes;
     result.coarse_shortlist_overlap = coarse.frozen_shortlist_overlap;
     result.coarse_shortlist_sequence_matches =
         coarse.frozen_shortlist_sequence_matches;
+    result.coarse_cutoff_score = coarse.cutoff_score;
+    result.coarse_next_score = coarse.next_score;
+    result.coarse_cutoff_margin = coarse.cutoff_margin;
     result.coarse_rows = std::move(coarse.rows);
     result.coarse_features = std::move(coarse.features);
     return result;
 }
 
-std::vector<EndToEndResult> full_r4_batch(
-        const Int5IntegrationContext& context, const CoarseK8Input& coarse_input,
-        const NativeCascadeInput& input, const FinalQuantizedInput& final_int5,
-        const agent_memory::HammingDistanceComputer& hamming,
-        const nlohmann::json& request_protocol,
-        const std::vector<std::size_t>& trace, std::size_t workers,
-        const std::string& routing_kernel, const std::string& final_kernel) {
-    std::vector<EndToEndResult> values(trace.size());
-    std::atomic<std::size_t> following{0};
-    std::vector<std::thread> threads;
-    std::vector<std::exception_ptr> failures(workers);
-    threads.reserve(workers);
-    for (std::size_t worker = 0; worker != workers; ++worker) {
-        threads.emplace_back([&, worker] {
+class FullR4BatchExecutor {
+public:
+    FullR4BatchExecutor(
+            const Int5IntegrationContext& context,
+            const CoarseK8Input& coarse_input,
+            const NativeCascadeInput& input,
+            const FinalQuantizedInput& final_int5,
+            const agent_memory::HammingDistanceComputer& hamming,
+            const nlohmann::json& request_protocol, std::size_t worker_count,
+            const std::string& routing_kernel, const std::string& final_kernel,
+            const CoarseK8Input* representative_input,
+            const CoarseK8Input* coarse_prefilter_input = nullptr,
+            std::size_t prefilter_prototypes = 0,
+            std::size_t refine_addresses = 0)
+        : context_(context), coarse_input_(coarse_input), input_(input),
+          final_int5_(final_int5), hamming_(hamming),
+          request_protocol_(request_protocol), routing_kernel_(routing_kernel),
+          final_kernel_(final_kernel),
+          representative_input_(representative_input),
+          coarse_prefilter_input_(coarse_prefilter_input),
+          prefilter_prototypes_(prefilter_prototypes),
+          refine_addresses_(refine_addresses), failures_(worker_count) {
+        require(worker_count != 0, "R4 full-cascade workers differ");
+        workers_.reserve(worker_count);
+        try {
+            for (std::size_t worker = 0; worker != worker_count; ++worker)
+                workers_.emplace_back([this, worker] { work(worker); });
+        } catch (...) {
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                stopping_ = true;
+            }
+            ready_.notify_all();
+            for (auto& worker : workers_) worker.join();
+            throw;
+        }
+    }
+
+    FullR4BatchExecutor(const FullR4BatchExecutor&) = delete;
+    FullR4BatchExecutor& operator=(const FullR4BatchExecutor&) = delete;
+
+    ~FullR4BatchExecutor() {
+        {
+            std::lock_guard<std::mutex> lock(mutex_);
+            stopping_ = true;
+        }
+        ready_.notify_all();
+        for (auto& worker : workers_) worker.join();
+    }
+
+    std::vector<EndToEndResult> run(const std::vector<std::size_t>& trace) {
+        std::vector<EndToEndResult> values(trace.size());
+        std::unique_lock<std::mutex> lock(mutex_);
+        require(remaining_ == 0, "R4 full-cascade batch overlap differs");
+        trace_ = &trace;
+        values_ = &values;
+        std::fill(failures_.begin(), failures_.end(), nullptr);
+        following_.store(0, std::memory_order_relaxed);
+        remaining_ = workers_.size();
+        ++generation_;
+        ready_.notify_all();
+        finished_.wait(lock, [this] { return remaining_ == 0; });
+        trace_ = nullptr;
+        values_ = nullptr;
+        const auto failures = failures_;
+        lock.unlock();
+        for (const auto& failure : failures)
+            if (failure) std::rethrow_exception(failure);
+        return values;
+    }
+
+private:
+    void work(std::size_t worker) {
+        std::size_t observed_generation = 0;
+        for (;;) {
+            std::unique_lock<std::mutex> lock(mutex_);
+            ready_.wait(lock, [this, observed_generation] {
+                return stopping_ || generation_ != observed_generation;
+            });
+            if (stopping_) return;
+            observed_generation = generation_;
+            lock.unlock();
             try {
                 for (;;) {
-                    const auto index = following.fetch_add(1);
-                    if (index >= trace.size()) break;
-                    const auto& request = request_protocol.at("requests").at(
-                        trace[index]);
-                    values[index] = full_r4_query(context, coarse_input, input,
-                        final_int5, hamming, routing_kernel, final_kernel,
+                    const auto index = following_.fetch_add(
+                        1, std::memory_order_relaxed);
+                    if (index >= trace_->size()) break;
+                    const auto& request = request_protocol_.at("requests").at(
+                        (*trace_)[index]);
+                    (*values_)[index] = full_r4_query(context_, coarse_input_,
+                        input_, final_int5_, hamming_, routing_kernel_,
+                        final_kernel_,
                         request.at("request").get<std::size_t>(),
-                        request.at("native_query").get<std::size_t>());
+                        request.at("native_query").get<std::size_t>(),
+                        representative_input_, coarse_prefilter_input_,
+                        prefilter_prototypes_, refine_addresses_);
                 }
             } catch (...) {
-                failures[worker] = std::current_exception();
+                failures_[worker] = std::current_exception();
             }
-        });
+            lock.lock();
+            --remaining_;
+            if (remaining_ == 0) finished_.notify_one();
+        }
     }
-    for (auto& thread : threads) thread.join();
-    for (const auto& failure : failures)
-        if (failure) std::rethrow_exception(failure);
-    return values;
-}
+
+    const Int5IntegrationContext& context_;
+    const CoarseK8Input& coarse_input_;
+    const NativeCascadeInput& input_;
+    const FinalQuantizedInput& final_int5_;
+    const agent_memory::HammingDistanceComputer& hamming_;
+    const nlohmann::json& request_protocol_;
+    const std::string& routing_kernel_;
+    const std::string& final_kernel_;
+    const CoarseK8Input* representative_input_;
+    const CoarseK8Input* coarse_prefilter_input_;
+    std::size_t prefilter_prototypes_;
+    std::size_t refine_addresses_;
+    std::vector<std::thread> workers_;
+    std::vector<std::exception_ptr> failures_;
+    std::atomic<std::size_t> following_{0};
+    std::mutex mutex_;
+    std::condition_variable ready_;
+    std::condition_variable finished_;
+    const std::vector<std::size_t>* trace_ = nullptr;
+    std::vector<EndToEndResult>* values_ = nullptr;
+    std::size_t generation_ = 0;
+    std::size_t remaining_ = 0;
+    bool stopping_ = false;
+};
 
 void final_rerank_ceiling(const std::filesystem::path& protocol_path,
                           std::uint64_t seed,
@@ -5000,11 +6025,14 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
                             std::size_t workers,
                             const std::filesystem::path& output_path) {
     const auto protocol = read_json(protocol_path);
+    const bool k32_codec = storage_mode == "k32_fp32" ||
+                           storage_mode == "k32_int4_uniform" ||
+                           storage_mode == "k32_int4_power_625";
     require(protocol.value("schema_version", 0) == 1 &&
             protocol.value("family", "") ==
                 "neuroute_external_ann_comparison_r4_protocol" &&
             (storage_mode == "int8" || storage_mode ==
-                "nonlinear_int5_power_half") &&
+                "nonlinear_int5_power_half" || k32_codec) &&
             (execution == "portable" || execution == "sse2" ||
                 execution == "avx2") &&
             std::find(protocol.at("workers").begin(),
@@ -5022,40 +6050,77 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
         parent.at("document_id_rank_file").get<std::string>());
     const auto final_int8 = load_final_int8_input(
         protocol.at("final_int8_layout_manifest").get<std::string>());
-    const auto routing_kernel = storage_mode == "int8"
+    const auto routing_kernel = storage_mode == "int8" || k32_codec
         ? std::string("homogeneous_int8")
         : std::string("int5_canonical_") + execution;
     const auto final_kernel = std::string("int8_fused");
-    require(agent_memory::neuroute::execution_kernel_supported(
+    require(k32_codec || agent_memory::neuroute::execution_kernel_supported(
                 record_execution_kernel(std::string("int5_canonical_") +
                                         execution)),
             "R4 external comparison execution kernel is unavailable");
     const auto context = load_int5_kernel_context(kernel_protocol, parent,
                                                    seed, routing_kernel);
+    const auto coarse_treatment = protocol.value("coarse_k8_treatment",
+                                                  std::string("fp32"));
+    const auto coarse_query_arithmetic = protocol.value(
+        "coarse_k8_query_arithmetic", std::string("fp32"));
     const auto coarse_input = load_coarse_k8_input(
-        protocol.at("coarse_k8_manifest").get<std::string>(), context.seed);
+        protocol.at("coarse_k8_manifest").get<std::string>(), context.seed,
+        coarse_treatment, coarse_query_arithmetic);
+    std::unique_ptr<CoarseK8Input> coarse_prefilter_input;
+    std::size_t prefilter_prototypes = 0;
+    std::size_t refine_addresses = 0;
+    if (protocol.contains("coarse_k8_prefilter_manifest")) {
+        coarse_prefilter_input = std::make_unique<CoarseK8Input>(
+            load_coarse_k8_input(protocol.at(
+                "coarse_k8_prefilter_manifest").get<std::string>(),
+                context.seed, protocol.at(
+                    "coarse_k8_prefilter_treatment").get<std::string>(),
+                protocol.value("coarse_k8_prefilter_query_arithmetic",
+                               std::string("fp32"))));
+        prefilter_prototypes = protocol.at(
+            "coarse_k8_prefilter_prototypes").get<std::size_t>();
+        refine_addresses = protocol.at(
+            "coarse_k8_refine_addresses").get<std::size_t>();
+    }
+    std::unique_ptr<CoarseK8Input> representative_input;
+    if (k32_codec) {
+        require(protocol.contains("representative_k32_manifest"),
+                "R4 K32 codec manifest is absent");
+        representative_input = std::make_unique<CoarseK8Input>(
+            load_coarse_k8_input(protocol.at(
+                "representative_k32_manifest").get<std::string>(),
+                context.seed, storage_mode.substr(4), "fp32"));
+    }
     const agent_memory::HammingDistanceComputer hamming(binary_code_words);
     const auto& request_protocol = protocol.contains("requests")
         ? protocol
         : parent;
     require(request_protocol.at("requests").size() == 76,
             "R4 external comparison request partition differs");
+    const auto working_set_cap = protocol.contains("working_set_cap_bytes")
+        ? std::optional<std::size_t>(protocol.at(
+            "working_set_cap_bytes").get<std::size_t>())
+        : std::nullopt;
+    const auto cap_applied = apply_working_set_condition(
+        working_set_cap.has_value() ? "working_set_cap" : "resident",
+        working_set_cap.value_or(0));
     const auto trace = stress_trace(request_protocol,
         protocol.at("trace_repetitions").get<std::size_t>());
+    FullR4BatchExecutor executor(context, coarse_input, input, final_int8,
+        hamming, request_protocol, workers, routing_kernel, final_kernel,
+        representative_input.get(), coarse_prefilter_input.get(),
+        prefilter_prototypes, refine_addresses);
     for (std::size_t pass = 0;
          pass != protocol.at("warmup_batches").get<std::size_t>(); ++pass) {
-        static_cast<void>(full_r4_batch(context, coarse_input, input,
-            final_int8, hamming, request_protocol, trace, workers, routing_kernel,
-            final_kernel));
+        static_cast<void>(executor.run(trace));
     }
     nlohmann::json samples = nlohmann::json::array();
     for (std::size_t pass = 0;
          pass != protocol.at("measured_batches").get<std::size_t>(); ++pass) {
         const auto before = process_state();
         const auto batch_begin = Clock::now();
-        const auto values = full_r4_batch(context, coarse_input, input,
-            final_int8, hamming, request_protocol, trace, workers, routing_kernel,
-            final_kernel);
+        const auto values = executor.run(trace);
         const auto wall_ms = milliseconds(batch_begin, Clock::now());
         const auto after = process_state();
         nlohmann::json queries = nlohmann::json::array();
@@ -5125,9 +6190,48 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
         {"protocol_sha256", agent_memory::sha256_file_hex(protocol_path)},
         {"seed", seed}, {"storage_mode", storage_mode},
         {"execution_kernel", execution}, {"workers", workers},
+        {"worker_lifecycle", "persistent_across_warmup_and_measurement"},
+        {"working_set_cap_applied", cap_applied},
+        {"working_set_cap_bytes", working_set_cap.has_value()
+            ? nlohmann::json(*working_set_cap) : nlohmann::json(nullptr)},
         {"trace_queries", trace.size()},
+        {"coarse_k8_treatment", coarse_input.treatment},
+        {"coarse_k8_kind", coarse_input.kind},
+        {"coarse_k8_bits", coarse_input.bits},
+        {"coarse_k8_compander", coarse_input.compander},
+        {"coarse_k8_compander_parameter", coarse_input.compander_parameter},
+        {"coarse_k8_prototype_limit", coarse_input.prototype_limit},
+        {"coarse_k8_record_bytes", coarse_input.record_bytes},
+        {"coarse_k8_query_arithmetic", coarse_input.query_arithmetic},
         {"coarse_k8_store_sha256", coarse_input.sha256},
         {"coarse_k8_store_bytes", coarse_input.bytes},
+        {"coarse_k8_prefilter_treatment", coarse_prefilter_input == nullptr
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(coarse_prefilter_input->treatment)},
+        {"coarse_k8_prefilter_prototypes", coarse_prefilter_input == nullptr
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(prefilter_prototypes)},
+        {"coarse_k8_refine_addresses", coarse_prefilter_input == nullptr
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(refine_addresses)},
+        {"coarse_k8_prefilter_store_sha256",
+            coarse_prefilter_input == nullptr ? nlohmann::json(nullptr)
+            : nlohmann::json(coarse_prefilter_input->sha256)},
+        {"coarse_k8_prefilter_record_bytes",
+            coarse_prefilter_input == nullptr ? nlohmann::json(nullptr)
+            : nlohmann::json(coarse_prefilter_input->record_bytes)},
+        {"coarse_k8_prefilter_store_bytes",
+            coarse_prefilter_input == nullptr ? nlohmann::json(nullptr)
+            : nlohmann::json(coarse_prefilter_input->bytes)},
+        {"representative_k32_treatment", representative_input == nullptr
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(representative_input->treatment)},
+        {"representative_k32_record_bytes", representative_input == nullptr
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(representative_input->record_bytes)},
+        {"representative_k32_store_sha256", representative_input == nullptr
+            ? nlohmann::json(nullptr)
+            : nlohmann::json(representative_input->sha256)},
         {"final_codec", "symmetric_per_document_int8"},
         {"final_store_sha256", final_int8.sha256},
         {"final_record_bytes", final_int8.record_bytes},
@@ -5146,20 +6250,69 @@ void self_test() {
     require(std::abs(int8_dot_scalar(codes.data(), 0.007F, query.data()) -
                      int8_dot_avx2(codes.data(), 0.007F, query.data())) < 1.0e-4F,
             "R4 fused INT8 kernel differs");
-    require(int8_dot_scalar(codes.data(), 0.007F, query.data()) ==
+    require(int8_dot_scalar_ordered(codes.data(), 0.007F, query.data()) ==
             int8_dot_avx2_ordered(codes.data(), 0.007F, query.data()),
             "R4 ordered AVX2 INT8 kernel differs");
+    std::array<std::uint8_t, 196> int4_record{};
+    float int4_expected = 0.0F;
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const auto code = static_cast<std::uint8_t>(dimension % 15U);
+        if (dimension % 2U == 0)
+            int4_record[dimension / 2U] = code;
+        else
+            int4_record[dimension / 2U] |= static_cast<std::uint8_t>(code << 4U);
+        int4_expected += static_cast<float>(static_cast<int>(code) - 7) *
+                         query[dimension];
+    }
+    const float int4_amplitude = 0.75F;
+    std::memcpy(int4_record.data() + dimensions / 2U, &int4_amplitude,
+                sizeof(int4_amplitude));
+    int4_expected *= int4_amplitude / 7.0F;
+    require(std::abs(representative_int4_uniform_dot(
+                int4_record.data(), query.data()) - int4_expected) < 1.0e-4F,
+            "R4 representative INT4 kernel differs");
+    CoarseK8Input nonlinear_int4;
+    nonlinear_int4.bits = 4;
+    nonlinear_int4.compander = "power";
+    nonlinear_int4.compander_parameter = 0.625F;
+    nonlinear_int4.decode_table.resize(16);
+    float nonlinear_int4_expected = 0.0F;
+    for (std::size_t code = 0; code != 15; ++code) {
+        const auto signed_code = static_cast<int>(code) - 7;
+        const auto magnitude = static_cast<float>(std::abs(signed_code)) / 7.0F;
+        nonlinear_int4.decode_table[code] = std::copysign(
+            std::pow(magnitude, 1.0F / 0.625F),
+            static_cast<float>(signed_code));
+    }
+    for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+        const auto byte = int4_record[dimension / 2U];
+        const auto code = static_cast<std::size_t>(dimension % 2U == 0
+            ? byte & 0x0fU : byte >> 4U);
+        nonlinear_int4_expected += nonlinear_int4.decode_table[code] *
+                                   query[dimension];
+    }
+    nonlinear_int4_expected *= int4_amplitude;
+    require(std::abs(representative_int4_nonlinear_dot(nonlinear_int4,
+                int4_record.data(), query.data()) -
+                nonlinear_int4_expected) < 1.0e-4F,
+            "R4 nonlinear representative INT4 kernel differs");
 #if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
     std::array<std::uint32_t, 128> input{}, decoded{};
-    for (std::size_t index = 0; index != input.size(); ++index)
-        input[index] = static_cast<std::uint32_t>(index % 73U);
-    std::ostringstream packed;
-    simdcomp_pack_block(input.data(), 7, packed);
-    const auto bytes = packed.str();
-    require(bytes.size() == 112, "R4 adaptive SIMDComp size differs");
-    simdcomp_unpack_block(reinterpret_cast<const std::uint8_t*>(bytes.data()),
-                          7, decoded.data());
-    require(input == decoded, "R4 adaptive SIMDComp round trip differs");
+    for (const unsigned width : {7U, 9U, 12U}) {
+        const auto mask = (1U << width) - 1U;
+        for (std::size_t index = 0; index != input.size(); ++index)
+            input[index] = static_cast<std::uint32_t>(
+                (index * 73U + width) & mask);
+        std::ostringstream packed;
+        simdcomp_pack_block(input.data(), width, packed);
+        const auto bytes = packed.str();
+        require(bytes.size() == width * 16U,
+                "R4 adaptive SIMDComp size differs");
+        decoded.fill(0U);
+        simdcomp_unpack_block(reinterpret_cast<const std::uint8_t*>(bytes.data()),
+                              width, decoded.data());
+        require(input == decoded, "R4 adaptive SIMDComp round trip differs");
+    }
     std::array<std::uint8_t, 244> int5_record{}, bitsliced_record{},
         avx2_record{};
     std::ostringstream int5_packed;

@@ -107,11 +107,24 @@ def int8_store(manifest_path: Path) -> tuple[np.memmap, dict[str, Any]]:
                      shape=(DOCUMENTS, 388)), row
 
 
+def request_protocol(value: dict[str, Any]) -> dict[str, Any]:
+    if "requests" in value:
+        return value
+    kernel = json.loads(Path(value["routing_kernel_protocol"]).read_text(
+        encoding="utf-8"))
+    parent = json.loads(Path(kernel["parent_protocol"]).read_text(
+        encoding="utf-8"))
+    require("requests" in parent,
+            "R4 final-codec parent query protocol differs")
+    return parent
+
+
 def run(args: argparse.Namespace) -> None:
     selected = load_reports(args.selected_report_root)
     uniform = load_reports(args.uniform_int5_report_root)
     protocol = json.loads(args.r4_protocol.read_text(encoding="utf-8"))
-    requests = protocol["requests"]
+    request_value = request_protocol(protocol)
+    requests = request_value["requests"]
     require(len(requests) == 76, "R4 final-codec query partition differs")
     native_queries = np.asarray([row["native_query"] for row in requests],
                                 dtype=np.int64)
@@ -129,10 +142,11 @@ def run(args: argparse.Namespace) -> None:
         mode="r", dtype="<f4", shape=(QUERIES, 256))
     centroids = np.memmap(root / manifest["binary_adc_centroids_file"],
         mode="r", dtype="<f4", shape=(256, 2))
-    ranks = np.fromfile(Path(protocol["document_id_rank_file"]), dtype="<u4")
-    document_ids = ids(Path(protocol["evaluation_document_ids"]))
-    query_ids = ids(Path(protocol["evaluation_query_ids"]))
-    relevance = qrels(Path(protocol["evaluation_qrels"]))
+    ranks = np.fromfile(Path(request_value["document_id_rank_file"]),
+                        dtype="<u4")
+    document_ids = ids(Path(request_value["evaluation_document_ids"]))
+    query_ids = ids(Path(request_value["evaluation_query_ids"]))
+    relevance = qrels(Path(request_value["evaluation_qrels"]))
     int8, int8_descriptor = int8_store(args.int8_layout_manifest)
 
     all_rows: list[dict[str, Any]] = []
