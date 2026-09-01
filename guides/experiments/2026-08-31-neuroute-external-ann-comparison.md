@@ -198,3 +198,41 @@ The dense branch reopens only for one of four explicit reasons:
 4. ScaNN or DiskANN is explicitly brought into scope.
 
 Lexical BM25/WAND/BMW work remains deferred and was not started by #263.
+
+## 2026-09-01 K8 and implementation closure replay
+
+The full NeuRoute rows were rerun with the current native executable after the
+exact/approximate K8 frontier and implementation audit. External Faiss and
+historical MIH reports are byte-identical reused controls; ScaNN and DiskANN
+remain excluded. The selected K8 policy is the exact physical FP32 K8 fallback
+because neither exact compressed K8 nor the K1/K2 approximate frontier met the
+registered quality and 15 ms conditions.
+
+| Engine / policy | Mean nDCG@10 | Top10 overlap | p95 ms, w1 | Mean major payload |
+| --- | ---: | ---: | ---: | ---: |
+| NeuRoute R4 / INT8 routing | .651576 | .8763 | 81.863 | 1.507 GB |
+| NeuRoute R4 / nonlinear INT5 routing | .650710 | .8750 | 84.753 | 1.380 GB |
+| Faiss binary flat | .643086 | .9013 | 8.423 | 1.568 GB |
+| Historical MIH m19/r56 | .643241 | - | 25.737 | see raw report |
+| Faiss float IVF, nprobe 128 | .659919 | - | 15.483 | 3.086 GB class |
+| Faiss float IVF, nprobe 512 | .668508 | .9737 | 30.445 | 3.086 GB |
+| Faiss exact flat | .661003 | 1.0000 | 145.862 | 1.536 GB |
+
+NeuRoute remains faster than Faiss exact flat and retains a smaller compact
+INT5 payload, but the coarse stage dominates: p95 is `71.936 ms` for the INT8
+mode and `72.683 ms` for the INT5 mode, while the post-shortlist cascade is
+`10.329/12.332 ms`. The full request does not meet the intended latency target
+and is not on the p95-latency-versus-nDCG Pareto frontier. It remains on the
+artifact-bytes-versus-nDCG frontier under the harness accounting.
+
+The cross-runtime comparison remains directional: Faiss rows are Python
+orchestrated, NeuRoute is native C++, build peak RSS was not measured, and all
+timings are from one Windows host. The result supports an engineering policy,
+not a universal ANN ranking.
+
+Replayable local artifacts:
+
+- `tmp/neuroute-external-ann-comparison/result-k8-closure.json`, SHA-256
+  `d970530dca2f60f5d50ac01451f26750a65208ea95c2440ced2cd5e3abc3b627`;
+- `tmp/neuroute-external-ann-comparison/evidence-k8-closure.json`, SHA-256
+  `20493f82531aeef06bdc5090d6d0a5c823e11c3f85b59ef808ec513f3c7e4d65`.

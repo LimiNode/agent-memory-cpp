@@ -92,6 +92,18 @@ def contract(path: Path) -> dict[str, Any]:
     return value
 
 
+def request_protocol(value: dict[str, Any]) -> tuple[dict[str, Any], Path | None]:
+    if "requests" in value:
+        return value, None
+    kernel_path = Path(value["routing_kernel_protocol"])
+    kernel = json.loads(kernel_path.read_text(encoding="utf-8"))
+    parent_path = Path(kernel["parent_protocol"])
+    parent = json.loads(parent_path.read_text(encoding="utf-8"))
+    require("requests" in parent,
+            "external comparison parent query protocol differs")
+    return parent, parent_path
+
+
 def expected_engines(value: dict[str, Any]) -> dict[str, list[int]]:
     result: dict[str, list[int]] = {}
     for family in value["competitors"].values():
@@ -183,6 +195,7 @@ def summarize_r4(args: argparse.Namespace, value: dict[str, Any],
         all_coarse_ms = []
         all_post_shortlist_ms = []
         payloads = []
+        mode_policy = None
         throughput: dict[int, list[float]] = {
             worker: [] for worker in value["retrieval_contract"][
                 "throughput_workers"]}
@@ -202,8 +215,22 @@ def summarize_r4(args: argparse.Namespace, value: dict[str, Any],
                                          for total, current in zip(totals, coarse))
             route_bytes, mapping_bytes = routing_bytes(integration, seed, mode)
             coarse_bytes = int(report.get("coarse_k8_store_bytes", 0))
-            payload = (coarse_bytes + route_bytes + mapping_bytes + final_bytes +
-                       code_bytes + rank_bytes)
+            prefilter_bytes = int(report.get(
+                "coarse_k8_prefilter_store_bytes") or 0)
+            current_policy = {"refine_treatment": report.get(
+                    "coarse_k8_treatment"),
+                "refine_prototypes": report.get("coarse_k8_prototype_limit"),
+                "prefilter_treatment": report.get(
+                    "coarse_k8_prefilter_treatment"),
+                "prefilter_prototypes": report.get(
+                    "coarse_k8_prefilter_prototypes"),
+                "refine_addresses": report.get("coarse_k8_refine_addresses")}
+            if mode_policy is None:
+                mode_policy = current_policy
+            require(mode_policy == current_policy,
+                    "R4 K8 policy differs across seeds")
+            payload = (coarse_bytes + prefilter_bytes + route_bytes +
+                       mapping_bytes + final_bytes + code_bytes + rank_bytes)
             payloads.append(payload)
             worker_rows = []
             for worker in throughput:
@@ -225,7 +252,9 @@ def summarize_r4(args: argparse.Namespace, value: dict[str, Any],
                 "post_shortlist_cascade_ms": timing(
                     [total - current for total, current in zip(totals, coarse)]),
                 "throughput": worker_rows,
-                "artifact_bytes": {"coarse_k8_fp32": coarse_bytes,
+                "k8_policy": current_policy,
+                "artifact_bytes": {"coarse_k8_refine": coarse_bytes,
+                    "coarse_k8_prefilter": prefilter_bytes,
                     "routing_store": route_bytes,
                     "routing_mapping": mapping_bytes,
                     "final_symmetric_int8": final_bytes,
@@ -233,7 +262,7 @@ def summarize_r4(args: argparse.Namespace, value: dict[str, Any],
                     "document_rank": rank_bytes,
                     "complete_major_retrieval_payload": payload}})
         points.append({"id": f"neuroute_r4/{mode}", "engine": "neuroute_r4",
-            "parameter": mode, "quality": {
+            "parameter": mode, "k8_policy": mode_policy, "quality": {
                 "mean_candidate_count": statistics.fmean(
                     row["candidate_count"] for row in all_quality),
                 "mean_exact_top10_recall": statistics.fmean(
@@ -332,13 +361,14 @@ def pareto(points: list[dict[str, Any]], x: str) -> list[str]:
 def run(args: argparse.Namespace) -> None:
     value = contract(args.contract)
     protocol = json.loads(args.r4_protocol.read_text(encoding="utf-8"))
-    requests = protocol["requests"]
+    request_value, request_path = request_protocol(protocol)
+    requests = request_value["requests"]
     require(len(requests) == value["dataset"]["evaluation_queries"],
             "external comparison query partition differs")
-    all_query_ids = read_ids(Path(protocol["evaluation_query_ids"]))
+    all_query_ids = read_ids(Path(request_value["evaluation_query_ids"]))
     query_ids = [all_query_ids[int(row["native_query"])] for row in requests]
-    document_ids = read_ids(Path(protocol["evaluation_document_ids"]))
-    qrels = read_qrels(Path(protocol["evaluation_qrels"]))
+    document_ids = read_ids(Path(request_value["evaluation_document_ids"]))
+    qrels = read_qrels(Path(request_value["evaluation_qrels"]))
     oracle = np.load(args.oracle)
     require(oracle.shape == (len(requests), TOP_K),
             "external comparison oracle differs")
@@ -360,7 +390,7 @@ def run(args: argparse.Namespace) -> None:
     input_root = args.input_manifest.parent
     code_bytes = (input_root / input_manifest["document_codes_file"]).stat().st_size
     fp32_bytes = (input_root / input_manifest["document_vectors_file"]).stat().st_size
-    rank_bytes = Path(protocol["document_id_rank_file"]).stat().st_size
+    rank_bytes = Path(request_value["document_id_rank_file"]).stat().st_size
     r4, r4_hashes = summarize_r4(args, value, oracle, query_ids,
         document_ids, qrels, integration, final_bytes, code_bytes, rank_bytes)
     external, external_hashes = external_points(args, value, fp32_bytes)
@@ -369,6 +399,8 @@ def run(args: argparse.Namespace) -> None:
         "family": "neuroute_external_ann_comparison_result",
         "contract_sha256": sha256(args.contract),
         "inputs": {"r4_protocol_sha256": sha256(args.r4_protocol),
+            "request_protocol_sha256": (None if request_path is None else
+                sha256(request_path)),
             "integration_manifest_sha256": sha256(args.integration_manifest),
             "r4_layout_manifest_sha256": sha256(args.r4_layout_manifest),
             "final_codec_transfer_sha256": sha256(args.final_codec_transfer),
@@ -383,6 +415,8 @@ def run(args: argparse.Namespace) -> None:
             "artifact_bytes_vs_ndcg": pareto(points, "bytes")},
         "methodology": {
             "neuroute_full_timer_includes_persisted_k8_coarse_stage": True,
+            "neuroute_k8_policy": r4[0]["k8_policy"],
+            "approximate_k8_prefilter_bytes_are_included_in_footprint": True,
             "neuroute_final_codec": "symmetric_per_document_int8",
             "uniform_int5_failed_actual_r4_pool_transfer": True,
             "final_int8_selection_is_post_hoc_corrective": True,
