@@ -17,12 +17,17 @@ from typing import Any
 
 sys.dont_write_bytecode = True
 import numpy as np
+import neuroute_authoritative_qrels as authoritative
 
 THIS = Path(__file__).resolve().parent
 TOP_K = 10
 ADDRESSES = 1024
 SEEDS = [2026082701, 2026082702, 2026082703]
 MODES = ["int8", "nonlinear_int5_power_half"]
+PRE_RECEIPT_NATIVE_EXECUTABLE_SHA256 = (
+    "f9315d7f846972b25dbf51fdb539b34b678ede532e9ac331bc552417013b9b1b")
+PRE_RECEIPT_CODEC_EXECUTABLE_SHA256 = (
+    "fb5b3558bcff33b0af03afc8358c79c6204e0359048aa57b2b26dbd4634ef078")
 
 
 def load(name: str, filename: str) -> Any:
@@ -74,6 +79,17 @@ def parent_protocol(protocol: dict[str, Any]) -> dict[str, Any]:
         current = json.loads(Path(current["parent_protocol"]).read_text(
             encoding="utf-8"))
     return current
+
+
+def authoritative_receipt(parent: dict[str, Any]) -> dict[str, Any]:
+    root = Path(parent["evaluation_document_ids"]).parent
+    receipt = authoritative.validate_e5_root("de-1m", root)
+    for name in ("evaluation_document_ids", "evaluation_query_ids",
+                 "evaluation_qrels"):
+        expected = (root / receipt["outputs"][name]["path"]).resolve()
+        require(Path(parent[name]).resolve() == expected,
+                f"K8 authoritative protocol path differs: {name}")
+    return receipt
 
 
 def requests(protocol: dict[str, Any], parent: dict[str, Any]
@@ -247,6 +263,28 @@ def query_metrics(report_path: Path, request_rows: list[dict[str, Any]],
     return result
 
 
+def rebind_ndcg(rows: list[dict[str, Any]],
+                request_rows: list[dict[str, Any]], query_ids: list[str],
+                document_ids: list[str],
+                qrels: dict[str, dict[str, float]]) -> list[dict[str, Any]]:
+    by_request = {(int(request["request"]), int(request["native_query"])):
+                  query_id for request, query_id in zip(request_rows, query_ids)}
+    result = []
+    for row in rows:
+        key = (int(row["request"]), int(row["native_query"]))
+        require(key in by_request, "K8 cached query identity differs")
+        rebound = dict(row)
+        rebound["ndcg_at_10"] = summary.ndcg(
+            list(map(int, row["exact_documents"])), by_request[key],
+            document_ids, qrels)
+        # Old checkpoints did not preserve non-reference coarse rows, so this
+        # qrels-dependent diagnostic cannot be independently replayed. It is
+        # deliberately excluded from selection and cleared during migration.
+        rebound["coarse_qrel_address_survival"] = None
+        result.append(rebound)
+    return result
+
+
 def cleanup_report(report_path: Path) -> None:
     for path in report_path.parent.glob(report_path.stem + ".pass-*.coarse-*"):
         path.unlink()
@@ -272,7 +310,7 @@ def run_point(args: argparse.Namespace, partition: str,
                  warmup_batches is None and mode_override is None else
                  f"{point}-q{query_arithmetic}-w{warmup}")
     checkpoint = root / "checkpoints" / f"{partition}-{run_label}.json"
-    identity = {"schema_version": 2, "partition": partition,
+    identity = {"schema_version": 3, "partition": partition,
         "point": point, "source_protocol_sha256": sha256(source_protocol),
         "source_manifest_sha256": sha256(args.source_manifest),
         "layout_manifest_sha256": sha256(args.layout_manifest),
@@ -282,10 +320,19 @@ def run_point(args: argparse.Namespace, partition: str,
             "materialize-neuroute-k8-codec.py"),
         "contract_sha256": sha256(args.contract),
         "execution": args.execution, "query_arithmetic": query_arithmetic,
-        "warmup_batches": warmup, "routing_storage_modes": modes}
+        "warmup_batches": warmup, "routing_storage_modes": modes,
+        "authoritative_e5_receipt": args.authoritative_e5_receipt}
     if checkpoint.is_file():
         cached = json.loads(checkpoint.read_text(encoding="utf-8"))
-        legacy_identity = dict(identity)
+        receiptless_identity = dict(identity)
+        receiptless_identity["schema_version"] = 2
+        receiptless_identity.pop("authoritative_e5_receipt")
+        prior_execution_identity = dict(receiptless_identity)
+        prior_execution_identity["native_executable_sha256"] = (
+            PRE_RECEIPT_NATIVE_EXECUTABLE_SHA256)
+        prior_execution_identity["codec_executable_sha256"] = (
+            PRE_RECEIPT_CODEC_EXECUTABLE_SHA256)
+        legacy_identity = dict(prior_execution_identity)
         legacy_identity.pop("materializer_sha256")
         amendment = args.contract_value.get("analysis_amendment", {})
         layout_correction = args.contract_value.get(
@@ -303,21 +350,56 @@ def run_point(args: argparse.Namespace, partition: str,
             expected["contract_sha256"] = old_contract
             legacy_matches = legacy_matches or (
                 cached_without_materializer == expected)
-        identity_matches = (cached.get("identity") == identity or
-            (amendment.get("raw_native_grid_unchanged") is True and
+        current_identity_matches = cached.get("identity") == identity
+        receiptless_identity_matches = cached.get("identity") in (
+            receiptless_identity, prior_execution_identity)
+        receipt_bound_prior = dict(prior_execution_identity)
+        receipt_bound_prior["schema_version"] = 3
+        receipt_bound_prior["authoritative_e5_receipt"] = (
+            args.authoritative_e5_receipt)
+        receipt_bound_prior_matches = cached.get("identity") == receipt_bound_prior
+        receipt_bound_legacy_matches = False
+        for old_contract in old_contracts:
+            expected = dict(legacy_identity)
+            expected["schema_version"] = 3
+            expected["contract_sha256"] = old_contract
+            expected["authoritative_e5_receipt"] = args.authoritative_e5_receipt
+            receipt_bound_legacy_matches = (
+                receipt_bound_legacy_matches or (not invalidated and
+                                                  cached_identity == expected))
+        amended_legacy_matches = (
+            amendment.get("raw_native_grid_unchanged") is True and
              amendment.get("reuse_matching_previous_contract_checkpoints")
                 is True and
              layout_correction.get("other_raw_native_grid_points_unchanged")
-                is True and not invalidated and legacy_matches))
-        if identity_matches:
+                is True and not invalidated and legacy_matches)
+        if (current_identity_matches or receiptless_identity_matches or
+                receipt_bound_prior_matches or receipt_bound_legacy_matches or
+                amended_legacy_matches):
+            cached_rows = cached["rows"]
+            is_receipt_bound = (current_identity_matches or
+                receipt_bound_prior_matches or receipt_bound_legacy_matches)
+            if not is_receipt_bound:
+                cached_rows = rebind_ndcg(cached_rows, request_rows, query_ids,
+                                          document_ids, qrels)
+                upgraded_identity = dict(cached_identity)
+                upgraded_identity["schema_version"] = 3
+                upgraded_identity["authoritative_e5_receipt"] = (
+                    args.authoritative_e5_receipt)
+                checkpoint.write_bytes(canonical(
+                    {"identity": upgraded_identity, "rows": cached_rows}))
+                cached_identity = upgraded_identity
+            args.execution_provenance.add((
+                cached_identity["native_executable_sha256"],
+                cached_identity["codec_executable_sha256"]))
             if point == "k8-fp32" and query_arithmetic == "fp32":
                 for seed in SEEDS:
                     for mode in sorted({row["routing_storage_mode"]
-                                        for row in cached["rows"]}):
-                        references[(seed, mode)] = [row for row in cached["rows"]
+                                        for row in cached_rows}):
+                        references[(seed, mode)] = [row for row in cached_rows
                             if row["seed"] == seed and
                             row["routing_storage_mode"] == mode]
-            return cached["rows"]
+            return cached_rows
     physical_root = root / "physical" / run_label
     manifest = materialize(args, treatment["id"], prototype_limit,
                            physical_root)
@@ -348,6 +430,8 @@ def run_point(args: argparse.Namespace, partition: str,
             cleanup_report(report_path)
     checkpoint.parent.mkdir(parents=True, exist_ok=True)
     checkpoint.write_bytes(canonical({"identity": identity, "rows": rows}))
+    args.execution_provenance.add((identity["native_executable_sha256"],
+                                   identity["codec_executable_sha256"]))
     for path in physical_root.rglob("*.records"):
         path.unlink()
     return rows
@@ -370,6 +454,7 @@ def aggregate(rows: list[dict[str, Any]], reference_rows: list[dict[str, Any]],
                        row["routing_storage_mode"] == mode]
             strata[f"{seed}/{mode}"] = statistics.fmean(current)
     values = lambda key: [float(row[key]) for row in rows]
+    qrel_survival = [row["coarse_qrel_address_survival"] for row in rows]
     overlaps = values("final_top10_overlap")
     changed = [index for index, value in enumerate(overlaps) if value < 1.0]
     result = {**treatment, "prototype_limit": prototype_limit,
@@ -393,8 +478,9 @@ def aggregate(rows: list[dict[str, Any]], reference_rows: list[dict[str, Any]],
             values("adc_exact_top10_survival")),
         "mean_coarse_exact_top10_address_survival": statistics.fmean(
             values("coarse_exact_top10_address_survival")),
-        "mean_coarse_qrel_address_survival": statistics.fmean(
-            values("coarse_qrel_address_survival")),
+        "mean_coarse_qrel_address_survival": (statistics.fmean(
+            float(value) for value in qrel_survival)
+            if all(value is not None for value in qrel_survival) else None),
         "mean_coarse_top1024_overlap": statistics.fmean(
             values("coarse_top1024_overlap")),
         "coarse_ms": summary.timing(values("coarse_ms")),
@@ -451,7 +537,8 @@ def stage_diagnostics(rows: list[dict[str, Any]],
                          row["request"]): row for row in reference_rows}
     groups: dict[tuple[int, str], list[dict[str, Any]]] = {}
     for row in rows:
-        key = (int(row["prototype_limit"]), str(row["treatment"]))
+        key = (int(row.get("prototype_limit", row.get(
+            "refine_prototype_limit"))), str(row["treatment"]))
         groups.setdefault(key, []).append(row)
     summaries = []
     for (prototype_limit, treatment), current in sorted(groups.items()):
@@ -587,9 +674,11 @@ def per_width(summaries: list[dict[str, Any]], bits: list[int]
 def run(args: argparse.Namespace) -> None:
     contract = planner.load_contract(args.contract)
     args.contract_value = contract
+    args.execution_provenance = set()
     all_treatments = planner.treatments(contract)
     data_parent = parent_protocol(json.loads(args.internal_protocol.read_text(
         encoding="utf-8")))
+    args.authoritative_e5_receipt = authoritative_receipt(data_parent)
     data = load_data(data_parent)
     doc_rows = layout_doc_rows(args.layout_manifest)
     configuration, configuration_rows = evaluate_partition(args,
@@ -663,7 +752,11 @@ def run(args: argparse.Namespace) -> None:
         if passing_execution else None)
     selected_physical_manifest = materialize(args, candidate["id"],
         candidate["prototype_limit"], args.output_root / "selected-physical")
-    result = {"schema_version": 1,
+    require(len(args.execution_provenance) == 1,
+            "K8 execution provenance differs across checkpoints")
+    native_executable_sha256, codec_executable_sha256 = next(iter(
+        args.execution_provenance))
+    result = {"schema_version": 2,
         "family": "neuroute_exact_k8_codec_frontier_result",
         "contract_sha256": sha256(args.contract),
         "analysis_amendment": contract.get("analysis_amendment"),
@@ -673,8 +766,11 @@ def run(args: argparse.Namespace) -> None:
             "layout_manifest_sha256": sha256(args.layout_manifest),
             "configuration_protocol_sha256": sha256(args.configuration_protocol),
             "internal_protocol_sha256": sha256(args.internal_protocol),
-            "native_executable_sha256": sha256(args.native_executable),
-            "codec_executable_sha256": sha256(args.codec_executable)},
+            "native_executable_sha256": native_executable_sha256,
+            "codec_executable_sha256": codec_executable_sha256,
+            "authoritative_qrels_validator_sha256": sha256(
+                THIS / "neuroute_authoritative_qrels.py"),
+            "authoritative_e5_receipt": args.authoritative_e5_receipt},
         "configuration": {"summaries": configuration,
             "selected_per_prototype_limit_and_width": winners,
             "selected_candidate": {"prototype_limit":

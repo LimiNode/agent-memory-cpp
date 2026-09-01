@@ -17,6 +17,8 @@ import numpy as np
 THIS = Path(__file__).resolve().parent
 SEEDS = [2026082701, 2026082702, 2026082703]
 MODES = ["int8", "nonlinear_int5_power_half"]
+PRE_RECEIPT_EXACT_RUNNER_SHA256 = (
+    "1e87bb102516019aeabb1d1997ac7427b8e1672013c325c55f50d5596df160b5")
 
 
 def load(name: str, filename: str) -> Any:
@@ -163,7 +165,7 @@ def run_native(args: argparse.Namespace, partition: str, point: str,
             current = exact.query_metrics(report, request_rows, oracle,
                 qrel_docs, doc_rows[seed], query_ids, document_ids, qrels,
                 reference)
-            rows.extend({"partition": partition, "prototype_limit": 8,
+            rows.extend({"partition": partition, "refine_prototype_limit": 8,
                 "treatment": point, "seed": seed,
                 "routing_storage_mode": mode, "query_arithmetic": "fp32",
                 "coarse_store_bytes": store_bytes, **row} for row in current)
@@ -173,24 +175,72 @@ def run_native(args: argparse.Namespace, partition: str, point: str,
     return rows
 
 
+def rebind_rows(rows: list[dict[str, Any]],
+                request_rows: list[dict[str, Any]], query_ids: list[str],
+                document_ids: list[str],
+                qrels: dict[str, dict[str, float]]) -> list[dict[str, Any]]:
+    rebound = exact.rebind_ndcg(rows, request_rows, query_ids,
+                                document_ids, qrels)
+    for row in rebound:
+        row["refine_prototype_limit"] = int(
+            row.pop("prototype_limit", row.get("refine_prototype_limit", 8)))
+    return rebound
+
+
+def refine_summary(value: dict[str, Any]) -> dict[str, Any]:
+    result = dict(value)
+    if "prototype_limit" in result:
+        result["refine_prototype_limit"] = int(result.pop("prototype_limit"))
+    return result
+
+
+def refine_diagnostics(value: dict[str, Any]) -> dict[str, Any]:
+    result = dict(value)
+    result["summaries"] = [refine_summary(row) for row in value["summaries"]]
+    return result
+
+
 def checkpoint(args: argparse.Namespace, partition: str, point: str,
-               identity: dict[str, Any], compute: Any) -> list[dict[str, Any]]:
+               identity: dict[str, Any], compute: Any,
+               rebind: Any) -> list[dict[str, Any]]:
     path = args.output_root / "checkpoints" / f"{partition}-{point}.json"
     if path.is_file():
         value = json.loads(path.read_text(encoding="utf-8"))
         amendment = args.contract_value.get("analysis_amendment", {})
-        previous_identity = dict(identity)
+        receiptless_identity = dict(identity)
+        receiptless_identity["schema_version"] = 1
+        receiptless_identity.pop("authoritative_e5_receipt")
+        previous_identity = dict(receiptless_identity)
         previous_identity["contract_sha256"] = amendment.get(
             "previous_contract_sha256")
         previous_identity["runner_sha256"] = amendment.get(
             "previous_runner_sha256")
+        previous_identity["exact_runner_sha256"] = (
+            PRE_RECEIPT_EXACT_RUNNER_SHA256)
         identity_matches = value.get("identity") == identity
+        receiptless_identity_matches = value.get("identity") == receiptless_identity
+        receipt_bound_previous = dict(previous_identity)
+        receipt_bound_previous["schema_version"] = 2
+        receipt_bound_previous["authoritative_e5_receipt"] = (
+            args.authoritative_e5_receipt)
+        receipt_bound_previous_matches = (
+            value.get("identity") == receipt_bound_previous)
         previous_identity_matches = bool(
             amendment.get("raw_native_grid_unchanged") is True and
             amendment.get("reuse_matching_previous_checkpoints") is True and
             value.get("identity") == previous_identity)
-        if identity_matches or previous_identity_matches:
-            return value["rows"]
+        if (identity_matches or receiptless_identity_matches or
+                receipt_bound_previous_matches or previous_identity_matches):
+            is_receipt_bound = identity_matches or receipt_bound_previous_matches
+            rows = value["rows"] if is_receipt_bound else rebind(value["rows"])
+            if not is_receipt_bound:
+                upgraded_identity = dict(value["identity"])
+                upgraded_identity["schema_version"] = 2
+                upgraded_identity["authoritative_e5_receipt"] = (
+                    args.authoritative_e5_receipt)
+                path.write_bytes(canonical(
+                    {"identity": upgraded_identity, "rows": rows}))
+            return rows
     rows = compute()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_bytes(canonical({"identity": identity, "rows": rows}))
@@ -243,20 +293,22 @@ def evaluate(args: argparse.Namespace, contract: dict[str, Any],
     references: dict[tuple[int, str], list[dict[str, Any]]] = {}
     reference_protocol = exact_protocol(source_protocol, warmup,
         args.output_root / "physical" / partition / "reference-protocol.json")
-    reference_identity = {"schema_version": 1, "partition": partition,
+    reference_identity = {"schema_version": 2, "partition": partition,
         "point": "exact_fp32_k8", "protocol_sha256": sha256(source_protocol),
         "native_executable_sha256": sha256(args.native_executable),
         "contract_sha256": sha256(args.contract), "modes": modes,
         "warmup_batches": warmup,
         "runner_sha256": sha256(Path(__file__)),
         "exact_runner_sha256": sha256(THIS /
-            "run-neuroute-exact-k8-codec-frontier.py")}
+            "run-neuroute-exact-k8-codec-frontier.py"),
+        "authoritative_e5_receipt": args.authoritative_e5_receipt}
     reference_rows = checkpoint(args, partition, "exact_fp32_k8",
         reference_identity, lambda: run_native(args, partition,
             "exact_fp32_k8", reference_protocol, request_rows, oracle,
             qrel_docs, doc_rows, query_ids, document_ids, qrels, modes,
             references, average_store_bytes(args.source_manifest, "fp32"),
-            True))
+            True), lambda rows: rebind_rows(
+                rows, request_rows, query_ids, document_ids, qrels))
     if not references:
         for seed in SEEDS:
             for mode in modes:
@@ -268,8 +320,9 @@ def evaluate(args: argparse.Namespace, contract: dict[str, Any],
     reference_aggregate["coarse_logical_bytes_touched"] = exact.summary.timing(
         [float(row["coarse_logical_bytes_touched"])
          for row in reference_rows])
-    summaries = [{"id": "exact_fp32_k8", "prefilter_prototypes": 8,
-        "refine_addresses": None, **reference_aggregate}]
+    summaries = [refine_summary({"id": "exact_fp32_k8",
+        "prefilter_prototypes": 8, "refine_addresses": None,
+        **reference_aggregate})]
     all_rows = list(reference_rows)
     points = treatments
     if points is None:
@@ -295,7 +348,7 @@ def evaluate(args: argparse.Namespace, contract: dict[str, Any],
         refine_bytes = average_store_bytes(refine_manifest,
                                              treatment["refine_treatment"])
         store_bytes = prefilter_bytes + refine_bytes
-        identity = {"schema_version": 1, "partition": partition,
+        identity = {"schema_version": 2, "partition": partition,
             "point": point, "protocol_sha256": sha256(source_protocol),
             "native_executable_sha256": sha256(args.native_executable),
             "contract_sha256": sha256(args.contract), "modes": modes,
@@ -306,16 +359,19 @@ def evaluate(args: argparse.Namespace, contract: dict[str, Any],
             "prefilter_materializer_sha256": sha256(THIS /
                 "materialize-neuroute-k8-prefilter.py"),
             "prefilter_manifest_sha256": sha256(prefilter_manifest),
-            "refine_manifest_sha256": sha256(refine_manifest)}
+            "refine_manifest_sha256": sha256(refine_manifest),
+            "authoritative_e5_receipt": args.authoritative_e5_receipt}
         rows = checkpoint(args, partition, point, identity,
             lambda p=current_protocol, s=store_bytes: run_native(args,
                 partition, point, p, request_rows, oracle, qrel_docs, doc_rows,
-                query_ids, document_ids, qrels, modes, references, s, False))
+                query_ids, document_ids, qrels, modes, references, s, False),
+            lambda cached: rebind_rows(
+                cached, request_rows, query_ids, document_ids, qrels))
         all_rows.extend(rows)
         aggregate = exact.aggregate(rows, reference_rows, treatment, 8, gates)
         aggregate["coarse_logical_bytes_touched"] = exact.summary.timing([
             float(row["coarse_logical_bytes_touched"]) for row in rows])
-        summaries.append({**treatment, **aggregate})
+        summaries.append(refine_summary({**treatment, **aggregate}))
     return summaries, all_rows
 
 
@@ -342,6 +398,7 @@ def run(args: argparse.Namespace) -> None:
         for name in contract["refine"]["treatments"]}
     parent = exact.parent_protocol(json.loads(args.internal_protocol.read_text(
         encoding="utf-8")))
+    args.authoritative_e5_receipt = exact.authoritative_receipt(parent)
     data = exact.load_data(parent)
     configuration, configuration_rows = evaluate(args, contract,
         "configuration", args.configuration_protocol, data, parent, None,
@@ -356,9 +413,12 @@ def run(args: argparse.Namespace) -> None:
         "prefilter_manifests_sha256": {str(limit): sha256(path)
             for limit, path in prefilter_manifests.items()},
         "refine_manifests_sha256": {name: sha256(path)
-            for name, path in refine_manifests.items()}}
+            for name, path in refine_manifests.items()},
+        "authoritative_qrels_validator_sha256": sha256(
+            THIS / "neuroute_authoritative_qrels.py"),
+        "authoritative_e5_receipt": args.authoritative_e5_receipt}
     if not passing:
-        result = {"schema_version": 1,
+        result = {"schema_version": 2,
             "family": "neuroute_approximate_k8_frontier_result",
             "contract_sha256": sha256(args.contract),
             "inputs": common_inputs,
@@ -367,9 +427,9 @@ def run(args: argparse.Namespace) -> None:
             "internal_locked_replay": {"summaries": []},
             "selected_candidate": None,
             "post_hoc_stage_diagnostics": {
-                "configuration": exact.stage_diagnostics(configuration_rows,
-                    [row for row in configuration_rows
-                     if row["treatment"] == "exact_fp32_k8"]),
+                "configuration": refine_diagnostics(exact.stage_diagnostics(
+                    configuration_rows, [row for row in configuration_rows
+                     if row["treatment"] == "exact_fp32_k8"])),
                 "internal": None},
             "decision": {"quality_licensed": False,
                 "physical_target_met": False,
@@ -389,7 +449,7 @@ def run(args: argparse.Namespace) -> None:
         [selected], prefilter_manifests, refine_manifests)
     internal_candidate = next(row for row in internal
                               if row["id"] == selected["id"])
-    result = {"schema_version": 1,
+    result = {"schema_version": 2,
         "family": "neuroute_approximate_k8_frontier_result",
         "contract_sha256": sha256(args.contract),
         "inputs": {**common_inputs,
@@ -402,12 +462,13 @@ def run(args: argparse.Namespace) -> None:
         "internal_locked_replay": {"summaries": internal},
         "selected_candidate": internal_candidate,
         "post_hoc_stage_diagnostics": {
-            "configuration": exact.stage_diagnostics(configuration_rows,
+            "configuration": refine_diagnostics(exact.stage_diagnostics(
+                configuration_rows,
                 [row for row in configuration_rows
-                 if row["treatment"] == "exact_fp32_k8"]),
-            "internal": exact.stage_diagnostics(internal_rows,
+                 if row["treatment"] == "exact_fp32_k8"])),
+            "internal": refine_diagnostics(exact.stage_diagnostics(internal_rows,
                 [row for row in internal_rows
-                 if row["treatment"] == "exact_fp32_k8"])},
+                 if row["treatment"] == "exact_fp32_k8"]))},
         "decision": {"quality_licensed":
             internal_candidate["passes_quality_gates"],
             "physical_target_met": internal_candidate["coarse_ms"]["p95"] <=

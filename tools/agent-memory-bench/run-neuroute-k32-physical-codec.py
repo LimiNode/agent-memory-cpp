@@ -243,6 +243,9 @@ def run(args: argparse.Namespace) -> None:
                 activation["layout_manifest_sha256"] and
             sha256(args.r4_protocol) == activation["r4_protocol_sha256"],
             "K32 physical codec activation differs")
+    protocol_value = json.loads(args.r4_protocol.read_text(encoding="utf-8"))
+    parent = exact.parent_protocol(protocol_value)
+    authoritative_e5_receipt = exact.authoritative_receipt(parent)
     manifest_path = args.materialization_root / "manifest.json"
     if not manifest_path.is_file():
         subprocess.run([sys.executable,
@@ -279,8 +282,6 @@ def run(args: argparse.Namespace) -> None:
                         path.read_text(encoding="utf-8"))
     resident_w1 = {(seed, treatment): reports[("resident", seed, treatment, 1)]
                    for seed in SEEDS for treatment in contract["treatments"]}
-    protocol_value = json.loads(args.r4_protocol.read_text(encoding="utf-8"))
-    parent = exact.parent_protocol(protocol_value)
     request_rows = exact.requests(protocol_value, parent)
     quality_rows = quality(resident_w1, request_rows, parent,
                            contract["quality_gates"])
@@ -295,9 +296,9 @@ def run(args: argparse.Namespace) -> None:
                 performance.append({"condition": condition,
                     "treatment": treatment, "workers": workers,
                     "per_seed": per_seed,
-                    "representative_p95_ms": statistics.fmean(
+                    "mean_seed_local_representative_p95_ms": statistics.fmean(
                         row["representative_ms"]["p95"] for row in per_seed),
-                    "total_p95_ms": statistics.fmean(
+                    "mean_seed_local_total_p95_ms": statistics.fmean(
                         row["total_ms"]["p95"] for row in per_seed),
                     "throughput_qps": statistics.fmean(
                         row["throughput_queries_per_second"]["p50"]
@@ -359,7 +360,7 @@ def run(args: argparse.Namespace) -> None:
             "file_backed_layout_bytes": file_backed,
             "incremental_side_store_bytes": incremental,
             "execution_unique_routing_plus_final_bytes": total_execution}
-    result = {"schema_version": 1,
+    result = {"schema_version": 2,
         "family": "neuroute_k32_physical_codec_result",
         "contract_sha256": sha256(args.contract),
         "inputs": {"native_executable_sha256":
@@ -367,7 +368,10 @@ def run(args: argparse.Namespace) -> None:
             "runner_sha256": sha256(Path(__file__)),
             "materializer_sha256": sha256(THIS /
                 "materialize-neuroute-k32-codec.py"),
-            "materialization_manifest_sha256": sha256(manifest_path)},
+            "materialization_manifest_sha256": sha256(manifest_path),
+            "authoritative_qrels_validator_sha256": sha256(
+                THIS / "neuroute_authoritative_qrels.py"),
+            "authoritative_e5_receipt": authoritative_e5_receipt},
         "storage_bytes": storage_bytes, "quality": quality_rows,
         "performance": performance,
         "decision": {"production_licensed": False,

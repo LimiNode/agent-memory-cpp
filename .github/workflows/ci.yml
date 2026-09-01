@@ -239,7 +239,8 @@ jobs:
           python tools/agent-memory-bench/materialize-neuroute-k32-codec.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-k32-physical-codec.py --self-test &&
           python tools/agent-memory-bench/materialize-neuroute-k8-prefilter.py --self-test &&
-          python tools/agent-memory-bench/run-neuroute-approximate-k8-frontier.py --self-test
+          python tools/agent-memory-bench/run-neuroute-approximate-k8-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-k8-codec-closure-evidence.py --self-test
 
   ann-cascade:
     name: ANN cascade harness

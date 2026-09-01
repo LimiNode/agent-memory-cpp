@@ -202,11 +202,16 @@ Lexical BM25/WAND/BMW work remains deferred and was not started by #263.
 ## 2026-09-01 K8 and implementation closure replay
 
 The full NeuRoute rows were rerun with the current native executable after the
-exact/approximate K8 frontier and implementation audit. External Faiss and
+exact full-scan and K1/K2-prefilter K8 frontier plus implementation audit.
+External Faiss and
 historical MIH reports are byte-identical reused controls; ScaNN and DiskANN
 remain excluded. The selected K8 policy is the exact physical FP32 K8 fallback
 because neither exact compressed K8 nor the K1/K2 approximate frontier met the
 registered quality and 15 ms conditions.
+
+This fallback does not close prototype ANN or specialized compressed-K8
+kernels: K4-to-K8 prefiltering, HNSW/IVF/binary prototype indexes and fused
+fixed-width decoders remain unmeasured.
 
 | Engine / policy | Mean nDCG@10 | Top10 overlap | p95 ms, w1 | Mean major payload |
 | --- | ---: | ---: | ---: | ---: |

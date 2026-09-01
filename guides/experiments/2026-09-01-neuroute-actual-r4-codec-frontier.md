@@ -11,8 +11,9 @@ uniform INT5 failure without silently transferring a winner from another
 stage or candidate distribution?
 
 This first stacked experiment covers the final ADC64-to-top10 stage. The K32
-representative and K8 coarse frontiers follow under the same preregistered
-width/compander grid.
+representative and K8 coarse frontiers follow under the same quality-first
+width/compander grid, with the disclosed post-exposure semantics and
+aggregation amendments recorded below.
 
 ## Protocol correction
 
@@ -122,7 +123,7 @@ internal partition was already opened by earlier studies, and no production
 default changes in this experiment. The compact result is nevertheless strong
 enough to replace INT5 as the next representative physical-codec candidate.
 
-## Preregistered exact K4/K8 coarse frontier
+## Preregistered exact K4/K8 coarse frontier with disclosed amendments
 
 The third stacked experiment addresses the previously unoptimized dominant
 runtime stage: the persisted FP32 K8 full scan. Before opening any new K8
@@ -208,7 +209,7 @@ unique routing-plus-final files. Uniform INT4 remains a required control because
 its simpler decode can outweigh the small algorithmic quality advantage of the
 nonlinear grid.
 
-## Preregistered approximate K8 frontier
+## Preregistered approximate K8 frontier with disclosed aggregation amendment
 
 The exact sweep is expected to miss the hard 15 ms p95 target even if a codec
 passes quality. Before opening approximate results, the fallback matrix was
@@ -254,10 +255,11 @@ selection noise:
 | INT9 uniform | .992112 | .997368 | -.000634 | yes |
 
 The registered mu-law candidate remains the reported selection; power-.625 is
-an opened-internal engineering control, not a retroactive replacement. Its
-warmed execution closure is also far outside the 15 ms target:
+an opened-internal engineering control, not a retroactive replacement. The
+warmed execution closure below applies to the registered INT9 mu-law-15
+candidate and is also far outside the 15 ms target:
 
-| Query arithmetic | Coarse p95 ms | Total p95 ms | Quality pass |
+| INT9 mu-law-15 query arithmetic | Coarse p95 ms | Total p95 ms | Quality pass |
 | --- | ---: | ---: | --- |
 | FP32 | 179.502 | 191.057 | no |
 | INT16 sensitivity | 175.899 | 186.209 | no |
@@ -265,7 +267,17 @@ warmed execution closure is also far outside the 15 ms target:
 
 INT16/INT8 query arithmetic remains a sensitivity path because it changes the
 scorer arithmetic. Neither path licenses a replacement, and exact compressed
-K8 is slower than the physical FP32 K8 reference on this implementation.
+K8 is slower than the physical FP32 K8 reference on this implementation. In
+particular, `179.502 ms` means INT9 mu-law-15 storage with FP32 query
+arithmetic; it is not the FP32-storage baseline. The later matched full-R4
+closure replay measures physical FP32 K8 at about `71.936-72.683 ms` coarse
+p95, depending on the downstream routing storage mode.
+
+The compressed path is a generic physical decoder: SIMDComp unpacking into a
+384-element `uint32` scratch buffer followed by float LUT gathers and dot
+reduction. This result closes the scalar-codec grid for that implementation;
+it does not establish a ceiling for a fused fixed-9-bit decoder, integer-query
+dot product, SoA/AoSoA batched scan, or another specialized compressed kernel.
 
 Post-hoc stage diagnostics preserve the original gates. They show substantial
 intermediate identity movement followed by downstream recovery: for internal
@@ -276,7 +288,7 @@ answer different questions; it is not permission to remove the registered
 boundary gates.
 
 Raw result: `tmp/neuroute-exact-k8-codec-frontier-v3/result.json`, SHA-256
-`31ccbeb7bb1770b9d5b8e42734cb6ac93bb8ebeda236fe7b71f9a42b654227e7`.
+`e2ed971d4299b6cc0a6f099adf398e88aa6832f1b90a5f8a716ee1337aeaa734`.
 
 ## Native implementation identity audit
 
@@ -304,7 +316,7 @@ All 75 registered native reports completed: five treatments, three seeds,
 resident w1/w8/w16, and 256/320 MiB caps at w8. Every pressure report confirms
 that the Windows process working-set cap was applied.
 
-| K32 treatment | Bytes/rep | Candidate retention | Final overlap | Mean nDCG loss | Pass | Resident rep p95 ms, w1 |
+| K32 treatment | Bytes/rep | Candidate retention | Final overlap | Mean nDCG loss | Strict pass | Mean seed-local resident rep p95 ms, w1 |
 | --- | ---: | ---: | ---: | ---: | --- | ---: |
 | FP32 address prefix | 1536 | 1.000000 | 1.000000 | 0 | yes | 3.034 |
 | homogeneous INT8 | 388 | .992165 | .999561 | .000031 | yes | 2.372 |
@@ -323,6 +335,14 @@ INT5 compact mode also fails the stricter physical boundary gate. INT5 remains
 a supported explicit memory-optimized mode under the earlier policy, but this
 experiment does not grant it the stricter FP32-boundary license.
 
+That strict license is not the same as an end-to-end task-quality rejection.
+Uniform INT4 retains `.992544` final overlap, slightly improves mean nDCG in
+this replay, nearly matches resident INT8 compute latency, and halves the code
+payload. Candidate/Hamming/ADC identity are hard gates only for the registered
+drop-in FP32-stage contract. They are diagnostics for a future end-to-end
+latency/quality/bytes policy, so uniform INT4 remains an unlicensed but live
+compact candidate rather than a generally failed codec.
+
 At w8 under the 256 MiB process cap, representative p95 is `67.01 ms` for
 INT8, `55.78 ms` for nonlinear INT5, and about `42.6-42.9 ms` for INT4. Full
 request p95 is roughly one second because the cap applies to the complete
@@ -331,9 +351,9 @@ single-host descriptive pressure results and do not license an automatic mode
 selector.
 
 Raw result: `tmp/neuroute-k32-physical-codec-v1/result.json`, SHA-256
-`2faa3568861d40b5a584303f9f4a94cc4bc33260b0fe9711f8b02d72ddb662a0`.
+`dd84243fc7344fa725063110e90d92ac884fd22b3a690eca4f9d0b7d768f7f6e`.
 
-## Approximate K8 result
+## Approximate K8 K1/K2 full-scan prefilter result
 
 None of the 24 preregistered K1/K2 prefilter plus K8-refinement points passes
 all quality gates. The runner originally terminated before writing a negative
@@ -355,10 +375,38 @@ improve fidelity but cannot rescue this target on the measured implementation.
 The K1/K2 plus exact-refinement architecture is therefore closed negatively;
 the production fallback remains exact physical FP32 K8.
 
-Raw result: `tmp/neuroute-approximate-k8-frontier-v1/result.json`, SHA-256
-`e410225153f662636ab2ebf5179a6a7003fc4d1e852348fd3250d6071f81373e`.
+This is deliberately not a closure of approximate K8 as a whole. K4 as a
+prefilter, HNSW/IVF over prototypes or address representations, binary/ITQ
+prototype shortlists, and hierarchical coarse indexes were not tested. The
+native helper's K4 capability does not constitute evidence for or against a
+registered K4-to-K8 refinement frontier.
 
-## Dense policy after K8 closure
+Raw result: `tmp/neuroute-approximate-k8-frontier-v1/result.json`, SHA-256
+`387ec15cb960fca4c59ab14575ede7ced792ee907d784bfc4b9df82fb31a8a14`.
+
+## Authoritative qrels and checkpoint closure
+
+Review found that the original exact/approximate checkpoint identities bound
+the protocol JSON but not the bytes of the qrels and ordered ID files referenced
+by it. The runners now validate `neuroute_authoritative_qrels.py`, carry the
+complete DE-1M E5 receipt in checkpoint identities and result inputs, and fail
+closed when any authoritative bytes differ. Receiptless checkpoints can be
+migrated only by recomputing nDCG from their persisted final document IDs. A
+qrels-dependent coarse-address diagnostic that cannot be reconstructed from a
+receiptless non-reference checkpoint is cleared and remains outside selection.
+
+An additive evidence replay validates the authoritative E5 manifest, prepared
+study manifest, ordered query/document IDs and qrels, then recomputes the
+qrels-sensitive exact K8, approximate K8 and physical K32 aggregates and
+decisions without replaying native latency. It preserves all three decisions:
+registered INT9 mu-law-15 fails locked internal quality, the K1/K2 frontier has
+no passing treatment and falls back to FP32 K8, and physical K32 passes only
+FP32 and INT8.
+
+Evidence: `tmp/neuroute-k8-codec-closure-evidence.json`, SHA-256
+`6ecb504a44c4e2f6bcc0246354374516fcce491d3a158a04655ab8a24913af50`.
+
+## Dense policy after the measured K8 full-scan closure
 
 - Coarse routing: exact physical FP32 K8 fallback. It preserves the selected
   quality but misses the 15 ms target.
@@ -372,7 +420,9 @@ Raw result: `tmp/neuroute-approximate-k8-frontier-v1/result.json`, SHA-256
   reconfirms that corrective choice and that uniform final INT5 fails transfer.
 - No ScaNN, DiskANN, BM25, WAND or BMW experiment is included in this batch.
 
-The dense branch is therefore closed as a measured fallback and a documented
-performance gap, not as a claim that the 15 ms objective was achieved. A future
-K8 improvement needs a different coarse architecture or substantially better
-batched scoring, not another scalar compander sweep over the same full scan.
+The current exact full-scan scalar-codec grid and K1/K2 full-scan prefilter are
+closed as measured fallbacks and documented performance gaps, not as claims
+that the 15 ms objective or the broader K8 optimization frontier was exhausted.
+A future K8 improvement needs a true prototype/address ANN or hierarchical
+coarse architecture, or a materially better fused/batched compressed scorer,
+not another compander sweep over the same generic decoder.
