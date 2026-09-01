@@ -80,3 +80,44 @@ confirmation. It does not yet replace the production default:
 
 The raw configuration reports, result and replay evidence remain ignored under
 `tmp/neuroute-actual-r4-codec-frontier/`.
+
+## K32/R0 representative stage
+
+The second stacked experiment replaces the earlier Python-recomputed K8 input
+with snapshots emitted by the physical full-R4 runtime. Each snapshot contains
+the exact 1024 K8 rows and 22 scalar features for every query. Codec treatments
+change only the FF32 representative reconstruction levels and maxima.
+
+During replay review, a NumPy implementation of the learned R0 scorer was found
+to change six of 76 configuration boundaries for seed `2026082701`, despite
+equal candidate counts. The runner was corrected to execute R0 through the safe
+native binary. The physical FP32 address-major representative prefix is the
+reference, and homogeneous INT8 is an exact native control. Across
+configuration and locked internal, all 456 INT8 query/seed rows match both the
+native score SHA-256 and selected-address SHA-256.
+
+The configuration candidate is nonlinear INT4 power gamma `.625`. Relevant
+locked internal results are:
+
+| Codec | Bytes/representative | Mean actionable loss | Worst-seed actionable loss | Mean nDCG loss | Worst-seed nDCG loss | Pass |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| uniform INT4 | 196 | .000859 | .003393 | -.000347 | .000074 | yes |
+| **power-.625 INT4** | **196** | **.000112** | **.000416** | **-.000175** | **0** | **yes** |
+| uniform INT5 | 244 | .000238 | .001247 | .000040 | .000247 | yes |
+| power-.5 INT5 | 244 | .000595 | .002817 | .000896 | .002689 | yes |
+| uniform INT6 | 292 | -.000039 | .000914 | .000921 | .002689 | yes |
+| mu-law-63 INT6 | 292 | .001355 | .002817 | -.000067 | 0 | yes |
+| uniform INT7 | 340 | .000305 | .000914 | 0 | 0 | yes |
+| uniform INT8 | 388 | -.000344 | 0 | .000025 | .000074 | yes |
+| FP16 | 768 | 0 | 0 | 0 | 0 | yes |
+
+The previously selected power-`.5` INT5 remains within every registered gate,
+but it is not the best internal INT5 treatment under the actual full-R4 input.
+This reinforces that companders are stage- and distribution-specific; a winner
+must not be transferred from a surrogate or an earlier routing experiment.
+
+`int4_power_625` is licensed only for physical materialization and native-kernel
+validation. Its reconstruction/maxima are still algorithmically simulated, the
+internal partition was already opened by earlier studies, and no production
+default changes in this experiment. The compact result is nevertheless strong
+enough to replace INT5 as the next representative physical-codec candidate.
