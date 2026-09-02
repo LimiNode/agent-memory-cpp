@@ -287,4 +287,8 @@ jobs:
           python tools/agent-memory-bench/write-neuroute-address-centroid-learnability-evidence.py --self-test &&
           python tools/agent-memory-bench/plan-neuroute-address-multi-prototype.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-address-multi-prototype.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-semantic-anchor-relocation.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-semantic-anchor-relocation.py self-test &&
+          python tools/agent-memory-bench/plan-neuroute-learned-hypercube.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-learned-hypercube.py self-test &&
           python tools/agent-memory-bench/write-neuroute-address-multi-prototype-evidence.py --self-test

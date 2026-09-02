@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_learned_hypercube_prototype_ceiling",
+  "claim_scope": "prototype_only_binary_geometry_ceiling",
+  "code_bits": 256,
+  "iterations": [0, 2, 4, 8],
+  "positive_prototypes": [1, 2, 4, 8],
+  "balance": "per_bit_median_with_deterministic_tie_break",
+  "decorrelation_penalty": 0.2,
+  "router": "none_prototype_only",
+  "production_selection": false
+}
