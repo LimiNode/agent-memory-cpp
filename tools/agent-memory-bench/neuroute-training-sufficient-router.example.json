@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_training_sufficient_router_frontier",
+  "claim_scope": "multilingual_pseudo_supervised_fixed_top_m_router_before_exact_local_k8_on_frozen_de_1m_r4",
+  "training": {
+    "query_counts": [153, 8141],
+    "query_semantics": {
+      "153": "german_training_queries_only",
+      "8141": "153_german_queries_plus_7988_miracl_es_fr_ru_pseudoqueries"
+    },
+    "external_qrels_used": false,
+    "projection_rank": 64,
+    "ridge_lambdas": [0.1, 1.0],
+    "residual_weights": [0.5, 1.0, 2.0]
+  },
+  "treatments": [
+    "centroid_k1_control",
+    "direct_rank64_global",
+    "centroid_k1_plus_exact_k8_delta",
+    "centroid_k1_plus_actionable_pseudo_gain",
+    "centroid_k1_plus_hybrid_residual"
+  ],
+  "shortlist_budgets": [1024, 2048, 4096, 8192],
+  "native_replay": {
+    "coarse_codec": "fp32_k8",
+    "routing_storage_mode": "int8",
+    "execution": "portable",
+    "workers": 1,
+    "warmup_batches": 1,
+    "measured_batches": 1
+  },
+  "selection": {
+    "hyperparameters": "configuration_weighted_teacher_and_actionable_coverage_at_maximum_product_budget_only",
+    "budget_and_family": "frozen_configuration_r4_gate_then_minimum_budget_then_generator_plus_local_k8_latency",
+    "locked_internal_open": "best_two_distinct_learned_treatments",
+    "locked_internal_may_not_select": true
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
+    "maximum_native_address_budget": 4096,
+    "exact_scan_target_p95_ms": 15.0
+  },
+  "decision": {
+    "global_fp32_k8_role": "offline_teacher_and_reference_only",
+    "m8192_role": "non_product_sensitivity_control",
+    "common_generator_bakeoff_required_after_this_pr": true,
+    "production_selection_forbidden": true
+  }
+}
