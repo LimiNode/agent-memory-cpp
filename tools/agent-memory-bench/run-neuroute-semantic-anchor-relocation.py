@@ -124,6 +124,13 @@ def evaluate(npz: Any, contract: dict[str, Any]) -> dict[str, Any]:
     output: dict[str, Any] = {"family": contract["family"], "schema_version": 1,
                               "queries": len(queries), "documents": len(documents),
                               "code_bits": bits, "controls": {}}
+    has_adc = {"query_projection", "adc_centroids"}.issubset(files)
+    if has_adc:
+        query_projection = numpy.asarray(npz["query_projection"], dtype=numpy.float32)
+        adc_centroids = numpy.asarray(npz["adc_centroids"], dtype=numpy.float32)
+        require(query_projection.shape == (len(queries), 256)
+                and adc_centroids.shape == (256, 2),
+                "semantic-anchor ADC arrays differ")
 
     anchor_data: dict[str, dict[str, numpy.ndarray]] = {}
     for kind in ("centroid", "prototype"):
@@ -197,6 +204,25 @@ def evaluate(npz: Any, contract: dict[str, Any]) -> dict[str, Any]:
                         "target_survival": float(len(chosen_set & target_set) / max(len(target_set), 1)),
                         "unique_candidates": int(len(chosen)),
                     })
+                    if has_adc and chosen.size:
+                        chosen_codes = document_codes[chosen]
+                        chosen_bits = numpy.unpackbits(chosen_codes, axis=1,
+                                                       bitorder="little")[:, :256]
+                        table = ((query_projection[query_index, :, None]
+                                  - adc_centroids) ** 2)
+                        adc_distances = table[numpy.arange(256)[None, :], chosen_bits].sum(axis=1)
+                        adc_order = numpy.lexsort((chosen, adc_distances))[:min(64, len(chosen))]
+                        adc_docs = chosen[adc_order]
+                        exact_order = numpy.lexsort(
+                            (adc_docs, -numpy.asarray(documents[adc_docs]
+                                                       @ queries[query_index], dtype=numpy.float32)))
+                        final_docs = adc_docs[exact_order[:min(10, len(adc_docs))]]
+                        budget_rows[-1]["adc_target_survival"] = float(
+                            len(set(map(int, adc_docs.tolist())) & target_set)
+                            / max(len(target_set), 1))
+                        budget_rows[-1]["final_top10_overlap"] = float(
+                            len(set(map(int, final_docs.tolist())) & target_set)
+                            / max(min(10, len(target)), 1))
                 per_query.append({
                     "query_index": query_index, "anchor_count": anchor_count,
                     "raw_posting_entries_scanned": raw_posting_count,
@@ -216,7 +242,13 @@ def evaluate(npz: Any, contract: dict[str, Any]) -> dict[str, Any]:
                 "mean_target_region_retention": float(numpy.mean([row["target_in_restricted_region"] for row in per_query])),
                 "mean_target_survival": {
                     str(budget): float(numpy.mean([next(item["target_survival"] for item in row["budget"] if item["budget"] == budget)
-                                                   for row in per_query])) for budget in budgets},
+                                               for row in per_query])) for budget in budgets},
+                "mean_final_top10_overlap": ({
+                    str(budget): float(numpy.mean([
+                        next(item.get("final_top10_overlap", 0.0)
+                             for item in row["budget"] if item["budget"] == budget)
+                        for row in per_query])) for budget in budgets
+                } if has_adc else None),
                 "radius": {key: float(numpy.mean([row["radius"][key] for row in per_query]))
                            for key in ("r50", "r90", "r95", "r99")},
                 "per_query": per_query,
@@ -241,7 +273,9 @@ def synthetic() -> dict[str, Any]:
             "query_codes": query_codes, "centroid_vectors": anchors, "centroid_codes": codes(anchors),
             "centroid_offsets": offsets, "centroid_documents": postings,
             "prototype_vectors": anchors, "prototype_codes": codes(anchors),
-            "prototype_offsets": offsets, "prototype_documents": postings}
+            "prototype_offsets": offsets, "prototype_documents": postings,
+            "query_projection": numpy.zeros((len(queries), 256), dtype=numpy.float32),
+            "adc_centroids": numpy.zeros((256, 2), dtype=numpy.float32)}
 
 
 def self_test(contract_path: Path) -> int:
@@ -257,6 +291,8 @@ def self_test(contract_path: Path) -> int:
         require(all(any(variant["per_query"] for variant in result["controls"][name].values())
                      for name in contract["controls"]),
                 "per-query diagnostics missing")
+        require(result["controls"]["p_seeded"]["8"]["mean_final_top10_overlap"] is not None,
+                "full R4 replay diagnostics missing")
         union, raw = posting_union(numpy.asarray([0, 3, 6]),
                                    numpy.asarray([1, 2, 3, 3, 4, 5]),
                                    numpy.asarray([0, 1]))
