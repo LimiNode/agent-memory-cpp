@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_generator_policy_bakeoff",
+  "claim_scope": "configuration_only_comparison_of_existing_address_shortlist_generators_before_bounded_local_k8",
+  "shortlist_budgets": [1024, 2048, 4096],
+  "excluded_budget": 8192,
+  "partition": {
+    "name": "configuration",
+    "selection_requests": [0, 76],
+    "confirmation_rows_are_diagnostic_only": true
+  },
+  "parent_families": {
+    "generator": "neuroute_shortlist_generator_bakeoff_result",
+    "training": "neuroute_training_sufficient_router_frontier_result",
+    "hierarchy": "neuroute_12_14_to_16_hierarchy_replay_result"
+  },
+  "product_policy": {
+    "global_fp32_k8_role": "offline_teacher_and_reference_only",
+    "prototype_ann_role": "quality_and_cost_control_only",
+    "independent_width_association_role": "diagnostic_only",
+    "historical_fixed_top_m_role": "historical_control_only",
+    "allowed_query_path": "cheap_address_selector_then_at_most_4096_addresses_then_exact_local_k8_then_frozen_r4",
+    "timing_comparison": "directional_because_parent_native_executable_hashes_differ"
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
+    "maximum_native_address_budget": 4096
+  },
+  "decision": {
+    "select_native_implementation": false,
+    "activate_prefix_aware_training_if_no_product_candidate_passes": true,
+    "production_selection_forbidden": true
+  }
+}
