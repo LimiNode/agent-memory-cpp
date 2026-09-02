@@ -471,4 +471,6 @@ jobs:
           python tools/agent-memory-bench/run-neuroute-joint-binary-ceiling.py self-test &&
           python tools/agent-memory-bench/plan-neuroute-learned-hypercube.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-learned-hypercube.py self-test &&
-          python tools/agent-memory-bench/write-neuroute-address-multi-prototype-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-address-multi-prototype-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-bitwise-address-selector.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-bitwise-address-selector-evidence.py --self-test
