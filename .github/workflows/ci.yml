@@ -252,7 +252,9 @@ jobs:
           python tools/agent-memory-bench/run-neuroute-12-to-16-hierarchy-replay.py --self-test &&
           python tools/agent-memory-bench/write-neuroute-12-to-16-hierarchy-replay-evidence.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-generator-policy-bakeoff.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-generator-policy-bakeoff-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-generator-policy-bakeoff-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-prefix-aware-router.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-prefix-aware-router-evidence.py --self-test
 
   ann-cascade:
     name: ANN cascade harness
