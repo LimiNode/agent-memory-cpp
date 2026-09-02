@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_semantic_anchor_relocation_ceiling",
+  "claim_scope": "frozen_document_itq_anchor_center_relocation_ceiling",
+  "code_bits": 256,
+  "anchor_sets": ["centroid", "prototype", "oracle_prototype"],
+  "controls": ["q_global", "q_restricted", "c_seeded", "p_seeded", "p_oracle"],
+  "anchor_counts": [1, 2, 4, 8],
+  "radii": [0, 1, 2, 3, 4, 6, 8, 12, 16],
+  "budgets": [128, 256, 512, 1024],
+  "selection": {
+    "partition": "configuration_only",
+    "primary": "final_exact_e5_top10_survival_at_fixed_unique_candidate_budget",
+    "qrels_role": "terminal_utility_only",
+    "production_selection": false
+  }
+}
