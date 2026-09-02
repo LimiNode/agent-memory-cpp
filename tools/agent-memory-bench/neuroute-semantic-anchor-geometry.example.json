@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_semantic_anchor_geometry_ceiling",
+  "claim_scope": "matched_binary_geometry_vs_posting_coverage_ceiling",
+  "code_bits": 256,
+  "controls": [
+    "q_global",
+    "q_centroid_restricted",
+    "q_prototype_restricted",
+    "centroid_seeded",
+    "prototype_seeded",
+    "prototype_semantic_oracle",
+    "prototype_hamming_oracle",
+    "medoid_seeded",
+    "median_seeded"
+  ],
+  "anchor_counts": [1, 2, 4, 8],
+  "radii": [0, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64],
+  "budgets": [128, 256, 512, 1024],
+  "selection": {
+    "production_selection": false,
+    "target_documents": "frozen_full_e5_exact_top10",
+    "medoid_source": "representative_documents_per_r4_address",
+    "hamming_oracle": "nearest_prototype_to_any_exact_target_code"
+  }
+}
