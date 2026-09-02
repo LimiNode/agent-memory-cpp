@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_binary_k8_representation_ceiling",
+  "claim_scope": "exhaustive_binary_scoring_of_frozen_k1_k2_k4_k8_prototypes_before_exact_local_k8_and_full_r4",
+  "partitions": {
+    "configuration_requests": [0, 76],
+    "locked_internal_requests": [76, 152],
+    "codec_training": "prototype_only_no_query_or_qrel_inputs",
+    "locked_internal_may_not_select": true
+  },
+  "prototype_prefixes": [1, 2, 4, 8],
+  "address_budgets": [1024, 2048, 4096, 8192],
+  "product_address_budget_maximum": 4096,
+  "codecs": [
+    {"id": "coordinate_hamming384", "kind": "hamming", "bits": 384, "transform": "identity"},
+    {"id": "random_orthogonal_hamming384", "kind": "hamming", "bits": 384, "transform": "seeded_random_orthogonal"},
+    {"id": "itq_hamming256", "kind": "hamming", "bits": 256, "transform": "faiss_pca_then_itq"},
+    {"id": "itq_hamming384", "kind": "hamming", "bits": 384, "transform": "faiss_itq"},
+    {"id": "orthogonal_asymmetric384", "kind": "asymmetric_sign", "bits": 384, "transform": "seeded_random_orthogonal"},
+    {
+      "id": "rabitq_ratio384",
+      "kind": "rabitq_ratio",
+      "bits": 384,
+      "transform": "seeded_random_orthogonal",
+      "estimator": "rotated_sign_dot_times_l2_over_l1_v1"
+    }
+  ],
+  "training": {
+    "sample_count": 16384,
+    "sample_policy": "evenly_spaced_active_prototypes_v1",
+    "itq_iterations": 25,
+    "base_seed": 20260902
+  },
+  "native_replay": {
+    "coarse_codec": "fp32_k8",
+    "routing_storage_mode": "int8",
+    "execution": "portable",
+    "workers": 1,
+    "warmup_batches": 1,
+    "measured_batches": 1
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
+    "maximum_native_address_budget": 4096,
+    "exact_scan_target_p95_ms": 15.0
+  },
+  "near_miss_gate": {
+    "maximum_mean_downstream_ndcg_loss": 0.012,
+    "minimum_mean_final_top10_overlap": 0.96
+  },
+  "decision": {
+    "configuration_selection": "quality_pass_then_budget_then_payload_then_directional_scan_time",
+    "locked_internal_open": "best_two_distinct_codec_k_families",
+    "backend_followup_requires_locked_internal_pass": true,
+    "learned_query_followup_requires_no_pass_and_configuration_near_miss": true,
+    "production_selection_forbidden": true
+  }
+}
