@@ -1,0 +1,62 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_approximate_k8_frontier",
+  "activation": {
+    "exact_k8_contract_sha256": "fc314e8ed95ff9e3b9bdeeff7839cea630e069ba7d7e2eb7087ddfa628be6360",
+    "coarse_k8_manifest_sha256": "c38f02328c5640d4a7dd88cc8ac7441e715e188417cbbe2c48a2adc65fd776c4",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "configuration_protocol_sha256": "1569c92160a46f49265a3501408ae8fe6a7f97882026f648a1ca5c7e3577ee7b",
+    "internal_protocol_sha256": "a1e1d5c050be2ba9f94e88ecc07286cac8dc3cd23738c9b4adb13dbd4061e189"
+  },
+  "prefilter": {
+    "treatment": "int8_uniform",
+    "prototype_limits": [1, 2],
+    "physical_layout": "dedicated_compact_address_major_prefix_per_limit"
+  },
+  "refine": {
+    "treatments": [
+      "fp32",
+      "int9_mulaw_15",
+      "int9_power_625",
+      "int9_uniform"
+    ],
+    "address_counts": [2048, 4096, 8192],
+    "amendment": "INT9 power-.625 and uniform are opened-internal exact controls added before approximate results; they cannot create a held-out license"
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95
+  },
+  "timing": {
+    "configuration_warmup_batches": 0,
+    "selected_warmup_batches": 1,
+    "measured_batches": 1,
+    "exact_scan_target_p95_ms": 15.0
+  },
+  "decision": {
+    "configuration_selection": [
+      "quality_pass",
+      "minimum_total_store_bytes",
+      "minimum_cold_coarse_p95"
+    ],
+    "internal_opens": [
+      "fp32_refine_control",
+      "configuration_candidate"
+    ],
+    "production_licensed": false,
+    "reason": "internal_partition_was_previously_opened"
+  },
+  "analysis_amendment": {
+    "reason": "the fully exposed configuration frontier had no quality-passing treatment; the runner must preserve and report a negative result instead of terminating before writing diagnostics",
+    "previous_contract_sha256": "884e786aa9b15cc0643f3a4e8bcc7dc25e0765cef970f3cbc3c050d693d63530",
+    "previous_runner_sha256": "74278359629c29e6dc67e82924e51eeddee93a680264ed77836e9b9b459ab4a6",
+    "raw_native_grid_unchanged": true,
+    "reuse_matching_previous_checkpoints": true,
+    "selection_gates_unchanged": true,
+    "production_license_remains_false": true
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_int5_layout_stress",
+  "claim_scope": "frozen_de_1m_r4_int5_mixed_vs_int8_long_trace_concurrency_and_working_set_pressure",
+  "activation": {
+    "physical_integration_result_sha256": "316ed5836e46a547c5e24b038916163f213a58119023ea555cb9e08f132fa76f",
+    "physical_integration_evidence_sha256": "0730694af14b614f49dd1a60935a51f4721cd44211eccccf62df833a94f1f633",
+    "physical_integration_materialization_sha256": "120f960d9284108312d9797d8588a6ef86fbf26f3acdeebd063fc1702ab6ab32",
+    "physical_integration_protocol_sha256": "3dafbaa20c13332508ce5d4ed48fd1603e83f2cd6cd6b1e28ea438289641fb42"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "partition": "internal",
+    "queries_per_seed": 76
+  },
+  "treatments": ["homogeneous_int8", "int5_mixed"],
+  "conditions": ["resident", "working_set_cap"],
+  "workers": [1, 2, 4, 8, 16],
+  "trace_repetitions": 4,
+  "warmup_batches": 1,
+  "measured_batches": 2,
+  "working_set_cap_bytes": 268435456,
+  "working_set_definition": "Windows 256 MiB hard process working-set maximum plus EmptyWorkingSet before warmup; 384 MiB implementation calibration was discarded as non-binding",
+  "headline_workers": 8,
+  "pressure_gates": {
+    "maximum_mixed_p95_ratio_vs_int8": 1.0,
+    "minimum_mixed_throughput_ratio_vs_int8": 1.0,
+    "maximum_mixed_page_fault_ratio_vs_int8": 0.8
+  },
+  "equivalence": {
+    "per_treatment_result_hash_identity_across_conditions_workers_and_passes_required": true
+  },
+  "selection": {
+    "rule": "select_mixed_for_pressure_only_if_all_pressure_gates_pass",
+    "production_selection_forbidden": true
+  }
+}

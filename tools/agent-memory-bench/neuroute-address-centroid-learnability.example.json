@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_address_centroid_learnability",
+  "claim_scope": "configuration_only_single_centroid_static_gain_density_learnability",
+  "activation": {
+    "sequential_result_sha256": "d8478ed6556934a7e305d45a0c6aef3518fd0cf00d11052f76c554843f3cf80f",
+    "sequential_evidence_sha256": "6857b3bbcab0ec8815e4ec14fc171757315c88667c0315cbcecac0b7552cb74c",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
+    "german_split_result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286"
+  },
+  "route": {
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "document_replication": 1,
+    "document_addresses": "frozen_per_scale_from_width_materialization"
+  },
+  "partition": {
+    "source": "configuration_selection_query_ids",
+    "queries": 76,
+    "internal_evaluation_partition_forbidden": true
+  },
+  "scales": [
+    {"id": "de-25k", "documents": 25000, "e5_manifest_sha256": "34720383b0da7013a5bbb0c8d72cffa38d6f9d5a891b37ead5e4e4b768a4b351", "input_manifest_sha256": "befa019c788a7325adeb545f560557e830426dc54d1c6a69873a86a2208b434c"},
+    {"id": "de-100k", "documents": 100000, "e5_manifest_sha256": "836af554357e031d07598fa650f8927fedf35322de90c7209b6dcf09b89cd757", "input_manifest_sha256": "87d7c4a93804ec77ef06e799b1dbca2b362f2c1cdd99fb601d38b053490a1da9"},
+    {"id": "de-1m", "documents": 1000000, "e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a", "input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"}
+  ],
+  "prototype": {
+    "kind": "normalized_mean_e5_document_centroid",
+    "prototypes_per_address": 1,
+    "score": "cosine_divided_by_posting_count_power_alpha",
+    "cost_alphas": [0.0, 0.25, 0.5, 0.75, 1.0]
+  },
+  "diagnostic": {
+    "teacher_target": "discounted_exact_e5_top10_survival_after_hamming768_adc64",
+    "tasks": [
+      "global_average_precision",
+      "hard_negative_pairwise_auc",
+      "relevant_address_density_pairwise_accuracy",
+      "global_target_address_recall",
+      "actionable_gain_candidate_mass_frontier"
+    ],
+    "hard_negative_pool": 1024,
+    "global_address_budgets": [256, 512, 1024],
+    "coverage_targets": [0.5, 0.75, 0.9, 0.95],
+    "candidate_mass_target": 0.1
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "decision": {
+    "primary_coverage_target": 0.75,
+    "minimum_reach_rate": 0.9,
+    "single_centroid_useful_maximum_candidate_fraction": 0.01,
+    "multi_prototype_followup_predeclared": true,
+    "internal_evaluation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}

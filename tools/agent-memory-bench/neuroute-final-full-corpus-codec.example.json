@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_final_full_corpus_codec",
+  "claim_scope": "conditional_full_corpus_final_document_codec_closure",
+  "activation": {
+    "nonlinear_quality_sha256": "3f02e555dc40ad3105e6fcd9586296edae5186b23eaa37b627a62ba5ddec938d",
+    "nonlinear_evidence_sha256": "75c005bb3bd2c3ed88a6651bd639e62459a0657aef86a059312845a426140497",
+    "physical_result_sha256": "b5ed920ace2ad78ae9a39bf1c50663bf4c6a1a6f40c2464fe0ca560474d92a13",
+    "physical_evidence_sha256": "e7f78ea956d89c04ad2a156aaf911a9fca4f87f7f33dbac384811a75b46e9863",
+    "physical_storage_manifest_sha256": "172ca39fc7fb86d4d92d72eb4b89ef0c0985bd92fb4609607c6c29d2c22ae21e"
+  },
+  "conditional_materialization": {
+    "open_only_if": "nonlinear_replacement_licensed",
+    "expected_opened": false,
+    "reason": "latency_and_physical_storage_cannot_repair_failed_heldout_quality"
+  },
+  "retained_codec": {
+    "id": "int5_uniform_simdcomp_bp128",
+    "documents": 1000000,
+    "dimensions": 384,
+    "record_bytes": 244,
+    "physical_bytes": 244000000,
+    "physical_sha256": "a49da89c1d79815af718fb3a41d8d2fb3e9644e98f48ac5b4323cf561b5bbbbb"
+  },
+  "decision": {
+    "nonlinear_full_corpus_materialization_licensed": false,
+    "final_document_codec": "int5_uniform_simdcomp_bp128",
+    "production_selection_licensed": true
+  }
+}

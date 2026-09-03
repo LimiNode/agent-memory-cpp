@@ -1,0 +1,96 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_matched_representation_ladder",
+  "claim_scope": "frozen_de_1m_r0_r1_r2_query_address_representation_sufficiency",
+  "activation": {
+    "representation_ambiguity_result_sha256": "4a960128d88693962a0a2805f8dea31559d9a227cddfb71efb0b3c17ea48b2db",
+    "representation_ambiguity_evidence_sha256": "c309e6c4a43b36a03792079cb2d582d9f26a43b1ea869e17330d30651fc44f9a",
+    "nonlinear_result_sha256": "57e316b4590255bb7f0df63064cb9fd217017d7a990f1747fad2c68f545e7072",
+    "nonlinear_evidence_sha256": "e9a5968b02153c5fdd0b2faddca8b53c3e81259ef4e2d3e55c1788692323d6cc"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "query_partitions": {
+    "training_queries": 8141,
+    "configuration_queries": 76,
+    "internal_evaluation_queries": 76,
+    "training_then_configuration_then_internal_required": true
+  },
+  "prototype_shortlist": {
+    "requested_prototypes_per_address": 8,
+    "address_shortlist": 1024,
+    "retrieval": "exact_over_all_occupied_address_prototypes",
+    "shortlist_frozen_before_reranking": true
+  },
+  "teacher": {
+    "training_and_configuration": "static_exact_e5_discounted_gain_density",
+    "internal": "authoritative_qrels_with_frozen_cascade",
+    "top_k": 10,
+    "zero_target_policy": "exclude_from_loss_and_report"
+  },
+  "representations": {
+    "variants": ["r0_scalar", "r1_invariant_raw_k8", "r2_query_gated_raw_k8"],
+    "r0": "current_22d_k8_cosine_statistics_cost_rank_and_interactions",
+    "r1": "all_k8_raw_prototypes_via_shared_projection_then_mean_max_std_pooling",
+    "r2": "same_projected_k8_with_learned_diagonal_query_conditioned_attention",
+    "shared_projection": {
+      "dimensions": 64,
+      "construction": "seeded_gaussian_qr_orthonormal_columns",
+      "teacher_blind": true,
+      "frozen_during_training": true
+    },
+    "logistical_features": ["log_posting_count", "shortlist_rank", "prototype_capacity"]
+  },
+  "models": {
+    "query_hidden_dimensions": 32,
+    "local_hidden_dimensions": 32,
+    "context": "querywise_local_mean_and_max",
+    "score_hidden_dimensions": {
+      "r0_scalar": 54,
+      "r1_invariant_raw_k8": 20,
+      "r2_query_gated_raw_k8": 20
+    },
+    "maximum_parameter_count_ratio": 1.02
+  },
+  "training": {
+    "torch_version_prefix": "2.8.0",
+    "device": "cpu",
+    "deterministic_algorithms": true,
+    "torch_threads": 8,
+    "epochs": 4,
+    "batch_queries": 8,
+    "learning_rate": 0.003,
+    "weight_decay": 0.0001,
+    "score_scale": 8.0,
+    "same_teacher_data_optimizer_seeds_for_every_variant": true
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "evaluation": {
+    "address_budgets": [128, 256, 512],
+    "headline_address_budget": 256,
+    "candidate_mass_target": 0.1,
+    "prototype_order_control": true,
+    "privileged_teacher_control": true
+  },
+  "decision": {
+    "minimum_actionable_gain": 0.9,
+    "maximum_candidate_fraction": 0.005,
+    "minimum_prototype_to_teacher_gap_closed": 0.5,
+    "maximum_candidate_fraction_ratio_vs_prototype_order": 1.05,
+    "requires_every_de_1m_seed": true,
+    "direct_and_progress_gates_are_alternatives": true,
+    "r3_licensed_if_r1_and_r2_fail": true,
+    "stateful_policy_forbidden_in_this_batch": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}

@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_conditional_representation_followups",
+  "claim_scope": "fixed_adc256_top64_codec_and_overcomplete_quality_screen_only",
+  "activation": {
+    "final_result_sha256": "7fb285624271c1930ddf5c36117498702539f179bf392b8734635a8593268b50",
+    "final_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c",
+    "final_evidence_sha256": "e48b1c546a0edf817009f823891d7fdfcd75e1f68fb0426a50be2acef238a448"
+  },
+  "datasets": ["de-25k", "fr-25k", "ja-25k", "de-1m"],
+  "seeds": [2026082701, 2026082702, 2026082703],
+  "codec_screen": [
+    {"id": "int8_document", "bits": 8, "blocks": 1, "bytes_per_document": 388},
+    {"id": "int7_document", "bits": 7, "blocks": 1, "bytes_per_document": 340},
+    {"id": "int6_document", "bits": 6, "blocks": 1, "bytes_per_document": 292},
+    {"id": "int8_block3x128", "bits": 8, "blocks": 3, "bytes_per_document": 396},
+    {"id": "int7_block3x128", "bits": 7, "blocks": 3, "bytes_per_document": 348},
+    {"id": "int8_zigzag_vbyte_control", "bits": 8, "blocks": 1, "variable_length_control": true}
+  ],
+  "overcomplete_screen": {
+    "widths": [512, 768, 1024],
+    "projection": "frozen_rademacher_overcomplete_binary_adc",
+    "projection_seed": 2026082802,
+    "threshold": "deterministic_document_sample_up_to_100000_projection_median",
+    "centroids": "same_sample_per_bit_projection_conditional_mean",
+    "training_labels": "none"
+  },
+  "quality": {
+    "maximum_cross_dataset_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_per_dataset_ndcg_loss_vs_fp32": 0.0075,
+    "bootstrap_replicates": 10000,
+    "bootstrap_seed": 2026082803
+  },
+  "decision": {
+    "codec_selection": "lowest_bytes_passing_quality_then_id",
+    "overcomplete_selection": "lowest_width_passing_quality_then_highest_mean_ndcg",
+    "native_codec_layout_timing_only_if_quality_winner_exists": true,
+    "overcomplete_native_implementation_only_if_quality_winner_exists": true
+  }
+}

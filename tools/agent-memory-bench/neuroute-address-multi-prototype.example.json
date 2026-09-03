@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_address_multi_prototype_frontier",
+  "claim_scope": "frozen_16bit_nested_address_prototype_capacity_frontier",
+  "activation": {
+    "centroid_result_sha256": "707088287b6bb2e84bd956ed15b42a5fdcb147e96e381c6042e9415fc703a3e7",
+    "centroid_evidence_sha256": "2773ba8f86576ec9e947fed2c19e9f53bb69c8a159b2c54a0016afeb93ed74a0",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
+    "german_split_result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286"
+  },
+  "route": {
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "document_replication": 1,
+    "document_addresses": "frozen_per_scale_from_width_materialization"
+  },
+  "partitions": {
+    "configuration": {"source": "configuration_selection_query_ids", "queries": 76},
+    "internal_evaluation": {"source": "internal_evaluation_query_ids", "queries": 76},
+    "selection_must_precede_internal_evaluation": true
+  },
+  "scales": [
+    {"id": "de-25k", "documents": 25000, "e5_manifest_sha256": "34720383b0da7013a5bbb0c8d72cffa38d6f9d5a891b37ead5e4e4b768a4b351", "input_manifest_sha256": "befa019c788a7325adeb545f560557e830426dc54d1c6a69873a86a2208b434c"},
+    {"id": "de-100k", "documents": 100000, "e5_manifest_sha256": "836af554357e031d07598fa650f8927fedf35322de90c7209b6dcf09b89cd757", "input_manifest_sha256": "87d7c4a93804ec77ef06e799b1dbca2b362f2c1cdd99fb601d38b053490a1da9"},
+    {"id": "de-1m", "documents": 1000000, "e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a", "input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"}
+  ],
+  "prototypes": {
+    "counts": [1, 2, 4, 8],
+    "construction": "nested_normalized_mean_then_farthest_frozen_member",
+    "effective_count": "minimum_of_requested_count_and_posting_count",
+    "member_selection": "minimize_maximum_cosine_to_existing_prefix",
+    "members_are_unique": true,
+    "farthest_tie_break": "lowest_frozen_document_position",
+    "address_score": "maximum_cosine_over_prefix_prototypes",
+    "posting_cost_normalization": "none_to_isolate_prototype_capacity"
+  },
+  "diagnostic": {
+    "teacher_target": "discounted_exact_e5_top10_survival_after_hamming768_adc64",
+    "global_address_budgets": [128, 256, 512, 1024],
+    "coverage_targets": [0.5, 0.75, 0.9, 0.95],
+    "candidate_mass_target": 0.1,
+    "hard_negative_pool": 1024,
+    "storage_accounting": "actual_effective_prototype_count_times_384_float32",
+    "score_work_accounting": "occupied_address_prototype_dot_products"
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "selection": {
+    "partition": "configuration",
+    "primary_coverage_target": 0.75,
+    "minimum_reach_rate": 0.9,
+    "order": "lowest_candidate_fraction_then_lower_prototype_count"
+  },
+  "decision": {
+    "coarse_shortlist_minimum_internal_gain_at_1024": 0.85,
+    "coarse_shortlist_minimum_internal_gain_at_256": 0.7,
+    "sufficient_final_minimum_internal_reach_rate": 0.9,
+    "sufficient_final_maximum_internal_candidate_fraction": 0.005,
+    "sufficient_final_minimum_internal_gain_at_256": 0.9,
+    "multimodality_minimum_internal_gain_at_256_improvement": 0.03,
+    "multimodality_minimum_supporting_de_1m_seeds": 2,
+    "requires_all_de_1m_seeds": true,
+    "production_selection_forbidden": true
+  }
+}

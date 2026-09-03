@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "family": "centroid_free_semantic_address_ranking_v1",
+  "baseline_commit": "0653b7b",
+  "dataset": "frozen_es_25k_v1",
+  "partitions": {"training": 324, "configuration_selection": 162, "internal_evaluation": 162},
+  "substrate": {"semantic_prefix_bits": 8, "document_replication": 4, "max_address_lookups": 16, "candidate_mass_target": 0.1},
+  "treatments": ["symmetric_document_head_control", "bitwise_bce_v1_control", "address_multilabel_bce", "address_listwise_marginal_gain", "semantic_tree_beam"],
+  "training": {"seeds": [2026082701, 2026082702, 2026082703, 2026082704, 2026082705], "epochs": 160, "batch_size": 64, "learning_rate": 0.003, "weight_decay": 0.0001, "torch_threads": 18, "hidden_dimensions": 128, "checkpoint": "fixed_final_epoch"},
+  "cascade": {"oracle_k": 10, "hamming_limit": 768, "adc_limit": 256, "exact_limit": 256},
+  "selection": {"may_select_model_or_seed": false, "internal_evaluation_is_exploratory_after_v1": true},
+  "evidence": {"must_bind": ["frozen_e5_and_cascade_roots", "v1_baseline_model", "query_partitions", "document_only_semantic_tree", "all_fixed_seed_models", "per_query_address_and_cascade_audits"]}
+}

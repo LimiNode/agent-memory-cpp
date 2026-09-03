@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_nonlinear_representative_quantization_frontier",
+  "claim_scope": "frozen_ff32_k32_nonlinear_int5_int6_int8_quality_and_native_decode_dot",
+  "activation": {
+    "representative_codec_result_sha256": "6bf8395bad869c9d59bd4cc8f19a8b636d96df2edbba17e6d63a010c3263e928",
+    "representative_codec_evidence_sha256": "5d35a92d392823ded29b2007816a5c5b826f680c627296e16e8c800a98a4fee2",
+    "representative_codec_materialization_sha256": "1566688756f1922c9f3cce83c46c9623d2231f221bbe496b12ae978c0cdad8db",
+    "lossless_block_result_sha256": "5457c73b69b50c71e1a6980964a324fdd7f8ee82a859535565b777426a7c8140",
+    "lossless_block_evidence_sha256": "1bba50d3f1296e0d877e5c1cd9cc47dad6f3bbf439afdab82786f9de10f31904",
+    "coverage_saturation_result_sha256": "b4ff2e63b40c8349fb70264221746a71ff22687afb43727bf9c44007047e0c83",
+    "coverage_saturation_evidence_sha256": "7b8c9057248f5da43a1cf5723848582a916e34d3c7f02cc8f21dccd59074aca2",
+    "conditional_set_result_sha256": "7e7b9546bb4a34a047ba446407aae8166f8e2402f293594039e4098d83d95b27",
+    "conditional_set_evidence_sha256": "8ef68cf98d3529b1f3e56d5c518618ccee45343fa71e5843abdf4a297dab1f56",
+    "layout_materialization_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "de_1m_e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "de_1m_input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [
+      2026082701,
+      2026082702,
+      2026082703
+    ]
+  },
+  "frozen_algorithm": {
+    "representative_recipe": "centroid_nearest_actual_then_deterministic_farthest_first",
+    "representatives_per_address": 32,
+    "shortlist": "exact_current_k8_prototype_top1024",
+    "scorer": "frozen_learned_r0_plus_normalized_max_cosine",
+    "candidate_fraction_budgets": [
+      0.003,
+      0.004,
+      0.005
+    ],
+    "headline_candidate_fraction": 0.005,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "representations": [
+    {
+      "id": "fp32",
+      "bits": 32,
+      "record_bytes": 1536,
+      "storage": "parent",
+      "parent_role": "fp32",
+      "compander": {
+        "kind": "none",
+        "parameter": 0
+      }
+    },
+    {
+      "id": "int8_uniform",
+      "bits": 8,
+      "record_bytes": 388,
+      "storage": "parent",
+      "parent_role": "int8",
+      "compander": {
+        "kind": "uniform",
+        "parameter": 0
+      }
+    },
+    {
+      "id": "int6_uniform",
+      "bits": 6,
+      "record_bytes": 292,
+      "storage": "parent",
+      "parent_role": "int6",
+      "compander": {
+        "kind": "uniform",
+        "parameter": 0
+      }
+    },
+    {
+      "id": "int5_uniform",
+      "bits": 5,
+      "record_bytes": 244,
+      "storage": "parent",
+      "parent_role": "int5",
+      "compander": {
+        "kind": "uniform",
+        "parameter": 0
+      }
+    },
+    {
+      "id": "int8_power_050",
+      "bits": 8,
+      "record_bytes": 388,
+      "storage": "local",
+      "compander": {
+        "kind": "power",
+        "parameter": 0.5
+      }
+    },
+    {
+      "id": "int8_power_075",
+      "bits": 8,
+      "record_bytes": 388,
+      "storage": "local",
+      "compander": {
+        "kind": "power",
+        "parameter": 0.75
+      }
+    },
+    {
+      "id": "int8_mulaw_15",
+      "bits": 8,
+      "record_bytes": 388,
+      "storage": "local",
+      "compander": {
+        "kind": "mulaw",
+        "parameter": 15
+      }
+    },
+    {
+      "id": "int8_mulaw_63",
+      "bits": 8,
+      "record_bytes": 388,
+      "storage": "local",
+      "compander": {
+        "kind": "mulaw",
+        "parameter": 63
+      }
+    },
+    {
+      "id": "int6_power_050",
+      "bits": 6,
+      "record_bytes": 292,
+      "storage": "local",
+      "compander": {
+        "kind": "power",
+        "parameter": 0.5
+      }
+    },
+    {
+      "id": "int6_power_075",
+      "bits": 6,
+      "record_bytes": 292,
+      "storage": "local",
+      "compander": {
+        "kind": "power",
+        "parameter": 0.75
+      }
+    },
+    {
+      "id": "int6_mulaw_15",
+      "bits": 6,
+      "record_bytes": 292,
+      "storage": "local",
+      "compander": {
+        "kind": "mulaw",
+        "parameter": 15
+      }
+    },
+    {
+      "id": "int6_mulaw_63",
+      "bits": 6,
+      "record_bytes": 292,
+      "storage": "local",
+      "compander": {
+        "kind": "mulaw",
+        "parameter": 63
+      }
+    },
+    {
+      "id": "int5_power_050",
+      "bits": 5,
+      "record_bytes": 244,
+      "storage": "local",
+      "compander": {
+        "kind": "power",
+        "parameter": 0.5
+      }
+    },
+    {
+      "id": "int5_power_075",
+      "bits": 5,
+      "record_bytes": 244,
+      "storage": "local",
+      "compander": {
+        "kind": "power",
+        "parameter": 0.75
+      }
+    },
+    {
+      "id": "int5_mulaw_15",
+      "bits": 5,
+      "record_bytes": 244,
+      "storage": "local",
+      "compander": {
+        "kind": "mulaw",
+        "parameter": 15
+      }
+    },
+    {
+      "id": "int5_mulaw_63",
+      "bits": 5,
+      "record_bytes": 244,
+      "storage": "local",
+      "compander": {
+        "kind": "mulaw",
+        "parameter": 63
+      }
+    }
+  ],
+  "quantization": {
+    "dimensions": 384,
+    "rounding": "nearest_even",
+    "amplitude_policy": "symmetric_per_document_max_abs_f32",
+    "power_formula": "sign(x)*(abs(x)/amax)^gamma",
+    "mulaw_formula": "sign(x)*log1p(mu*abs(x)/amax)/log1p(mu)",
+    "decode_lookup_table": true,
+    "simdcomp_commit": "009c67807670d16f8984c0534aef0e630e5465a4"
+  },
+  "query_partitions": {
+    "configuration_queries": 76,
+    "internal_evaluation_queries": 76,
+    "parameters_selected_on_configuration": true,
+    "internal_opened_after_configuration_selection": true
+  },
+  "configuration_gates": {
+    "maximum_mean_actionable_loss": 0.003,
+    "maximum_every_seed_actionable_loss": 0.006,
+    "maximum_mean_ndcg_loss": 0.002,
+    "maximum_every_seed_ndcg_loss": 0.004
+  },
+  "diagnostics": {
+    "score_error_percentiles": [0.5, 0.95, 0.99],
+    "margin_bins": [0.0001, 0.001, 0.01],
+    "accepted_address_overlap_required": true,
+    "argmax_identity_required": true,
+    "address_order_agreement_required": true
+  },
+  "selection": {
+    "per_bit": "lowest_mean_ndcg_loss_then_actionable_loss_among_nonlinear_candidates",
+    "production": "smallest_record_bytes_passing_all_gates_then_lowest_mean_ndcg_loss",
+    "internal_treatments": "fp32_plus_uniform_controls_plus_configuration_selected_nonlinear_per_bit"
+  },
+  "native_benchmark": {
+    "queries_per_seed": 152,
+    "addresses_per_query": 1024,
+    "warmup_passes": 1,
+    "measured_passes": 2,
+    "scope": "in_memory_record_decode_dot_and_per_address_max"
+  },
+  "decision": {
+    "retraining_forbidden": true,
+    "representative_reselection_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
