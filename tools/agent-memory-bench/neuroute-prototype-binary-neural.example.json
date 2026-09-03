@@ -6,6 +6,8 @@
   "teacher_top_k": 1024,
   "positive_count": 8,
   "negative_ranks": [64, 256, 1023],
+  "student_hard_negatives_per_query": 8,
+  "global_random_negatives_per_query": 8,
   "address_budgets": [1024, 2048, 4096, 8192],
   "training": {
     "partition": "first_half_configuration_only",
@@ -26,6 +28,7 @@
   "evaluation": {
     "partitions": ["configuration", "internal"],
     "prototype_scan": "exhaustive_xor_popcount",
+    "negative_policies": ["fixed_teacher_ranks", "global_random", "student_hard", "student_hard_x2"],
     "production_selection": false,
     "native_mih": false
   },
