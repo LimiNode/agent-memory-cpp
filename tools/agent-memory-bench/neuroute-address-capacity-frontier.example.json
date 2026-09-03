@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_address_capacity_frontier",
+  "claim_scope": "latent_binary_address_code_capacity_before_bounded_local_k8",
+  "training": {
+    "query_count": 8141,
+    "projection_rank": 64,
+    "code_widths": [16, 24, 32, 48, 64],
+    "teacher_target": "k8_margin_mass",
+    "svd_solver": "scipy_sparse_svds",
+    "svd_random_seeds": [2026082701, 2026082702, 2026082703],
+    "ridge_lambda": 0.1
+  },
+  "shortlist_budgets": [1024, 2048, 4096],
+  "selection": {
+    "offline_budget": 4096,
+    "one_finalist_per_width": true,
+    "confirmation_open": "best_configuration_row_per_width_at_m4096",
+    "confirmation_may_not_tune": true
+  },
+  "native_replay": {
+    "coarse_codec": "fp32_k8",
+    "routing_storage_mode": "int8",
+    "execution": "portable",
+    "workers": 1,
+    "warmup_batches": 1,
+    "measured_batches": 1
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
+    "maximum_native_address_budget": 4096,
+    "exact_scan_target_p95_ms": 15.0
+  },
+  "decision": {
+    "global_fp32_k8_role": "offline_teacher_and_reference_only",
+    "maximum_local_k8_addresses": 4096,
+    "global_address_k8_scan_forbidden": true,
+    "native_integration_requires_confirmation_pass": true,
+    "production_selection_forbidden": true,
+    "post_16_bits_are_latent_codes": true
+  }
+}
