@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_asymmetric_prototype_map",
+  "claim_scope": "corpus_specific_free_prototype_codes_with_query_encoder",
+  "widths": [32, 64, 128],
+  "seeds": [285, 286, 287],
+  "positive_ranks": [0, 1, 7, 31, 127, 255, 511, 1023],
+  "negative_ranks": [64, 256],
+  "random_negatives_per_query": 8,
+  "hard_negatives_per_query": 8,
+  "budgets": [1024, 2048, 4096, 8192],
+  "split": "first_half_train_second_half_held_out",
+  "prototype_codes": "free_index_artifact_not_query_runtime",
+  "production_selection": false,
+  "full_cascade": "conditional_after_geometry_and_address_utility_gate"
+}
