@@ -21,6 +21,39 @@ import numpy as np
 
 THIS = Path(__file__).resolve().parent
 POPCOUNT = np.asarray([int(v).bit_count() for v in range(256)], dtype=np.uint8)
+_NUMBA_SCAN = None
+
+
+def scan_distances(prototype_codes: np.ndarray,
+                   query_code: np.ndarray) -> np.ndarray:
+    """Compute one exhaustive Hamming row, using optional Numba acceleration."""
+    global _NUMBA_SCAN
+    if _NUMBA_SCAN is None:
+        try:
+            import numba
+
+            # The frontier imports this runner under a dynamic module name.
+            # Numba's disk cache records that non-importable name and then
+            # fails when another resumable worker tries to unpickle it.
+            @numba.njit(parallel=True, cache=False)
+            def compiled(corpus: np.ndarray, query: np.ndarray,
+                         lookup: np.ndarray) -> np.ndarray:
+                result = np.empty(corpus.shape[0], dtype=np.uint16)
+                for row in numba.prange(corpus.shape[0]):
+                    total = 0
+                    for byte in range(corpus.shape[1]):
+                        total += lookup[corpus[row, byte] ^ query[byte]]
+                    result[row] = total
+                return result
+
+            _NUMBA_SCAN = compiled
+        except ImportError:
+            _NUMBA_SCAN = False
+    if _NUMBA_SCAN is False:
+        return POPCOUNT[np.bitwise_xor(
+            prototype_codes, query_code[None, :])].sum(axis=1,
+                                                       dtype=np.uint16)
+    return _NUMBA_SCAN(prototype_codes, query_code, POPCOUNT)
 
 
 def require(condition: bool, message: str) -> None:
@@ -64,8 +97,7 @@ def teacher_rankings(queries: np.ndarray, prototypes: np.ndarray,
     result = np.empty((len(queries), top_k), dtype=np.int32)
     for row, query in enumerate(queries):
         scores = np.asarray(prototypes @ query, dtype=np.float32)
-        candidates = np.argpartition(-scores, top_k - 1)[:top_k]
-        result[row] = candidates[np.lexsort((candidates, -scores[candidates]))]
+        result[row] = top_indices(-scores, top_k)
     return result
 
 
@@ -180,9 +212,7 @@ def mine_student_hard_negatives(queries: np.ndarray, prototypes: np.ndarray,
                                               int(teacher.shape[1]) + count + 64))
     ranks: list[int] = []
     for row in range(train_count):
-        distances = POPCOUNT[np.bitwise_xor(
-            prototype_codes, query_codes[row][None, :])].sum(axis=1,
-                                                              dtype=np.uint16)
+        distances = scan_distances(prototype_codes, query_codes[row])
         order = top_indices(distances, candidate_pool)
         forbidden = set(int(v) for v in teacher[row])
         selected = [int(v) for v in order if int(v) not in forbidden][:count]
@@ -226,9 +256,7 @@ def mined_negative_survival(queries: np.ndarray, prototypes: np.ndarray,
     hits = {budget: 0 for budget in budgets}
     total = int(mined.size)
     for row in range(train_count):
-        distances = POPCOUNT[np.bitwise_xor(
-            prototype_codes, query_codes[row][None, :])].sum(axis=1,
-                                                              dtype=np.uint16)
+        distances = scan_distances(prototype_codes, query_codes[row])
         order = top_indices(distances, min(max(budgets), len(prototypes)))
         positions = {int(value): index for index, value in enumerate(order)}
         for value in mined[row]:
@@ -296,7 +324,17 @@ def encode(values: np.ndarray, model: Any, width: int) -> np.ndarray:
 
 
 def top_indices(distances: np.ndarray, count: int) -> np.ndarray:
-    selected = np.argpartition(distances, count - 1)[:count]
+    require(0 < count <= len(distances), "top-k count is invalid")
+    if count == len(distances):
+        selected = np.arange(len(distances), dtype=np.int64)
+        return selected[np.lexsort((selected, distances))]
+    threshold = np.partition(distances, count - 1)[count - 1]
+    lower = np.flatnonzero(distances < threshold)
+    remaining = count - len(lower)
+    # flatnonzero is ascending, so a boundary Hamming tie is resolved by
+    # prototype id before the final distance/id ordering is materialized.
+    boundary = np.flatnonzero(distances == threshold)[:remaining]
+    selected = np.concatenate((lower, boundary))
     return selected[np.lexsort((selected, distances[selected]))]
 
 
@@ -311,28 +349,32 @@ def recall_rows(query_codes: np.ndarray, prototype_codes: np.ndarray,
                 teacher: np.ndarray, begin: int, end: int,
                 budgets: list[int]) -> dict[str, Any]:
     result: dict[str, Any] = {"queries": end - begin, "budgets": {}}
-    for budget in budgets:
-        recalls: list[float] = []
-        radii: list[float] = []
-        elapsed: list[float] = []
-        budget = min(int(budget), len(prototype_codes))
-        for row in range(begin, end):
-            started = time.perf_counter()
-            distances = POPCOUNT[np.bitwise_xor(
-                prototype_codes, query_codes[row][None, :])].sum(axis=1,
-                                                                  dtype=np.uint16)
-            selected = top_indices(distances, budget)
-            elapsed.append((time.perf_counter() - started) * 1000.0)
-            target = set(int(v) for v in teacher[row])
-            recalls.append(sum(int(v) in target for v in selected) / len(target))
-            radii.append(float(distances[selected[-1]]))
+    normalized = sorted(set(min(int(value), len(prototype_codes))
+                            for value in budgets))
+    metrics = {budget: {"recalls": [], "radii": [], "elapsed": []}
+               for budget in normalized}
+    maximum = max(normalized)
+    for row in range(begin, end):
+        started = time.perf_counter()
+        distances = scan_distances(prototype_codes, query_codes[row])
+        order = top_indices(distances, maximum)
+        elapsed = (time.perf_counter() - started) * 1000.0
+        target = set(int(v) for v in teacher[row])
+        for budget in normalized:
+            selected = order[:budget]
+            metrics[budget]["elapsed"].append(elapsed)
+            metrics[budget]["recalls"].append(
+                sum(int(v) in target for v in selected) / len(target))
+            metrics[budget]["radii"].append(float(distances[selected[-1]]))
+    for budget in normalized:
+        values = metrics[budget]
         result["budgets"][str(budget)] = {
-            "teacher_prototype_recall_at_k": float(np.mean(recalls)),
-            "worst_query_recall_at_k": float(np.min(recalls)),
-            "mean_hamming_radius": float(np.mean(radii)),
-            "p95_hamming_radius": float(np.quantile(radii, .95)),
-            "scan_ms": {"median": float(np.median(elapsed)),
-                         "p95": float(np.quantile(elapsed, .95))}}
+            "teacher_prototype_recall_at_k": float(np.mean(values["recalls"])),
+            "worst_query_recall_at_k": float(np.min(values["recalls"])),
+            "mean_hamming_radius": float(np.mean(values["radii"])),
+            "p95_hamming_radius": float(np.quantile(values["radii"], .95)),
+            "scan_ms": {"median": float(np.median(values["elapsed"])),
+                         "p95": float(np.quantile(values["elapsed"], .95))}}
     return result
 
 
@@ -443,6 +485,10 @@ def self_test() -> int:
             "neural widths missing")
     require(value["decision"]["native_mih_licensed"] is False,
             "neural production gate opened")
+    require(np.array_equal(top_indices(
+        np.asarray([2, 1, 1, 1, 0], dtype=np.uint16), 3),
+        np.asarray([4, 1, 2], dtype=np.int64)),
+        "Hamming boundary tie-break differs")
     print("NeuRoute prototype-binary neural runner self-test passed")
     return 0
 

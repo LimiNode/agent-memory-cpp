@@ -32,8 +32,19 @@ def sha256(path: Path) -> str:
 
 def top_k(scores: np.ndarray, count: int) -> np.ndarray:
     """Return ids ordered by descending score, then ascending id."""
-    candidates = np.argpartition(-scores, count - 1)[:count]
-    return candidates[np.lexsort((candidates, -scores[candidates]))]
+    require(0 < count <= len(scores), "teacher top-k count is invalid")
+    if count == len(scores):
+        selected = np.arange(len(scores), dtype=np.int64)
+        return selected[np.lexsort((selected, -scores))]
+    negative_scores = -scores
+    threshold = np.partition(negative_scores, count - 1)[count - 1]
+    higher = np.flatnonzero(negative_scores < threshold)
+    remaining = count - len(higher)
+    # flatnonzero is ascending, so equal scores at the boundary are resolved
+    # by prototype id before the final score/id order is materialized.
+    boundary = np.flatnonzero(negative_scores == threshold)[:remaining]
+    selected = np.concatenate((higher, boundary))
+    return selected[np.lexsort((selected, -scores[selected]))]
 
 
 def materialize(queries: np.ndarray, prototypes: np.ndarray, top_count: int,
