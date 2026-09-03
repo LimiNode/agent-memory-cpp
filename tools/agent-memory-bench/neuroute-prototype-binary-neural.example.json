@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_prototype_binary_neural",
+  "claim_scope": "teacher_ranked_shared_neural_binary_metric_ceiling",
+  "widths": [16, 24, 32, 48, 64, 96, 128],
+  "teacher_top_k": 1024,
+  "positive_count": 8,
+  "negative_ranks": [64, 256, 1023],
+  "address_budgets": [1024, 2048, 4096, 8192],
+  "training": {
+    "partition": "first_half_configuration_only",
+    "minimum_full_teacher_queries": 1024,
+    "required_full_teacher_queries": 8141,
+    "hidden_dimensions": [96, 64],
+    "epochs": 3,
+    "batch_size": 1024,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "temperature": 2.0,
+    "margin_bits": 0.05,
+    "balance_weight": 0.02,
+    "decorrelation_weight": 0.01,
+    "torch_threads": 8,
+    "deterministic": true
+  },
+  "evaluation": {
+    "partitions": ["configuration", "internal"],
+    "prototype_scan": "exhaustive_xor_popcount",
+    "production_selection": false,
+    "native_mih": false
+  },
+  "extension_policy": {
+    "extend_to": [192, 256],
+    "condition": "held_out_full_cascade_gain_remains_material_without_128_bit_plateau"
+  }
+}
