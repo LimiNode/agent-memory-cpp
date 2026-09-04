@@ -306,6 +306,73 @@ class DiscreteADCScorer:
         return self.scores_prepared(self.prepare(vectors), query)
 
 
+@dataclass(frozen=True)
+class ThermometerScorer:
+    """Unary/thermometer code whose Hamming distance is ordinal L1."""
+    id: str
+    mean: np.ndarray
+    projection: np.ndarray | None
+    thresholds: np.ndarray
+    bits_per_coordinate: int
+    payload_bytes_per_document: int
+    model_bytes: int
+
+    @classmethod
+    def fit(cls, training: np.ndarray, levels: int, mode: str,
+            seed: int, rotated: bool = False) -> "ThermometerScorer":
+        source = np.asarray(training, dtype=np.float32)
+        mean = np.zeros(source.shape[1], dtype=np.float32)
+        projection = None
+        if rotated:
+            fitted = ITQReference.fit(source, source.shape[1], seed=seed,
+                                      mode="hamming", train_limit=len(source))
+            mean, projection = fitted.mean, fitted.projection
+            source = (source - mean) @ projection
+        if mode == "uniform":
+            low = np.min(source, axis=0)
+            high = np.max(source, axis=0)
+            fractions = np.arange(1, levels, dtype=np.float32) / levels
+            thresholds = low[:, None] + (high - low)[:, None] * fractions[None, :]
+        elif mode == "quantile":
+            fractions = np.arange(1, levels, dtype=np.float32) / levels
+            thresholds = np.quantile(source, fractions, axis=0).T
+        else:
+            raise ValueError(f"unknown thermometer threshold mode: {mode}")
+        bits = levels - 1
+        payload = (source.shape[1] * bits + 7) // 8
+        prefix = "rthq" if rotated else "thq"
+        identifier = f"{prefix}{levels}_{mode}"
+        model = int(mean.nbytes + (0 if projection is None else projection.nbytes) +
+                    thresholds.astype(np.float32).nbytes)
+        return cls(identifier, mean, projection,
+                   np.asarray(thresholds, dtype=np.float32), bits,
+                   payload, model)
+
+    def _source(self, vectors: np.ndarray) -> np.ndarray:
+        source = np.asarray(vectors, dtype=np.float32) - self.mean
+        if self.projection is not None:
+            source = source @ self.projection
+        return source
+
+    def prepare(self, vectors: np.ndarray) -> np.ndarray:
+        source = self._source(vectors)
+        # Flatten coordinate-major threshold bits; unary codes are monotone.
+        expanded = (source[:, :, None] > self.thresholds[None, :, :]).reshape(
+            len(source), -1)
+        return np.packbits(expanded, axis=1, bitorder="little")
+
+    def scores_prepared(self, prepared: np.ndarray,
+                        query: np.ndarray) -> np.ndarray:
+        query_code = self.prepare(np.asarray(query, dtype=np.float32)[None, :])[0]
+        byte_popcount = np.asarray([int(value).bit_count() for value in range(256)],
+                                   dtype=np.uint8)
+        return -byte_popcount[np.bitwise_xor(prepared, query_code)].sum(
+            axis=1, dtype=np.uint32).astype(np.float32)
+
+    def scores(self, vectors: np.ndarray, query: np.ndarray) -> np.ndarray:
+        return self.scores_prepared(self.prepare(vectors), query)
+
+
 def build_scorers(training: np.ndarray, seed: int,
                   requested: set[str] | None = None) -> list[Scorer]:
     include = lambda name: requested is None or name in requested
@@ -340,6 +407,17 @@ def build_scorers(training: np.ndarray, seed: int,
         ("opq4", lambda: PQScorer.fit(training, 4, True, seed)),
         ("opq8", lambda: PQScorer.fit(training, 8, True, seed)),
     )
+    thermometer = []
+    for levels in (2, 3, 4, 5, 8):
+        for mode in ("uniform", "quantile"):
+            thermometer.append((f"thq{levels}_{mode}",
+                lambda levels=levels, mode=mode:
+                    ThermometerScorer.fit(training, levels, mode, seed)))
+    for levels in (4, 5):
+        thermometer.append((f"rthq{levels}_quantile",
+            lambda levels=levels: ThermometerScorer.fit(
+                training, levels, "quantile", seed, rotated=True)))
+    factories = (*factories, *thermometer)
     for name, factory in factories:
         if include(name):
             result.append(factory())

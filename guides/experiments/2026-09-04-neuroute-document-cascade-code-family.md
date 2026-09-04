@@ -316,3 +316,40 @@ At the 64-record final-rerank size, the same harness measured p95 `0.0377 ms`
 JSON runs are `tmp/document-codec-native-benchmark-v1.json` and
 `tmp/document-codec-native-benchmark-final64-v1.json` (both local evidence,
 not committed).
+
+## Follow-up: ordinal thermometer Hamming (2026-09-05)
+
+The document matrix now also contains Thermometer Hamming Quantization (THQ).
+For a scalar with `L` ordered levels, THQ stores `L-1` monotone threshold bits
+(`000`, `001`, `011`, `111` for four levels).  Therefore Hamming distance is
+exactly the absolute difference between quantized ordinal levels; across
+coordinates it is a discrete L1 score.  This is different from binary integer
+or Gray coding, where numeric adjacency is not distance-preserving.
+
+We tested uniform and per-coordinate quantile thresholds for THQ2/3/4/5/8,
+plus rotated quantile THQ4/5 using the existing ITQ orthogonal transform only
+as a coordinate rotation.  Payloads for 384D are 48, 96, 144, 192, and 336
+bytes respectively.  On the complete candidate-pool lane, representative
+final top-10 overlap at `K=256` was:
+
+| Codec | Bytes/doc | Final top-10 overlap | Worst query |
+|---|---:|---:|---:|
+| THQ2 uniform | 48 | .9939 | .8 |
+| THQ3 quantile | 96 | .9993 | .9 |
+| THQ4 quantile | 144 | .9996 | .9 |
+| THQ5 quantile | 192 | 1.0000 | 1.0 |
+| R-THQ4 quantile | 144 | .9998 | .9 |
+| R-THQ5 quantile | 192 | 1.0000 | 1.0 |
+
+At `K=512`, THQ3-quantile, THQ4/5, and both rotated variants reached exact
+top-10 on the observed 456-case matrix.  In the historical `Hamming768 -> 64`
+lane, THQ4/5 quantile reached `.9897/.9886` overlap (R-THQ4/5 `.9890/.9912`),
+while THQ3 uniform was only `.8754`; threshold placement is material.  That
+lane is capped by its inherited Hamming768 input and is not a replacement for
+the composed ITQ208-ADC generator experiment.
+
+THQ is a candidate for cheap document filtering and MIH indexing, but it
+optimizes L1-like ordinal distance rather than cosine/dot product.  These
+results establish a baseline, not dominance over ITQ ADC.  Weighted bitplanes,
+random-projection THQ, sliding codes, and THQ-specific MIH remain separate
+research controls.
