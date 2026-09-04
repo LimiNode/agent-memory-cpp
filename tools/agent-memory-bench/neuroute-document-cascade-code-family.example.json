@@ -1,0 +1,281 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_document_cascade_code_family",
+  "stage1": "actual_r4_candidate_documents_to_k",
+  "stage1_counts": [512, 768, 1024],
+  "stage2": "historical_hamming768_to_k",
+  "stage2_counts": [32, 64, 128],
+  "training_documents": 16384,
+  "training_uses_relevance_labels": false,
+  "codec_matrix": {
+    "references": ["fp32", "fp16"],
+    "scalar": ["int4", "int5", "int6", "int8", "int10", "int12"],
+    "scalar_companders": ["linear", "power_half"],
+    "itq_hamming_and_adc_bits": [128, 208, 256, 384],
+    "rabitq_bits": [128, 208, 256, 384],
+    "bbq_like_bits": [128, 208, 256, 384],
+    "discrete_adc": ["itq_ternary128", "itq_quaternary104"],
+    "product_quantization": ["pq4_16B", "pq8_16B", "opq4_16B", "opq8_16B"]
+  },
+  "profiles": [
+    {
+      "id": "control_fp32",
+      "stage1_method": "fp32",
+      "stage1_documents": 512,
+      "stage2_method": "fp32",
+      "stage2_documents": 32,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "quality_scalar",
+      "stage1_method": "int8_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 32,
+      "final_method": "int12_power05"
+    },
+    {
+      "id": "single_int12_power05",
+      "stage1_method": "int12_power05",
+      "stage1_documents": 512,
+      "stage2_method": "int12_power05",
+      "stage2_documents": 32,
+      "final_method": "int12_power05"
+    },
+    {
+      "id": "single_int10_linear",
+      "stage1_method": "int10_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int10_linear",
+      "stage2_documents": 32,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "single_int8_linear",
+      "stage1_method": "int8_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int8_linear",
+      "stage2_documents": 32,
+      "final_method": "int8_linear"
+    },
+    {
+      "id": "single_int6_linear",
+      "stage1_method": "int6_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 64,
+      "final_method": "int6_linear"
+    },
+    {
+      "id": "quality_conservative",
+      "stage1_method": "int10_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int8_linear",
+      "stage2_documents": 64,
+      "final_method": "int12_power05"
+    },
+    {
+      "id": "balanced_scalar",
+      "stage1_method": "int6_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int5_linear",
+      "stage2_documents": 64,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "compact_itq208_scalar",
+      "stage1_method": "itq208_adc",
+      "stage1_documents": 768,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 64,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "compact_itq208_int8",
+      "stage1_method": "itq208_adc",
+      "stage1_documents": 768,
+      "stage2_method": "int8_linear",
+      "stage2_documents": 32,
+      "final_method": "int8_linear"
+    },
+    {
+      "id": "compact_itq208_int4_int10",
+      "stage1_method": "itq208_adc",
+      "stage1_documents": 768,
+      "stage2_method": "int4_linear",
+      "stage2_documents": 64,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "exact_itq208_int4",
+      "stage1_method": "itq208_adc",
+      "stage1_documents": 768,
+      "stage2_method": "int4_linear",
+      "stage2_documents": 32,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "exact_itq208_int4_k64",
+      "stage1_method": "itq208_adc",
+      "stage1_documents": 768,
+      "stage2_method": "int4_linear",
+      "stage2_documents": 64,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "exact_itq208_int8",
+      "stage1_method": "itq208_adc",
+      "stage1_documents": 768,
+      "stage2_method": "int8_linear",
+      "stage2_documents": 32,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "compact_itq256_scalar",
+      "stage1_method": "itq256_adc",
+      "stage1_documents": 512,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 64,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "compact_itq256_int8",
+      "stage1_method": "itq256_adc",
+      "stage1_documents": 512,
+      "stage2_method": "int8_linear",
+      "stage2_documents": 32,
+      "final_method": "int8_linear"
+    },
+    {
+      "id": "compact_itq384_scalar",
+      "stage1_method": "itq384_adc",
+      "stage1_documents": 512,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 64,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "compact_opq8_scalar",
+      "stage1_method": "opq8",
+      "stage1_documents": 1024,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 128,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "compact_opq8_int8",
+      "stage1_method": "opq8",
+      "stage1_documents": 1024,
+      "stage2_method": "int8_linear",
+      "stage2_documents": 64,
+      "final_method": "int8_linear"
+    },
+    {
+      "id": "exact_opq8_int6",
+      "stage1_method": "opq8",
+      "stage1_documents": 1024,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 64,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "exact_single_int6",
+      "stage1_method": "int6_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 32,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "exact_single_int5_k32",
+      "stage1_method": "int5_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int5_linear",
+      "stage2_documents": 32,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "exact_single_int5_k64",
+      "stage1_method": "int5_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int5_linear",
+      "stage2_documents": 64,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "exact_single_int4_k32",
+      "stage1_method": "int4_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int4_linear",
+      "stage2_documents": 32,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "exact_single_int4_k64",
+      "stage1_method": "int4_linear",
+      "stage1_documents": 512,
+      "stage2_method": "int4_linear",
+      "stage2_documents": 64,
+      "final_method": "exact_fp32"
+    },
+    {
+      "id": "compact_pq8_scalar",
+      "stage1_method": "pq8",
+      "stage1_documents": 1024,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 128,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "compact_rabitq384_scalar",
+      "stage1_method": "rabitq384",
+      "stage1_documents": 768,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 64,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "compact_bbq384_scalar",
+      "stage1_method": "bbq384_fp16_scales",
+      "stage1_documents": 768,
+      "stage2_method": "int6_linear",
+      "stage2_documents": 64,
+      "final_method": "int10_linear"
+    },
+    {
+      "id": "aggressive_itq",
+      "stage1_method": "itq208_adc",
+      "stage1_documents": 768,
+      "stage2_method": "itq384_adc",
+      "stage2_documents": 128,
+      "final_method": "int8_linear"
+    },
+    {
+      "id": "aggressive_opq",
+      "stage1_method": "opq8",
+      "stage1_documents": 1024,
+      "stage2_method": "itq384_adc",
+      "stage2_documents": 128,
+      "final_method": "int8_linear"
+    },
+    {
+      "id": "ultracompact_16b",
+      "stage1_method": "itq128_adc",
+      "stage1_documents": 1024,
+      "stage2_method": "opq8",
+      "stage2_documents": 128,
+      "final_method": "int8_linear"
+    }
+  ],
+  "required_metrics": [
+    "stage_overlap_vs_fp32",
+    "final_top10_overlap_vs_candidate_fp32",
+    "final_ndcg_at_10",
+    "mean_and_maximum_ndcg_loss",
+    "p05_and_worst_query_overlap",
+    "top1_agreement",
+    "payload_and_model_bytes",
+    "directional_python_p95"
+  ],
+  "production_selection_forbidden": true
+}
