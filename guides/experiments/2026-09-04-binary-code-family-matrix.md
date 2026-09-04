@@ -73,6 +73,34 @@ standalone runner is `evaluate-binary-code-references.py`; it reports quality,
 query/search p95, payload/model bytes, working-set estimate, and the effect of
 oversampling.
 
+## Full-document reference replay (2026-09-04)
+
+The pinned references were run on the frozen RU E5 fixture (`22,607` documents,
+`1,252` queries, dimension `384`, seed `42`, candidate budget `512`, and
+oversample `4x`). Exact inner-product reranking was applied to the encoded
+candidate set. This is a representation diagnostic: nDCG is against the exact
+E5 inner-product top-10 oracle, not the MIRACL qrels metric used above.
+
+| Method | Bits | nDCG@10 | Top-10 overlap | p05 / worst overlap | Encode p95 ms | Search p95 ms | Payload B/doc | Model B |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| RaBitQ-RR-1 | 16 | 0.2343 | 0.2250 | 0.0 / 0.0 | 3.801 | 3.807 | 20 | 26,112 |
+| BBQ-block-1 | 16 | 0.2867 | 0.2662 | 0.0 / 0.0 | 12.988 | 14.267 | 48 | 26,112 |
+| RaBitQ-RR-1 | 32 | 0.4494 | 0.4066 | 0.0 / 0.0 | 5.983 | 6.125 | 20 | 50,688 |
+| BBQ-block-1 | 32 | 0.5119 | 0.4599 | 0.0 / 0.0 | 11.293 | 11.902 | 48 | 50,688 |
+| RaBitQ-RR-1 | 64 | 0.8388 | 0.7609 | 0.3 / 0.0 | 9.101 | 9.632 | 20 | 99,840 |
+| BBQ-block-1 | 64 | 0.8634 | 0.7921 | 0.4 / 0.0 | 17.703 | 17.234 | 48 | 99,840 |
+| RaBitQ-RR-1 | 96 | 0.9736 | 0.9329 | 0.7 / 0.3 | 14.069 | 14.414 | 28 | 148,992 |
+| BBQ-block-1 | 96 | 0.9786 | 0.9427 | 0.7 / 0.4 | 25.335 | 25.486 | 56 | 148,992 |
+| RaBitQ-RR-1 | 128 | 0.9957 | 0.9815 | 0.9 / 0.6 | 24.468 | 24.968 | 28 | 198,144 |
+| BBQ-block-1 | 128 | 0.9967 | 0.9840 | 0.9 / 0.6 | 28.182 | 28.283 | 56 | 198,144 |
+
+The curve is strongly monotone through 128 bits and has not saturated at 64
+bits. BBQ-block-1 is consistently a little more accurate, at roughly 2x the
+per-document correction payload and higher CPU cost. At 128 bits both variants
+are close to the exact oracle, but this does not yet establish K8 address
+utility or full-cascade quality. The raw replay is
+`tmp/binary-reference-full-ru.json`.
+
 ## Common metrics and decision rule
 
 The contract is [`binary-code-family-matrix.example.json`](../../tools/agent-memory-bench/binary-code-family-matrix.example.json).
