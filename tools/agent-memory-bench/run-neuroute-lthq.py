@@ -181,7 +181,11 @@ def load_input(path: Path) -> dict[str, np.ndarray]:
                 "eval_teacher_ids", "eval_teacher_scores")
     missing = [name for name in required if name not in archive]
     require(not missing, "LTHQ input missing: " + ", ".join(missing))
-    return {name: np.asarray(archive[name]) for name in required}
+    result = {name: np.asarray(archive[name]) for name in required}
+    result["eval_partition"] = np.asarray(
+        archive["eval_partition"] if "eval_partition" in archive
+        else np.full(len(result["eval_queries"]), "all", dtype="U5"))
+    return result
 
 
 def smoke() -> None:
@@ -221,6 +225,9 @@ def main() -> int:
     positives = data["train_positive_ids"][:len(train_q)]
     negatives = data["train_negative_ids"][:len(train_q)]
     eval_q = data["eval_queries"]
+    eval_partition = np.asarray(data["eval_partition"])
+    require(len(eval_partition) == len(eval_q),
+            "LTHQ evaluation partition count differs")
     rows: list[dict[str, Any]] = []
     for levels in (int(x) for x in args.levels.split(",")):
         require(levels >= 2, "LTHQ levels must be >= 2")
@@ -235,13 +242,17 @@ def main() -> int:
         for name, thresholds in ((f"thq{levels}_quantile", quantile),
                                  (f"thq{levels}_uniform", uniform),
                                  (f"lthq{levels}_t", learned)):
-            row = evaluate(name, data["eval_vectors"], eval_q,
-                           data["eval_teacher_ids"], data["eval_teacher_scores"],
-                           thresholds, payload, model_bytes,
-                           [10, 32, 64, 256], "all")
-            if name.startswith("lthq"):
-                row["training"] = training
-            rows.append(row)
+            for partition in sorted(set(map(str, eval_partition))):
+                positions = np.flatnonzero(eval_partition == partition)
+                row = evaluate(name, data["eval_vectors"][positions],
+                               eval_q[positions],
+                               data["eval_teacher_ids"][positions],
+                               data["eval_teacher_scores"][positions],
+                               thresholds, payload, model_bytes,
+                               [10, 32, 64, 256], partition)
+                if name.startswith("lthq"):
+                    row["training"] = training
+                rows.append(row)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps({"schema_version": 1,
         "family": "neuroute_lthq_retrieval_supervised",
