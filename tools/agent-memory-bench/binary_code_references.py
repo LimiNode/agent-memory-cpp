@@ -6,9 +6,10 @@ research specifications so that matrix rows are reproducible without pulling a
 third-party ANN dependency:
 
 * ``rabitq_reference`` (RaBitQ-RR-1): a random-rotation one-bit residual code.
-  The database stores a sign code, an L1 projection gain, the vector norm and
-  residual energy.  Query scoring uses the stored norm/gain correction and then
-  applies explicit candidate oversampling.
+  The database stores a sign code, RaBitQ's correlation rescale factor, and
+  metric-required norm metadata.  At one bit per input dimension this is the
+  paper/upstream one-bit estimator; shorter projections remain an explicitly
+  named research variant.
 * ``bbq_like_reference`` (BBQ-block-1): a blockwise binary code.  Each block
   stores sign bits and an L1 scale, plus vector norm/residual energy.  This is a
   documented BBQ-like research variant, not a claim of compatibility with a
@@ -63,6 +64,41 @@ def _dot_sign(query: np.ndarray, codes: np.ndarray, bits: int) -> np.ndarray:
     return signs @ q
 
 
+_BYTE_SIGNS = (
+    ((np.arange(256, dtype=np.uint16)[:, None] >> np.arange(8, dtype=np.uint16)) & 1)
+    .astype(np.float32)
+    * 2.0
+    - 1.0
+)
+
+
+def _packed_signed_dot(query: np.ndarray, codes: np.ndarray, bits: int) -> np.ndarray:
+    """Compute sign-code dot products without expanding the database to FP32.
+
+    A 256-entry query-side lookup table is built for each code byte.  NumPy's
+    gather is the portable research analogue of the packed SIMD/FastScan
+    serving path: database codes remain packed for the complete operation.
+    """
+    q = np.asarray(query, dtype=np.float32).reshape(-1)
+    if q.size != bits:
+        raise ValueError("query/code width mismatch")
+    byte_count = (bits + 7) // 8
+    padded = np.pad(q, (0, byte_count * 8 - bits)).reshape(byte_count, 8)
+    tables = padded @ _BYTE_SIGNS.T
+    code_bytes = np.ascontiguousarray(codes).view(np.uint8).reshape(codes.shape[0], -1)[:, :byte_count]
+    return tables[np.arange(byte_count)[None, :], code_bytes].sum(axis=1, dtype=np.float32)
+
+
+def _corrected_score(dot: np.ndarray, source_norm_sq: np.ndarray, query_norm_sq: float, metric: str) -> np.ndarray:
+    if metric == "ip":
+        return dot
+    if metric == "l2":
+        # -0.5 * squared L2 preserves nearest-neighbour ordering while keeping
+        # the common convention that larger scores are better.
+        return dot - 0.5 * (source_norm_sq + query_norm_sq)
+    raise ValueError("metric must be 'ip' or 'l2'")
+
+
 @dataclass(frozen=True)
 class RabitQReference:
     """RaBitQ-RR-1 model and database payload."""
@@ -71,23 +107,33 @@ class RabitQReference:
     rotation: np.ndarray
     codes: np.ndarray
     gains: np.ndarray
-    norms: np.ndarray
+    source_norm_sq: np.ndarray
     residual_energy: np.ndarray
     bits: int
     seed: int
     oversample: int = 4
+    metric: str = "ip"
     spec: str = "RaBitQ-RR-1"
 
     @property
     def payload_bytes(self) -> int:
-        return int(self.codes.nbytes + self.gains.nbytes + self.norms.nbytes + self.residual_energy.nbytes)
+        return int(self.serving_payload_bytes)
+
+    @property
+    def serving_payload_bytes(self) -> int:
+        norm_bytes = self.source_norm_sq.nbytes if self.metric == "l2" else 0
+        return int(self.codes.nbytes + self.gains.nbytes + norm_bytes)
+
+    @property
+    def diagnostic_payload_bytes(self) -> int:
+        return int(self.codes.nbytes + self.gains.nbytes + self.source_norm_sq.nbytes + self.residual_energy.nbytes)
 
     @property
     def model_bytes(self) -> int:
         return int(self.mean.nbytes + self.rotation.nbytes)
 
     @classmethod
-    def fit(cls, vectors: np.ndarray, bits: int, seed: int = 0, oversample: int = 4) -> "RabitQReference":
+    def fit(cls, vectors: np.ndarray, bits: int, seed: int = 0, oversample: int = 4, metric: str = "ip") -> "RabitQReference":
         x = _check_matrix(vectors, "vectors")
         if bits <= 0 or bits > x.shape[1]:
             raise ValueError("bits must be in [1, dimension]")
@@ -96,33 +142,48 @@ class RabitQReference:
         mean = x.mean(axis=0, dtype=np.float64).astype(np.float32)
         rot = _rotation(x.shape[1], seed)
         transformed = (x - mean) @ rot[:, :bits]
-        abs_mean = np.mean(np.abs(transformed), axis=1).astype(np.float32)
-        norms = np.linalg.norm(x - mean, axis=1).astype(np.float32)
-        residual = np.maximum(norms * norms - bits * abs_mean * abs_mean, 0.0).astype(np.float32)
-        return cls(mean, rot[:, :bits], pack_bits(transformed >= 0), abs_mean, norms, residual, bits, seed, oversample)
+        projected_norm_sq = np.sum(transformed * transformed, axis=1, dtype=np.float32)
+        abs_sum = np.sum(np.abs(transformed), axis=1, dtype=np.float32)
+        # RaBitQ's correlation correction is ||r||^2 / <sign(r), r>.
+        # For a full-dimensional orthogonal rotation this is the official
+        # one-bit estimator.  Narrower widths remain explicitly named RR-1
+        # research projections rather than faithful RaBitQ claims.
+        gains = np.divide(projected_norm_sq, abs_sum, out=np.zeros_like(projected_norm_sq), where=abs_sum > 0.0)
+        source_norm_sq = np.sum(x * x, axis=1, dtype=np.float32)
+        residual = np.maximum(projected_norm_sq - (abs_sum * abs_sum / bits), 0.0).astype(np.float32)
+        spec = "RaBitQ-one-bit-reference" if bits == x.shape[1] else "RaBitQ-RR-1"
+        codes = np.packbits(transformed >= 0, axis=1, bitorder="little")
+        return cls(mean, rot[:, :bits], codes, gains, source_norm_sq, residual, bits, seed, oversample, metric, spec)
 
     def encode_query(self, query: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
         q = _check_matrix(np.asarray(query).reshape(1, -1), "query")[0]
         transformed = (q - self.mean) @ self.rotation
-        return pack_bits((transformed >= 0).reshape(1, -1)), transformed, float(np.linalg.norm(q - self.mean))
+        return np.packbits((transformed >= 0).reshape(1, -1), axis=1, bitorder="little"), transformed, float(np.linalg.norm(q - self.mean))
 
     def scores(self, query: np.ndarray) -> np.ndarray:
-        _qcode, qv, qnorm = self.encode_query(query)
-        dot = _dot_sign(qv, self.codes, self.bits) * self.gains
-        # Norm metadata is the RaBitQ correction: score is reconstructed IP,
-        # while residual energy is retained for diagnostics and future bounds.
-        return dot - 0.5 * (self.norms * self.norms + qnorm * qnorm - 2.0 * dot)
+        q = _check_matrix(np.asarray(query).reshape(1, -1), "query")[0]
+        _qcode, qv, _qnorm = self.encode_query(q)
+        dot = _packed_signed_dot(qv, self.codes, self.bits) * self.gains + float(self.mean @ q)
+        return _corrected_score(dot, self.source_norm_sq, float(q @ q), self.metric)
 
     def scores_batch(self, queries: np.ndarray) -> np.ndarray:
         q = _check_matrix(queries, "queries")
         if q.shape[1] != self.mean.size:
             raise ValueError("query dimension mismatch")
         transformed = (q - self.mean) @ self.rotation
-        unpacked = np.unpackbits(self.codes.view(np.uint8), axis=1, bitorder="little")[:, : self.bits]
-        signs = unpacked.astype(np.float32) * 2.0 - 1.0
-        dot = (transformed @ signs.T) * self.gains[None, :]
-        qnorm = np.linalg.norm(q - self.mean, axis=1).astype(np.float32)
-        return dot - 0.5 * (self.norms[None, :] ** 2 + qnorm[:, None] ** 2 - 2.0 * dot)
+        result = np.empty((q.shape[0], self.codes.shape[0]), dtype=np.float32)
+        for index, row in enumerate(q):
+            dot = _packed_signed_dot(transformed[index], self.codes, self.bits) * self.gains + float(self.mean @ row)
+            result[index] = _corrected_score(dot, self.source_norm_sq, float(row @ row), self.metric)
+        return result
+
+    def scores_subset(self, query: np.ndarray, indices: np.ndarray) -> np.ndarray:
+        """Score only a local IVF posting list (without decoding all rows)."""
+        q = _check_matrix(np.asarray(query).reshape(1, -1), "query")[0]
+        ids = np.asarray(indices, dtype=np.int64).reshape(-1)
+        transformed = (q - self.mean) @ self.rotation
+        dot = _packed_signed_dot(transformed, self.codes[ids], self.bits) * self.gains[ids] + float(self.mean @ q)
+        return _corrected_score(dot, self.source_norm_sq[ids], float(q @ q), self.metric)
 
     def search(self, query: np.ndarray, top_k: int, oversample: int | None = None) -> np.ndarray:
         if top_k <= 0:
@@ -143,17 +204,28 @@ class BBQLikeReference:
     rotation: np.ndarray
     codes: np.ndarray
     block_scales: np.ndarray
-    norms: np.ndarray
+    source_norm_sq: np.ndarray
     residual_energy: np.ndarray
     bits: int
     blocks: int
     seed: int
     oversample: int = 4
+    metric: str = "ip"
+    scale_storage: str = "fp32"
     spec: str = "BBQ-block-1 (BBQ-like)"
 
     @property
     def payload_bytes(self) -> int:
-        return int(self.codes.nbytes + self.block_scales.nbytes + self.norms.nbytes + self.residual_energy.nbytes)
+        return int(self.serving_payload_bytes)
+
+    @property
+    def serving_payload_bytes(self) -> int:
+        norm_bytes = self.source_norm_sq.nbytes if self.metric == "l2" else 0
+        return int(self.codes.nbytes + self.block_scales.nbytes + norm_bytes)
+
+    @property
+    def diagnostic_payload_bytes(self) -> int:
+        return int(self.codes.nbytes + self.block_scales.nbytes + self.source_norm_sq.nbytes + self.residual_energy.nbytes)
 
     @property
     def model_bytes(self) -> int:
@@ -165,7 +237,7 @@ class BBQLikeReference:
         return pack_bits((transformed >= 0).reshape(1, -1)), transformed, float(np.linalg.norm(q - self.mean))
 
     @classmethod
-    def fit(cls, vectors: np.ndarray, bits: int, blocks: int = 8, seed: int = 0, oversample: int = 4) -> "BBQLikeReference":
+    def fit(cls, vectors: np.ndarray, bits: int, blocks: int = 8, seed: int = 0, oversample: int = 4, metric: str = "ip", scale_storage: str = "fp32") -> "BBQLikeReference":
         x = _check_matrix(vectors, "vectors")
         if bits <= 0 or bits > x.shape[1] or bits % blocks:
             raise ValueError("bits must be divisible by blocks and <= dimension")
@@ -176,19 +248,31 @@ class BBQLikeReference:
         transformed = (x - mean) @ rot
         width = bits // blocks
         reshaped = transformed.reshape(x.shape[0], blocks, width)
-        scales = np.mean(np.abs(reshaped), axis=2).astype(np.float32)
-        norms = np.linalg.norm(x - mean, axis=1).astype(np.float32)
-        residual = np.maximum(norms * norms - np.sum(scales * scales * width, axis=1), 0.0).astype(np.float32)
-        return cls(mean, rot, pack_bits(transformed >= 0), scales, norms, residual, bits, blocks, seed, oversample)
+        abs_sum = np.sum(np.abs(reshaped), axis=2, dtype=np.float32)
+        block_norm_sq = np.sum(reshaped * reshaped, axis=2, dtype=np.float32)
+        # Per-block correlation correction, analogous to RaBitQ's global
+        # ||r||^2 / <sign(r), r> estimator.
+        scales = np.divide(block_norm_sq, abs_sum, out=np.zeros_like(block_norm_sq), where=abs_sum > 0.0)
+        if scale_storage == "fp16":
+            scales = scales.astype(np.float16)
+        elif scale_storage != "fp32":
+            raise ValueError("scale_storage must be 'fp32' or 'fp16'")
+        source_norm_sq = np.sum(x * x, axis=1, dtype=np.float32)
+        scale32 = scales.astype(np.float32)
+        residual = np.maximum(np.sum((x - mean) ** 2, axis=1) - np.sum(scale32 * scale32 * width, axis=1), 0.0).astype(np.float32)
+        # Blocks are independently byte-packed.  This keeps non-byte-aligned
+        # widths (for example 208/8 = 26 bits) on the packed lookup path while
+        # making the per-block alignment overhead explicit in payload bytes.
+        block_codes = np.packbits(reshaped >= 0, axis=2, bitorder="little")
+        return cls(mean, rot, block_codes, scales, source_norm_sq, residual, bits, blocks, seed, oversample, metric, scale_storage)
 
     def scores(self, query: np.ndarray) -> np.ndarray:
         q = _check_matrix(np.asarray(query).reshape(1, -1), "query")[0]
         _qcode, transformed, qnorm = self.encode_query(q)
         width = self.bits // self.blocks
-        signs = np.unpackbits(self.codes.view(np.uint8), axis=1, bitorder="little")[:, : self.bits].astype(np.float32) * 2.0 - 1.0
-        block_dot = (signs.reshape(self.codes.shape[0], self.blocks, width) * transformed.reshape(self.blocks, width)).sum(axis=2)
-        dot = np.sum(block_dot * self.block_scales, axis=1)
-        return dot - 0.5 * (self.norms * self.norms + qnorm * qnorm - 2.0 * dot)
+        block_dot = self._block_dots(transformed, self.codes)
+        dot = np.sum(block_dot * self.block_scales.astype(np.float32), axis=1) + float(self.mean @ q)
+        return _corrected_score(dot, self.source_norm_sq, float(q @ q), self.metric)
 
     def scores_batch(self, queries: np.ndarray) -> np.ndarray:
         q = _check_matrix(queries, "queries")
@@ -196,14 +280,45 @@ class BBQLikeReference:
             raise ValueError("query dimension mismatch")
         transformed = (q - self.mean) @ self.rotation
         width = self.bits // self.blocks
-        unpacked = np.unpackbits(self.codes.view(np.uint8), axis=1, bitorder="little")[:, : self.bits]
-        signs = unpacked.astype(np.float32).reshape(self.codes.shape[0], self.blocks, width) * 2.0 - 1.0
-        qblocks = transformed.reshape(q.shape[0], self.blocks, width)
-        dot = np.zeros((q.shape[0], self.codes.shape[0]), dtype=np.float32)
+        result = np.empty((q.shape[0], self.codes.shape[0]), dtype=np.float32)
+        scale32 = self.block_scales.astype(np.float32)
+        for index, row in enumerate(q):
+            dot = np.sum(self._block_dots(transformed[index], self.codes) * scale32, axis=1) + float(self.mean @ row)
+            result[index] = _corrected_score(dot, self.source_norm_sq, float(row @ row), self.metric)
+        return result
+
+    def scores_subset(self, query: np.ndarray, indices: np.ndarray) -> np.ndarray:
+        """Score only a local IVF posting list (without decoding all rows)."""
+        q = _check_matrix(np.asarray(query).reshape(1, -1), "query")[0]
+        ids = np.asarray(indices, dtype=np.int64).reshape(-1)
+        transformed = (q - self.mean) @ self.rotation
+        width = self.bits // self.blocks
+        block_dot = self._block_dots(transformed, self.codes[ids])
+        dot = np.sum(block_dot * self.block_scales[ids].astype(np.float32), axis=1) + float(self.mean @ q)
+        return _corrected_score(dot, self.source_norm_sq[ids], float(q @ q), self.metric)
+
+    def _block_dots(self, transformed: np.ndarray, codes: np.ndarray) -> np.ndarray:
+        width = self.bits // self.blocks
+        if codes.ndim == 3:
+            result = np.empty((codes.shape[0], self.blocks), dtype=np.float32)
+            for block in range(self.blocks):
+                start = block * width
+                result[:, block] = _packed_signed_dot(transformed[start : start + width], codes[:, block, :], width)
+            return result
+        if width % 8:
+            signs = np.unpackbits(codes.view(np.uint8), axis=1, bitorder="little")[:, : self.bits].astype(np.float32) * 2.0 - 1.0
+            return (signs.reshape(codes.shape[0], self.blocks, width) * transformed.reshape(self.blocks, width)).sum(axis=2)
+        byte_width = width // 8
+        code_bytes = np.ascontiguousarray(codes).view(np.uint8).reshape(codes.shape[0], -1)[:, : self.bits // 8]
+        result = np.empty((codes.shape[0], self.blocks), dtype=np.float32)
         for block in range(self.blocks):
-            dot += (qblocks[:, block, :] @ signs[:, block, :].T) * self.block_scales[:, block][None, :]
-        qnorm = np.linalg.norm(q - self.mean, axis=1).astype(np.float32)
-        return dot - 0.5 * (self.norms[None, :] ** 2 + qnorm[:, None] ** 2 - 2.0 * dot)
+            start = block * width
+            result[:, block] = _packed_signed_dot(
+                transformed[start : start + width],
+                np.ascontiguousarray(code_bytes[:, block * byte_width : (block + 1) * byte_width]),
+                width,
+            )
+        return result
 
     def search(self, query: np.ndarray, top_k: int, oversample: int | None = None) -> np.ndarray:
         if top_k <= 0:
@@ -230,8 +345,9 @@ def format_manifest(codec: object) -> dict[str, object]:
     return {
         "endianness": "little",
         "bit_order": "least_significant_bit_first",
-        "code_dtype": "uint64",
+        "code_dtype": str(codec.codes.dtype),  # type: ignore[attr-defined]
         "bits": int(codec.bits),  # type: ignore[attr-defined]
         "oversample": int(codec.oversample),  # type: ignore[attr-defined]
         "spec": str(codec.spec),  # type: ignore[attr-defined]
+        "metric": str(codec.metric),  # type: ignore[attr-defined]
     }
