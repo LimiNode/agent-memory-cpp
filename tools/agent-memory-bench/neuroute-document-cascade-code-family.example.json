@@ -13,7 +13,10 @@
     "scalar_companders": ["linear", "power_half"],
     "itq_hamming_and_adc_bits": [128, 208, 256, 384],
     "rabitq_bits": [128, 208, 256, 384],
-    "bbq_like_bits": [128, 208, 256, 384],
+  "bbq_like_bits": [128, 208, 256, 384],
+  "thermometer_levels": [2, 3, 4, 5, 8],
+  "thermometer_thresholds": ["uniform", "quantile"],
+  "rotated_thermometer_levels": [4, 5],
     "discrete_adc": ["itq_ternary128", "itq_quaternary104"],
     "product_quantization": ["pq4_16B", "pq8_16B", "opq4_16B", "opq8_16B"]
   },

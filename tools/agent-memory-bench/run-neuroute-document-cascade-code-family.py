@@ -48,7 +48,10 @@ ALL_METHOD_IDS = (
       for name in (f"itq{bits}_hamming", f"itq{bits}_adc",
                    f"rabitq{bits}", f"bbq{bits}_fp16_scales")),
     "itq_ternary128_adc", "itq_quaternary104_adc",
-    "pq4", "pq8", "opq4", "opq8")
+    "pq4", "pq8", "opq4", "opq8",
+    *(f"thq{levels}_{mode}" for levels in (2, 3, 4, 5, 8)
+      for mode in ("uniform", "quantile")),
+    "rthq4_quantile", "rthq5_quantile")
 
 
 def load(name: str, filename: str) -> Any:
