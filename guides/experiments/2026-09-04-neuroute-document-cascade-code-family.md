@@ -317,6 +317,55 @@ JSON runs are `tmp/document-codec-native-benchmark-v1.json` and
 `tmp/document-codec-native-benchmark-final64-v1.json` (both local evidence,
 not committed).
 
+## Follow-up: codec-kernel optimization baseline (2026-09-05)
+
+The first native benchmark was intentionally too generic to answer whether
+compression can reduce compute time.  It has now been extended with separate
+score-only and streaming top-K measurements, direct integer controls, packed
+INT4/10/12 paths, hardware 64-bit POPCNT, and portable/optional-AVX2 build
+selection.  The query scale for the INT8 integer path is quantized once per
+request; it is not recomputed per document.
+
+On the portable Windows build, 5,000 records, 100 iterations, and top-K=256,
+the score-only p95 values were:
+
+| Kernel | Bytes/doc | p95 score ms | p95 score+top-K ms |
+|---|---:|---:|---:|
+| FP32 | 1536 | 2.16 | 2.54 |
+| INT4 fused nibble | 196 | 2.47 | 2.87 |
+| INT8 scalar packed | 388 | 5.44 | 6.27 |
+| INT8 integer + q8 query | 388 | 1.67 | 2.00 |
+| INT10 packed | 484 | 6.51 | 6.93 |
+| INT10 int16 control | 772 | 2.38 | 2.70 |
+| INT12 packed | 580 | 6.81 | 7.40 |
+| INT12 int16 control | 772 | 2.42 | 2.72 |
+| ITQ208 Hamming | 26 | .116 | .454 |
+| ITQ208 ADC-style scalar | 26 | 6.65 | 7.12 |
+| THQ3 quantile | 96 | .166 | .505 |
+| THQ4 quantile | 144 | .204 | .551 |
+| THQ5 quantile | 192 | .243 | .572 |
+
+This already changes the interpretation: a properly specialized INT8 integer
+kernel is faster than the FP32 baseline in this synthetic scan, and fused INT4
+is close to FP32 while reading about 7.8x fewer payload bytes.  The original
+slow INT8/INT4 figures were implementation ceilings, not codec ceilings.
+THQ's XOR+POPCNT path is especially cheap, but its score is ordinal L1 and its
+quality must still be judged by the document-cascade replay.
+
+The benchmark remains directional: records are synthetic, the top-K collector
+uses a simple bounded replacement buffer, and the `fp32_avx2` label falls back
+to the portable kernel when AVX2 is disabled.  Raw portable output is
+`tmp/document-codec-native-optimized-5000-v1.json`.
+
+The separate AVX2 build was also run on the same Windows host.  At 5,000
+records its p95 score/score+top-K values were `.338/.682 ms` for explicit FP32
+AVX2, `.897/1.180 ms` for INT8 integer, `.164/.488 ms` for ITQ208 Hamming,
+`.165/.516 ms` for THQ3, `.219/.580 ms` for THQ4, and `.294/.628 ms` for THQ5.
+AVX2 does not provide a native vector popcount on this CPU generation; THQ uses
+64-bit hardware POPCNT, while `/arch:AVX2` mainly changes surrounding compiler
+code generation.  The result validates a fast scorer path but not an
+end-to-end serving claim.  A one-process native R4 replay is still required.
+
 ## Follow-up: ordinal thermometer Hamming (2026-09-05)
 
 The document matrix now also contains Thermometer Hamming Quantization (THQ).
