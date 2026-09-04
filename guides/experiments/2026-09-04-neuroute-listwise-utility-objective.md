@@ -37,9 +37,11 @@ internal recall over the three seeds was:
 The best 128-bit cell remains far below corrected #284 (0.17592 at 128 bits)
 and PR #285 asymmetric pairwise (0.32840 mean at 128 bits). Code entropy was
 1.0, so the failure is ranking/geometry rather than an obvious constant-bit
-collapse. The harness now also emits rank-weighted missed-utility statistics;
-the frontier JSON above was generated before that additive diagnostic field and
-the conclusion does not depend on it.
+collapse. A fresh 128-bit/seed-287 rerun with the additive diagnostic reports
+rank-weighted missed utility of `0.99873/0.99696/0.99347/0.98793` at budgets
+`1024/2048/4096/8192` (mean internal); p05 is `0.99537/0.99232/0.98703/0.97858`
+and worst is `1.0/1.0/1.0/0.99945`. Thus the selector misses essentially all
+teacher utility even where ordinary recall is non-zero.
 
 The address replay confirms the failure:
 
@@ -72,3 +74,5 @@ Raw artifact hashes (files remain uncommitted under `tmp/`):
 * frontier JSON: `a0353a6e0db2293f288b8c82cb848110912b290ce098e015d02120e450a1ea9b`;
 * 128-bit codes: `9f745f4086ba23b11e554072bd16289c3e4d7ddfc101727a824f2ccf49456590`;
 * 128-bit model: `fc7b51d5c15ec2f80572a423fda478bcb077b33376fe4ed51e6dd87e73200216`.
+* refreshed 128-bit rerun JSON: `bccfd4d59118d5c50d3e8c2f3603baad414f0bf00d76c3b26fb72b65c0456ab2`;
+* refreshed model: `ad527712aa7f63e6ebe809c444cb9325c77db8d55de310b338b1385e9d9d3fb5`.
