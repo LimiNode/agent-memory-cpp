@@ -366,6 +366,46 @@ AVX2 does not provide a native vector popcount on this CPU generation; THQ uses
 code generation.  The result validates a fast scorer path but not an
 end-to-end serving claim.  A one-process native R4 replay is still required.
 
+## Follow-up: codec-kernel ceiling study (2026-09-05)
+
+The benchmark was tightened after review of the first directional timing. All
+compact runtime payloads are now materialized as contiguous row-major stores;
+the per-record `Packed` objects are used only while constructing the offline
+fixture. The report includes independent score-only, bounded-scan, min-heap,
+and `nth_element` top-K timings. Hamming codecs additionally use a histogram
+selector over their bounded integer distance domain. Every selector is checked
+against the deterministic `(score descending, document id ascending)` top-K
+contract, so the faster collectors are not merely timing approximate output.
+
+The AVX2 build exposes explicit controls for FMA FP32, widening-plus-
+`vpmaddwd` INT8, and nibble-LUT/`vpshufb` popcount. The scalar Hamming control
+is retained separately from the four-accumulator unrolled POPCNT path. AVX2 is
+opt-in and remains a build-time capability, not a runtime claim for every host.
+
+A smoke run used 1,000 synthetic records, five warm iterations, and
+`top_k=256` on the AVX2 Windows build. Values are p95 milliseconds and include
+score plus the named selector where applicable:
+
+| Kernel | Bytes/doc | score | materialize | bounded scan | min-heap | nth-element | block | histogram |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| FP32 AVX2 | 1536 | .087 | .065 | .332 | .167 | .129 | .119 | — |
+| FP32 FMA | 1536 | .064 | .078 | .321 | .131 | .113 | .119 | — |
+| INT4 integer AVX2 | 196 | .062 | .063 | .320 | .129 | .104 | .108 | — |
+| INT8 integer AVX2 | 388 | .054 | .033 | .281 | .099 | .080 | .077 | — |
+| ITQ208 Hamming | 26 | .016 | .016 | .364 | .105 | .057 | .060 | .061 |
+| THQ3 | 96 | .028 | .022 | .342 | .113 | .071 | .072 | .061 |
+| THQ4 | 144 | .034 | .038 | .358 | .120 | .086 | .115 | .061 |
+| THQ5 | 192 | .043 | .033 | .324 | .114 | .076 | .089 | .078 |
+
+This is a kernel comparison, not a quality result: the records use the
+synthetic shared-threshold THQ encoder, not the per-coordinate quantile tables
+from the quality study. The AVX2 nibble popcount is not universally faster
+than scalar POPCNT for short codes, while `nth_element` and histogram remove
+much of the previous top-K overhead. Faithful quality and native timing must
+therefore be joined only in the planned one-process replay using actual #294
+encoded payloads. The benchmark still uses a synthetic corpus and does not
+measure postings I/O, cache misses, or full R4 request latency.
+
 ## Follow-up: ordinal thermometer Hamming (2026-09-05)
 
 The document matrix now also contains Thermometer Hamming Quantization (THQ).
