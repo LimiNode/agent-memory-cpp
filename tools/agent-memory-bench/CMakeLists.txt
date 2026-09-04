@@ -560,6 +560,18 @@ agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-layout-ben
 add_executable(agent-memory-document-codec-native-benchmark
     document_codec_native_benchmark.cpp)
 target_compile_features(agent-memory-document-codec-native-benchmark PRIVATE cxx_std_17)
+set(AGENT_MEMORY_DOCUMENT_CODEC_HAS_AVX2 0)
+if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+    set(AGENT_MEMORY_DOCUMENT_CODEC_HAS_AVX2 1)
+    if(MSVC)
+        target_compile_options(agent-memory-document-codec-native-benchmark PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(agent-memory-document-codec-native-benchmark PRIVATE -mavx2)
+    endif()
+endif()
+target_compile_definitions(agent-memory-document-codec-native-benchmark PRIVATE
+    AGENT_MEMORY_DOCUMENT_CODEC_HAS_AVX2=${AGENT_MEMORY_DOCUMENT_CODEC_HAS_AVX2})
 
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 0)
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 0)

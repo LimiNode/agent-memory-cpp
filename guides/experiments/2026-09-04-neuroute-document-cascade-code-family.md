@@ -319,6 +319,50 @@ JSON runs are `tmp/document-codec-native-benchmark-v1.json` and
 `tmp/document-codec-native-benchmark-final64-v1.json` (both local evidence,
 not committed).
 
+## Follow-up: codec-kernel optimization baseline (2026-09-05)
+
+The first native benchmark was intentionally too generic to answer whether
+compression can reduce compute time.  It has now been extended with separate
+score-only and streaming top-K measurements, direct integer controls, packed
+INT4/10/12 paths, hardware 64-bit POPCNT, and portable/optional-AVX2 build
+selection.  The query scale for the INT8 integer path is quantized once per
+request; it is not recomputed per document.
+
+On the portable Windows build, 5,000 records, 100 iterations, and top-K=256,
+the score-only p95 values were:
+
+| Kernel | Bytes/doc | p95 score ms | p95 score+top-K ms |
+|---|---:|---:|---:|
+| FP32 | 1536 | 2.16 | 2.54 |
+| INT4 fused nibble | 196 | 2.47 | 2.87 |
+| INT8 scalar packed | 388 | 5.44 | 6.27 |
+| INT8 integer + q8 query | 388 | 1.67 | 2.00 |
+| INT10 packed | 484 | 6.51 | 6.93 |
+| INT10 int16 control | 772 | 2.38 | 2.70 |
+| INT12 packed | 580 | 6.81 | 7.40 |
+| INT12 int16 control | 772 | 2.42 | 2.72 |
+| Raw sign-208 Hamming control | 26 | .116 | .454 |
+| Raw sign-208 dot control | 26 | 6.65 | 7.12 |
+| THQ3 Gaussian-threshold control | 96 | .166 | .505 |
+| THQ4 Gaussian-threshold control | 144 | .204 | .551 |
+| THQ5 Gaussian-threshold control | 192 | .243 | .572 |
+
+This already changes the interpretation: a properly specialized INT8 integer
+kernel is faster than the FP32 baseline in this synthetic scan, and fused INT4
+is close to FP32 while reading about 7.8x fewer payload bytes.  The original
+slow INT8/INT4 figures were implementation ceilings, not codec ceilings.
+THQ's XOR+POPCNT path is especially cheap, but its score is ordinal L1 and its
+quality must still be judged by the document-cascade replay.  The native
+controls use fixed Gaussian-quantile threshold constants; they do not persist
+or load the fitted per-coordinate thresholds used by the Python study and
+must not be read as a production THQ encoder.
+
+The benchmark remains directional: records are synthetic, the top-K collector
+uses a simple bounded replacement buffer, and the current `fp32_avx2` label
+falls back to the portable kernel when AVX2 is disabled.  An AVX2-enabled run
+and one-process native R4 replay are required before making serving-latency
+claims.  Raw output is `tmp/document-codec-native-optimized-5000-v1.json`.
+
 ## Follow-up: ordinal thermometer Hamming (2026-09-05)
 
 The document matrix now also contains Thermometer Hamming Quantization (THQ).
