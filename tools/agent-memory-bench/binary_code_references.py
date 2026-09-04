@@ -113,6 +113,17 @@ class RabitQReference:
         # while residual energy is retained for diagnostics and future bounds.
         return dot - 0.5 * (self.norms * self.norms + qnorm * qnorm - 2.0 * dot)
 
+    def scores_batch(self, queries: np.ndarray) -> np.ndarray:
+        q = _check_matrix(queries, "queries")
+        if q.shape[1] != self.mean.size:
+            raise ValueError("query dimension mismatch")
+        transformed = (q - self.mean) @ self.rotation
+        unpacked = np.unpackbits(self.codes.view(np.uint8), axis=1, bitorder="little")[:, : self.bits]
+        signs = unpacked.astype(np.float32) * 2.0 - 1.0
+        dot = (transformed @ signs.T) * self.gains[None, :]
+        qnorm = np.linalg.norm(q - self.mean, axis=1).astype(np.float32)
+        return dot - 0.5 * (self.norms[None, :] ** 2 + qnorm[:, None] ** 2 - 2.0 * dot)
+
     def search(self, query: np.ndarray, top_k: int, oversample: int | None = None) -> np.ndarray:
         if top_k <= 0:
             raise ValueError("top_k must be positive")
@@ -178,6 +189,21 @@ class BBQLikeReference:
         block_dot = (signs.reshape(self.codes.shape[0], self.blocks, width) * transformed.reshape(self.blocks, width)).sum(axis=2)
         dot = np.sum(block_dot * self.block_scales, axis=1)
         return dot - 0.5 * (self.norms * self.norms + qnorm * qnorm - 2.0 * dot)
+
+    def scores_batch(self, queries: np.ndarray) -> np.ndarray:
+        q = _check_matrix(queries, "queries")
+        if q.shape[1] != self.mean.size:
+            raise ValueError("query dimension mismatch")
+        transformed = (q - self.mean) @ self.rotation
+        width = self.bits // self.blocks
+        unpacked = np.unpackbits(self.codes.view(np.uint8), axis=1, bitorder="little")[:, : self.bits]
+        signs = unpacked.astype(np.float32).reshape(self.codes.shape[0], self.blocks, width) * 2.0 - 1.0
+        qblocks = transformed.reshape(q.shape[0], self.blocks, width)
+        dot = np.zeros((q.shape[0], self.codes.shape[0]), dtype=np.float32)
+        for block in range(self.blocks):
+            dot += (qblocks[:, block, :] @ signs[:, block, :].T) * self.block_scales[:, block][None, :]
+        qnorm = np.linalg.norm(q - self.mean, axis=1).astype(np.float32)
+        return dot - 0.5 * (self.norms[None, :] ** 2 + qnorm[:, None] ** 2 - 2.0 * dot)
 
     def search(self, query: np.ndarray, top_k: int, oversample: int | None = None) -> np.ndarray:
         if top_k <= 0:

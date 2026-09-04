@@ -34,7 +34,16 @@ def evaluate(name: str, codec: object, vectors: np.ndarray, queries: np.ndarray,
     ndcgs: list[float] = []
     rerank_ms: list[float] = []
     add_ms: list[float] = []
+    # Compute quality from a single batched score matrix.  The previous
+    # per-query implementation was useful for smoke tests but made the frozen
+    # 22k-document lane needlessly expensive.
+    batch_scores = codec.scores_batch(queries)  # type: ignore[attr-defined]
+    exact_scores = queries @ vectors.T
+    exact_top10 = np.argpartition(-exact_scores, 9, axis=1)[:, :10]
+    timing_count = min(64, queries.shape[0])
     for index, query in enumerate(queries):
+        if index >= timing_count:
+            break
         started = time.perf_counter()
         codec.encode_query(query)  # type: ignore[attr-defined]
         add_ms.append((time.perf_counter() - started) * 1000.0)
@@ -49,13 +58,28 @@ def evaluate(name: str, codec: object, vectors: np.ndarray, queries: np.ndarray,
         candidate_scores = vectors[candidates] @ query
         reranked = candidates[np.argsort(-candidate_scores, kind="stable")[:10]]
         rerank_ms.append((time.perf_counter() - started) * 1000.0)
-        exact_top10 = np.argsort(-(vectors @ query), kind="stable")[:10]
-        overlaps.append(float(np.intersect1d(reranked, exact_top10).size) / 10.0)
-        gains = vectors[exact_top10] @ query
+        oracle_top10 = exact_top10[index]
+        overlaps.append(float(np.intersect1d(reranked, oracle_top10).size) / 10.0)
+        gains = exact_scores[index, oracle_top10]
         rel = np.maximum(gains - gains[-1], 0.0)
         dcg = float(np.sum((vectors[reranked] @ query - gains[-1]).clip(min=0.0) / np.log2(np.arange(2, 12))))
         ideal = float(np.sum(rel / np.log2(np.arange(2, 12))))
         ndcgs.append(dcg / ideal if ideal > 0.0 else 1.0)
+    # Re-run candidate selection from the batched approximate scores for all
+    # queries, so quality is not estimated from the timing sample only.
+    all_overlaps: list[float] = []
+    all_ndcgs: list[float] = []
+    count = min(batch_scores.shape[1], top_k * int(codec.oversample))  # type: ignore[attr-defined]
+    for index in range(queries.shape[0]):
+        candidates = np.argpartition(-batch_scores[index], count - 1)[:count]
+        reranked = candidates[np.argsort(-exact_scores[index, candidates], kind="stable")[:10]]
+        oracle_top10 = exact_top10[index]
+        all_overlaps.append(float(np.intersect1d(reranked, oracle_top10).size) / 10.0)
+        gains = exact_scores[index, oracle_top10]
+        rel = np.maximum(gains - gains[-1], 0.0)
+        dcg = float(np.sum(np.maximum(exact_scores[index, reranked] - gains[-1], 0.0) / np.log2(np.arange(2, 12))))
+        ideal = float(np.sum(rel / np.log2(np.arange(2, 12))))
+        all_ndcgs.append(dcg / ideal if ideal > 0.0 else 1.0)
         if targets is not None:
             expected = set(np.asarray(targets[index]).reshape(-1).tolist())
             recalls.append(len(expected.intersection(candidates.tolist())) / max(1, len(expected)))
@@ -77,10 +101,10 @@ def evaluate(name: str, codec: object, vectors: np.ndarray, queries: np.ndarray,
         "candidate_recall_at_k": float(np.mean(recalls)) if recalls else None,
         "recall_p05": float(np.quantile(recalls, 0.05)) if recalls else None,
         "recall_worst_query": float(np.min(recalls)) if recalls else None,
-        "final_top10_overlap": float(np.mean(overlaps)),
-        "final_ndcg_at_10": float(np.mean(ndcgs)),
-        "final_top10_overlap_p05": float(np.quantile(overlaps, 0.05)),
-        "final_top10_overlap_worst_query": float(np.min(overlaps)),
+        "final_top10_overlap": float(np.mean(all_overlaps)),
+        "final_ndcg_at_10": float(np.mean(all_ndcgs)),
+        "final_top10_overlap_p05": float(np.quantile(all_overlaps, 0.05)),
+        "final_top10_overlap_worst_query": float(np.min(all_overlaps)),
         "exact_local_k8": False,
         "rebuild_required": "offline_fit",
         "lifecycle_note": "add_ms is encode-only; delete is a tombstone operation; batch rebuild is required for compaction",
