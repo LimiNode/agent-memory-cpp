@@ -415,7 +415,10 @@ def evaluate_codes(query_codes: np.ndarray, prototype_codes: np.ndarray,
     for name, begin, end in (("configuration", 0, train_count),
                              ("internal", train_count, len(query_codes))):
         metrics: dict[int, list[float]] = {int(k): [] for k in budgets}
+        missed_utility: dict[int, list[float]] = {int(k): [] for k in budgets}
         worst: dict[int, float] = {int(k): 1.0 for k in budgets}
+        utility_weights = np.exp(-np.arange(teacher.shape[1], dtype=np.float32) / 256.0)
+        utility_weights /= utility_weights.sum()
         for row in range(begin, end):
             order = top_indices(packed_popcount(prototype_codes, query_codes[row]),
                                 max(budgets))
@@ -424,10 +427,18 @@ def evaluate_codes(query_codes: np.ndarray, prototype_codes: np.ndarray,
                 value = sum(int(v) in target for v in order[:budget]) / len(target)
                 metrics[int(budget)].append(value)
                 worst[int(budget)] = min(worst[int(budget)], value)
+                selected = set(map(int, order[:budget]))
+                missed_utility[int(budget)].append(float(1.0 - sum(
+                    float(utility_weights[rank]) for rank, prototype in enumerate(teacher[row])
+                    if int(prototype) in selected)))
         partitions[name] = {"teacher_prototype_recall": {
-            str(k): {"mean": float(np.mean(v)), "worst": worst[k],
-                     "p05": float(np.quantile(v, 0.05))}
-            for k, v in metrics.items()}}
+        str(k): {"mean": float(np.mean(v)), "worst": worst[k],
+                 "p05": float(np.quantile(v, 0.05)),
+                 "rank_weighted_missed_utility": float(np.mean(missed_utility[k])),
+                 "rank_weighted_missed_utility_p05": float(np.quantile(
+                     missed_utility[k], 0.05)),
+                 "rank_weighted_missed_utility_worst": float(np.max(missed_utility[k]))}
+        for k, v in metrics.items()}}
     return partitions
 
 

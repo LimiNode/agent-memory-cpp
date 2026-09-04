@@ -37,7 +37,9 @@ internal recall over the three seeds was:
 The best 128-bit cell remains far below corrected #284 (0.17592 at 128 bits)
 and PR #285 asymmetric pairwise (0.32840 mean at 128 bits). Code entropy was
 1.0, so the failure is ranking/geometry rather than an obvious constant-bit
-collapse.
+collapse. The harness now also emits rank-weighted missed-utility statistics;
+the frontier JSON above was generated before that additive diagnostic field and
+the conclusion does not depend on it.
 
 The address replay confirms the failure:
 
