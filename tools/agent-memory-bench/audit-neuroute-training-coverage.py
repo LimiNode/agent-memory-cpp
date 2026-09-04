@@ -24,10 +24,10 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def random_negatives(teacher: np.ndarray, count: int, seed: int) -> np.ndarray:
+def random_negatives(teacher: np.ndarray, prototype_count: int, count: int,
+                     seed: int) -> np.ndarray:
     rng = np.random.default_rng(seed)
     result = np.empty((len(teacher) // 2, count), dtype=np.int32)
-    prototype_count = int(teacher.max()) + 1
     for q in range(len(result)):
         forbidden = set(map(int, teacher[q]))
         values: list[int] = []
@@ -48,7 +48,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     negatives = np.asarray(args.negative_ranks, dtype=np.int64)
     occurrences: list[np.ndarray] = [teacher[:train_count, positives].reshape(-1),
                                      teacher[:train_count, negatives].reshape(-1)]
-    randoms = random_negatives(teacher, args.random_negatives, args.seed ^ 0x5EED)
+    randoms = random_negatives(teacher, prototype_count, args.random_negatives,
+                               args.seed ^ 0x5EED)
     occurrences.append(randoms.reshape(-1))
     # A hard-negative round is model-dependent.  If its mined IDs are supplied,
     # count them exactly; otherwise report the auditable first-round coverage.
