@@ -101,6 +101,40 @@ are close to the exact oracle, but this does not yet establish K8 address
 utility or full-cascade quality. The raw replay is
 `tmp/binary-reference-full-ru.json`.
 
+## K8 prototype → address → R4 replay (2026-09-04)
+
+The references were also evaluated on the frozen semantic-anchor artifact
+(`454,322` prototypes, `152` queries). Prototype ownership was derived from
+the authoritative centroid postings and validated for every prototype. For
+each address budget, binary prototype scores were deduplicated to addresses;
+the exact-local arm rescored a `4x` address pool with exact K8 prototype dots
+before truncating to the requested budget. Both arms then ran the frozen
+Hamming768 → ADC64 → exact-document top-10 cascade. The most useful `M=4096`
+slice is:
+
+| Method | Bits | Local K8 | Final overlap | Rank nDCG@10 | p05 / worst overlap | Mean docs entering Hamming |
+|---|---:|:---:|---:|---:|---:|---:|
+| RaBitQ-RR-1 | 128 | no | 0.6059 | 0.7414 | 0.3 / 0.1 | 73,884 |
+| RaBitQ-RR-1 | 128 | yes | 0.7743 | 0.8723 | 0.5 / 0.3 | 71,831 |
+| BBQ-block-1 | 128 | no | 0.6099 | 0.7483 | 0.3 / 0.1 | 73,577 |
+| BBQ-block-1 | 128 | yes | 0.7711 | 0.8707 | 0.5 / 0.3 | 71,735 |
+| RaBitQ-RR-1 | 192 | no | 0.7230 | 0.8351 | 0.4 / 0.3 | 70,937 |
+| RaBitQ-RR-1 | 192 | yes | 0.8066 | 0.8912 | 0.5 / 0.3 | 70,937 |
+| BBQ-block-1 | 192 | no | 0.7289 | 0.8402 | 0.4 / 0.2 | 70,913 |
+| BBQ-block-1 | 192 | yes | 0.8099 | 0.8937 | 0.5 / 0.3 | 70,913 |
+| RaBitQ-RR-1 | 256 | no | 0.7868 | 0.8784 | 0.455 / 0.3 | 70,586 |
+| RaBitQ-RR-1 | 256 | yes | 0.8250 | 0.9041 | 0.5 / 0.4 | 70,586 |
+| BBQ-block-1 | 256 | no | 0.7908 | 0.8795 | 0.455 / 0.3 | 70,570 |
+| BBQ-block-1 | 256 | yes | 0.8283 | 0.9055 | 0.5 / 0.4 | 70,570 |
+
+The complete `M=1024/2048/8192` rows are in
+`tmp/binary-reference-k8-cascade-128.json` and
+`tmp/binary-reference-k8-cascade-wide.json`. At `M=4096`, 256 bits is still
+improving but remains well below the float prototype-IVF control (`~0.9996`
+overlap). Exact local K8 is consistently valuable, while BBQ-like and RaBitQ
+are nearly tied once local refinement is enabled. The reported Python p95
+values are exhaustive research timings, not optimized SIMD serving claims.
+
 ## Common metrics and decision rule
 
 The contract is [`binary-code-family-matrix.example.json`](../../tools/agent-memory-bench/binary-code-family-matrix.example.json).

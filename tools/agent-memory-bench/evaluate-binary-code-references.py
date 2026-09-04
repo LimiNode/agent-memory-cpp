@@ -116,6 +116,9 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--vectors-key", default="vectors")
+    parser.add_argument("--queries-key", default="queries")
+    parser.add_argument("--targets-key", default="targets")
     parser.add_argument("--bits", default="16,24,32,48,64,96,128")
     parser.add_argument("--blocks", type=int, default=8)
     parser.add_argument("--top-k", type=int, default=1024)
@@ -123,9 +126,9 @@ def main() -> None:
     parser.add_argument("--oversample", type=int, default=4)
     args = parser.parse_args()
     data = np.load(args.input, allow_pickle=False)
-    vectors = np.asarray(data["vectors"], dtype=np.float32)
-    queries = np.asarray(data["queries"], dtype=np.float32)
-    targets = np.asarray(data["targets"], dtype=np.int64) if "targets" in data else None
+    vectors = np.asarray(data[args.vectors_key], dtype=np.float32)
+    queries = np.asarray(data[args.queries_key], dtype=np.float32)
+    targets = np.asarray(data[args.targets_key], dtype=np.int64) if args.targets_key in data else None
     if vectors.ndim != 2 or queries.ndim != 2 or vectors.shape[1] != queries.shape[1]:
         raise ValueError("vectors and queries must be 2-D with matching dimensions")
     bits = [int(value) for value in args.bits.split(",") if value.strip()]
