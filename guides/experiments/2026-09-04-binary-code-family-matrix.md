@@ -137,13 +137,13 @@ the exact global K8 address oracle; they are not full native-R4 quality.
 
 | Codec (residual) | Bits / payload | Overlap |
 |---|---:|---:|
-| INT4 power-.5 | 4 / 2 B | .8553 |
-| INT5 power-.5 | 5 / 3 B | .9191 |
-| INT6 power-.5 | 6 / 3 B | .9474 |
-| INT8 linear | 8 / 4 B | .9684 |
-| INT8 power-.5 | 8 / 4 B | .9737 |
-| INT10 power-.5 | 10 / 5 B | .9796 |
-| INT12 power-.5 | 12 / 6 B | .9816 |
+| INT4 power-.5 | 4 / 192 B | .8553 |
+| INT5 power-.5 | 5 / 240 B | .9191 |
+| INT6 power-.5 | 6 / 288 B | .9474 |
+| INT8 linear | 8 / 384 B | .9684 |
+| INT8 power-.5 | 8 / 384 B | .9737 |
+| INT10 power-.5 | 10 / 480 B | .9796 |
+| INT12 power-.5 | 12 / 576 B | .9816 |
 | ITQ208 ADC | 208 / 26 B | .2691 |
 | ITQ256 ADC | 256 / 32 B | .2954 |
 | ITQ384 ADC | 384 / 48 B | .3039 |
@@ -159,6 +159,10 @@ for scalar/correlation-corrected codes, while residual ITQ/PQ does not inherit
 the strong document-level ITQ result. The 208→384 jump for RaBitQ/BBQ is real,
 but remains an intrinsic prototype/address result until replayed through the
 authoritative native R4 executable.
+
+Scalar payloads above are complete 384-coordinate records: `ceil(384 × bits /
+8)`. Model-side per-coordinate scales are reported separately and are not
+mistaken for per-prototype payload.
 
 The historical `nlist=1024, nprobe=256` control gives FP16 residual overlap
 `1.0`; under the same coarse partition RaBitQ384 residual is `.57895` and
