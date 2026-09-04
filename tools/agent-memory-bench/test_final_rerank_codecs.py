@@ -7,7 +7,8 @@ import numpy as np
 
 sys.path.insert(0, str(Path(__file__).parent))
 from final_rerank_codecs import (BBQScorer, DiscreteADCScorer, ITQScorer,
-                                  RaBitQScorer, ScalarScorer)
+                                  RaBitQScorer, ScalarScorer,
+                                  ThermometerScorer)
 
 
 def main() -> None:
@@ -28,6 +29,13 @@ def main() -> None:
     ternary = DiscreteADCScorer.fit(training, 24, 3, 7)
     assert ternary.payload_bytes_per_document == 5
     assert np.isfinite(ternary.scores(vectors, query)).all()
+    for levels in (2, 3, 4, 5, 8):
+        for mode in ("uniform", "quantile"):
+            scorer = ThermometerScorer.fit(training, levels, mode, 7)
+            assert scorer.payload_bytes_per_document == (32 * (levels - 1) + 7) // 8
+            assert np.isfinite(scorer.scores(vectors, query)).all()
+    rotated = ThermometerScorer.fit(training, 4, "quantile", 7, rotated=True)
+    assert np.isfinite(rotated.scores(vectors, query)).all()
     print("final rerank codec self-test: ok")
 
 
