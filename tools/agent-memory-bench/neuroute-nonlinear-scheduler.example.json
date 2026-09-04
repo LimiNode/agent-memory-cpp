@@ -1,0 +1,66 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_nonlinear_scheduler",
+  "claim_scope": "frozen_16bit_direct_address_embedding_multilingual_data_scale",
+  "activation": {
+    "decomposition_result_sha256": "8e6399d9753d9a05ce582b2842d42ff5127ac00a31508000fe503e6c2f540609",
+    "decomposition_evidence_sha256": "ac554f88d0c9cb120f7b4a532fb7dafca9f154a9cdbf2e493eb8bb634d7401bb",
+    "multilingual_query_manifest_sha256": "fb9684f2c17ae4465cb04b308704c4d551a87d7516fdfecdf01a24b4f1a900c0"
+  },
+  "route": {
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "document_addresses": "frozen_per_scale_from_width_materialization"
+  },
+  "query_partitions": {
+    "base_training": {"source": "german_training_query_ids", "queries": 153},
+    "additional_training": {"source": "miracl_es_fr_ru_train", "queries": 7988},
+    "calibration": {"source": "german_configuration_selection_query_ids", "queries": 76},
+    "evaluation": {"source": "german_internal_evaluation_query_ids", "queries": 76}
+  },
+  "training": {
+    "nested_query_counts": [153, 512, 2048, 4096, 8141],
+    "variants": ["direct_id", "centroid_initialized_id"],
+    "teacher_exact_e5_top_k": 100,
+    "rank_discount": "inverse_log2_v1",
+    "negative_addresses_per_query": 256,
+    "query_hidden_dimensions": 128,
+    "address_embedding_dimensions": 64,
+    "epochs": 6,
+    "batch_size": 256,
+    "learning_rate": 0.003,
+    "weight_decay": 0.0001,
+    "score_scale": 8.0,
+    "torch_threads": 8,
+    "updated_parameters": "query_mlp_and_direct_65536_address_embedding_only"
+  },
+  "calibration": {
+    "scale": "de-25k",
+    "probe_budgets": [128, 256, 512, 1024, 2048, 4096],
+    "candidate_mass_target": 0.1,
+    "minimum_mean_raw_e5_top10_survival": 0.9,
+    "minimum_per_query_raw_e5_top10_survival": 0.5,
+    "selection": "minimum_candidate_fraction_then_survival_then_training_count"
+  },
+  "evaluation": {
+    "scales": ["de-25k", "de-100k", "de-1m"],
+    "candidate_mass_target": 0.1
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "decision": {
+    "baseline": "occupied_logit",
+    "maximum_candidate_fraction": 0.1,
+    "minimum_adc64_e5_oracle_survival": 0.65,
+    "minimum_exact64_ndcg_retention_vs_full_e5": 0.85,
+    "minimum_de_1m_candidate_reduction_vs_baseline": 0.25,
+    "minimum_de_1m_oracle_regret_reduction_vs_baseline": 0.5,
+    "all_scales_and_seeds_must_pass_quality": true,
+    "sequential_followup_only_if_passed": true,
+    "production_selection_forbidden": true
+  }
+}

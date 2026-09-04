@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_inspired_semantic_address_v2",
+  "dataset": "frozen_es_25k_v1",
+  "predecessor": "shared_learned_semantic_address_encoder_v1",
+  "partitions": {
+    "source": "direct_learned_semantic_address_splits_v1",
+    "training_queries": 324,
+    "configuration_selection_queries": 162,
+    "internal_evaluation_queries": 162,
+    "internal_evaluation_may_not_select": true
+  },
+  "encoder": {
+    "input_dimensions": 384,
+    "hidden_dimensions": [96, 64],
+    "bits": [12, 16, 20, 24],
+    "seeds": [2026082601, 2026082602, 2026082603],
+    "epochs": 80,
+    "batch_size": 512,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "torch_threads": 18
+  },
+  "pair_mining": {
+    "document_neighbours": 16,
+    "training_query_document_neighbours": 10,
+    "document_pair_slot": "epoch_modulo_document_neighbours_v1",
+    "query_pair_slot": "epoch_modulo_training_query_document_neighbours_v1",
+    "training_query_batch_size": 128,
+    "source_similarity": "frozen_e5_cosine_with_fail_closed_l2_audit_v1",
+    "selected_pair_loss": "masked_source_cosine_to_normalized_latent_cosine_mse_v2"
+  },
+  "losses": {
+    "full": {"geometry": 1.0, "variance": 0.01, "covariance": 0.01, "minimum_latent_standard_deviation": 0.05},
+    "no_covariance_ablation": {"geometry": 1.0, "variance": 0.01, "covariance": 0.0, "minimum_latent_standard_deviation": 0.05, "bits": [16]}
+  },
+  "routing": {
+    "document_placement": "median_threshold_single_address_v2",
+    "query_orders": ["independent_logit_best_first_v2", "hard_code_hamming_order_control_v2"],
+    "maximum_probes": [16, 32, 64, 128, 256],
+    "candidate_mass_target": 0.1,
+    "selection_partition": "configuration_selection"
+  },
+  "cascade": {"oracle_k": 10, "hamming_limit": 768, "adc_limit": 256, "exact_limit": 256},
+  "diagnostics": [
+    "source_l2_norms", "latent_pairwise_cosine_correlation", "per_bit_marginals",
+    "off_diagonal_latent_covariance", "occupied_address_count", "address_entropy",
+    "bucket_size_p50_p95_max_gini", "query_nearest_document_code_hamming",
+    "probes_per_query", "candidate_fraction"
+  ],
+  "success_gate": {
+    "control": "symmetric_pca_confidence_pool_8bit_16probe_replication4_v1",
+    "candidate_fraction_at_most": 0.1,
+    "minimum_adc_survival_absolute_gain": 0.03,
+    "maximum_ndcg_at_10_absolute_loss": 0.01,
+    "confidence": "paired_query_bootstrap_95_percent_lower_bound_v1",
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 2026082699
+  }
+}

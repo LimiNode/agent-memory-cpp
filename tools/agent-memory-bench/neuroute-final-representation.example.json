@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_final_representation_frontier",
+  "claim_scope": "fixed_adc256_top64_final_rerank_only_no_router_or_candidate_selection",
+  "activation": {
+    "exact_contract_sha256": "7c233f0592be2a71507ea577b97e71f542b8cd403d96ca92b5fb49282bc7fe80",
+    "exact_result_sha256": "fe2632b245a2a02f7068c8a2a45c1244a3d9459a8245d54938f0983ad80a0921",
+    "exact_evidence_sha256": "20e68b60672e4b00454bb5cedf17b2f1dd17e2ae53475e503a118d8ad0e77ee1",
+    "exact_materialization_sha256": "8f035c76ce042cbb99c05c7434b229ef3895e1c6a91522cef63bcc69057d9f86",
+    "scale_contract_sha256": "d5c92df7ad27a20ea10bb8e0c8f4feb1262044cac920eae8012d7719d8a9c1eb",
+    "scale_result_sha256": "7cf6f48e8167bbe9ce27b935e0b67369365070e541e525ec9e61b2e301c15316",
+    "scale_evidence_sha256": "82bb1d46e6a0da4b55cfeeb2a9df85f03b549045453fbcf90ccbaa4793dafa98",
+    "scale_materialization_sha256": "39119ab6fe95b3b470bed383790f5cc177b35965ba40928766de7b219cefd57d"
+  },
+  "datasets": [
+    {"id": "de-25k", "language": "de", "document_count": 25000, "query_count": 76, "source": "exact"},
+    {"id": "fr-25k", "language": "fr", "document_count": 25000, "query_count": 85, "source": "exact"},
+    {"id": "ja-25k", "language": "ja", "document_count": 25000, "query_count": 215, "source": "exact"},
+    {"id": "de-1m", "language": "de", "document_count": 1000000, "query_count": 76, "source": "scale"}
+  ],
+  "frozen_input": {
+    "pool_stage": "adc256",
+    "pool_size": 64,
+    "result_k": 10,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "scale_route_policy": "per_scale_document_median"
+  },
+  "representations": [
+    {"id": "fp32", "kind": "float", "bits_per_dimension": 32, "scale": "none"},
+    {"id": "fp16", "kind": "float", "bits_per_dimension": 16, "scale": "none"},
+    {"id": "int8_symmetric", "kind": "scalar", "bits_per_dimension": 8, "levels": 255, "scale": "per_document_max_abs"},
+    {"id": "int4_symmetric", "kind": "scalar", "bits_per_dimension": 4, "levels": 15, "scale": "per_document_max_abs"},
+    {"id": "ternary_2bit", "kind": "scalar", "bits_per_dimension": 2, "levels": 3, "scale": "per_document_max_abs"},
+    {"id": "five_level_3bit", "kind": "scalar", "bits_per_dimension": 3, "levels": 5, "scale": "per_document_max_abs"},
+    {"id": "binary_adc256", "kind": "existing_adc_order", "bits_per_document": 256},
+    {"id": "coordinate_binary_adc384", "kind": "coordinate_binary_adc", "bits_per_document": 384, "threshold": "document_coordinate_median", "centroids": "document_coordinate_conditional_mean"}
+  ],
+  "quality": {
+    "primary_metric": "ndcg_at_10",
+    "paired_metrics": ["top10_overlap_with_fp32", "top1_match_with_fp32", "kendall_tau_b_on_pool"],
+    "bootstrap_replicates": 10000,
+    "bootstrap_seed": 2026082801
+  },
+  "native_timing": {
+    "scope": "warm_resident_fixed_top64_final_rerank",
+    "warmup_passes": 3,
+    "measured_passes": 21,
+    "microbatch_repeats": 64,
+    "stages": ["decode_and_score", "top10_selection", "total"],
+    "excludes": ["query_encoder", "router", "mdbx_postings", "hamming", "adc256_pool_generation", "cold_storage_fetch"]
+  },
+  "decision": {
+    "maximum_cross_dataset_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_per_dataset_ndcg_loss_vs_fp32": 0.0075,
+    "selection_order": "lowest_payload_bytes_then_lowest_native_p95",
+    "cross_dataset_native_p95_aggregation": "maximum_row_p95",
+    "codec_followup_if_selected_payload_bits_per_dimension_at_most": 8,
+    "overcomplete_followup_if_adc384_gain_vs_adc256_at_least": 0.005,
+    "overcomplete_followup_if_remaining_gap_vs_fp32_at_least": 0.005
+  }
+}

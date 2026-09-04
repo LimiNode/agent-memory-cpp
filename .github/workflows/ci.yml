@@ -147,6 +147,115 @@ jobs:
       - name: Test native MIH benchmark harness
         run: ctest --test-dir build-native-mih --build-config Release --output-on-failure -R agent_memory_mih_native_
 
+  r4-native-benchmark:
+    name: R4 native benchmark harness (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install tool dependencies
+        run: python -m pip install -r tools/requirements-tools.txt
+
+      - name: Init SIMDComp
+        run: git submodule update --init external/simdcomp
+
+      - name: Configure R4 benchmark harness
+        run: >
+          cmake -S . -B build-r4
+          -DCMAKE_BUILD_TYPE=Release
+          -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_BUILD_TESTS=OFF
+          -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
+          -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
+
+      - name: Build R4 benchmark harness
+        run: >
+          cmake --build build-r4 --config Release --target
+          agent-memory-neuroute-r4-layout-benchmark
+          agent-memory-neuroute-r4-representative-codec
+          agent-memory-neuroute-record-codec-contract
+          agent-memory-neuroute-final-representation
+
+      - name: Run R4 native self-test (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-r4-layout-benchmark --self-test
+          ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-record-codec-contract --self-test
+          ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-final-representation --self-test
+
+      - name: Run R4 native self-test (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-r4-layout-benchmark.exe --self-test
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-record-codec-contract.exe --self-test
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-final-representation.exe --self-test
+
+      - name: Exercise R4 dense closure contracts
+        run: >
+          python tools/agent-memory-bench/plan-neuroute-final-nonlinear-int5.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-nonlinear-int5.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-nonlinear-int5-native-sensitivity.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-nonlinear-int5-native-sensitivity-evidence.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-nonlinear-int5-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-final-full-corpus-codec.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-full-corpus-codec.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-full-corpus-codec-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-int5-kernel-frontier.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-r4-int5-kernel-frontier.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-int5-kernel-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-int5-kernel-frontier-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-dense-performance-audit.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-dense-performance-audit-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-final-rerank-ceiling.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-final-rerank-ceiling-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-storage-execution-separation.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-storage-execution-separation-evidence.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-k8-coarse.py --self-test &&
+          python tools/agent-memory-bench/evaluate-neuroute-external-baseline.py --self-test &&
+          python tools/agent-memory-bench/analyze-neuroute-r4-final-codec-transfer.py --self-test &&
+          python tools/agent-memory-bench/summarize-neuroute-external-comparison.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-external-comparison-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-dense-policy-closure.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-dense-policy-closure-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-actual-r4-codec-frontier.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-actual-r4-codec-frontier.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-actual-r4-final-codec-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-actual-r4-final-codec-evidence.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-k8-codec.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-exact-k8-codec-frontier.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-k32-codec.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-k32-physical-codec.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-k8-prefilter.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-approximate-k8-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-k8-codec-closure-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-local-k8-historical-replay.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-local-k8-historical-replay-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-fixed-top-m-router.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-fixed-top-m-router-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-shortlist-generator-bakeoff.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-shortlist-generator-bakeoff-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-training-sufficient-router.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-training-sufficient-router-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-12-to-16-hierarchy-replay.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-12-to-16-hierarchy-replay-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-generator-policy-bakeoff.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-generator-policy-bakeoff-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-prefix-aware-router.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-prefix-aware-router-evidence.py --self-test
+
   ann-cascade:
     name: ANN cascade harness
     runs-on: ubuntu-latest
@@ -265,4 +374,107 @@ jobs:
         run: >
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&
           python tools/agent-memory-bench/write-mih-rerank-cost-evidence.py --self-test &&
-          python tools/agent-memory-bench/write-mih-hamming-cost-evidence.py --self-test
+          python tools/agent-memory-bench/write-mih-hamming-cost-evidence.py --self-test &&
+          python tools/agent-memory-bench/neuroute_authoritative_qrels.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-listwise-probe-scheduler.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-listwise-probe-scheduler.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-listwise-probe-scheduler-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-scheduler-decomposition.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-scheduler-decomposition.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-scheduler-decomposition-evidence.py --self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-multilingual-training-queries.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-nonlinear-scheduler.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-nonlinear-scheduler.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-nonlinear-scheduler-evidence.py --self-test &&
+          python tools/agent-memory-bench/audit-neuroute-sequential-scheduler-closure.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-sequential-oracle-diagnostic.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-sequential-oracle-diagnostic.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-sequential-oracle-diagnostic-evidence.py --self-test &&
+          python tools/agent-memory-bench/audit-neuroute-block-sequential-student-closure.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-address-centroid-learnability.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-address-centroid-learnability.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-address-centroid-learnability-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-address-multi-prototype.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-address-multi-prototype.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-address-multi-prototype-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-prototype-gain-density-reranker.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-prototype-gain-density-reranker.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-prototype-gain-density-reranker-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-nonlinear-listwise-reranker.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-nonlinear-listwise-reranker.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-nonlinear-listwise-reranker-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-teacher-objective-ablation.py &&
+          python tools/agent-memory-bench/run-neuroute-teacher-objective-ablation.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-teacher-objective-ablation-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-representation-ambiguity.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-representation-ambiguity.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-representation-ambiguity-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-matched-representation-ladder.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-matched-representation-ladder.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-matched-representation-ladder-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r3-document-summary.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r3-document-summary.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r3-document-summary-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r3-matched-ladder.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r3-matched-ladder.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r3-matched-ladder-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-feasible-candidate-frontier.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-feasible-candidate-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-feasible-candidate-frontier-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-decoupled-relevance-cost.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-decoupled-relevance-cost.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-decoupled-relevance-cost-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-replication-topology.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-replication-topology.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-replication-topology-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-document-representatives.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-document-representatives.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-document-representatives-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-fine-grained-interactions.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-fine-grained-interactions.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-fine-grained-interactions-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-teacher-selected-representatives.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-teacher-selected-representatives.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-teacher-selected-representatives-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-coverage-saturation.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-coverage-saturation.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-coverage-saturation-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-conditional-set-coverage.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-conditional-set-coverage.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-conditional-set-coverage-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-neuroute-r4-representative-codec.py --self-test
+          && python tools/agent-memory-bench/materialize-neuroute-r4-representative-codec.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-r4-representative-codec.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-r4-representative-codec-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-neuroute-r4-layout-benchmark.py --self-test
+          && python tools/agent-memory-bench/materialize-neuroute-r4-layout-benchmark.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-r4-layout-benchmark.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-r4-layout-benchmark-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-neuroute-r4-int8-kernel.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-r4-int8-kernel.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-r4-int8-kernel-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-neuroute-r4-batched-scorer.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-r4-batched-scorer.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-r4-batched-scorer-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-neuroute-r4-mapped-access.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-r4-mapped-access.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-r4-mapped-access-evidence.py --self-test
+          && python tools/agent-memory-bench/plan-neuroute-r4-int8-compression.py --self-test
+          && python tools/agent-memory-bench/materialize-neuroute-r4-int8-compression.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-r4-int8-compression.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-r4-int8-compression-evidence.py --self-test
+          &&
+          python tools/agent-memory-bench/plan-neuroute-semantic-anchor-relocation.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-semantic-anchor-relocation.py self-test &&
+          python tools/agent-memory-bench/materialize-neuroute-semantic-anchor-input.py self-test &&
+          python tools/agent-memory-bench/run-neuroute-semantic-anchor-geometry-ceiling.py self-test &&
+          python tools/agent-memory-bench/run-neuroute-joint-binary-ceiling.py self-test &&
+          python tools/agent-memory-bench/run-neuroute-prototype-binary-metric.py self-test &&
+          python tools/agent-memory-bench/run-neuroute-prototype-binary-neural.py self-test &&
+          python tools/agent-memory-bench/plan-neuroute-learned-hypercube.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-learned-hypercube.py self-test &&
+          python tools/agent-memory-bench/write-neuroute-address-multi-prototype-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-bitwise-address-selector.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-bitwise-address-selector-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-address-capacity-frontier.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-address-capacity-evidence.py --self-test

@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_final_rerank_ceiling_protocol",
+  "claim_scope": "frozen_de_1m_r4_uniform_int5_simdcomp_physical_final_rerank_implementation_ceiling",
+  "activation": {
+    "routing_kernel_result_sha256": "940d416ca20d1ba51d690b01016f61f929bb29fadaf8d2b624ed03dd652d8d02",
+    "routing_kernel_evidence_sha256": "41303bdc8484891ca34368715ab2869b92da345941b3a68167e0b779f335c4ca",
+    "routing_kernel_protocol_sha256": "22e2798fd982ecb5a1f762ef13294deef78312792b9a7786e2da1c8f2754fb26",
+    "final_codec_result_sha256": "103de34ac69faad6bb9478928e42670ffc11036652c7ee0ae97f060097829dc7",
+    "final_codec_evidence_sha256": "10134a60b78be2bf90a1a9437c31a69bcb37c0147cf3e572646c30b6ea42095a",
+    "final_storage_manifest_sha256": "172ca39fc7fb86d4d92d72eb4b89ef0c0985bd92fb4609607c6c29d2c22ae21e",
+    "dense_audit_result_sha256": "3974594b81808bf230356e46fa8646e17f09d4fc892b3945539240dd0814403b",
+    "dense_audit_evidence_sha256": "0494a4923cb9ca703ebd5f5e7a942ead919b36235aa156e0f2176c3ad16220cd",
+    "native_executable_sha256": "e96745284318af06bf937cba3159eefbd3444c4f24a5a32e2a549bcdca0d8e66"
+  },
+  "dataset": "de-1m",
+  "partition": "internal",
+  "seeds": [2026082701, 2026082702, 2026082703],
+  "representation_id": "int5_simdcomp_bp128",
+  "record_bytes": 244,
+  "stored_bytes": 244000000,
+  "stored_sha256": "a49da89c1d79815af718fb3a41d8d2fb3e9644e98f48ac5b4323cf561b5bbbbb",
+  "routing_kernels": ["homogeneous_int8", "int5_fused_avx2"],
+  "final_kernels": ["fp32_pairwise", "int5_decode_buffer", "int5_fused_blocks"],
+  "workers": [1, 8, 16],
+  "trace_repetitions": 2,
+  "warmup_batches": 1,
+  "measured_batches": 2,
+  "identity": {
+    "uniform_int5_kernels_must_match_all_six_stage_hashes": true,
+    "fp32_is_descriptive_reference_not_codec_identity_gate": true
+  },
+  "gates": {
+    "maximum_selected_final_stage_mean_ratio_vs_decode_buffer": 1.05,
+    "minimum_full_retrieval_gain_to_continue_implementation_frontier": 0.05,
+    "require_hash_bound_physical_store": true
+  },
+  "selection": {
+    "rule": "identity_eligible_then_lowest_cross_seed_w1_final_stage_mean_then_id",
+    "close_if_full_retrieval_gain_below_threshold": true,
+    "codec_or_quality_reselection_forbidden": true
+  }
+}

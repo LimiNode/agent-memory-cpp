@@ -1,0 +1,169 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_relevance_aware_v4_config_only",
+  "claim_scope": "observed_languages_configuration_only_no_confirmation_no_scale_transfer",
+  "activation": {
+    "training_sanity_result_sha256": "02985871f9fd70d3a8634ef42840f7e799957f24fd0797278560a22dc848c5d6",
+    "training_sanity_evidence_sha256": "80e1de6387379666a1b914067714172e481a3ae084a9906351fa1ba293f5d673",
+    "training_sanity_model_set_sha256": "5cfdb8d055ddd32334ab68135e9c6e267c635ab1f29ec56766bdcdd11ebf5729",
+    "native_cost_result_sha256": "fa872e9c77b1e406b493714e64d6745c5a3306c8cd5c98fc65844e1b9360174c",
+    "native_cost_evidence_sha256": "621e9af379eb4493698c94a7d9c6085f2e8cabd7600491778c416d25769f0705",
+    "native_cost_materialization_sha256": "bf3ea7b249b467bf61f45f0ad03cd2d9c77cf58429877c8172e79518f4fcad85"
+  },
+  "datasets": [
+    {
+      "id": "de-25k",
+      "language": "de",
+      "result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286",
+      "queries": 305,
+      "training_queries": 153,
+      "configuration_queries": 76,
+      "training_relevant_pairs": 427
+    },
+    {
+      "id": "fr-25k",
+      "language": "fr",
+      "result_sha256": "4da270f9b48f100763850a618c3de052f572aa788126ea1683b2803cdbe307f0",
+      "queries": 343,
+      "training_queries": 172,
+      "configuration_queries": 85,
+      "training_relevant_pairs": 363
+    },
+    {
+      "id": "ja-25k",
+      "language": "ja",
+      "result_sha256": "2265396b4d486d7c168c1e1a55ab8cd046bdda3d3d16b46166c41afb6a11fb28",
+      "queries": 860,
+      "training_queries": 430,
+      "configuration_queries": 215,
+      "training_relevant_pairs": 893
+    }
+  ],
+  "encoder": {
+    "input_dimensions": 384,
+    "hidden_dimensions": [96, 64],
+    "bits": 12,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "epochs": 80,
+    "batch_size": 512,
+    "training_query_batch_size": 128,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "optimizer": "AdamW",
+    "torch_threads": 18,
+    "batch_norm": false
+  },
+  "distance_objective": {
+    "metric": "euclidean",
+    "gamma": 0.6,
+    "dimension_scale": "sqrt_latent_over_input_v1",
+    "query_positive_weight": 1.0
+  },
+  "mining": {
+    "document_remine_epochs": [20, 40, 60],
+    "query_remine_epochs": [20, 40, 60],
+    "latent_neighbour_pool": 32,
+    "selected_e5_farthest": 4,
+    "document_false_positive_weight": 1.0,
+    "query_false_positive_weight": 1.0,
+    "latent_metric": "normalized_cosine_for_mined_pairs_v1"
+  },
+  "diversity": {
+    "variance_weight": 0.01,
+    "covariance_weight": 0.01,
+    "minimum_latent_standard_deviation": 0.05
+  },
+  "relevance_objective": {
+    "training_labels": "training_partition_qrels_grade_gt_zero_only",
+    "configuration_labels_forbidden": true,
+    "positive_sampling": "grade_descending_then_document_id_epoch_rotation_v1",
+    "negative_exclusion": "all_training_qrels_grade_gt_zero",
+    "negative_remine_epochs": [0, 20, 40, 60],
+    "negative_pool": 32,
+    "selected_negatives": 4,
+    "address_normalization": "detached_document_median_and_standard_deviation_v1",
+    "soft_mismatch": "mean_abs_query_times_sigmoid_negative_product_v1",
+    "soft_mismatch_temperature": 0.5,
+    "pairwise_ranking_margin": 0.1,
+    "pairwise_ranking_temperature": 0.1,
+    "ranking_weight": 0.25
+  },
+  "treatments": [
+    {
+      "id": "raw_euclidean_document_mining_control",
+      "source": "reuse_frozen_training_sanity_raw_euclidean_model_bytes",
+      "document_false_positive_mining": true,
+      "query_false_positive_mining": false,
+      "relevance_ranking": false,
+      "batch_norm": false,
+      "dual_mask": false
+    },
+    {
+      "id": "raw_euclidean_query_document_mining",
+      "source": "train",
+      "document_false_positive_mining": true,
+      "query_false_positive_mining": true,
+      "relevance_ranking": false,
+      "batch_norm": false,
+      "dual_mask": false
+    },
+    {
+      "id": "raw_euclidean_relevance_ranking",
+      "source": "train",
+      "document_false_positive_mining": true,
+      "query_false_positive_mining": false,
+      "relevance_ranking": true,
+      "batch_norm": false,
+      "dual_mask": false
+    }
+  ],
+  "routing": {
+    "probe_budgets": [64, 128, 256, 512],
+    "primary_probe_budget": 256,
+    "candidate_mass_target": 0.1,
+    "pca_bits": 8,
+    "pca_probes": 16,
+    "pca_replication": 4
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 256,
+    "exact_limit": 256
+  },
+  "storage": {
+    "backend": "libmdbx_via_mdbx_containers_key_value_table",
+    "table": "neuroute_postings",
+    "key_layout": "route_u8_address_u16be_kind_u8_page_u32be_v1",
+    "posting_encoding": "packed_u32le",
+    "page_entries": 256,
+    "transaction_scope": "one_read_only_transaction_per_query",
+    "directory_entry": "u32le_posting_count_and_u32le_page_count"
+  },
+  "native_timing": {
+    "database": "repository_pinned_mdbx",
+    "cache_state": "warm",
+    "warmup_passes": 2,
+    "measured_passes": 9,
+    "stages": [
+      "address_generation",
+      "mdbx_lookup_and_decode",
+      "generation_array_dedup_and_ceiling",
+      "hamming_and_top_k",
+      "binary_adc_and_top_k",
+      "total"
+    ],
+    "native_python_sequence_replay_required": true
+  },
+  "decision": {
+    "primary_probe_budget": 256,
+    "maximum_candidate_fraction": 0.1,
+    "maximum_native_p95_ratio_vs_pca": 1.15,
+    "minimum_cross_language_mean_ndcg_gain_vs_control": 0.01,
+    "maximum_per_language_ndcg_loss_vs_control": 0.01,
+    "requires_all_languages": true,
+    "selection_order": "highest_cross_language_mean_ndcg_then_lowest_cross_language_mean_native_p95_then_treatment_id_v1",
+    "next_if_none": "diagnose_relevance_objective_before_external_confirmation",
+    "next_if_pass": "freeze_selected_recipe_for_new_external_confirmation_before_scale"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_final_rerank_code_family",
+  "stage": "frozen_native_adc64_to_top10",
+  "routing_storage_mode": "int8",
+  "training_documents": 16384,
+  "training_uses_relevance_labels": false,
+  "scalar_bits": [4, 5, 6, 8, 10, 12],
+  "scalar_companders": ["linear", "power_half"],
+  "itq_bits": [128, 208, 256, 384],
+  "itq_modes": ["hamming", "binary_adc"],
+  "rabitq_bits": [128, 208, 256, 384],
+  "bbq_like_bits": [128, 208, 256, 384],
+  "bbq_scale_storage": "fp16",
+  "discrete_adc": ["itq_ternary128", "itq_quaternary104"],
+  "product_quantization": ["pq4_16B", "pq8_16B", "opq4_16B", "opq8_16B"],
+  "references": ["fp32", "fp16"],
+  "required_metrics": [
+    "mean_ndcg_loss_vs_fp32",
+    "mean_top10_overlap_vs_fp32",
+    "top10_overlap_p05",
+    "top10_overlap_worst_query",
+    "top1_agreement_vs_fp32",
+    "score_adc64_ms_p95",
+    "payload_bytes_per_document",
+    "payload_bytes_per_million_documents",
+    "model_bytes"
+  ],
+  "production_selection_forbidden": true
+}

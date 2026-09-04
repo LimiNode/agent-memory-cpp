@@ -1,0 +1,47 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_final_codec_frontier",
+  "claim_scope": "fixed_adc256_top64_int5_quality_and_physical_codec_only",
+  "activation": {
+    "conditional_result_sha256": "44470317701e569b3b5b032512afafe28d50519350e5c84ac81802b5c8205fde",
+    "conditional_evidence_sha256": "7147e3b8f0cfe44f4032fe0656bc5cc08bfa6d8815468ad7cf83b48f8b178667",
+    "final_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c"
+  },
+  "datasets": ["de-25k", "fr-25k", "ja-25k", "de-1m"],
+  "seeds": [2026082701, 2026082702, 2026082703],
+  "quantizers": [
+    {"id": "int5_document", "bits": 5, "bytes_per_document": 244},
+    {"id": "int6_document", "bits": 6, "bytes_per_document": 292},
+    {"id": "int7_document", "bits": 7, "bytes_per_document": 340},
+    {"id": "int8_document", "bits": 8, "bytes_per_document": 388}
+  ],
+  "physical_layouts": [
+    {"id": "scalar_bp128", "bits": [5, 6, 7], "block_values": 128},
+    {"id": "simdcomp_bp128", "bits": [5, 6, 7], "block_values": 128},
+    {"id": "raw_int8", "bits": [8], "block_values": 128}
+  ],
+  "simdcomp": {
+    "repository": "https://github.com/fast-pack/simdcomp.git",
+    "commit": "009c67807670d16f8984c0534aef0e630e5465a4",
+    "required_instruction_set": "sse2",
+    "non_x86_policy": "portable_scalar_fallback"
+  },
+  "quality": {
+    "maximum_cross_dataset_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_per_dataset_ndcg_loss_vs_fp32": 0.0075
+  },
+  "native_timing": {
+    "cache_state": "warm_resident",
+    "vectors_per_query": 64,
+    "dimensions": 384,
+    "warmup_passes": 3,
+    "measured_passes": 21,
+    "microbatch": 32,
+    "metrics": ["decode_ns_per_vector", "decode_and_dot_ms_per_query", "rank_top10_ms_per_query"]
+  },
+  "decision": {
+    "quantizer": "lowest_bytes_passing_quality_then_bits",
+    "layout": "lowest_maximum_p95_among_byte_equivalent_exact_replays",
+    "full_corpus_storage_followup_licensed_if_winner_exists": true
+  }
+}

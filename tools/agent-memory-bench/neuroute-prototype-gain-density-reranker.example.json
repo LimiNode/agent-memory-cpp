@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_prototype_gain_density_reranker",
+  "claim_scope": "frozen_k8_prototype_shortlist_pairwise_gain_density_reranking",
+  "activation": {
+    "multi_prototype_result_sha256": "c170ff29f712bccdf48d6fff42e41f31000e60116d6ef446bf8e2e8fba055bf5",
+    "multi_prototype_evidence_sha256": "295e43a8cbed597892af11cb47f1d3134730a4ea4a439d23e5a43001b32dda9b",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
+    "german_split_result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286"
+  },
+  "route": {
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "document_replication": 1,
+    "document_addresses": "frozen_per_scale_from_width_materialization"
+  },
+  "partitions": {
+    "training": {"source": "training_query_ids", "queries": 153},
+    "configuration": {"source": "configuration_selection_query_ids", "queries": 76},
+    "internal_evaluation": {"source": "internal_evaluation_query_ids", "queries": 76},
+    "training_then_configuration_then_internal_required": true
+  },
+  "scales": [
+    {"id": "de-25k", "documents": 25000, "e5_manifest_sha256": "34720383b0da7013a5bbb0c8d72cffa38d6f9d5a891b37ead5e4e4b768a4b351", "input_manifest_sha256": "befa019c788a7325adeb545f560557e830426dc54d1c6a69873a86a2208b434c"},
+    {"id": "de-100k", "documents": 100000, "e5_manifest_sha256": "836af554357e031d07598fa650f8927fedf35322de90c7209b6dcf09b89cd757", "input_manifest_sha256": "87d7c4a93804ec77ef06e799b1dbca2b362f2c1cdd99fb601d38b053490a1da9"},
+    {"id": "de-1m", "documents": 1000000, "e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a", "input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"}
+  ],
+  "prototype_shortlist": {
+    "requested_prototypes_per_address": 8,
+    "construction": "inherit_nested_mean_then_farthest_from_multi_prototype_parent",
+    "address_score": "maximum_cosine_over_effective_prototypes",
+    "training_shortlist": 1024,
+    "configuration_shortlists": [512, 1024]
+  },
+  "model": {
+    "kind": "weighted_pairwise_ridge_over_query_address_features",
+    "target": "discounted_exact_e5_top10_gain_per_posting_entry",
+    "feature_basis": "sorted_k8_cosines_plus_moments_cost_rank_capacity_and_interactions",
+    "hard_negatives_per_positive": 32,
+    "ridge_alphas": [0.001, 0.01, 0.1, 1.0],
+    "positive_pair_weight": "within_query_normalized_gain_density",
+    "training_queries_only": true
+  },
+  "treatments": [
+    "prototype_score",
+    "posting_cost_heuristic",
+    "learned_pairwise_gain_density",
+    "privileged_gain_density_teacher",
+    "privileged_gain_density_teacher_maximum_shortlist"
+  ],
+  "diagnostic": {
+    "posting_cost_heuristic_alpha": 0.25,
+    "address_budgets": [128, 256, 512, 1024],
+    "selection_address_budget": 256,
+    "candidate_mass_target": 0.1,
+    "privileged_teacher_is_diagnostic_only": true
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "selection": {
+    "partition": "configuration",
+    "order": "highest_static_gain_at_256_then_lowest_candidate_fraction_then_shorter_shortlist_then_lower_alpha",
+    "internal_evaluation_must_remain_closed_until_selection": true
+  },
+  "decision": {
+    "minimum_all_seed_learned_actionable_gain_at_256_improvement": 0.03,
+    "maximum_all_seed_learned_candidate_fraction_ratio": 1.05,
+    "direct_minimum_actionable_gain_at_256": 0.9,
+    "direct_maximum_candidate_fraction_at_256": 0.005,
+    "requires_all_de_1m_seeds": true,
+    "production_selection_forbidden": true
+  }
+}

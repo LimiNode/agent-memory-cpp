@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_decoupled_relevance_cost",
+  "claim_scope": "frozen_r3c_representation_decoupled_relevance_and_hard_budget_policy",
+  "activation": {
+    "feasible_frontier_result_sha256": "f5fe1995ad82d365e33a360e2010a7e44e24bcd7521d4e03393753f53039ea36",
+    "feasible_frontier_evidence_sha256": "f21fa7ae644f3e2ad61c58be4bc8909dbfe859f4821b633a224fc75f8f5e8683"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "prototypes_per_address": 8,
+    "address_shortlist": 1024
+  },
+  "query_partitions": {
+    "training_queries": 8141,
+    "configuration_queries": 76,
+    "internal_evaluation_queries": 76,
+    "training_then_configuration_then_internal_required": true
+  },
+  "targets": [
+    "gain_density_listnet",
+    "cascade_useful_probability",
+    "expected_actionable_gain",
+    "graded_top100_top10_cascade",
+    "lambda_candidate_boundary"
+  ],
+  "target_definition": {
+    "exact_teacher_top_k": 100,
+    "top10_discounted_gain": true,
+    "cascade_useful_requires_adc64_survival": true,
+    "graded_weights": {"top100": 0.1, "top10": 1.0, "cascade": 2.0},
+    "posting_size_importance_weighted_bce": false
+  },
+  "training": {
+    "torch_version_prefix": "2.8.0",
+    "device": "cpu",
+    "deterministic_algorithms": true,
+    "torch_threads": 8,
+    "epochs": 4,
+    "batch_queries": 8,
+    "learning_rate": 0.003,
+    "weight_decay": 0.0001,
+    "score_scale": 8.0,
+    "interaction_batch_queries": 2,
+    "same_data_optimizer_seed_for_every_target": true
+  },
+  "policies": {
+    "variants": [
+      "predicted_gain",
+      "predicted_gain_per_cost",
+      "predicted_gain_minus_lambda_cost",
+      "useful_logit_minus_lambda_log_cost"
+    ],
+    "lambda_grid": [0.0, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0],
+    "hard_unique_candidate_fraction": 0.005,
+    "skip_non_fitting_addresses": true,
+    "calibration_and_lambda_configuration_only": true
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "decision": {
+    "minimum_actionable_gain": 0.9,
+    "maximum_candidate_fraction": 0.005,
+    "minimum_r0_to_privileged_gap_closed": 0.5,
+    "maximum_ndcg_regression": 0.0,
+    "requires_every_seed": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}

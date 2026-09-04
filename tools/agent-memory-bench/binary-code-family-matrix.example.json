@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "family": "binary_code_family_matrix_v1",
+  "purpose": "common quality-latency-storage comparison without selecting a production codec",
+  "lanes": {
+    "full_document": {
+      "corpus": "frozen_ru_e5_22607_documents_1252_queries",
+      "candidate_budgets": [128, 512, 2048],
+      "exact_rerank": "full_e5_inner_product",
+      "seeds": [42, 43, 44, 45, 46]
+    },
+    "k8_local_ivf": {
+      "corpus": "frozen_454322_k8_prototypes_152_semantic_anchor_queries",
+      "nlist": [4096, 8192, 16384],
+      "prototype_budgets": [1024, 2048, 4096, 8192],
+      "postings": "prototype_to_document_dedup",
+      "exact_local_k8_arms": [true, false]
+    },
+    "residual_ivf": {
+      "coarse": "frozen_float_ivf",
+      "nlist": [4096, 8192, 16384],
+      "nprobe": [8, 16, 32, 64, 128],
+      "local_prototype_budgets": [512, 1024, 2048, 4096],
+      "representations": ["original", "prototype_minus_cell_centroid"],
+      "exact_local_k8_arms": [true, false]
+    }
+  },
+  "methods": [
+    {"id": "fp32", "family": "float", "status": "control"},
+    {"id": "fp16", "family": "scalar", "status": "planned"},
+    {"id": "pca_sign_hamming", "family": "binary", "status": "existing"},
+    {"id": "itq_hamming", "family": "binary", "widths": [128, 208, 256, 384], "status": "existing"},
+    {"id": "itq_binary_adc", "family": "binary", "widths": [128, 208, 256, 384], "status": "existing"},
+    {"id": "rabitq_reference", "family": "binary_corrected", "widths": [128, 208, 256, 384], "status": "standalone_reference"},
+    {"id": "bbq_like_reference", "family": "binary_corrected", "widths": [128, 208, 256, 384], "status": "standalone_reference"},
+    {"id": "ternary_adc", "family": "ternary", "status": "existing"},
+    {"id": "quaternary_adc", "family": "quaternary", "status": "existing"},
+    {"id": "int4_linear", "family": "scalar", "status": "existing"},
+    {"id": "int4_nonlinear", "family": "scalar", "status": "existing"},
+    {"id": "int5_linear", "family": "scalar", "status": "existing"},
+    {"id": "int5_nonlinear", "family": "scalar", "status": "existing"},
+    {"id": "int6_linear", "family": "scalar", "status": "existing"},
+    {"id": "int6_nonlinear", "family": "scalar", "status": "existing"},
+    {"id": "int8_linear", "family": "scalar", "status": "existing"},
+    {"id": "int8_nonlinear", "family": "scalar", "status": "existing"},
+    {"id": "int12_linear", "family": "scalar", "status": "existing"},
+    {"id": "int12_nonlinear", "family": "scalar", "status": "existing"},
+    {"id": "pq4", "family": "pq", "status": "existing"},
+    {"id": "pq8", "family": "pq", "status": "existing"},
+    {"id": "opq4", "family": "pq", "status": "existing"},
+    {"id": "opq8", "family": "pq", "status": "existing"},
+    {"id": "mih_itq", "family": "binary_ann", "status": "existing"}
+  ],
+  "required_metrics": [
+    "candidate_recall", "final_ndcg_at_10", "final_top10_overlap",
+    "p05", "worst_query", "query_encode_ms_p95", "candidate_search_ms_p95",
+    "exact_rerank_ms_p95", "payload_bytes", "model_bytes", "index_bytes",
+    "peak_working_set_bytes", "add_ms", "delete_ms", "rebuild_required"
+  ],
+  "bbq_rabitq_policy": "use_pinned_standalone_spec_and_report_as_reference_variant"
+}

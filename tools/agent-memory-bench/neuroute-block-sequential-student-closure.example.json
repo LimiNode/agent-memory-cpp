@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_block_sequential_student_closure_contract",
+  "claim_scope": "conditional_student_activation_only_no_training_measurement_or_production_selection",
+  "activation": {
+    "oracle_result_sha256": "d8478ed6556934a7e305d45a0c6aef3518fd0cf00d11052f76c554843f3cf80f",
+    "oracle_evidence_sha256": "6857b3bbcab0ec8815e4ec14fc171757315c88667c0315cbcecac0b7552cb74c"
+  },
+  "required_parent_decision": {
+    "sequential_teacher_headroom_supported": false,
+    "student_followup_licensed": false,
+    "production_selection_licensed": false
+  },
+  "required_parent_matrix": {
+    "dataset_count": 3,
+    "rows_per_dataset": 18,
+    "total_rows": 54,
+    "queries_per_row": 76
+  },
+  "dormant_student_protocol_if_licensed": {
+    "initializations": ["direct_id", "centroid_initialized_id"],
+    "preferred_initialization": "centroid_initialized_id",
+    "teacher": "cascade_marginal_gain_density",
+    "teacher_forcing": true,
+    "block_sizes": [16, 32, 64],
+    "state": [
+      "query_embedding",
+      "mean_selected_address_embedding",
+      "accumulated_candidate_mass"
+    ],
+    "student_observability": "no_privileged_relevant_document_state",
+    "selection_partition": "german_configuration_selection_queries_only",
+    "evaluation_partition": "separate_german_internal_evaluation_queries_only",
+    "required_runtime_metrics": [
+      "address_scores_per_query",
+      "sequential_rounds",
+      "scheduler_latency",
+      "candidate_mass",
+      "oracle_regret"
+    ],
+    "production_selection_licensed": false
+  }
+}
