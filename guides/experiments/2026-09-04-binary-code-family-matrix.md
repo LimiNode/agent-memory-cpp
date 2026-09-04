@@ -135,6 +135,48 @@ overlap). Exact local K8 is consistently valuable, while BBQ-like and RaBitQ
 are nearly tied once local refinement is enabled. The reported Python p95
 values are exhaustive research timings, not optimized SIMD serving claims.
 
+## Unified comparison of all measured code families
+
+The requested single comparison is below. The fixture and oracle are kept in
+the first column because RU-document, R4, and K8-prototype numbers are not
+statistically interchangeable. A dash means that the historical run did not
+measure that field; it is not a zero or an inferred value.
+
+| Lane / method | Payload | Quality result | Latency result | Model/index bytes | Status |
+|---|---:|---|---|---:|---|
+| RU exact FP32 flat | 1,536 B/doc | nDCG 0.80145 | not recorded | — | exact control |
+| RU PCA sign Hamming 128 | 16 B/doc | coverage .93347; nDCG .79295 | 8.05 s/full ordering | separate | measured |
+| RU ITQ Hamming 128 | 16 B/doc | coverage .93746; nDCG .79005 | 8.05 s | separate | measured |
+| RU ITQ binary ADC 128 | 16 B/doc | coverage .984313; nDCG .800762 | — | 197,632 B | measured |
+| RU ITQ binary ADC 208 | 26 B/doc | coverage .997764; nDCG .801465 | — | 296,448 B | measured |
+| RU ITQ ternary ADC 80 | 16 B/doc | coverage .97061; nDCG .79856 | 29.46 s | separate | measured |
+| RU ITQ ternary ADC 128 | 26 B/doc | coverage .99577; nDCG .80150 | 43.28 s | separate | measured |
+| RU ITQ quaternary ADC 64 | 16 B/doc | coverage .951741; nDCG .795541 | — | separate | measured |
+| RU PQ4 / OPQ4, 16 B | 16 B/doc | nDCG .799694 / .800730 | — | 24,576 / 614,400 B | measured |
+| RU PQ8 / OPQ8, 16 B | 16 B/doc | nDCG .800640 / .800420 | — | 393,216 / 983,040 B | measured |
+| R4 FP16 | 768 B/doc | cross-dataset loss −.000018 | — | store-dependent | passed gate |
+| R4 symmetric INT8 | 388 B/doc | loss −.001978; overlap .9918 | max p95 .030891 ms | store-dependent | passed gate |
+| R4 symmetric INT4 | 196 B/doc | loss .007753 | — | store-dependent | failed gate |
+| R4 five-level scalar | 148 B/doc | loss .086297 | — | store-dependent | failed gate |
+| R4 ternary 2-bit | 100 B/doc | loss .345993 | — | store-dependent | failed gate |
+| R4 nonlinear INT5 SIMDComp | 244 B/doc | fixed-pool loss −.001303 | rank-top10 p95 .035607 ms | store-dependent | retained |
+| R4 existing ADC256 | 32 B/doc | loss .056336 | — | store-dependent | failed gate |
+| R4 coordinate ADC384 | 48 B/doc | loss .031455 | — | store-dependent | failed gate |
+| K8 RaBitQ-RR-1, 128b, M4096 + local K8 | 28 B/prototype | overlap .7743; nDCG .8723 | Python exhaustive | 12.7 MB + 198 KB | research |
+| K8 BBQ-block-1, 128b, M4096 + local K8 | 56 B/prototype | overlap .7711; nDCG .8707 | Python exhaustive | 25.4 MB + 198 KB | research |
+| K8 RaBitQ-RR-1, 256b, M4096 + local K8 | 44 B/prototype | overlap .8250; nDCG .9041 | Python exhaustive | 20.0 MB + 395 KB | research |
+| K8 BBQ-block-1, 256b, M4096 + local K8 | 72 B/prototype | overlap .8283; nDCG .9055 | Python exhaustive | 32.7 MB + 395 KB | research |
+| ANN Faiss exact flat | FP32 | R4 nDCG .661003; overlap 1.0000 | p95 145.862 ms | 1.536 GB class | control |
+| ANN Faiss float IVF nprobe 512 | FP32 + IVF | R4 nDCG .668508; overlap .9737 | p95 30.445 ms | 3.086 GB class | control |
+| ANN Faiss binary flat | 256-bit binary | R4 nDCG .643086; overlap .9013 | p95 8.423 ms | 1.568 GB class | control |
+| ANN historical MIH m19/r56 | ITQ-256 | R4 nDCG .643241 | p95 25.737 ms | raw report | historical |
+
+This is a comparison index, not a single leaderboard: quality columns use
+different fixtures and oracles. It does expose the engineering frontier: R4
+document codecs trade bytes against a passed quality gate, whereas K8 binary
+references still need 256 bits plus local exact refinement and remain below
+the float prototype-IVF control.
+
 ## Common metrics and decision rule
 
 The contract is [`binary-code-family-matrix.example.json`](../../tools/agent-memory-bench/binary-code-family-matrix.example.json).
