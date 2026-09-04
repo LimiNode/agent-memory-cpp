@@ -208,6 +208,107 @@ def train_asymmetric(queries: np.ndarray, prototypes: np.ndarray,
     return model, code_table, metadata
 
 
+def train_asymmetric_listwise(
+        queries: np.ndarray, prototypes: np.ndarray, teacher: np.ndarray,
+        width: int, seed: int, epochs: int, positives: list[int],
+        negative_ranks: list[int], random_count: int,
+        hard_negatives: np.ndarray | None = None,
+        init_codes: np.ndarray | None = None) -> tuple[Any, Any, dict[str, Any]]:
+    """Train a shared query encoder and free prototype codebook listwise.
+
+    The target distribution is rank-weighted over teacher positives rather than
+    repeating independent pairwise constraints.  This is an address-utility
+    proxy: it gives the codebook a smooth preference for high-utility teacher
+    ranks, while remaining runnable on the 8,141-query prototype cache.  It is
+    not a document-posting objective; that distinction is retained in the
+    experiment note and must be checked by the address replay gate.
+    """
+    try:
+        import torch
+    except ImportError as error:
+        raise ValueError("PyTorch is required for asymmetric research") from error
+    torch.manual_seed(seed)
+    torch.use_deterministic_algorithms(True)
+    torch.set_num_threads(8)
+    train_count = len(queries) // 2
+    randoms = random_negatives(teacher, len(prototypes), random_count,
+                               seed ^ 0x5EED)
+    model = torch.nn.Sequential(torch.nn.Linear(queries.shape[1], 96),
+                                torch.nn.ReLU(), torch.nn.Linear(96, 64),
+                                torch.nn.ReLU(), torch.nn.Linear(64, width))
+    code_table = torch.nn.Embedding(len(prototypes), width, sparse=True)
+    with torch.no_grad():
+        if init_codes is None:
+            torch.manual_seed(seed ^ 0xA5A5A5A5)
+            code_table.weight.normal_(0.0, 0.35)
+        else:
+            require(init_codes.shape == (len(prototypes), width),
+                    "initial code table shape differs")
+            code_table.weight.copy_(torch.from_numpy(init_codes.astype(np.float32)))
+    model_optimizer = torch.optim.AdamW(model.parameters(), lr=1.0e-3,
+                                        weight_decay=1.0e-4)
+    code_optimizer = torch.optim.SparseAdam(code_table.parameters(), lr=3.0e-3)
+    generator = torch.Generator().manual_seed(seed ^ 0x9E3779B9)
+    started = time.perf_counter()
+    batch_size = 128
+    losses: list[float] = []
+    positive_ranks = np.asarray(positives, dtype=np.int64)
+    negative_ranks_array = np.asarray(negative_ranks, dtype=np.int64)
+    rank_weights = np.exp(-positive_ranks.astype(np.float32) / 256.0)
+    rank_weights /= rank_weights.sum()
+    for _ in range(epochs):
+        order = torch.randperm(train_count, generator=generator).numpy()
+        total = 0.0
+        for first in range(0, len(order), batch_size):
+            qids = order[first:first + batch_size]
+            q = torch.from_numpy(np.asarray(queries[qids], dtype=np.float32))
+            positive_ids = teacher[qids[:, None], positive_ranks]
+            negative_ids = teacher[qids[:, None], negative_ranks_array]
+            negative_ids = np.concatenate((negative_ids, randoms[qids]), axis=1)
+            if hard_negatives is not None:
+                negative_ids = np.concatenate((negative_ids, hard_negatives[qids]),
+                                              axis=1)
+            candidate_ids = np.concatenate((positive_ids, negative_ids), axis=1)
+            candidates = torch.from_numpy(candidate_ids.astype(np.int64))
+            logits = model(q)
+            qbits = torch.sigmoid(2.0 * logits)
+            cbits = torch.sigmoid(2.0 * code_table(candidates))
+            distances = (qbits[:, None, :] + cbits -
+                         2.0 * qbits[:, None, :] * cbits).mean(dim=2)
+            scores = -distances / 0.08
+            target = torch.zeros_like(scores)
+            target[:, :len(positives)] = torch.from_numpy(
+                np.broadcast_to(rank_weights, (len(qids), len(positives))).copy())
+            # Duplicate IDs can occur between fixed and random negatives.  They
+            # are intentionally left in the candidate list: deterministic
+            # retrieval uses prototype id tie-breaking, while the loss remains
+            # conservative and does not silently drop a sampled item.
+            objective = -(target * torch.log_softmax(scores, dim=1)).sum(dim=1).mean()
+            balance = (qbits.mean(dim=0) - 0.5).square().mean()
+            centered = qbits - qbits.mean(dim=0, keepdim=True)
+            covariance = centered.T @ centered / max(1, qbits.shape[0] - 1)
+            covariance = covariance - torch.diag(torch.diag(covariance))
+            objective = objective + 0.02 * balance + 0.01 * covariance.square().mean()
+            model_optimizer.zero_grad(set_to_none=True)
+            code_optimizer.zero_grad()
+            objective.backward()
+            model_optimizer.step()
+            code_optimizer.step()
+            total += float(objective.detach()) * len(qids)
+        losses.append(total / len(order))
+    metadata = {"objective": "rank_weighted_listwise",
+                "candidate_count": int(len(positives) + len(negative_ranks) +
+                                       random_count +
+                                       (0 if hard_negatives is None else hard_negatives.shape[1])),
+                "epochs": epochs, "initial_loss": losses[0],
+                "final_loss": losses[-1],
+                "train_ms": (time.perf_counter() - started) * 1000.0,
+                "positive_ranks": positives, "negative_ranks": negative_ranks,
+                "random_negatives_per_query": random_count,
+                "hard_negatives": hard_negatives is not None}
+    return model, code_table, metadata
+
+
 def train_lookup_ceiling(queries: np.ndarray, prototypes: np.ndarray,
                          teacher: np.ndarray, width: int, seed: int,
                          epochs: int, positives: list[int],
@@ -341,14 +442,17 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     for seed in seeds:
         for width in widths:
             if not args.ceiling_only:
-                model, table, training = train_asymmetric(
+                trainer = (train_asymmetric_listwise
+                           if args.objective == "rank_weighted_listwise"
+                           else train_asymmetric)
+                model, table, training = trainer(
                     queries, prototypes, teacher, width, seed, args.epochs,
                     positives, negative_ranks, args.random_negatives)
                 hard = (mine_hard_negatives(model, table, queries, teacher,
                                             args.hard_negatives)
                         if args.hard_negatives else None)
                 if args.hard_negatives:
-                    model, table, hard_training = train_asymmetric(
+                    model, table, hard_training = trainer(
                         queries, prototypes, teacher, width, seed ^ 0x1234,
                         args.hard_epochs, positives, negative_ranks,
                         args.random_negatives, hard_negatives=hard,
@@ -363,7 +467,9 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 prototype_codes = np.packbits((prototype_logits >= 0).astype(np.uint8),
                                               axis=1, bitorder="little")
                 result = {"seed": seed, "width": width,
-                          "method": "asymmetric_query_encoder_free_prototype_codes",
+                          "method": ("asymmetric_query_encoder_free_prototype_codes" if
+                                      args.objective == "pairwise" else
+                                      "asymmetric_query_encoder_free_prototype_codes_listwise"),
                           "code_bytes_per_prototype": (width + 7) // 8,
                           "prototype_code_bytes": int(prototype_logits.nbytes),
                           "mean_bit_entropy": code_entropy(prototype_codes, width),
@@ -371,9 +477,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                           "partitions": evaluate_codes(query_codes, prototype_codes,
                                                          teacher, args.budgets)}
                 reports.append(result)
-                if args.artifact_output is not None:
-                    require(args.artifact_width == width and args.artifact_seed == seed,
-                            "artifact output must identify the current width/seed")
+                if (args.artifact_output is not None and
+                        args.artifact_width == width and args.artifact_seed == seed):
                     args.artifact_output.parent.mkdir(parents=True, exist_ok=True)
                     with args.artifact_output.open("wb") as stream:
                         np.savez(stream, query_codes=query_codes,
@@ -415,6 +520,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "query_count": len(queries), "prototype_count": len(prototypes),
             "widths": widths, "seeds": seeds, "reports": reports,
             "contract": {"positive_ranks": positives,
+                         "objective": args.objective,
                          "negative_ranks": negative_ranks,
                          "random_negatives": args.random_negatives,
                          "hard_negatives": args.hard_negatives,
@@ -446,6 +552,9 @@ def main() -> int:
     parser.add_argument("--negative-ranks", nargs="+", type=int, default=[64, 256])
     parser.add_argument("--random-negatives", type=int, default=8)
     parser.add_argument("--hard-negatives", type=int, default=8)
+    parser.add_argument("--objective", choices=["pairwise", "rank_weighted_listwise"],
+                        default="pairwise",
+                        help="prototype training objective; listwise is a rank-utility proxy")
     parser.add_argument("--include-ceiling", action="store_true",
                         help="also run free-query/free-prototype representational ceiling")
     parser.add_argument("--ceiling-only", action="store_true",
