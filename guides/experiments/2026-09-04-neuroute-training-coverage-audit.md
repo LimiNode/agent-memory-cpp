@@ -8,9 +8,9 @@ whether semantic initialization changes the conclusion.
 ## Audit result
 
 With 4,070 training queries, eight positive ranks, two fixed negative ranks,
-and eight random negatives, only 45,926 of 454,322 prototype rows are touched
-(10.11%). 408,396 rows (89.89%) remain untouched. Occurrence statistics are
-mean `0.161`, median `0`, p95 `1`, max `87`; this is a sampled-row coverage
+and eight random negatives, only 45,942 of 454,322 prototype rows are touched
+(10.11%). 408,380 rows (89.89%) remain untouched. Occurrence statistics are
+mean `0.161`, median `0`, p95 `1`, max `88`; this is a sampled-row coverage
 problem, not a balanced global codebook update. Code entropy is 0.999998 over
 all rows, 0.999961 on touched rows, and 0.999998 on untouched rows, confirming
 that global entropy cannot be used as evidence that the whole map was learned.
