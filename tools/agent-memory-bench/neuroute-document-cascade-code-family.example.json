@@ -2,7 +2,7 @@
   "schema_version": 1,
   "family": "neuroute_document_cascade_code_family",
   "stage1": "actual_r4_candidate_documents_to_k",
-  "stage1_counts": [512, 768, 1024],
+  "stage1_counts": [256, 512, 768, 1024, 2048],
   "stage2": "historical_hamming768_to_k",
   "stage2_counts": [32, 64, 128],
   "training_documents": 16384,

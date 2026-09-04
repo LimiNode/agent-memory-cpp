@@ -235,3 +235,84 @@ document profile in one process before claiming an end-to-end production p95.
   was added: Faiss remains an offline research-runner dependency.
 - A new untouched dataset should confirm the chosen profile, especially its
   p05/worst-query behavior, before a production default changes.
+
+## Follow-up: tail anatomy and 256/2048 frontier (2026-09-05)
+
+The stage-count grid was extended to `256 / 512 / 768 / 1024 / 2048` without
+changing the frozen candidate pools or the 36 fitted codecs.  At the aggressive
+`~5k -> 256` point, scalar INT4/INT8/INT12 and the 384-bit binary estimators
+still reproduced the candidate FP32 top-10 on this fixture.  Compact codes were
+more sensitive: ITQ208 ADC reached `.99496` overlap (worst `.8`), ITQ384 ADC
+`.99934` (worst `.9`), RaBitQ/BBQ384 `.99868` (worst `.9`), while PQ4/OPQ8
+were `.95592/.96096` (worst `.4/.6`).  At `2048`, all of these methods reached
+`.99934` or better, and the listed binary/PQ variants reached exact top-10 in
+all observed cases.  This is evidence that oversampling is a viable way to use
+small payloads, not a claim of a native serving latency.
+
+The raw replay is `tmp/document-cascade-code-family-v6.json` (not committed).
+The tail diagnostic is `tmp/document-cascade-tail-v1.json` (not committed).
+For the frozen ADC64 -> top10 lane, p95/p99 loss and qrels tails were measured
+per query.  INT8 had p95/p99 loss `.00677/.04251`, 3.73%/2.63%/0.88% of cases
+above `.01/.02/.05`, and a maximum loss `.3691`.  INT10 reduced this to
+`.0/.00377`, 0.44% above `.01`, no cases above `.02`, and maximum `.0120`.
+INT12 linear and power-half had no positive qrels loss in the tail (maximum
+loss `0.0`; their slightly negative means indicate a qrels improvement on some
+queries).  Worst-query rows retain query IDs, routing seed, FP32/method top-10,
+and per-result qrels grades so regressions can be audited rather than hidden by
+mean overlap.
+
+The follow-up runner is
+`tools/agent-memory-bench/analyze-neuroute-document-cascade-tail.py`.
+Its p95/p99 values are portable Python diagnostics over the frozen native
+pools, not a SIMD serving claim.
+
+### Updated profile guidance
+
+The evidence now supports three explicit operating points:
+
+1. **Quality-first:** float-IVF/local-exact-K8, then INT4-linear `->512`,
+   INT4-linear `->64`, exact FP32 `->top10`.  It is lossless on the measured
+   candidate pool and minimizes document bytes read without making scalar
+   precision the final decision.
+2. **Bandwidth-first:** ITQ208-ADC `->768`, INT4-linear `->64`, exact FP32
+   `->top10`.  The 208-bit generator is only safe with sufficient oversampling;
+   the new `K=256` result is not a hard gate, whereas `K=2048` reached exact
+   top-10 on the observed matrix.
+3. **Source-vector-free:** INT12 (linear or power-half) `->512`, INT12
+   `->32`, INT12 `->top10`.  INT12 has no positive qrels loss in the tail
+   diagnostic, at the cost of a 580-byte record.  INT10 is a reasonable smaller
+   opt-in when a maximum observed loss of `.012` is acceptable; INT8 should not
+   be the default because its `.369` worst-query loss is concentrated in a
+   small but material tail.
+
+These are profiles, not a single universal winner: the first spends source
+vector bytes for strict quality, the second spends oversampling/codec model
+complexity for bandwidth, and the third removes the source vector while
+retaining a conservative scalar margin.  All keep the proven float-IVF upper
+path and local exact K8; no profile requires a global scan of 454k prototypes.
+
+## Native directional timing harness
+
+`agent-memory-document-codec-native-benchmark` is a standalone C++17,
+portable-by-default microbenchmark for FP32/FP16, packed INT4/8/10/12 and a
+208-bit signed binary ADC-style code.  It reports p50/p95/p99 for a
+configurable record count (the same executable is run at ~5k for filtering
+and 64 for final rerank), records bytes per durable
+document (INT8 is correctly `384 * 8 / 8 + 4 = 388` bytes), and emits a checksum
+to prevent dead-code elimination.  It measures native scalar packing/scoring
+only; it is intentionally not an end-to-end R4 replay and must not be confused
+with the Python quality evidence above.
+
+The first Windows portable run (`tmp/document-codec-native-benchmark-v1.json`,
+not committed) over 5,000 records reported p95 milliseconds of 2.21 (FP32),
+7.22 (FP16), 5.47 (INT4), 5.43 (INT8), 5.99 (INT10), 6.39 (INT12), and 6.31
+(ITQ208 ADC).  These numbers include scalar unpacking and are directional;
+they establish the benchmark contract and byte accounting, while AVX2/native
+R4 integration remains a separate implementation gate.
+
+At the 64-record final-rerank size, the same harness measured p95 `0.0377 ms`
+(FP32), `0.1063 ms` (FP16), `0.0758 ms` (INT4), `0.0848 ms` (INT8), `0.0832 ms`
+(INT10), `0.1011 ms` (INT12), and `0.0875 ms` (ITQ208 ADC).  The two raw
+JSON runs are `tmp/document-codec-native-benchmark-v1.json` and
+`tmp/document-codec-native-benchmark-final64-v1.json` (both local evidence,
+not committed).
