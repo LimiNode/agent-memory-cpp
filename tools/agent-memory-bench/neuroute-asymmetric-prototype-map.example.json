@@ -3,6 +3,7 @@
   "family": "neuroute_asymmetric_prototype_map",
   "claim_scope": "corpus_specific_free_prototype_codes_with_query_encoder",
   "objective": "rank_weighted_listwise",
+  "prototype_init": "random",
   "widths": [32, 64, 128],
   "seeds": [285, 286, 287],
   "positive_ranks": [0, 1, 7, 31, 127, 255, 511, 1023],
