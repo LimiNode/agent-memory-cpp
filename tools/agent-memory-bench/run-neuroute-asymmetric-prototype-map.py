@@ -80,6 +80,17 @@ def code_entropy(codes: np.ndarray, width: int) -> float:
     return float(np.mean(-(p * np.log2(p) + (1.0 - p) * np.log2(1.0 - p))))
 
 
+def projection_initial_codes(prototypes: np.ndarray, width: int, seed: int) -> np.ndarray:
+    """Create semantic prototype logits from a deterministic orthogonal projection."""
+    require(width <= prototypes.shape[1], "projection init requires width <= dimension")
+    rng = np.random.default_rng(seed ^ 0x51A7)
+    matrix, _ = np.linalg.qr(rng.normal(size=(prototypes.shape[1], width)))
+    centered = np.asarray(prototypes, dtype=np.float32) - np.mean(prototypes, axis=0)
+    projected = centered @ matrix.astype(np.float32)
+    thresholds = np.median(projected, axis=0)
+    return np.where(projected >= thresholds[None, :], 0.35, -0.35).astype(np.float32)
+
+
 def build_pairs(teacher: np.ndarray, train_count: int, positives: list[int],
                 negative_ranks: list[int], random_negatives: np.ndarray,
                 hard_negatives: np.ndarray | None) -> tuple[np.ndarray, ...]:
@@ -139,7 +150,8 @@ def train_asymmetric(queries: np.ndarray, prototypes: np.ndarray,
                      epochs: int, positives: list[int],
                      negative_ranks: list[int], random_count: int,
                      hard_negatives: np.ndarray | None = None,
-                     init_codes: np.ndarray | None = None) -> tuple[Any, Any, dict[str, Any]]:
+                     init_codes: np.ndarray | None = None,
+                     init_model: Any | None = None) -> tuple[Any, Any, dict[str, Any]]:
     try:
         import torch
     except ImportError as error:
@@ -154,6 +166,8 @@ def train_asymmetric(queries: np.ndarray, prototypes: np.ndarray,
     model = torch.nn.Sequential(torch.nn.Linear(queries.shape[1], 96),
                                 torch.nn.ReLU(), torch.nn.Linear(96, 64),
                                 torch.nn.ReLU(), torch.nn.Linear(64, width))
+    if init_model is not None:
+        model.load_state_dict(init_model.state_dict())
     code_table = torch.nn.Embedding(len(prototypes), width, sparse=True)
     with torch.no_grad():
         if init_codes is None:
@@ -204,7 +218,8 @@ def train_asymmetric(queries: np.ndarray, prototypes: np.ndarray,
                 "train_ms": (time.perf_counter() - started) * 1000.0,
                 "positive_ranks": positives, "negative_ranks": negative_ranks,
                 "random_negatives_per_query": random_count,
-                "hard_negatives": hard_negatives is not None}
+                "hard_negatives": hard_negatives is not None,
+                "continued_model": init_model is not None}
     return model, code_table, metadata
 
 
@@ -213,7 +228,8 @@ def train_asymmetric_listwise(
         width: int, seed: int, epochs: int, positives: list[int],
         negative_ranks: list[int], random_count: int,
         hard_negatives: np.ndarray | None = None,
-        init_codes: np.ndarray | None = None) -> tuple[Any, Any, dict[str, Any]]:
+        init_codes: np.ndarray | None = None,
+        init_model: Any | None = None) -> tuple[Any, Any, dict[str, Any]]:
     """Train a shared query encoder and free prototype codebook listwise.
 
     The target distribution is rank-weighted over teacher positives rather than
@@ -236,6 +252,8 @@ def train_asymmetric_listwise(
     model = torch.nn.Sequential(torch.nn.Linear(queries.shape[1], 96),
                                 torch.nn.ReLU(), torch.nn.Linear(96, 64),
                                 torch.nn.ReLU(), torch.nn.Linear(64, width))
+    if init_model is not None:
+        model.load_state_dict(init_model.state_dict())
     code_table = torch.nn.Embedding(len(prototypes), width, sparse=True)
     with torch.no_grad():
         if init_codes is None:
@@ -305,7 +323,8 @@ def train_asymmetric_listwise(
                 "train_ms": (time.perf_counter() - started) * 1000.0,
                 "positive_ranks": positives, "negative_ranks": negative_ranks,
                 "random_negatives_per_query": random_count,
-                "hard_negatives": hard_negatives is not None}
+                "hard_negatives": hard_negatives is not None,
+                "continued_model": init_model is not None}
     return model, code_table, metadata
 
 
@@ -456,9 +475,12 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 trainer = (train_asymmetric_listwise
                            if args.objective == "rank_weighted_listwise"
                            else train_asymmetric)
+                initial_codes = (projection_initial_codes(prototypes, width, seed)
+                                 if args.prototype_init == "projection" else None)
                 model, table, training = trainer(
                     queries, prototypes, teacher, width, seed, args.epochs,
-                    positives, negative_ranks, args.random_negatives)
+                    positives, negative_ranks, args.random_negatives,
+                    init_codes=initial_codes)
                 hard = (mine_hard_negatives(model, table, queries, teacher,
                                             args.hard_negatives)
                         if args.hard_negatives else None)
@@ -467,7 +489,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                         queries, prototypes, teacher, width, seed ^ 0x1234,
                         args.hard_epochs, positives, negative_ranks,
                         args.random_negatives, hard_negatives=hard,
-                        init_codes=table.weight.detach().cpu().numpy())
+                        init_codes=table.weight.detach().cpu().numpy(),
+                        init_model=model)
                     training["hard_round"] = hard_training
                 query_logits = encode_model(model, queries)
                 import torch
@@ -532,6 +555,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "widths": widths, "seeds": seeds, "reports": reports,
             "contract": {"positive_ranks": positives,
                          "objective": args.objective,
+                         "prototype_init": args.prototype_init,
                          "negative_ranks": negative_ranks,
                          "random_negatives": args.random_negatives,
                          "hard_negatives": args.hard_negatives,
@@ -566,6 +590,9 @@ def main() -> int:
     parser.add_argument("--objective", choices=["pairwise", "rank_weighted_listwise"],
                         default="pairwise",
                         help="prototype training objective; listwise is a rank-utility proxy")
+    parser.add_argument("--prototype-init", choices=["random", "projection"],
+                        default="random",
+                        help="initialize all prototype codes from a semantic projection")
     parser.add_argument("--include-ceiling", action="store_true",
                         help="also run free-query/free-prototype representational ceiling")
     parser.add_argument("--ceiling-only", action="store_true",
