@@ -224,13 +224,19 @@ class PQScorer:
         source = np.asarray(vectors, dtype=np.float32)
         if self.rotation is not None:
             source = source @ self.rotation.T
-        subquantizers, _, width = self.centroids.shape
-        source_blocks = source.reshape(len(source), subquantizers, width)
-        symbols = np.empty((len(source), subquantizers), dtype=np.uint8)
-        for block in range(subquantizers):
-            delta = source_blocks[:, block, None, :] - self.centroids[block][None, :, :]
-            symbols[:, block] = np.argmin(np.sum(delta * delta, axis=2), axis=1)
-        return symbols
+        # Use Faiss' native encoder.  The earlier final-64 harness used an
+        # intentionally simple NumPy encoder, but materializing codes for the
+        # ~640k-document union in the cascade study would otherwise dominate
+        # the experiment and allocate an enormous [rows, centroids, width]
+        # temporary.  The centroids remain the frozen model contract.
+        import faiss
+        subquantizers, _, _ = self.centroids.shape
+        pq = faiss.ProductQuantizer(source.shape[1], subquantizers,
+                                    self.code_bits)
+        faiss.copy_array_to_vector(np.ascontiguousarray(
+            self.centroids.reshape(-1), dtype=np.float32), pq.centroids)
+        return np.asarray(pq.compute_codes(np.ascontiguousarray(
+            source, dtype=np.float32)), dtype=np.uint8)
 
     def scores_prepared(self, prepared: np.ndarray, query: np.ndarray) -> np.ndarray:
         q = np.asarray(query, dtype=np.float32)
@@ -239,9 +245,15 @@ class PQScorer:
         subquantizers, _, width = self.centroids.shape
         query_blocks = q.reshape(subquantizers, width)
         total = np.zeros(len(prepared), dtype=np.float32)
-        for block in range(subquantizers):
-            qdelta = self.centroids[block, prepared[:, block]] - query_blocks[block]
-            total += np.sum(qdelta * qdelta, axis=1)
+        lookup = np.sum((self.centroids - query_blocks[:, None, :]) ** 2,
+                        axis=2)
+        if self.code_bits == 8:
+            for block in range(subquantizers):
+                total += lookup[block, prepared[:, block]]
+        else:
+            for byte in range(prepared.shape[1]):
+                total += lookup[2 * byte, prepared[:, byte] & 15]
+                total += lookup[2 * byte + 1, prepared[:, byte] >> 4]
         return -total
 
     def scores(self, vectors: np.ndarray, query: np.ndarray) -> np.ndarray:

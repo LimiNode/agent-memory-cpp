@@ -250,6 +250,16 @@ the 16–64 byte binary/PQ families for final ordering of very close documents.
 This is a separate geometry from both document-flat generation and K8
 prototype routing.
 
+## Complete document-cascade follow-up
+
+The missing `candidate documents -> K` and `Hamming768 -> K` stages, all 36
+codec rows, composed quality/size/bandwidth profiles, and the replacement for
+the historical Hamming/ADC document cascade are recorded in
+[`2026-09-04-neuroute-document-cascade-code-family.md`](2026-09-04-neuroute-document-cascade-code-family.md).
+The main result is stage-specific: ITQ binary ADC is an excellent broad
+generator, low-bit scalar codes are safer for the narrow filter, and exact
+FP32 remains cheap and lossless when applied only to the last 64 documents.
+
 ## Common metrics and decision rule
 
 The contract is [`binary-code-family-matrix.example.json`](../../tools/agent-memory-bench/binary-code-family-matrix.example.json).
