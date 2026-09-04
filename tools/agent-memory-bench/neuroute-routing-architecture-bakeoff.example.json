@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_routing_architecture_bakeoff",
+  "claim_scope": "research_only_common_document_teacher_replay",
+  "architectures": [
+    "direct_document_ivf",
+    "learned_semantic_router_replication",
+    "lthq_ordinal_router",
+    "float_ivf_local_residual_k8"
+  ],
+  "ivf": {
+    "nlist": [1024, 4096],
+    "nprobe": [8, 16, 32, 64, 128],
+    "candidate_budgets": [256, 512, 768, 1024, 2048]
+  },
+  "learned_router": {
+    "bits": [12, 14, 16],
+    "replication": [1, 2, 3, 4],
+    "routing_mode": "document_code_hamming_diagnostic",
+    "random_uniform_control": true
+  },
+  "ordinal_router": {
+    "levels": [3, 4, 5],
+    "thresholds": ["quantile", "learned_lthq_t"]
+  },
+  "local_residual": {
+    "prototype_source": "frozen_k8_teacher_cache",
+    "local_codecs": ["fp32", "int8", "itq256_adc", "pq8", "opq8"],
+    "exact_local_k8_control": true
+  },
+  "evaluation": {
+    "partitions": ["config", "internal"],
+    "top_k": [10, 32, 64, 256],
+    "routing_ceiling_required": true,
+    "native_confirmation_forbidden": true
+  },
+  "decision": {
+    "global_prototype_scan_product_path": false,
+    "production_selection_forbidden": true,
+    "require_quality_speed_payload_table": true
+  }
+}
