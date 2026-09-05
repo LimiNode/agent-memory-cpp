@@ -36,9 +36,10 @@ not use a global bin-width cost. Replication is fixed at `R=1`. Evaluation is
 the routing ceiling with exact inner-product ranking inside the candidate set,
 `K=256`.
 
-The cache contains exact top-10 labels but not ranks 11-1000, so this first
-run uses uniform negatives. It is therefore a geometry experiment, not yet a
-hard-negative training result.
+The initial run uses uniformly sampled negatives. A second run materializes
+exact E5 ranks 11-1000 with
+`materialize-neuroute-train-hard-negatives.py` and repeats training with those
+hard negatives.
 
 ## Target multimodality diagnostic
 
@@ -72,6 +73,25 @@ Payload is two bytes per ordinal cell ID for these configurations. Projection
 model sizes are 13,888 bytes for 8x3, 10,824 bytes for 6x4, and 20,016 bytes
 for 12x2, including mean, projection, and thresholds.
 
+### Hard-negative replay
+
+The exact train-query top-1000 IDs were materialized separately (artifact
+SHA-256:
+`a9dcfbca56bbabe110b540ad494d35bdf991990067016dee5ef26b3a79ec63c0`). The
+hard-negative result (SHA-256:
+`2db06772266c91b3ee73f8a85302b0f7ac93e80a9cb2949cfd0bba1935b80871`) used
+the same projection, thresholds, probing, and evaluation protocol. At `P=256`:
+
+| Router | Mean overlap | qrels nDCG@10 | Unique candidates |
+|---|---:|---:|---:|
+| Shared 8x3 | 0.738 | 0.579 | 236,533 |
+| Shared 6x4 | 0.774 | 0.587 | 325,927 |
+| Shared 12x2 | 0.756 | 0.592 | 205,580 |
+
+The best hard-negative point near the target quality was Shared 6x4 at `P=64`
+(0.706 overlap), but it still opened 229k candidates. Hard negatives did not
+improve the matched 60-70k frontier for this continuous L1 objective.
+
 ## Interpretation
 
 The shared projection clearly improves the corresponding PCA ordinal geometry:
@@ -87,18 +107,21 @@ projections open much larger posting pools. It is also important that the
 query-specific threshold-cost correction materially strengthens the PCA
 control; the old #299 global-bin-width scheduler is not a valid comparison.
 
-This result supports the diagnosis that shared retrieval geometry is useful,
-but it does not yet justify replacing corrected PCA12 routing. The next fair
-step is to add E5 ranks 11-1000 as hard negatives, select `P` by matched
-60-70k unique candidates, and compare qrels nDCG plus tail quality. Learned
-thresholds and soft top-P survival loss should wait until that comparison.
+The hard-negative replay changes the conclusion: adding near-teacher negatives
+to the pairwise L1 objective does not recover the lost concentration and
+increases candidate pools substantially. The strongest matched-budget control
+in this study is corrected PCA 12x2 with query-specific threshold probing
+(0.726 overlap, 0.590 qrels nDCG, 64.9k candidates). Shared projection remains
+an informative geometry ablation, but neither version is yet a product win.
+Learned thresholds and soft top-P survival loss should wait until a cell-aware
+objective directly optimizes opened postings.
 
 ## Limitations
 
 - The original PR #176 checkpoint is unavailable; historical Binary12 remains
   a deterministic retraining reference, not a byte-identical replay.
-- Negatives are uniform because the current cache stores only top-10 teacher
-  IDs; no claim is made about a hard-negative-trained model.
+- The uniform-negative and hard-negative runs use different training samples;
+  both are deterministic single-seed measurements.
 - The projection is linear and trained on 153 queries; no multi-seed or full
   cross-corpus validation has been run.
 - Reported p95 includes probing, posting union, and exact candidate scoring;

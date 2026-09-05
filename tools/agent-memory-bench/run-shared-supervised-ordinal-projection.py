@@ -73,11 +73,19 @@ def train_shared(queries: np.ndarray, teacher_ids: np.ndarray,
     torch.use_deterministic_algorithms(True)
     torch.set_num_threads(min(8, torch.get_num_threads()))
     rng = np.random.default_rng(seed + 17)
-    query_rows = np.repeat(queries, teacher_ids.shape[1], axis=0)
-    positive_rows = np.asarray(documents[teacher_ids.reshape(-1)], dtype=np.float32)
+    positives = teacher_ids[:, :10]
+    query_rows = np.repeat(queries, positives.shape[1], axis=0)
+    positive_rows = np.asarray(documents[positives.reshape(-1)], dtype=np.float32)
     total = len(query_rows)
-    negative_ids = rng.integers(0, len(documents), size=(total, negatives),
-                                dtype=np.int64)
+    if teacher_ids.shape[1] > 10:
+        hard_pool = teacher_ids[:, 10:]
+        query_index = np.repeat(np.arange(len(queries)), positives.shape[1])
+        choices = rng.integers(0, hard_pool.shape[1],
+                               size=(total, negatives), dtype=np.int64)
+        negative_ids = hard_pool[query_index[:, None], choices]
+    else:
+        negative_ids = rng.integers(0, len(documents), size=(total, negatives),
+                                    dtype=np.int64)
     negative_rows = np.asarray(documents[negative_ids.reshape(-1)],
                                dtype=np.float32).reshape(total, negatives, -1)
     q = torch.from_numpy((query_rows - mean).astype(np.float32))
@@ -122,6 +130,8 @@ def train_shared(queries: np.ndarray, teacher_ids: np.ndarray,
         "seed": seed, "epochs": epochs, "negatives_per_positive": negatives,
         "initial_loss": losses[0], "final_loss": losses[-1],
         "training_seconds": elapsed, "objective": "softplus_l1_margin_plus_occupancy_anchor",
+        "negative_source": "e5_ranks_11_1000" if teacher_ids.shape[1] > 10
+                           else "uniform_documents",
     }
 
 
@@ -264,6 +274,10 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     documents = np.asarray(data["documents"], dtype=np.float32)
     train_queries = np.asarray(data["train_queries"], dtype=np.float32)
     train_teacher_ids = np.asarray(data["train_teacher_ids"], dtype=np.int64)
+    if args.train_teacher_ids is not None:
+        train_teacher_ids = np.load(args.train_teacher_ids, allow_pickle=False)
+    require(train_teacher_ids.shape[0] == len(train_queries),
+            "hard-negative teacher query count differs")
     eval_queries = np.asarray(data["eval_queries"], dtype=np.float32)
     partitions = np.asarray(data["eval_partition"])
     sample = documents[::4]
@@ -334,7 +348,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
             "protocol": {"thresholds": "train_document_quantiles",
                           "probing": "query_specific_threshold_distance",
                           "replication": 1, "document_budget": args.document_budget},
-            "limitations": ["train cache contains top-10 only; negatives are sampled uniformly, not E5 ranks 11-1000", "routing ceiling only; no downstream codec"]}
+            "limitations": (["routing ceiling only; no downstream codec"] if train_teacher_ids.shape[1] > 10 else
+                            ["train cache contains top-10 only; negatives are sampled uniformly, not E5 ranks 11-1000", "routing ceiling only; no downstream codec"])}
 
 
 def self_test() -> None:
@@ -363,6 +378,7 @@ def main() -> int:
     parser.add_argument("--document-budget", type=int, default=256)
     parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--negatives", type=int, default=16)
+    parser.add_argument("--train-teacher-ids", type=Path)
     parser.add_argument("--seed", type=int, default=20260906)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
