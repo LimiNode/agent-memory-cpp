@@ -118,6 +118,7 @@ def binary_probe(code: np.ndarray, bits: int, count: int) -> list[int]:
 
 def evaluate_router(name: str, documents: np.ndarray, queries: np.ndarray,
                     teacher_ids: np.ndarray, teacher_scores: np.ndarray,
+                    qrel_ids: np.ndarray | None, qrel_scores: np.ndarray | None,
                     partitions: np.ndarray, query_codes: np.ndarray,
                     postings: dict[int, np.ndarray], levels: int,
                     cell_budgets: list[int], document_budgets: list[int],
@@ -145,11 +146,25 @@ def evaluate_router(name: str, documents: np.ndarray, queries: np.ndarray,
                 ideal_discount = 1.0 / np.log2(np.arange(2, len(ideal) + 2))
                 denom = float(np.sum(ideal * ideal_discount))
                 ndcg = float(np.sum(gains * discount) / denom) if denom else 0.0
+                qrels_ndcg = None
+                if qrel_ids is not None and qrel_scores is not None:
+                    valid = qrel_ids[query_index] >= 0
+                    relevance = {int(doc): float(score) for doc, score in
+                                 zip(qrel_ids[query_index][valid],
+                                     qrel_scores[query_index][valid])}
+                    qrel_gains = np.asarray([2.0 ** relevance.get(int(doc), 0.0) - 1.0
+                                             for doc in selected[:10]], dtype=np.float64)
+                    ideal_grades = np.sort(qrel_scores[query_index][valid].astype(np.float64))[::-1][:10]
+                    ideal_gains = np.power(2.0, ideal_grades) - 1.0
+                    ideal_qrel_discount = 1.0 / np.log2(np.arange(2, len(ideal_gains) + 2))
+                    ideal_qrel = float(np.sum(ideal_gains * ideal_qrel_discount))
+                    qrels_ndcg = float(np.sum(qrel_gains * discount) / ideal_qrel) if ideal_qrel else 0.0
                 rows.append({"router": name, "replication": replication,
                              "partition": str(partitions[query_index]),
                              "query": query_index, "cell_budget": cell_budget,
                              "document_budget": document_budget, "overlap": overlap,
-                             "ndcg": ndcg, "raw_postings": raw_count,
+                             "ndcg": ndcg, "qrels_ndcg": qrels_ndcg,
+                             "raw_postings": raw_count,
                              "unique_candidates": int(len(candidates)),
                              "payload_bytes": payload_bytes, "model_bytes": model_bytes,
                              "route_ms": (time.perf_counter() - started) * 1000.0})
@@ -167,6 +182,10 @@ def summarize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
                        "worst_overlap": float(np.min([r["overlap"] for r in current])),
                        "mean_ndcg": float(np.mean([r["ndcg"] for r in current])),
                        "worst_ndcg": float(np.min([r["ndcg"] for r in current])),
+                       "mean_qrels_ndcg": (float(np.mean([r["qrels_ndcg"] for r in current]))
+                           if current[0]["qrels_ndcg"] is not None else None),
+                       "worst_qrels_ndcg": (float(np.min([r["qrels_ndcg"] for r in current]))
+                           if current[0]["qrels_ndcg"] is not None else None),
                        "mean_raw_postings": float(np.mean([r["raw_postings"] for r in current])),
                        "mean_unique_candidates": float(np.mean([r["unique_candidates"] for r in current])),
                        "p95_route_ms": float(np.quantile([r["route_ms"] for r in current], .95)),
@@ -176,6 +195,20 @@ def summarize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def load_input(path: Path) -> dict[str, np.ndarray]:
+    if path.suffix.lower() == ".json":
+        manifest = json.loads(path.read_text(encoding="utf-8"))
+        require(manifest.get("family") == "neuroute_ordinal_lattice_input",
+                "ordinal lattice manifest family differs")
+        root = path.parent
+        result = {name: np.load(root / row["path"], mmap_mode="r",
+                                allow_pickle=False)
+                  for name, row in manifest["outputs"].items()
+                  if name not in ("train_document_positions",)}
+        source = manifest["source"]
+        result["eval_vectors"] = np.memmap(
+            Path(source["document_vectors"]), mode="r", dtype="<f4",
+            shape=(int(source["document_count"]), int(source["dimension"])))
+        return result
     archive = np.load(path, allow_pickle=False)
     required = ("train_vectors", "train_queries", "eval_vectors", "eval_queries",
                 "eval_teacher_ids", "eval_teacher_scores")
@@ -183,6 +216,9 @@ def load_input(path: Path) -> dict[str, np.ndarray]:
     require(not missing, "ordinal lattice input missing: " + ", ".join(missing))
     result = {name: np.asarray(archive[name]) for name in required}
     result["eval_partition"] = np.asarray(archive["eval_partition"] if "eval_partition" in archive else np.full(len(result["eval_queries"]), "all", dtype="U5"))
+    if "eval_qrel_ids" in archive and "eval_qrel_scores" in archive:
+        result["eval_qrel_ids"] = np.asarray(archive["eval_qrel_ids"])
+        result["eval_qrel_scores"] = np.asarray(archive["eval_qrel_scores"])
     return result
 
 
@@ -216,6 +252,8 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 positions = np.flatnonzero(partitions == partition)
                 rows.extend(evaluate_router(name, documents, queries[positions],
                     data["eval_teacher_ids"][positions], data["eval_teacher_scores"][positions],
+                    (data.get("eval_qrel_ids")[positions] if "eval_qrel_ids" in data else None),
+                    (data.get("eval_qrel_scores")[positions] if "eval_qrel_scores" in data else None),
                     np.asarray([partition] * len(positions)), query_codes[positions], postings,
                     levels, args.cell_budgets, args.document_budgets, replication,
                     payload, model_bytes, levels == 2, boundary_costs))
