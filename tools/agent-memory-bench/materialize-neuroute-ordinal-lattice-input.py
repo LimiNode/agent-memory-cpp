@@ -142,6 +142,9 @@ def run(args: argparse.Namespace) -> None:
                                           size=args.train_documents,
                                           replace=False))
     train_vectors = np.asarray(documents[sample_positions], dtype=np.float32)
+    train_query_vectors = np.asarray(queries[train_query_positions], dtype=np.float32)
+    train_teacher_ids, train_teacher_scores = exact_top(
+        documents, train_query_vectors, args.teacher_k, args.block_documents)
     document_positions = read_document_ids(args.e5_root /
                                            "evaluation-document-ids.jsonl")
     qrel_ids, qrel_scores = read_qrels(args.e5_root / "evaluation-qrels.tsv",
@@ -150,7 +153,9 @@ def run(args: argparse.Namespace) -> None:
     outputs = {
         "train_vectors": save(args.output / "train-vectors.npy", train_vectors),
         "train_queries": save(args.output / "train-queries.npy",
-                              np.asarray(queries[train_query_positions], dtype=np.float32)),
+                              train_query_vectors),
+        "train_teacher_ids": save(args.output / "train-teacher-ids.npy", train_teacher_ids),
+        "train_teacher_scores": save(args.output / "train-teacher-scores.npy", train_teacher_scores),
         "eval_queries": save(args.output / "eval-queries.npy", eval_queries),
         "eval_teacher_ids": save(args.output / "eval-teacher-ids.npy", teacher_ids),
         "eval_teacher_scores": save(args.output / "eval-teacher-scores.npy", teacher_scores),
