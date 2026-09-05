@@ -78,3 +78,11 @@ Experiment notes must distinguish:
 Timing values from a single local run are directional. Treat them as stable
 benchmark evidence only after the harness uses repeated runs, warm-up rules,
 fixed environment notes, and preserved raw outputs.
+
+## Latest PCA12 routing follow-ups
+
+- [Diversity-aware centroid routing](2026-09-06-pca12-routing-diversity-centroid.md)
+- [Weighted-kNN cell routing](2026-09-06-pca12-weighted-knn-routing.md)
+- [Direct4096 data scaling](2026-09-06-direct4096-data-scaling.md)
+- [Centroid-prior/Hungarian set router](2026-09-06-centroid-prior-hungarian-set-router.md)
+- [Routing synthesis and native-cascade status](2026-09-06-pca12-routing-synthesis.md)
