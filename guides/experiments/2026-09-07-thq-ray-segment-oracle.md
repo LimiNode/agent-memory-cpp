@@ -20,12 +20,11 @@ teacher top-10 prototypes in the best `K` geometric candidates. Runner:
 
 | geometry | K=256 | K=512 | K=1,024 | K=2,048 | K=5,000 | K=10,000 |
 |---|---:|---:|---:|---:|---:|---:|
-| one teacher anchor | .0342 | .0737 | .1599 | .3368 | .7230 | .9816 |
-| four teacher anchors, min segment distance | .0493 | .0941 | .1684 | .3217 | .7171 | .9605 |
+| one teacher anchor | .9020 | .9289 | .9526 | .9678 | .9776 | .9816 |
+| four teacher anchors, min segment distance | not recomputed in this correction | | | | | |
 
 These are routing-ceiling figures, not final retrieval nDCG. The one-anchor
-10k value is the mean over all 152 queries; per-query values were 135/152 at
-1.0, 11 at .9, 3 at .8, 1 at .7 and 2 at .6.
+10k value is the mean over all 152 queries.
 
 ## Interpretation
 

@@ -101,3 +101,5 @@ fixed environment notes, and preserved raw outputs.
 - [Runtime-anchor and spherical THQ geometry oracle](2026-09-07-thq-runtime-anchor-and-spherical-oracle.md)
 - [Prototype-IVF anchor recall oracle](2026-09-07-prototype-ivf-anchor-recall.md)
 - [Nearest-E5 anchor inside IVF pool](2026-09-07-ivf-pool-nearest-anchor-ray.md)
+- [Anchor-routing synthesis and next gates](2026-09-08-anchor-routing-synthesis.md)
+- [Bounded best-anchor-in-pool pilot](2026-09-08-bounded-best-anchor-ray.md)

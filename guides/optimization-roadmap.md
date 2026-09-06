@@ -1235,6 +1235,15 @@ IVF M=1/16/32/64, confirming that useful anchors exist in larger pools but
 that exposing them is costly. The next anchor study is rank-aware selection
 and an explicit best-anchor-within-pool ceiling; neither may be substituted
 for the runtime selector.
+The bounded best-anchor pilot (top-four cosine anchors per pool) is a selector
+diagnostic only; its smoke result improved M=4 from .963 to .988 at K=10k.
+The full-pool best-anchor ceiling and held-out rank-aware selector remain
+unmeasured and are required before discrete shared-alpha work.
+The frozen anchor-routing order is: pool characterization, best-anchor ceiling,
+practical in-pool selectors, the 5k/10k/15k/20k/40k budget sweep, and only
+then discrete shared-alpha transitions. Privileged teacher anchors and global
+nearest-prototype scans remain upper-bound controls; they must never be
+reported as serving routes.
 For THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of
