@@ -92,3 +92,4 @@ fixed environment notes, and preserved raw outputs.
 - [THQ-aware directional MIH triage](2026-09-06-thq-mih-directional-triage.md)
 - [Directional THQ geometry oracle](2026-09-06-thq-direction-geometry-oracle.md)
 - [Teacher-direction THQ transition-cost oracle](2026-09-06-thq-transition-cost-oracle.md)
+- [Prototype-direction THQ transition-cost oracle](2026-09-06-thq-prototype-transition-cost-oracle.md)
