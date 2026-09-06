@@ -100,3 +100,4 @@ fixed environment notes, and preserved raw outputs.
 - [Continuous THQ ray/segment geometry oracle](2026-09-07-thq-ray-segment-oracle.md)
 - [Runtime-anchor and spherical THQ geometry oracle](2026-09-07-thq-runtime-anchor-and-spherical-oracle.md)
 - [Prototype-IVF anchor recall oracle](2026-09-07-prototype-ivf-anchor-recall.md)
+- [Nearest-E5 anchor inside IVF pool](2026-09-07-ivf-pool-nearest-anchor-ray.md)
