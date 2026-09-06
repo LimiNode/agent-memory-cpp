@@ -1180,9 +1180,14 @@ not interchangeable benchmark rows:
   explicit candidate budgets and exact or quantized final rerank.
 * `quality`: float IVF -> local K8 -> K32/R0 -> R4 cascade, retained as the
   quality reference because its coarse geometry has been validated.
-* `FP32-free`: THQ3/THQ4 full scan -> K256/K512 -> packed INT10/INT12 (or
-  INT8 where its measured tail is acceptable), with no document FP32 read
-  online. This remains experimental until qrels and tail gates are met.
+
+`FP32-free` is an orthogonal final-representation axis, not a fourth routing
+architecture.  Each of the profiles above may use FP32, FP16, packed INT10 or
+packed INT12 for its final bounded rerank.  The current flat candidate is
+`THQ3/THQ4 scan -> K256 -> packed INT10`; it remains experimental until qrels
+and tail gates are met.  This separation also keeps the successful quality
+R4 cascade alive while allowing its expensive document FP32 tail to be tested
+independently.
 
 All profiles must report qrels nDCG@10, teacher top-10 overlap, p05/worst
 query, candidate and posting counts, bytes read, payload/model bytes, native
@@ -1199,7 +1204,10 @@ THQ K128/K256/K512 frontier; (3) FP32-free final rerank with true packed
 INT8/10/12 versus an explicit int16-storage control; (4) native routed THQ3/4
 and packed INT10; (5) directional/gradient-aware THQ-MIH, measuring random
 reads and bytes as well as quality; and (6) apples-to-apples MDBX/R4 replay of
-flat, routed, K8 and MIH survivors. No compact codec may be promoted from
+flat, routed, K8 and MIH survivors. For THQ-aware MIH, the first gate is
+THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
+lower touched bytes than sequential scan; random reads and p95/p99 are part of
+the same gate. No compact codec may be promoted from
 overlap alone: a product gate requires qrels and tail-latency evidence.
 
 The returned `VectorHit` remains only a candidate. The retrieval engine

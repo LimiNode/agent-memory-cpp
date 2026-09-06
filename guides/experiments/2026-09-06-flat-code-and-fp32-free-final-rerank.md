@@ -84,6 +84,21 @@ quality gate remains both metrics plus tail behavior.
   cascade.  That remains the quality profile for large collections and an
   apples-to-apples MDBX replay is still required.
 
+The historical R4 path is a quality reference, not a competing flat-code row:
+
+```text
+float/R4 routing -> K8 prototypes -> top-1024 addresses
+-> K32 actual-document representatives -> learned R0
+-> approximately 5k documents -> compact cascade -> top10
+```
+
+Its measured weakness was the global K8 coarse scan (roughly 63--69 ms for
+about 454k prototype comparisons), not the later narrowing stages.  Therefore
+the next meaningful comparison is `flat THQ` versus `cheap gate -> K32/local
+refinement -> compact rerank`, with the same downstream MDBX and answer-quality
+contract.  A successful gate must beat sequential THQ on total latency and
+bytes while preserving the flat THQ top-256 and exact-E5 top-10 ceilings.
+
 ## Follow-ups
 
 1. Repeat INT10/INT12 on an independent corpus and add a true int16 physical
@@ -91,6 +106,7 @@ quality gate remains both metrics plus tail behavior.
 2. Complete the broad flat-code table (ITQ/ADC, PQ/OPQ, RaBitQ/BBQ, ternary,
    nonlinear INT4-12) under the same K and byte-read contract.
 3. Benchmark directional/gradient-aware THQ-MIH against sequential THQ,
-   including random reads, bytes and p95/p99.
+   including random reads, bytes and p95/p99.  The initial acceptance target is
+   >= .995 exact-E5 top-10 survival with materially fewer touched bytes.
 4. Replay the flat and float-IVF/K8/R4 profiles through the same MDBX postings
    and final answer-quality evaluation before selecting a production default.
