@@ -1168,6 +1168,40 @@ coverage. Compare that ceiling with the same exact-vector pool before
 attributing a result to the cross-encoder. The experiment may use an external
 multilingual model, but production inference remains host-owned and optional.
 
+### Evidence-backed compact retrieval profiles (M2+ research)
+
+The roadmap keeps both a simple flat-search product profile and the previously
+successful long float-IVF/K8/R4 cascade. They are alternative operating points,
+not interchangeable benchmark rows:
+
+* `flat`: sequential THQ3/THQ4 (or another validated compact codec) followed
+  by a bounded rerank; intended for small knowledge bases.
+* `balanced`: float document-IVF or PCA routing, then THQ/ITQ/INT scoring with
+  explicit candidate budgets and exact or quantized final rerank.
+* `quality`: float IVF -> local K8 -> K32/R0 -> R4 cascade, retained as the
+  quality reference because its coarse geometry has been validated.
+* `FP32-free`: THQ3/THQ4 full scan -> K256/K512 -> packed INT10/INT12 (or
+  INT8 where its measured tail is acceptable), with no document FP32 read
+  online. This remains experimental until qrels and tail gates are met.
+
+All profiles must report qrels nDCG@10, teacher top-10 overlap, p05/worst
+query, candidate and posting counts, bytes read, payload/model bytes, native
+p50/p95/p99, and update behavior. Frozen THQ thresholds support
+append/tombstone updates without retraining. Frozen PCA/IVF assigns a new
+document to a cell and appends a posting; rebuild is background work for drift.
+Corpus-derived K8 centroids follow the same foreground-update rule but require
+periodic centroid refresh.
+
+The ordered research queue is: (1) a broad flat-code family table (FP16,
+packed linear/nonlinear INT4/5/6/8/10/12, ITQ128/208/256/384 Hamming and ADC,
+THQ3/THQ4, ternary/quaternary, PQ/OPQ, RaBitQ-RR-1 and BBQ-block-1); (2) flat
+THQ K128/K256/K512 frontier; (3) FP32-free final rerank with true packed
+INT8/10/12 versus an explicit int16-storage control; (4) native routed THQ3/4
+and packed INT10; (5) directional/gradient-aware THQ-MIH, measuring random
+reads and bytes as well as quality; and (6) apples-to-apples MDBX/R4 replay of
+flat, routed, K8 and MIH survivors. No compact codec may be promoted from
+overlap alone: a product gate requires qrels and tail-latency evidence.
+
 The returned `VectorHit` remains only a candidate. The retrieval engine
 hydrates the active envelope/payload, validates scope, lifecycle, authority,
 `unit_revision`, optional resource generation, and provenance before context

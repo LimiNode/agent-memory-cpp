@@ -118,11 +118,14 @@ struct Input {
     std::vector<float> vectors, query_vectors, qrel_scores;
     std::vector<std::int64_t> teacher, qrels;
     std::vector<std::uint8_t> thq_codes, thq_queries, itq_codes, itq_queries;
+    std::vector<std::uint8_t> thq3_codes, thq3_queries, int8_codes, int10_codes, int12_codes;
+    std::vector<float> scalar_minimum, scalar_maximum;
 };
 
 Input load(const std::string& manifest_path) {
     std::ifstream stream(manifest_path); json m; stream >> m;
-    if(m.value("family", "") != "thq_full_scan_materialization_v1")
+    if(m.value("family", "") != "thq_full_scan_materialization_v1" &&
+       m.value("family", "") != "thq_full_scan_materialization_v2")
         throw std::runtime_error("THQ full-scan manifest family differs");
     const auto path = [](const json& row) { return row.at("path").get<std::string>(); };
     Input input; input.documents = m.at("documents"); input.queries = m.at("queries");
@@ -131,15 +134,52 @@ Input load(const std::string& manifest_path) {
     input.teacher = read_file<std::int64_t>(path(m["references"]["teacher_ids"]));
     input.qrels = read_file<std::int64_t>(path(m["references"]["qrel_ids"]));
     input.qrel_scores = read_file<float>(path(m["references"]["qrel_scores"]));
-    input.thq_codes = read_file<std::uint8_t>(path(m["outputs"]["document_codes"]));
-    input.thq_queries = read_file<std::uint8_t>(path(m["outputs"]["query_codes"]));
+    if(m.value("schema_version", 1) >= 2) {
+        input.thq_codes = read_file<std::uint8_t>(path(m["outputs"]["thq4_document_codes"]));
+        input.thq_queries = read_file<std::uint8_t>(path(m["outputs"]["thq4_query_codes"]));
+    } else {
+        input.thq_codes = read_file<std::uint8_t>(path(m["outputs"]["document_codes"]));
+        input.thq_queries = read_file<std::uint8_t>(path(m["outputs"]["query_codes"]));
+    }
     input.itq_codes = read_file<std::uint8_t>(path(m["references"]["itq_document_codes"]));
     input.itq_queries = read_file<std::uint8_t>(path(m["references"]["itq_query_codes"]));
+    if(m.value("schema_version", 1) >= 2) {
+        input.thq3_codes = read_file<std::uint8_t>(path(m["outputs"]["thq3_document_codes"]));
+        input.thq3_queries = read_file<std::uint8_t>(path(m["outputs"]["thq3_query_codes"]));
+        input.int8_codes = read_file<std::uint8_t>(path(m["outputs"]["int8_document_codes"]));
+        input.int10_codes = read_file<std::uint8_t>(path(m["outputs"]["int10_document_codes"]));
+        input.int12_codes = read_file<std::uint8_t>(path(m["outputs"]["int12_document_codes"]));
+        input.scalar_minimum = read_file<float>(path(m["outputs"]["scalar_minimum"]));
+        input.scalar_maximum = read_file<float>(path(m["outputs"]["scalar_maximum"]));
+    }
     if(input.vectors.size() != input.documents * dimension ||
        input.query_vectors.size() != input.queries * dimension ||
        input.teacher.size() != input.queries * 10 || input.qrels.size() != input.queries * 20)
         throw std::runtime_error("THQ full-scan payload shape differs");
     return input;
+}
+
+std::uint16_t packed_level(const std::uint8_t* bytes, std::size_t coordinate,
+                           unsigned bits) {
+    const std::size_t base = coordinate * bits;
+    std::uint16_t value = 0;
+    for(unsigned bit = 0; bit < bits; ++bit)
+        value |= static_cast<std::uint16_t>(((bytes[(base + bit) / 8] >> ((base + bit) % 8)) & 1U) << bit);
+    return value;
+}
+
+float scalar_dot(const std::uint8_t* code, const float* query,
+                 const std::vector<float>& minimum, const std::vector<float>& maximum,
+                 unsigned bits) {
+    const float levels = static_cast<float>((1U << bits) - 1U);
+    float result = 0.0F;
+    for(std::size_t coordinate = 0; coordinate < dimension; ++coordinate) {
+        const float span = std::max(maximum[coordinate] - minimum[coordinate], 1.0e-8F);
+        const float reconstructed = minimum[coordinate] +
+            static_cast<float>(packed_level(code, coordinate, bits)) * span / levels;
+        result += reconstructed * query[coordinate];
+    }
+    return result;
 }
 
 } // namespace
@@ -153,15 +193,18 @@ int main(int argc, char** argv) {
         auto input = load(argv[1]);
         if(argc == 4) input.queries = std::min(input.queries,
             static_cast<std::size_t>(std::stoul(argv[3])));
-        json report{{"schema_version", 1}, {"family", "native_thq_full_scan_result_v1"},
+        json report{{"schema_version", 2}, {"family", "native_thq_full_scan_result_v2"},
                     {"query_count", input.queries}, {"rows", json::array()}};
-        for(const auto codec : {std::string("itq256_hamming"), std::string("thq4_quantile")}) {
-            const auto& codes = codec[0] == 'i' ? input.itq_codes : input.thq_codes;
-            const auto& queries = codec[0] == 'i' ? input.itq_queries : input.thq_queries;
-            const std::size_t bytes = codec[0] == 'i' ? 32 : 144;
+        for(const auto codec : {std::string("itq256_hamming"), std::string("thq3_quantile"), std::string("thq4_quantile")}) {
+            const bool itq = codec == "itq256_hamming";
+            const bool thq3 = codec == "thq3_quantile";
+            const auto& codes = itq ? input.itq_codes : (thq3 ? input.thq3_codes : input.thq_codes);
+            const auto& queries = itq ? input.itq_queries : (thq3 ? input.thq3_queries : input.thq_queries);
+            const std::size_t bytes = itq ? 32 : (thq3 ? 96 : 144);
             std::vector<std::vector<double>> overlaps(4), ndcgs(4), scan_ms(4),
                 top_ms(4), exact_ms(4), total_ms(4);
-            const std::array<unsigned, 4> limits{{256, 512, 768, 1024}};
+            std::array<std::array<std::vector<double>, 4>, 3> scalar_overlaps{}, scalar_ndcgs{}, scalar_ms{};
+            const std::array<unsigned, 4> limits{{128, 256, 512, 1024}};
             for(auto& values : {&overlaps, &ndcgs, &scan_ms, &top_ms, &exact_ms, &total_ms})
                 for(auto& row : *values) row.reserve(input.queries);
             for(std::size_t query = 0; query < input.queries; ++query) {
@@ -196,6 +239,28 @@ int main(int argc, char** argv) {
                     top_ms[lane].push_back(ms(top_started, topped));
                     exact_ms[lane].push_back(ms(topped, stop));
                     total_ms[lane].push_back(ms(begin, stop));
+                    if(!itq && input.scalar_minimum.size() == dimension) {
+                        const std::uint8_t* scalar_codes[] = {input.int8_codes.data(), input.int10_codes.data(), input.int12_codes.data()};
+                        const unsigned scalar_bits[] = {8, 10, 12};
+                        const std::size_t scalar_bytes[] = {384, 480, 576};
+                        for(std::size_t variant = 0; variant < 3; ++variant) {
+                            const auto scalar_started = Clock::now();
+                            std::vector<float> scalar_scores(shortlist.size());
+                            for(std::size_t i = 0; i < shortlist.size(); ++i)
+                                scalar_scores[i] = scalar_dot(scalar_codes[variant] + shortlist[i] * scalar_bytes[variant],
+                                    input.query_vectors.data() + query * dimension, input.scalar_minimum,
+                                    input.scalar_maximum, scalar_bits[variant]);
+                            const auto scalar_order = top(scalar_scores, 10,
+                                [](float a, float b) { return a > b; });
+                            std::vector<std::uint32_t> scalar_selected(scalar_order.size());
+                            for(std::size_t i = 0; i < scalar_selected.size(); ++i)
+                                scalar_selected[i] = shortlist[scalar_order[i]];
+                            const auto scalar_stop = Clock::now();
+                            scalar_overlaps[variant][lane].push_back(overlap(scalar_selected, input.teacher, query));
+                            scalar_ndcgs[variant][lane].push_back(ndcg(scalar_selected, input.qrels, input.qrel_scores, query));
+                            scalar_ms[variant][lane].push_back(ms(scalar_started, scalar_stop));
+                        }
+                    }
                 }
             }
             for(std::size_t lane = 0; lane < limits.size(); ++lane) {
@@ -206,7 +271,26 @@ int main(int argc, char** argv) {
                     {"mean_ndcg", std::accumulate(ndcgs[lane].begin(), ndcgs[lane].end(), 0.0) / ndcgs[lane].size()},
                     {"p05_overlap", percentile(overlaps[lane], .05)}, {"worst_overlap", percentile(overlaps[lane], 0.0)},
                     {"p95_scan_ms", percentile(scan_ms[lane], .95)}, {"p95_top_k_ms", percentile(top_ms[lane], .95)},
-                    {"p95_exact_ms", percentile(exact_ms[lane], .95)}, {"p95_total_ms", percentile(total_ms[lane], .95)}});
+                    {"p95_exact_ms", percentile(exact_ms[lane], .95)}, {"p95_total_ms", percentile(total_ms[lane], .95)},
+                    {"p99_scan_ms", percentile(scan_ms[lane], .99)}, {"p99_total_ms", percentile(total_ms[lane], .99)},
+                    {"bytes_read_per_query_scan", input.documents * bytes},
+                    {"bytes_read_per_query_final", static_cast<std::size_t>(limits[lane]) * bytes}});
+            }
+            if(!itq && input.scalar_minimum.size() == dimension) {
+                const char* names[] = {"int8_packed_final", "int10_packed_final", "int12_packed_final"};
+                const std::size_t payload[] = {384, 480, 576};
+                for(std::size_t variant = 0; variant < 3; ++variant)
+                    for(std::size_t lane = 0; lane < limits.size(); ++lane)
+                        report["rows"].push_back({{"codec", codec}, {"final_codec", names[variant]}, {"k", limits[lane]},
+                            {"payload_bytes_per_document", payload[variant]},
+                            {"routing_payload_bytes_per_document", bytes},
+                            {"mean_overlap", std::accumulate(scalar_overlaps[variant][lane].begin(), scalar_overlaps[variant][lane].end(), 0.0) / scalar_overlaps[variant][lane].size()},
+                            {"mean_ndcg", std::accumulate(scalar_ndcgs[variant][lane].begin(), scalar_ndcgs[variant][lane].end(), 0.0) / scalar_ndcgs[variant][lane].size()},
+                            {"p05_overlap", percentile(scalar_overlaps[variant][lane], .05)}, {"worst_overlap", percentile(scalar_overlaps[variant][lane], 0.0)},
+                            {"p95_final_ms", percentile(scalar_ms[variant][lane], .95)},
+                            {"p99_final_ms", percentile(scalar_ms[variant][lane], .99)},
+                            {"bytes_read_per_query_scan", input.documents * bytes},
+                            {"bytes_read_per_query_final", static_cast<std::size_t>(limits[lane]) * payload[variant]}});
             }
         }
         std::ofstream output(argv[2]); output << report.dump(2) << '\n';
