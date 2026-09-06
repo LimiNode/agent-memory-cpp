@@ -29,10 +29,12 @@ Mean survival over 152 queries, with a 10,000-candidate budget:
 | nearest E5 prototype | .9816 | not run separately (same anchor control) |
 | prototype-IVF top-1 | .9197 | not run separately |
 
-For the privileged linear segment, the budget curve was `.0342 / .0737 /
-.1599 / .3368 / .7230 / .9816` at K `256 / 512 / 1024 / 2048 / 5000 /
-10000`. The spherical curve was `.0375 / .0809 / .1579 / .3362 / .7217 /
-.9803`.
+The corrected privileged linear budget curve is `.9020 / .9289 / .9526 /
+.9678 / .9776 / .9816` at K `256 / 512 / 1024 / 2048 / 5000 / 10000`.
+Intermediate-K values in the earlier note were invalid because an unsorted
+`argpartition` prefix had been used; the runner now sorts the selected max-K
+set before taking prefixes. The spherical curve is `.8868 / .9197 / .9382 /
+.9612 / .9750 / .9803`.
 
 ## Interpretation
 
