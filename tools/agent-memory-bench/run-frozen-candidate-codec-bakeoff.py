@@ -182,7 +182,9 @@ def main() -> int:
     training = np.asarray(docs[:100_000], dtype=np.float32)
     thq = {levels: fit_thq(training, levels)[0] for levels in (3, 4)}
     scalar = {bits: codecs.ScalarScorer.make(bits, 1.0) for bits in (4, 8, 10, 12)}
-    itq_adc = codecs.ITQScorer.fit(training, 256, "adc", seed=13)
+    qproj = output_array(m, root, "query_projections_mapped").astype(np.float32)
+    adc_centers = np.fromfile(Path(m["native_payloads"]["adc_centroids"]["path"]),
+                               dtype="<f4").reshape(256, 2)
     rows: list[dict[str, Any]] = []
     for pool_name, pool in pools.items():
         route, budget = pool_name.rsplit("_", 1); budget = int(budget)
@@ -205,9 +207,12 @@ def main() -> int:
                 max_order = order[:1024]
                 max_ids = ids[max_order]
                 max_vectors = vectors[max_order]
+                symbols = ((document_codes[max_ids, :, None] >>
+                            np.arange(8, dtype=np.uint8)) & 1).reshape(len(max_ids), -1)
+                adc_values = adc_centers[np.arange(256, dtype=np.int32)[None, :], symbols]
                 second_scores: dict[str, np.ndarray] = {
                     "exact64": exact_pool[max_order],
-                    "adc64": itq_adc.scores(max_vectors, queries[qi]),
+                    "adc64": -np.sum((qproj[qi, None, :] - adc_values) ** 2, axis=1),
                 }
                 for bits in (4, 8, 10, 12):
                     second_scores[f"int{bits}_64"] = scalar[bits].scores(
