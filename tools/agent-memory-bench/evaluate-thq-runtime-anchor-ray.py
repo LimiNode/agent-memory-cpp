@@ -41,7 +41,7 @@ def main() -> int:
             for b in range(0,n,a.block_size):
                 e=min(n,b+a.block_size); block=np.asarray(x[b:e],dtype=np.float32); diff=block-query; d2=np.einsum('ij,ij->i',diff,diff,optimize=True); alpha=np.clip((diff@v)/max(vv,1e-12),0.0,1.0); score[b:e]=d2-alpha*alpha*vv
             best=np.minimum(best,score)
-        limit=min(a.top_budget,n); ranked=np.argpartition(best,limit-1)[:limit]
+        limit=min(a.top_budget,n); ranked=np.argpartition(best,limit-1)[:limit]; ranked=ranked[np.argsort(best[ranked],kind='stable')]
         rows.append({'query':qi,'anchor_source':a.anchor_source,'anchor_ids':[int(v) for v in anchors],'survival_by_budget':{str(k):float(np.isin(targets[qi],ranked[:k]).sum()/10.0) for k in budgets}})
     result={'schema_version':1,'family':'thq_runtime_anchor_ray_oracle_v1','anchor_source':a.anchor_source,'anchors':a.anchors,'queries':count,'query_start':start,'rows':rows,'elapsed_seconds':time.perf_counter()-begun}; a.output.write_text(json.dumps(result,indent=2)+'\n',encoding='utf-8')
     print(json.dumps({'queries':count,'anchor_source':a.anchor_source,'anchors':a.anchors,'survival_by_budget':{k:float(np.mean([r['survival_by_budget'][k] for r in rows])) for k in map(str,budgets)}},indent=2)); return 0
