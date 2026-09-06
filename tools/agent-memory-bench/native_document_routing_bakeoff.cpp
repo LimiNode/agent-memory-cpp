@@ -93,24 +93,83 @@ std::vector<std::uint32_t> order_desc(const std::vector<float>& scores) {
 }
 std::vector<std::uint32_t> fill(const Input& x, const std::vector<std::uint32_t>& order, std::size_t budget) {
     std::vector<std::uint32_t> docs; docs.reserve(budget);
-    for (auto cell: order) { const auto& p=x.postings[cell]; if (docs.size()+p.size()>budget) continue; docs.insert(docs.end(),p.begin(),p.end()); if(docs.size()==budget) break; }
+    std::vector<bool> seen(C, false);
+    for (auto cell: order) {
+        if (cell >= C || seen[cell]) continue;
+        seen[cell] = true;
+        const auto& p=x.postings[cell];
+        if (docs.size()+p.size()>budget) continue;
+        docs.insert(docs.end(),p.begin(),p.end());
+        if(docs.size()==budget) break;
+    }
     return docs;
 }
 std::vector<std::uint32_t> pca_order(const Input& x, const float* q) {
     float z[12]{}; for(int i=0;i<12;++i) for(std::size_t j=0;j<D;++j) z[i]+=(q[j]-x.mean[j])*x.projection[i*D+j];
     std::vector<float> s(C); for(std::size_t c=0;c<C;++c){float v=0;for(int i=0;i<12;++i){const auto bit=((c>>i)&1U)!=0;const auto d=std::abs(z[i]-x.cuts[i]);const auto qbit=z[i]>x.cuts[i];if(bit!=qbit)v+=d;}s[c]=-v;} return order_desc(s);
 }
+std::vector<std::uint32_t> prepend_fallback(const std::vector<std::uint32_t>& seeds,
+                                             const std::vector<std::uint32_t>& fallback,
+                                             std::size_t count) {
+    std::vector<std::uint32_t> result;
+    result.reserve(C);
+    std::vector<bool> seen(C, false);
+    for (std::size_t i = 0; i < std::min(count, seeds.size()); ++i) {
+        if (seeds[i] < C && !seen[seeds[i]]) {
+            seen[seeds[i]] = true;
+            result.push_back(seeds[i]);
+        }
+    }
+    for (const auto cell : fallback) {
+        if (cell < C && !seen[cell]) {
+            seen[cell] = true;
+            result.push_back(cell);
+        }
+    }
+    return result;
+}
+
 std::vector<std::uint32_t> route_order(const Input& x, const float* q, const std::string& policy, const Model* model) {
-    if(policy=="pca_threshold") return pca_order(x,q);
+    const auto fallback = pca_order(x,q);
+    if(policy=="pca_threshold") return fallback;
     std::vector<float> s(C,-1e30f);
     float z[12]{}; for(int i=0;i<12;++i) for(std::size_t j=0;j<D;++j) z[i]+=(q[j]-x.mean[j])*x.projection[i*D+j];
-    if(policy=="pca_centroid_k1") for(std::size_t c=0;c<C;++c){float v=0;for(int i=0;i<12;++i){const auto d=x.pca[c*12+i]-z[i];v+=d*d;}s[c]=-v;}
-    else if(policy.rfind("e5_centroid_k",0)==0){const int k=std::stoi(policy.substr(13));const auto& centers=x.e5[static_cast<int>(std::log2(k))];for(std::size_t c=0;c<C;++c)for(int a=0;a<k;++a)s[c]=std::max(s[c],dot(centers.data()+(c*k+a)*D,q,D));}
-    else { float h[128]{}; for(int i=0;i<128;++i){h[i]=model->b1[i];for(std::size_t j=0;j<D;++j)h[i]+=(q[j]-x.mean[j])*model->w1[i*D+j];h[i]=0.5f*h[i]*(1+std::tanh(std::sqrt(2.0f/3.14159265f)*(h[i]+0.044715f*h[i]*h[i]*h[i])));} for(std::size_t c=0;c<C;++c)s[c]=model->b2[c];for(std::size_t c=0;c<C;++c)for(int i=0;i<128;++i)s[c]+=h[i]*model->w2[c*128+i]; auto direct=order_desc(s), pca=pca_order(x,q); direct.resize(32); direct.insert(direct.end(),pca.begin(),pca.end()); return direct; }
-    return order_desc(s);
+    bool hybrid = false;
+    std::size_t seed_count = 0;
+    if(policy=="pca_centroid_k1" || policy=="pca_centroid_k1_hybrid8") {
+        for(std::size_t c=0;c<C;++c){float v=0;for(int i=0;i<12;++i){const auto d=x.pca[c*12+i]-z[i];v+=d*d;}s[c]=-v;}
+        hybrid = policy.find("_hybrid") != std::string::npos; seed_count = 8;
+    } else if(policy.rfind("e5_centroid_k",0)==0) {
+        const auto marker = policy.find("_hybrid");
+        const auto k_end = marker == std::string::npos ? policy.size() : marker;
+        const int k=std::stoi(policy.substr(13, k_end - 13));
+        const auto& centers=x.e5[static_cast<int>(std::log2(k))];
+        for(std::size_t c=0;c<C;++c)for(int a=0;a<k;++a)s[c]=std::max(s[c],dot(centers.data()+(c*k+a)*D,q,D));
+        hybrid = marker != std::string::npos; seed_count = 8;
+    } else if(policy.rfind("direct4096_top",0)==0) {
+        const auto marker = policy.find("_hybrid");
+        const auto end = marker == std::string::npos ? policy.size() : marker;
+        seed_count = static_cast<std::size_t>(std::stoi(policy.substr(14, end - 14)));
+        float h[128]{};
+        for(int i=0;i<128;++i){h[i]=model->b1[i];for(std::size_t j=0;j<D;++j)h[i]+=(q[j]-x.mean[j])*model->w1[i*D+j];h[i]=0.5f*h[i]*(1+std::tanh(std::sqrt(2.0f/3.14159265f)*(h[i]+0.044715f*h[i]*h[i]*h[i])));}
+        for(std::size_t c=0;c<C;++c)s[c]=model->b2[c];
+        for(std::size_t c=0;c<C;++c)for(int i=0;i<128;++i)s[c]+=h[i]*model->w2[c*128+i];
+        const auto direct = order_desc(s);
+        return marker == std::string::npos ? direct : prepend_fallback(direct, fallback, seed_count);
+    } else {
+        throw std::runtime_error("unknown routing policy: " + policy);
+    }
+    const auto centroid_order = order_desc(s);
+    return hybrid ? prepend_fallback(centroid_order, fallback, seed_count) : centroid_order;
 }
 double ndcg(const std::vector<std::uint32_t>& docs,const Input& x,std::size_t qi){double den=0,num=0;std::vector<float> ideal;for(int i=0;i<20;++i)if(x.qrels[qi*20+i]>=0)ideal.push_back(x.teacher_scores[qi*20+i]);std::sort(ideal.rbegin(),ideal.rend());for(std::size_t i=0;i<ideal.size()&&i<10;++i)den+=(std::pow(2.0,ideal[i])-1)/std::log2(double(i+2));for(std::size_t i=0;i<docs.size()&&i<10;++i){double rel=0;for(int j=0;j<20;++j)if(x.qrels[qi*20+j]==docs[i])rel=x.teacher_scores[qi*20+j];num+=(std::pow(2.0,rel)-1)/std::log2(double(i+2));}return den?num/den:0;}
 struct Row { double overlap=0, qndcg=0, route=0, total=0; std::size_t candidates=0; double candidate_overlap=0, hamming_overlap=0, adc_overlap=0; std::vector<std::uint32_t> selected; };
+double quantile(std::vector<double> values, double fraction) {
+    if (values.empty()) return 0.0;
+    std::sort(values.begin(), values.end());
+    const auto index = static_cast<std::size_t>(fraction * static_cast<double>(values.size() - 1));
+    return values[index];
+}
 Row run(const Input& x, const std::string& policy, std::size_t qi,
         std::size_t budget, const Model* model) {
     const auto begin = Clock::now();
@@ -182,15 +241,24 @@ Row run(const Input& x, const std::string& policy, std::size_t qi,
 
 int main(int argc, char** argv) {
     try {
-        if (argc != 3 && argc != 4) {
-            std::cerr << "usage: native_document_routing_bakeoff <manifest> <output> [debug]\n";
+        if (argc < 3 || argc > 7) {
+            std::cerr << "usage: native_document_routing_bakeoff <manifest> <output> [debug] [query_limit] [repeats]\n";
             return 2;
         }
         auto input = load(argv[1]);
         const bool debug = argc == 4;
         if (debug) input.q = std::min<std::size_t>(5, input.q);
-        json output{{"schema_version", 1},
+        if (argc >= 5) input.q = std::min<std::size_t>(input.q,
+            static_cast<std::size_t>(std::stoul(argv[4])));
+        const int requested_repeats = argc >= 6 ? std::stoi(argv[5]) : (debug ? 1 : 4);
+        if (requested_repeats < 1) throw std::runtime_error("repeats must be positive");
+        json output{{"schema_version", 2},
                     {"family", "native_document_routing_bakeoff_result_v1"},
+                    {"protocol", {{"query_count", input.q},
+                                   {"repeats", requested_repeats},
+                                   {"hamming_limit", 768}, {"adc_limit", 64},
+                                   {"exact_limit", 10},
+                                   {"policy_matrix", "pure_and_seed_plus_pca_fallback"}}},
                     {"rows", json::array()}};
         const std::vector<std::string> policies{
             "pca_threshold", "pca_centroid_k1", "e5_centroid_k1",
@@ -198,18 +266,25 @@ int main(int argc, char** argv) {
         const auto emit = [&](const std::string& policy, std::size_t budget,
                               const Model* model) {
             std::vector<Row> rows;
-            const int repeats = debug ? 1 : 4;
+            const int repeats = requested_repeats;
             for (std::size_t query = 0; query != input.q; ++query)
                 for (int repeat = 0; repeat != repeats; ++repeat)
                     rows.push_back(run(input, policy, query, budget, model));
             double overlap = 0, candidate_overlap = 0, hamming_overlap = 0;
             double adc_overlap = 0, qrels = 0, candidates = 0;
             std::vector<double> timing;
+            std::vector<double> candidate_values, hamming_values, adc_values,
+                final_values, ndcg_values;
             for (const auto& row : rows) {
                 overlap += row.overlap; candidate_overlap += row.candidate_overlap;
                 hamming_overlap += row.hamming_overlap; adc_overlap += row.adc_overlap;
                 qrels += row.qndcg; candidates += row.candidates;
                 timing.push_back(row.total);
+                candidate_values.push_back(row.candidate_overlap);
+                hamming_values.push_back(row.hamming_overlap);
+                adc_values.push_back(row.adc_overlap);
+                final_values.push_back(row.overlap);
+                ndcg_values.push_back(row.qndcg);
             }
             std::sort(timing.begin(), timing.end());
             output["rows"].push_back({
@@ -219,6 +294,16 @@ int main(int argc, char** argv) {
                 {"mean_adc_overlap", adc_overlap / rows.size()},
                 {"mean_overlap", overlap / rows.size()},
                 {"mean_qrels_ndcg", qrels / rows.size()},
+                {"p05_candidate_overlap", quantile(candidate_values, 0.05)},
+                {"worst_candidate_overlap", *std::min_element(candidate_values.begin(), candidate_values.end())},
+                {"p05_hamming_overlap", quantile(hamming_values, 0.05)},
+                {"worst_hamming_overlap", *std::min_element(hamming_values.begin(), hamming_values.end())},
+                {"p05_adc_overlap", quantile(adc_values, 0.05)},
+                {"worst_adc_overlap", *std::min_element(adc_values.begin(), adc_values.end())},
+                {"p05_final_overlap", quantile(final_values, 0.05)},
+                {"worst_final_overlap", *std::min_element(final_values.begin(), final_values.end())},
+                {"p05_qrels_ndcg", quantile(ndcg_values, 0.05)},
+                {"worst_qrels_ndcg", *std::min_element(ndcg_values.begin(), ndcg_values.end())},
                 {"mean_candidates", candidates / rows.size()},
                 {"p95_total_ms", timing[static_cast<std::size_t>(
                     .95 * static_cast<double>(timing.size() - 1))]},
@@ -227,10 +312,19 @@ int main(int argc, char** argv) {
         for (const auto& policy : policies)
             for (const auto budget : {32000U, 64000U})
                 emit(policy, budget, nullptr);
-        for (std::size_t seed = 0; seed != input.models.size(); ++seed)
+        for (const auto& policy : {"pca_centroid_k1_hybrid8", "e5_centroid_k1_hybrid8",
+                                   "e5_centroid_k2_hybrid8", "e5_centroid_k4_hybrid8",
+                                   "e5_centroid_k8_hybrid8"})
             for (const auto budget : {32000U, 64000U})
-                emit("direct4096_top32_seed" + std::to_string(seed),
-                     budget, &input.models[seed]);
+                emit(policy, budget, nullptr);
+        for (std::size_t seed = 0; seed != input.models.size(); ++seed)
+            for (const auto top_n : {8U, 16U, 32U, 64U})
+                for (const auto budget : {32000U, 64000U}) {
+                    emit("direct4096_top" + std::to_string(top_n) + "_seed" + std::to_string(seed),
+                         budget, &input.models[seed]);
+                    emit("direct4096_top" + std::to_string(top_n) + "_hybrid_seed" + std::to_string(seed),
+                         budget, &input.models[seed]);
+                }
         std::ofstream result(argv[2]);
         result << output.dump(2) << '\n';
         return 0;

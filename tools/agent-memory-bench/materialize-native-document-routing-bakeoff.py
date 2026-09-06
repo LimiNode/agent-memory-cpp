@@ -33,6 +33,12 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def array_sha256(value: np.ndarray) -> str:
+    """Hash the canonical little-endian bytes used by a frozen array."""
+    canonical = np.ascontiguousarray(value.astype(value.dtype.newbyteorder("<"), copy=False))
+    return hashlib.sha256(canonical.tobytes(order="C")).hexdigest()
+
+
 def load(name: str, filename: str) -> Any:
     spec = importlib.util.spec_from_file_location(name, THIS / filename)
     require(spec is not None and spec.loader is not None, f"cannot load {filename}")
@@ -58,6 +64,7 @@ def main() -> int:
     parser.add_argument("--native-input-manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--seeds", default="13,37,101")
+    parser.add_argument("--epochs", type=int, default=180)
     args = parser.parse_args()
     manifest = json.loads(args.cache.read_text(encoding="utf-8"))
     require(manifest.get("family") == "neuroute_ordinal_lattice_input",
@@ -87,7 +94,7 @@ def main() -> int:
     artifacts: dict[str, dict[str, np.ndarray]] = {}
     for seed in (int(value) for value in args.seeds.split(",")):
         artifacts[str(seed)] = multi.train_head(normalized_train, train_cells,
-                                                4096, seed, 120)
+                                                4096, seed, args.epochs)
     args.output.mkdir(parents=True, exist_ok=True)
     outputs: dict[str, Any] = {}
     outputs["mean"] = write_array(args.output / "pca-mean.f32", mean)
@@ -156,7 +163,18 @@ def main() -> int:
              "outputs": outputs, "native_payloads": native_payloads,
              "protocol": {"partition": "pca12_documents_stride4_svd_median",
                           "centroid_training": "deterministic_5_iter_bucket_kmeans_in_pca12",
-                          "direct4096": "supervised_multihot_cell_head_top32_then_pca_fallback",
+                          "direct4096": "supervised_multihot_cell_head",
+                          "direct4096_training": {
+                              "architecture": "384->128 GELU(tanh)->4096",
+                              "objective": "hard-negative softplus ranking + weighted BCE",
+                              "train_query_count": int(len(train_queries)),
+                              "train_queries_sha256": array_sha256(train_queries),
+                              "train_teacher_ids_sha256": array_sha256(train_ids),
+                              "epochs": int(args.epochs),
+                              "seeds": [int(value) for value in args.seeds.split(",")],
+                              "optimizer": "AdamW(lr=0.01,weight_decay=1e-4)",
+                              "hard_negative_k": 128,
+                          },
                           "cascade": "cell postings -> Hamming@768 -> ADC@64 -> exact@10",
                           "warmups": 1, "repeats": 3}}
     (args.output / "manifest.json").write_text(
