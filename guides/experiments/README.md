@@ -94,3 +94,4 @@ fixed environment notes, and preserved raw outputs.
 - [Teacher-direction THQ transition-cost oracle](2026-09-06-thq-transition-cost-oracle.md)
 - [Prototype-direction THQ transition-cost oracle](2026-09-06-thq-prototype-transition-cost-oracle.md)
 - [Multi-anchor THQ transition-cost oracle](2026-09-07-thq-multianchor-transition-cost-oracle.md)
+- [Continuous THQ ray/segment geometry oracle](2026-09-07-thq-ray-segment-oracle.md)
