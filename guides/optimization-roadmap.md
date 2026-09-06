@@ -1178,8 +1178,10 @@ not interchangeable benchmark rows:
   by a bounded rerank; intended for small knowledge bases.
 * `balanced`: float document-IVF or PCA routing, then THQ/ITQ/INT scoring with
   explicit candidate budgets and exact or quantized final rerank.
-* `quality`: float IVF -> local K8 -> K32/R0 -> R4 cascade, retained as the
-  quality reference because its coarse geometry has been validated.
+* `quality`: float K8-prototype IVF -> local K8 -> K32/R0 -> R4 cascade,
+  retained as the quality reference because its coarse geometry has been
+  validated.  The full global K8 scan is an offline teacher only; it is not
+  the intended serving implementation.
 
 `FP32-free` is an orthogonal final-representation axis, not a fourth routing
 architecture.  Each of the profiles above may use FP32, FP16, packed INT10 or
@@ -1195,7 +1197,10 @@ p50/p95/p99, and update behavior. Frozen THQ thresholds support
 append/tombstone updates without retraining. Frozen PCA/IVF assigns a new
 document to a cell and appends a posting; rebuild is background work for drift.
 Corpus-derived K8 centroids follow the same foreground-update rule but require
-periodic centroid refresh.
+periodic centroid refresh.  The #269 prototype-IVF result is the current R4
+improvement: it preserved about .9996 at M=4096 while avoiding the global
+454k-prototype scan.  Its native/local-K8 and serialized-index costs still need
+an apples-to-apples serving replay before promotion.
 
 The ordered research queue is: (1) a broad flat-code family table (FP16,
 packed linear/nonlinear INT4/5/6/8/10/12, ITQ128/208/256/384 Hamming and ADC,

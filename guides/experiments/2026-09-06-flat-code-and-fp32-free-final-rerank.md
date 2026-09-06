@@ -84,20 +84,29 @@ quality gate remains both metrics plus tail behavior.
   cascade.  That remains the quality profile for large collections and an
   apples-to-apples MDBX replay is still required.
 
-The historical R4 path is a quality reference, not a competing flat-code row:
+The R4 line was in fact improved after the original global-K8 experiments.
+PR #269 introduced the float K8-prototype IVF generator:
 
 ```text
-float/R4 routing -> K8 prototypes -> top-1024 addresses
+float K8-prototype IVF -> top-1024 addresses
 -> K32 actual-document representatives -> learned R0
 -> approximately 5k documents -> compact cascade -> top10
 ```
 
-Its measured weakness was the global K8 coarse scan (roughly 63--69 ms for
-about 454k prototype comparisons), not the later narrowing stages.  Therefore
-the next meaningful comparison is `flat THQ` versus `cheap gate -> K32/local
-refinement -> compact rerank`, with the same downstream MDBX and answer-quality
-contract.  A successful gate must beat sequential THQ on total latency and
-bytes while preserving the flat THQ top-256 and exact-E5 top-10 ceilings.
+At M=4096, prototype IVF preserved about .9996 of the successful R4 routing
+result; the configuration replay reported roughly 13.5 ms generator p95 and
+15.7 ms local-K8 p95, with native total about 39.3 ms before adding external
+generator time.  This is a real quality/architecture improvement over the
+global K8 scan, whose roughly 63--69 ms cost remains an offline teacher
+diagnostic.  It is not yet a production winner because native in-process
+prototype-IVF, index footprint and MDBX page behavior were not measured under
+the final serving contract.
+
+Therefore the next meaningful comparison is `flat THQ` versus the improved
+`float K8-prototype IVF -> K32/local refinement -> compact rerank`, with the
+same downstream MDBX and answer-quality contract.  A new cheap gate/MIH is
+required to beat this prototype-IVF quality while reducing total latency and
+bytes, not merely to beat the obsolete global K8 implementation.
 
 ## Follow-ups
 
