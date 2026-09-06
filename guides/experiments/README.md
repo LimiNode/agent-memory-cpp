@@ -88,3 +88,4 @@ fixed environment notes, and preserved raw outputs.
 - [Routing synthesis and native-cascade status](2026-09-06-pca12-routing-synthesis.md)
 - [Native document-routing full-cascade bake-off](2026-09-06-native-document-routing-bakeoff.md)
 - [Flat compact codes and FP32-free final rerank](2026-09-06-flat-code-and-fp32-free-final-rerank.md)
+- [R4, flat THQ and product-profile synthesis](2026-09-06-r4-flat-product-synthesis.md)
