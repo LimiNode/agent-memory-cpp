@@ -1168,6 +1168,65 @@ coverage. Compare that ceiling with the same exact-vector pool before
 attributing a result to the cross-encoder. The experiment may use an external
 multilingual model, but production inference remains host-owned and optional.
 
+### Evidence-backed compact retrieval profiles (M2+ research)
+
+The roadmap keeps both a simple flat-search product profile and the previously
+successful long float-IVF/K8/R4 cascade. They are alternative operating points,
+not interchangeable benchmark rows:
+
+* `flat`: sequential THQ3/THQ4 (or another validated compact codec) followed
+  by a bounded rerank; intended for small knowledge bases.
+* `balanced`: float document-IVF or PCA routing, then THQ/ITQ/INT scoring with
+  explicit candidate budgets and exact or quantized final rerank.
+* `quality`: float K8-prototype IVF -> local K8 -> K32/R0 -> R4 cascade,
+  retained as the quality reference because its coarse geometry has been
+  validated.  The full global K8 scan is an offline teacher only; it is not
+  the intended serving implementation.
+
+`FP32-free` is an orthogonal final-representation axis, not a fourth routing
+architecture.  Each of the profiles above may use FP32, FP16, packed INT10 or
+packed INT12 for its final bounded rerank.  The current flat candidate is
+`THQ3/THQ4 scan -> K256 -> packed INT10`; it remains experimental until qrels
+and tail gates are met.  This separation also keeps the successful quality
+R4 cascade alive while allowing its expensive document FP32 tail to be tested
+independently.
+
+All profiles must report qrels nDCG@10, teacher top-10 overlap, p05/worst
+query, candidate and posting counts, bytes read, payload/model bytes, native
+p50/p95/p99, and update behavior. Frozen THQ thresholds support
+append/tombstone updates without retraining. Frozen PCA/IVF assigns a new
+document to a cell and appends a posting; rebuild is background work for drift.
+Corpus-derived K8 centroids follow the same foreground-update rule but require
+periodic centroid refresh.  The #269 prototype-IVF result is the current R4
+improvement: it preserved about .9996 at M=4096 while avoiding the global
+454k-prototype scan.  Its native/local-K8 and serialized-index costs still need
+an apples-to-apples serving replay before promotion.
+
+The ordered research queue is: (1) a broad flat-code family table (FP16,
+packed linear/nonlinear INT4/5/6/8/10/12, ITQ128/208/256/384 Hamming and ADC,
+THQ3/THQ4, ternary/quaternary, PQ/OPQ, RaBitQ-RR-1 and BBQ-block-1); (2) flat
+THQ K128/K256/K512 frontier; (3) FP32-free final rerank with true packed
+INT8/10/12 versus an explicit int16-storage control; (4) a three-way native
+bake-off of flat THQ, simple prototype-IVF+THQ, and the full
+prototype-IVF/local-K8/K32/R0 cascade across candidate pools 5k/10k/20k/40k/
+64k/100k/200k/1M; (5) ordinal/threshold-transition indexing (the raw
+bitwise-MIH variant is closed), measuring random reads and bytes as well as
+quality; and (6) apples-to-apples MDBX replay of the surviving profiles. The
+first ordinal-transition gate is an oracle-only teacher-direction cost
+ranking; the 2026-09-06 run retained just .025 of THQ top-256 at a 10k budget,
+so this scalar formulation is closed and no physical index should be built
+from it. Prototype-direction was subsequently tested and retained only .038 of
+THQ top-256 at a 10k budget, and a four-anchor union retained .116, so the
+additive scalar formulation is closed for teacher, prototype and multi-anchor
+anchors. A separate continuous shared-alpha segment oracle reached .982
+teacher top-10 survival at 10k; this keeps true ray/segment geometry open while
+still disallowing a physical index until a discrete approximation passes the
+same gate. For THQ-aware MIH, the first gate is
+THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
+lower touched bytes than sequential scan; random reads and p95/p99 are part of
+the same gate. No compact codec may be promoted from
+overlap alone: a product gate requires qrels and tail-latency evidence.
+
 The returned `VectorHit` remains only a candidate. The retrieval engine
 hydrates the active envelope/payload, validates scope, lifecycle, authority,
 `unit_revision`, optional resource generation, and provenance before context

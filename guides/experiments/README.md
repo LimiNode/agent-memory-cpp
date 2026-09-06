@@ -82,3 +82,19 @@ Experiment notes must distinguish:
 Timing values from a single local run are directional. Treat them as stable
 benchmark evidence only after the harness uses repeated runs, warm-up rules,
 fixed environment notes, and preserved raw outputs.
+## Latest PCA12 routing follow-ups
+
+- [Diversity-aware centroid routing](2026-09-06-pca12-routing-diversity-centroid.md)
+- [Weighted-kNN cell routing](2026-09-06-pca12-weighted-knn-routing.md)
+- [Direct4096 data scaling](2026-09-06-direct4096-data-scaling.md)
+- [Centroid-prior/Hungarian set router](2026-09-06-centroid-prior-hungarian-set-router.md)
+- [Routing synthesis and native-cascade status](2026-09-06-pca12-routing-synthesis.md)
+- [Native document-routing full-cascade bake-off](2026-09-06-native-document-routing-bakeoff.md)
+- [Flat compact codes and FP32-free final rerank](2026-09-06-flat-code-and-fp32-free-final-rerank.md)
+- [R4, flat THQ and product-profile synthesis](2026-09-06-r4-flat-product-synthesis.md)
+- [THQ-aware directional MIH triage](2026-09-06-thq-mih-directional-triage.md)
+- [Directional THQ geometry oracle](2026-09-06-thq-direction-geometry-oracle.md)
+- [Teacher-direction THQ transition-cost oracle](2026-09-06-thq-transition-cost-oracle.md)
+- [Prototype-direction THQ transition-cost oracle](2026-09-06-thq-prototype-transition-cost-oracle.md)
+- [Multi-anchor THQ transition-cost oracle](2026-09-07-thq-multianchor-transition-cost-oracle.md)
+- [Continuous THQ ray/segment geometry oracle](2026-09-07-thq-ray-segment-oracle.md)
