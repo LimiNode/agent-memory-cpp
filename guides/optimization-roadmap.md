@@ -1212,7 +1212,12 @@ prototype-IVF/local-K8/K32/R0 cascade across candidate pools 5k/10k/20k/40k/
 64k/100k/200k/1M; (5) ordinal/threshold-transition indexing (the raw
 bitwise-MIH variant is closed), measuring random reads and bytes as well as
 quality; and (6) apples-to-apples MDBX replay of the surviving profiles. For
-THQ-aware MIH, the first gate is
+quality; and (6) apples-to-apples MDBX replay of the surviving profiles. The
+first ordinal-transition gate is an oracle-only teacher-direction cost
+ranking; the 2026-09-06 run retained just .025 of THQ top-256 at a 10k budget,
+so this scalar formulation is closed and no physical index should be built
+from it. Prototype-direction and multi-anchor transition-path oracles remain
+separate, predeclared follow-ups. For THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of
 the same gate. No compact codec may be promoted from
