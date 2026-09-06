@@ -1216,10 +1216,10 @@ first ordinal-transition gate is an oracle-only teacher-direction cost
 ranking; the 2026-09-06 run retained just .025 of THQ top-256 at a 10k budget,
 so this scalar formulation is closed and no physical index should be built
 from it. Prototype-direction was subsequently tested and retained only .038 of
-THQ top-256 at a 10k budget, so the one-anchor scalar formulation is closed for
-both teacher and prototype anchors. A multi-anchor transition-path oracle is
-the final separate, predeclared follow-up; no physical best-first index is
-justified unless it passes the same gate. For THQ-aware MIH, the first gate is
+THQ top-256 at a 10k budget, and a four-anchor union retained .116, so the
+scalar formulation is closed for teacher, prototype and multi-anchor anchors.
+No physical best-first index is justified unless a materially different joint
+transition model passes the same gate. For THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of
 the same gate. No compact codec may be promoted from

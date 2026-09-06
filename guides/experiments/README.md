@@ -93,3 +93,4 @@ fixed environment notes, and preserved raw outputs.
 - [Directional THQ geometry oracle](2026-09-06-thq-direction-geometry-oracle.md)
 - [Teacher-direction THQ transition-cost oracle](2026-09-06-thq-transition-cost-oracle.md)
 - [Prototype-direction THQ transition-cost oracle](2026-09-06-thq-prototype-transition-cost-oracle.md)
+- [Multi-anchor THQ transition-cost oracle](2026-09-07-thq-multianchor-transition-cost-oracle.md)
