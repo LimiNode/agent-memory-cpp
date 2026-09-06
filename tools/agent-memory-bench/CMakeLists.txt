@@ -213,6 +213,22 @@ if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
     endif()
 endif()
 
+add_executable(agent-memory-native-thq-full-scan
+    native_thq_full_scan.cpp
+)
+target_link_libraries(agent-memory-native-thq-full-scan
+    PRIVATE
+        agent_memory::json
+)
+if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+    if(MSVC)
+        target_compile_options(agent-memory-native-thq-full-scan PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(agent-memory-native-thq-full-scan PRIVATE -mavx2)
+    endif()
+endif()
+
 add_executable(agent-memory-mih-native-sparse-arbitrary-m
     mih_native_sparse_arbitrary_m.cpp
 )
