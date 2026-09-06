@@ -61,3 +61,47 @@ centroid lookup already dominates the learned and kNN alternatives tested here,
 while the teacher oracle shows that the remaining gap is multimodal routing,
 not merely threshold calibration.  The next decision must be made on the
 native full cascade, with route quality and physical cost measured together.
+
+## Review update and decision protocol
+
+The negative MMR result is specific to seed prepending: it does not show that
+query-conditioned multimodality is impossible.  It shows that a few diverse
+seeds cannot overcome the subsequent ranked-cell stream under a fixed budget.
+Likewise, the weighted-kNN result closes the weighted-vote formulation, not the
+historical single-neighbour cell-set transfer mechanism.  Neither distinction
+changes the implementation priority.
+
+The large teacher-oracle gap must also remain correctly scoped.  The oracle
+proves that the PCA12 partition contains useful regions; it does not prove that
+there is a cheap, generalising function from a query to those regions.  The
+current four learned or vote-based attempts did not find such a function.
+
+The next experiment is therefore a narrow native bake-off with one identical
+downstream cascade and two operating budgets:
+
+```text
+A  corrected PCA threshold scheduler
+B  PCA centroid K=1
+C  E5 centroid K=1
+D  E5 centroid K=2
+E  E5 centroid K=4
+F  E5 centroid K=8
+G  Direct4096 top-32 (latency control)
+```
+
+Run every route at 32k and 64k candidates; retain 128k only as a diagnostic.
+Record router p50/p95, cell scoring, postings/MDBX access, raw and unique
+candidates, bytes read, THQ/Hamming, ADC/INT4, exact rerank, total p50/p95/p99,
+final qrels nDCG@10, and index/model memory.  The Direct4096 row requires a
+small native MLP inference adapter (or an explicitly documented precomputed
+control); MMR, weighted-kNN, and the current Hungarian hybrid should not be
+ported unless this matrix reveals a Pareto point they can plausibly beat.
+
+Decision rule:
+
+* choose the cheapest route whose full-cascade qrels nDCG is within the agreed
+  quality tolerance of the best row;
+* if E5 K4/K8 adds quality but loses its latency budget, retain PCA K1 as the
+  production control and E5 K4/K8 as optional quality profiles;
+* if all centroid routes lose after downstream reranking, stop the PCA12 branch
+  rather than trying to close the oracle gap with more Python router variants.
