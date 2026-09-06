@@ -90,3 +90,4 @@ fixed environment notes, and preserved raw outputs.
 - [Flat compact codes and FP32-free final rerank](2026-09-06-flat-code-and-fp32-free-final-rerank.md)
 - [R4, flat THQ and product-profile synthesis](2026-09-06-r4-flat-product-synthesis.md)
 - [THQ-aware directional MIH triage](2026-09-06-thq-mih-directional-triage.md)
+- [Directional THQ geometry oracle](2026-09-06-thq-direction-geometry-oracle.md)
