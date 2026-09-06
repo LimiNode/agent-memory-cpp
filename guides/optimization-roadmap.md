@@ -1221,7 +1221,12 @@ additive scalar formulation is closed for teacher, prototype and multi-anchor
 anchors. A separate continuous shared-alpha segment oracle reached .982
 teacher top-10 survival at 10k; this keeps true ray/segment geometry open while
 still disallowing a physical index until a discrete approximation passes the
-same gate. For THQ-aware MIH, the first gate is
+same gate.
+The follow-up anchor check found .982 for nearest-prototype geometry but only
+.920 for the simplified prototype-IVF top-1 anchor at 10k, so anchor routing
+is now the primary open risk. A calibrated anchor schedule and discrete
+shared-alpha approximation must precede any physical index.
+For THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of
 the same gate. No compact codec may be promoted from
