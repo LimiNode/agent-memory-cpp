@@ -1206,10 +1206,13 @@ The ordered research queue is: (1) a broad flat-code family table (FP16,
 packed linear/nonlinear INT4/5/6/8/10/12, ITQ128/208/256/384 Hamming and ADC,
 THQ3/THQ4, ternary/quaternary, PQ/OPQ, RaBitQ-RR-1 and BBQ-block-1); (2) flat
 THQ K128/K256/K512 frontier; (3) FP32-free final rerank with true packed
-INT8/10/12 versus an explicit int16-storage control; (4) native routed THQ3/4
-and packed INT10; (5) directional/gradient-aware THQ-MIH, measuring random
-reads and bytes as well as quality; and (6) apples-to-apples MDBX/R4 replay of
-flat, routed, K8 and MIH survivors. For THQ-aware MIH, the first gate is
+INT8/10/12 versus an explicit int16-storage control; (4) a three-way native
+bake-off of flat THQ, simple prototype-IVF+THQ, and the full
+prototype-IVF/local-K8/K32/R0 cascade across candidate pools 5k/10k/20k/40k/
+64k/100k/200k/1M; (5) ordinal/threshold-transition indexing (the raw
+bitwise-MIH variant is closed), measuring random reads and bytes as well as
+quality; and (6) apples-to-apples MDBX replay of the surviving profiles. For
+THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of
 the same gate. No compact codec may be promoted from

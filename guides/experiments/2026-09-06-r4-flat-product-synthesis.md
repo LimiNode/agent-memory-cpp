@@ -56,6 +56,28 @@ made.
 5. Replay all survivors through identical MDBX postings and answer-quality
    evaluation before selecting a default.
 
+The decisive replay has three, not two, controls:
+
+```text
+A. flat THQ4 -> K256 -> INT10
+B. prototype-IVF -> candidate documents -> THQ4 -> INT10
+C. prototype-IVF -> local K8 -> K32/R0 -> ~5k -> THQ4 -> INT10
+```
+
+The candidate pool sweep is `5k / 10k / 20k / 40k / 64k / 100k / 200k / 1M`.
+This exposes whether K8/K32/R0 actually pays for itself once THQ can cheaply
+rerank a larger pool, and identifies the flat/IVF crossover as corpus size
+grows.  Every row must include stage-by-stage teacher survival, qrels nDCG,
+p05/worst query, p95/p99, bytes touched and MDBX page behavior. The `.9996`
+figure from #269 is specifically prototype-generator teacher survival at
+M=4096, not the final retrieval score.
+
+The raw-bit THQ-MIH triage is closed as a product candidate.  A separate
+ordinal/threshold-transition index remains open: its probes must represent
+valid quantized-coordinate level transitions and charge each threshold
+crossing by query-specific margin, rather than enumerating arbitrary flipped
+bits.
+
 The intended product matrix is two-dimensional: routing profile (flat,
 balanced IVF, quality prototype-IVF/R4) crossed with final representation
 (FP32, FP16, INT10, INT12).  FP32-free is not a separate routing architecture.
