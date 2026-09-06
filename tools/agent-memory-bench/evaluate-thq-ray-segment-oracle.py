@@ -55,7 +55,7 @@ def main() -> int:
                     score[b:e]=1.0-np.where(arc,cos_arc,cos_end)
             best=np.minimum(best,score)
         budgets=sorted({min(int(v), n) for v in a.budgets.split(',') if int(v)>0})
-        limit=max(budgets+[min(a.top_budget,n)]); ranked=np.argpartition(best,limit-1)[:limit]
+        limit=max(budgets+[min(a.top_budget,n)]); ranked=np.argpartition(best,limit-1)[:limit]; ranked=ranked[np.argsort(best[ranked],kind='stable')]
         # Deterministic ordering only matters inside the reported budget; the
         # metric is set membership and is robust to ties in this oracle.
         out={'query':qi,'anchors':int(max(1,a.anchors)),'ranked_budget':int(limit),
