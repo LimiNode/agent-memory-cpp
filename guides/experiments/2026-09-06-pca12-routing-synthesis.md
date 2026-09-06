@@ -29,9 +29,15 @@ single centroid-prior budget fill.
 
 ## Native full-cascade evidence
 
-The route-integrated variants above were not materialized into the native R4
-benchmark in this batch.  The correct native reference remains the frozen
-2026-08-31 end-to-end study:
+The route-integrated document cascade has now been replayed natively (in-memory
+postings, not MDBX) with the same Hamming@768 → ADC@64 → exact@10 downstream
+contract.  Full details are in [the native bake-off note](2026-09-06-native-document-routing-bakeoff.md).
+At 64k, final overlap/nDCG were `.668/.565` for PCA threshold, `.660/.551` for
+E5 K=4, `.738/.596` for E5 K=8, and `.730/.638` for Direct4096.  The latter
+numbers are the composed-cascade result and replace any interpretation based
+only on the earlier routing ceiling.
+
+The correct MDBX/R4 reference remains the frozen 2026-08-31 end-to-end study:
 
 `guides/experiments/2026-08-31-neuroute-r4-native-end-to-end.md`
 
@@ -42,11 +48,9 @@ with identical mean nDCG@10 (`.650652`) across the three paths.  Those are
 native implementation results for the historical frozen router; they are not
 quality numbers for the new centroid/Hungarian routes.
 
-Consequently no new route is promoted to production from these Python ceilings.
-The correct next native experiment is to materialize the E5-centroid K=1/K=4/8
-postings (and, separately, Direct4096) into the same R4 harness, then compare
-candidate count, bytes read, p95/p99, and final qrels nDCG.  Until that replay,
-the practical choices are:
+The remaining gap is storage integration: materialize the same cell postings in
+MDBX/R4 and compare candidate count, bytes read, p95/p99, and final qrels nDCG.
+Until that replay, the practical choices are:
 
 * **quality/latency control:** E5 centroid K=4 or K=8, if the extra centroid
   metadata and candidate budget are acceptable;

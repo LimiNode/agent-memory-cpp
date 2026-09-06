@@ -86,3 +86,4 @@ fixed environment notes, and preserved raw outputs.
 - [Direct4096 data scaling](2026-09-06-direct4096-data-scaling.md)
 - [Centroid-prior/Hungarian set router](2026-09-06-centroid-prior-hungarian-set-router.md)
 - [Routing synthesis and native-cascade status](2026-09-06-pca12-routing-synthesis.md)
+- [Native document-routing full-cascade bake-off](2026-09-06-native-document-routing-bakeoff.md)
