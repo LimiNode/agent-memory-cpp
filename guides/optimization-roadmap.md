@@ -1230,6 +1230,11 @@ The anchor-recall oracle measured teacher top-1 inclusion of .349/.822/.901/
 .941/.980 for IVF top-1/8/16/32/64 cells respectively, with mean pools from
 478 to 40.8k prototypes. This anchor frontier must be reported separately
 from segment-scoring quality.
+The nearest-E5-in-pool selector reaches .920/.972/.976/.980 at K=10k for
+IVF M=1/16/32/64, confirming that useful anchors exist in larger pools but
+that exposing them is costly. The next anchor study is rank-aware selection
+and an explicit best-anchor-within-pool ceiling; neither may be substituted
+for the runtime selector.
 For THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of
