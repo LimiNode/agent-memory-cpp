@@ -1226,6 +1226,10 @@ The follow-up anchor check found .982 for nearest-prototype geometry but only
 .920 for the simplified prototype-IVF top-1 anchor at 10k, so anchor routing
 is now the primary open risk. A calibrated anchor schedule and discrete
 shared-alpha approximation must precede any physical index.
+The anchor-recall oracle measured teacher top-1 inclusion of .349/.822/.901/
+.941/.980 for IVF top-1/8/16/32/64 cells respectively, with mean pools from
+478 to 40.8k prototypes. This anchor frontier must be reported separately
+from segment-scoring quality.
 For THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of

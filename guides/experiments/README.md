@@ -99,3 +99,4 @@ fixed environment notes, and preserved raw outputs.
 - [Multi-anchor THQ transition-cost oracle](2026-09-07-thq-multianchor-transition-cost-oracle.md)
 - [Continuous THQ ray/segment geometry oracle](2026-09-07-thq-ray-segment-oracle.md)
 - [Runtime-anchor and spherical THQ geometry oracle](2026-09-07-thq-runtime-anchor-and-spherical-oracle.md)
+- [Prototype-IVF anchor recall oracle](2026-09-07-prototype-ivf-anchor-recall.md)
