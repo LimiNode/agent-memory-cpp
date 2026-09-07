@@ -75,6 +75,22 @@ that it helps.
 
 ## Near-Term Tasks
 
+### Native THQ/IVF bake-off (2026-09-08)
+
+- Keep flat THQ4 as the latency denominator: on the frozen DE-1M replay it
+  reaches about `.6540` nDCG at K=256 with p95 total around 29.5 ms.
+- E5-IVF → local THQ is a valid balanced architecture, but the first native
+  implementation is slower (p95 36.5 ms at 20k and 158.5 ms at 100k) because
+  it scans centroids and uses scalar list traversal.  Do not promote it on
+  Python timings alone.
+- The next implementation gate is actual MDBX/page behavior and fused native
+  centroid/list kernels.  Report logical bytes, physical pages, raw posting
+  visits, unique candidates, and warm/cold p50/p95/p99 separately.
+- Re-run the post-#269 prototype-IVF → local K8/K32/R0 cascade with the modern
+  THQ3/THQ4 → INT10/INT12 tail before selecting a quality-oriented product
+  profile.  Its historical external-generator timing is not an apples-to-
+  apples native result.
+
 ### Vector Math Baseline
 
 - Add a small dependency-free `math` or `index` helper for dot product, cosine,

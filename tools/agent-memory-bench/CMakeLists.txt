@@ -229,6 +229,14 @@ if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
     endif()
 endif()
 
+add_executable(agent-memory-native-thq-ivf-bakeoff
+    native_thq_ivf_bakeoff.cpp
+)
+target_link_libraries(agent-memory-native-thq-ivf-bakeoff
+    PRIVATE
+        agent_memory::json
+)
+
 add_executable(agent-memory-mih-native-sparse-arbitrary-m
     mih_native_sparse_arbitrary_m.cpp
 )
