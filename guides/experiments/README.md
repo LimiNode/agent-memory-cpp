@@ -101,3 +101,4 @@ fixed environment notes, and preserved raw outputs.
 - [Anchor-routing synthesis and next gates](2026-09-08-anchor-routing-synthesis.md)
 - [Bounded best-anchor-in-pool pilot](2026-09-08-bounded-best-anchor-ray.md)
 - [Prototype-to-document expansion ceiling](2026-09-08-prototype-document-expansion.md)
+- [Document-conditioned prototype target replay](2026-09-08-document-conditioned-prototype-target.md)
