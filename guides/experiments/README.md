@@ -107,3 +107,5 @@ fixed environment notes, and preserved raw outputs.
 - [Document-conditioned prototype target replay](2026-09-08-document-conditioned-prototype-target.md)
 - [Downstream best-anchor screen](2026-09-08-downstream-best-anchor-screen.md)
 - [Quota multi-anchor downstream oracle](2026-09-08-quota-multianchor-oracle.md)
+- [Broad shared-alpha anchor oracle closure](2026-09-08-broad-shared-alpha-oracle.md)
+- [THQ-aware IVF comparison](2026-09-08-thq-aware-ivf.md)
