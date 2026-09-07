@@ -1250,6 +1250,21 @@ postings, not qrels or serving results; the raw reports and methodology are
 recorded in [the expansion note](experiments/2026-09-08-prototype-document-expansion.md).
 The full-pool best-anchor ceiling and held-out rank-aware selector remain
 unmeasured and are required before discrete shared-alpha work.
+The first downstream best-anchor screen (16 queries, eight cosine candidates)
+improved mean survival from .663/.750 to .738/.844 at P=256/1024 for both
+global and IVF-top-8-cell screens.  A target-conditioned, target-leaking
+screen reached .763/.875 and is an upper bound only.  Target-address ranks
+under the teacher anchor had median 98 but p95 9,386, indicating that a small
+tail of remote semantic modes drives most losses.  These values are recorded
+in [the best-anchor screen note](experiments/2026-09-08-downstream-best-anchor-screen.md);
+they are diagnostic, not product quality or exhaustive best-anchor ceilings.
+The quota multi-anchor oracle (32-prototype steps, up to four anchors inside
+the global top-eight screen) reached .763/.863/.919 at P=256/1024/2048 on a
+16-query subset, only about .019 above the best single anchor at the first two
+budgets.  A target-conditioned, target-leaking eight-query smoke reached
+.925 at P=1024 and .963 at P=2048; this is still below the .995 gate and is
+not a runtime result.  Quota allocation is therefore a bounded diagnostic,
+not yet justification for a learned selector or physical directional index.
 The authoritative document-conditioned replay is now available: with the
 full R4 document-to-address mapping, shared-alpha teacher ranking reaches
 .653/.786/.859/.919/.955 exact-E5 top-10 survival at P=256/1024/2048/5000/

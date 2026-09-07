@@ -102,3 +102,5 @@ fixed environment notes, and preserved raw outputs.
 - [Bounded best-anchor-in-pool pilot](2026-09-08-bounded-best-anchor-ray.md)
 - [Prototype-to-document expansion ceiling](2026-09-08-prototype-document-expansion.md)
 - [Document-conditioned prototype target replay](2026-09-08-document-conditioned-prototype-target.md)
+- [Downstream best-anchor screen](2026-09-08-downstream-best-anchor-screen.md)
+- [Quota multi-anchor downstream oracle](2026-09-08-quota-multianchor-oracle.md)
