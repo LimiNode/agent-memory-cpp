@@ -1248,8 +1248,9 @@ showing that naive multi-anchor union does not close the prototype-to-document
 gap.  These are exact-E5 top-10 survival ceilings on representative-document
 postings, not qrels or serving results; the raw reports and methodology are
 recorded in [the expansion note](experiments/2026-09-08-prototype-document-expansion.md).
-The full-pool best-anchor ceiling and held-out rank-aware selector remain
-unmeasured and are required before discrete shared-alpha work.
+The broad top-64 downstream oracle is now measured, but remains privileged and
+only eight queries; it does not justify a held-out selector or discrete
+shared-alpha index at practical budgets.
 The first downstream best-anchor screen (16 queries, eight cosine candidates)
 improved mean survival from .663/.750 to .738/.844 at P=256/1024 for both
 global and IVF-top-8-cell screens.  A target-conditioned, target-leaking
@@ -1265,6 +1266,13 @@ budgets.  A target-conditioned, target-leaking eight-query smoke reached
 .925 at P=1024 and .963 at P=2048; this is still below the .995 gate and is
 not a runtime result.  Quota allocation is therefore a bounded diagnostic,
 not yet justification for a learned selector or physical directional index.
+The follow-up broad global top-64 screen found a better privileged single
+anchor, raising mean document survival to .800/.838/.888/.963 at
+P=1024/2048/4096/8192 on eight queries.  Exhaustive quota allocation inside
+the retained best-eight anchors reached .800/.863 at P=1024/2048.  This closes
+the specific small-union shared-alpha route at practical budgets, but does not
+claim a global impossibility result for other joint geometries; the experiment
+is recorded in [the broad oracle note](experiments/2026-09-08-broad-shared-alpha-oracle.md).
 The authoritative document-conditioned replay is now available: with the
 full R4 document-to-address mapping, shared-alpha teacher ranking reaches
 .653/.786/.859/.919/.955 exact-E5 top-10 survival at P=256/1024/2048/5000/
@@ -1274,14 +1282,26 @@ route weak; it also confirms that prototype recall is the wrong proxy because
 each target document maps to about 9.7 addresses and 74.5 K8 prototypes per
 query.  The result is recorded in
 [the document-conditioned target note](experiments/2026-09-08-document-conditioned-prototype-target.md).
-The frozen anchor-routing order is: pool characterization, prototype-to-document
-expansion ceiling, best-anchor ceiling, practical in-pool selectors, the
-5k/10k/15k/20k/40k budget sweep, and only then discrete shared-alpha
-transitions. The expansion gate must report unique addresses, raw and unique
-posting documents, duplicate rate, and exact-E5 top-10 survival; prototype
-survival alone is insufficient. Privileged teacher anchors and global
-nearest-prototype scans remain upper-bound controls; they must never be
-reported as serving routes.
+The THQ-aware IVF replay then tested the complementary data-adaptive
+partition hypothesis on the frozen 1M corpus.  E5-IVF followed by local THQ4
+reached .836/.914/.957 teacher survival at 20k/50k/100k candidates, while
+THQ-native ordinal IVF reached .803/.899/.946.  Mean nDCG was .640/.646/.650
+for E5-IVF and .592/.645/.650 for THQ-native IVF.  Python p95 query time was
+24.2/52.6/102.0 ms for E5-IVF and 26.8/54.8/104.9 ms for THQ-native IVF.
+These are Python
+directional timings; the native flat THQ4 reference remains about .654 nDCG
+with roughly 39 ms p95 at K=256.  The result keeps E5-IVF -> local THQ as a
+balanced product candidate and relegates THQ-native IVF to a research control;
+see [the THQ-aware IVF note](experiments/2026-09-08-thq-aware-ivf.md).
+The frozen anchor-routing order is now: pool characterization,
+prototype-to-document expansion ceiling, broad best-anchor oracle, and only
+then any fundamentally different joint selector.  The expansion gate must
+report unique addresses, raw and unique posting documents, duplicate rate, and
+exact-E5 top-10 survival; prototype survival alone is insufficient.  Privileged
+teacher anchors and global nearest-prototype scans remain upper-bound controls;
+they must never be reported as serving routes.  The concrete
+shared-alpha/small-union/quota architecture is archived as a primary route;
+reopening requires a new geometry or a materially higher held-out ceiling.
 For THQ-aware MIH, the first gate is
 THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
 lower touched bytes than sequential scan; random reads and p95/p99 are part of
