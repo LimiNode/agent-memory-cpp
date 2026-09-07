@@ -1208,7 +1208,7 @@ THQ3/THQ4, ternary/quaternary, PQ/OPQ, RaBitQ-RR-1 and BBQ-block-1); (2) flat
 THQ K128/K256/K512 frontier; (3) FP32-free final rerank with true packed
 INT8/10/12 versus an explicit int16-storage control; (4) a three-way native
 bake-off of flat THQ, simple prototype-IVF+THQ, and the full
-prototype-IVF/local-K8/K32/R0 cascade across candidate pools 5k/10k/20k/40k/
+ prototype-IVF/local-K8/K32/R0 cascade across candidate pools 5k/10k/20k/40k/
 64k/100k/200k/1M; (5) ordinal/threshold-transition indexing (the raw
 bitwise-MIH variant is closed), measuring random reads and bytes as well as
 quality; and (6) apples-to-apples MDBX replay of the surviving profiles. The
@@ -1237,11 +1237,25 @@ and an explicit best-anchor-within-pool ceiling; neither may be substituted
 for the runtime selector.
 The bounded best-anchor pilot (top-four cosine anchors per pool) is a selector
 diagnostic only; its smoke result improved M=4 from .963 to .988 at K=10k.
+The prototype-to-document expansion replay then measured the missing
+composition gate with a privileged shared-alpha teacher anchor: mean exact
+document top-10 survival was .606/.730/.800/.859/.892 for P=256/1024/2048/
+5000/10000 prototypes, with mean pools of about 5.0k/19.1k/36.9k/86.1k/
+166.2k documents.  The selected prototypes occupied almost one distinct
+address each, so address deduplication provided little reduction.  A fixed
+four-anchor control was lower (.517/.653/.728/.821/.870 at the same budgets),
+showing that naive multi-anchor union does not close the prototype-to-document
+gap.  These are exact-E5 top-10 survival ceilings on representative-document
+postings, not qrels or serving results; the raw reports and methodology are
+recorded in [the expansion note](experiments/2026-09-08-prototype-document-expansion.md).
 The full-pool best-anchor ceiling and held-out rank-aware selector remain
 unmeasured and are required before discrete shared-alpha work.
-The frozen anchor-routing order is: pool characterization, best-anchor ceiling,
-practical in-pool selectors, the 5k/10k/15k/20k/40k budget sweep, and only
-then discrete shared-alpha transitions. Privileged teacher anchors and global
+The frozen anchor-routing order is: pool characterization, prototype-to-document
+expansion ceiling, best-anchor ceiling, practical in-pool selectors, the
+5k/10k/15k/20k/40k budget sweep, and only then discrete shared-alpha
+transitions. The expansion gate must report unique addresses, raw and unique
+posting documents, duplicate rate, and exact-E5 top-10 survival; prototype
+survival alone is insufficient. Privileged teacher anchors and global
 nearest-prototype scans remain upper-bound controls; they must never be
 reported as serving routes.
 For THQ-aware MIH, the first gate is

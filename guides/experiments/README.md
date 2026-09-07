@@ -103,3 +103,4 @@ fixed environment notes, and preserved raw outputs.
 - [Nearest-E5 anchor inside IVF pool](2026-09-07-ivf-pool-nearest-anchor-ray.md)
 - [Anchor-routing synthesis and next gates](2026-09-08-anchor-routing-synthesis.md)
 - [Bounded best-anchor-in-pool pilot](2026-09-08-bounded-best-anchor-ray.md)
+- [Prototype-to-document expansion ceiling](2026-09-08-prototype-document-expansion.md)
