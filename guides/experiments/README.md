@@ -109,3 +109,4 @@ fixed environment notes, and preserved raw outputs.
 - [Quota multi-anchor downstream oracle](2026-09-08-quota-multianchor-oracle.md)
 - [Broad shared-alpha anchor oracle closure](2026-09-08-broad-shared-alpha-oracle.md)
 - [THQ-aware IVF comparison](2026-09-08-thq-aware-ivf.md)
+- [Native flat THQ versus E5-IVF bake-off](2026-09-08-native-thq-ivf-bakeoff.md)
