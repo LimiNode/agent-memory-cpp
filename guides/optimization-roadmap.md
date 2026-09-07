@@ -1250,6 +1250,15 @@ postings, not qrels or serving results; the raw reports and methodology are
 recorded in [the expansion note](experiments/2026-09-08-prototype-document-expansion.md).
 The full-pool best-anchor ceiling and held-out rank-aware selector remain
 unmeasured and are required before discrete shared-alpha work.
+The authoritative document-conditioned replay is now available: with the
+full R4 document-to-address mapping, shared-alpha teacher ranking reaches
+.653/.786/.859/.919/.955 exact-E5 top-10 survival at P=256/1024/2048/5000/
+10000, but requires roughly 5.8k/21.5k/41.2k/94.9k/182.0k documents.  This
+raises the earlier representative-posting ceiling but leaves the small-budget
+route weak; it also confirms that prototype recall is the wrong proxy because
+each target document maps to about 9.7 addresses and 74.5 K8 prototypes per
+query.  The result is recorded in
+[the document-conditioned target note](experiments/2026-09-08-document-conditioned-prototype-target.md).
 The frozen anchor-routing order is: pool characterization, prototype-to-document
 expansion ceiling, best-anchor ceiling, practical in-pool selectors, the
 5k/10k/15k/20k/40k budget sweep, and only then discrete shared-alpha
