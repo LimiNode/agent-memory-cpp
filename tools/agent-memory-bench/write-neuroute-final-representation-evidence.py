@@ -12,6 +12,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import neuroute_authoritative_qrels as authoritative
+
 
 sys.dont_write_bytecode = True
 THIS = Path(__file__).resolve().parent
@@ -154,6 +156,10 @@ def run(args: argparse.Namespace) -> None:
             "final-representation evidence materialization differs")
     validate_quality(result, contract)
     validate_native(native, contract, runner.sha256(manifest_path), result)
+    authoritative_roots = authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ])
     with tempfile.TemporaryDirectory(prefix="neuroute-final-representation-replay-") as directory:
         root = Path(directory)
         replay_result = root / "result.json"
@@ -163,6 +169,11 @@ def run(args: argparse.Namespace) -> None:
                 "final-representation replay quality bytes differ")
         require((replay_materialization / "manifest.json").read_bytes() == manifest_path.read_bytes(),
                 "final-representation replay materialization manifest differs")
+    require(authoritative.validate_roots([
+        ("de-25k", args.de_e5_root), ("fr-25k", args.fr_e5_root),
+        ("ja-25k", args.ja_e5_root), ("de-1m", args.de_1m_e5_root),
+    ]) == authoritative_roots,
+            "final-representation authoritative roots changed during replay")
     completed = subprocess.run([
         str(args.native_executable), "--validate", str(args.contract),
         str(manifest_path), str(args.native_report),
@@ -180,8 +191,12 @@ def run(args: argparse.Namespace) -> None:
         "activation": result["activation"],
         "quality_source_files_sha256": runner.source_hashes(),
         "evidence_writer_sha256": runner.sha256(Path(__file__)),
+        "authoritative_qrels_validator_sha256": runner.sha256(
+            THIS / "neuroute_authoritative_qrels.py"),
+        "authoritative_roots": authoritative_roots,
         "native_evaluator_source_manifest_sha256": native["evaluator_source_manifest_sha256"],
         "quality_replay_byte_identical": True,
+        "authoritative_qrels_to_quality_replay_passed": True,
         "materialization_replay_byte_identical": True,
         "native_sequence_replay_passed": True,
         "decision": decision,
