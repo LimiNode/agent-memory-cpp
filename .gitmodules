@@ -7,3 +7,6 @@
 [submodule "external/hnswlib"]
 	path = external/hnswlib
 	url = https://github.com/nmslib/hnswlib.git
+[submodule "external/simdcomp"]
+	path = external/simdcomp
+	url = https://github.com/fast-pack/simdcomp.git

@@ -9,6 +9,7 @@ Project-owned source dependencies live as flat Git submodules under
 external/
     libmdbx/
     mdbx-containers/
+    simdcomp/
 ```
 
 Do not add project-owned dependencies as nested submodules inside another
@@ -56,6 +57,19 @@ git submodule update --init external/libmdbx external/mdbx-containers
 Use `AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR` only as an override for a custom
 `mdbx-containers` checkout. The default source checkout is
 `external/mdbx-containers` when it exists.
+
+## SIMDComp Benchmark Adapter
+
+`external/simdcomp` pins `fast-pack/simdcomp` for the optional x86/SSE2
+BP128 codec benchmark. It is not a core-library dependency and it does not
+define the durable on-disk representation. Non-x86 builds retain the portable
+scalar decoder and report that the SIMDComp treatment is unavailable.
+
+Initialize it with:
+
+```bash
+git submodule update --init external/simdcomp
+```
 
 ## Planned Optional Dependencies
 
