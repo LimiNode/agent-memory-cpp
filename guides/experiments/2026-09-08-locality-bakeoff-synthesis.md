@@ -28,9 +28,9 @@ interchangeable.
 | raw THQ3 (native) | 96 | .997 | — | — | — | not retained |
 | raw THQ4 (native) | 144 | .999 | — | — | — | not retained |
 | Gaussian hyperplane 256 | 32 | .476 | .628 | .801 | .859 | 231 / 32,587 / 135,969 |
-| Gaussian hyperplane 512 | 64 | .733 | .851 | .934 | .963 | 29 / 5,930 / 30,389 |
+| Gaussian hyperplane 512 (3-seed mean) | 64 | .743 ± .017 | .852 ± .013 | .939 ± .012 | .963 ± .009 | 24 / 5,633 / 34,406 |
 | Rademacher hyperplane 256 | 32 | .480 | .618 | .775 | .841 | 234 / 35,044 / 123,692 |
-| Rademacher hyperplane 512 | 64 | .750 | .864 | .946 | .968 | 23 / 4,478 / 23,807 |
+| Rademacher hyperplane 512 (3-seed mean) | 64 | .758 ± .010 | .867 ± .003 | .953 ± .006 | .974 ± .005 | 22 / 3,778 / 21,653 |
 | affinity THQ4 M32 (k-means) | 12 | .018 | .047 | .102 | .144 | not retained |
 | affinity THQ5 M32 (k-means) | 16 | .022 | .051 | .122 | .161 | not retained |
 | affinity THQ3 M32 (k-means) | 8 | .014 | .032 | .076 | .119 | not retained |
