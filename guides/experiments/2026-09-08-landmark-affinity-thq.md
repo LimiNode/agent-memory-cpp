@@ -53,10 +53,10 @@ Mean exact-E5 top-10 survival under exhaustive ranking:
 
 | representation | bytes/doc | @256 | @1k | @5k | @10k |
 |---|---:|---:|---:|---:|---:|
-| FP32 affinity M32 | 128 | .000 | .000 | .001 | .001 |
-| FP32 affinity M64 | 256 | .000 | .000 | .001 | .002 |
-| FP32 affinity M128 | 512 | .000 | .000 | .001 | .002 |
-| FP32 affinity M256 | 1024 | .000 | .000 | .001 | .002 |
+| k-means naive-affinity dot M32 | 128 | .000 | .000 | .001 | .001 |
+| k-means naive-affinity dot M64 | 256 | .000 | .000 | .001 | .002 |
+| k-means naive-affinity dot M128 | 512 | .000 | .000 | .001 | .002 |
+| k-means naive-affinity dot M256 | 1024 | .000 | .000 | .001 | .002 |
 | affinity THQ3 M32 (2 thresholds) | 8 | .014 | .032 | .076 | .119 |
 | affinity THQ4 M32 (3 thresholds) | 12 | .018 | .047 | .102 | .144 |
 | affinity THQ5 M32 (4 thresholds) | 16 | .022 | .051 | .122 | .161 |
@@ -99,11 +99,6 @@ Gaussian M=256 Hamming teacher-rank quantiles were:
 
 These ranks are a strong locality signal, but they were measured by the
 portable Python scan and still require native throughput/bytes confirmation.
-
-For M=256 the Hamming teacher-rank quantiles were `123,010/839,779/964,880`
-(`r50/r95/r99`) for THQ4 and `106,550/830,101/966,711` for THQ5.  The worst
-teacher rank was approximately 997k in both cases, confirming a broad
-non-local tail rather than a small number of isolated misses.
 
 The near-zero k-means FP32 dot result shows that naive `phi(q) dot phi(x)` is
 not an adequate surrogate for E5 cosine on this fixture.  It does not apply

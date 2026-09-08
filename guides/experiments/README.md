@@ -112,3 +112,4 @@ fixed environment notes, and preserved raw outputs.
 - [Native flat THQ versus E5-IVF bake-off](2026-09-08-native-thq-ivf-bakeoff.md)
 - [Cosine-LSH / SimHash locality](2026-09-08-cosine-lsh-locality.md)
 - [Landmark-affinity THQ locality](2026-09-08-landmark-affinity-thq.md)
+- [Research methodology audit and corrections](2026-09-08-research-methodology-audit.md)

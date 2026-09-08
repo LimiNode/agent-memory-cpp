@@ -23,10 +23,12 @@
     "levels": [3, 4, 5],
     "thresholds": ["quantile", "learned_lthq_t"]
   },
-  "exact_document_control": {
-    "scoring": "fp32_dot_reconstructed_from_residual_identity",
-    "storage": "full_fp32_documents",
-    "not_a_residual_codec": true
+  "local_residual": {
+    "status": "not_implemented_in_this_runner",
+    "prototype_source": "requires_frozen_k8_teacher_cache",
+    "local_codecs": ["fp32", "int8", "itq256_adc", "pq8", "opq8"],
+    "exact_local_k8_control": true,
+    "follow_up_runner": "run-local-residual-ivf.py"
   },
   "evaluation": {
     "partitions": ["config", "internal"],

@@ -114,23 +114,13 @@ def metrics(selected: np.ndarray, teacher: np.ndarray,
 
 
 def route_ivf(query: np.ndarray, vectors: np.ndarray, centers: np.ndarray,
-              postings: list[np.ndarray], nprobe: int, budget: int,
-              exact_control: bool = False) -> tuple[np.ndarray, float]:
+              postings: list[np.ndarray], nprobe: int, budget: int
+              ) -> tuple[np.ndarray, float]:
     started = time.perf_counter()
     cells = top(centers @ query, nprobe)
     candidate_parts = [postings[int(cell)] for cell in cells]
     candidates = np.concatenate(candidate_parts)
-    if exact_control:
-        # This algebraically reconstructs the original FP32 dot product. It is
-        # an exact scoring control inside the probed cells, not residual K8
-        # compression or a compact production codec.
-        candidate_cells = np.concatenate([
-            np.full(len(part), int(cell), dtype=np.int32)
-            for cell, part in zip(cells, candidate_parts)])
-        residuals = vectors[candidates] - centers[candidate_cells]
-        scores = residuals @ query + centers[candidate_cells] @ query
-    else:
-        scores = vectors[candidates] @ query
+    scores = vectors[candidates] @ query
     selected = candidates[top(scores, budget)]
     return selected, (time.perf_counter() - started) * 1000.0
 
@@ -172,7 +162,7 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
                 selected, elapsed = route_ivf(query, documents, centers, postings, nprobe, budget)
                 overlap, score = metrics(selected, teacher, gains, qi, budget)
                 rows.append({"architecture": "direct_document_ivf", "partition": "config" if qi < split else "internal", "nlist": args.nlist, "nprobe": nprobe, "budget": budget, "query": qi, "overlap": overlap, "ndcg": score, "candidate_count": len(selected), "route_ms": elapsed, "payload_bytes_per_document": 4 * documents.shape[1]})
-                selected, elapsed = route_ivf(query, documents, centers, postings, nprobe, budget, exact_control=True)
+                selected, elapsed = route_ivf(query, documents, centers, postings, nprobe, budget)
                 overlap, score = metrics(selected, teacher, gains, qi, budget)
                 rows.append({"architecture": "float_ivf_exact_document_control", "partition": "config" if qi < split else "internal", "nlist": args.nlist, "nprobe": nprobe, "budget": budget, "query": qi, "overlap": overlap, "ndcg": score, "candidate_count": len(selected), "route_ms": elapsed, "payload_bytes_per_document": 4 * documents.shape[1]})
     for bits in args.bits:
