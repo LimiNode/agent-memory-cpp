@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_router_mechanism_diagnostic",
+  "claim_scope": "frozen_de_router_partition_and_probe_ordering_diagnostic_only",
+  "activation": {
+    "width_result_sha256": "3f948b7bd0313d926270fe5d3097e914609e85004a7bd404d98d299cb3bd54fb",
+    "width_evidence_sha256": "71d22efe7a7669f4d89f4e2ee9763359654b27cb9b9c0f53f031c9e1a05f24bb",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
+    "wider_result_sha256": "c956a2d5e45f19ec36b72b09111d20bac6bf80e0a7a390d906f6bc2f7fed8e3c",
+    "wider_evidence_sha256": "d52af8fcf4a12ed2c4b08049f54dd45d4346e361c6b082c7c04f5543603a0e35"
+  },
+  "old_strong_routes": {
+    "regime": "raw_euclidean_dynamic_mining",
+    "widths": [12, 14, 16],
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "scales": ["de-25k", "de-100k", "de-1m"]
+  },
+  "scalable_controls": {
+    "regimes": ["matched_25k", "expanded_100k"],
+    "widths": [14, 16],
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "scale": "de-25k"
+  },
+  "evaluation": {
+    "partition": "configuration_selection_queries_frozen_by_parent_materialization",
+    "queries": 76,
+    "exact_e5_top_k": [10, 100],
+    "coverage_targets": [0.5, 0.75, 0.9, 0.95],
+    "hamming_radii": [0, 1, 2, 3],
+    "early_probe_budget": 256,
+    "probe_order": "independent_logit_best_first_v2",
+    "oracle": "exact_minimum_posting_mass_subset_for_relevant_address_coverage"
+  },
+  "decision": {
+    "scale": "de-1m",
+    "top_k": 10,
+    "coverage_target": 0.9,
+    "maximum_oracle_p95_candidate_fraction": 0.1,
+    "minimum_current_minus_oracle_p50_candidate_fraction": 0.02,
+    "minimum_qualifying_seed_fraction": 0.6666666666666666,
+    "scheduler_followup_is_conditional": true,
+    "production_selection_forbidden": true
+  }
+}
