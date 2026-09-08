@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "family": "learned_centroid_router_v1",
+  "purpose": "calibration_only_routing_aware_binary_encoder_after_unsupervised_centroid_frontier_gap",
+  "faiss_version": "1.13.2",
+  "parent_overcomplete_evidence_sha256": "909ad400db4553bc8cc892c6bbd6ad790cd831903081a74bb364373eb8327990",
+  "scale": {"id": "es-1m", "documents": 1000000, "input_manifest_sha256": "697f81bc66b37feb47b413fa168f4ae5efd030b9dbbaeb8d0c67ac8d224a9ae7", "evaluation_manifest_sha256": "616e70a3d0e21a561967b382bebc463b10038280f02ca77477b0b01331c73536"},
+  "bit_counts": [256, 384],
+  "teacher": {"positive_centroids": "exact_float_top16_v1", "hard_negatives": "current_binary_top64_excluding_teacher_positive_v1"},
+  "training": {"epochs": 24, "batch_size": 96, "learning_rate": 0.001, "margin": 0.15, "seed": 20260829, "torch_threads": 18, "initialization": "strict_centroid_only_itq_projection_v1"},
+  "selection": {"primary_metric": "mean_recall_of_float_top16_in_binary_top64_v1", "secondary_metric": "mean_recall_of_float_top16_in_binary_top32_v1", "maximum_selected_configurations": 2, "minimum_top64_recall": 0.95, "minimum_top32_recall": 0.85, "tie_rule": "top64_desc_top32_desc_bits_asc_v1"},
+  "confirmation": "forbidden",
+  "library_dependency": "forbidden_pytorch_and_faiss_are_external_research_only"
+}
