@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_v3_posthoc_alignment_audit",
+  "claim_scope": "posthoc_mechanism_diagnostic_no_selection_no_confirmation",
+  "datasets": [
+    {
+      "id": "de-25k",
+      "language": "de",
+      "result_family": "neuroute_dynamic_false_positive_result_v3",
+      "result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286",
+      "result_contract_sha256": "9846ff217360b1dc181a732c5e6de9990692ae66f0b26716b4c31a43695c6adc",
+      "documents": 25000,
+      "queries": 305,
+      "configuration_queries": 76,
+      "internal_queries": 76
+    },
+    {
+      "id": "fr-25k",
+      "language": "fr",
+      "result_family": "neuroute_v3_external_confirmation_result",
+      "result_sha256": "4da270f9b48f100763850a618c3de052f572aa788126ea1683b2803cdbe307f0",
+      "result_contract_sha256": "522ef21bd4a661c121b7c5e4a057ee480d0f44a62ac6749293d55790d265229c",
+      "documents": 25000,
+      "queries": 343,
+      "configuration_queries": 85,
+      "internal_queries": 86
+    },
+    {
+      "id": "ja-25k",
+      "language": "ja",
+      "result_family": "neuroute_v3_ja_external_confirmation_result",
+      "result_sha256": "2265396b4d486d7c168c1e1a55ab8cd046bdda3d3d16b46166c41afb6a11fb28",
+      "result_contract_sha256": "44b2db106bbe6d6de47c69a1ddcf4ac49ea0689bd63385c3612144e51fe25961",
+      "documents": 25000,
+      "queries": 860,
+      "configuration_queries": 215,
+      "internal_queries": 215
+    }
+  ],
+  "model": {
+    "treatment": "dynamic_false_positive",
+    "bits": 12,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "routing": {
+    "learned_probes": 512,
+    "pca_bits": 8,
+    "pca_probes": 16,
+    "pca_replication": 4,
+    "candidate_mass_target": 0.1,
+    "probe_reachability_budgets": [16, 32, 64, 128, 256, 512]
+  },
+  "diagnostics": {
+    "oracle_k": 10,
+    "document_sample": 1024,
+    "document_neighbours": 10,
+    "document_sample_order": "sha256_utf8_id_v1",
+    "partitions": ["configuration_selection", "internal_evaluation"]
+  }
+}
