@@ -364,6 +364,26 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             agent_memory::json
             mdbx_containers::mdbx_containers
     )
+    add_executable(agent-memory-neuroute-native-mdbx-cost
+        neuroute_native_mdbx_cost.cpp
+    )
+    agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-native-mdbx-cost
+        "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_native_mdbx_cost.cpp"
+    )
+    agent_memory_set_evaluator_build_environment(agent-memory-neuroute-native-mdbx-cost)
+    target_compile_definitions(agent-memory-neuroute-native-mdbx-cost
+        PRIVATE
+            AGENT_MEMORY_LIBMDBX_REVISION="${agent_memory_libmdbx_revision}"
+            AGENT_MEMORY_MDBX_CONTAINERS_REVISION="${agent_memory_mdbx_containers_revision}"
+            AGENT_MEMORY_STORAGE_PROVENANCE_AUTHORITATIVE=${agent_memory_storage_provenance_authoritative}
+            AGENT_MEMORY_STORAGE_PROVENANCE_REASON="${agent_memory_storage_provenance_reason}"
+    )
+    target_link_libraries(agent-memory-neuroute-native-mdbx-cost
+        PRIVATE
+            agent_memory::agent_memory
+            agent_memory::json
+            mdbx_containers::mdbx_containers
+    )
 endif()
 
 add_executable(agent-memory-aggregate-signature-bench
