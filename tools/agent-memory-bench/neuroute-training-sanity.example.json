@@ -1,0 +1,133 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_training_sanity_config_only",
+  "claim_scope": "observed_languages_configuration_only_no_confirmation",
+  "activation": {
+    "alignment_audit_result_sha256": "df4023d25d7ea795ed8f11b120983498ccedf597cd7270dc903bcf26ac495a01",
+    "alignment_audit_evidence_sha256": "72dffeb04a976a5109fc5ede79be5594027928a5a5a96b8bcdfc7af37a21e7c6"
+  },
+  "datasets": [
+    {
+      "id": "de-25k",
+      "language": "de",
+      "result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286",
+      "queries": 305,
+      "training_queries": 153,
+      "configuration_queries": 76
+    },
+    {
+      "id": "fr-25k",
+      "language": "fr",
+      "result_sha256": "4da270f9b48f100763850a618c3de052f572aa788126ea1683b2803cdbe307f0",
+      "queries": 343,
+      "training_queries": 172,
+      "configuration_queries": 85
+    },
+    {
+      "id": "ja-25k",
+      "language": "ja",
+      "result_sha256": "2265396b4d486d7c168c1e1a55ab8cd046bdda3d3d16b46166c41afb6a11fb28",
+      "queries": 860,
+      "training_queries": 430,
+      "configuration_queries": 215
+    }
+  ],
+  "encoder": {
+    "input_dimensions": 384,
+    "hidden_dimensions": [96, 64],
+    "bits": 12,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "epochs": 80,
+    "batch_size": 512,
+    "training_query_batch_size": 128,
+    "pairwise_subbatch": 128,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "optimizer": "AdamW",
+    "torch_threads": 18,
+    "batch_norm_epsilon": 0.00001,
+    "batch_norm_momentum": 0.1
+  },
+  "distance_objective": {
+    "metric": "euclidean",
+    "gamma": 0.6,
+    "dimension_scale": "sqrt_latent_over_input_v1",
+    "source_mask_quantile": 0.005,
+    "diagonal_excluded": true,
+    "query_positive_weight": 1.0
+  },
+  "mining": {
+    "remine_epochs": [20, 40, 60],
+    "latent_neighbour_pool": 32,
+    "selected_e5_farthest": 4,
+    "document_false_positive_weight": 1.0,
+    "query_false_positive_weight": 1.0,
+    "latent_metric": "normalized_cosine_for_mined_pairs_v1"
+  },
+  "diversity": {
+    "variance_weight": 0.01,
+    "covariance_weight": 0.01,
+    "minimum_latent_standard_deviation": 0.05
+  },
+  "treatments": [
+    {
+      "id": "v3_cosine_dynamic_frozen_control",
+      "source": "reuse_frozen_v3_dynamic_model_bytes",
+      "loss": "normalized_cosine_positive_plus_mined_document_false_positive_v3",
+      "batch_norm": false,
+      "query_false_positive_mining": false
+    },
+    {
+      "id": "raw_euclidean_mined_pairs",
+      "source": "train",
+      "loss": "scaled_raw_euclidean_on_v3_positive_and_mined_document_pairs_v1",
+      "batch_norm": false,
+      "query_false_positive_mining": false
+    },
+    {
+      "id": "dual_mask_euclidean",
+      "source": "train",
+      "loss": "scaled_raw_euclidean_source_or_latent_near_dual_mask_v1",
+      "batch_norm": false,
+      "query_false_positive_mining": false
+    },
+    {
+      "id": "dual_mask_euclidean_bn",
+      "source": "train",
+      "loss": "scaled_raw_euclidean_source_or_latent_near_dual_mask_v1",
+      "batch_norm": true,
+      "query_false_positive_mining": false
+    },
+    {
+      "id": "dual_mask_euclidean_bn_query_mining",
+      "source": "train",
+      "loss": "scaled_raw_euclidean_source_or_latent_near_dual_mask_v1",
+      "batch_norm": true,
+      "query_false_positive_mining": true
+    }
+  ],
+  "routing": {
+    "probe_budgets": [16, 32, 64, 128, 256, 512],
+    "candidate_mass_target": 0.1,
+    "pca_bits": 8,
+    "pca_probes": 16,
+    "pca_replication": 4
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 256,
+    "exact_limit": 256
+  },
+  "decision": {
+    "maximum_candidate_fraction": 0.1,
+    "maximum_probe_budget_for_efficiency": 128,
+    "maximum_adc_survival_loss_vs_v3_512": 0.02,
+    "maximum_ndcg_loss_vs_v3_512": 0.01,
+    "maximum_ndcg_loss_vs_pca": 0.01,
+    "requires_all_languages": true,
+    "selection_order": "lowest_maximum_probe_then_highest_cross_language_mean_ndcg_then_treatment_id_v1",
+    "next_if_none": "preregister_relevance_aware_v4",
+    "next_if_pass": "freeze_on_new_external_confirmation_before_scale"
+  }
+}

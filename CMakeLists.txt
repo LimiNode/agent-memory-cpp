@@ -288,6 +288,29 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
             add_test(
+                NAME agent_memory_neuroute_training_sanity_planner
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/plan-neuroute-training-sanity.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_training_sanity_runner_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-training-sanity.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_training_sanity_evidence_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-training-sanity-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
                 NAME agent_memory_mih_rerank_cost_evidence_packager_self_test
                 COMMAND
                     ${Python3_EXECUTABLE}
