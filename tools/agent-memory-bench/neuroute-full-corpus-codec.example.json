@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_full_corpus_codec_io",
+  "claim_scope": "de_1m_full_physical_storage_random_top64_fetch_only",
+  "activation": {
+    "final_codec_quality_sha256": "6bd85bc64231ac036a68b337f9e2f95ab364e316176364310e57c6b14f0eb363",
+    "final_codec_evidence_sha256": "47c8138a28143c8f924a127d6bfec8f7eddc5291976bfa8c165e4dee7eb96379",
+    "final_codec_native_sha256": "ba31af12f65119b2b7fe180662d327477b76f1b616ec84726f0738d007740f26",
+    "final_codec_materialization_sha256": "e6c78173d5b9111c520589ccd1b0056f56bb66ca4eb792f1878d96d152fbe374",
+    "final_representation_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c",
+    "conditional_result_sha256": "44470317701e569b3b5b032512afafe28d50519350e5c84ac81802b5c8205fde"
+  },
+  "dataset": {
+    "id": "de-1m",
+    "documents": 1000000,
+    "queries": 76,
+    "dimensions": 384,
+    "router_seeds": [2026082701, 2026082702, 2026082703],
+    "pool_size": 64,
+    "result_k": 10
+  },
+  "representations": [
+    {"id": "int5_simdcomp_bp128", "bits": 5, "layout": "simdcomp_bp128", "record_bytes": 244},
+    {"id": "int5_scalar_bp128", "bits": 5, "layout": "scalar_bp128", "record_bytes": 244},
+    {"id": "int6_simdcomp_bp128", "bits": 6, "layout": "simdcomp_bp128", "record_bytes": 292},
+    {"id": "int6_scalar_bp128", "bits": 6, "layout": "scalar_bp128", "record_bytes": 292}
+  ],
+  "record_format": {
+    "values_per_document": 384,
+    "block_values": 128,
+    "blocks_per_document": 3,
+    "scale": "little_endian_float32_at_record_tail",
+    "signed_code_mapping": "round_clip_symmetric_then_add_2_pow_bits_minus_1_minus_1"
+  },
+  "simdcomp": {
+    "repository": "https://github.com/fast-pack/simdcomp.git",
+    "commit": "009c67807670d16f8984c0534aef0e630e5465a4",
+    "required_instruction_set": "sse2",
+    "measurement_requires_simdcomp": true
+  },
+  "warm_page_cache": {
+    "precondition": "sequentially_read_entire_selected_storage_file",
+    "warmup_passes": 2,
+    "measured_passes": 15,
+    "request_order_seed": 2026082807,
+    "measured_requests_per_pass": 228
+  },
+  "process_cold": {
+    "definition": "fresh_process_first_top64_fetch_after_open_os_page_cache_uncontrolled",
+    "samples_per_representation": 31,
+    "selection_policy": "sha256_prefix_then_request_index_v1",
+    "selection_prefix_utf8": "neuroute-full-corpus-codec-process-cold-v1",
+    "include_process_launch_wall_time": true,
+    "must_not_claim_os_cache_cold": true
+  },
+  "metrics": [
+    "logical_fetch_bytes", "random_reads", "fetch_ms", "decode_and_dot_ms",
+    "rank_top10_ms", "total_ms", "minor_page_faults", "major_page_faults"
+  ],
+  "decision": {
+    "quality_must_replay_all_228_requests": true,
+    "compare_int5_vs_int6_at_identical_requests": true,
+    "production_storage_selection_deferred": true
+  }
+}
