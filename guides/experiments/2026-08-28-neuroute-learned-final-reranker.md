@@ -1,6 +1,6 @@
 # NeuRoute learned final binary reranker
 
-Date: 2026-08-28. Frozen protocol; measurement pending.
+Date: 2026-08-28. Frozen protocol and completed measurement.
 
 ## Question
 
@@ -41,6 +41,41 @@ The result binds the parent final-representation materialization, conditional
 follow-up evidence, random overcomplete ceiling, German query split, every
 model file, and the source hashes. The evidence writer runs the entire held-out
 evaluation again from the stored models and requires byte-identical output.
+
+## Results
+
+No width approached either quality gate:
+
+| Width | Bytes/doc | Mean loss | Worst dataset/model seed | Top-10 overlap | Top-1 match |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 512 | 64 | .21851 | .28332 | .5345 | .2513 |
+| 768 | 96 | **.20281** | **.25449** | **.5676** | **.2730** |
+| 1024 | 128 | .24399 | .40413 | .5065 | .2513 |
+
+Dataset-mean losses for the best 768-bit treatment were `.20963` on DE-25k,
+`.15777` on FR-25k, `.22261` on JA-25k, and `.22123` on held-out DE-1M.
+The final ranking loss decreased for every training run, but held-out ranking
+remained poor and widening from 768 to 1024 bits made both the mean and seed
+stability worse. No width was selected and no native implementation was
+licensed.
+
+The result rejects this frozen linear, soft-to-hard distillation recipe. It is
+substantially weaker than the random two-centroid ADC baselines, despite
+optimizing against exact E5. The likely failure modes are the small and
+single-language teacher set, the discontinuity between soft training codes and
+hard stored sign bits, and an overly restrictive bilinear student. Merely
+adding stored bits is not supported by this evidence.
+
+## Evidence
+
+```text
+quality result SHA-256:       02ac9f1d70422d52de630021d2994dcc054a30061235bc1247310354a7b60a05
+fail-closed evidence SHA-256: 0ec9a30d2ee90e23fe29c636ffc31051f9bfe25abb312a61de0e414cb01b5f28
+```
+
+The evidence writer reloaded all nine stored model artifacts and regenerated
+the complete held-out four-dataset result byte-for-byte without permitting
+training.
 
 ## Expected result and limitations
 
