@@ -1,6 +1,6 @@
 # NeuRoute final codec frontier
 
-Date: 2026-08-28. Frozen protocol; measurements are intentionally absent.
+Date: 2026-08-28. Frozen protocol and completed measurement.
 
 ## Question
 
@@ -33,8 +33,74 @@ decode-and-dot per top-64 query, and full deterministic top-10 selection.
 
 A quality winner licenses the separately frozen full-corpus storage study.
 
+## Results
+
+INT5 passed both frozen quality limits and became the smallest eligible final
+representation at 244 bytes per document. The fixed-pool mean loss versus FP32
+was `-0.001303`; negative loss means that the quantized perturbation produced a
+slightly higher mean nDCG, not that INT5 is generally a better semantic model.
+
+| Dataset | FP32 nDCG@10 | INT5 nDCG@10 | INT5 loss |
+| --- | ---: | ---: | ---: |
+| DE 25k | .632164 | .635747 | -.003583 |
+| FR 25k | .617412 | .611406 | +.006007 |
+| JA 25k | .687926 | .687244 | +.000682 |
+| DE 1M | .578523 | .586841 | -.008318 |
+
+The maximum per-dataset positive loss was `.006007`, below the frozen `.0075`
+limit. INT5 therefore reduces the selected INT6 storage from 292 to 244 bytes
+per document, or about 48 MB per million documents before container overhead.
+
+All 84 native rows replayed identical decoded integers and ranked top-10
+sequences. SIMDComp was decisively faster for the selected INT5 representation:
+
+| INT5 physical layout | Max decode p95, ns/vector | Max decode+dot p95, ms/query | Max rank-top10 p95, ms/query |
+| --- | ---: | ---: | ---: |
+| Scalar BP128 | 913.486 | .087473 | .088624 |
+| SIMDComp BP128 | 68.176 | .033888 | .035607 |
+
+For context, raw INT8 reached `.045418 ms/query` maximum rank-top10 p95 in the
+same run. The decision is therefore `int5_document` with `simdcomp_bp128` on
+x86/SSE2 and the exact scalar decoder as the portable fallback. This is a
+benchmark adapter decision, not a durable-format or core-dependency decision.
+
+## Evidence
+
+```text
+quality result SHA-256:       6bd85bc64231ac036a68b337f9e2f95ab364e316176364310e57c6b14f0eb363
+native materialization SHA:   e6c78173d5b9111c520589ccd1b0056f56bb66ca4eb792f1878d96d152fbe374
+native report SHA-256:        ba31af12f65119b2b7fe180662d327477b76f1b616ec84726f0738d007740f26
+fail-closed evidence SHA-256: 47c8138a28143c8f924a127d6bfec8f7eddc5291976bfa8c165e4dee7eb96379
+```
+
+The evidence writer regenerated the complete quality result byte-for-byte,
+required a real SIMDComp treatment, replayed all native top-10 sequences with
+the current Release executable, and selected the layout only after those
+checks passed.
+
 ## Limitations
 
 Native timing is warm and pool-local. It does not model random full-corpus
 fetch, page-cache state, MDBX payload access, or end-to-end routing. Those are
 reserved for the later stored-code protocol.
+
+The original native evaluator's linear-quantile expression returned zero when
+the requested position was an exact order statistic. Consequently, per-row
+p50 values from rows with odd sample counts are not valid timing evidence. The
+frozen selection used maximum p95, whose non-integer positions were unaffected,
+so the INT5/SIMDComp decision and every quality or sequence result remain
+unchanged. The source now uses the standard interpolation weight and tests the
+integer-position case explicitly. PR #215 supersedes this pool-local result for
+full-corpus serving interpretation.
+
+An additive downstream closure now binds this frozen result and native evidence
+to the passed conditional closure from PR #205. It verifies the original
+conditional result/evidence hashes, follows the closure to the frozen final
+materialization, and then binds the INT5 quality, 84-row native report, and
+selected SIMDComp layout without changing any measured bytes:
+
+```text
+final-codec additive closure SHA-256: ea3a17cb061396df4c652465b70a7e4185ae3f003a2e3566f58d3609a93af35a
+```
+
+Two independent runs produced the same canonical receipt.

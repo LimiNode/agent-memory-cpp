@@ -226,8 +226,8 @@ double quantile(std::vector<double> values, double fraction) {
     const auto position = fraction * static_cast<double>(values.size() - 1);
     const auto lower = static_cast<std::size_t>(std::floor(position));
     const auto upper = static_cast<std::size_t>(std::ceil(position));
-    return values[lower] * (static_cast<double>(upper) - position) +
-           values[upper] * (position - static_cast<double>(lower));
+    const auto weight = position - static_cast<double>(lower);
+    return values[lower] * (1.0 - weight) + values[upper] * weight;
 }
 
 nlohmann::json summary(const std::vector<double>& values) {
@@ -362,6 +362,9 @@ nlohmann::json execute(const std::filesystem::path& manifest_path, bool timing) 
 }
 
 void self_test() {
+    if (quantile({1.0, 2.0, 3.0}, 0.5) != 2.0) {
+        throw std::runtime_error("final-codec quantile self-test differs");
+    }
     std::array<std::uint8_t, dimensions> values{};
     for (std::size_t index = 0; index != dimensions; ++index) {
         values[index] = static_cast<std::uint8_t>(index % 32);
