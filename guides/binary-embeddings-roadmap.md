@@ -714,6 +714,82 @@ replacement nor a required runtime dependency.
   Candidates"; generic Zstd is not assumed to improve already packed hot
   vector columns.
 
+### Conditional MDBX-native semantic-address backend
+
+> **Research hypothesis — not a production contract.** The dynamic
+> false-positive semantic-address experiment demonstrated one promising
+> 25k-scale routing mechanism, but it has not yet passed external confirmation
+> or scale transfer. This section records a candidate architecture and its
+> evidence gates; it does not select a default dense backend or require an
+> MDBX schema change.
+
+The candidate serving pipeline separates learned geometry from persistent
+storage:
+
+```text
+E5(query)
+  -> learned B-bit semantic-address router
+  -> logit-guided exact-address probes
+  -> MDBX address -> compressed posting list
+  -> candidate union
+  -> ITQ-256 Hamming
+  -> ADC
+  -> optional exact E5 rerank
+```
+
+Documents are placed once by the same router. The address is a discrete
+learned key, not an IVF-centroid identifier: a `B`-bit router has at most
+`2^B` MDBX keys. A 12-bit successful treatment therefore does **not** claim
+that 12 bits or 4096 addresses are an optimal production setting.
+
+The provisional persistent layout keeps distinct responsibilities explicit:
+
+```text
+routing_postings: address -> compressed ordered doc-id posting list
+document_codes:   doc_id  -> ITQ-256 code
+adc_payloads:     doc_id  -> compact quantization/residual data
+document_payload: doc_id  -> source/payload reference and optional cold E5
+```
+
+An address key may use a fixed-width unsigned integer while `B <= 32`. A
+block/CSR-like posting representation is a benchmark candidate; thousands of
+per-document MDBX reads are not assumed to be the hot-path design. Float
+centroid refinement is optional: direct learned address-to-posting routing and
+address-to-local-centroid refinement are separate alternatives that must be
+compared under the same candidate budget.
+
+#### Evidence sequence
+
+1. **Frozen external confirmation.** Replicate the fixed 12-bit learned
+   mechanism on a fresh corpus with the same hyperparameters, causal
+   positive-only control, PCA control, candidate ceiling, and independent
+   replay. No width or mining-rule tuning is permitted in this step.
+2. **Frozen scale transfer.** Apply the confirmed recipe at `25k`, `100k`, and
+   `1M` before declaring that an observed scale effect is an address-width
+   effect. Record quality, occupancy, posting distribution, probe count,
+   candidate mass, MDBX lookups, and router/candidate/end-to-end timing.
+3. **Scale-aware width and prefix frontier.** On a new calibration partition,
+   compare widths at matched observed candidate masses (`2%`, `5%`, `10%`):
+   start with `12/14/16` bits at 100k and `14/16/18` at 1M. Report occupied
+   address fraction, mean/p95/max bucket size, lookup count, posting bytes,
+   ADC survival, reranked nDCG@10, and latency. The occupancy heuristic
+   `N / 2^B` may select starting points, never a winner by itself.
+4. **Prefix-address variant.** Only if a wider code has a useful frontier,
+   test one code with independently queried prefixes (for example 10/12/14/16
+   /18-bit prefixes) against independently trained widths. It must account for
+   prefix range-read and posting-union cost, and must not claim that a prefix
+   is semantically coherent merely because its key is syntactically compact.
+5. **Final-rerank necessity.** On identical candidate sets, compare Hamming
+   only, Hamming -> ADC, and Hamming -> ADC -> exact E5 for ADC limits
+   `64/128/256/512`. Report qrels nDCG@10, E5-oracle survival, difficult-query
+   deltas, exact-vector storage/traffic, and latency. Exact E5 may become a
+   cold or accuracy-mode fallback only when its marginal value is bounded by
+   this experiment; it remains the safe reference ranker until then.
+
+The binary-aware expected-Hamming objective is a later, separate experiment.
+It follows independent replication and should not be combined with the width
+frontier; otherwise width, objective, and mining changes become inseparable.
+
 ## §9. Open Questions
 
 1. **Calibration of binary quality targets.** The Tissier 2018 results are on word-level GloVe; transfer to sentence-transformer embeddings (BERT, E5, BGE, M3-Embedding) is not validated. Same open question as `memory-routing-roadmap.md` §11: does the autoencoder objective generalise from 300-dim GloVe to 768-1024 dim modern embeddings?

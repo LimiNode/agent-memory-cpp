@@ -1,0 +1,72 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_v3_external_confirmation",
+  "dataset": {
+    "id": "frozen_fr_25k_v1",
+    "language": "fr",
+    "prepared_manifest_sha256": "0cc309906d934d529e7d89620c46694a65cd5d18be47122f50c4812bffabb8f3",
+    "e5_manifest_sha256": "5aff7bfb7088006adce88f213a1ded381f7efc212bd2b5b7ffca6f105399948f",
+    "input_manifest_sha256": "09fcbfd584cad9b57e46f7fdf8d0fa6be553e8bcf89351cd352a38a1f6b55569",
+    "documents": 25000,
+    "queries": 343,
+    "dimension": 384
+  },
+  "partitions": {
+    "algorithm": "sha256_utf8_order_v1",
+    "prefix_utf8": "neuroute-v3-fr-v1\u0000",
+    "training": 172,
+    "configuration_selection": 85,
+    "internal_evaluation": 86,
+    "internal_evaluation_may_not_select": true
+  },
+  "encoder": {
+    "input_dimensions": 384,
+    "hidden_dimensions": [96, 64],
+    "bits": 12,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "epochs": 80,
+    "batch_size": 512,
+    "training_query_batch_size": 128,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "torch_threads": 18
+  },
+  "positive_geometry": {
+    "document_neighbours": 16,
+    "query_document_neighbours": 10,
+    "pair_slot": "epoch_modulo_neighbour_count_v1",
+    "loss": "source_cosine_to_normalized_latent_cosine_mse_v1"
+  },
+  "dynamic_false_positives": {
+    "treatments": ["positive_only_control", "dynamic_false_positive"],
+    "warmup_epochs": 20,
+    "remine_epochs": [20, 40, 60],
+    "latent_neighbour_pool": 32,
+    "selected_e5_farthest": 4,
+    "pair_slot": "epoch_modulo_selected_false_positives_v1",
+    "margin": 0.05,
+    "loss": "relu_latent_cosine_minus_source_cosine_minus_margin_squared_v1",
+    "weight": 1.0
+  },
+  "diversity": {
+    "variance_weight": 0.01,
+    "covariance_weight": 0.01,
+    "minimum_latent_standard_deviation": 0.05
+  },
+  "routing": {
+    "document_placement": "median_threshold_single_address_v3",
+    "query_order": "independent_logit_best_first_v2",
+    "configuration_frontier_probes": [64, 128, 256, 512],
+    "headline_probes": 512,
+    "candidate_mass_target": 0.1
+  },
+  "cascade": {"oracle_k": 10, "hamming_limit": 768, "adc_limit": 256, "exact_limit": 256},
+  "gates": {
+    "mechanism_minimum_survival_gain": 0.05,
+    "external_minimum_survival_gain": 0.0,
+    "external_minimum_ndcg_gain": 0.0,
+    "maximum_candidate_fraction": 0.1,
+    "bootstrap_resamples": 10000,
+    "bootstrap_seed": 2026082799
+  }
+}
