@@ -166,6 +166,12 @@ def make_directions(family: str, documents: np.ndarray, dimension: int,
         directions = rng.normal(size=(count, dimension)).astype(np.float32)
         directions /= np.maximum(np.linalg.norm(directions, axis=1,
                                                  keepdims=True), 1.0e-12)
+    elif family == "orthogonal":
+        if count != dimension:
+            raise ValueError("orthogonal directions require landmarks == dimension")
+        rng = np.random.default_rng(seed + count)
+        matrix = rng.normal(size=(dimension, dimension)).astype(np.float64)
+        directions = np.asarray(np.linalg.qr(matrix)[0], dtype=np.float32)
     else:
         raise ValueError(f"unsupported direction family: {family}")
     return directions, (time.perf_counter() - started) * 1000.0
@@ -416,7 +422,7 @@ def main() -> int:
     args.budgets = csv_ints(args.budgets)
     if not all(level >= 2 for level in args.levels):
         parser.error("--levels values must be at least 2")
-    supported_families = {"kmeans", "gaussian"}
+    supported_families = {"kmeans", "gaussian", "orthogonal"}
     if not set(args.direction_families) <= supported_families:
         parser.error("unsupported --direction-families value")
     supported_metrics = {"naive_dot", "cosine", "gram_whitened"}
