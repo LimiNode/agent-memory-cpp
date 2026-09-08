@@ -85,6 +85,23 @@ def validate_qrels(path: Path, expected_count: int) -> tuple[int, int]:
     return rows, len(query_ids)
 
 
+def validate_ids(path: Path, expected_count: int, field: str) -> set[str]:
+    values: list[str] = []
+    with path.open("r", encoding="utf-8") as stream:
+        for line_number, line in enumerate(stream, 1):
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise ValueError(f"authoritative {field} row is invalid at line {line_number}") from error
+            require(isinstance(value, dict) and isinstance(value.get("id"), str)
+                    and value["id"],
+                    f"authoritative {field} identity differs at line {line_number}")
+            values.append(value["id"])
+    require(len(values) == expected_count and len(set(values)) == len(values),
+            f"authoritative {field} count/uniqueness differs")
+    return set(values)
+
+
 def validate_e5_root(label: str, root: Path) -> dict[str, Any]:
     manifest_path = root / "manifest.json"
     require(manifest_path.is_file(), f"authoritative E5 manifest is absent: {label}")
@@ -108,9 +125,24 @@ def validate_e5_root(label: str, root: Path) -> dict[str, Any]:
             and prepared_qrels.get("count") == receipts["evaluation_qrels"]["count"],
             f"authoritative prepared-to-E5 qrels binding differs: {label}")
 
+    document_ids = validate_ids(root / receipts["evaluation_document_ids"]["path"],
+                                receipts["evaluation_document_ids"]["count"],
+                                "document IDs")
+    query_ids = validate_ids(root / receipts["evaluation_query_ids"]["path"],
+                             receipts["evaluation_query_ids"]["count"],
+                             "query IDs")
     qrels_path = root / receipts["evaluation_qrels"]["path"]
     qrels_rows, qrels_queries = validate_qrels(
         qrels_path, receipts["evaluation_qrels"]["count"])
+    qrel_query_ids: set[str] = set()
+    qrel_document_ids: set[str] = set()
+    with qrels_path.open("r", encoding="utf-8") as stream:
+        for line in stream:
+            query_id, _, document_id, _ = line.split()
+            qrel_query_ids.add(query_id)
+            qrel_document_ids.add(document_id)
+    require(qrel_query_ids <= query_ids and qrel_document_ids <= document_ids,
+            "authoritative qrels reference unavailable IDs")
     return {
         "id": label,
         "e5_manifest_sha256": sha256(manifest_path),
