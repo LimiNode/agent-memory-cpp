@@ -6,7 +6,7 @@
     "direct_document_ivf",
     "learned_semantic_router_replication",
     "lthq_ordinal_router",
-    "float_ivf_local_residual_k8"
+    "float_ivf_exact_document_control"
   ],
   "ivf": {
     "nlist": [1024, 4096],
@@ -24,9 +24,11 @@
     "thresholds": ["quantile", "learned_lthq_t"]
   },
   "local_residual": {
-    "prototype_source": "frozen_k8_teacher_cache",
+    "status": "not_implemented_in_this_runner",
+    "prototype_source": "requires_frozen_k8_teacher_cache",
     "local_codecs": ["fp32", "int8", "itq256_adc", "pq8", "opq8"],
-    "exact_local_k8_control": true
+    "exact_local_k8_control": true,
+    "follow_up_runner": "run-local-residual-ivf.py"
   },
   "evaluation": {
     "partitions": ["config", "internal"],

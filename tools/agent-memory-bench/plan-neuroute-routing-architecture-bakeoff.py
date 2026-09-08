@@ -22,7 +22,7 @@ def load_contract(path: Path) -> dict[str, Any]:
             "routing bake-off family differs")
     require(value["architectures"] == [
         "direct_document_ivf", "learned_semantic_router_replication",
-        "lthq_ordinal_router", "float_ivf_local_residual_k8"],
+        "lthq_ordinal_router", "float_ivf_exact_document_control"],
             "routing architecture matrix differs")
     require(value["learned_router"]["bits"] == [12, 14, 16]
             and value["learned_router"]["replication"] == [1, 2, 3, 4],
