@@ -22,7 +22,7 @@ def load_contract(path: Path) -> dict[str, Any]:
     value = json.loads(path.read_text(encoding="utf-8"))
     require(value.get("schema_version") == 1 and value.get("family") == "neuroute_inspired_semantic_address_v2",
             "NeuRoute-inspired v2 contract family differs")
-    require(value.get("dataset") == "frozen_es_25k_v1" and value.get("predecessor") == "shared_learned_semantic_address_encoder_v1",
+    require(value.get("dataset") == "frozen_es_25k_v1" and value.get("predecessor") == "shared_learned_semantic_address_encoder_v2",
             "NeuRoute-inspired v2 dataset differs")
     partitions = value.get("partitions", {})
     require(partitions == {"source": "direct_learned_semantic_address_splits_v1", "training_queries": 324,
@@ -39,7 +39,7 @@ def load_contract(path: Path) -> dict[str, Any]:
                        "document_pair_slot": "epoch_modulo_document_neighbours_v1",
                        "query_pair_slot": "epoch_modulo_training_query_document_neighbours_v1",
                        "training_query_batch_size": 128,
-                       "source_similarity": "frozen_e5_cosine_with_fail_closed_l2_audit_v1",
+                       "source_similarity": "frozen_e5_cosine_with_fail_closed_l2_audit_v2",
                        "selected_pair_loss": "masked_source_cosine_to_normalized_latent_cosine_mse_v2"},
             "NeuRoute-inspired v2 pair mining differs")
     losses = value.get("losses", {})
