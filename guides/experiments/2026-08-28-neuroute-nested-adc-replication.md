@@ -4,7 +4,7 @@ Date: 2026-08-28. Frozen protocol and completed measurement.
 
 ## Question
 
-Was the apparent ADC2048/4096 quality frontier in #214 robust, or was it an
+Was the apparent ADC2048/4096 quality frontier in #211 robust, or was it an
 artifact of one projection seed and independently generated widths?
 
 ## Protocol
