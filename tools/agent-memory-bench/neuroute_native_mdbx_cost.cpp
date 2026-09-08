@@ -218,16 +218,18 @@ std::vector<std::uint32_t> pca_addresses(const float* logits, std::size_t bits,
     return result;
 }
 
-std::string key(std::uint8_t route, std::uint16_t address, char kind, std::uint32_t page = 0) {
-    std::string result(8, '\0');
+std::string key(std::uint8_t route, std::uint32_t address, char kind, std::uint32_t page = 0) {
+    std::string result(10, '\0');
     result[0] = static_cast<char>(route);
-    result[1] = static_cast<char>(address >> 8);
-    result[2] = static_cast<char>(address);
-    result[3] = kind;
-    result[4] = static_cast<char>(page >> 24);
-    result[5] = static_cast<char>(page >> 16);
-    result[6] = static_cast<char>(page >> 8);
-    result[7] = static_cast<char>(page);
+    result[1] = static_cast<char>(address >> 24);
+    result[2] = static_cast<char>(address >> 16);
+    result[3] = static_cast<char>(address >> 8);
+    result[4] = static_cast<char>(address);
+    result[5] = kind;
+    result[6] = static_cast<char>(page >> 24);
+    result[7] = static_cast<char>(page >> 16);
+    result[8] = static_cast<char>(page >> 8);
+    result[9] = static_cast<char>(page);
     return result;
 }
 
@@ -247,7 +249,7 @@ std::uint32_t decode_u32(const std::string& input, std::size_t offset) {
 class MdbxAddressIndex final {
 public:
     MdbxAddressIndex(const std::filesystem::path& path, std::uint8_t route,
-                     const std::vector<std::uint16_t>& addresses,
+                     const std::vector<std::uint32_t>& addresses,
                      std::size_t document_count, std::size_t replication,
                      std::size_t page_entries) : m_path(path), m_route(route) {
         std::filesystem::create_directories(path.parent_path());
@@ -260,7 +262,7 @@ public:
         m_connection = mdbxc::Connection::create(config);
         m_table = std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(
             m_connection, "neuroute_postings");
-        std::unordered_map<std::uint16_t, std::vector<std::uint32_t>> buckets;
+        std::unordered_map<std::uint32_t, std::vector<std::uint32_t>> buckets;
         for(std::size_t document = 0; document < document_count; ++document)
             for(std::size_t copy = 0; copy < replication; ++copy)
                 buckets[addresses[document * replication + copy]].push_back(static_cast<std::uint32_t>(document));
@@ -292,7 +294,7 @@ public:
     }
 
     template<class Transaction>
-    std::vector<std::uint32_t> read(std::uint16_t address, Transaction& transaction,
+    std::vector<std::uint32_t> read(std::uint32_t address, Transaction& transaction,
                                     Counters& counters) const {
         ++counters.requested_addresses;
         const auto metadata = m_table->find(key(m_route, address, 'm'), transaction);
@@ -380,7 +382,7 @@ QueryResult run_query(const MdbxAddressIndex& index, const CommonInput& input,
     index.with_read_transaction([&](auto& transaction) {
         for(const auto address : result.addresses) {
             start = Clock::now();
-            const auto posting = index.read(static_cast<std::uint16_t>(address), transaction, result.counters);
+            const auto posting = index.read(address, transaction, result.counters);
             result.timing.mdbx_lookup_and_decode += milliseconds(start, Clock::now());
             start = Clock::now();
             std::size_t fresh = 0;
@@ -628,12 +630,20 @@ bool is_frozen_scale(const nlohmann::json& contract) {
     return contract.value("family", "") == "neuroute_frozen_scale_transfer";
 }
 
+bool is_width_scale_budget(const nlohmann::json& contract) {
+    return contract.value("family", "") == "neuroute_width_scale_budget_frontier";
+}
+
+bool is_scale_family(const nlohmann::json& contract) {
+    return is_frozen_scale(contract) || is_width_scale_budget(contract);
+}
+
 bool is_modern(const nlohmann::json& contract) {
-    return is_relevance_v4(contract) || is_frozen_scale(contract);
+    return is_relevance_v4(contract) || is_scale_family(contract);
 }
 
 double candidate_mass_target(const nlohmann::json& contract) {
-    return (is_modern(contract) ? (is_frozen_scale(contract) ? contract.at("route") : contract.at("routing"))
+    return (is_modern(contract) ? (is_scale_family(contract) ? contract.at("route") : contract.at("routing"))
                                       : contract.at("candidate_pipeline"))
         .at("candidate_mass_target").get<double>();
 }
@@ -663,7 +673,7 @@ std::size_t adc_limit(const nlohmann::json& contract) {
 }
 
 std::size_t exact_limit(const nlohmann::json& contract) {
-    if(is_frozen_scale(contract)) return contract.at("cascade").at("result_k").get<std::size_t>();
+    if(is_scale_family(contract)) return contract.at("cascade").at("result_k").get<std::size_t>();
     return 0;
 }
 
@@ -761,19 +771,21 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
         && manifest.value("family", "") == "neuroute_relevance_aware_v4_native_materialization";
     const auto frozen_scale = is_frozen_scale(contract)
         && manifest.value("family", "") == "neuroute_frozen_scale_transfer_native_materialization";
+    const auto width_scale_budget = is_width_scale_budget(contract)
+        && manifest.value("family", "") == "neuroute_width_scale_budget_native_materialization";
     if(contract.value("schema_version", 0) != 1 || manifest.value("schema_version", 0) != 1
-       || (!legacy && !relevance_v4 && !frozen_scale)
+       || (!legacy && !relevance_v4 && !frozen_scale && !width_scale_budget)
        || manifest.at("contract_sha256").get<std::string>() != agent_memory::sha256_file_hex(contract_path))
         throw std::runtime_error("native MDBX contract/materialization binding differs");
     if(contract.at("storage").at("page_entries").get<std::size_t>() != 256
        || hamming_limit(contract) != 768
-       || (!frozen_scale && adc_limit(contract) != 256)
-       || (frozen_scale && (adc_limit(contract) != 64 || exact_limit(contract) != 10)))
+       || (!is_scale_family(contract) && adc_limit(contract) != 256)
+       || (is_scale_family(contract) && (adc_limit(contract) != 64 || exact_limit(contract) != 10)))
         throw std::runtime_error("native MDBX fixed pipeline differs");
     const auto hamming_computer = agent_memory::HammingDistanceComputer(kCodeWordCount);
     const auto hamming_backend = std::string(
         agent_memory::hamming_distance_backend_name(hamming_computer.backend()));
-    if(frozen_scale
+    if(is_scale_family(contract)
        && contract.at("native_timing").at("required_hamming_backend").get<std::string>()
             != hamming_backend)
         throw std::runtime_error("native MDBX Hamming backend differs");
@@ -785,7 +797,13 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
         const auto input = load_common(dataset_root, dataset);
         for(const auto& route : dataset.at("routes")) {
             const auto route_root = dataset_root / route.at("id").get<std::string>();
-            const auto addresses = read_array<std::uint16_t>(route_root, route.at("document_addresses"));
+            std::vector<std::uint32_t> addresses;
+            if(route.at("document_addresses").at("dtype") == "<u4")
+                addresses = read_array<std::uint32_t>(route_root, route.at("document_addresses"));
+            else {
+                const auto legacy_addresses = read_array<std::uint16_t>(route_root, route.at("document_addresses"));
+                addresses.assign(legacy_addresses.begin(), legacy_addresses.end());
+            }
             const auto logits = read_array<float>(route_root, route.at("query_logits"));
             const auto replication = route.at("document_replication").get<std::size_t>();
             const auto logit_dimensions = route.at("logit_dimensions").get<std::size_t>();
@@ -808,8 +826,9 @@ nlohmann::json execute(const std::filesystem::path& contract_path,
         }
     }
     return {
-        {"schema_version", 1}, {"family", frozen_scale ? "neuroute_frozen_scale_transfer_native_result"
-            : (relevance_v4 ? "neuroute_relevance_aware_v4_native_result" : "neuroute_native_mdbx_cost_result")},
+        {"schema_version", 1}, {"family", width_scale_budget ? "neuroute_width_scale_budget_native_result"
+            : (frozen_scale ? "neuroute_frozen_scale_transfer_native_result"
+            : (relevance_v4 ? "neuroute_relevance_aware_v4_native_result" : "neuroute_native_mdbx_cost_result"))},
         {"claim_scope", contract.at("claim_scope")},
         {"contract_sha256", agent_memory::sha256_file_hex(contract_path)},
         {"materialization_sha256", agent_memory::sha256_file_hex(manifest_path)},
@@ -829,7 +848,8 @@ void validate_report(const nlohmann::json& expected, const nlohmann::json& repla
        || expected.value("family", "") != replay.value("family", "")
        || (expected.value("family", "") != "neuroute_native_mdbx_cost_result"
             && expected.value("family", "") != "neuroute_relevance_aware_v4_native_result"
-            && expected.value("family", "") != "neuroute_frozen_scale_transfer_native_result")
+            && expected.value("family", "") != "neuroute_frozen_scale_transfer_native_result"
+            && expected.value("family", "") != "neuroute_width_scale_budget_native_result")
        || expected.at("contract_sha256") != replay.at("contract_sha256")
        || expected.at("materialization_sha256") != replay.at("materialization_sha256")
        || expected.at("evaluator_source_manifest_sha256") != replay.at("evaluator_source_manifest_sha256")
@@ -862,10 +882,12 @@ int self_test(const std::filesystem::path& database_path) {
             throw std::runtime_error("native MDBX optimized Hamming self-test differs");
         const std::vector<float> logits{0.1F, -0.2F, 0.3F, -0.4F};
         const auto learned = learned_addresses(logits.data(), 4, 8);
-        if(learned.size() != 8 || learned.front() != 5 || sequence_sha256({7, 2, 99})
+        if(learned.size() != 8 || learned.front() != 5
+           || key(7, 1, 'm') == key(7, 65537, 'm') || key(7, 65537, 'm').size() != 10
+           || sequence_sha256({7, 2, 99})
             != "1673c447a7acb075da4fcf6fceaae46afa50428aa1b77fdc6a2868c3248120c1")
             throw std::runtime_error("native MDBX address/hash self-test differs");
-        const std::vector<std::uint16_t> addresses{1, 1, 2, 3, 3};
+        const std::vector<std::uint32_t> addresses{1, 1, 2, 3, 3};
         MdbxAddressIndex index(database_path, 0, addresses, 5, 1, 2);
         Counters counters;
         std::vector<std::uint32_t> values;
