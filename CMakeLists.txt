@@ -388,6 +388,29 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
             add_test(
+                NAME agent_memory_neuroute_frozen_scale_transfer_planner
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/plan-neuroute-frozen-scale-transfer.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_frozen_scale_transfer_runner_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-frozen-scale-transfer.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_neuroute_frozen_scale_transfer_evidence_self_test
+                COMMAND
+                    ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-frozen-scale-transfer-evidence.py
+                    --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
                 NAME agent_memory_mih_rerank_cost_evidence_packager_self_test
                 COMMAND
                     ${Python3_EXECUTABLE}

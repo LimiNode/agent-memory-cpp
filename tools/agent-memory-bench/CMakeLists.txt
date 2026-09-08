@@ -369,6 +369,7 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     )
     agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-native-mdbx-cost
         "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_native_mdbx_cost.cpp"
+        "${PROJECT_SOURCE_DIR}/src/agent_memory/index/BinarySignature.cpp"
     )
     agent_memory_set_evaluator_build_environment(agent-memory-neuroute-native-mdbx-cost)
     target_compile_definitions(agent-memory-neuroute-native-mdbx-cost
