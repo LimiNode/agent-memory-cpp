@@ -403,6 +403,12 @@ target_link_libraries(agent-memory-neuroute-exact-e5-rerank
 add_executable(agent-memory-neuroute-final-representation
     neuroute_final_representation.cpp
 )
+
+add_executable(agent-memory-neuroute-int6-codec neuroute_int6_codec.cpp)
+agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-int6-codec
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_int6_codec.cpp")
+agent_memory_set_evaluator_build_environment(agent-memory-neuroute-int6-codec)
+target_link_libraries(agent-memory-neuroute-int6-codec PRIVATE agent_memory::agent_memory agent_memory::json)
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-representation
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_representation.cpp"
 )
