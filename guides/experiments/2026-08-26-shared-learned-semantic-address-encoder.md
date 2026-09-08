@@ -63,3 +63,24 @@ neither changing only query-side ranking nor this lightweight document-only
 representation objective currently beats the symmetric PCA control. Any later
 NeuRoute-faithful study must first predeclare a materially stronger pair-mining
 and balance/diversity protocol rather than retune this implementation.
+
+## 2026-08-26 source-normalization audit
+
+The v1 trainer obtains source neighbours with `source @ source.T`, while it
+explicitly normalizes only the learned output. The frozen E5 vectors therefore
+need an independent fail-closed L2 audit before that objective can be called a
+cosine-geometry surrogate.
+
+`audit-shared-learned-semantic-address-normalization.py` binds a compact audit
+receipt to the original `result.json` and to both frozen manifests. It rejects
+any input whose document or query norm differs from one by more than `1e-5`.
+On the frozen es-25k roots the check passed:
+
+| Vectors | Minimum norm | Maximum norm | Maximum `abs(norm - 1)` |
+| --- | ---: | ---: | ---: |
+| Documents | 0.99999983 | 1.00000015 | 0.00000017 |
+| Queries | 0.99999989 | 1.00000011 | 0.00000011 |
+
+Consequently `source @ source.T` was cosine similarity for v1; the result does
+not require a corrective rerun. This audit establishes only that invariant. It
+does not strengthen the constrained v1 into a NeuRoute-faithful protocol.
