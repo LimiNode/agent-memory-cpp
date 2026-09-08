@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_exact_e5_rerank_ablation",
+  "claim_scope": "configuration_only_frozen_A_at_256_no_training_no_scale_claim",
+  "activation": {
+    "v4_contract_sha256": "26fd0617da7cf17337aa7241050d4dcb7fe69418b061d8d9afcf6673dc034322",
+    "v4_quality_result_sha256": "e0bca0ea0b4e70bcb391de1ff3806f0fd76cd75a20e077761f4ebca5dc54df5d",
+    "v4_evidence_sha256": "e8da725d46c42659529b39a6bb1dc867b183275fa25bea1ba79d3a19a1a858a9",
+    "v4_native_result_sha256": "14d521fa42089b3b31c89000993f4be5e41263174e1c03b6056f6d0c35a12509",
+    "v4_native_materialization_sha256": "66e8414b0194a908ddd8b9802076e6a65ee47930b331a62f09d8b1e63650e228"
+  },
+  "datasets": [
+    {"id": "de-25k", "language": "de", "configuration_queries": 76},
+    {"id": "fr-25k", "language": "fr", "configuration_queries": 85},
+    {"id": "ja-25k", "language": "ja", "configuration_queries": 215}
+  ],
+  "frozen_route": {
+    "treatment": "raw_euclidean_document_mining_control",
+    "source_treatment": "raw_euclidean_mined_pairs",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "bits": 12,
+    "probes": 256,
+    "candidate_mass_target": 0.1
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limits": [64, 128, 256, 512],
+    "result_k": 10,
+    "stages": [
+      "hamming_only",
+      "adc_only",
+      "exact_e5_on_adc_64",
+      "exact_e5_on_adc_128",
+      "exact_e5_on_adc_256",
+      "exact_e5_on_adc_512"
+    ]
+  },
+  "native_timing": {
+    "scope": "resident_contiguous_fp32_exact_rerank_lower_bound",
+    "warmup_passes": 3,
+    "measured_passes": 15,
+    "quantiles": [0.5, 0.95, 0.99],
+    "excludes": ["query_encoder", "route_generation", "mdbx", "hamming", "adc", "cold_storage_fetch"]
+  },
+  "decision": {
+    "maximum_cross_language_mean_ndcg_gain_from_exact_e5_at_256_for_removal": 0.005,
+    "maximum_per_language_ndcg_gain_from_exact_e5_at_256_for_removal": 0.01,
+    "maximum_per_language_ndcg_loss_vs_full_exact_e5_at_selected_k": 0.01,
+    "selection_order": "smallest_adc_limit_meeting_quality_then_lowest_native_p95",
+    "next_if_removable": "scale_transfer_without_hot_exact_e5",
+    "next_if_required": "scale_transfer_with_exact_e5_and_reported_fp32_hot_bytes"
+  }
+}
