@@ -51,8 +51,9 @@ hashes.
 
 ## Follow-up
 
-After review of this ablation, frozen 12-bit A@256 transfers unchanged across
-a nested 25k/100k/1M corpus. Width tuning remains a separate later question.
+A separate scale-transfer protocol must test whether frozen 12-bit A@256
+transfers unchanged across a nested 25k/100k/1M corpus. That result is outside
+this rerank ablation; width tuning remains a separate later question.
 
 ## Result
 
