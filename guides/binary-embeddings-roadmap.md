@@ -366,19 +366,29 @@ Key empirical findings:
 
 ### 3.3. Locality-Sensitive Hashing (LSH)
 
-LSH for binarization uses random hyperplanes (planned: `RandomHyperplaneLSH` encoder, **not yet implemented**):
+LSH for binarization uses random hyperplanes. The lower-level
+`RandomHyperplaneBinaryEncoder` v2 is implemented; a persisted, banded or
+multi-probe LSH retrieval index remains a separate research/roadmap item:
 
 ```text
 bit_i = sign(dot(embedding, random_hyperplane_i))
 ```
 
-- **Pros:** zero training; deterministic by `(dim, bit_count, seed)`; planned as the baseline encoder in the roadmap.
+- **Pros:** zero training; deterministic by `(dim, bit_count, seed)`; useful as a representation baseline.
 - **Cons:** no semantic preservation beyond the random hyperplane approximation; ~85-90% Recall@10 of float baseline at 128 bits (hypothesis, not contract).
 - **Use case:** cache-friendly candidate filter; bucket prefiltering.
 
 [Source: internal note — no public source available. Path: ai-agent-playbook/concepts/llm-research/Бинаризация эмбеддингов для экономии памяти и ускорения retrieval.md]
 
 This is the **same approach** as the planned baseline encoder in the binary-signatures roadmap; cross-link to `optimization-roadmap.md` §"Baseline Encoder" and §"Binary Signature Index Tasks". This guide treats LSH as the first member of the binarization family (zero-training baseline); autoencoder-binarization is the learned upgrade.
+
+The DE-1M locality study in
+[`2026-09-08-cosine-lsh-locality.md`](experiments/2026-09-08-cosine-lsh-locality.md)
+found 512-bit random-hyperplane survival of only `.750` at K=256 and `.968` at
+K=10k. An exhaustive Hamming scan is a representation control, not a
+banded/multi-probe LSH index; persistence, posting/page accounting and true
+multi-table lookup remain unverified. No selective LSH index is promoted until
+it passes a matched quality/bytes/latency gate.
 
 ### 3.4. Product Quantization (PQ) for Hybrid Binary + FP
 
