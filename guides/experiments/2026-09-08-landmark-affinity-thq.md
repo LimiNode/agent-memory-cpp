@@ -23,11 +23,12 @@ whether thermometer quantization produces useful Hamming locality.
 ## Frozen protocol
 
 The runner uses the same frozen DE-1M vectors, 152 queries, exact E5 top-10
-teacher IDs, and qrels as the flat THQ study.  It trains 32, 64, 128, and 256
-spherical k-means landmarks on the first 100,000 normalized document vectors
-for 15 iterations.  For each landmark count it materializes `phi(x)` in
-chunks, evaluates the raw affinity dot product, and builds THQ3/THQ4 codes
-using per-landmark training-prefix quantiles.
+teacher IDs, and qrels as the flat THQ study.  It evaluates 32, 64, 128, and
+256 directions from both spherical k-means and seeded Gaussian random
+families.  K-means uses the first 100,000 normalized document vectors for 15
+iterations.  For each direction count it materializes `phi(x)` in chunks,
+evaluates naive/cosine/Gram-whitened affinity controls, and builds THQ3/4/5
+codes using per-direction training-prefix quantiles.
 
 The affinity score is exactly `phi(q) dot phi(x)`.  Because this equals
 `q^T C^T C x`, it is a deliberately simple linear-affinity control, not the
@@ -40,14 +41,13 @@ Runner:
 
 Raw artifacts are not committed:
 
-* `tmp/landmark-affinity-full/m32.json`, SHA-256
-  `d961f5c5ca83dbb11957c2a03f34bc6514141b9cf4fd561aa4784fb534b2cc8e`;
-* `tmp/landmark-affinity-full/m64-256.json`, SHA-256
-  `d703ccc361253ea6b091bf5736da31c79c79114c79234ac2b90a0f0b5fb5d099`.
-* `tmp/landmark-affinity-full/m256-ranks.json` was rerun with teacher-rank
-  accounting (the raw file is intentionally untracked).
+* corrected full matrix: `tmp/landmark-affinity-v2-full/result.json`, SHA-256
+  `c018502c02b193f88046ed5d0d140483e7d6c365dd167d752fcb7874d0231ead`;
+* Gaussian M=256 rank replay: `tmp/landmark-affinity-v2-ranks/result.json`,
+  SHA-256 `8e5501e9fdfd64aea55503fd807c37ceed4f5277dbf9fb2452f84789940b5704`
+  (raw output intentionally untracked).
 
-## Results
+## Results (corrected levels)
 
 Mean exact-E5 top-10 survival under exhaustive ranking:
 
@@ -57,44 +57,74 @@ Mean exact-E5 top-10 survival under exhaustive ranking:
 | FP32 affinity M64 | 256 | .000 | .000 | .001 | .002 |
 | FP32 affinity M128 | 512 | .000 | .000 | .001 | .002 |
 | FP32 affinity M256 | 1024 | .000 | .000 | .001 | .002 |
-| affinity THQ3 M32 | 12 | .018 | .047 | .102 | .144 |
-| affinity THQ4 M32 | 16 | .022 | .051 | .122 | .161 |
-| affinity THQ3 M64 | 24 | .047 | .086 | .161 | .195 |
-| affinity THQ4 M64 | 32 | .051 | .095 | .177 | .213 |
-| affinity THQ3 M128 | 48 | .058 | .094 | .172 | .214 |
-| affinity THQ4 M128 | 64 | .066 | .118 | .188 | .230 |
-| affinity THQ3 M256 | 96 | .076 | .116 | .197 | .234 |
-| affinity THQ4 M256 | 128 | .077 | .122 | .214 | .256 |
+| affinity THQ3 M32 (2 thresholds) | 8 | .014 | .032 | .076 | .119 |
+| affinity THQ4 M32 (3 thresholds) | 12 | .018 | .047 | .102 | .144 |
+| affinity THQ5 M32 (4 thresholds) | 16 | .022 | .051 | .122 | .161 |
+| affinity THQ3 M64 (2 thresholds) | 16 | .039 | .066 | .133 | .179 |
+| affinity THQ4 M64 (3 thresholds) | 24 | .047 | .086 | .161 | .195 |
+| affinity THQ5 M64 (4 thresholds) | 32 | .051 | .095 | .177 | .213 |
+| affinity THQ3 M128 (2 thresholds) | 32 | .047 | .085 | .157 | .194 |
+| affinity THQ4 M128 (3 thresholds) | 48 | .058 | .094 | .172 | .214 |
+| affinity THQ5 M128 (4 thresholds) | 64 | .066 | .118 | .188 | .230 |
+| affinity THQ3 M256 (2 thresholds) | 64 | .058 | .103 | .175 | .211 |
+| affinity THQ4 M256 (3 thresholds) | 96 | .076 | .116 | .197 | .234 |
+| affinity THQ5 M256 (4 thresholds) | 128 | .077 | .122 | .214 | .256 |
 
 Increasing the number of landmarks helps the Hamming code, but the best row
 retains only `.077` of exact neighbours at K=256 and `.256` at K=10k.  This is
 far below raw THQ4 (`.9993` at K=256 in the frozen flat scan) and below both
 256-bit and 512-bit random-hyperplane controls.
 
+The direction-family control changes that conclusion.  Mean survival for
+Gaussian random directions at M=256 was:
+
+| representation | bytes/doc | @256 | @1k | @5k | @10k |
+|---|---:|---:|---:|---:|---:|
+| Gaussian affinity THQ3 | 64 | .910 | .964 | .991 | .993 |
+| Gaussian affinity THQ4 | 96 | .939 | .976 | .997 | .997 |
+| Gaussian affinity THQ5 | 128 | .949 | .978 | .997 | .999 |
+
+The corresponding continuous controls at M=256 were `.545/.916` for naive
+dot, `.973/1.000` for cosine-normalized affinity, and `.945/.999` for
+Gram-whitened affinity at K=256/K=10k.  Direction placement is therefore a
+decisive factor, not merely a quantizer detail.
+
+Gaussian M=256 Hamming teacher-rank quantiles were:
+
+| code | r50 | r95 | r99 | worst |
+|---|---:|---:|---:|---:|
+| THQ3 (2 thresholds) | 10 | 639 | 4,533 | 27,009 |
+| THQ4 (3 thresholds) | 8 | 345 | 2,129 | 28,455 |
+| THQ5 (4 thresholds) | 8 | 257 | 1,853 | 18,363 |
+
+These ranks are a strong locality signal, but they were measured by the
+portable Python scan and still require native throughput/bytes confirmation.
+
 For M=256 the Hamming teacher-rank quantiles were `123,010/839,779/964,880`
-(`r50/r95/r99`) for THQ3 and `106,550/830,101/966,711` for THQ4.  The worst
+(`r50/r95/r99`) for THQ4 and `106,550/830,101/966,711` for THQ5.  The worst
 teacher rank was approximately 997k in both cases, confirming a broad
 non-local tail rather than a small number of isolated misses.
 
-The near-zero FP32 affinity result is the more important failure.  It shows
-that naive `phi(q) dot phi(x)` is not an adequate surrogate for E5 cosine on
-this fixture.  The non-zero THQ rows do not rescue that scorer; quantile
-binarization merely creates a different coarse rank with weak semantic
-locality.
+The near-zero k-means FP32 dot result shows that naive `phi(q) dot phi(x)` is
+not an adequate surrogate for E5 cosine on this fixture.  It does not apply
+to every direction family or metric: Gaussian directions reach `.973` cosine
+survival at K=256, and Gram-whitened k-means reaches `.998` at M=256.  The
+quantized result therefore has to be interpreted by both direction family and
+metric rather than as a blanket rejection of affinity features.
 
 ## Decision
 
-Naive linear landmark-affinity THQ is rejected as an indexing representation.
-It does not license affinity-MIH, affinity-LSH tables, or a physical persisted
-index.  This closes only the exact formulation above; it does not claim that
-all landmark features are impossible.
+K-means landmark-affinity THQ is rejected as an indexing representation.  The
+same experiment with Gaussian random directions is retained as an open line:
+the corrected full matrix found substantially stronger locality for random
+directions, so the earlier blanket rejection of affinity features was too
+strong.
 
-A follow-up would need to change the metric before changing the index.  The
-only justified candidates are a centered/whitened affinity profile,
-Gram-corrected scoring, or a nonlinear RBF/shell feature with a fresh FP32
-ceiling gate.  Such a variant must first exceed the random-hyperplane and raw
-THQ locality controls at the same candidate budget.  Until then, research
-effort stays on flat THQ and the improved prototype-IVF/K8/K32/R0 cascade.
+A follow-up must report direction family and metric separately.  The justified
+controls are cosine-normalized affinity, Gram-whitened scoring, and a
+nonlinear RBF/shell feature, each with a fresh FP32 ceiling gate.  The Gaussian
+random-direction result must first be confirmed with rank/tail and native
+cost measurements before any MIH/LSH index is built.
 
 ## Limitations
 
