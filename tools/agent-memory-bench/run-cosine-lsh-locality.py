@@ -76,7 +76,7 @@ def materialize_codes(
     planes = random_planes(vectors.shape[1], bits, family, seed)
     for start in range(0, vectors.shape[0], chunk_size):
         stop = min(start + chunk_size, vectors.shape[0])
-        block = np.asarray(vectors[start:stop], dtype=np.float32)
+        block = np.asarray(vectors[start:stop], dtype=np.float32).copy()
         block /= np.maximum(np.linalg.norm(block, axis=1, keepdims=True), 1e-12)
         projected = np.asarray(block @ planes, dtype=np.float32)
         out[start:stop] = np.packbits(projected >= 0.0, axis=1, bitorder="little")
@@ -111,6 +111,9 @@ def evaluate(
     encode_ms: list[float] = []
     scan_ms: list[float] = []
     budget_survival: dict[str, list[float]] = {str(k): [] for k in budgets}
+    strict_survival: dict[str, list[float]] = {str(k): [] for k in budgets}
+    tie_expanded_survival: dict[str, list[float]] = {str(k): [] for k in budgets}
+    tie_shell_sizes: dict[str, list[int]] = {str(k): [] for k in budgets}
     ranks: list[int] = []
     for row, query in enumerate(queries):
         tic = time.perf_counter()
@@ -133,8 +136,21 @@ def evaluate(
         ranks.extend((less_counts + 1).tolist())
         for budget in budgets:
             k = min(int(budget), distances.size)
-            ids = np.argpartition(distances, k - 1)[:k]
-            budget_survival[str(budget)].append(float(np.isin(targets, ids).mean()))
+            boundary = int(np.partition(distances, k - 1)[k - 1])
+            below = np.flatnonzero(distances < boundary)
+            equal = np.flatnonzero(distances == boundary)
+            need = max(0, k - len(below))
+            # flatnonzero returns ascending document IDs, providing a stable
+            # deterministic tie break without sorting the full million rows.
+            ids = np.concatenate((below, equal[:need]))
+            budget_survival[str(budget)].append(
+                float(np.isin(targets, ids).mean()))
+            strict_survival[str(budget)].append(float(
+                np.count_nonzero(target_distances < boundary) / len(targets)))
+            tie_expanded_survival[str(budget)].append(float(
+                np.count_nonzero(target_distances <= boundary) / len(targets)))
+            tie_shell_sizes[str(budget)].append(int(np.count_nonzero(
+                distances == boundary)))
     rank_array = np.asarray(ranks, dtype=np.float64)
     row: dict[str, object] = {
         "method": f"{family}_random_hyperplane",
@@ -165,7 +181,35 @@ def evaluate(
             }
             for budget, values in budget_survival.items()
         },
-        "protocol": "normalized E5 vectors; deterministic random hyperplanes; packed little-endian sign bits; exhaustive Hamming scan; lower-bound ranks",
+        "strict_survival": {
+            budget: {
+                "mean": float(np.mean(values)),
+                "p05": quantile(values, 0.05),
+                "worst_query": float(np.min(values)),
+                "full_10_of_10_fraction": float(np.mean(np.asarray(values) >= 1.0)),
+            }
+            for budget, values in strict_survival.items()
+        },
+        "tie_expanded_survival": {
+            budget: {
+                "mean": float(np.mean(values)),
+                "p05": quantile(values, 0.05),
+                "worst_query": float(np.min(values)),
+                "full_10_of_10_fraction": float(np.mean(np.asarray(values) >= 1.0)),
+            }
+            for budget, values in tie_expanded_survival.items()
+        },
+        "tie_shell_size": {
+            budget: {
+                "mean": float(np.mean(values)),
+                "p50": quantile(values, 0.50),
+                "p95": quantile(values, 0.95),
+                "worst": int(np.min(values)),
+                "max": int(np.max(values)),
+            }
+            for budget, values in tie_shell_sizes.items()
+        },
+        "protocol": "normalized E5 vectors; deterministic random hyperplanes; packed little-endian sign bits; exhaustive Hamming scan; lower-bound ranks; stable-id exact-K survival plus strict and tie-expanded controls",
     }
     return row
 
@@ -182,6 +226,7 @@ def main() -> None:
     parser.add_argument("--bits", default="256,512")
     parser.add_argument("--families", default="gaussian,rademacher")
     parser.add_argument("--seed", type=int, default=20260908)
+    parser.add_argument("--seeds", default="", help="comma-separated seeds; overrides --seed")
     parser.add_argument("--chunk-size", type=int, default=8192)
     parser.add_argument("--budgets", default="256,1000,5000,10000")
     parser.add_argument("--output", type=Path, required=True)
@@ -196,10 +241,12 @@ def main() -> None:
     families = [v.strip() for v in args.families.split(",") if v.strip()]
     budgets = [int(v) for v in args.budgets.split(",") if v.strip()]
     rows: list[dict[str, object]] = []
+    seeds = [int(v) for v in args.seeds.split(",") if v.strip()] or [args.seed]
     for family in families:
         for width in bits:
-            cache_path = args.cache_dir / f"{family}-{width}-seed{args.seed}-document-codes.u8"
-            rows.append(evaluate(vectors, queries, teacher_ids, family, width, args.seed, cache_path, args.chunk_size, budgets))
+            for seed in seeds:
+                cache_path = args.cache_dir / f"{family}-{width}-seed{seed}-document-codes.u8"
+                rows.append(evaluate(vectors, queries, teacher_ids, family, width, seed, cache_path, args.chunk_size, budgets))
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps({"schema_version": 1, "rows": rows}, indent=2) + "\n", encoding="utf-8")
 
