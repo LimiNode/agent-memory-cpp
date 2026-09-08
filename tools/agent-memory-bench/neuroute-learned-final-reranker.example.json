@@ -1,0 +1,71 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_learned_final_binary_reranker",
+  "claim_scope": "learned_binary_final_reranking_inside_frozen_adc256_top64_only",
+  "activation": {
+    "final_result_sha256": "7fb285624271c1930ddf5c36117498702539f179bf392b8734635a8593268b50",
+    "final_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c",
+    "final_evidence_sha256": "e48b1c546a0edf817009f823891d7fdfcd75e1f68fb0426a50be2acef238a448",
+    "conditional_result_sha256": "44470317701e569b3b5b032512afafe28d50519350e5c84ac81802b5c8205fde",
+    "conditional_evidence_sha256": "7147e3b8f0cfe44f4032fe0656bc5cc08bfa6d8815468ad7cf83b48f8b178667",
+    "random_ceiling_result_sha256": "13d4d4dc3da2e12d7e175f0ab7171125a3ebf50f324b4f87d1e66e3a06295977",
+    "random_ceiling_evidence_sha256": "a333ad4fc7c916d261ca12539ad1bb06205baf84b4cc8472ce2c63a840f9d421",
+    "german_split_result_sha256": "231482ff859a0a6506298f92a544f1697bf948275cb748008bf0c444f360d286"
+  },
+  "datasets": ["de-25k", "fr-25k", "ja-25k", "de-1m"],
+  "frozen_input": {
+    "pool_stage": "adc256",
+    "pool_size": 64,
+    "router_seeds": [2026082701, 2026082702, 2026082703],
+    "result_k": 10
+  },
+  "query_partition": {
+    "source": "frozen_de_configuration_selection_query_ids",
+    "policy": "sha256_prefix_then_query_id_v1",
+    "prefix_utf8": "neuroute-learned-final-reranker-v1",
+    "teacher_training_queries": 50,
+    "heldout_de_queries": 26,
+    "fr_and_ja_training_forbidden": true,
+    "de_1m_reuses_heldout_de_ids": true
+  },
+  "models": {
+    "widths": [512, 768, 1024],
+    "seeds": [2026082804, 2026082805, 2026082806],
+    "document_encoder": "linear_384_to_bits",
+    "query_encoder": "separate_linear_384_to_bits",
+    "decoder": "linear_bits_to_384_reconstruction_regularizer",
+    "hard_inference": "document_sign_bits_times_continuous_query_logits",
+    "bytes_per_document": {"512": 64, "768": 96, "1024": 128}
+  },
+  "training": {
+    "document_corpus": "de-25k_all_documents_transductive",
+    "teacher": "exact_e5_scores_inside_each_frozen_top64",
+    "epochs": 40,
+    "document_batch_size": 512,
+    "pool_batch_size": 10,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "optimizer": "AdamW",
+    "torch_threads": 18,
+    "temperature_start": 1.0,
+    "temperature_end": 0.2,
+    "reconstruction_weight": 1.0,
+    "ranking_weight": 2.0,
+    "bit_balance_weight": 0.01,
+    "query_document_encoder_alignment_weight": 0.001,
+    "ranking_loss": "smooth_l1_on_per_pool_standardized_scores"
+  },
+  "quality": {
+    "primary_metric": "ndcg_at_10",
+    "maximum_cross_dataset_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_per_dataset_ndcg_loss_vs_fp32": 0.0075,
+    "requires_all_model_seeds": true,
+    "paired_metrics": ["top10_overlap_with_fp32", "top1_match_with_fp32"]
+  },
+  "decision": {
+    "selection": "lowest_bytes_passing_quality_then_width",
+    "native_followup_only_if_quality_winner_exists": true,
+    "random_adc_comparison_is_diagnostic_only": true,
+    "production_storage_selection_deferred": true
+  }
+}
