@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "family": "shared_learned_semantic_address_encoder_v1",
+  "dataset": "frozen_es_25k_v1",
+  "encoder": {"bits": [8, 10, 12, 14], "hidden_dimensions": [96, 64], "epochs": 24, "batch_size": 256, "learning_rate": 0.001, "weight_decay": 0.0001, "seed": 2026082801, "torch_threads": 18, "objective": "document_only_local_cosine_geometry_with_variance_ant-collapse_v1"},
+  "routing": {"document_replication": [1, 2, 4], "query_probes": [4, 8, 16], "candidate_mass_targets": [0.05, 0.1, 0.25], "selection_partition": "configuration_selection", "internal_evaluation_may_not_select": true},
+  "cascade": {"oracle_k": 10, "hamming_limit": 768, "adc_limit": 256, "exact_limit": 256},
+  "headline": {"candidate_mass_target": 0.1, "runtime": "learned_address_postings_then_itq_adc_exact_e5_without_centroid_v1"}
+}
