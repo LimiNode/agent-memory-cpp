@@ -400,6 +400,19 @@ target_link_libraries(agent-memory-neuroute-exact-e5-rerank
         agent_memory::json
 )
 
+add_executable(agent-memory-neuroute-final-representation
+    neuroute_final_representation.cpp
+)
+agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-representation
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_representation.cpp"
+)
+agent_memory_set_evaluator_build_environment(agent-memory-neuroute-final-representation)
+target_link_libraries(agent-memory-neuroute-final-representation
+    PRIVATE
+        agent_memory::agent_memory
+        agent_memory::json
+)
+
 add_executable(agent-memory-aggregate-signature-bench
     aggregate_signature.cpp
 )
