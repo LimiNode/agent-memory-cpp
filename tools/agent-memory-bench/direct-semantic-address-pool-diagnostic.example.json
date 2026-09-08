@@ -1,0 +1,7 @@
+{
+  "schema_version": 1,
+  "family": "direct_semantic_address_pool_diagnostic_v1",
+  "baseline_commit": "ba3345914c7594f92ec91b31db36b0f405a0da05",
+  "pool_size": 64,
+  "random_seeds": [2026082601, 2026082602, 2026082603, 2026082604, 2026082605, 2026082606, 2026082607, 2026082608]
+}
