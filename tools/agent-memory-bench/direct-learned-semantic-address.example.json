@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "family": "direct_learned_semantic_address_protocol_v1",
+  "purpose": "calibration_only_direct_asymmetric_learned_semantic_address_routing",
+  "runtime": "e5_query_to_scored_addresses_to_mdbx_like_postings_then_itq_adc_exact_e5_v1",
+  "partitions": {"algorithm": "sha256_first_8_little_endian_v1", "prefix_utf8": "direct-learned-semantic-address-v1\\u0000", "query_count": 648, "training": 324, "configuration_selection": 162, "internal_evaluation": 162},
+  "addressing": {"physical_key_bits": [32, 64], "semantic_prefix_bits": [8, 10, 12, 14, 16], "query_probes": [1, 2, 4, 8, 16], "document_replication": [1, 2, 4], "query_routing": "confidence_ranked_subset_flip_addresses_v1", "document_placement": "document_only_pca_median_nested_prefixes_with_margin_replication_v1"},
+  "candidate_mass_targets": [0.05, 0.1, 0.25],
+  "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "router_training": {"family": "deterministic_mlp_384_128_16_v1", "seed": 20260825, "epochs": 160, "batch_size": 64, "learning_rate": 0.003, "weight_decay": 0.0001, "torch_threads": 18, "checkpoint": "fixed_final_epoch", "target": "mean_document_address_bit_probability_over_exact_e5_top10_v1"},
+  "controls": ["symmetric_document_head_control", "learned_direct_address_postings", "learned_address_then_float_bucket_centroid_refinement", "exact_float_bucket_centroid_scan_same_postings"],
+  "objective": "maximize_exact_e5_top10_document_survival_after_adc_subject_to_candidate_mass_v1",
+  "selection": {"partition": "configuration_selection", "headline_treatment": "learned_direct_address_postings", "candidate_mass_target": 0.1, "key": ["e5_oracle_survival_after_adc", "reranked_ndcg_at_10", "negative_candidate_fraction", "negative_routing_p50_ms", "negative_prefix_bits", "negative_query_probes", "negative_document_replication"], "internal_evaluation_may_not_select": true},
+  "evidence": {"must_bind": ["frozen_input_and_evaluation_roots", "split_memberships", "checkpoint_and_training_configuration", "document_address_assignments", "per_query_address_scores_and_probes", "posting_unions", "per_query_cascade_outputs", "per_query_e5_and_ndcg_replay", "payload_bytes", "source_hashes"], "confirmation": "forbidden_until_new_untouched_external_split"}
+}
