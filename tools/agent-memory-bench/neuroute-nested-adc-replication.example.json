@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_nested_multiseed_adc_replication",
+  "claim_scope": "fixed_top64_nested_random_adc_quality_replication_only",
+  "activation": {
+    "random_ceiling_result_sha256": "13d4d4dc3da2e12d7e175f0ab7171125a3ebf50f324b4f87d1e66e3a06295977",
+    "random_ceiling_evidence_sha256": "a333ad4fc7c916d261ca12539ad1bb06205baf84b4cc8472ce2c63a840f9d421",
+    "final_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c"
+  },
+  "datasets": ["de-25k", "fr-25k", "ja-25k", "de-1m"],
+  "projection_seeds": [
+    2026082802, 2026082803, 2026082804, 2026082805,
+    2026082806, 2026082807, 2026082808, 2026082809
+  ],
+  "widths": [512, 768, 1024, 1536, 2048, 3072, 4096],
+  "projection": {
+    "kind": "one_master_rademacher_matrix_per_seed",
+    "shape": [384, 4096],
+    "normalization": "divide_by_sqrt_384",
+    "nested_widths": "strict_column_prefixes",
+    "threshold": "deterministic_document_sample_up_to_100000_projection_median",
+    "centroids": "same_sample_per_bit_projection_conditional_mean",
+    "statistics_column_batch": 512
+  },
+  "frozen_input": {
+    "pool_stage": "adc256",
+    "pool_size": 64,
+    "result_k": 10,
+    "held_out_partition": "frozen_configuration_selection_query_ids"
+  },
+  "seed_selection": {
+    "partition": "de_25k_frozen_training_query_ids",
+    "pool": "global_exact_e5_top64",
+    "metric": "mean_ndcg_at_10_loss_vs_fp32_within_same_pool",
+    "selection": "lowest_loss_then_lowest_seed_per_width",
+    "held_out_queries_forbidden": true
+  },
+  "quality": {
+    "maximum_selected_seed_cross_dataset_mean_loss": 0.003,
+    "maximum_selected_seed_per_dataset_loss": 0.0075,
+    "seed_distribution_quantiles": [0.1, 0.5, 0.9]
+  },
+  "decision": {
+    "candidate_selection": "lowest_width_passing_selected_seed_gate",
+    "held_out_seed_cherry_picking_forbidden": true,
+    "physical_benchmark_only_if_candidate_exists": true,
+    "production_selection_forbidden": true
+  }
+}
