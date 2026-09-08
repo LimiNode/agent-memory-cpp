@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_random_overcomplete_adc_ceiling",
+  "claim_scope": "fixed_adc256_top64_random_rademacher_adc_quality_ceiling_only",
+  "activation": {
+    "conditional_result_sha256": "44470317701e569b3b5b032512afafe28d50519350e5c84ac81802b5c8205fde",
+    "conditional_evidence_sha256": "7147e3b8f0cfe44f4032fe0656bc5cc08bfa6d8815468ad7cf83b48f8b178667",
+    "final_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c"
+  },
+  "datasets": ["de-25k", "fr-25k", "ja-25k", "de-1m"],
+  "seeds": [2026082701, 2026082702, 2026082703],
+  "frozen_input": {
+    "pool_stage": "adc256",
+    "pool_size": 64,
+    "result_k": 10
+  },
+  "frozen_parent_widths": [512, 768, 1024],
+  "diagnostic_widths": [1536, 2048, 4096],
+  "projection": {
+    "kind": "frozen_rademacher_overcomplete_binary_adc",
+    "seed": 2026082802,
+    "normalization": "divide_by_sqrt_384",
+    "threshold": "deterministic_document_sample_up_to_100000_projection_median",
+    "centroids": "same_sample_per_bit_projection_conditional_mean",
+    "training_labels": "none"
+  },
+  "quality": {
+    "primary_metric": "ndcg_at_10",
+    "reference": "fp32_exact_within_same_frozen_top64",
+    "aggregation": "mean_of_four_dataset_mean_losses",
+    "maximum_1024_to_4096_mean_loss_improvement_for_plateau": 0.003
+  },
+  "decision": {
+    "production_native_implementation_forbidden": true,
+    "production_winner_selection_forbidden": true,
+    "learned_final_reranker_remains_separate": true,
+    "interpretation": "ceiling_curve_only"
+  }
+}

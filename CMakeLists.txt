@@ -460,6 +460,15 @@ if(AGENT_MEMORY_BUILD_TESTS)
             add_test(NAME agent_memory_neuroute_wider_training_evidence_self_test
                 COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-wider-training-evidence.py --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_random_adc_ceiling_planner
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/plan-neuroute-random-adc-ceiling.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_random_adc_ceiling_runner_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-random-adc-ceiling.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_random_adc_ceiling_evidence_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-random-adc-ceiling-evidence.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(
                 NAME agent_memory_neuroute_frozen_scale_transfer_planner
                 COMMAND
