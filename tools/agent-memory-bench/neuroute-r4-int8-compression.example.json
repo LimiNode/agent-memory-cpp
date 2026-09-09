@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_lossless_int8_compression_frontier",
+  "claim_scope": "full_corpus_lossless_simdcomp_int8_footprint_and_mapped_serving_cost",
+  "activation": {
+    "mapped_access_result_sha256": "012166ecbb200f481b528b86e53506cd43047659fcaa5abdf6b5fc3d74aa793f",
+    "mapped_access_evidence_sha256": "e69515ac53e1d96d93108c376f315e6aa362f4fe36618817401a66d68a45a3d0",
+    "physical_layout_materialization_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "queries_per_seed": 152,
+    "addresses_per_query": 1024
+  },
+  "simdcomp": {
+    "repository": "https://github.com/fast-pack/simdcomp.git",
+    "commit": "009c67807670d16f8984c0534aef0e630e5465a4",
+    "block_values": 128,
+    "measurement_requires_simdcomp": true
+  },
+  "treatments": [
+    "raw_int8",
+    "simdcomp_fixed8",
+    "simdcomp_adaptive_for",
+    "simdcomp_adaptive_zigzag"
+  ],
+  "adaptive_formats": {
+    "for": "f32_scale_plus_3xu8_min_plus_3xu8_width_plus_bp128_payload",
+    "zigzag": "f32_scale_plus_3xu8_width_plus_bp128_payload",
+    "address_byte_offsets": "u64_per_occupied_address_row"
+  },
+  "frozen_execution": {
+    "access": "mmap_direct_offset_order",
+    "scorer": "batched_avx2_r0"
+  },
+  "warm_page_cache": {
+    "warmup_passes": 1,
+    "measured_passes": 3,
+    "execution_order_seed": 2026083105
+  },
+  "process_cold": {
+    "definition": "fresh_process_first_request_with_os_page_cache_uncontrolled_not_cold_disk",
+    "paired_requests_per_seed": 15,
+    "selection_prefix_utf8": "neuroute-r4-int8-compression-process-cold-v1"
+  },
+  "equivalence": {"paired_score_hash_identity_required": true},
+  "decision": {
+    "report_compression_ratio_and_latency_delta_without_mandatory_selection": true,
+    "production_selection_forbidden": true
+  }
+}
