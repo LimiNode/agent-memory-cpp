@@ -79,6 +79,16 @@ better coverage of teacher ranks, or an alternating discrete code optimizer)
 before another width sweep. Any successor must first pass address utility;
 only then should it be integrated into local K8 and the complete R4 cascade.
 
+### Subsequent training-coverage audit
+
+The frontier above is retained as a historical diagnostic, but its original
+interpretation is superseded by the corrective audit in PR #287. That audit
+found that 89.89% of prototype codes were untouched by the effective training
+coverage, that the hard-negative round reinitialized the encoder rather than
+continuing the reported model, and that the earlier entropy reading was not a
+valid utility measure. Accordingly, the width/recall cells above must not be
+read as a global capacity claim or as evidence for a production selector.
+
 ## Reproduction and limitations
 
 Raw reports stay under `tmp/` and are not committed. The main frontier reports
