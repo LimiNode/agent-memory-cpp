@@ -437,9 +437,13 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$"
             "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdcomputil.c"
             PROPERTIES LANGUAGE CXX)
         if(MSVC)
-            target_compile_options(agent_memory_neuroute_simdcomp PRIVATE /arch:AVX2)
+            set_source_files_properties(
+                "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c"
+                PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
         else()
-            target_compile_options(agent_memory_neuroute_simdcomp PRIVATE -mavx2)
+            set_source_files_properties(
+                "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c"
+                PROPERTIES COMPILE_OPTIONS "-mavx2")
         endif()
         set(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2 1)
         list(APPEND AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES

@@ -2,6 +2,20 @@
   "schema_version": 1,
   "family": "neuroute_actual_r4_codec_frontier",
   "claim_scope": "de_1m_actual_full_r4_stage_specific_scalar_quantization_frontier",
+  "analysis_amendment": {
+    "id": "k8_stage_retention_gate_semantics_v1",
+    "previous_contract_sha256": "361f8b36ad73ead33a3ae33a45abea1d00103f7abd0dc926c97f0b6ef1a89f06",
+    "reason": "the original absolute exact-top10 stage-survival thresholds were impossible for the FP32-K8 reference itself",
+    "raw_native_grid_unchanged": true,
+    "reuse_matching_previous_contract_checkpoints": true
+  },
+  "physical_layout_correction": {
+    "id": "raw_int8_byte_linear_v1",
+    "previous_contract_sha256": "f04b723d5b7e19c3272cdefeb9e73f2ccfafd839420dcd9d386b350996e59407",
+    "reason": "INT8 records were labeled byte_linear but had been emitted through SIMDComp word packing",
+    "invalidated_treatment_prefixes": ["int8_"],
+    "other_raw_native_grid_points_unchanged": true
+  },
   "activation": {
     "external_comparison_result_sha256": "1b41e769f70d1f52dfd81adf869e3faa2f84b40fb63b2091ec3335f4714c646d",
     "external_comparison_evidence_sha256": "78a0140ca5aea3491b244df8b22efb9f31bc38663e4e48441efd40bb15599fe8",
@@ -59,8 +73,21 @@
     "maximum_every_seed_ndcg_loss": 0.004
   },
   "k8_gate": {
+    "prototype_limits": [4, 8],
+    "global_reference": "k8_fp32",
+    "configuration_routing_storage_modes": ["int8"],
+    "internal_routing_storage_modes": ["int8", "nonlinear_int5_power_half"],
+    "configuration_latency_is_directional_without_warmup": true,
+    "selected_candidate_latency_requires_warmup_remeasurement": true,
+    "configuration_selects_compander_per_prototype_limit_and_width": true,
+    "configuration_candidate_order": "smallest_physical_store_passing_all_quality_gates_then_lowest_p95_then_id",
+    "internal_opens_only_for_references_uniform_controls_per_width_winners_and_candidate": true,
     "maximum_mean_downstream_ndcg_loss": 0.003,
     "maximum_every_seed_downstream_ndcg_loss": 0.006,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
     "exact_scan_target_p95_ms": 15.0,
     "open_approximate_frontier_if_target_missed": true
   }

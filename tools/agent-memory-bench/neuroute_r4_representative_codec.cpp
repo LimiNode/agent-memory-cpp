@@ -28,17 +28,15 @@ void require(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
 }
 
-std::vector<std::uint8_t> simdcomp_pack(const std::uint8_t* values, unsigned bits) {
+std::vector<std::uint8_t> simdcomp_pack(const std::uint32_t* values, unsigned bits) {
 #if !AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
     (void)values;
     (void)bits;
     throw std::runtime_error("R4 representative codec requires SIMDComp");
 #else
-    std::array<std::uint32_t, dimensions> input{};
-    std::copy_n(values, dimensions, input.begin());
     std::vector<__m128i> words(3 * bits);
     for (std::size_t block = 0; block != 3; ++block) {
-        simdpackwithoutmask(input.data() + block * 128,
+        simdpackwithoutmask(values + block * 128,
                             words.data() + block * bits, bits);
     }
     std::vector<std::uint8_t> output(dimensions * bits / 8);
@@ -55,7 +53,7 @@ void simdcomp_unpack(const std::uint8_t* bytes, unsigned bits,
     (void)output;
     throw std::runtime_error("R4 representative codec requires SIMDComp");
 #else
-    alignas(16) std::array<__m128i, 24> words{};
+    alignas(16) std::array<__m128i, 36> words{};
     std::memcpy(words.data(), bytes, dimensions * bits / 8);
     for (std::size_t block = 0; block != 3; ++block) {
         simdunpack(words.data() + block * bits, output + block * 128, bits);
@@ -66,15 +64,25 @@ void simdcomp_unpack(const std::uint8_t* bytes, unsigned bits,
 void pack_file(unsigned bits, const std::filesystem::path& codes_path,
                const std::filesystem::path& scales_path, std::size_t rows,
                const std::filesystem::path& output_path) {
-    require(bits == 5 || bits == 6, "R4 representative codec bits differ");
+    require(bits >= 4 && bits <= 12, "R4 representative codec bits differ");
     std::ifstream codes(codes_path, std::ios::binary);
     std::ifstream scales(scales_path, std::ios::binary);
     std::ofstream output(output_path, std::ios::binary);
     require(codes && scales && output, "R4 representative codec file open failed");
-    std::array<std::uint8_t, dimensions> values{};
+    std::array<std::uint32_t, dimensions> values{};
+    std::array<std::uint8_t, dimensions> values8{};
+    std::array<std::uint16_t, dimensions> values16{};
     float scale = 0.0F;
     for (std::size_t row = 0; row != rows; ++row) {
-        codes.read(reinterpret_cast<char*>(values.data()), values.size());
+        if (bits <= 8) {
+            codes.read(reinterpret_cast<char*>(values8.data()), values8.size());
+            std::copy(values8.begin(), values8.end(), values.begin());
+        } else {
+            codes.read(reinterpret_cast<char*>(values16.data()),
+                       static_cast<std::streamsize>(values16.size() *
+                                                    sizeof(std::uint16_t)));
+            std::copy(values16.begin(), values16.end(), values.begin());
+        }
         scales.read(reinterpret_cast<char*>(&scale), sizeof(scale));
         require(codes && scales, "R4 representative codec input truncated");
         const auto packed = simdcomp_pack(values.data(), bits);
@@ -93,7 +101,7 @@ void pack_file(unsigned bits, const std::filesystem::path& codes_path,
 
 void unpack_file(unsigned bits, const std::filesystem::path& input_path,
                  std::size_t rows, const std::filesystem::path& output_path) {
-    require(bits == 5 || bits == 6, "R4 representative codec bits differ");
+    require(bits >= 4 && bits <= 12, "R4 representative codec bits differ");
     const std::size_t packed_bytes = dimensions * bits / 8;
     std::ifstream input(input_path, std::ios::binary);
     std::ofstream output(output_path, std::ios::binary);
@@ -123,7 +131,7 @@ void unpack_file(unsigned bits, const std::filesystem::path& input_path,
 
 std::vector<float> decode_table(unsigned bits, const std::string& compander,
                                 float parameter) {
-    require(bits == 5 || bits == 6 || bits == 8,
+    require(bits >= 4 && bits <= 12,
             "R4 nonlinear codec bits differ");
     require(compander == "uniform" || compander == "power" ||
             compander == "mulaw", "R4 nonlinear compander differs");
@@ -281,17 +289,20 @@ void benchmark_dot(unsigned bits, const std::string& compander, float parameter,
 }
 
 void self_test() {
-    std::array<std::uint8_t, dimensions> values{};
-    for (std::size_t index = 0; index != values.size(); ++index) {
-        values[index] = static_cast<std::uint8_t>(index % 32);
-    }
 #if AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP
-    const auto packed = simdcomp_pack(values.data(), 5);
-    std::array<std::uint32_t, dimensions> decoded{};
-    simdcomp_unpack(packed.data(), 5, decoded.data());
-    for (std::size_t index = 0; index != values.size(); ++index) {
-        require(decoded[index] == values[index],
-                "R4 representative codec SIMDComp self-test differs");
+    for (const unsigned bits : {5U, 8U, 9U, 10U, 12U}) {
+        std::array<std::uint32_t, dimensions> values{};
+        const auto mask = (1U << bits) - 1U;
+        for (std::size_t index = 0; index != values.size(); ++index)
+            values[index] = static_cast<std::uint32_t>(
+                (index * 37U + bits) & mask);
+        const auto packed = simdcomp_pack(values.data(), bits);
+        std::array<std::uint32_t, dimensions> decoded{};
+        simdcomp_unpack(packed.data(), bits, decoded.data());
+        for (std::size_t index = 0; index != values.size(); ++index) {
+            require(decoded[index] == values[index],
+                    "R4 representative codec SIMDComp self-test differs");
+        }
     }
 #endif
     const auto power = decode_table(5, "power", 0.5F);
