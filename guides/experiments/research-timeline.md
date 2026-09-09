@@ -321,3 +321,16 @@ following compact ledger records the merge boundary used by subsequent review.
 Evidence publication is tracked separately from merge status. A merged PR is
 not considered an archived evidence release until its validator, archive SHA,
 bundle-root SHA, measured head, and stable release link are recorded.
+
+### Evidence archive: NeuRoute R4 wave #244--#257
+
+The complete compact receipt set for the fourteen landed R4 experiments is
+archived in [Evidence release `evidence/neuroute-r4-wave-244-257-v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/neuroute-r4-wave-244-257-v1).
+The archive contains each experiment note plus its result/evidence receipts;
+raw DE-1M stores and generated databases remain outside Git and Releases.
+
+- Measured/corrective head: `a82a7e2a97181f68c6e82ce416c4b264ada9e0d0`
+- Archive SHA-256: `2f3a63cafcc945b9cdc110760302df9a859e290fd20662938f913edb38319703`
+- Bundle-root SHA-256: `bd3646791832b325d02be23085448ccd12499bce4bdfa0cd032a6522d1f35176`
+- Scope: PRs `#244--#257`; accounting correction #312 is included in the
+  measured head and separately recorded as `CORRECTED`.
