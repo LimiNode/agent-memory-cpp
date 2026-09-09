@@ -211,6 +211,20 @@ canonical parent lands, then preserve:
 unconditional figure is about 73.75 rather than 48.56). Keep #277 and mark that
 metric superseded by #278.
 
+Lineage status after clean-main retargeting:
+
+```text
+#276 GATED OFF / CLOSED (planning-only ceiling; no unique measured evidence)
+#277 SUPERSEDED BY #317 (stacked form; canonical clean-main continuation)
+#278 SUPERSEDED BY #318 (stacked form; canonical clean-main continuation)
+#279 SUPERSEDED BY #319 (stacked form; canonical clean-main continuation)
+```
+
+The original PR links remain historical references; #317, #318, and #319 are
+the canonical landed links. Measured receipts for #267--#275 plus this
+lineage mapping are archived in [Evidence release
+`evidence/neuroute-lineage-wave-267-275-v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/neuroute-lineage-wave-267-275-v1).
+
 ### Wave 7: selector capacity and codec-family work (`#280--#292`)
 
 ```text
