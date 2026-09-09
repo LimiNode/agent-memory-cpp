@@ -3660,7 +3660,7 @@ CoarseAddressShortlist load_coarse_address_shortlist(
             "R4 local K8 shortlist seed descriptor differs");
     const auto shape = found->at("shape").get<std::vector<std::size_t>>();
     require(shape.size() == 2 && shape[0] == 152 &&
-            selected_rows_per_query > addresses_per_query &&
+            selected_rows_per_query >= addresses_per_query &&
             selected_rows_per_query <= shape[1],
             "R4 local K8 shortlist shape differs");
     const auto path = std::filesystem::path(found->at("path").get<std::string>());
@@ -4463,7 +4463,7 @@ CoarseK8Result local_coarse_k8_query(
         const CoarseAddressShortlist& shortlist, std::size_t request) {
     require(request < shortlist.query_count && input.query_arithmetic == "fp32" &&
             input.prototype_limit == 8 &&
-            shortlist.selected_rows_per_query > addresses_per_query &&
+            shortlist.selected_rows_per_query >= addresses_per_query &&
             input.record_offsets.size() == seed.address_counts.size() + 1,
             "R4 local K8 invocation differs");
     const auto* query = seed.queries.data() + request * dimensions;
@@ -4501,8 +4501,9 @@ CoarseK8Result local_coarse_k8_query(
             return maximums[left] > maximums[right];
         return seed.occupied_addresses[left] < seed.occupied_addresses[right];
     };
-    std::nth_element(order.begin(), order.begin() + addresses_per_query,
-                     order.end(), lower);
+    if (selected_count > addresses_per_query)
+        std::nth_element(order.begin(), order.begin() + addresses_per_query,
+                         order.end(), lower);
     std::sort(order.begin(), order.begin() + addresses_per_query, lower);
     CoarseK8Result result;
     result.dot_and_max_ms = milliseconds(begin, Clock::now());
@@ -4510,8 +4511,10 @@ CoarseK8Result local_coarse_k8_query(
     begin = Clock::now();
     result.rows.assign(order.begin(), order.begin() + addresses_per_query);
     result.cutoff_score = maximums[result.rows.back()];
-    result.next_score = maximums[order[addresses_per_query]];
-    result.cutoff_margin = result.cutoff_score - result.next_score;
+    result.next_score = selected_count > addresses_per_query
+        ? maximums[order[addresses_per_query]] : result.cutoff_score;
+    result.cutoff_margin = selected_count > addresses_per_query
+        ? result.cutoff_score - result.next_score : 0.0F;
     result.features.resize(addresses_per_query * scalar_features);
     const auto log_denominator = std::log1p(1000000.0F);
     for (std::size_t local = 0; local != addresses_per_query; ++local) {
