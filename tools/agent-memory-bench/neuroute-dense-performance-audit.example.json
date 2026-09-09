@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_dense_performance_audit",
+  "activation": {
+    "parent_result_sha256": "940d416ca20d1ba51d690b01016f61f929bb29fadaf8d2b624ed03dd652d8d02",
+    "parent_evidence_sha256": "41303bdc8484891ca34368715ab2869b92da345941b3a68167e0b779f335c4ca",
+    "parent_protocol_sha256": "22e2798fd982ecb5a1f762ef13294deef78312792b9a7786e2da1c8f2754fb26",
+    "control_executable_sha256": "8a00acfdbc4f0dadfb9539eb062a5d07fe85aa871af1c25de8fa91e2ab681cd2",
+    "native_executable_sha256": "1a6af85cfcbd1e1a033bcc15888109a5eca415cf4df2dd7a65a321a083f61954"
+  },
+  "seeds": [2026082701, 2026082702, 2026082703],
+  "kernels": ["homogeneous_int8", "int5_fused_avx2"],
+  "execution_points": [
+    {"condition": "resident", "workers": 1},
+    {"condition": "resident", "workers": 8},
+    {"condition": "resident", "workers": 16},
+    {"condition": "working_set_cap", "workers": 8}
+  ],
+  "audit_fixes": [
+    "reuse_batched_scorer_scratch_per_worker",
+    "reuse_cascade_selection_scratch_per_worker",
+    "carry_selected_rows_without_repeated_lower_bound",
+    "exclude_diagnostic_hashing_and_result_copies_from_query_total"
+  ],
+  "gates": {
+    "require_all_stage_identities": true,
+    "maximum_cross_seed_resident_mean_total_ratio_vs_control": 1.02,
+    "pressure_latency_is_descriptive": true
+  },
+  "decision": {
+    "algorithm_and_persisted_bytes_frozen": true,
+    "safe_fixes_only": true,
+    "freeze_audited_hot_path_for_followups": true
+  }
+}

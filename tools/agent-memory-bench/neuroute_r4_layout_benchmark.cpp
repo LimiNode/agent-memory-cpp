@@ -1431,12 +1431,25 @@ std::vector<float> address_scores(const SeedContext& seed, std::size_t request,
     return output;
 }
 
-std::vector<float> address_scores_batched_avx2(
+struct BatchedAddressScoreWorkspace final {
+    std::vector<float> normalized;
+    std::vector<float> local;
+    std::vector<float> joined;
+};
+
+void address_scores_batched_avx2_into(
         const SeedContext& seed, std::size_t request,
-        const std::vector<float>& maximums) {
+        const std::vector<float>& maximums, std::vector<float>& output) {
 #if !AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2
-    return address_scores(seed, request, maximums);
+    output = address_scores(seed, request, maximums);
 #else
+    thread_local BatchedAddressScoreWorkspace workspace;
+    workspace.normalized.resize(23 * addresses_per_query);
+    workspace.local.resize(addresses_per_query * local_hidden);
+    workspace.joined.resize(joined_dimensions * addresses_per_query);
+    auto& normalized = workspace.normalized;
+    auto& local = workspace.local;
+    auto& joined = workspace.joined;
     const auto& model = seed.model;
     const float* query = seed.queries.data() + request * dimensions;
     const float* features = seed.features.data() +
@@ -1451,7 +1464,6 @@ std::vector<float> address_scores_batched_avx2(
         query_hidden[column] = std::tanh(value);
     }
 
-    std::vector<float> normalized(23 * addresses_per_query);
     for (std::size_t address = 0; address != addresses_per_query; ++address) {
         for (std::size_t feature = 0; feature != scalar_features; ++feature) {
             normalized[feature * addresses_per_query + address] =
@@ -1463,7 +1475,6 @@ std::vector<float> address_scores_batched_avx2(
             model.aggregate_deviation[0];
     }
 
-    std::vector<float> local(addresses_per_query * local_hidden);
     alignas(32) std::array<float, 8> lanes{};
     for (std::size_t address = 0; address != addresses_per_query; address += 8) {
         for (std::size_t column = 0; column != local_hidden; ++column) {
@@ -1495,7 +1506,6 @@ std::vector<float> address_scores_batched_avx2(
     }
     for (auto& value : mean) value /= static_cast<float>(addresses_per_query);
 
-    std::vector<float> joined(joined_dimensions * addresses_per_query);
     for (std::size_t address = 0; address != addresses_per_query; ++address) {
         for (std::size_t column = 0; column != local_hidden; ++column) {
             const auto value = local[address * local_hidden + column];
@@ -1510,7 +1520,8 @@ std::vector<float> address_scores_batched_avx2(
         }
     }
 
-    std::vector<float> output(addresses_per_query, model.score_bias2[0]);
+    output.resize(addresses_per_query);
+    std::fill(output.begin(), output.end(), model.score_bias2[0]);
     for (std::size_t address = 0; address != addresses_per_query; address += 8) {
         for (std::size_t hidden = 0; hidden != score_hidden; ++hidden) {
             auto value = _mm256_set1_ps(model.score_bias1[hidden]);
@@ -1528,8 +1539,15 @@ std::vector<float> address_scores_batched_avx2(
             }
         }
     }
-    return output;
 #endif
+}
+
+std::vector<float> address_scores_batched_avx2(
+        const SeedContext& seed, std::size_t request,
+        const std::vector<float>& maximums) {
+    std::vector<float> output;
+    address_scores_batched_avx2_into(seed, request, maximums, output);
+    return output;
 }
 
 Sample measure(const SeedContext& seed, const std::string& layout,
@@ -1922,6 +1940,19 @@ struct RoutingValues {
     std::int64_t rss_delta = 0;
 };
 
+struct EndToEndWorkspace final {
+    std::vector<std::size_t> address_order;
+    std::vector<std::size_t> selected_rows;
+    std::vector<std::uint32_t> selected_addresses;
+    std::vector<std::uint32_t> candidates;
+    std::vector<std::uint32_t> hamming;
+    std::vector<std::uint32_t> adc;
+    std::vector<std::uint32_t> exact;
+    std::vector<E2eScored<std::uint16_t>> hamming_rows;
+    std::vector<E2eScored<float>> adc_rows;
+    std::vector<E2eScored<float>> exact_rows;
+};
+
 RoutingValues end_to_end_route(const SeedContext& seed, const MappedFile& mapped,
                                const std::string& treatment,
                                std::size_t request) {
@@ -2044,14 +2075,22 @@ EndToEndResult finish_end_to_end_query(
     result.page_faults = route.page_faults;
     result.address_spans = route.address_spans;
     result.rss_delta = route.rss_delta;
-    std::vector<std::uint8_t> score_bytes(route.scores.size() * sizeof(float));
-    std::memcpy(score_bytes.data(), route.scores.data(), score_bytes.size());
-    result.score_sha256 = agent_memory::sha256_bytes_hex(score_bytes);
+    thread_local EndToEndWorkspace workspace;
+    workspace.address_order.resize(addresses_per_query);
+    workspace.selected_rows.clear();
+    workspace.selected_addresses.clear();
+    workspace.candidates.clear();
+    workspace.hamming.clear();
+    workspace.adc.clear();
+    workspace.exact.clear();
+    workspace.hamming_rows.clear();
+    workspace.adc_rows.clear();
+    workspace.exact_rows.clear();
 
     auto begin = Clock::now();
-    std::vector<std::size_t> order(addresses_per_query);
-    std::iota(order.begin(), order.end(), 0);
-    std::sort(order.begin(), order.end(), [&](std::size_t left, std::size_t right) {
+    std::iota(workspace.address_order.begin(), workspace.address_order.end(), 0);
+    std::sort(workspace.address_order.begin(), workspace.address_order.end(),
+              [&](std::size_t left, std::size_t right) {
         if (route.scores[left] != route.scores[right])
             return route.scores[left] > route.scores[right];
         const auto left_row = seed.shortlists[request * addresses_per_query + left];
@@ -2059,62 +2098,61 @@ EndToEndResult finish_end_to_end_query(
         return seed.occupied_addresses[left_row] < seed.occupied_addresses[right_row];
     });
     std::size_t candidate_count = 0;
-    for (const auto local : order) {
+    for (const auto local : workspace.address_order) {
         const auto row = seed.shortlists[request * addresses_per_query + local];
         const auto count = static_cast<std::size_t>(seed.address_counts[row]);
         if (candidate_count + count > 5000) break;
         candidate_count += count;
-        result.selected_addresses.push_back(seed.occupied_addresses[row]);
+        workspace.selected_rows.push_back(row);
+        workspace.selected_addresses.push_back(seed.occupied_addresses[row]);
     }
     result.timing.address_order_and_boundary = milliseconds(begin, Clock::now());
 
     begin = Clock::now();
-    result.candidates.reserve(candidate_count);
-    for (const auto address : result.selected_addresses) {
-        const auto found = std::lower_bound(seed.occupied_addresses.begin(),
-                                            seed.occupied_addresses.end(), address);
-        require(found != seed.occupied_addresses.end() && *found == address,
-                "R4 end-to-end selected address differs");
-        const auto row = static_cast<std::size_t>(found - seed.occupied_addresses.begin());
+    workspace.candidates.reserve(candidate_count);
+    for (const auto row : workspace.selected_rows) {
         const auto first = seed.address_offsets[row];
         const auto count = seed.address_counts[row];
         for (std::size_t offset = 0; offset != count; ++offset) {
             const auto document = seed.physical_to_document[first + offset];
             require(document >= 0, "R4 end-to-end physical document differs");
-            result.candidates.push_back(static_cast<std::uint32_t>(document));
+            workspace.candidates.push_back(static_cast<std::uint32_t>(document));
         }
     }
-    std::sort(result.candidates.begin(), result.candidates.end());
+    std::sort(workspace.candidates.begin(), workspace.candidates.end());
     result.timing.candidate_materialization = milliseconds(begin, Clock::now());
 
     begin = Clock::now();
-    std::vector<E2eScored<std::uint16_t>> hamming_rows;
-    hamming_rows.reserve(result.candidates.size());
+    workspace.hamming_rows.reserve(workspace.candidates.size());
     const auto* query_code = input.query_codes.data() + native_query * binary_code_words;
-    for (const auto document : result.candidates) {
+    for (const auto document : workspace.candidates) {
         const auto* document_code = reinterpret_cast<const std::uint64_t*>(
             input.document_codes->data() + static_cast<std::size_t>(document) *
                                              binary_code_bytes);
-        hamming_rows.push_back({static_cast<std::uint16_t>(
+        workspace.hamming_rows.push_back({static_cast<std::uint16_t>(
             hamming.distance_words(document_code, query_code)), document,
             input.document_id_rank[document]});
     }
-    const auto hamming_count = std::min<std::size_t>(768, hamming_rows.size());
-    if (hamming_count < hamming_rows.size()) {
-        std::nth_element(hamming_rows.begin(), hamming_rows.begin() + hamming_count,
-                         hamming_rows.end(), lower_e2e_score<std::uint16_t>);
-        hamming_rows.resize(hamming_count);
+    const auto hamming_count = std::min<std::size_t>(
+        768, workspace.hamming_rows.size());
+    if (hamming_count < workspace.hamming_rows.size()) {
+        std::nth_element(workspace.hamming_rows.begin(),
+                         workspace.hamming_rows.begin() + hamming_count,
+                         workspace.hamming_rows.end(),
+                         lower_e2e_score<std::uint16_t>);
+        workspace.hamming_rows.resize(hamming_count);
     }
-    std::sort(hamming_rows.begin(), hamming_rows.end(),
+    std::sort(workspace.hamming_rows.begin(), workspace.hamming_rows.end(),
               lower_e2e_score<std::uint16_t>);
-    for (const auto& row : hamming_rows) result.hamming.push_back(row.document);
+    workspace.hamming.reserve(workspace.hamming_rows.size());
+    for (const auto& row : workspace.hamming_rows)
+        workspace.hamming.push_back(row.document);
     result.timing.hamming_and_top768 = milliseconds(begin, Clock::now());
 
     begin = Clock::now();
-    std::vector<E2eScored<float>> adc_rows;
-    adc_rows.reserve(result.hamming.size());
+    workspace.adc_rows.reserve(workspace.hamming.size());
     const auto* projection = input.query_projections.data() + native_query * 256;
-    for (const auto document : result.hamming) {
+    for (const auto document : workspace.hamming) {
         std::array<float, 256> components{};
         const auto* code = input.document_codes->data() +
                            static_cast<std::size_t>(document) * binary_code_bytes;
@@ -2123,45 +2161,61 @@ EndToEndResult finish_end_to_end_query(
             const auto delta = projection[bit] - input.adc_centroids[bit * 2 + symbol];
             components[bit] = delta * delta;
         }
-        adc_rows.push_back({static_cast<float>(pairwise_sum(components.data(),
-                                                            components.size())),
-                            document, input.document_id_rank[document]});
+        workspace.adc_rows.push_back({static_cast<float>(pairwise_sum(
+            components.data(), components.size())), document,
+            input.document_id_rank[document]});
     }
-    const auto adc_count = std::min<std::size_t>(64, adc_rows.size());
-    if (adc_count < adc_rows.size()) {
-        std::nth_element(adc_rows.begin(), adc_rows.begin() + adc_count,
-                         adc_rows.end(), lower_e2e_score<float>);
-        adc_rows.resize(adc_count);
+    const auto adc_count = std::min<std::size_t>(64, workspace.adc_rows.size());
+    if (adc_count < workspace.adc_rows.size()) {
+        std::nth_element(workspace.adc_rows.begin(),
+                         workspace.adc_rows.begin() + adc_count,
+                         workspace.adc_rows.end(), lower_e2e_score<float>);
+        workspace.adc_rows.resize(adc_count);
     }
-    std::sort(adc_rows.begin(), adc_rows.end(), lower_e2e_score<float>);
-    for (const auto& row : adc_rows) result.adc.push_back(row.document);
+    std::sort(workspace.adc_rows.begin(), workspace.adc_rows.end(),
+              lower_e2e_score<float>);
+    workspace.adc.reserve(workspace.adc_rows.size());
+    for (const auto& row : workspace.adc_rows)
+        workspace.adc.push_back(row.document);
     result.timing.adc_and_top64 = milliseconds(begin, Clock::now());
 
     begin = Clock::now();
-    std::vector<E2eScored<float>> exact_rows;
-    exact_rows.reserve(result.adc.size());
+    workspace.exact_rows.reserve(workspace.adc.size());
     const auto* query_vector = input.query_vectors.data() + native_query * dimensions;
-    for (const auto document : result.adc) {
+    for (const auto document : workspace.adc) {
         std::array<float, dimensions> components{};
         const auto* document_vector = reinterpret_cast<const float*>(
             input.document_vectors->data() + static_cast<std::size_t>(document) *
                                                dimensions * sizeof(float));
         for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
             components[dimension] = document_vector[dimension] * query_vector[dimension];
-        exact_rows.push_back({-static_cast<float>(pairwise_sum(components.data(),
-                                                               components.size())),
-                              document, input.document_id_rank[document]});
+        workspace.exact_rows.push_back({-static_cast<float>(pairwise_sum(
+            components.data(), components.size())), document,
+            input.document_id_rank[document]});
     }
-    const auto exact_count = std::min<std::size_t>(10, exact_rows.size());
-    if (exact_count < exact_rows.size()) {
-        std::nth_element(exact_rows.begin(), exact_rows.begin() + exact_count,
-                         exact_rows.end(), lower_e2e_score<float>);
-        exact_rows.resize(exact_count);
+    const auto exact_count = std::min<std::size_t>(10, workspace.exact_rows.size());
+    if (exact_count < workspace.exact_rows.size()) {
+        std::nth_element(workspace.exact_rows.begin(),
+                         workspace.exact_rows.begin() + exact_count,
+                         workspace.exact_rows.end(), lower_e2e_score<float>);
+        workspace.exact_rows.resize(exact_count);
     }
-    std::sort(exact_rows.begin(), exact_rows.end(), lower_e2e_score<float>);
-    for (const auto& row : exact_rows) result.exact.push_back(row.document);
+    std::sort(workspace.exact_rows.begin(), workspace.exact_rows.end(),
+              lower_e2e_score<float>);
+    workspace.exact.reserve(workspace.exact_rows.size());
+    for (const auto& row : workspace.exact_rows)
+        workspace.exact.push_back(row.document);
     result.timing.exact_e5_and_top10 = milliseconds(begin, Clock::now());
     result.timing.total = milliseconds(total_begin, Clock::now());
+
+    result.selected_addresses = workspace.selected_addresses;
+    result.candidates = workspace.candidates;
+    result.hamming = workspace.hamming;
+    result.adc = workspace.adc;
+    result.exact = workspace.exact;
+    std::vector<std::uint8_t> score_bytes(route.scores.size() * sizeof(float));
+    std::memcpy(score_bytes.data(), route.scores.data(), score_bytes.size());
+    result.score_sha256 = agent_memory::sha256_bytes_hex(score_bytes);
     return result;
 }
 
