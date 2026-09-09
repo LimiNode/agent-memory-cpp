@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r3_document_summary",
+  "claim_scope": "frozen_de_1m_teacher_blind_k8_document_distribution_summary_audit",
+  "activation": {
+    "matched_representation_result_sha256": "cb0ad8e6d528fdeca7ee0f6a473b5425be20cb5380c2058304a411652d293e00",
+    "matched_representation_evidence_sha256": "38a27cd77f8380ff7d4599b4dbaafd978767c89a9131af213e5d5053d2d83366"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "prototype_partition": {
+    "requested_prototypes_per_address": 8,
+    "assignment": "maximum_cosine_to_effective_k8_with_lowest_slot_tie_break",
+    "document_normalization": "l2_float32_before_residual",
+    "summary_is_query_independent": true,
+    "summary_is_teacher_blind": true
+  },
+  "summaries": {
+    "layout": "occupied_address_then_local_prototype_then_embedding_dimension",
+    "embedding_dimensions": 384,
+    "fields": [
+      "local_document_count",
+      "mean_residual",
+      "diagonal_residual_variance",
+      "top_centered_residual_direction",
+      "top_residual_eigenvalue",
+      "total_residual_energy"
+    ],
+    "residual": "normalized_document_minus_assigned_k8_prototype",
+    "variance": "population_diagonal_variance_around_local_residual_mean",
+    "top_direction": {
+      "method": "groupwise_covariance_power_iteration",
+      "iterations": 4,
+      "initialization": "positive_axis_of_maximum_diagonal_variance",
+      "canonical_sign": "largest_absolute_component_positive",
+      "minimum_local_documents": 3,
+      "insufficient_or_zero_energy_policy": "all_zero_direction_and_eigenvalue"
+    },
+    "dtype": "float32",
+    "storage": "uncompressed_npy_outside_git"
+  },
+  "audit": {
+    "address_occupancy_buckets": ["le_8", "9_16", "17_32", "gt_32"],
+    "require_every_document_assigned_once": true,
+    "require_finite_summaries": true,
+    "require_zero_fallback_semantics": true,
+    "note_centroid_slot_is_not_a_document_representative": true
+  },
+  "decision": {
+    "matched_r3_ladder_licensed_after_replay": true,
+    "stateful_policy_forbidden": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
