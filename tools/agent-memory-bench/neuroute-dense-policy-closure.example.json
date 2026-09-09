@@ -1,0 +1,37 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_dense_policy_closure",
+  "claim_scope": "current_de_1m_r4_dense_research_branch",
+  "routing_storage": {
+    "selection": "explicit_user_configuration",
+    "modes": ["int8", "nonlinear_int5_power_half"],
+    "automatic_ram_based_switching": false
+  },
+  "execution": {
+    "portable_default": true,
+    "avx2_requires_cmake_opt_in": true,
+    "persisted_bytes_are_execution_independent": true
+  },
+  "final_rerank": {
+    "codec": "symmetric_per_document_int8",
+    "uniform_int5_is_negative_transfer_control": true,
+    "selection_is_post_hoc_corrective": true,
+    "independent_heldout_revalidation_required": true
+  },
+  "coarse_stage": {
+    "current_implementation": "persisted_current_k8_fp32_full_scan_top1024",
+    "must_be_in_full_timer": true,
+    "dominant_full_r4_latency_stage": true
+  },
+  "closure": {
+    "status": "closed_for_current_exact_k8_design",
+    "universal_winner_claimed": false,
+    "lexical_work_started": false,
+    "reopen_conditions": [
+      "independent_heldout_final_int8_failure",
+      "approximate_or_compressed_k8_with_full_cascade_quality_gate",
+      "new_workload_or_hardware_changes_pareto_frontier",
+      "explicit_scann_or_diskann_scope"
+    ]
+  }
+}
