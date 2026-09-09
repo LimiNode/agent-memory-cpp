@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_external_ann_comparison",
+  "dataset": {
+    "id": "de-1m-e5-384d",
+    "document_count": 1000000,
+    "dimensions": 384,
+    "evaluation_queries": 76,
+    "metric": "inner_product_on_normalized_vectors"
+  },
+  "retrieval_contract": {
+    "candidate_limit": 5000,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "exact_limit": 10,
+    "quality_metrics": [
+      "exact_top10_recall_at_candidate_boundary",
+      "final_top10_overlap",
+      "ndcg_at_10"
+    ],
+    "latency_metrics": ["p50_ms", "p95_ms", "p99_ms"],
+    "throughput_workers": [1, 8, 16]
+  },
+  "neuroute": {
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "storage_modes": ["int8", "nonlinear_int5_power_half"],
+    "execution_kernel": "avx2",
+    "coarse_stage": "persisted_current_k8_fp32_full_scan_top1024",
+    "coarse_stage_must_be_timed": true,
+    "representative_stage": "ff32_actual_documents_k32_r0_max",
+    "final_document_codec": "symmetric_per_document_int8"
+  },
+  "competitors": {
+    "exact": {"faiss_exact_flat": [0]},
+    "float_ann": {
+      "faiss_float_ivf": [8, 32, 128, 512],
+      "faiss_float_hnsw": [512, 2048, 8192]
+    },
+    "binary_ann": {
+      "faiss_binary_flat": [0],
+      "faiss_binary_ivf": [8, 32, 128, 512],
+      "faiss_binary_hnsw": [512, 2048, 8192]
+    },
+    "historical_control": {"historical_mih": [56]}
+  },
+  "artifact_accounting": {
+    "report_serialized_index_bytes": true,
+    "report_downstream_vector_store_bytes": true,
+    "report_complete_retrieval_payload_bytes": true,
+    "build_seconds": true,
+    "post_build_rss_delta_is_not_peak_rss": true
+  },
+  "interpretation": {
+    "selection": "pareto_frontier_not_single_winner",
+    "axes": ["quality", "latency", "throughput", "artifact_bytes"],
+    "python_faiss_vs_native_cpp_timings_are_directional": true
+  },
+  "excluded_from_this_batch": ["scann", "diskann", "bm25", "wand", "bmw"]
+}

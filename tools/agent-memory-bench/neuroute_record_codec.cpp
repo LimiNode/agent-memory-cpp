@@ -24,6 +24,7 @@ void decode_nonlinear_int5_codes_sse2(const std::uint8_t*, std::uint32_t*);
 #endif
 #if AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2
 void decode_nonlinear_int5_codes_avx2(const std::uint8_t*, std::uint32_t*);
+float score_nonlinear_int5_power_half_avx2(const std::uint8_t*, const float*);
 #endif
 
 namespace {
@@ -234,6 +235,18 @@ float score_nonlinear_int5_power_half(
         score += static_cast<float>(signed_square) * query[dimension];
     }
     return score * nonlinear_int5_amplitude(record) / 225.0F;
+}
+
+float score_nonlinear_int5_power_half_fast(
+        const std::uint8_t* record, const float* query,
+        RecordExecutionKernel kernel) {
+    if (!execution_kernel_supported(kernel))
+        throw std::runtime_error("requested NeuRoute execution kernel is unavailable");
+#if AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2
+    if (kernel == RecordExecutionKernel::Avx2)
+        return score_nonlinear_int5_power_half_avx2(record, query);
+#endif
+    return score_nonlinear_int5_power_half(record, query, kernel);
 }
 
 float score_int8(const std::uint8_t* record, const float* query) {
