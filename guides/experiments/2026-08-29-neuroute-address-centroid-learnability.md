@@ -39,7 +39,7 @@ At the primary 75% actionable-gain target:
 | Scale | Mean centroid candidate fraction | Mean occupied-logit fraction | Mean AP | Reach rate range |
 | --- | ---: | ---: | ---: | ---: |
 | DE-25k | .001359 | .039282 | .8133 | 1.000 |
-| DE-100k | .004263 | .036522 | .5607 | .974-.1000 |
+| DE-100k | .004263 | .036522 | .5607 | .974–1.000 |
 | DE-1M | .032070 | .038991 | .1426 | .803-.842 |
 
 The decomposition makes the scale failure explicit:
@@ -59,7 +59,7 @@ concentrated but insufficient as the final sparse scheduler.
 
 ## Decision
 
-`single_centroid_useful = false`. The internal-evaluation partition was not
+`single_centroid_useful = false` under the all-scale gate. The internal-evaluation partition was not
 opened and production selection remains forbidden. The predeclared
 multi-prototype follow-up is licensed to distinguish within-address
 multimodality from a more general failure of centroid geometry.
