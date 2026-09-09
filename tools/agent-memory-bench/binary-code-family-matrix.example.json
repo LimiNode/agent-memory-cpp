@@ -23,8 +23,8 @@
     {"id": "pca_sign_hamming", "family": "binary", "status": "existing"},
     {"id": "itq_hamming", "family": "binary", "status": "existing"},
     {"id": "itq_binary_adc", "family": "binary", "status": "existing"},
-    {"id": "rabitq_reference", "family": "binary_corrected", "status": "requires_pinned_reference"},
-    {"id": "bbq_like_reference", "family": "binary_corrected", "status": "requires_pinned_reference"},
+    {"id": "rabitq_reference", "family": "binary_corrected", "status": "standalone_reference"},
+    {"id": "bbq_like_reference", "family": "binary_corrected", "status": "standalone_reference"},
     {"id": "ternary_adc", "family": "ternary", "status": "existing"},
     {"id": "quaternary_adc", "family": "quaternary", "status": "existing"},
     {"id": "int4_linear", "family": "scalar", "status": "existing"},
@@ -49,5 +49,5 @@
     "exact_rerank_ms_p95", "payload_bytes", "model_bytes", "index_bytes",
     "peak_working_set_bytes", "add_ms", "delete_ms", "rebuild_required"
   ],
-  "bbq_rabitq_policy": "do_not_substitute_homegrown_approximation_for_missing_pinned_reference"
+  "bbq_rabitq_policy": "use_pinned_standalone_spec_and_report_as_reference_variant"
 }
