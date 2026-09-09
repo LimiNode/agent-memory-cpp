@@ -320,4 +320,7 @@ jobs:
           python tools/agent-memory-bench/write-neuroute-replication-topology-evidence.py --self-test &&
           python tools/agent-memory-bench/plan-neuroute-r4-document-representatives.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-r4-document-representatives.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-r4-document-representatives-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-r4-document-representatives-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-r4-fine-grained-interactions.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-r4-fine-grained-interactions.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-r4-fine-grained-interactions-evidence.py --self-test
