@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_fixed_top_m_router_frontier",
+  "claim_scope": "configuration_selected_fixed_top_m_address_routing_on_frozen_de_1m_r4_topology",
+  "partition": {
+    "configuration_requests": [0, 76],
+    "locked_internal_requests": [76, 152],
+    "configuration_folds": 4,
+    "fold_assignment": "request_modulo_4_v1",
+    "internal_training": "retrain_selected_treatments_on_all_76_configuration_requests"
+  },
+  "targets": {
+    "global_k8": "inverse_log2_discounted_global_fp32_k8_top1024_rows",
+    "actionable": "unique_full_fp32_exact_top10_document_address_rows",
+    "hybrid": "equal_weight_sum_of_per_query_max_normalized_global_k8_and_actionable"
+  },
+  "ridge_lambda": 0.01,
+  "treatments": [
+    "direct_linear_global",
+    "direct_linear_actionable",
+    "direct_linear_hybrid",
+    "low_rank_32_hybrid",
+    "low_rank_64_hybrid",
+    "nonlinear_random_gelu_256_hybrid",
+    "centroid_k1_plus_low_rank_64_hybrid"
+  ],
+  "shortlist_budgets": [2048, 4096, 8192],
+  "residual_weight": 0.5,
+  "random_feature_seed": 2026090201,
+  "native_replay": {
+    "coarse_codec": "fp32_k8",
+    "routing_storage_mode": "int8",
+    "execution": "portable",
+    "workers": 1,
+    "warmup_batches": 1,
+    "measured_batches": 1
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
+    "maximum_native_address_budget": 8192,
+    "exact_scan_target_p95_ms": 15.0
+  },
+  "decision": {
+    "configuration_selection": "quality_pass_then_minimum_address_budget_then_total_p95_then_id",
+    "locked_internal_open": "best_two_distinct_configuration_treatments",
+    "license_bakeoff_only_if_locked_internal_quality_passes": true,
+    "production_selection_forbidden": true
+  }
+}
