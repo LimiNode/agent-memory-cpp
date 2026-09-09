@@ -41,6 +41,8 @@ def validate(path: Path) -> dict[str, object]:
         members = manifest.get("members")
         if not isinstance(members, list) or len(members) != 13:
             raise ValueError("expected one member receipt for PRs #280--#292")
+        if [member.get("pr") for member in members] != list(range(280, 293)):
+            raise ValueError("member PR sequence must be exactly #280--#292")
         for member in members:
             evidence = json.loads(archive.read(member["evidence"]))
             result = json.loads(archive.read(member["result"]))
@@ -54,6 +56,13 @@ def validate(path: Path) -> dict[str, object]:
                 raise ValueError(f"evidence receipt mismatch: PR #{member['pr']}")
             if member["status"] != evidence.get("status"):
                 raise ValueError(f"status mismatch: PR #{member['pr']}")
+            sources = result.get("source_artifacts")
+            if not isinstance(sources, list) or len(sources) != evidence.get("source_count"):
+                raise ValueError(f"source count mismatch: PR #{member['pr']}")
+            for source in sources:
+                payload = archive.read(source["path"])
+                if len(payload) != source["size"] or sha256_bytes(payload) != source["sha256"]:
+                    raise ValueError(f"source receipt mismatch: PR #{member['pr']}")
         return {"archive_sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
                 "bundle_root_sha256": root, "members": len(members)}
 
