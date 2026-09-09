@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_shortlist_generator_bakeoff",
+  "claim_scope": "external_faiss_and_learned_shortlist_generators_before_exact_local_k8_on_frozen_de_1m_r4",
+  "partition": {
+    "configuration_requests": [0, 76],
+    "locked_internal_requests": [76, 152],
+    "faiss_indexes_train_on_document_only_k8_materialization": true,
+    "parameter_selection_uses_configuration_coverage_then_configuration_latency": true,
+    "locked_internal_timing_may_not_select_parameters": true
+  },
+  "families": [
+    "fixed_top_m_control",
+    "exact_address_k1",
+    "faiss_address_ivf",
+    "faiss_address_hnsw",
+    "faiss_prototype_ivf",
+    "faiss_prototype_hnsw"
+  ],
+  "shortlist_budgets": [4096, 8192],
+  "faiss": {
+    "address_ivf": {"nlist": 256, "nprobe": [64, 128]},
+    "address_hnsw": {"m": 32, "ef_construction": 80, "ef_search": [8192, 16384]},
+    "prototype_ivf": {"nlist": 1024, "nprobe": [128, 256]},
+    "prototype_hnsw": {"m": 32, "ef_construction": 80, "ef_search": [32768, 65536]},
+    "prototype_overfetch_factors": [2, 4, 8]
+  },
+  "native_replay": {
+    "coarse_codec": "fp32_k8",
+    "routing_storage_mode": "int8",
+    "execution": "portable",
+    "workers": 1,
+    "warmup_batches": 1,
+    "measured_batches": 1
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
+    "maximum_native_address_budget": 8192,
+    "exact_scan_target_p95_ms": 15.0
+  },
+  "decision": {
+    "configuration_selection": "quality_pass_then_minimum_address_budget_then_generator_plus_local_k8_p95",
+    "locked_internal_open": "best_two_distinct_generator_families",
+    "license_native_integration_only_if_locked_internal_quality_passes": true,
+    "production_selection_forbidden": true
+  }
+}

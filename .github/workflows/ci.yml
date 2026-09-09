@@ -244,7 +244,9 @@ jobs:
           python tools/agent-memory-bench/run-neuroute-local-k8-historical-replay.py --self-test &&
           python tools/agent-memory-bench/write-neuroute-local-k8-historical-replay-evidence.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-fixed-top-m-router.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-fixed-top-m-router-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-fixed-top-m-router-evidence.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-shortlist-generator-bakeoff.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-shortlist-generator-bakeoff-evidence.py --self-test
 
   ann-cascade:
     name: ANN cascade harness
