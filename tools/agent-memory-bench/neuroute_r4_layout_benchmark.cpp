@@ -2057,6 +2057,8 @@ struct EndToEndTiming {
 
 struct EndToEndResult {
     EndToEndTiming timing;
+    std::vector<std::uint32_t> coarse_rows;
+    std::vector<float> coarse_features;
     std::vector<std::uint32_t> selected_addresses;
     std::vector<std::uint32_t> candidates;
     std::vector<std::uint32_t> hamming;
@@ -4741,6 +4743,8 @@ EndToEndResult full_r4_query(
     result.coarse_shortlist_overlap = coarse.frozen_shortlist_overlap;
     result.coarse_shortlist_sequence_matches =
         coarse.frozen_shortlist_sequence_matches;
+    result.coarse_rows = std::move(coarse.rows);
+    result.coarse_features = std::move(coarse.features);
     return result;
 }
 
@@ -4877,6 +4881,118 @@ void final_rerank_ceiling(const std::filesystem::path& protocol_path,
             hamming.backend())}, {"samples", samples}});
 }
 
+void score_external_r4_maxima(const std::filesystem::path& protocol_path,
+                              std::uint64_t seed,
+                              const std::filesystem::path& shortlist_rows_path,
+                              const std::filesystem::path& scalar_features_path,
+                              const std::filesystem::path& maxima_path,
+                              std::size_t native_fp32_treatment,
+                              std::size_t native_int8_treatment,
+                              const std::filesystem::path& output_path) {
+    const auto protocol = read_json(protocol_path);
+    require(protocol.value("schema_version", 0) == 1 &&
+            protocol.contains("routing_kernel_protocol"),
+            "R4 external maxima scorer protocol differs");
+    const auto kernel_protocol = read_json(
+        protocol.at("routing_kernel_protocol").get<std::string>());
+    validate_int5_kernel_protocol(kernel_protocol);
+    const auto parent = read_json(
+        kernel_protocol.at("parent_protocol").get<std::string>());
+    validate_int5_integration_protocol(parent);
+    const auto& request_protocol = protocol.contains("requests")
+        ? protocol
+        : parent;
+    const auto query_count = request_protocol.at("requests").size();
+    require(query_count == 76, "R4 external maxima query count differs");
+    auto context = load_int5_kernel_context(kernel_protocol, parent, seed,
+                                            "homogeneous_int8");
+    const auto shortlist_rows = read_values<std::uint32_t>(shortlist_rows_path);
+    const auto scalar_values = read_values<float>(scalar_features_path);
+    const auto maxima = read_values<float>(maxima_path);
+    const auto values_per_treatment = query_count * addresses_per_query;
+    require(shortlist_rows.size() == values_per_treatment &&
+            scalar_values.size() == values_per_treatment * scalar_features &&
+            !maxima.empty() && maxima.size() % values_per_treatment == 0,
+            "R4 external maxima payload shape differs");
+    const auto treatment_count = maxima.size() / values_per_treatment;
+    require(native_fp32_treatment < treatment_count &&
+            native_int8_treatment < treatment_count &&
+            native_fp32_treatment != native_int8_treatment,
+            "R4 external maxima native treatment differs");
+    const auto& fp32_layout = layout_row(context.seed, "address_major_fp32");
+    const auto fp32_record_bytes =
+        fp32_layout.at("record_bytes").get<std::size_t>();
+    require(fp32_record_bytes == dimensions * sizeof(float),
+            "R4 external maxima FP32 record differs");
+    const auto fp32_path = payload_path(context.seed.root, fp32_layout);
+    require(std::filesystem::file_size(fp32_path) ==
+                fp32_layout.at("bytes").get<std::uint64_t>(),
+            "R4 external maxima FP32 payload differs");
+    const MappedFile fp32_records(fp32_path);
+    for (std::size_t row = 0; row != context.seed.address_counts.size(); ++row) {
+        for (std::size_t slot = 0;
+             slot != context.seed.representative_counts[row]; ++slot) {
+            require(context.seed.physical_to_document[
+                        context.seed.address_offsets[row] + slot] ==
+                    context.seed.representative_documents[
+                        context.seed.representative_offsets[row] + slot],
+                    "R4 external maxima FP32 representative prefix differs");
+        }
+    }
+    std::vector<float> scores(maxima.size());
+    std::vector<float> current_maximums(addresses_per_query);
+    for (std::size_t local = 0; local != query_count; ++local) {
+        const auto request = request_protocol.at("requests").at(local).at(
+            "request").get<std::size_t>();
+        const auto* frozen_rows = shortlist_rows.data() +
+                                  local * addresses_per_query;
+        const auto* frozen_features = scalar_values.data() +
+            local * addresses_per_query * scalar_features;
+        const auto* query = context.seed.queries.data() + request * dimensions;
+        std::vector<float> fp32_maximums(addresses_per_query,
+            -std::numeric_limits<float>::infinity());
+        for (std::size_t address = 0; address != addresses_per_query; ++address) {
+            const auto row = frozen_rows[address];
+            const auto first = context.seed.address_offsets[row];
+            const auto count = context.seed.representative_counts[row];
+            for (std::size_t slot = 0; slot != count; ++slot) {
+                const auto* record = reinterpret_cast<const float*>(
+                    fp32_records.data() + (first + slot) * fp32_record_bytes);
+                fp32_maximums[address] = std::max(fp32_maximums[address],
+                                                  fp32_dot_fast(record, query));
+            }
+        }
+        const auto fp32_scores = address_scores_batched_avx2(
+            context.seed, request, fp32_maximums, frozen_features);
+        const auto int8_scores = int5_kernel_route(context, request,
+            "homogeneous_int8", frozen_rows, frozen_features).scores;
+        for (std::size_t treatment = 0; treatment != treatment_count;
+             ++treatment) {
+            const auto offset = (treatment * query_count + local) *
+                                addresses_per_query;
+            std::copy_n(maxima.data() + offset, addresses_per_query,
+                        current_maximums.begin());
+            auto current_scores = address_scores_batched_avx2(
+                context.seed, request, current_maximums, frozen_features);
+            if (treatment == native_fp32_treatment) current_scores = fp32_scores;
+            if (treatment == native_int8_treatment) current_scores = int8_scores;
+            std::copy(current_scores.begin(), current_scores.end(),
+                      scores.begin() + static_cast<std::ptrdiff_t>(offset));
+        }
+    }
+    if (!output_path.parent_path().empty())
+        std::filesystem::create_directories(output_path.parent_path());
+    std::ofstream stream(output_path, std::ios::binary | std::ios::trunc);
+    require(static_cast<bool>(stream),
+            "R4 external maxima score output open failed");
+    stream.write(reinterpret_cast<const char*>(scores.data()),
+                 static_cast<std::streamsize>(scores.size() * sizeof(float)));
+    stream.close();
+    require(static_cast<bool>(stream) && std::filesystem::file_size(output_path) ==
+                scores.size() * sizeof(float),
+            "R4 external maxima score output write failed");
+}
+
 void external_comparison_r4(const std::filesystem::path& protocol_path,
                             std::uint64_t seed,
                             const std::string& storage_mode,
@@ -4951,6 +5067,48 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
                 request.at("native_query").get<std::size_t>(), pass,
                 workers == 1));
         }
+        nlohmann::json coarse_snapshot = nullptr;
+        if (workers == 1) {
+            const auto prefix = output_path.parent_path() /
+                (output_path.stem().string() + ".pass-" +
+                 std::to_string(pass));
+            const auto rows_path = std::filesystem::absolute(
+                prefix.string() + ".coarse-rows.u32le");
+            const auto features_path = std::filesystem::absolute(
+                prefix.string() + ".coarse-features.f32le");
+            std::filesystem::create_directories(rows_path.parent_path());
+            std::ofstream rows_stream(rows_path, std::ios::binary);
+            std::ofstream features_stream(features_path, std::ios::binary);
+            require(rows_stream && features_stream,
+                    "R4 coarse snapshot output cannot be opened");
+            for (const auto& value : values) {
+                require(value.coarse_rows.size() == addresses_per_query &&
+                        value.coarse_features.size() ==
+                            addresses_per_query * scalar_features,
+                        "R4 coarse snapshot shape differs");
+                rows_stream.write(reinterpret_cast<const char*>(
+                    value.coarse_rows.data()), static_cast<std::streamsize>(
+                        value.coarse_rows.size() * sizeof(std::uint32_t)));
+                features_stream.write(reinterpret_cast<const char*>(
+                    value.coarse_features.data()), static_cast<std::streamsize>(
+                        value.coarse_features.size() * sizeof(float)));
+            }
+            rows_stream.close();
+            features_stream.close();
+            require(rows_stream && features_stream,
+                    "R4 coarse snapshot write failed");
+            coarse_snapshot = {{"rows", {{"path", rows_path.string()},
+                {"dtype", "<u4"},
+                {"shape", {values.size(), addresses_per_query}},
+                {"bytes", std::filesystem::file_size(rows_path)},
+                {"sha256", agent_memory::sha256_file_hex(rows_path)}}},
+                {"features", {{"path", features_path.string()},
+                {"dtype", "<f4"},
+                {"shape", {values.size(), addresses_per_query,
+                           scalar_features}},
+                {"bytes", std::filesystem::file_size(features_path)},
+                {"sha256", agent_memory::sha256_file_hex(features_path)}}}};
+        }
         samples.push_back({{"pass", pass}, {"query_count", values.size()},
             {"wall_ms", wall_ms},
             {"throughput_queries_per_second",
@@ -4959,6 +5117,7 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
             {"working_set_bytes_before", before.rss},
             {"working_set_bytes_after", after.rss},
             {"result_sha256", stress_result_sha256(values)},
+            {"coarse_snapshot", coarse_snapshot},
             {"queries", queries}});
     }
     write_json(output_path, {{"schema_version", 1},
@@ -5168,6 +5327,11 @@ int main(int argc, char** argv) {
                  "--external-comparison-r4")
             external_comparison_r4(argv[2], std::stoull(argv[3]), argv[4],
                                    argv[5], std::stoull(argv[6]), argv[7]);
+        else if (argc == 10 && std::string(argv[1]) ==
+                 "--score-external-r4-maxima")
+            score_external_r4_maxima(argv[2], std::stoull(argv[3]), argv[4],
+                argv[5], argv[6], std::stoull(argv[7]), std::stoull(argv[8]),
+                argv[9]);
         else throw std::runtime_error("usage: --self-test | --compress-pack ... | --lossless-block-pack RAW COUNTS ROWS LEVEL DICT_BYTES TRAIN_BLOCKS ZSTD ZSTD_OFFSETS DICT ZSTD_DICT ZSTD_DICT_OFFSETS VBYTE VBYTE_OFFSETS RECEIPT | --lossless-block-warm MANIFEST BLOCK_MANIFEST OUTPUT | --lossless-block-cold MANIFEST BLOCK_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
         return 0;
     } catch (const std::exception& error) {
