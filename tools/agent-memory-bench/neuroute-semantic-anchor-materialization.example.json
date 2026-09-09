@@ -1,0 +1,6 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_semantic_anchor_relocation_materialization",
+  "code_bits": 256,
+  "anchor_code_provenance": "same_frozen_itq_transform_as_documents"
+}
