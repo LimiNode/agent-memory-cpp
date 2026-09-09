@@ -90,6 +90,12 @@ document codecs trade bytes against a passed quality gate, whereas K8 binary
 references still need 256 bits plus local exact refinement and remain below
 the float prototype-IVF control.
 
+The RaBitQ/BBQ-like rows are pinned external-reference diagnostics only; no
+corresponding implementation is present in this repository and they are not
+production measurements. Their arithmetic is subsequently corrected and
+bounded by PR #290, so these historical rows must not be used independently
+of that correction.
+
 ## Common metrics and decision rule
 
 The contract is [`binary-code-family-matrix.example.json`](../../tools/agent-memory-bench/binary-code-family-matrix.example.json).
