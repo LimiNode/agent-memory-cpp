@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_native_end_to_end_frontier",
+  "claim_scope": "frozen_de_1m_r4_routing_through_exact_e5_native_latency_and_quality",
+  "activation": {
+    "coverage_result_sha256": "b4ff2e63b40c8349fb70264221746a71ff22687afb43727bf9c44007047e0c83",
+    "representative_codec_result_sha256": "6bf8395bad869c9d59bd4cc8f19a8b636d96df2edbba17e6d63a010c3263e928",
+    "representative_codec_evidence_sha256": "5d35a92d392823ded29b2007816a5c5b826f680c627296e16e8c800a98a4fee2",
+    "mapped_access_result_sha256": "012166ecbb200f481b528b86e53506cd43047659fcaa5abdf6b5fc3d74aa793f",
+    "mapped_access_evidence_sha256": "e69515ac53e1d96d93108c376f315e6aa362f4fe36618817401a66d68a45a3d0",
+    "int8_compression_result_sha256": "0a23baa73b5236d779839f212e5fcb53238643d0dc09e4fd96b0ee0c582ed17f",
+    "int8_compression_evidence_sha256": "b5298bc6ba381934c617749a9eccc4e185d741618ab84f06b581760d17ad017e",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "native_input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f",
+    "e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "partition": "internal",
+    "queries_per_seed": 76,
+    "layout_request_offset": 76,
+    "shortlist_addresses": 1024,
+    "candidate_fraction": 0.005
+  },
+  "cascade": {
+    "candidate_limit": 5000,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "exact_limit": 10
+  },
+  "treatments": [
+    "baseline_seek_decode_scalar",
+    "strict_mmap_fused_scalar_batched",
+    "fast_mmap_fused_avx2_batched"
+  ],
+  "warm_page_cache": {"warmup_passes": 1, "measured_passes": 3},
+  "concurrency": {
+    "treatments": [
+      "baseline_seek_decode_scalar",
+      "strict_mmap_fused_scalar_batched",
+      "fast_mmap_fused_avx2_batched"
+    ],
+    "workers": [1, 2, 4, 8],
+    "measured_passes": 3
+  },
+  "process_cold": {
+    "definition": "fresh_process_first_query_with_os_page_cache_uncontrolled_not_cold_disk",
+    "paired_requests_per_seed": 15,
+    "selection_prefix_utf8": "neuroute-r4-native-end-to-end-process-cold-v1"
+  },
+  "equivalence": {
+    "baseline_and_strict_score_hash_identity_required": true,
+    "baseline_and_strict_all_sequence_hash_identity_required": true,
+    "strict_int8_parent_candidate_count_identity_required": true,
+    "strict_int8_parent_selected_address_sequence_is_diagnostic": true,
+    "strict_parent_ndcg_max_abs_error": 1e-12
+  },
+  "fast_sensitivity_gates": {
+    "maximum_mean_ndcg_loss": 0.002,
+    "maximum_every_seed_ndcg_loss": 0.004
+  },
+  "decision": {"production_selection_forbidden": true}
+}
