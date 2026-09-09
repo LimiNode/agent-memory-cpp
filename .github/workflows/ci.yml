@@ -276,4 +276,5 @@ jobs:
           python tools/agent-memory-bench/materialize-neuroute-multilingual-training-queries.py --self-test &&
           python tools/agent-memory-bench/plan-neuroute-nonlinear-scheduler.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-nonlinear-scheduler.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-nonlinear-scheduler-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-nonlinear-scheduler-evidence.py --self-test &&
+          python tools/agent-memory-bench/audit-neuroute-sequential-scheduler-closure.py --self-test

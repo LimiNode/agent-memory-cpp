@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_sequential_scheduler_closure_contract",
+  "claim_scope": "conditional_activation_only_no_sequential_measurement_or_production_selection",
+  "activation": {
+    "nonlinear_result_sha256": "4a7054c126079545e95a12cb819c9c1fc166c172d4c4cf26f6349a8ab5dccec9",
+    "nonlinear_evidence_sha256": "268d1f533a3bc3c0f138dc1712a8d27836b2b24c7271262e84991489cd512ebf"
+  },
+  "required_parent_decision": {
+    "sequential_followup_licensed": false,
+    "production_selection_licensed": false,
+    "treatment_success": {
+      "occupied_logit": false,
+      "direct_id": false,
+      "centroid_initialized_id": false
+    }
+  },
+  "required_parent_matrix": {
+    "model_count": 30,
+    "calibration_row_count": 198,
+    "selected_model_count": 6,
+    "dataset_count": 3,
+    "rows_per_dataset": 9
+  },
+  "dormant_protocol_if_licensed": {
+    "parent_models": "frozen_calibration_selected_nonlinear_models",
+    "teacher": "greedy_teacher_forced_next_occupied_address",
+    "reward": "marginal_final_cascade_retention_minus_candidate_mass",
+    "selection_queries": "german_configuration_only",
+    "evaluation_queries": "separate_german_internal_evaluation_only",
+    "production_selection_licensed": false
+  }
+}
