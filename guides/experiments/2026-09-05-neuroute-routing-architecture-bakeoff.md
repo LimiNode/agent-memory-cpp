@@ -9,7 +9,7 @@ This study puts four routing families under one evaluator:
 1. direct document IVF;
 2. learned 12/14/16-bit semantic router with replication 1--4;
 3. LTHQ/ordinal router;
-4. float IVF followed by local residual K8 scoring.
+4. float IVF followed by an exact-document scoring control.
 
 Every route is evaluated both as a routing ceiling (selected documents are
 exactly reranked) and with the common document-stage cascade when a downstream
@@ -22,8 +22,9 @@ and internal queries.
 The learned and LTHQ lanes in the reference runner use exhaustive code scans.
 They are intentionally diagnostic controls for representation and replication,
 not a product ANN implementation.  A global scan of all K8 prototypes remains
-outside the product path.  The local-residual lane is the path eligible for a
-subsequent native benchmark once its quality frontier is established.
+outside the product path.  The exact-document IVF control reconstructs the
+original FP32 dot algebraically inside probed cells; it is not compact
+residual K8 storage and does not license a native production route.
 
 ## Reproduction
 
