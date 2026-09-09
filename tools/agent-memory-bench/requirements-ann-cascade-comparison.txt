@@ -3,4 +3,5 @@
 faiss-cpu==1.15.0
 numpy==2.5.2
 psutil==7.0.0
+scipy==1.17.1
 usearch==2.26.0
