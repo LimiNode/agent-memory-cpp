@@ -295,7 +295,9 @@ path and local exact K8; no profile requires a global scan of 454k prototypes.
 
 `agent-memory-document-codec-native-benchmark` is a standalone C++17,
 portable-by-default microbenchmark for FP32/FP16, packed INT4/8/10/12 and a
-208-bit signed binary ADC-style code.  It reports p50/p95/p99 for a
+208-bit raw-sign control over the first input coordinates.  This control is
+not a trained ITQ transform and does not implement ADC; it is included only
+as a directional binary payload baseline.  It reports p50/p95/p99 for a
 configurable record count (the same executable is run at ~5k for filtering
 and 64 for final rerank), records bytes per durable
 document (INT8 is correctly `384 * 8 / 8 + 4 = 388` bytes), and emits a checksum
@@ -306,13 +308,13 @@ with the Python quality evidence above.
 The first Windows portable run (`tmp/document-codec-native-benchmark-v1.json`,
 not committed) over 5,000 records reported p95 milliseconds of 2.21 (FP32),
 7.22 (FP16), 5.47 (INT4), 5.43 (INT8), 5.99 (INT10), 6.39 (INT12), and 6.31
-(ITQ208 ADC).  These numbers include scalar unpacking and are directional;
+(raw sign-208 control).  These numbers include scalar unpacking and are directional;
 they establish the benchmark contract and byte accounting, while AVX2/native
 R4 integration remains a separate implementation gate.
 
 At the 64-record final-rerank size, the same harness measured p95 `0.0377 ms`
 (FP32), `0.1063 ms` (FP16), `0.0758 ms` (INT4), `0.0848 ms` (INT8), `0.0832 ms`
-(INT10), `0.1011 ms` (INT12), and `0.0875 ms` (ITQ208 ADC).  The two raw
+(INT10), `0.1011 ms` (INT12), and `0.0875 ms` (raw sign-208 control).  The two raw
 JSON runs are `tmp/document-codec-native-benchmark-v1.json` and
 `tmp/document-codec-native-benchmark-final64-v1.json` (both local evidence,
 not committed).

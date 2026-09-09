@@ -79,14 +79,16 @@ Packed encode_scalar(const float* vector, int bits) {
   return result;
 }
 
-Packed encode_itq208(const float* vector) {
+// Raw sign control over the first 208 coordinates. This deliberately does
+// not apply a trained ITQ rotation or an ADC codebook.
+Packed encode_raw_sign208(const float* vector) {
   Packed result{std::vector<std::uint8_t>(26, 0), 1.0f, 1};
   for (std::size_t i = 0; i < 208; ++i)
     if (vector[i] >= 0.0f) result.bytes[i / 8] |= static_cast<std::uint8_t>(1u << (i % 8));
   return result;
 }
 
-float score_itq208(const Packed& packed, const float* query) {
+float score_raw_sign208(const Packed& packed, const float* query) {
   float score = 0.0f;
   for (std::size_t i = 0; i < 208; ++i) {
     const bool positive = (packed.bytes[i / 8] >> (i % 8)) & 1u;
@@ -133,7 +135,7 @@ int main(int argc, char** argv) {
   const auto query = random_vectors(1, rng);
   const std::vector<Method> methods = {{"fp32", 1536}, {"fp16", 768},
       {"int4", 196}, {"int8", 388}, {"int10", 484}, {"int12", 580},
-      {"itq208_adc", 26}};
+      {"raw_sign208_control", 26}};
   std::vector<std::vector<Packed>> packed(6);
   for (std::size_t method = 0; method < 6; ++method) {
     const int bits = method == 2 ? 4 : method == 3 ? 8 : method == 4 ? 10 : 12;
@@ -141,7 +143,7 @@ int main(int argc, char** argv) {
   }
   packed.resize(7);
   packed[6].reserve(records);
-  for (std::size_t i = 0; i < records; ++i) packed[6].push_back(encode_itq208(&vectors[i * kDimensions]));
+  for (std::size_t i = 0; i < records; ++i) packed[6].push_back(encode_raw_sign208(&vectors[i * kDimensions]));
   std::vector<float> query_scores(records);
   std::uint64_t final_checksum = 0;
   (void)json;
@@ -155,7 +157,7 @@ int main(int argc, char** argv) {
       for (std::size_t i = 0; i < records; ++i) {
         if (method == 0) sum += dot(&vectors[i * kDimensions], query.data());
         else if (method == 1) { float value = 0.0f; for (std::size_t d = 0; d < kDimensions; ++d) value += fp16_value(fp16(vectors[i * kDimensions + d])) * query[d]; sum += value; }
-        else if (method == 6) sum += score_itq208(packed[6][i], query.data());
+        else if (method == 6) sum += score_raw_sign208(packed[6][i], query.data());
         else sum += score_scalar(packed[method][i], query.data());
       }
       final_checksum += checksum(sum) + static_cast<std::uint64_t>(iteration + 1);
