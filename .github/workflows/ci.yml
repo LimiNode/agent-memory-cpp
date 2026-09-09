@@ -266,4 +266,7 @@ jobs:
           python tools/agent-memory-bench/write-ann-cascade-evidence.py --self-test &&
           python tools/agent-memory-bench/write-mih-rerank-cost-evidence.py --self-test &&
           python tools/agent-memory-bench/write-mih-hamming-cost-evidence.py --self-test &&
-          python tools/agent-memory-bench/neuroute_authoritative_qrels.py --self-test
+          python tools/agent-memory-bench/neuroute_authoritative_qrels.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-listwise-probe-scheduler.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-listwise-probe-scheduler.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-listwise-probe-scheduler-evidence.py --self-test
