@@ -1,0 +1,87 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_teacher_objective_ablation",
+  "claim_scope": "frozen_de_1m_k8_top1024_selected_nonlinear_teacher_objective_ablation",
+  "activation": {
+    "nonlinear_listwise_result_sha256": "57e316b4590255bb7f0df63064cb9fd217017d7a990f1747fad2c68f545e7072",
+    "nonlinear_listwise_evidence_sha256": "e9a5968b02153c5fdd0b2faddca8b53c3e81259ef4e2d3e55c1788692323d6cc"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "frozen_selection": {
+    "source": "parent_configuration_selected",
+    "rule": "highest_actionable_gain_at_256_then_lowest_candidate_fraction_then_variant_name",
+    "eligible_variants": ["pointwise_listnet", "context_deepsets_listnet"],
+    "architecture_and_training_query_count_per_seed_are_frozen": true
+  },
+  "prototype_shortlist": {
+    "requested_prototypes_per_address": 8,
+    "address_shortlist": 1024,
+    "retrieval": "exact_over_all_occupied_address_prototypes",
+    "shortlist_frozen_before_reranking": true
+  },
+  "query_projection": {
+    "source": "document_code_adc_centroid_regression",
+    "fit_documents": 100000,
+    "sample": "deterministic_even_positions",
+    "ridge_alpha": 0.0001,
+    "query_code_threshold": 0.0,
+    "minimum_german_sign_agreement": 0.95,
+    "minimum_german_projection_correlation": 0.98
+  },
+  "teachers": {
+    "variants": [
+      "static_gain_density",
+      "cascade_independent_density",
+      "conditional_marginal_sequence_distillation"
+    ],
+    "static_gain_density": "discounted_exact_e5_top10_gain_per_posting_entry",
+    "cascade_independent_density": "actionable_gain_after_hamming_adc_for_address_alone_per_posting_entry",
+    "conditional_marginal_sequence_distillation": "greedy_delta_actionable_gain_after_hamming_adc_per_added_posting_entry",
+    "conditional_action_pool": "target_bearing_addresses_inside_frozen_top1024",
+    "zero_target_policy": "exclude_from_loss_and_report",
+    "external_qrels_used": false
+  },
+  "training": {
+    "torch_version_prefix": "2.8.0",
+    "device": "cpu",
+    "deterministic_algorithms": true,
+    "torch_threads": 8,
+    "local_hidden_dimensions": 32,
+    "query_hidden_dimensions": 32,
+    "context_hidden_dimensions": 32,
+    "epochs": 4,
+    "batch_queries": 8,
+    "learning_rate": 0.003,
+    "weight_decay": 0.0001,
+    "score_scale": 8.0,
+    "teacher_sequence_max_steps": 10
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "evaluation": {
+    "address_budgets": [128, 256, 512],
+    "headline_address_budget": 256,
+    "candidate_mass_target": 0.1,
+    "prototype_order_control": true,
+    "privileged_teacher_control": true
+  },
+  "decision": {
+    "minimum_actionable_gain": 0.9,
+    "maximum_candidate_fraction": 0.005,
+    "minimum_prototype_to_teacher_gap_closed": 0.5,
+    "maximum_candidate_fraction_ratio_vs_prototype_order": 1.05,
+    "requires_every_de_1m_seed": true,
+    "direct_and_progress_gates_are_alternatives": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
