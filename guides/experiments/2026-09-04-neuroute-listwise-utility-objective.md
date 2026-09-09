@@ -76,3 +76,12 @@ Raw artifact hashes (files remain uncommitted under `tmp/`):
 * 128-bit model: `fc7b51d5c15ec2f80572a423fda478bcb077b33376fe4ed51e6dd87e73200216`.
 * refreshed 128-bit rerun JSON: `bccfd4d59118d5c50d3e8c2f3603baad414f0bf00d76c3b26fb72b65c0456ab2`;
 * refreshed model: `ad527712aa7f63e6ebe809c444cb9325c77db8d55de310b338b1385e9d9d3fb5`.
+
+## Audit status
+
+This listwise result is retained as a historical diagnostic and is superseded
+by the corrective replay in PR #287. The audit found that 89.89% of prototype
+codes were untouched by effective training coverage, that the hard-negative
+round reinitialized the encoder, and that entropy was not a valid utility
+proxy. These limitations prevent interpreting the cells above as a global
+capacity result or a production recommendation.
