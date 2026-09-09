@@ -1,0 +1,49 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_document_representatives",
+  "claim_scope": "frozen_de_1m_teacher_blind_actual_document_representative_materialization",
+  "activation": {
+    "replication_topology_result_sha256": "8464c36c69579e79ba409c9d2a48633d0e0f7b6c84e331d9ce9ac5afe5b4be07",
+    "replication_topology_evidence_sha256": "3d1dcc7835c8587c0fe4772e44436aa046d9d9e5ac709656627838414adbe630",
+    "feasible_frontier_result_sha256": "f5fe1995ad82d365e33a360e2010a7e44e24bcd7521d4e03393753f53039ea36",
+    "feasible_frontier_evidence_sha256": "f21fa7ae644f3e2ad61c58be4bc8909dbfe859f4821b633a224fc75f8f5e8683",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
+    "de_1m_e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "de_1m_input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "assignment": "frozen_single_assignment"
+  },
+  "controls": {
+    "current_k8": "normalized_address_centroid_then_seven_farthest_first_actual_documents",
+    "current_k8_rebuilt_for_hash_only": true,
+    "replication_forbidden": true
+  },
+  "representatives": {
+    "maximum_actual_documents_per_address": 32,
+    "reported_prefixes": [8, 16, 32],
+    "first": "actual_document_with_maximum_cosine_to_normalized_address_centroid",
+    "remaining": "farthest_first_maximin_cosine_over_previously_selected_actual_documents",
+    "tie_break": "lowest_global_document_position",
+    "query_independent": true,
+    "teacher_blind": true,
+    "stored_value": "global_document_position_int32",
+    "inactive_value": -1
+  },
+  "audit": {
+    "require_every_active_representative_is_unique": true,
+    "require_representative_primary_address_match": true,
+    "require_effective_count_equals_min_posting_count_32": true,
+    "require_byte_replay": true
+  },
+  "decision": {
+    "fine_grained_interaction_ladder_licensed_after_replay": true,
+    "teacher_trained_selection_forbidden": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
