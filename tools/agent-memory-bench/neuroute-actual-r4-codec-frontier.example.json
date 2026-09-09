@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_actual_r4_codec_frontier",
+  "claim_scope": "de_1m_actual_full_r4_stage_specific_scalar_quantization_frontier",
+  "activation": {
+    "external_comparison_result_sha256": "1b41e769f70d1f52dfd81adf869e3faa2f84b40fb63b2091ec3335f4714c646d",
+    "external_comparison_evidence_sha256": "78a0140ca5aea3491b244df8b22efb9f31bc38663e4e48441efd40bb15599fe8",
+    "external_r4_protocol_sha256": "a1e1d5c050be2ba9f94e88ecc07286cac8dc3cd23738c9b4adb13dbd4061e189",
+    "coarse_k8_manifest_sha256": "c38f02328c5640d4a7dd88cc8ac7441e715e188417cbbe2c48a2adc65fd776c4",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "coverage_saturation_result_sha256": "b4ff2e63b40c8349fb70264221746a71ff22687afb43727bf9c44007047e0c83",
+    "coverage_saturation_evidence_sha256": "7b8c9057248f5da43a1cf5723848582a916e34d3c7f02cc8f21dccd59074aca2",
+    "native_input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f",
+    "e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a"
+  },
+  "partitions": {
+    "configuration": 76,
+    "internal_locked_replay": 76,
+    "internal_is_not_new_untouched_heldout": true,
+    "new_external_confirmation_required_for_production_license": true
+  },
+  "routing_storage_modes": ["int8", "nonlinear_int5_power_half"],
+  "stages": ["actual_r4_adc64_final", "k32_r0_representatives", "k8_coarse"],
+  "scalar_grid": {
+    "integer_bits": [4, 5, 6, 7, 8, 9, 10, 12],
+    "references": ["fp32", "fp16"],
+    "companders": [
+      {"kind": "uniform", "parameter": 0.0},
+      {"kind": "power", "parameter": 0.5},
+      {"kind": "power", "parameter": 0.625},
+      {"kind": "power", "parameter": 0.75},
+      {"kind": "power", "parameter": 0.875},
+      {"kind": "mulaw", "parameter": 15.0},
+      {"kind": "mulaw", "parameter": 63.0}
+    ],
+    "per_vector_symmetric_scale": true,
+    "integer_record_bytes_formula": "ceil(384*bits/8)+4",
+    "fp16_record_bytes": 768,
+    "fp32_record_bytes": 1536
+  },
+  "selection": {
+    "per_width": "configuration_lowest_mean_ndcg_loss_then_highest_top10_overlap_then_id",
+    "stage_candidate": "smallest_record_bytes_passing_configuration_gates_then_lowest_mean_ndcg_loss_then_id",
+    "internal_opens_only_for_fp32_fp16_uniform_controls_and_configuration_winners": true,
+    "winners_are_stage_specific": true
+  },
+  "final_gates": {
+    "maximum_configuration_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_configuration_every_seed_and_routing_mode_mean_ndcg_loss_vs_fp32": 0.006,
+    "minimum_configuration_mean_top10_overlap_vs_fp32": 0.99,
+    "maximum_internal_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_internal_every_seed_and_routing_mode_mean_ndcg_loss_vs_fp32": 0.006,
+    "minimum_internal_mean_top10_overlap_vs_fp32": 0.99
+  },
+  "representative_gates": {
+    "maximum_mean_actionable_loss": 0.003,
+    "maximum_every_seed_actionable_loss": 0.006,
+    "maximum_mean_ndcg_loss": 0.002,
+    "maximum_every_seed_ndcg_loss": 0.004
+  },
+  "k8_gate": {
+    "maximum_mean_downstream_ndcg_loss": 0.003,
+    "maximum_every_seed_downstream_ndcg_loss": 0.006,
+    "exact_scan_target_p95_ms": 15.0,
+    "open_approximate_frontier_if_target_missed": true
+  }
+}
