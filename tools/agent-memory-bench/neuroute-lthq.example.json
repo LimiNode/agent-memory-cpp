@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_lthq_retrieval_supervised",
+  "claim_scope": "research_only_frozen_teacher_query_split",
+  "levels": [3, 4, 5],
+  "seeds": [2026090501, 2026090502, 2026090503],
+  "train": {
+    "source": "independent_teacher_cache_required",
+    "positives": "teacher_top32",
+    "hard_negatives": "teacher_ranks_32_to_512",
+    "max_queries": 8141,
+    "max_pairs_per_query": 256
+  },
+  "objective": {
+    "name": "cutoff_aware_pairwise_hinge",
+    "margin": 1.0,
+    "coordinate_passes": 2,
+    "candidate_quantiles": 32,
+    "threshold_order_constraint": "strict_sorted"
+  },
+  "evaluation": {
+    "top_k": [10, 32, 64, 256],
+    "teacher_pool": [256, 512, 1024, 4096],
+    "partitions": ["config", "internal"],
+    "controls": ["thq_quantile", "thq_uniform", "lthq_t"]
+  },
+  "decision": {
+    "payload_matched_targets": {
+      "lthq3_vs_thq4": true,
+      "lthq4_vs_thq5": true
+    },
+    "minimum_actionable_gain": 0.01,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
