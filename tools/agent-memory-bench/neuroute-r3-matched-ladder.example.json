@@ -1,0 +1,102 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r3_matched_ladder",
+  "claim_scope": "frozen_de_1m_r0_r3a_r3b_r3c_document_distribution_sufficiency",
+  "activation": {
+    "r3_document_summary_result_sha256": "2a6e2e527e1925b3d48619299a7cb5da8e6f9984c29566708e6e4eaa34bf3b9d",
+    "r3_document_summary_evidence_sha256": "d0e32fcc57af49f5297debb0e4f962c75036c8ad7cbfd407882c62e8829c9720"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "query_partitions": {
+    "training_queries": 8141,
+    "configuration_queries": 76,
+    "internal_evaluation_queries": 76,
+    "training_then_configuration_then_internal_required": true
+  },
+  "prototype_shortlist": {
+    "requested_prototypes_per_address": 8,
+    "address_shortlist": 1024,
+    "retrieval": "exact_over_all_occupied_address_prototypes",
+    "shortlist_frozen_before_reranking": true
+  },
+  "teacher": {
+    "training_and_configuration": "static_exact_e5_discounted_gain_density",
+    "internal": "authoritative_qrels_with_frozen_cascade",
+    "top_k": 10,
+    "zero_target_policy": "exclude_from_loss_and_report"
+  },
+  "representations": {
+    "variants": ["r0_scalar", "r3a_occupancy", "r3b_residual_mean", "r3c_residual_shape"],
+    "additive_ladder": true,
+    "r0": "current_22d_k8_cosine_statistics_cost_rank_and_interactions",
+    "r3a": "r0_plus_per_k8_log_local_count_and_local_count_fraction",
+    "r3b": "r3a_plus_exact_full_384d_query_dot_local_residual_mean",
+    "r3c": "r3b_plus_exact_full_384d_query_squared_variance_query_dot_top_direction_eigenvalue_and_energy",
+    "random_projection_forbidden": true,
+    "query_conditioned_scalar_slots": 8,
+    "document_summary_is_frozen": true
+  },
+  "models": {
+    "query_hidden_dimensions": 32,
+    "local_hidden_dimensions": 32,
+    "context": "querywise_local_mean_and_max",
+    "local_input_dimensions": {
+      "r0_scalar": 22,
+      "r3a_occupancy": 38,
+      "r3b_residual_mean": 46,
+      "r3c_residual_shape": 78
+    },
+    "score_hidden_dimensions": {
+      "r0_scalar": 54,
+      "r3a_occupancy": 51,
+      "r3b_residual_mean": 49,
+      "r3c_residual_shape": 43
+    },
+    "maximum_parameter_count_ratio": 1.01
+  },
+  "training": {
+    "torch_version_prefix": "2.8.0",
+    "device": "cpu",
+    "deterministic_algorithms": true,
+    "torch_threads": 8,
+    "epochs": 4,
+    "batch_queries": 8,
+    "learning_rate": 0.003,
+    "weight_decay": 0.0001,
+    "score_scale": 8.0,
+    "interaction_batch_queries": 2,
+    "same_teacher_data_optimizer_seeds_for_every_variant": true
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "evaluation": {
+    "address_budgets": [128, 256, 512],
+    "headline_address_budget": 256,
+    "prototype_order_control": true,
+    "privileged_teacher_control": true,
+    "r0_control": true
+  },
+  "decision": {
+    "minimum_actionable_gain": 0.9,
+    "maximum_candidate_fraction": 0.005,
+    "minimum_r0_to_teacher_gap_closed": 0.5,
+    "maximum_candidate_fraction_ratio_vs_r0": 1.05,
+    "strong_evidence_actionable_gain": 0.87,
+    "residual_failure_band_upper": 0.85,
+    "requires_every_de_1m_seed": true,
+    "direct_and_progress_gates_are_alternatives": true,
+    "teacher_trained_full_resolution_licensed_if_r3_fails": true,
+    "stateful_policy_forbidden": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
