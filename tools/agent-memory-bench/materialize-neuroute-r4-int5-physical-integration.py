@@ -175,6 +175,7 @@ def materialize(args: argparse.Namespace) -> None:
                 "R4 INT5 integration mixed store size differs")
         offsets_path = root / "mixed-address-byte-offsets.u64le"
         mixed_offsets.tofile(offsets_path)
+        offset_directory_bytes = offsets_path.stat().st_size
         baseline_footprint = uniform_path.stat().st_size
         side_footprint = baseline_footprint + side_path.stat().st_size
         layouts = [
@@ -190,7 +191,9 @@ def materialize(args: argparse.Namespace) -> None:
             descriptor(mixed_path, "int5_mixed", record_bytes=244,
                 representative_payload_bytes=representative_count * 244,
                 active_store_bytes=mixed_path.stat().st_size,
-                full_physical_footprint_bytes=mixed_path.stat().st_size),
+                offset_directory_bytes=offset_directory_bytes,
+                full_physical_footprint_bytes=mixed_path.stat().st_size +
+                offset_directory_bytes),
         ]
         seed_rows.append({"seed": seed,
             "occupied_address_count": len(occupied),

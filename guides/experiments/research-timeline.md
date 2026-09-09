@@ -304,3 +304,20 @@ Any future routing comparison must bind the same queries, teacher, qrels,
 candidate/bytes budget, deterministic tie policy, and (when random) multiple
 seeds. A positive result without these controls is diagnostic, not a product
 decision.
+
+## Landed merge ledger through #257
+
+The dense R4 wave is now landed on `main` as individual merge commits. The
+research heads, measured commits, and merge SHAs are retained in GitHub; the
+following compact ledger records the merge boundary used by subsequent review.
+
+| PR range | Merge SHAs (in order) | Status |
+| --- | --- | --- |
+| #221--#228 | `286d69d8`, `735a073c`, `854865bc`, `3b8d60f2`, `9ca11cbc`, `a3bfc019`, `a1ae2d6d`, `cfd5572e` | landed; see wave notes |
+| #229--#238 | `ded2a241`, `e690f145`, `48936a34`, `e6eb54c3`, `7d8fe581`, `808371ba`, `da924043`, `5ad06af3`, `810ad610`, `3d06f68e` | landed; mixed confirmed/corrected/negative statuses above |
+| #239--#243 | `2d34c735`, `96b84d21`, `052bb3aa`, `d24c2a59`, `9bfbf3ab` | landed; R4 representative coverage |
+| #244--#257 | `947bde05`, `bbbf1299`, `dda5a956`, `d288f0ca`, `cc0c6c4d`, `5c91e616`, `7c575ca0`, `c5035939`, `249cc9e4`, `6e867fe2`, `3c9e4580`, `fef4739a`, `351001c9`, `b5868150` | landed; codec/layout/pressure/final-rerank closure |
+
+Evidence publication is tracked separately from merge status. A merged PR is
+not considered an archived evidence release until its validator, archive SHA,
+bundle-root SHA, measured head, and stable release link are recorded.
