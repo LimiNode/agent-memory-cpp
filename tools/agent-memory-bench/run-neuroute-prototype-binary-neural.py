@@ -271,7 +271,9 @@ def self_test() -> int:
     require(0.0 <= entropy(codes, 128) <= 1.0,
             "neural entropy helper differs")
     require(load_contract(THIS / "neuroute-prototype-binary-neural.example.json")
-            ["decision"]["native_mih_licensed"] is False,
+            ["evaluation"]["native_mih"] is False and
+            load_contract(THIS / "neuroute-prototype-binary-neural.example.json")
+            ["evaluation"]["production_selection"] is False,
             "neural production gate opened")
     # Full training intentionally remains an optional PyTorch path.  The
     # repository-wide self-test validates deterministic contracts and helpers
