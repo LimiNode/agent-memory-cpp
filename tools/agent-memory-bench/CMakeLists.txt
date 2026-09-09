@@ -555,6 +555,12 @@ agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-layout-bench
     ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-layout-benchmark)
 
+# Portable document-stage codec timing.  This target has no optional SIMD
+# dependency; it provides a reproducible scalar baseline for packed formats.
+add_executable(agent-memory-document-codec-native-benchmark
+    document_codec_native_benchmark.cpp)
+target_compile_features(agent-memory-document-codec-native-benchmark PRIVATE cxx_std_17)
+
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 0)
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 0)
 add_library(agent_memory_neuroute_record_codec STATIC
