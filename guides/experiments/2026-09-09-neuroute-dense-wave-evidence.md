@@ -32,9 +32,9 @@ The release tag, archive SHA-256, and internal bundle-root SHA-256 are recorded
 here after deterministic archive validation and public Evidence publication.
 
 - Tag: `evidence/neuroute-dense-wave-258-266-v1`
-- Release: pending publication
-- Archive SHA-256: pending publication
-- Bundle-root SHA-256: pending publication
+- Release: [Evidence release `evidence/neuroute-dense-wave-258-266-v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/neuroute-dense-wave-258-266-v1)
+- Archive SHA-256: `84bb44712850bac66411040fffbb33a31ca4eec1b74b1a6fd1bc038adf6c8ea9`
+- Bundle-root SHA-256: `7f3883ffd82a4016da9c7e66eb90d46977616e4a913f66d0f17b0dfe780939e4`
 
 The deterministic builder and validator are
 `tools/agent-memory-bench/archive-neuroute-dense-wave-evidence.py`.
