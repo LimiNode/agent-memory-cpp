@@ -2927,6 +2927,175 @@ void int5_integration_cold(const std::filesystem::path& protocol_path,
                                     native_query, 0)}});
 }
 
+void validate_int5_stress_protocol(const nlohmann::json& protocol) {
+    require(protocol.value("schema_version", 0) == 1 &&
+            protocol.value("family", "") ==
+                "neuroute_r4_int5_layout_stress_protocol",
+            "R4 INT5 stress protocol identity differs");
+    require(agent_memory::sha256_file_hex(
+                protocol.at("parent_protocol").get<std::string>()) ==
+                protocol.at("activation").at(
+                    "physical_integration_protocol_sha256").get<std::string>(),
+            "R4 INT5 stress parent protocol differs");
+    require(protocol.at("treatments") == nlohmann::json::array({
+                "homogeneous_int8", "int5_mixed"}) &&
+            protocol.at("conditions") == nlohmann::json::array({
+                "resident", "working_set_cap"}) &&
+            protocol.at("workers") == nlohmann::json::array({1, 2, 4, 8, 16}) &&
+            protocol.at("trace_repetitions").get<std::size_t>() >= 2 &&
+            protocol.at("measured_batches").get<std::size_t>() >= 1,
+            "R4 INT5 stress matrix differs");
+}
+
+bool apply_working_set_condition(const std::string& condition,
+                                 std::size_t cap_bytes) {
+    if (condition == "resident") return false;
+    require(condition == "working_set_cap",
+            "R4 INT5 stress condition differs");
+#if defined(_WIN32)
+    constexpr std::size_t minimum_bytes = 64U * 1024U * 1024U;
+    require(cap_bytes >= minimum_bytes,
+            "R4 INT5 stress working-set cap differs");
+    const auto flags = QUOTA_LIMITS_HARDWS_MIN_ENABLE |
+                       QUOTA_LIMITS_HARDWS_MAX_ENABLE;
+    require(SetProcessWorkingSetSizeEx(GetCurrentProcess(), minimum_bytes,
+            cap_bytes, flags) != 0,
+            "R4 INT5 stress working-set cap failed");
+    require(EmptyWorkingSet(GetCurrentProcess()) != 0,
+            "R4 INT5 stress working-set trim failed");
+    return true;
+#else
+    (void)cap_bytes;
+    throw std::runtime_error(
+        "R4 INT5 working-set-cap treatment is currently Windows-only");
+#endif
+}
+
+std::vector<std::size_t> stress_trace(const nlohmann::json& parent_protocol,
+                                      std::size_t repetitions) {
+    std::vector<std::size_t> result;
+    const auto count = parent_protocol.at("requests").size();
+    result.reserve(count * repetitions);
+    std::vector<std::size_t> local(count);
+    std::iota(local.begin(), local.end(), 0);
+    for (std::size_t repetition = 0; repetition != repetitions; ++repetition) {
+        std::rotate(local.begin(),
+                    local.begin() + (repetition * 17U) % count, local.end());
+        result.insert(result.end(), local.begin(), local.end());
+    }
+    return result;
+}
+
+std::vector<EndToEndResult> int5_stress_batch(
+        const Int5IntegrationContext& context, const NativeCascadeInput& input,
+        const agent_memory::HammingDistanceComputer& hamming,
+        const nlohmann::json& parent_protocol,
+        const std::vector<std::size_t>& trace, std::size_t workers) {
+    std::vector<EndToEndResult> values(trace.size());
+    std::atomic<std::size_t> following{0};
+    std::vector<std::thread> threads;
+    std::vector<std::exception_ptr> failures(workers);
+    threads.reserve(workers);
+    for (std::size_t worker = 0; worker != workers; ++worker) {
+        threads.emplace_back([&, worker] {
+            try {
+                for (;;) {
+                    const auto index = following.fetch_add(1);
+                    if (index >= trace.size()) break;
+                    const auto& request = parent_protocol.at("requests").at(
+                        trace[index]);
+                    values[index] = int5_integration_query(context, input, hamming,
+                        request.at("request").get<std::size_t>(),
+                        request.at("native_query").get<std::size_t>());
+                }
+            } catch (...) {
+                failures[worker] = std::current_exception();
+            }
+        });
+    }
+    for (auto& thread : threads) thread.join();
+    for (const auto& failure : failures)
+        if (failure) std::rethrow_exception(failure);
+    return values;
+}
+
+std::string stress_result_sha256(const std::vector<EndToEndResult>& values) {
+    std::vector<std::uint8_t> bytes;
+    for (const auto& value : values) {
+        const auto append = [&](const std::string& text) {
+            bytes.insert(bytes.end(), text.begin(), text.end());
+        };
+        append(value.score_sha256);
+        append(u32_sequence_sha256(value.selected_addresses));
+        append(u32_sequence_sha256(value.candidates));
+        append(u32_sequence_sha256(value.hamming));
+        append(u32_sequence_sha256(value.adc));
+        append(u32_sequence_sha256(value.exact));
+    }
+    return agent_memory::sha256_bytes_hex(bytes);
+}
+
+void int5_stress(const std::filesystem::path& protocol_path,
+                 std::uint64_t seed, const std::string& treatment,
+                 const std::string& condition, std::size_t workers,
+                 const std::filesystem::path& output_path) {
+    const auto protocol = read_json(protocol_path);
+    validate_int5_stress_protocol(protocol);
+    const auto parent_protocol = read_json(
+        protocol.at("parent_protocol").get<std::string>());
+    validate_int5_integration_protocol(parent_protocol);
+    const auto input = load_native_input(
+        parent_protocol.at("native_input_manifest").get<std::string>(),
+        parent_protocol.at("document_id_rank_file").get<std::string>());
+    const auto context = load_int5_integration_context(
+        parent_protocol, seed, treatment);
+    const agent_memory::HammingDistanceComputer hamming(binary_code_words);
+    const auto trace = stress_trace(parent_protocol,
+        protocol.at("trace_repetitions").get<std::size_t>());
+    const auto cap_applied = apply_working_set_condition(condition,
+        protocol.at("working_set_cap_bytes").get<std::size_t>());
+    for (std::size_t pass = 0;
+         pass != protocol.at("warmup_batches").get<std::size_t>(); ++pass) {
+        static_cast<void>(int5_stress_batch(context, input, hamming,
+            parent_protocol, trace, workers));
+    }
+    nlohmann::json samples = nlohmann::json::array();
+    for (std::size_t pass = 0;
+         pass != protocol.at("measured_batches").get<std::size_t>(); ++pass) {
+        const auto before = process_state();
+        const auto begin = Clock::now();
+        const auto values = int5_stress_batch(context, input, hamming,
+            parent_protocol, trace, workers);
+        const auto wall_ms = milliseconds(begin, Clock::now());
+        const auto after = process_state();
+        std::vector<double> query_ms;
+        query_ms.reserve(values.size());
+        std::uint64_t logical_bytes = 0;
+        for (const auto& value : values) {
+            query_ms.push_back(value.timing.total);
+            logical_bytes += value.logical_bytes;
+        }
+        samples.push_back({{"pass", pass}, {"query_count", values.size()},
+            {"wall_ms", wall_ms},
+            {"throughput_queries_per_second",
+                1000.0 * static_cast<double>(values.size()) / wall_ms},
+            {"per_query_total_ms", query_ms},
+            {"logical_bytes_touched", logical_bytes},
+            {"page_faults", after.faults - before.faults},
+            {"working_set_bytes_before", before.rss},
+            {"working_set_bytes_after", after.rss},
+            {"result_sha256", stress_result_sha256(values)}});
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_int5_layout_stress_native_samples"},
+        {"protocol_sha256", agent_memory::sha256_file_hex(protocol_path)},
+        {"seed", seed}, {"treatment", treatment}, {"condition", condition},
+        {"workers", workers}, {"working_set_cap_applied", cap_applied},
+        {"trace_queries", trace.size()},
+        {"hamming_backend", agent_memory::hamming_distance_backend_name(
+            hamming.backend())}, {"samples", samples}});
+}
+
 void self_test() {
     require(std::tanh(0.0F) == 0.0F, "R4 layout math self-test differs");
     std::array<std::uint8_t, dimensions> codes{};
@@ -3028,6 +3197,9 @@ int main(int argc, char** argv) {
         else if (argc == 7 && std::string(argv[1]) == "--int5-integration-cold")
             int5_integration_cold(argv[2], std::stoull(argv[3]), argv[4],
                                   std::stoull(argv[5]), argv[6]);
+        else if (argc == 8 && std::string(argv[1]) == "--int5-stress")
+            int5_stress(argv[2], std::stoull(argv[3]), argv[4], argv[5],
+                        std::stoull(argv[6]), argv[7]);
         else throw std::runtime_error("usage: --self-test | --compress-pack ... | --lossless-block-pack RAW COUNTS ROWS LEVEL DICT_BYTES TRAIN_BLOCKS ZSTD ZSTD_OFFSETS DICT ZSTD_DICT ZSTD_DICT_OFFSETS VBYTE VBYTE_OFFSETS RECEIPT | --lossless-block-warm MANIFEST BLOCK_MANIFEST OUTPUT | --lossless-block-cold MANIFEST BLOCK_MANIFEST SEED TREATMENT REQUEST OUTPUT | other R4 layout modes");
         return 0;
     } catch (const std::exception& error) {
