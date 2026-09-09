@@ -20,6 +20,7 @@ All project options use the `AGENT_MEMORY_` prefix.
 | `AGENT_MEMORY_BUILD_TESTS` | top-level build only | Build tests and register them with CTest. |
 | `AGENT_MEMORY_BUILD_EXAMPLES` | `OFF` | Build examples from `examples/`. |
 | `AGENT_MEMORY_BUILD_BENCHMARKS` | `OFF` | Build benchmark tools from `tools/`. Requires `AGENT_MEMORY_ENABLE_JSON=ON`. |
+| `AGENT_MEMORY_NEUROUTE_ENABLE_AVX2` | `OFF` | Build opt-in NeuRoute AVX2 benchmark kernels. The default NeuRoute build stays portable and checks CPU support before dispatching an enabled kernel. |
 | `AGENT_MEMORY_ENABLE_JSON` | `ON` | Enable JSON-backed eval loaders and benchmark report serialization. |
 | `AGENT_MEMORY_ENABLE_WARNINGS` | `ON` | Enable project compiler warnings. |
 | `AGENT_MEMORY_ENABLE_MDBX` | `OFF` | Enable MDBX-backed storage dependencies. |
