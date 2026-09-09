@@ -330,6 +330,12 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(NAME agent_memory_neuroute_binary_k8_mih_runner_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-neuroute-binary-k8-mih.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
+            add_test(NAME agent_memory_neuroute_binary_k8_mih_evidence_self_test
+                COMMAND ${Python3_EXECUTABLE} ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/write-neuroute-binary-k8-mih-evidence.py --self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
             add_test(
                 NAME agent_memory_neuroute_native_mdbx_cost_planner
                 COMMAND

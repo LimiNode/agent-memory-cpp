@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_binary_k8_mih_feasibility",
+  "claim_scope": "diagnostic_mih_over_frozen_binary_k8_prototypes_not_product_routing",
+  "codecs": [
+    {"id": "random_orthogonal_hamming384", "bits": 384, "transform": "seeded_random_orthogonal", "subindexes": 6},
+    {"id": "itq_hamming256", "bits": 256, "transform": "faiss_pca_then_itq", "subindexes": 4}
+  ],
+  "recall_targets": [0.95, 0.97, 0.99, 0.995],
+  "training": {"sample_count": 16384, "itq_iterations": 25, "base_seed": 20260902},
+  "selection": {"configuration_only": true, "product_backend_selection": false}
+}
