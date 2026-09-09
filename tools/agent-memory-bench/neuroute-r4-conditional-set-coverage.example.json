@@ -1,0 +1,141 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_conditional_set_coverage",
+  "claim_scope": "frozen_de_1m_k32_conditional_facility_location_representative_selection",
+  "activation": {
+    "saturation_result_sha256": "b4ff2e63b40c8349fb70264221746a71ff22687afb43727bf9c44007047e0c83",
+    "saturation_evidence_sha256": "7b8c9057248f5da43a1cf5723848582a916e34d3c7f02cc8f21dccd59074aca2",
+    "teacher_selection_result_sha256": "025a0c4ced56232a2189964a103f43742170bdde040a473cf8ca788e7bf83688",
+    "teacher_selection_evidence_sha256": "41998c9613591e8cd7389228398fc47847c17d17a5fd96ba2fcbd35262a16b2c"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "representatives": {
+    "selected_k": 32,
+    "saturation_parent_selected_k": 32,
+    "query_independent": true,
+    "single_document_assignment": true,
+    "unsupported_address_fill": "deterministic_farthest_first_k32"
+  },
+  "selection_recipes": [
+    {
+      "id": "ff32",
+      "farthest_first_anchor_count": 32,
+      "conditional_coverage_fill": false,
+      "source": "frozen_saturation_parent"
+    },
+    {
+      "id": "coverage32_empty",
+      "farthest_first_anchor_count": 0,
+      "conditional_coverage_fill": true,
+      "source": "training_only_facility_location"
+    },
+    {
+      "id": "centroid1_coverage31",
+      "farthest_first_anchor_count": 1,
+      "conditional_coverage_fill": true,
+      "source": "ff_prefix_then_training_only_facility_location"
+    },
+    {
+      "id": "ff8_coverage24",
+      "farthest_first_anchor_count": 8,
+      "conditional_coverage_fill": true,
+      "source": "ff_prefix_then_training_only_facility_location"
+    },
+    {
+      "id": "ff16_coverage16",
+      "farthest_first_anchor_count": 16,
+      "conditional_coverage_fill": true,
+      "source": "ff_prefix_then_training_only_facility_location"
+    },
+    {
+      "id": "independent_wins32",
+      "farthest_first_anchor_count": 0,
+      "conditional_coverage_fill": false,
+      "source": "frozen_teacher_selection_parent_retrained_with_matched_max_scorer"
+    }
+  ],
+  "facility_location": {
+    "objective": "sum_over_training_queries_normalized_static_exact_e5_address_target_times_max_query_document_cosine",
+    "training_queries": 8141,
+    "target_source": "frozen_parent_training_cache",
+    "per_query_positive_target_normalization": true,
+    "initial_uncovered_cosine": -1.0,
+    "greedy_marginal_gain": true,
+    "tie_break": "lowest_global_document_position",
+    "configuration_or_internal_labels": 0,
+    "runtime_query_dependent_selection": false
+  },
+  "query_partitions": {
+    "training_queries": 8141,
+    "configuration_queries": 76,
+    "internal_evaluation_queries": 76,
+    "models_frozen_before_configuration": true,
+    "internal_opened_after_configuration_selection": true
+  },
+  "shortlist": {
+    "source": "frozen_exact_current_k8_prototype_top1024",
+    "addresses_scored_per_query": 1024,
+    "must_not_change_by_treatment": true
+  },
+  "model": {
+    "family": "matched_r0_plus_normalized_exact_max_cosine",
+    "architecture": "actual_k32_max",
+    "local_input_dimensions": 23,
+    "parameter_count": 21837,
+    "same_optimizer_and_model_seed_for_every_recipe": true
+  },
+  "training": {
+    "torch_version_prefix": "2.8.0",
+    "device": "cpu",
+    "deterministic_algorithms": true,
+    "torch_threads": 8,
+    "epochs": 4,
+    "batch_queries": 8,
+    "learning_rate": 0.003,
+    "weight_decay": 0.0001,
+    "score_scale": 8.0,
+    "interaction_batch_queries": 1
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "evaluation": {
+    "candidate_fraction_budgets": [0.003, 0.004, 0.005],
+    "headline_candidate_fraction": 0.005,
+    "strict_prefix": true,
+    "prototype_order_control": true,
+    "privileged_gain_density_control": true,
+    "frozen_parent_control": "ff32"
+  },
+  "configuration_selection": {
+    "objective": "maximum_mean_actionable_gain_at_headline_budget",
+    "tie_break_priority": [
+      "ff16_coverage16",
+      "ff8_coverage24",
+      "centroid1_coverage31",
+      "coverage32_empty",
+      "ff32",
+      "independent_wins32"
+    ]
+  },
+  "decision": {
+    "minimum_mean_actionable_improvement": 0.003,
+    "minimum_every_seed_actionable_delta": -0.003,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true,
+    "compression_selection_forbidden": true
+  },
+  "cache_manifest_sha256": {
+    "2026082701": "fe995751dbf54c407a9ec21711835e5cfa0464868f4b48b92e0bb4b886bd3f54",
+    "2026082702": "da6edee1fc3b6c1858bb1766a06112a13c16d10154598f5d97637ec64b17fbb8",
+    "2026082703": "eb9bc382c88a6a4ba74bb778d75b5c9e56ae8690b5cd476f340a6f86e95475d6"
+  }
+}
