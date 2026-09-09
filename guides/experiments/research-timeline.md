@@ -356,3 +356,18 @@ an explicit head trigger where the source commit itself was unchanged).
 These merges preserve the research commit graph (no squash and no branch
 deletion). Their Evidence receipts remain subject to the archive rule above;
 merge status alone does not imply a production activation.
+
+### Evidence archive: NeuRoute dense wave #258--#266
+
+The compact receipts for the nine landed dense-path PRs are archived in
+[Evidence release `evidence/neuroute-dense-wave-258-266-v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/neuroute-dense-wave-258-266-v1).
+The archive contains experiment notes and validated result/evidence receipts;
+raw DE-1M stores, generated databases, and executables remain outside Git and
+the release asset.
+
+- Measured head: `efae643db29fc9d09775a1fbe7460b17bb79571f` (#266)
+- Archive SHA-256: `84bb44712850bac66411040fffbb33a31ca4eec1b74b1a6fd1bc038adf6c8ea9`
+- Bundle-root SHA-256: `7f3883ffd82a4016da9c7e66eb90d46977616e4a913f66d0f17b0dfe780939e4`
+- Interpretation statuses: #258 `CONFIRMED/NEGATIVE`; #259--#261
+  `CONFIRMED`; #262 `CORRECTED/CONFIRMED`; #263 `CONDITIONAL CLOSURE`;
+  #264 `DIAGNOSTIC`; #265 `PHYSICAL FOLLOW-UP`; #266 `TESTED CEILING`.
