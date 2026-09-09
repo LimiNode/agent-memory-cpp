@@ -239,6 +239,14 @@ that 89.89% of prototype codes were untouched, the hard-negative encoder was
 reinitialized, and the entropy interpretation was invalid. #290 is a correction
 to earlier RaBitQ/BBQ-like calculations, not a silent replacement.
 
+Correction-chain status:
+
+```text
+#285 SUPERSEDED/CORRECTED BY #287 (historical asymmetric codebook diagnostic)
+#286 SUPERSEDED/CORRECTED BY #287 (historical listwise utility diagnostic)
+#287 CORRECTED (coverage, initialization, and projection-init replay)
+```
+
 ### Wave 8: document tail, THQ, and routing bakeoff (`#293--#300`, `#310`)
 
 `#293` and `#294` are useful but require bounded claims before merge:
