@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_joint_binary_ceiling",
+  "claim_scope": "positive_pair_supervised_binary_geometry_ceiling",
+  "widths": [256, 384, 512],
+  "pair_sample": 200000,
+  "seed": 279,
+  "training": "frozen_R4_representative_prototype_document_pairs",
+  "selection": {
+    "train_partition": "positive_pairs_only",
+    "evaluation_partitions": ["configuration", "internal"],
+    "production_selection": false
+  }
+}
