@@ -463,3 +463,5 @@ jobs:
           && python tools/agent-memory-bench/materialize-neuroute-r4-int8-compression.py --self-test
           && python tools/agent-memory-bench/run-neuroute-r4-int8-compression.py --self-test
           && python tools/agent-memory-bench/write-neuroute-r4-int8-compression-evidence.py --self-test
+          && python tools/agent-memory-bench/run-neuroute-bitwise-address-selector.py --self-test
+          && python tools/agent-memory-bench/write-neuroute-bitwise-address-selector-evidence.py --self-test
