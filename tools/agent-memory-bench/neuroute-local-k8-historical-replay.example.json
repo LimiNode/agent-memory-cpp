@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_local_k8_historical_replay",
+  "claim_scope": "historical_recipe_reconstruction_on_frozen_de_1m_r4_topology",
+  "provenance": {
+    "historical_checkpoint_status": "unavailable_after_actions_artifact_expiry",
+    "replay_semantics": "recipe_reconstruction_not_byte_identical_historical_model",
+    "forbidden_claim": "exact_replay_of_pr223_checkpoint"
+  },
+  "partition": {
+    "configuration_requests": [0, 76],
+    "locked_internal_requests": [76, 152],
+    "training_input": "configuration_queries_and_global_fp32_k8_top1024_only"
+  },
+  "routers": [
+    "hard_hamming_reconstruction",
+    "occupied_bit_logit_reconstruction",
+    "centroid_k1",
+    "posting_mass",
+    "stable_random"
+  ],
+  "shortlist_budgets": [2048, 4096, 8192, 16384],
+  "ridge_lambda": 0.01,
+  "rank_discount": "inverse_log2_v1",
+  "native_replay": {
+    "coarse_codec": "fp32_k8",
+    "routing_storage_mode": "int8",
+    "execution": "portable",
+    "workers": 1,
+    "warmup_batches": 1,
+    "measured_batches": 1
+  },
+  "quality_gates": {
+    "maximum_mean_downstream_ndcg_loss": 0.004,
+    "maximum_every_seed_downstream_ndcg_loss": 0.004,
+    "minimum_mean_final_top10_overlap": 0.99,
+    "minimum_mean_fp32_stage_retention_at_candidate": 0.99,
+    "minimum_mean_fp32_stage_overlap_at_hamming768": 0.98,
+    "minimum_mean_fp32_stage_overlap_at_adc64": 0.95,
+    "maximum_native_address_budget": 8192,
+    "exact_scan_target_p95_ms": 15.0
+  },
+  "decision": {
+    "selection": "quality_pass_then_minimum_address_budget_then_coarse_p95",
+    "internal_open": "minimum_passing_budget_per_router_else_8192_boundary_plus_16384_sensitivity",
+    "license_native_integration_only_if_locked_internal_passes": true,
+    "activate_fixed_top_m_frontier_if_no_historical_recipe_passes": true,
+    "production_selection_forbidden": true
+  }
+}

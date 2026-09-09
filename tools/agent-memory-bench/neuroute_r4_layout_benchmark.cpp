@@ -3632,6 +3632,67 @@ struct CoarseK8Result {
     std::uint64_t logical_bytes = 0;
 };
 
+struct CoarseAddressShortlist {
+    std::vector<std::uint32_t> rows;
+    std::size_t query_count = 0;
+    std::size_t rows_per_query = 0;
+    std::size_t selected_rows_per_query = 0;
+    std::string sha256;
+    std::uint64_t bytes = 0;
+};
+
+CoarseAddressShortlist load_coarse_address_shortlist(
+        const std::filesystem::path& manifest_path, const SeedContext& seed,
+        std::size_t selected_rows_per_query) {
+    const auto manifest = read_json(manifest_path);
+    require(manifest.value("schema_version", 0) == 1 &&
+            manifest.value("family", "") ==
+                "neuroute_local_k8_address_shortlist_materialization",
+            "R4 local K8 shortlist manifest differs");
+    const auto found = std::find_if(manifest.at("seeds").begin(),
+        manifest.at("seeds").end(), [&](const nlohmann::json& row) {
+            return row.at("seed").get<std::uint64_t>() == seed.seed;
+        });
+    require(found != manifest.at("seeds").end() &&
+            found->at("occupied_addresses").get<std::size_t>() ==
+                seed.occupied_addresses.size() &&
+            found->at("dtype").get<std::string>() == "<u4",
+            "R4 local K8 shortlist seed descriptor differs");
+    const auto shape = found->at("shape").get<std::vector<std::size_t>>();
+    require(shape.size() == 2 && shape[0] == 152 &&
+            selected_rows_per_query > addresses_per_query &&
+            selected_rows_per_query <= shape[1],
+            "R4 local K8 shortlist shape differs");
+    const auto path = std::filesystem::path(found->at("path").get<std::string>());
+    const auto bytes = found->at("bytes").get<std::uint64_t>();
+    const auto digest = found->at("sha256").get<std::string>();
+    require(path.is_absolute() && bytes == shape[0] * shape[1] *
+                sizeof(std::uint32_t) &&
+            std::filesystem::file_size(path) == bytes &&
+            agent_memory::sha256_file_hex(path) == digest,
+            "R4 local K8 shortlist payload differs");
+    CoarseAddressShortlist result;
+    result.rows = read_values<std::uint32_t>(path);
+    result.query_count = shape[0];
+    result.rows_per_query = shape[1];
+    result.selected_rows_per_query = selected_rows_per_query;
+    result.sha256 = digest;
+    result.bytes = bytes;
+    std::vector<std::uint32_t> audit;
+    audit.reserve(selected_rows_per_query);
+    for (std::size_t query = 0; query != result.query_count; ++query) {
+        const auto* first = result.rows.data() + query * result.rows_per_query;
+        audit.assign(first, first + selected_rows_per_query);
+        require(std::all_of(audit.begin(), audit.end(), [&](std::uint32_t row) {
+                    return row < seed.address_counts.size();
+                }), "R4 local K8 shortlist row differs");
+        std::sort(audit.begin(), audit.end());
+        require(std::adjacent_find(audit.begin(), audit.end()) == audit.end(),
+                "R4 local K8 shortlist contains duplicates");
+    }
+    return result;
+}
+
 CoarseK8Input load_coarse_k8_input(
         const std::filesystem::path& manifest_path,
         const SeedContext& seed,
@@ -4328,6 +4389,120 @@ CoarseK8Result approximate_coarse_k8_query(
     };
     std::nth_element(order.begin(), order.begin() + addresses_per_query,
                      order.begin() + refine_addresses, lower);
+    std::sort(order.begin(), order.begin() + addresses_per_query, lower);
+    CoarseK8Result result;
+    result.dot_and_max_ms = milliseconds(begin, Clock::now());
+    result.logical_bytes = logical_bytes;
+    begin = Clock::now();
+    result.rows.assign(order.begin(), order.begin() + addresses_per_query);
+    result.cutoff_score = maximums[result.rows.back()];
+    result.next_score = maximums[order[addresses_per_query]];
+    result.cutoff_margin = result.cutoff_score - result.next_score;
+    result.features.resize(addresses_per_query * scalar_features);
+    const auto log_denominator = std::log1p(1000000.0F);
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = result.rows[local];
+        const auto count = static_cast<std::size_t>(
+            std::min<std::uint32_t>(seed.address_counts[row], 8U));
+        std::array<float, 8> sorted;
+        sorted.fill(-1.0F);
+        std::copy_n(cosines.data() + row * 8U, count, sorted.data());
+        std::sort(sorted.begin(), sorted.end(), std::greater<float>());
+        const auto mean = std::accumulate(sorted.begin(),
+            sorted.begin() + count, 0.0F) / static_cast<float>(count);
+        float variance = 0.0F;
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto delta = cosines[row * 8U + slot] - mean;
+            variance += delta * delta;
+        }
+        const auto deviation = std::sqrt(variance / static_cast<float>(count));
+        const auto maximum = sorted[0];
+        const auto second = sorted[1];
+        const auto margin = maximum - second;
+        const auto log_cost = std::log1p(static_cast<float>(
+            seed.address_counts[row])) / log_denominator;
+        const auto rank = static_cast<float>(local) /
+            static_cast<float>(addresses_per_query - 1);
+        const auto capacity = static_cast<float>(count) / 8.0F;
+        auto* features = result.features.data() + local * scalar_features;
+        std::copy(sorted.begin(), sorted.end(), features);
+        features[8] = maximum;
+        features[9] = second;
+        features[10] = mean;
+        features[11] = deviation;
+        features[12] = margin;
+        features[13] = log_cost;
+        features[14] = rank;
+        features[15] = capacity;
+        features[16] = maximum * log_cost;
+        features[17] = second * log_cost;
+        features[18] = margin * log_cost;
+        features[19] = mean * log_cost;
+        features[20] = maximum * maximum;
+        features[21] = deviation * deviation;
+    }
+    const auto* frozen = seed.shortlists.data() +
+        request * addresses_per_query;
+    result.frozen_shortlist_sequence_matches = std::equal(
+        result.rows.begin(), result.rows.end(), frozen);
+    std::vector<std::uint32_t> generated = result.rows;
+    std::sort(generated.begin(), generated.end());
+    std::vector<std::uint32_t> expected(frozen,
+        frozen + addresses_per_query);
+    std::sort(expected.begin(), expected.end());
+    std::vector<std::uint32_t> intersection;
+    std::set_intersection(generated.begin(), generated.end(),
+        expected.begin(), expected.end(), std::back_inserter(intersection));
+    result.frozen_shortlist_overlap = intersection.size();
+    result.order_and_features_ms = milliseconds(begin, Clock::now());
+    return result;
+}
+
+CoarseK8Result local_coarse_k8_query(
+        const SeedContext& seed, const CoarseK8Input& input,
+        const CoarseAddressShortlist& shortlist, std::size_t request) {
+    require(request < shortlist.query_count && input.query_arithmetic == "fp32" &&
+            input.prototype_limit == 8 &&
+            shortlist.selected_rows_per_query > addresses_per_query &&
+            input.record_offsets.size() == seed.address_counts.size() + 1,
+            "R4 local K8 invocation differs");
+    const auto* query = seed.queries.data() + request * dimensions;
+    const auto* selected = shortlist.rows.data() +
+        request * shortlist.rows_per_query;
+    const auto selected_count = shortlist.selected_rows_per_query;
+    std::array<std::int16_t, dimensions> query_int16{};
+    std::array<std::int8_t, dimensions> query_int8{};
+    std::array<std::uint32_t, dimensions> unpacked{};
+    thread_local std::vector<float> maximums;
+    thread_local std::vector<float> cosines;
+    thread_local std::vector<std::uint32_t> order;
+    maximums.assign(seed.address_counts.size(),
+        -std::numeric_limits<float>::infinity());
+    cosines.resize(seed.address_counts.size() * 8U);
+    order.assign(selected, selected + selected_count);
+    std::uint64_t logical_bytes = 0;
+    auto begin = Clock::now();
+    for (const auto row : order) {
+        const auto count = static_cast<std::size_t>(
+            std::min<std::uint32_t>(seed.address_counts[row], 8U));
+        const auto first = static_cast<std::size_t>(input.record_offsets[row]);
+        logical_bytes += count * input.record_bytes;
+        for (std::size_t slot = 0; slot != count; ++slot) {
+            const auto* record = input.prototypes->data() +
+                (first + slot) * input.record_bytes;
+            const auto score = coarse_codec_dot(input, record, query,
+                query_int16.data(), 1.0F, query_int8.data(), 1.0F, unpacked);
+            cosines[row * 8U + slot] = score;
+            maximums[row] = std::max(maximums[row], score);
+        }
+    }
+    const auto lower = [&](std::uint32_t left, std::uint32_t right) {
+        if (maximums[left] != maximums[right])
+            return maximums[left] > maximums[right];
+        return seed.occupied_addresses[left] < seed.occupied_addresses[right];
+    };
+    std::nth_element(order.begin(), order.begin() + addresses_per_query,
+                     order.end(), lower);
     std::sort(order.begin(), order.begin() + addresses_per_query, lower);
     CoarseK8Result result;
     result.dot_and_max_ms = milliseconds(begin, Clock::now());
@@ -5649,12 +5824,19 @@ EndToEndResult full_r4_query(
         const CoarseK8Input* representative_input = nullptr,
         const CoarseK8Input* coarse_prefilter_input = nullptr,
         std::size_t prefilter_prototypes = 0,
-        std::size_t refine_addresses = 0) {
+        std::size_t refine_addresses = 0,
+        const CoarseAddressShortlist* address_shortlist = nullptr) {
     const auto total_begin = Clock::now();
-    auto coarse = coarse_prefilter_input == nullptr
-        ? coarse_k8_query(context.seed, coarse_input, request)
-        : approximate_coarse_k8_query(context.seed, *coarse_prefilter_input,
-            coarse_input, request, prefilter_prototypes, refine_addresses);
+    require(coarse_prefilter_input == nullptr || address_shortlist == nullptr,
+            "R4 coarse shortlist modes overlap");
+    auto coarse = address_shortlist != nullptr
+        ? local_coarse_k8_query(context.seed, coarse_input,
+            *address_shortlist, request)
+        : (coarse_prefilter_input == nullptr
+            ? coarse_k8_query(context.seed, coarse_input, request)
+            : approximate_coarse_k8_query(context.seed,
+                *coarse_prefilter_input, coarse_input, request,
+                prefilter_prototypes, refine_addresses));
     auto route = representative_input == nullptr
         ? int5_kernel_route(context, request, routing_kernel,
             coarse.rows.data(), coarse.features.data())
@@ -5691,7 +5873,8 @@ public:
             const CoarseK8Input* representative_input,
             const CoarseK8Input* coarse_prefilter_input = nullptr,
             std::size_t prefilter_prototypes = 0,
-            std::size_t refine_addresses = 0)
+            std::size_t refine_addresses = 0,
+            const CoarseAddressShortlist* address_shortlist = nullptr)
         : context_(context), coarse_input_(coarse_input), input_(input),
           final_int5_(final_int5), hamming_(hamming),
           request_protocol_(request_protocol), routing_kernel_(routing_kernel),
@@ -5699,7 +5882,8 @@ public:
           representative_input_(representative_input),
           coarse_prefilter_input_(coarse_prefilter_input),
           prefilter_prototypes_(prefilter_prototypes),
-          refine_addresses_(refine_addresses), failures_(worker_count) {
+          refine_addresses_(refine_addresses),
+          address_shortlist_(address_shortlist), failures_(worker_count) {
         require(worker_count != 0, "R4 full-cascade workers differ");
         workers_.reserve(worker_count);
         try {
@@ -5773,7 +5957,8 @@ private:
                         request.at("request").get<std::size_t>(),
                         request.at("native_query").get<std::size_t>(),
                         representative_input_, coarse_prefilter_input_,
-                        prefilter_prototypes_, refine_addresses_);
+                        prefilter_prototypes_, refine_addresses_,
+                        address_shortlist_);
                 }
             } catch (...) {
                 failures_[worker] = std::current_exception();
@@ -5796,6 +5981,7 @@ private:
     const CoarseK8Input* coarse_prefilter_input_;
     std::size_t prefilter_prototypes_;
     std::size_t refine_addresses_;
+    const CoarseAddressShortlist* address_shortlist_;
     std::vector<std::thread> workers_;
     std::vector<std::exception_ptr> failures_;
     std::atomic<std::size_t> following_{0};
@@ -6083,6 +6269,16 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
         refine_addresses = protocol.at(
             "coarse_k8_refine_addresses").get<std::size_t>();
     }
+    std::unique_ptr<CoarseAddressShortlist> address_shortlist;
+    if (protocol.contains("coarse_k8_address_shortlist_manifest")) {
+        require(coarse_prefilter_input == nullptr,
+                "R4 coarse shortlist protocol modes overlap");
+        address_shortlist = std::make_unique<CoarseAddressShortlist>(
+            load_coarse_address_shortlist(protocol.at(
+                "coarse_k8_address_shortlist_manifest").get<std::string>(),
+                context.seed, protocol.at(
+                "coarse_k8_address_shortlist_size").get<std::size_t>()));
+    }
     std::unique_ptr<CoarseK8Input> representative_input;
     if (k32_codec) {
         require(protocol.contains("representative_k32_manifest"),
@@ -6110,7 +6306,7 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
     FullR4BatchExecutor executor(context, coarse_input, input, final_int8,
         hamming, request_protocol, workers, routing_kernel, final_kernel,
         representative_input.get(), coarse_prefilter_input.get(),
-        prefilter_prototypes, refine_addresses);
+        prefilter_prototypes, refine_addresses, address_shortlist.get());
     for (std::size_t pass = 0;
          pass != protocol.at("warmup_batches").get<std::size_t>(); ++pass) {
         static_cast<void>(executor.run(trace));
@@ -6203,6 +6399,12 @@ void external_comparison_r4(const std::filesystem::path& protocol_path,
         {"coarse_k8_prototype_limit", coarse_input.prototype_limit},
         {"coarse_k8_record_bytes", coarse_input.record_bytes},
         {"coarse_k8_query_arithmetic", coarse_input.query_arithmetic},
+        {"coarse_k8_address_shortlist_sha256", address_shortlist != nullptr
+            ? nlohmann::json(address_shortlist->sha256)
+            : nlohmann::json(nullptr)},
+        {"coarse_k8_address_shortlist_size", address_shortlist != nullptr
+            ? nlohmann::json(address_shortlist->selected_rows_per_query)
+            : nlohmann::json(nullptr)},
         {"coarse_k8_store_sha256", coarse_input.sha256},
         {"coarse_k8_store_bytes", coarse_input.bytes},
         {"coarse_k8_prefilter_treatment", coarse_prefilter_input == nullptr
