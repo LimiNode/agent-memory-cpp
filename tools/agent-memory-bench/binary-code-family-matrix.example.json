@@ -15,16 +15,24 @@
       "prototype_budgets": [1024, 2048, 4096, 8192],
       "postings": "prototype_to_document_dedup",
       "exact_local_k8_arms": [true, false]
+    },
+    "residual_ivf": {
+      "coarse": "frozen_float_ivf",
+      "nlist": [4096, 8192, 16384],
+      "nprobe": [8, 16, 32, 64, 128],
+      "local_prototype_budgets": [512, 1024, 2048, 4096],
+      "representations": ["original", "prototype_minus_cell_centroid"],
+      "exact_local_k8_arms": [true, false]
     }
   },
   "methods": [
     {"id": "fp32", "family": "float", "status": "control"},
     {"id": "fp16", "family": "scalar", "status": "planned"},
     {"id": "pca_sign_hamming", "family": "binary", "status": "existing"},
-    {"id": "itq_hamming", "family": "binary", "status": "existing"},
-    {"id": "itq_binary_adc", "family": "binary", "status": "existing"},
-    {"id": "rabitq_reference", "family": "binary_corrected", "status": "standalone_reference"},
-    {"id": "bbq_like_reference", "family": "binary_corrected", "status": "standalone_reference"},
+    {"id": "itq_hamming", "family": "binary", "widths": [128, 208, 256, 384], "status": "existing"},
+    {"id": "itq_binary_adc", "family": "binary", "widths": [128, 208, 256, 384], "status": "existing"},
+    {"id": "rabitq_reference", "family": "binary_corrected", "widths": [128, 208, 256, 384], "status": "standalone_reference"},
+    {"id": "bbq_like_reference", "family": "binary_corrected", "widths": [128, 208, 256, 384], "status": "standalone_reference"},
     {"id": "ternary_adc", "family": "ternary", "status": "existing"},
     {"id": "quaternary_adc", "family": "quaternary", "status": "existing"},
     {"id": "int4_linear", "family": "scalar", "status": "existing"},
