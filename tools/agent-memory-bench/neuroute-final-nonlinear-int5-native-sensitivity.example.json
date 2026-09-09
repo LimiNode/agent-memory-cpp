@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_final_nonlinear_int5_native_sensitivity",
+  "claim_scope": "native_cpp_reduction_order_sensitivity_on_frozen_python_quantized_top64_values",
+  "activation": {
+    "quality_result_sha256": "3f02e555dc40ad3105e6fcd9586296edae5186b23eaa37b627a62ba5ddec938d",
+    "final_materialization_sha256": "5124d018990ca79565a38cb0b754f96fb664fa8ad83c892234f12a63f41eb59c"
+  },
+  "treatments": ["fp32", "int5_uniform", "selected_nonlinear"],
+  "expected_selected_nonlinear": "int5_power_075",
+  "quality": {
+    "maximum_cross_dataset_mean_ndcg_loss_vs_fp32": 0.003,
+    "maximum_per_dataset_ndcg_loss_vs_fp32": 0.0075,
+    "maximum_confirmation_mean_ndcg_regression_vs_uniform": 0.0,
+    "maximum_confirmation_per_dataset_regression_vs_uniform": 0.002
+  },
+  "decision": {
+    "native_result_is_sensitivity_not_reselection": true,
+    "retain_uniform_if_native_confirms_failure": true,
+    "require_followup_if_python_and_native_gate_outcomes_disagree": true
+  }
+}

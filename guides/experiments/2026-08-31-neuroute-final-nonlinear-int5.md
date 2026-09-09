@@ -38,3 +38,25 @@ timing stage and nonlinear one-million-document materialization are not opened,
 because latency cannot repair a failed held-out quality gate. Nonlinear power
 0.5 remains independently licensed for routing representatives; that kernel is
 studied separately.
+
+## Native reduction-order sensitivity follow-up
+
+The close French and Japanese gate failures were replayed with the C++17
+final-representation evaluator before treating the negative result as closed.
+The native input contains the exact reconstructed float32 values produced by
+the Python quantizer for FP32, uniform INT5, and selected power-0.75 INT5. The
+native evaluator changes only the 384-dimensional multiplication and
+left-to-right float accumulation order; it does not requantize values or create
+a one-million-document nonlinear store.
+
+The replay covered 1,356 dataset/seed/query cases. Uniform and power-0.75
+rankings agreed with Python on all 2,712 comparisons. Native held-out losses
+were therefore identical at the ranking level: French loss versus FP32 remained
+`0.008036` and Japanese regression versus uniform remained `0.002509`. Both
+still exceed their registered `0.0075` and `0.002` caps. The native sensitivity
+thus confirms the Python rejection and retains uniform INT5 for final rerank.
+
+Raw input, report, result, and compact evidence are under
+`tmp/neuroute-final-nonlinear-int5/native-sensitivity*` in the experiment
+worktree. They are hash-bound to the frozen #256 quality result and final
+materialization and are not committed.

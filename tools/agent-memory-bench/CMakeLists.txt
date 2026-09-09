@@ -411,6 +411,7 @@ agent_memory_set_evaluator_build_environment(agent-memory-neuroute-int6-codec)
 target_link_libraries(agent-memory-neuroute-int6-codec PRIVATE agent_memory::agent_memory agent_memory::json)
 
 set(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP 0)
+set(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2 0)
 set(AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_codec.cpp")
 if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$"
@@ -425,6 +426,26 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$"
     target_compile_features(agent_memory_neuroute_simdcomp PRIVATE cxx_std_17)
     if(NOT MSVC)
         target_compile_options(agent_memory_neuroute_simdcomp PRIVATE -msse2)
+    endif()
+    if(EXISTS "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c")
+        target_sources(agent_memory_neuroute_simdcomp PRIVATE
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c"
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdcomputil.c")
+        set_source_files_properties(
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c"
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdcomputil.c"
+            PROPERTIES LANGUAGE CXX)
+        if(MSVC)
+            target_compile_options(agent_memory_neuroute_simdcomp PRIVATE /arch:AVX2)
+        else()
+            target_compile_options(agent_memory_neuroute_simdcomp PRIVATE -mavx2)
+        endif()
+        set(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2 1)
+        list(APPEND AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/src/avxbitpacking.c"
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/src/simdcomputil.c"
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/include/avxbitpacking.h"
+            "${PROJECT_SOURCE_DIR}/external/simdcomp/include/simdcomputil.h")
     endif()
     set(AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP 1)
     list(APPEND AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES
@@ -504,6 +525,7 @@ endif()
 target_compile_definitions(agent-memory-neuroute-r4-layout-benchmark PRIVATE
     AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2}
     AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD=${AGENT_MEMORY_NEUROUTE_R4_HAS_ZSTD}
+    AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2=${AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP_AVX2}
     AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP=${AGENT_MEMORY_NEUROUTE_HAS_SIMDCOMP})
 target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
     agent_memory::agent_memory agent_memory::json)

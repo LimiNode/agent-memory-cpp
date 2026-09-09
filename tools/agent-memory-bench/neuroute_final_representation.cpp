@@ -362,6 +362,101 @@ void validate_report(const nlohmann::json& expected, const nlohmann::json& repla
     }
 }
 
+struct SensitivityRanked final {
+    float score = 0.0F;
+    std::uint32_t position = 0;
+    std::uint32_t rank = 0;
+    std::int32_t grade = 0;
+};
+
+bool sensitivity_better(const SensitivityRanked& left,
+                        const SensitivityRanked& right) {
+    if(left.score != right.score) return left.score > right.score;
+    return left.rank < right.rank;
+}
+
+nlohmann::json execute_nonlinear_int5_sensitivity(
+        const std::filesystem::path& manifest_path) {
+    nlohmann::json manifest;
+    std::ifstream stream(manifest_path);
+    stream >> manifest;
+    if(manifest.value("family", "") !=
+           "neuroute_final_nonlinear_int5_native_input"
+       || manifest.at("dimensions") != dimensions
+       || manifest.at("pool_size") != 64
+       || manifest.at("result_k") != 10)
+        throw std::runtime_error("final nonlinear INT5 native input differs");
+    const auto root = manifest_path.parent_path();
+    const auto cases = manifest.at("cases");
+    const auto case_count = cases.size();
+    const auto queries = read_array<float>(root, manifest.at("queries"));
+    const auto positions = read_array<std::uint32_t>(
+        root, manifest.at("positions"));
+    const auto ranks = read_array<std::uint32_t>(root, manifest.at("ranks"));
+    const auto grades = read_array<std::int32_t>(root, manifest.at("grades"));
+    if(queries.size() != case_count * dimensions
+       || positions.size() != case_count * 64
+       || ranks.size() != case_count * 64
+       || grades.size() != case_count * 64)
+        throw std::runtime_error("final nonlinear INT5 native input shape differs");
+    nlohmann::json rows = nlohmann::json::array();
+    for(const auto& treatment : manifest.at("treatments")) {
+        const auto reconstructed = read_array<float>(
+            root, treatment.at("reconstructed"));
+        if(reconstructed.size() != case_count * 64 * dimensions)
+            throw std::runtime_error(
+                "final nonlinear INT5 reconstructed shape differs");
+        for(std::size_t current = 0; current != case_count; ++current) {
+            std::vector<SensitivityRanked> scored;
+            scored.reserve(64);
+            const auto* query = queries.data() + current * dimensions;
+            for(std::size_t document = 0; document != 64; ++document) {
+                const auto offset = (current * 64 + document) * dimensions;
+                float score = 0.0F;
+                for(std::size_t dimension = 0; dimension != dimensions;
+                    ++dimension)
+                    score += reconstructed[offset + dimension] *
+                             query[dimension];
+                const auto local = current * 64 + document;
+                scored.push_back({score, positions[local], ranks[local],
+                                  grades[local]});
+            }
+            std::nth_element(scored.begin(), scored.begin() + 10,
+                             scored.end(), sensitivity_better);
+            scored.resize(10);
+            std::sort(scored.begin(), scored.end(), sensitivity_better);
+            std::vector<std::uint32_t> top10;
+            top10.reserve(10);
+            double dcg = 0.0;
+            for(std::size_t index = 0; index != scored.size(); ++index) {
+                top10.push_back(scored[index].position);
+                dcg += (std::pow(2.0, scored[index].grade) - 1.0) /
+                       std::log2(static_cast<double>(index) + 2.0);
+            }
+            const auto ideal = cases.at(current).at("ideal_dcg").get<double>();
+            const auto ndcg = ideal == 0.0 ? 0.0 :
+                std::min(1.0, std::max(0.0, dcg / ideal));
+            rows.push_back({
+                {"dataset", cases.at(current).at("dataset")},
+                {"seed", cases.at(current).at("seed")},
+                {"partition", cases.at(current).at("partition")},
+                {"query", cases.at(current).at("query")},
+                {"query_id", cases.at(current).at("query_id")},
+                {"treatment", treatment.at("id")},
+                {"ndcg_at_10", ndcg},
+                {"ranked_sha256", sequence_sha256(top10)}
+            });
+        }
+    }
+    return {{"schema_version", 1},
+        {"family", "neuroute_final_nonlinear_int5_native_result"},
+        {"input_manifest_sha256",
+            agent_memory::sha256_file_hex(manifest_path)},
+        {"evaluator_source_manifest_sha256",
+            AGENT_MEMORY_EVALUATOR_SOURCE_MANIFEST_SHA256},
+        {"case_count", case_count}, {"rows", rows}};
+}
+
 int self_test() {
     const std::uint8_t packed[]{136U, 8U};
     if(unpack(packed, 0, 3) != 0U || unpack(packed, 1, 3) != 1U
@@ -378,6 +473,16 @@ int self_test() {
 int main(int argc, char** argv) {
     try {
         if(argc == 2 && std::string(argv[1]) == "--self-test") return self_test();
+        if(argc == 4 && std::string(argv[1]) ==
+               "--nonlinear-int5-sensitivity") {
+            const auto report = execute_nonlinear_int5_sensitivity(argv[2]);
+            std::ofstream output(argv[3]);
+            if(!output)
+                throw std::runtime_error(
+                    "cannot write final nonlinear INT5 native report");
+            output << report.dump(2) << '\n';
+            return 0;
+        }
         if(argc == 5 && std::string(argv[1]) == "--validate") {
             nlohmann::json expected;
             std::ifstream stream(argv[4]);
