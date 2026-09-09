@@ -240,6 +240,16 @@ results. Its raw output is `tmp/residual-ivf-full-4096.json` and uses
 full `8/16/32/64/128 × 512/1024/2048/4096` grid remain a follow-up if this
 first fixed-partition run shows a residual advantage.
 
+## Isolated final-rerank follow-up
+
+The all-family comparison on the frozen native actual-R4 `ADC64 → top10`
+stage is recorded in
+[`2026-09-04-neuroute-final-rerank-code-family.md`](2026-09-04-neuroute-final-rerank-code-family.md).
+It keeps the earlier cascade fixed and shows that scalar INT8–INT12 dominates
+the 16–64 byte binary/PQ families for final ordering of very close documents.
+This is a separate geometry from both document-flat generation and K8
+prototype routing.
+
 ## Common metrics and decision rule
 
 The contract is [`binary-code-family-matrix.example.json`](../../tools/agent-memory-bench/binary-code-family-matrix.example.json).
