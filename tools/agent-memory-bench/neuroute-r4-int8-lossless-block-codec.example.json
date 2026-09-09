@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_int8_lossless_block_codec_frontier",
+  "claim_scope": "DE-1M frozen FF32/K32 R4 representative store; independent address-block random access",
+  "activation": {
+    "int8_compression_result_sha256": "0a23baa73b5236d779839f212e5fcb53238643d0dc09e4fd96b0ee0c582ed17f",
+    "int8_compression_evidence_sha256": "b5298bc6ba381934c617749a9eccc4e185d741618ab84f06b581760d17ad017e",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "native_end_to_end_result_sha256": "da6d824c1025836abf180231c9abc473927c0d06057300c3820ce2f0e25b0ba5",
+    "native_end_to_end_evidence_sha256": "fbfdd3e14babf9fb7fdfad40b36e80bd290aaa472f48895a1e34cf13d57e8fec"
+  },
+  "treatments": [
+    "raw_int8",
+    "zstd_block",
+    "zstd_dictionary_block",
+    "vbyte_zigzag"
+  ],
+  "route": {
+    "documents": 1000000,
+    "queries_per_seed": 152,
+    "addresses_per_query": 1024,
+    "seeds": [2026082701, 2026082702, 2026082703]
+  },
+  "zstd": {
+    "repository": "https://github.com/facebook/zstd.git",
+    "commit": "f8745da6ff1ad1e7bab384bd1f9d742439278e99",
+    "version": "1.5.7",
+    "level": 3,
+    "frame_scope": "one_independently_decodable_frame_per_occupied_address",
+    "dictionary_capacity_bytes": 65536,
+    "dictionary_training_blocks": 4096,
+    "dictionary_training_selection": "splitmix64_address_order_query_independent"
+  },
+  "vbyte": {
+    "transform": "signed_code_centered_at_127_then_zigzag_then_unsigned_leb128",
+    "frame_scope": "one_offset_delimited_payload_per_occupied_address"
+  },
+  "warm_page_cache": {
+    "definition": "all_payloads_sequentially_prefaulted_then_one_warmup_matrix",
+    "measured_passes": 3,
+    "schedule_seed": 2026083111
+  },
+  "process_cold": {
+    "definition": "fresh_process_first_request_os_page_cache_uncontrolled",
+    "paired_requests_per_seed": 15,
+    "selection_prefix_utf8": "neuroute-r4-lossless-block-cold-v1"
+  },
+  "selection": {
+    "require_score_hash_identity": true,
+    "maximum_warm_p95_ratio_vs_raw": 1.25,
+    "require_total_bytes_below_raw": true,
+    "policy": "smallest_total_bytes_among_eligible_treatments"
+  }
+}

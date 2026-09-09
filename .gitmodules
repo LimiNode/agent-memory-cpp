@@ -10,3 +10,6 @@
 [submodule "external/simdcomp"]
 	path = external/simdcomp
 	url = https://github.com/fast-pack/simdcomp.git
+[submodule "external/zstd"]
+	path = external/zstd
+	url = https://github.com/facebook/zstd.git
