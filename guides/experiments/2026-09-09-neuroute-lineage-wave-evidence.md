@@ -34,7 +34,7 @@ The archive is built and validated deterministically by
 ## Publication
 
 - Tag: `evidence/neuroute-lineage-wave-267-275-v1`
-- Release: pending publication
+- Release: [Evidence `evidence/neuroute-lineage-wave-267-275-v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/neuroute-lineage-wave-267-275-v1)
 - Measured head: `5d583f7b8d6dd55ceb57005257f238b87c9fe071`
-- Archive SHA-256: pending publication
-- Bundle-root SHA-256: pending publication
+- Archive SHA-256: `0b9ffc9a9fc912fe77576adb3ed3c38cecb8f8a10dac347b25085d1edfe73f8f`
+- Bundle-root SHA-256: `f93f3fd70b0c14d28ad185c9c714703f0e79f6c8591d0104c62aeb6d11e447ca`
