@@ -290,25 +290,55 @@ authorization.
 The former evidence-status note is retained as the pre-release audit record;
 the public release above supersedes its temporary “no public release” status.
 
-`#293` and `#294` are useful but require bounded claims before merge:
+The canonical clean-main landings for this wave are now:
 
-- #293 quality/tail aggregation needs authoritative qrels, query/document ID,
-  rank-file, and prepared-manifest receipts;
+- #293 -> #339, merge `64ac043ddeb40e176ad906c8bf339d5da63f6523`;
+- #294 -> #340, merge `1fc55b30d9952de599c3885a53fd8c718bfdfe51`;
+- #295 was superseded by the overlapping #294 baseline and closed without
+  losing a unique result;
+- #296 -> #341, merge `b8154b208032eb1686f8345146fe6fdf8002294e`;
+- #297 -> #342, merge `913321392db5e853e042e6685fed0e437e71fafc`;
+- #298 -> #343, merge `a645d293b6b14f2e7ad710bff6a68f70128201a8`.
+
+The original stacked PRs remain in GitHub history; #297/#298 were closed as
+superseded by their clean continuations, and #295 was closed because its
+specialized baseline was already canonical in #294.
+
+Interpretation status after correction:
+
+- #293: **LANDED / BOUNDED**. Tail and native timing claims remain directional;
+  the raw sign-208 native control is not trained ITQ/ADC, FP16 is on-the-fly,
+  and no production activation is licensed.
+- #294: **LANDED / BOUNDED**. THQ quality evidence is retained; native rows are
+  fixed Gaussian-threshold kernel controls, not fitted production encoders.
+- #296: **LANDED / BOUNDED**. Contiguous payload and selector/kernel results are
+  synthetic directional evidence, not end-to-end serving authorization.
+- #297: **LANDED / PROTOCOL-ONLY**. Independent teacher-cache materialization is
+  still required before any LTHQ benchmark result can close the study.
+- #298: **LANDED / CORRECTED**. The former residual-IVF label is replaced by
+  `float_ivf_exact_document_control`; the residual identity is exact FP32
+  scoring, not compact residual K8.
+
+Historical methodology constraints retained by this wave:
+
+- #293 quality/tail aggregation remains bounded to its authoritative qrels,
+  query/document ID, rank-file, and prepared-manifest inputs;
 - its FP16 row is an on-the-fly conversion loop, not a persisted FP16 store;
-- `itq208_adc` is actually a raw sign-208 control unless a real trained ITQ
-  transform and ADC implementation is added;
+- the native 208-bit timing control is raw sign, not a trained ITQ transform or
+  ADC implementation;
 - per-record heap allocations are a microbenchmark layout, not physical serving
   evidence;
 - #294 THQ quality is valid, while native hard-coded Gaussian thresholds measure
   a payload XOR/POPCNT kernel only. Production query encoding needs the fitted
-  per-coordinate thresholds; the same fake ITQ row must be renamed or removed.
+  per-coordinate thresholds; native fixed-threshold rows are not fitted
+  production encoders.
 
-`#295 -> #296` are the corrective kernel/layout frontier and should follow
-#293/#294. `#297` is protocol-only until an independent teacher cache exists.
-`#298` must be corrected: `(x-c)·q + c·q` is exact FP32 scoring, not compact
-residual K8. Keep the note as a historical control and either rename it
-`float_ivf_exact_document_control` or implement a real residual codec. Read
-`#299` under matched candidate-work budgets.
+The corrective kernel/layout frontier #295 -> #296 and protocol #297 have now
+landed through the clean continuations above. Read #299 under matched
+candidate-work budgets.
+The #298 correction is landed: the residual identity is exact FP32 scoring.
+The exact-document control is now named `float_ivf_exact_document_control`;
+it is not a compact residual codec.
 
 `#300` is the canonical broad head for the later RP-THQ/PCA/THQ-IVF/cosine-LSH
 follow-ups. It must first receive a tie-safe discrete top-k implementation,
