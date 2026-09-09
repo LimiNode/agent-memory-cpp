@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_replication_topology",
+  "claim_scope": "de_1m_training_fitted_global_secondary_assignment_diagnostic",
+  "activation": {
+    "decoupled_relevance_result_sha256": "e54c50d9d0817a351aa912cdec4c15c475d34fda76caebb76516d1cf4c6524a9",
+    "decoupled_relevance_evidence_sha256": "343376f4dea675ba480156fd8140ceb2ef60cfacaccc305bea5e28735b31a3f7"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "prototypes_per_address": 8,
+    "candidate_fraction_budget": 0.005
+  },
+  "treatments": [
+    "single_assignment_control",
+    "nearest_semantic_secondary",
+    "soar_complementary_secondary",
+    "training_fitted_complementary",
+    "privileged_per_query_replication_ceiling"
+  ],
+  "assignment": {
+    "deployable_secondary_assignments_are_global": true,
+    "secondary_assignment_granularity": "document",
+    "training_fitted_uses_training_queries_only": true,
+    "nearest_candidate_addresses": "occupied_one_bit_neighbors",
+    "soar_score": "weakest_k8_mode_similarity_minus_0_25_mean_similarity",
+    "training_fit": "up_to_four_discounted_exact_top10_cooccurrence_candidates_per_primary_with_soar_fallback",
+    "teacher_aware_k8_forbidden": true,
+    "privileged_per_query_is_diagnostic_only": true
+  },
+  "storage": {
+    "single_assignment_factor": 1.0,
+    "deployable_replication_factor": 2.0,
+    "raw_posting_count_control": 1000000,
+    "raw_posting_count_replicated": 2000000
+  },
+  "cascade": {
+    "oracle_k": 10,
+    "hamming_limit": 768,
+    "adc_limit": 64,
+    "result_k": 10
+  },
+  "decision": {
+    "minimum_actionable_gain_improvement": 0.02,
+    "maximum_candidate_fraction": 0.005,
+    "requires_every_seed": true,
+    "learned_reranker_forbidden": true,
+    "native_confirmation_forbidden": true,
+    "production_selection_forbidden": true
+  }
+}
