@@ -247,12 +247,48 @@ Correction-chain status:
 #287 CORRECTED (coverage, initialization, and projection-init replay)
 ```
 
+Canonical clean-main merge lineage:
+
+```text
+#280 -> #322 (1fc1dee)   #281 -> #323 (a929854)
+#282 -> #324 (736b989)   #283 -> #325 (72d0480)
+#284 -> #326 (49815b2)   #285 -> #327 (13c3749)
+#286 -> #328 (e459e3f)   #287 -> #329 (359b9b5)
+#288 -> #330 (9c061b0)   #289 -> #331/#332 (d741241, 4044c75)
+#290 -> #333 (c050c68)   #291 -> #334 (b99e25d)
+#292 -> #335 (c91d3f7)
+```
+
+The original stacked PRs are retained as historical references. #289 is
+complete only after corrective restoration in #332; #290 is authoritative at
+#333. #285/#286 remain historical/superseded diagnostics, while #287 is the
+corrective audit. Merge status does not imply production activation.
+
+### Evidence archive: NeuRoute binary-reference wave #280--#292
+
+The compact archive is published in [Evidence release
+`evidence/neuroute-binary-reference-wave-280-292-v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/neuroute-binary-reference-wave-280-292-v1).
+It contains one deterministic receipt/result pair and the corresponding notes
+for every PR in the range; raw DE-1M stores, checkpoints, and generated
+databases remain excluded.
+
+- Measured research head: `c91d3f73c99bffeff992b13cc16fab6998ef7dc9`
+- Archive SHA-256: `a7d8be172ee8d8e758559de1470ae459b7c446aaa33720e7de9d4de2f10af41f`
+- Bundle-root SHA-256: `878c58ebaadee35d55738f53602805a8fe6c01d370b07c110a011fd9e2189afa`
+- Archive builder was run twice with identical bytes; the fail-closed
+  validator passed twice.
+- Receipt statuses: #280/#281 `VALIDATED-EXISTING`; #282/#284/#289/#290/#291/#292
+  `SOURCE-BOUND`; #283 `PROTOCOL-ONLY`; #285 `HISTORICAL`; #286
+  `SUPERSEDED`; #287 `CORRECTIVE`; #288 `DERIVED-NOTE`.
+
+Source-bound and protocol-only members preserve measured artifacts and
+correction lineage but are not independent replay claims or production
+authorization.
+
 ### Wave 8: document tail, THQ, and routing bakeoff (`#293--#300`, `#310`)
 
-Evidence status for the landed #280--#292 wave is recorded in
-[`2026-09-09-neuroute-wave-280-292-evidence-status.md`](2026-09-09-neuroute-wave-280-292-evidence-status.md).
-No public release is claimed until compact receipts for the measured members
-are regenerated and pass deterministic archive validation.
+The former evidence-status note is retained as the pre-release audit record;
+the public release above supersedes its temporary “no public release” status.
 
 `#293` and `#294` are useful but require bounded claims before merge:
 
