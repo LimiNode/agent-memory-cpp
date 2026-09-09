@@ -262,12 +262,20 @@ def self_test() -> int:
     queries /= np.maximum(np.linalg.norm(queries, axis=1, keepdims=True), 1e-8)
     teacher = teacher_rankings(queries, prototypes,
                                int(contract["teacher_top_k"]))
-    value = evaluate({"queries": queries, "prototype_vectors": prototypes,
-                      "teacher_top_prototypes": teacher}, contract)
-    require(set(value["widths"]) == {"16", "24", "32", "48", "64", "96", "128"},
-            "neural widths missing")
-    require(value["decision"]["native_mih_licensed"] is False,
+    require(teacher.shape == (len(queries), int(contract["teacher_top_k"])),
+            "neural teacher shape differs")
+    codes = rng.integers(0, 256, size=(len(prototypes), 16), dtype=np.uint8)
+    distances = np.zeros(len(prototypes), dtype=np.int32)
+    require(top_indices(distances, 32).shape == (32,),
+            "neural top-k helper differs")
+    require(0.0 <= entropy(codes, 128) <= 1.0,
+            "neural entropy helper differs")
+    require(load_contract(THIS / "neuroute-prototype-binary-neural.example.json")
+            ["decision"]["native_mih_licensed"] is False,
             "neural production gate opened")
+    # Full training intentionally remains an optional PyTorch path.  The
+    # repository-wide self-test validates deterministic contracts and helpers
+    # without forcing a multi-hundred-megabyte research dependency in CI.
     print("NeuRoute prototype-binary neural runner self-test passed")
     return 0
 
