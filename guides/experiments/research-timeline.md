@@ -249,6 +249,11 @@ Correction-chain status:
 
 ### Wave 8: document tail, THQ, and routing bakeoff (`#293--#300`, `#310`)
 
+Evidence status for the landed #280--#292 wave is recorded in
+[`2026-09-09-neuroute-wave-280-292-evidence-status.md`](2026-09-09-neuroute-wave-280-292-evidence-status.md).
+No public release is claimed until compact receipts for the measured members
+are regenerated and pass deterministic archive validation.
+
 `#293` and `#294` are useful but require bounded claims before merge:
 
 - #293 quality/tail aggregation needs authoritative qrels, query/document ID,
