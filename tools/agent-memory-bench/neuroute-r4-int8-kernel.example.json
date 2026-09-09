@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_int8_kernel_frontier",
+  "claim_scope": "frozen_address_major_raw_int8_representative_dot_implementation_only",
+  "activation": {
+    "physical_layout_result_sha256": "4bd3ad3e33a77cc1390aff40acaf8823a56fd8967b0f75764cb5e22aa8fce49a",
+    "physical_layout_evidence_sha256": "73f1b2a82201f8434c9d5a42749100005bacfb907225fbe26f97c38180098a24",
+    "physical_layout_materialization_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "queries_per_seed": 152,
+    "addresses_per_query": 1024
+  },
+  "frozen_store": {
+    "layout": "address_major_int8",
+    "record_bytes": 388,
+    "dimensions": 384,
+    "representatives": "ff32_prefix"
+  },
+  "kernels": [
+    "decode_fp32_scalar_dot",
+    "fused_int8_scalar",
+    "fused_int8_avx2",
+    "fused_int8_avx2_ordered"
+  ],
+  "warm_page_cache": {
+    "warmup_passes": 1,
+    "measured_passes": 3,
+    "execution_order_seed": 2026083102
+  },
+  "equivalence_gates": {
+    "maximum_max_abs_error": 0.00001,
+    "address_score_max_abs_error": 0.00001,
+    "minimum_representative_winner_agreement": 0.999,
+    "minimum_address_top128_overlap": 0.999
+  },
+  "decision": {
+    "select_lowest_warm_compute_p95_among_equivalent_kernels": true,
+    "production_selection_forbidden": true
+  }
+}
