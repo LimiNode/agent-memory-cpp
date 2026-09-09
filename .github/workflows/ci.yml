@@ -299,4 +299,7 @@ jobs:
           python tools/agent-memory-bench/write-neuroute-teacher-objective-ablation-evidence.py --self-test &&
           python tools/agent-memory-bench/plan-neuroute-representation-ambiguity.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-representation-ambiguity.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-representation-ambiguity-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-representation-ambiguity-evidence.py --self-test &&
+          python tools/agent-memory-bench/plan-neuroute-matched-representation-ladder.py --self-test &&
+          python tools/agent-memory-bench/run-neuroute-matched-representation-ladder.py --self-test &&
+          python tools/agent-memory-bench/write-neuroute-matched-representation-ladder-evidence.py --self-test
