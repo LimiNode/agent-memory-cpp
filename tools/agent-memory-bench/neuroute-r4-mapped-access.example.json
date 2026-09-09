@@ -1,0 +1,42 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_mapped_address_access_frontier",
+  "claim_scope": "frozen_fused_int8_batched_scorer_address_block_access_only",
+  "activation": {
+    "batched_scorer_result_sha256": "46e57a18f087572f50f079b5900b8413b635ba84c9530669898dc88a4cb48e79",
+    "batched_scorer_evidence_sha256": "e85e304e9a4d50900ea8022a81f7f3811cfbc422494d0f5ef353b54700c81cec",
+    "physical_layout_materialization_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "queries_per_seed": 152,
+    "addresses_per_query": 1024
+  },
+  "frozen_execution": {
+    "kernel": "fused_int8_scalar",
+    "scorer": "batched_avx2_r0",
+    "store": "address_major_int8_ff32_prefix"
+  },
+  "treatments": [
+    "seek_read_staging",
+    "mmap_copy_staging",
+    "mmap_direct_shortlist",
+    "mmap_direct_offset_order"
+  ],
+  "warm_page_cache": {
+    "warmup_passes": 1,
+    "measured_passes": 3,
+    "execution_order_seed": 2026083104
+  },
+  "process_cold": {
+    "definition": "fresh_process_first_request_with_os_page_cache_uncontrolled_not_cold_disk",
+    "paired_requests_per_seed": 15,
+    "selection_prefix_utf8": "neuroute-r4-mapped-access-process-cold-v1"
+  },
+  "equivalence": {"paired_score_hash_identity_required": true},
+  "decision": {
+    "select_lowest_warm_total_p95_among_identical_treatments": true,
+    "production_selection_forbidden": true
+  }
+}

@@ -11,6 +11,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <memory>
 #include <random>
 #include <stdexcept>
 #include <string>
@@ -29,7 +30,11 @@
 #include <windows.h>
 #include <psapi.h>
 #else
+#include <fcntl.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #endif
 
 namespace {
@@ -104,6 +109,63 @@ ProcessState process_state() {
 double milliseconds(Clock::time_point begin, Clock::time_point end) {
     return std::chrono::duration<double, std::milli>(end - begin).count();
 }
+
+class MappedFile {
+public:
+    explicit MappedFile(const std::filesystem::path& path) {
+#if defined(_WIN32)
+        file_ = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        require(file_ != INVALID_HANDLE_VALUE, "R4 mapped file open failed");
+        LARGE_INTEGER size{};
+        require(GetFileSizeEx(file_, &size) != 0 && size.QuadPart > 0,
+                "R4 mapped file size failed");
+        size_ = static_cast<std::size_t>(size.QuadPart);
+        mapping_ = CreateFileMappingW(file_, nullptr, PAGE_READONLY, 0, 0, nullptr);
+        require(mapping_ != nullptr, "R4 file mapping failed");
+        data_ = static_cast<const std::uint8_t*>(
+            MapViewOfFile(mapping_, FILE_MAP_READ, 0, 0, 0));
+        require(data_ != nullptr, "R4 mapped view failed");
+#else
+        file_ = open(path.c_str(), O_RDONLY);
+        require(file_ >= 0, "R4 mapped file open failed");
+        struct stat status{};
+        require(fstat(file_, &status) == 0 && status.st_size > 0,
+                "R4 mapped file size failed");
+        size_ = static_cast<std::size_t>(status.st_size);
+        const auto view = mmap(nullptr, size_, PROT_READ, MAP_SHARED, file_, 0);
+        require(view != MAP_FAILED, "R4 mapped view failed");
+        data_ = static_cast<const std::uint8_t*>(view);
+#endif
+    }
+
+    MappedFile(const MappedFile&) = delete;
+    MappedFile& operator=(const MappedFile&) = delete;
+
+    ~MappedFile() {
+#if defined(_WIN32)
+        if (data_ != nullptr) UnmapViewOfFile(data_);
+        if (mapping_ != nullptr) CloseHandle(mapping_);
+        if (file_ != INVALID_HANDLE_VALUE) CloseHandle(file_);
+#else
+        if (data_ != nullptr) munmap(const_cast<std::uint8_t*>(data_), size_);
+        if (file_ >= 0) close(file_);
+#endif
+    }
+
+    const std::uint8_t* data() const { return data_; }
+    std::size_t size() const { return size_; }
+
+private:
+    const std::uint8_t* data_ = nullptr;
+    std::size_t size_ = 0;
+#if defined(_WIN32)
+    HANDLE file_ = INVALID_HANDLE_VALUE;
+    HANDLE mapping_ = nullptr;
+#else
+    int file_ = -1;
+#endif
+};
 
 struct Model {
     std::vector<float> feature_mean, feature_deviation;
@@ -191,6 +253,7 @@ struct Sample {
     double fetch_ms = 0, decode_ms = 0, dot_ms = 0, score_ms = 0, total_ms = 0;
     std::uint64_t logical_bytes = 0, random_reads = 0, representatives = 0;
     std::uint64_t page_faults = 0;
+    std::uint64_t address_spans = 0;
     std::int64_t rss_delta = 0;
     std::string score_sha256;
     double maximum_max_abs_error = 0, address_score_max_abs_error = 0;
@@ -633,6 +696,7 @@ Sample measure(const SeedContext& seed, const std::string& layout,
     sample.total_ms = milliseconds(total_begin, score_end);
     sample.logical_bytes = bytes.size();
     sample.random_reads = reads;
+    sample.address_spans = addresses_per_query;
     sample.representatives = representatives;
     sample.page_faults = state_end.faults - state_begin.faults;
     sample.rss_delta = static_cast<std::int64_t>(state_end.rss) -
@@ -651,6 +715,104 @@ Sample measure(const SeedContext& seed, const std::string& layout,
     return sample;
 }
 
+struct AddressSpan {
+    std::size_t local = 0;
+    std::size_t byte_offset = 0;
+    std::size_t byte_count = 0;
+    std::size_t destination = 0;
+};
+
+Sample measure_mapped(const SeedContext& seed, const MappedFile& mapped,
+                      const std::string& treatment, std::size_t request) {
+    require(treatment == "mmap_copy_staging" ||
+            treatment == "mmap_direct_shortlist" ||
+            treatment == "mmap_direct_offset_order",
+            "R4 mapped access treatment differs");
+    const auto& descriptor = layout_row(seed, "address_major_int8");
+    const auto record_bytes = descriptor.at("record_bytes").get<std::size_t>();
+    require(mapped.size() == descriptor.at("bytes").get<std::size_t>(),
+            "R4 mapped access file size differs");
+    const auto state_begin = process_state();
+    const auto total_begin = Clock::now();
+    const auto access_begin = Clock::now();
+    std::vector<AddressSpan> spans;
+    spans.reserve(addresses_per_query);
+    std::vector<std::size_t> starts(addresses_per_query + 1);
+    std::uint64_t representatives = 0;
+    for (std::size_t local = 0; local != addresses_per_query; ++local) {
+        const auto row = seed.shortlists[request * addresses_per_query + local];
+        const auto count = static_cast<std::size_t>(seed.representative_counts[row]);
+        starts[local] = static_cast<std::size_t>(representatives) * record_bytes;
+        spans.push_back({local,
+            static_cast<std::size_t>(seed.address_offsets[row]) * record_bytes,
+            count * record_bytes, starts[local]});
+        representatives += count;
+    }
+    starts[addresses_per_query] = static_cast<std::size_t>(representatives) *
+                                  record_bytes;
+    if (treatment == "mmap_direct_offset_order") {
+        std::sort(spans.begin(), spans.end(), [](const auto& left, const auto& right) {
+            return left.byte_offset < right.byte_offset;
+        });
+    }
+    std::vector<std::uint8_t> staged;
+    if (treatment == "mmap_copy_staging") {
+        staged.resize(static_cast<std::size_t>(representatives) * record_bytes);
+        for (const auto& span : spans) {
+            std::memcpy(staged.data() + span.destination,
+                        mapped.data() + span.byte_offset, span.byte_count);
+        }
+    }
+    const auto access_end = Clock::now();
+    const auto dot_begin = Clock::now();
+    const float* query = seed.queries.data() + request * dimensions;
+    Maximums maximums;
+    if (treatment == "mmap_copy_staging") {
+        maximums = fused_int8_maximums(staged, starts, record_bytes, query,
+                                       "fused_int8_scalar");
+    } else {
+        maximums.values.assign(addresses_per_query,
+            -std::numeric_limits<float>::infinity());
+        maximums.winners.assign(addresses_per_query, 0);
+        for (const auto& span : spans) {
+            const auto count = span.byte_count / record_bytes;
+            for (std::size_t slot = 0; slot != count; ++slot) {
+                const auto* record = mapped.data() + span.byte_offset +
+                                     slot * record_bytes;
+                float scale = 0.0F;
+                std::memcpy(&scale, record + dimensions, sizeof(float));
+                const auto score = int8_dot_scalar(record, scale, query);
+                if (score > maximums.values[span.local]) {
+                    maximums.values[span.local] = score;
+                    maximums.winners[span.local] = static_cast<std::uint8_t>(slot);
+                }
+            }
+        }
+    }
+    const auto dot_end = Clock::now();
+    const auto score_begin = Clock::now();
+    const auto scores = address_scores_batched_avx2(seed, request, maximums.values);
+    const auto score_end = Clock::now();
+    const auto state_end = process_state();
+    std::vector<std::uint8_t> digest(scores.size() * sizeof(float));
+    std::memcpy(digest.data(), scores.data(), digest.size());
+    Sample sample;
+    sample.fetch_ms = milliseconds(access_begin, access_end);
+    sample.decode_ms = 0.0;
+    sample.dot_ms = milliseconds(dot_begin, dot_end);
+    sample.score_ms = milliseconds(score_begin, score_end);
+    sample.total_ms = milliseconds(total_begin, score_end);
+    sample.logical_bytes = representatives * record_bytes;
+    sample.random_reads = 0;
+    sample.address_spans = spans.size();
+    sample.representatives = representatives;
+    sample.page_faults = state_end.faults - state_begin.faults;
+    sample.rss_delta = static_cast<std::int64_t>(state_end.rss) -
+                       static_cast<std::int64_t>(state_begin.rss);
+    sample.score_sha256 = agent_memory::sha256_bytes_hex(digest);
+    return sample;
+}
+
 nlohmann::json sample_json(const Sample& value, std::uint64_t seed,
                            const std::string& layout, std::size_t request,
                            std::size_t pass) {
@@ -660,12 +822,23 @@ nlohmann::json sample_json(const Sample& value, std::uint64_t seed,
             {"total_ms", value.total_ms}, {"page_faults", value.page_faults},
             {"rss_delta_bytes", value.rss_delta}, {"logical_bytes", value.logical_bytes},
             {"random_reads", value.random_reads}, {"addresses_scored", 1024},
+            {"address_spans", value.address_spans},
             {"representatives_scored", value.representatives},
             {"score_sha256", value.score_sha256},
             {"maximum_max_abs_error", value.maximum_max_abs_error},
             {"address_score_max_abs_error", value.address_score_max_abs_error},
             {"representative_winner_agreement", value.representative_winner_agreement},
             {"address_top128_overlap", value.address_top128_overlap}};
+}
+
+nlohmann::json access_sample_json(const Sample& value, std::uint64_t seed,
+                                  const std::string& treatment,
+                                  std::size_t request, std::size_t pass) {
+    auto result = sample_json(value, seed, "address_major_int8", request, pass);
+    result["kernel"] = "fused_int8_scalar";
+    result["scorer"] = "batched_avx2_r0";
+    result["access"] = treatment;
+    return result;
 }
 
 nlohmann::json kernel_sample_json(const Sample& value, std::uint64_t seed,
@@ -797,6 +970,70 @@ void scorer_warm(const std::filesystem::path& manifest_path,
         {"samples", samples}});
 }
 
+void access_warm(const std::filesystem::path& manifest_path,
+                 const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    std::vector<SeedContext> seeds;
+    std::vector<std::unique_ptr<MappedFile>> mappings;
+    for (const auto& row : manifest.at("seeds")) {
+        seeds.push_back(load_seed(manifest_path, row));
+        const auto& seed = seeds.back();
+        const auto path = payload_path(seed.root,
+                                       layout_row(seed, "address_major_int8"));
+        prefault(path);
+        mappings.push_back(std::make_unique<MappedFile>(path));
+    }
+    const std::array<std::string, 4> treatments = {"seek_read_staging",
+        "mmap_copy_staging", "mmap_direct_shortlist", "mmap_direct_offset_order"};
+    const auto invoke = [&](std::size_t seed, const std::string& treatment,
+                            std::size_t request) {
+        return treatment == "seek_read_staging"
+            ? measure(seeds[seed], "address_major_int8", request,
+                      "fused_int8_scalar", "batched_avx2_r0")
+            : measure_mapped(seeds[seed], *mappings[seed], treatment, request);
+    };
+    for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+        for (const auto& treatment : treatments)
+            for (std::size_t request = 0; request != 152; ++request)
+                (void)invoke(seed, treatment, request);
+    std::vector<std::tuple<std::size_t, std::size_t, std::size_t, std::size_t>> schedule;
+    for (std::size_t pass = 0; pass != 3; ++pass)
+        for (std::size_t seed = 0; seed != seeds.size(); ++seed)
+            for (std::size_t treatment = 0; treatment != treatments.size(); ++treatment)
+                for (std::size_t request = 0; request != 152; ++request)
+                    schedule.emplace_back(pass, seed, treatment, request);
+    std::mt19937_64 random(2026083104);
+    std::shuffle(schedule.begin(), schedule.end(), random);
+    nlohmann::json samples = nlohmann::json::array();
+    for (const auto& [pass, seed, treatment, request] : schedule) {
+        samples.push_back(access_sample_json(invoke(seed, treatments[treatment], request),
+            seeds[seed].seed, treatments[treatment], request, pass));
+    }
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_mapped_access_warm_samples"},
+        {"manifest_sha256", agent_memory::sha256_file_hex(manifest_path)},
+        {"samples", samples}});
+}
+
+void access_cold(const std::filesystem::path& manifest_path,
+                 std::uint64_t wanted_seed, const std::string& treatment,
+                 std::size_t request, const std::filesystem::path& output_path) {
+    const auto manifest = read_json(manifest_path);
+    const auto found = std::find_if(manifest.at("seeds").begin(), manifest.at("seeds").end(),
+        [&](const auto& row) { return row.at("seed").get<std::uint64_t>() == wanted_seed; });
+    require(found != manifest.at("seeds").end(), "R4 access cold seed differs");
+    const auto seed = load_seed(manifest_path, *found);
+    const auto path = payload_path(seed.root, layout_row(seed, "address_major_int8"));
+    const auto sample = treatment == "seek_read_staging"
+        ? measure(seed, "address_major_int8", request, "fused_int8_scalar",
+                  "batched_avx2_r0")
+        : measure_mapped(seed, MappedFile(path), treatment, request);
+    write_json(output_path, {{"schema_version", 1},
+        {"family", "neuroute_r4_mapped_access_process_cold_sample"},
+        {"definition", "fresh_process_first_request_os_page_cache_uncontrolled"},
+        {"sample", access_sample_json(sample, wanted_seed, treatment, request, 0)}});
+}
+
 void cold(const std::filesystem::path& manifest_path, std::uint64_t wanted_seed,
           const std::string& layout, std::size_t request,
           const std::filesystem::path& output_path) {
@@ -840,9 +1077,14 @@ int main(int argc, char** argv) {
             kernel_warm(argv[2], argv[3]);
         else if (argc == 4 && std::string(argv[1]) == "--scorer-warm")
             scorer_warm(argv[2], argv[3]);
+        else if (argc == 4 && std::string(argv[1]) == "--access-warm")
+            access_warm(argv[2], argv[3]);
+        else if (argc == 7 && std::string(argv[1]) == "--access-cold")
+            access_cold(argv[2], std::stoull(argv[3]), argv[4],
+                        std::stoull(argv[5]), argv[6]);
         else if (argc == 7 && std::string(argv[1]) == "--cold")
             cold(argv[2], std::stoull(argv[3]), argv[4], std::stoull(argv[5]), argv[6]);
-        else throw std::runtime_error("usage: --self-test | --warm MANIFEST OUTPUT | --kernel-warm MANIFEST OUTPUT | --scorer-warm MANIFEST OUTPUT | --cold MANIFEST SEED LAYOUT REQUEST OUTPUT");
+        else throw std::runtime_error("usage: --self-test | --warm MANIFEST OUTPUT | --kernel-warm MANIFEST OUTPUT | --scorer-warm MANIFEST OUTPUT | --access-warm MANIFEST OUTPUT | --access-cold MANIFEST SEED TREATMENT REQUEST OUTPUT | --cold MANIFEST SEED LAYOUT REQUEST OUTPUT");
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-layout-benchmark: " << error.what() << '\n';
