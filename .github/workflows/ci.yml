@@ -280,4 +280,5 @@ jobs:
           python tools/agent-memory-bench/audit-neuroute-sequential-scheduler-closure.py --self-test &&
           python tools/agent-memory-bench/plan-neuroute-sequential-oracle-diagnostic.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-sequential-oracle-diagnostic.py --self-test &&
-          python tools/agent-memory-bench/write-neuroute-sequential-oracle-diagnostic-evidence.py --self-test
+          python tools/agent-memory-bench/write-neuroute-sequential-oracle-diagnostic-evidence.py --self-test &&
+          python tools/agent-memory-bench/audit-neuroute-block-sequential-student-closure.py --self-test
