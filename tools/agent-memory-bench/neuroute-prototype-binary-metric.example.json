@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_prototype_binary_metric",
+  "claim_scope": "teacher_ranked_query_prototype_binary_geometry_ceiling",
+  "widths": [16, 24, 32, 48, 64],
+  "teacher_top_k": 1024,
+  "positive_count": 8,
+  "negative_ranks": [64, 256, 1023],
+  "address_budgets": [1024, 2048, 4096, 8192],
+  "training": {
+    "partition": "first_half_configuration_only",
+    "minimum_queries": 16,
+    "leakage_safe": true,
+    "objective": "pairwise_hamming_alignment_eigenprojection"
+  },
+  "evaluation": {
+    "partitions": ["configuration", "internal"],
+    "prototype_scan": "exhaustive_xor_popcount",
+    "production_selection": false,
+    "native_mih": false
+  },
+  "extension_policy": {
+    "extend_to": [128, 256],
+    "condition": "held_out_quality_gain_through_64_bits_remains_material_and_unsaturated"
+  }
+}
