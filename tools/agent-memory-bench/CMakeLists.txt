@@ -477,6 +477,17 @@ agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-representati
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_representative_codec.cpp"
     ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-representative-codec)
+
+add_executable(agent-memory-neuroute-r4-layout-benchmark
+    neuroute_r4_layout_benchmark.cpp)
+target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE
+    agent_memory::agent_memory agent_memory::json)
+if(WIN32)
+    target_link_libraries(agent-memory-neuroute-r4-layout-benchmark PRIVATE Psapi)
+endif()
+agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-layout-benchmark
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_layout_benchmark.cpp")
+agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-layout-benchmark)
 agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-final-representation
     "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_final_representation.cpp"
 )

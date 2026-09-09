@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_r4_physical_layout_benchmark",
+  "claim_scope": "frozen_int8_k32_representative_fetch_decode_dot_and_address_score_layout_only",
+  "activation": {
+    "representative_codec_result_sha256": "6bf8395bad869c9d59bd4cc8f19a8b636d96df2edbba17e6d63a010c3263e928",
+    "representative_codec_evidence_sha256": "5d35a92d392823ded29b2007816a5c5b826f680c627296e16e8c800a98a4fee2",
+    "representative_codec_materialization_sha256": "1566688756f1922c9f3cce83c46c9623d2231f221bbe496b12ae978c0cdad8db",
+    "width_materialization_sha256": "1e1e7f83072a8114f48e4018ab5744ccfa8cfe0fa445e19972a936c93c0d25b9",
+    "de_1m_e5_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "de_1m_input_manifest_sha256": "418e70a37d3f11f894377d11dfdc75f4cdfe47c16c8690b693e91b2984504c8f"
+  },
+  "route": {
+    "dataset": "de-1m",
+    "documents": 1000000,
+    "width": 16,
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "queries_per_seed": 152,
+    "addresses_per_query": 1024
+  },
+  "selected_representation": {
+    "id": "int8",
+    "record_bytes": 388,
+    "layout": "raw_unsigned_plus_f32_scale"
+  },
+  "layouts": [
+    {"id": "address_major_fp32", "representation": "fp32", "organization": "address_major_ff32_prefix"},
+    {"id": "address_major_int8", "representation": "int8", "organization": "address_major_ff32_prefix"},
+    {"id": "document_major_int8_indirect", "representation": "int8", "organization": "document_id_major_indirect_gather"}
+  ],
+  "address_major": {
+    "store_every_document_exactly_once": true,
+    "ff32_documents_first": true,
+    "remaining_documents_stable_global_position_order": true,
+    "sidecars": ["address_offset_count", "document_to_physical", "physical_to_document"]
+  },
+  "warm_page_cache": {
+    "definition": "sequential_prefault_then_one_untimed_pass_then_three_deterministically_shuffled_measured_passes",
+    "warmup_passes": 1,
+    "measured_passes": 3,
+    "execution_order_seed": 2026083101
+  },
+  "process_cold": {
+    "definition": "fresh_process_first_request_with_os_page_cache_uncontrolled_not_cold_disk",
+    "paired_requests_per_seed": 15,
+    "selection_prefix_utf8": "neuroute-r4-layout-process-cold-v1"
+  },
+  "metrics": [
+    "fetch_ms", "decode_ms", "dot_and_max_ms", "address_score_ms", "total_ms",
+    "page_faults", "rss_delta_bytes", "logical_bytes", "random_reads",
+    "addresses_scored", "representatives_scored"
+  ],
+  "normalization": [
+    "per_query", "per_address_scored", "per_representative_scored", "per_logical_byte"
+  ],
+  "decision": {
+    "paired_quality_identity_required_for_compact_layouts": true,
+    "lowest_warm_total_p95_is_directional_only": true,
+    "full_native_cascade_integration_licensed_if_compact_layout_improves_indirect_p95": true,
+    "process_cold_must_not_be_described_as_os_cache_cold": true,
+    "production_selection_forbidden": true
+  }
+}
