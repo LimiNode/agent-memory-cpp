@@ -468,6 +468,7 @@ jobs:
           && python tools/agent-memory-bench/run-neuroute-address-capacity-frontier.py --self-test
           && python tools/agent-memory-bench/write-neuroute-address-capacity-evidence.py --self-test
           && python tools/agent-memory-bench/test_final_rerank_codecs.py
+          && python tools/agent-memory-bench/test_document_cascade_code_family.py
           && python tools/agent-memory-bench/test_binary_code_references.py
           && python tools/agent-memory-bench/test_local_residual_codecs.py
           && python tools/agent-memory-bench/run-neuroute-prototype-binary-metric.py self-test
