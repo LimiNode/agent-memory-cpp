@@ -334,3 +334,25 @@ raw DE-1M stores and generated databases remain outside Git and Releases.
 - Bundle-root SHA-256: `bd3646791832b325d02be23085448ccd12499bce4bdfa0cd032a6522d1f35176`
 - Scope: PRs `#244--#257`; accounting correction #312 is included in the
   measured head and separately recorded as `CORRECTED`.
+
+### Landed merge ledger after the R4 Evidence wave
+
+The subsequent dense-path stack was retargeted and reviewed against `main`
+after each predecessor landed. Fresh CI was run after every retarget (including
+an explicit head trigger where the source commit itself was unchanged).
+
+| PR | Merge SHA | Reviewed scope |
+| --- | --- | --- |
+| #258 | `3a83c995c812065890944b9acfc7f99dea899764` | nonlinear INT5 kernel frontier |
+| #259 | `43fa0c6fd543391117747d7febeca8d92f095a4a` | dense performance audit |
+| #260 | `804139680042459658f006a80d7e36cf4de59860` | final-rerank implementation ceiling |
+| #261 | `515762dd1a06e6bd6a33d2a2269a9b02a99312a3` | storage/execution separation |
+| #262 | `e1ab317ffaae122f4ee94c2a966da50b72ffe89a` | full R4 versus external ANN |
+| #263 | `2111d6f4419453e485baacf1d1b3961b36a22d32` | conditional dense-policy closure |
+| #264 | `ecfa1361336d33c8e030df32ecf0903fc5d03599` | actual R4 final-codec frontier |
+| #265 | `40c5af6f49316c2a2729461bc58c5e5199e693ae` | actual R4 representative frontier |
+| #266 | `efae643db29fc9d09775a1fbe7460b17bb79571f` | K8/K32 codec and prefilter closure |
+
+These merges preserve the research commit graph (no squash and no branch
+deletion). Their Evidence receipts remain subject to the archive rule above;
+merge status alone does not imply a production activation.
