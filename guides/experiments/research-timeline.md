@@ -1,0 +1,306 @@
+# Research timeline and merge ledger
+
+This document is the navigation index for the long-running retrieval research
+stack. It is deliberately a narrative timeline, not a copy of raw benchmark
+reports. Individual experiment notes remain the source for setup and numbers;
+Evidence Releases remain the source for large reproducibility bundles.
+
+The current backlog is the open research stack `#221--#304`, plus `#309` and
+`#310` (inventory checked 2026-09-09); `#176--#220` are now landed on `main`.
+The objective is to land all unique
+scientific content without erasing negative results, corrections, or the exact
+commit provenance of measured artifacts.
+
+## Status vocabulary
+
+- **ACTIVE** — an open hypothesis or a result that still drives product work.
+- **CONFIRMED** — reproduced result with a bounded interpretation.
+- **NEGATIVE EVIDENCE** — the tested hypothesis failed; the result remains useful.
+- **CORRECTED** — the original observation remains in history, but its method or
+  interpretation was fixed by a later PR.
+- **SUPERSEDED** — a later experiment is the canonical result for the same
+  question. The earlier PR is retained when it adds provenance or narrative.
+- **PROTOCOL** — preregistration/contract only; no measurement claim is implied.
+
+`SUPERSEDED` does not mean “delete”. A PR is closed without merge only when it
+is a duplicate with no unique evidence or provenance after its canonical parent
+has landed.
+
+## Evidence and merge rules
+
+For a measurement PR with substantial raw output:
+
+```text
+freeze code and contract
+  -> reproduce result
+  -> evidence validator passes
+  -> verify archive SHA-256 and bundle-root SHA-256
+  -> verify exact measured target commit and scope
+  -> merge with a merge commit
+  -> publish stable evidence/<line>-vN release
+  -> link the release from the note and this index
+```
+
+Draft releases are staging only. Do not call a draft public evidence. Do not
+put large generated JSON, ZIPs, or database files in Git.
+
+Stacked PRs are landed bottom-up. Merge the base without deleting its branch,
+retarget the child to `main`, wait for mergeability and CI, then continue. Do
+not squash a research stack when existing Evidence Releases bind exact commit
+SHAs; preserving the commit graph is part of the research provenance.
+
+Before the first merge, maintain a machine-readable ledger with at least:
+`PR`, `head_sha`, `base_ref`, `base_sha`, research line, predecessor/successor,
+experiment notes, evidence state and hashes, interpretation status, unique
+commits/files, and the final merge/close action.
+
+## Narrative timeline
+
+### Wave 1: NeuRoute semantic-address formation (`#176--#199`)
+
+```text
+#176 direct learned semantic address
+  -> #177 tests whether the learned pool is actually selective
+  -> #178 query-only / centroid-free objectives
+  -> #179 shared document/query encoder
+  -> #180 local centroid refinement cost
+  -> #181 normalization audit and v2 protocol
+  -> #182 v2 result
+  -> #183 collision diagnosis
+  -> #184 dynamic false-positive mining v3
+  -> #185/#186 French external check
+  -> #187/#188 Japanese external check
+  -> #189 alignment diagnosis
+  -> #190/#191 training sanity
+  -> #192/#193 native MDBX cost
+  -> #194/#195 relevance-aware v4
+  -> #196/#197 exact-E5 ablation
+  -> #198/#199 scale transfer and corrected hardware-popcount
+```
+
+This is the origin of the routing question. The early negative results must be
+kept because each one narrows the next hypothesis. In particular, #184 already
+contains a completed German dynamic-mining result; its PR description must not
+remain a preregistration-only claim. #193/#195 timings are historical
+non-authoritative timings after the later shift-loop correction.
+
+### Wave 2: representation, codec, scale, and provenance (`#200--#220`)
+
+Land the short stacks in their existing order:
+
+```text
+#200 -> #201    #202 -> #203    #204 -> #205    #206 -> #207
+#208 -> #209    #210 -> #211    #212 -> #213    #214 -> #215
+#216 -> #217 -> #218 -> #219 -> #220
+```
+
+`#220` is a retrospective provenance repair. It binds qrels, query IDs,
+document IDs, prepared manifests, and result inputs by exact bytes. Evidence
+for #201/#205/#207/#211/#213/#217/#218 should be published only in the
+post-#220 receipt form; the audit reported no numerical or product decision
+changes.
+
+Landed merge ledger for this wave:
+
+| PR | Merge commit | Status |
+| ---: | --- | --- |
+| #205 | `ba9f219b63b5f6df03fb831ff84e1d2f3c2475c1` | CONFIRMED |
+| #206 | `9acf371ec625799b8f5110b7475c29873fad0665` | PROTOCOL |
+| #207 | `20b50b3a1cd6e011b869b49fbf6b3a82cfb0f33b` | CONFIRMED/CORRECTED |
+| #208 | `c71ffe09eae0b20c10bb60e77327f75be88adbac` | PROTOCOL |
+| #209 | `5d759374630b41856f1d00d1246e9667d0bfb5e6` | NEGATIVE EVIDENCE |
+| #210 | `657c97d24eaa0089cfbef887dedca8e2dec9243e` | PROTOCOL |
+| #211 | `816a14692b547f80b487548f0bab378d42c7a514` | NEGATIVE EVIDENCE |
+| #212 | `31132da669bb7739b518a92ee48f4e5001c38d83` | PROTOCOL |
+| #213 | `dfce7d96567a8e1084dc8676da37c71080f8f44a` | NEGATIVE EVIDENCE |
+| #214 | `d70ad2f39349a823188486af4438f91390e96176` | PROTOCOL |
+| #215 | `a68ff35f769a70a3f95a6e43766aa8745547b001` | CORRECTED/CONFIRMED |
+| #216 | `4b651b8b93fc6c361bfe113267193cad0b133c48` | CONFIRMED |
+| #217 | `5ecab75b63141c24386847edd083d2a0543ba46e` | NEGATIVE EVIDENCE |
+| #218 | `83a97db069c554c7ade705a03b5c2fe940998458` | NEGATIVE EVIDENCE |
+| #219 | `567797bf8555d11c986913445588eae5a8379bed` | CORRECTED/NEGATIVE |
+| #220 | `dd36bc17389ebc40ed21d584c7d574f9c7ce33c2` | CORRECTED/CONFIRMED |
+
+### Wave 3: scheduler to representation bottleneck (`#221--#238`)
+
+```text
+#221 -> #222 -> #223 -> #224 -> #225 -> #226
+      -> #227 -> #228 -> #229 -> #230 -> #231
+      -> #232 -> #233 -> #234 -> #235 -> #236
+```
+
+The causal story is: scheduler/state explanations are insufficient; static
+query-dependent relevance is the bottleneck; single-centroid routing fails at
+1M; multi-prototype helps; learned reranking remains limited by representation
+ambiguity; full-resolution summaries and R3c provide the useful correction.
+
+`#237` is retained as an explicitly **post-hoc exploratory** result. The
+every-seed activation gate in #236 was closed because `validate_parent()` did
+not check a license bit. A correction commit must say that #237 licenses no
+confirmatory or production continuation. `#238` keeps ancestry and corrects the
+SOAR formula description.
+
+### Wave 4: dense R4 and physical execution (`#239--#266`)
+
+```text
+#239 actual-document substrate
+ -> #240 fine-grained interactions
+ -> #241 teacher-selection failure
+ -> #242 K32 saturation
+ -> #243 conditional coverage
+ -> #244 physical codec
+ -> #245 layout
+ -> #246 fused scorer
+ -> #247 batching
+ -> #248 mmap
+ -> #249 lossless-compression failure
+ -> #250 native end-to-end
+ -> #251 zstd/vbyte negative result
+ -> #252 nonlinear INT5
+ -> #253 physical mixed INT5
+ -> #254 memory pressure
+ -> #255 INT5 anatomy
+ -> #256 nonlinear final-INT5 transfer failure
+ -> #257 physical final store
+ -> #258 INT5 kernels
+ -> #259 query-path audit
+ -> #260 final-rerank ceiling
+ -> #261 storage/execution separation
+ -> #262 full-R4 correction
+ -> #263 dense-policy closure
+ -> #264 actual-R4 codec reopen
+ -> #265 actual-R4 representative codecs
+ -> #266 K8 codec frontier
+```
+
+The central correction is #262: earlier 10--12 ms figures were measured after
+shortlisting; full R4 is roughly 73--82 ms because global K8 costs about
+63--69 ms. This is a scope correction, not a deletion of the earlier result.
+
+Required pre-merge wording/receipt fixes: #243 production-selection claims,
+#250 qrels and latency labels, #253 qrels plus the `u64` offset sidecar in the
+physical footprint, #254 “one-host Windows working-set pressure”, #258 remaining
+benchmark asymmetries, and #266 qrels/checkpoint receipts plus
+“tested implementation ceiling” wording.
+
+### Wave 5: shortlist generators (`#267--#275`)
+
+Land the negative router experiments in causal order:
+
+```text
+#267 -> #268 -> #269 -> #270 -> #271 -> #272 -> #273 -> #274 -> #275
+```
+
+Together they show that the problem is not simply a missing obvious learned,
+hierarchical, prefix, binary, or MIH generator. #269 is the important positive
+quality turning point: prototype-IVF removes the old global K8 scan while
+retaining the K32/R0 narrowing architecture. Its serving cost and native
+in-process implementation still require measurement.
+
+### Wave 6: semantic-anchor branch (`#276--#279`)
+
+This branch intentionally reuses the older `#228` multi-prototype substrate;
+its Git parent need not pretend to be #275. Retarget it to `main` after the
+canonical parent lands, then preserve:
+
+```text
+#276 -> #277 -> #278 -> #279
+```
+
+`#278` corrects the selection bias in #277’s conditional `r95` (the corrected
+unconditional figure is about 73.75 rather than 48.56). Keep #277 and mark that
+metric superseded by #278.
+
+### Wave 7: selector capacity and codec-family work (`#280--#292`)
+
+```text
+#280 -> #281 -> #282 -> #283 -> #284 -> #285 -> #286 -> #287
+      -> #288 -> #289 -> #290 -> #291 -> #292
+```
+
+The research story is literal address-selector failure, latent-code and shared
+binary metric attempts, hard-negative/listwise follow-ups, and finally the
+training-coverage audit. #285/#286 remain historical diagnostics; #287 records
+that 89.89% of prototype codes were untouched, the hard-negative encoder was
+reinitialized, and the entropy interpretation was invalid. #290 is a correction
+to earlier RaBitQ/BBQ-like calculations, not a silent replacement.
+
+### Wave 8: document tail, THQ, and routing bakeoff (`#293--#300`, `#310`)
+
+`#293` and `#294` are useful but require bounded claims before merge:
+
+- #293 quality/tail aggregation needs authoritative qrels, query/document ID,
+  rank-file, and prepared-manifest receipts;
+- its FP16 row is an on-the-fly conversion loop, not a persisted FP16 store;
+- `itq208_adc` is actually a raw sign-208 control unless a real trained ITQ
+  transform and ADC implementation is added;
+- per-record heap allocations are a microbenchmark layout, not physical serving
+  evidence;
+- #294 THQ quality is valid, while native hard-coded Gaussian thresholds measure
+  a payload XOR/POPCNT kernel only. Production query encoding needs the fitted
+  per-coordinate thresholds; the same fake ITQ row must be renamed or removed.
+
+`#295 -> #296` are the corrective kernel/layout frontier and should follow
+#293/#294. `#297` is protocol-only until an independent teacher cache exists.
+`#298` must be corrected: `(x-c)·q + c·q` is exact FP32 scoring, not compact
+residual K8. Keep the note as a historical control and either rename it
+`float_ivf_exact_document_control` or implement a real residual codec. Read
+`#299` under matched candidate-work budgets.
+
+`#300` is the canonical broad head for the later RP-THQ/PCA/THQ-IVF/cosine-LSH
+follow-ups. It must first receive a tie-safe discrete top-k implementation,
+strong input/evidence receipts, raw THQ4-384 versus orthogonal THQ4-384 control,
+and (ideally) 3--5 orthogonal seeds. The Gaussian RP-THQ result remains the
+strong active locality hypothesis; the orientation interpretation is conditional
+on that matched raw control. Correct the note chronology to 2026-09-08 when it
+describes the 8 September commit.
+
+`#310` has the same research head as #300 and is a narrower duplicate. After
+#300 is canonical and merged, close #310 as superseded with an explicit
+“no unique changes lost” note.
+
+### Wave 9: current independent/archive branches (`#301--#304`, `#309`)
+
+- **#301** is currently a preregistration (contract + note), not completed
+  calibration evidence. Either keep that honest title/status or add training,
+  ITQ pre/post controls, rank-weighted teacher recall, iterative re-mining, and
+  an independent evidence writer.
+- **#302** is valid science and should retain the nuanced interpretation:
+  single-centroid representation loses relevant-only information at 1M, while
+  global class imbalance is an additional product bottleneck. After canonical
+  ancestors land, merge only its unique delta; otherwise close as superseded.
+- **#303** is a historical nonlinear prototype baseline. Its discrete top-k
+  helper needs tie-safe selection before any numeric claim is rerun. Prefer
+  archival/superseded status after #284--#287 unless it contributes unique
+  evidence.
+- **#304** is a useful rotated-product diagnostic, not a completed result. Fix
+  explicit Faiss seeding (fresh runs must produce identical artifact SHAs), then
+  compare raw, random-orthogonal, PCA/whitened, and OPQ (`m=8`, `nbits=2/4/8`)
+  routing arms. Do not interpret OPQ reconstruction error as routing evidence.
+- **#309** restores/archive historical calibrated weighted-Hamming and MIH
+  implementations. It is not a new discovery; link it to the already merged
+  MIH evidence line and land it only after conflicts with the modern evaluator
+  are resolved.
+
+## Active research after the backlog
+
+The current product/research priorities are:
+
+```text
+RP/orthogonal THQ locality
+  -> float prototype-IVF
+  -> compact THQ/scalar document cascade
+  -> true local residual IVF
+```
+
+Before a physical MIH or directional index, close the representation gates:
+
+1. tie-safe and multi-seed RP-THQ replay;
+2. matched-byte raw/orthogonal/PCA/ITQ controls;
+3. native contiguous-payload scan and query encoding with stored thresholds;
+4. candidate-mass/bytes/latency measurements for any selective ordinal index.
+
+Any future routing comparison must bind the same queries, teacher, qrels,
+candidate/bytes budget, deterministic tie policy, and (when random) multiple
+seeds. A positive result without these controls is diagnostic, not a product
+decision.

@@ -5,6 +5,10 @@ not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked
 next.
 
+For the cross-PR causal history and merge/evidence ledger, see
+[`research-timeline.md`](research-timeline.md). It is an index into the
+experiment notes, not a replacement for them.
+
 ## When to write or update a note
 
 Create or update an experiment note when a PR:
