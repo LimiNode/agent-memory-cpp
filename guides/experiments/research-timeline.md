@@ -532,3 +532,12 @@ candidate generator. Packed subvector keys and ordinal multiprobe remain open;
 ordinary bit-MIH is the next matched control. See the
 [ordinal-sum oracle note](2026-09-10-ordinal-sum-index-oracle.md) and compact
 receipt. `production_activation: false`.
+
+The matched ordinary bit-MIH oracle (#357 continuation) tested exact buckets
+and radius-one probes at 48, 72, and 144 byte-aligned bands. The useful
+frontier remains unfavorable: 72x16-bit radius-one reaches `.9632` mean
+@256 survival with 319k candidates and `.7` worst-query survival; 48x24-bit
+radius-one reaches only `.2717` with 9.9k candidates; 144x8-bit exact already
+touches 965k candidates. This closes only the tested exact-bucket/radius-one
+schedule, not classical cosine-LSH or richer multiprobe. See the
+[bit-MIH oracle note](2026-09-10-bit-mih-oracle.md) and receipt.

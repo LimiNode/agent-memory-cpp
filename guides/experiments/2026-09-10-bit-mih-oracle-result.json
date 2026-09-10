@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "family": "thq_bit_mih_oracle_v1",
+  "fixture": {"manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b", "documents": 1000000, "queries": 152, "dimension": 384},
+  "representation": {"name": "THQ4-384", "levels": 4, "bits": 1152, "metric": "plain_hamming", "tie_policy": "distance_then_id"},
+  "protocol": {"band_counts": [48, 72, 144], "radii": [0, 1], "band_width_bytes": {"48": 3, "72": 2, "144": 1}, "budgets": [256, 512, 1000, 2000, 5000, 10000, 20000, 50000], "query_codes": "semantic_query_codes_from_frozen_manifest", "production_activation": false},
+  "result_sha256": "4044f88adbbcec7867bbde1a9e8b37dd377bb60ed38bce3fda40388387a97104",
+  "source_sha256": "b3b5369b5288fe3c9bec3a77c3dedb63c041f65844fd2123e0d875bee5673548",
+  "summary": {"bit_mih_m48_r1_candidates_mean": 9885.046052631578, "bit_mih_m48_r1_survival_256_mean": 0.27171052631578946, "bit_mih_m72_r1_candidates_mean": 319129.0, "bit_mih_m72_r1_survival_256_mean": 0.9631578947368421, "bit_mih_m72_r1_survival_256_worst": 0.7, "bit_mih_m144_r0_candidates_mean": 965313.8881578947, "bit_mih_m144_r0_survival_256_mean": 0.9986842105263158, "bit_mih_m144_r1_candidates_mean": 999999.9868421053},
+  "interpretation": "Exact-bucket/radius-one bit-MIH has the expected collision/probe trade-off; no tested schedule is a low-work replacement for flat THQ4. This does not close other LSH or multiprobe designs. No ANN or production claim."
+}
