@@ -522,3 +522,13 @@ and at K=5k it is `445`. A fused integer histogram selector reduces the native
 flat reference to `20.994 ms/query` p50 versus `32.295 ms/query` with
 `nth_element`. These are the locked geometry and cost gates for the ordinal
 multi-index experiment; they do not authorize an index or production path.
+
+The first full ordinal-index oracle (#356 research continuation) tested exact
+per-block ordinal-level sums for `m=8/12/16/24/32` on all 152 semantic queries.
+Mean unique candidates ranged from 267k to 911k, with @256 teacher survival
+from `.3362` to `.9638`; the 91%-of-corpus `m=32` arm still trailed flat
+THQ4's `.9993`. This closes only the exact block-sum key as a low-work
+candidate generator. Packed subvector keys and ordinal multiprobe remain open;
+ordinary bit-MIH is the next matched control. See the
+[ordinal-sum oracle note](2026-09-10-ordinal-sum-index-oracle.md) and compact
+receipt. `production_activation: false`.
