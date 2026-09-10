@@ -197,6 +197,14 @@ target_link_libraries(agent-memory-native-centroid-routing-scan
         agent_memory::json
 )
 
+add_executable(agent-memory-native-thq-ivf-bakeoff
+    native_thq_ivf_bakeoff.cpp
+)
+target_link_libraries(agent-memory-native-thq-ivf-bakeoff
+    PRIVATE
+        agent_memory::json
+)
+
 add_executable(agent-memory-mih-native-sparse-arbitrary-m
     mih_native_sparse_arbitrary_m.cpp
 )

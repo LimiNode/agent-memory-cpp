@@ -75,6 +75,22 @@ that it helps.
 
 ## Near-Term Tasks
 
+### Native THQ/IVF bake-off (2026-09-08)
+
+- Keep flat THQ4 as the latency denominator: on the frozen DE-1M replay it
+  reaches about `.6540` nDCG at K=256 with p95 total around 29.5 ms.
+- E5-IVF → local THQ is a valid balanced architecture, but the first native
+  implementation is slower (p95 36.5 ms at 20k and 158.5 ms at 100k) because
+  it scans centroids and uses scalar list traversal.  Do not promote it on
+  Python timings alone.
+- The next implementation gate is actual MDBX/page behavior and fused native
+  centroid/list kernels.  Report logical bytes, physical pages, raw posting
+  visits, unique candidates, and warm/cold p50/p95/p99 separately.
+- Re-run the post-#269 prototype-IVF → local K8/K32/R0 cascade with the modern
+  THQ3/THQ4 → INT10/INT12 tail before selecting a quality-oriented product
+  profile.  Its historical external-generator timing is not an apples-to-
+  apples native result.
+
 ### Vector Math Baseline
 
 - Add a small dependency-free `math` or `index` helper for dot product, cosine,
@@ -1167,6 +1183,146 @@ set by reranking E5 candidate pools of several declared depths (for example
 coverage. Compare that ceiling with the same exact-vector pool before
 attributing a result to the cross-encoder. The experiment may use an external
 multilingual model, but production inference remains host-owned and optional.
+
+### Evidence-backed compact retrieval profiles (M2+ research)
+
+The roadmap keeps both a simple flat-search product profile and the previously
+successful long float-IVF/K8/R4 cascade. They are alternative operating points,
+not interchangeable benchmark rows:
+
+* `flat`: sequential THQ3/THQ4 (or another validated compact codec) followed
+  by a bounded rerank; intended for small knowledge bases.
+* `balanced`: float document-IVF or PCA routing, then THQ/ITQ/INT scoring with
+  explicit candidate budgets and exact or quantized final rerank.
+* `quality`: float K8-prototype IVF -> local K8 -> K32/R0 -> R4 cascade,
+  retained as the quality reference because its coarse geometry has been
+  validated.  The full global K8 scan is an offline teacher only; it is not
+  the intended serving implementation.
+
+`FP32-free` is an orthogonal final-representation axis, not a fourth routing
+architecture.  Each of the profiles above may use FP32, FP16, packed INT10 or
+packed INT12 for its final bounded rerank.  The current flat candidate is
+`THQ3/THQ4 scan -> K256 -> packed INT10`; it remains experimental until qrels
+and tail gates are met.  This separation also keeps the successful quality
+R4 cascade alive while allowing its expensive document FP32 tail to be tested
+independently.
+
+All profiles must report qrels nDCG@10, teacher top-10 overlap, p05/worst
+query, candidate and posting counts, bytes read, payload/model bytes, native
+p50/p95/p99, and update behavior. Frozen THQ thresholds support
+append/tombstone updates without retraining. Frozen PCA/IVF assigns a new
+document to a cell and appends a posting; rebuild is background work for drift.
+Corpus-derived K8 centroids follow the same foreground-update rule but require
+periodic centroid refresh.  The #269 prototype-IVF result is the current R4
+improvement: it preserved about .9996 at M=4096 while avoiding the global
+454k-prototype scan.  Its native/local-K8 and serialized-index costs still need
+an apples-to-apples serving replay before promotion.
+
+The ordered research queue is: (1) a broad flat-code family table (FP16,
+packed linear/nonlinear INT4/5/6/8/10/12, ITQ128/208/256/384 Hamming and ADC,
+THQ3/THQ4, ternary/quaternary, PQ/OPQ, RaBitQ-RR-1 and BBQ-block-1); (2) flat
+THQ K128/K256/K512 frontier; (3) FP32-free final rerank with true packed
+INT8/10/12 versus an explicit int16-storage control; (4) a three-way native
+bake-off of flat THQ, simple prototype-IVF+THQ, and the full
+ prototype-IVF/local-K8/K32/R0 cascade across candidate pools 5k/10k/20k/40k/
+64k/100k/200k/1M; (5) ordinal/threshold-transition indexing (the raw
+bitwise-MIH variant is closed), measuring random reads and bytes as well as
+quality; and (6) apples-to-apples MDBX replay of the surviving profiles. The
+first ordinal-transition gate is an oracle-only teacher-direction cost
+ranking; the 2026-09-06 run retained just .025 of THQ top-256 at a 10k budget,
+so this scalar formulation is closed and no physical index should be built
+from it. Prototype-direction was subsequently tested and retained only .038 of
+THQ top-256 at a 10k budget, and a four-anchor union retained .116, so the
+additive scalar formulation is closed for teacher, prototype and multi-anchor
+anchors. A separate continuous shared-alpha segment oracle reached .982
+teacher top-10 survival at 10k; this keeps true ray/segment geometry open while
+still disallowing a physical index until a discrete approximation passes the
+same gate.
+The follow-up anchor check found .982 for nearest-prototype geometry but only
+.920 for the simplified prototype-IVF top-1 anchor at 10k, so anchor routing
+is now the primary open risk. A calibrated anchor schedule and discrete
+shared-alpha approximation must precede any physical index.
+The anchor-recall oracle measured teacher top-1 inclusion of .349/.822/.901/
+.941/.980 for IVF top-1/8/16/32/64 cells respectively, with mean pools from
+478 to 40.8k prototypes. This anchor frontier must be reported separately
+from segment-scoring quality.
+The nearest-E5-in-pool selector reaches .920/.972/.976/.980 at K=10k for
+IVF M=1/16/32/64, confirming that useful anchors exist in larger pools but
+that exposing them is costly. The next anchor study is rank-aware selection
+and an explicit best-anchor-within-pool ceiling; neither may be substituted
+for the runtime selector.
+The bounded best-anchor pilot (top-four cosine anchors per pool) is a selector
+diagnostic only; its smoke result improved M=4 from .963 to .988 at K=10k.
+The prototype-to-document expansion replay then measured the missing
+composition gate with a privileged shared-alpha teacher anchor: mean exact
+document top-10 survival was .606/.730/.800/.859/.892 for P=256/1024/2048/
+5000/10000 prototypes, with mean pools of about 5.0k/19.1k/36.9k/86.1k/
+166.2k documents.  The selected prototypes occupied almost one distinct
+address each, so address deduplication provided little reduction.  A fixed
+four-anchor control was lower (.517/.653/.728/.821/.870 at the same budgets),
+showing that naive multi-anchor union does not close the prototype-to-document
+gap.  These are exact-E5 top-10 survival ceilings on representative-document
+postings, not qrels or serving results; the raw reports and methodology are
+recorded in [the expansion note](experiments/2026-09-08-prototype-document-expansion.md).
+The broad top-64 downstream oracle is now measured, but remains privileged and
+only eight queries; it does not justify a held-out selector or discrete
+shared-alpha index at practical budgets.
+The first downstream best-anchor screen (16 queries, eight cosine candidates)
+improved mean survival from .663/.750 to .738/.844 at P=256/1024 for both
+global and IVF-top-8-cell screens.  A target-conditioned, target-leaking
+screen reached .763/.875 and is an upper bound only.  Target-address ranks
+under the teacher anchor had median 98 but p95 9,386, indicating that a small
+tail of remote semantic modes drives most losses.  These values are recorded
+in [the best-anchor screen note](experiments/2026-09-08-downstream-best-anchor-screen.md);
+they are diagnostic, not product quality or exhaustive best-anchor ceilings.
+The quota multi-anchor oracle (32-prototype steps, up to four anchors inside
+the global top-eight screen) reached .763/.863/.919 at P=256/1024/2048 on a
+16-query subset, only about .019 above the best single anchor at the first two
+budgets.  A target-conditioned, target-leaking eight-query smoke reached
+.925 at P=1024 and .963 at P=2048; this is still below the .995 gate and is
+not a runtime result.  Quota allocation is therefore a bounded diagnostic,
+not yet justification for a learned selector or physical directional index.
+The follow-up broad global top-64 screen found a better privileged single
+anchor, raising mean document survival to .800/.838/.888/.963 at
+P=1024/2048/4096/8192 on eight queries.  Exhaustive quota allocation inside
+the retained best-eight anchors reached .800/.863 at P=1024/2048.  This closes
+the specific small-union shared-alpha route at practical budgets, but does not
+claim a global impossibility result for other joint geometries; the experiment
+is recorded in [the broad oracle note](experiments/2026-09-08-broad-shared-alpha-oracle.md).
+The authoritative document-conditioned replay is now available: with the
+full R4 document-to-address mapping, shared-alpha teacher ranking reaches
+.653/.786/.859/.919/.955 exact-E5 top-10 survival at P=256/1024/2048/5000/
+10000, but requires roughly 5.8k/21.5k/41.2k/94.9k/182.0k documents.  This
+raises the earlier representative-posting ceiling but leaves the small-budget
+route weak; it also confirms that prototype recall is the wrong proxy because
+each target document maps to about 9.7 addresses and 74.5 K8 prototypes per
+query.  The result is recorded in
+[the document-conditioned target note](experiments/2026-09-08-document-conditioned-prototype-target.md).
+The THQ-aware IVF replay then tested the complementary data-adaptive
+partition hypothesis on the frozen 1M corpus.  E5-IVF followed by local THQ4
+reached .836/.914/.957 teacher survival at 20k/50k/100k candidates, while
+THQ-native ordinal IVF reached .803/.899/.946.  Mean nDCG was .640/.646/.650
+for E5-IVF and .592/.645/.650 for THQ-native IVF.  Python p95 query time was
+24.2/52.6/102.0 ms for E5-IVF and 26.8/54.8/104.9 ms for THQ-native IVF.
+These are Python
+directional timings; the native flat THQ4 reference remains about .654 nDCG
+with roughly 39 ms p95 at K=256.  The result keeps E5-IVF -> local THQ as a
+balanced product candidate and relegates THQ-native IVF to a research control;
+see [the THQ-aware IVF note](experiments/2026-09-08-thq-aware-ivf.md).
+The frozen anchor-routing order is now: pool characterization,
+prototype-to-document expansion ceiling, broad best-anchor oracle, and only
+then any fundamentally different joint selector.  The expansion gate must
+report unique addresses, raw and unique posting documents, duplicate rate, and
+exact-E5 top-10 survival; prototype survival alone is insufficient.  Privileged
+teacher anchors and global nearest-prototype scans remain upper-bound controls;
+they must never be reported as serving routes.  The concrete
+shared-alpha/small-union/quota architecture is archived as a primary route;
+reopening requires a new geometry or a materially higher held-out ceiling.
+For THQ-aware MIH, the first gate is
+THQ-top-256 recall and exact-E5 top-10 survival (target >= .995) at materially
+lower touched bytes than sequential scan; random reads and p95/p99 are part of
+the same gate. No compact codec may be promoted from
+overlap alone: a product gate requires qrels and tail-latency evidence.
 
 The returned `VectorHit` remains only a candidate. The retrieval engine
 hydrates the active envelope/payload, validates scope, lifecycle, authority,

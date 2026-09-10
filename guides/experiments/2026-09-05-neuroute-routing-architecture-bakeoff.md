@@ -9,7 +9,8 @@ This study puts four routing families under one evaluator:
 1. direct document IVF;
 2. learned 12/14/16-bit semantic router with replication 1--4;
 3. LTHQ/ordinal router;
-4. float IVF followed by an exact-document scoring control.
+4. float IVF with an exact document-scoring control.  A real residual-K8
+   replay is a separate follow-up and is not implemented by this runner.
 
 Every route is evaluated both as a routing ceiling (selected documents are
 exactly reranked) and with the common document-stage cascade when a downstream
@@ -22,9 +23,12 @@ and internal queries.
 The learned and LTHQ lanes in the reference runner use exhaustive code scans.
 They are intentionally diagnostic controls for representation and replication,
 not a product ANN implementation.  A global scan of all K8 prototypes remains
-outside the product path.  The exact-document IVF control reconstructs the
-original FP32 dot algebraically inside probed cells; it is not compact
-residual K8 storage and does not license a native production route.
+outside the product path.  The former `float_ivf_local_residual_k8` label was
+incorrect: its `(x-c)·q + c·q` formula is algebraically identical to exact
+`x·q`.  The lane is now named `float_ivf_exact_document_control` and is kept
+only as a parity control.  A real prototype residual experiment must use the
+frozen K8 prototype cache and a codec applied to `p-c`; that is the separate
+`run-local-residual-ivf.py` research runner.
 
 ## Reproduction
 

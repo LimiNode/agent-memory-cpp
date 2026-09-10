@@ -73,6 +73,14 @@ unique candidates), but no ordinal layout overtook that PCA control. The 10×3
 layout is the clearest negative result: its 59,049 nominal states are too
 sparse for the current PCA geometry and lose most teacher neighbours.
 
+Methodology correction: these rows are not a matched-candidate comparison.
+At the same nominal probe count, `8x3`, `6x4`, and `4x8` produce roughly 38k,
+61k, and 63k unique candidates, while `10x3` produces only about 4.7k. The
+table is therefore a routing/efficiency curve, not evidence that ordinal
+loses to Binary12 at equal work. The `10x3` layout must be rerun at a larger
+probe budget (approximately 60k unique candidates) before a fair quality
+comparison.
+
 ## Corrected historical learned Binary12 replay
 
 The review identified that the `Binary12` row above was not the learned router
@@ -137,3 +145,8 @@ does not reach a near-lossless routing ceiling at the 60–100k candidate range;
 therefore no downstream cascade or product claim should be based on the old
 PCA `Binary12` label. A true byte-identical #176/#199 reproduction would still
 require the unavailable frozen checkpoint and its original serving fixture.
+
+The matched-candidate frontier remains open: the existing `10x3` point is far
+more selective than Binary12, so its low overlap cannot be interpreted as a
+geometric failure until probes are increased to comparable unique-candidate
+mass.
