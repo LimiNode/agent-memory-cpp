@@ -5,8 +5,9 @@ stack. It is deliberately a narrative timeline, not a copy of raw benchmark
 reports. Individual experiment notes remain the source for setup and numbers;
 Evidence Releases remain the source for large reproducibility bundles.
 
-The current backlog is the open research stack `#221--#304`, plus `#309` and
-`#310` (inventory checked 2026-09-09); `#176--#220` are now landed on `main`.
+The current backlog is the open research stack `#301--#304` plus `#309`
+(inventory checked 2026-09-10); `#176--#300` are now landed on `main` or
+closed as superseded.
 The objective is to land all unique
 scientific content without erasing negative results, corrections, or the exact
 commit provenance of measured artifacts.
@@ -285,7 +286,7 @@ Source-bound and protocol-only members preserve measured artifacts and
 correction lineage but are not independent replay claims or production
 authorization.
 
-### Wave 8: document tail, THQ, and routing bakeoff (`#293--#300`, `#310`)
+### Wave 8: document tail, THQ, and routing bakeoff (`#293--#300`)
 
 The former evidence-status note is retained as the pre-release audit record;
 the public release above supersedes its temporary “no public release” status.
@@ -298,7 +299,9 @@ The canonical clean-main landings for this wave are now:
   losing a unique result;
 - #296 -> #341, merge `b8154b208032eb1686f8345146fe6fdf8002294e`;
 - #297 -> #342, merge `913321392db5e853e042e6685fed0e437e71fafc`;
-- #298 -> #343, merge `a645d293b6b14f2e7ad710bff6a68f70128201a8`.
+- #298 -> #343, merge `a645d293b6b14f2e7ad710bff6a68f70128201a8`;
+- #299 -> #345, merge `25ee8e1f6a63f608c08f9b40f6618fb8c41b81d6`;
+- #300 -> #346, merge `950330c5e5f374a1b97a9f403f7a066e10a0f582`.
 
 The original stacked PRs remain in GitHub history; #297/#298 were closed as
 superseded by their clean continuations, and #295 was closed because its
@@ -340,16 +343,14 @@ The #298 correction is landed: the residual identity is exact FP32 scoring.
 The exact-document control is now named `float_ivf_exact_document_control`;
 it is not a compact residual codec.
 
-`#300` is the canonical broad head for the later RP-THQ/PCA/THQ-IVF/cosine-LSH
-follow-ups. It must first receive a tie-safe discrete top-k implementation,
-strong input/evidence receipts, raw THQ4-384 versus orthogonal THQ4-384 control,
-and (ideally) 3--5 orthogonal seeds. The Gaussian RP-THQ result remains the
-strong active locality hypothesis; the orientation interpretation is conditional
-on that matched raw control. Correct the note chronology to 2026-09-08 when it
-describes the 8 September commit.
+`#300` is the canonical landed broad head for the RP-THQ/PCA/THQ-IVF/cosine-LSH
+follow-ups. Its tie-safe discrete top-k implementation, matched-byte raw
+THQ4-384 versus orthogonal control, and five-seed Gaussian RP-THQ replay are
+recorded in the landed notes. Gaussian RP-THQ remains a research locality
+hypothesis; no physical index or production activation is licensed.
 
-`#310` has the same research head as #300 and is a narrower duplicate. After
-#300 is canonical and merged, close #310 as superseded with an explicit
+`#310` had the same research head as #300 and was a narrower duplicate. It is
+now closed as **SUPERSEDED** by #346 with an explicit
 “no unique changes lost” note.
 
 ### Wave 9: current independent/archive branches (`#301--#304`, `#309`)
