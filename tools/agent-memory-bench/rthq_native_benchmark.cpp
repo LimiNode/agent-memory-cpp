@@ -156,17 +156,17 @@ int main(int argc, char** argv) {
             << ",\"tie_policy\":\"distance_ascending_then_document_id_ascending\""
             << ",\"scan_total_ms_p50\":" << quantile(scan_ms, .50)
             << ",\"scan_total_ms_p95\":" << quantile(scan_ms, .95)
-            << ",\"scan_ms_per_query_p50\":"
+            << ",\"scan_throughput_ms_per_query_p50\":"
             << quantile(scan_ms, .50) / query_count
-            << ",\"scan_ms_per_query_p95\":"
+            << ",\"scan_throughput_ms_per_query_p95\":"
             << quantile(scan_ms, .95) / query_count
             << ",\"scan_plus_topk_total_ms_p50\":"
             << quantile(select_ms, .50)
-            << ",\"scan_plus_topk_ms_per_query_p50\":"
+            << ",\"scan_plus_topk_throughput_ms_per_query_p50\":"
             << quantile(select_ms, .50) / query_count
             << ",\"scan_plus_histogram_total_ms_p50\":"
             << quantile(histogram_ms, .50)
-            << ",\"scan_plus_histogram_ms_per_query_p50\":"
+            << ",\"scan_plus_histogram_throughput_ms_per_query_p50\":"
             << quantile(histogram_ms, .50) / query_count
             << ",\"checksum\":" << checksum << "}\n";
 }

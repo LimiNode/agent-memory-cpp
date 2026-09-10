@@ -16,8 +16,8 @@
     "budgets": [256, 512, 1000, 2000, 5000, 10000, 20000, 50000],
     "query_codes": "semantic_query_codes_from_frozen_manifest",
     "production_activation": false},
-  "result_sha256": "7b6747d2b6aa6bf51147affdab76f76b46e8db4f476e0063aa221349ef640031",
-  "source_sha256": "bae05f2c1d67fd3ba270c7935584e1d460739e90cf2ba8fb45a68a443c7717190",
+  "result_sha256": "45f6506aec82b01f36913fb7c9f0dcd772e190496fd05846d5cee7af4e8d6bab",
+  "source_sha256": "a37ffa53aac297dd9b14bb45ced83169eb1a9e04a1ee8612fecfa56ef05ba6a9",
   "summary": {"flat_survival_256_mean": 0.9993421052631579,
     "ordinal_sum_m8_candidates_mean": 267249.40789473685,
     "ordinal_sum_m8_survival_256_mean": 0.3361842105263158,
@@ -34,5 +34,5 @@
     "ordinal_sum_m32_candidates_mean": 911363.802631579,
     "ordinal_sum_m32_survival_256_mean": 0.9638157894736842,
     "ordinal_sum_m32_survival_256_worst": 0.8},
-  "interpretation": "The exact ordinal block-sum key is negative as a low-work candidate generator on this fixture. This does not close richer ordinal multi-probe indexes. No ANN or production claim."
+  "interpretation": "CORRECTED: tie-safe cutoff-shell selection was replayed on all 152 queries. The exact ordinal block-sum key remains negative as a low-work candidate generator. This does not close richer ordinal multi-probe indexes. No ANN or production claim."
 }

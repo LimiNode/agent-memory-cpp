@@ -519,7 +519,7 @@ its compact result receipt. `production_activation: false`.
 The absolute-geometry follow-up records teacher `dH` p50 `322`, top-256 cutoff
 p50 `383`, and cutoff-shell p50 `25` (max `43`). At K=1k the shell p50 is `91`,
 and at K=5k it is `445`. A fused integer histogram selector reduces the native
-flat reference to `20.994 ms/query` p50 versus `32.295 ms/query` with
+flat reference to `20.994 ms/query` throughput-derived p50 versus `32.295 ms/query` with
 `nth_element`. These are the locked geometry and cost gates for the ordinal
 multi-index experiment; they do not authorize an index or production path.
 
@@ -533,6 +533,11 @@ ordinary bit-MIH is the next matched control. See the
 [ordinal-sum oracle note](2026-09-10-ordinal-sum-index-oracle.md) and compact
 receipt. `production_activation: false`.
 
+The #356 ordinal oracle receipt was subsequently corrected for tie-safe
+cutoff-shell selection. A full 152-query replay produced the same qualitative
+negative result and a new result/source hash; the earlier receipt numbers are
+historical and superseded by the corrected receipt.
+
 The matched ordinary bit-MIH oracle (#357 continuation) tested exact buckets
 and radius-one probes at 48, 72, and 144 byte-aligned bands. The useful
 frontier remains unfavorable: 72x16-bit radius-one reaches `.9632` mean
@@ -541,3 +546,8 @@ radius-one reaches only `.2717` with 9.9k candidates; 144x8-bit exact already
 touches 965k candidates. This closes only the tested exact-bucket/radius-one
 schedule, not classical cosine-LSH or richer multiprobe. See the
 [bit-MIH oracle note](2026-09-10-bit-mih-oracle.md) and receipt.
+
+The #357 bit-MIH receipt was subsequently corrected after replacing the
+argpartition-based selector with a tie-safe cutoff-shell selection and
+replaying all 152 queries. The collision/probe frontier and negative scope
+were unchanged; the corrected receipt supersedes the historical hash.

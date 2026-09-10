@@ -20,9 +20,10 @@ shortlist is cut by deterministic THQ distance.
 
 The full JSON output is retained outside the repository:
 
-`postbacklog-ordinal-index-full.json`
+`postbacklog-ordinal-index-corrected.json`
 
-SHA-256: `7b6747d2b6aa6bf51147affdab76f76b46e8db4f476e0063aa221349ef640031`.
+SHA-256 (corrected tie-safe replay):
+`45f6506aec82b01f36913fb7c9f0dcd772e190496fd05846d5cee7af4e8d6bab`.
 The runner source is hashed in the compact receipt. The Python timings below
 are diagnostic only; the locked native flat reference remains 20.994 ms/query
 p50 from the preceding gate.
