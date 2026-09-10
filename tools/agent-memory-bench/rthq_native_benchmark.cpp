@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstring>
@@ -58,6 +59,27 @@ double quantile(std::vector<double> values, double q) {
   return values[std::min(values.size() - 1,
                          static_cast<std::size_t>(q * values.size()))];
 }
+
+std::vector<std::size_t> histogram_topk(
+    const std::vector<std::uint16_t>& distances, std::size_t k) {
+  std::array<std::size_t, 1153> counts{};
+  for (std::uint16_t distance : distances) ++counts[distance];
+  std::size_t remaining = k;
+  std::size_t cutoff = counts.size() - 1;
+  for (std::size_t distance = 0; distance < counts.size(); ++distance) {
+    if (remaining <= counts[distance]) {
+      cutoff = distance;
+      break;
+    }
+    remaining -= counts[distance];
+  }
+  std::vector<std::size_t> result;
+  result.reserve(k);
+  for (std::size_t id = 0; id < distances.size() && result.size() < k; ++id) {
+    if (distances[id] <= cutoff) result.push_back(id);
+  }
+  return result;
+}
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -81,6 +103,7 @@ int main(int argc, char** argv) {
   const std::size_t query_count = std::min(queries, records);
   std::vector<double> scan_ms;
   std::vector<double> select_ms;
+  std::vector<double> histogram_ms;
   std::uint64_t checksum = 0;
   for (std::size_t iteration = 0; iteration < iterations; ++iteration) {
     const auto scan_start = Clock::now();
@@ -110,6 +133,20 @@ int main(int argc, char** argv) {
     select_ms.push_back(
         std::chrono::duration<double, std::milli>(Clock::now() - select_start)
             .count());
+    const auto histogram_start = Clock::now();
+    for (std::size_t query = 0; query < query_count; ++query) {
+      const auto* query_code = codes.data() + query * kBytes;
+      std::vector<std::uint16_t> distances(records);
+      for (std::size_t id = 0; id < records; ++id) {
+        distances[id] = static_cast<std::uint16_t>(hamming(
+            codes.data() + id * kBytes, query_code, kBytes));
+      }
+      const auto selected = histogram_topk(distances, k);
+      checksum += selected.front() + selected.back();
+    }
+    histogram_ms.push_back(
+        std::chrono::duration<double, std::milli>(Clock::now() - histogram_start)
+            .count());
   }
   std::cout << "{\"records\":" << records << ",\"queries\":"
             << query_count << ",\"iterations\":" << iterations
@@ -127,5 +164,9 @@ int main(int argc, char** argv) {
             << quantile(select_ms, .50)
             << ",\"scan_plus_topk_ms_per_query_p50\":"
             << quantile(select_ms, .50) / query_count
+            << ",\"scan_plus_histogram_total_ms_p50\":"
+            << quantile(histogram_ms, .50)
+            << ",\"scan_plus_histogram_ms_per_query_p50\":"
+            << quantile(histogram_ms, .50) / query_count
             << ",\"checksum\":" << checksum << "}\n";
 }

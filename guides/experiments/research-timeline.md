@@ -515,3 +515,10 @@ enumeration remains negative; the open hypothesis is a coordinate-aware
 ordinal multi-index that can enumerate top-1k--5k below the optimized flat
 scan. See [the post-backlog gate note](2026-09-10-rthq-postbacklog-gate.md) and
 its compact result receipt. `production_activation: false`.
+
+The absolute-geometry follow-up records teacher `dH` p50 `322`, top-256 cutoff
+p50 `383`, and cutoff-shell p50 `25` (max `43`). At K=1k the shell p50 is `91`,
+and at K=5k it is `445`. A fused integer histogram selector reduces the native
+flat reference to `20.994 ms/query` p50 versus `32.295 ms/query` with
+`nth_element`. These are the locked geometry and cost gates for the ordinal
+multi-index experiment; they do not authorize an index or production path.

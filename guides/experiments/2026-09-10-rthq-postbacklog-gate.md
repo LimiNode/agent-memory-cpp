@@ -38,6 +38,27 @@ Five orthogonal seeds remain stable: @256 mean `.998421`, population SD
 The worst observed query at @256 retains 8/10 teacher documents and must remain
 in every future gate.
 
+## Absolute distance and shell geometry
+
+The semantic query codes were regenerated with the same raw-coordinate
+quartile thresholds and evaluated against the full 1M payload. Teacher
+distances are much larger than a small Hamming radius despite the excellent
+rank:
+
+| statistic | p50 | p95 | p99 | max |
+|---|---:|---:|---:|---:|
+| teacher `dH` | 322 | 361 | 376.81 | 392 |
+| top-256 cutoff | 383 | 397.45 | 400 | 404 |
+| top-1k cutoff | 398 | 409 | 411.98 | 414 |
+| top-5k cutoff | 416 | 425 | 426.98 | 429 |
+
+The number of documents on the cutoff shell is itself non-trivial: p50/p95/max
+are `25/36/43` at K=256, `91/132.05/153` at K=1k, and
+`445/573.4/633` at K=5k. Across the 1520 teacher pairs, ordinal level deltas
+`0/1/2/3` occur `235018/233809/94702/20151` times. These measurements explain
+why a radius-one bit-MIH enumerator can miss the useful neighborhood: the
+relevant rank lies around an ordinal-L1 shell of hundreds of steps.
+
 ## Native flat reference
 
 The contiguous 144-byte payload was scanned with a GCC `-O3 -std=c++17
@@ -51,9 +72,10 @@ semantic query codes), so the timing is a ceiling rather than a quality replay.
 | scan + deterministic top-256, per query | 31.995 ms | not collected |
 
 The selector accounts for roughly 12 ms/query in this implementation. A fused
-integer-distance histogram and one pass over the saved `uint16` distances is
-the next flat-baseline optimization; it must be measured before judging an
-index.
+integer-distance histogram and one pass over the saved `uint16` distances was
+then measured at `20.994 ms/query` p50 (versus `32.295 ms/query` for the
+`nth_element` selector), essentially removing the selector overhead. This
+optimized flat reference is the baseline for any index claim.
 
 ## Interpretation and next gate
 
