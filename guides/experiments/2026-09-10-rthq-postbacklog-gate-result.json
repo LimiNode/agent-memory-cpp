@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "family": "rthq_postbacklog_flat_gate_v1",
+  "fixture": {
+    "id": "de-1m-frozen-rp-thq-v1",
+    "documents": 1000000,
+    "queries": 152,
+    "dimension": 384,
+    "train_documents": 100000
+  },
+  "representation": {
+    "name": "THQ4-384",
+    "alternates": [
+      "Orthogonal-THQ4-384",
+      "Hadamard-THQ4-384",
+      "ITQ-THQ4-384",
+      "PCA-THQ4-384"
+    ],
+    "levels": 4,
+    "thermometer_bits_per_coordinate": 3,
+    "bits": 1152,
+    "bytes_per_document": 144,
+    "ranking_metric": "plain_hamming",
+    "tie_policy": "distance_ascending_then_document_id_ascending"
+  },
+  "locality": {
+    "raw_identity": {"survival_256_mean": 0.9993421052631579, "survival_256_worst": 0.9, "survival_1000_mean": 1.0},
+    "orthogonal": {"survival_256_mean": 0.9980263157894737, "survival_256_worst": 0.9, "survival_1000_mean": 1.0},
+    "randomized_hadamard": {"survival_256_mean": 0.9980263157894737, "survival_256_worst": 0.9, "survival_1000_mean": 1.0},
+    "itq": {"survival_256_mean": 0.9967105263157895, "survival_256_worst": 0.8, "survival_1000_mean": 0.9993421052631579},
+    "pca": {"survival_256_mean": 0.9848684210526317, "survival_256_worst": 0.7, "survival_1000_mean": 0.9960526315789474},
+    "orthogonal_five_seed_256_mean": 0.9984210526,
+    "orthogonal_five_seed_256_population_sd": 0.0012892051,
+    "orthogonal_five_seed_256_min": 0.9960526,
+    "orthogonal_five_seed_256_max": 0.9993421,
+    "orthogonal_five_seed_1000_all_one": true
+  },
+  "native_flat": {
+    "compiler": "GCC",
+    "flags": "-O3 -std=c++17 -march=native",
+    "query_workload": "first_152_materialized_document_codes; throughput-only",
+    "repetitions": 3,
+    "scan_ms_per_query_p50": 19.9763,
+    "scan_ms_per_query_p95": 20.724,
+    "scan_plus_top256_ms_per_query_p50": 31.9954,
+    "production_activation": false
+  },
+  "source_sha256": {
+    "evaluate_landmark_affinity_thq_py": "6a7e8d83c3067956ce145e8feec4af5861ddb5d8ed9dcf4af82aca6626106047",
+    "rthq_native_benchmark_cpp": "98fe05c8d92ba8e90127a9198b07c73129cfa7654f72054a71a3de17db46f5f9"
+  },
+  "artifact_sha256": {
+    "fixture_manifest": "42fba97414fe040e575a4fd9c3ea7c8a20adff5c004c0fb60dad6df322819c97",
+    "orthogonal_thq4_payload": "9cef01e36ee9e40394f2e6c4a114cbaa6944b29b47c484ffc8bdc7b5a937c6f1",
+    "native_receipt": "13cdfda901cc72153c86bc8b5acd859a30d4c3d15bc307a76df93c70f88fe3cb",
+    "orientation_receipt": "209191ad1f78c07fc7d1571e7c464a2a02018028d6c706f9bec0401488b31ca8",
+    "corrected_itq_receipt": "0ddf777bf7b1a5f44e10f136d2453bb8999f6e82d9869dd949554ffdb14e0081"
+  },
+  "interpretation": "Full-dimensional raw THQ4 locality is confirmed on this fixture; arbitrary rotation is not required. Concrete partial-sphere/radius-one enumeration remains negative, while ordinal-aware top-1k--5k enumeration is an open hypothesis. No ANN index or production activation is licensed."
+}

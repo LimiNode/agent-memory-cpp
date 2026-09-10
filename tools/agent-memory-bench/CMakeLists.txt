@@ -582,6 +582,10 @@ endif()
 target_compile_definitions(agent-memory-document-codec-native-benchmark PRIVATE
     AGENT_MEMORY_DOCUMENT_CODEC_HAS_AVX2=${AGENT_MEMORY_DOCUMENT_CODEC_HAS_AVX2})
 
+add_executable(agent-memory-rthq-native-benchmark
+    rthq_native_benchmark.cpp)
+target_compile_features(agent-memory-rthq-native-benchmark PRIVATE cxx_std_17)
+
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 0)
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 0)
 add_library(agent_memory_neuroute_record_codec STATIC
