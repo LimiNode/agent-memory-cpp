@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "family": "rotated_product_locator_diagnostic_v1",
+  "purpose": "small_calibration_only_test_of_orthogonal_rotation_before_product_partitioning",
+  "faiss_version": "1.13.2",
+  "parent_product_evidence_sha256": "af8a6864f59d31fa098cad7e9ef4f1c34911232ed57c82e69085630fca3b8d03",
+  "scale": {"id": "es-1m", "documents": 1000000, "input_manifest_sha256": "697f81bc66b37feb47b413fa168f4ae5efd030b9dbbaeb8d0c67ac8d224a9ae7", "evaluation_manifest_sha256": "616e70a3d0e21a561967b382bebc463b10038280f02ca77477b0b01331c73536"},
+  "treatments": ["raw_contiguous_e5_product_control", "opq_rotated_e5_product"],
+  "implicit_cell_budgets": [16384, 65536],
+  "target_candidate_fraction": 0.05,
+  "opq": {"subquantizers": 8, "bits_per_subquantizer": 2, "iterations": 25, "seed": 20260828, "pq_clustering_seed": 20260828, "faiss_threads": 1, "training_source": "frozen_train_e5_vectors_only"},
+  "cascade": {"hamming_limit": 768, "adc_limit": 256, "exact_limit": 256, "oracle_k": 10},
+  "exploratory_gate": {"minimum_e5_oracle_survival_after_adc": 0.70, "meaning": "below_this_gate_freeze_rotated_product_branch"},
+  "confirmation": "forbidden",
+  "library_dependency": "forbidden_faiss_is_external_benchmark_only"
+}
