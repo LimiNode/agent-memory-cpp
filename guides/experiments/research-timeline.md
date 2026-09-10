@@ -5,12 +5,11 @@ stack. It is deliberately a narrative timeline, not a copy of raw benchmark
 reports. Individual experiment notes remain the source for setup and numbers;
 Evidence Releases remain the source for large reproducibility bundles.
 
-The current backlog is the open research stack `#301--#304` plus `#309`
-(inventory checked 2026-09-10); `#176--#300` are now landed on `main` or
-closed as superseded.
-The objective is to land all unique
-scientific content without erasing negative results, corrections, or the exact
-commit provenance of measured artifacts.
+The historical backlog `#176--#310` is now closed: every unique experiment is
+landed on `main`, or its PR is explicitly closed as superseded, duplicate,
+gated-off, or protocol-only.  The objective remains to preserve negative
+results, corrections, and exact commit provenance rather than silently rewrite
+earlier measurements.
 
 ## Status vocabulary
 
@@ -306,9 +305,9 @@ below (`evidence/neuroute-document-thq-wave-293-300-v1`).
 - #299 -> #345, merge `25ee8e1f6a63f608c08f9b40f6618fb8c41b81d6`;
 - #300 -> #346, merge `950330c5e5f374a1b97a9f403f7a066e10a0f582`.
 
-The original stacked PRs remain in GitHub history; #297/#298 were closed as
-superseded by their clean continuations, and #295 was closed because its
-specialized baseline was already canonical in #294.
+The original stacked PRs remain in GitHub history. #293/#294/#296/#297/#298/
+#300 were closed as superseded by their clean continuations; #295 was closed
+because its specialized baseline was already canonical in #294.
 
 Interpretation status after correction:
 
@@ -372,6 +371,14 @@ checkpoints, and generated databases are excluded.
 Source-bound and protocol-only members preserve historical measurements and
 correction lineage; none is an independent replay claim or production
 authorization.
+
+### Historical backlog closure audit (`#176--#310`)
+
+The final audit on 2026-09-10 found no open PR in this range.  Each item is
+either represented by a landed canonical commit in the wave ledger or has an
+explicit GitHub closure reason.  Correction links (#253→#312, #285/#286→#287,
+#289→#332, #290→#333, and #298→#343) remain recorded above; Evidence releases
+record their measured heads and immutable hashes separately.
 
 `#310` had the same research head as #300 and was a narrower duplicate. It is
 now closed as **SUPERSEDED** by #346 with an explicit
