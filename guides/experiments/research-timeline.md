@@ -293,6 +293,9 @@ the public release above supersedes its temporary “no public release” status
 
 The canonical clean-main landings for this wave are now:
 
+The temporary status has now been superseded by the Evidence release recorded
+below (`evidence/neuroute-document-thq-wave-293-300-v1`).
+
 - #293 -> #339, merge `64ac043ddeb40e176ad906c8bf339d5da63f6523`;
 - #294 -> #340, merge `1fc55b30d9952de599c3885a53fd8c718bfdfe51`;
 - #295 was superseded by the overlapping #294 baseline and closed without
@@ -348,6 +351,27 @@ follow-ups. Its tie-safe discrete top-k implementation, matched-byte raw
 THQ4-384 versus orthogonal control, and five-seed Gaussian RP-THQ replay are
 recorded in the landed notes. Gaussian RP-THQ remains a research locality
 hypothesis; no physical index or production activation is licensed.
+
+### Evidence archive: NeuRoute document/THQ wave #293--#300
+
+The deterministic compact archive is published in [Evidence release
+`evidence/neuroute-document-thq-wave-293-300-v1`](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/neuroute-document-thq-wave-293-300-v1).
+It contains one receipt/result record for every PR in the range, the canonical
+notes, and retained compact source-bound artifacts. Large vector stores,
+checkpoints, and generated databases are excluded.
+
+- Measured research head: `906ff7fc062e443a1c5bc6eabbaf593699af16d8`
+- Archive SHA-256: `fb8cdaa203a96d7a44d14f0cf2d280eb1fc975b8ccf655b7a8e0848266906d5e`
+- Bundle-root SHA-256: `30b8bf991a3debff9fc327838493b3503b179e59cdc9da376432dda252d2a0c5`
+- Builder produced identical bytes on two runs; the fail-closed validator
+  passed on both archives twice.
+- Statuses: #293/#294/#296/#300 `SOURCE-BOUND`; #295 `SUPERSEDED`;
+  #297 `PROTOCOL-ONLY`; #298 `CORRECTED-PROTOCOL`; #299
+  `SOURCE-BOUND-CORRECTED`.
+
+Source-bound and protocol-only members preserve historical measurements and
+correction lineage; none is an independent replay claim or production
+authorization.
 
 `#310` had the same research head as #300 and was a narrower duplicate. It is
 now closed as **SUPERSEDED** by #346 with an explicit
