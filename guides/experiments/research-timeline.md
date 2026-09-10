@@ -499,3 +499,19 @@ the release asset.
 - Interpretation statuses: #258 `CONFIRMED/NEGATIVE`; #259--#261
   `CONFIRMED`; #262 `CORRECTED/CONFIRMED`; #263 `CONDITIONAL CLOSURE`;
   #264 `DIAGNOSTIC`; #265 `PHYSICAL FOLLOW-UP`; #266 `TESTED CEILING`.
+
+### Post-backlog THQ4 flat gate (2026-09-10)
+
+The first post-backlog replay corrects the interpretation of the earlier
+orthogonal result. On the frozen DE-1M fixture, raw full-dimensional THQ4-384
+already reaches `.999342` teacher survival at top-256 and `1.0` at top-1k;
+arbitrary orthogonal/Hadamard rotation is not the causal requirement. PCA is
+materially worse (`.984868 @256`), while ITQ remains close to raw (`.996711`).
+Five orthogonal seeds remain stable (`.998421 +/- .001289 @256`, all `1.0 @1k`).
+
+This is exhaustive plain-Hamming representation locality, not LSH, MIH, an ANN
+index, or production activation. Concrete partial-sphere/radius-one
+enumeration remains negative; the open hypothesis is a coordinate-aware
+ordinal multi-index that can enumerate top-1k--5k below the optimized flat
+scan. See [the post-backlog gate note](2026-09-10-rthq-postbacklog-gate.md) and
+its compact result receipt. `production_activation: false`.

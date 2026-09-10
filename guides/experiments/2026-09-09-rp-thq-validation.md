@@ -45,15 +45,16 @@ At 64 B/doc, retaining more projected coordinates (THQ3-M256) is better than
 spending the same bits on more levels at fewer coordinates. At 96 B/doc,
 THQ4-M256 is the strongest tested reduced-dimensional profile.
 
-## Full-dimensional orientation control
+## Full-dimensional orientation control (superseded interpretation)
 
-Random orthogonal 384x384 directions followed by THQ4 (1,152 bits,
-144 B/doc) reached `.9993 @256` and `1.000 @1k/@5k/@10k`; the worst query at
-K=256 retained 9/10 teacher documents. This separates orientation from
-dimensionality reduction: the raw-coordinate THQ weakness is largely an axis
-orientation effect, while reducing to 256 coordinates is not required for
-near-exact locality. The measured Python scan mean was about 929 ms/query and
-must not be read as native performance.
+The original orthogonal replay reached `.9993 @256` and `1.000 @1k/@5k/@10k`;
+the later matched-layout control showed that this was not an orientation-only
+effect. On the same full-dimensional 384-coordinate layout, raw THQ4 is
+`.999342 @256`, random orthogonal and randomized Hadamard are `.998026`, ITQ is
+`.996711`, and PCA is `.984868`. The corrected conclusion is that full-
+dimensional raw THQ4 already preserves this fixture's E5 locality; arbitrary
+rotation is not required. These are exhaustive representation controls, not
+physical-index results.
 
 ## Decision and next gate
 
