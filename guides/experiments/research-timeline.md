@@ -371,10 +371,13 @@ now closed as **SUPERSEDED** by #346 with an explicit
   explicit Faiss seeding (fresh runs must produce identical artifact SHAs), then
   compare raw, random-orthogonal, PCA/whitened, and OPQ (`m=8`, `nbits=2/4/8`)
   routing arms. Do not interpret OPQ reconstruction error as routing evidence.
-- **#309** restores/archive historical calibrated weighted-Hamming and MIH
-  implementations. It is not a new discovery; link it to the already merged
-  MIH evidence line and land it only after conflicts with the modern evaluator
-  are resolved.
+- **#309** is closed as **SUPERSEDED / DUPLICATE** (no merge). Its three
+  commits attempted to restore the historical calibrated weighted-Hamming,
+  ADC-guided probing, and correlation-balanced-band implementations, but the
+  same research is already canonical in merged #123, #124, and #125. Those
+  later continuations contain the hardened evaluator contracts and published
+  evidence receipts; landing #309 would reintroduce an older stacked snapshot
+  and create no unique evidence.
 
 ## Active research after the backlog
 
