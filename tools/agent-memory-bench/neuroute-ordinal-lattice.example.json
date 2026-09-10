@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "family": "neuroute_learned_ordinal_lattice_router",
+  "claim_scope": "research_only_frozen_teacher_routing_ceiling",
+  "routers": [
+    {"id": "binary12", "axes": 12, "levels": 2},
+    {"id": "ordinal8x3", "axes": 8, "levels": 3},
+    {"id": "ordinal6x4", "axes": 6, "levels": 4},
+    {"id": "ordinal4x8", "axes": 4, "levels": 8},
+    {"id": "ordinal10x3", "axes": 10, "levels": 3}
+  ],
+  "training": {
+    "projection": "pca_frozen_train_vectors_v1",
+    "thresholds": "ordered_train_quantiles_v1",
+    "teacher_labels_forbidden_in_projection_fit": true,
+    "configuration_and_internal_labels_forbidden": true
+  },
+  "probing": {
+    "cell_budgets": [32, 64, 128, 256],
+    "document_budgets": [256, 512, 768, 1024, 2048],
+    "replication": [1, 2, 3, 4],
+    "distance": "ordinal_l1_with_threshold_boundary_cost"
+  },
+  "evaluation": {
+    "metrics": ["top10_overlap", "ndcg10", "p05", "worst", "raw_postings", "unique_candidates", "p95_ms", "payload_bytes", "model_bytes"],
+    "routing_ceiling_required": true,
+    "native_confirmation_forbidden": true
+  },
+  "decision": {
+    "global_scan_product_path": false,
+    "production_selection_forbidden": true,
+    "requires_binary_state_capacity_match": true
+  }
+}
