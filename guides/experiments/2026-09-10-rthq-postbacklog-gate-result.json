@@ -40,10 +40,10 @@
     "flags": "-O3 -std=c++17 -march=native",
     "query_workload": "first_152_materialized_document_codes; throughput-only",
     "repetitions": 3,
-    "scan_ms_per_query_p50": 19.9763,
-    "scan_ms_per_query_p95": 20.724,
-    "scan_plus_top256_ms_per_query_p50": 31.9954,
-    "scan_plus_histogram_top256_ms_per_query_p50": 20.9943,
+    "scan_throughput_ms_per_query_p50": 19.9763,
+    "scan_throughput_ms_per_query_p95": 20.724,
+    "scan_plus_top256_throughput_ms_per_query_p50": 31.9954,
+    "scan_plus_histogram_top256_throughput_ms_per_query_p50": 20.9943,
     "production_activation": false
   },
   "absolute_geometry": {
@@ -58,7 +58,7 @@
   },
   "source_sha256": {
     "evaluate_landmark_affinity_thq_py": "6a7e8d83c3067956ce145e8feec4af5861ddb5d8ed9dcf4af82aca6626106047",
-    "rthq_native_benchmark_cpp": "9793d9c0810755eb4798e1cffba2e598791a4107b7298ce6a9e4bac1d4abadc7",
+    "rthq_native_benchmark_cpp": "11795e21ceb59340ea33d62ca817af46f9ef2e8f8a79993b7db9a0b2a266d480",
     "analyze_thq_absolute_geometry_py": "6ec15f1d6acd99519cbc7eba5ee5f34c924288ef713010bde5fa9a18691268d6"
   },
   "artifact_sha256": {

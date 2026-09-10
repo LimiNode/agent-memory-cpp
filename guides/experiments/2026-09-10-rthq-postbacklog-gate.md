@@ -66,16 +66,18 @@ The contiguous 144-byte payload was scanned with a GCC `-O3 -std=c++17
 throughput queries were the first 152 materialized rows (a kernel workload, not
 semantic query codes), so the timing is a ceiling rather than a quality replay.
 
-| scope | p50 | p95 |
+| scope | throughput-derived p50 | throughput-derived p95 |
 |---|---:|---:|
 | distance scan, per query | 19.976 ms | 20.724 ms |
 | scan + deterministic top-256, per query | 31.995 ms | not collected |
 
 The selector accounts for roughly 12 ms/query in this implementation. A fused
 integer-distance histogram and one pass over the saved `uint16` distances was
-then measured at `20.994 ms/query` p50 (versus `32.295 ms/query` for the
-`nth_element` selector), essentially removing the selector overhead. This
-optimized flat reference is the baseline for any index claim.
+then measured at `20.994 ms/query` throughput-derived p50 (versus `32.295
+ms/query` for the `nth_element` selector), essentially removing the selector
+overhead. These values divide a batch total by the number of queries; they are
+not independent semantic-query latency percentiles. The optimized flat
+reference is the baseline for any index claim.
 
 ## Interpretation and next gate
 

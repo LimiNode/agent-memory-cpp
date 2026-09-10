@@ -16,10 +16,17 @@ def stable_top(dist: np.ndarray, ids: np.ndarray, k: int) -> np.ndarray:
     k = min(k, len(ids))
     if k == 0:
         return ids[:0]
-    if len(ids) > k:
-        chosen = np.argpartition(dist, k - 1)[:k]
-        dist, ids = dist[chosen], ids[chosen]
-    return ids[np.lexsort((ids, dist))[:k]]
+    if len(ids) <= k:
+        return ids[np.lexsort((ids, dist))]
+    cutoff = np.partition(dist, k - 1)[k - 1]
+    lower = dist < cutoff
+    lower_ids = ids[lower]
+    tie_ids = np.sort(ids[dist == cutoff])
+    selected_ties = tie_ids[: max(0, k - len(lower_ids))]
+    selected = np.concatenate((lower_ids, selected_ties))
+    selected_dist = np.concatenate((dist[lower],
+                                    np.full(len(selected_ties), cutoff, dtype=dist.dtype)))
+    return selected[np.lexsort((selected, selected_dist))]
 
 
 def summary(rows: list[dict], key: str) -> dict[str, float]:
@@ -36,7 +43,7 @@ def main() -> int:
     p.add_argument("--query-limit", type=int, default=152)
     # Short bands are required for a meaningful MIH control at 1152 bits.
     # Long 72--144-bit bands have effectively no collisions on 1M records.
-    p.add_argument("--band-counts", default="48,72,96,144")
+    p.add_argument("--band-counts", default="48,72,144")
     p.add_argument("--radii", default="0,1")
     p.add_argument("--budgets", default="256,512,1000,2000,5000,10000,20000,50000")
     p.add_argument("--chunk", type=int, default=20000)

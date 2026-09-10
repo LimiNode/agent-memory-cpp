@@ -8,7 +8,7 @@ each band (`r=1`), deduplicates IDs, and ranks the union by the same Hamming
 distance and document-ID tie policy. It is an in-memory algorithmic oracle,
 not a persistent or production index.
 
-## Full result
+## Corrected full result
 
 | bands × bits | radius | unique candidates | postings touched | @256 survival (mean / worst) |
 |---|---:|---:|---:|---:|
@@ -19,8 +19,8 @@ not a persistent or production index.
 | 144 × 8 | 0 | 965,314 | 3,414,276 | .998684 / .9 |
 | 144 × 8 | 1 | 1,000,000 | 17,159,173 | .999342 / .9 |
 
-The complete per-query JSON is retained outside git as
-`postbacklog-bit-mih-full.json`; its SHA-256 is recorded in the compact
+The complete corrected per-query JSON is retained outside git as
+`postbacklog-bit-mih-corrected.json`; its SHA-256 is recorded in the compact
 receipt. Python posting-lookup timings are diagnostic only. The locked native
 flat THQ reference remains 20.994 ms/query p50 from the preceding gate.
 
