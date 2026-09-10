@@ -22,12 +22,22 @@ def parent(path:Path,expected:str)->None:
     require(path.is_file() and sha256(path)==expected,"rotated product parent evidence differs")
     with zipfile.ZipFile(path) as z:m=json.loads(z.read("bundle/evidence-manifest.json"))
     require(m.get("family")=="data_dependent_product_locator_evidence_v1" and m.get("row_count")==54,"rotated product parent evidence identity differs")
+def configured_opq(contract:dict[str,Any])->Any:
+    """Build OPQ with explicit Faiss clustering and thread determinism."""
+    settings=contract["opq"]
+    faiss.omp_set_num_threads(int(settings["faiss_threads"]))
+    opq=faiss.OPQMatrix(384,settings["subquantizers"])
+    opq.pq=faiss.ProductQuantizer(384,settings["subquantizers"],settings["bits_per_subquantizer"])
+    opq.pq.cp.seed=int(settings["pq_clustering_seed"])
+    opq.niter=settings["iterations"]
+    opq.verbose=False
+    return opq
 def opq_artifact(train:numpy.ndarray,contract:dict[str,Any],path:Path)->tuple[numpy.ndarray,numpy.ndarray]:
     meta={"opq":contract["opq"],"train_sha256":hashlib.sha256(numpy.asarray(train,dtype="<f4").tobytes()).hexdigest()}
     if path.is_file():
         with numpy.load(path,allow_pickle=False) as a:
             require(json.loads(str(a["metadata_json"].item()))==meta,"OPQ serialized metadata differs");return a["matrix"].copy(),a["bias"].copy()
-    opq=faiss.OPQMatrix(384,contract["opq"]["subquantizers"]);opq.pq=faiss.ProductQuantizer(384,contract["opq"]["subquantizers"],contract["opq"]["bits_per_subquantizer"]);opq.niter=contract["opq"]["iterations"];opq.verbose=False;numpy.random.seed(contract["opq"]["seed"]);opq.train(train)
+    opq=configured_opq(contract);opq.train(train)
     matrix=faiss.vector_to_array(opq.A).reshape(384,384).astype(numpy.float32);raw_bias=faiss.vector_to_array(opq.b).astype(numpy.float32);bias=raw_bias if raw_bias.size else numpy.zeros(384,dtype=numpy.float32)
     require(numpy.allclose(opq.apply_py(train[:16]),train[:16]@matrix.T+bias,atol=1e-5),"OPQ transform extraction differs")
     path.parent.mkdir(parents=True,exist_ok=True);numpy.savez_compressed(path,metadata_json=numpy.asarray(json.dumps(meta,sort_keys=True,separators=(",",":"))),matrix=matrix,bias=bias)
@@ -54,7 +64,13 @@ def run(a:argparse.Namespace)->None:
           local=base.local_float_costs(transformed_queries[i],pos,books);cand,visited,pcount,_,elapsed=base.route(local,index,target);ham=base.hamming_positions(codes,qcodes[i],cand);adcv=base.adc_positions(bits,proj[i],adc,ham);srows.append({"query_position":i,"selected_cell_keys":visited,"hamming_shortlist_positions":ham.tolist(),"binary_adc_positions":adcv.tolist()});arows.append({"query_position":i,"candidate_count":int(cand.size),"cell_probes":pcount,"selected_cell_keys":visited});counts.append(float(cand.size));times.append(elapsed);probes.append(float(pcount))
         short.write_bytes(canonical({"schema_version":1,"family":"native_ann_hamming_shortlist_export_v1","backend":"rotated_product_locator","input_manifest_sha256":sha256(inp),"hamming_limit":768,"config_sha256":sha256(out/"config.json"),"rows":srows}));audit.write_bytes(canonical({"schema_version":1,"family":c["family"],"config_sha256":sha256(out/"config.json"),"rows":arows}));measured=base.write_quality(data,short,contrib,quality,out/"oracle.npz");rows.append({"id":out.name,"treatment":treatment,"implicit_cell_budget":budget,"actual_candidate_fraction":float(numpy.mean(counts))/1000000,"candidate_count_p95":percentile(counts,.95),"cell_probes_p50":percentile(probes,.5),"routing_p50_ms_per_query":percentile(times,.5),"routing_p95_ms_per_query":percentile(times,.95),"artifact_sha256":sha256(artifact),"shortlist_sha256":sha256(short),"quality_sha256":sha256(quality),"contribution_sha256":sha256(contrib),"routing_audit_sha256":sha256(audit),"e5_oracle_survival_after_adc":measured["e5_oracle_survival_after_adc"],"reranked_ndcg_at_10":measured["reranked_ndcg_at_10"]})
     a.output_root.joinpath("summary.json").write_bytes(canonical({"schema_version":1,"family":c["family"],"contract_sha256":sha256(a.contract),"rows":rows}))
-def self_test()->None: require(base.blocks(384,8)[0].size==48,"rotated product blocks differ");print("rotated product diagnostic runner self-test passed")
+def self_test()->None:
+    require(base.blocks(384,8)[0].size==48,"rotated product blocks differ")
+    contract=planner.load_contract(THIS/"rotated-product-diagnostic.example.json")
+    opq=configured_opq(contract)
+    require(int(opq.pq.cp.seed)==contract["opq"]["pq_clustering_seed"],
+            "rotated product Faiss clustering seed differs")
+    print("rotated product diagnostic runner self-test passed")
 def main()->int:
  p=argparse.ArgumentParser();p.add_argument("--contract",type=Path,default=THIS/"rotated-product-diagnostic.example.json");p.add_argument("--parent-product-evidence",type=Path);p.add_argument("--scale-root",type=Path);p.add_argument("--output-root",type=Path);p.add_argument("--self-test",action="store_true");a=p.parse_args()
  try:
