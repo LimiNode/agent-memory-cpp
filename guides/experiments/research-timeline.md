@@ -634,3 +634,13 @@ exact at 96 B/document. No ANN/MDBX route or
 production activation is licensed. External raw reports are not committed;
 their hashes and the raw-artifact policy are recorded in the receipts. See the
 current-baseline note and audit receipt.
+
+### Native packed THQ-ADC gate (2026-09-11)
+
+The native C++ packed THQ-ADC harness is now wired as
+`agent-memory-native-packed-thq-adc-benchmark`.  It compares the 144 B
+thermometer scan with a derived 96 B packed ordinal scan and interval ADC,
+reporting separate p50/p95 scan timings and teacher survival.  This is a
+measurement gate only: the frozen DE-1M payload is external and the native run
+is pending artifact availability.  Existing Python locality results are not
+reinterpreted as native throughput.  `production_activation: false`.
