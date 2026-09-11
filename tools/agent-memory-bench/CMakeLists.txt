@@ -586,6 +586,16 @@ add_executable(agent-memory-rthq-native-benchmark
     rthq_native_benchmark.cpp)
 target_compile_features(agent-memory-rthq-native-benchmark PRIVATE cxx_std_17)
 
+# Native packed ordinal THQ/ADC gate.  This benchmark is an exhaustive
+# validation harness: it compares the 144-byte thermometer representation with
+# a derived 96-byte ordinal payload and query-conditioned interval ADC.  It
+# does not activate or license a production index.
+add_executable(agent-memory-native-packed-thq-adc-benchmark
+    native_packed_thq_adc_benchmark.cpp)
+target_compile_features(agent-memory-native-packed-thq-adc-benchmark PRIVATE cxx_std_17)
+target_link_libraries(agent-memory-native-packed-thq-adc-benchmark PRIVATE
+    agent_memory::json)
+
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 0)
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 0)
 add_library(agent_memory_neuroute_record_codec STATIC

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "family": "native_packed_thq_adc_benchmark_gate_v1",
+  "documents": 1000000,
+  "queries": 152,
+  "thermometer_bytes_per_document": 144,
+  "packed_ordinal_bytes_per_document": 96,
+  "metrics": ["thermometer_hamming", "packed_ordinal_l1", "packed_interval_squared_adc"],
+  "execution_status": "HARNESS_COMPILED_EXTERNAL_DE1M_RUN_PENDING",
+  "local_build_limitation": "Windows FetchContent nlohmann_json stale-directory cleanup failure",
+  "production_activation": false
+}
