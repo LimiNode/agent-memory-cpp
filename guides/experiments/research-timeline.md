@@ -579,6 +579,17 @@ the tested exact/radius-one packed schedules, not richer ordinal multiprobe or
 cosine-LSH. See the packed multi-sequence note and compact receipt.
 `production_activation: false`.
 
+### #365 post-backlog current baseline and receipt audit (2026-09-11)
+
+The post-backlog batch is complete through #364.  Six compact receipts cover
+#359--#364; the fail-closed audit requires schema/family fields and an explicit
+`production_activation: false` in each.  Current status: interval-distance
+ranking is a positive flat control; packed ordinal schedules, simple weighted
+voting, progressive pruning, and exact-bucket cosine-LSH are negative at low
+work; packed two-bit THQ is exact at 96 B/document.  No ANN/MDBX route or
+production activation is licensed.  See the current-baseline note and audit
+receipt.
+
 ### #364 independent cosine-LSH baseline (2026-09-11)
 
 The first concrete cosine-LSH retrieval oracle used four independent Gaussian
