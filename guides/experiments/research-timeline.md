@@ -578,3 +578,12 @@ nearly collision-free and recovered essentially no teachers. This closes only
 the tested exact/radius-one packed schedules, not richer ordinal multiprobe or
 cosine-LSH. See the packed multi-sequence note and compact receipt.
 `production_activation: false`.
+
+### #361 weighted collision voting (2026-09-11)
+
+With the packed width-8/radius-one union held at 9,885 mean candidates,
+collision-count, inverse-frequency, and rank-decay voting all reduced
+top-256 teacher survival relative to exact ordinal rerank (`.0697`, `.0368`,
+`.0388` versus `.2717`; worst `.0`).  The tested weighting controls are
+negative and do not license an index.  Richer learned/calibrated voting remains
+open; `production_activation: false`.

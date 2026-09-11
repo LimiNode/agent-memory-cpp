@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "family": "weighted_collision_voting_oracle_v1",
+  "source": "postbacklog-weighted-collision-voting.json",
+  "fixture": {"documents": 1000000, "queries": 152, "dimension": 384},
+  "probe_policy": "packed width 8, radius 1",
+  "production_activation": false,
+  "summary": {
+    "union_exact": {"mean_candidates": 9885.046053, "survival_256": [0.271711, 0.0]},
+    "collision_count": {"mean_candidates": 9885.046053, "survival_256": [0.069737, 0.0]},
+    "inverse_frequency": {"mean_candidates": 9885.046053, "survival_256": [0.036842, 0.0]},
+    "rank_decay": {"mean_candidates": 9885.046053, "survival_256": [0.038816, 0.0]}
+  }
+}
