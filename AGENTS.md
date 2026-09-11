@@ -31,6 +31,8 @@ agent framework.
   CI expectations.
 - [Experiment notes](guides/experiments/README.md) - how to record hypothesis
   checks, benchmark evidence, and exploratory results.
+- [Temporary workspaces](guides/temporary-workspaces.md) - where cloned
+  repositories and large external research payloads belong.
 - [Dependencies](guides/dependencies.md) - flat `external/` submodules and
   optional dependency wiring.
 - [Embeddings](guides/embedding.md) - embedding contracts and backend adapter
