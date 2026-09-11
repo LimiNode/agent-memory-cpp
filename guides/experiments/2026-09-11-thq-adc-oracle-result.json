@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "family": "thq_adc_oracle_v1",
+  "source": "postbacklog-thq-adc-oracle.json",
+  "source_sha256": "439acba58397d76f88dc2d2b4e6d74a987269e1ba8fe72aac5e069617f3acb1",
+  "script_sha256": "636944c834ca016fb9db962f4436a6b0b32640013d14ffbca28ade66e6c339a9",
+  "fixture": {"documents": 1000000, "queries": 152, "dimension": 384, "train_documents": 100000},
+  "representation": {"name": "THQ4-384", "levels": 4, "bits": 1152, "bytes_per_document": 144},
+  "tie_policy": "score_ascending_then_document_id_ascending",
+  "production_activation": false,
+  "summary": {
+    "plain_hamming": {"survival_64": [0.989474, 0.8], "survival_128": [0.995395, 0.9], "survival_256": [0.999342, 0.9], "survival_1000": [1.0, 1.0], "teacher_rank_p50_mean": 6.720395, "teacher_rank_p95_mean": 26.988158},
+    "interval_l1": {"survival_64": [0.996711, 0.9], "survival_128": [1.0, 1.0], "survival_256": [1.0, 1.0], "survival_1000": [1.0, 1.0], "teacher_rank_p50_mean": 6.092105, "teacher_rank_p95_mean": 17.430592},
+    "interval_squared": {"survival_64": [0.997368, 0.8], "survival_128": [1.0, 1.0], "survival_256": [1.0, 1.0], "survival_1000": [1.0, 1.0], "teacher_rank_p50_mean": 6.009868, "teacher_rank_p95_mean": 16.596711},
+    "interval_iqr_normalized": {"survival_64": [0.996711, 0.9], "survival_128": [1.0, 1.0], "survival_256": [1.0, 1.0], "survival_1000": [1.0, 1.0], "teacher_rank_p50_mean": 6.141447, "teacher_rank_p95_mean": 17.535855}
+  }
+}
