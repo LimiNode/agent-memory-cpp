@@ -587,3 +587,11 @@ top-256 teacher survival relative to exact ordinal rerank (`.0697`, `.0368`,
 `.0388` versus `.2717`; worst `.0`).  The tested weighting controls are
 negative and do not license an index.  Richer learned/calibrated voting remains
 open; `production_activation: false`.
+
+### #362 packed two-bit THQ flat benchmark (2026-09-11)
+
+Packed ordinal storage reduces THQ4 from 144 B to 96 B/document while
+preserving exact ordinal-L1 results (`1.0 @256` on eight semantic queries;
+exact equality checked on the first two). Python lookup-table decode timing
+is diagnostic only (p50 3.10 s/query); native SIMD/tiled throughput remains an
+open implementation gate. No production codec replacement is licensed.

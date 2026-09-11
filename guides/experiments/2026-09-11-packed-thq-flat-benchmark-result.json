@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "family": "packed_thq_flat_benchmark_v1",
+  "source": "postbacklog-packed-thq-flat.json",
+  "fixture": {"documents": 1000000, "queries": 8, "dimension": 384},
+  "thermometer_bytes_per_document": 144,
+  "packed_ordinal_bytes_per_document": 96,
+  "packed_exact_equality_first_two_queries": true,
+  "scan_ms_p50": 3096.819,
+  "scan_ms_p95": 3208.754,
+  "survival_256_mean": 1.0,
+  "production_activation": false
+}
