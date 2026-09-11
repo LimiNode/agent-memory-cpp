@@ -1,0 +1,14 @@
+{
+  "schema_version": 1,
+  "family": "cosine_lsh_baseline_v1",
+  "source": "postbacklog-cosine-lsh.json",
+  "fixture": {"documents": 1000000, "queries": 8, "dimension": 384},
+  "hash_family": "independent_gaussian_random_hyperplanes",
+  "tables": 4,
+  "bits_per_table": 16,
+  "probe_policy": "exact bucket union only",
+  "mean_candidates": 41553.25,
+  "survival_256_mean": 0.05,
+  "survival_256_worst": 0.0,
+  "production_activation": false
+}

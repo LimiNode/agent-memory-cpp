@@ -579,6 +579,14 @@ the tested exact/radius-one packed schedules, not richer ordinal multiprobe or
 cosine-LSH. See the packed multi-sequence note and compact receipt.
 `production_activation: false`.
 
+### #364 independent cosine-LSH baseline (2026-09-11)
+
+The first concrete cosine-LSH retrieval oracle used four independent Gaussian
+16-bit tables and exact bucket unions.  On eight semantic queries it averaged
+41,553 candidates but only `.05 @256` teacher survival (worst `.0`).  This
+closes only this exact-bucket schedule; margin-guided multiprobe and
+cross-polytope variants remain open. `production_activation: false`.
+
 ### #363 progressive/VA-style THQ scan oracle (2026-09-11)
 
 Safe partial-distance pruning was tested with fixed, variance, and
