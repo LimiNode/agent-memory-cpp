@@ -1,9 +1,9 @@
-{
+﻿{
   "schema_version": 1,
   "family": "progressive_thq_aosoa_physical_scan_v2",
   "execution_status": "PENDING",
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
-  "runner_sha256": "0d80422ef928b747e004f7274259bbfeb592a6ac4ac1662f32723b0b093ad2a7",
+  "runner_sha256": "9abd3c11bf1c9e3a14d14f92c871346efd347861f97fe69c38246ed73531ef27",
   "query_count": 152,
   "runner": "tools/agent-memory-bench/run-progressive-thq-aosoa.py",
   "materializer": "tools/agent-memory-bench/materialize-progressive-thq-aosoa.py",
@@ -20,3 +20,4 @@
   },
   "production_activation": false
 }
+

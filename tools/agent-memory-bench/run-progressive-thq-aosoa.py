@@ -104,7 +104,8 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
             levels = unpack_block(raw, tile_docs, width)
             lo = block * width
             if active.any():
-                contribution = np.sum(lut[lo:lo + width][np.arange(width), levels.T].T, axis=1)
+                lut_block = lut[lo:lo + width]
+                contribution = lut_block[np.arange(width)[:, None], levels.T].sum(axis=0)
                 partial[active] += contribution[active]
                 coordinate_evaluations += int(active.sum()) * width
                 doc_block_evaluations += int(active.sum())
