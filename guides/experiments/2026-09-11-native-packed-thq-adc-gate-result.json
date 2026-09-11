@@ -6,6 +6,9 @@
   "thermometer_bytes_per_document": 144,
   "packed_ordinal_bytes_per_document": 96,
   "metrics": ["thermometer_hamming", "packed_ordinal_l1", "packed_interval_squared_adc"],
+  "all_query_parity_assertion": true,
+  "adc_lut": "per_query_coordinate_level_lut",
+  "hamming_kernel": "64_bit_popcount",
   "execution_status": "HARNESS_COMPILED_EXTERNAL_DE1M_RUN_PENDING",
   "local_build_limitation": "Windows FetchContent nlohmann_json stale-directory cleanup failure",
   "production_activation": false

@@ -654,6 +654,11 @@ complete state tuple and reports candidate work and teacher survival under a
 bounded state budget. This remains an in-memory oracle; DE-1M execution,
 physical bytes/pages, and production activation are still gated.
 
+Its corrective revision also evaluates interval-squared ADC costs, uses sorted
+posting ranges, and records empty-tuple/intersection work. The LSH margin
+oracle was likewise corrected to normalize planes and enumerate cumulative
+single/two-bit perturbations. Neither has a frozen DE-1M result yet.
+
 ### Cosine-LSH margin multiprobe oracle (2026-09-11)
 
 The margin follow-up keeps independent Gaussian tables fixed and orders

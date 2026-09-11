@@ -1,5 +1,9 @@
 # Ordinal PQTable-style best-first oracle (2026-09-11)
 
+The corrective revision now compares both ordinal-L1 and interval-squared ADC
+state costs. Posting lists are built from sorted inverse ranges, and every run
+records empty Cartesian tuples and intersection operations.
+
 The earlier packed ordinal experiment enumerated only exact and radius-one
 subvector states. This follow-up adds a genuine additive-distance oracle:
 occupied states in each block are sorted by query-conditioned ordinal L1 cost,

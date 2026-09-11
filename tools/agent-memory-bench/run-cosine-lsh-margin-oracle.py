@@ -11,7 +11,7 @@ def main():
     docs = np.asarray(np.memmap(refs["document_vectors"]["path"], mode="r", dtype="<f4", shape=(n, d))); queries = np.asarray(np.memmap(refs["queries"]["path"], mode="r", dtype="<f4", shape=(q, d))); teachers = np.asarray(np.memmap(refs["teacher_ids"]["path"], mode="r", dtype="<i8", shape=(q, 10)))
     probe_counts = [int(v) for v in args.probes.split(",")]; rows = []
     for seed in (int(v) for v in args.seeds.split(",")):
-        rng = np.random.default_rng(seed); planes = rng.normal(size=(args.tables, args.bits, d)).astype(np.float32); tables = []
+        rng = np.random.default_rng(seed); planes = rng.normal(size=(args.tables, args.bits, d)).astype(np.float32); planes /= np.linalg.norm(planes, axis=2, keepdims=True); tables = []
         for table in range(args.tables):
             keys = np.packbits((docs @ planes[table].T) >= 0, axis=1, bitorder="little")[:, :2]; packed = keys[:, 0].astype(np.uint16) | (keys[:, 1].astype(np.uint16) << 8); order = np.argsort(packed, kind="stable"); tables.append((packed[order], order))
         for qi in range(q):
@@ -21,9 +21,17 @@ def main():
                 pieces = []
                 for table in range(args.tables):
                     keys, order = tables[table]; base = int(query_keys[table]); bucket_keys = [base]
-                    bit_order = np.argsort(np.abs(margins[table]), kind="stable")[: max(0, min(args.bits, probe_count - 1))]
-                    bucket_keys.extend(base ^ (1 << int(bit)) for bit in bit_order)
-                    for key in bucket_keys[:probe_count]:
+                    # Enumerate perturbation subsets by cumulative normalized
+                    # margin cost, not just the first-order single flips.
+                    perturbations = [(0.0, 0)]
+                    for bit in range(args.bits):
+                        perturbations.append((float(abs(margins[table, bit])), 1 << bit))
+                    for left in range(args.bits):
+                        for right in range(left + 1, args.bits):
+                            perturbations.append((float(abs(margins[table, left]) + abs(margins[table, right])), (1 << left) ^ (1 << right)))
+                    perturbations.sort(key=lambda item: (item[0], item[1]))
+                    for _, mask in perturbations[:probe_count]:
+                        key = base ^ mask
                         left, right = np.searchsorted(keys, key, side="left"), np.searchsorted(keys, key, side="right");
                         if right > left: pieces.append(order[left:right])
                 candidates = np.unique(np.concatenate(pieces)) if pieces else np.empty(0, dtype=np.int64); candidates_by_probe.append({"probe_count": probe_count, "candidate_count": int(len(candidates)), "teacher_recall": float(np.isin(teachers[qi], candidates).sum()) / 10.0})

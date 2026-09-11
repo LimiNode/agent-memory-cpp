@@ -1,9 +1,11 @@
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <fstream>
 #include <numeric>
 #include <stdexcept>
@@ -33,20 +35,22 @@ std::vector<T> read_file(const std::string& path) {
 
 std::string path_from(const json& row) { return row.at("path").get<std::string>(); }
 
-unsigned pop8(std::uint8_t value) {
-  unsigned result = 0;
-  while (value != 0) {
-    value = static_cast<std::uint8_t>(value & (value - 1));
-    ++result;
-  }
-  return result;
+std::uint32_t popcount64(std::uint64_t value) {
+#if defined(_MSC_VER)
+  return static_cast<std::uint32_t>(__popcnt64(value));
+#else
+  return static_cast<std::uint32_t>(__builtin_popcountll(value));
+#endif
 }
 
 std::uint16_t thermometer_hamming(const std::uint8_t* lhs,
                                   const std::uint8_t* rhs) {
   std::uint16_t result = 0;
-  for (std::size_t i = 0; i < kThermometerBytes; ++i)
-    result = static_cast<std::uint16_t>(result + pop8(lhs[i] ^ rhs[i]));
+  for (std::size_t i = 0; i < kThermometerBytes; i += 8) {
+    std::uint64_t left = 0, right = 0;
+    std::memcpy(&left, lhs + i, 8); std::memcpy(&right, rhs + i, 8);
+    result = static_cast<std::uint16_t>(result + popcount64(left ^ right));
+  }
   return result;
 }
 
@@ -111,6 +115,8 @@ Input load(const std::string& manifest_path, std::size_t query_limit) {
   for (std::size_t id = 0; id < n; ++id)
     pack_ordinal(result.thermometer.data() + id * kThermometerBytes,
                  result.packed.data() + id * kOrdinalBytes);
+  if (result.query_codes.size() < q * kThermometerBytes)
+    throw std::runtime_error("query code payload is truncated");
   return result;
 }
 
@@ -157,9 +163,22 @@ int main(int argc, char** argv) {
     std::vector<std::uint16_t> hamming_scores(input.documents);
     std::vector<std::uint16_t> ordinal_scores(input.documents);
     std::vector<float> adc_scores(input.documents);
+    std::vector<std::uint8_t> query_levels(input.queries * kDimension);
+    for (std::size_t query = 0; query < input.queries; ++query)
+      for (std::size_t coordinate = 0; coordinate < kDimension; ++coordinate)
+        query_levels[query * kDimension + coordinate] = ordinal_level(input.query_codes.data() + query * kThermometerBytes, coordinate);
     for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
       for (std::size_t query = 0; query < input.queries; ++query) {
         const auto* query_code = input.query_codes.data() + query * kThermometerBytes;
+        std::array<std::array<float, 4>, kDimension> adc_lut{};
+        for (std::size_t coordinate = 0; coordinate < kDimension; ++coordinate) {
+          const auto* thresholds = input.thresholds.data() + coordinate * 3;
+          const auto query_value = input.queries_f32[query * kDimension + coordinate];
+          adc_lut[coordinate][0] = std::max(query_value - thresholds[0], 0.0F);
+          adc_lut[coordinate][1] = query_value < thresholds[0] ? thresholds[0] - query_value : (query_value >= thresholds[1] ? query_value - thresholds[1] : 0.0F);
+          adc_lut[coordinate][2] = query_value < thresholds[1] ? thresholds[1] - query_value : (query_value >= thresholds[2] ? query_value - thresholds[2] : 0.0F);
+          adc_lut[coordinate][3] = std::max(thresholds[2] - query_value, 0.0F);
+        }
         auto started = Clock::now();
         for (std::size_t id = 0; id < input.documents; ++id)
           hamming_scores[id] = thermometer_hamming(input.thermometer.data() + id * kThermometerBytes, query_code);
@@ -171,7 +190,7 @@ int main(int argc, char** argv) {
           std::uint16_t score = 0;
           for (std::size_t coordinate = 0; coordinate < kDimension; ++coordinate) {
             const auto doc_level = packed_level(input.packed.data() + id * kOrdinalBytes, coordinate);
-            const auto query_level = ordinal_level(query_code, coordinate);
+            const auto query_level = query_levels[query * kDimension + coordinate];
             score = static_cast<std::uint16_t>(score + (doc_level > query_level ? doc_level - query_level : query_level - doc_level));
           }
           ordinal_scores[id] = score;
@@ -179,19 +198,17 @@ int main(int argc, char** argv) {
         ordinal_ms.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
         ordinal_survival += survival(topk(ordinal_scores, 256), input.teachers, query);
 
+        for (std::size_t id = 0; id < input.documents; ++id)
+          if (hamming_scores[id] != ordinal_scores[id])
+            throw std::runtime_error("thermometer/packed ordinal parity failure");
+
         started = Clock::now();
         for (std::size_t id = 0; id < input.documents; ++id) {
           float score = 0.0F;
           const auto* code = input.packed.data() + id * kOrdinalBytes;
           for (std::size_t coordinate = 0; coordinate < kDimension; ++coordinate) {
-            const auto query_value = input.queries_f32[query * kDimension + coordinate];
-            const auto* thresholds = input.thresholds.data() + coordinate * 3;
             const auto level = packed_level(code, coordinate);
-            float distance = 0.0F;
-            if (level == 0) distance = std::max(query_value - thresholds[0], 0.0F);
-            else if (level == 1) distance = query_value < thresholds[0] ? thresholds[0] - query_value : (query_value >= thresholds[1] ? query_value - thresholds[1] : 0.0F);
-            else if (level == 2) distance = query_value < thresholds[1] ? thresholds[1] - query_value : (query_value >= thresholds[2] ? query_value - thresholds[2] : 0.0F);
-            else distance = std::max(thresholds[2] - query_value, 0.0F);
+            const auto distance = adc_lut[coordinate][level];
             score += distance * distance;
           }
           adc_scores[id] = score;

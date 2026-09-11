@@ -1,5 +1,9 @@
 # Cosine-LSH margin multiprobe oracle (2026-09-11)
 
+The corrective revision normalizes every Gaussian hyperplane and enumerates
+single- and two-bit perturbations by cumulative margin cost. This is a bounded
+multi-probe oracle, not merely a sequence of independent single-bit flips.
+
 The corrected exact-bucket LSH replay left margin-guided multiprobe open. This
 oracle keeps the independent Gaussian tables fixed, then orders one-bit bucket
 flips by the query hyperplane margins `|r_i · q|`. It reports candidate mass and
