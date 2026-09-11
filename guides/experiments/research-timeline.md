@@ -622,12 +622,15 @@ false`.
 
 ### #365 post-backlog current baseline and receipt audit (2026-09-11)
 
-The post-backlog batch is complete through #364. Six compact receipts cover
-#359--#364; the fail-closed audit requires schema/family fields and an explicit
-`production_activation: false` in each. Current status: interval-distance
+The post-backlog batch is complete through #364. Eight compact receipts cover
+#359--#364, including corrected v2 and retained historical receipts; the
+fail-closed audit requires schema/family fields, frozen-fixture/runner/raw
+hashes, query count, protocol, and an explicit `production_activation: false`.
+Current status: interval-distance
 ranking is a positive flat control; packed ordinal schedules and simple weighted
 voting are negative at low work; the original Gaussian-LSH evaluation is
 superseded by its separated generator/rerank replay; packed two-bit THQ is
 exact at 96 B/document. No ANN/MDBX route or
-production activation is licensed. See the current-baseline note and audit
-receipt.
+production activation is licensed. External raw reports are not committed;
+their hashes and the raw-artifact policy are recorded in the receipts. See the
+current-baseline note and audit receipt.

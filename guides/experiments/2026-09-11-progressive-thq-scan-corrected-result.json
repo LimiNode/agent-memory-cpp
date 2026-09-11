@@ -1,6 +1,7 @@
 {
   "schema_version": 2,
   "family": "progressive_thq_scan_oracle_corrected_v2",
+  "source": "postbacklog-progressive-thq-corrected.json",
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "runner_sha256": "454452e3278a21d2e7976a3584562e84b7d69e6d9d52dbfe952790fb85ea28e6",
   "raw_result_sha256": "18d100b4f7c6d5e91f038d4440bc89a48bddca77055fc511e51920c1bd17af9e",
