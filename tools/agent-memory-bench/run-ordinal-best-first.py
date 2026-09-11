@@ -70,6 +70,7 @@ def enumerate_candidates(
     nonempty = 0
     intersections = 0
     snapshots: dict[int, dict] = {}
+    started = time.perf_counter()
 
     while heap and visited < requested[-1]:
         score, state = heapq.heappop(heap)
@@ -111,6 +112,7 @@ def enumerate_candidates(
                     "non_empty_tuples": nonempty,
                     "intersection_operations": intersections,
                     "heap_exhausted": not heap,
+                    "generation_ms": (time.perf_counter() - started) * 1000.0,
                 }
 
     if snapshots and len(snapshots) < len(requested):
@@ -124,6 +126,7 @@ def enumerate_candidates(
                     "non_empty_tuples": nonempty,
                     "intersection_operations": intersections,
                     "heap_exhausted": True,
+                    "generation_ms": (time.perf_counter() - started) * 1000.0,
                 },
             )
     return snapshots
@@ -210,7 +213,6 @@ def main() -> None:
             index.append((postings, states))
 
         for qi in range(q):
-            started = time.perf_counter()
             lut = interval_lut(np.asarray(queries[qi]), np.asarray(thresholds))
             for metric in ("ordinal_l1", "interval_squared_adc"):
                 blocks = _make_blocks(index, lut, qlevels[qi], width, metric)
@@ -246,7 +248,7 @@ def main() -> None:
                         ),
                         "intersection_operations": snapshot["intersection_operations"],
                         "candidate_count": int(len(candidates)),
-                        "generation_ms": (time.perf_counter() - started) * 1000.0,
+                        "generation_ms": float(snapshot["generation_ms"]),
                         "survival_256": float(np.isin(teachers[qi], selected).sum()) / 10.0,
                         "rerank_metric": metric,
                     })

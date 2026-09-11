@@ -58,7 +58,14 @@ PENDING = {
     "2026-09-11-cosine-lsh-margin-oracle-result.json":
         ("cosine_lsh_margin_multiprobe_oracle_v2", 152),
     "2026-09-11-progressive-thq-aosoa-result.json":
-        ("progressive_thq_aosoa_physical_scan_v1", 152),
+        ("progressive_thq_aosoa_physical_scan_v2", 152),
+}
+
+PENDING_RUNNERS = {
+    "2026-09-11-ordinal-pqtable-best-first-result.json": "tools/agent-memory-bench/run-ordinal-best-first.py",
+    "2026-09-11-progressive-dynamic-cutoff-result.json": "tools/agent-memory-bench/run-progressive-dynamic-cutoff.py",
+    "2026-09-11-cosine-lsh-margin-oracle-result.json": "tools/agent-memory-bench/run-cosine-lsh-margin-oracle.py",
+    "2026-09-11-progressive-thq-aosoa-result.json": "tools/agent-memory-bench/run-progressive-thq-aosoa.py",
 }
 
 
@@ -168,6 +175,14 @@ def main() -> int:
                 local.append(f"missing {key}")
             else:
                 _check_hash(data[key], f"{name}.{key}", local)
+        runner_rel = PENDING_RUNNERS[name]
+        runner_path = ROOT.parents[1] / runner_rel
+        if not runner_path.is_file():
+            local.append(f"runner path missing: {runner_rel}")
+        else:
+            actual_runner_sha = hashlib.sha256(runner_path.read_bytes()).hexdigest()
+            if data.get("runner_sha256") != actual_runner_sha:
+                local.append("runner_sha256 does not match current runner")
         if data.get("fixture_manifest_sha256") != FIXTURE_SHA:
             local.append("fixture_manifest_sha256 does not match frozen fixture")
         if not isinstance(data.get("protocol"), dict) or not data["protocol"]:

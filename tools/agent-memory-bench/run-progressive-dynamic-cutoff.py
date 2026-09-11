@@ -145,6 +145,11 @@ def main() -> None:
             )
             parity = bool(np.array_equal(best_ids, exhaustive_ids))
             cutoff_parity = bool(np.isclose(float(cutoff), float(full_scores[exhaustive_ids[-1]]), rtol=1e-6, atol=1e-6))
+            if not parity or not cutoff_parity:
+                raise AssertionError(
+                    f"dynamic cutoff parity failed for query={qi}, warmup={warmup}: "
+                    f"top256={parity}, cutoff={cutoff_parity}"
+                )
             rows.append({
                 "query": qi,
                 "order": args.order,

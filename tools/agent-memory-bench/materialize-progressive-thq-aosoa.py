@@ -39,6 +39,11 @@ def main() -> None:
     expected = n * 144
     if source.stat().st_size != expected:
         raise ValueError(f"THQ payload size differs: expected {expected} bytes")
+    source_hash = sha256(source)
+    declared_source_hash = manifest["outputs"]["thq4_document_codes"].get("sha256")
+    if declared_source_hash and declared_source_hash != source_hash:
+        raise ValueError("THQ document-code hash differs from frozen manifest")
+    manifest_hash = sha256(args.thq_manifest)
     codes = np.memmap(source, mode="r", dtype=np.uint8, shape=(n, 144))
     bits = np.unpackbits(np.asarray(codes), axis=1, bitorder="little")[:, : d * 3]
     levels = bits.reshape(n, d, 3).sum(axis=2).astype(np.uint8)
@@ -77,9 +82,11 @@ def main() -> None:
         "packed_bits_per_level": 2,
         "layout": "tile_then_coordinate_block_then_packed_levels",
         "source_manifest": str(args.thq_manifest),
-        "source_sha256": sha256(source),
+        "source_manifest_sha256": manifest_hash,
+        "source_document_codes_sha256": source_hash,
         "blocks": records,
         "execution_status": "MATERIALIZED_LAYOUT_PENDING_NATIVE_TIMING",
+        "physical_bytes_semantics": "logical_block_payload_bytes",
         "production_activation": False,
     }
     (args.output_root / "layout-manifest.json").write_text(
