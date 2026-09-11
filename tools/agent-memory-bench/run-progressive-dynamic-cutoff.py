@@ -115,6 +115,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--query-limit", type=int, default=152)
     parser.add_argument("--warmup", type=int, default=4096)
+    parser.add_argument("--warmup-sweep", default="")
     parser.add_argument("--order", choices=("fixed", "variance", "query_adaptive", "adc_expected"), default="variance")
     args = parser.parse_args()
     manifest = json.loads(args.thq_manifest.read_text(encoding="utf-8"))
@@ -129,32 +130,36 @@ def main() -> None:
     queries = np.memmap(refs["queries"]["path"], mode="r", dtype="<f4", shape=(q, d))
     teachers = np.memmap(refs["teacher_ids"]["path"], mode="r", dtype="<i8", shape=(q, 10))
     checkpoints = np.array((32, 64, 96, 128, 160, 192, 256, 320, 384), dtype=np.int64)
+    warmups = [args.warmup]
+    if args.warmup_sweep:
+        warmups = [int(value) for value in args.warmup_sweep.split(",") if int(value) > 0]
     rows = []
     for qi in range(q):
         lut = interval_lut(np.asarray(queries[qi]), np.asarray(thresholds))
         order = coordinate_order(levels, qlevels[qi], lut, args.order)
-        reached, fully, total_coords, best_ids, best_scores, cutoff = scan_dynamic(
-            levels, lut, order, min(args.warmup, n), 256, checkpoints
-        )
         full_scores = exhaustive_scores(levels, lut)
         exhaustive_ids = canonical_top(full_scores, 256)
-        parity = bool(np.array_equal(best_ids, exhaustive_ids))
-        cutoff_parity = bool(np.isclose(float(cutoff), float(full_scores[exhaustive_ids[-1]]), rtol=1e-6, atol=1e-6))
-        rows.append({
-            "query": qi,
-            "order": args.order,
-            "warmup": min(args.warmup, n),
-            "warmup_fraction": min(args.warmup, n) / n,
-            "cutoff": float(cutoff),
-            "exhaustive_cutoff": float(full_scores[exhaustive_ids[-1]]),
-            "exact_top256_parity": parity,
-            "cutoff_parity": cutoff_parity,
-            "docs_reaching_checkpoint": (reached / n).tolist(),
-            "fully_evaluated_fraction": float(fully / n),
-            "total_coordinate_evaluations": int(total_coords),
-            "equivalent_flat_scan_fraction": float(total_coords / (n * d)),
-            "teacher_survival_256": float(np.isin(teachers[qi], best_ids).sum()) / 10.0,
-        })
+        for warmup in warmups:
+            reached, fully, total_coords, best_ids, best_scores, cutoff = scan_dynamic(
+                levels, lut, order, min(warmup, n), 256, checkpoints
+            )
+            parity = bool(np.array_equal(best_ids, exhaustive_ids))
+            cutoff_parity = bool(np.isclose(float(cutoff), float(full_scores[exhaustive_ids[-1]]), rtol=1e-6, atol=1e-6))
+            rows.append({
+                "query": qi,
+                "order": args.order,
+                "warmup": min(warmup, n),
+                "warmup_fraction": min(warmup, n) / n,
+                "cutoff": float(cutoff),
+                "exhaustive_cutoff": float(full_scores[exhaustive_ids[-1]]),
+                "exact_top256_parity": parity,
+                "cutoff_parity": cutoff_parity,
+                "docs_reaching_checkpoint": (reached / n).tolist(),
+                "fully_evaluated_fraction": float(fully / n),
+                "total_coordinate_evaluations": int(total_coords),
+                "equivalent_flat_scan_fraction": float(total_coords / (n * d)),
+                "teacher_survival_256": float(np.isin(teachers[qi], best_ids).sum()) / 10.0,
+            })
     result = {
         "schema_version": 2,
         "family": "progressive_thq_dynamic_cutoff_oracle_v2",
@@ -164,6 +169,7 @@ def main() -> None:
         "checkpoints": checkpoints.tolist(),
         "rows": rows,
         "order": args.order,
+        "warmup_sweep": warmups,
         "tie_policy": "score_ascending_then_document_id_ascending",
         "exact_parity_asserted": True,
         "interpretation_status": "EXACT_RUNTIME_CUTOFF_ORACLE_PENDING_EXTERNAL_DE1M_REPLAY",
