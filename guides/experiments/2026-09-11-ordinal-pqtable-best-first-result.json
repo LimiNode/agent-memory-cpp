@@ -1,10 +1,15 @@
 {
-  "schema_version": 1,
-  "family": "ordinal_pqtable_best_first_oracle_v2",
-  "execution_status": "IMPLEMENTED_EXTERNAL_DE1M_RUN_PENDING",
+  "schema_version": 2,
+  "family": "ordinal_pqtable_best_first_oracle_v3",
+  "execution_status": "PENDING",
+  "query_count": 152,
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "runner_sha256": "cbe69bbb1a632e31c3b0e4759cff9133698b997536908cf88fb169ebb5d83365",
   "state_budgets": [1000, 5000, 20000, 50000],
   "block_widths": [8, 12, 16, 24, 32],
   "metrics": ["ordinal_l1", "interval_squared_adc"],
   "empty_tuple_accounting": true,
+  "single_traversal_snapshots": true,
+  "protocol": {"state_budgets": [1000, 5000, 20000, 50000], "block_widths": [8, 12, 16, 24, 32], "generators": ["ordinal_l1", "interval_squared_adc"]},
   "production_activation": false
 }

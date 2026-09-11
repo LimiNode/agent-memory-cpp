@@ -1,11 +1,15 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "family": "cosine_lsh_margin_multiprobe_oracle_v2",
-  "execution_status": "IMPLEMENTED_EXTERNAL_DE1M_RUN_PENDING",
+  "execution_status": "PENDING",
+  "query_count": 152,
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "runner_sha256": "50f70b64e14e25f1dddf5bb63c58482a511d3d3bace5a9909b3c7ccd7576a42c",
   "tables": 4,
   "bits_per_table": 16,
   "probe_counts": [1, 2, 4, 8, 16],
   "normalized_hyperplanes": true,
   "perturbation_order": "cumulative_margin_cost_single_and_two_bit_subsets",
+  "protocol": {"seeds": [20260911, 20260912, 20260913, 20260914, 20260915], "probe_counts": [1, 2, 4, 8, 16], "metrics": ["postings_touched", "posting_entries_touched", "candidate_count", "teacher_recall"]},
   "production_activation": false
 }

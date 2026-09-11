@@ -1,8 +1,14 @@
 {
-  "schema_version": 1,
-  "family": "progressive_thq_dynamic_cutoff_oracle_v1",
-  "execution_status": "IMPLEMENTED_EXTERNAL_DE1M_RUN_PENDING",
+  "schema_version": 2,
+  "family": "progressive_thq_dynamic_cutoff_oracle_v2",
+  "execution_status": "PENDING",
+  "query_count": 152,
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "runner_sha256": "569fc39927f32c6fef48e57e1dde8522993121e123b9ed7cdefca1d52fd34424",
   "warmup_documents": 4096,
   "checkpoints": [32, 64, 96, 128, 160, 192, 256, 320, 384],
+  "orders": ["fixed", "variance", "query_adaptive", "adc_expected"],
+  "tie_policy": "score_ascending_then_document_id_ascending",
+  "protocol": {"warmup_sweep": [256, 512, 1024, 2048, 4096, 8192], "k": 256},
   "production_activation": false
 }
