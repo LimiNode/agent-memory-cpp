@@ -1,8 +1,11 @@
 {
-  "schema_version": 1,
-  "family": "postbacklog_research_audit_v1",
+  "schema_version": 2,
+  "family": "postbacklog_research_audit_v2",
   "scope": "PRs #359-#364",
-  "receipts": 6,
+  "receipts": 8,
+  "required_provenance": ["fixture_manifest_sha256", "runner_sha256", "raw_result_sha256", "query_count", "protocol"],
+  "historical_receipts": ["2026-09-11-progressive-thq-scan-result.json", "2026-09-11-cosine-lsh-baseline-result.json"],
+  "raw_artifact_policy": "external reports may be absent locally; receipt hashes remain mandatory",
   "production_activation": false,
   "status": "pass"
 }

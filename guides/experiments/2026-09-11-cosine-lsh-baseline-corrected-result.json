@@ -1,6 +1,7 @@
 {
   "schema_version": 2,
   "family": "cosine_lsh_baseline_corrected_v2",
+  "source": "postbacklog-cosine-lsh-corrected.json",
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "runner_sha256": "77ea50fad71c5be2fa642fdccd0ab794a54e2cea4c07f2b950f846b5d3af161b",
   "raw_result_sha256": "81342194e56743fb26ebf34a9e4d2b6b79b817406ceddb8b0b386a0cc3ffeed0",

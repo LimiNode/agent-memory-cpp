@@ -37,5 +37,9 @@ LSH path.  `production_activation: false` is asserted in every new receipt.
 3. Gaussian-hyperplane multiprobe and, if justified, cross-polytope controls.
 4. Held-out seeds and query splits for the interval-distance ranking gain.
 
-The final receipt audit is fail-closed and checks every post-backlog receipt
-for required schema fields and an explicit false production flag.
+The final receipt audit is fail-closed and checks all eight post-backlog
+receipts: active receipts carry the frozen-fixture, runner, raw-result,
+query-count, and protocol bindings; historical receipts explicitly declare
+their superseded/incomplete status. External raw reports may be absent from a
+checkout, but their hashes remain mandatory. Every receipt has an explicit
+false production flag.
