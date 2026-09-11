@@ -16,9 +16,11 @@ candidate-generation oracles, and physical/index authorization.
 * The corrected progressive replay is positive at the algorithmic level:
   squared THQ-ADC with query-adaptive ordering leaves `.0214` active at 192
   coordinates and `.00332` at 256. Native vertical-layout cost remains open.
-* The first independent Gaussian cosine-LSH exact-bucket baseline is also
-  negative (`.05 @256` at 41.6k mean candidates); this does not close
-  multiprobe or cross-polytope LSH.
+* The corrected independent Gaussian cosine-LSH exact-bucket baseline is
+  negative as a generator: five-seed mean union recall is `.2009`, at 24k--75k
+  mean candidates, with zero-recall worst queries. The former `.05 @256`
+  measured hash-Hamming reranking and is retained only as a diagnostic.
+  Margin multiprobe and cross-polytope LSH remain open.
 
 ## Architectural boundary
 
