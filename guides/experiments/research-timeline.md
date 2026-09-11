@@ -579,6 +579,14 @@ the tested exact/radius-one packed schedules, not richer ordinal multiprobe or
 cosine-LSH. See the packed multi-sequence note and compact receipt.
 `production_activation: false`.
 
+### #363 progressive/VA-style THQ scan oracle (2026-09-11)
+
+Safe partial-distance pruning was tested with fixed, variance, and
+query-adaptive coordinate orders.  The mean active fraction stayed `1.0` at
+32, 64, 128, 256, and 384 coordinates: no document could be safely pruned
+before the full scan under the exact top-256 cutoff.  This closes the tested
+early-termination controls, not all possible bounds or orderings.
+
 ### #361 weighted collision voting (2026-09-11)
 
 With the packed width-8/radius-one union held at 9,885 mean candidates,
