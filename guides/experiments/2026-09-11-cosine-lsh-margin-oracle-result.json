@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "family": "cosine_lsh_margin_multiprobe_oracle_v1",
+  "execution_status": "IMPLEMENTED_EXTERNAL_DE1M_RUN_PENDING",
+  "tables": 4,
+  "bits_per_table": 16,
+  "probe_counts": [1, 2, 4, 8, 16],
+  "production_activation": false
+}
