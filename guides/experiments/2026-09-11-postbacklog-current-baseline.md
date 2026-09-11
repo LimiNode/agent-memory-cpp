@@ -10,9 +10,12 @@ candidate-generation oracles, and physical/index authorization.
   `1.0 @1k` teacher survival at 144 B/document.
 * Continuous query-to-level interval scores improve exhaustive ranking to
   `1.0 @256`, but do not yet provide a selective index.
-* Packed ordinal exact/radius-one schedules, weighted collision voting, and
-  progressive pruning are negative at low work; packed two-bit storage is
-  exact and reduces the payload to 96 B/document.
+* Packed ordinal exact/radius-one schedules and weighted collision voting are
+  negative at low work; packed two-bit storage is exact and reduces the
+  payload to 96 B/document.
+* The corrected progressive replay is positive at the algorithmic level:
+  squared THQ-ADC with query-adaptive ordering leaves `.0214` active at 192
+  coordinates and `.00332` at 256. Native vertical-layout cost remains open.
 * The first independent Gaussian cosine-LSH exact-bucket baseline is also
   negative (`.05 @256` at 41.6k mean candidates); this does not close
   multiprobe or cross-polytope LSH.

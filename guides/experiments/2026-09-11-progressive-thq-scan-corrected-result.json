@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "family": "progressive_thq_scan_oracle_corrected_v2",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "runner_sha256": "454452e3278a21d2e7976a3584562e84b7d69e6d9d52dbfe952790fb85ea28e6",
+  "raw_result_sha256": "18d100b4f7c6d5e91f038d4440bc89a48bddca77055fc511e51920c1bd17af9e",
+  "query_count": 152,
+  "protocol": {
+    "documents": 1000000,
+    "dimension": 384,
+    "checkpoints": [32, 64, 96, 128, 160, 192, 256, 320, 384],
+    "metrics": ["ordinal_l1_hamming", "squared_interval_adc"],
+    "orders": ["fixed", "variance", "query_adaptive"],
+    "prune_rule": "partial_score_greater_than_exact_top256_cutoff"
+  },
+  "corrects": "2026-09-11-progressive-thq-scan-result.json",
+  "production_activation": false,
+  "summary": {
+    "hamming_fixed_active_fraction": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 0.994253, 0.189741, 0.000269],
+    "adc_squared_query_adaptive_active_fraction": [1.0, 0.999997, 0.995363, 0.825394, 0.228807, 0.021400, 0.003320, 0.000883, 0.000256],
+    "hamming_survival_256": 0.999342,
+    "adc_squared_survival_256": 1.0
+  }
+}
