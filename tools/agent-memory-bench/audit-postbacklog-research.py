@@ -47,6 +47,18 @@ EXPECTED_HASHES = {
     "2026-09-11-cosine-lsh-baseline-corrected-result.json": ("77ea50fad71c5be2fa642fdccd0ab794a54e2cea4c07f2b950f846b5d3af161b", "81342194e56743fb26ebf34a9e4d2b6b79b817406ceddb8b0b386a0cc3ffeed0"),
 }
 
+# Newly corrected runners are protocol receipts until an external DE-1M
+# execution supplies a raw-result hash.  Pending receipts still require
+# fixture/runner provenance and an explicit non-production status.
+PENDING = {
+    "2026-09-11-ordinal-pqtable-best-first-result.json":
+        ("ordinal_pqtable_best_first_oracle_v3", 152),
+    "2026-09-11-progressive-dynamic-cutoff-result.json":
+        ("progressive_thq_dynamic_cutoff_oracle_v2", 152),
+    "2026-09-11-cosine-lsh-margin-oracle-result.json":
+        ("cosine_lsh_margin_multiprobe_oracle_v2", 152),
+}
+
 
 def _check_hash(value: object, label: str, errors: list[str]) -> bool:
     if not isinstance(value, str) or not HEX64.fullmatch(value):
@@ -127,6 +139,52 @@ def main() -> int:
             "query_count": data.get("query_count"),
             "status": data.get("interpretation_status", "active"),
             "provenance": provenance,
+            "errors": local,
+        })
+
+    for name, (expected_family, expected_queries) in PENDING.items():
+        path = ROOT / name
+        if not path.is_file():
+            errors.append(f"missing pending receipt: {name}")
+            continue
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            errors.append(f"invalid JSON {name}: {exc}")
+            continue
+        local: list[str] = []
+        if data.get("family") != expected_family:
+            local.append(f"family must be {expected_family}")
+        if data.get("execution_status") not in ("PENDING", "EXECUTED"):
+            local.append("execution_status must be PENDING or EXECUTED")
+        if data.get("production_activation") is not False:
+            local.append("production_activation must be false")
+        if data.get("query_count") != expected_queries:
+            local.append(f"query_count must be {expected_queries}")
+        for key in ("fixture_manifest_sha256", "runner_sha256"):
+            if key not in data:
+                local.append(f"missing {key}")
+            else:
+                _check_hash(data[key], f"{name}.{key}", local)
+        if data.get("fixture_manifest_sha256") != FIXTURE_SHA:
+            local.append("fixture_manifest_sha256 does not match frozen fixture")
+        if not isinstance(data.get("protocol"), dict) or not data["protocol"]:
+            local.append("protocol must be a non-empty object")
+        if data.get("execution_status") == "PENDING" and data.get("raw_result_sha256"):
+            _check_hash(data["raw_result_sha256"], f"{name}.raw_result_sha256", local)
+        if data.get("execution_status") == "EXECUTED":
+            if not data.get("raw_result_sha256"):
+                local.append("EXECUTED receipt requires raw_result_sha256")
+            else:
+                _check_hash(data["raw_result_sha256"], f"{name}.raw_result_sha256", local)
+        if local:
+            errors.extend(f"{name}: {item}" for item in local)
+        rows.append({
+            "receipt": name,
+            "family": data.get("family"),
+            "query_count": data.get("query_count"),
+            "status": data.get("execution_status"),
+            "provenance": {"raw_artifact": "pending"},
             "errors": local,
         })
 
