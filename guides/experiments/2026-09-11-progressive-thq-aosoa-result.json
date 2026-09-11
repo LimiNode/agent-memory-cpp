@@ -1,4 +1,4 @@
-﻿{
+{
   "schema_version": 1,
   "family": "progressive_thq_aosoa_physical_scan_v2",
   "execution_status": "PENDING",
@@ -22,4 +22,3 @@
   },
   "production_activation": false
 }
-
