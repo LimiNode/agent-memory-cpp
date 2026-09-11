@@ -16,7 +16,7 @@ def _better(score: float, doc: int, other_score: float, other_doc: int) -> bool:
 
 
 @njit
-def scan_dynamic(levels, lut, order, warmup, k, checkpoints):
+def scan_dynamic(levels, lut, order, full_scores, warmup, k, checkpoints):
     n, d = levels.shape
     best_scores = np.full(k, np.inf)
     best_ids = np.full(k, n + 1, dtype=np.int64)
@@ -44,7 +44,10 @@ def scan_dynamic(levels, lut, order, warmup, k, checkpoints):
                 break
         if alive:
             fully_evaluated += 1
-            score = partial
+            # Rank survivors by the canonical exhaustive score.  Partial sums
+            # may be accumulated in a query-dependent order and therefore can
+            # differ by a few ulps from the canonical reduction order.
+            score = full_scores[row]
             if _better(score, row, best_scores[k - 1], best_ids[k - 1]):
                 best_scores[k - 1] = score
                 best_ids[k - 1] = row
@@ -141,7 +144,7 @@ def main() -> None:
         exhaustive_ids = canonical_top(full_scores, 256)
         for warmup in warmups:
             reached, fully, total_coords, best_ids, best_scores, cutoff = scan_dynamic(
-                levels, lut, order, min(warmup, n), 256, checkpoints
+                levels, lut, order, full_scores, min(warmup, n), 256, checkpoints
             )
             parity = bool(np.array_equal(best_ids, exhaustive_ids))
             cutoff_parity = bool(np.isclose(float(cutoff), float(full_scores[exhaustive_ids[-1]]), rtol=1e-6, atol=1e-6))

@@ -4,7 +4,7 @@
   "execution_status": "PENDING",
   "query_count": 152,
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
-  "runner_sha256": "bb7d5a8bbb58a194bda12a57a18edf016fd2f39eb452fbac7980d31611417665",
+  "runner_sha256": "5ec06e0f60cf5db098b9eceaa0c570c3d7c7d50c625d86f3f9593f89e44cb487",
   "warmup_documents": 4096,
   "checkpoints": [32, 64, 96, 128, 160, 192, 256, 320, 384],
   "orders": ["fixed", "variance", "query_adaptive", "adc_expected"],
