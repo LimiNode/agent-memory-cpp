@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "family": "progressive_thq_scan_oracle_v1",
+  "source": "postbacklog-progressive-thq.json",
+  "fixture": {"documents": 1000000, "queries": 8, "dimension": 384},
+  "prune_rule": "partial ordinal distance > exact top-256 cutoff",
+  "active_fraction_mean_at_32_64_128_256_384": {"fixed": [1.0, 1.0, 1.0, 1.0, 1.0], "variance": [1.0, 1.0, 1.0, 1.0, 1.0], "query_adaptive": [1.0, 1.0, 1.0, 1.0, 1.0]},
+  "survival_256_mean": 1.0,
+  "production_activation": false
+}
