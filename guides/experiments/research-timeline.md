@@ -666,3 +666,12 @@ single-bit bucket flips by `|r_i·q|`, reporting candidate mass and teacher reca
 for several probe budgets. It is deliberately separate from hash-Hamming
 reranking and remains an in-memory oracle; cross-polytope LSH, physical pages,
 and production activation are not claimed.
+
+### Dynamic-cutoff progressive THQ-ADC oracle (2026-09-11)
+
+The privileged full-search cutoff from #367 is complemented by an exact
+runtime-cutoff runner. It seeds a kth-best threshold from a fully scored warmup
+prefix, then prunes later documents only when their nonnegative partial ADC
+score exceeds the current threshold. Active and fully evaluated fractions are
+recorded at all checkpoints. External DE-1M execution and physical layout
+measurements remain pending; no production activation is claimed.
