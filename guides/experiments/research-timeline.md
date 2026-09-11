@@ -579,33 +579,6 @@ the tested exact/radius-one packed schedules, not richer ordinal multiprobe or
 cosine-LSH. See the packed multi-sequence note and compact receipt.
 `production_activation: false`.
 
-### #365 post-backlog current baseline and receipt audit (2026-09-11)
-
-The post-backlog batch is complete through #364.  Six compact receipts cover
-#359--#364; the fail-closed audit requires schema/family fields and an explicit
-`production_activation: false` in each.  Current status: interval-distance
-ranking is a positive flat control; packed ordinal schedules, simple weighted
-voting, progressive pruning, and exact-bucket cosine-LSH are negative at low
-work; packed two-bit THQ is exact at 96 B/document.  No ANN/MDBX route or
-production activation is licensed.  See the current-baseline note and audit
-receipt.
-
-### #364 independent cosine-LSH baseline (2026-09-11)
-
-The first concrete cosine-LSH retrieval oracle used four independent Gaussian
-16-bit tables and exact bucket unions.  On eight semantic queries it averaged
-41,553 candidates but only `.05 @256` teacher survival (worst `.0`).  This
-closes only this exact-bucket schedule; margin-guided multiprobe and
-cross-polytope variants remain open. `production_activation: false`.
-
-### #363 progressive/VA-style THQ scan oracle (2026-09-11)
-
-Safe partial-distance pruning was tested with fixed, variance, and
-query-adaptive coordinate orders.  The mean active fraction stayed `1.0` at
-32, 64, 128, 256, and 384 coordinates: no document could be safely pruned
-before the full scan under the exact top-256 cutoff.  This closes the tested
-early-termination controls, not all possible bounds or orderings.
-
 ### #361 weighted collision voting (2026-09-11)
 
 With the packed width-8/radius-one union held at 9,885 mean candidates,
@@ -622,3 +595,30 @@ preserving exact ordinal-L1 results (`1.0 @256` on eight semantic queries;
 exact equality checked on the first two). Python lookup-table decode timing
 is diagnostic only (p50 3.10 s/query); native SIMD/tiled throughput remains an
 open implementation gate. No production codec replacement is licensed.
+
+### #363 progressive/VA-style THQ scan oracle (2026-09-11)
+
+Safe partial-distance pruning was tested with fixed, variance, and
+query-adaptive coordinate orders. The mean active fraction stayed `1.0` at
+32, 64, 128, 256, and 384 coordinates: no document could be safely pruned
+before the full scan under the exact top-256 cutoff. This closes the tested
+early-termination controls, not all possible bounds or orderings.
+
+### #364 independent cosine-LSH baseline (2026-09-11)
+
+The first concrete cosine-LSH retrieval oracle used four independent Gaussian
+16-bit tables and exact bucket unions. On eight semantic queries it averaged
+41,553 candidates but only `.05 @256` teacher survival (worst `.0`). This
+closes only this exact-bucket schedule; margin-guided multiprobe and
+cross-polytope variants remain open. `production_activation: false`.
+
+### #365 post-backlog current baseline and receipt audit (2026-09-11)
+
+The post-backlog batch is complete through #364. Six compact receipts cover
+#359--#364; the fail-closed audit requires schema/family fields and an explicit
+`production_activation: false` in each. Current status: interval-distance
+ranking is a positive flat control; packed ordinal schedules, simple weighted
+voting, progressive pruning, and exact-bucket cosine-LSH are negative at low
+work; packed two-bit THQ is exact at 96 B/document. No ANN/MDBX route or
+production activation is licensed. See the current-baseline note and audit
+receipt.
