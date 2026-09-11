@@ -653,3 +653,11 @@ rather than the earlier radius-one schedule. It intersects postings for each
 complete state tuple and reports candidate work and teacher survival under a
 bounded state budget. This remains an in-memory oracle; DE-1M execution,
 physical bytes/pages, and production activation are still gated.
+
+### Cosine-LSH margin multiprobe oracle (2026-09-11)
+
+The margin follow-up keeps independent Gaussian tables fixed and orders
+single-bit bucket flips by `|r_i·q|`, reporting candidate mass and teacher recall
+for several probe budgets. It is deliberately separate from hash-Hamming
+reranking and remains an in-memory oracle; cross-polytope LSH, physical pages,
+and production activation are not claimed.
