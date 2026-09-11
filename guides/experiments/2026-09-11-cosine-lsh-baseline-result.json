@@ -1,5 +1,7 @@
 {
   "schema_version": 1,
+  "interpretation_status": "SUPERSEDED_BY_CORRECTIVE_V2",
+  "known_limitation": "confounded candidate generation with hash-Hamming rerank; only eight queries and one seed",
   "family": "cosine_lsh_baseline_v1",
   "source": "postbacklog-cosine-lsh.json",
   "fixture": {"documents": 1000000, "queries": 8, "dimension": 384},

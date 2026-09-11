@@ -609,11 +609,16 @@ or production claim.
 
 ### #364 independent cosine-LSH baseline (2026-09-11)
 
-The first concrete cosine-LSH retrieval oracle used four independent Gaussian
-16-bit tables and exact bucket unions. On eight semantic queries it averaged
-41,553 candidates but only `.05 @256` teacher survival (worst `.0`). This
-closes only this exact-bucket schedule; margin-guided multiprobe and
-cross-polytope variants remain open. `production_activation: false`.
+The original #364 `.05 @256` result is `INCOMPLETE/SUPERSEDED`: it combined
+exact-bucket generation with hash-Hamming reranking and used eight queries and
+one seed. The corrected five-seed, 152-query replay separates union recall,
+exact cosine rerank, and hash diagnostics. Exact-bucket union recall averages
+`.2009` (seed range `.1454--.2579`) at 24k--75k mean candidates, with zero-
+recall worst queries. Exact cosine preserves the union targets; hash-Hamming
+retains only `.0368--.0513`. Table entropy spans 5.71--10.87 bits and the
+largest bucket has 165,777 documents. Exact-bucket Gaussian LSH is negative;
+margin multiprobe and cross-polytope remain open. `production_activation:
+false`.
 
 ### #365 post-backlog current baseline and receipt audit (2026-09-11)
 
@@ -621,7 +626,8 @@ The post-backlog batch is complete through #364. Six compact receipts cover
 #359--#364; the fail-closed audit requires schema/family fields and an explicit
 `production_activation: false` in each. Current status: interval-distance
 ranking is a positive flat control; packed ordinal schedules and simple weighted
-voting are negative at low
-work; packed two-bit THQ is exact at 96 B/document. No ANN/MDBX route or
+voting are negative at low work; the original Gaussian-LSH evaluation is
+superseded by its separated generator/rerank replay; packed two-bit THQ is
+exact at 96 B/document. No ANN/MDBX route or
 production activation is licensed. See the current-baseline note and audit
 receipt.
