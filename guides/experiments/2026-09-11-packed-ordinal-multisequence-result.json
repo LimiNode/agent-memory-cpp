@@ -1,0 +1,17 @@
+{
+  "schema_version": 1,
+  "family": "packed_ordinal_multisequence_oracle_v1",
+  "source": "postbacklog-packed-ordinal-multisequence.json",
+  "fixture": {"documents": 1000000, "queries": 152, "dimension": 384},
+  "representation": {"name": "THQ4-384", "levels": 4, "bits": 1152},
+  "tie_policy": "distance_then_document_id",
+  "production_activation": false,
+  "summary": {
+    "packed_width8_r0": {"mean_candidates": 783.605263, "mean_postings": 784.065789, "survival_256": [0.032895, 0.0]},
+    "packed_width8_r1": {"mean_candidates": 9885.046053, "mean_postings": 9938.973684, "survival_256": [0.271711, 0.0]},
+    "packed_width12_r0": {"mean_candidates": 2.315789, "mean_postings": 2.315789, "survival_256": [0.0, 0.0]},
+    "packed_width12_r1": {"mean_candidates": 41.138158, "mean_postings": 41.138158, "survival_256": [0.013158, 0.0]},
+    "packed_width16_r0": {"mean_candidates": 0.019737, "mean_postings": 0.019737, "survival_256": [0.0, 0.0]},
+    "packed_width16_r1": {"mean_candidates": 0.223684, "mean_postings": 0.223684, "survival_256": [0.000658, 0.0]}
+  }
+}

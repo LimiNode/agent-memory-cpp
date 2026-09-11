@@ -567,3 +567,14 @@ scan and the Python timing is diagnostic.  It licenses a follow-up candidate
 generation oracle using continuous margins, but no ANN index, MDBX backend, or
 production activation (`production_activation: false`).  The compact receipt
 is `2026-09-11-thq-adc-oracle-result.json`; the raw report is outside Git.
+
+### #360 packed ordinal-subvector multi-sequence oracle (2026-09-11)
+
+Exact packed 2-bit ordinal subvectors and radius-one coordinate probes were
+tested at widths 8, 12, and 16 on all 152 semantic queries. The useful
+frontier remained negative: width-8 radius-one reached `.271711 @256` with
+9,885 mean candidates and zero worst-query survival; wider subvectors were
+nearly collision-free and recovered essentially no teachers. This closes only
+the tested exact/radius-one packed schedules, not richer ordinal multiprobe or
+cosine-LSH. See the packed multi-sequence note and compact receipt.
+`production_activation: false`.
