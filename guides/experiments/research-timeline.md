@@ -644,3 +644,12 @@ reporting separate p50/p95 scan timings and teacher survival.  This is a
 measurement gate only: the frozen DE-1M payload is external and the native run
 is pending artifact availability.  Existing Python locality results are not
 reinterpreted as native throughput.  `production_activation: false`.
+
+### Ordinal PQTable-style best-first oracle (2026-09-11)
+
+The follow-up `run-ordinal-best-first.py` enumerates occupied ordinal block
+states by additive query-conditioned cost using a genuine multi-sequence heap,
+rather than the earlier radius-one schedule. It intersects postings for each
+complete state tuple and reports candidate work and teacher survival under a
+bounded state budget. This remains an in-memory oracle; DE-1M execution,
+physical bytes/pages, and production activation are still gated.
