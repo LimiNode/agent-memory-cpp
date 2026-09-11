@@ -551,3 +551,19 @@ The #357 bit-MIH receipt was subsequently corrected after replacing the
 argpartition-based selector with a tie-safe cutoff-shell selection and
 replaying all 152 queries. The collision/probe frontier and negative scope
 were unchanged; the corrected receipt supersedes the historical hash.
+
+### #359 THQ-ADC interval-distance oracle (2026-09-11)
+
+The exhaustive THQ-ADC replay tested continuous query-to-level interval
+distances against the canonical raw THQ4-384 Hamming/ordinal-L1 baseline on
+all 152 semantic queries.  Interval L1, squared interval, and train-IQR-
+normalized variants each reached `1.0 @256` teacher survival (worst query
+`1.0`), versus `.999342` mean / `.9` worst for plain Hamming.  At `@64`, the
+means were `.996711`, `.997368`, and `.996711` versus `.989474`; squared
+interval also reduced mean teacher-rank p95 from `26.99` to `16.60`.
+
+This is a representation/ranking result only: every arm remains an exhaustive
+scan and the Python timing is diagnostic.  It licenses a follow-up candidate
+generation oracle using continuous margins, but no ANN index, MDBX backend, or
+production activation (`production_activation: false`).  The compact receipt
+is `2026-09-11-thq-adc-oracle-result.json`; the raw report is outside Git.
