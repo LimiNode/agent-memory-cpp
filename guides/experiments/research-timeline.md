@@ -598,11 +598,14 @@ open implementation gate. No production codec replacement is licensed.
 
 ### #363 progressive/VA-style THQ scan oracle (2026-09-11)
 
-Safe partial-distance pruning was tested with fixed, variance, and
-query-adaptive coordinate orders. The mean active fraction stayed `1.0` at
-32, 64, 128, 256, and 384 coordinates: no document could be safely pruned
-before the full scan under the exact top-256 cutoff. This closes the tested
-early-termination controls, not all possible bounds or orderings.
+The original #363 result is `INVALID/SUPERSEDED`: its checkpoint loop skipped
+224 coordinates and the purported 384-coordinate score used only 160.
+The corrective v2 replay processes every coordinate exactly once and asserts
+final-mask equality. On all 152 queries, squared THQ-ADC with query-adaptive
+ordering leaves mean active fractions `.8254 @128`, `.2288 @160`, `.02140
+@192`, `.003320 @256`, and `.000883 @320`. This is positive algorithmic
+evidence for a native block-transposed/vertical implementation, not a latency
+or production claim.
 
 ### #364 independent cosine-LSH baseline (2026-09-11)
 
@@ -617,8 +620,8 @@ cross-polytope variants remain open. `production_activation: false`.
 The post-backlog batch is complete through #364. Six compact receipts cover
 #359--#364; the fail-closed audit requires schema/family fields and an explicit
 `production_activation: false` in each. Current status: interval-distance
-ranking is a positive flat control; packed ordinal schedules, simple weighted
-voting, progressive pruning, and exact-bucket cosine-LSH are negative at low
+ranking is a positive flat control; packed ordinal schedules and simple weighted
+voting are negative at low
 work; packed two-bit THQ is exact at 96 B/document. No ANN/MDBX route or
 production activation is licensed. See the current-baseline note and audit
 receipt.
