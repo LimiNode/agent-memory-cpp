@@ -35,3 +35,11 @@ logical-work reduction candidate.  It is not yet a physical MDBX result and
 does not license production activation.  The next gate is native page-aware
 measurement (including warm/cold controls), followed by the R4/K8/K32 candidate
 cascade.
+
+The corrected dynamic-cutoff oracle was smoke-tested on two frozen queries
+with variance ordering and warmups 256/512/1024; all top-256 and cutoff parity
+assertions passed after canonical-score ranking was enabled.  A direct
+1M-document PQTable smoke was stopped after exceeding 20 minutes and about
+7 GB RAM while constructing the multi-width state index.  This is an
+execution-resource limitation, not an evidence result, and motivates a
+streaming/index-build optimization before a full PQTable replay.
