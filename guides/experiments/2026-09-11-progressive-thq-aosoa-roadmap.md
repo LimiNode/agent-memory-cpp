@@ -34,6 +34,11 @@ only active documents within those pages.  Measurements must include warm and
 cold-ish runs, pages/bytes read, active-document fraction, p50/p95/p99, and
 exact top-k parity.  No production activation is implied by a positive oracle.
 
+The materializer is `tools/agent-memory-bench/materialize-progressive-thq-aosoa.py`
+and the physical scan runner is
+`tools/agent-memory-bench/run-progressive-thq-aosoa.py`.  Their receipt remains
+pending until the external payload is supplied.
+
 The frozen DE-1M payload is external to this checkout.  Until its manifest and
 hashes are materialized, all new receipts remain `PENDING` and no numbers may
 be described as authoritative DE-1M evidence.
