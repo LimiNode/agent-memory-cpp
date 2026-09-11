@@ -52,3 +52,9 @@ materialize data early.
 The frozen DE-1M payload is external to this checkout.  Until its manifest and
 hashes are materialized, all new receipts remain `PENDING` and no numbers may
 be described as authoritative DE-1M evidence.
+
+The first frozen replay is now available as a non-authoritative logical-work
+measurement in `2026-09-11-progressive-thq-aosoa-replay.md`.  It covers both
+`4096×32` and page-matched `512×32` layouts, with fixed and ADC-expected block
+orders.  Native page accounting, warm/cold controls, and R4 candidate masks
+remain unexecuted follow-ups.

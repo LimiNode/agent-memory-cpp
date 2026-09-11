@@ -2,6 +2,8 @@
   "schema_version": 1,
   "family": "progressive_thq_aosoa_physical_scan_v2",
   "execution_status": "PENDING",
+  "local_replay_status": "EXECUTED_NON_AUTHORITATIVE",
+  "local_replay_note": "Full 152-query logical AoSoA replay completed outside Git; native page/MDBX timing is still pending.",
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "runner_sha256": "9abd3c11bf1c9e3a14d14f92c871346efd347861f97fe69c38246ed73531ef27",
   "query_count": 152,
