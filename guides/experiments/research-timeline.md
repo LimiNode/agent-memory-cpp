@@ -675,3 +675,14 @@ prefix, then prunes later documents only when their nonnegative partial ADC
 score exceeds the current threshold. Active and fully evaluated fractions are
 recorded at all checkpoints. External DE-1M execution and physical layout
 measurements remain pending; no production activation is claimed.
+
+### THQ index wave 2: IMI and SPANN-like controls (2026-09-12)
+
+The first wave-2 oracle evaluates fixed three-coordinate THQ signature
+postings (64 SPANN-like cells) and a 64×64 inverted multi-index over two
+three-coordinate subspaces.  On an eight-query smoke, the SPANN-like surrogate
+reached mean teacher recall 0.75 only at ~493k candidates (`L=32`), while IMI
+reached 0.0375 at ~18k candidates.  These are bounded signature controls, not
+semantic R4/SPANN implementations; no payload rerank, MDBX page measurement,
+or production activation is claimed.  See
+`2026-09-12-thq-index-wave2.md` and its receipt.

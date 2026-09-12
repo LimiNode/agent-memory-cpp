@@ -1,0 +1,656 @@
+{
+  "execution_status": "EXECUTED_SMOKE",
+  "family": "thq_index_wave2_imi_spann_oracle_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "production_activation": false,
+  "protocol": {
+    "budgets": [
+      1,
+      2,
+      4,
+      8,
+      16,
+      32
+    ],
+    "imi_cells": "64x64 Cartesian 3-level signatures",
+    "payload_rerank": "not executed; candidate recall only",
+    "spann_prototypes": "64 exact 3-level signature postings"
+  },
+  "queries": 8,
+  "rows": [
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 0,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 4082,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 4082,
+          "cells_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 4082,
+          "cells_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 27940,
+          "cells_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 27940,
+          "cells_touched": 32,
+          "teacher_recall": 0.0
+        }
+      ],
+      "query": 0,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 16046,
+          "postings_touched": 1,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 2,
+          "candidate_docs": 26058,
+          "postings_touched": 2,
+          "teacher_recall": 0.4
+        },
+        {
+          "L": 4,
+          "candidate_docs": 58037,
+          "postings_touched": 4,
+          "teacher_recall": 0.4
+        },
+        {
+          "L": 8,
+          "candidate_docs": 117312,
+          "postings_touched": 8,
+          "teacher_recall": 0.7
+        },
+        {
+          "L": 16,
+          "candidate_docs": 248595,
+          "postings_touched": 16,
+          "teacher_recall": 0.8
+        },
+        {
+          "L": 32,
+          "candidate_docs": 505067,
+          "postings_touched": 32,
+          "teacher_recall": 0.9
+        }
+      ]
+    },
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 0,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 0,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 0,
+          "cells_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 0,
+          "cells_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 0,
+          "cells_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 0,
+          "cells_touched": 32,
+          "teacher_recall": 0.0
+        }
+      ],
+      "query": 1,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 16145,
+          "postings_touched": 1,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 2,
+          "candidate_docs": 31483,
+          "postings_touched": 2,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 4,
+          "candidate_docs": 62954,
+          "postings_touched": 4,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 8,
+          "candidate_docs": 125762,
+          "postings_touched": 8,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 16,
+          "candidate_docs": 255066,
+          "postings_touched": 16,
+          "teacher_recall": 0.5
+        },
+        {
+          "L": 32,
+          "candidate_docs": 503136,
+          "postings_touched": 32,
+          "teacher_recall": 0.8
+        }
+      ]
+    },
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 0,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 0,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 0,
+          "cells_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 0,
+          "cells_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 3814,
+          "cells_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 3814,
+          "cells_touched": 32,
+          "teacher_recall": 0.0
+        }
+      ],
+      "query": 2,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 15929,
+          "postings_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 31660,
+          "postings_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 63131,
+          "postings_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 125524,
+          "postings_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 252554,
+          "postings_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 505357,
+          "postings_touched": 32,
+          "teacher_recall": 0.2
+        }
+      ]
+    },
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 0,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 0,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 0,
+          "cells_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 0,
+          "cells_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 0,
+          "cells_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 0,
+          "cells_touched": 32,
+          "teacher_recall": 0.0
+        }
+      ],
+      "query": 3,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 18009,
+          "postings_touched": 1,
+          "teacher_recall": 0.4
+        },
+        {
+          "L": 2,
+          "candidate_docs": 33606,
+          "postings_touched": 2,
+          "teacher_recall": 0.4
+        },
+        {
+          "L": 4,
+          "candidate_docs": 72596,
+          "postings_touched": 4,
+          "teacher_recall": 0.7
+        },
+        {
+          "L": 8,
+          "candidate_docs": 135875,
+          "postings_touched": 8,
+          "teacher_recall": 0.7
+        },
+        {
+          "L": 16,
+          "candidate_docs": 250623,
+          "postings_touched": 16,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 473849,
+          "postings_touched": 32,
+          "teacher_recall": 1.0
+        }
+      ]
+    },
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 0,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 0,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 0,
+          "cells_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 0,
+          "cells_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 3800,
+          "cells_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 3800,
+          "cells_touched": 32,
+          "teacher_recall": 0.0
+        }
+      ],
+      "query": 4,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 10732,
+          "postings_touched": 1,
+          "teacher_recall": 0.2
+        },
+        {
+          "L": 2,
+          "candidate_docs": 21110,
+          "postings_touched": 2,
+          "teacher_recall": 0.2
+        },
+        {
+          "L": 4,
+          "candidate_docs": 45239,
+          "postings_touched": 4,
+          "teacher_recall": 0.3
+        },
+        {
+          "L": 8,
+          "candidate_docs": 98292,
+          "postings_touched": 8,
+          "teacher_recall": 0.3
+        },
+        {
+          "L": 16,
+          "candidate_docs": 221245,
+          "postings_touched": 16,
+          "teacher_recall": 0.6
+        },
+        {
+          "L": 32,
+          "candidate_docs": 489537,
+          "postings_touched": 32,
+          "teacher_recall": 0.8
+        }
+      ]
+    },
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 0,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 0,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 0,
+          "cells_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 0,
+          "cells_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 3417,
+          "cells_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 3417,
+          "cells_touched": 32,
+          "teacher_recall": 0.0
+        }
+      ],
+      "query": 5,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 15099,
+          "postings_touched": 1,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 2,
+          "candidate_docs": 32351,
+          "postings_touched": 2,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 4,
+          "candidate_docs": 63420,
+          "postings_touched": 4,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 8,
+          "candidate_docs": 122808,
+          "postings_touched": 8,
+          "teacher_recall": 0.2
+        },
+        {
+          "L": 16,
+          "candidate_docs": 250946,
+          "postings_touched": 16,
+          "teacher_recall": 0.3
+        },
+        {
+          "L": 32,
+          "candidate_docs": 497261,
+          "postings_touched": 32,
+          "teacher_recall": 0.7
+        }
+      ]
+    },
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 0,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 0,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 0,
+          "cells_touched": 4,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 8,
+          "candidate_docs": 0,
+          "cells_touched": 8,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 16,
+          "candidate_docs": 3700,
+          "cells_touched": 16,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 32,
+          "candidate_docs": 3700,
+          "cells_touched": 32,
+          "teacher_recall": 0.0
+        }
+      ],
+      "query": 6,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 19825,
+          "postings_touched": 1,
+          "teacher_recall": 0.2
+        },
+        {
+          "L": 2,
+          "candidate_docs": 37077,
+          "postings_touched": 2,
+          "teacher_recall": 0.2
+        },
+        {
+          "L": 4,
+          "candidate_docs": 76625,
+          "postings_touched": 4,
+          "teacher_recall": 0.4
+        },
+        {
+          "L": 8,
+          "candidate_docs": 135468,
+          "postings_touched": 8,
+          "teacher_recall": 0.5
+        },
+        {
+          "L": 16,
+          "candidate_docs": 249998,
+          "postings_touched": 16,
+          "teacher_recall": 0.7
+        },
+        {
+          "L": 32,
+          "candidate_docs": 474778,
+          "postings_touched": 32,
+          "teacher_recall": 0.9
+        }
+      ]
+    },
+    {
+      "imi": [
+        {
+          "L": 1,
+          "candidate_docs": 3325,
+          "cells_touched": 1,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 2,
+          "candidate_docs": 6332,
+          "cells_touched": 2,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 4,
+          "candidate_docs": 13078,
+          "cells_touched": 4,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 8,
+          "candidate_docs": 27429,
+          "cells_touched": 8,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 16,
+          "candidate_docs": 46857,
+          "cells_touched": 16,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 32,
+          "candidate_docs": 105204,
+          "cells_touched": 32,
+          "teacher_recall": 0.3
+        }
+      ],
+      "query": 7,
+      "spann_like": [
+        {
+          "L": 1,
+          "candidate_docs": 13858,
+          "postings_touched": 1,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 2,
+          "candidate_docs": 29710,
+          "postings_touched": 2,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 4,
+          "candidate_docs": 55986,
+          "postings_touched": 4,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 8,
+          "candidate_docs": 112258,
+          "postings_touched": 8,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 16,
+          "candidate_docs": 236398,
+          "postings_touched": 16,
+          "teacher_recall": 0.4
+        },
+        {
+          "L": 32,
+          "candidate_docs": 497401,
+          "postings_touched": 32,
+          "teacher_recall": 0.7
+        }
+      ]
+    }
+  ],
+  "runner_sha256": "bf0882606380d7e5446c549b401c6cecfc68aecf24e2fea990b274fb15523a5d",
+  "schema_version": 1
+}
