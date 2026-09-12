@@ -23,9 +23,9 @@ def decode(path,n,width=16):
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument('--thq-manifest',type=Path,required=True); ap.add_argument('--output',type=Path,required=True); ap.add_argument('--query-limit',type=int,default=8); ap.add_argument('--budgets',default='1,2,4,8,16,32'); args=ap.parse_args()
  m=json.loads(args.thq_manifest.read_text()); n=int(m['documents']); qn=min(args.query_limit,int(m['queries'])); codes=decode(m['outputs']['thq4_document_codes']['path'],n); qcodes=decode(m['outputs']['thq4_query_codes']['path'],int(m['queries']))[:qn]; teachers=np.memmap(m['references']['teacher_ids']['path'],mode='r',dtype='<i8',shape=(qn,10)); budgets=[int(x) for x in args.budgets.split(',')]
- # SPANN-like 64 posting prototypes: exact 3-level signatures (4^3 cells).
+ # SPANN-like 64 posting prototypes: three-coordinate, four-level THQ signatures (4^3 cells).
  spann_sig=codes[:,:3]; spann_cell=spann_sig[:,0]*16+spann_sig[:,1]*4+spann_sig[:,2]; postings=[np.flatnonzero(spann_cell==c) for c in range(64)]; proto=np.asarray(np.unravel_index(np.arange(64),(4,4,4))).T
- # IMI: two independent 3-coordinate subspaces (64 x 64 Cartesian cells).
+ # IMI: two disjoint three-coordinate, four-level THQ subspaces (64 x 64 Cartesian cells).
  a=codes[:,:3]; b=codes[:,3:6]; ca=(a[:,0].astype(np.int32)*16+a[:,1].astype(np.int32)*4+a[:,2].astype(np.int32)); cb=(b[:,0].astype(np.int32)*16+b[:,1].astype(np.int32)*4+b[:,2].astype(np.int32));
  if int(ca.max()) > 63 or int(cb.max()) > 63 or int(63*64+63) != 4095: raise AssertionError('IMI cell composition overflow')
  imi_cell=ca*64+cb
