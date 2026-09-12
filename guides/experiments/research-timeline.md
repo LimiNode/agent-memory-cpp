@@ -740,10 +740,12 @@ note, compact receipt, and fail-closed audit.
 
 The frozen DE-1M scale pilot tested full-dimensional MiniBatchKMeans routing at
 `K={1024,2048,4096}` and replication `r={1,2,4}`. Generic semantic routing
-is a **NO-GO** for the `.99 @ 50k` gate: the best whole-posting row (`K=1024,
-r=4`) reaches mean recall `.9230` at 50k and `.9638` at 100k, with a non-trivial
-tail. A verified replay of three materialized R4 seeds is stronger at the
-same small budgets (`.766/.838/.897` at 5k/10k/20k), but its frozen 1024-address
+is a **NO-GO** for the `.99 @ 50k` gate in this tested pilot: the best
+whole-posting row (`K=1024,r=4`) reaches mean recall `.9230` at 50k and `.9638`
+at 100k, with a non-trivial tail. This is not a ceiling for every possible
+K-means training regime. A verified model-ranked replay of three materialized
+R4 seeds is stronger at the same small budgets (`.899/.902/.904` at
+5k/10k/20k), but its frozen 1024-address
 shortlist exhausts at about 21k candidates and reaches only `.904` recall.
 This is a generator comparison only: posting-entry counts are logical complete-
 posting proxies, not MDBX/OS page or latency measurements; no payload rerank or

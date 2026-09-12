@@ -22,9 +22,11 @@ The R4 comparator replays three already materialized seeds
 (`2026082701..2026082703`).  The 152×384 R4 query matrix is byte-identical to
 the frozen query matrix (SHA-256 `abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191`).
 Address postings are validated by manifest size/SHA, cover all one million
-documents exactly once, and are traversed in the frozen 1024-address
-shortlist order.  No payload rerank, OS/MDBX page accounting, or production
-activation is claimed.
+documents exactly once, and are traversed in the frozen model-ranked order
+within the 1024-address shortlist.  The model order is reconstructed from the
+materialized scalar features, representative maxima, and frozen scorer
+parameters; the coarse shortlist remains a separate input set.  No payload
+rerank, OS/MDBX page accounting, or production activation is claimed.
 
 ## Semantic pilot result
 
@@ -34,9 +36,12 @@ configuration reaches mean `.9638`, p05 `.80`, minimum `.60`, with mean 105.0k
 unique candidates.  Increasing K does not improve the frontier: the best
 100k alternatives are below `.953` mean recall, and `K=4096,r=4` is `.9408`.
 
-**Gate: NO-GO for generic MiniBatchKMeans routing under this frozen budget.**
-The result is below `.97` at 100k with a non-trivial tail, so a larger generic
-K-means convergence campaign is not justified as the next product step.
+**Gate: NO-GO for this tested MiniBatchKMeans scale pilot.**  The result is
+below `.97` at 100k with a non-trivial tail.  This is not a ceiling for every
+possible K-means training regime: multiple seeds, larger samples, convergence
+and boundary-selective replication were not tested here.  Nevertheless, a
+blind generic-K-means convergence campaign is not justified as the next
+product step.
 
 ## Verified R4 comparator
 
@@ -44,14 +49,14 @@ Aggregate over the three seeds (mean of per-seed query means):
 
 | mode | requested budget | mean unique candidates | mean teacher recall | minimum recall across seed means |
 | --- | ---: | ---: | ---: | ---: |
-| hard cap | 5,000 | 5,000 | .7662 | .7645 |
-| hard cap | 10,000 | 10,000 | .8379 | .8329 |
-| hard cap | 20,000 | 19,421 | .8974 | .8914 |
+| hard cap | 5,000 | 5,000 | .8987 | .8954 |
+| hard cap | 10,000 | 10,000 | .9022 | .9000 |
+| hard cap | 20,000 | 19,421 | .9037 | .9000 |
 | hard cap | 50,000 | 20,975 | .9037 | .9000 |
 | hard cap | 100,000 | 20,975 | .9037 | .9000 |
-| whole posting | 5,000 | 5,014 | .7664 | .7645 |
-| whole posting | 10,000 | 10,014 | .8382 | .8329 |
-| whole posting | 20,000 | 19,430 | .8974 | .8914 |
+| whole posting | 5,000 | 5,021 | .8987 | .8954 |
+| whole posting | 10,000 | 10,014 | .9022 | .9000 |
+| whole posting | 20,000 | 19,425 | .9037 | .9000 |
 
 The materialized shortlist contains only 1024 addresses and therefore exposes
 about 21k documents per query.  Rows at 50k and 100k are explicit exhaustion

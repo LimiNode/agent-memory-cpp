@@ -12,10 +12,24 @@ import hashlib
 import json
 import platform
 import time
+import importlib.util
 from pathlib import Path
 from typing import Any
 
 import numpy as np
+
+
+THIS = Path(__file__).resolve().parent
+
+
+def load_r4_fine() -> Any:
+    path = THIS / "run-neuroute-r4-fine-grained-interactions.py"
+    spec = importlib.util.spec_from_file_location("r4_fine_for_comparator", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"cannot load {path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def sha256(path: Path) -> str:
@@ -121,6 +135,52 @@ def snapshot(counts: np.ndarray, doc_address: np.ndarray, doc_offset: np.ndarray
     return output
 
 
+def model_order(root: Path, seed_record: dict[str, Any], queries: np.ndarray,
+                shortlist: np.ndarray, physical_records: np.ndarray,
+                doc_to_physical: np.ndarray) -> tuple[np.ndarray, dict[str, str]]:
+    """Reconstruct the frozen R4 model-ranked order within the 1024 shortlist."""
+    fine = load_r4_fine()
+    mappings = {row["role"]: row for row in seed_record["mappings"]}
+    model = {row["role"]: row for row in seed_record["model"]}
+    features = np.fromfile(root / mappings["scalar_features"]["file"], dtype="<f4").reshape(152, 1024, 22)
+    reps = np.fromfile(root / mappings["representative_documents"]["file"], dtype="<i4")
+    rep_counts = np.fromfile(root / mappings["representative_counts"]["file"], dtype="u1")
+    rep_offsets = np.concatenate(([0], np.cumsum(rep_counts, dtype=np.int64)))
+    maximum = np.empty((len(queries), shortlist.shape[1]), dtype=np.float32)
+    for qi, query in enumerate(queries):
+        for local, address in enumerate(shortlist[qi]):
+            row = int(address)
+            docs = reps[rep_offsets[row]:rep_offsets[row + 1]]
+            physical = doc_to_physical[docs]
+            values = np.asarray(physical_records[physical], dtype=np.float32)
+            maximum[qi, local] = np.max(values @ query, initial=-np.inf)
+    arrays: dict[str, np.ndarray] = {}
+    role_to_name = {
+        "model_query_weight": "query_weight", "model_query_bias": "query_bias",
+        "model_local_weight": "local_weight", "model_local_bias": "local_bias",
+        "model_score_weight1": "score_weight1", "model_score_bias1": "score_bias1",
+        "model_score_weight2": "score_weight2", "model_score_bias2": "score_bias2",
+    }
+    for role, name in role_to_name.items():
+        arrays[name] = np.fromfile(root / model[role]["file"], dtype="<f4").reshape(model[role]["shape"])
+    arrays["r4_aggregate_mean"] = np.fromfile(
+        root / model["model_r4_aggregate_mean"]["file"], dtype="<f4")
+    arrays["r4_aggregate_deviation"] = np.fromfile(
+        root / model["model_r4_aggregate_deviation"]["file"], dtype="<f4")
+    scalar_mean = np.fromfile(root / model["model_feature_mean"]["file"], dtype="<f4")
+    scalar_deviation = np.fromfile(root / model["model_feature_deviation"]["file"], dtype="<f4")
+    interactions = np.zeros((len(queries), shortlist.shape[1], 3, 8), dtype=np.float32)
+    aggregate = np.zeros((len(queries), shortlist.shape[1], 3), dtype=np.float32)
+    aggregate[..., 0] = maximum
+    scores = fine.numpy_scores("actual_k32_max", queries, features, interactions,
+                               aggregate, arrays, scalar_mean, scalar_deviation)
+    ordered = np.empty_like(shortlist)
+    for qi in range(len(queries)):
+        ordered[qi] = shortlist[qi][np.argsort(-scores[qi], kind="stable")]
+    return ordered, {"features_sha256": sha256(root / mappings["scalar_features"]["file"]),
+                     "model_feature_mean_sha256": sha256(root / model["model_feature_mean"]["file"])}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--thq-manifest", type=Path, required=True)
@@ -130,6 +190,7 @@ def main() -> None:
     parser.add_argument("--raw-output", type=Path, required=True)
     parser.add_argument("--budgets", default="5000,10000,20000,50000,100000")
     parser.add_argument("--query-limit", type=int, default=152)
+    parser.add_argument("--order-mode", choices=("model_ranked", "coarse"), default="model_ranked")
     args = parser.parse_args()
 
     frozen = json.loads(args.thq_manifest.read_text(encoding="utf-8"))
@@ -149,6 +210,9 @@ def main() -> None:
         root = materialized_root / f"seed-{seed}"
         records = {record["role"]: file_record(root, record)
                    for record in seed_record["mappings"]}
+        fp32_record = next(record for record in seed_record["layouts"]
+                           if record["role"] == "address_major_fp32")
+        file_record(root, fp32_record)
         query_record = next(record for record in seed_record["mappings"]
                             if record["role"] == "query_vectors")
         shortlist_record = next(record for record in seed_record["mappings"]
@@ -160,14 +224,18 @@ def main() -> None:
         counts = np.fromfile(root / "address-counts.u32le", dtype="<u4")
         offsets = np.fromfile(root / "address-offsets.u32le", dtype="<u4")
         physical = np.fromfile(root / "physical-to-document.i32le", dtype="<i4")
+        doc_to_physical = np.fromfile(root / "document-to-physical.u32le", dtype="<u4")
         expected_addresses = int(next(record for record in seed_record["mappings"]
                                       if record["role"] == "address_counts")["shape"][0])
-        if counts.size != expected_addresses or offsets.size != counts.size or physical.size != n:
+        if (counts.size != expected_addresses or offsets.size != counts.size or
+                physical.size != n or doc_to_physical.size != n):
             raise ValueError(f"unexpected R4 mapping shape for seed {seed}")
         if int(counts.sum()) != n or int(offsets[-1] + counts[-1]) != n:
             raise ValueError(f"R4 postings do not cover all documents for seed {seed}")
         if np.any(shortlist >= counts.size):
             raise ValueError(f"out-of-range shortlist address for seed {seed}")
+        if any(np.unique(row).size != row.size for row in shortlist):
+            raise ValueError(f"duplicate address in R4 shortlist for seed {seed}")
         if np.any(physical < 0) or np.any(physical >= n) or np.unique(physical).size != n:
             raise ValueError(f"R4 physical-to-document mapping is not a permutation for seed {seed}")
         postings = [physical[int(offsets[a]):int(offsets[a] + counts[a])] for a in range(counts.size)]
@@ -176,10 +244,18 @@ def main() -> None:
         for address, ids in enumerate(postings):
             doc_address[ids] = address
             doc_offset[ids] = np.arange(ids.size, dtype=np.int32)
+        if args.order_mode == "model_ranked":
+            physical_records = np.memmap(root / fp32_record["file"], mode="r", dtype="<f4",
+                                         shape=(n, 384))
+            ordered_shortlist, order_artifacts = model_order(
+                root, seed_record, np.asarray(queries), shortlist,
+                physical_records, doc_to_physical)
+        else:
+            ordered_shortlist, order_artifacts = shortlist, {}
         rows: list[dict[str, Any]] = []
         started = time.perf_counter()
         for qi in range(query_count):
-            order = shortlist[qi]
+            order = ordered_shortlist[qi]
             for mode in ("whole_posting", "hard_cap"):
                 for result in snapshot(counts, doc_address, doc_offset, order,
                                        np.asarray(teachers[qi]), budgets, n, mode):
@@ -204,6 +280,7 @@ def main() -> None:
         raw_rows.extend(rows)
         seed_results.append({"seed": seed, "query_processing_ms": elapsed_ms,
                              "artifact_records": records,
+                             "order_artifacts": order_artifacts,
                              "posting_stats": {"addresses": int(counts.size),
                                                 "effective_addresses": int(np.count_nonzero(counts)),
                                                 "size": aggregate(counts.astype(np.float64).tolist())}})
@@ -240,7 +317,10 @@ def main() -> None:
               "raw_output": {"path": str(args.raw_output), "sha256": hashlib.sha256(raw_bytes).hexdigest(),
                              "rows": len(raw_rows)},
               "protocol": {"primary_mode": "whole_posting", "secondary_mode": "hard_cap",
-                           "posting_traversal": "frozen R4 shortlist address order",
+                           "posting_traversal": ("frozen R4 model-ranked address order within the 1024 shortlist"
+                                                 if args.order_mode == "model_ranked"
+                                                 else "frozen R4 coarse shortlist address order"),
+                           "order_mode": args.order_mode,
                            "candidate_budget_definition": "unique document IDs",
                            "posting_entries_touched": "sum of complete postings visited (whole physical read proxy)",
                            "query_order_binding": "byte-equal query_vectors.f32le to frozen manifest",
