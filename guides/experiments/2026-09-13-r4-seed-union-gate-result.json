@@ -1,0 +1,5619 @@
+{
+  "budgets": [
+    5000,
+    10000,
+    20000,
+    50000,
+    100000
+  ],
+  "documents": 1000000,
+  "execution_status": "EXECUTED",
+  "family": "semantic_r4_seed_union_gate_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "production_activation": false,
+  "protocol": {
+    "candidate_budget_definition": "unique document IDs",
+    "duplication_ratio": "posting entries touched divided by unique candidates",
+    "merge": "deterministic equal-consumed-entry round robin; ties by seed order",
+    "order": "frozen R4 model-ranked order within each 1024-address shortlist",
+    "physical_page_bytes": "not measured",
+    "production_activation": false,
+    "teacher_ids_used_for_index": false
+  },
+  "queries": 152,
+  "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "raw_output": {
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-seed-union-gate-raw.json",
+    "rows": 5320,
+    "sha256": "b246ecdad5d56412db0da9299f0e3e618ff04ab5970a5a9398685db7be2b0d11"
+  },
+  "runner_sha256": "ccb0e72c9c9c13e73f0167b7cac2b209e6dc470b13163a8806d859880aab62ad",
+  "schema_version": 1,
+  "seeds": [
+    2026082701,
+    2026082702,
+    2026082703
+  ],
+  "summaries": [
+    {
+      "actual_unique_candidates": {
+        "max": 5092.0,
+        "mean": 5021.190789473684,
+        "min": 5001.0,
+        "p05": 5002.0,
+        "p50": 5017.0,
+        "p95": 5056.0
+      },
+      "budget_overshoot": {
+        "max": 92.0,
+        "mean": 21.19078947368421,
+        "min": 1.0,
+        "p05": 2.0,
+        "p50": 17.0,
+        "p95": 56.0
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 5092.0,
+        "mean": 5021.190789473684,
+        "min": 5001.0,
+        "p05": 5002.0,
+        "p50": 5017.0,
+        "p95": 5056.0
+      },
+      "postings_touched": {
+        "max": 290.0,
+        "mean": 154.06578947368422,
+        "min": 90.0,
+        "p05": 112.55,
+        "p50": 147.0,
+        "p95": 218.24999999999994
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 5000,
+      "seeds": [
+        2026082701
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9032894736842106,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            977230,
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            929525,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            993374,
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            647508,
+            648775,
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 61,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            847395,
+            634561,
+            634562,
+            162538
+          ]
+        },
+        {
+          "query": 64,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            757138,
+            932957,
+            635454,
+            932963
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            840193,
+            430856,
+            746029,
+            3065
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            407713,
+            724079,
+            202577,
+            202585
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10078.0,
+        "mean": 10013.598684210527,
+        "min": 10000.0,
+        "p05": 10000.0,
+        "p50": 10011.0,
+        "p95": 10032.35
+      },
+      "budget_overshoot": {
+        "max": 78.0,
+        "mean": 13.598684210526315,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 11.0,
+        "p95": 32.349999999999966
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 10078.0,
+        "mean": 10013.598684210527,
+        "min": 10000.0,
+        "p05": 10000.0,
+        "p50": 10011.0,
+        "p95": 10032.35
+      },
+      "postings_touched": {
+        "max": 599.0,
+        "mean": 335.0263157894737,
+        "min": 213.0,
+        "p05": 238.2,
+        "p50": 324.5,
+        "p95": 470.34999999999997
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 10000,
+      "seeds": [
+        2026082701
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9059210526315788,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            977230,
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            929525,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            993374,
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            647508,
+            648775,
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 61,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            847395,
+            634561,
+            634562,
+            162538
+          ]
+        },
+        {
+          "query": 64,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            757138,
+            932957,
+            635454,
+            932963
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            840193,
+            430856,
+            746029,
+            3065
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            407713,
+            724079,
+            202577,
+            202585
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20037.0,
+        "mean": 19424.57894736842,
+        "min": 15017.0,
+        "p05": 17266.85,
+        "p50": 20002.0,
+        "p95": 20015.0
+      },
+      "budget_overshoot": {
+        "max": 37.0,
+        "mean": -575.421052631579,
+        "min": -4983.0,
+        "p05": -2733.15,
+        "p50": 2.0,
+        "p95": 15.0
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 20037.0,
+        "mean": 19424.57894736842,
+        "min": 15017.0,
+        "p05": 17266.85,
+        "p50": 20002.0,
+        "p95": 20015.0
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 894.2236842105264,
+        "min": 521.0,
+        "p05": 651.75,
+        "p50": 930.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 20000,
+      "seeds": [
+        2026082701
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9085526315789475,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            977230,
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            929525,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            993374,
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            647508,
+            648775,
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 61,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            847395,
+            634561,
+            634562,
+            162538
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            840193,
+            430856,
+            746029,
+            3065
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            407713,
+            724079,
+            202577,
+            202585
+          ]
+        },
+        {
+          "query": 121,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            669829,
+            669831,
+            241192,
+            496929
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 28256.0,
+        "mean": 21056.236842105263,
+        "min": 15017.0,
+        "p05": 17266.85,
+        "p50": 20971.5,
+        "p95": 25395.6
+      },
+      "budget_overshoot": {
+        "max": -21744.0,
+        "mean": -28943.763157894737,
+        "min": -34983.0,
+        "p05": -32733.15,
+        "p50": -29028.5,
+        "p95": -24604.4
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 28256.0,
+        "mean": 21056.236842105263,
+        "min": 15017.0,
+        "p05": 17266.85,
+        "p50": 20971.5,
+        "p95": 25395.6
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 1024.0,
+        "min": 1024.0,
+        "p05": 1024.0,
+        "p50": 1024.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 50000,
+      "seeds": [
+        2026082701
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9085526315789475,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            977230,
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            929525,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            993374,
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            647508,
+            648775,
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 61,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            847395,
+            634561,
+            634562,
+            162538
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            840193,
+            430856,
+            746029,
+            3065
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            407713,
+            724079,
+            202577,
+            202585
+          ]
+        },
+        {
+          "query": 121,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            669829,
+            669831,
+            241192,
+            496929
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 28256.0,
+        "mean": 21056.236842105263,
+        "min": 15017.0,
+        "p05": 17266.85,
+        "p50": 20971.5,
+        "p95": 25395.6
+      },
+      "budget_overshoot": {
+        "max": -71744.0,
+        "mean": -78943.76315789473,
+        "min": -84983.0,
+        "p05": -82733.15,
+        "p50": -79028.5,
+        "p95": -74604.4
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 28256.0,
+        "mean": 21056.236842105263,
+        "min": 15017.0,
+        "p05": 17266.85,
+        "p50": 20971.5,
+        "p95": 25395.6
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 1024.0,
+        "min": 1024.0,
+        "p05": 1024.0,
+        "p50": 1024.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 100000,
+      "seeds": [
+        2026082701
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9085526315789475,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            977230,
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            929525,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            993374,
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            647508,
+            648775,
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 61,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            847395,
+            634561,
+            634562,
+            162538
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            840193,
+            430856,
+            746029,
+            3065
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            407713,
+            724079,
+            202577,
+            202585
+          ]
+        },
+        {
+          "query": 121,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            669829,
+            669831,
+            241192,
+            496929
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5162.0,
+        "mean": 5023.0921052631575,
+        "min": 5000.0,
+        "p05": 5002.0,
+        "p50": 5015.0,
+        "p95": 5070.9
+      },
+      "budget_overshoot": {
+        "max": 162.0,
+        "mean": 23.092105263157894,
+        "min": 0.0,
+        "p05": 2.0,
+        "p50": 15.0,
+        "p95": 70.89999999999998
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 5162.0,
+        "mean": 5023.0921052631575,
+        "min": 5000.0,
+        "p05": 5002.0,
+        "p50": 5015.0,
+        "p95": 5070.9
+      },
+      "postings_touched": {
+        "max": 269.0,
+        "mean": 140.53947368421052,
+        "min": 57.0,
+        "p05": 84.65,
+        "p50": 140.0,
+        "p95": 204.89999999999998
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 5000,
+      "seeds": [
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8953947368421055,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 0.9,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            795252,
+            943363,
+            8318,
+            8315,
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            219707,
+            219712,
+            219709,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            923849,
+            763853,
+            923850,
+            466913,
+            890053
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            240800,
+            747169
+          ]
+        },
+        {
+          "query": 33,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            740807,
+            690228,
+            643878,
+            763400
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            408773,
+            804129,
+            836891,
+            224872
+          ]
+        },
+        {
+          "query": 76,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            660164,
+            697607,
+            643761,
+            131103
+          ]
+        },
+        {
+          "query": 77,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            341612,
+            394134,
+            341614,
+            899749
+          ]
+        },
+        {
+          "query": 94,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            447136,
+            974560,
+            15637,
+            447875
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10112.0,
+        "mean": 10014.421052631578,
+        "min": 10000.0,
+        "p05": 10001.0,
+        "p50": 10013.0,
+        "p95": 10035.45
+      },
+      "budget_overshoot": {
+        "max": 112.0,
+        "mean": 14.421052631578947,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 13.0,
+        "p95": 35.44999999999999
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 10112.0,
+        "mean": 10014.421052631578,
+        "min": 10000.0,
+        "p05": 10001.0,
+        "p50": 10013.0,
+        "p95": 10035.45
+      },
+      "postings_touched": {
+        "max": 553.0,
+        "mean": 321.6118421052632,
+        "min": 155.0,
+        "p05": 193.75,
+        "p50": 324.5,
+        "p95": 473.45
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 10000,
+      "seeds": [
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9006578947368421,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 70,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            795252,
+            943363,
+            8318,
+            8315,
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            219707,
+            219712,
+            219709,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            923849,
+            763853,
+            923850,
+            466913,
+            890053
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            240800,
+            747169
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            408773,
+            804129,
+            836891,
+            224872
+          ]
+        },
+        {
+          "query": 76,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            660164,
+            697607,
+            643761,
+            131103
+          ]
+        },
+        {
+          "query": 77,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            341612,
+            394134,
+            341614,
+            899749
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            452706,
+            746029,
+            833608,
+            124389
+          ]
+        },
+        {
+          "query": 147,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            521188,
+            775611,
+            289791,
+            68943
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20026.0,
+        "mean": 19366.072368421053,
+        "min": 16016.0,
+        "p05": 16931.55,
+        "p50": 20001.5,
+        "p95": 20014.0
+      },
+      "budget_overshoot": {
+        "max": 26.0,
+        "mean": -633.9276315789474,
+        "min": -3984.0,
+        "p05": -3068.45,
+        "p50": 1.5,
+        "p95": 14.0
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 20026.0,
+        "mean": 19366.072368421053,
+        "min": 16016.0,
+        "p05": 16931.55,
+        "p50": 20001.5,
+        "p95": 20014.0
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 881.3157894736842,
+        "min": 392.0,
+        "p05": 524.65,
+        "p50": 960.5,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 20000,
+      "seeds": [
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9026315789473683,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 70,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            795252,
+            943363,
+            8318,
+            8315,
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            219707,
+            219712,
+            219709,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            923849,
+            763853,
+            923850,
+            466913,
+            890053
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            240800,
+            747169
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            408773,
+            804129,
+            836891,
+            224872
+          ]
+        },
+        {
+          "query": 76,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            660164,
+            697607,
+            643761,
+            131103
+          ]
+        },
+        {
+          "query": 77,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            341612,
+            394134,
+            341614,
+            899749
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            452706,
+            746029,
+            833608,
+            124389
+          ]
+        },
+        {
+          "query": 147,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            521188,
+            775611,
+            289791,
+            68943
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 32085.0,
+        "mean": 21260.03947368421,
+        "min": 16016.0,
+        "p05": 16931.55,
+        "p50": 20601.0,
+        "p95": 27527.1
+      },
+      "budget_overshoot": {
+        "max": -17915.0,
+        "mean": -28739.96052631579,
+        "min": -33984.0,
+        "p05": -33068.45,
+        "p50": -29399.0,
+        "p95": -22472.9
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 32085.0,
+        "mean": 21260.03947368421,
+        "min": 16016.0,
+        "p05": 16931.55,
+        "p50": 20601.0,
+        "p95": 27527.1
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 1024.0,
+        "min": 1024.0,
+        "p05": 1024.0,
+        "p50": 1024.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 50000,
+      "seeds": [
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9026315789473683,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 70,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            795252,
+            943363,
+            8318,
+            8315,
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            219707,
+            219712,
+            219709,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            923849,
+            763853,
+            923850,
+            466913,
+            890053
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            240800,
+            747169
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            408773,
+            804129,
+            836891,
+            224872
+          ]
+        },
+        {
+          "query": 76,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            660164,
+            697607,
+            643761,
+            131103
+          ]
+        },
+        {
+          "query": 77,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            341612,
+            394134,
+            341614,
+            899749
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            452706,
+            746029,
+            833608,
+            124389
+          ]
+        },
+        {
+          "query": 147,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            521188,
+            775611,
+            289791,
+            68943
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 32085.0,
+        "mean": 21260.03947368421,
+        "min": 16016.0,
+        "p05": 16931.55,
+        "p50": 20601.0,
+        "p95": 27527.1
+      },
+      "budget_overshoot": {
+        "max": -67915.0,
+        "mean": -78739.96052631579,
+        "min": -83984.0,
+        "p05": -83068.45,
+        "p50": -79399.0,
+        "p95": -72472.9
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 32085.0,
+        "mean": 21260.03947368421,
+        "min": 16016.0,
+        "p05": 16931.55,
+        "p50": 20601.0,
+        "p95": 27527.1
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 1024.0,
+        "min": 1024.0,
+        "p05": 1024.0,
+        "p50": 1024.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 100000,
+      "seeds": [
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9026315789473683,
+        "min": 0.4,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 70,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            795252,
+            943363,
+            8318,
+            8315,
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            219707,
+            219712,
+            219709,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            923849,
+            763853,
+            923850,
+            466913,
+            890053
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            240800,
+            747169
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            408773,
+            804129,
+            836891,
+            224872
+          ]
+        },
+        {
+          "query": 76,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            660164,
+            697607,
+            643761,
+            131103
+          ]
+        },
+        {
+          "query": 77,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            341612,
+            394134,
+            341614,
+            899749
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            452706,
+            746029,
+            833608,
+            124389
+          ]
+        },
+        {
+          "query": 147,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            521188,
+            775611,
+            289791,
+            68943
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5149.0,
+        "mean": 5020.144736842105,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5016.5,
+        "p95": 5060.35
+      },
+      "budget_overshoot": {
+        "max": 149.0,
+        "mean": 20.144736842105264,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 16.5,
+        "p95": 60.349999999999966
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 5149.0,
+        "mean": 5020.144736842105,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5016.5,
+        "p95": 5060.35
+      },
+      "postings_touched": {
+        "max": 227.0,
+        "mean": 159.89473684210526,
+        "min": 88.0,
+        "p05": 117.0,
+        "p50": 159.0,
+        "p95": 207.69999999999993
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 5000,
+      "seeds": [
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8973684210526316,
+        "min": 0.2,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.2,
+          "teacher_ids_missed": [
+            730931,
+            243919,
+            270830,
+            627633,
+            209583,
+            651391,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            75707,
+            432060,
+            727139,
+            412455
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            804284,
+            408773,
+            993309,
+            329363,
+            224872
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219708,
+            219711
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            963646,
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            834468,
+            270363
+          ]
+        },
+        {
+          "query": 143,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            350578,
+            350585,
+            350581,
+            350576
+          ]
+        },
+        {
+          "query": 151,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            134667,
+            638353,
+            880662,
+            578731
+          ]
+        },
+        {
+          "query": 5,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            188642,
+            653776,
+            298226
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10054.0,
+        "mean": 10014.223684210527,
+        "min": 10000.0,
+        "p05": 10001.0,
+        "p50": 10013.0,
+        "p95": 10032.45
+      },
+      "budget_overshoot": {
+        "max": 54.0,
+        "mean": 14.223684210526315,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 13.0,
+        "p95": 32.44999999999999
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 10054.0,
+        "mean": 10014.223684210527,
+        "min": 10000.0,
+        "p05": 10001.0,
+        "p50": 10013.0,
+        "p95": 10032.45
+      },
+      "postings_touched": {
+        "max": 483.0,
+        "mean": 339.1118421052632,
+        "min": 214.0,
+        "p05": 261.0,
+        "p50": 336.5,
+        "p95": 432.24999999999994
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 10000,
+      "seeds": [
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9,
+        "min": 0.2,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.2,
+          "teacher_ids_missed": [
+            730931,
+            243919,
+            270830,
+            627633,
+            209583,
+            651391,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            75707,
+            432060,
+            727139,
+            412455
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            804284,
+            408773,
+            993309,
+            329363,
+            224872
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219708,
+            219711
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            963646,
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            834468,
+            270363
+          ]
+        },
+        {
+          "query": 143,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            350578,
+            350585,
+            350581,
+            350576
+          ]
+        },
+        {
+          "query": 151,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            134667,
+            638353,
+            880662,
+            578731
+          ]
+        },
+        {
+          "query": 5,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            188642,
+            653776,
+            298226
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20019.0,
+        "mean": 19485.25657894737,
+        "min": 16721.0,
+        "p05": 17568.75,
+        "p50": 20001.5,
+        "p95": 20014.0
+      },
+      "budget_overshoot": {
+        "max": 19.0,
+        "mean": -514.7434210526316,
+        "min": -3279.0,
+        "p05": -2431.25,
+        "p50": 1.5,
+        "p95": 14.0
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 20019.0,
+        "mean": 19485.25657894737,
+        "min": 16721.0,
+        "p05": 17568.75,
+        "p50": 20001.5,
+        "p95": 20014.0
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 925.5263157894736,
+        "min": 594.0,
+        "p05": 705.0,
+        "p50": 981.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 20000,
+      "seeds": [
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9,
+        "min": 0.2,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.2,
+          "teacher_ids_missed": [
+            730931,
+            243919,
+            270830,
+            627633,
+            209583,
+            651391,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            75707,
+            432060,
+            727139,
+            412455
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            804284,
+            408773,
+            993309,
+            329363,
+            224872
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219708,
+            219711
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            963646,
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            834468,
+            270363
+          ]
+        },
+        {
+          "query": 143,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            350578,
+            350585,
+            350581,
+            350576
+          ]
+        },
+        {
+          "query": 151,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            134667,
+            638353,
+            880662,
+            578731
+          ]
+        },
+        {
+          "query": 5,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            188642,
+            653776,
+            298226
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 26420.0,
+        "mean": 20608.177631578947,
+        "min": 16721.0,
+        "p05": 17568.75,
+        "p50": 20404.0,
+        "p95": 23987.55
+      },
+      "budget_overshoot": {
+        "max": -23580.0,
+        "mean": -29391.822368421053,
+        "min": -33279.0,
+        "p05": -32431.25,
+        "p50": -29596.0,
+        "p95": -26012.45
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 26420.0,
+        "mean": 20608.177631578947,
+        "min": 16721.0,
+        "p05": 17568.75,
+        "p50": 20404.0,
+        "p95": 23987.55
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 1024.0,
+        "min": 1024.0,
+        "p05": 1024.0,
+        "p50": 1024.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 50000,
+      "seeds": [
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9,
+        "min": 0.2,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.2,
+          "teacher_ids_missed": [
+            730931,
+            243919,
+            270830,
+            627633,
+            209583,
+            651391,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            75707,
+            432060,
+            727139,
+            412455
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            804284,
+            408773,
+            993309,
+            329363,
+            224872
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219708,
+            219711
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            963646,
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            834468,
+            270363
+          ]
+        },
+        {
+          "query": 143,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            350578,
+            350585,
+            350581,
+            350576
+          ]
+        },
+        {
+          "query": 151,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            134667,
+            638353,
+            880662,
+            578731
+          ]
+        },
+        {
+          "query": 5,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            188642,
+            653776,
+            298226
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 26420.0,
+        "mean": 20608.177631578947,
+        "min": 16721.0,
+        "p05": 17568.75,
+        "p50": 20404.0,
+        "p95": 23987.55
+      },
+      "budget_overshoot": {
+        "max": -73580.0,
+        "mean": -79391.82236842105,
+        "min": -83279.0,
+        "p05": -82431.25,
+        "p50": -79596.0,
+        "p95": -76012.45
+      },
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "overlap_entries": {
+        "max": 0.0,
+        "mean": 0.0,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 0.0,
+        "p95": 0.0
+      },
+      "posting_entries_touched": {
+        "max": 26420.0,
+        "mean": 20608.177631578947,
+        "min": 16721.0,
+        "p05": 17568.75,
+        "p50": 20404.0,
+        "p95": 23987.55
+      },
+      "postings_touched": {
+        "max": 1024.0,
+        "mean": 1024.0,
+        "min": 1024.0,
+        "p05": 1024.0,
+        "p50": 1024.0,
+        "p95": 1024.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 100000,
+      "seeds": [
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9,
+        "min": 0.2,
+        "p05": 0.6,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.2,
+          "teacher_ids_missed": [
+            730931,
+            243919,
+            270830,
+            627633,
+            209583,
+            651391,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            75707,
+            432060,
+            727139,
+            412455
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            804284,
+            408773,
+            993309,
+            329363,
+            224872
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219708,
+            219711
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            963646,
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            834468,
+            270363
+          ]
+        },
+        {
+          "query": 143,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            350578,
+            350585,
+            350581,
+            350576
+          ]
+        },
+        {
+          "query": 151,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            134667,
+            638353,
+            880662,
+            578731
+          ]
+        },
+        {
+          "query": 5,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            188642,
+            653776,
+            298226
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5153.0,
+        "mean": 5023.013157894737,
+        "min": 5000.0,
+        "p05": 5002.0,
+        "p50": 5017.0,
+        "p95": 5057.3
+      },
+      "budget_overshoot": {
+        "max": 153.0,
+        "mean": 23.013157894736842,
+        "min": 0.0,
+        "p05": 2.0,
+        "p50": 17.0,
+        "p95": 57.29999999999984
+      },
+      "duplication_ratio": {
+        "max": 1.1629335976214072,
+        "mean": 1.039753812975041,
+        "min": 1.0119928043174096,
+        "p05": 1.0177125064988515,
+        "p50": 1.0333401715423771,
+        "p95": 1.0768826538327971
+      },
+      "overlap_entries": {
+        "max": 822.0,
+        "mean": 199.7828947368421,
+        "min": 60.0,
+        "p05": 89.0,
+        "p50": 167.5,
+        "p95": 384.69999999999993
+      },
+      "posting_entries_touched": {
+        "max": 5867.0,
+        "mean": 5222.796052631579,
+        "min": 5063.0,
+        "p05": 5109.55,
+        "p50": 5188.0,
+        "p95": 5408.55
+      },
+      "postings_touched": {
+        "max": 287.0,
+        "mean": 157.4078947368421,
+        "min": 69.0,
+        "p05": 112.0,
+        "p50": 152.0,
+        "p95": 222.14999999999992
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 5000,
+      "seeds": [
+        2026082701,
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9638157894736842,
+        "min": 0.6,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            219709,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            8318,
+            8315,
+            752994
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            358938,
+            358936,
+            358935
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            540719,
+            165634
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            804129,
+            836891
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10109.0,
+        "mean": 10019.026315789473,
+        "min": 10000.0,
+        "p05": 10002.0,
+        "p50": 10013.0,
+        "p95": 10054.8
+      },
+      "budget_overshoot": {
+        "max": 109.0,
+        "mean": 19.026315789473685,
+        "min": 0.0,
+        "p05": 2.0,
+        "p50": 13.0,
+        "p95": 54.799999999999955
+      },
+      "duplication_ratio": {
+        "max": 1.2010592585190367,
+        "mean": 1.0608874291086696,
+        "min": 1.0214549446163057,
+        "p05": 1.0274066928810042,
+        "p50": 1.0532313477334518,
+        "p95": 1.112045139709078
+      },
+      "overlap_entries": {
+        "max": 2012.0,
+        "mean": 610.0131578947369,
+        "min": 215.0,
+        "p05": 274.65,
+        "p50": 532.5,
+        "p95": 1122.0999999999985
+      },
+      "posting_entries_touched": {
+        "max": 12019.0,
+        "mean": 10629.03947368421,
+        "min": 10233.0,
+        "p05": 10291.95,
+        "p50": 10542.0,
+        "p95": 11143.099999999999
+      },
+      "postings_touched": {
+        "max": 545.0,
+        "mean": 312.2171052631579,
+        "min": 197.0,
+        "p05": 223.55,
+        "p50": 303.5,
+        "p95": 433.34999999999997
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 10000,
+      "seeds": [
+        2026082701,
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9671052631578947,
+        "min": 0.7,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            8318,
+            8315,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            358938,
+            358936,
+            358935
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            804129,
+            836891
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            407713,
+            202585
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20062.0,
+        "mean": 20011.467105263157,
+        "min": 20000.0,
+        "p05": 20000.0,
+        "p50": 20010.0,
+        "p95": 20029.0
+      },
+      "budget_overshoot": {
+        "max": 62.0,
+        "mean": 11.467105263157896,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 10.0,
+        "p95": 29.0
+      },
+      "duplication_ratio": {
+        "max": 1.2497375656085978,
+        "mean": 1.0930355248025816,
+        "min": 1.0393401649587604,
+        "p05": 1.0456295969026317,
+        "p50": 1.0816010451854117,
+        "p95": 1.166199838964132
+      },
+      "overlap_entries": {
+        "max": 4996.0,
+        "mean": 1861.8355263157894,
+        "min": 787.0,
+        "p05": 912.85,
+        "p50": 1633.0,
+        "p95": 3325.75
+      },
+      "posting_entries_touched": {
+        "max": 25001.0,
+        "mean": 21873.302631578947,
+        "min": 20792.0,
+        "p05": 20919.3,
+        "p50": 21651.0,
+        "p95": 23336.3
+      },
+      "postings_touched": {
+        "max": 1222.0,
+        "mean": 735.671052631579,
+        "min": 464.0,
+        "p05": 528.0,
+        "p50": 735.0,
+        "p95": 967.9499999999998
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 20000,
+      "seeds": [
+        2026082701,
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9684210526315788,
+        "min": 0.7,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            8318,
+            8315,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            358938,
+            358936,
+            358935
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            804129,
+            836891
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            407713,
+            202585
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 49740.0,
+        "mean": 37184.77631578947,
+        "min": 28572.0,
+        "p05": 31755.55,
+        "p50": 36834.5,
+        "p95": 43952.05
+      },
+      "budget_overshoot": {
+        "max": -260.0,
+        "mean": -12815.223684210527,
+        "min": -21428.0,
+        "p05": -18244.45,
+        "p50": -13165.5,
+        "p95": -6047.950000000001
+      },
+      "duplication_ratio": {
+        "max": 1.2905694046395935,
+        "mean": 1.1361250736961932,
+        "min": 1.0617674530718009,
+        "p05": 1.0733319943571586,
+        "p50": 1.1249631206562647,
+        "p95": 1.2223751910301324
+      },
+      "overlap_entries": {
+        "max": 11293.0,
+        "mean": 5131.5,
+        "min": 2050.0,
+        "p05": 2605.15,
+        "p50": 4695.5,
+        "p95": 9577.599999999997
+      },
+      "posting_entries_touched": {
+        "max": 59824.0,
+        "mean": 42316.27631578947,
+        "min": 31673.0,
+        "p05": 35204.8,
+        "p50": 41601.0,
+        "p95": 52549.799999999996
+      },
+      "postings_touched": {
+        "max": 2048.0,
+        "mean": 2048.0,
+        "min": 2048.0,
+        "p05": 2048.0,
+        "p50": 2048.0,
+        "p95": 2048.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 50000,
+      "seeds": [
+        2026082701,
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9684210526315788,
+        "min": 0.7,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            8318,
+            8315,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            358938,
+            358936,
+            358935
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            804129,
+            836891
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            407713,
+            202585
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 49740.0,
+        "mean": 37184.77631578947,
+        "min": 28572.0,
+        "p05": 31755.55,
+        "p50": 36834.5,
+        "p95": 43952.05
+      },
+      "budget_overshoot": {
+        "max": -50260.0,
+        "mean": -62815.22368421053,
+        "min": -71428.0,
+        "p05": -68244.45,
+        "p50": -63165.5,
+        "p95": -56047.95
+      },
+      "duplication_ratio": {
+        "max": 1.2905694046395935,
+        "mean": 1.1361250736961932,
+        "min": 1.0617674530718009,
+        "p05": 1.0733319943571586,
+        "p50": 1.1249631206562647,
+        "p95": 1.2223751910301324
+      },
+      "overlap_entries": {
+        "max": 11293.0,
+        "mean": 5131.5,
+        "min": 2050.0,
+        "p05": 2605.15,
+        "p50": 4695.5,
+        "p95": 9577.599999999997
+      },
+      "posting_entries_touched": {
+        "max": 59824.0,
+        "mean": 42316.27631578947,
+        "min": 31673.0,
+        "p05": 35204.8,
+        "p50": 41601.0,
+        "p95": 52549.799999999996
+      },
+      "postings_touched": {
+        "max": 2048.0,
+        "mean": 2048.0,
+        "min": 2048.0,
+        "p05": 2048.0,
+        "p50": 2048.0,
+        "p95": 2048.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 100000,
+      "seeds": [
+        2026082701,
+        2026082702
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9684210526315788,
+        "min": 0.7,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            763853,
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            993375,
+            957210,
+            531168
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            8318,
+            8315,
+            752994
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            358938,
+            358936,
+            358935
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            804129,
+            836891
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 113,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            407713,
+            202585
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5097.0,
+        "mean": 5022.243421052632,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5018.5,
+        "p95": 5059.0
+      },
+      "budget_overshoot": {
+        "max": 97.0,
+        "mean": 22.24342105263158,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 18.5,
+        "p95": 59.0
+      },
+      "duplication_ratio": {
+        "max": 1.1325878594249201,
+        "mean": 1.0395113934074964,
+        "min": 1.0155409444112373,
+        "p05": 1.019055406803625,
+        "p50": 1.033679744306832,
+        "p95": 1.0704830944027894
+      },
+      "overlap_entries": {
+        "max": 664.0,
+        "mean": 198.44736842105263,
+        "min": 78.0,
+        "p05": 95.65,
+        "p50": 168.5,
+        "p95": 354.4999999999999
+      },
+      "posting_entries_touched": {
+        "max": 5672.0,
+        "mean": 5220.690789473684,
+        "min": 5095.0,
+        "p05": 5112.55,
+        "p50": 5189.5,
+        "p95": 5401.9
+      },
+      "postings_touched": {
+        "max": 297.0,
+        "mean": 175.63815789473685,
+        "min": 83.0,
+        "p05": 128.0,
+        "p50": 169.0,
+        "p95": 236.45
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 5000,
+      "seeds": [
+        2026082701,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.955921052631579,
+        "min": 0.5,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 83,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            266747,
+            266754,
+            266750
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            270363
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 49,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            770235,
+            423390
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            993309,
+            804129
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10136.0,
+        "mean": 10019.743421052632,
+        "min": 10000.0,
+        "p05": 10001.55,
+        "p50": 10015.0,
+        "p95": 10059.45
+      },
+      "budget_overshoot": {
+        "max": 136.0,
+        "mean": 19.74342105263158,
+        "min": 0.0,
+        "p05": 1.5500000000000007,
+        "p50": 15.0,
+        "p95": 59.44999999999999
+      },
+      "duplication_ratio": {
+        "max": 1.1551207825913357,
+        "mean": 1.0584262110257805,
+        "min": 1.0237928621413577,
+        "p05": 1.028141311857389,
+        "p50": 1.0523056204452432,
+        "p95": 1.1070555058040707
+      },
+      "overlap_entries": {
+        "max": 1554.0,
+        "mean": 585.5263157894736,
+        "min": 238.0,
+        "p05": 281.75,
+        "p50": 523.5,
+        "p95": 1071.4499999999998
+      },
+      "posting_entries_touched": {
+        "max": 11598.0,
+        "mean": 10605.269736842105,
+        "min": 10241.0,
+        "p05": 10301.1,
+        "p50": 10551.0,
+        "p95": 11102.45
+      },
+      "postings_touched": {
+        "max": 539.0,
+        "mean": 331.1513157894737,
+        "min": 234.0,
+        "p05": 255.0,
+        "p50": 327.5,
+        "p95": 426.9
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 10000,
+      "seeds": [
+        2026082701,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9578947368421055,
+        "min": 0.5,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            973246,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 83,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            266747,
+            266754,
+            266750
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            270363
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 49,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            770235,
+            423390
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 67,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            461959,
+            448907
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20074.0,
+        "mean": 20012.361842105263,
+        "min": 20000.0,
+        "p05": 20001.0,
+        "p50": 20011.0,
+        "p95": 20028.35
+      },
+      "budget_overshoot": {
+        "max": 74.0,
+        "mean": 12.361842105263158,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 11.0,
+        "p95": 28.349999999999966
+      },
+      "duplication_ratio": {
+        "max": 1.196980301969803,
+        "mean": 1.0885783007226844,
+        "min": 1.0387961203879612,
+        "p05": 1.048302945919086,
+        "p50": 1.0795511479471398,
+        "p95": 1.1580230719024065
+      },
+      "overlap_entries": {
+        "max": 3940.0,
+        "mean": 1772.671052631579,
+        "min": 776.0,
+        "p05": 966.75,
+        "p50": 1591.5,
+        "p95": 3163.3499999999995
+      },
+      "posting_entries_touched": {
+        "max": 23942.0,
+        "mean": 21785.032894736843,
+        "min": 20778.0,
+        "p05": 20976.65,
+        "p50": 21597.5,
+        "p95": 23181.649999999998
+      },
+      "postings_touched": {
+        "max": 1193.0,
+        "mean": 748.9276315789474,
+        "min": 496.0,
+        "p05": 603.75,
+        "p50": 742.0,
+        "p95": 948.0499999999997
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 20000,
+      "seeds": [
+        2026082701,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9605263157894737,
+        "min": 0.6,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 83,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            266747,
+            266754,
+            266750
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            270363
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 67,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            461959,
+            448907
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            430856,
+            746029
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 44399.0,
+        "mean": 36812.00657894737,
+        "min": 28574.0,
+        "p05": 31946.4,
+        "p50": 36473.5,
+        "p95": 41943.1
+      },
+      "budget_overshoot": {
+        "max": -5601.0,
+        "mean": -13187.993421052632,
+        "min": -21426.0,
+        "p05": -18053.6,
+        "p50": -13526.5,
+        "p95": -8056.900000000001
+      },
+      "duplication_ratio": {
+        "max": 1.2523191592042469,
+        "mean": 1.1306346873243343,
+        "min": 1.0646935359600413,
+        "p05": 1.0772278061332197,
+        "p50": 1.1181399297442218,
+        "p95": 1.2154510795906466
+      },
+      "overlap_entries": {
+        "max": 9568.0,
+        "mean": 4852.4078947368425,
+        "min": 2216.0,
+        "p05": 2661.1,
+        "p50": 4372.0,
+        "p95": 8445.0
+      },
+      "posting_entries_touched": {
+        "max": 52296.0,
+        "mean": 41664.41447368421,
+        "min": 31991.0,
+        "p05": 35581.55,
+        "p50": 41247.0,
+        "p95": 49233.1
+      },
+      "postings_touched": {
+        "max": 2048.0,
+        "mean": 2048.0,
+        "min": 2048.0,
+        "p05": 2048.0,
+        "p50": 2048.0,
+        "p95": 2048.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 50000,
+      "seeds": [
+        2026082701,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.961184210526316,
+        "min": 0.6,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 83,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            266747,
+            266754,
+            266750
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            270363
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 67,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            461959,
+            448907
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            430856,
+            746029
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 44399.0,
+        "mean": 36812.00657894737,
+        "min": 28574.0,
+        "p05": 31946.4,
+        "p50": 36473.5,
+        "p95": 41943.1
+      },
+      "budget_overshoot": {
+        "max": -55601.0,
+        "mean": -63187.99342105263,
+        "min": -71426.0,
+        "p05": -68053.6,
+        "p50": -63526.5,
+        "p95": -58056.9
+      },
+      "duplication_ratio": {
+        "max": 1.2523191592042469,
+        "mean": 1.1306346873243343,
+        "min": 1.0646935359600413,
+        "p05": 1.0772278061332197,
+        "p50": 1.1181399297442218,
+        "p95": 1.2154510795906466
+      },
+      "overlap_entries": {
+        "max": 9568.0,
+        "mean": 4852.4078947368425,
+        "min": 2216.0,
+        "p05": 2661.1,
+        "p50": 4372.0,
+        "p95": 8445.0
+      },
+      "posting_entries_touched": {
+        "max": 52296.0,
+        "mean": 41664.41447368421,
+        "min": 31991.0,
+        "p05": 35581.55,
+        "p50": 41247.0,
+        "p95": 49233.1
+      },
+      "postings_touched": {
+        "max": 2048.0,
+        "mean": 2048.0,
+        "min": 2048.0,
+        "p05": 2048.0,
+        "p50": 2048.0,
+        "p95": 2048.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 100000,
+      "seeds": [
+        2026082701,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.961184210526316,
+        "min": 0.6,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            160963,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.6,
+          "teacher_ids_missed": [
+            84410,
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            412455
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            923850,
+            992790,
+            890053
+          ]
+        },
+        {
+          "query": 83,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            266747,
+            266754,
+            266750
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            71783,
+            997727,
+            270363
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 57,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            652972,
+            508958
+          ]
+        },
+        {
+          "query": 67,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            461959,
+            448907
+          ]
+        },
+        {
+          "query": 109,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            430856,
+            746029
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5153.0,
+        "mean": 5022.684210526316,
+        "min": 5000.0,
+        "p05": 5001.55,
+        "p50": 5017.0,
+        "p95": 5068.25
+      },
+      "budget_overshoot": {
+        "max": 153.0,
+        "mean": 22.68421052631579,
+        "min": 0.0,
+        "p05": 1.5500000000000007,
+        "p50": 17.0,
+        "p95": 68.24999999999994
+      },
+      "duplication_ratio": {
+        "max": 1.1396692568240685,
+        "mean": 1.0365268706953725,
+        "min": 1.0087614496216646,
+        "p05": 1.0162695827027632,
+        "p50": 1.0305389416226656,
+        "p95": 1.071476315534457
+      },
+      "overlap_entries": {
+        "max": 701.0,
+        "mean": 183.5065789473684,
+        "min": 44.0,
+        "p05": 81.55,
+        "p50": 153.0,
+        "p95": 360.4999999999999
+      },
+      "posting_entries_touched": {
+        "max": 5720.0,
+        "mean": 5206.190789473684,
+        "min": 5066.0,
+        "p05": 5097.0,
+        "p50": 5176.5,
+        "p95": 5398.6
+      },
+      "postings_touched": {
+        "max": 272.0,
+        "mean": 162.30921052631578,
+        "min": 58.0,
+        "p05": 115.0,
+        "p50": 158.0,
+        "p95": 218.24999999999994
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 5000,
+      "seeds": [
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9598684210526316,
+        "min": 0.4,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            540719,
+            165634,
+            75707
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            408773,
+            804129,
+            224872
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 40,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            697625,
+            279474
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 71,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            271349,
+            511224
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10093.0,
+        "mean": 10020.559210526315,
+        "min": 10000.0,
+        "p05": 10001.0,
+        "p50": 10016.0,
+        "p95": 10053.0
+      },
+      "budget_overshoot": {
+        "max": 93.0,
+        "mean": 20.55921052631579,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 16.0,
+        "p95": 53.0
+      },
+      "duplication_ratio": {
+        "max": 1.1717282717282718,
+        "mean": 1.0549107994734646,
+        "min": 1.0154845154845156,
+        "p05": 1.0244586894658012,
+        "p50": 1.0468535588441865,
+        "p95": 1.09559494140514
+      },
+      "overlap_entries": {
+        "max": 1719.0,
+        "mean": 550.2763157894736,
+        "min": 155.0,
+        "p05": 244.75,
+        "p50": 470.0,
+        "p95": 956.3499999999997
+      },
+      "posting_entries_touched": {
+        "max": 11729.0,
+        "mean": 10570.83552631579,
+        "min": 10165.0,
+        "p05": 10263.5,
+        "p50": 10501.0,
+        "p95": 10964.9
+      },
+      "postings_touched": {
+        "max": 503.0,
+        "mean": 316.4407894736842,
+        "min": 184.0,
+        "p05": 229.65,
+        "p50": 309.5,
+        "p95": 414.24999999999994
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 10000,
+      "seeds": [
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9631578947368421,
+        "min": 0.4,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.4,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554,
+            143527
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            540719,
+            75707
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 40,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            697625,
+            279474
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            408773,
+            224872
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 71,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            271349,
+            511224
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20046.0,
+        "mean": 20010.657894736843,
+        "min": 20000.0,
+        "p05": 20000.0,
+        "p50": 20008.0,
+        "p95": 20030.0
+      },
+      "budget_overshoot": {
+        "max": 46.0,
+        "mean": 10.657894736842104,
+        "min": 0.0,
+        "p05": 0.0,
+        "p50": 8.0,
+        "p95": 30.0
+      },
+      "duplication_ratio": {
+        "max": 1.2124468882779305,
+        "mean": 1.0850285766107668,
+        "min": 1.0349790125924445,
+        "p05": 1.042613086790412,
+        "p50": 1.0755013152219295,
+        "p95": 1.1494127299655053
+      },
+      "overlap_entries": {
+        "max": 4250.0,
+        "mean": 1701.4736842105262,
+        "min": 700.0,
+        "p05": 852.95,
+        "p50": 1511.5,
+        "p95": 2988.4999999999995
+      },
+      "posting_entries_touched": {
+        "max": 24255.0,
+        "mean": 21712.13157894737,
+        "min": 20712.0,
+        "p05": 20876.25,
+        "p50": 21524.5,
+        "p95": 22990.15
+      },
+      "postings_touched": {
+        "max": 1120.0,
+        "mean": 732.2302631578947,
+        "min": 470.0,
+        "p05": 537.3,
+        "p50": 727.5,
+        "p95": 975.5999999999999
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 20000,
+      "seeds": [
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9644736842105265,
+        "min": 0.5,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            540719,
+            75707
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 40,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            697625,
+            279474
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            408773,
+            224872
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 71,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            271349,
+            511224
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 46683.0,
+        "mean": 37099.99342105263,
+        "min": 30006.0,
+        "p05": 32332.45,
+        "p50": 36686.5,
+        "p95": 42940.1
+      },
+      "budget_overshoot": {
+        "max": -3317.0,
+        "mean": -12900.006578947368,
+        "min": -19994.0,
+        "p05": -17667.55,
+        "p50": -13313.5,
+        "p95": -7059.9000000000015
+      },
+      "duplication_ratio": {
+        "max": 1.2533177619704852,
+        "mean": 1.1268770482927468,
+        "min": 1.061344584466774,
+        "p05": 1.0711754606955202,
+        "p50": 1.118708313043041,
+        "p95": 1.2184090095670415
+      },
+      "overlap_entries": {
+        "max": 10049.0,
+        "mean": 4768.223684210527,
+        "min": 2032.0,
+        "p05": 2509.9,
+        "p50": 4354.0,
+        "p95": 8736.099999999997
+      },
+      "posting_entries_touched": {
+        "max": 55116.0,
+        "mean": 41868.21710526316,
+        "min": 33432.0,
+        "p05": 35367.05,
+        "p50": 40840.5,
+        "p95": 50922.6
+      },
+      "postings_touched": {
+        "max": 2048.0,
+        "mean": 2048.0,
+        "min": 2048.0,
+        "p05": 2048.0,
+        "p50": 2048.0,
+        "p95": 2048.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 50000,
+      "seeds": [
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9644736842105265,
+        "min": 0.5,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            540719,
+            75707
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 40,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            697625,
+            279474
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            408773,
+            224872
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 71,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            271349,
+            511224
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 46683.0,
+        "mean": 37099.99342105263,
+        "min": 30006.0,
+        "p05": 32332.45,
+        "p50": 36686.5,
+        "p95": 42940.1
+      },
+      "budget_overshoot": {
+        "max": -53317.0,
+        "mean": -62900.00657894737,
+        "min": -69994.0,
+        "p05": -67667.55,
+        "p50": -63313.5,
+        "p95": -57059.9
+      },
+      "duplication_ratio": {
+        "max": 1.2533177619704852,
+        "mean": 1.1268770482927468,
+        "min": 1.061344584466774,
+        "p05": 1.0711754606955202,
+        "p50": 1.118708313043041,
+        "p95": 1.2184090095670415
+      },
+      "overlap_entries": {
+        "max": 10049.0,
+        "mean": 4768.223684210527,
+        "min": 2032.0,
+        "p05": 2509.9,
+        "p50": 4354.0,
+        "p95": 8736.099999999997
+      },
+      "posting_entries_touched": {
+        "max": 55116.0,
+        "mean": 41868.21710526316,
+        "min": 33432.0,
+        "p05": 35367.05,
+        "p50": 40840.5,
+        "p95": 50922.6
+      },
+      "postings_touched": {
+        "max": 2048.0,
+        "mean": 2048.0,
+        "min": 2048.0,
+        "p05": 2048.0,
+        "p50": 2048.0,
+        "p95": 2048.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 100000,
+      "seeds": [
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9644736842105265,
+        "min": 0.5,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 4,
+          "recall": 0.5,
+          "teacher_ids_missed": [
+            243919,
+            270830,
+            627633,
+            209583,
+            299554
+          ]
+        },
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            646856,
+            537870,
+            903988
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            540719,
+            75707
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 40,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            697625,
+            279474
+          ]
+        },
+        {
+          "query": 58,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            408773,
+            224872
+          ]
+        },
+        {
+          "query": 70,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            5408,
+            752994
+          ]
+        },
+        {
+          "query": 71,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            271349,
+            511224
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5161.0,
+        "mean": 5025.355263157895,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5017.5,
+        "p95": 5068.35
+      },
+      "budget_overshoot": {
+        "max": 161.0,
+        "mean": 25.355263157894736,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 17.5,
+        "p95": 68.34999999999997
+      },
+      "duplication_ratio": {
+        "max": 1.2163661581137308,
+        "mean": 1.0578889302787584,
+        "min": 1.018359608860507,
+        "p05": 1.0314614718787396,
+        "p50": 1.048457974386757,
+        "p95": 1.1028520140860183
+      },
+      "overlap_entries": {
+        "max": 1092.0,
+        "mean": 290.9605263157895,
+        "min": 92.0,
+        "p05": 157.55,
+        "p50": 245.0,
+        "p95": 514.8499999999999
+      },
+      "posting_entries_touched": {
+        "max": 6139.0,
+        "mean": 5316.315789473684,
+        "min": 5103.0,
+        "p05": 5174.1,
+        "p50": 5276.5,
+        "p95": 5574.15
+      },
+      "postings_touched": {
+        "max": 283.0,
+        "mean": 180.44736842105263,
+        "min": 52.0,
+        "p05": 127.55,
+        "p50": 177.0,
+        "p95": 244.45
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 5000,
+      "seeds": [
+        2026082701,
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9763157894736842,
+        "min": 0.7,
+        "p05": 0.8550000000000001,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            540719,
+            165634
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            358938,
+            358936
+          ]
+        },
+        {
+          "query": 148,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            737819,
+            898803
+          ]
+        },
+        {
+          "query": 3,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            601180
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            646856
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10104.0,
+        "mean": 10019.513157894737,
+        "min": 10000.0,
+        "p05": 10002.0,
+        "p50": 10015.0,
+        "p95": 10051.45
+      },
+      "budget_overshoot": {
+        "max": 104.0,
+        "mean": 19.513157894736842,
+        "min": 0.0,
+        "p05": 2.0,
+        "p50": 15.0,
+        "p95": 51.44999999999999
+      },
+      "duplication_ratio": {
+        "max": 1.3074546541758023,
+        "mean": 1.0883736131511168,
+        "min": 1.0317792388922096,
+        "p05": 1.043587277577738,
+        "p50": 1.0744104944499862,
+        "p95": 1.1497793564878098
+      },
+      "overlap_entries": {
+        "max": 3085.0,
+        "mean": 885.5328947368421,
+        "min": 319.0,
+        "p05": 436.3,
+        "p50": 746.5,
+        "p95": 1499.2499999999998
+      },
+      "posting_entries_touched": {
+        "max": 13119.0,
+        "mean": 10905.046052631578,
+        "min": 10357.0,
+        "p05": 10459.9,
+        "p50": 10769.5,
+        "p95": 11514.449999999999
+      },
+      "postings_touched": {
+        "max": 560.0,
+        "mean": 331.89473684210526,
+        "min": 196.0,
+        "p05": 248.55,
+        "p50": 324.5,
+        "p95": 439.1499999999999
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 10000,
+      "seeds": [
+        2026082701,
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9782894736842105,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            358938,
+            358936
+          ]
+        },
+        {
+          "query": 148,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            737819,
+            898803
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            540719
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            646856
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            531168
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20066.0,
+        "mean": 20013.217105263157,
+        "min": 20000.0,
+        "p05": 20001.0,
+        "p50": 20010.0,
+        "p95": 20035.45
+      },
+      "budget_overshoot": {
+        "max": 66.0,
+        "mean": 13.217105263157896,
+        "min": 0.0,
+        "p05": 1.0,
+        "p50": 10.0,
+        "p95": 35.44999999999999
+      },
+      "duplication_ratio": {
+        "max": 1.3544152148954225,
+        "mean": 1.1376667598050771,
+        "min": 1.0583941605839415,
+        "p05": 1.0705830193416481,
+        "p50": 1.1196816201043478,
+        "p95": 1.2517918750720591
+      },
+      "overlap_entries": {
+        "max": 7100.0,
+        "mean": 2755.190789473684,
+        "min": 1168.0,
+        "p05": 1412.6,
+        "p50": 2398.0,
+        "p95": 5041.649999999998
+      },
+      "posting_entries_touched": {
+        "max": 27133.0,
+        "mean": 22768.407894736843,
+        "min": 21170.0,
+        "p05": 21423.7,
+        "p50": 22405.5,
+        "p95": 25064.75
+      },
+      "postings_touched": {
+        "max": 1130.0,
+        "mean": 707.921052631579,
+        "min": 488.0,
+        "p05": 556.55,
+        "p50": 693.5,
+        "p95": 916.45
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 20000,
+      "seeds": [
+        2026082701,
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9796052631578948,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            358938,
+            358936
+          ]
+        },
+        {
+          "query": 148,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            737819,
+            898803
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            540719
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            646856
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            531168
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 50026.0,
+        "mean": 48626.42105263158,
+        "min": 39937.0,
+        "p05": 44108.95,
+        "p50": 49883.0,
+        "p95": 50013.0
+      },
+      "budget_overshoot": {
+        "max": 26.0,
+        "mean": -1373.578947368421,
+        "min": -10063.0,
+        "p05": -5891.05,
+        "p50": -117.0,
+        "p95": 13.0
+      },
+      "duplication_ratio": {
+        "max": 1.4900809929525614,
+        "mean": 1.2442824928742329,
+        "min": 1.1298644162700475,
+        "p05": 1.142705593873286,
+        "p50": 1.2254030536216594,
+        "p95": 1.4029167412302448
+      },
+      "overlap_entries": {
+        "max": 23314.0,
+        "mean": 11876.868421052632,
+        "min": 6106.0,
+        "p05": 6974.2,
+        "p50": 10956.5,
+        "p95": 20147.75
+      },
+      "posting_entries_touched": {
+        "max": 73318.0,
+        "mean": 60503.28947368421,
+        "min": 48548.0,
+        "p05": 53777.15,
+        "p50": 60113.0,
+        "p95": 69890.3
+      },
+      "postings_touched": {
+        "max": 3072.0,
+        "mean": 2875.5986842105262,
+        "min": 1938.0,
+        "p05": 2306.6,
+        "p50": 3072.0,
+        "p95": 3072.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 50000,
+      "seeds": [
+        2026082701,
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9796052631578948,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            358938,
+            358936
+          ]
+        },
+        {
+          "query": 148,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            737819,
+            898803
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            540719
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            646856
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            531168
+          ]
+        }
+      ]
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 61811.0,
+        "mean": 50312.77631578947,
+        "min": 39937.0,
+        "p05": 44108.95,
+        "p50": 49883.0,
+        "p95": 56922.549999999996
+      },
+      "budget_overshoot": {
+        "max": -38189.0,
+        "mean": -49687.22368421053,
+        "min": -60063.0,
+        "p05": -55891.05,
+        "p50": -50117.0,
+        "p95": -43077.450000000004
+      },
+      "duplication_ratio": {
+        "max": 1.4900809929525614,
+        "mean": 1.2498258825284776,
+        "min": 1.1318534194217107,
+        "p05": 1.1442330600518646,
+        "p50": 1.2319168523321335,
+        "p95": 1.4076996577004293
+      },
+      "overlap_entries": {
+        "max": 24235.0,
+        "mean": 12611.677631578947,
+        "min": 6106.0,
+        "p05": 7258.6,
+        "p50": 11792.0,
+        "p95": 21424.799999999996
+      },
+      "posting_entries_touched": {
+        "max": 82852.0,
+        "mean": 62924.45394736842,
+        "min": 48548.0,
+        "p05": 53777.15,
+        "p50": 62124.0,
+        "p95": 75699.15
+      },
+      "postings_touched": {
+        "max": 3072.0,
+        "mean": 3072.0,
+        "min": 3072.0,
+        "p05": 3072.0,
+        "p50": 3072.0,
+        "p95": 3072.0
+      },
+      "query_count": 152,
+      "requested_candidate_budget": 100000,
+      "seeds": [
+        2026082701,
+        2026082702,
+        2026082703
+      ],
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9796052631578948,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "worst_queries": [
+        {
+          "query": 7,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            513514,
+            684342,
+            747169
+          ]
+        },
+        {
+          "query": 95,
+          "recall": 0.7,
+          "teacher_ids_missed": [
+            219714,
+            219713,
+            219711
+          ]
+        },
+        {
+          "query": 4,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            270830,
+            209583
+          ]
+        },
+        {
+          "query": 19,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            923850,
+            890053
+          ]
+        },
+        {
+          "query": 103,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            71783,
+            270363
+          ]
+        },
+        {
+          "query": 145,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            358938,
+            358936
+          ]
+        },
+        {
+          "query": 148,
+          "recall": 0.8,
+          "teacher_ids_missed": [
+            737819,
+            898803
+          ]
+        },
+        {
+          "query": 6,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            540719
+          ]
+        },
+        {
+          "query": 9,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            646856
+          ]
+        },
+        {
+          "query": 30,
+          "recall": 0.9,
+          "teacher_ids_missed": [
+            531168
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -752,3 +752,25 @@ posting proxies, not MDBX/OS page or latency measurements; no payload rerank or
 production selection is licensed. See
 `2026-09-12-semantic-routing-scale-r4-gate.md`, both compact receipts, and
 `audit-semantic-routing-scale-r4-gate.py`.
+
+### R4 diversity and address-depth gate (2026-09-13)
+
+The follow-up gate measured independent-seed diversity and a deeper
+full-dimensional R4 address frontier.  Deterministic union of three corrected
+model-ranked seed streams reached mean teacher recall `.9763` at 5k, `.9783` at
+10k, and `.9796` at 20k/50k (p05 `.855/.900/.900`, minimum `.7`), touching about
+60.5k posting entries at the 50k request and exhausting near 50.3k unique
+candidates.  Two-seed unions reached `.9612–.9684` at 50k; single seeds stayed
+near `.90` and exhausted around 21k.  The union is a strong diversity signal,
+but remains below the `.99 @ 50k` gate.
+
+The depth replay regenerated an 8,192-address frontier for seed `2026082701`
+with exact address-ID parity for the frozen first 1,024 entries.  The frozen
+model prefix followed by a regenerated coarse tail reached mean recall
+`.909/.926/.954/.978` at 20k/30k/50k/100k candidates (p05 `.6/.7/.8/.9`,
+minimum `.4/.5/.6/.6`).  This raises the single-seed ceiling materially over
+the old `.904` exhaustion result, but still does not meet `.99 @ 50k`; the
+regenerated tail is not claimed to be model-ranked.  Both experiments are
+logical posting oracles only: no MDBX/OS page or latency measurements, payload
+rerank, or production activation.  See
+`2026-09-13-r4-diversity-depth-gate.md` and the two compact receipts.
