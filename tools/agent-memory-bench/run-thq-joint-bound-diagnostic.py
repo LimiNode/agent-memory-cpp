@@ -14,7 +14,7 @@ def sha256(p):
 def lut(q,t):
  out=np.empty((q.size,4),np.float32)
  for i,v in enumerate(q):
-  a,b,c=t[i]; d=np.array((max(v-a,0), max(a-v,0) if v<a else max(v-b,0), max(b-v,0) if v<b else max(v-c,0), max(v-c,0)),np.float32); out[i]=d*d
+  a,b,c=t[i]; d=np.array((max(v-a,0), max(a-v,0) if v<a else max(v-b,0), max(b-v,0) if v<b else max(v-c,0), max(c-v,0)),np.float32); out[i]=d*d
  return out
 
 def main():
@@ -34,6 +34,6 @@ def main():
    two.append(float(np.min(np.where(bits,joint_cost[None,:,:],np.inf),axis=2).sum()))
   one=np.asarray(one); two=np.asarray(two); order=np.argsort(two,kind='stable'); teacher_tiles=np.asarray(teachers[qi])//int(layout['tile_docs']); ranks=[int(np.flatnonzero(order==np.flatnonzero(np.asarray(tiles)==t)[0])[0])+1 if t in tiles else None for t in teacher_tiles]
   rows.append({'query':qi,'marginal_lb_min':float(one.min()),'marginal_lb_p50':float(np.median(one)),'marginal_lb_p90':float(np.percentile(one,90)),'marginal_lb_max':float(one.max()),'marginal_fraction_lb_zero':float(np.mean(one==0)),'joint_lb_min':float(two.min()),'joint_lb_p50':float(np.median(two)),'joint_lb_p90':float(np.percentile(two,90)),'joint_lb_max':float(two.max()),'joint_fraction_lb_zero':float(np.mean(two==0)),'joint_unique_lb':int(np.unique(two).size),'teacher_tile_ranks':ranks,'fraction_marginal_masks_1111':float(np.mean(full))})
- out={'schema_version':1,'family':'thq_joint_block_min_bound_diagnostic_v1','fixture_manifest_sha256':sha256(args.thq_manifest),'layout_manifest_sha256':sha256(args.layout_manifest),'marginal_manifest_sha256':sha256(args.marginal_manifest),'joint_manifest_sha256':sha256(args.joint_manifest),'runner_sha256':sha256(Path(__file__)),'queries':qn,'group_size':g,'rows':rows,'execution_status':'EXECUTED_SMOKE' if qn<152 else 'EXECUTED','production_activation':False}
+ out={'schema_version':1,'family':'thq_joint_block_min_bound_diagnostic_v1','fixture_manifest_sha256':sha256(args.thq_manifest),'layout_manifest_sha256':sha256(args.layout_manifest),'marginal_manifest_sha256':sha256(args.marginal_manifest),'joint_manifest_sha256':sha256(args.joint_manifest),'runner_sha256':sha256(Path(__file__)),'queries':qn,'group_size':g,'rows':rows,'execution_status':'EXECUTED_SMOKE' if qn<152 else 'EXECUTED','correction_status':'CORRECTED_UPPER_TAIL_LUT_DIRECTION','production_activation':False}
  args.output.write_text(json.dumps(out,indent=2,sort_keys=True)+'\n')
 if __name__=='__main__': main()

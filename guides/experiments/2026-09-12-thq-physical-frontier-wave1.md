@@ -25,11 +25,15 @@ exact top-256 parity and teacher survival `1.0`, but skipped **0/1,954 tiles,
 of summaries.  On document-ID order, presence masks are therefore too loose to
 support useful pre-I/O Block-Min pruning on the tested query/layout.  This is a valid negative result, not
 a page-saving claim.  A follow-up 32-query diagnostic found every marginal
-coordinate mask equal to `0xF` (`fraction_marginal_masks_1111 = 1.0`).  Pairwise
-joint summaries use the same 384 B/tile budget but had only one unique bound per
-query on average; four-coordinate summaries cost 3,072 B/tile (~6 MB total) and
-had only 1.875 unique bounds per query.  The joint summaries therefore break
-the tie only weakly.  A tighter hierarchy (semantic tiles, posting/range
+coordinate mask equal to `0xF` (`fraction_marginal_masks_1111 = 1.0`).  After
+correcting the upper-tail LUT direction, pairwise joint summaries use the same
+384 B/tile budget but are zero for 99.95% of tile/query pairs (about 1.97 unique
+values per query).  Four-coordinate summaries cost 3,072 B/tile (~6 MB total)
+and produce nearly one distinct value per tile (about 1,953 unique values per
+query), yet teacher-tile rank remains near random (median 1,040.5, p90 1,750).
+Thus joint occupancy removes the implementation bug but still does not provide
+a useful ranking signal in this layout.  A tighter hierarchy (semantic tiles,
+posting/range
 metadata, or learned bounds) is required before a native page experiment.
 
 ## THQ code-prefix physical-order control

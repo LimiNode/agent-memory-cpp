@@ -692,10 +692,12 @@ activation remains forbidden.  See
 `2026-09-12-thq-physical-frontier-wave1.md` and its two receipts.  IMI and
 SPANN-like layouts remain deferred to wave 2.
 
-The follow-up joint-bound diagnostic adds pairwise (384 B/tile) and 4-way
-(3,072 B/tile) presence masks.  On a 32-query smoke, pairwise bounds were
-effectively constant and 4-way bounds only weakly differentiated tiles; this
-narrows the negative result to the current summaries and coarse selector, not
-to bitmap/range storage or semantic routing in general.  See
+The follow-up joint-bound diagnostic initially contained an upper-tail LUT sign
+bug and its first receipt is superseded.  After correction, pairwise (384 B/tile)
+bounds are zero for 99.95% of tile/query pairs; 4-way (3,072 B/tile) bounds are
+distinct for nearly every tile but rank teacher tiles near random (median rank
+1,040.5).  This narrows the negative result to the current occupancy summaries
+and coarse selector, not to bitmap/range storage or semantic routing in general.
+See
 `2026-09-12-thq-joint-bound-diagnostic-result.json` and
 `2026-09-12-thq-joint4-bound-diagnostic-result.json`.
