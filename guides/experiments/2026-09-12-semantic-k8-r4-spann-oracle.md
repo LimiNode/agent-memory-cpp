@@ -1,11 +1,13 @@
-# Full-dimensional semantic K8/R4/SPANN routing oracle
+# Superseded initial semantic posting oracle
 
-Date: 2026-09-12. This experiment tests whether a semantic coarse partition
+Status: SUPERSEDED HYBRID CONTROL (corrected by
+`2026-09-12-semantic-k8-r4-spann-oracle-corrected.md`). Date: 2026-09-12.
+This experiment tests whether a semantic coarse partition
 can turn the strong full-dimensional THQ-ADC geometry into compact postings.
 It is an in-memory oracle: no MDBX backend, physical page claim, payload
 rerank, or production activation is implied.
 
-Documents are assigned to the nearest `K={64,128,256,512}` cosine centroids,
+Documents are assigned to the nearest `K={64,128,256,512}` raw-dot centroids,
 with replication `r={1,2,4}`. Queries probe `nprobe={1,2,4,8,16,32}` cells.
 The index is built from document vectors only; frozen teacher IDs are used only
 for evaluation. Metrics separate posting entries touched, deduplicated
@@ -35,6 +37,7 @@ No configuration reaches 0.995 mean recall at or below 50k candidates, and the
 best mean-recall configurations still have a 0.90 worst-query floor. Replication
 improves recall, but the required candidate frontier remains substantially
 larger (for example K=64,r=2 reaches 0.9954 only at about 721k candidates).
-The result validates semantic full-dimensional routing as a useful control over
-raw-coordinate surrogates, but it is not yet a positive R4/SPANN generator
-gate. THQ-ADC reranking and physical materialization remain deferred.
+The result is retained as a useful hybrid control over raw-coordinate
+surrogates, but is not authoritative cosine evidence and is not a positive
+R4/SPANN generator gate. THQ-ADC reranking and physical materialization remain
+deferred; see the corrected replay for the valid metric arms.

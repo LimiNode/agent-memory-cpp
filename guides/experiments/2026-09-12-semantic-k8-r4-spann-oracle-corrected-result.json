@@ -1,0 +1,1829 @@
+{
+  "arms": [
+    "l2",
+    "spherical"
+  ],
+  "clusters": [
+    512
+  ],
+  "dimension": 384,
+  "documents": 1000000,
+  "execution_status": "EXECUTED",
+  "family": "semantic_kmeans_routing_oracle_corrected_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "matched_query_ids": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    6,
+    7
+  ],
+  "models": [
+    {
+      "arm": "l2",
+      "center_sha256": "1b8ffeb7df84bffc4c2b22da98f53f5af396040c667d9e8367341051e1cab670",
+      "fit_ms": 65217.10740029812,
+      "full_assignment_ms": 22235.655500087887,
+      "k": 512,
+      "norm_stats": {
+        "centroids": {
+          "max": 1.0000001192092896,
+          "min": 0.8612129092216492,
+          "p50": 0.8908328115940094,
+          "p95": 1.0
+        },
+        "documents_sample": {
+          "max": 1.0000001192092896,
+          "min": 0.9999998211860657,
+          "p50": 1.0,
+          "p95": 1.0
+        },
+        "queries": {
+          "max": 1.0000001192092896,
+          "min": 0.9999998807907104,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      "posting_build_ms": 36175.28169974685,
+      "query_generation_ms": 317284.3626998365,
+      "total_experiment_ms": 440912.40729996935
+    },
+    {
+      "arm": "spherical",
+      "center_sha256": "b66a3171ebfe4ed18827d827f39c5498596abe04b3e5464dca21143e58663551",
+      "fit_ms": 21392.116100061685,
+      "full_assignment_ms": 15681.983700022101,
+      "k": 512,
+      "norm_stats": {
+        "centroids": {
+          "max": 1.0000001192092896,
+          "min": 0.9999998807907104,
+          "p50": 1.0,
+          "p95": 1.0
+        },
+        "documents_sample": {
+          "max": 1.0000001192092896,
+          "min": 0.9999998211860657,
+          "p50": 1.0,
+          "p95": 1.0
+        },
+        "queries": {
+          "max": 1.0000001192092896,
+          "min": 0.9999998807907104,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      "posting_build_ms": 32027.7311000973,
+      "query_generation_ms": 109424.5322002098,
+      "total_experiment_ms": 178526.36310039088
+    }
+  ],
+  "nprobe": [
+    1,
+    2,
+    4,
+    8,
+    16,
+    32
+  ],
+  "production_activation": false,
+  "protocol": {
+    "candidate_budget": "fixed nprobe; no hard candidate cap",
+    "l2_assignment": "argmax(x dot c - 0.5 ||c||^2)",
+    "payload_rerank": "not executed",
+    "posting_union": "deduplicated document IDs",
+    "production_activation": false,
+    "spherical_assignment": "L2-normalized vectors and centroids, cosine dot product",
+    "teacher_ids_used_for_index": false
+  },
+  "queries": 152,
+  "replications": [
+    1,
+    2,
+    4
+  ],
+  "rows": [
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 6830.0,
+        "mean": 3032.9013157894738,
+        "p05": 1041.8,
+        "p50": 2995.0,
+        "p95": 5064.0
+      },
+      "fraction_recall_1": 0.013157894736842105,
+      "fraction_recall_ge_0_9": 0.046052631578947366,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 1,
+      "posting_entries_touched": {
+        "max": 6830.0,
+        "mean": 3032.9013157894738,
+        "p05": 1041.8,
+        "p50": 2995.0,
+        "p95": 5064.0
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.00683,
+        "mean": 0.003032901315789474,
+        "p05": 0.0010418,
+        "p50": 0.002995,
+        "p95": 0.005064
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 12.972368421052632,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 60.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.3539473684210526,
+        "p05": 0.0,
+        "p50": 0.3,
+        "p95": 0.8
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 10916.0,
+        "mean": 5974.894736842105,
+        "p05": 3154.9,
+        "p50": 5842.0,
+        "p95": 9079.65
+      },
+      "fraction_recall_1": 0.03289473684210526,
+      "fraction_recall_ge_0_9": 0.09868421052631579,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 2,
+      "posting_entries_touched": {
+        "max": 10916.0,
+        "mean": 5974.894736842105,
+        "p05": 3154.9,
+        "p50": 5842.0,
+        "p95": 9079.65
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.010916,
+        "mean": 0.005974894736842105,
+        "p05": 0.0031549000000000004,
+        "p50": 0.005842,
+        "p95": 0.009079649999999998
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 12.972368421052632,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 60.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.48157894736842105,
+        "p05": 0.1,
+        "p50": 0.5,
+        "p95": 0.9
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 17223.0,
+        "mean": 11632.421052631578,
+        "p05": 7176.3,
+        "p50": 11803.0,
+        "p95": 16152.949999999993
+      },
+      "fraction_recall_1": 0.07236842105263158,
+      "fraction_recall_ge_0_9": 0.23026315789473684,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 4,
+      "posting_entries_touched": {
+        "max": 17223.0,
+        "mean": 11632.421052631578,
+        "p05": 7176.3,
+        "p50": 11803.0,
+        "p95": 16152.949999999993
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.017223,
+        "mean": 0.011632421052631578,
+        "p05": 0.0071763,
+        "p50": 0.011803000000000001,
+        "p95": 0.016152949999999996
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 12.972368421052632,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 60.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.6223684210526316,
+        "p05": 0.15500000000000008,
+        "p50": 0.7,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 34587.0,
+        "mean": 23406.223684210527,
+        "p05": 16320.7,
+        "p50": 23710.0,
+        "p95": 30961.85
+      },
+      "fraction_recall_1": 0.19736842105263158,
+      "fraction_recall_ge_0_9": 0.42105263157894735,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 8,
+      "posting_entries_touched": {
+        "max": 34587.0,
+        "mean": 23406.223684210527,
+        "p05": 16320.7,
+        "p50": 23710.0,
+        "p95": 30961.85
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.034587,
+        "mean": 0.023406223684210525,
+        "p05": 0.0163207,
+        "p50": 0.023710000000000002,
+        "p95": 0.03096185
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 12.972368421052632,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 60.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.7467105263157895,
+        "p05": 0.3,
+        "p50": 0.8,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 64519.0,
+        "mean": 47585.40789473684,
+        "p05": 34510.05,
+        "p50": 48354.0,
+        "p95": 60237.1
+      },
+      "fraction_recall_1": 0.35526315789473684,
+      "fraction_recall_ge_0_9": 0.5855263157894737,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 16,
+      "posting_entries_touched": {
+        "max": 64519.0,
+        "mean": 47585.40789473684,
+        "p05": 34510.05,
+        "p50": 48354.0,
+        "p95": 60237.1
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.064519,
+        "mean": 0.04758540789473684,
+        "p05": 0.03451005,
+        "p50": 0.048353999999999994,
+        "p95": 0.060237099999999995
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 12.972368421052632,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 60.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8407894736842106,
+        "p05": 0.5,
+        "p50": 0.9,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 121689.0,
+        "mean": 95704.8947368421,
+        "p05": 73471.75,
+        "p50": 96756.0,
+        "p95": 115661.29999999997
+      },
+      "fraction_recall_1": 0.5526315789473685,
+      "fraction_recall_ge_0_9": 0.75,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 32,
+      "posting_entries_touched": {
+        "max": 121689.0,
+        "mean": 95704.8947368421,
+        "p05": 73471.75,
+        "p50": 96756.0,
+        "p95": 115661.29999999997
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.121689,
+        "mean": 0.09570489473684211,
+        "p05": 0.07347175,
+        "p50": 0.096756,
+        "p95": 0.11566129999999998
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 12.972368421052632,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 60.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9085526315789475,
+        "p05": 0.7,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 12364.0,
+        "mean": 6038.973684210527,
+        "p05": 2130.55,
+        "p50": 5701.0,
+        "p95": 11344.0
+      },
+      "fraction_recall_1": 0.05921052631578947,
+      "fraction_recall_ge_0_9": 0.15789473684210525,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 1,
+      "posting_entries_touched": {
+        "max": 12364.0,
+        "mean": 6038.973684210527,
+        "p05": 2130.55,
+        "p50": 5701.0,
+        "p95": 11344.0
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.006182,
+        "mean": 0.0030194868421052636,
+        "p05": 0.001065275,
+        "p50": 0.0028505,
+        "p95": 0.005672
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 6.613157894736842,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 23.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.48157894736842105,
+        "p05": 0.0,
+        "p50": 0.5,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 22171.0,
+        "mean": 11608.598684210527,
+        "p05": 6012.75,
+        "p50": 11527.0,
+        "p95": 18191.049999999996
+      },
+      "fraction_recall_1": 0.1118421052631579,
+      "fraction_recall_ge_0_9": 0.2565789473684211,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 2,
+      "posting_entries_touched": {
+        "max": 22627.0,
+        "mean": 12135.072368421053,
+        "p05": 6271.4,
+        "p50": 11682.0,
+        "p95": 19211.0
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.0113135,
+        "mean": 0.006067536184210526,
+        "p05": 0.0031357,
+        "p50": 0.005841,
+        "p95": 0.0096055
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 6.613157894736842,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 23.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.6157894736842104,
+        "p05": 0.2,
+        "p50": 0.6499999999999999,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 36233.0,
+        "mean": 22222.263157894737,
+        "p05": 12420.0,
+        "p50": 21882.0,
+        "p95": 31697.399999999998
+      },
+      "fraction_recall_1": 0.23026315789473684,
+      "fraction_recall_ge_0_9": 0.4473684210526316,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 4,
+      "posting_entries_touched": {
+        "max": 37715.0,
+        "mean": 24221.29605263158,
+        "p05": 14632.9,
+        "p50": 24406.0,
+        "p95": 33761.19999999999
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.0188575,
+        "mean": 0.01211064802631579,
+        "p05": 0.00731645,
+        "p50": 0.012203,
+        "p95": 0.016880599999999996
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 6.613157894736842,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 23.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.761842105263158,
+        "p05": 0.3,
+        "p50": 0.8,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 63007.0,
+        "mean": 44106.15131578947,
+        "p05": 26177.15,
+        "p50": 44375.5,
+        "p95": 60497.549999999996
+      },
+      "fraction_recall_1": 0.3815789473684211,
+      "fraction_recall_ge_0_9": 0.6578947368421053,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 8,
+      "posting_entries_touched": {
+        "max": 70790.0,
+        "mean": 49585.07894736842,
+        "p05": 32186.8,
+        "p50": 50013.0,
+        "p95": 66034.09999999999
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.035395,
+        "mean": 0.024792539473684212,
+        "p05": 0.0160934,
+        "p50": 0.0250065,
+        "p95": 0.03301705
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 6.613157894736842,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 23.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8578947368421053,
+        "p05": 0.5,
+        "p50": 0.9,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 116243.0,
+        "mean": 85312.06578947368,
+        "p05": 58430.2,
+        "p50": 85778.5,
+        "p95": 111929.64999999998
+      },
+      "fraction_recall_1": 0.618421052631579,
+      "fraction_recall_ge_0_9": 0.8092105263157895,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 16,
+      "posting_entries_touched": {
+        "max": 138054.0,
+        "mean": 100713.84868421052,
+        "p05": 71640.9,
+        "p50": 102028.5,
+        "p95": 128919.34999999999
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.069027,
+        "mean": 0.050356924342105265,
+        "p05": 0.035820450000000004,
+        "p50": 0.05101425,
+        "p95": 0.064459675
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 6.613157894736842,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 23.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9296052631578946,
+        "p05": 0.7,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 203491.0,
+        "mean": 162158.36184210525,
+        "p05": 119166.45,
+        "p50": 164671.0,
+        "p95": 195600.69999999998
+      },
+      "fraction_recall_1": 0.7763157894736842,
+      "fraction_recall_ge_0_9": 0.9210526315789473,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 32,
+      "posting_entries_touched": {
+        "max": 259242.0,
+        "mean": 201987.28289473685,
+        "p05": 154136.5,
+        "p50": 200731.0,
+        "p95": 243486.94999999998
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.129621,
+        "mean": 0.10099364144736843,
+        "p05": 0.07706825,
+        "p50": 0.1003655,
+        "p95": 0.12174347499999999
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 377.0,
+        "mean": 6.613157894736842,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 23.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9690789473684212,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 27677.0,
+        "mean": 11993.098684210527,
+        "p05": 4283.75,
+        "p50": 11229.0,
+        "p95": 23255.649999999983
+      },
+      "fraction_recall_1": 0.125,
+      "fraction_recall_ge_0_9": 0.26973684210526316,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 1,
+      "posting_entries_touched": {
+        "max": 27677.0,
+        "mean": 11993.098684210527,
+        "p05": 4283.75,
+        "p50": 11229.0,
+        "p95": 23255.649999999983
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.00691925,
+        "mean": 0.0029982746710526314,
+        "p05": 0.0010709375,
+        "p50": 0.00280725,
+        "p95": 0.0058139124999999955
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 305.0,
+        "mean": 4.061842105263158,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 10.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.5921052631578947,
+        "p05": 0.05500000000000008,
+        "p50": 0.6,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 52252.0,
+        "mean": 22528.888157894737,
+        "p05": 10092.15,
+        "p50": 21459.0,
+        "p95": 37897.2
+      },
+      "fraction_recall_1": 0.2236842105263158,
+      "fraction_recall_ge_0_9": 0.40131578947368424,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 2,
+      "posting_entries_touched": {
+        "max": 52274.0,
+        "mean": 24489.96052631579,
+        "p05": 12044.800000000001,
+        "p50": 23237.0,
+        "p95": 39622.349999999984
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.0130685,
+        "mean": 0.006122490131578948,
+        "p05": 0.0030112,
+        "p50": 0.00580925,
+        "p95": 0.009905587499999997
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 305.0,
+        "mean": 4.061842105263158,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 10.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.7282894736842105,
+        "p05": 0.3,
+        "p50": 0.8,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 75754.0,
+        "mean": 42302.72368421053,
+        "p05": 23038.95,
+        "p50": 40962.5,
+        "p95": 64309.0
+      },
+      "fraction_recall_1": 0.42105263157894735,
+      "fraction_recall_ge_0_9": 0.6513157894736842,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 4,
+      "posting_entries_touched": {
+        "max": 83498.0,
+        "mean": 50186.24342105263,
+        "p05": 30075.100000000002,
+        "p50": 50172.5,
+        "p95": 72198.0
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.0208745,
+        "mean": 0.012546560855263157,
+        "p05": 0.007518775,
+        "p50": 0.012543124999999999,
+        "p95": 0.0180495
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 305.0,
+        "mean": 4.061842105263158,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 10.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8578947368421053,
+        "p05": 0.45500000000000007,
+        "p50": 0.9,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 125148.0,
+        "mean": 81641.33552631579,
+        "p05": 42004.15,
+        "p50": 82113.0,
+        "p95": 115741.04999999999
+      },
+      "fraction_recall_1": 0.631578947368421,
+      "fraction_recall_ge_0_9": 0.868421052631579,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 8,
+      "posting_entries_touched": {
+        "max": 162235.0,
+        "mean": 104268.1447368421,
+        "p05": 64375.4,
+        "p50": 105277.5,
+        "p95": 142833.74999999994
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.04055875,
+        "mean": 0.026067036184210527,
+        "p05": 0.01609385,
+        "p50": 0.026319375,
+        "p95": 0.03570843749999999
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 305.0,
+        "mean": 4.061842105263158,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 10.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9361842105263158,
+        "p05": 0.7,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 211963.0,
+        "mean": 148995.19078947368,
+        "p05": 89823.0,
+        "p50": 152243.5,
+        "p95": 197235.15
+      },
+      "fraction_recall_1": 0.7697368421052632,
+      "fraction_recall_ge_0_9": 0.9342105263157895,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 16,
+      "posting_entries_touched": {
+        "max": 294317.0,
+        "mean": 212507.09210526315,
+        "p05": 147654.7,
+        "p50": 212967.0,
+        "p95": 273979.55
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.07357925,
+        "mean": 0.0531267730263158,
+        "p05": 0.036913675,
+        "p50": 0.053241750000000004,
+        "p95": 0.0684948875
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 305.0,
+        "mean": 4.061842105263158,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 10.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9690789473684212,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "l2",
+      "candidate_docs": {
+        "max": 343455.0,
+        "mean": 263909.80263157893,
+        "p05": 191937.7,
+        "p50": 267924.5,
+        "p95": 328385.05
+      },
+      "fraction_recall_1": 0.8881578947368421,
+      "fraction_recall_ge_0_9": 0.9671052631578947,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 32,
+      "posting_entries_touched": {
+        "max": 556337.0,
+        "mean": 426330.0394736842,
+        "p05": 327471.6,
+        "p50": 429660.0,
+        "p95": 520170.89999999997
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.13908425,
+        "mean": 0.10658250986842105,
+        "p05": 0.08186790000000001,
+        "p50": 0.10741500000000001,
+        "p95": 0.130042725
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 305.0,
+        "mean": 4.061842105263158,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 10.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9855263157894738,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 6832.0,
+        "mean": 3045.1776315789475,
+        "p05": 1048.8,
+        "p50": 2988.5,
+        "p95": 5049.0
+      },
+      "fraction_recall_1": 0.013157894736842105,
+      "fraction_recall_ge_0_9": 0.046052631578947366,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 1,
+      "posting_entries_touched": {
+        "max": 6832.0,
+        "mean": 3045.1776315789475,
+        "p05": 1048.8,
+        "p50": 2988.5,
+        "p95": 5049.0
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.006832,
+        "mean": 0.003045177631578947,
+        "p05": 0.0010488000000000001,
+        "p50": 0.0029885,
+        "p95": 0.005049
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 381.0,
+        "mean": 13.004605263157895,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 59.049999999999955
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.3532894736842105,
+        "p05": 0.0,
+        "p50": 0.3,
+        "p95": 0.8
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 10910.0,
+        "mean": 5905.914473684211,
+        "p05": 3076.75,
+        "p50": 5781.0,
+        "p95": 9063.849999999999
+      },
+      "fraction_recall_1": 0.03289473684210526,
+      "fraction_recall_ge_0_9": 0.09868421052631579,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 2,
+      "posting_entries_touched": {
+        "max": 10910.0,
+        "mean": 5905.914473684211,
+        "p05": 3076.75,
+        "p50": 5781.0,
+        "p95": 9063.849999999999
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.01091,
+        "mean": 0.005905914473684211,
+        "p05": 0.00307675,
+        "p50": 0.005781,
+        "p95": 0.009063849999999998
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 381.0,
+        "mean": 13.004605263157895,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 59.049999999999955
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.4769736842105263,
+        "p05": 0.1,
+        "p50": 0.5,
+        "p95": 0.9
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 17197.0,
+        "mean": 11525.881578947368,
+        "p05": 7149.55,
+        "p50": 11676.5,
+        "p95": 16071.049999999994
+      },
+      "fraction_recall_1": 0.07236842105263158,
+      "fraction_recall_ge_0_9": 0.23026315789473684,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 4,
+      "posting_entries_touched": {
+        "max": 17197.0,
+        "mean": 11525.881578947368,
+        "p05": 7149.55,
+        "p50": 11676.5,
+        "p95": 16071.049999999994
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.017197,
+        "mean": 0.011525881578947367,
+        "p05": 0.00714955,
+        "p50": 0.0116765,
+        "p95": 0.016071049999999993
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 381.0,
+        "mean": 13.004605263157895,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 59.049999999999955
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.6230263157894737,
+        "p05": 0.2,
+        "p50": 0.7,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 34551.0,
+        "mean": 23313.03947368421,
+        "p05": 16235.300000000001,
+        "p50": 23615.5,
+        "p95": 31443.9
+      },
+      "fraction_recall_1": 0.19078947368421054,
+      "fraction_recall_ge_0_9": 0.40789473684210525,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 8,
+      "posting_entries_touched": {
+        "max": 34551.0,
+        "mean": 23313.03947368421,
+        "p05": 16235.300000000001,
+        "p50": 23615.5,
+        "p95": 31443.9
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.034551,
+        "mean": 0.02331303947368421,
+        "p05": 0.0162353,
+        "p50": 0.023615499999999998,
+        "p95": 0.0314439
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 381.0,
+        "mean": 13.004605263157895,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 59.049999999999955
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.7447368421052631,
+        "p05": 0.3,
+        "p50": 0.8,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 64448.0,
+        "mean": 47375.00657894737,
+        "p05": 34828.4,
+        "p50": 47684.5,
+        "p95": 60081.65
+      },
+      "fraction_recall_1": 0.35526315789473684,
+      "fraction_recall_ge_0_9": 0.5986842105263158,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 16,
+      "posting_entries_touched": {
+        "max": 64448.0,
+        "mean": 47375.00657894737,
+        "p05": 34828.4,
+        "p50": 47684.5,
+        "p95": 60081.65
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.064448,
+        "mean": 0.047375006578947366,
+        "p05": 0.0348284,
+        "p50": 0.047684500000000005,
+        "p95": 0.06008165
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 381.0,
+        "mean": 13.004605263157895,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 59.049999999999955
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8407894736842105,
+        "p05": 0.5,
+        "p50": 0.9,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 119939.0,
+        "mean": 94760.8552631579,
+        "p05": 72869.7,
+        "p50": 95784.0,
+        "p95": 114362.15
+      },
+      "fraction_recall_1": 0.5394736842105263,
+      "fraction_recall_ge_0_9": 0.75,
+      "index_entries_per_document": 1,
+      "index_posting_entries": 1000000,
+      "k": 512,
+      "logical_posting_id_bytes": 4000000,
+      "nprobe": 32,
+      "posting_entries_touched": {
+        "max": 119939.0,
+        "mean": 94760.8552631579,
+        "p05": 72869.7,
+        "p50": 95784.0,
+        "p95": 114362.15
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.119939,
+        "mean": 0.0947608552631579,
+        "p05": 0.07286970000000001,
+        "p50": 0.09578400000000001,
+        "p95": 0.11436215
+      },
+      "replication": 1,
+      "teacher_cell_rank": {
+        "max": 381.0,
+        "mean": 13.004605263157895,
+        "p05": 1.0,
+        "p50": 3.0,
+        "p95": 59.049999999999955
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9072368421052632,
+        "p05": 0.7,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 12367.0,
+        "mean": 6036.184210526316,
+        "p05": 2149.1,
+        "p50": 5659.0,
+        "p95": 11229.0
+      },
+      "fraction_recall_1": 0.05263157894736842,
+      "fraction_recall_ge_0_9": 0.15789473684210525,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 1,
+      "posting_entries_touched": {
+        "max": 12367.0,
+        "mean": 6036.184210526316,
+        "p05": 2149.1,
+        "p50": 5659.0,
+        "p95": 11229.0
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.0061835,
+        "mean": 0.003018092105263158,
+        "p05": 0.00107455,
+        "p50": 0.0028295,
+        "p95": 0.0056145
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 380.0,
+        "mean": 6.584868421052631,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 22.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.48157894736842116,
+        "p05": 0.0,
+        "p50": 0.5,
+        "p95": 0.9449999999999988
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 22191.0,
+        "mean": 11427.526315789473,
+        "p05": 6047.4,
+        "p50": 11419.5,
+        "p95": 17897.649999999998
+      },
+      "fraction_recall_1": 0.10526315789473684,
+      "fraction_recall_ge_0_9": 0.24342105263157895,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 2,
+      "posting_entries_touched": {
+        "max": 22646.0,
+        "mean": 11944.940789473685,
+        "p05": 6229.15,
+        "p50": 11549.5,
+        "p95": 18616.1
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.011323,
+        "mean": 0.005972470394736843,
+        "p05": 0.003114575,
+        "p50": 0.00577475,
+        "p95": 0.00930805
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 380.0,
+        "mean": 6.584868421052631,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 22.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.6111842105263158,
+        "p05": 0.15500000000000008,
+        "p50": 0.6499999999999999,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 35693.0,
+        "mean": 21931.67105263158,
+        "p05": 12362.0,
+        "p50": 21584.0,
+        "p95": 31348.25
+      },
+      "fraction_recall_1": 0.23026315789473684,
+      "fraction_recall_ge_0_9": 0.4407894736842105,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 4,
+      "posting_entries_touched": {
+        "max": 36866.0,
+        "mean": 23900.776315789473,
+        "p05": 14399.9,
+        "p50": 24068.0,
+        "p95": 33726.49999999999
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.018433,
+        "mean": 0.011950388157894737,
+        "p05": 0.00719995,
+        "p50": 0.012034,
+        "p95": 0.016863249999999996
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 380.0,
+        "mean": 6.584868421052631,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 22.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.7625000000000001,
+        "p05": 0.3,
+        "p50": 0.8,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 62429.0,
+        "mean": 43431.93421052631,
+        "p05": 25750.9,
+        "p50": 43583.5,
+        "p95": 59913.799999999996
+      },
+      "fraction_recall_1": 0.375,
+      "fraction_recall_ge_0_9": 0.6578947368421053,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 8,
+      "posting_entries_touched": {
+        "max": 70838.0,
+        "mean": 48968.46052631579,
+        "p05": 32549.7,
+        "p50": 48752.0,
+        "p95": 65789.85
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.035419,
+        "mean": 0.024484230263157894,
+        "p05": 0.01627485,
+        "p50": 0.024376000000000002,
+        "p95": 0.032894925
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 380.0,
+        "mean": 6.584868421052631,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 22.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8585526315789473,
+        "p05": 0.5,
+        "p50": 0.9,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 115643.0,
+        "mean": 84340.42763157895,
+        "p05": 58180.45,
+        "p50": 84679.0,
+        "p95": 107443.39999999998
+      },
+      "fraction_recall_1": 0.6118421052631579,
+      "fraction_recall_ge_0_9": 0.7894736842105263,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 16,
+      "posting_entries_touched": {
+        "max": 137752.0,
+        "mean": 99746.55263157895,
+        "p05": 71341.0,
+        "p50": 100093.0,
+        "p95": 127096.2
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.068876,
+        "mean": 0.04987327631578947,
+        "p05": 0.0356705,
+        "p50": 0.0500465,
+        "p95": 0.0635481
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 380.0,
+        "mean": 6.584868421052631,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 22.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9282894736842107,
+        "p05": 0.7,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 200754.0,
+        "mean": 159770.46710526315,
+        "p05": 117154.2,
+        "p50": 161417.5,
+        "p95": 193357.84999999998
+      },
+      "fraction_recall_1": 0.756578947368421,
+      "fraction_recall_ge_0_9": 0.9210526315789473,
+      "index_entries_per_document": 2,
+      "index_posting_entries": 2000000,
+      "k": 512,
+      "logical_posting_id_bytes": 8000000,
+      "nprobe": 32,
+      "posting_entries_touched": {
+        "max": 253722.0,
+        "mean": 199272.40789473685,
+        "p05": 153657.5,
+        "p50": 200703.0,
+        "p95": 240042.35
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.126861,
+        "mean": 0.09963620394736843,
+        "p05": 0.07682875,
+        "p50": 0.1003515,
+        "p95": 0.120021175
+      },
+      "replication": 2,
+      "teacher_cell_rank": {
+        "max": 380.0,
+        "mean": 6.584868421052631,
+        "p05": 1.0,
+        "p50": 2.0,
+        "p95": 22.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9671052631578947,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 26737.0,
+        "mean": 11979.486842105263,
+        "p05": 4284.3,
+        "p50": 11150.0,
+        "p95": 23888.0
+      },
+      "fraction_recall_1": 0.13157894736842105,
+      "fraction_recall_ge_0_9": 0.26973684210526316,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 1,
+      "posting_entries_touched": {
+        "max": 26737.0,
+        "mean": 11979.486842105263,
+        "p05": 4284.3,
+        "p50": 11150.0,
+        "p95": 23888.0
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.00668425,
+        "mean": 0.002994871710526316,
+        "p05": 0.0010710750000000001,
+        "p50": 0.0027875,
+        "p95": 0.005972
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 292.0,
+        "mean": 4.044736842105263,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 11.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.5934210526315788,
+        "p05": 0.05500000000000008,
+        "p50": 0.6,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 46210.0,
+        "mean": 22156.730263157893,
+        "p05": 10124.55,
+        "p50": 21042.0,
+        "p95": 37100.25
+      },
+      "fraction_recall_1": 0.21710526315789475,
+      "fraction_recall_ge_0_9": 0.40131578947368424,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 2,
+      "posting_entries_touched": {
+        "max": 49522.0,
+        "mean": 24073.105263157893,
+        "p05": 11887.0,
+        "p50": 23280.0,
+        "p95": 38280.999999999985
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.0123805,
+        "mean": 0.006018276315789474,
+        "p05": 0.00297175,
+        "p50": 0.0058200000000000005,
+        "p95": 0.009570249999999997
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 292.0,
+        "mean": 4.044736842105263,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 11.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.725,
+        "p05": 0.25500000000000006,
+        "p50": 0.8,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 75511.0,
+        "mean": 41589.56578947369,
+        "p05": 22882.0,
+        "p50": 40374.5,
+        "p95": 62952.0
+      },
+      "fraction_recall_1": 0.4144736842105263,
+      "fraction_recall_ge_0_9": 0.6578947368421053,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 4,
+      "posting_entries_touched": {
+        "max": 83206.0,
+        "mean": 49307.03289473684,
+        "p05": 30130.850000000002,
+        "p50": 48667.5,
+        "p95": 71575.9
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.0208015,
+        "mean": 0.01232675822368421,
+        "p05": 0.0075327125,
+        "p50": 0.012166875,
+        "p95": 0.017893974999999996
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 292.0,
+        "mean": 4.044736842105263,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 11.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.8559210526315789,
+        "p05": 0.45500000000000007,
+        "p50": 0.9,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 124193.0,
+        "mean": 79918.38157894737,
+        "p05": 41735.2,
+        "p50": 79399.5,
+        "p95": 114750.9
+      },
+      "fraction_recall_1": 0.625,
+      "fraction_recall_ge_0_9": 0.868421052631579,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 8,
+      "posting_entries_touched": {
+        "max": 160933.0,
+        "mean": 102425.92763157895,
+        "p05": 64835.1,
+        "p50": 101045.0,
+        "p95": 141002.9
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.04023325,
+        "mean": 0.02560648190789474,
+        "p05": 0.016208774999999998,
+        "p50": 0.02526125,
+        "p95": 0.035250725
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 292.0,
+        "mean": 4.044736842105263,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 11.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9361842105263158,
+        "p05": 0.7,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 210445.0,
+        "mean": 146536.28289473685,
+        "p05": 89754.3,
+        "p50": 150507.0,
+        "p95": 192304.35
+      },
+      "fraction_recall_1": 0.7697368421052632,
+      "fraction_recall_ge_0_9": 0.9342105263157895,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 16,
+      "posting_entries_touched": {
+        "max": 292380.0,
+        "mean": 209481.88815789475,
+        "p05": 146960.7,
+        "p50": 209024.0,
+        "p95": 270932.14999999997
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.073095,
+        "mean": 0.05237047203947369,
+        "p05": 0.036740175,
+        "p50": 0.052256,
+        "p95": 0.0677330375
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 292.0,
+        "mean": 4.044736842105263,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 11.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9684210526315788,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "arm": "spherical",
+      "candidate_docs": {
+        "max": 335901.0,
+        "mean": 259346.98684210525,
+        "p05": 183721.25,
+        "p50": 264138.5,
+        "p95": 320764.3
+      },
+      "fraction_recall_1": 0.8881578947368421,
+      "fraction_recall_ge_0_9": 0.9671052631578947,
+      "index_entries_per_document": 4,
+      "index_posting_entries": 4000000,
+      "k": 512,
+      "logical_posting_id_bytes": 16000000,
+      "nprobe": 32,
+      "posting_entries_touched": {
+        "max": 542440.0,
+        "mean": 419426.0460526316,
+        "p05": 323083.9,
+        "p50": 415852.5,
+        "p95": 514393.69999999995
+      },
+      "query_count": 152,
+      "query_posting_entry_fraction": {
+        "max": 0.13561,
+        "mean": 0.10485651151315789,
+        "p05": 0.08077097500000001,
+        "p50": 0.103963125,
+        "p95": 0.128598425
+      },
+      "replication": 4,
+      "teacher_cell_rank": {
+        "max": 292.0,
+        "mean": 4.044736842105263,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 11.0
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9855263157894738,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    }
+  ],
+  "runner_sha256": "cce5fe309a1b00ef5bef61c2de1d0f9ad9b9bdb14e6050d8f042262058a41e52",
+  "sample_ids_generation": {
+    "algorithm": "numpy.default_rng.choice",
+    "population": 1000000,
+    "replace": false,
+    "size": 100000,
+    "sort": true
+  },
+  "sample_ids_sha256": "4a7d6e7fc59e620ac438a4e4b6ff6911e40a96d2cf48e4216b64c4e0a6a88748",
+  "sample_size": 100000,
+  "schema_version": 2,
+  "seed": 20260912,
+  "software": {
+    "numpy": "2.4.6",
+    "python": "3.11.9",
+    "scikit_learn": "1.9.0"
+  },
+  "training": {
+    "algorithm": "sklearn.MiniBatchKMeans",
+    "batch_size": 4096,
+    "init_size": 4096,
+    "max_iter": 20,
+    "n_init": 1,
+    "reassignment_ratio": 0.0
+  }
+}
