@@ -17,6 +17,22 @@ def lut(q,t):
   a,b,c=t[i]; d=np.array((max(v-a,0), max(a-v,0) if v<a else max(v-b,0), max(b-v,0) if v<b else max(v-c,0), max(c-v,0)),np.float32); out[i]=d*d
  return out
 
+def build_joint_cost(L, digits, dim, width, g):
+ blocks=dim//width; groups=width//g; states=digits.shape[0]
+ out=np.empty((blocks,groups,states),np.float32)
+ for bi in range(blocks):
+  for gi in range(groups):
+   base=bi*width+gi*g
+   for s in range(states): out[bi,gi,s]=sum(float(L[base+j,digits[s,j]]) for j in range(g))
+ return out
+
+def aggregate_marginal(mask_cost, masks, width):
+ total=0.0
+ for bi in range(masks.shape[0]):
+  base=bi*width
+  total+=float(mask_cost[masks[bi],np.arange(base,base+width)].sum())
+ return total
+
 def main():
  ap=argparse.ArgumentParser(); ap.add_argument('--layout-manifest',type=Path,required=True); ap.add_argument('--marginal-manifest',type=Path,required=True); ap.add_argument('--joint-manifest',type=Path,required=True); ap.add_argument('--thq-manifest',type=Path,required=True); ap.add_argument('--output',type=Path,required=True); ap.add_argument('--query-limit',type=int,default=32); args=ap.parse_args()
  layout=json.loads(args.layout_manifest.read_text()); marginal=json.loads(args.marginal_manifest.read_text()); joint=json.loads(args.joint_manifest.read_text()); m=json.loads(args.thq_manifest.read_text()); qn=min(args.query_limit,int(m['queries'])); dim=int(m['dimension']); width=int(layout['coords_per_block']); g=int(joint['group_size']); groups=width//g
@@ -27,20 +43,10 @@ def main():
   mask_cost=np.full((16,dim),np.inf,np.float32)
   for mask in range(1,16): mask_cost[mask]=np.min(np.where([(mask>>l)&1 for l in range(4)],L,np.inf),axis=1)
   states=4**g; digits=np.asarray([np.unravel_index(s,(4,)*g) for s in range(states)],dtype=np.int8)
-  blocks=dim//width
-  joint_cost=np.empty((blocks,groups,states),np.float32)
-  for bi in range(blocks):
-   for gi in range(groups):
-    base=bi*width+gi*g
-    for s in range(states):
-     joint_cost[bi,gi,s]=sum(float(L[base+j,digits[s,j]]) for j in range(g))
+  joint_cost=build_joint_cost(L,digits,dim,width,g)
   for tile in tiles:
    masks=mt[tile]; full.append(float(np.mean(masks==15)))
-   one_value=0.0
-   for bi in range(masks.shape[0]):
-    base=bi*width
-    one_value+=float(mask_cost[masks[bi],np.arange(base,base+width)].sum())
-   one.append(one_value)
+   one.append(aggregate_marginal(mask_cost,masks,width))
    bits=np.unpackbits(jt[tile],axis=2,bitorder='little')[...,:states]
    two.append(float(np.min(np.where(bits,joint_cost, np.inf),axis=2).sum()))
   one=np.asarray(one); two=np.asarray(two); order=np.argsort(two,kind='stable'); teacher_tiles=np.asarray(teachers[qi])//int(layout['tile_docs']); ranks=[int(np.flatnonzero(order==np.flatnonzero(np.asarray(tiles)==t)[0])[0])+1 if t in tiles else None for t in teacher_tiles]
