@@ -22,16 +22,17 @@ required before any MDBX or native page materialization.
 The 152-query replay used a deterministic 100k-document training sample and
 assigned all 1M documents to the learned centroids. Mean generator results are:
 
-| K | r | nprobe | candidates | posting entries | teacher recall |
-|---:|---:|---:|---:|---:|---:|
-| 64 | 1 | 32 | 556,402 | 556,402 | 0.9789 |
-| 64 | 2 | 32 | 720,811 | 1,112,071 | 0.9954 |
-| 128 | 4 | 32 | 606,304 | 1,226,284 | 0.9961 |
-| 256 | 4 | 32 | 382,647 | 651,807 | 0.9862 |
-| 512 | 4 | 4 | 49,591 | 54,361 | 0.7901 |
-| 512 | 4 | 8 | 87,995 | 103,408 | 0.8783 |
+| K | r | nprobe | candidates | posting entries | mean recall | worst recall |
+|---:|---:|---:|---:|---:|---:|---:|
+| 64 | 1 | 32 | 556,402 | 556,402 | 0.9789 | 0.70 |
+| 64 | 2 | 32 | 720,811 | 1,112,071 | 0.9954 | 0.90 |
+| 128 | 4 | 32 | 606,304 | 1,226,284 | 0.9961 | 0.90 |
+| 256 | 4 | 32 | 382,647 | 651,807 | 0.9862 | 0.80 |
+| 512 | 4 | 4 | 49,591 | 54,361 | 0.7901 | 0.00 |
+| 512 | 4 | 8 | 87,995 | 103,408 | 0.8783 | 0.20 |
 
-No configuration reaches 0.995 recall at or below 50k candidates. Replication
+No configuration reaches 0.995 mean recall at or below 50k candidates, and the
+best mean-recall configurations still have a 0.90 worst-query floor. Replication
 improves recall, but the required candidate frontier remains substantially
 larger (for example K=64,r=2 reaches 0.9954 only at about 721k candidates).
 The result validates semantic full-dimensional routing as a useful control over
