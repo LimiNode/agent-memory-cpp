@@ -21,6 +21,8 @@ Corrected eight-query smoke means:
 | 8 | 121,662 | 0.3250 | 1,703 | 0.0375 |
 | 16 | 245,678 | 0.5375 | 3,322 | 0.0375 |
 | 32 | 493,298 | 0.7500 | 6,845 | 0.1000 |
+| 64 | 1,000,000 | 1.0000 | 13,730 | 0.1250 |
+| 128 | 1,000,000 | 1.0000 | 28,056 | 0.1500 |
 
 Occupancy confirms that all 4,096 IMI cells are populated (p50 232 and p95
 395 documents; effective cells 3,877.9).  The SPANN postings are comparatively
@@ -28,7 +30,8 @@ balanced (min 8,856, p50 15,458, p95 21,024, max 25,631; effective cells
 62.68).  Thus the previous sparse/overflow interpretation was invalid, but the
 corrected raw-coordinate IMI still has very poor teacher recall.  Among tested
 SPANN points below 50k mean candidates, the best recall is 0.1875 at L=2; the
-next point is already ~62k candidates with recall 0.2625. These findings are
+next point is already ~62k candidates with recall 0.2625. The IMI control remains
+below 0.15 recall through 28k candidates (L=128). These findings are
 specific to the first six raw THQ coordinates and do not establish that IMI is
 intrinsically sparse or that SPANN fails with semantic prototypes.
 
