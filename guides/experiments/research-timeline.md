@@ -720,3 +720,17 @@ Cartesian cell IDs and is superseded. The corrected runner uses int32 and
 asserts `cell(63,63) == 4095` and `0 <= cell < 4096`. For SPANN requests above
 64, receipt bookkeeping reports the effective 64 touched postings. Corrected
 IMI recall remains specific to two disjoint three-coordinate subspaces.
+
+### Full-dimensional semantic K-means routing oracle (2026-09-12)
+
+The semantic control trains deterministic cosine K-means on a 100k-document
+sample, assigns the full 1M frozen corpus, and evaluates replication `r=1/2/4`
+with `K=64/128/256/512` and `nprobe=1..32`. It is generator-only evidence:
+teacher IDs are evaluation-only, and no THQ rerank, MDBX backend, or production
+activation is claimed. Semantic routing is materially stronger than the raw
+three-coordinate controls, but no configuration reaches `0.995` teacher recall
+within `50k` candidates; e.g. `K=512,r=4,nprobe=4` gives `49.6k` candidates and
+`0.7901` recall, while `K=64,r=2,nprobe=32` reaches `0.9954` only at `~721k`
+candidates. See `2026-09-12-semantic-k8-r4-spann-oracle.md`, its receipt, and
+the fail-closed audit runner. A verified R4/K8/K32 mapping remains an open
+comparator rather than being inferred from this K-means control.
