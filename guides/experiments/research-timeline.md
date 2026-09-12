@@ -676,22 +676,47 @@ score exceeds the current threshold. Active and fully evaluated fractions are
 recorded at all checkpoints. External DE-1M execution and physical layout
 measurements remain pending; no production activation is claimed.
 
+### THQ physical-frontier wave 1 (2026-09-12)
+
+The first physical-frontier follow-up covers four controls on the frozen
+THQ4-384 fixture: immutable Block-Min presence metadata, a deterministic
+packed-code-prefix physical-order surrogate, bitmap/range tile selection with
+secondary AoSoA layouts, and an integrated coarse-tile → exact THQ-ADC cascade.
+Block-Min presence-mask bounds are safely computed but skipped no document-ID
+tiles/blocks in the smoke replay; the code-prefix control did not improve
+teacher tile locality; and
+1k–50k tile budgets had zero teacher recall in the eight-query smoke.  These are
+negative logical-oracle results, not MDBX/page-latency claims.  No historical R4
+mapping or teacher IDs were used to synthesize an index, and production
+activation remains forbidden.  See
+`2026-09-12-thq-physical-frontier-wave1.md` and its two receipts.  IMI and
+SPANN-like layouts remain deferred to wave 2.
+
+The follow-up joint-bound diagnostic initially contained an upper-tail LUT sign
+bug and global block-coordinate indexing bug; its first receipts are superseded.
+After correction, pairwise (384 B/tile)
+ bounds are zero for 99.95% of tile/query pairs (median two unique values/query);
+ 4-way (3,072 B/tile) bounds are distinct for every tile but rank teacher tiles
+ near random (median rank 1,034.5, p90 1,824.9).  This narrows the negative result to the current occupancy summaries
+and coarse selector, not to bitmap/range storage or semantic routing in general.
+See
+`2026-09-12-thq-joint-bound-diagnostic-result.json` and
+`2026-09-12-thq-joint4-bound-diagnostic-result.json`.
+
 ### THQ index wave 2: IMI and SPANN-like controls (2026-09-12)
 
 The first wave-2 oracle evaluates fixed three-coordinate THQ signature
 postings (64 SPANN-like cells) and a 64×64 inverted multi-index over two
-three-coordinate subspaces.  On an eight-query smoke, the SPANN-like surrogate
+three-coordinate subspaces. On an eight-query smoke, the SPANN-like surrogate
 reached mean teacher recall 0.75 only at ~493k candidates (`L=32`), while the
 corrected IMI reached 0.10 at ~6.8k, 0.15 at ~28.1k, and 0.2125 at ~56.9k
-candidates (`L=256`).
-These are bounded signature controls, not
-semantic R4/SPANN implementations; no payload rerank, MDBX page measurement,
-or production activation is claimed.  See
-`2026-09-12-thq-index-wave2.md` and its receipt.
+candidates (`L=256`). These are bounded signature controls, not semantic
+R4/SPANN implementations; no payload rerank, MDBX page measurement, or
+production activation is claimed. See `2026-09-12-thq-index-wave2.md` and its
+receipt.
 
 Correction note (2026-09-12): the initial IMI receipt used uint8 arithmetic for
-Cartesian cell IDs and is superseded.  The corrected runner uses int32 and
-asserts `cell(63,63) == 4095` and `0 <= cell < 4096`.  Corrected IMI recall is
-0.10 at ~6.8k candidates (`L=32`); the result remains specific to two disjoint
-three-coordinate subspaces.  The SPANN-like control reaches 0.75 only at
-~493k candidates.
+Cartesian cell IDs and is superseded. The corrected runner uses int32 and
+asserts `cell(63,63) == 4095` and `0 <= cell < 4096`. For SPANN requests above
+64, receipt bookkeeping reports the effective 64 touched postings. Corrected
+IMI recall remains specific to two disjoint three-coordinate subspaces.
