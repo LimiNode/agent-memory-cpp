@@ -43,3 +43,13 @@ assertions passed after canonical-score ranking was enabled.  A direct
 7 GB RAM while constructing the multi-width state index.  This is an
 execution-resource limitation, not an evidence result, and motivates a
 streaming/index-build optimization before a full PQTable replay.
+
+## Corrected v2 replay addendum
+
+The corpus-weighted `adc_expected` order was replayed on all 152 queries using
+the v2 layout manifest.  It measured p50 `17053.27 ms`, p95 `17540.48 ms`,
+mean logical payload `91,745,489` bytes, mean `22,407.2` blocks, coordinate
+fraction `0.636847`, and teacher survival@256 `1.0`.  This timing phase did not
+run the exhaustive parity pass; a separate all-152 parity phase is required
+before evidence publication.  The old unweighted `adc_expected` result remains
+as a superseded diagnostic rather than being silently replaced.

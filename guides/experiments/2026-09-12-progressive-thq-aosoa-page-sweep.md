@@ -58,3 +58,9 @@ separate experimental factors and must not be conflated.
 
 Execution receipts remain `PENDING` until the full replay artifacts, runner and
 layout hashes, and (for physical claims) native page measurements are present.
+
+During the all-query parity gate, the initial float32 implementation failed on
+some reordered queries because accumulation order perturbed close top-k scores.
+The runner now accumulates block contributions in float64 and reports the
+failing query index.  A 20-query probe passes with this correction; the full
+152-query parity run is in progress and remains fail-closed.

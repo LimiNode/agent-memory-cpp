@@ -106,7 +106,9 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
     tiles = sorted({tile for tile, _ in blocks})
     lut = query_lut(query, thresholds)
     order = _block_order(layout, lut, order_mode, layout.get("level_histogram"))
-    best_scores = np.full(k, np.inf, dtype=np.float32)
+    # Accumulate in float64 so block-order changes cannot perturb the
+    # canonical score enough to alter top-k membership.
+    best_scores = np.full(k, np.inf, dtype=np.float64)
     best_ids = np.full(k, n + 1, dtype=np.int64)
     logical_bytes = 0
     blocks_read = 0
@@ -123,7 +125,7 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
         tile_docs = int(first["document_count"])
         tile_start = int(first["document_start"])
         active = np.ones(tile_docs, dtype=bool)
-        partial = np.zeros(tile_docs, dtype=np.float32)
+        partial = np.zeros(tile_docs, dtype=np.float64)
         global_ids = np.arange(tile_start, tile_start + tile_docs)
         for stage, block in enumerate(order):
             row = blocks[(tile, block)]
@@ -133,7 +135,9 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
             lo = block * width
             if active.any():
                 lut_block = lut[lo:lo + width]
-                contribution = lut_block[np.arange(width)[:, None], levels.T].sum(axis=0)
+                contribution = lut_block[np.arange(width)[:, None], levels.T].sum(
+                    axis=0, dtype=np.float64
+                )
                 partial[active] += contribution[active]
                 coordinate_evaluations += int(active.sum()) * width
                 doc_block_evaluations += int(active.sum())
@@ -211,7 +215,10 @@ def main() -> None:
     teachers = np.memmap(refs["teacher_ids"]["path"], mode="r", dtype="<i8", shape=(q, 10))
     rows = []
     for qi in range(q):
-        row = scan(layout, np.asarray(queries[qi]), np.asarray(thresholds), args.warmup, 256, args.order, args.check_parity)
+        try:
+            row = scan(layout, np.asarray(queries[qi]), np.asarray(thresholds), args.warmup, 256, args.order, args.check_parity)
+        except AssertionError as error:
+            raise AssertionError(f"query {qi}: {error}") from error
         row.update({"query": qi, "warmup": args.warmup,
                     "teacher_survival_256": float(np.isin(teachers[qi], row["top_ids"]).sum()) / 10.0})
         rows.append(row)

@@ -7,10 +7,10 @@
   "local_replays": [
     {"name": "aosoa-full-4096x32-fixed.json", "sha256": "3ccb6cb5e8ebcb55fb7616f87f8a0f3b1334b2e4d1312317b6e3d512a6f17831", "layout_manifest_sha256": "dacd6b70d1f8ffce87a55e093e0fa3161389aeaf4c0af69426d1ab92952248c1", "order": "fixed", "tile_docs": 4096, "warmup": 4096},
     {"name": "aosoa-full-512x32-fixed.json", "sha256": "d813e8d18e623d49e6604e68e2f6723dedf2368e9b52329ce24b2f8c3a0291a2", "layout_manifest_sha256": "86fca8ba0d3c120e632ed2df81bddc8c08829d2d18c4a179003e3fc4e0339730", "order": "fixed", "tile_docs": 512, "warmup": 4096},
-    {"name": "aosoa-full-512x32-adc-expected.json", "sha256": "2cd7cce12cbe3349916ac8f3d01e02ec38beb43f9cb173c470bcef977b7784b3", "layout_manifest_sha256": "86fca8ba0d3c120e632ed2df81bddc8c08829d2d18c4a179003e3fc4e0339730", "order": "adc_expected", "tile_docs": 512, "warmup": 4096}
+    {"name": "aosoa-full-512x32-v2-adc-expected.json", "sha256": "0945b30814177956c300c26c043ec9c20831ab560b5a3c27788450157714eead", "layout_manifest_sha256": "b8f0c9b32da77d8381537fa551a92e044a3960b8776fae3625203a7dbd259c67", "order": "adc_expected", "tile_docs": 512, "warmup": 4096, "parity_phase": "aosoa-full-512x32-v2-adc-expected-parity.json"}
   ],
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
-  "runner_sha256": "ce71702cfafaace6154688fea8d3f079c4d533f79b15d82e95b369fd0786856e",
+  "runner_sha256": "2025b3a7df2a0272f52406d5545e38f7ac04d1231f751ce382578ad08e23b43c",
   "query_count": 152,
   "runner": "tools/agent-memory-bench/run-progressive-thq-aosoa.py",
   "materializer": "tools/agent-memory-bench/materialize-progressive-thq-aosoa.py",
@@ -26,4 +26,18 @@
     "planned_followup": ["native_page_accounting", "warm_cold_modes", "R4_K8_K32_candidate_cascade"]
   },
   "production_activation": false
+  ,"controls": {
+    "packed_flat_full_v2": {
+      "artifact": "packed-thq-flat-full-v2.json",
+      "sha256": "2edb3ae07827d42e773e1568878cae63d7539f96041d7671eba3cf332854747c",
+      "queries": 152,
+      "parity_scope": "packed_thermometer_first_two_queries",
+      "status": "EXECUTED_NON_AUTHORITATIVE"
+    },
+    "page_matched_layouts": {
+      "256x64_manifest_sha256": "8a4ca0d41e8ccd90073daf4837fca06b35d2488cfd2643c17bbaec98fb0ff0e8",
+      "128x128_manifest_sha256": "7aa81b72ab09f254377c70031c18ddd36775762e2c3c6ab3ffb999b13dd89cc7",
+      "parity_status": "SMOKE_TWO_QUERIES_PASSED"
+    }
+  }
 }
