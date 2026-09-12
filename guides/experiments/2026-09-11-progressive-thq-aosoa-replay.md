@@ -57,3 +57,10 @@ as a superseded diagnostic rather than being silently replaced.
 The subsequent corrected all-152 parity phase completed with `152/152`
 `exact_top256_parity=true` (parity artifact SHA-256
 `77789c00e7e46a67bafd626d21a651962c182e9e03f39b2f92af4a2c90a98dee`).
+
+The corrected dynamic-cutoff oracle also completed all 152 queries for
+`adc_expected` ordering across warmups 256/512/1024/2048/4096 (760 rows).
+All 760 top-256 and cutoff parity checks passed.  Equivalent coordinate work
+averaged `0.297589` of a flat scan (range `0.146733`–`0.383255`), with teacher
+survival@256 equal to `1.0`.  This is an exact logical-work oracle; it does not
+claim physical page elimination.

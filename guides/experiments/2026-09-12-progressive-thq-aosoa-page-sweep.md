@@ -65,6 +65,13 @@ better.  A native flat packed scan versus progressive AoSoA showdown remains
 the decisive compute/bandwidth test.  Only after that comparison should an
 R4/K8/K32 candidate-page cascade or MDBX page benchmark be interpreted.
 
+The separate dynamic-cutoff oracle is stronger on compute accounting: across
+760 all-parity rows it reduced equivalent coordinate work to a mean `0.297589`
+of flat scan while preserving exact top-256 and cutoff parity.  The gap between
+that oracle and the roughly 90--96 MB logical payload reads is the reason page
+selection (R4/K8/K32 or clustered storage order) remains the next architectural
+experiment.
+
 `adc_lut_variance` is an unweighted diagnostic.  `adc_expected_cost` uses the
 corpus level histogram to rank blocks by expected interval-squared ADC cost;
 `adc_expected_variance` uses the same histogram to rank uncertainty.  They are
