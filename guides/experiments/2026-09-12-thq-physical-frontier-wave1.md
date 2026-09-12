@@ -35,7 +35,10 @@ build the order.  In the eight-query smoke, teacher tile span changed
 from document-ID order `[2,9,5,4,9,8,10,10]` to surrogate order
 `[10,10,8,8,10,10,10,10]`; locality did not improve.  No semantic reorder is
 licensed by this control.  The secondary payload is external and its logical
-payload hash is recorded in the generated layout manifest.
+payload hash is recorded in the generated layout manifest
+(`9ec1b81a2a103ae38926429fdc7192db803a39452d40c9a0e3c1499a15ad8146` for the
+144,000,000-byte payload; order vector
+`1e90908090e2d4b072f84211d6b395de40c32937d2741931fec906a41c34fac0`).
 
 ## Bitmap/range and secondary representations
 
