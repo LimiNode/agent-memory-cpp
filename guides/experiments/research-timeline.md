@@ -682,7 +682,8 @@ The first wave-2 oracle evaluates fixed three-coordinate THQ signature
 postings (64 SPANN-like cells) and a 64×64 inverted multi-index over two
 three-coordinate subspaces.  On an eight-query smoke, the SPANN-like surrogate
 reached mean teacher recall 0.75 only at ~493k candidates (`L=32`), while the
-corrected IMI reached 0.10 at ~6.8k and 0.15 at ~28.1k candidates (`L=128`).
+corrected IMI reached 0.10 at ~6.8k, 0.15 at ~28.1k, and 0.2125 at ~56.9k
+candidates (`L=256`).
 These are bounded signature controls, not
 semantic R4/SPANN implementations; no payload rerank, MDBX page measurement,
 or production activation is claimed.  See

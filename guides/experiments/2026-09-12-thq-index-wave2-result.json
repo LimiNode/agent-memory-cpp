@@ -23,7 +23,8 @@
       16,
       32,
       64,
-      128
+      128,
+      256
     ],
     "imi_cells": "64x64 Cartesian cells from two disjoint three-coordinate four-level THQ subspaces",
     "payload_rerank": "not executed; candidate recall only",
@@ -37,6 +38,7 @@
           "L": 1,
           "candidate_docs": 230,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 230,
@@ -46,6 +48,7 @@
           "L": 2,
           "candidate_docs": 329,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 329,
@@ -55,6 +58,7 @@
           "L": 4,
           "candidate_docs": 701,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 701,
@@ -64,6 +68,7 @@
           "L": 8,
           "candidate_docs": 1499,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 1499,
@@ -73,6 +78,7 @@
           "L": 16,
           "candidate_docs": 2669,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 2669,
@@ -82,6 +88,7 @@
           "L": 32,
           "candidate_docs": 5909,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 5909,
@@ -91,6 +98,7 @@
           "L": 64,
           "candidate_docs": 12042,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 12042,
@@ -100,10 +108,21 @@
           "L": 128,
           "candidate_docs": 25616,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 25616,
           "teacher_recall": 0.1
+        },
+        {
+          "L": 256,
+          "candidate_docs": 52553,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 52553,
+          "teacher_recall": 0.3
         }
       ],
       "query": 0,
@@ -111,6 +130,7 @@
         {
           "L": 1,
           "candidate_docs": 16046,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 16046,
@@ -120,6 +140,7 @@
         {
           "L": 2,
           "candidate_docs": 26058,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 26058,
@@ -129,6 +150,7 @@
         {
           "L": 4,
           "candidate_docs": 58037,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 58037,
@@ -138,6 +160,7 @@
         {
           "L": 8,
           "candidate_docs": 117312,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 117312,
@@ -147,6 +170,7 @@
         {
           "L": 16,
           "candidate_docs": 248595,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 248595,
@@ -156,6 +180,7 @@
         {
           "L": 32,
           "candidate_docs": 505067,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 505067,
@@ -165,6 +190,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -174,10 +200,21 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
@@ -188,6 +225,7 @@
           "L": 1,
           "candidate_docs": 308,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 308,
@@ -197,6 +235,7 @@
           "L": 2,
           "candidate_docs": 575,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 575,
@@ -206,6 +245,7 @@
           "L": 4,
           "candidate_docs": 1228,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 1228,
@@ -215,6 +255,7 @@
           "L": 8,
           "candidate_docs": 2403,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 2403,
@@ -224,6 +265,7 @@
           "L": 16,
           "candidate_docs": 4579,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 4579,
@@ -233,6 +275,7 @@
           "L": 32,
           "candidate_docs": 9352,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 9352,
@@ -242,6 +285,7 @@
           "L": 64,
           "candidate_docs": 18323,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 18323,
@@ -251,9 +295,20 @@
           "L": 128,
           "candidate_docs": 36053,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 36053,
+          "teacher_recall": 0.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 69610,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 69610,
           "teacher_recall": 0.0
         }
       ],
@@ -262,6 +317,7 @@
         {
           "L": 1,
           "candidate_docs": 16145,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 16145,
@@ -271,6 +327,7 @@
         {
           "L": 2,
           "candidate_docs": 31483,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 31483,
@@ -280,6 +337,7 @@
         {
           "L": 4,
           "candidate_docs": 62954,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 62954,
@@ -289,6 +347,7 @@
         {
           "L": 8,
           "candidate_docs": 125762,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 125762,
@@ -298,6 +357,7 @@
         {
           "L": 16,
           "candidate_docs": 255066,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 255066,
@@ -307,6 +367,7 @@
         {
           "L": 32,
           "candidate_docs": 503136,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 503136,
@@ -316,6 +377,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -325,10 +387,21 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
@@ -339,6 +412,7 @@
           "L": 1,
           "candidate_docs": 272,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 272,
@@ -348,6 +422,7 @@
           "L": 2,
           "candidate_docs": 541,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 541,
@@ -357,6 +432,7 @@
           "L": 4,
           "candidate_docs": 1086,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 1086,
@@ -366,6 +442,7 @@
           "L": 8,
           "candidate_docs": 2345,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 2345,
@@ -375,6 +452,7 @@
           "L": 16,
           "candidate_docs": 4444,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 4444,
@@ -384,6 +462,7 @@
           "L": 32,
           "candidate_docs": 8771,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 8771,
@@ -393,6 +472,7 @@
           "L": 64,
           "candidate_docs": 17691,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 17691,
@@ -402,10 +482,21 @@
           "L": 128,
           "candidate_docs": 34734,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 34734,
           "teacher_recall": 0.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 68404,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 68404,
+          "teacher_recall": 0.1
         }
       ],
       "query": 2,
@@ -413,6 +504,7 @@
         {
           "L": 1,
           "candidate_docs": 15929,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 15929,
@@ -422,6 +514,7 @@
         {
           "L": 2,
           "candidate_docs": 31660,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 31660,
@@ -431,6 +524,7 @@
         {
           "L": 4,
           "candidate_docs": 63131,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 63131,
@@ -440,6 +534,7 @@
         {
           "L": 8,
           "candidate_docs": 125524,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 125524,
@@ -449,6 +544,7 @@
         {
           "L": 16,
           "candidate_docs": 252554,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 252554,
@@ -458,6 +554,7 @@
         {
           "L": 32,
           "candidate_docs": 505357,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 505357,
@@ -467,6 +564,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -476,10 +574,21 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
@@ -490,6 +599,7 @@
           "L": 1,
           "candidate_docs": 215,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 215,
@@ -499,6 +609,7 @@
           "L": 2,
           "candidate_docs": 389,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 389,
@@ -508,6 +619,7 @@
           "L": 4,
           "candidate_docs": 878,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 878,
@@ -517,6 +629,7 @@
           "L": 8,
           "candidate_docs": 1706,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 1706,
@@ -526,6 +639,7 @@
           "L": 16,
           "candidate_docs": 3207,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 3207,
@@ -535,6 +649,7 @@
           "L": 32,
           "candidate_docs": 7065,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 7065,
@@ -544,6 +659,7 @@
           "L": 64,
           "candidate_docs": 13301,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 13301,
@@ -553,10 +669,21 @@
           "L": 128,
           "candidate_docs": 27574,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 27574,
           "teacher_recall": 0.6
+        },
+        {
+          "L": 256,
+          "candidate_docs": 56788,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 56788,
+          "teacher_recall": 0.7
         }
       ],
       "query": 3,
@@ -564,6 +691,7 @@
         {
           "L": 1,
           "candidate_docs": 18009,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 18009,
@@ -573,6 +701,7 @@
         {
           "L": 2,
           "candidate_docs": 33606,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 33606,
@@ -582,6 +711,7 @@
         {
           "L": 4,
           "candidate_docs": 72596,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 72596,
@@ -591,6 +721,7 @@
         {
           "L": 8,
           "candidate_docs": 135875,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 135875,
@@ -600,6 +731,7 @@
         {
           "L": 16,
           "candidate_docs": 250623,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 250623,
@@ -609,6 +741,7 @@
         {
           "L": 32,
           "candidate_docs": 473849,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 473849,
@@ -618,6 +751,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -627,10 +761,21 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
@@ -641,6 +786,7 @@
           "L": 1,
           "candidate_docs": 120,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 120,
@@ -650,6 +796,7 @@
           "L": 2,
           "candidate_docs": 239,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 239,
@@ -659,6 +806,7 @@
           "L": 4,
           "candidate_docs": 559,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 559,
@@ -668,6 +816,7 @@
           "L": 8,
           "candidate_docs": 1077,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 1077,
@@ -677,6 +826,7 @@
           "L": 16,
           "candidate_docs": 2134,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 2134,
@@ -686,6 +836,7 @@
           "L": 32,
           "candidate_docs": 4641,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 4641,
@@ -695,6 +846,7 @@
           "L": 64,
           "candidate_docs": 9963,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 9963,
@@ -704,10 +856,21 @@
           "L": 128,
           "candidate_docs": 21087,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 21087,
           "teacher_recall": 0.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 45462,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 45462,
+          "teacher_recall": 0.1
         }
       ],
       "query": 4,
@@ -715,6 +878,7 @@
         {
           "L": 1,
           "candidate_docs": 10732,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 10732,
@@ -724,6 +888,7 @@
         {
           "L": 2,
           "candidate_docs": 21110,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 21110,
@@ -733,6 +898,7 @@
         {
           "L": 4,
           "candidate_docs": 45239,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 45239,
@@ -742,6 +908,7 @@
         {
           "L": 8,
           "candidate_docs": 98292,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 98292,
@@ -751,6 +918,7 @@
         {
           "L": 16,
           "candidate_docs": 221245,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 221245,
@@ -760,6 +928,7 @@
         {
           "L": 32,
           "candidate_docs": 489537,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 489537,
@@ -769,6 +938,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -778,10 +948,21 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
@@ -792,6 +973,7 @@
           "L": 1,
           "candidate_docs": 205,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 205,
@@ -801,6 +983,7 @@
           "L": 2,
           "candidate_docs": 447,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 447,
@@ -810,6 +993,7 @@
           "L": 4,
           "candidate_docs": 898,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 898,
@@ -819,6 +1003,7 @@
           "L": 8,
           "candidate_docs": 1656,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 1656,
@@ -828,6 +1013,7 @@
           "L": 16,
           "candidate_docs": 3559,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 3559,
@@ -837,6 +1023,7 @@
           "L": 32,
           "candidate_docs": 7062,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 7062,
@@ -846,6 +1033,7 @@
           "L": 64,
           "candidate_docs": 13494,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 13494,
@@ -855,9 +1043,20 @@
           "L": 128,
           "candidate_docs": 28954,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 28954,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 256,
+          "candidate_docs": 57991,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 57991,
           "teacher_recall": 0.1
         }
       ],
@@ -866,6 +1065,7 @@
         {
           "L": 1,
           "candidate_docs": 15099,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 15099,
@@ -875,6 +1075,7 @@
         {
           "L": 2,
           "candidate_docs": 32351,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 32351,
@@ -884,6 +1085,7 @@
         {
           "L": 4,
           "candidate_docs": 63420,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 63420,
@@ -893,6 +1095,7 @@
         {
           "L": 8,
           "candidate_docs": 122808,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 122808,
@@ -902,6 +1105,7 @@
         {
           "L": 16,
           "candidate_docs": 250946,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 250946,
@@ -911,6 +1115,7 @@
         {
           "L": 32,
           "candidate_docs": 497261,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 497261,
@@ -920,6 +1125,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -929,10 +1135,21 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
@@ -943,6 +1160,7 @@
           "L": 1,
           "candidate_docs": 227,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 227,
@@ -952,6 +1170,7 @@
           "L": 2,
           "candidate_docs": 420,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 420,
@@ -961,6 +1180,7 @@
           "L": 4,
           "candidate_docs": 893,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 893,
@@ -970,6 +1190,7 @@
           "L": 8,
           "candidate_docs": 1706,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 1706,
@@ -979,6 +1200,7 @@
           "L": 16,
           "candidate_docs": 3380,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 3380,
@@ -988,6 +1210,7 @@
           "L": 32,
           "candidate_docs": 6886,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 6886,
@@ -997,6 +1220,7 @@
           "L": 64,
           "candidate_docs": 13889,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 13889,
@@ -1006,9 +1230,20 @@
           "L": 128,
           "candidate_docs": 28340,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 28340,
+          "teacher_recall": 0.3
+        },
+        {
+          "L": 256,
+          "candidate_docs": 56759,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 56759,
           "teacher_recall": 0.3
         }
       ],
@@ -1017,6 +1252,7 @@
         {
           "L": 1,
           "candidate_docs": 19825,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 19825,
@@ -1026,6 +1262,7 @@
         {
           "L": 2,
           "candidate_docs": 37077,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 37077,
@@ -1035,6 +1272,7 @@
         {
           "L": 4,
           "candidate_docs": 76625,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 76625,
@@ -1044,6 +1282,7 @@
         {
           "L": 8,
           "candidate_docs": 135468,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 135468,
@@ -1053,6 +1292,7 @@
         {
           "L": 16,
           "candidate_docs": 249998,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 249998,
@@ -1062,6 +1302,7 @@
         {
           "L": 32,
           "candidate_docs": 474778,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 474778,
@@ -1071,6 +1312,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -1080,10 +1322,21 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
@@ -1094,6 +1347,7 @@
           "L": 1,
           "candidate_docs": 147,
           "cells_touched": 1,
+          "effective_L": 1,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 1,
           "posting_entries_touched": 147,
@@ -1103,6 +1357,7 @@
           "L": 2,
           "candidate_docs": 313,
           "cells_touched": 2,
+          "effective_L": 2,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 2,
           "posting_entries_touched": 313,
@@ -1112,6 +1367,7 @@
           "L": 4,
           "candidate_docs": 643,
           "cells_touched": 4,
+          "effective_L": 4,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 4,
           "posting_entries_touched": 643,
@@ -1121,6 +1377,7 @@
           "L": 8,
           "candidate_docs": 1235,
           "cells_touched": 8,
+          "effective_L": 8,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 8,
           "posting_entries_touched": 1235,
@@ -1130,6 +1387,7 @@
           "L": 16,
           "candidate_docs": 2606,
           "cells_touched": 16,
+          "effective_L": 16,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 16,
           "posting_entries_touched": 2606,
@@ -1139,6 +1397,7 @@
           "L": 32,
           "candidate_docs": 5076,
           "cells_touched": 32,
+          "effective_L": 32,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 32,
           "posting_entries_touched": 5076,
@@ -1148,6 +1407,7 @@
           "L": 64,
           "candidate_docs": 11136,
           "cells_touched": 64,
+          "effective_L": 64,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 64,
           "posting_entries_touched": 11136,
@@ -1157,9 +1417,20 @@
           "L": 128,
           "candidate_docs": 22087,
           "cells_touched": 128,
+          "effective_L": 128,
           "empty_cell_fraction": 0.0,
           "nonempty_cells_touched": 128,
           "posting_entries_touched": 22087,
+          "teacher_recall": 0.1
+        },
+        {
+          "L": 256,
+          "candidate_docs": 47566,
+          "cells_touched": 256,
+          "effective_L": 256,
+          "empty_cell_fraction": 0.0,
+          "nonempty_cells_touched": 256,
+          "posting_entries_touched": 47566,
           "teacher_recall": 0.1
         }
       ],
@@ -1168,6 +1439,7 @@
         {
           "L": 1,
           "candidate_docs": 13858,
+          "effective_L": 1,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 1,
           "posting_entries_touched": 13858,
@@ -1177,6 +1449,7 @@
         {
           "L": 2,
           "candidate_docs": 29710,
+          "effective_L": 2,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 2,
           "posting_entries_touched": 29710,
@@ -1186,6 +1459,7 @@
         {
           "L": 4,
           "candidate_docs": 55986,
+          "effective_L": 4,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 4,
           "posting_entries_touched": 55986,
@@ -1195,6 +1469,7 @@
         {
           "L": 8,
           "candidate_docs": 112258,
+          "effective_L": 8,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 8,
           "posting_entries_touched": 112258,
@@ -1204,6 +1479,7 @@
         {
           "L": 16,
           "candidate_docs": 236398,
+          "effective_L": 16,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 16,
           "posting_entries_touched": 236398,
@@ -1213,6 +1489,7 @@
         {
           "L": 32,
           "candidate_docs": 497401,
+          "effective_L": 32,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 32,
           "posting_entries_touched": 497401,
@@ -1222,6 +1499,7 @@
         {
           "L": 64,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
@@ -1231,15 +1509,26 @@
         {
           "L": 128,
           "candidate_docs": 1000000,
+          "effective_L": 64,
           "empty_posting_fraction": 0.0,
           "nonempty_postings_touched": 64,
           "posting_entries_touched": 1000000,
-          "postings_touched": 128,
+          "postings_touched": 64,
+          "teacher_recall": 1.0
+        },
+        {
+          "L": 256,
+          "candidate_docs": 1000000,
+          "effective_L": 64,
+          "empty_posting_fraction": 0.0,
+          "nonempty_postings_touched": 64,
+          "posting_entries_touched": 1000000,
+          "postings_touched": 64,
           "teacher_recall": 1.0
         }
       ]
     }
   ],
-  "runner_sha256": "68c9deb6bd5392c31726e7e4800d7790d56ad0e68456213b6b13fe1726684076",
+  "runner_sha256": "a9951319b622ba02e687f3ab8d4f64619559edf40c368fa833265162fe03e4b7",
   "schema_version": 1
 }
