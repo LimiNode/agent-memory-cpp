@@ -675,3 +675,30 @@ prefix, then prunes later documents only when their nonnegative partial ADC
 score exceeds the current threshold. Active and fully evaluated fractions are
 recorded at all checkpoints. External DE-1M execution and physical layout
 measurements remain pending; no production activation is claimed.
+
+### THQ physical-frontier wave 1 (2026-09-12)
+
+The first physical-frontier follow-up covers four controls on the frozen
+THQ4-384 fixture: immutable Block-Min presence metadata, a deterministic
+packed-code-prefix physical-order surrogate, bitmap/range tile selection with
+secondary AoSoA layouts, and an integrated coarse-tile → exact THQ-ADC cascade.
+Block-Min presence-mask bounds are safely computed but skipped no document-ID
+tiles/blocks in the smoke replay; the code-prefix control did not improve
+teacher tile locality; and
+1k–50k tile budgets had zero teacher recall in the eight-query smoke.  These are
+negative logical-oracle results, not MDBX/page-latency claims.  No historical R4
+mapping or teacher IDs were used to synthesize an index, and production
+activation remains forbidden.  See
+`2026-09-12-thq-physical-frontier-wave1.md` and its two receipts.  IMI and
+SPANN-like layouts remain deferred to wave 2.
+
+The follow-up joint-bound diagnostic initially contained an upper-tail LUT sign
+bug and global block-coordinate indexing bug; its first receipts are superseded.
+After correction, pairwise (384 B/tile)
+ bounds are zero for 99.95% of tile/query pairs (median two unique values/query);
+ 4-way (3,072 B/tile) bounds are distinct for every tile but rank teacher tiles
+ near random (median rank 1,034.5, p90 1,824.9).  This narrows the negative result to the current occupancy summaries
+and coarse selector, not to bitmap/range storage or semantic routing in general.
+See
+`2026-09-12-thq-joint-bound-diagnostic-result.json` and
+`2026-09-12-thq-joint4-bound-diagnostic-result.json`.

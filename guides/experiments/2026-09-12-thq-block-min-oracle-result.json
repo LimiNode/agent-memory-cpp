@@ -1,0 +1,26 @@
+{
+  "documents": 1000000,
+  "execution_status": "EXECUTED_SMOKE",
+  "family": "thq_block_min_oracle_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "layout_manifest_sha256": "b8f0c9b32da77d8381537fa551a92e044a3960b8776fae3625203a7dbd259c67",
+  "production_activation": false,
+  "queries": 1,
+  "rows": [
+    {
+      "blocks_read": 23448,
+      "blocks_skipped_by_block_min": 0,
+      "exact_top256_parity": true,
+      "logical_payload_bytes_read": 96000000,
+      "query": 0,
+      "summary_bytes_read": 750336,
+      "teacher_survival_256": 1.0,
+      "tiles_skipped_by_block_min": 0,
+      "top256_sha256": "6dac01b79822a76fec60ef6f1af136781878df8601c9b057cee9ffed3898aafb"
+    }
+  ],
+  "runner_sha256": "efd5fd3f6f51e3ae849a16de0e546eea42d3d5e0c769fb1a009228f76970ddda",
+  "schema_version": 1,
+  "summary_manifest_sha256": "a371a4f592fbb8a9970f34c295fdc9d46771ccc113e3389d8940a3e58843b66a",
+  "warmup": 4096
+}
