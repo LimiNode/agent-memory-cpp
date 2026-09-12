@@ -6,31 +6,32 @@ backend, or production activation is claimed.
 
 The runner uses the first six decoded THQ coordinates. The SPANN-like control
 has 64 exact three-coordinate, four-level THQ signature postings. The IMI
-control splits the signature into two disjoint three-coordinate, four-level
-THQ subspaces, producing a 64x64 Cartesian cell grid. Cells/postings are
-ordered by additive ordinal distance and the top `L` values are unioned.
-Payload reranking is intentionally not run.
+control splits them into two disjoint three-coordinate, four-level THQ
+subspaces, producing a 64x64 Cartesian grid. Cell IDs are composed in int32
+with fail-closed range assertions; an earlier uint8-overflow receipt is
+superseded by the corrected replay. Payload reranking is not run.
 
-Eight-query smoke means:
+Corrected eight-query smoke means:
 
 | L | SPANN-like candidates | SPANN-like teacher recall | IMI candidates | IMI teacher recall |
 |---:|---:|---:|---:|---:|
-| 1 | 15,705 | 0.1500 | 416 | 0.0000 |
-| 2 | 30,382 | 0.1875 | 1,302 | 0.0000 |
-| 4 | 62,249 | 0.2625 | 2,145 | 0.0125 |
-| 8 | 121,662 | 0.3250 | 3,939 | 0.0125 |
-| 16 | 245,678 | 0.5375 | 11,191 | 0.0125 |
-| 32 | 493,298 | 0.7500 | 18,484 | 0.0375 |
+| 1 | 15,705 | 0.1500 | 216 | 0.0125 |
+| 2 | 30,382 | 0.1875 | 407 | 0.0125 |
+| 4 | 62,249 | 0.2625 | 861 | 0.0250 |
+| 8 | 121,662 | 0.3250 | 1,703 | 0.0375 |
+| 16 | 245,678 | 0.5375 | 3,322 | 0.0375 |
+| 32 | 493,298 | 0.7500 | 6,845 | 0.1000 |
 
-Among tested points below 50k mean candidates, the best SPANN-like recall is
-`0.1875` at `L=2`; the next point is already about 62k candidates with recall
-`0.2625`, far below the >=0.995 target. The IMI Cartesian partition is
-negative in this configuration. These findings are specific to the first six
-raw THQ coordinates and do not establish that IMI is intrinsically sparse or
-that SPANN fails with semantic prototypes. A real follow-up must use verified
-full-dimensional prototypes, optional boundary replication, and exact THQ-ADC
-reranking before storage materialization.
+Occupancy confirms that all 4,096 IMI cells are populated (p50 232 and p95
+395 documents; effective cells 3,877.9).  The SPANN postings are comparatively
+balanced (min 8,856, p50 15,458, p95 21,024, max 25,631; effective cells
+62.68).  Thus the previous sparse/overflow interpretation was invalid, but the
+corrected raw-coordinate IMI still has very poor teacher recall.  Among tested
+SPANN points below 50k mean candidates, the best recall is 0.1875 at L=2; the
+next point is already ~62k candidates with recall 0.2625. These findings are
+specific to the first six raw THQ coordinates and do not establish that IMI is
+intrinsically sparse or that SPANN fails with semantic prototypes.
 
-The receipt records occupancy diagnostics (posting/cell size distribution,
-occupied cells, empty top-L fraction), frozen fixture and runner hashes, smoke
-status, and `production_activation: false`.
+Receipt: `2026-09-12-thq-index-wave2-result.json`. It records the corrected
+fixture/runner hashes, occupancy diagnostics, smoke status, and
+`production_activation: false`.

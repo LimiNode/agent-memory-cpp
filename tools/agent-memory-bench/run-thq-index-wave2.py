@@ -26,7 +26,11 @@ def main():
  # SPANN-like 64 posting prototypes: exact 3-level signatures (4^3 cells).
  spann_sig=codes[:,:3]; spann_cell=spann_sig[:,0]*16+spann_sig[:,1]*4+spann_sig[:,2]; postings=[np.flatnonzero(spann_cell==c) for c in range(64)]; proto=np.asarray(np.unravel_index(np.arange(64),(4,4,4))).T
  # IMI: two independent 3-coordinate subspaces (64 x 64 Cartesian cells).
- a=codes[:,:3]; b=codes[:,3:6]; ca=a[:,0]*16+a[:,1]*4+a[:,2]; cb=b[:,0]*16+b[:,1]*4+b[:,2]; imi_cell=ca*64+cb; imi_post=[np.flatnonzero(imi_cell==c) for c in range(4096)]
+ a=codes[:,:3]; b=codes[:,3:6]; ca=(a[:,0].astype(np.int32)*16+a[:,1].astype(np.int32)*4+a[:,2].astype(np.int32)); cb=(b[:,0].astype(np.int32)*16+b[:,1].astype(np.int32)*4+b[:,2].astype(np.int32));
+ if int(ca.max()) > 63 or int(cb.max()) > 63 or int(63*64+63) != 4095: raise AssertionError('IMI cell composition overflow')
+ imi_cell=ca*64+cb
+ if int(imi_cell.min()) < 0 or int(imi_cell.max()) >= 4096: raise AssertionError('IMI cell out of range')
+ imi_post=[np.flatnonzero(imi_cell==c) for c in range(4096)]
  rows=[]
  for qi in range(qn):
   q0=qcodes[qi,:3]; q1=qcodes[qi,3:6]; spann_order=np.argsort(np.abs(proto-q0).sum(axis=1),kind='stable');

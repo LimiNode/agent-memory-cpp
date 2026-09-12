@@ -686,3 +686,10 @@ reached 0.0375 at ~18k candidates.  These are bounded signature controls, not
 semantic R4/SPANN implementations; no payload rerank, MDBX page measurement,
 or production activation is claimed.  See
 `2026-09-12-thq-index-wave2.md` and its receipt.
+
+Correction note (2026-09-12): the initial IMI receipt used uint8 arithmetic for
+Cartesian cell IDs and is superseded.  The corrected runner uses int32 and
+asserts `cell(63,63) == 4095` and `0 <= cell < 4096`.  Corrected IMI recall is
+0.10 at ~6.8k candidates (`L=32`); the result remains specific to two disjoint
+three-coordinate subspaces.  The SPANN-like control reaches 0.75 only at
+~493k candidates.
