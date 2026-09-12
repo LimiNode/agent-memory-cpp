@@ -1,19 +1,17 @@
 # THQ index wave 2: IMI and SPANN-like posting controls
 
-Date: 2026-09-12  
-Fixture: frozen `thq-full-scan-v2` (1,000,000 documents, THQ4-384).  This is
-an in-memory coarse-posting oracle; no R4 mapping, MDBX backend, or production
-activation is claimed.
+Date: 2026-09-12. Fixture: frozen `thq-full-scan-v2` (1,000,000 documents,
+THQ4-384). This is an in-memory coarse-posting oracle; no R4 mapping, MDBX
+backend, or production activation is claimed.
 
-The runner uses two deterministic controls over the first six decoded THQ
-coordinates.  The SPANN-like control has 64 exact three-level signature
-postings.  The IMI control splits the signature into two independent
-three-coordinate spaces, producing a 64×64 Cartesian cell grid.  For each
-query, cells/postings are ordered by additive ordinal distance and the top
-`L ∈ {1,2,4,8,16,32}` are unioned.  Metrics are posting/cell count, candidate
-documents, and teacher recall; payload reranking is intentionally not run.
+The runner uses the first six decoded THQ coordinates. The SPANN-like control
+has 64 exact three-coordinate, four-level THQ signature postings. The IMI
+control splits the signature into two disjoint three-coordinate, four-level
+THQ subspaces, producing a 64x64 Cartesian cell grid. Cells/postings are
+ordered by additive ordinal distance and the top `L` values are unioned.
+Payload reranking is intentionally not run.
 
-Eight-query smoke means were:
+Eight-query smoke means:
 
 | L | SPANN-like candidates | SPANN-like teacher recall | IMI candidates | IMI teacher recall |
 |---:|---:|---:|---:|---:|
@@ -24,14 +22,15 @@ Eight-query smoke means were:
 | 16 | 245,678 | 0.5375 | 11,191 | 0.0125 |
 | 32 | 493,298 | 0.7500 | 18,484 | 0.0375 |
 
-The SPANN-like surrogate shows a recall/work trade-off but misses the target
-of ≥0.995 recall at ≤50k candidates.  The IMI Cartesian partition is highly
-sparse/misaligned for this multi-modal teacher set and is negative in this
-configuration.  Neither result rules out a learned K8/R4 coarse partition,
-balanced replication, or a different subspace design; they only characterize
-these fixed signature controls.  A real SPANN/R4 follow-up must assign by
-verified semantic prototypes, support optional 2–4-way replication, and then
-rerank candidates with exact THQ-ADC before any storage materialization.
+Among tested points below 50k mean candidates, the best SPANN-like recall is
+`0.1875` at `L=2`; the next point is already about 62k candidates with recall
+`0.2625`, far below the >=0.995 target. The IMI Cartesian partition is
+negative in this configuration. These findings are specific to the first six
+raw THQ coordinates and do not establish that IMI is intrinsically sparse or
+that SPANN fails with semantic prototypes. A real follow-up must use verified
+full-dimensional prototypes, optional boundary replication, and exact THQ-ADC
+reranking before storage materialization.
 
-Receipt: `2026-09-12-thq-index-wave2-result.json`.  It records frozen fixture
-and runner hashes, protocol, smoke status, and `production_activation: false`.
+The receipt records occupancy diagnostics (posting/cell size distribution,
+occupied cells, empty top-L fraction), frozen fixture and runner hashes, smoke
+status, and `production_activation: false`.

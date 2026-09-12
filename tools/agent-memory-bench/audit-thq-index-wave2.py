@@ -3,6 +3,13 @@
 import hashlib, json, re
 from pathlib import Path
 ROOT=Path(__file__).parents[2]/'guides'/'experiments'; HEX=re.compile(r'^[0-9a-f]{64}$')
+FROZEN=Path(r'E:\_repoz\agent-memory-cpp\tmp\thq-full-scan-v2\manifest.json')
+RUNNER=Path(__file__).with_name('run-thq-index-wave2.py')
+def sha256(path):
+ h=hashlib.sha256()
+ with path.open('rb') as f:
+  for c in iter(lambda:f.read(1<<20),b''): h.update(c)
+ return h.hexdigest()
 def main():
  p=ROOT/'2026-09-12-thq-index-wave2-result.json'; e=[]
  if not p.is_file(): e.append('missing receipt')
@@ -10,6 +17,8 @@ def main():
   d=json.loads(p.read_text())
   for k in ('fixture_manifest_sha256','runner_sha256'):
    if not HEX.fullmatch(str(d.get(k,''))): e.append(f'{k} must be SHA-256')
+  if d.get('fixture_manifest_sha256') != sha256(FROZEN): e.append('fixture hash does not match canonical frozen manifest')
+  if d.get('runner_sha256') != sha256(RUNNER): e.append('runner hash does not match current runner')
   if d.get('production_activation') is not False: e.append('production_activation must be false')
   if d.get('execution_status') not in ('EXECUTED','EXECUTED_SMOKE'): e.append('invalid execution_status')
   if len(d.get('rows',[]))!=d.get('queries'): e.append('rows/queries mismatch')
