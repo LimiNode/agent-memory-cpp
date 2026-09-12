@@ -47,6 +47,9 @@ def main() -> None:
     codes = np.memmap(source, mode="r", dtype=np.uint8, shape=(n, 144))
     bits = np.unpackbits(np.asarray(codes), axis=1, bitorder="little")[:, : d * 3]
     levels = bits.reshape(n, d, 3).sum(axis=2).astype(np.uint8)
+    level_histogram = np.zeros((d, 4), dtype=np.int64)
+    for coordinate in range(d):
+        level_histogram[coordinate] = np.bincount(levels[:, coordinate], minlength=4)
     args.output_root.mkdir(parents=True, exist_ok=False)
     records = []
     block_count = d // args.coords_per_block
@@ -84,6 +87,7 @@ def main() -> None:
         "source_manifest": str(args.thq_manifest),
         "source_manifest_sha256": manifest_hash,
         "source_document_codes_sha256": source_hash,
+        "level_histogram": level_histogram.tolist(),
         "blocks": records,
         "execution_status": "MATERIALIZED_LAYOUT_PENDING_NATIVE_TIMING",
         "physical_bytes_semantics": "logical_block_payload_bytes",

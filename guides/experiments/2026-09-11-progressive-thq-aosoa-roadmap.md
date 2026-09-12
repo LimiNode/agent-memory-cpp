@@ -58,3 +58,11 @@ measurement in `2026-09-11-progressive-thq-aosoa-replay.md`.  It covers both
 `4096×32` and page-matched `512×32` layouts, with fixed and ADC-expected block
 orders.  Native page accounting, warm/cold controls, and R4 candidate masks
 remain unexecuted follow-ups.
+
+The physical runner distinguishes the diagnostic unweighted
+`adc_lut_variance` order from corpus-weighted `adc_expected_cost` and
+`adc_expected_variance`, using the materializer's per-coordinate level
+histogram.  Warmup is document-masked, but
+the top-k cutoff is only updated after each tile; this is reported as a
+tile-granular bootstrap rather than equivalent to the oracle's per-document
+warmup sweep.

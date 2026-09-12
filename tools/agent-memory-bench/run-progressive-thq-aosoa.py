@@ -57,7 +57,18 @@ def topk_merge(best_scores: np.ndarray, best_ids: np.ndarray,
     return all_scores[order], all_ids[order]
 
 
-def _block_order(layout: dict, lut: np.ndarray, mode: str) -> list[int]:
+def validate_layout(layout: dict) -> None:
+    """Validate every immutable block once, before timed query scans."""
+    for row in layout["blocks"]:
+        path = Path(row["path"])
+        if path.stat().st_size != int(row["bytes"]):
+            raise ValueError(f"layout block size mismatch: {path}")
+        if hash_file(path) != row["sha256"]:
+            raise ValueError(f"layout block hash mismatch: {path}")
+
+
+def _block_order(layout: dict, lut: np.ndarray, mode: str,
+                 level_histogram: np.ndarray | None) -> list[int]:
     count = int(layout["dimension"]) // int(layout["coords_per_block"])
     if mode == "fixed":
         return list(range(count))
@@ -66,7 +77,23 @@ def _block_order(layout: dict, lut: np.ndarray, mode: str) -> list[int]:
     for block in range(count):
         lo = block * width
         values = lut[lo:lo + width]
-        scores.append(float(np.var(values)))
+        if mode in ("adc_expected", "adc_expected_cost", "adc_expected_variance"):
+            if level_histogram is None:
+                raise ValueError("adc_expected ordering requires level histogram")
+            probabilities = np.asarray(level_histogram[lo:lo + width], dtype=np.float64)
+            probabilities /= np.maximum(probabilities.sum(axis=1, keepdims=True), 1.0)
+            means = np.sum(probabilities * values, axis=1)
+            if mode == "adc_expected_cost":
+                # Expected interval-squared ADC work: prioritize blocks whose
+                # corpus-average contribution is largest.
+                score = np.sum(means)
+            else:
+                # Variance is retained as a separate diagnostic; it measures
+                # uncertainty, not expected cost.
+                score = np.sum(probabilities * (values - means[:, None]) ** 2)
+        else:  # adc_lut_variance: diagnostic, unweighted over four levels
+            score = np.var(values)
+        scores.append(float(score))
     return list(np.argsort(-np.asarray(scores), kind="stable"))
 
 
@@ -77,8 +104,8 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
     n, d = int(layout["documents"]), int(layout["dimension"])
     blocks = {(int(row["tile"]), int(row["block"])): row for row in layout["blocks"]}
     tiles = sorted({tile for tile, _ in blocks})
-    order = _block_order(layout, query_lut(query, thresholds), order_mode)
     lut = query_lut(query, thresholds)
+    order = _block_order(layout, lut, order_mode, layout.get("level_histogram"))
     best_scores = np.full(k, np.inf, dtype=np.float32)
     best_ids = np.full(k, n + 1, dtype=np.int64)
     logical_bytes = 0
@@ -88,6 +115,7 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
     doc_block_evaluations = 0
     docs_reaching = np.zeros(len(order), dtype=np.int64)
     tile_blocks_skipped = 0
+    tiles_fully_pruned = 0
     started = time.perf_counter()
 
     for tile in tiles:
@@ -118,6 +146,7 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
                 active[can_prune] &= partial[can_prune] <= best_scores[-1]
             if not active.any():
                 tile_blocks_skipped += len(order) - stage - 1
+                tiles_fully_pruned += 1
                 break
         if active.any():
             ids = global_ids[active]
@@ -127,18 +156,19 @@ def scan(layout: dict, query: np.ndarray, thresholds: np.ndarray,
     result = {
         "logical_block_payload_bytes_read": logical_bytes,
         "blocks_read": blocks_read,
-        "tiles_fully_pruned": tile_blocks_skipped,
+        "tile_blocks_skipped": tile_blocks_skipped,
+        "tiles_fully_pruned": tiles_fully_pruned,
         "docs_fully_scored": docs_fully_scored,
         "doc_block_evaluations": doc_block_evaluations,
         "coordinate_evaluations": coordinate_evaluations,
-        "equivalent_full_scan_fraction": float(coordinate_evaluations / max(1, n * d)),
+        "logical_active_coordinate_fraction": float(coordinate_evaluations / max(1, n * d)),
         "docs_reaching_each_block": docs_reaching.tolist(),
         "elapsed_ms": (time.perf_counter() - started) * 1000.0,
         "top_ids": best_ids.tolist(),
         "order_mode": order_mode,
     }
     if check_parity:
-        exhaustive = scan(layout, query, thresholds, n + 1, k, order_mode, False, True)
+        exhaustive = scan(layout, query, thresholds, n + 1, k, "fixed", False, True)
         parity = bool(np.array_equal(best_ids, exhaustive["top_ids"]))
         result["exact_top256_parity"] = parity
         if not parity:
@@ -155,7 +185,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--query-limit", type=int, default=152)
     parser.add_argument("--warmup", type=int, default=4096)
-    parser.add_argument("--order", choices=("fixed", "adc_expected"), default="fixed")
+    parser.add_argument("--order", choices=("fixed", "adc_lut_variance", "adc_expected", "adc_expected_cost", "adc_expected_variance"), default="fixed")
     parser.add_argument("--check-parity", action="store_true")
     args = parser.parse_args()
     layout = json.loads(args.layout_manifest.read_text(encoding="utf-8"))
@@ -175,6 +205,7 @@ def main() -> None:
     declared_codes_sha = outputs["thq4_document_codes"].get("sha256")
     if declared_codes_sha and declared_codes_sha != document_codes_sha:
         raise ValueError("document-code payload hash differs from frozen manifest")
+    validate_layout(layout)
     queries = np.memmap(refs["queries"]["path"], mode="r", dtype="<f4", shape=(q, d))
     thresholds = np.memmap(outputs["thq4_thresholds"]["path"], mode="r", dtype="<f4", shape=(d, 3))
     teachers = np.memmap(refs["teacher_ids"]["path"], mode="r", dtype="<i8", shape=(q, 10))

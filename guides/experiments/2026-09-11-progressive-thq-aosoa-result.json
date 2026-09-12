@@ -4,19 +4,24 @@
   "execution_status": "PENDING",
   "local_replay_status": "EXECUTED_NON_AUTHORITATIVE",
   "local_replay_note": "Full 152-query logical AoSoA replay completed outside Git; native page/MDBX timing is still pending.",
+  "local_replays": [
+    {"name": "aosoa-full-4096x32-fixed.json", "sha256": "3ccb6cb5e8ebcb55fb7616f87f8a0f3b1334b2e4d1312317b6e3d512a6f17831", "layout_manifest_sha256": "dacd6b70d1f8ffce87a55e093e0fa3161389aeaf4c0af69426d1ab92952248c1", "order": "fixed", "tile_docs": 4096, "warmup": 4096},
+    {"name": "aosoa-full-512x32-fixed.json", "sha256": "d813e8d18e623d49e6604e68e2f6723dedf2368e9b52329ce24b2f8c3a0291a2", "layout_manifest_sha256": "86fca8ba0d3c120e632ed2df81bddc8c08829d2d18c4a179003e3fc4e0339730", "order": "fixed", "tile_docs": 512, "warmup": 4096},
+    {"name": "aosoa-full-512x32-adc-expected.json", "sha256": "2cd7cce12cbe3349916ac8f3d01e02ec38beb43f9cb173c470bcef977b7784b3", "layout_manifest_sha256": "86fca8ba0d3c120e632ed2df81bddc8c08829d2d18c4a179003e3fc4e0339730", "order": "adc_expected", "tile_docs": 512, "warmup": 4096}
+  ],
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
-  "runner_sha256": "9abd3c11bf1c9e3a14d14f92c871346efd347861f97fe69c38246ed73531ef27",
+  "runner_sha256": "ce71702cfafaace6154688fea8d3f079c4d533f79b15d82e95b369fd0786856e",
   "query_count": 152,
   "runner": "tools/agent-memory-bench/run-progressive-thq-aosoa.py",
   "materializer": "tools/agent-memory-bench/materialize-progressive-thq-aosoa.py",
   "tile_docs": 4096,
   "coords_per_block": 32,
   "packed_bits_per_level": 2,
-  "metrics": ["logical_block_payload_bytes_read", "blocks_read", "docs_fully_scored", "doc_block_evaluations", "coordinate_evaluations", "docs_reaching_each_block", "exact_top256_parity"],
+  "metrics": ["logical_block_payload_bytes_read", "blocks_read", "tile_blocks_skipped", "tiles_fully_pruned", "docs_fully_scored", "doc_block_evaluations", "coordinate_evaluations", "docs_reaching_each_block", "exact_top256_parity"],
   "protocol": {
     "warmup_sweep": [256, 512, 1024, 2048, 4096, 8192],
-    "order_modes": ["fixed", "adc_expected"],
-    "warmup_semantics": "document_id_based_exact_warmup",
+    "order_modes": ["fixed", "adc_lut_variance", "adc_expected_cost", "adc_expected_variance"],
+    "warmup_semantics": "document_mask_with_tile_granular_cutoff_bootstrap",
     "physical_status": "logical_block_payload_only",
     "planned_followup": ["native_page_accounting", "warm_cold_modes", "R4_K8_K32_candidate_cascade"]
   },

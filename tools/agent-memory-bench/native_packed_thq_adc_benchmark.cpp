@@ -7,10 +7,15 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iostream>
 #include <numeric>
 #include <stdexcept>
 #include <string>
 #include <vector>
+
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
 namespace {
 using json = nlohmann::json;
