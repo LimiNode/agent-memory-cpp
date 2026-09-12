@@ -779,7 +779,7 @@ rerank, or production activation.  See
 
 Membership analysis over the executed routes finds `.9086/.9026/.9000`
 single-seed support, `.9796` for the three-seed union, `.9888` for the deep
-8,192-address route, and `.9921` for three shallow seeds plus deep support.
+8,192-address route, and `.9961` for three shallow seeds plus deep support.
 Pairwise miss-set Jaccard at 20k is only about `.201/.254/.220`, with 31
 query/teacher pairs missed by all three seeds.  The topology therefore contains
 over-`.99` aggregate support, while budgeted fusion remains `.9796 @ 50k`:

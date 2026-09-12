@@ -66,7 +66,7 @@
   },
   "queries": 152,
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
-  "runner_sha256": "859c88365a53155019c1a5b221d634ccdb3d0b4767bce8ba7041e5f4aa8043fc",
+  "runner_sha256": "05c7bb58d77aed756cc4e8e73330884b088209cf20921a9fbfb917a6cc261b67",
   "schema_version": 1,
   "support": {
     "deep-8192": {
@@ -82,7 +82,7 @@
       "mean": 0.9
     },
     "three-seed-plus-deep": {
-      "mean": 0.9921052631578947
+      "mean": 0.9960526315789474
     },
     "three-seed-union": {
       "mean": 0.9796052631578948

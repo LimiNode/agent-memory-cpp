@@ -8,6 +8,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
+
 
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -45,6 +47,9 @@ def main() -> None:
     args = parser.parse_args()
     union = json.loads(args.union_raw.read_text(encoding="utf-8"))["rows"]
     depth = json.loads(args.depth_raw.read_text(encoding="utf-8"))["rows"]
+    fixture = json.loads(args.fixture_manifest.read_text(encoding="utf-8"))
+    teacher_ref = fixture["references"]["teacher_ids"]
+    teachers = np.fromfile(teacher_ref["path"], dtype="<i8").reshape(152, 10)
     union_receipt = json.loads(args.union_receipt.read_text(encoding="utf-8"))
     depth_receipt = json.loads(args.depth_receipt.read_text(encoding="utf-8"))
     for raw_path, receipt in ((args.union_raw, union_receipt), (args.depth_raw, depth_receipt)):
@@ -85,9 +90,12 @@ def main() -> None:
     deep_supported = sum(sum(1 for rank in row["teacher_address_ranks"] if int(rank) <= 8192)
                          for row in deep_rows)
     support["deep-8192"] = {"mean": deep_supported / (152 * 10)}
+    deep_misses = {(int(row["query"]), int(doc))
+                   for row in deep_rows
+                   for doc, rank in zip(teachers[int(row["query"])], row["teacher_address_ranks"])
+                   if int(rank) > 8192}
     support["three-seed-plus-deep"] = {
-        "mean": 1.0 - len(union_full & {(int(row["query"]), int(doc))
-                                        for row in deep_rows for doc in row["teacher_ids_missed"]}) / (152 * 10)}
+        "mean": 1.0 - len(union_full & deep_misses) / (152 * 10)}
 
     correlations = {}
     for budget in (5000, 10000, 20000, 50000):

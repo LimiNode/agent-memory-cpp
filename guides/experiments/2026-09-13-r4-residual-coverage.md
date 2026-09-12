@@ -7,7 +7,7 @@ new index or claim that all supported teachers fit a fixed candidate budget.
 At exhausted single-seed support, the three seeds cover `.9086`, `.9026`, and
 `.9000` of the 1,520 query/teacher pairs; their union covers `.9796`.  The deep
 8,192-address route covers `.9888`, and the union of all three shallow routes
-with deep support covers `.9921`.  Thus the measured topology contains more
+with deep support covers `.9961`.  Thus the measured topology contains more
 than `.99` teacher support in aggregate, but the previous global-budget replay
 still reached only `.9796 @ 50k`: the remaining problem is route fusion and
 budget allocation, not simply absence of every relevant address.
