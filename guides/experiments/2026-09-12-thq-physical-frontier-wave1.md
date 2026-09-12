@@ -26,7 +26,8 @@ of summaries.  On document-ID order, presence masks are therefore too loose to
 support useful pre-I/O Block-Min pruning on the tested query/layout.  This is a valid negative result, not
 a page-saving claim.  A follow-up 32-query diagnostic found every marginal
 coordinate mask equal to `0xF` (`fraction_marginal_masks_1111 = 1.0`).  After
-correcting the upper-tail LUT direction, pairwise joint summaries use the same
+correcting the upper-tail LUT direction and global block-coordinate indexing,
+pairwise joint summaries use the same
 384 B/tile budget but are zero for 99.95% of tile/query pairs (median 2 unique
 values per query).  Four-coordinate summaries cost 3,072 B/tile (~6 MB total)
 and produce one distinct value per tile (median 1,954 unique values per

@@ -693,7 +693,8 @@ activation remains forbidden.  See
 SPANN-like layouts remain deferred to wave 2.
 
 The follow-up joint-bound diagnostic initially contained an upper-tail LUT sign
-bug and its first receipt is superseded.  After correction, pairwise (384 B/tile)
+bug and global block-coordinate indexing bug; its first receipts are superseded.
+After correction, pairwise (384 B/tile)
  bounds are zero for 99.95% of tile/query pairs (median two unique values/query);
  4-way (3,072 B/tile) bounds are distinct for every tile but rank teacher tiles
  near random (median rank 1,034.5, p90 1,824.9).  This narrows the negative result to the current occupancy summaries
