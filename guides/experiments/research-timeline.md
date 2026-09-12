@@ -774,3 +774,15 @@ regenerated tail is not claimed to be model-ranked.  Both experiments are
 logical posting oracles only: no MDBX/OS page or latency measurements, payload
 rerank, or production activation.  See
 `2026-09-13-r4-diversity-depth-gate.md` and the two compact receipts.
+
+### R4 residual coverage oracle (2026-09-13)
+
+Membership analysis over the executed routes finds `.9086/.9026/.9000`
+single-seed support, `.9796` for the three-seed union, `.9888` for the deep
+8,192-address route, and `.9921` for three shallow seeds plus deep support.
+Pairwise miss-set Jaccard at 20k is only about `.201/.254/.220`, with 31
+query/teacher pairs missed by all three seeds.  The topology therefore contains
+over-`.99` aggregate support, while budgeted fusion remains `.9796 @ 50k`:
+the unresolved issue is route fusion/ordering under a global budget.  This is a
+membership oracle only and makes no physical-page or production claim.  See
+`2026-09-13-r4-residual-coverage.md` and its receipt.
