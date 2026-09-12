@@ -60,12 +60,13 @@ def main() -> None:
             require(key in groups, f"missing depth group: {key}")
         require(receipt.get("prefix_parity", {}).get("passed") is True,
                 "depth prefix parity did not pass")
-    elif family == "semantic_r4_seed_union_gate_v1":
+    elif family in ("semantic_r4_seed_union_gate_v1", "semantic_r4_route_fusion_gate_v1"):
         for summary in receipt["summaries"]:
-            seed_key = tuple(int(seed) for seed in summary["seeds"])
-            key = (seed_key, int(summary["requested_candidate_budget"]))
+            field = "seeds" if family == "semantic_r4_seed_union_gate_v1" else "routes"
+            route_key = tuple(summary[field])
+            key = (route_key, int(summary["requested_candidate_budget"]))
             selected = [row for row in rows
-                        if tuple(int(seed) for seed in row["seeds"]) == seed_key
+                        if tuple(row[field]) == route_key
                         and int(row["requested_candidate_budget"]) == key[1]]
             require(len(selected) == expected_queries, f"union group row count mismatch: {key}")
             observed = sum(float(row["teacher_recall"]) for row in selected) / len(selected)

@@ -789,3 +789,16 @@ over-`.99` aggregate support, while budgeted fusion remains `.9796 @ 50k`:
 the unresolved issue is route fusion/ordering under a global budget.  This is a
 membership oracle only and makes no physical-page or production claim.  See
 `2026-09-13-r4-residual-coverage.md` and its receipt.
+
+### R4 budgeted route fusion gate (2026-09-13)
+
+Under one deterministic whole-posting budget, adding the deep-8,192 route to
+the three shallow seeds does not improve recall through 50k: it remains
+`.9763/.9783/.9796/.9796` at 5k/10k/20k/50k, while posting-entry work rises to
+about `7.1k/14.5k/30.3k/82.5k` and duplication to `1.41/1.45/1.52/1.65`.
+At 100k it reaches `.9921` only after about 143.6k posting entries.  Removing
+the duplicate seed-2701 route and fusing the other two seeds with deep gives
+the same frontier.  The `.9961` membership support therefore does not become a
+`.99 @ 50k` result under naive fusion; marginal-gain scheduling, multi-anchor,
+or a new partition topology is required.  See
+`2026-09-13-r4-route-fusion-gate.md` and its receipt.
