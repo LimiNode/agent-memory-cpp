@@ -53,3 +53,7 @@ fraction `0.636847`, and teacher survival@256 `1.0`.  This timing phase did not
 run the exhaustive parity pass; a separate all-152 parity phase is required
 before evidence publication.  The old unweighted `adc_expected` result remains
 as a superseded diagnostic rather than being silently replaced.
+
+The subsequent corrected all-152 parity phase completed with `152/152`
+`exact_top256_parity=true` (parity artifact SHA-256
+`77789c00e7e46a67bafd626d21a651962c182e9e03f39b2f92af4a2c90a98dee`).
