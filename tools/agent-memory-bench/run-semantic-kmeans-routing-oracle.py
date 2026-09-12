@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Evaluate explicit L2 and spherical semantic posting oracles.
 
 The runner deliberately keeps the Git receipt aggregate-only.  Pass
@@ -41,7 +41,7 @@ def normalize(values: np.ndarray) -> np.ndarray:
 
 def aggregate(values: list[float]) -> dict[str, float]:
     array = np.asarray(values, dtype=np.float64)
-    return {"mean": float(array.mean()), "p05": float(np.percentile(array, 5)),
+    return {"min": float(array.min()), "mean": float(array.mean()), "p05": float(np.percentile(array, 5)),
             "p50": float(np.percentile(array, 50)), "p95": float(np.percentile(array, 95)),
             "max": float(array.max())}
 
