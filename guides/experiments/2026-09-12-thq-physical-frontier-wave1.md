@@ -19,7 +19,7 @@ sum_i min_{level in S(block,i)} ADC_i(query, level)
 ```
 
 The fail-closed smoke replay (`run-thq-block-min-oracle.py`, query 0) preserved
-exact top-256 parity and teacher survival `1.0`, but skipped **0/1,953 tiles,
+exact top-256 parity and teacher survival `1.0`, but skipped **0/1,954 tiles,
 0/23,448 blocks**, reading 96,000,000 logical payload bytes plus 750,336 bytes
 of summaries.  On document-ID order, presence masks are therefore too loose to
 support useful pre-I/O Block-Min pruning.  This is a valid negative result, not
