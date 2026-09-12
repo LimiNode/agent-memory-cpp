@@ -1,0 +1,310 @@
+{
+  "execution_status": "EXECUTED_SMOKE",
+  "family": "thq_physical_frontier_wave1_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "layout_manifest_sha256": "b8f0c9b32da77d8381537fa551a92e044a3960b8776fae3625203a7dbd259c67",
+  "physical_bytes_semantics": "logical payload bytes; no OS/MDBX page counters",
+  "production_activation": false,
+  "queries": 8,
+  "rows": [
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 2,
+      "query": 0,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 10
+    },
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 9,
+      "query": 1,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 10
+    },
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 5,
+      "query": 2,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 8
+    },
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 4,
+      "query": 3,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 8
+    },
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 9,
+      "query": 4,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 10
+    },
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 8,
+      "query": 5,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 10
+    },
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 10,
+      "query": 6,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 10
+    },
+    {
+      "bitmap_range": [
+        {
+          "budget_docs": 1000,
+          "candidate_docs": 1024,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 2
+        },
+        {
+          "budget_docs": 5000,
+          "candidate_docs": 5120,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 10
+        },
+        {
+          "budget_docs": 20000,
+          "candidate_docs": 20480,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 40
+        },
+        {
+          "budget_docs": 50000,
+          "candidate_docs": 50176,
+          "cascade_teacher_survival_256": 0.0,
+          "teacher_recall": 0.0,
+          "tiles_selected": 98
+        }
+      ],
+      "block_min_tile_skips": 0,
+      "document_id_teacher_tile_span": 10,
+      "query": 7,
+      "semantic_surrogate": "packed-code-prefix-order; not R4",
+      "semantic_surrogate_teacher_tile_span": 10
+    }
+  ],
+  "runner_sha256": "7590e00693198179d8f77b672aa6c6f2fccf54920b43414544400ab68a346822",
+  "schema_version": 1,
+  "summary_manifest_sha256": "a371a4f592fbb8a9970f34c295fdc9d46771ccc113e3389d8940a3e58843b66a"
+}
