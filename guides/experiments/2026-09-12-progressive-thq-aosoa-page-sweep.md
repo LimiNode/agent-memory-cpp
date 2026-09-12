@@ -36,6 +36,12 @@ scan using `(score, document_id)` tie ordering.
 These are smoke measurements, not a 152-query result.  In particular, they do
 not establish OS/MDBX page savings or production latency.
 
+As an apples-to-apples Python control, the packed flat ordinal scan completed
+all 152 queries over the same frozen payload: p50 `3613.34 ms`, p95
+`3668.53 ms`, mean teacher survival@256 `0.999342`, and exact packed/thermometer
+equality for the first two queries.  This control is useful for relative
+orchestration overhead only; it is not a native SIMD or page-latency result.
+
 ## Interpretation and next gate
 
 The first replay already showed that global AoSoA pruning saved only a small
@@ -52,4 +58,3 @@ separate experimental factors and must not be conflated.
 
 Execution receipts remain `PENDING` until the full replay artifacts, runner and
 layout hashes, and (for physical claims) native page measurements are present.
-
