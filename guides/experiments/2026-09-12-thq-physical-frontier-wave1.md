@@ -27,10 +27,10 @@ support useful pre-I/O Block-Min pruning on the tested query/layout.  This is a 
 a page-saving claim.  A follow-up 32-query diagnostic found every marginal
 coordinate mask equal to `0xF` (`fraction_marginal_masks_1111 = 1.0`).  After
 correcting the upper-tail LUT direction, pairwise joint summaries use the same
-384 B/tile budget but are zero for 99.95% of tile/query pairs (about 1.97 unique
+384 B/tile budget but are zero for 99.95% of tile/query pairs (median 2 unique
 values per query).  Four-coordinate summaries cost 3,072 B/tile (~6 MB total)
-and produce nearly one distinct value per tile (about 1,953 unique values per
-query), yet teacher-tile rank remains near random (median 1,040.5, p90 1,750).
+and produce one distinct value per tile (median 1,954 unique values per
+query), yet teacher-tile rank remains near random (median 1,034.5, p90 1,824.9).
 Thus joint occupancy removes the implementation bug but still does not provide
 a useful ranking signal in this layout.  A tighter hierarchy (semantic tiles,
 posting/range

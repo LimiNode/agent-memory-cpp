@@ -694,9 +694,9 @@ SPANN-like layouts remain deferred to wave 2.
 
 The follow-up joint-bound diagnostic initially contained an upper-tail LUT sign
 bug and its first receipt is superseded.  After correction, pairwise (384 B/tile)
-bounds are zero for 99.95% of tile/query pairs; 4-way (3,072 B/tile) bounds are
-distinct for nearly every tile but rank teacher tiles near random (median rank
-1,040.5).  This narrows the negative result to the current occupancy summaries
+ bounds are zero for 99.95% of tile/query pairs (median two unique values/query);
+ 4-way (3,072 B/tile) bounds are distinct for every tile but rank teacher tiles
+ near random (median rank 1,034.5, p90 1,824.9).  This narrows the negative result to the current occupancy summaries
 and coarse selector, not to bitmap/range storage or semantic routing in general.
 See
 `2026-09-12-thq-joint-bound-diagnostic-result.json` and

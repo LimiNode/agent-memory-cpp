@@ -25,7 +25,12 @@ def main():
     for tile, rs in sorted(grouped.items()):
         rs.sort(key=lambda r:int(r['block'])); summary=np.zeros((len(rs),groups,bytes_per_group),dtype=np.uint8)
         for bi,r in enumerate(rs):
-            levels=unpack(np.fromfile(Path(r['path']),dtype=np.uint8),int(r['document_count']),int(r.get('coordinate_count',width)))
+            source=Path(r['path'])
+            if source.stat().st_size != int(r['bytes']):
+                raise RuntimeError(f"block size mismatch: {source}")
+            if sha256(source) != r['sha256']:
+                raise RuntimeError(f"block sha256 mismatch: {source}")
+            levels=unpack(np.fromfile(source,dtype=np.uint8),int(r['document_count']),int(r.get('coordinate_count',width)))
             for gi in range(groups):
                 code=(levels[:,gi*g:gi*g+g].astype(np.uint32)* (4**np.arange(g,dtype=np.uint32))).sum(axis=1)
                 for state in np.unique(code):

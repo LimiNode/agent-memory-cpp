@@ -5,10 +5,6 @@ import hashlib, json, re
 from pathlib import Path
 
 ROOT = Path(__file__).parents[2] / 'guides' / 'experiments'
-FROZEN = Path(r'E:\_repoz\agent-memory-cpp\tmp\thq-full-scan-v2\manifest.json')
-LAYOUT = Path(r'E:\_repoz\agent-memory-workspaces\materialized-progressive-thq-aosoa-512x32-v2\layout-manifest.json')
-MARGINAL = Path(r'E:\_repoz\agent-memory-workspaces\thq-block-min-512x32\summary-manifest.json')
-JOINT2 = Path(r'E:\_repoz\agent-memory-workspaces\thq-block-min-joint2-512x32\summary-manifest.json')
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 NAMES = ('2026-09-12-thq-block-min-oracle-result.json',
          '2026-09-12-thq-physical-frontier-wave1-result.json',
@@ -29,6 +25,15 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 def main() -> int:
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--thq-manifest', type=Path, required=True)
+    ap.add_argument('--layout-manifest', type=Path, required=True)
+    ap.add_argument('--marginal-manifest', type=Path, required=True)
+    ap.add_argument('--joint2-manifest', type=Path, required=True)
+    ap.add_argument('--joint4-manifest', type=Path, required=True)
+    args = ap.parse_args()
+    frozen, layout, marginal, joint2, joint4 = args.thq_manifest, args.layout_manifest, args.marginal_manifest, args.joint2_manifest, args.joint4_manifest
     errors = []
     rows = []
     for name in NAMES:
@@ -46,11 +51,11 @@ def main() -> int:
             if key not in data: local.append(f'missing {key}')
         if data.get('production_activation') is not False: local.append('production_activation must be false')
         if data.get('runner_sha256') != sha256(RUNNERS[name]): local.append('runner_sha256 does not match current runner')
-        if data.get('fixture_manifest_sha256') != sha256(FROZEN): local.append('fixture_manifest_sha256 does not match canonical frozen manifest')
-        if name in (NAMES[0], NAMES[1], NAMES[2], NAMES[3]) and data.get('layout_manifest_sha256') != sha256(LAYOUT): local.append('layout_manifest_sha256 does not match canonical layout')
-        expected_summary = MARGINAL if name in (NAMES[0], NAMES[1]) else (JOINT2 if name == NAMES[2] else Path(r'E:\_repoz\agent-memory-workspaces\thq-block-min-joint4-512x32\summary-manifest.json'))
-        if name == NAMES[0] and data.get('summary_manifest_sha256') != sha256(MARGINAL): local.append('summary manifest hash mismatch')
-        if name == NAMES[1] and data.get('summary_manifest_sha256') != sha256(MARGINAL): local.append('summary manifest hash mismatch')
+        if data.get('fixture_manifest_sha256') != sha256(frozen): local.append('fixture_manifest_sha256 does not match canonical frozen manifest')
+        if name in (NAMES[0], NAMES[1], NAMES[2], NAMES[3]) and data.get('layout_manifest_sha256') != sha256(layout): local.append('layout_manifest_sha256 does not match canonical layout')
+        expected_summary = marginal if name in (NAMES[0], NAMES[1]) else (joint2 if name == NAMES[2] else joint4)
+        if name == NAMES[0] and data.get('summary_manifest_sha256') != sha256(marginal): local.append('summary manifest hash mismatch')
+        if name == NAMES[1] and data.get('summary_manifest_sha256') != sha256(marginal): local.append('summary manifest hash mismatch')
         if name in (NAMES[2], NAMES[3]) and data.get('joint_manifest_sha256') != sha256(expected_summary): local.append('joint manifest hash mismatch')
         if not isinstance(data.get('rows'), list) or len(data['rows']) != int(data.get('queries', -1)):
             local.append('rows/queries mismatch')

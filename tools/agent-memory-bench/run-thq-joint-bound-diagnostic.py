@@ -27,11 +27,22 @@ def main():
   mask_cost=np.full((16,dim),np.inf,np.float32)
   for mask in range(1,16): mask_cost[mask]=np.min(np.where([(mask>>l)&1 for l in range(4)],L,np.inf),axis=1)
   states=4**g; digits=np.asarray([np.unravel_index(s,(4,)*g) for s in range(states)],dtype=np.int8)
-  joint_cost=np.asarray([[sum(float(L[gi*g+j,digits[s,j]]) for j in range(g)) for s in range(states)] for gi in range(groups)],np.float32)
+  blocks=dim//width
+  joint_cost=np.empty((blocks,groups,states),np.float32)
+  for bi in range(blocks):
+   for gi in range(groups):
+    base=bi*width+gi*g
+    for s in range(states):
+     joint_cost[bi,gi,s]=sum(float(L[base+j,digits[s,j]]) for j in range(g))
   for tile in tiles:
-   masks=mt[tile]; full.append(float(np.mean(masks==15))); one.append(float(mask_cost[masks].sum()))
+   masks=mt[tile]; full.append(float(np.mean(masks==15)))
+   one_value=0.0
+   for bi in range(masks.shape[0]):
+    base=bi*width
+    one_value+=float(mask_cost[masks[bi],np.arange(base,base+width)].sum())
+   one.append(one_value)
    bits=np.unpackbits(jt[tile],axis=2,bitorder='little')[...,:states]
-   two.append(float(np.min(np.where(bits,joint_cost[None,:,:],np.inf),axis=2).sum()))
+   two.append(float(np.min(np.where(bits,joint_cost, np.inf),axis=2).sum()))
   one=np.asarray(one); two=np.asarray(two); order=np.argsort(two,kind='stable'); teacher_tiles=np.asarray(teachers[qi])//int(layout['tile_docs']); ranks=[int(np.flatnonzero(order==np.flatnonzero(np.asarray(tiles)==t)[0])[0])+1 if t in tiles else None for t in teacher_tiles]
   rows.append({'query':qi,'marginal_lb_min':float(one.min()),'marginal_lb_p50':float(np.median(one)),'marginal_lb_p90':float(np.percentile(one,90)),'marginal_lb_max':float(one.max()),'marginal_fraction_lb_zero':float(np.mean(one==0)),'joint_lb_min':float(two.min()),'joint_lb_p50':float(np.median(two)),'joint_lb_p90':float(np.percentile(two,90)),'joint_lb_max':float(two.max()),'joint_fraction_lb_zero':float(np.mean(two==0)),'joint_unique_lb':int(np.unique(two).size),'teacher_tile_ranks':ranks,'fraction_marginal_masks_1111':float(np.mean(full))})
  out={'schema_version':1,'family':'thq_joint_block_min_bound_diagnostic_v1','fixture_manifest_sha256':sha256(args.thq_manifest),'layout_manifest_sha256':sha256(args.layout_manifest),'marginal_manifest_sha256':sha256(args.marginal_manifest),'joint_manifest_sha256':sha256(args.joint_manifest),'runner_sha256':sha256(Path(__file__)),'queries':qn,'group_size':g,'rows':rows,'execution_status':'EXECUTED_SMOKE' if qn<152 else 'EXECUTED','correction_status':'CORRECTED_UPPER_TAIL_LUT_DIRECTION','production_activation':False}
