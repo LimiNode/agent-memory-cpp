@@ -720,3 +720,18 @@ Cartesian cell IDs and is superseded. The corrected runner uses int32 and
 asserts `cell(63,63) == 4095` and `0 <= cell < 4096`. For SPANN requests above
 64, receipt bookkeeping reports the effective 64 touched postings. Corrected
 IMI recall remains specific to two disjoint three-coordinate subspaces.
+
+### Full-dimensional semantic posting oracle (2026-09-12)
+
+The initial #382 receipt is retained as a **superseded hybrid control**: it
+used Euclidean-trained, unnormalised centroids with raw-dot routing and was
+not cosine K-means. The corrected replay reports separate L2 and
+normalised-spherical arms at `K=512`, replication `r=1/2/4`, and
+`nprobe=1..32`, with explicit norm, timing, index-footprint, and
+teacher-cell-rank diagnostics. At `r=4,nprobe=4`, mean candidates/recall are
+`42,303/.8579` (L2) and `41,590/.8559` (spherical); neither reaches the
+`.995 @ 50k` generator gate. This remains in-memory generator-only evidence:
+teacher IDs are evaluation-only, and no THQ rerank, MDBX backend, R4/K8/K32
+implementation, or production activation is claimed. Full K and
+candidate-budget convergence sweeps remain open. See the corrected experiment
+note, compact receipt, and fail-closed audit.
