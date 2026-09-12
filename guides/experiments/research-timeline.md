@@ -690,3 +690,11 @@ mapping or teacher IDs were used to synthesize an index, and production
 activation remains forbidden.  See
 `2026-09-12-thq-physical-frontier-wave1.md` and its two receipts.  IMI and
 SPANN-like layouts remain deferred to wave 2.
+
+The follow-up joint-bound diagnostic adds pairwise (384 B/tile) and 4-way
+(3,072 B/tile) presence masks.  On a 32-query smoke, pairwise bounds were
+effectively constant and 4-way bounds only weakly differentiated tiles; this
+narrows the negative result to the current summaries and coarse selector, not
+to bitmap/range storage or semantic routing in general.  See
+`2026-09-12-thq-joint-bound-diagnostic-result.json` and
+`2026-09-12-thq-joint4-bound-diagnostic-result.json`.

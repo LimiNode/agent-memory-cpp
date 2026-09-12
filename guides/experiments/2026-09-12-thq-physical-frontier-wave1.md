@@ -23,7 +23,12 @@ exact top-256 parity and teacher survival `1.0`, but skipped **0/1,954 tiles,
 0/23,448 blocks**, reading 96,000,000 logical payload bytes plus 750,336 bytes
 of summaries.  On document-ID order, presence masks are therefore too loose to
 support useful pre-I/O Block-Min pruning.  This is a valid negative result, not
-a page-saving claim.  A tighter hierarchy (semantic tiles, posting/range
+a page-saving claim.  A follow-up 32-query diagnostic found every marginal
+coordinate mask equal to `0xF` (`fraction_marginal_masks_1111 = 1.0`).  Pairwise
+joint summaries use the same 384 B/tile budget but had only one unique bound per
+query on average; four-coordinate summaries cost 3,072 B/tile (~6 MB total) and
+had only 1.875 unique bounds per query.  The joint summaries therefore break
+the tie only weakly.  A tighter hierarchy (semantic tiles, posting/range
 metadata, or learned bounds) is required before a native page experiment.
 
 ## Semantic physical reorder control
@@ -46,8 +51,9 @@ The runner treats each 512-document tile as an immutable range and selects
 tiles by the Block-Min bound for budgets 1k/5k/20k/50k.  Across all eight smoke
 queries, selected candidates had `0.0` teacher recall at every budget; exact
 THQ reranking inside those candidates consequently had `0.0` teacher survival.
-This negative result shows that the current tile summaries do not form a useful
-bitmap/range index.  Existing 256×64 and 128×128 AoSoA materializations remain
+This negative result shows that the current bound-based selector does not form a
+useful bitmap/range index; it does not rule out bitmap/range storage with a
+stronger coarse router.  Existing 256×64 and 128×128 AoSoA materializations remain
 secondary columnar controls, but are logical payload layouts only; OS/MDBX
 pages, cold/warm latency, and simultaneous replica serving were not measured.
 

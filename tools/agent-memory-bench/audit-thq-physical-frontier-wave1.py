@@ -7,7 +7,9 @@ from pathlib import Path
 ROOT = Path(__file__).parents[2] / 'guides' / 'experiments'
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
 NAMES = ('2026-09-12-thq-block-min-oracle-result.json',
-         '2026-09-12-thq-physical-frontier-wave1-result.json')
+         '2026-09-12-thq-physical-frontier-wave1-result.json',
+         '2026-09-12-thq-joint-bound-diagnostic-result.json',
+         '2026-09-12-thq-joint4-bound-diagnostic-result.json')
 
 def main() -> int:
     errors = []
