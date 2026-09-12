@@ -42,6 +42,8 @@ def main() -> None:
     parser.add_argument("--r4-manifest", type=Path, required=True)
     parser.add_argument("--union-receipt", type=Path, required=True)
     parser.add_argument("--depth-receipt", type=Path, required=True)
+    parser.add_argument("--union-runner", type=Path, required=True)
+    parser.add_argument("--depth-runner", type=Path, required=True)
     parser.add_argument("--runner", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -59,8 +61,10 @@ def main() -> None:
         raise ValueError("fixture manifest SHA mismatch")
     if sha256(args.r4_manifest) != union_receipt["r4_manifest_sha256"]:
         raise ValueError("R4 manifest SHA mismatch")
-    if sha256(args.runner) != hashlib.sha256(args.runner.read_bytes()).hexdigest():
-        raise ValueError("runner read failure")
+    if sha256(args.union_runner) != union_receipt["runner_sha256"]:
+        raise ValueError("union source runner SHA mismatch")
+    if sha256(args.depth_runner) != depth_receipt["runner_sha256"]:
+        raise ValueError("depth source runner SHA mismatch")
 
     seeds = [2026082701, 2026082702, 2026082703]
     single_full: dict[int, set[tuple[int, int]]] = {}
@@ -125,7 +129,9 @@ def main() -> None:
         "fixture_manifest_sha256": sha256(args.fixture_manifest),
         "r4_manifest_sha256": sha256(args.r4_manifest),
         "union_raw_sha256": sha256(args.union_raw), "depth_raw_sha256": sha256(args.depth_raw),
-        "runner_sha256": sha256(args.runner), "queries": 152, "teachers_per_query": 10,
+        "runner_sha256": sha256(args.runner),
+        "source_runner_sha256": {"union": sha256(args.union_runner), "depth": sha256(args.depth_runner)},
+        "queries": 152, "teachers_per_query": 10,
         "support": support, "miss_correlation": correlations,
         "protocol": {"teacher_ids_used_for_index": False, "budget": "membership oracle / matched global budgets",
                       "physical_page_bytes": "not measured", "production_activation": False},

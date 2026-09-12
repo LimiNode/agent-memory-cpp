@@ -66,8 +66,12 @@
   },
   "queries": 152,
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
-  "runner_sha256": "05c7bb58d77aed756cc4e8e73330884b088209cf20921a9fbfb917a6cc261b67",
+  "runner_sha256": "0defda550a2012365a8b0570f217f5f46212c2384c60bc763dd75c14b3d8489b",
   "schema_version": 1,
+  "source_runner_sha256": {
+    "depth": "4f9050361a98247d0b0a68d5467d9b2c6e01a3ada124143d0053de13a98f5bea",
+    "union": "ccb0e72c9c9c13e73f0167b7cac2b209e6dc470b13163a8806d859880aab62ad"
+  },
   "support": {
     "deep-8192": {
       "mean": 0.9888157894736842
