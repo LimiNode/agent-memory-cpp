@@ -34,9 +34,17 @@
       "parity_scope": "packed_thermometer_first_two_queries",
       "status": "EXECUTED_NON_AUTHORITATIVE"
     },
+    "native_packed_full_v1": {
+      "artifact": "native-packed-thq-adc-full-v1.json",
+      "sha256": "a58c9bcb02598db1638ccdf0fb9cbec87402e779012511f8514d2fc1ca918ca3",
+      "queries": 152,
+      "status": "EXECUTED_NON_AUTHORITATIVE_NATIVE_CPU_COMPONENT"
+    },
     "page_matched_layouts": {
       "256x64_manifest_sha256": "8a4ca0d41e8ccd90073daf4837fca06b35d2488cfd2643c17bbaec98fb0ff0e8",
       "128x128_manifest_sha256": "7aa81b72ab09f254377c70031c18ddd36775762e2c3c6ab3ffb999b13dd89cc7",
+      "256x64_fixed_sha256": "dfe3cf188d9272c4f41d582be567126ead30215395f851054bf9c0858c42c81c",
+      "128x128_fixed_sha256": "85169dd34be8f150a9b7165da211a5d1bd49140d6fb75f00c677284b23daf463",
       "parity_status": "SMOKE_TWO_QUERIES_PASSED"
     }
   }

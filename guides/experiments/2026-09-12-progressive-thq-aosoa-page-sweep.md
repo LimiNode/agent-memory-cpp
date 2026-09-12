@@ -36,11 +36,25 @@ scan using `(score, document_id)` tie ordering.
 These are smoke measurements, not a 152-query result.  In particular, they do
 not establish OS/MDBX page savings or production latency.
 
+Full fixed-order logical timing subsequently completed for all 152 queries:
+
+| layout | p50 ms | p95 ms | mean logical bytes | mean blocks | mean coordinate fraction | mean survival@256 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| 256×64 | 20051.86 | 20412.95 | 94,102,104 | 22,978.1 | 0.741228 | 1.000000 |
+| 128×128 | 25496.02 | 25665.32 | 95,843,059 | 23,400.7 | 0.811934 | 1.000000 |
+
 As an apples-to-apples Python control, the packed flat ordinal scan completed
 all 152 queries over the same frozen payload: p50 `3613.34 ms`, p95
 `3668.53 ms`, mean teacher survival@256 `0.999342`, and exact packed/thermometer
 equality for the first two queries.  This control is useful for relative
 orchestration overhead only; it is not a native SIMD or page-latency result.
+
+The native packed harness then completed the same 152-query corpus on one
+machine.  It measured thermometer Hamming p50/p95 `77.156/85.387 ms`, packed
+ordinal-L1 `808.990/838.941 ms`, and interval-squared ADC `662.330/682.573 ms`.
+Teacher survival@256 was `0.999342` for Hamming and ordinal-L1 and `1.0` for
+ADC.  This is a native CPU component benchmark; it does not measure MDBX page
+faults, cold-cache behavior, or an AoSoA scan.
 
 ## Interpretation and next gate
 
