@@ -1,5 +1,5 @@
 {
-  "correction_status": "CORRECTED_UPPER_TAIL_LUT_DIRECTION",
+  "correction_status": "CORRECTED_UPPER_TAIL_LUT_DIRECTION_AND_GLOBAL_COORDINATE_INDEXING",
   "execution_status": "EXECUTED_SMOKE",
   "family": "thq_joint_block_min_bound_diagnostic_v1",
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
@@ -875,6 +875,6 @@
       ]
     }
   ],
-  "runner_sha256": "842510bde950c872d4ccdc7628f1fc1e338f060e17eb551f83365cab1e9fae54",
+  "runner_sha256": "d3985d74127c69f69bccf98a10d2ccd6b1473c367df3133e8c05b6df6581085b",
   "schema_version": 1
 }
