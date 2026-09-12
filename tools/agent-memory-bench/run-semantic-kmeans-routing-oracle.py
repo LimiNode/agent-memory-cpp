@@ -198,12 +198,16 @@ def main() -> None:
                            "payload_rerank": "not executed", "candidate_budget": "fixed nprobe; no hard candidate cap",
                            "production_activation": False}, "execution_status": "EXECUTED",
               "production_activation": False}
-    args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     if args.raw_output:
         args.raw_output.parent.mkdir(parents=True, exist_ok=True)
-        args.raw_output.write_text(json.dumps({"schema_version": 1, "rows": raw_rows},
-                                              separators=(",", ":")) + "\n", encoding="utf-8")
+        raw_bytes = (json.dumps({"schema_version": 1, "rows": raw_rows},
+                                separators=(",", ":")) + "\n").encode("utf-8")
+        args.raw_output.write_bytes(raw_bytes)
+        output["raw_output"] = {"path": str(args.raw_output),
+                                 "sha256": hashlib.sha256(raw_bytes).hexdigest(),
+                                 "rows": len(raw_rows)}
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    args.output.write_text(json.dumps(output, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":

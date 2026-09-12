@@ -25,8 +25,8 @@
     {
       "arm": "l2",
       "center_sha256": "1b8ffeb7df84bffc4c2b22da98f53f5af396040c667d9e8367341051e1cab670",
-      "fit_ms": 65217.10740029812,
-      "full_assignment_ms": 22235.655500087887,
+      "fit_ms": 11701.704000122845,
+      "full_assignment_ms": 10824.329399969429,
       "k": 512,
       "norm_stats": {
         "centroids": {
@@ -48,15 +48,15 @@
           "p95": 1.0
         }
       },
-      "posting_build_ms": 36175.28169974685,
-      "query_generation_ms": 317284.3626998365,
-      "total_experiment_ms": 440912.40729996935
+      "posting_build_ms": 27549.17939985171,
+      "query_generation_ms": 107443.37789993733,
+      "total_experiment_ms": 157518.59069988132
     },
     {
       "arm": "spherical",
       "center_sha256": "b66a3171ebfe4ed18827d827f39c5498596abe04b3e5464dca21143e58663551",
-      "fit_ms": 21392.116100061685,
-      "full_assignment_ms": 15681.983700022101,
+      "fit_ms": 9054.621700197458,
+      "full_assignment_ms": 11437.73669982329,
       "k": 512,
       "norm_stats": {
         "centroids": {
@@ -78,9 +78,9 @@
           "p95": 1.0
         }
       },
-      "posting_build_ms": 32027.7311000973,
-      "query_generation_ms": 109424.5322002098,
-      "total_experiment_ms": 178526.36310039088
+      "posting_build_ms": 28052.331699989736,
+      "query_generation_ms": 869518.0893000215,
+      "total_experiment_ms": 918062.779400032
     }
   ],
   "nprobe": [
@@ -102,6 +102,11 @@
     "teacher_ids_used_for_index": false
   },
   "queries": 152,
+  "raw_output": {
+    "path": "E:\\_repoz\\agent-memory-workspaces\\semantic-k8-r4-spann-oracle-raw.json",
+    "rows": 5472,
+    "sha256": "7692d068f00b90c90acb8efd147c14a614ead4ca6dd8bd156d5c707c2e18a393"
+  },
   "replications": [
     1,
     2,
@@ -1801,7 +1806,7 @@
       }
     }
   ],
-  "runner_sha256": "cce5fe309a1b00ef5bef61c2de1d0f9ad9b9bdb14e6050d8f042262058a41e52",
+  "runner_sha256": "212df00059b3560b300c05394b63be0b69050f632942187035c9204f287b519f",
   "sample_ids_generation": {
     "algorithm": "numpy.default_rng.choice",
     "population": 1000000,

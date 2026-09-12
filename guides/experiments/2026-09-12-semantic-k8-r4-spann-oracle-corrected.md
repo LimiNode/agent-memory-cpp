@@ -35,7 +35,7 @@ The 152-query replay used `sample_size=100000`, `seed=20260912`,
 `max_iter=20`, and the fixed `nprobe={1,2,4,8,16,32}` matrix. The compact
 receipt has 36 aggregate rows (two arms × three replication values × six
 probe values); the 907,266-byte per-query artifact is external and has SHA-256
-`e9a07acf0189e0fb4e9fc1c7bdd2d81bb9e9e510c81b57a4a9302f1223bb0e05`.
+`7692d068f00b90c90acb8efd147c14a614ead4ca6dd8bd156d5c707c2e18a393`.
 
 | arm | r | nprobe | mean candidates | mean recall | p05 recall | worst-query floor |
 |---|---:|---:|---:|---:|---:|---:|
