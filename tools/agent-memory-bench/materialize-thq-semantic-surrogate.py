@@ -19,6 +19,10 @@ def main() -> None:
     m = json.loads(args.thq_manifest.read_text(encoding='utf-8'))
     info = m['outputs']['thq4_document_codes']
     n, width = map(int, info['shape'])
+    if Path(info['path']).stat().st_size != int(info['bytes']):
+        raise ValueError('source document-code size mismatch')
+    if sha256(Path(info['path'])) != info['sha256']:
+        raise ValueError('source document-code SHA mismatch')
     src = np.memmap(info['path'], mode='r', dtype=np.uint8, shape=(n, width))
     key = np.asarray(src[:, :8], dtype=np.uint64)
     key = sum(key[:, i] << (8 * i) for i in range(8))
@@ -33,7 +37,7 @@ def main() -> None:
     order_path = args.output_root / 'new-position-to-document-id.i8'
     np.asarray(order, dtype='<i8').tofile(order_path)
     manifest = {
-        'schema_version': 1, 'family': 'thq_semantic_surrogate_layout_v1',
+        'schema_version': 1, 'family': 'thq_code_prefix_physical_order_control_v1',
         'source_manifest': str(args.thq_manifest),
         'source_manifest_sha256': sha256(args.thq_manifest),
         'source_document_codes_sha256': info['sha256'],

@@ -42,6 +42,11 @@ def main() -> None:
     args.output_root.mkdir(parents=True, exist_ok=False)
     grouped: dict[int, list[dict]] = {}
     for row in layout["blocks"]:
+        source_path = Path(row["path"])
+        if source_path.stat().st_size != int(row["bytes"]):
+            raise ValueError(f"source block size mismatch: {source_path}")
+        if sha256(source_path) != row["sha256"]:
+            raise ValueError(f"source block SHA mismatch: {source_path}")
         grouped.setdefault(int(row["tile"]), []).append(row)
     tile_rows = []
     for tile, rows in sorted(grouped.items()):

@@ -39,10 +39,10 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 10,
       "document_id_teacher_tile_span": 2,
-      "query": 0,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 10
+      "query": 0
     },
     {
       "bitmap_range": [
@@ -76,10 +76,10 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 10,
       "document_id_teacher_tile_span": 9,
-      "query": 1,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 10
+      "query": 1
     },
     {
       "bitmap_range": [
@@ -113,10 +113,10 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 8,
       "document_id_teacher_tile_span": 5,
-      "query": 2,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 8
+      "query": 2
     },
     {
       "bitmap_range": [
@@ -150,10 +150,10 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 8,
       "document_id_teacher_tile_span": 4,
-      "query": 3,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 8
+      "query": 3
     },
     {
       "bitmap_range": [
@@ -187,10 +187,10 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 10,
       "document_id_teacher_tile_span": 9,
-      "query": 4,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 10
+      "query": 4
     },
     {
       "bitmap_range": [
@@ -224,10 +224,10 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 10,
       "document_id_teacher_tile_span": 8,
-      "query": 5,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 10
+      "query": 5
     },
     {
       "bitmap_range": [
@@ -261,10 +261,10 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 10,
       "document_id_teacher_tile_span": 10,
-      "query": 6,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 10
+      "query": 6
     },
     {
       "bitmap_range": [
@@ -298,13 +298,13 @@
         }
       ],
       "block_min_tile_skips": 0,
+      "code_prefix_control": "packed-code-prefix-order; not R4",
+      "code_prefix_control_teacher_tile_span": 10,
       "document_id_teacher_tile_span": 10,
-      "query": 7,
-      "semantic_surrogate": "packed-code-prefix-order; not R4",
-      "semantic_surrogate_teacher_tile_span": 10
+      "query": 7
     }
   ],
-  "runner_sha256": "7590e00693198179d8f77b672aa6c6f2fccf54920b43414544400ab68a346822",
+  "runner_sha256": "36ea7df7efc659f538af219adae341d55f9eafc62b8c755b867d402eda34f2f5",
   "schema_version": 1,
   "summary_manifest_sha256": "a371a4f592fbb8a9970f34c295fdc9d46771ccc113e3389d8940a3e58843b66a"
 }

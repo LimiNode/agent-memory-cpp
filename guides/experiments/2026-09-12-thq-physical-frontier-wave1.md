@@ -18,11 +18,12 @@ coordinate and block.  The resulting lower bound is safe:
 sum_i min_{level in S(block,i)} ADC_i(query, level)
 ```
 
-The fail-closed smoke replay (`run-thq-block-min-oracle.py`, query 0) preserved
+The fail-closed smoke replay (`run-thq-block-min-oracle.py`, query 0,
+`execution_status: EXECUTED_SMOKE`) preserved
 exact top-256 parity and teacher survival `1.0`, but skipped **0/1,954 tiles,
 0/23,448 blocks**, reading 96,000,000 logical payload bytes plus 750,336 bytes
 of summaries.  On document-ID order, presence masks are therefore too loose to
-support useful pre-I/O Block-Min pruning.  This is a valid negative result, not
+support useful pre-I/O Block-Min pruning on the tested query/layout.  This is a valid negative result, not
 a page-saving claim.  A follow-up 32-query diagnostic found every marginal
 coordinate mask equal to `0xF` (`fraction_marginal_masks_1111 = 1.0`).  Pairwise
 joint summaries use the same 384 B/tile budget but had only one unique bound per
@@ -31,11 +32,11 @@ had only 1.875 unique bounds per query.  The joint summaries therefore break
 the tie only weakly.  A tighter hierarchy (semantic tiles, posting/range
 metadata, or learned bounds) is required before a native page experiment.
 
-## Semantic physical reorder control
+## THQ code-prefix physical-order control
 
 The companion materializer writes a 144 MB secondary packed representation in
-deterministic ascending first-eight-byte order.  This is a *surrogate*
-physical order, explicitly not an R4 mapping, and does not use teacher IDs to
+deterministic ascending first-eight-byte order.  This is a code-prefix control,
+explicitly not a semantic or R4 mapping, and does not use teacher IDs to
 build the order.  In the eight-query smoke, teacher tile span changed
 from document-ID order `[2,9,5,4,9,8,10,10]` to surrogate order
 `[10,10,8,8,10,10,10,10]`; locality did not improve.  No semantic reorder is
@@ -45,13 +46,13 @@ payload hash is recorded in the generated layout manifest
 144,000,000-byte payload; order vector
 `1e90908090e2d4b072f84211d6b395de40c32937d2741931fec906a41c34fac0`).
 
-## Bitmap/range and secondary representations
+## Block-Min tile-ranking oracle, bitmap/range storage, and secondary representations
 
 The runner treats each 512-document tile as an immutable range and selects
 tiles by the Block-Min bound for budgets 1k/5k/20k/50k.  Across all eight smoke
 queries, selected candidates had `0.0` teacher recall at every budget; exact
 THQ reranking inside those candidates consequently had `0.0` teacher survival.
-This negative result shows that the current bound-based selector does not form a
+This negative result shows that the current bound-based tile-ranking oracle does not form a
 useful bitmap/range index; it does not rule out bitmap/range storage with a
 stronger coarse router.  Existing 256×64 and 128×128 AoSoA materializations remain
 secondary columnar controls, but are logical payload layouts only; OS/MDBX

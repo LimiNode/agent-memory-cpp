@@ -138,8 +138,8 @@ def main() -> None:
         rows_out.append({"query": qi, "block_min_tile_skips": 0,
                          "bitmap_range": budget_rows,
                          "document_id_teacher_tile_span": int(original_tiles),
-                         "semantic_surrogate_teacher_tile_span": int(surrogate_tiles),
-                         "semantic_surrogate": "packed-code-prefix-order; not R4"})
+                         "code_prefix_control_teacher_tile_span": int(surrogate_tiles),
+                         "code_prefix_control": "packed-code-prefix-order; not R4"})
     result = {"schema_version": 1, "family": "thq_physical_frontier_wave1_v1",
               "fixture_manifest_sha256": sha256(args.thq_manifest),
               "layout_manifest_sha256": sha256(args.layout_manifest),

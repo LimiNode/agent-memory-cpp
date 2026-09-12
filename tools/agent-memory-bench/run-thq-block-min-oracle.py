@@ -56,6 +56,10 @@ def topk_merge(scores: np.ndarray, ids: np.ndarray, new_scores: np.ndarray,
     return all_scores[order], all_ids[order]
 
 
+def ids_sha256(ids: np.ndarray) -> str:
+    return hashlib.sha256(np.asarray(ids, dtype='<i8').tobytes()).hexdigest()
+
+
 def scan(layout: dict, summaries: dict, query: np.ndarray,
          thresholds: np.ndarray, warmup: int, k: int,
          check_parity: bool) -> dict:
@@ -118,6 +122,7 @@ def scan(layout: dict, summaries: dict, query: np.ndarray,
         "blocks_read": blocks_read,
         "blocks_skipped_by_block_min": blocks_skipped,
         "top_ids": best_ids.tolist(),
+        "top256_sha256": ids_sha256(best_ids),
     }
     if check_parity:
         exhaustive = scan(layout, summaries, query, thresholds, n + 1, k, False)
@@ -158,6 +163,7 @@ def main() -> None:
                    args.check_parity)
         row.update({"query": qi, "teacher_survival_256": float(
             np.isin(teachers[qi], row["top_ids"]).sum()) / 10.0})
+        row.pop("top_ids", None)
         rows.append(row)
     result = {"schema_version": 1, "family": "thq_block_min_oracle_v1",
               "fixture_manifest_sha256": sha256(args.thq_manifest),
@@ -166,7 +172,8 @@ def main() -> None:
               "runner_sha256": sha256(Path(__file__)),
               "documents": int(manifest["documents"]), "queries": q,
               "rows": rows, "warmup": args.warmup,
-              "execution_status": "EXECUTED", "production_activation": False}
+              "execution_status": "EXECUTED_SMOKE" if q < 152 else "EXECUTED",
+              "production_activation": False}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",
                            encoding="utf-8")

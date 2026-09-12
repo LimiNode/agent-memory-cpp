@@ -682,8 +682,9 @@ The first physical-frontier follow-up covers four controls on the frozen
 THQ4-384 fixture: immutable Block-Min presence metadata, a deterministic
 packed-code-prefix physical-order surrogate, bitmap/range tile selection with
 secondary AoSoA layouts, and an integrated coarse-tile → exact THQ-ADC cascade.
-Block-Min bounds are exact but skipped no document-ID tiles/blocks in the smoke
-replay; the code-prefix surrogate did not improve teacher tile locality; and
+Block-Min presence-mask bounds are safely computed but skipped no document-ID
+tiles/blocks in the smoke replay; the code-prefix control did not improve
+teacher tile locality; and
 1k–50k tile budgets had zero teacher recall in the eight-query smoke.  These are
 negative logical-oracle results, not MDBX/page-latency claims.  No historical R4
 mapping or teacher IDs were used to synthesize an index, and production
