@@ -69,7 +69,7 @@ def scan(layout: dict, summaries: dict, query: np.ndarray,
     best_scores = np.full(k, np.inf, dtype=np.float64)
     best_ids = np.full(k, n + 1, dtype=np.int64)
     payload_bytes = summary_bytes = 0
-    tiles_skipped = blocks_read = 0
+    tiles_skipped = blocks_read = blocks_skipped = 0
     for tile in tile_ids:
         srow = summary_rows[tile]
         summary_path = Path(srow["path"])
@@ -97,7 +97,7 @@ def scan(layout: dict, summaries: dict, query: np.ndarray,
             # already worse than the exact kth threshold.  This is the
             # Block-Min analogue of a WAND upper-bound test.
             if active.any() and np.min(partial[active]) + bounds[block] > best_scores[-1]:
-                blocks_skipped = locals().get("blocks_skipped", 0) + 1
+                blocks_skipped += 1
                 active[:] = False
                 break
             levels = unpack(np.fromfile(path, dtype=np.uint8), docs, width)
@@ -116,7 +116,7 @@ def scan(layout: dict, summaries: dict, query: np.ndarray,
         "summary_bytes_read": summary_bytes,
         "tiles_skipped_by_block_min": tiles_skipped,
         "blocks_read": blocks_read,
-        "blocks_skipped_by_block_min": locals().get("blocks_skipped", 0),
+        "blocks_skipped_by_block_min": blocks_skipped,
         "top_ids": best_ids.tolist(),
     }
     if check_parity:
