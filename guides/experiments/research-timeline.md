@@ -740,6 +740,18 @@ centroid-based SPANN/SOAR materialization remains gated. The next route is a
 genuinely new multi-anchor/partition topology. See
 `2026-09-14-r4-representative-assignment-capacity.md` and its compact receipt.
 
+### R4 representative-max anchor route (2026-09-14)
+
+A teacher-free route that scores each query against the maximum similarity of
+each address's existing document representatives is the first current R4 arm
+to clear the quality gate: three-seed global score fusion reaches `.999342`
+mean recall at 5k--50k unique candidates and `1.0` at 100k. The cost is a full
+2,666,557 representative-vector score pass per query, with mean 57,245 posting
+entries at 50k and duplication 1.145. This is a dense quality/control result,
+not a deployable ANN claim; the next gate is a representative-prefix work
+sweep before THQ-ADC, physical layout, or MDBX measurement. See
+`2026-09-14-r4-representative-max-anchor-route.md` and its compact receipt.
+
 ### Deep full-frontier ranker and topology follow-ups (2026-09-13)
 
 The four-feature pointwise logistic baseline, with the frozen 1,024 shortlist

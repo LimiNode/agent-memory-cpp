@@ -9,6 +9,11 @@ assignment capacity](2026-09-14-r4-representative-assignment-capacity.md). It
 tests the existing K32/document representative sidecars before considering a
 new multi-anchor topology.
 
+The first positive quality control is [R4 representative-max anchor
+route](2026-09-14-r4-representative-max-anchor-route.md). It clears `.99 @ 50k`
+only with a dense full representative score pass, so a prefix/work sweep is
+required before physical THQ/MDBX work.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked

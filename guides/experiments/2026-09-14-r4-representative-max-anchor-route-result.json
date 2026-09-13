@@ -1,0 +1,1323 @@
+{
+  "arms": [
+    "seed-2026082701-representative-max",
+    "seed-2026082702-representative-max",
+    "seed-2026082703-representative-max",
+    "three-seed-representative-max-fusion"
+  ],
+  "budgets": [
+    5000,
+    10000,
+    20000,
+    50000,
+    100000
+  ],
+  "documents": 1000000,
+  "execution_status": "EXECUTED",
+  "family": "semantic_r4_representative_max_anchor_route_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "input_artifacts": {
+    "document_vectors": {
+      "bytes": 1536000000,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\comparison\\input\\document-vectors-f32le.bin",
+      "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+    },
+    "queries": {
+      "bytes": 233472,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_queries.bin",
+      "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+    },
+    "teacher_ids": {
+      "bytes": 12160,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_teacher_ids.bin",
+      "sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d"
+    }
+  },
+  "production_activation": false,
+  "protocol": {
+    "fusion": "global descending address score across three independent seed streams",
+    "payload_rerank": "not executed",
+    "physical_page_bytes": "not measured",
+    "production_activation": false,
+    "route_score": "maximum query cosine similarity to existing per-address representatives",
+    "teacher_ids_used_for_index": false
+  },
+  "queries": 152,
+  "r4_artifacts": {
+    "2026082701": [
+      {
+        "bytes": 260432,
+        "file": "occupied.u32le",
+        "role": "occupied_addresses",
+        "sha256": "34a6a6fc990a81d6e1a93d61a1acc0b167c41492cfe0e1f4d7f7c494440312f7"
+      },
+      {
+        "bytes": 260432,
+        "file": "address-offsets.u32le",
+        "role": "address_offsets",
+        "sha256": "1dbf1126ccadccd3c4ef54cc98f5bbdb896435281563fd647fb56b2683bb299d"
+      },
+      {
+        "bytes": 260432,
+        "file": "address-counts.u32le",
+        "role": "address_counts",
+        "sha256": "abc81d7a2c704b4555f6b99789df5a05889e5d5133089b8033e96fb9d64f4a81"
+      },
+      {
+        "bytes": 65108,
+        "file": "representative-counts.u8",
+        "role": "representative_counts",
+        "sha256": "f3e7075183f9679ae3a12de881e6c08ee2ab22c241b02ee5df6a1a818da8fbc1"
+      },
+      {
+        "bytes": 3566440,
+        "file": "representative-documents.i32le",
+        "role": "representative_documents",
+        "sha256": "f32e0d3d560472d753c3e7c763068238ab60ec8492b87b0590816efba42c8b0a"
+      },
+      {
+        "bytes": 4000000,
+        "file": "document-to-physical.u32le",
+        "role": "document_to_physical",
+        "sha256": "14610713bf24446fc2c7f953ca62c1303d7a160c9a6597d247019787b6f16990"
+      },
+      {
+        "bytes": 4000000,
+        "file": "physical-to-document.i32le",
+        "role": "physical_to_document",
+        "sha256": "95edf88afcfafaa7c036c54d070110286cb35b7ca7a059487218b1fa9700ef0b"
+      },
+      {
+        "bytes": 233472,
+        "file": "queries.f32le",
+        "role": "query_vectors",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      {
+        "bytes": 622592,
+        "file": "shortlist-rows.u32le",
+        "role": "shortlist_rows",
+        "sha256": "87202c63c19c47194f023495e30ba8b4d5e57b0fae6e59d9bb7be993ebecf016"
+      },
+      {
+        "bytes": 13697024,
+        "file": "scalar-features.f32le",
+        "role": "scalar_features",
+        "sha256": "3f646659bd6615225ba4a2c30b8102854562d51b99e1ee14b2ba615ce4765ca1"
+      },
+      {
+        "bytes": 1536000000,
+        "file": "address-major-fp32.records",
+        "role": "address_major_fp32",
+        "sha256": "e68d68bdf0083a9cbd1c677cc35e85f3bd25a209f30f0a0f692d8869673443b7"
+      }
+    ],
+    "2026082702": [
+      {
+        "bytes": 260156,
+        "file": "occupied.u32le",
+        "role": "occupied_addresses",
+        "sha256": "e5476ceb94d6d5a756d5ce48395bfb81da35ebdd1562614564c6424cb39ebc6f"
+      },
+      {
+        "bytes": 260156,
+        "file": "address-offsets.u32le",
+        "role": "address_offsets",
+        "sha256": "ee80cdae26c21ee2b221bb181feff68990c0a83bba182da3b75c8e8ddf73fb95"
+      },
+      {
+        "bytes": 260156,
+        "file": "address-counts.u32le",
+        "role": "address_counts",
+        "sha256": "7072ee2ceb5d00aba4653f0596210a431f6c5685a84a999bd1a31d48dc7d4eb0"
+      },
+      {
+        "bytes": 65039,
+        "file": "representative-counts.u8",
+        "role": "representative_counts",
+        "sha256": "da353a678b5a589d1870643b4eeb4913030fde26f94a06ef0a432408b45ec8c1"
+      },
+      {
+        "bytes": 3504816,
+        "file": "representative-documents.i32le",
+        "role": "representative_documents",
+        "sha256": "48b446ba548c4a86f60dd657ab308450d05140e298617b16aa97c5631e36a733"
+      },
+      {
+        "bytes": 4000000,
+        "file": "document-to-physical.u32le",
+        "role": "document_to_physical",
+        "sha256": "c9c8df10f2064d9eec824285741a558ddef3ff3ba0a246e45c8a251ec6eac36f"
+      },
+      {
+        "bytes": 4000000,
+        "file": "physical-to-document.i32le",
+        "role": "physical_to_document",
+        "sha256": "cf4e2342c4079ee658c42f1ff7ba24482c1f5eebb70a848db8cede82fcc37581"
+      },
+      {
+        "bytes": 233472,
+        "file": "queries.f32le",
+        "role": "query_vectors",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      {
+        "bytes": 622592,
+        "file": "shortlist-rows.u32le",
+        "role": "shortlist_rows",
+        "sha256": "1a9c8932229e33a014295bb93a868e6ec6497378d9caf2acd934926f667bb95e"
+      },
+      {
+        "bytes": 13697024,
+        "file": "scalar-features.f32le",
+        "role": "scalar_features",
+        "sha256": "66cf22ece908be1f3ef9e7a59a2628ed6d9f0bc2245d6057e63b7621561cc67f"
+      },
+      {
+        "bytes": 1536000000,
+        "file": "address-major-fp32.records",
+        "role": "address_major_fp32",
+        "sha256": "e92e8b6eebbc630e345cde0c04d5c07847aef022558154e130cf097fc99c0011"
+      }
+    ],
+    "2026082703": [
+      {
+        "bytes": 260764,
+        "file": "occupied.u32le",
+        "role": "occupied_addresses",
+        "sha256": "9aab0046fff4eb8356f00c2c90ad964d7e586c907bf0b1c73d04b3173f4b48f9"
+      },
+      {
+        "bytes": 260764,
+        "file": "address-offsets.u32le",
+        "role": "address_offsets",
+        "sha256": "ab07fa0847856b8a6271c6fb83506a8d31eb722718571f09aaf0200a8121355d"
+      },
+      {
+        "bytes": 260764,
+        "file": "address-counts.u32le",
+        "role": "address_counts",
+        "sha256": "c84b5e869c1321296b14bbd3f62cf576045cb0f4d2acd8de91c487bad09c07b6"
+      },
+      {
+        "bytes": 65191,
+        "file": "representative-counts.u8",
+        "role": "representative_counts",
+        "sha256": "37d7098b793d1c72dd6a082d3f0df769a6b40535410334cb19190149da44321c"
+      },
+      {
+        "bytes": 3594972,
+        "file": "representative-documents.i32le",
+        "role": "representative_documents",
+        "sha256": "2e2ef52a17916c883bd29506cc4d7df962b6a62e67f53b0aa0a62a1dc35bfd7a"
+      },
+      {
+        "bytes": 4000000,
+        "file": "document-to-physical.u32le",
+        "role": "document_to_physical",
+        "sha256": "11c2bce4121103a49590984a01a9026555a64470338dc515253dccad90337f8d"
+      },
+      {
+        "bytes": 4000000,
+        "file": "physical-to-document.i32le",
+        "role": "physical_to_document",
+        "sha256": "fd03d6b953bdcbfb0aceca6eec61e834aae720caac63616c8d1f61b2e33e5da8"
+      },
+      {
+        "bytes": 233472,
+        "file": "queries.f32le",
+        "role": "query_vectors",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      {
+        "bytes": 622592,
+        "file": "shortlist-rows.u32le",
+        "role": "shortlist_rows",
+        "sha256": "882fd53fe2db76e724de85220854c92e81fae324482c7777a4d414e1311859b5"
+      },
+      {
+        "bytes": 13697024,
+        "file": "scalar-features.f32le",
+        "role": "scalar_features",
+        "sha256": "1350f95a8fbf1bd82ed25c30d271795044c10db7ad4f26e6def0bd782925d805"
+      },
+      {
+        "bytes": 1536000000,
+        "file": "address-major-fp32.records",
+        "role": "address_major_fp32",
+        "sha256": "fe5672ef8e7c0eb3257aafe482b96744aa96043da86c6bc1a90850036f3539d8"
+      }
+    ]
+  },
+  "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "raw_output": {
+    "bytes": 955243,
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-representative-max-anchor-route-raw.json",
+    "rows": 3040,
+    "sha256": "523f424936a0021718aa23c201471c5a8c1fb26aa415e217ce467a7ae9b21020"
+  },
+  "runner_sha256": "4bfdc1a5714146430ec99cfd34734dba51d6ce13419be786c92d024d670f3e2e",
+  "schema_version": 1,
+  "summaries": [
+    {
+      "actual_unique_candidates": {
+        "max": 5173.0,
+        "mean": 5014.684210526316,
+        "min": 5000.0,
+        "p05": 5000.0,
+        "p50": 5009.0,
+        "p95": 5033.45
+      },
+      "arm": "seed-2026082701-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 5173.0,
+        "mean": 5014.684210526316,
+        "min": 5000.0,
+        "p05": 5000.0,
+        "p50": 5009.0,
+        "p95": 5033.45
+      },
+      "postings_touched": {
+        "max": 302.0,
+        "mean": 237.22368421052633,
+        "min": 170.0,
+        "p05": 188.55,
+        "p50": 238.0,
+        "p95": 283.34999999999997
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 891610.0,
+        "mean": 891610.0,
+        "min": 891610.0,
+        "p05": 891610.0,
+        "p50": 891610.0,
+        "p95": 891610.0
+      },
+      "requested_candidate_budget": 5000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9730263157894737,
+        "min": 0.8,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10152.0,
+        "mean": 10015.506578947368,
+        "min": 10000.0,
+        "p05": 10000.55,
+        "p50": 10011.0,
+        "p95": 10045.45
+      },
+      "arm": "seed-2026082701-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 10152.0,
+        "mean": 10015.506578947368,
+        "min": 10000.0,
+        "p05": 10000.55,
+        "p50": 10011.0,
+        "p95": 10045.45
+      },
+      "postings_touched": {
+        "max": 581.0,
+        "mean": 478.57894736842104,
+        "min": 379.0,
+        "p05": 401.55,
+        "p50": 480.0,
+        "p95": 555.45
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 891610.0,
+        "mean": 891610.0,
+        "min": 891610.0,
+        "p05": 891610.0,
+        "p50": 891610.0,
+        "p95": 891610.0
+      },
+      "requested_candidate_budget": 10000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9802631578947368,
+        "min": 0.8,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20078.0,
+        "mean": 20017.302631578947,
+        "min": 20000.0,
+        "p05": 20001.0,
+        "p50": 20012.0,
+        "p95": 20056.9
+      },
+      "arm": "seed-2026082701-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 20078.0,
+        "mean": 20017.302631578947,
+        "min": 20000.0,
+        "p05": 20001.0,
+        "p50": 20012.0,
+        "p95": 20056.9
+      },
+      "postings_touched": {
+        "max": 1138.0,
+        "mean": 967.546052631579,
+        "min": 775.0,
+        "p05": 843.4,
+        "p50": 972.5,
+        "p95": 1097.9
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 891610.0,
+        "mean": 891610.0,
+        "min": 891610.0,
+        "p05": 891610.0,
+        "p50": 891610.0,
+        "p95": 891610.0
+      },
+      "requested_candidate_budget": 20000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9861842105263158,
+        "min": 0.8,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 50262.0,
+        "mean": 50015.85526315789,
+        "min": 50000.0,
+        "p05": 50001.0,
+        "p50": 50010.0,
+        "p95": 50043.0
+      },
+      "arm": "seed-2026082701-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 50262.0,
+        "mean": 50015.85526315789,
+        "min": 50000.0,
+        "p05": 50001.0,
+        "p50": 50010.0,
+        "p95": 50043.0
+      },
+      "postings_touched": {
+        "max": 2736.0,
+        "mean": 2478.7302631578946,
+        "min": 2110.0,
+        "p05": 2264.1,
+        "p50": 2492.5,
+        "p95": 2696.1
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 891610.0,
+        "mean": 891610.0,
+        "min": 891610.0,
+        "p05": 891610.0,
+        "p50": 891610.0,
+        "p95": 891610.0
+      },
+      "requested_candidate_budget": 50000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9914473684210525,
+        "min": 0.8,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 100060.0,
+        "mean": 100013.7302631579,
+        "min": 100000.0,
+        "p05": 100000.55,
+        "p50": 100010.0,
+        "p95": 100034.9
+      },
+      "arm": "seed-2026082701-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 100060.0,
+        "mean": 100013.7302631579,
+        "min": 100000.0,
+        "p05": 100000.55,
+        "p50": 100010.0,
+        "p95": 100034.9
+      },
+      "postings_touched": {
+        "max": 5489.0,
+        "mean": 5081.046052631579,
+        "min": 4563.0,
+        "p05": 4785.7,
+        "p50": 5091.0,
+        "p95": 5386.099999999999
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 891610.0,
+        "mean": 891610.0,
+        "min": 891610.0,
+        "p05": 891610.0,
+        "p50": 891610.0,
+        "p95": 891610.0
+      },
+      "requested_candidate_budget": 100000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.994736842105263,
+        "min": 0.9,
+        "p05": 0.9550000000000001,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5162.0,
+        "mean": 5018.4276315789475,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5013.0,
+        "p95": 5062.8
+      },
+      "arm": "seed-2026082702-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 5162.0,
+        "mean": 5018.4276315789475,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5013.0,
+        "p95": 5062.8
+      },
+      "postings_touched": {
+        "max": 321.0,
+        "mean": 236.1578947368421,
+        "min": 144.0,
+        "p05": 176.0,
+        "p50": 244.0,
+        "p95": 284.9
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 876204.0,
+        "mean": 876204.0,
+        "min": 876204.0,
+        "p05": 876204.0,
+        "p50": 876204.0,
+        "p95": 876204.0
+      },
+      "requested_candidate_budget": 5000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9750000000000001,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10141.0,
+        "mean": 10016.618421052632,
+        "min": 10000.0,
+        "p05": 10000.0,
+        "p50": 10009.5,
+        "p95": 10053.35
+      },
+      "arm": "seed-2026082702-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 10141.0,
+        "mean": 10016.618421052632,
+        "min": 10000.0,
+        "p05": 10000.0,
+        "p50": 10009.5,
+        "p95": 10053.35
+      },
+      "postings_touched": {
+        "max": 608.0,
+        "mean": 475.3421052631579,
+        "min": 303.0,
+        "p05": 369.0,
+        "p50": 484.5,
+        "p95": 555.8
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 876204.0,
+        "mean": 876204.0,
+        "min": 876204.0,
+        "p05": 876204.0,
+        "p50": 876204.0,
+        "p95": 876204.0
+      },
+      "requested_candidate_budget": 10000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9809210526315791,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20181.0,
+        "mean": 20015.61842105263,
+        "min": 20000.0,
+        "p05": 20000.0,
+        "p50": 20011.0,
+        "p95": 20041.25
+      },
+      "arm": "seed-2026082702-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 20181.0,
+        "mean": 20015.61842105263,
+        "min": 20000.0,
+        "p05": 20000.0,
+        "p50": 20011.0,
+        "p95": 20041.25
+      },
+      "postings_touched": {
+        "max": 1179.0,
+        "mean": 959.8223684210526,
+        "min": 630.0,
+        "p05": 772.85,
+        "p50": 970.0,
+        "p95": 1107.05
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 876204.0,
+        "mean": 876204.0,
+        "min": 876204.0,
+        "p05": 876204.0,
+        "p50": 876204.0,
+        "p95": 876204.0
+      },
+      "requested_candidate_budget": 20000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.988157894736842,
+        "min": 0.9,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 50200.0,
+        "mean": 50016.89473684211,
+        "min": 50000.0,
+        "p05": 50000.55,
+        "p50": 50011.0,
+        "p95": 50049.9
+      },
+      "arm": "seed-2026082702-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 50200.0,
+        "mean": 50016.89473684211,
+        "min": 50000.0,
+        "p05": 50000.55,
+        "p50": 50011.0,
+        "p95": 50049.9
+      },
+      "postings_touched": {
+        "max": 2892.0,
+        "mean": 2453.3289473684213,
+        "min": 1918.0,
+        "p05": 2127.5,
+        "p50": 2475.0,
+        "p95": 2715.6
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 876204.0,
+        "mean": 876204.0,
+        "min": 876204.0,
+        "p05": 876204.0,
+        "p50": 876204.0,
+        "p95": 876204.0
+      },
+      "requested_candidate_budget": 50000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9927631578947369,
+        "min": 0.9,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 100176.0,
+        "mean": 100018.03289473684,
+        "min": 100000.0,
+        "p05": 100000.55,
+        "p50": 100012.0,
+        "p95": 100056.8
+      },
+      "arm": "seed-2026082702-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 100176.0,
+        "mean": 100018.03289473684,
+        "min": 100000.0,
+        "p05": 100000.55,
+        "p50": 100012.0,
+        "p95": 100056.8
+      },
+      "postings_touched": {
+        "max": 5700.0,
+        "mean": 5030.644736842105,
+        "min": 4414.0,
+        "p05": 4551.65,
+        "p50": 5044.0,
+        "p95": 5464.249999999999
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 876204.0,
+        "mean": 876204.0,
+        "min": 876204.0,
+        "p05": 876204.0,
+        "p50": 876204.0,
+        "p95": 876204.0
+      },
+      "requested_candidate_budget": 100000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9973684210526316,
+        "min": 0.9,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5074.0,
+        "mean": 5016.355263157895,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5011.0,
+        "p95": 5048.9
+      },
+      "arm": "seed-2026082703-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 5074.0,
+        "mean": 5016.355263157895,
+        "min": 5000.0,
+        "p05": 5001.0,
+        "p50": 5011.0,
+        "p95": 5048.9
+      },
+      "postings_touched": {
+        "max": 297.0,
+        "mean": 241.4934210526316,
+        "min": 176.0,
+        "p05": 200.1,
+        "p50": 245.0,
+        "p95": 277.45
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 898743.0,
+        "mean": 898743.0,
+        "min": 898743.0,
+        "p05": 898743.0,
+        "p50": 898743.0,
+        "p95": 898743.0
+      },
+      "requested_candidate_budget": 5000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9796052631578948,
+        "min": 0.8,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10114.0,
+        "mean": 10015.894736842105,
+        "min": 10000.0,
+        "p05": 10001.0,
+        "p50": 10010.0,
+        "p95": 10051.25
+      },
+      "arm": "seed-2026082703-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 10114.0,
+        "mean": 10015.894736842105,
+        "min": 10000.0,
+        "p05": 10001.0,
+        "p50": 10010.0,
+        "p95": 10051.25
+      },
+      "postings_touched": {
+        "max": 574.0,
+        "mean": 485.32236842105266,
+        "min": 382.0,
+        "p05": 420.65,
+        "p50": 488.0,
+        "p95": 547.3499999999999
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 898743.0,
+        "mean": 898743.0,
+        "min": 898743.0,
+        "p05": 898743.0,
+        "p50": 898743.0,
+        "p95": 898743.0
+      },
+      "requested_candidate_budget": 10000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9868421052631579,
+        "min": 0.8,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20084.0,
+        "mean": 20013.947368421053,
+        "min": 20000.0,
+        "p05": 20001.0,
+        "p50": 20010.0,
+        "p95": 20039.9
+      },
+      "arm": "seed-2026082703-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 20084.0,
+        "mean": 20013.947368421053,
+        "min": 20000.0,
+        "p05": 20001.0,
+        "p50": 20010.0,
+        "p95": 20039.9
+      },
+      "postings_touched": {
+        "max": 1135.0,
+        "mean": 979.9407894736842,
+        "min": 822.0,
+        "p05": 876.75,
+        "p50": 977.5,
+        "p95": 1085.35
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 898743.0,
+        "mean": 898743.0,
+        "min": 898743.0,
+        "p05": 898743.0,
+        "p50": 898743.0,
+        "p95": 898743.0
+      },
+      "requested_candidate_budget": 20000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9894736842105264,
+        "min": 0.8,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 50135.0,
+        "mean": 50014.25,
+        "min": 50000.0,
+        "p05": 50001.0,
+        "p50": 50011.0,
+        "p95": 50035.0
+      },
+      "arm": "seed-2026082703-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 50135.0,
+        "mean": 50014.25,
+        "min": 50000.0,
+        "p05": 50001.0,
+        "p50": 50011.0,
+        "p95": 50035.0
+      },
+      "postings_touched": {
+        "max": 2747.0,
+        "mean": 2508.217105263158,
+        "min": 2239.0,
+        "p05": 2332.2,
+        "p50": 2500.0,
+        "p95": 2684.9
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 898743.0,
+        "mean": 898743.0,
+        "min": 898743.0,
+        "p05": 898743.0,
+        "p50": 898743.0,
+        "p95": 898743.0
+      },
+      "requested_candidate_budget": 50000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9940789473684211,
+        "min": 0.9,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 100159.0,
+        "mean": 100016.70394736843,
+        "min": 100000.0,
+        "p05": 100000.0,
+        "p50": 100010.0,
+        "p95": 100049.45
+      },
+      "arm": "seed-2026082703-representative-max",
+      "duplication_ratio": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "posting_entries_touched": {
+        "max": 100159.0,
+        "mean": 100016.70394736843,
+        "min": 100000.0,
+        "p05": 100000.0,
+        "p50": 100010.0,
+        "p95": 100049.45
+      },
+      "postings_touched": {
+        "max": 5476.0,
+        "mean": 5134.1578947368425,
+        "min": 4806.0,
+        "p05": 4896.1,
+        "p50": 5128.0,
+        "p95": 5389.2
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 898743.0,
+        "mean": 898743.0,
+        "min": 898743.0,
+        "p05": 898743.0,
+        "p50": 898743.0,
+        "p95": 898743.0
+      },
+      "requested_candidate_budget": 100000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9953947368421053,
+        "min": 0.9,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 5206.0,
+        "mean": 5015.611842105263,
+        "min": 5000.0,
+        "p05": 5000.0,
+        "p50": 5010.0,
+        "p95": 5037.35
+      },
+      "arm": "three-seed-representative-max-fusion",
+      "duplication_ratio": {
+        "max": 1.2380478087649402,
+        "mean": 1.0556679381160892,
+        "min": 1.0372,
+        "p05": 1.041191597737596,
+        "p50": 1.0503394908552972,
+        "p95": 1.0817319082507468
+      },
+      "posting_entries_touched": {
+        "max": 6215.0,
+        "mean": 5294.8026315789475,
+        "min": 5186.0,
+        "p05": 5217.55,
+        "p50": 5270.5,
+        "p95": 5429.9
+      },
+      "postings_touched": {
+        "max": 316.0,
+        "mean": 251.6315789473684,
+        "min": 182.0,
+        "p05": 202.55,
+        "p50": 252.5,
+        "p95": 299.45
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 2666557.0,
+        "mean": 2666557.0,
+        "min": 2666557.0,
+        "p05": 2666557.0,
+        "p50": 2666557.0,
+        "p95": 2666557.0
+      },
+      "requested_candidate_budget": 5000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9993421052631579,
+        "min": 0.9,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 10055.0,
+        "mean": 10012.506578947368,
+        "min": 10000.0,
+        "p05": 10000.0,
+        "p50": 10008.5,
+        "p95": 10033.0
+      },
+      "arm": "three-seed-representative-max-fusion",
+      "duplication_ratio": {
+        "max": 1.2903033316757833,
+        "mean": 1.0708337286817016,
+        "min": 1.0456725964421347,
+        "p05": 1.0477797933962651,
+        "p50": 1.0636468153184682,
+        "p95": 1.1125963111157742
+      },
+      "posting_entries_touched": {
+        "max": 12974.0,
+        "mean": 10721.828947368422,
+        "min": 10463.0,
+        "p05": 10498.2,
+        "p50": 10641.0,
+        "p95": 11148.1
+      },
+      "postings_touched": {
+        "max": 630.0,
+        "mean": 506.8486842105263,
+        "min": 398.0,
+        "p05": 423.75,
+        "p50": 512.5,
+        "p95": 580.45
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 2666557.0,
+        "mean": 2666557.0,
+        "min": 2666557.0,
+        "p05": 2666557.0,
+        "p50": 2666557.0,
+        "p95": 2666557.0
+      },
+      "requested_candidate_budget": 10000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9993421052631579,
+        "min": 0.9,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 20113.0,
+        "mean": 20015.151315789473,
+        "min": 20000.0,
+        "p05": 20000.0,
+        "p50": 20011.0,
+        "p95": 20046.25
+      },
+      "arm": "three-seed-representative-max-fusion",
+      "duplication_ratio": {
+        "max": 1.3327834433113377,
+        "mean": 1.094496357775799,
+        "min": 1.0541945805419457,
+        "p05": 1.0593944066409429,
+        "p50": 1.083152459437371,
+        "p95": 1.1608556976285507
+      },
+      "posting_entries_touched": {
+        "max": 26661.0,
+        "mean": 21906.532894736843,
+        "min": 21086.0,
+        "p05": 21200.65,
+        "p50": 21689.0,
+        "p95": 23256.05
+      },
+      "postings_touched": {
+        "max": 1288.0,
+        "mean": 1043.1973684210527,
+        "min": 836.0,
+        "p05": 896.55,
+        "p50": 1045.5,
+        "p95": 1165.6499999999999
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 2666557.0,
+        "mean": 2666557.0,
+        "min": 2666557.0,
+        "p05": 2666557.0,
+        "p50": 2666557.0,
+        "p95": 2666557.0
+      },
+      "requested_candidate_budget": 20000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9993421052631579,
+        "min": 0.9,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 50105.0,
+        "mean": 50014.23684210526,
+        "min": 50000.0,
+        "p05": 50001.0,
+        "p50": 50010.0,
+        "p95": 50037.0
+      },
+      "arm": "three-seed-representative-max-fusion",
+      "duplication_ratio": {
+        "max": 1.350395904982804,
+        "mean": 1.1445737100783209,
+        "min": 1.0768708026862808,
+        "p05": 1.0878176280275007,
+        "p50": 1.1302265290990003,
+        "p95": 1.248018888255134
+      },
+      "posting_entries_touched": {
+        "max": 67536.0,
+        "mean": 57244.95394736842,
+        "min": 53878.0,
+        "p05": 54399.15,
+        "p50": 56521.5,
+        "p95": 62430.799999999996
+      },
+      "postings_touched": {
+        "max": 3235.0,
+        "mean": 2765.1315789473683,
+        "min": 2344.0,
+        "p05": 2508.65,
+        "p50": 2776.0,
+        "p95": 3020.1499999999996
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 2666557.0,
+        "mean": 2666557.0,
+        "min": 2666557.0,
+        "p05": 2666557.0,
+        "p50": 2666557.0,
+        "p95": 2666557.0
+      },
+      "requested_candidate_budget": 50000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9993421052631579,
+        "min": 0.9,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "actual_unique_candidates": {
+        "max": 100097.0,
+        "mean": 100010.7697368421,
+        "min": 100000.0,
+        "p05": 100001.0,
+        "p50": 100008.0,
+        "p95": 100030.0
+      },
+      "arm": "three-seed-representative-max-fusion",
+      "duplication_ratio": {
+        "max": 1.3878656988021676,
+        "mean": 1.2037603815582998,
+        "min": 1.1057583665796762,
+        "p05": 1.1312798844543217,
+        "p50": 1.1891992449687885,
+        "p95": 1.311094679358878
+      },
+      "posting_entries_touched": {
+        "max": 138806.0,
+        "mean": 120389.125,
+        "min": 110588.0,
+        "p05": 113151.35,
+        "p50": 118933.0,
+        "p95": 131138.85
+      },
+      "postings_touched": {
+        "max": 6839.0,
+        "mean": 5927.210526315789,
+        "min": 5182.0,
+        "p05": 5432.65,
+        "p50": 5896.0,
+        "p95": 6473.9
+      },
+      "query_count": 152,
+      "representative_vectors_scored": {
+        "max": 2666557.0,
+        "mean": 2666557.0,
+        "min": 2666557.0,
+        "p05": 2666557.0,
+        "p50": 2666557.0,
+        "p95": 2666557.0
+      },
+      "requested_candidate_budget": 100000,
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    }
+  ]
+}
