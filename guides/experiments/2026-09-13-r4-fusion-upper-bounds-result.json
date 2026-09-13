@@ -1,0 +1,1361 @@
+{
+  "arbitrary_posting_oracle": [
+    {
+      "budget": 20000,
+      "kind": "teacher_leaking_arbitrary_posting_dp",
+      "posting_entries": {
+        "max": 300.0,
+        "mean": 114.8157894736842,
+        "min": 48.0,
+        "p05": 69.55,
+        "p50": 108.5,
+        "p95": 171.24999999999994
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9960526315789474,
+        "min": 0.8,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "budget": 50000,
+      "kind": "teacher_leaking_arbitrary_posting_dp",
+      "posting_entries": {
+        "max": 300.0,
+        "mean": 114.8157894736842,
+        "min": 48.0,
+        "p05": 69.55,
+        "p50": 108.5,
+        "p95": 171.24999999999994
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9960526315789474,
+        "min": 0.8,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    },
+    {
+      "budget": 100000,
+      "kind": "teacher_leaking_arbitrary_posting_dp",
+      "posting_entries": {
+        "max": 300.0,
+        "mean": 114.8157894736842,
+        "min": 48.0,
+        "p05": 69.55,
+        "p50": 108.5,
+        "p95": 171.24999999999994
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9960526315789474,
+        "min": 0.8,
+        "p05": 1.0,
+        "p50": 1.0,
+        "p95": 1.0
+      }
+    }
+  ],
+  "budgets": [
+    20000,
+    50000,
+    100000
+  ],
+  "execution_status": "EXECUTED",
+  "family": "semantic_r4_fusion_upper_bounds_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "input_artifacts": {
+    "frozen": {
+      "document_vectors": {
+        "bytes": 1536000000,
+        "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\comparison\\input\\document-vectors-f32le.bin",
+        "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+      },
+      "queries": {
+        "bytes": 233472,
+        "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_queries.bin",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      "teacher_ids": {
+        "bytes": 12160,
+        "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_teacher_ids.bin",
+        "sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d"
+      }
+    },
+    "r4": {
+      "deep-8192": [
+        {
+          "bytes": 260432,
+          "file": "occupied.u32le",
+          "role": "occupied_addresses",
+          "sha256": "34a6a6fc990a81d6e1a93d61a1acc0b167c41492cfe0e1f4d7f7c494440312f7"
+        },
+        {
+          "bytes": 260432,
+          "file": "address-offsets.u32le",
+          "role": "address_offsets",
+          "sha256": "1dbf1126ccadccd3c4ef54cc98f5bbdb896435281563fd647fb56b2683bb299d"
+        },
+        {
+          "bytes": 260432,
+          "file": "address-counts.u32le",
+          "role": "address_counts",
+          "sha256": "abc81d7a2c704b4555f6b99789df5a05889e5d5133089b8033e96fb9d64f4a81"
+        },
+        {
+          "bytes": 65108,
+          "file": "representative-counts.u8",
+          "role": "representative_counts",
+          "sha256": "f3e7075183f9679ae3a12de881e6c08ee2ab22c241b02ee5df6a1a818da8fbc1"
+        },
+        {
+          "bytes": 3566440,
+          "file": "representative-documents.i32le",
+          "role": "representative_documents",
+          "sha256": "f32e0d3d560472d753c3e7c763068238ab60ec8492b87b0590816efba42c8b0a"
+        },
+        {
+          "bytes": 4000000,
+          "file": "document-to-physical.u32le",
+          "role": "document_to_physical",
+          "sha256": "14610713bf24446fc2c7f953ca62c1303d7a160c9a6597d247019787b6f16990"
+        },
+        {
+          "bytes": 4000000,
+          "file": "physical-to-document.i32le",
+          "role": "physical_to_document",
+          "sha256": "95edf88afcfafaa7c036c54d070110286cb35b7ca7a059487218b1fa9700ef0b"
+        },
+        {
+          "bytes": 233472,
+          "file": "queries.f32le",
+          "role": "query_vectors",
+          "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+        },
+        {
+          "bytes": 622592,
+          "file": "shortlist-rows.u32le",
+          "role": "shortlist_rows",
+          "sha256": "87202c63c19c47194f023495e30ba8b4d5e57b0fae6e59d9bb7be993ebecf016"
+        },
+        {
+          "bytes": 13697024,
+          "file": "scalar-features.f32le",
+          "role": "scalar_features",
+          "sha256": "3f646659bd6615225ba4a2c30b8102854562d51b99e1ee14b2ba615ce4765ca1"
+        },
+        {
+          "bytes": 1536000000,
+          "file": "address-major-fp32.records",
+          "role": "address_major_fp32",
+          "sha256": "e68d68bdf0083a9cbd1c677cc35e85f3bd25a209f30f0a0f692d8869673443b7"
+        },
+        {
+          "bytes": 88,
+          "file": "model-feature_mean.f32le",
+          "role": "model_feature_mean",
+          "sha256": "46118e50ca65387ab8f51fd5540ef1c444d77b480d102b46f727d34a1208be32"
+        },
+        {
+          "bytes": 88,
+          "file": "model-feature_deviation.f32le",
+          "role": "model_feature_deviation",
+          "sha256": "c86e61dd05fbaf4927dceebe4df2125055b50cdbdaa58c4234f283d0564dfbeb"
+        },
+        {
+          "bytes": 49152,
+          "file": "model-query_weight.f32le",
+          "role": "model_query_weight",
+          "sha256": "4f37017072279eb73fa2f418d41d0dedd1b1713428cefcdc6ee2c64d57b7d012"
+        },
+        {
+          "bytes": 128,
+          "file": "model-query_bias.f32le",
+          "role": "model_query_bias",
+          "sha256": "210b90e0e95e58b75d459c1c37e90cd6e4f7b9b4ba56fec837c550e4fcc8803f"
+        },
+        {
+          "bytes": 2944,
+          "file": "model-local_weight.f32le",
+          "role": "model_local_weight",
+          "sha256": "b30e946699e5bd6067ddfc85d51a28c791cefe32184471e58c35ac2366f769ab"
+        },
+        {
+          "bytes": 128,
+          "file": "model-local_bias.f32le",
+          "role": "model_local_bias",
+          "sha256": "54aa0a617ded29fe33a3170a302bf6761e234fe462816282aec26fc9243e7c2c"
+        },
+        {
+          "bytes": 34560,
+          "file": "model-score_weight1.f32le",
+          "role": "model_score_weight1",
+          "sha256": "3a52c21f048b0168db25413cdc39e01c5c6df468c465fb96c8deca07f53e6125"
+        },
+        {
+          "bytes": 216,
+          "file": "model-score_bias1.f32le",
+          "role": "model_score_bias1",
+          "sha256": "b1bc168b9beacc9889a42e5698d881205978516de77411de7af6e6ab66e79b83"
+        },
+        {
+          "bytes": 216,
+          "file": "model-score_weight2.f32le",
+          "role": "model_score_weight2",
+          "sha256": "958d6bf5f2cd288e7599ce5c977c9edeebc3210271baf6804d63a513baf658f5"
+        },
+        {
+          "bytes": 4,
+          "file": "model-score_bias2.f32le",
+          "role": "model_score_bias2",
+          "sha256": "aab210f00af58d2b89150c4a4e25b5753d01eaf91f1be8bbd702e6ddde213bfb"
+        },
+        {
+          "bytes": 12,
+          "file": "model-r4_aggregate_mean.f32le",
+          "role": "model_r4_aggregate_mean",
+          "sha256": "091524a47b645b25a852e60d27d331d3782c9f83f5814075e67e95454ab4c1f5"
+        },
+        {
+          "bytes": 12,
+          "file": "model-r4_aggregate_deviation.f32le",
+          "role": "model_r4_aggregate_deviation",
+          "sha256": "ba96930c6e91251a97a4281b1759a52a50f3aa0ef3cf1c2ed9f427763cfd9d69"
+        }
+      ],
+      "seed-2026082702": [
+        {
+          "bytes": 260156,
+          "file": "occupied.u32le",
+          "role": "occupied_addresses",
+          "sha256": "e5476ceb94d6d5a756d5ce48395bfb81da35ebdd1562614564c6424cb39ebc6f"
+        },
+        {
+          "bytes": 260156,
+          "file": "address-offsets.u32le",
+          "role": "address_offsets",
+          "sha256": "ee80cdae26c21ee2b221bb181feff68990c0a83bba182da3b75c8e8ddf73fb95"
+        },
+        {
+          "bytes": 260156,
+          "file": "address-counts.u32le",
+          "role": "address_counts",
+          "sha256": "7072ee2ceb5d00aba4653f0596210a431f6c5685a84a999bd1a31d48dc7d4eb0"
+        },
+        {
+          "bytes": 65039,
+          "file": "representative-counts.u8",
+          "role": "representative_counts",
+          "sha256": "da353a678b5a589d1870643b4eeb4913030fde26f94a06ef0a432408b45ec8c1"
+        },
+        {
+          "bytes": 3504816,
+          "file": "representative-documents.i32le",
+          "role": "representative_documents",
+          "sha256": "48b446ba548c4a86f60dd657ab308450d05140e298617b16aa97c5631e36a733"
+        },
+        {
+          "bytes": 4000000,
+          "file": "document-to-physical.u32le",
+          "role": "document_to_physical",
+          "sha256": "c9c8df10f2064d9eec824285741a558ddef3ff3ba0a246e45c8a251ec6eac36f"
+        },
+        {
+          "bytes": 4000000,
+          "file": "physical-to-document.i32le",
+          "role": "physical_to_document",
+          "sha256": "cf4e2342c4079ee658c42f1ff7ba24482c1f5eebb70a848db8cede82fcc37581"
+        },
+        {
+          "bytes": 233472,
+          "file": "queries.f32le",
+          "role": "query_vectors",
+          "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+        },
+        {
+          "bytes": 622592,
+          "file": "shortlist-rows.u32le",
+          "role": "shortlist_rows",
+          "sha256": "1a9c8932229e33a014295bb93a868e6ec6497378d9caf2acd934926f667bb95e"
+        },
+        {
+          "bytes": 13697024,
+          "file": "scalar-features.f32le",
+          "role": "scalar_features",
+          "sha256": "66cf22ece908be1f3ef9e7a59a2628ed6d9f0bc2245d6057e63b7621561cc67f"
+        },
+        {
+          "bytes": 1536000000,
+          "file": "address-major-fp32.records",
+          "role": "address_major_fp32",
+          "sha256": "e92e8b6eebbc630e345cde0c04d5c07847aef022558154e130cf097fc99c0011"
+        },
+        {
+          "bytes": 88,
+          "file": "model-feature_mean.f32le",
+          "role": "model_feature_mean",
+          "sha256": "8708f280fab25ec65b34b5a3394cc6fafc372aef028cb44bb27a1dc393af308b"
+        },
+        {
+          "bytes": 88,
+          "file": "model-feature_deviation.f32le",
+          "role": "model_feature_deviation",
+          "sha256": "723efb47586f62aca38c29870deb3bb3a7e5a53ec01d9343ce7fbdd1df9e0f0c"
+        },
+        {
+          "bytes": 49152,
+          "file": "model-query_weight.f32le",
+          "role": "model_query_weight",
+          "sha256": "62e845e046fb9cd7975b96f23cc329dfadc29e2218dc1953609106968ff37754"
+        },
+        {
+          "bytes": 128,
+          "file": "model-query_bias.f32le",
+          "role": "model_query_bias",
+          "sha256": "7983189d1856c99ab36a41e6817c04d79746ae5132cc99d6f5cdbd8034414308"
+        },
+        {
+          "bytes": 2944,
+          "file": "model-local_weight.f32le",
+          "role": "model_local_weight",
+          "sha256": "e9005eee975654dac00aa22b16740631b4c8c09c9f662c4890d0c55650002441"
+        },
+        {
+          "bytes": 128,
+          "file": "model-local_bias.f32le",
+          "role": "model_local_bias",
+          "sha256": "d4124c5393c058be04e3c7137c1dee6c6185146cda78cb8ede34a2a388c98bcb"
+        },
+        {
+          "bytes": 34560,
+          "file": "model-score_weight1.f32le",
+          "role": "model_score_weight1",
+          "sha256": "d526e70516ac9ff397e1c7888e28896b244b194ee4ddc4d2bf22ad146b2982f3"
+        },
+        {
+          "bytes": 216,
+          "file": "model-score_bias1.f32le",
+          "role": "model_score_bias1",
+          "sha256": "f565ce72aedef6d4b2e69b14e009f7a8c24d1fbbcafdaf4665593155a52cdef2"
+        },
+        {
+          "bytes": 216,
+          "file": "model-score_weight2.f32le",
+          "role": "model_score_weight2",
+          "sha256": "e782cd3d763670499ccde3acbc0852460e7f590a7b4a026427c7c868eaef1e28"
+        },
+        {
+          "bytes": 4,
+          "file": "model-score_bias2.f32le",
+          "role": "model_score_bias2",
+          "sha256": "9c1d4bb3a1dd51264c91c8dbfc443091b0df30adc79e06576cea08482363fd37"
+        },
+        {
+          "bytes": 12,
+          "file": "model-r4_aggregate_mean.f32le",
+          "role": "model_r4_aggregate_mean",
+          "sha256": "906ba712d3246c23673891fbff37a0b7fdc99e60191bcd2c108fa1a3021ebab1"
+        },
+        {
+          "bytes": 12,
+          "file": "model-r4_aggregate_deviation.f32le",
+          "role": "model_r4_aggregate_deviation",
+          "sha256": "d9e5945fa25da2d0fe7d90a6198f68a40fbefbab176c2be8b63e430c60a7a8aa"
+        }
+      ],
+      "seed-2026082703": [
+        {
+          "bytes": 260764,
+          "file": "occupied.u32le",
+          "role": "occupied_addresses",
+          "sha256": "9aab0046fff4eb8356f00c2c90ad964d7e586c907bf0b1c73d04b3173f4b48f9"
+        },
+        {
+          "bytes": 260764,
+          "file": "address-offsets.u32le",
+          "role": "address_offsets",
+          "sha256": "ab07fa0847856b8a6271c6fb83506a8d31eb722718571f09aaf0200a8121355d"
+        },
+        {
+          "bytes": 260764,
+          "file": "address-counts.u32le",
+          "role": "address_counts",
+          "sha256": "c84b5e869c1321296b14bbd3f62cf576045cb0f4d2acd8de91c487bad09c07b6"
+        },
+        {
+          "bytes": 65191,
+          "file": "representative-counts.u8",
+          "role": "representative_counts",
+          "sha256": "37d7098b793d1c72dd6a082d3f0df769a6b40535410334cb19190149da44321c"
+        },
+        {
+          "bytes": 3594972,
+          "file": "representative-documents.i32le",
+          "role": "representative_documents",
+          "sha256": "2e2ef52a17916c883bd29506cc4d7df962b6a62e67f53b0aa0a62a1dc35bfd7a"
+        },
+        {
+          "bytes": 4000000,
+          "file": "document-to-physical.u32le",
+          "role": "document_to_physical",
+          "sha256": "11c2bce4121103a49590984a01a9026555a64470338dc515253dccad90337f8d"
+        },
+        {
+          "bytes": 4000000,
+          "file": "physical-to-document.i32le",
+          "role": "physical_to_document",
+          "sha256": "fd03d6b953bdcbfb0aceca6eec61e834aae720caac63616c8d1f61b2e33e5da8"
+        },
+        {
+          "bytes": 233472,
+          "file": "queries.f32le",
+          "role": "query_vectors",
+          "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+        },
+        {
+          "bytes": 622592,
+          "file": "shortlist-rows.u32le",
+          "role": "shortlist_rows",
+          "sha256": "882fd53fe2db76e724de85220854c92e81fae324482c7777a4d414e1311859b5"
+        },
+        {
+          "bytes": 13697024,
+          "file": "scalar-features.f32le",
+          "role": "scalar_features",
+          "sha256": "1350f95a8fbf1bd82ed25c30d271795044c10db7ad4f26e6def0bd782925d805"
+        },
+        {
+          "bytes": 1536000000,
+          "file": "address-major-fp32.records",
+          "role": "address_major_fp32",
+          "sha256": "fe5672ef8e7c0eb3257aafe482b96744aa96043da86c6bc1a90850036f3539d8"
+        },
+        {
+          "bytes": 88,
+          "file": "model-feature_mean.f32le",
+          "role": "model_feature_mean",
+          "sha256": "8fac410c933f7a38dd5395cc9948ebabff5b8c051194692f82572a371561bd10"
+        },
+        {
+          "bytes": 88,
+          "file": "model-feature_deviation.f32le",
+          "role": "model_feature_deviation",
+          "sha256": "1ce26e4f6a857659f5150ae43630fb7539bc57269404c015afe94a445e4d2baf"
+        },
+        {
+          "bytes": 49152,
+          "file": "model-query_weight.f32le",
+          "role": "model_query_weight",
+          "sha256": "ab13d91853946463f09a05733d086ec44d6ba012fcd5966620bfdc651a7495e1"
+        },
+        {
+          "bytes": 128,
+          "file": "model-query_bias.f32le",
+          "role": "model_query_bias",
+          "sha256": "ebeba028bc2b71e3f9b1ecae168f985e54f9712e57c902a8439734dde065ccae"
+        },
+        {
+          "bytes": 2944,
+          "file": "model-local_weight.f32le",
+          "role": "model_local_weight",
+          "sha256": "f92bf1899727c6cedd8e4c63fd81fb6d500d09c81737cd59bb9cf4e9f3fbe706"
+        },
+        {
+          "bytes": 128,
+          "file": "model-local_bias.f32le",
+          "role": "model_local_bias",
+          "sha256": "8a82e504215784cee23d6858bbe4857c48142149830f958fc1fab21901f337f4"
+        },
+        {
+          "bytes": 34560,
+          "file": "model-score_weight1.f32le",
+          "role": "model_score_weight1",
+          "sha256": "e6d6e87639ca09cc3656a2e3d66cebf28e1cb444fc061a74e38fc19a8e871718"
+        },
+        {
+          "bytes": 216,
+          "file": "model-score_bias1.f32le",
+          "role": "model_score_bias1",
+          "sha256": "625cf7d785fbb29965dcbf58706cb90bbf4ec8c044d36c3227b56230bf726ced"
+        },
+        {
+          "bytes": 216,
+          "file": "model-score_weight2.f32le",
+          "role": "model_score_weight2",
+          "sha256": "c3564e48d5c7de39c062edb655019faa492e5d88577be8269901555ac95d3266"
+        },
+        {
+          "bytes": 4,
+          "file": "model-score_bias2.f32le",
+          "role": "model_score_bias2",
+          "sha256": "624a8a2a001e90c52a6332b9928be6756176aec20a0296b89ed6a77ebc57570e"
+        },
+        {
+          "bytes": 12,
+          "file": "model-r4_aggregate_mean.f32le",
+          "role": "model_r4_aggregate_mean",
+          "sha256": "ddcd5694bb55f767e4cddcc47ba84a4249898f00f6ea4746c722541fd812803a"
+        },
+        {
+          "bytes": 12,
+          "file": "model-r4_aggregate_deviation.f32le",
+          "role": "model_r4_aggregate_deviation",
+          "sha256": "66a1b3306bd9a8a833387e229091728c4bcf9ca6c5cc39494c259fe92ce0191b"
+        }
+      ]
+    }
+  },
+  "non_leaking_jump_scheduler": {
+    "caps_posting_entries": [
+      0,
+      2500,
+      5000,
+      10000
+    ],
+    "summaries": [
+      {
+        "actual_unique_candidates": {
+          "max": 20111.0,
+          "mean": 20014.144736842107,
+          "min": 20000.0,
+          "p05": 20000.55,
+          "p50": 20011.0,
+          "p95": 20038.6
+        },
+        "budget": 20000,
+        "duplication_ratio": {
+          "max": 1.154676798480228,
+          "mean": 1.0793068709891696,
+          "min": 1.041321075247327,
+          "p05": 1.046930921587969,
+          "p50": 1.0740999903280604,
+          "p95": 1.1254347827172013
+        },
+        "jump_cap_posting_entries": 0,
+        "posting_entries_touched": {
+          "max": 23097.0,
+          "mean": 21601.407894736843,
+          "min": 20841.0,
+          "p05": 20959.9,
+          "p50": 21498.5,
+          "p95": 22522.95
+        },
+        "postings_touched": {
+          "max": 1133.0,
+          "mean": 821.6052631578947,
+          "min": 633.0,
+          "p05": 693.1,
+          "p50": 821.0,
+          "p95": 981.3999999999999
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9657894736842106,
+          "min": 0.5,
+          "p05": 0.8,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 50076.0,
+          "mean": 50010.375,
+          "min": 50000.0,
+          "p05": 50000.55,
+          "p50": 50007.0,
+          "p95": 50028.9
+        },
+        "budget": 50000,
+        "duplication_ratio": {
+          "max": 1.2743380529557635,
+          "mean": 1.1622069549600418,
+          "min": 1.0979380412391753,
+          "p05": 1.1087792006458888,
+          "p50": 1.1560820164127337,
+          "p95": 1.2363391140408628
+        },
+        "jump_cap_posting_entries": 0,
+        "posting_entries_touched": {
+          "max": 63722.0,
+          "mean": 58122.41447368421,
+          "min": 54898.0,
+          "p05": 55446.85,
+          "p50": 57814.5,
+          "p95": 61826.049999999996
+        },
+        "postings_touched": {
+          "max": 3607.0,
+          "mean": 2815.2763157894738,
+          "min": 2049.0,
+          "p05": 2287.55,
+          "p50": 2842.5,
+          "p95": 3272.25
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9703947368421053,
+          "min": 0.7,
+          "p05": 0.8,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 100086.0,
+          "mean": 100014.78947368421,
+          "min": 100000.0,
+          "p05": 100000.0,
+          "p50": 100009.0,
+          "p95": 100055.9
+        },
+        "budget": 100000,
+        "duplication_ratio": {
+          "max": 1.2550119486856446,
+          "mean": 1.1626523602763488,
+          "min": 1.1086613070954323,
+          "p05": 1.117905375014087,
+          "p50": 1.157596829910749,
+          "p95": 1.2271631450806737
+        },
+        "jump_cap_posting_entries": 0,
+        "posting_entries_touched": {
+          "max": 125515.0,
+          "mean": 116282.38157894737,
+          "min": 110875.0,
+          "p05": 111793.5,
+          "p50": 115773.0,
+          "p95": 122730.0
+        },
+        "postings_touched": {
+          "max": 6943.0,
+          "mean": 6120.8223684210525,
+          "min": 5300.0,
+          "p05": 5661.1,
+          "p50": 6120.5,
+          "p95": 6629.15
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9769736842105263,
+          "min": 0.7,
+          "p05": 0.8550000000000001,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 20083.0,
+          "mean": 20014.065789473683,
+          "min": 20000.0,
+          "p05": 20001.0,
+          "p50": 20011.0,
+          "p95": 20035.0
+        },
+        "budget": 20000,
+        "duplication_ratio": {
+          "max": 1.2413258674132586,
+          "mean": 1.1042524735116033,
+          "min": 1.0510744627686157,
+          "p05": 1.058205525303492,
+          "p50": 1.0939874500399682,
+          "p95": 1.1723821727026842
+        },
+        "jump_cap_posting_entries": 2500,
+        "posting_entries_touched": {
+          "max": 24829.0,
+          "mean": 22100.519736842107,
+          "min": 21032.0,
+          "p05": 21182.1,
+          "p50": 21896.5,
+          "p95": 23466.05
+        },
+        "postings_touched": {
+          "max": 1133.0,
+          "mean": 791.0131578947369,
+          "min": 595.0,
+          "p05": 657.1,
+          "p50": 778.5,
+          "p95": 965.6499999999999
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9796052631578945,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 50050.0,
+          "mean": 50008.42105263158,
+          "min": 50000.0,
+          "p05": 50000.0,
+          "p50": 50005.0,
+          "p95": 50028.45
+        },
+        "budget": 50000,
+        "duplication_ratio": {
+          "max": 1.311707531698732,
+          "mean": 1.1797285693671118,
+          "min": 1.106392337992122,
+          "p05": 1.1167611421484762,
+          "p50": 1.1733140564873314,
+          "p95": 1.2713747915335052
+        },
+        "jump_cap_posting_entries": 2500,
+        "posting_entries_touched": {
+          "max": 65588.0,
+          "mean": 58996.32894736842,
+          "min": 55334.0,
+          "p05": 55868.6,
+          "p50": 58674.5,
+          "p95": 63573.45
+        },
+        "postings_touched": {
+          "max": 3634.0,
+          "mean": 2819.6315789473683,
+          "min": 2025.0,
+          "p05": 2291.9,
+          "p50": 2865.5,
+          "p95": 3269.8999999999996
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9835526315789473,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 100059.0,
+          "mean": 100011.82236842105,
+          "min": 100000.0,
+          "p05": 100001.0,
+          "p50": 100009.0,
+          "p95": 100031.9
+        },
+        "budget": 100000,
+        "duplication_ratio": {
+          "max": 1.2694780200553872,
+          "mean": 1.1726968621166927,
+          "min": 1.1142440058391825,
+          "p05": 1.1232630714229712,
+          "p50": 1.166745003865532,
+          "p95": 1.2416268155125736
+        },
+        "jump_cap_posting_entries": 2500,
+        "posting_entries_touched": {
+          "max": 126977.0,
+          "mean": 117283.57236842105,
+          "min": 111440.0,
+          "p05": 112334.45,
+          "p50": 116685.0,
+          "p95": 124165.6
+        },
+        "postings_touched": {
+          "max": 6997.0,
+          "mean": 6118.368421052632,
+          "min": 5299.0,
+          "p05": 5654.65,
+          "p50": 6106.0,
+          "p95": 6646.0
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9907894736842104,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 20073.0,
+          "mean": 20012.013157894737,
+          "min": 20000.0,
+          "p05": 20001.0,
+          "p50": 20008.0,
+          "p95": 20034.9
+        },
+        "budget": 20000,
+        "duplication_ratio": {
+          "max": 1.2904628611416575,
+          "mean": 1.1230766929656608,
+          "min": 1.0561275489804078,
+          "p05": 1.0666520027511524,
+          "p50": 1.1086287992706199,
+          "p95": 1.2143886708189386
+        },
+        "jump_cap_posting_entries": 5000,
+        "posting_entries_touched": {
+          "max": 25817.0,
+          "mean": 22475.032894736843,
+          "min": 21131.0,
+          "p05": 21341.2,
+          "p50": 22188.0,
+          "p95": 24309.8
+        },
+        "postings_touched": {
+          "max": 1141.0,
+          "mean": 746.0263157894736,
+          "min": 537.0,
+          "p05": 603.75,
+          "p50": 731.0,
+          "p95": 948.45
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9796052631578948,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 50063.0,
+          "mean": 50008.08552631579,
+          "min": 50000.0,
+          "p05": 50000.0,
+          "p50": 50005.0,
+          "p95": 50022.0
+        },
+        "budget": 50000,
+        "duplication_ratio": {
+          "max": 1.3463930721385573,
+          "mean": 1.1945285572270201,
+          "min": 1.1121532708037518,
+          "p05": 1.1219517892817383,
+          "p50": 1.1865743885366877,
+          "p95": 1.305374109278474
+        },
+        "jump_cap_posting_entries": 5000,
+        "posting_entries_touched": {
+          "max": 67321.0,
+          "mean": 59736.08552631579,
+          "min": 55611.0,
+          "p05": 56112.85,
+          "p50": 59330.5,
+          "p95": 65279.899999999994
+        },
+        "postings_touched": {
+          "max": 3638.0,
+          "mean": 2806.1184210526317,
+          "min": 1995.0,
+          "p05": 2277.3,
+          "p50": 2838.0,
+          "p95": 3259.2499999999995
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9842105263157894,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 100072.0,
+          "mean": 100012.30263157895,
+          "min": 100000.0,
+          "p05": 100001.0,
+          "p50": 100009.0,
+          "p95": 100029.45
+        },
+        "budget": 100000,
+        "duplication_ratio": {
+          "max": 1.2856842947115865,
+          "mean": 1.1817077411496844,
+          "min": 1.118927939721592,
+          "p05": 1.1281097242508138,
+          "p50": 1.1773537018312044,
+          "p95": 1.25730720838841
+        },
+        "jump_cap_posting_entries": 5000,
+        "posting_entries_touched": {
+          "max": 128607.0,
+          "mean": 118185.32894736843,
+          "min": 111970.0,
+          "p05": 112819.15,
+          "p50": 117749.5,
+          "p95": 125743.09999999999
+        },
+        "postings_touched": {
+          "max": 7029.0,
+          "mean": 6100.0328947368425,
+          "min": 5283.0,
+          "p05": 5624.3,
+          "p50": 6084.5,
+          "p95": 6654.75
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9914473684210525,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 20089.0,
+          "mean": 20013.342105263157,
+          "min": 20000.0,
+          "p05": 20001.0,
+          "p50": 20010.0,
+          "p95": 20034.45
+        },
+        "budget": 20000,
+        "duplication_ratio": {
+          "max": 1.3544152148954225,
+          "mean": 1.1376654594031697,
+          "min": 1.0583941605839415,
+          "p05": 1.0705830193416481,
+          "p50": 1.1196816201043478,
+          "p95": 1.2517918750720591
+        },
+        "jump_cap_posting_entries": 10000,
+        "posting_entries_touched": {
+          "max": 27133.0,
+          "mean": 22768.53947368421,
+          "min": 21170.0,
+          "p05": 21423.7,
+          "p50": 22405.5,
+          "p95": 25064.75
+        },
+        "postings_touched": {
+          "max": 1130.0,
+          "mean": 707.9013157894736,
+          "min": 488.0,
+          "p05": 556.55,
+          "p50": 693.5,
+          "p95": 915.9
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9796052631578948,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 50071.0,
+          "mean": 50009.09210526316,
+          "min": 50000.0,
+          "p05": 50000.0,
+          "p50": 50005.0,
+          "p95": 50028.9
+        },
+        "budget": 50000,
+        "duplication_ratio": {
+          "max": 1.401223828663987,
+          "mean": 1.2177230280276374,
+          "min": 1.1214375712485751,
+          "p05": 1.1329623423638773,
+          "p50": 1.2073396250374961,
+          "p95": 1.3514373683028749
+        },
+        "jump_cap_posting_entries": 10000,
+        "posting_entries_touched": {
+          "max": 70071.0,
+          "mean": 60897.21052631579,
+          "min": 56073.0,
+          "p05": 56670.55,
+          "p50": 60370.0,
+          "p95": 67579.1
+        },
+        "postings_touched": {
+          "max": 3702.0,
+          "mean": 2796.9934210526317,
+          "min": 1964.0,
+          "p05": 2239.75,
+          "p50": 2833.5,
+          "p95": 3267.6999999999994
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9828947368421053,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      },
+      {
+        "actual_unique_candidates": {
+          "max": 100067.0,
+          "mean": 100011.75,
+          "min": 100000.0,
+          "p05": 100001.0,
+          "p50": 100009.5,
+          "p95": 100032.45
+        },
+        "budget": 100000,
+        "duplication_ratio": {
+          "max": 1.3102820746132848,
+          "mean": 1.1972355611882721,
+          "min": 1.1259637018149093,
+          "p05": 1.137283175176605,
+          "p50": 1.1919178941282953,
+          "p95": 1.2835402852364644
+        },
+        "jump_cap_posting_entries": 10000,
+        "posting_entries_touched": {
+          "max": 131040.0,
+          "mean": 119737.59868421052,
+          "min": 112602.0,
+          "p05": 113743.5,
+          "p50": 119205.5,
+          "p95": 128362.25
+        },
+        "postings_touched": {
+          "max": 7133.0,
+          "mean": 6089.25,
+          "min": 5219.0,
+          "p05": 5593.75,
+          "p50": 6061.0,
+          "p95": 6670.2
+        },
+        "query_count": 152,
+        "teacher_recall": {
+          "max": 1.0,
+          "mean": 0.9921052631578948,
+          "min": 0.7,
+          "p05": 0.9,
+          "p50": 1.0,
+          "p95": 1.0
+        }
+      }
+    ]
+  },
+  "prefix_allocation_oracle": [
+    {
+      "budget": 20000,
+      "kind": "teacher_leaking_prefix_dp",
+      "posting_entries": {
+        "max": 5515.0,
+        "mean": 370.76973684210526,
+        "min": 78.0,
+        "p05": 113.55,
+        "p50": 204.5,
+        "p95": 1092.5499999999956
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9796052631578948,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "unique_candidates": {
+        "max": 5515.0,
+        "mean": 368.7828947368421,
+        "min": 78.0,
+        "p05": 112.55,
+        "p50": 201.5,
+        "p95": 1079.5499999999959
+      }
+    },
+    {
+      "budget": 50000,
+      "kind": "teacher_leaking_prefix_dp",
+      "posting_entries": {
+        "max": 46519.0,
+        "mean": 2667.6973684210525,
+        "min": 78.0,
+        "p05": 113.55,
+        "p50": 209.0,
+        "p95": 29214.899999999965
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9868421052631579,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "unique_candidates": {
+        "max": 46519.0,
+        "mean": 2664.8289473684213,
+        "min": 78.0,
+        "p05": 112.55,
+        "p50": 208.5,
+        "p95": 29202.299999999967
+      }
+    },
+    {
+      "budget": 100000,
+      "kind": "teacher_leaking_prefix_dp",
+      "posting_entries": {
+        "max": 74806.0,
+        "mean": 5053.8421052631575,
+        "min": 78.0,
+        "p05": 114.0,
+        "p50": 211.5,
+        "p95": 41926.39999999998
+      },
+      "teacher_recall": {
+        "max": 1.0,
+        "mean": 0.9921052631578948,
+        "min": 0.7,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0
+      },
+      "unique_candidates": {
+        "max": 74806.0,
+        "mean": 5049.401315789473,
+        "min": 78.0,
+        "p05": 113.0,
+        "p50": 210.5,
+        "p95": 41926.39999999998
+      }
+    }
+  ],
+  "production_activation": false,
+  "protocol": {
+    "jump_scheduler": "deep prefix cap then skip to tail; no teacher IDs used",
+    "physical_page_bytes": "not measured",
+    "production_activation": false,
+    "teacher_ids_used_for_index": false,
+    "teacher_leaking_oracles": true
+  },
+  "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "raw_output": {
+    "bytes": 897382,
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-fusion-upper-bounds-raw.json",
+    "sha256": "3f9c0b6e99985b7a21f218ce76481f8a114895e3d0755b8d20e6d26cb868d237"
+  },
+  "residual_diagnostics": {
+    "count": 31,
+    "rows": [
+      {
+        "deep_address_rank": 1958,
+        "deep_cumulative_posting_entries": 40994,
+        "query": 4,
+        "teacher": 209583
+      },
+      {
+        "deep_address_rank": 1433,
+        "deep_cumulative_posting_entries": 30888,
+        "query": 4,
+        "teacher": 270830
+      },
+      {
+        "deep_address_rank": 2792,
+        "deep_cumulative_posting_entries": 53975,
+        "query": 6,
+        "teacher": 540719
+      },
+      {
+        "deep_address_rank": 1467,
+        "deep_cumulative_posting_entries": 31243,
+        "query": 7,
+        "teacher": 513514
+      },
+      {
+        "deep_address_rank": 3217,
+        "deep_cumulative_posting_entries": 65244,
+        "query": 7,
+        "teacher": 684342
+      },
+      {
+        "deep_address_rank": 3471,
+        "deep_cumulative_posting_entries": 70037,
+        "query": 7,
+        "teacher": 747169
+      },
+      {
+        "deep_address_rank": 1654,
+        "deep_cumulative_posting_entries": 33233,
+        "query": 9,
+        "teacher": 646856
+      },
+      {
+        "deep_address_rank": 5130,
+        "deep_cumulative_posting_entries": 100982,
+        "query": 19,
+        "teacher": 890053
+      },
+      {
+        "deep_address_rank": 1569,
+        "deep_cumulative_posting_entries": 34473,
+        "query": 19,
+        "teacher": 923850
+      },
+      {
+        "deep_address_rank": 3519,
+        "deep_cumulative_posting_entries": 67298,
+        "query": 30,
+        "teacher": 531168
+      },
+      {
+        "deep_address_rank": 8193,
+        "deep_cumulative_posting_entries": null,
+        "query": 36,
+        "teacher": 162762
+      },
+      {
+        "deep_address_rank": 1672,
+        "deep_cumulative_posting_entries": 30809,
+        "query": 69,
+        "teacher": 896165
+      },
+      {
+        "deep_address_rank": 1088,
+        "deep_cumulative_posting_entries": 27283,
+        "query": 70,
+        "teacher": 752994
+      },
+      {
+        "deep_address_rank": 2466,
+        "deep_cumulative_posting_entries": 46519,
+        "query": 71,
+        "teacher": 271349
+      },
+      {
+        "deep_address_rank": 1150,
+        "deep_cumulative_posting_entries": 27864,
+        "query": 73,
+        "teacher": 456333
+      },
+      {
+        "deep_address_rank": 2855,
+        "deep_cumulative_posting_entries": 59296,
+        "query": 77,
+        "teacher": 899749
+      },
+      {
+        "deep_address_rank": 1799,
+        "deep_cumulative_posting_entries": 35627,
+        "query": 83,
+        "teacher": 266754
+      },
+      {
+        "deep_address_rank": 7348,
+        "deep_cumulative_posting_entries": 142468,
+        "query": 95,
+        "teacher": 219711
+      },
+      {
+        "deep_address_rank": 6244,
+        "deep_cumulative_posting_entries": 123939,
+        "query": 95,
+        "teacher": 219713
+      },
+      {
+        "deep_address_rank": 6326,
+        "deep_cumulative_posting_entries": 125423,
+        "query": 95,
+        "teacher": 219714
+      },
+      {
+        "deep_address_rank": 2068,
+        "deep_cumulative_posting_entries": 43066,
+        "query": 103,
+        "teacher": 71783
+      },
+      {
+        "deep_address_rank": 8193,
+        "deep_cumulative_posting_entries": null,
+        "query": 103,
+        "teacher": 270363
+      },
+      {
+        "deep_address_rank": 4074,
+        "deep_cumulative_posting_entries": 72346,
+        "query": 109,
+        "teacher": 746029
+      },
+      {
+        "deep_address_rank": 7720,
+        "deep_cumulative_posting_entries": 140597,
+        "query": 112,
+        "teacher": 525015
+      },
+      {
+        "deep_address_rank": 5336,
+        "deep_cumulative_posting_entries": 101160,
+        "query": 113,
+        "teacher": 407713
+      },
+      {
+        "deep_address_rank": 8193,
+        "deep_cumulative_posting_entries": null,
+        "query": 121,
+        "teacher": 496929
+      },
+      {
+        "deep_address_rank": 8193,
+        "deep_cumulative_posting_entries": null,
+        "query": 145,
+        "teacher": 358936
+      },
+      {
+        "deep_address_rank": 8193,
+        "deep_cumulative_posting_entries": null,
+        "query": 145,
+        "teacher": 358938
+      },
+      {
+        "deep_address_rank": 8193,
+        "deep_cumulative_posting_entries": null,
+        "query": 147,
+        "teacher": 68943
+      },
+      {
+        "deep_address_rank": 4095,
+        "deep_cumulative_posting_entries": 74806,
+        "query": 148,
+        "teacher": 737819
+      },
+      {
+        "deep_address_rank": 2908,
+        "deep_cumulative_posting_entries": 53334,
+        "query": 148,
+        "teacher": 898803
+      }
+    ]
+  },
+  "routes": [
+    "seed-2026082702",
+    "seed-2026082703",
+    "deep-8192"
+  ],
+  "runner_sha256": "843bdb3a15b8defaee7c00bc8c4776d78235283ca6b4cef84cd4a45e9633c2bf",
+  "schema_version": 1
+}

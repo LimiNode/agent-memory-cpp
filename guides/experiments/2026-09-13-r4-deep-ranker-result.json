@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "family": "r4_deep_full_frontier_ranker_v1",
+  "execution_status": "EXECUTED",
+  "production_activation": false,
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "runner_sha256": "3d3d066b223d339abec3ac04cd351be34d85159da07d4083cfcf90e3c0f4139f",
+  "depth": 8192,
+  "train_queries": 114,
+  "held_out_queries": 38,
+  "feature_columns": [
+    "address_cosine",
+    "inverse_deep_rank",
+    "log_posting_size",
+    "normalized_rank"
+  ],
+  "fit_ms": 2487.1360999532044,
+  "held_out_summary": [
+    {
+      "budget": 20000,
+      "teacher_recall": {
+        "min": 0.6,
+        "mean": 0.9105263157894737,
+        "p05": 0.6849999999999999,
+        "p50": 1.0,
+        "p95": 1.0,
+        "max": 1.0
+      },
+      "actual_unique_candidates": {
+        "min": 20000.0,
+        "mean": 20015.105263157893,
+        "p05": 20000.85,
+        "p50": 20010.0,
+        "p95": 20042.75,
+        "max": 20068.0
+      },
+      "posting_entries_touched": {
+        "min": 20000.0,
+        "mean": 20015.105263157893,
+        "p05": 20000.85,
+        "p50": 20010.0,
+        "p95": 20042.75,
+        "max": 20068.0
+      },
+      "postings_touched": {
+        "min": 582.0,
+        "mean": 854.1052631578947,
+        "p05": 620.55,
+        "p50": 867.5,
+        "p95": 1005.8499999999999,
+        "max": 1177.0
+      }
+    },
+    {
+      "budget": 50000,
+      "teacher_recall": {
+        "min": 0.6,
+        "mean": 0.9473684210526314,
+        "p05": 0.8,
+        "p50": 1.0,
+        "p95": 1.0,
+        "max": 1.0
+      },
+      "actual_unique_candidates": {
+        "min": 50000.0,
+        "mean": 50014.76315789474,
+        "p05": 50000.0,
+        "p50": 50013.0,
+        "p95": 50044.6,
+        "max": 50050.0
+      },
+      "posting_entries_touched": {
+        "min": 50000.0,
+        "mean": 50014.76315789474,
+        "p05": 50000.0,
+        "p50": 50013.0,
+        "p95": 50044.6,
+        "max": 50050.0
+      },
+      "postings_touched": {
+        "min": 1852.0,
+        "mean": 2395.842105263158,
+        "p05": 2032.4,
+        "p50": 2431.5,
+        "p95": 2723.0,
+        "max": 2917.0
+      }
+    },
+    {
+      "budget": 100000,
+      "teacher_recall": {
+        "min": 0.6,
+        "mean": 0.9736842105263158,
+        "p05": 0.9,
+        "p50": 1.0,
+        "p95": 1.0,
+        "max": 1.0
+      },
+      "actual_unique_candidates": {
+        "min": 100000.0,
+        "mean": 100014.23684210527,
+        "p05": 100001.0,
+        "p50": 100009.5,
+        "p95": 100036.65,
+        "max": 100067.0
+      },
+      "posting_entries_touched": {
+        "min": 100000.0,
+        "mean": 100014.23684210527,
+        "p05": 100001.0,
+        "p50": 100009.5,
+        "p95": 100036.65,
+        "max": 100067.0
+      },
+      "postings_touched": {
+        "min": 4213.0,
+        "mean": 5121.763157894737,
+        "p05": 4637.45,
+        "p50": 5172.5,
+        "p95": 5533.85,
+        "max": 5822.0
+      }
+    }
+  ],
+  "raw_output": {
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-deep-ranker-raw.json",
+    "bytes": 18120,
+    "sha256": "72363ef1938b41f84bc4e629efa7d5f5e74a238beabaf2f9baa70e5a766a452b"
+  },
+  "protocol": {
+    "teacher_ids_used_for_training_labels": true,
+    "teacher_ids_used_at_inference": false,
+    "budget_definition": "unique document ids",
+    "physical_page_bytes": "not measured",
+    "production_activation": false
+  }
+}
