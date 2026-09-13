@@ -715,6 +715,19 @@ R4/SPANN implementations; no payload rerank, MDBX page measurement, or
 production activation is claimed. See `2026-09-12-thq-index-wave2.md` and its
 receipt.
 
+### Deep full-frontier ranker and topology follow-ups (2026-09-13)
+
+Training a held-out ranker over the complete 8,192-address R4 frontier yields
+`.9474 @ 50k` and `.9737 @ 100k` mean recall (38-query held-out split).  A
+non-leaking marginal-freshness scheduler reaches `.9717/.9862` and equal
+three-anchor fusion `.9796/.9921` at the same budgets.  A teacher-leaking
+gain-per-entry control remains below `.99 @ 50k`.  These controls confirm that
+simple scheduler changes or three-way replication do not close the gap; the
+next justified arm is selective secondary assignment or a new multi-anchor
+topology.  The experiment is logical posting work only and does not measure
+MDBX pages, latency, or physical I/O.  See
+`2026-09-13-r4-deep-ranker-and-followups.md` and its receipts.
+
 Correction note (2026-09-12): the initial IMI receipt used uint8 arithmetic for
 Cartesian cell IDs and is superseded. The corrected runner uses int32 and
 asserts `cell(63,63) == 4095` and `0 <= cell < 4096`. For SPANN requests above
