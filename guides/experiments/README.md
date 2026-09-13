@@ -23,6 +23,11 @@ THQ-ADC and exact FP32 reranking preserve the strong K=16 candidate frontier;
 the remaining cost is the dense representative score pass. It is logical
 evidence only, with no native, page, latency, or MDBX claim.
 
+The [native packed representative control](2026-09-14-r4-k16-native-representative-control.md)
+shows single-digit-millisecond p95 INT8 scoring for the frozen 1,024-address
+component at K=16. It is a component measurement only; a full occupied-address
+route replay is still required before physical or MDBX work.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked

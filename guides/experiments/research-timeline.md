@@ -893,3 +893,14 @@ for FP32; these are not physical page or latency measurements. The route is a
 quality/control result, not a deployable ANN claim, because representative
 scoring is still a dense Python/NumPy pass. See
 `2026-09-14-r4-k16-thq-cascade.md`, its receipt, and the fail-closed audit.
+
+### Native packed representative control for R4 K=16 (2026-09-14)
+
+The existing native INT8 representative kernel was replayed for K=8/16/32 on
+three seeds, 152 queries, and the frozen 1,024-address component. Average p95
+decode+dot+max time is `4.874/8.061/11.215 ms` for K=8/16/32, with about
+`8,020/13,842/18,586` representatives scored per query. This establishes a
+credible native arithmetic control but not full-route cost: all occupied R4
+addresses, fusion, postings, THQ rerank, MDBX, and physical pages remain out
+of scope. See `2026-09-14-r4-k16-native-representative-control.md`, its receipt,
+and the fail-closed audit.

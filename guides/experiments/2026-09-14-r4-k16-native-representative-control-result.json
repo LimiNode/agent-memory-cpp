@@ -1,0 +1,297 @@
+{
+  "addresses_per_query": 1024,
+  "codec_manifest_sha256": "1566688756f1922c9f3cce83c46c9623d2231f221bbe496b12ae978c0cdad8db",
+  "environment": {
+    "platform": "Windows-10-10.0.26100-SP0"
+  },
+  "execution_status": "EXECUTED",
+  "family": "semantic_r4_k16_native_representative_control_v1",
+  "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "measured_passes": 3,
+  "native_executable": {
+    "bytes": 168960,
+    "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\batch-neuroute-replication-topology\\tmp\\build-neuroute-avx2\\tools\\agent-memory-bench\\Release\\agent-memory-neuroute-r4-representative-codec.exe",
+    "sha256": "edad6dea3331004b579a9db04fe33889b3f211d4b63f7234683c3e4029f23138"
+  },
+  "native_source": {
+    "bytes": 17102,
+    "path": "tools\\agent-memory-bench\\neuroute_r4_representative_codec.cpp",
+    "sha256": "95052e896b14fcdf351242e736a0dc34b8c740b914a4c3c74e00385e144c1483"
+  },
+  "prefixes": [
+    8,
+    16,
+    32
+  ],
+  "production_activation": false,
+  "protocol": {
+    "physical_page_bytes": "not measured",
+    "production_activation": false,
+    "representation": "symmetric unsigned INT8 plus FP32 scale",
+    "score": "native max dot product over the first K representatives",
+    "shortlist": "frozen 1,024-address query rows",
+    "timing_scope": "decode plus dot plus per-address max",
+    "warmup": "one untimed pass inside the native executable"
+  },
+  "queries": 152,
+  "rows": [
+    {
+      "checksum": 484588.98890709877,
+      "counts_sha256": "a76ece5d0fcc361118844dcc5b9b2dec6b915354ae5659fe85043fa7e5580fc9",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082701-k8.native.json",
+      "native_result_sha256": "9ad53e1d6e63a957c7d13b87d9b362a8c9da51697744601bff6ea72c04b4621b",
+      "prefix": 8,
+      "representative_count": 454322,
+      "samples": 456,
+      "seed": 2026082701,
+      "selected_representatives": {
+        "max": 8155.0,
+        "mean": 8032.026315789473,
+        "min": 7733.0,
+        "p50": 8049.5,
+        "p95": 8119.8,
+        "p99": 8145.9400000000005
+      },
+      "store_bytes": 345944680,
+      "store_sha256": "83baeb6459f73e05b0966b88ed50c2d5e09de65c473433e3b52dd4e2f5770214",
+      "timing_ms": {
+        "max": 8.0875,
+        "mean": 4.6400793859649125,
+        "min": 4.0296,
+        "p50": 4.60985,
+        "p95": 4.928275,
+        "p99": 6.43288
+      }
+    },
+    {
+      "checksum": 488614.5368409157,
+      "counts_sha256": "44b3548fd80ad0a020cf051981297b48de900be1dead2edf9888de6ad462d74d",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082701-k16.native.json",
+      "native_result_sha256": "c74ed15b407164ee3d2b578b3d784126ca5fdbf797bb12b441e48d67e3aa5101",
+      "prefix": 16,
+      "representative_count": 705898,
+      "samples": 456,
+      "seed": 2026082701,
+      "selected_representatives": {
+        "max": 15070.0,
+        "mean": 13935.157894736842,
+        "min": 12287.0,
+        "p50": 13968.0,
+        "p95": 14716.0,
+        "p99": 14842.96
+      },
+      "store_bytes": 345944680,
+      "store_sha256": "83baeb6459f73e05b0966b88ed50c2d5e09de65c473433e3b52dd4e2f5770214",
+      "timing_ms": {
+        "max": 9.5997,
+        "mean": 7.4278173245614045,
+        "min": 6.5154,
+        "p50": 7.436999999999999,
+        "p95": 7.9335,
+        "p99": 8.178785
+      }
+    },
+    {
+      "checksum": 490217.062404871,
+      "counts_sha256": "f3e7075183f9679ae3a12de881e6c08ee2ab22c241b02ee5df6a1a818da8fbc1",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082701-k32.native.json",
+      "native_result_sha256": "615d57d8fac23217faecc349511e72427c2398428afec7b033dbbfdc1433fe64",
+      "prefix": 32,
+      "representative_count": 891610,
+      "samples": 456,
+      "seed": 2026082701,
+      "selected_representatives": {
+        "max": 22274.0,
+        "mean": 18700.782894736843,
+        "min": 14521.0,
+        "p50": 18697.0,
+        "p95": 21094.55,
+        "p99": 22176.79
+      },
+      "store_bytes": 345944680,
+      "store_sha256": "83baeb6459f73e05b0966b88ed50c2d5e09de65c473433e3b52dd4e2f5770214",
+      "timing_ms": {
+        "max": 19.161,
+        "mean": 9.951495175438595,
+        "min": 7.473,
+        "p50": 9.87455,
+        "p95": 11.356425,
+        "p99": 12.542039999999997
+      }
+    },
+    {
+      "checksum": 484696.0045015812,
+      "counts_sha256": "180d1575e2533962aa88a5bc267c04b066872e25a34f5c8f46662a2c0f3c3568",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082702-k8.native.json",
+      "native_result_sha256": "0f31ee00616791ee388acc0da51f5af8acd618dcb17b6b5d4328e3fd7ec353ea",
+      "prefix": 8,
+      "representative_count": 446322,
+      "samples": 456,
+      "seed": 2026082702,
+      "selected_representatives": {
+        "max": 8149.0,
+        "mean": 8000.861842105263,
+        "min": 7809.0,
+        "p50": 8015.5,
+        "p95": 8098.45,
+        "p99": 8129.49
+      },
+      "store_bytes": 339967152,
+      "store_sha256": "842c20c64b25562db19ac616d4dc3fdda66994f4e6b6ff6c9e90a9fc0c774ad9",
+      "timing_ms": {
+        "max": 9.2499,
+        "mean": 4.628645833333334,
+        "min": 3.9483,
+        "p50": 4.60655,
+        "p95": 4.859125,
+        "p99": 5.735844999999988
+      }
+    },
+    {
+      "checksum": 488639.66308641434,
+      "counts_sha256": "44900613fd4771904a2c69c32ed67629107272b4583e776b6996c18916cccec3",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082702-k16.native.json",
+      "native_result_sha256": "6d2e2893d38972b28282b3fc5c4c44b0c7d57c9c0f0f670192c43322a35aaaeb",
+      "prefix": 16,
+      "representative_count": 688370,
+      "samples": 456,
+      "seed": 2026082702,
+      "selected_representatives": {
+        "max": 15051.0,
+        "mean": 13712.203947368422,
+        "min": 12521.0,
+        "p50": 13758.0,
+        "p95": 14471.299999999997,
+        "p99": 14951.590000000002
+      },
+      "store_bytes": 339967152,
+      "store_sha256": "842c20c64b25562db19ac616d4dc3fdda66994f4e6b6ff6c9e90a9fc0c774ad9",
+      "timing_ms": {
+        "max": 16.386,
+        "mean": 7.449293640350878,
+        "min": 6.2615,
+        "p50": 7.40865,
+        "p95": 8.037575,
+        "p99": 9.714739999999999
+      }
+    },
+    {
+      "checksum": 490254.9251732826,
+      "counts_sha256": "da353a678b5a589d1870643b4eeb4913030fde26f94a06ef0a432408b45ec8c1",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082702-k32.native.json",
+      "native_result_sha256": "a4a88201f254e00bae0541c1fdd71afc7ea617f47fcd250c505470022bc3c92b",
+      "prefix": 32,
+      "representative_count": 876204,
+      "samples": 456,
+      "seed": 2026082702,
+      "selected_representatives": {
+        "max": 23150.0,
+        "mean": 18494.82894736842,
+        "min": 15315.0,
+        "p50": 18352.0,
+        "p95": 21268.05,
+        "p99": 22481.980000000007
+      },
+      "store_bytes": 339967152,
+      "store_sha256": "842c20c64b25562db19ac616d4dc3fdda66994f4e6b6ff6c9e90a9fc0c774ad9",
+      "timing_ms": {
+        "max": 14.8344,
+        "mean": 9.767504605263156,
+        "min": 7.7702,
+        "p50": 9.67305,
+        "p95": 11.504375,
+        "p99": 12.529924999999999
+      }
+    },
+    {
+      "checksum": 484575.7726569176,
+      "counts_sha256": "981e65227d78a74c4c0c201d263c0c6bd33e01806cbb350253c7428b967ead41",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082703-k8.native.json",
+      "native_result_sha256": "ff97c5d78a7420f9e07fe4f2a71151213b642168d3f4b7689a50f16046df77c4",
+      "prefix": 8,
+      "representative_count": 457455,
+      "samples": 456,
+      "seed": 2026082703,
+      "selected_representatives": {
+        "max": 8138.0,
+        "mean": 8026.756578947368,
+        "min": 7828.0,
+        "p50": 8030.5,
+        "p95": 8118.0,
+        "p99": 8134.49
+      },
+      "store_bytes": 348712284,
+      "store_sha256": "cf629ce0416b32d04d7c02c345d6d8d3d04f6e3d9a3da14b306139fac87a93c2",
+      "timing_ms": {
+        "max": 6.1046,
+        "mean": 4.612411403508773,
+        "min": 3.9948,
+        "p50": 4.6163,
+        "p95": 4.835100000000001,
+        "p99": 5.036594999999999
+      }
+    },
+    {
+      "checksum": 488590.61453437805,
+      "counts_sha256": "f3155775fc56b20023acfe2ac0ebb45214110cdc41dde7866e7630f10fb246c8",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082703-k16.native.json",
+      "native_result_sha256": "601fbeb4c686a22e522ff840eec67eeedb9f1b0a0e933aaf5949b5ccfb0b7ae9",
+      "prefix": 16,
+      "representative_count": 710544,
+      "samples": 456,
+      "seed": 2026082703,
+      "selected_representatives": {
+        "max": 14801.0,
+        "mean": 13878.434210526315,
+        "min": 12722.0,
+        "p50": 13886.0,
+        "p95": 14596.35,
+        "p99": 14743.04
+      },
+      "store_bytes": 348712284,
+      "store_sha256": "cf629ce0416b32d04d7c02c345d6d8d3d04f6e3d9a3da14b306139fac87a93c2",
+      "timing_ms": {
+        "max": 9.907,
+        "mean": 7.391657017543859,
+        "min": 6.3571,
+        "p50": 7.347300000000001,
+        "p95": 8.213325000000001,
+        "p99": 8.695135
+      }
+    },
+    {
+      "checksum": 490194.411331892,
+      "counts_sha256": "37d7098b793d1c72dd6a082d3f0df769a6b40535410334cb19190149da44321c",
+      "native_result": "E:\\_repoz\\agent-memory-workspaces\\r4-k16-native-control\\seed-2026082703-k32.native.json",
+      "native_result_sha256": "0688ffc2d885f245106081f78cb3fcbd9c1e4683d3096bed66a86d75785def72",
+      "prefix": 32,
+      "representative_count": 898743,
+      "samples": 456,
+      "seed": 2026082703,
+      "selected_representatives": {
+        "max": 21790.0,
+        "mean": 18563.5,
+        "min": 15922.0,
+        "p50": 18430.5,
+        "p95": 20713.1,
+        "p99": 21191.010000000002
+      },
+      "store_bytes": 348712284,
+      "store_sha256": "cf629ce0416b32d04d7c02c345d6d8d3d04f6e3d9a3da14b306139fac87a93c2",
+      "timing_ms": {
+        "max": 12.1234,
+        "mean": 9.593929824561405,
+        "min": 7.9877,
+        "p50": 9.556750000000001,
+        "p95": 10.78405,
+        "p99": 11.130244999999999
+      }
+    }
+  ],
+  "schema_version": 1,
+  "seeds": [
+    2026082701,
+    2026082702,
+    2026082703
+  ]
+}
