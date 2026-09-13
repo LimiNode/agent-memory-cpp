@@ -96,7 +96,7 @@ def prefix_dp(routes,names,qi,teachers,budgets):
     out=[]
     for b in budgets:
         feasible=[x for x in dp if x[0]<=b]
-        candidates,gain,sel,postings=max(feasible,key=lambda x:(x[1].bit_count(),-x[0]))
+        candidates,gain,sel,postings=max(feasible,key=lambda x:(x[1].bit_count(),-x[0],-x[3]))
         out.append({'budget':b,'teacher_count':gain.bit_count(),'recall':gain.bit_count()/len(teachers),'unique_candidates':candidates,'posting_entries':postings,'route_prefix_costs':sel})
     return out
 def arbitrary_dp(routes,names,qi,teachers,budgets):
@@ -129,6 +129,8 @@ def main():
     residual=[]
     for qi,t in sorted(shallow_miss):
         ranks=[i+1 for i,ad in enumerate(routes['deep-8192']['order'][qi]) if int(t) in routes['deep-8192']['postings'][int(ad)]]; rank=ranks[0] if ranks else a.depth+1; cumulative=sum(int(routes['deep-8192']['postings'][int(ad)].size) for ad in routes['deep-8192']['order'][qi][:rank]) if ranks else None; residual.append({'query':qi,'teacher':t,'deep_address_rank':rank,'deep_cumulative_posting_entries':cumulative})
+    if len({(int(r['query']), int(r['teacher'])) for r in residual}) != len(residual):
+        raise ValueError('residual diagnostics contain duplicate query/teacher pairs')
     def summ(rows,kind):
         result=[]
         for b in budgets:

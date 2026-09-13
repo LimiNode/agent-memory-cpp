@@ -14,8 +14,10 @@ uses seed 2702, seed 2703, and the deep-8192 route: it consumes at most a
 configured number of posting entries from the deep route's first 1,024
 model-ranked addresses, skips the rest of that prefix, and resumes at the
 regenerated tail.  Teacher IDs are used only for evaluation/oracle metrics.
-All budgets are one global unique-candidate budget; posting-entry work and
-duplication are logical measures, not MDBX or OS page traffic.
+Prefix and runtime scheduler gates use one global unique-candidate budget.
+The arbitrary-posting row is a teacher-leaking route-visible support oracle;
+its posting-entry cost is reported separately.  All work and duplication are
+logical measures, not MDBX or OS page traffic.
 
 ## Results
 
@@ -34,8 +36,8 @@ queries is shown in parentheses):
 The prefix oracle is bounded below `.99 @ 50k`, while route-visible arbitrary
 posting selection reaches the topology membership ceiling `.9961` at about 115
 posting entries on average.  The
-non-leaking jump schedules do not exceed the existing `.9796 @ 50k` fusion
-frontier; at 100k they approach `.9921`, with duplication ratios roughly
+non-leaking jump scheduling modestly improves the previous `.9796 @ 50k`
+frontier to `.9842`; at 100k it approaches `.9921`, with duplication ratios roughly
 1.08--1.20 depending on cap.
 
 Residual diagnostics remain 31 query/teacher pairs missed by all shallow routes;
