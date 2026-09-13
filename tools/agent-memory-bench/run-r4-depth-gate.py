@@ -23,6 +23,15 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def validate_external(record: dict[str, Any]) -> dict[str, Any]:
+    path = Path(record["path"])
+    actual = {"bytes": path.stat().st_size, "sha256": sha256(path)}
+    expected = {"bytes": int(record["bytes"]), "sha256": record["sha256"]}
+    if actual != expected:
+        raise ValueError(f"frozen input mismatch for {path}: {actual} != {expected}")
+    return {"path": str(path), **actual}
+
+
 def aggregate(values: list[float]) -> dict[str, float]:
     arr = np.asarray(values, dtype=np.float64)
     return {"min": float(arr.min()), "mean": float(arr.mean()),
@@ -55,6 +64,14 @@ def main() -> None:
     seed_record = next(x for x in manifest["seeds"] if int(x["seed"]) == args.seed)
     root = args.r4_root / "materialized" / f"seed-{args.seed}"
     mappings = {x["role"]: x for x in seed_record["mappings"]}
+    comparator = load("r4_depth_comparator", "run-r4-frozen-comparator.py")
+    fp32 = next(x for x in seed_record["layouts"] if x["role"] == "address_major_fp32")
+    validated_r4 = [comparator.file_record(root, record)
+                    for record in [*seed_record["mappings"], fp32, *seed_record["model"]]]
+    validated_frozen = {
+        role: validate_external(frozen["references"][role])
+        for role in ("document_vectors", "queries", "teacher_ids")
+    }
     n = int(frozen["documents"])
     documents = np.memmap(Path(frozen["references"]["document_vectors"]["path"]), mode="r", dtype="<f4", shape=(n, 384))
     queries = np.memmap(Path(frozen["references"]["queries"]["path"]), mode="r", dtype="<f4", shape=(152, 384))
@@ -101,18 +118,27 @@ def main() -> None:
     deep_rows = lookup[np.asarray(shortlists, dtype=np.uint32)]
     if np.any(deep_rows < 0):
         raise ValueError("deep shortlist contains unoccupied address")
+    if any(np.unique(row).size != row.size for row in deep_rows):
+        raise ValueError("duplicate address in regenerated depth shortlist")
     # Prefix parity is enforced explicitly because stable argpartition ties can
     # differ at the boundary when the requested depth changes.
     coarse_orders = []
+    natural_exact = []
+    natural_overlap = []
+    natural_positional = []
     for qi in range(152):
+        natural = deep_rows[qi][:1024]
+        natural_exact.append(bool(np.array_equal(natural, old_rows[qi])))
+        natural_overlap.append(float(np.intersect1d(natural, old_rows[qi]).size / 1024))
+        natural_positional.append(float(np.mean(natural == old_rows[qi])))
         prefix = old_rows[qi].tolist()
         prefix_set = set(prefix)
         tail = [int(value) for value in deep_rows[qi] if int(value) not in prefix_set]
         coarse_orders.append(np.asarray(prefix + tail, dtype=np.uint32))
         if not np.array_equal(coarse_orders[-1][:1024], old_rows[qi]):
-            raise ValueError("deep R4 first-1024 prefix parity failed")
-    comparator = load("r4_depth_comparator", "run-r4-frozen-comparator.py")
-    fp32 = next(x for x in seed_record["layouts"] if x["role"] == "address_major_fp32")
+            raise ValueError("forced frozen-prefix construction failed")
+        if np.unique(coarse_orders[-1]).size != coarse_orders[-1].size:
+            raise ValueError("duplicate address in coarse-tail order")
     records = np.memmap(root / fp32["file"], mode="r", dtype="<f4", shape=(n, 384))
     old_model_rows, _ = comparator.model_order(root, seed_record, np.asarray(queries), old_rows,
                                                records, doc_to_physical)
@@ -122,10 +148,12 @@ def main() -> None:
         prefix_set = set(model_prefix)
         tail = [int(value) for value in deep_rows[qi] if int(value) not in prefix_set]
         model_orders.append(np.asarray(model_prefix + tail, dtype=np.uint32))
+        if np.unique(model_orders[-1]).size != model_orders[-1].size:
+            raise ValueError("duplicate address in model-prefix order")
     budgets = [int(x) for x in args.budgets.split(",") if x]
     raw_rows: list[dict[str, Any]] = []
     summaries: list[dict[str, Any]] = []
-    for arm, orders in (("coarse_prefix_parity", coarse_orders),
+    for arm, orders in (("frozen_prefix_coarse_tail", coarse_orders),
                         ("model_prefix_coarse_tail", model_orders)):
         for qi in range(152):
             order = orders[qi]
@@ -170,9 +198,16 @@ def main() -> None:
               "fixture_manifest_sha256": sha256(args.thq_manifest), "r4_manifest_sha256": sha256(args.r4_manifest),
               "runner_sha256": sha256(Path(__file__)), "seed": args.seed, "depth": args.depth,
               "budgets": budgets, "summaries": summaries,
-              "prefix_parity": {"required": 1024, "passed": True,
-                                "coarse_first_1024_source": "frozen shortlist rows",
-                                "model_first_1024_source": "frozen model-ranked order"},
+              "input_artifacts": {"frozen": validated_frozen, "r4": validated_r4},
+              "prefix_policy": {"frozen_prefix_length": 1024,
+                                "construction": "frozen prefix forced; regenerated tail deduplicated against prefix",
+                                "coarse_prefix_source": "frozen shortlist rows",
+                                "model_prefix_source": "frozen model-ranked order"},
+              "natural_prefix_diagnostic": {
+                  "exact_parity_queries": int(sum(natural_exact)),
+                  "query_count": 152,
+                  "address_set_overlap": aggregate(natural_overlap),
+                  "positional_match_fraction": aggregate(natural_positional)},
               "raw_output": {"path": str(args.raw_output), "sha256": hashlib.sha256(raw_bytes).hexdigest(), "rows": len(raw_rows)},
               "protocol": {"coarse_arm": "regenerated deep order with frozen 1024 prefix",
                            "model_arm": "frozen model-ranked 1024 prefix followed by regenerated coarse tail",

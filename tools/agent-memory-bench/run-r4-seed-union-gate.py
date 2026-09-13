@@ -25,6 +25,15 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def validate_external(record: dict[str, Any]) -> dict[str, Any]:
+    path = Path(record["path"])
+    actual = {"bytes": path.stat().st_size, "sha256": sha256(path)}
+    expected = {"bytes": int(record["bytes"]), "sha256": record["sha256"]}
+    if actual != expected:
+        raise ValueError(f"frozen input mismatch for {path}: {actual} != {expected}")
+    return {"path": str(path), **actual}
+
+
 def aggregate(values: list[float]) -> dict[str, float]:
     arr = np.asarray(values, dtype=np.float64)
     return {"min": float(arr.min()), "mean": float(arr.mean()),
@@ -112,11 +121,18 @@ def main() -> None:
     teachers = np.memmap(Path(frozen["references"]["teacher_ids"]["path"]), mode="r", dtype="<i8", shape=(152, 10))
     budgets = [int(x) for x in args.budgets.split(",") if x]
     comparator = load_comparator()
+    input_artifacts = {
+        role: validate_external(frozen["references"][role])
+        for role in ("document_vectors", "queries", "teacher_ids")
+    }
     seed_data: dict[int, dict[str, Any]] = {}
     for seed_record in manifest["seeds"]:
         seed = int(seed_record["seed"])
         root = args.r4_root / "materialized" / f"seed-{seed}"
         mappings = {x["role"]: x for x in seed_record["mappings"]}
+        fp32 = next(x for x in seed_record["layouts"] if x["role"] == "address_major_fp32")
+        validated = [comparator.file_record(root, record)
+                     for record in [*seed_record["mappings"], fp32, *seed_record["model"]]]
         counts = np.fromfile(root / mappings["address_counts"]["file"], dtype="<u4")
         offsets = np.fromfile(root / mappings["address_offsets"]["file"], dtype="<u4")
         physical = np.fromfile(root / mappings["physical_to_document"]["file"], dtype="<i4")
@@ -127,11 +143,13 @@ def main() -> None:
             postings.append(ids)
             doc_to_address[ids] = address
         shortlist = np.fromfile(root / mappings["shortlist_rows"]["file"], dtype="<u4").reshape(152, 1024)
-        fp32 = next(x for x in seed_record["layouts"] if x["role"] == "address_major_fp32")
         records = np.memmap(root / fp32["file"], mode="r", dtype="<f4", shape=(n, 384))
         ordered, _ = comparator.model_order(root, seed_record, np.asarray(queries), shortlist,
                                              records, np.fromfile(root / mappings["document_to_physical"]["file"], dtype="<u4"))
-        seed_data[seed] = {"order": ordered, "postings": postings, "counts": counts}
+        if any(np.unique(row).size != row.size for row in ordered):
+            raise ValueError(f"duplicate address in model-ranked stream for seed {seed}")
+        seed_data[seed] = {"order": ordered, "postings": postings, "counts": counts,
+                           "validated_artifacts": validated}
     seeds = sorted(seed_data)
     raw_rows: list[dict[str, Any]] = []
     summaries: list[dict[str, Any]] = []
@@ -166,6 +184,8 @@ def main() -> None:
               "r4_manifest_sha256": sha256(args.r4_manifest),
               "runner_sha256": sha256(Path(__file__)), "documents": n, "queries": 152,
               "budgets": budgets, "seeds": seeds, "summaries": summaries,
+              "input_artifacts": {"frozen": input_artifacts,
+                                  "r4": {str(seed): seed_data[seed]["validated_artifacts"] for seed in seeds}},
               "raw_output": {"path": str(args.raw_output), "sha256": hashlib.sha256(raw_bytes).hexdigest(), "rows": len(raw_rows)},
               "protocol": {"merge": "deterministic equal-consumed-entry round robin; ties by seed order",
                            "order": "frozen R4 model-ranked order within each 1024-address shortlist",
