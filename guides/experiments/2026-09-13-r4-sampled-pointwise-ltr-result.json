@@ -5,7 +5,7 @@
   "production_activation": false,
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
-  "runner_sha256": "b5a6e1458411afe30fc8891baf9e998150922dc70d9ceeb2b03b1e01f69ba2d7",
+  "runner_sha256": "d085424536d4ae63bd6722b312e3747fdf07eb71e4a011a958a94278a094ce3b",
   "train_query_ids": [
     0,
     1,
@@ -315,7 +315,7 @@
       }
     },
     {
-      "method": "deep_model_order",
+      "method": "model_prefix_plus_coarse_tail",
       "budget": 20000,
       "query_count": 38,
       "teacher_recall": {
@@ -352,7 +352,7 @@
       }
     },
     {
-      "method": "deep_model_order",
+      "method": "model_prefix_plus_coarse_tail",
       "budget": 50000,
       "query_count": 38,
       "teacher_recall": {
@@ -389,7 +389,7 @@
       }
     },
     {
-      "method": "deep_model_order",
+      "method": "model_prefix_plus_coarse_tail",
       "budget": 100000,
       "query_count": 38,
       "teacher_recall": {
@@ -537,7 +537,7 @@
       }
     },
     {
-      "method": "rich_pairwise_ltr",
+      "method": "sampled_pointwise_logistic",
       "budget": 20000,
       "query_count": 38,
       "teacher_recall": {
@@ -574,7 +574,7 @@
       }
     },
     {
-      "method": "rich_pairwise_ltr",
+      "method": "sampled_pointwise_logistic",
       "budget": 50000,
       "query_count": 38,
       "teacher_recall": {
@@ -611,7 +611,7 @@
       }
     },
     {
-      "method": "rich_pairwise_ltr",
+      "method": "sampled_pointwise_logistic",
       "budget": 100000,
       "query_count": 38,
       "teacher_recall": {
@@ -654,8 +654,8 @@
   },
   "raw_output": {
     "path": "E:\\_repoz\\agent-memory-workspaces\\r4-sampled-pointwise-ltr-raw-v2.json",
-    "bytes": 67494,
-    "sha256": "1540208b1666901f72755d46913c74e7ac8b81b9962ba30bff4d56438f6b2050"
+    "bytes": 70002,
+    "sha256": "d61c7a921038323be208b0dde2003f1eab120661081e63af2311240af1035258"
   },
   "protocol": {
     "teacher_ids_used_for_training_labels": true,

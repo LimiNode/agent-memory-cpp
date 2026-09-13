@@ -38,9 +38,11 @@ arbitrary-support controls remain `.9842` and `.9895` on this 38-query split;
 the latter is not the canonical 152-query topology gate.
 
 The corrected replay currently reports `.9526 @ 50k` and `.9789 @ 100k` for
-the pointwise baseline, versus `.9500` and `.9789` for the restored deep model
-order. These numbers remain split-local diagnostics, not a canonical 152-query
-claim.
+the pointwise baseline, versus `.9500` and `.9789` for the
+`model_prefix_plus_coarse_tail` control. Its first 1,024 addresses are restored
+from model-ranked order, while the remainder is a coarse tail; it is not a
+fully model-ranked 8,192-address frontier. These numbers remain split-local
+diagnostics, not a canonical 152-query claim.
 
 The superseded selective-spill receipt used query IDs 0..37 and raw shortlist
 order; its `.9368-.9605` values are not evidence. The corrected cross-seed

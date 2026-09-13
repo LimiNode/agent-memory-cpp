@@ -55,7 +55,7 @@ def main():
  for qi in ev:
   teachers_q=np.asarray(teachers[qi],dtype=np.int64); tset=set(int(x) for x in teachers_q); seen=np.zeros(n,bool); selected=0; entries=0; touched=0; order=deep['order'][qi]; fs=np.asarray([features(int(qi),int(ad),r) for r,ad in enumerate(order)],dtype=np.float32); pred=model.predict_proba(fs)[:,1]; ranked=order[np.lexsort((order,-pred))]
   # Rich ranker and original model order are evaluated with identical accounting.
-  methods={'sampled_pointwise_logistic':ranked,'deep_model_order':order}
+ methods={'sampled_pointwise_logistic':ranked,'model_prefix_plus_coarse_tail':order}
   for method,stream in methods.items():
    seen[:]=False; selected=entries=touched=0
    for ad in stream:
