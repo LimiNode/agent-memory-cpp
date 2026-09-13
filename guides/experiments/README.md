@@ -4,6 +4,11 @@ The current R4 follow-up is [R4 secondary-assignment geometry and capacity
 gate](2026-09-14-r4-secondary-assignment-geometry.md). It closes the
 centroid-based SPANN/SOAR premise before any replica materialization.
 
+The representative-aware continuation is [R4 representative-aware secondary
+assignment capacity](2026-09-14-r4-representative-assignment-capacity.md). It
+tests the existing K32/document representative sidecars before considering a
+new multi-anchor topology.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked

@@ -729,6 +729,17 @@ therefore gated off; the next route is K32/representative-aware assignment or
 a genuinely new multi-anchor topology. See
 `2026-09-14-r4-secondary-assignment-geometry.md` and its compact receipt.
 
+### R4 representative-aware secondary assignment capacity (2026-09-14)
+
+Using the frozen `representative_documents` sidecars does not repair the raw
+R4 geometry. Representative-centroid ranks and dispersion are nearly identical
+to whole-posting centroids, and the teacher-only M=64 capacity recovers only
+`.676/.723/.849` of primary-prefix misses for seeds 2701/2702/2703. This closes
+the current K32/document-representative-aware secondary-placement shortcut;
+centroid-based SPANN/SOAR materialization remains gated. The next route is a
+genuinely new multi-anchor/partition topology. See
+`2026-09-14-r4-representative-assignment-capacity.md` and its compact receipt.
+
 ### Deep full-frontier ranker and topology follow-ups (2026-09-13)
 
 The four-feature pointwise logistic baseline, with the frozen 1,024 shortlist
