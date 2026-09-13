@@ -752,6 +752,16 @@ not a deployable ANN claim; the next gate is a representative-prefix work
 sweep before THQ-ADC, physical layout, or MDBX measurement. See
 `2026-09-14-r4-representative-max-anchor-route.md` and its compact receipt.
 
+### R4 representative-prefix work sweep (2026-09-14)
+
+The per-address representative prefix has a sharp work/quality transition.
+Three-seed fusion at K=8 reaches only `.9796 @ 50k` with 1.36M scored vectors;
+K=16 reaches `.9974 @ 50k` and `.9908 @ 5k` with 2.10M scored vectors; K=32
+reaches `.999342 @ 50k` with 2.67M scored vectors. K=16 is therefore the
+conditional next arm for packed representative scoring plus progressive
+THQ-ADC, while K=32 remains the exact quality control. See
+`2026-09-14-r4-representative-prefix-sweep.md` and its compact receipt.
+
 ### Deep full-frontier ranker and topology follow-ups (2026-09-13)
 
 The four-feature pointwise logistic baseline, with the frozen 1,024 shortlist

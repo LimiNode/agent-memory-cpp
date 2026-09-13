@@ -14,6 +14,10 @@ route](2026-09-14-r4-representative-max-anchor-route.md). It clears `.99 @ 50k`
 only with a dense full representative score pass, so a prefix/work sweep is
 required before physical THQ/MDBX work.
 
+The resulting [R4 representative-prefix work sweep](2026-09-14-r4-representative-prefix-sweep.md)
+selects K=16 as the next conditional cascade arm and keeps K=32 as the quality
+control.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked
