@@ -24,6 +24,15 @@ def sha256(path: Path) -> str:
     return h.hexdigest()
 
 
+def validate_external(record: dict[str, Any]) -> dict[str, Any]:
+    path = Path(record["path"])
+    actual = {"bytes": path.stat().st_size, "sha256": sha256(path)}
+    expected = {"bytes": int(record["bytes"]), "sha256": record["sha256"]}
+    if actual != expected:
+        raise ValueError(f"frozen input mismatch for {path}: {actual} != {expected}")
+    return {"path": str(path), **actual}
+
+
 def aggregate(values: list[float]) -> dict[str, float]:
     arr = np.asarray(values, dtype=np.float64)
     return {"min": float(arr.min()), "mean": float(arr.mean()),
@@ -56,6 +65,10 @@ def main() -> None:
     queries = np.memmap(Path(frozen["references"]["queries"]["path"]), mode="r", dtype="<f4", shape=(152, 384))
     teachers = np.memmap(Path(frozen["references"]["teacher_ids"]["path"]), mode="r", dtype="<i8", shape=(152, 10))
     budgets = [int(x) for x in args.budgets.split(",") if x]
+    input_artifacts = {
+        role: validate_external(frozen["references"][role])
+        for role in ("document_vectors", "queries", "teacher_ids")
+    }
     comparator = load("r4_fusion_comparator", "run-r4-frozen-comparator.py")
     coverage = load("r4_fusion_coverage", "run-neuroute-r4-coverage-saturation.py")
     seed_data: dict[int, dict[str, Any]] = {}
@@ -70,13 +83,16 @@ def main() -> None:
                     for offset, count in zip(offsets, counts)]
         shortlist = np.fromfile(root / mappings["shortlist_rows"]["file"], dtype="<u4").reshape(152, 1024)
         fp32 = next(x for x in seed_record["layouts"] if x["role"] == "address_major_fp32")
+        validated = [comparator.file_record(root, record)
+                     for record in [*seed_record["mappings"], fp32, *seed_record["model"]]]
         records = np.memmap(root / fp32["file"], mode="r", dtype="<f4", shape=(n, 384))
         doc_to_physical = np.fromfile(root / mappings["document_to_physical"]["file"], dtype="<u4")
         ordered, _ = comparator.model_order(root, seed_record, np.asarray(queries), shortlist,
                                             records, doc_to_physical)
         if any(np.unique(row).size != row.size for row in ordered):
             raise ValueError(f"duplicate model-ranked shortlist address for seed {seed}")
-        seed_data[seed] = {"order": ordered, "postings": postings, "counts": counts}
+        seed_data[seed] = {"order": ordered, "postings": postings, "counts": counts,
+                           "validated_artifacts": validated}
 
     # Reconstruct the deep route using actual address IDs, then map back to
     # the persisted row IDs used by the comparator's posting arrays.
@@ -158,6 +174,8 @@ def main() -> None:
               "r4_manifest_sha256": sha256(args.r4_manifest), "runner_sha256": sha256(Path(__file__)),
               "documents": n, "queries": 152, "depth": args.depth, "budgets": budgets,
               "summaries": summaries,
+              "input_artifacts": {"frozen": input_artifacts,
+                                  "r4": {str(seed): seed_data[seed]["validated_artifacts"] for seed in seed_data}},
               "raw_output": {"path": str(args.raw_output), "sha256": hashlib.sha256(raw_bytes).hexdigest(), "rows": len(raw_rows)},
               "protocol": {"merge": "deterministic equal-consumed-entry round robin; ties by route order",
                            "candidate_budget_definition": "unique document IDs",
