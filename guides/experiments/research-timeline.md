@@ -715,6 +715,19 @@ R4/SPANN implementations; no payload rerank, MDBX page measurement, or
 production activation is claimed. See `2026-09-12-thq-index-wave2.md` and its
 receipt.
 
+### Deep full-frontier ranker and topology follow-ups (2026-09-13)
+
+Training a held-out ranker over the complete 8,192-address R4 frontier yields
+`.9474 @ 50k` and `.9737 @ 100k` mean recall (38-query held-out split).  A
+non-leaking marginal-freshness scheduler reaches `.9717/.9862` and equal
+three-anchor fusion `.9796/.9921` at the same budgets.  A teacher-leaking
+gain-per-entry control remains below `.99 @ 50k`.  These controls confirm that
+simple scheduler changes or three-way replication do not close the gap; the
+next justified arm is selective secondary assignment or a new multi-anchor
+topology.  The experiment is logical posting work only and does not measure
+MDBX pages, latency, or physical I/O.  See
+`2026-09-13-r4-deep-ranker-and-followups.md` and its receipts.
+
 Correction note (2026-09-12): the initial IMI receipt used uint8 arithmetic for
 Cartesian cell IDs and is superseded. The corrected runner uses int32 and
 asserts `cell(63,63) == 4095` and `0 <= cell < 4096`. For SPANN requests above
@@ -791,3 +804,31 @@ over-`.99` aggregate support, while budgeted fusion remains `.9796 @ 50k`:
 the unresolved issue is route fusion/ordering under a global budget.  This is a
 membership oracle only and makes no physical-page or production claim.  See
 `2026-09-13-r4-residual-coverage.md` and its receipt.
+
+### R4 budgeted route fusion gate (2026-09-13)
+
+Under one deterministic whole-posting budget, adding the deep-8,192 route to
+the three shallow seeds does not improve recall through 50k: it remains
+`.9763/.9783/.9796/.9796` at 5k/10k/20k/50k, while posting-entry work rises to
+about `7.1k/14.5k/30.3k/82.5k` and duplication to `1.41/1.45/1.52/1.65`.
+At 100k it reaches `.9921` only after about 143.6k posting entries.  Removing
+the duplicate seed-2701 route and fusing the other two seeds with deep gives
+the same frontier.  The `.9961` membership support therefore does not become a
+`.99 @ 50k` result under naive fusion; marginal-gain scheduling, multi-anchor,
+or a new partition topology is required.  See
+`2026-09-13-r4-route-fusion-gate.md` and its receipt.
+
+### R4 fusion upper bounds and tail scheduling (2026-09-13)
+
+The decomposition separates topology from ordering.  A teacher-leaking
+route-visible arbitrary-posting oracle reaches the membership ceiling `.9961`
+at every tested budget with about 115 posting entries on average, proving that
+the visible R4 routes contain nearly all teacher documents.  A teacher-leaking
+prefix-allocation oracle under the unique-candidate budget reaches only
+`.9868 @ 50k` and `.9921 @ 100k`.  Non-leaking deep-prefix/tail jumps (caps
+`0/2500/5000/10000`) do not exceed the existing `.9796 @ 50k` fusion frontier;
+the best reaches `.9921 @ 100k`.  Thus the remaining gap is within-route
+ordering plus scheduler efficiency, not simple posting occupancy.  The oracle
+rows are explicitly teacher-leaking and no production, MDBX/page, or latency
+claim is made.  See `2026-09-13-r4-fusion-upper-bounds.md` and its compact
+receipt.
