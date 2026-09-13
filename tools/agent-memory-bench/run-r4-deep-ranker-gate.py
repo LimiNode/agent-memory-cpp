@@ -7,7 +7,7 @@ candidate lists.  All budgets count unique document ids; posting work is
 reported separately.
 """
 from __future__ import annotations
-import argparse, hashlib, json, importlib.util, time
+import argparse, hashlib, json, importlib.util, time, platform
 from pathlib import Path
 from typing import Any
 import numpy as np
@@ -66,6 +66,8 @@ def main():
         seen=set(int(x) for x in model_prefix[qi]); merged=list(map(int,model_prefix[qi]))+[int(x) for x in tail if int(x) not in seen]
         route_orders.append(np.asarray(merged[:a.depth],dtype=np.int32))
     train_q=np.arange(min(a.train_queries,qcount),dtype=np.int32); eval_q=np.arange(min(a.train_queries,qcount),qcount,dtype=np.int32)
+    if np.intersect1d(train_q, eval_q).size:
+        raise ValueError('train/eval query split overlaps')
     # Feature columns: cosine(query,address), inverse deep rank, log posting size,
     # and coarse cosine rank.  No teacher-derived feature is used at inference.
     X=[]; y=[]
@@ -97,6 +99,6 @@ def main():
     for b in budgets:
         s=[r for r in rows if r['budget']==b]; summary.append({'budget':b,'teacher_recall':agg([r['teacher_recall'] for r in s]),'actual_unique_candidates':agg([r['actual_unique_candidates'] for r in s]),'posting_entries_touched':agg([r['posting_entries_touched'] for r in s]),'postings_touched':agg([r['postings_touched'] for r in s])})
     raw=(json.dumps({'schema_version':1,'rows':rows},separators=(',',':'),sort_keys=True)+'\n').encode(); a.raw_output.parent.mkdir(parents=True,exist_ok=True); a.raw_output.write_bytes(raw)
-    out={'schema_version':1,'family':'r4_deep_ltr_baseline_v2','execution_status':'EXECUTED','production_activation':False,'fixture_manifest_sha256':sha256(a.thq_manifest),'r4_manifest_sha256':sha256(a.r4_manifest),'runner_sha256':sha256(Path(__file__)),'depth':a.depth,'train_queries':len(train_q),'held_out_queries':len(eval_q),'feature_columns':['address_cosine','inverse_deep_rank','log_posting_size','normalized_rank'],'fit_ms':fit_ms,'held_out_summary':summary,'raw_output':{'path':str(a.raw_output),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()},'protocol':{'teacher_ids_used_for_training_labels':True,'teacher_ids_used_at_inference':False,'budget_definition':'unique document ids','physical_page_bytes':'not measured','production_activation':False,'baseline_scope':'four-feature pointwise logistic model; not a complete LTR search'}}
+    out={'schema_version':1,'family':'r4_deep_ltr_baseline_v2','execution_status':'EXECUTED','production_activation':False,'fixture_manifest_sha256':sha256(a.thq_manifest),'r4_manifest_sha256':sha256(a.r4_manifest),'runner_sha256':sha256(Path(__file__)),'depth':a.depth,'train_queries':len(train_q),'held_out_queries':len(eval_q),'train_query_ids':[int(x) for x in train_q],'held_out_query_ids':[int(x) for x in eval_q],'feature_columns':['address_cosine','inverse_deep_rank','log_posting_size','normalized_rank'],'fit_ms':fit_ms,'model':{'type':'sklearn.linear_model.LogisticRegression','sklearn_version':__import__('sklearn').__version__,'numpy_version':np.__version__,'python_version':platform.python_version(),'coef':model.coef_.tolist(),'intercept':model.intercept_.tolist(),'classes':model.classes_.tolist(),'positive_label_count':int(np.count_nonzero(y==1)),'negative_label_count':int(np.count_nonzero(y==0))},'held_out_summary':summary,'raw_output':{'path':str(a.raw_output),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()},'protocol':{'teacher_ids_used_for_training_labels':True,'teacher_ids_used_at_inference':False,'budget_definition':'unique document ids','physical_page_bytes':'not measured','production_activation':False,'baseline_scope':'four-feature pointwise logistic model; not a complete LTR search','split_semantics':'research split only; canonical 152-query fixture is not an untouched final holdout'}}
     a.output.parent.mkdir(parents=True,exist_ok=True); a.output.write_text(json.dumps(out,indent=2)+'\n')
 if __name__=='__main__': main()

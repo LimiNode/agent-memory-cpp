@@ -33,14 +33,15 @@ claim; physical pages, latency, and MDBX I/O were not measured.
 
 On the same three route streams (seed2702, seed2703, deep-8192), a scheduler
 that maximizes marginal fresh candidates per posting entry reaches mean .9717
- at 50k and .9862 at 100k.  Correct equal-quota round-robin fusion reaches
-.9796 at 50k and .9921 at 100k.  Exact teacher-leaking prefix and
+ at 50k and .9862 at 100k.  Deterministic posting round-robin fusion reaches
+.9796 at 50k and .9921 at 100k.  This is a posting-order control, not an
+equal-candidate quota and not a true multi-anchor assignment. Exact
+teacher-leaking prefix and
 arbitrary-support oracles remain reported only in the #388 receipt.  These
 controls do not recover the missing .99 @ 50k frontier.
 
-Balanced subposting accounting (256/512/1024-entry chunks) changes logical
-posting granularity only; it cannot improve membership recall without a new
-assignment topology.  No FP32 payload was duplicated.
+No balanced-subposting quality claim is made: the former chunk counter was only
+an accounting stub and has been removed. No FP32 payload was duplicated.
 
 ## Decision
 

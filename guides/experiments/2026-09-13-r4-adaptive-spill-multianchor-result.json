@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "family": "r4_adaptive_spill_multianchor_v2",
+  "family": "r4_adaptive_spill_multianchor_v3",
   "execution_status": "EXECUTED",
   "production_activation": false,
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
-  "runner_sha256": "a5ac323153007b4a0b660493a42a8fecb6b214137994500eb3bbc7912a66f4e0",
+  "runner_sha256": "40ceaea2b25449d3e1635c66a98eb31380a72a73dfa05e52c34ae0dbea27ccc6",
   "summary": [
     {
       "mode": "adaptive",
@@ -116,7 +116,7 @@
       }
     },
     {
-      "mode": "equal_quota",
+      "mode": "posting_round_robin",
       "budget": 20000,
       "teacher_recall": {
         "min": 0.7,
@@ -152,7 +152,7 @@
       }
     },
     {
-      "mode": "equal_quota",
+      "mode": "posting_round_robin",
       "budget": 50000,
       "teacher_recall": {
         "min": 0.7,
@@ -188,7 +188,7 @@
       }
     },
     {
-      "mode": "equal_quota",
+      "mode": "posting_round_robin",
       "budget": 100000,
       "teacher_recall": {
         "min": 0.7,
@@ -224,19 +224,15 @@
       }
     }
   ],
-  "balanced_subposting_chunks": [
-    256,
-    512,
-    1024
-  ],
   "raw_output": {
-    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-adaptive-spill-multianchor-raw.json",
-    "bytes": 226160,
-    "sha256": "e4cac75223ae7f4b0614bf05c438a18f4d6d6482849600be8aaf9089f84bf282"
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-adaptive-spill-multianchor-raw-v3.json",
+    "bytes": 134567,
+    "sha256": "777cce171898e26c3037ad17d29567c7fb206d1f054bec046338443d41b09377"
   },
   "protocol": {
     "adaptive_scheduler_teacher_free": true,
-    "equal_quota_round_robin": true,
+    "posting_round_robin_control": true,
+    "teacher_ids_used_for_index": false,
     "exact_oracles": "reported by r4 fusion upper-bound receipt; not duplicated here",
     "budget_definition": "unique document ids",
     "physical_page_bytes": "not measured",

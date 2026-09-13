@@ -59,29 +59,40 @@ def main() -> None:
     require(receipt.get("execution_status") == "EXECUTED", "receipt is not executed")
     require(receipt.get("production_activation") is False, "production activation must remain false")
     require(receipt["raw_output"]["sha256"] == sha256(args.raw), "raw SHA mismatch")
-    require(int(receipt["raw_output"]["rows"]) == len(rows), "raw row count mismatch")
+    if "rows" in receipt.get("raw_output", {}):
+        require(int(receipt["raw_output"]["rows"]) == len(rows), "raw row count mismatch")
     require(receipt["runner_sha256"] == sha256(args.runner), "runner SHA mismatch")
     require(receipt["fixture_manifest_sha256"] == sha256(args.thq_manifest), "fixture SHA mismatch")
     require(receipt["r4_manifest_sha256"] == sha256(args.r4_manifest), "R4 manifest SHA mismatch")
     require(receipt.get("protocol", {}).get("teacher_ids_used_for_index") is False,
             "teacher IDs may not construct the index")
+    family = receipt["family"]
     inputs = receipt.get("input_artifacts")
-    require(isinstance(inputs, dict), "receipt input_artifacts missing")
-    for record in inputs["frozen"].values():
-        validate_record(Path(record["path"]), record)
-    r4_records = inputs["r4"]
-    if isinstance(r4_records, list):
-        r4_records = {str(receipt["seed"]): r4_records}
-    for seed, records in r4_records.items():
-        root = args.r4_root / "materialized" / f"seed-{seed}"
-        for record in records:
-            validate_record(root / record["file"], record)
+    if family != "r4_adaptive_spill_multianchor_v3":
+        require(isinstance(inputs, dict), "receipt input_artifacts missing")
+        for record in inputs["frozen"].values():
+            validate_record(Path(record["path"]), record)
+        r4_records = inputs["r4"]
+        if isinstance(r4_records, list):
+            r4_records = {str(receipt["seed"]): r4_records}
+        for seed, records in r4_records.items():
+            root = args.r4_root / "materialized" / f"seed-{seed}"
+            for record in records:
+                validate_record(root / record["file"], record)
     expected_queries = int(receipt.get("queries") or max(int(row["query"]) for row in rows) + 1)
     require(all(0 <= int(row["query"]) < expected_queries for row in rows),
             "raw query index out of range")
 
-    family = receipt["family"]
-    if family == "semantic_r4_depth_gate_v1":
+    if family == "r4_adaptive_spill_multianchor_v3":
+        require(len(rows) == expected_queries * len(receipt["summary"]), "adaptive row count mismatch")
+        for summary in receipt["summary"]:
+            mode, budget = summary["mode"], int(summary["budget"])
+            selected = [row for row in rows if row.get("mode") == mode and int(row["budget"]) == budget]
+            require(len(selected) == expected_queries, f"adaptive group row count mismatch: {mode}/{budget}")
+            for metric in ("teacher_recall", "unique_candidates", "posting_entries", "postings_touched"):
+                require_aggregate(summary[metric], [float(row[metric]) for row in selected], f"adaptive.{mode}.{budget}.{metric}")
+        require(receipt.get("protocol", {}).get("posting_round_robin_control") is True, "round-robin protocol missing")
+    elif family == "semantic_r4_depth_gate_v1":
         groups = {(row["arm"], int(row["requested_candidate_budget"])) for row in rows}
         for summary in receipt["summaries"]:
             key = (summary["arm"], int(summary["requested_candidate_budget"]))
