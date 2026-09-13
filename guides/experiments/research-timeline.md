@@ -715,6 +715,20 @@ R4/SPANN implementations; no payload rerank, MDBX page measurement, or
 production activation is claimed. See `2026-09-12-thq-index-wave2.md` and its
 receipt.
 
+### R4 secondary-assignment geometry and capacity gate (2026-09-14)
+
+The first direct geometry check rejects treating raw R4 addresses as semantic
+VQ cells. Across all three seeds, the primary centroid has median rank
+11k--18k among occupied E5 centroids, primary/nearest cosine-distance ratios
+near 1.6, and posting dispersion around .108. A teacher-only secondary
+placement oracle over the nearest 8/16/32/64 alternative centroids recovers
+only `.669/.716/.849` of primary-prefix misses at M=64 for seeds 2701/2702/2703.
+This is a logical, teacher-leaking capacity result, not a SPANN/SOAR
+implementation or a physical replica measurement. Centroid-based closure is
+therefore gated off; the next route is K32/representative-aware assignment or
+a genuinely new multi-anchor topology. See
+`2026-09-14-r4-secondary-assignment-geometry.md` and its compact receipt.
+
 ### Deep full-frontier ranker and topology follow-ups (2026-09-13)
 
 The four-feature pointwise logistic baseline, with the frozen 1,024 shortlist

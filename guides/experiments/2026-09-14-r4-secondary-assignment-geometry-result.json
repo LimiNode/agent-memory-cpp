@@ -1,0 +1,701 @@
+{
+  "capacity_oracle": {
+    "alternative_metric": "nearest normalized mean E5 centroid by cosine distance",
+    "m_values": [
+      8,
+      16,
+      32,
+      64
+    ],
+    "primary_route": "each seed's frozen model-ranked 1024-address prefix",
+    "rows": [
+      {
+        "best_prefix_posting_entries": {
+          "max": 20386.0,
+          "mean": 11587.848484848484,
+          "min": 889.0,
+          "p05": 1884.2,
+          "p50": 11649.0,
+          "p95": 20163.2
+        },
+        "best_query_rank": {
+          "max": 920.0,
+          "mean": 432.1818181818182,
+          "min": 41.0,
+          "p05": 57.8,
+          "p50": 416.0,
+          "p95": 810.0
+        },
+        "m": 8,
+        "miss_pairs": 139,
+        "recoverable_pairs": 33,
+        "seed": 2026082701,
+        "support_over_primary_misses": 0.23741007194244604
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 20034.0,
+          "mean": 10464.891304347826,
+          "min": 247.0,
+          "p05": 1571.75,
+          "p50": 11264.5,
+          "p95": 19292.0
+        },
+        "best_query_rank": {
+          "max": 813.0,
+          "mean": 376.69565217391306,
+          "min": 13.0,
+          "p05": 35.0,
+          "p50": 392.0,
+          "p95": 792.0
+        },
+        "m": 16,
+        "miss_pairs": 139,
+        "recoverable_pairs": 46,
+        "seed": 2026082701,
+        "support_over_primary_misses": 0.33093525179856115
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 21656.0,
+          "mean": 9560.119402985074,
+          "min": 247.0,
+          "p05": 448.7,
+          "p50": 9119.0,
+          "p95": 19245.5
+        },
+        "best_query_rank": {
+          "max": 993.0,
+          "mean": 356.76119402985074,
+          "min": 13.0,
+          "p05": 31.0,
+          "p50": 309.0,
+          "p95": 817.0999999999999
+        },
+        "m": 32,
+        "miss_pairs": 139,
+        "recoverable_pairs": 67,
+        "seed": 2026082701,
+        "support_over_primary_misses": 0.48201438848920863
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 24699.0,
+          "mean": 8556.89247311828,
+          "min": 53.0,
+          "p05": 240.60000000000002,
+          "p50": 7972.0,
+          "p95": 19249.6
+        },
+        "best_query_rank": {
+          "max": 1020.0,
+          "mean": 314.1720430107527,
+          "min": 5.0,
+          "p05": 10.600000000000001,
+          "p50": 223.0,
+          "p95": 863.0
+        },
+        "m": 64,
+        "miss_pairs": 139,
+        "recoverable_pairs": 93,
+        "seed": 2026082701,
+        "support_over_primary_misses": 0.6690647482014388
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 24440.0,
+          "mean": 12222.838709677419,
+          "min": 143.0,
+          "p05": 2240.5,
+          "p50": 11346.0,
+          "p95": 21876.0
+        },
+        "best_query_rank": {
+          "max": 1006.0,
+          "mean": 421.83870967741933,
+          "min": 10.0,
+          "p05": 55.5,
+          "p50": 416.0,
+          "p95": 798.0
+        },
+        "m": 8,
+        "miss_pairs": 148,
+        "recoverable_pairs": 31,
+        "seed": 2026082702,
+        "support_over_primary_misses": 0.20945945945945946
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 24154.0,
+          "mean": 11096.12,
+          "min": 143.0,
+          "p05": 699.8,
+          "p50": 11367.5,
+          "p95": 21519.84999999999
+        },
+        "best_query_rank": {
+          "max": 1006.0,
+          "mean": 389.6,
+          "min": 9.0,
+          "p05": 25.200000000000003,
+          "p50": 349.5,
+          "p95": 832.2
+        },
+        "m": 16,
+        "miss_pairs": 148,
+        "recoverable_pairs": 50,
+        "seed": 2026082702,
+        "support_over_primary_misses": 0.33783783783783783
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 24234.0,
+          "mean": 10162.291666666666,
+          "min": 119.0,
+          "p05": 502.7000000000001,
+          "p50": 9976.5,
+          "p95": 20155.5
+        },
+        "best_query_rank": {
+          "max": 994.0,
+          "mean": 360.18055555555554,
+          "min": 5.0,
+          "p05": 14.400000000000002,
+          "p50": 288.0,
+          "p95": 831.8
+        },
+        "m": 32,
+        "miss_pairs": 148,
+        "recoverable_pairs": 72,
+        "seed": 2026082702,
+        "support_over_primary_misses": 0.4864864864864865
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 22243.0,
+          "mean": 9536.641509433963,
+          "min": 119.0,
+          "p05": 396.5,
+          "p50": 9782.0,
+          "p95": 19854.75
+        },
+        "best_query_rank": {
+          "max": 989.0,
+          "mean": 342.08490566037733,
+          "min": 5.0,
+          "p05": 12.0,
+          "p50": 279.0,
+          "p95": 877.5
+        },
+        "m": 64,
+        "miss_pairs": 148,
+        "recoverable_pairs": 106,
+        "seed": 2026082702,
+        "support_over_primary_misses": 0.7162162162162162
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 22555.0,
+          "mean": 11291.897959183674,
+          "min": 810.0,
+          "p05": 1331.0,
+          "p50": 11927.0,
+          "p95": 21152.8
+        },
+        "best_query_rank": {
+          "max": 1005.0,
+          "mean": 454.0408163265306,
+          "min": 32.0,
+          "p05": 48.2,
+          "p50": 468.0,
+          "p95": 972.9999999999999
+        },
+        "m": 8,
+        "miss_pairs": 152,
+        "recoverable_pairs": 49,
+        "seed": 2026082703,
+        "support_over_primary_misses": 0.3223684210526316
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 25262.0,
+          "mean": 10062.5625,
+          "min": 367.0,
+          "p05": 892.65,
+          "p50": 9946.0,
+          "p95": 20962.75
+        },
+        "best_query_rank": {
+          "max": 1007.0,
+          "mean": 396.7625,
+          "min": 19.0,
+          "p05": 32.95,
+          "p50": 295.0,
+          "p95": 983.4
+        },
+        "m": 16,
+        "miss_pairs": 152,
+        "recoverable_pairs": 80,
+        "seed": 2026082703,
+        "support_over_primary_misses": 0.5263157894736842
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 25262.0,
+          "mean": 8380.582524271844,
+          "min": 367.0,
+          "p05": 475.8,
+          "p50": 7109.0,
+          "p95": 19924.799999999992
+        },
+        "best_query_rank": {
+          "max": 1002.0,
+          "mean": 325.4757281553398,
+          "min": 17.0,
+          "p05": 21.800000000000004,
+          "p50": 214.0,
+          "p95": 948.0999999999997
+        },
+        "m": 32,
+        "miss_pairs": 152,
+        "recoverable_pairs": 103,
+        "seed": 2026082703,
+        "support_over_primary_misses": 0.6776315789473685
+      },
+      {
+        "best_prefix_posting_entries": {
+          "max": 25262.0,
+          "mean": 7225.937984496124,
+          "min": 10.0,
+          "p05": 233.60000000000002,
+          "p50": 5160.0,
+          "p95": 19998.199999999997
+        },
+        "best_query_rank": {
+          "max": 1020.0,
+          "mean": 276.9612403100775,
+          "min": 1.0,
+          "p05": 12.0,
+          "p50": 155.0,
+          "p95": 898.6
+        },
+        "m": 64,
+        "miss_pairs": 152,
+        "recoverable_pairs": 129,
+        "seed": 2026082703,
+        "support_over_primary_misses": 0.8486842105263158
+      }
+    ],
+    "teacher_leaking": true
+  },
+  "dimension": 384,
+  "documents": 1000000,
+  "execution_status": "EXECUTED",
+  "family": "semantic_r4_secondary_assignment_geometry_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "geometry": {
+    "2026082701": {
+      "nearest_centroid_distance": {
+        "max": 0.15765166282653809,
+        "mean": 0.10426452824958149,
+        "min": 0.0,
+        "p05": 0.07580421268939971,
+        "p50": 0.10557353496551514,
+        "p95": 0.12721749842166902
+      },
+      "posting_centroid_dispersion": {
+        "max": 0.14344371855258942,
+        "mean": 0.10421034284261017,
+        "min": 0.0,
+        "p05": 0.07097566872835159,
+        "p50": 0.10816424712538719,
+        "p95": 0.12515842616558076
+      },
+      "posting_size": {
+        "max": 353.0,
+        "mean": 15.359095656447748,
+        "min": 1.0,
+        "p05": 3.0,
+        "p50": 11.0,
+        "p95": 41.0
+      },
+      "primary_centroid_rank": {
+        "max": 65107.0,
+        "mean": 22629.595262974573,
+        "min": 1.0,
+        "p05": 565.0,
+        "p50": 17779.0,
+        "p95": 59662.7
+      },
+      "primary_distance": {
+        "max": 0.3586806058883667,
+        "mean": 0.1775805889646669,
+        "min": 0.05609428882598877,
+        "p05": 0.13190868198871614,
+        "p50": 0.17556270956993103,
+        "p95": 0.23095961809158325
+      },
+      "primary_to_nearest_distance_ratio": {
+        "max": 25291444.0,
+        "mean": 17038.49610934934,
+        "min": 1.0,
+        "p05": 1.264333826303482,
+        "p50": 1.6629595756530762,
+        "p95": 2.4538797020912173
+      },
+      "sample_documents": 11484
+    },
+    "2026082702": {
+      "nearest_centroid_distance": {
+        "max": 0.1544845700263977,
+        "mean": 0.10406191384945959,
+        "min": 0.0,
+        "p05": 0.07552364468574524,
+        "p50": 0.10554912686347961,
+        "p95": 0.12706306874752044
+      },
+      "posting_centroid_dispersion": {
+        "max": 0.1420184224843979,
+        "mean": 0.10301802353983572,
+        "min": 0.0,
+        "p05": 0.06540495678782464,
+        "p50": 0.10771535336971283,
+        "p95": 0.12456982508301735
+      },
+      "posting_size": {
+        "max": 430.0,
+        "mean": 15.37539015052507,
+        "min": 1.0,
+        "p05": 2.0,
+        "p50": 11.0,
+        "p95": 42.0
+      },
+      "primary_centroid_rank": {
+        "max": 65025.0,
+        "mean": 21640.018634622083,
+        "min": 1.0,
+        "p05": 424.15,
+        "p50": 16423.0,
+        "p95": 59487.7
+      },
+      "primary_distance": {
+        "max": 0.3310699462890625,
+        "mean": 0.17648626110334506,
+        "min": 0.04960811138153076,
+        "p05": 0.13122940063476562,
+        "p50": 0.17427533864974976,
+        "p95": 0.22908116281032562
+      },
+      "primary_to_nearest_distance_ratio": {
+        "max": 23763662.0,
+        "mean": 10503.08543110993,
+        "min": 1.0,
+        "p05": 1.2598822295665741,
+        "p50": 1.6587970852851868,
+        "p95": 2.436548984050751
+      },
+      "sample_documents": 11484
+    },
+    "2026082703": {
+      "nearest_centroid_distance": {
+        "max": 0.16056954860687256,
+        "mean": 0.10449767039549637,
+        "min": 0.0,
+        "p05": 0.07703350186347961,
+        "p50": 0.10583421587944031,
+        "p95": 0.12743213772773743
+      },
+      "posting_centroid_dispersion": {
+        "max": 0.14378760755062103,
+        "mean": 0.10454080575012992,
+        "min": 0.0,
+        "p05": 0.0737018845975399,
+        "p50": 0.10820219665765762,
+        "p95": 0.12509871274232864
+      },
+      "posting_size": {
+        "max": 299.0,
+        "mean": 15.33954073415042,
+        "min": 1.0,
+        "p05": 3.0,
+        "p50": 11.0,
+        "p95": 40.0
+      },
+      "primary_centroid_rank": {
+        "max": 65180.0,
+        "mean": 18754.27194357367,
+        "min": 1.0,
+        "p05": 183.14999999999998,
+        "p50": 11266.0,
+        "p95": 58379.85
+      },
+      "primary_distance": {
+        "max": 0.3673045039176941,
+        "mean": 0.17112628662993126,
+        "min": 0.07021427154541016,
+        "p05": 0.12389014065265655,
+        "p50": 0.16847741603851318,
+        "p95": 0.2275854915380478
+      },
+      "primary_to_nearest_distance_ratio": {
+        "max": 23067414.0,
+        "mean": 4271.10552236062,
+        "min": 1.0,
+        "p05": 1.2011678755283355,
+        "p50": 1.595262348651886,
+        "p95": 2.385650968551636
+      },
+      "sample_documents": 11484
+    }
+  },
+  "input_artifacts": {
+    "document_vectors": {
+      "bytes": 1536000000,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\comparison\\input\\document-vectors-f32le.bin",
+      "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+    },
+    "queries": {
+      "bytes": 233472,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_queries.bin",
+      "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+    },
+    "teacher_ids": {
+      "bytes": 12160,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_teacher_ids.bin",
+      "sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d"
+    }
+  },
+  "production_activation": false,
+  "protocol": {
+    "capacity_oracle": "teacher IDs select evaluation rows only; no replica is materialized",
+    "centroid_definition": "mean of normalized frozen E5 document vectors in each occupied R4 posting, then L2 normalization",
+    "geometry_distance": "cosine distance = 1 - dot product",
+    "model_ranked_route": "frozen model-ranked 1024-address prefix",
+    "physical_page_bytes": "not measured",
+    "posting_dispersion": "mean cosine distance of documents to their posting centroid",
+    "production_activation": false
+  },
+  "queries": 152,
+  "r4_artifacts": {
+    "2026082701": [
+      {
+        "bytes": 260432,
+        "file": "occupied.u32le",
+        "role": "occupied_addresses",
+        "sha256": "34a6a6fc990a81d6e1a93d61a1acc0b167c41492cfe0e1f4d7f7c494440312f7"
+      },
+      {
+        "bytes": 260432,
+        "file": "address-offsets.u32le",
+        "role": "address_offsets",
+        "sha256": "1dbf1126ccadccd3c4ef54cc98f5bbdb896435281563fd647fb56b2683bb299d"
+      },
+      {
+        "bytes": 260432,
+        "file": "address-counts.u32le",
+        "role": "address_counts",
+        "sha256": "abc81d7a2c704b4555f6b99789df5a05889e5d5133089b8033e96fb9d64f4a81"
+      },
+      {
+        "bytes": 65108,
+        "file": "representative-counts.u8",
+        "role": "representative_counts",
+        "sha256": "f3e7075183f9679ae3a12de881e6c08ee2ab22c241b02ee5df6a1a818da8fbc1"
+      },
+      {
+        "bytes": 3566440,
+        "file": "representative-documents.i32le",
+        "role": "representative_documents",
+        "sha256": "f32e0d3d560472d753c3e7c763068238ab60ec8492b87b0590816efba42c8b0a"
+      },
+      {
+        "bytes": 4000000,
+        "file": "document-to-physical.u32le",
+        "role": "document_to_physical",
+        "sha256": "14610713bf24446fc2c7f953ca62c1303d7a160c9a6597d247019787b6f16990"
+      },
+      {
+        "bytes": 4000000,
+        "file": "physical-to-document.i32le",
+        "role": "physical_to_document",
+        "sha256": "95edf88afcfafaa7c036c54d070110286cb35b7ca7a059487218b1fa9700ef0b"
+      },
+      {
+        "bytes": 233472,
+        "file": "queries.f32le",
+        "role": "query_vectors",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      {
+        "bytes": 622592,
+        "file": "shortlist-rows.u32le",
+        "role": "shortlist_rows",
+        "sha256": "87202c63c19c47194f023495e30ba8b4d5e57b0fae6e59d9bb7be993ebecf016"
+      },
+      {
+        "bytes": 13697024,
+        "file": "scalar-features.f32le",
+        "role": "scalar_features",
+        "sha256": "3f646659bd6615225ba4a2c30b8102854562d51b99e1ee14b2ba615ce4765ca1"
+      },
+      {
+        "bytes": 1536000000,
+        "file": "address-major-fp32.records",
+        "role": "address_major_fp32",
+        "sha256": "e68d68bdf0083a9cbd1c677cc35e85f3bd25a209f30f0a0f692d8869673443b7"
+      }
+    ],
+    "2026082702": [
+      {
+        "bytes": 260156,
+        "file": "occupied.u32le",
+        "role": "occupied_addresses",
+        "sha256": "e5476ceb94d6d5a756d5ce48395bfb81da35ebdd1562614564c6424cb39ebc6f"
+      },
+      {
+        "bytes": 260156,
+        "file": "address-offsets.u32le",
+        "role": "address_offsets",
+        "sha256": "ee80cdae26c21ee2b221bb181feff68990c0a83bba182da3b75c8e8ddf73fb95"
+      },
+      {
+        "bytes": 260156,
+        "file": "address-counts.u32le",
+        "role": "address_counts",
+        "sha256": "7072ee2ceb5d00aba4653f0596210a431f6c5685a84a999bd1a31d48dc7d4eb0"
+      },
+      {
+        "bytes": 65039,
+        "file": "representative-counts.u8",
+        "role": "representative_counts",
+        "sha256": "da353a678b5a589d1870643b4eeb4913030fde26f94a06ef0a432408b45ec8c1"
+      },
+      {
+        "bytes": 3504816,
+        "file": "representative-documents.i32le",
+        "role": "representative_documents",
+        "sha256": "48b446ba548c4a86f60dd657ab308450d05140e298617b16aa97c5631e36a733"
+      },
+      {
+        "bytes": 4000000,
+        "file": "document-to-physical.u32le",
+        "role": "document_to_physical",
+        "sha256": "c9c8df10f2064d9eec824285741a558ddef3ff3ba0a246e45c8a251ec6eac36f"
+      },
+      {
+        "bytes": 4000000,
+        "file": "physical-to-document.i32le",
+        "role": "physical_to_document",
+        "sha256": "cf4e2342c4079ee658c42f1ff7ba24482c1f5eebb70a848db8cede82fcc37581"
+      },
+      {
+        "bytes": 233472,
+        "file": "queries.f32le",
+        "role": "query_vectors",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      {
+        "bytes": 622592,
+        "file": "shortlist-rows.u32le",
+        "role": "shortlist_rows",
+        "sha256": "1a9c8932229e33a014295bb93a868e6ec6497378d9caf2acd934926f667bb95e"
+      },
+      {
+        "bytes": 13697024,
+        "file": "scalar-features.f32le",
+        "role": "scalar_features",
+        "sha256": "66cf22ece908be1f3ef9e7a59a2628ed6d9f0bc2245d6057e63b7621561cc67f"
+      },
+      {
+        "bytes": 1536000000,
+        "file": "address-major-fp32.records",
+        "role": "address_major_fp32",
+        "sha256": "e92e8b6eebbc630e345cde0c04d5c07847aef022558154e130cf097fc99c0011"
+      }
+    ],
+    "2026082703": [
+      {
+        "bytes": 260764,
+        "file": "occupied.u32le",
+        "role": "occupied_addresses",
+        "sha256": "9aab0046fff4eb8356f00c2c90ad964d7e586c907bf0b1c73d04b3173f4b48f9"
+      },
+      {
+        "bytes": 260764,
+        "file": "address-offsets.u32le",
+        "role": "address_offsets",
+        "sha256": "ab07fa0847856b8a6271c6fb83506a8d31eb722718571f09aaf0200a8121355d"
+      },
+      {
+        "bytes": 260764,
+        "file": "address-counts.u32le",
+        "role": "address_counts",
+        "sha256": "c84b5e869c1321296b14bbd3f62cf576045cb0f4d2acd8de91c487bad09c07b6"
+      },
+      {
+        "bytes": 65191,
+        "file": "representative-counts.u8",
+        "role": "representative_counts",
+        "sha256": "37d7098b793d1c72dd6a082d3f0df769a6b40535410334cb19190149da44321c"
+      },
+      {
+        "bytes": 3594972,
+        "file": "representative-documents.i32le",
+        "role": "representative_documents",
+        "sha256": "2e2ef52a17916c883bd29506cc4d7df962b6a62e67f53b0aa0a62a1dc35bfd7a"
+      },
+      {
+        "bytes": 4000000,
+        "file": "document-to-physical.u32le",
+        "role": "document_to_physical",
+        "sha256": "11c2bce4121103a49590984a01a9026555a64470338dc515253dccad90337f8d"
+      },
+      {
+        "bytes": 4000000,
+        "file": "physical-to-document.i32le",
+        "role": "physical_to_document",
+        "sha256": "fd03d6b953bdcbfb0aceca6eec61e834aae720caac63616c8d1f61b2e33e5da8"
+      },
+      {
+        "bytes": 233472,
+        "file": "queries.f32le",
+        "role": "query_vectors",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      {
+        "bytes": 622592,
+        "file": "shortlist-rows.u32le",
+        "role": "shortlist_rows",
+        "sha256": "882fd53fe2db76e724de85220854c92e81fae324482c7777a4d414e1311859b5"
+      },
+      {
+        "bytes": 13697024,
+        "file": "scalar-features.f32le",
+        "role": "scalar_features",
+        "sha256": "1350f95a8fbf1bd82ed25c30d271795044c10db7ad4f26e6def0bd782925d805"
+      },
+      {
+        "bytes": 1536000000,
+        "file": "address-major-fp32.records",
+        "role": "address_major_fp32",
+        "sha256": "fe5672ef8e7c0eb3257aafe482b96744aa96043da86c6bc1a90850036f3539d8"
+      }
+    ]
+  },
+  "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "raw_output": {
+    "bytes": 804824,
+    "capacity_rows": 1756,
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-secondary-assignment-geometry-raw.json",
+    "sha256": "c6713965fc2c839e4b0f9e477510488c0a861fd47d531f1c6cdea2733dbbe365"
+  },
+  "route_seeds": [
+    2026082701,
+    2026082702,
+    2026082703
+  ],
+  "runner_sha256": "e0997948b20980f9b73c46867f443b1939706012031099cd64b6b17b43766344",
+  "sample_size_actual": 11484,
+  "sample_size_requested": 10000,
+  "schema_version": 1
+}

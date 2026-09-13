@@ -1,5 +1,9 @@
 # Experiment Notes
 
+The current R4 follow-up is [R4 secondary-assignment geometry and capacity
+gate](2026-09-14-r4-secondary-assignment-geometry.md). It closes the
+centroid-based SPANN/SOAR premise before any replica materialization.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked
