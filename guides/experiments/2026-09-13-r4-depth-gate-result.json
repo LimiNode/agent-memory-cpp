@@ -9,11 +9,190 @@
   "execution_status": "EXECUTED",
   "family": "semantic_r4_depth_gate_v1",
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
-  "prefix_parity": {
-    "coarse_first_1024_source": "frozen shortlist rows",
-    "model_first_1024_source": "frozen model-ranked order",
-    "passed": true,
-    "required": 1024
+  "input_artifacts": {
+    "frozen": {
+      "document_vectors": {
+        "bytes": 1536000000,
+        "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\comparison\\input\\document-vectors-f32le.bin",
+        "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+      },
+      "queries": {
+        "bytes": 233472,
+        "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_queries.bin",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      "teacher_ids": {
+        "bytes": 12160,
+        "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-document-routing-bakeoff-v2\\eval_teacher_ids.bin",
+        "sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d"
+      }
+    },
+    "r4": [
+      {
+        "bytes": 260432,
+        "file": "occupied.u32le",
+        "role": "occupied_addresses",
+        "sha256": "34a6a6fc990a81d6e1a93d61a1acc0b167c41492cfe0e1f4d7f7c494440312f7"
+      },
+      {
+        "bytes": 260432,
+        "file": "address-offsets.u32le",
+        "role": "address_offsets",
+        "sha256": "1dbf1126ccadccd3c4ef54cc98f5bbdb896435281563fd647fb56b2683bb299d"
+      },
+      {
+        "bytes": 260432,
+        "file": "address-counts.u32le",
+        "role": "address_counts",
+        "sha256": "abc81d7a2c704b4555f6b99789df5a05889e5d5133089b8033e96fb9d64f4a81"
+      },
+      {
+        "bytes": 65108,
+        "file": "representative-counts.u8",
+        "role": "representative_counts",
+        "sha256": "f3e7075183f9679ae3a12de881e6c08ee2ab22c241b02ee5df6a1a818da8fbc1"
+      },
+      {
+        "bytes": 3566440,
+        "file": "representative-documents.i32le",
+        "role": "representative_documents",
+        "sha256": "f32e0d3d560472d753c3e7c763068238ab60ec8492b87b0590816efba42c8b0a"
+      },
+      {
+        "bytes": 4000000,
+        "file": "document-to-physical.u32le",
+        "role": "document_to_physical",
+        "sha256": "14610713bf24446fc2c7f953ca62c1303d7a160c9a6597d247019787b6f16990"
+      },
+      {
+        "bytes": 4000000,
+        "file": "physical-to-document.i32le",
+        "role": "physical_to_document",
+        "sha256": "95edf88afcfafaa7c036c54d070110286cb35b7ca7a059487218b1fa9700ef0b"
+      },
+      {
+        "bytes": 233472,
+        "file": "queries.f32le",
+        "role": "query_vectors",
+        "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+      },
+      {
+        "bytes": 622592,
+        "file": "shortlist-rows.u32le",
+        "role": "shortlist_rows",
+        "sha256": "87202c63c19c47194f023495e30ba8b4d5e57b0fae6e59d9bb7be993ebecf016"
+      },
+      {
+        "bytes": 13697024,
+        "file": "scalar-features.f32le",
+        "role": "scalar_features",
+        "sha256": "3f646659bd6615225ba4a2c30b8102854562d51b99e1ee14b2ba615ce4765ca1"
+      },
+      {
+        "bytes": 1536000000,
+        "file": "address-major-fp32.records",
+        "role": "address_major_fp32",
+        "sha256": "e68d68bdf0083a9cbd1c677cc35e85f3bd25a209f30f0a0f692d8869673443b7"
+      },
+      {
+        "bytes": 88,
+        "file": "model-feature_mean.f32le",
+        "role": "model_feature_mean",
+        "sha256": "46118e50ca65387ab8f51fd5540ef1c444d77b480d102b46f727d34a1208be32"
+      },
+      {
+        "bytes": 88,
+        "file": "model-feature_deviation.f32le",
+        "role": "model_feature_deviation",
+        "sha256": "c86e61dd05fbaf4927dceebe4df2125055b50cdbdaa58c4234f283d0564dfbeb"
+      },
+      {
+        "bytes": 49152,
+        "file": "model-query_weight.f32le",
+        "role": "model_query_weight",
+        "sha256": "4f37017072279eb73fa2f418d41d0dedd1b1713428cefcdc6ee2c64d57b7d012"
+      },
+      {
+        "bytes": 128,
+        "file": "model-query_bias.f32le",
+        "role": "model_query_bias",
+        "sha256": "210b90e0e95e58b75d459c1c37e90cd6e4f7b9b4ba56fec837c550e4fcc8803f"
+      },
+      {
+        "bytes": 2944,
+        "file": "model-local_weight.f32le",
+        "role": "model_local_weight",
+        "sha256": "b30e946699e5bd6067ddfc85d51a28c791cefe32184471e58c35ac2366f769ab"
+      },
+      {
+        "bytes": 128,
+        "file": "model-local_bias.f32le",
+        "role": "model_local_bias",
+        "sha256": "54aa0a617ded29fe33a3170a302bf6761e234fe462816282aec26fc9243e7c2c"
+      },
+      {
+        "bytes": 34560,
+        "file": "model-score_weight1.f32le",
+        "role": "model_score_weight1",
+        "sha256": "3a52c21f048b0168db25413cdc39e01c5c6df468c465fb96c8deca07f53e6125"
+      },
+      {
+        "bytes": 216,
+        "file": "model-score_bias1.f32le",
+        "role": "model_score_bias1",
+        "sha256": "b1bc168b9beacc9889a42e5698d881205978516de77411de7af6e6ab66e79b83"
+      },
+      {
+        "bytes": 216,
+        "file": "model-score_weight2.f32le",
+        "role": "model_score_weight2",
+        "sha256": "958d6bf5f2cd288e7599ce5c977c9edeebc3210271baf6804d63a513baf658f5"
+      },
+      {
+        "bytes": 4,
+        "file": "model-score_bias2.f32le",
+        "role": "model_score_bias2",
+        "sha256": "aab210f00af58d2b89150c4a4e25b5753d01eaf91f1be8bbd702e6ddde213bfb"
+      },
+      {
+        "bytes": 12,
+        "file": "model-r4_aggregate_mean.f32le",
+        "role": "model_r4_aggregate_mean",
+        "sha256": "091524a47b645b25a852e60d27d331d3782c9f83f5814075e67e95454ab4c1f5"
+      },
+      {
+        "bytes": 12,
+        "file": "model-r4_aggregate_deviation.f32le",
+        "role": "model_r4_aggregate_deviation",
+        "sha256": "ba96930c6e91251a97a4281b1759a52a50f3aa0ef3cf1c2ed9f427763cfd9d69"
+      }
+    ]
+  },
+  "natural_prefix_diagnostic": {
+    "address_set_overlap": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "p05": 1.0,
+      "p50": 1.0,
+      "p95": 1.0
+    },
+    "exact_parity_queries": 152,
+    "positional_match_fraction": {
+      "max": 1.0,
+      "mean": 1.0,
+      "min": 1.0,
+      "p05": 1.0,
+      "p50": 1.0,
+      "p95": 1.0
+    },
+    "query_count": 152
+  },
+  "prefix_policy": {
+    "coarse_prefix_source": "frozen shortlist rows",
+    "construction": "frozen prefix forced; regenerated tail deduplicated against prefix",
+    "frozen_prefix_length": 1024,
+    "model_prefix_source": "frozen model-ranked order"
   },
   "production_activation": false,
   "protocol": {
@@ -28,9 +207,9 @@
   "raw_output": {
     "path": "E:\\_repoz\\agent-memory-workspaces\\r4-depth-gate-raw.json",
     "rows": 1216,
-    "sha256": "311044224f09e15bf61ccd88375b23aee2ebd2131aa3fc8873c2d0d8b78d59ab"
+    "sha256": "adffa62d4ee620f1dec432eec1f27a12b22c663913f800fdd875406ccc8d23e1"
   },
-  "runner_sha256": "4f9050361a98247d0b0a68d5467d9b2c6e01a3ada124143d0053de13a98f5bea",
+  "runner_sha256": "321faefef5084eb2f86065f65fa50609f9e78f19820c98a562caca2f8f590784",
   "schema_version": 1,
   "seed": 2026082701,
   "summaries": [
@@ -43,7 +222,7 @@
         "p50": 20011.0,
         "p95": 20029.45
       },
-      "arm": "coarse_prefix_parity",
+      "arm": "frozen_prefix_coarse_tail",
       "budget_overshoot": {
         "max": 98.0,
         "mean": 13.085526315789474,
@@ -258,7 +437,7 @@
         "p50": 30010.0,
         "p95": 30039.45
       },
-      "arm": "coarse_prefix_parity",
+      "arm": "frozen_prefix_coarse_tail",
       "budget_overshoot": {
         "max": 111.0,
         "mean": 13.197368421052632,
@@ -473,7 +652,7 @@
         "p50": 50009.0,
         "p95": 50034.45
       },
-      "arm": "coarse_prefix_parity",
+      "arm": "frozen_prefix_coarse_tail",
       "budget_overshoot": {
         "max": 75.0,
         "mean": 12.881578947368421,
@@ -688,7 +867,7 @@
         "p50": 100009.0,
         "p95": 100034.45
       },
-      "arm": "coarse_prefix_parity",
+      "arm": "frozen_prefix_coarse_tail",
       "budget_overshoot": {
         "max": 78.0,
         "mean": 12.486842105263158,

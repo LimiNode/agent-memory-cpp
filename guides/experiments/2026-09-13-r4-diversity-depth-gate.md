@@ -31,11 +31,13 @@ real and valuable, but the tested union does not pass the `.99 @ 50k` gate.
 ## Depth gate
 
 For seed `2026082701`, the runner reconstructs the full-dimensional R4 address
-space from persisted mappings, regenerates an 8,192-address frontier, and
-enforces exact address-ID parity for the frozen first 1,024 entries.  Two arms
-are reported:
+space from persisted mappings and regenerates an 8,192-address frontier.  The
+evaluated stream deliberately forces the old frozen 1,024 prefix and appends a
+regenerated tail deduplicated against it; this is a construction policy, not a
+claim that the naturally regenerated first 1,024 entries are identical.  The
+receipt reports natural prefix overlap separately.  Two arms are reported:
 
-* `coarse_prefix_parity`: frozen coarse prefix followed by regenerated tail;
+* `frozen_prefix_coarse_tail`: frozen coarse prefix followed by regenerated tail;
 * `model_prefix_coarse_tail`: frozen model-ranked prefix followed by the same
   regenerated coarse tail.  The tail is intentionally not called model-ranked;
   the model was trained only on the old 1,024 shortlist.
