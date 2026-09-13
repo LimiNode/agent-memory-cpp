@@ -1,5 +1,5 @@
 {
-  "depth_raw_sha256": "311044224f09e15bf61ccd88375b23aee2ebd2131aa3fc8873c2d0d8b78d59ab",
+  "depth_raw_sha256": "adffa62d4ee620f1dec432eec1f27a12b22c663913f800fdd875406ccc8d23e1",
   "execution_status": "EXECUTED",
   "family": "semantic_r4_residual_coverage_oracle_v1",
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
@@ -69,8 +69,8 @@
   "runner_sha256": "0defda550a2012365a8b0570f217f5f46212c2384c60bc763dd75c14b3d8489b",
   "schema_version": 1,
   "source_runner_sha256": {
-    "depth": "4f9050361a98247d0b0a68d5467d9b2c6e01a3ada124143d0053de13a98f5bea",
-    "union": "ccb0e72c9c9c13e73f0167b7cac2b209e6dc470b13163a8806d859880aab62ad"
+    "depth": "321faefef5084eb2f86065f65fa50609f9e78f19820c98a562caca2f8f590784",
+    "union": "1acf6704c98c4265a6d557da79f8a287c07138f5d37be8eb5da1beeaaa229035"
   },
   "support": {
     "deep-8192": {
