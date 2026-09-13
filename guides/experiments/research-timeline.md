@@ -804,3 +804,17 @@ the same frontier.  The `.9961` membership support therefore does not become a
 `.99 @ 50k` result under naive fusion; marginal-gain scheduling, multi-anchor,
 or a new partition topology is required.  See
 `2026-09-13-r4-route-fusion-gate.md` and its receipt.
+
+### R4 fusion upper bounds and tail scheduling (2026-09-13)
+
+The decomposition separates topology from ordering.  A teacher-leaking
+arbitrary-posting oracle reaches `1.0` recall at every tested budget with about
+109 posting entries on average, proving that the frozen R4 topology contains
+the teacher documents.  A teacher-leaking prefix-allocation oracle reaches only
+`.9868 @ 50k` and `.9921 @ 100k`.  Non-leaking deep-prefix/tail jumps (caps
+`0/2500/5000/10000`) do not exceed the existing `.9796 @ 50k` fusion frontier;
+the best reaches `.9921 @ 100k`.  Thus the remaining gap is within-route
+ordering plus scheduler efficiency, not simple posting occupancy.  The oracle
+rows are explicitly teacher-leaking and no production, MDBX/page, or latency
+claim is made.  See `2026-09-13-r4-fusion-upper-bounds.md` and its compact
+receipt.
