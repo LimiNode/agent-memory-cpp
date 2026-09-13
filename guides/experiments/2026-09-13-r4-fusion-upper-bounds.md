@@ -24,15 +24,16 @@ queries is shown in parentheses):
 
 | Scheduler | 20k | 50k | 100k |
 | --- | ---: | ---: | ---: |
-| Prefix-allocation oracle | .9796 (.70) | .9868 (.70) | .9921 (.70) |
-| Arbitrary-posting oracle | 1.0000 (1.00) | 1.0000 (1.00) | 1.0000 (1.00) |
+| Prefix-allocation oracle (unique-candidate budget) | .9796 (.70) | .9868 (.70) | .9921 (.70) |
+| Route-visible arbitrary-posting oracle | .9961 (.70) | .9961 (.70) | .9961 (.70) |
 | Jump cap 0 | .9658 (.50) | .9704 (.70) | .9770 (.70) |
 | Jump cap 2,500 | .9796 (.70) | .9836 (.70) | .9908 (.70) |
 | Jump cap 5,000 | .9796 (.70) | .9842 (.70) | .9914 (.70) |
 | Jump cap 10,000 | .9796 (.70) | .9829 (.70) | .9921 (.70) |
 
-The prefix oracle is bounded below `.99 @ 50k`, while arbitrary posting
-selection is perfect at a few hundred posting entries on average.  The
+The prefix oracle is bounded below `.99 @ 50k`, while route-visible arbitrary
+posting selection reaches the topology membership ceiling `.9961` at about 115
+posting entries on average.  The
 non-leaking jump schedules do not exceed the existing `.9796 @ 50k` fusion
 frontier; at 100k they approach `.9921`, with duplication ratios roughly
 1.08--1.20 depending on cap.
@@ -43,10 +44,11 @@ compact receipt.
 
 ## Interpretation and decision gate
 
-R4 topology contains the teacher documents (arbitrary-posting oracle), but the
-available within-route ordering is the limiting factor: even a privileged
-prefix allocation remains below the `.99 @ 50k` target.  The simple tail jump
-does not solve this, so the result is not evidence for production activation.
+R4 topology contains nearly all teacher documents within the route-visible
+address sets (arbitrary-posting oracle), but the available within-route
+ordering is the limiting factor: even a privileged prefix allocation remains
+below the `.99 @ 50k` target.  The simple tail jump does not solve this, so the
+result is not evidence for production activation.
 The next meaningful comparison is a properly trained/deep ranker or
 multi-anchor route; a THQ-ADC cascade should remain gated until one of those
 routes clears the target under a non-leaking budget.

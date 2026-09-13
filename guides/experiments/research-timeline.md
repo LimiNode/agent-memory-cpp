@@ -808,9 +808,10 @@ or a new partition topology is required.  See
 ### R4 fusion upper bounds and tail scheduling (2026-09-13)
 
 The decomposition separates topology from ordering.  A teacher-leaking
-arbitrary-posting oracle reaches `1.0` recall at every tested budget with about
-109 posting entries on average, proving that the frozen R4 topology contains
-the teacher documents.  A teacher-leaking prefix-allocation oracle reaches only
+route-visible arbitrary-posting oracle reaches the membership ceiling `.9961`
+at every tested budget with about 115 posting entries on average, proving that
+the visible R4 routes contain nearly all teacher documents.  A teacher-leaking
+prefix-allocation oracle under the unique-candidate budget reaches only
 `.9868 @ 50k` and `.9921 @ 100k`.  Non-leaking deep-prefix/tail jumps (caps
 `0/2500/5000/10000`) do not exceed the existing `.9796 @ 50k` fusion frontier;
 the best reaches `.9921 @ 100k`.  Thus the remaining gap is within-route

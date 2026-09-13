@@ -5,16 +5,16 @@
       "kind": "teacher_leaking_arbitrary_posting_dp",
       "posting_entries": {
         "max": 300.0,
-        "mean": 108.9342105263158,
+        "mean": 114.8157894736842,
         "min": 48.0,
         "p05": 69.55,
-        "p50": 105.5,
-        "p95": 160.34999999999997
+        "p50": 108.5,
+        "p95": 171.24999999999994
       },
       "teacher_recall": {
         "max": 1.0,
-        "mean": 1.0,
-        "min": 1.0,
+        "mean": 0.9960526315789474,
+        "min": 0.8,
         "p05": 1.0,
         "p50": 1.0,
         "p95": 1.0
@@ -25,16 +25,16 @@
       "kind": "teacher_leaking_arbitrary_posting_dp",
       "posting_entries": {
         "max": 300.0,
-        "mean": 108.9342105263158,
+        "mean": 114.8157894736842,
         "min": 48.0,
         "p05": 69.55,
-        "p50": 105.5,
-        "p95": 160.34999999999997
+        "p50": 108.5,
+        "p95": 171.24999999999994
       },
       "teacher_recall": {
         "max": 1.0,
-        "mean": 1.0,
-        "min": 1.0,
+        "mean": 0.9960526315789474,
+        "min": 0.8,
         "p05": 1.0,
         "p50": 1.0,
         "p95": 1.0
@@ -45,16 +45,16 @@
       "kind": "teacher_leaking_arbitrary_posting_dp",
       "posting_entries": {
         "max": 300.0,
-        "mean": 108.9342105263158,
+        "mean": 114.8157894736842,
         "min": 48.0,
         "p05": 69.55,
-        "p50": 105.5,
-        "p95": 160.34999999999997
+        "p50": 108.5,
+        "p95": 171.24999999999994
       },
       "teacher_recall": {
         "max": 1.0,
-        "mean": 1.0,
-        "min": 1.0,
+        "mean": 0.9960526315789474,
+        "min": 0.8,
         "p05": 1.0,
         "p50": 1.0,
         "p95": 1.0
@@ -1066,7 +1066,7 @@
       "kind": "teacher_leaking_prefix_dp",
       "posting_entries": {
         "max": 5515.0,
-        "mean": 370.7631578947368,
+        "mean": 370.76973684210526,
         "min": 78.0,
         "p05": 113.55,
         "p50": 204.5,
@@ -1079,6 +1079,14 @@
         "p05": 0.9,
         "p50": 1.0,
         "p95": 1.0
+      },
+      "unique_candidates": {
+        "max": 5515.0,
+        "mean": 368.7828947368421,
+        "min": 78.0,
+        "p05": 112.55,
+        "p50": 201.5,
+        "p95": 1079.5499999999959
       }
     },
     {
@@ -1086,7 +1094,7 @@
       "kind": "teacher_leaking_prefix_dp",
       "posting_entries": {
         "max": 46519.0,
-        "mean": 2667.690789473684,
+        "mean": 2667.6973684210525,
         "min": 78.0,
         "p05": 113.55,
         "p50": 209.0,
@@ -1099,6 +1107,14 @@
         "p05": 0.9,
         "p50": 1.0,
         "p95": 1.0
+      },
+      "unique_candidates": {
+        "max": 46519.0,
+        "mean": 2664.8289473684213,
+        "min": 78.0,
+        "p05": 112.55,
+        "p50": 208.5,
+        "p95": 29202.299999999967
       }
     },
     {
@@ -1106,7 +1122,7 @@
       "kind": "teacher_leaking_prefix_dp",
       "posting_entries": {
         "max": 74806.0,
-        "mean": 5053.789473684211,
+        "mean": 5053.8421052631575,
         "min": 78.0,
         "p05": 114.0,
         "p50": 211.5,
@@ -1119,6 +1135,14 @@
         "p05": 0.9,
         "p50": 1.0,
         "p95": 1.0
+      },
+      "unique_candidates": {
+        "max": 74806.0,
+        "mean": 5049.401315789473,
+        "min": 78.0,
+        "p05": 113.0,
+        "p50": 210.5,
+        "p95": 41926.39999999998
       }
     }
   ],
@@ -1132,9 +1156,9 @@
   },
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
   "raw_output": {
-    "bytes": 882722,
+    "bytes": 897382,
     "path": "E:\\_repoz\\agent-memory-workspaces\\r4-fusion-upper-bounds-raw.json",
-    "sha256": "17f1a229abbec1e457f869aaacd2839a3dabb21fc11fac6e3c479da33277bfce"
+    "sha256": "3f9c0b6e99985b7a21f218ce76481f8a114895e3d0755b8d20e6d26cb868d237"
   },
   "residual_diagnostics": {
     "count": 31,
@@ -1332,6 +1356,6 @@
     "seed-2026082703",
     "deep-8192"
   ],
-  "runner_sha256": "9b58631656cb5f2fd83718f01c1b5e1bbdcabc0205c4e1f7dce841d0955b6334",
+  "runner_sha256": "0e2842051643e10e02fe73d0ecda2a2884b71b8ceca807a48f06acf85c75e30c",
   "schema_version": 1
 }

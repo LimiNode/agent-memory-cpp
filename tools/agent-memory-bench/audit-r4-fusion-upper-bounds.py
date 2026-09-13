@@ -53,6 +53,8 @@ def main() -> None:
             require(len(selected) == 152, f"{section} budget row count mismatch")
             check_aggregate(summary["teacher_recall"], [float(r["recall"]) for r in selected], f"{section}.{b}.teacher_recall")
             check_aggregate(summary["posting_entries"], [float(r["posting_entries"]) for r in selected], f"{section}.{b}.posting_entries")
+            if "unique_candidates" in summary:
+                check_aggregate(summary["unique_candidates"], [float(r["unique_candidates"]) for r in selected], f"{section}.{b}.unique_candidates")
     caps = [int(x) for x in receipt["non_leaking_jump_scheduler"]["caps_posting_entries"]]
     require(len(jumps) == len(caps) * len(budgets) * 152, "jump row count mismatch")
     require(len(receipt["non_leaking_jump_scheduler"]["summaries"]) == len(caps) * len(budgets), "jump summary completeness mismatch")

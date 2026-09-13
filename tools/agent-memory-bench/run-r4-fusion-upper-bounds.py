@@ -72,33 +72,38 @@ def reconstruct(args, frozen, manifest):
     routes['deep-8192']={'order':np.asarray(deep),'postings':deep_postings,'counts':counts,'doc_address':deep_doc_address,'validated_artifacts':deep_validated}
     return routes
 def prefix_options(route, qi, teachers):
-    options={0:0}; cost=0; seen=0
+    options=[(0,0,np.empty(0,dtype=np.int32))]; cost=0; seen=0; docs=[]
     teacher_masks={}
     for i,t in enumerate(teachers):
         address=int(route['doc_address'][int(t)])
         teacher_masks[address]=teacher_masks.get(address,0)|(1<<i)
     for a in route['order'][qi]:
-        ids=route['postings'][int(a)]; cost+=int(ids.size); gained=teacher_masks.get(int(a),0)
+        ids=route['postings'][int(a)]; docs.append(ids); cost+=int(ids.size); gained=teacher_masks.get(int(a),0)
         seen|=gained
-        if gained: options[cost]=seen
-    return list(options.items())
+        if gained: options.append((cost,seen,np.concatenate(docs)))
+    return options
 def prefix_dp(routes,names,qi,teachers,budgets):
-    dp={0:(0,[0]*len(names))}
-    for ri,name in enumerate(names):
-        nxt={}
-        for mask,(cost,sel) in dp.items():
-            for extra,gain in prefix_options(routes[name],qi,teachers):
-                total=cost+extra; nm=mask|gain
-                if total<=max(budgets) and (nm not in nxt or total<nxt[nm][0]): s=sel.copy(); s[ri]=extra; nxt[nm]=(total,s)
-        dp=nxt
+    options=[prefix_options(routes[name],qi,teachers) for name in names]
+    # Enumerate the small Cartesian product of teacher-changing cut points.
+    # Candidate budget is the number of unique document IDs across routes;
+    # posting-entry work is retained only as a secondary diagnostic.
+    dp=[]
+    for a in options[0]:
+        for b in options[1]:
+            for c in options[2]:
+                chosen=(a,b,c); union=np.unique(np.concatenate([x[2] for x in chosen]))
+                dp.append((int(union.size), int(a[1]|b[1]|c[1]), [int(a[0]),int(b[0]),int(c[0])], int(sum(x[0] for x in chosen))))
     out=[]
     for b in budgets:
-        gain,cost,sel=max((m.bit_count(),c,s) for m,(c,s) in dp.items() if c<=b); out.append({'budget':b,'teacher_count':gain,'recall':gain/len(teachers),'posting_entries':cost,'route_prefix_costs':sel})
+        feasible=[x for x in dp if x[0]<=b]
+        candidates,gain,sel,postings=max(feasible,key=lambda x:(x[1].bit_count(),-x[0]))
+        out.append({'budget':b,'teacher_count':gain.bit_count(),'recall':gain.bit_count()/len(teachers),'unique_candidates':candidates,'posting_entries':postings,'route_prefix_costs':sel})
     return out
 def arbitrary_dp(routes,names,qi,teachers,budgets):
     dp={0:0}
     for name in names:
-        addresses=sorted({int(routes[name]['doc_address'][int(t)]) for t in teachers})
+        visible=set(int(a) for a in routes[name]['order'][qi])
+        addresses=sorted({int(routes[name]['doc_address'][int(t)]) for t in teachers if int(routes[name]['doc_address'][int(t)]) in visible})
         for a in addresses:
             ids=routes[name]['postings'][a]; mask=sum(1<<i for i,t in enumerate(teachers) if int(routes[name]['doc_address'][int(t)])==a)
             c=int(ids.size)
@@ -124,7 +129,14 @@ def main():
     residual=[]
     for qi,t in sorted(shallow_miss):
         ranks=[i+1 for i,ad in enumerate(routes['deep-8192']['order'][qi]) if int(t) in routes['deep-8192']['postings'][int(ad)]]; rank=ranks[0] if ranks else a.depth+1; cumulative=sum(int(routes['deep-8192']['postings'][int(ad)].size) for ad in routes['deep-8192']['order'][qi][:rank]) if ranks else None; residual.append({'query':qi,'teacher':t,'deep_address_rank':rank,'deep_cumulative_posting_entries':cumulative})
-    def summ(rows,kind): return [{'kind':kind,'budget':b,'teacher_recall':aggregate([x['recall'] for x in rows if x['budget']==b]),'posting_entries':aggregate([x['posting_entries'] for x in rows if x['budget']==b])} for b in budgets]
+    def summ(rows,kind):
+        result=[]
+        for b in budgets:
+            selected=[x for x in rows if x['budget']==b]
+            row={'kind':kind,'budget':b,'teacher_recall':aggregate([x['recall'] for x in selected]),'posting_entries':aggregate([x['posting_entries'] for x in selected])}
+            if selected and 'unique_candidates' in selected[0]: row['unique_candidates']=aggregate([x['unique_candidates'] for x in selected])
+            result.append(row)
+        return result
     union=load('ub_union','run-r4-seed-union-gate.py')
     jump_caps=[0,2500,5000,10000]; jump_rows=[]
     for cap in jump_caps:
