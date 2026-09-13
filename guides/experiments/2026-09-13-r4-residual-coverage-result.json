@@ -1,0 +1,97 @@
+{
+  "depth_raw_sha256": "adffa62d4ee620f1dec432eec1f27a12b22c663913f800fdd875406ccc8d23e1",
+  "execution_status": "EXECUTED",
+  "family": "semantic_r4_residual_coverage_oracle_v1",
+  "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "miss_correlation": {
+    "10000": {
+      "jaccard_missed_pairs": {
+        "2026082701-2026082702": 0.1951219512195122,
+        "2026082701-2026082703": 0.2553191489361702,
+        "2026082702-2026082703": 0.21686746987951808
+      },
+      "missed_by_all_three": 31,
+      "recovered_uniquely": {
+        "2026082701": 23,
+        "2026082702": 29,
+        "2026082703": 17
+      }
+    },
+    "20000": {
+      "jaccard_missed_pairs": {
+        "2026082701-2026082702": 0.200836820083682,
+        "2026082701-2026082703": 0.2543103448275862,
+        "2026082702-2026082703": 0.21951219512195122
+      },
+      "missed_by_all_three": 31,
+      "recovered_uniquely": {
+        "2026082701": 23,
+        "2026082702": 28,
+        "2026082703": 17
+      }
+    },
+    "5000": {
+      "jaccard_missed_pairs": {
+        "2026082701-2026082702": 0.1953125,
+        "2026082701-2026082703": 0.26778242677824265,
+        "2026082702-2026082703": 0.21621621621621623
+      },
+      "missed_by_all_three": 32,
+      "recovered_uniquely": {
+        "2026082701": 24,
+        "2026082702": 32,
+        "2026082703": 18
+      }
+    },
+    "50000": {
+      "jaccard_missed_pairs": {
+        "2026082701-2026082702": 0.200836820083682,
+        "2026082701-2026082703": 0.2543103448275862,
+        "2026082702-2026082703": 0.21951219512195122
+      },
+      "missed_by_all_three": 31,
+      "recovered_uniquely": {
+        "2026082701": 23,
+        "2026082702": 28,
+        "2026082703": 17
+      }
+    }
+  },
+  "production_activation": false,
+  "protocol": {
+    "budget": "membership oracle / matched global budgets",
+    "physical_page_bytes": "not measured",
+    "production_activation": false,
+    "teacher_ids_used_for_index": false
+  },
+  "queries": 152,
+  "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "runner_sha256": "fbf5feb73499f0918ba055330f2e2375a37ae86ba88e74d89e0368fa5cba644f",
+  "schema_version": 1,
+  "source_runner_sha256": {
+    "depth": "321faefef5084eb2f86065f65fa50609f9e78f19820c98a562caca2f8f590784",
+    "union": "1acf6704c98c4265a6d557da79f8a287c07138f5d37be8eb5da1beeaaa229035"
+  },
+  "support": {
+    "deep-8192": {
+      "mean": 0.9888157894736842
+    },
+    "seed-2026082701": {
+      "mean": 0.9085526315789474
+    },
+    "seed-2026082702": {
+      "mean": 0.9026315789473685
+    },
+    "seed-2026082703": {
+      "mean": 0.9
+    },
+    "three-seed-plus-deep": {
+      "mean": 0.9960526315789474
+    },
+    "three-seed-union": {
+      "mean": 0.9796052631578948
+    }
+  },
+  "teachers_per_query": 10,
+  "union_raw_sha256": "b246ecdad5d56412db0da9299f0e3e618ff04ab5970a5a9398685db7be2b0d11"
+}
