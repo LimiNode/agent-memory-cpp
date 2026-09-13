@@ -1,12 +1,11 @@
 {
   "schema_version": 1,
-  "status": "SUPERSEDED",
-  "family": "r4_rich_ltr_apples_to_apples_v1",
+  "family": "r4_sampled_pointwise_ltr_apples_to_apples_v2",
   "execution_status": "EXECUTED",
   "production_activation": false,
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
-  "runner_sha256": "158f3decf7e73c78f644008610f1b27d83cc25734da0dc427d9e811c647d6066",
+  "runner_sha256": "b5a6e1458411afe30fc8891baf9e998150922dc70d9ceeb2b03b1e01f69ba2d7",
   "train_query_ids": [
     0,
     1,
@@ -168,32 +167,32 @@
     "inverse_deep_rank",
     "log_posting_size",
     "normalized_deep_rank",
-    "shallow_seed2702_inverse_rank",
-    "shallow_seed2702_present",
-    "shallow_seed2703_inverse_rank",
-    "shallow_seed2703_present",
-    "shallow_route_agreement"
+    "aligned_seed2702_inverse_rank",
+    "aligned_seed2702_present",
+    "aligned_seed2703_inverse_rank",
+    "aligned_seed2703_present",
+    "aligned_route_agreement"
   ],
   "model": {
-    "type": "pairwise-sampled-logistic",
+    "type": "sampled_pointwise_logistic",
     "numpy_version": "2.4.6",
     "sklearn_version": "1.9.0",
     "python_version": "3.11.9",
     "coef": [
       [
-        3.030014753341675,
-        20.414308547973633,
-        0.6709341406822205,
-        -5.03725004196167,
-        -0.06321738660335541,
-        0.23509132862091064,
-        -0.006309460382908583,
-        -0.28181377053260803,
-        -0.046724267303943634
+        2.6381583213806152,
+        20.48354148864746,
+        0.7041055560112,
+        -4.911080837249756,
+        3.0918333530426025,
+        -0.13129548728466034,
+        2.887526750564575,
+        0.15577834844589233,
+        0.024485478177666664
       ]
     ],
     "intercept": [
-      -4.611104488372803
+      -4.465434551239014
     ],
     "positive_label_count": 1098,
     "negative_label_count": 8784
@@ -550,28 +549,28 @@
         "max": 1.0
       },
       "unique_candidates": {
-        "min": 20001.0,
-        "mean": 20014.57894736842,
-        "p05": 20001.0,
-        "p50": 20012.0,
-        "p95": 20036.05,
-        "max": 20048.0
+        "min": 20000.0,
+        "mean": 20011.13157894737,
+        "p05": 20000.0,
+        "p50": 20010.0,
+        "p95": 20027.3,
+        "max": 20046.0
       },
       "posting_entries": {
-        "min": 20001.0,
-        "mean": 20014.57894736842,
-        "p05": 20001.0,
-        "p50": 20012.0,
-        "p95": 20036.05,
-        "max": 20048.0
+        "min": 20000.0,
+        "mean": 20011.13157894737,
+        "p05": 20000.0,
+        "p50": 20010.0,
+        "p95": 20027.3,
+        "max": 20046.0
       },
       "postings_touched": {
-        "min": 433.0,
-        "mean": 665.8421052631579,
-        "p05": 486.15,
-        "p50": 674.0,
-        "p95": 832.6999999999999,
-        "max": 931.0
+        "min": 437.0,
+        "mean": 658.6052631578947,
+        "p05": 488.55,
+        "p50": 668.0,
+        "p95": 819.4,
+        "max": 924.0
       }
     },
     {
@@ -580,7 +579,7 @@
       "query_count": 38,
       "teacher_recall": {
         "min": 0.6,
-        "mean": 0.9473684210526314,
+        "mean": 0.9526315789473683,
         "p05": 0.8,
         "p50": 1.0,
         "p95": 1.0,
@@ -588,27 +587,27 @@
       },
       "unique_candidates": {
         "min": 50000.0,
-        "mean": 50012.60526315789,
-        "p05": 50000.0,
-        "p50": 50006.5,
-        "p95": 50036.4,
-        "max": 50067.0
+        "mean": 50014.15789473684,
+        "p05": 50001.0,
+        "p50": 50010.5,
+        "p95": 50039.0,
+        "max": 50040.0
       },
       "posting_entries": {
         "min": 50000.0,
-        "mean": 50012.60526315789,
-        "p05": 50000.0,
-        "p50": 50006.5,
-        "p95": 50036.4,
-        "max": 50067.0
+        "mean": 50014.15789473684,
+        "p05": 50001.0,
+        "p50": 50010.5,
+        "p95": 50039.0,
+        "max": 50040.0
       },
       "postings_touched": {
-        "min": 1598.0,
-        "mean": 2184.1315789473683,
-        "p05": 1841.85,
-        "p50": 2211.5,
-        "p95": 2489.0,
-        "max": 2679.0
+        "min": 1569.0,
+        "mean": 2160.2894736842104,
+        "p05": 1815.35,
+        "p50": 2189.5,
+        "p95": 2460.8,
+        "max": 2648.0
       }
     },
     {
@@ -617,7 +616,7 @@
       "query_count": 38,
       "teacher_recall": {
         "min": 0.6,
-        "mean": 0.976315789473684,
+        "mean": 0.9789473684210526,
         "p05": 0.9,
         "p50": 1.0,
         "p95": 1.0,
@@ -625,34 +624,38 @@
       },
       "unique_candidates": {
         "min": 100000.0,
-        "mean": 100013.63157894737,
-        "p05": 100001.0,
-        "p50": 100011.5,
-        "p95": 100032.15,
-        "max": 100048.0
+        "mean": 100013.8947368421,
+        "p05": 100000.0,
+        "p50": 100006.5,
+        "p95": 100057.0,
+        "max": 100092.0
       },
       "posting_entries": {
         "min": 100000.0,
-        "mean": 100013.63157894737,
-        "p05": 100001.0,
-        "p50": 100011.5,
-        "p95": 100032.15,
-        "max": 100048.0
+        "mean": 100013.8947368421,
+        "p05": 100000.0,
+        "p50": 100006.5,
+        "p95": 100057.0,
+        "max": 100092.0
       },
       "postings_touched": {
-        "min": 3981.0,
-        "mean": 4902.763157894737,
-        "p05": 4385.7,
-        "p50": 4939.0,
-        "p95": 5320.45,
-        "max": 5592.0
+        "min": 3966.0,
+        "mean": 4876.0,
+        "p05": 4359.65,
+        "p50": 4916.0,
+        "p95": 5301.8,
+        "max": 5564.0
       }
     }
   ],
+  "external_fusion_raw": {
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-fusion-upper-bounds-raw.json",
+    "sha256": "3f9c0b6e99985b7a21f218ce76481f8a114895e3d0755b8d20e6d26cb868d237"
+  },
   "raw_output": {
-    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-rich-ltr-raw.json",
+    "path": "E:\\_repoz\\agent-memory-workspaces\\r4-sampled-pointwise-ltr-raw-v2.json",
     "bytes": 67494,
-    "sha256": "d7eb97571e5f5b77ac32d6b3f7fc2dd7de1667fd73662dad3affa22fbada0939"
+    "sha256": "1540208b1666901f72755d46913c74e7ac8b81b9962ba30bff4d56438f6b2050"
   },
   "protocol": {
     "teacher_ids_used_for_training_labels": true,
@@ -660,6 +663,7 @@
     "split_semantics": "research split; matched controls restricted to the same 38 eval queries",
     "budget_definition": "unique document ids",
     "physical_page_bytes": "not measured",
-    "scope": "rich posting ranker control; not production activation"
+    "scope": "sampled pointwise logistic control; not pairwise/listwise LTR and not production activation",
+    "cross_route_alignment": "deep posting representative document mapped to each shallow route address"
   }
 }

@@ -1,5 +1,6 @@
 {
   "schema_version": 1,
+  "status": "SUPERSEDED",
   "family": "r4_selective_spill_control_v1",
   "execution_status": "EXECUTED",
   "production_activation": false,
