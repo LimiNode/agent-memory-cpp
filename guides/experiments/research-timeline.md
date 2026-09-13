@@ -880,3 +880,16 @@ ordering plus scheduler efficiency, not simple posting occupancy.  The oracle
 rows are explicitly teacher-leaking and no production, MDBX/page, or latency
 claim is made.  See `2026-09-13-r4-fusion-upper-bounds.md` and its compact
 receipt.
+
+### R4 K=16 route with THQ-ADC cascade (2026-09-14)
+
+The first low-work representative-prefix route was replayed on all 152 frozen
+queries with three R4 seeds. K=16 scores 2,104,812 representative vectors per
+query and reaches mean candidate recall `.9908/.9954/.9954/.9974` at 5k/10k/20k/50k
+unique candidates. THQ4 interval-squared ADC and exact FP32 E5 top-256 rerank
+are identical at every budget, so reranking neither repairs nor worsens route
+misses. Mean logical payload at 50k is about 7.20 MB for THQ4 versus 76.82 MB
+for FP32; these are not physical page or latency measurements. The route is a
+quality/control result, not a deployable ANN claim, because representative
+scoring is still a dense Python/NumPy pass. See
+`2026-09-14-r4-k16-thq-cascade.md`, its receipt, and the fail-closed audit.

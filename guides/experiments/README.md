@@ -18,6 +18,11 @@ The resulting [R4 representative-prefix work sweep](2026-09-14-r4-representative
 selects K=16 as the next conditional cascade arm and keeps K=32 as the quality
 control.
 
+The [R4 K=16 THQ cascade](2026-09-14-r4-k16-thq-cascade.md) confirms that
+THQ-ADC and exact FP32 reranking preserve the strong K=16 candidate frontier;
+the remaining cost is the dense representative score pass. It is logical
+evidence only, with no native, page, latency, or MDBX claim.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked
