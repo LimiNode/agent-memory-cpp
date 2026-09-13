@@ -120,7 +120,7 @@ def main() -> None:
             "jaccard_missed_pairs": pairwise,
             "missed_by_all_three": len(miss[seeds[0]] & miss[seeds[1]] & miss[seeds[2]]),
             "recovered_uniquely": {
-                str(seed): len((miss[seeds[(i + 1) % 3]] | miss[seeds[(i + 2) % 3]]) - miss[seed])
+                str(seed): len((miss[seeds[(i + 1) % 3]] & miss[seeds[(i + 2) % 3]]) - miss[seed])
                 for i, seed in enumerate(seeds)},
         }
     output = {

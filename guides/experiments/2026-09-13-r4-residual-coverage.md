@@ -22,6 +22,11 @@ hold at 5k, 10k, and 50k.  This supports measuring multi-route fusion before
 discarding independent R4 views; it does not justify extrapolating linearly to
 unmaterialized seeds.
 
+The corrected receipt also reports truly unique seed contributions using
+intersection semantics: at 20k/50k, seeds 2701/2702/2703 uniquely recover
+23/28/17 query-teacher pairs respectively.  This diagnostic is separate from
+the aggregate support figures above.
+
 The support result is a necessary-condition oracle, not a production gate:
 candidate budgets, posting duplication, physical page traffic, payload rerank,
 and latency remain unmeasured in this diagnostic.  See
