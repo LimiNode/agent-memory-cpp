@@ -54,13 +54,16 @@ def main():
     cent_norm=np.linalg.norm(cent,axis=1); cent_norm[cent_norm==0]=1
     cent/=cent_norm[:,None]
     qnorm=np.asarray(queries,dtype=np.float32); qn=np.linalg.norm(qnorm,axis=1,keepdims=True); qn[qn==0]=1; qnorm=qnorm/qn
-    # Deep route order is the frozen model prefix followed by regenerated tail.
+    # Reconstruct the frozen model-ranked prefix; the raw shortlist rows are
+    # only the coarse candidate set and are not themselves ranked.
     deep_short=np.fromfile(root/m['shortlist_rows']['file'],dtype='<u4').reshape(qcount,1024)
+    comparator=load_mod('r4_comparator',Path(__file__).with_name('run-r4-frozen-comparator.py'))
+    model_prefix,_=comparator.model_order(root,rec,np.asarray(queries),deep_short,records,np.fromfile(root/m['document_to_physical']['file'],dtype='<u4'))
     route_orders=[]
     for qi in range(qcount):
         scores=qnorm[qi]@cent.T
         tail=np.lexsort((np.arange(len(cent),dtype=np.int32),-scores))
-        seen=set(int(x) for x in deep_short[qi]); merged=list(map(int,deep_short[qi]))+[int(x) for x in tail if int(x) not in seen]
+        seen=set(int(x) for x in model_prefix[qi]); merged=list(map(int,model_prefix[qi]))+[int(x) for x in tail if int(x) not in seen]
         route_orders.append(np.asarray(merged[:a.depth],dtype=np.int32))
     train_q=np.arange(min(a.train_queries,qcount),dtype=np.int32); eval_q=np.arange(min(a.train_queries,qcount),qcount,dtype=np.int32)
     # Feature columns: cosine(query,address), inverse deep rank, log posting size,
@@ -94,6 +97,6 @@ def main():
     for b in budgets:
         s=[r for r in rows if r['budget']==b]; summary.append({'budget':b,'teacher_recall':agg([r['teacher_recall'] for r in s]),'actual_unique_candidates':agg([r['actual_unique_candidates'] for r in s]),'posting_entries_touched':agg([r['posting_entries_touched'] for r in s]),'postings_touched':agg([r['postings_touched'] for r in s])})
     raw=(json.dumps({'schema_version':1,'rows':rows},separators=(',',':'),sort_keys=True)+'\n').encode(); a.raw_output.parent.mkdir(parents=True,exist_ok=True); a.raw_output.write_bytes(raw)
-    out={'schema_version':1,'family':'r4_deep_full_frontier_ranker_v1','execution_status':'EXECUTED','production_activation':False,'fixture_manifest_sha256':sha256(a.thq_manifest),'r4_manifest_sha256':sha256(a.r4_manifest),'runner_sha256':sha256(Path(__file__)),'depth':a.depth,'train_queries':len(train_q),'held_out_queries':len(eval_q),'feature_columns':['address_cosine','inverse_deep_rank','log_posting_size','normalized_rank'],'fit_ms':fit_ms,'held_out_summary':summary,'raw_output':{'path':str(a.raw_output),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()},'protocol':{'teacher_ids_used_for_training_labels':True,'teacher_ids_used_at_inference':False,'budget_definition':'unique document ids','physical_page_bytes':'not measured','production_activation':False}}
+    out={'schema_version':1,'family':'r4_deep_ltr_baseline_v2','execution_status':'EXECUTED','production_activation':False,'fixture_manifest_sha256':sha256(a.thq_manifest),'r4_manifest_sha256':sha256(a.r4_manifest),'runner_sha256':sha256(Path(__file__)),'depth':a.depth,'train_queries':len(train_q),'held_out_queries':len(eval_q),'feature_columns':['address_cosine','inverse_deep_rank','log_posting_size','normalized_rank'],'fit_ms':fit_ms,'held_out_summary':summary,'raw_output':{'path':str(a.raw_output),'bytes':len(raw),'sha256':hashlib.sha256(raw).hexdigest()},'protocol':{'teacher_ids_used_for_training_labels':True,'teacher_ids_used_at_inference':False,'budget_definition':'unique document ids','physical_page_bytes':'not measured','production_activation':False,'baseline_scope':'four-feature pointwise logistic model; not a complete LTR search'}}
     a.output.parent.mkdir(parents=True,exist_ok=True); a.output.write_text(json.dumps(out,indent=2)+'\n')
 if __name__=='__main__': main()

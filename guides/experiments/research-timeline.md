@@ -717,14 +717,15 @@ receipt.
 
 ### Deep full-frontier ranker and topology follow-ups (2026-09-13)
 
-Training a held-out ranker over the complete 8,192-address R4 frontier yields
-`.9474 @ 50k` and `.9737 @ 100k` mean recall (38-query held-out split).  A
+The four-feature pointwise logistic baseline, with the frozen 1,024 shortlist
+restored to model-ranked order, yields `.9368 @ 50k` and `.9684 @ 100k` mean
+recall (38-query held-out split) over the complete 8,192-address frontier.  A
 non-leaking marginal-freshness scheduler reaches `.9717/.9862` and equal
-three-anchor fusion `.9796/.9921` at the same budgets.  A teacher-leaking
-gain-per-entry control remains below `.99 @ 50k`.  These controls confirm that
-simple scheduler changes or three-way replication do not close the gap; the
-next justified arm is selective secondary assignment or a new multi-anchor
-topology.  The experiment is logical posting work only and does not measure
+three-anchor fusion `.9796/.9921` at the same budgets.  These are controls, not
+an exact multi-anchor assignment or topology upper bound.  They do not close
+the gap; the next justified arm is a cost-aware/listwise ranker followed by
+selective secondary assignment or a new multi-anchor topology.  The experiment
+is logical posting work only and does not measure
 MDBX pages, latency, or physical I/O.  See
 `2026-09-13-r4-deep-ranker-and-followups.md` and its receipts.
 

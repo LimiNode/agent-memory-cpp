@@ -1,11 +1,11 @@
 {
   "schema_version": 1,
-  "family": "r4_adaptive_spill_multianchor_v1",
+  "family": "r4_adaptive_spill_multianchor_v2",
   "execution_status": "EXECUTED",
   "production_activation": false,
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
-  "runner_sha256": "dd503f4031372da5e4595b79d64fceb264a85b139261d004147469cc79ed9589",
+  "runner_sha256": "a5ac323153007b4a0b660493a42a8fecb6b214137994500eb3bbc7912a66f4e0",
   "summary": [
     {
       "mode": "adaptive",
@@ -119,36 +119,36 @@
       "mode": "equal_quota",
       "budget": 20000,
       "teacher_recall": {
-        "min": 0.4,
-        "mean": 0.9236842105263158,
-        "p05": 0.7,
+        "min": 0.7,
+        "mean": 0.9796052631578948,
+        "p05": 0.9,
         "p50": 1.0,
         "p95": 1.0,
         "max": 1.0
       },
       "unique_candidates": {
         "min": 20000.0,
-        "mean": 20010.894736842107,
-        "p05": 20001.0,
-        "p50": 20008.0,
-        "p95": 20030.9,
-        "max": 20079.0
+        "mean": 20015.157894736843,
+        "p05": 20000.55,
+        "p50": 20013.0,
+        "p95": 20039.45,
+        "max": 20105.0
       },
       "posting_entries": {
-        "min": 100000.0,
-        "mean": 113300.88815789473,
-        "p05": 100004.1,
-        "p50": 115342.0,
-        "p95": 132189.6,
-        "max": 136667.0
+        "min": 21168.0,
+        "mean": 22758.24342105263,
+        "p05": 21418.3,
+        "p50": 22405.5,
+        "p95": 25030.449999999997,
+        "max": 27032.0
       },
       "postings_touched": {
-        "min": 8714.0,
-        "mean": 8714.0,
-        "p05": 8714.0,
-        "p50": 8714.0,
-        "p95": 8714.0,
-        "max": 8714.0
+        "min": 476.0,
+        "mean": 699.6052631578947,
+        "p05": 543.55,
+        "p50": 686.0,
+        "p95": 904.8,
+        "max": 1128.0
       }
     },
     {
@@ -164,27 +164,27 @@
       },
       "unique_candidates": {
         "min": 50000.0,
-        "mean": 50008.26315789474,
+        "mean": 50007.39473684211,
         "p05": 50000.0,
-        "p50": 50006.0,
-        "p95": 50019.35,
+        "p50": 50005.5,
+        "p95": 50018.0,
         "max": 50068.0
       },
       "posting_entries": {
-        "min": 100000.0,
-        "mean": 113300.88815789473,
-        "p05": 100004.1,
-        "p50": 115342.0,
-        "p95": 132189.6,
-        "max": 136667.0
+        "min": 56470.0,
+        "mean": 62297.25657894737,
+        "p05": 57280.6,
+        "p50": 61397.5,
+        "p95": 70316.1,
+        "max": 74635.0
       },
       "postings_touched": {
-        "min": 10240.0,
-        "mean": 10240.0,
-        "p05": 10240.0,
-        "p50": 10240.0,
-        "p95": 10240.0,
-        "max": 10240.0
+        "min": 1821.0,
+        "mean": 2964.3684210526317,
+        "p05": 2266.55,
+        "p50": 3079.5,
+        "p95": 3503.9499999999994,
+        "max": 3867.0
       }
     },
     {
@@ -207,128 +207,20 @@
         "max": 100185.0
       },
       "posting_entries": {
-        "min": 100000.0,
-        "mean": 113300.88815789473,
-        "p05": 100004.1,
-        "p50": 115342.0,
-        "p95": 132189.6,
-        "max": 136667.0
+        "min": 113692.0,
+        "mean": 122562.95394736843,
+        "p05": 115114.5,
+        "p50": 121601.0,
+        "p95": 134132.2,
+        "max": 137231.0
       },
       "postings_touched": {
-        "min": 10240.0,
-        "mean": 10240.0,
-        "p05": 10240.0,
-        "p50": 10240.0,
-        "p95": 10240.0,
-        "max": 10240.0
-      }
-    },
-    {
-      "mode": "greedy_gain",
-      "budget": 20000,
-      "teacher_recall": {
-        "min": 0.7,
-        "mean": 0.9756578947368422,
-        "p05": 0.8550000000000001,
-        "p50": 1.0,
-        "p95": 1.0,
-        "max": 1.0
-      },
-      "unique_candidates": {
-        "min": 16882.0,
-        "mean": 19122.50657894737,
-        "p05": 17846.05,
-        "p50": 19336.0,
-        "p95": 19769.25,
-        "max": 19935.0
-      },
-      "posting_entries": {
-        "min": 20000.0,
-        "mean": 20010.013157894737,
-        "p05": 20000.0,
-        "p50": 20008.0,
-        "p95": 20028.0,
-        "max": 20058.0
-      },
-      "postings_touched": {
-        "min": 419.0,
-        "mean": 857.8552631578947,
-        "p05": 579.0,
-        "p50": 860.5,
-        "p95": 1152.25,
-        "max": 1255.0
-      }
-    },
-    {
-      "mode": "greedy_gain",
-      "budget": 50000,
-      "teacher_recall": {
-        "min": 0.7,
-        "mean": 0.9789473684210527,
-        "p05": 0.8550000000000001,
-        "p50": 1.0,
-        "p95": 1.0,
-        "max": 1.0
-      },
-      "unique_candidates": {
-        "min": 37075.0,
-        "mean": 43673.73684210526,
-        "p05": 38812.85,
-        "p50": 43367.0,
-        "p95": 48797.799999999996,
-        "max": 49662.0
-      },
-      "posting_entries": {
-        "min": 50000.0,
-        "mean": 50012.82894736842,
-        "p05": 50001.0,
-        "p50": 50010.0,
-        "p95": 50033.45,
-        "max": 50080.0
-      },
-      "postings_touched": {
-        "min": 1593.0,
-        "mean": 2407.282894736842,
-        "p05": 1804.85,
-        "p50": 2401.5,
-        "p95": 2888.9,
-        "max": 3191.0
-      }
-    },
-    {
-      "mode": "greedy_gain",
-      "budget": 100000,
-      "teacher_recall": {
-        "min": 0.7,
-        "mean": 0.9894736842105264,
-        "p05": 0.9,
-        "p50": 1.0,
-        "p95": 1.0,
-        "max": 1.0
-      },
-      "unique_candidates": {
-        "min": 69080.0,
-        "mean": 84357.54605263157,
-        "p05": 75325.1,
-        "p50": 83713.5,
-        "p95": 96549.3,
-        "max": 99560.0
-      },
-      "posting_entries": {
-        "min": 100000.0,
-        "mean": 100013.68421052632,
-        "p05": 100000.0,
-        "p50": 100009.0,
-        "p95": 100037.8,
-        "max": 100092.0
-      },
-      "postings_touched": {
-        "min": 4141.0,
-        "mean": 5121.940789473684,
-        "p05": 4464.0,
-        "p50": 5149.5,
-        "p95": 5714.0,
-        "max": 6272.0
+        "min": 5336.0,
+        "mean": 6320.7828947368425,
+        "p05": 5796.3,
+        "p50": 6309.5,
+        "p95": 6925.75,
+        "max": 7348.0
       }
     }
   ],
@@ -339,14 +231,15 @@
   ],
   "raw_output": {
     "path": "E:\\_repoz\\agent-memory-workspaces\\r4-adaptive-spill-multianchor-raw.json",
-    "bytes": 292897,
-    "sha256": "35c0b4acc75c679315b7d249715affd04f3ce01db65fb073897eaef0dba21c3e"
+    "bytes": 226160,
+    "sha256": "e4cac75223ae7f4b0614bf05c438a18f4d6d6482849600be8aaf9089f84bf282"
   },
   "protocol": {
     "adaptive_scheduler_teacher_free": true,
-    "greedy_gain_teacher_leaking_upper_bound": true,
+    "equal_quota_round_robin": true,
+    "exact_oracles": "reported by r4 fusion upper-bound receipt; not duplicated here",
     "budget_definition": "unique document ids",
     "physical_page_bytes": "not measured",
-    "secondary_assignment": "simulated by route replication; no payload duplication"
+    "secondary_assignment": "not implemented; route replication control only"
   }
 }

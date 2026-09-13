@@ -13,16 +13,17 @@ reported separately.
 ## Deep full-frontier ranker
 
 Address representatives are the mean FP32 vector of each immutable R4
-posting.  A logistic ranker is fit on the first 114 queries and evaluated on
-38 held-out queries.  Features are query/address cosine, inverse deep rank,
-log posting size, and normalized rank.  The model scores all 8,192 addresses
-before candidate enumeration.
+posting.  A four-feature pointwise logistic baseline is fit on the first 114
+queries and evaluated on 38 held-out queries.  The frozen 1,024-address
+shortlist is restored to model-ranked order before the baseline scores the
+complete 8,192-address frontier.  Features are query/address cosine, inverse
+deep rank, log posting size, and normalized rank.
 
 | unique budget | mean recall | p05 | minimum |
 | ---: | ---: | ---: | ---: |
 | 20k | .9105 | .685 | .60 |
-| 50k | .9474 | .80 | .60 |
-| 100k | .9737 | .90 | .60 |
+| 50k | .9368 | .685 | .60 |
+| 100k | .9684 | .885 | .60 |
 
 The held-out ranker is below the earlier prefix oracle and does not approach
 the .99 @ 50k gate.  This is a measured ordering result, not a production
@@ -32,11 +33,10 @@ claim; physical pages, latency, and MDBX I/O were not measured.
 
 On the same three route streams (seed2702, seed2703, deep-8192), a scheduler
 that maximizes marginal fresh candidates per posting entry reaches mean .9717
-at 50k and .9862 at 100k.  Equal-quota three-anchor fusion reaches .9796 and
-.9921.  A teacher-leaking gain-per-entry upper bound reaches .9789 and .9895;
-it is included only to bound topology, not as a deployable policy.  These
-results show that scheduler choice and simple replication do not recover the
-missing .99 @ 50k frontier.
+ at 50k and .9862 at 100k.  Correct equal-quota round-robin fusion reaches
+.9796 at 50k and .9921 at 100k.  Exact teacher-leaking prefix and
+arbitrary-support oracles remain reported only in the #388 receipt.  These
+controls do not recover the missing .99 @ 50k frontier.
 
 Balanced subposting accounting (256/512/1024-entry chunks) changes logical
 posting granularity only; it cannot improve membership recall without a new
@@ -44,11 +44,12 @@ assignment topology.  No FP32 payload was duplicated.
 
 ## Decision
 
-The evidence now points to a within-route representation/topology bottleneck,
-not merely a prefix scheduler.  Proper deep ranker, adaptive utility, and
-three-anchor controls all remain below the target at 50k.  The next justified
-research arm is selective spilling/secondary assignment or a genuinely new
-multi-anchor topology.  THQ-ADC/MDBX cascade activation remains gated.
+The evidence is not sufficient to close the topology question: this is a
+four-feature baseline, and the three-anchor control is not a true multi-anchor
+assignment.  All measured controls remain below the target at 50k.  The next
+arm is a cost-aware/listwise full-frontier ranker followed by selective
+secondary assignment or a genuinely new multi-anchor topology.  THQ-ADC/MDBX
+cascade activation remains gated.
 
 Receipts:
 
