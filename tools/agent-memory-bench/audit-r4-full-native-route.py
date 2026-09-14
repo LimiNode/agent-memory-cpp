@@ -67,6 +67,13 @@ def main() -> None:
                 previous.get("schema_version") == raw.get("schema_version") and
                 len(previous.get("rows", [])) == len(KS) * len(BUDGETS) * QUERIES,
                 "inherited FP32 raw schema/grid differs")
+        previous_rows = {(int(x["k"]), int(x["query"]), int(x["requested_candidate_budget"])): x
+                         for x in previous["rows"]}
+        previous_metrics = {(int(x["k"]), int(x["seed"]), int(x["query"])): x
+                            for x in previous.get("route_metrics", [])}
+    else:
+        previous_rows = {}
+        previous_metrics = {}
     require(raw["family"] == receipt["family"] and raw["schema_version"] == 1,
             "full native raw schema differs")
     rows = raw["rows"]
@@ -85,6 +92,9 @@ def main() -> None:
         require(identity not in identities, "duplicate full native row")
         identities.add(identity)
         int8 = row["int8"]
+        if previous_rows:
+            require(row.get("fp32") == previous_rows[identity].get("fp32"),
+                    f"inherited FP32 row content differs: {identity}")
         teacher = np.asarray(teachers[qi], dtype=np.int64)
         missed = np.asarray(int8["candidate_teacher_ids_missed"], dtype=np.int64)
         hit = np.asarray(int8["candidate_teacher_ids_hit"], dtype=np.int64)
@@ -117,13 +127,16 @@ def main() -> None:
                 set(int(x) for x in row["thq_top256_ids"]),
                 f"exact top-256 set differs: {identity}")
         exact10 = np.asarray(row["exact_top10_ids"], dtype=np.int64)
-        require(int(int8["exact_payload_bytes"]) <= TOP_K * 1536,
+        require(int(int8["exact_payload_bytes"]) ==
+                min(int(int8["candidate_count"]), TOP_K) * 1536,
                 f"exact payload accounting differs: {identity}")
         require(len(exact10) == 10 and np.unique(exact10).size == 10 and
                 np.all(np.isin(exact10, np.asarray(row["thq_top256_ids"], dtype=np.int64))) and
                 abs(float(row["exact_top10_teacher_recall"]) -
                     float(np.isin(teacher, exact10).sum() / TEACHERS_PER_QUERY)) < 1e-9,
                 f"exact top-10 scope differs: {identity}")
+        require(abs(float(row["exact_top10_teacher_recall"]) - candidate_recall) < 1e-9,
+                f"exact top-10 recall equality differs: {identity}")
     require(len(identities) == len(rows), "full native identities incomplete")
     route_metrics = raw["route_metrics"]
     require(len(route_metrics) == 3 * len(KS) * QUERIES,
@@ -133,6 +146,10 @@ def main() -> None:
                 "full native route metric identity differs")
         for key in ("top1024_overlap", "rank_mae", "score_mae", "score_correlation"):
             require(np.isfinite(float(metric[key])), f"non-finite route metric: {key}")
+        if previous_metrics:
+            metric_key = (int(metric["k"]), int(metric["seed"]), int(metric["query"]))
+            require(metric == previous_metrics[metric_key],
+                    f"inherited route metric content differs: {metric_key}")
     native = receipt["native_receipts"]
     require(len(native) == 9, "full native receipt matrix incomplete")
     native_identities: set[tuple[int, int]] = set()
