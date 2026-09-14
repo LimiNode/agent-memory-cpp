@@ -512,6 +512,15 @@ agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-representati
     ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-representative-codec)
 
+add_executable(agent-memory-neuroute-r4-full-route
+    neuroute_r4_full_route.cpp)
+target_link_libraries(agent-memory-neuroute-r4-full-route PRIVATE
+    agent_memory::agent_memory agent_memory::json)
+agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-full-route
+    "${CMAKE_CURRENT_SOURCE_DIR}/neuroute_r4_full_route.cpp"
+    ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
+agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-full-route)
+
 add_executable(agent-memory-neuroute-r4-layout-benchmark
     neuroute_r4_layout_benchmark.cpp)
 set(AGENT_MEMORY_NEUROUTE_R4_HAS_AVX2 0)
