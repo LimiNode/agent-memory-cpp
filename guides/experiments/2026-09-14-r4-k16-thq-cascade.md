@@ -62,11 +62,14 @@ or repeated latency measurement.
 ## Provenance and audit
 
 The receipt binds the run to the frozen THQ manifest SHA
-`f58e074e481dc910ca7bb12b35bc27dc51097640704fb2b0c749018f2edd57` and R4
+`f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57` and R4
 manifest SHA `95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c`.
 The authoritative replay is `EXECUTED`; the companion audit reports
 `PASS` for all 608 rows. The runner SHA recorded in the receipt is
 `a16a92502ba2cc20c6b9a386afc5e20588d36228366414b7e831573e999e4e11`.
+The audit independently recomputes candidate, THQ-top-256, and exact-top-256
+teacher recall from the bound teacher-ID artifact and raw ID lists, including
+row-wise equality of the three recall values.
 
 ## Next check
 

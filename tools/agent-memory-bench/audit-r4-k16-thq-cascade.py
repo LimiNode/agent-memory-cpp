@@ -62,13 +62,46 @@ def main() -> None:
     for seed, records in receipt["r4_artifacts"].items():
         for record in records: check_file(args.r4_root / "materialized" / f"seed-{seed}" / record["file"], record)
     rows = raw["rows"]; require(len(rows) == int(receipt["raw_output"]["rows"]), "row count mismatch")
+    teacher_record = receipt["input_artifacts"]["teacher_ids"]
+    teacher_values = np.fromfile(Path(teacher_record["path"]), dtype="<i8")
+    query_count = int(receipt["queries"])
+    require(teacher_values.size == query_count * 10,
+            "teacher artifact shape differs from receipt")
+    teachers = teacher_values.reshape(query_count, 10)
+    document_count = int(receipt["documents"])
     keys = set()
     for row in rows:
         key = (int(row["query"]), int(row["requested_candidate_budget"]))
         require(key not in keys, f"duplicate row: {key}"); keys.add(key)
+        query = key[0]
+        require(0 <= query < query_count, f"query out of range: {query}")
         require(int(row["requested_candidate_budget"]) in BUDGETS, "unexpected budget")
         require(row["candidate_count"] >= row["requested_candidate_budget"], "candidate budget not reached")
-        require(len(row["thq_top256_ids"]) <= 256 and len(row["exact_top256_ids"]) <= 256, "top-k length mismatch")
+        teacher = teachers[query]
+        missed = [int(value) for value in row["candidate_teacher_ids_missed"]]
+        require(len(missed) == len(set(missed)), "duplicate candidate-missed teacher id")
+        require(set(missed).issubset(set(int(value) for value in teacher)),
+                "candidate-missed id is not a teacher id")
+        candidate_recall = 1.0 - len(missed) / len(teacher)
+        require(abs(float(row["candidate_teacher_recall"]) - candidate_recall) < 1e-12,
+                f"candidate recall mismatch: {key}")
+        top_sets = {}
+        for field in ("thq_top256_ids", "exact_top256_ids"):
+            ids = [int(value) for value in row[field]]
+            require(len(ids) <= 256 and len(ids) == len(set(ids)),
+                    f"top-k length or uniqueness mismatch: {key}/{field}")
+            require(all(0 <= value < document_count for value in ids),
+                    f"top-k document id out of range: {key}/{field}")
+            top_sets[field] = ids
+            recomputed = float(np.isin(teacher, np.asarray(ids, dtype=np.int64)).sum() / len(teacher))
+            metric = "thq_top256_teacher_recall" if field.startswith("thq") else "exact_top256_teacher_recall"
+            require(abs(float(row[metric]) - recomputed) < 1e-12,
+                    f"{metric} mismatch: {key}")
+        require(abs(float(row["candidate_teacher_recall"]) -
+                    float(row["thq_top256_teacher_recall"])) < 1e-12 and
+                abs(float(row["candidate_teacher_recall"]) -
+                    float(row["exact_top256_teacher_recall"])) < 1e-12,
+                f"cascade recall mismatch: {key}")
     require(len(rows) == len(BUDGETS) * 152, "row grid mismatch")
     for summary in receipt["summaries"]:
         budget = int(summary["requested_candidate_budget"]); selected = [row for row in rows if int(row["requested_candidate_budget"]) == budget]
