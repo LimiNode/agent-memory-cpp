@@ -70,7 +70,7 @@ def main() -> None:
             receipt["coarse_layout_manifest_sha256"] == sha256(args.coarse_layout_manifest) and
             receipt["native_executable_sha256"] == sha256(args.native_executable) and
             receipt["fp32_raw_sha256"] == sha256(args.fp32_raw) and
-            receipt["runner_sha256"] == sha256(args.runner), "cascade receipt binding differs")
+            receipt.get("metric_runner_sha256", receipt["runner_sha256"]) == sha256(args.runner), "cascade receipt binding differs")
     selected_layouts = tuple((str(item["mode"]), int(item["lanes"]))
                              for item in receipt["layouts"])
     require(selected_layouts and len(set(selected_layouts)) == len(selected_layouts) and
@@ -89,11 +89,11 @@ def main() -> None:
     rows = raw["rows"]
     expected_rows = QUERIES * len(QUALITY_A_VALUES) * len(BUDGETS) * len(selected_layouts)
     require(len(rows) == expected_rows, "cascade row count differs")
-    identities: set[tuple[str, int, int, int]] = set()
+    identities: set[tuple[str, int, int, int, int]] = set()
     for row in rows:
         mode = str(row["layout"]); lanes = int(row["lanes"]); qi = int(row["query"])
         a = int(row["addresses_refined_per_seed"]); budget = int(row["requested_candidate_budget"])
-        identity = (mode, qi, a, budget)
+        identity = (mode, lanes, qi, a, budget)
         require(identity not in identities and (mode, lanes) in LAYOUTS and 0 <= qi < QUERIES and
                 a in QUALITY_A_VALUES and budget in BUDGETS, f"cascade identity differs: {identity}")
         identities.add(identity)
@@ -131,7 +131,9 @@ def main() -> None:
         require(abs(float(row["candidate_teacher_recall"]) -
                    float(row["thq_top256_teacher_recall"])) < 1e-12 and
                 abs(float(row["candidate_teacher_recall"]) -
-                   float(row["exact_top256_teacher_recall"])) < 1e-12,
+                   float(row["exact_top256_teacher_recall"])) < 1e-12 and
+                abs(float(row["candidate_teacher_recall"]) -
+                   float(row["exact_top10_teacher_recall"])) < 1e-12,
                 f"top-256 equality differs: {identity}")
         fp = fp32_by_id[(qi, a, budget)]
         require(abs(float(row["fp32_candidate_teacher_recall"]) -

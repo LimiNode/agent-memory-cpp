@@ -37,12 +37,14 @@ def main() -> None:
                                               if int(x) not in set(missed)]
     payload = (json.dumps(raw, separators=(",", ":"), sort_keys=True) + "\n").encode()
     args.raw.write_bytes(payload)
+    metric_runner_sha = receipt.get("metric_runner_sha256", receipt.get("runner_sha256"))
     receipt["raw_output"]["bytes"] = len(payload)
     receipt["raw_output"]["sha256"] = hashlib.sha256(payload).hexdigest()
     receipt["corrective_derivation"] = {"status": "DERIVED_FIELDS_ONLY",
                                          "metrics_replayed": False,
                                          "fields": ["candidate_teacher_ids_hit"]}
-    receipt["runner_sha256"] = sha256(args.runner)
+    receipt["metric_runner_sha256"] = metric_runner_sha
+    receipt["corrector_sha256"] = sha256(args.runner)
     args.receipt.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n",
                            encoding="utf-8")
 

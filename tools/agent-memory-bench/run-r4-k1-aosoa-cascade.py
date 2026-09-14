@@ -117,10 +117,11 @@ def main() -> None:
     coarse_by_seed = {int(row["seed"]): row for row in coarse_layout["seeds"]}
     layout_by_seed = {int(row["seed"]): row for row in layout["seeds"]}
     args.work_root.mkdir(parents=True, exist_ok=True)
-    order_by_layout: dict[str, dict[int, dict[int, list[tuple[np.ndarray, np.ndarray]]]]] = {}
+    order_by_layout: dict[tuple[str, int], dict[int, dict[int, list[tuple[np.ndarray, np.ndarray]]]]] = {}
     native_outputs: list[dict[str, Any]] = []
     for mode, lanes, layout_id in selected_layouts:
-        order_by_layout[mode] = {}
+        layout_key = (mode, lanes)
+        order_by_layout[layout_key] = {}
         for seed in SEEDS:
             coarse_record = coarse_by_seed[seed]
             coarse_item = next(item for item in coarse_record["layouts"] if item["id"] == layout_id)
@@ -153,7 +154,7 @@ def main() -> None:
             require(native["coarse_layout"] == mode and native["coarse_lanes"] == lanes and
                     native["coarse_encoding"] == "int8_per_dimension",
                     f"native layout result differs: {seed}/{mode}")
-            order_by_layout[mode][seed] = parse_quality_order(order_path)
+            order_by_layout[layout_key][seed] = parse_quality_order(order_path)
             native_outputs.append({"layout": mode, "lanes": lanes, "seed": seed,
                                    "result": str(output), "result_bytes": output.stat().st_size,
                                    "result_sha256": sha256(output), "order": str(order_path),
@@ -176,7 +177,7 @@ def main() -> None:
             teacher = np.asarray(teachers[qi], dtype=np.int64)
             lut = BASE.interval_squared_costs(np.asarray(thresholds), query)
             for a in QUALITY_A_VALUES:
-                streams = [order_by_layout[mode][seed][a][qi] for seed in SEEDS]
+                streams = [order_by_layout[(mode, lanes)][seed][a][qi] for seed in SEEDS]
                 fused = BASE.fuse(routes, [item[0] for item in streams],
                                   [item[1] for item in streams], qi, teacher, n)
                 for metric in fused:
@@ -238,6 +239,7 @@ def main() -> None:
                "fp32_raw_sha256": sha256(args.fp32_raw),
                "native_executable_sha256": sha256(args.native_executable),
                "runner_sha256": sha256(Path(__file__)),
+               "metric_runner_sha256": sha256(Path(__file__)),
                "raw_output": {"path": str(args.raw_output), "bytes": len(raw_bytes),
                               "sha256": hashlib.sha256(raw_bytes).hexdigest(), "rows": len(rows)},
                "protocol": {"route": "native INT8 K1 layout -> INT8 K16 refine -> three-seed fusion",
