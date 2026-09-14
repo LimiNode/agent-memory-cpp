@@ -56,18 +56,23 @@ def load_route(root: Path, record: dict[str, Any]) -> dict[str, Any]:
 
 
 def read_orders(path: Path, query_count: int, addresses: int) -> tuple[np.ndarray, np.ndarray]:
-    expected = 8 + query_count * addresses * 8
-    require(path.is_file() and path.stat().st_size == expected, f"native order differs: {path}")
-    addresses_data = np.memmap(path, mode="r", dtype="<u4", offset=8,
-                               shape=(query_count, addresses))
-    scores_data = np.memmap(path, mode="r", dtype="<f4", offset=8 + query_count * addresses * 4,
-                            shape=(query_count, addresses))
-    orders = np.asarray(addresses_data, dtype=np.uint32).copy()
-    scores = np.empty_like(scores_data, dtype=np.float32)
+    raw = path.read_bytes()
+    require(len(raw) >= 20, f"native order differs: {path}")
+    magic, version, q, a, passes = struct.unpack_from("<5I", raw, 0)
+    require((magic, version, q, a, passes) == (0x314F5243, 1, query_count, addresses, 1),
+            f"native order header differs: {path}")
+    offset = 20 + 4 * 2
+    pair_dtype = np.dtype([("address", "<u4"), ("score", "<f4")])
+    orders = np.empty((query_count, addresses), dtype=np.uint32)
+    scores = np.empty((query_count, addresses), dtype=np.float32)
     for query in range(query_count):
-        scores[query, orders[query]] = np.asarray(scores_data[query], dtype=np.float32)
+        pairs = np.frombuffer(raw, dtype=pair_dtype, count=addresses, offset=offset)
+        orders[query] = pairs["address"]
+        scores[query] = pairs["score"]
+        offset += addresses * 8
         require(np.array_equal(np.sort(orders[query]), np.arange(addresses, dtype=np.uint32)),
                 f"native order is not a permutation: {path}/{query}")
+    require(offset == len(raw), f"native order trailing bytes: {path}")
     return orders, scores
 
 
@@ -77,7 +82,9 @@ def main() -> None:
     parser.add_argument("--r4-layout-manifest", type=Path, required=True)
     parser.add_argument("--r4-layout-root", type=Path, required=True)
     parser.add_argument("--native-receipt", type=Path, required=True)
-    parser.add_argument("--native-root", type=Path, required=True)
+    parser.add_argument("--native-root", type=Path, required=False)
+    parser.add_argument("--layout-mode", default="aosoa_avx2")
+    parser.add_argument("--layout-lanes", type=int, default=32)
     parser.add_argument("--raw-output", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -98,22 +105,32 @@ def main() -> None:
     scores: list[np.ndarray] = []
     native_bindings = []
     for seed in SEEDS:
-        binding = next(row for row in native_receipt["native_receipts"]
-                       if int(row["seed"]) == seed and int(row["k"]) == 16)
+        bindings = native_receipt.get("native_outputs", native_receipt.get("native_receipts", []))
+        binding = next(row for row in bindings
+                       if int(row["seed"]) == seed and
+                       (int(row.get("lanes", 0)) == args.layout_lanes or int(row.get("k", 0)) == 16) and
+                       row.get("layout", args.layout_mode) == args.layout_mode)
         order = Path(binding["order"])
         result_meta = json.loads(Path(binding["result"]).read_text(encoding="utf-8"))
-        current_order, current_scores = read_orders(order, queries, int(result_meta["addresses"]))
+        addresses = int(result_meta.get("addresses", result_meta.get("rows", 0)))
+        current_order, current_scores = read_orders(order, queries, addresses)
         orders.append(current_order); scores.append(current_scores)
-        native_bindings.append({"seed": seed, "order": str(order),
-                                "order_sha256": sha256(order)})
-    codes_pages: list[set[int]] = []
+        native_bindings.append({"seed": seed, "layout": args.layout_mode, "lanes": args.layout_lanes,
+                                "order": str(order), "order_sha256": sha256(order),
+                                "result": str(binding["result"]), "result_sha256": sha256(Path(binding["result"]))})
+    documents = int(thq["documents"])
+    queries_data = np.memmap(Path(thq["references"]["queries"]["path"]), mode="r",
+                             dtype="<f4", shape=(queries, int(thq["dimensions"])))
+    documents_data = np.memmap(Path(thq["references"]["document_vectors"]["path"]), mode="r",
+                               dtype="<f4", shape=(documents, int(thq["dimensions"])))
     rows: list[dict[str, Any]] = []
     for query in range(queries):
         positions = [0, 0, 0]
         selected: list[int] = []
-        seen = np.zeros(int(thq["documents"]), dtype=np.bool_)
-        posting_pages: set[int] = set()
+        seen = np.zeros(documents, dtype=np.bool_)
+        posting_pages: set[tuple[int, int]] = set()
         document_pages: set[int] = set()
+        page_sequence: list[tuple[int, int]] = []
         touched = 0
         entries = 0
         budget_index = 0
@@ -129,16 +146,49 @@ def main() -> None:
             selected.extend(int(x) for x in fresh)
             touched += 1; entries += int(posting.size)
             offset = int(routes[stream]["offsets"][address])
-            posting_pages.update(range((offset * 4) // PAGE_BYTES,
-                                       ((offset + int(posting.size)) * 4 + PAGE_BYTES - 1) // PAGE_BYTES))
-            document_pages.update((np.asarray(fresh, dtype=np.int64) * code_bytes) // PAGE_BYTES)
+            start_byte = offset * 4
+            end_byte = start_byte + max(1, int(posting.size) * 4) - 1
+            pages = list(range(start_byte // PAGE_BYTES, end_byte // PAGE_BYTES + 1))
+            posting_pages.update((stream, page) for page in pages)
+            page_sequence.extend((stream, page) for page in pages)
+            for doc_id in np.asarray(fresh, dtype=np.int64):
+                dstart = int(doc_id) * code_bytes
+                dend = dstart + code_bytes - 1
+                document_pages.update(range(dstart // PAGE_BYTES, dend // PAGE_BYTES + 1))
             if len(selected) >= BUDGETS[budget_index]:
+                page_runs = 0
+                transitions = 0
+                forward_lengths: list[int] = []
+                if page_sequence:
+                    run = 1; page_runs = 1
+                    for prev, cur in zip(page_sequence, page_sequence[1:]):
+                        if cur[0] == prev[0] and cur[1] == prev[1] + 1:
+                            run += 1
+                        else:
+                            forward_lengths.append(run); run = 1; page_runs += 1
+                        transitions += 1
+                    forward_lengths.append(run)
+                candidate_arr = np.asarray(selected, dtype=np.int64)
+                exact_scores = documents_data[candidate_arr] @ queries_data[query]
+                exact_top = candidate_arr[np.lexsort((candidate_arr, -exact_scores))[:256]]
+                exact_pages = set()
+                for doc_id in exact_top:
+                    dstart = int(doc_id) * code_bytes; dend = dstart + code_bytes - 1
+                    exact_pages.update(range(dstart // PAGE_BYTES, dend // PAGE_BYTES + 1))
+                useful = max(1, len(exact_top) * code_bytes)
                 rows.append({"query": query, "requested_candidate_budget": BUDGETS[budget_index],
                              "candidate_count": len(selected), "postings_touched": touched,
                              "posting_entries_touched": entries,
                              "posting_pages": len(posting_pages),
                              "thq_document_pages": len(document_pages),
-                             "union_pages": len(posting_pages) + len(document_pages)})
+                             "union_pages": len(posting_pages) + len(document_pages),
+                             "exact_top256_document_pages": len(exact_pages),
+                             "useful_exact_payload_bytes": useful,
+                             "exact_page_amplification": float(len(exact_pages) * PAGE_BYTES / useful),
+                             "page_run_count": page_runs,
+                             "page_transitions": transitions,
+                             "forward_contiguous_run_mean": float(np.mean(forward_lengths)) if forward_lengths else 0.0,
+                             "forward_contiguous_run_max": max(forward_lengths) if forward_lengths else 0})
                 budget_index += 1
     summaries = []
     for budget in BUDGETS:
@@ -146,14 +196,18 @@ def main() -> None:
         summaries.append({"requested_candidate_budget": budget, "query_count": len(selected),
                           **{field: aggregate([float(row[field]) for row in selected]) for field in
                              ("candidate_count", "postings_touched", "posting_entries_touched",
-                              "posting_pages", "thq_document_pages", "union_pages")}})
+                              "posting_pages", "thq_document_pages", "union_pages",
+                              "exact_top256_document_pages", "useful_exact_payload_bytes",
+                              "exact_page_amplification", "page_run_count", "page_transitions",
+                              "forward_contiguous_run_mean", "forward_contiguous_run_max")}})
     raw = {"schema_version": 1, "family": "semantic_r4_posting_page_proxy_v1", "rows": rows}
     raw_bytes = (json.dumps(raw, separators=(",", ":"), sort_keys=True) + "\n").encode()
     args.raw_output.parent.mkdir(parents=True, exist_ok=True); args.raw_output.write_bytes(raw_bytes)
     receipt = {"schema_version": 1, "family": raw["family"], "execution_status": "EXECUTED",
                "production_activation": False, "queries": queries, "seeds": list(SEEDS),
                "budgets": list(BUDGETS), "page_bytes": PAGE_BYTES, "summaries": summaries,
-               "native_k": 16, "native_bindings": native_bindings,
+               "native_layout": {"mode": args.layout_mode, "lanes": args.layout_lanes},
+               "native_bindings": native_bindings,
                "thq_manifest_sha256": sha256(args.thq_manifest),
                "r4_layout_manifest_sha256": sha256(args.r4_layout_manifest),
                "native_receipt_sha256": sha256(args.native_receipt),

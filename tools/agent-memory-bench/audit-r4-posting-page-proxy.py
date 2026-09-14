@@ -43,6 +43,7 @@ def main() -> None:
     parser.add_argument("--r4-layout-manifest", type=Path, required=True)
     parser.add_argument("--native-receipt", type=Path, required=True)
     parser.add_argument("--runner", type=Path, required=True)
+    parser.add_argument("--r4-layout-root", type=Path, required=True)
     args = parser.parse_args()
     receipt = json.loads(args.receipt.read_text(encoding="utf-8")); raw = json.loads(args.raw.read_text(encoding="utf-8"))
     require(receipt["family"] == raw["family"] == "semantic_r4_posting_page_proxy_v1" and
@@ -53,6 +54,8 @@ def main() -> None:
             receipt["r4_layout_manifest_sha256"] == sha256(args.r4_layout_manifest) and
             receipt["native_receipt_sha256"] == sha256(args.native_receipt) and
             receipt["runner_sha256"] == sha256(args.runner), "proxy provenance differs")
+    require(int(receipt.get("native_layout", {}).get("lanes", 0)) == 32,
+            "proxy must use production AoSoA-32 stream")
     rows = raw["rows"]
     require(len(rows) == QUERIES * len(BUDGETS), "proxy row count differs")
     identities = set()
@@ -66,13 +69,19 @@ def main() -> None:
                 int(row["posting_pages"]) >= 0 and int(row["thq_document_pages"]) >= 0 and
                 int(row["union_pages"]) == int(row["posting_pages"]) + int(row["thq_document_pages"]),
                 f"proxy accounting differs: {identity}")
+        for field in ("exact_top256_document_pages", "useful_exact_payload_bytes",
+                      "exact_page_amplification", "page_run_count", "page_transitions",
+                      "forward_contiguous_run_mean", "forward_contiguous_run_max"):
+            require(float(row[field]) >= 0.0, f"proxy metric differs: {identity}/{field}")
     summary_map = {int(row["requested_candidate_budget"]): row for row in receipt["summaries"]}
     require(set(summary_map) == set(BUDGETS), "proxy summary grid differs")
     for budget in BUDGETS:
         selected = [row for row in rows if int(row["requested_candidate_budget"]) == budget]
         require(int(summary_map[budget]["query_count"]) == len(selected), f"proxy summary count differs: {budget}")
         for field in ("candidate_count", "postings_touched", "posting_entries_touched", "posting_pages",
-                      "thq_document_pages", "union_pages"):
+                      "thq_document_pages", "union_pages", "exact_top256_document_pages",
+                      "useful_exact_payload_bytes", "exact_page_amplification", "page_run_count",
+                      "page_transitions", "forward_contiguous_run_mean", "forward_contiguous_run_max"):
             for key, value in aggregate([float(row[field]) for row in selected]).items():
                 require(math.isclose(float(summary_map[budget][field][key]), value, abs_tol=1e-9),
                         f"proxy aggregate differs: {budget}/{field}/{key}")
