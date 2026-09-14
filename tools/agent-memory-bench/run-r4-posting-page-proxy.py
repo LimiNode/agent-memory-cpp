@@ -130,6 +130,10 @@ def main() -> None:
                              dtype="<f4", shape=(queries, int(thq["dimension"])))
     documents_data = np.memmap(Path(thq["references"]["document_vectors"]["path"]), mode="r",
                                dtype="<f4", shape=(documents, int(thq["dimension"])))
+    thresholds = np.memmap(Path(thq["outputs"]["thq4_thresholds"]["path"]), mode="r",
+                           dtype="<f4", shape=(int(thq["dimension"]), 3))
+    codes = np.memmap(codes_path, mode="r", dtype=np.uint8,
+                      shape=(documents, code_bytes))
     rows: list[dict[str, Any]] = []
     for query in range(queries):
         positions = [0, 0, 0]
@@ -138,6 +142,7 @@ def main() -> None:
         posting_pages: set[tuple[int, int]] = set()
         document_pages: set[int] = set()
         page_sequence: list[tuple[int, int]] = []
+        touched_addresses: list[tuple[int, int]] = []
         touched = 0
         entries = 0
         budget_index = 0
@@ -147,6 +152,7 @@ def main() -> None:
             stream = max(available, key=lambda i: (float(scores[i][query, orders[i][query, positions[i]]]), -i))
             address = int(orders[stream][query, positions[stream]])
             positions[stream] += 1
+            touched_addresses.append((stream, address))
             posting = routes[stream]["postings"][address]
             fresh = posting[~seen[posting]]
             seen[posting] = True
@@ -176,22 +182,40 @@ def main() -> None:
                         transitions += 1
                     forward_lengths.append(run)
                 candidate_arr = np.asarray(selected, dtype=np.int64)
-                exact_scores = documents_data[candidate_arr] @ queries_data[query]
-                exact_top = candidate_arr[np.lexsort((candidate_arr, -exact_scores))[:256]]
+                qv = queries_data[query]
+                t1, t2, t3 = thresholds[:, 0], thresholds[:, 1], thresholds[:, 2]
+                l1 = np.stack((np.maximum(qv - t1, 0.0),
+                               np.where(qv < t1, t1 - qv,
+                                        np.where(qv >= t2, qv - t2, 0.0)),
+                               np.where(qv < t2, t2 - qv,
+                                        np.where(qv >= t3, qv - t3, 0.0)),
+                               np.maximum(t3 - qv, 0.0)), axis=1)
+                lut = (l1 * l1).astype(np.float32)
+                bits = np.unpackbits(np.asarray(codes[candidate_arr]), axis=1,
+                                     bitorder="little")[:, :int(thq["dimension"]) * 3]
+                levels = bits.reshape(len(candidate_arr), int(thq["dimension"]), 3).sum(axis=2)
+                thq_scores = lut[np.arange(int(thq["dimension"]))[None, :], levels].sum(axis=1)
+                thq_top = candidate_arr[np.lexsort((candidate_arr, thq_scores))[:256]]
+                exact_scores = documents_data[thq_top] @ qv
+                exact_top = thq_top[np.lexsort((thq_top, -exact_scores))[:256]]
                 exact_pages = set()
                 for doc_id in exact_top:
-                    dstart = int(doc_id) * code_bytes; dend = dstart + code_bytes - 1
+                    dstart = int(doc_id) * 1536; dend = dstart + 1536 - 1
                     exact_pages.update(range(dstart // PAGE_BYTES, dend // PAGE_BYTES + 1))
-                useful = max(1, len(exact_top) * code_bytes)
+                useful = max(1, len(exact_top) * 1536)
                 rows.append({"query": query, "requested_candidate_budget": BUDGETS[budget_index],
                              "candidate_count": len(selected), "postings_touched": touched,
                              "posting_entries_touched": entries,
                              "posting_pages": len(posting_pages),
                              "thq_document_pages": len(document_pages),
                              "union_pages": len(posting_pages) + len(document_pages),
-                             "exact_top256_document_pages": len(exact_pages),
+                             "exact_top256_fp32_record_pages": len(exact_pages),
+                             "exact_top256_ids": [int(x) for x in exact_top],
                              "useful_exact_payload_bytes": useful,
-                             "exact_page_amplification": float(len(exact_pages) * PAGE_BYTES / useful),
+                             "exact_fp32_page_amplification": float(len(exact_pages) * PAGE_BYTES / useful),
+                             "posting_page_keys": [[int(s), int(pg)] for s, pg in sorted(posting_pages)],
+                             "touched_addresses": [[int(s), int(ad)] for s, ad in touched_addresses],
+                             "thq_candidate_page_ids": sorted(int(x) for x in document_pages),
                              "page_run_count": page_runs,
                              "page_transitions": transitions,
                              "forward_contiguous_run_mean": float(np.mean(forward_lengths)) if forward_lengths else 0.0,
@@ -204,8 +228,8 @@ def main() -> None:
                           **{field: aggregate([float(row[field]) for row in selected]) for field in
                              ("candidate_count", "postings_touched", "posting_entries_touched",
                               "posting_pages", "thq_document_pages", "union_pages",
-                              "exact_top256_document_pages", "useful_exact_payload_bytes",
-                              "exact_page_amplification", "page_run_count", "page_transitions",
+                              "exact_top256_fp32_record_pages", "useful_exact_payload_bytes",
+                              "exact_fp32_page_amplification", "page_run_count", "page_transitions",
                               "forward_contiguous_run_mean", "forward_contiguous_run_max")}})
     raw = {"schema_version": 1, "family": "semantic_r4_posting_page_proxy_v1", "rows": rows}
     raw_bytes = (json.dumps(raw, separators=(",", ":"), sort_keys=True) + "\n").encode()

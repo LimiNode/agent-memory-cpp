@@ -56,6 +56,14 @@ def main() -> None:
             receipt["runner_sha256"] == sha256(args.runner), "proxy provenance differs")
     require(int(receipt.get("native_layout", {}).get("lanes", 0)) == 32,
             "proxy must use production AoSoA-32 stream")
+    layout = json.loads(args.r4_layout_manifest.read_text(encoding="utf-8"))
+    route_maps = []
+    for record in layout["seeds"]:
+        root = args.r4_layout_root / f"seed-{int(record['seed'])}"
+        mapping = {str(x["role"]): x for x in record["mappings"]}
+        offsets = np.fromfile(root / mapping["address_offsets"]["file"], dtype="<u4")
+        counts = np.fromfile(root / mapping["address_counts"]["file"], dtype="<u4")
+        route_maps.append((offsets, counts))
     rows = raw["rows"]
     require(len(rows) == QUERIES * len(BUDGETS), "proxy row count differs")
     identities = set()
@@ -69,18 +77,42 @@ def main() -> None:
                 int(row["posting_pages"]) >= 0 and int(row["thq_document_pages"]) >= 0 and
                 int(row["union_pages"]) == int(row["posting_pages"]) + int(row["thq_document_pages"]),
                 f"proxy accounting differs: {identity}")
-        for field in ("exact_top256_document_pages", "useful_exact_payload_bytes",
-                      "exact_page_amplification", "page_run_count", "page_transitions",
+        for field in ("exact_top256_fp32_record_pages", "useful_exact_payload_bytes",
+                      "exact_fp32_page_amplification", "page_run_count", "page_transitions",
                       "forward_contiguous_run_mean", "forward_contiguous_run_max"):
             require(float(row[field]) >= 0.0, f"proxy metric differs: {identity}/{field}")
+        expected_posting_pages = set()
+        for stream, address in row["touched_addresses"]:
+            offset = int(route_maps[int(stream)][0][int(address)])
+            count = int(route_maps[int(stream)][1][int(address)])
+            start = offset * 4; end = start + max(1, count * 4) - 1
+            expected_posting_pages.update((int(stream), page)
+                                          for page in range(start // 4096, end // 4096 + 1))
+        actual_posting_pages = {tuple(int(v) for v in pair) for pair in row["posting_page_keys"]}
+        require(expected_posting_pages == actual_posting_pages and
+                len(actual_posting_pages) == int(row["posting_pages"]),
+                f"posting page reconstruction differs: {identity}")
+        require(len(set(int(x) for x in row["thq_candidate_page_ids"])) ==
+                int(row["thq_document_pages"]),
+                f"THQ candidate page accounting differs: {identity}")
+        exact_pages = set()
+        for doc_id in row["exact_top256_ids"]:
+            start = int(doc_id) * 1536; end = start + 1535
+            exact_pages.update(range(start // 4096, end // 4096 + 1))
+        require(len(exact_pages) == int(row["exact_top256_fp32_record_pages"]),
+                f"exact FP32 page reconstruction differs: {identity}")
+        require(math.isclose(float(row["exact_fp32_page_amplification"]),
+                             len(exact_pages) * 4096.0 / float(row["useful_exact_payload_bytes"]),
+                             abs_tol=1e-12),
+                f"exact FP32 amplification differs: {identity}")
     summary_map = {int(row["requested_candidate_budget"]): row for row in receipt["summaries"]}
     require(set(summary_map) == set(BUDGETS), "proxy summary grid differs")
     for budget in BUDGETS:
         selected = [row for row in rows if int(row["requested_candidate_budget"]) == budget]
         require(int(summary_map[budget]["query_count"]) == len(selected), f"proxy summary count differs: {budget}")
         for field in ("candidate_count", "postings_touched", "posting_entries_touched", "posting_pages",
-                      "thq_document_pages", "union_pages", "exact_top256_document_pages",
-                      "useful_exact_payload_bytes", "exact_page_amplification", "page_run_count",
+                      "thq_document_pages", "union_pages", "exact_top256_fp32_record_pages",
+                      "useful_exact_payload_bytes", "exact_fp32_page_amplification", "page_run_count",
                       "page_transitions", "forward_contiguous_run_mean", "forward_contiguous_run_max"):
             for key, value in aggregate([float(row[field]) for row in selected]).items():
                 require(math.isclose(float(summary_map[budget][field][key]), value, abs_tol=1e-9),
