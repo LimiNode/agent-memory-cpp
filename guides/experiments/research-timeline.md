@@ -918,3 +918,14 @@ at A=8,192/16,384 per seed, before fusion or storage. Therefore the next gate
 is a full K8/K16/K32 occupied-address bake-off and, if needed, a global
 representative top-R oracle; physical MDBX materialization remains deferred.
 See `2026-09-14-r4-k1-integrated-native-quality.md` and its compact receipt.
+
+### Per-dimension INT8 K1 coarse control (2026-09-14)
+
+The mean K16 coarse stores were quantized per dimension to signed INT8 and
+replayed through the same native K16/refine, three-seed R4, THQ, and exact
+top-10 cascade. The compact stores are about 75.0 MB versus 300.0 MB for the
+FP32 source. At A=16,384 the candidate frontier is identical to FP32 at all
+budgets; at A=8,192 the largest mean loss is `.001316 @ 5k`. The independent
+audit passes 1,216 rows and eight summary cells. This licenses compact-store
+and SIMD/page controls, but not production or MDBX claims. See
+`2026-09-14-r4-k1-coarse-int8.md` and its compact receipt.

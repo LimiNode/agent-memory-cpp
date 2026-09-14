@@ -66,13 +66,22 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
                const std::filesystem::path& queries_path,
                const std::vector<std::size_t>& a_values, std::size_t measured_passes,
                const std::filesystem::path& output_path,
-               const std::filesystem::path& order_path) {
-    const auto coarse = read_values<float>(coarse_path);
+               const std::filesystem::path& order_path,
+               const std::filesystem::path* coarse_scale_path) {
+    const bool coarse_int8 = coarse_scale_path != nullptr;
+    const auto coarse = coarse_int8 ? std::vector<float>{}
+                                    : read_values<float>(coarse_path);
+    const auto coarse_codes = coarse_int8 ? read_values<std::int8_t>(coarse_path)
+                                          : std::vector<std::int8_t>{};
+    const auto coarse_scales = coarse_int8
+        ? read_values<float>(*coarse_scale_path) : std::vector<float>{};
     const auto store = read_values<std::uint8_t>(store_path);
     const auto offsets = read_values<std::uint32_t>(offsets_path);
     const auto counts = read_values<std::uint8_t>(counts_path);
     const auto queries = read_values<float>(queries_path);
-    require(coarse.size() == coarse_rows * dimensions &&
+    require((coarse_int8 ? coarse_codes.size() == coarse_rows * dimensions &&
+                            coarse_scales.size() == dimensions
+                         : coarse.size() == coarse_rows * dimensions) &&
             store.size() == store_rows * record_bytes &&
             offsets.size() == counts.size() && coarse_rows == offsets.size() &&
             queries.size() % dimensions == 0 && measured_passes >= 1,
@@ -103,9 +112,16 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
             std::vector<float> coarse_scores(coarse_rows, 0.0F);
             for (std::size_t address = 0; address != coarse_rows; ++address) {
                 float score = 0.0F;
-                const auto* row = coarse.data() + address * dimensions;
-                for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
-                    score += row[dimension] * query[dimension];
+                if (coarse_int8) {
+                    const auto* row = coarse_codes.data() + address * dimensions;
+                    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+                        score += static_cast<float>(row[dimension]) *
+                                 coarse_scales[dimension] * query[dimension];
+                } else {
+                    const auto* row = coarse.data() + address * dimensions;
+                    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+                        score += row[dimension] * query[dimension];
+                }
                 coarse_scores[address] = score;
             }
             std::vector<std::uint32_t> order(coarse_rows);
@@ -170,6 +186,7 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
     output << nlohmann::json{
         {"schema_version", 1},
         {"family", "semantic_r4_k1_coarse_k16_native_samples_v1"},
+        {"coarse_encoding", coarse_int8 ? "int8_per_dimension" : "fp32"},
         {"coarse_rows", coarse_rows}, {"store_rows", store_rows},
         {"queries", query_count}, {"measured_passes", measured_passes},
         {"a_values", a_values}, {"checksum", checksum}, {"samples", samples}
@@ -184,11 +201,20 @@ int main(int argc, char** argv) {
             benchmark(argv[2], static_cast<std::size_t>(std::stoull(argv[3])),
                       argv[4], static_cast<std::size_t>(std::stoull(argv[5])),
                       argv[6], argv[7], argv[8], parse_a_values(argv[9]),
-                       static_cast<std::size_t>(std::stoull(argv[10])), argv[11], argv[12]);
+                       static_cast<std::size_t>(std::stoull(argv[10])), argv[11], argv[12], nullptr);
+            return 0;
+        }
+        if (argc == 14 && std::string(argv[1]) == "--benchmark-coarse-refine-int8") {
+            const std::filesystem::path scale_path = argv[13];
+            benchmark(argv[2], static_cast<std::size_t>(std::stoull(argv[3])),
+                      argv[4], static_cast<std::size_t>(std::stoull(argv[5])),
+                      argv[6], argv[7], argv[8], parse_a_values(argv[9]),
+                      static_cast<std::size_t>(std::stoull(argv[10])), argv[11], argv[12],
+                      &scale_path);
             return 0;
         }
         throw std::runtime_error(
-            "usage: --benchmark-coarse-refine COARSE COARSE_ROWS STORE STORE_ROWS OFFSETS COUNTS QUERIES A_VALUES PASSES OUTPUT ORDER_OUTPUT");
+            "usage: --benchmark-coarse-refine[-int8] COARSE COARSE_ROWS STORE STORE_ROWS OFFSETS COUNTS QUERIES A_VALUES PASSES OUTPUT ORDER_OUTPUT [SCALES]");
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-k1-coarse-refine: "
                   << error.what() << '\n';

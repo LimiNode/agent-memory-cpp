@@ -34,6 +34,11 @@ route, three-seed posting fusion, THQ top-256, and exact top-10 control. It
 confirms the quality frontier but makes the remaining full-address routing cost
 explicit; it is still logical/native evidence, not a physical MDBX measurement.
 
+The [per-dimension INT8 K1 coarse control](2026-09-14-r4-k1-coarse-int8.md)
+shows a fourfold coarse-store reduction with exact FP32 frontier parity at
+A=16384 and only a small bounded loss at A=8192. It is a compact sidecar
+control; SIMD, pages, and MDBX remain follow-up measurements.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked
