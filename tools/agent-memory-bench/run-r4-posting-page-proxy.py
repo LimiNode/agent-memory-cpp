@@ -55,22 +55,27 @@ def load_route(root: Path, record: dict[str, Any]) -> dict[str, Any]:
             "physical_path": route_root / mapping["physical_to_document"]["file"]}
 
 
-def read_orders(path: Path, query_count: int, addresses: int) -> tuple[np.ndarray, np.ndarray]:
+def read_orders(path: Path, query_count: int, addresses: int, selected_a: int) -> tuple[np.ndarray, np.ndarray]:
     raw = path.read_bytes()
     require(len(raw) >= 20, f"native order differs: {path}")
     magic, version, q, a, passes = struct.unpack_from("<5I", raw, 0)
-    require((magic, version, q, a, passes) == (0x314F5243, 1, query_count, addresses, 1),
+    require((magic, version, q, passes) == (0x314F5243, 1, query_count, 1),
             f"native order header differs: {path}")
-    offset = 20 + 4 * 2
+    a_values = struct.unpack_from(f"<{a}I", raw, 20)
+    require(selected_a in a_values, f"native order A differs: {path}")
+    offset = 20 + 4 * a
     pair_dtype = np.dtype([("address", "<u4"), ("score", "<f4")])
-    orders = np.empty((query_count, addresses), dtype=np.uint32)
-    scores = np.empty((query_count, addresses), dtype=np.float32)
+    orders = np.empty((query_count, selected_a), dtype=np.uint32)
+    scores = np.full((query_count, addresses), -np.inf, dtype=np.float32)
     for query in range(query_count):
-        pairs = np.frombuffer(raw, dtype=pair_dtype, count=addresses, offset=offset)
-        orders[query] = pairs["address"]
-        scores[query] = pairs["score"]
-        offset += addresses * 8
-        require(np.array_equal(np.sort(orders[query]), np.arange(addresses, dtype=np.uint32)),
+        for value in a_values:
+            pairs = np.frombuffer(raw, dtype=pair_dtype, count=value, offset=offset)
+            if value == selected_a:
+                orders[query] = pairs["address"]
+                scores[query, orders[query]] = pairs["score"]
+            offset += value * 8
+        require(np.unique(orders[query]).size == selected_a and
+                np.all(orders[query] < addresses),
                 f"native order is not a permutation: {path}/{query}")
     require(offset == len(raw), f"native order trailing bytes: {path}")
     return orders, scores
@@ -85,6 +90,7 @@ def main() -> None:
     parser.add_argument("--native-root", type=Path, required=False)
     parser.add_argument("--layout-mode", default="aosoa_avx2")
     parser.add_argument("--layout-lanes", type=int, default=32)
+    parser.add_argument("--addresses-refined", type=int, default=16384)
     parser.add_argument("--raw-output", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
@@ -114,16 +120,16 @@ def main() -> None:
         result_meta = json.loads(Path(binding["result"]).read_text(encoding="utf-8"))
         addresses = int(result_meta.get("addresses", result_meta.get("rows",
                                  result_meta.get("coarse_rows", 0))))
-        current_order, current_scores = read_orders(order, queries, addresses)
+        current_order, current_scores = read_orders(order, queries, addresses, args.addresses_refined)
         orders.append(current_order); scores.append(current_scores)
         native_bindings.append({"seed": seed, "layout": args.layout_mode, "lanes": args.layout_lanes,
                                 "order": str(order), "order_sha256": sha256(order),
                                 "result": str(binding["result"]), "result_sha256": sha256(Path(binding["result"]))})
     documents = int(thq["documents"])
     queries_data = np.memmap(Path(thq["references"]["queries"]["path"]), mode="r",
-                             dtype="<f4", shape=(queries, int(thq["dimensions"])))
+                             dtype="<f4", shape=(queries, int(thq["dimension"])))
     documents_data = np.memmap(Path(thq["references"]["document_vectors"]["path"]), mode="r",
-                               dtype="<f4", shape=(documents, int(thq["dimensions"])))
+                               dtype="<f4", shape=(documents, int(thq["dimension"])))
     rows: list[dict[str, Any]] = []
     for query in range(queries):
         positions = [0, 0, 0]
