@@ -96,6 +96,9 @@ def main() -> None:
                 int(row["thq_document_pages"]),
                 f"THQ candidate page accounting differs: {identity}")
         exact_pages = set()
+        exact_ids = np.asarray(row["exact_top256_ids"], dtype=np.int64)
+        require(len(exact_ids) == 256 and np.unique(exact_ids).size == 256 and
+                np.all(exact_ids >= 0), f"exact top-256 IDs differ: {identity}")
         for doc_id in row["exact_top256_ids"]:
             start = int(doc_id) * 1536; end = start + 1535
             exact_pages.update(range(start // 4096, end // 4096 + 1))
