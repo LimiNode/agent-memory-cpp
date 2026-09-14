@@ -10,3 +10,8 @@ This is a storage-layout control, not an MDBX benchmark and not a production
 latency claim. The page-aligned arm intentionally exposes the upper bound on
 padding amplification; the next experiment will feed the actual AoSoA-32
 candidate stream and compare fused flat, page-ranged, and MDBX records.
+
+The external receipt is independently checked by
+`audit-r4-fused-payload-layout.py` (PASS, two layouts). On the 200k-document
+control, flat storage is 29.6 MB (1.0x logical amplification), while
+per-record 4-KiB alignment is 819.2 MB (27.68x) and scans about 4x slower.
