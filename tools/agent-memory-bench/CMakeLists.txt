@@ -512,6 +512,12 @@ agent_memory_set_evaluator_source_manifest(agent-memory-neuroute-r4-representati
     ${AGENT_MEMORY_NEUROUTE_FINAL_CODEC_SOURCES})
 agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-representative-codec)
 
+add_executable(agent-memory-neuroute-r4-k1-coarse-refine
+    neuroute_r4_k1_coarse_refine.cpp)
+target_compile_features(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE cxx_std_17)
+target_link_libraries(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE
+    agent_memory::json)
+
 add_executable(agent-memory-neuroute-r4-full-route
     neuroute_r4_full_route.cpp)
 target_link_libraries(agent-memory-neuroute-r4-full-route PRIVATE

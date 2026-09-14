@@ -186,6 +186,7 @@ jobs:
           cmake --build build-r4 --config Release --target
           agent-memory-neuroute-r4-layout-benchmark
           agent-memory-neuroute-r4-representative-codec
+          agent-memory-neuroute-r4-k1-coarse-refine
           agent-memory-neuroute-record-codec-contract
           agent-memory-neuroute-final-representation
 

@@ -106,3 +106,55 @@ measure the same A/budget grid with a native K1 score plus K16 refinement.  If
 the native work frontier remains credible, feed its selected postings through
 the already validated THQ interval-squared and exact top-256 cascade; only
 then measure physical pages/MDBX.
+
+## Native follow-up (stacked PR #402)
+
+The mean coarse vectors were materialized as three immutable FP32 stores and
+measured with a scalar-native control.  Each query performs a full coarse dot
+scan over all occupied addresses, then decodes unsigned INT8 uniform K16
+representatives for the selected A addresses.  One warm-up and one measured
+pass were run per seed; the control measures arithmetic only and does not
+claim route quality independently of the logical experiment above.
+
+| A/seed | coarse p50/p95 ms | K16 refine p50/p95 ms | mean K16 reps refined |
+| ---: | ---: | ---: | ---: |
+| 128 | 37.38 / 38.50 | 0.42 / 0.69 | 859 |
+| 256 | 37.38 / 38.50 | 0.90 / 1.43 | 2,034 |
+| 512 | 37.38 / 38.50 | 2.09 / 2.91 | 4,612 |
+| 1,024 | 37.38 / 38.50 | 4.60 / 5.92 | 10,142 |
+| 2,048 | 37.38 / 38.50 | 9.95 / 11.90 | 21,790 |
+| 4,096 | 37.38 / 38.50 | 21.38 / 24.46 | 46,072 |
+| 8,192 | 37.38 / 38.50 | 45.40 / 48.81 | 96,530 |
+| 16,384 | 37.38 / 38.50 | 94.40 / 98.99 | 201,632 |
+
+These are per-seed query timings over 152 queries and one measured pass.  The
+three-seed arithmetic at A=8192 is therefore roughly 3×(37+45)=246 ms p50,
+and at A=16384 roughly 3×(37+94)=394 ms p50.  That is materially below the
+approximately 945 ms p50 of the earlier full K16 scalar-native route, while
+the logical mean-coarse frontier is `.9928 @ 50k` at A=8192 and `.9954 @ 50k`
+at A=16384.  The comparison is directional: the two harnesses have different
+kernel boundaries and this control does not include fusion, postings, THQ, or
+exact rerank.
+
+The native audit reports `PASS` for 3,648 samples and eight summary cells.
+This makes mean coarse/refine the first product-oriented accelerator worth
+carrying into an integrated route-quality replay; HNSW remains scientific
+control only.
+
+Native provenance is retained outside Git under
+`E:\\_repoz\\agent-memory-workspaces\\r4-k1-native-coarse-raw`:
+
+| artifact | SHA-256 |
+| --- | --- |
+| materializer | `5487f84e08af10de2e269440424d7b1b4db63b3fe8ac13bfae2f7a84dd19b991` |
+| native source | `e74dd1499d9992c83acfe8e6e5931d32e02a69bf243db0ef95295a534cffabc5` |
+| native runner | `03a97e45f54e6286ead849abc06aea5f78150306673e7428ee85b727fcda05f1` |
+| native audit | `22d0b4c2f606ad557252e7cdd60742433475c7d45a383a896d9acb8682853e36` |
+| coarse manifest | `1f283729856a26d6695759b1b0c8a8a0764e2bf775df26dd425548f87f964b38` |
+| raw output | `5749ec0f54379ea05c98d247ab54485604a653b3d5cdd37a3b1a8a2c44a3335e` |
+| receipt | `12ab661c0345c830edf2f9087592f2a2f5b7a44cbb65b564b82e964bd1d2fa75` |
+| executable | `a3feb04fa1b922290947b901e0fec0b5d02fc42a1437e24dd6504560743cce0` |
+
+The next check is an integrated native quality replay that emits the selected
+address streams and measures candidate/THQ/exact recall for the mean coarse
+router.  Physical page and MDBX work remains gated on that replay.
