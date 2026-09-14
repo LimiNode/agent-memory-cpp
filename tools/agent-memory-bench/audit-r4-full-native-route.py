@@ -15,6 +15,7 @@ KS = (8, 16, 32)
 BUDGETS = (5_000, 10_000, 20_000, 50_000)
 QUERIES = 152
 TEACHERS_PER_QUERY = 10
+TOP_K = 256
 
 
 def sha256(path: Path) -> str:
@@ -116,6 +117,8 @@ def main() -> None:
                 set(int(x) for x in row["thq_top256_ids"]),
                 f"exact top-256 set differs: {identity}")
         exact10 = np.asarray(row["exact_top10_ids"], dtype=np.int64)
+        require(int(int8["exact_payload_bytes"]) <= TOP_K * 1536,
+                f"exact payload accounting differs: {identity}")
         require(len(exact10) == 10 and np.unique(exact10).size == 10 and
                 np.all(np.isin(exact10, np.asarray(row["thq_top256_ids"], dtype=np.int64))) and
                 abs(float(row["exact_top10_teacher_recall"]) -
