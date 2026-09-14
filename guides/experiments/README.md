@@ -28,6 +28,12 @@ shows single-digit-millisecond p95 INT8 scoring for the frozen 1,024-address
 component at K=16. It is a component measurement only; a full occupied-address
 route replay is still required before physical or MDBX work.
 
+The [integrated native K1/coarse → K16 → THQ cascade](2026-09-14-r4-k1-integrated-native-quality.md)
+replays the strong logical frontier through the full occupied-address native
+route, three-seed posting fusion, THQ top-256, and exact top-10 control. It
+confirms the quality frontier but makes the remaining full-address routing cost
+explicit; it is still logical/native evidence, not a physical MDBX measurement.
+
 `guides/experiments/` stores human-readable experiment records. These notes are
 not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked

@@ -11,6 +11,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -64,7 +65,8 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
                const std::filesystem::path& counts_path,
                const std::filesystem::path& queries_path,
                const std::vector<std::size_t>& a_values, std::size_t measured_passes,
-               const std::filesystem::path& output_path) {
+               const std::filesystem::path& output_path,
+               const std::filesystem::path& order_path) {
     const auto coarse = read_values<float>(coarse_path);
     const auto store = read_values<std::uint8_t>(store_path);
     const auto offsets = read_values<std::uint32_t>(offsets_path);
@@ -80,6 +82,19 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
 
     const auto query_count = queries.size() / dimensions;
     nlohmann::json samples = nlohmann::json::array();
+    std::ofstream order_output(order_path, std::ios::binary);
+    require(static_cast<bool>(order_output), "coarse/refine order output open failed");
+    const std::uint32_t magic = 0x314F5243U;  // CRO1
+    const std::uint32_t header[] = {
+        magic, 1U, static_cast<std::uint32_t>(query_count),
+        static_cast<std::uint32_t>(a_values.size()),
+        static_cast<std::uint32_t>(measured_passes)};
+    order_output.write(reinterpret_cast<const char*>(header), sizeof(header));
+    for (const auto a : a_values) {
+        const auto value = static_cast<std::uint32_t>(a);
+        order_output.write(reinterpret_cast<const char*>(&value), sizeof(value));
+    }
+    require(static_cast<bool>(order_output), "coarse/refine order header failed");
     double checksum = 0.0;
     for (std::size_t pass = 0; pass != measured_passes + 1; ++pass) {
         for (std::size_t query_index = 0; query_index != query_count; ++query_index) {
@@ -107,6 +122,8 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
             for (const auto a : a_values) {
                 const auto refine_begin = std::chrono::steady_clock::now();
                 std::vector<float> refined_scores(a, 0.0F);
+                std::vector<std::pair<float, std::uint32_t>> refined;
+                refined.reserve(a);
                 double local_checksum = 0.0;
                 std::uint64_t representatives = 0;
                 for (std::size_t rank = 0; rank != a; ++rank) {
@@ -119,11 +136,23 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
                         ++representatives;
                     }
                     refined_scores[rank] = maximum;
+                    refined.emplace_back(maximum, address);
                     local_checksum += maximum;
                 }
+                std::sort(refined.begin(), refined.end(),
+                          [](const auto& left, const auto& right) {
+                              if (left.first != right.first) return left.first > right.first;
+                              return left.second < right.second;
+                          });
                 const auto refine_end = std::chrono::steady_clock::now();
                 checksum += local_checksum;
                 if (pass != 0) {
+                    for (const auto& item : refined) {
+                        const auto address = item.second;
+                        order_output.write(reinterpret_cast<const char*>(&address), sizeof(address));
+                        order_output.write(reinterpret_cast<const char*>(&item.first), sizeof(item.first));
+                    }
+                    require(static_cast<bool>(order_output), "coarse/refine order write failed");
                     samples.push_back({
                         {"pass", pass - 1}, {"query", query_index},
                         {"addresses_refined", a},
@@ -135,6 +164,7 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
             }
         }
     }
+    order_output.close();
     std::ofstream output(output_path);
     require(static_cast<bool>(output), "coarse/refine output open failed");
     output << nlohmann::json{
@@ -150,15 +180,15 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
 
 int main(int argc, char** argv) {
     try {
-        if (argc == 12 && std::string(argv[1]) == "--benchmark-coarse-refine") {
+        if (argc == 13 && std::string(argv[1]) == "--benchmark-coarse-refine") {
             benchmark(argv[2], static_cast<std::size_t>(std::stoull(argv[3])),
                       argv[4], static_cast<std::size_t>(std::stoull(argv[5])),
                       argv[6], argv[7], argv[8], parse_a_values(argv[9]),
-                      static_cast<std::size_t>(std::stoull(argv[10])), argv[11]);
+                       static_cast<std::size_t>(std::stoull(argv[10])), argv[11], argv[12]);
             return 0;
         }
         throw std::runtime_error(
-            "usage: --benchmark-coarse-refine COARSE COARSE_ROWS STORE STORE_ROWS OFFSETS COUNTS QUERIES A_VALUES PASSES OUTPUT");
+            "usage: --benchmark-coarse-refine COARSE COARSE_ROWS STORE STORE_ROWS OFFSETS COUNTS QUERIES A_VALUES PASSES OUTPUT ORDER_OUTPUT");
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-k1-coarse-refine: "
                   << error.what() << '\n';

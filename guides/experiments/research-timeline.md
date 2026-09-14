@@ -904,3 +904,17 @@ credible native arithmetic control but not full-route cost: all occupied R4
 addresses, fusion, postings, THQ rerank, MDBX, and physical pages remain out
 of scope. See `2026-09-14-r4-k16-native-representative-control.md`, its receipt,
 and the fail-closed audit.
+
+### Integrated native K1/coarse → K16 → THQ cascade (2026-09-14)
+
+The full occupied-address native replay now connects the mean coarse scan,
+INT8 K16 refinement, three-seed R4 fusion, THQ interval-squared top-256, and
+exact top-10 control. It reproduces the logical frontier at `.9941/.9941/.9941/.9947`
+for A=8,192 and `.9974` at all tested budgets for A=16,384. The independent
+audit passes 4,864 quality rows and verifies the exhaustion semantics and
+row-level top-256/top-10 IDs. The quality result is strong, but native p50 work
+is about 36.8 ms for the full coarse pass plus 45.6/94.3 ms for K16 refinement
+at A=8,192/16,384 per seed, before fusion or storage. Therefore the next gate
+is a full K8/K16/K32 occupied-address bake-off and, if needed, a global
+representative top-R oracle; physical MDBX materialization remains deferred.
+See `2026-09-14-r4-k1-integrated-native-quality.md` and its compact receipt.
