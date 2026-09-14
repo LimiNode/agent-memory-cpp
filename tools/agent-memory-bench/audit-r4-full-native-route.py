@@ -35,6 +35,10 @@ def main() -> None:
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--raw", type=Path, required=True)
     parser.add_argument("--thq-manifest", type=Path, required=True)
+    parser.add_argument("--r4-layout-manifest", type=Path, required=True)
+    parser.add_argument("--r4-codec-manifest", type=Path, required=True)
+    parser.add_argument("--native-executable", type=Path, required=True)
+    parser.add_argument("--runner", type=Path, required=True)
     args = parser.parse_args()
     receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
     raw = json.loads(args.raw.read_text(encoding="utf-8"))
@@ -45,6 +49,12 @@ def main() -> None:
             "full native execution state differs")
     require(receipt["raw_output"]["sha256"] == sha256(args.raw),
             "full native raw SHA differs")
+    require(receipt["fixture_manifest_sha256"] == sha256(args.thq_manifest) and
+            receipt["r4_layout_manifest_sha256"] == sha256(args.r4_layout_manifest) and
+            receipt["r4_codec_manifest_sha256"] == sha256(args.r4_codec_manifest) and
+            receipt["native_executable_sha256"] == sha256(args.native_executable) and
+            receipt["runner_sha256"] == sha256(args.runner),
+            "full native receipt binding differs")
     require(raw["family"] == receipt["family"] and raw["schema_version"] == 1,
             "full native raw schema differs")
     rows = raw["rows"]
@@ -65,10 +75,15 @@ def main() -> None:
         int8 = row["int8"]
         teacher = np.asarray(teachers[qi], dtype=np.int64)
         missed = np.asarray(int8["candidate_teacher_ids_missed"], dtype=np.int64)
+        hit = np.asarray(int8["candidate_teacher_ids_hit"], dtype=np.int64)
         require(np.unique(missed).size == missed.size and
                 np.all(np.isin(missed, teacher)),
                 f"candidate missed IDs are not teacher IDs: {identity}")
-        candidate_recall = 1.0 - float(missed.size) / TEACHERS_PER_QUERY
+        require(np.unique(hit).size == hit.size and np.all(np.isin(hit, teacher)) and
+                not np.intersect1d(hit, missed).size and
+                np.array_equal(np.sort(np.concatenate((hit, missed))), np.sort(teacher)),
+                f"candidate teacher partition differs: {identity}")
+        candidate_recall = float(hit.size) / TEACHERS_PER_QUERY
         require(abs(candidate_recall - float(int8["candidate_teacher_recall"])) < 1e-9,
                 f"candidate recall is not independently reproducible: {identity}")
         for key in ("thq_top256_ids", "exact_top256_ids"):
@@ -86,6 +101,12 @@ def main() -> None:
                     float(np.isin(teacher, np.asarray(row["exact_top256_ids"], dtype=np.int64)).sum()
                           / TEACHERS_PER_QUERY)) < 1e-9,
                 f"cascade recall equality differs: {identity}")
+        exact10 = np.asarray(row["exact_top10_ids"], dtype=np.int64)
+        require(len(exact10) == 10 and np.unique(exact10).size == 10 and
+                np.all(np.isin(exact10, np.asarray(row["thq_top256_ids"], dtype=np.int64))) and
+                abs(float(row["exact_top10_teacher_recall"]) -
+                    float(np.isin(teacher, exact10).sum() / TEACHERS_PER_QUERY)) < 1e-9,
+                f"exact top-10 scope differs: {identity}")
     require(len(identities) == len(rows), "full native identities incomplete")
     route_metrics = raw["route_metrics"]
     require(len(route_metrics) == 3 * len(KS) * QUERIES,
@@ -134,6 +155,11 @@ def main() -> None:
         require(all(int(sample["representatives_scored"]) ==
                     int(binding["representatives_scored_per_query"]) for sample in samples),
                 f"native representative work differs: {identity}")
+    for sidecar in receipt["clipped_sidecars"]:
+        path = Path(sidecar["path"])
+        require(path.is_file() and path.stat().st_size == int(sidecar["bytes"]) and
+                sha256(path) == sidecar["sha256"],
+                f"clipped sidecar binding differs: {path}")
     require(len(native_identities) == 9, "native receipt identities incomplete")
     output = {"family": "semantic_r4_full_native_route_audit_v1", "status": "PASS",
               "rows": len(rows), "route_metrics": len(route_metrics),

@@ -904,3 +904,18 @@ credible native arithmetic control but not full-route cost: all occupied R4
 addresses, fusion, postings, THQ rerank, MDBX, and physical pages remain out
 of scope. See `2026-09-14-r4-k16-native-representative-control.md`, its receipt,
 and the fail-closed audit.
+
+### Corrected full occupied-address native K8/K16/K32 gate (2026-09-14)
+
+The full native replay now uses the actual cascade order: three occupied-address
+INT8 route streams are fused under one unique-document budget, THQ interval²
+ADC selects top-256, and exact FP32 reranking is restricted to that shortlist
+for top-256/top-10. On all 152 queries, K8 reaches `.9796 @ 50k`, K16
+`.9974 @ 50k`, and K32 `.9993 @ 5k` in this grid. Exact top-10 matches
+candidate recall in every tested cell, while INT8 versus the bound FP32
+reference differs by at most `.000658` in mean recall. The independent audit
+passes 1,824 rows, nine native outputs, and 1,368 route metrics. Full
+occupied-address scalar scoring remains about 0.95 s/query for K16 over three
+seeds, so representative-layer arithmetic—not routing quality or THQ
+reranking—is now the dominant unresolved cost. MDBX and physical-page bytes
+remain unmeasured.

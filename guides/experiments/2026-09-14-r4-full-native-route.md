@@ -21,8 +21,8 @@ AVX2/SIMD, MDBX, OS-page, or production-latency benchmark.
   C++17, one warmup and one measured pass;
 - FP32 reference: the same clipped representatives from `fp32.records`;
 - three-seed fusion under one global unique-document budget of 5k/10k/20k/50k;
-- final cascade: THQ4 interval-squared ADC top-256 and exact FP32 top-256 inside
-  the native INT8 candidate set;
+- final cascade: THQ4 interval-squared ADC top-256, followed by exact FP32
+  top-256 and top-10 reranking strictly inside that THQ shortlist;
 - teacher IDs are used only for evaluation, never for route construction.
 
 The native runner records score and address-sort timing separately.  The route
@@ -51,9 +51,15 @@ bytes; physical OS/MDBX page bytes are not measured.
 
 The minimum recall is `.60` for K8 at 5k and `.90` for K16/K32 at the same
 budget; the table reports means over all 152 queries.  Every audited row has
-candidate recall equal to THQ top-256 and exact top-256 recall.  The rerankers
+candidate recall equal to THQ top-256, exact top-256, and exact top-10 recall.
+The rerankers
 therefore do not recover a teacher document absent from the route candidate
 set, and THQ introduces no additional loss on this frozen cascade.
+
+The corrected receipt also records exact top-10 recall after the THQ shortlist;
+its means are identical to the candidate means for every K/budget cell in this
+fixture.  Thus the top-10 stage does not add an observed loss, but this is a
+frozen-query result rather than a general guarantee.
 
 ### Native scalar route timing
 
@@ -111,11 +117,11 @@ HNSW and a new posting topology are not justified by this gate: route quality
 
 ## Provenance and audit
 
-Authoritative receipt: `EXECUTED`, SHA-256
-`bc8d608eb8c83dcdcfbac26c3424681c52b2373f111fffec9450e56832ccc874`.
+Authoritative corrected receipt: `EXECUTED`, SHA-256
+`9a007e50cd045b64416e289dbbb8c7654278cdd1189927020f4707856fbbf9c5`.
 
 Raw output: 1,824 quality rows plus 1,368 route-metric rows, SHA-256
-`f496ebc90ddf56d650857231d24bdd5fc91a5b3d344811979fa6bec8b60b0d7f`.
+`785162cd290ad0e3109e860811804bb44b51f04c900d10767e69bc5d41008983`.
 
 Independent audit: `PASS` (`1824` recall rows, `9` native outputs, `1368`
 route-metric rows), audit SHA-256
@@ -128,7 +134,7 @@ Bound inputs:
 - R4 codec manifest: `1566688756f1922c9f3cce83c46c9623d2231f221bbe496b12ae978c0cdad8db`;
 - native executable SHA: `cc5dffeb66d0b8ad372df2275153cc24641b2133a9cb8ac3308a32f60d5ac23a`;
 - native runner source SHA: `af591addfa6b990cabda22153638de7db8aef87311875da8caee1c529e394c66`;
-- quality runner source SHA: `460ab57898f9ae4038761781f8d57f1e267507a7f1fe7080bc1d5a42255c0c92`;
+- quality runner source SHA: `e889b2e2622fe4bc35c55b1e830159b4a99f8f4e1669e38b0665ef7adbe8f9be`;
 - audit source SHA: `419242925c43ba5501392e2dea2f69aa9240874ffb69607b1e930fd832d8bd31`.
 
 The raw receipt and native artifacts are retained outside Git under

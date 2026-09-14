@@ -243,6 +243,7 @@ def fuse(route_list: list[dict[str, Any]], orders: list[np.ndarray], scores: lis
             "candidate_payload_bytes": int(len(candidate_ids) * 144),
             "exact_payload_bytes": int(len(candidate_ids) * 1536),
             "candidate_teacher_recall": float(np.count_nonzero(present) / len(teachers)),
+            "candidate_teacher_ids_hit": [int(x) for x, ok in zip(teachers, present) if ok],
             "candidate_teacher_ids_missed": [int(x) for x, ok in zip(teachers, present) if not ok],
         }
         if include_ids:
@@ -279,6 +280,8 @@ def main() -> None:
     parser.add_argument("--work-root", type=Path, required=True)
     parser.add_argument("--raw-output", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--previous-raw", type=Path,
+                        help="reuse the already bound FP32 reference rows and route metrics")
     parser.add_argument("--measured-passes", type=int, default=1)
     args = parser.parse_args()
     require(args.measured_passes >= 1, "measured passes must be positive")
@@ -317,7 +320,10 @@ def main() -> None:
                           dtype="<f4", shape=(n, DIMENSIONS))
     raw_rows: list[dict[str, Any]] = []
     quality_rows: list[dict[str, Any]] = []
-    route_metrics: list[dict[str, Any]] = []
+    previous = json.loads(args.previous_raw.read_text(encoding="utf-8")) if args.previous_raw else None
+    previous_rows = {(int(row["k"]), int(row["query"]), int(row["requested_candidate_budget"])): row
+                     for row in previous["rows"]} if previous else {}
+    route_metrics: list[dict[str, Any]] = list(previous["route_metrics"]) if previous else []
     for k in KS:
         print(f"compute FP32 reference and cascade metrics k={k}", flush=True)
         native_orders: list[np.ndarray] = []
@@ -327,33 +333,39 @@ def main() -> None:
         for route, native in zip(routes, native_by_k[k]):
             native_order, native_score = read_native_order(
                 native, len(queries), len(route["postings"]))
-            fp_order, fp_score = fp32_orders(
-                args.r4_codec_root, seed_record(codec_manifest, int(route["seed"])),
-                np.asarray(queries), k)
+            if previous is None:
+                fp_order, fp_score = fp32_orders(
+                    args.r4_codec_root, seed_record(codec_manifest, int(route["seed"])),
+                    np.asarray(queries), k)
             route["effective_representatives"] = native["effective_representatives"]
             native_orders.append(native_order); native_scores.append(native_score)
-            fp_orders.append(fp_order); fp_scores.append(fp_score)
-            for qi in range(len(queries)):
-                native_top = native_order[qi, :min(1024, native_order.shape[1])]
-                fp_top = fp_order[qi, :min(1024, fp_order.shape[1])]
-                native_rank = np.empty(native_order.shape[1], dtype=np.int32)
-                fp_rank = np.empty(fp_order.shape[1], dtype=np.int32)
-                native_rank[native_order[qi]] = np.arange(native_order.shape[1])
-                fp_rank[fp_order[qi]] = np.arange(fp_order.shape[1])
-                route_metrics.append({
-                    "k": k, "seed": int(route["seed"]), "query": qi,
-                    "top1024_overlap": int(np.intersect1d(native_top, fp_top).size),
-                    "rank_mae": float(np.mean(np.abs(native_rank - fp_rank))),
-                    "score_mae": float(np.mean(np.abs(native_score[qi] - fp_score[qi]))),
-                    "score_correlation": float(np.corrcoef(native_score[qi], fp_score[qi])[0, 1]),
-                })
+            if previous is None:
+                fp_orders.append(fp_order); fp_scores.append(fp_score)
+            if previous is None:
+                for qi in range(len(queries)):
+                    native_top = native_order[qi, :min(1024, native_order.shape[1])]
+                    fp_top = fp_order[qi, :min(1024, fp_order.shape[1])]
+                    native_rank = np.empty(native_order.shape[1], dtype=np.int32)
+                    fp_rank = np.empty(fp_order.shape[1], dtype=np.int32)
+                    native_rank[native_order[qi]] = np.arange(native_order.shape[1])
+                    fp_rank[fp_order[qi]] = np.arange(fp_order.shape[1])
+                    route_metrics.append({
+                        "k": k, "seed": int(route["seed"]), "query": qi,
+                        "top1024_overlap": int(np.intersect1d(native_top, fp_top).size),
+                        "rank_mae": float(np.mean(np.abs(native_rank - fp_rank))),
+                        "score_mae": float(np.mean(np.abs(native_score[qi] - fp_score[qi]))),
+                        "score_correlation": float(np.corrcoef(native_score[qi], fp_score[qi])[0, 1]),
+                    })
         for qi in range(len(queries)):
             int8_rows = fuse(routes, [row[qi] for row in native_orders],
                              [row[qi] for row in native_scores], qi,
                              np.asarray(teachers[qi]), BUDGETS, n, k, 388, True)
-            fp_rows = fuse(routes, [row[qi] for row in fp_orders],
-                           [row[qi] for row in fp_scores], qi,
-                           np.asarray(teachers[qi]), BUDGETS, n, k, 1536, False)
+            if previous is None:
+                fp_rows = fuse(routes, [row[qi] for row in fp_orders],
+                               [row[qi] for row in fp_scores], qi,
+                               np.asarray(teachers[qi]), BUDGETS, n, k, 1536, False)
+            else:
+                fp_rows = [previous_rows[(k, qi, budget)]["fp32"] for budget in BUDGETS]
             require(len(int8_rows) == len(fp_rows) == len(BUDGETS),
                     f"budget exhaustion for k={k}, query={qi}")
             for int8_row, fp_row in zip(int8_rows, fp_rows):
@@ -376,17 +388,22 @@ def main() -> None:
                 lut = interval_squared_costs(np.asarray(thresholds), np.asarray(queries[qi]))
                 thq_scores = lut[np.arange(DIMENSIONS)[None, :], levels].sum(axis=1, dtype=np.float32)
                 thq_top = top_ids(thq_scores, candidate_ids, TOP_K, False)
-                exact_scores = np.asarray(documents[candidate_ids], dtype=np.float32) @ np.asarray(queries[qi])
-                exact_top = top_ids(exact_scores, candidate_ids, TOP_K, True)
+                exact_scores = np.asarray(documents[thq_top], dtype=np.float32) @ np.asarray(queries[qi])
+                exact_top = top_ids(exact_scores, thq_top, TOP_K, True)
+                exact_top10 = top_ids(exact_scores, thq_top, 10, True)
                 quality["thq_top256_teacher_recall"] = float(np.isin(teacher, thq_top).sum() / len(teacher))
                 quality["exact_top256_teacher_recall"] = float(np.isin(teacher, exact_top).sum() / len(teacher))
+                quality["exact_top10_teacher_recall"] = float(np.isin(teacher, exact_top10).sum() / len(teacher))
                 quality["thq_top256_ids"] = [int(x) for x in thq_top]
                 quality["exact_top256_ids"] = [int(x) for x in exact_top]
+                quality["exact_top10_ids"] = [int(x) for x in exact_top10]
                 quality_rows.append(quality)
                 raw_rows.append({"query": qi, "k": k, "requested_candidate_budget": budget,
                                  "int8": quality["int8"], "fp32": quality["fp32"],
                                  "thq_top256_ids": quality["thq_top256_ids"],
-                                 "exact_top256_ids": quality["exact_top256_ids"]})
+                                 "exact_top256_ids": quality["exact_top256_ids"],
+                                 "exact_top10_ids": quality["exact_top10_ids"],
+                                 "exact_top10_teacher_recall": quality["exact_top10_teacher_recall"]})
         print(f"completed quality rows k={k}: {sum(1 for row in quality_rows if row['k'] == k)}", flush=True)
     summaries: list[dict[str, Any]] = []
     for k in KS:
@@ -399,6 +416,7 @@ def main() -> None:
                               "fp32_candidate_recall": aggregate([row["fp32"]["candidate_teacher_recall"] for row in selected]),
                               "int8_thq_top256_recall": aggregate([row["thq_top256_teacher_recall"] for row in selected]),
                               "int8_exact_top256_recall": aggregate([row["exact_top256_teacher_recall"] for row in selected]),
+                              "int8_exact_top10_recall": aggregate([row["exact_top10_teacher_recall"] for row in selected]),
                               "candidate_recall_delta_int8_minus_fp32": aggregate([row["candidate_recall_delta_int8_minus_fp32"] for row in selected]),
                               "int8_candidate_count": aggregate([row["int8"]["candidate_count"] for row in selected]),
                               "int8_posting_entries": aggregate([row["int8"]["posting_entries_touched"] for row in selected]),
@@ -440,6 +458,7 @@ def main() -> None:
                "r4_codec_manifest_sha256": sha256(args.r4_codec_manifest),
                "native_executable_sha256": sha256(args.native_executable),
                "runner_sha256": sha256(Path(__file__)),
+               "previous_raw_sha256": sha256(args.previous_raw) if args.previous_raw else None,
                "raw_output": {"path": str(args.raw_output), "bytes": len(raw_bytes),
                               "sha256": hashlib.sha256(raw_bytes).hexdigest(), "rows": len(raw_rows)},
                "protocol": {"route": "three-seed full occupied-address max over clipped K representatives",
