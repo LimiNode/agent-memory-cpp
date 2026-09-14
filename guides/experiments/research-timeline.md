@@ -955,3 +955,15 @@ These are file-range/page-offset measurements only; OS cache eviction, MDBX
 pages, and physical media reads are not controlled. AoSoA remains appropriate
 for the sequential coarse scan, not arbitrary row gathers. See
 `2026-09-14-r4-k1-page-read.md` and its fail-closed audit.
+
+### K1 AoSoA full cascade (2026-09-14)
+
+The AoSoA-16 and AoSoA-32 K1 sidecars were replayed through the complete
+native K1 → K16 → three-seed R4 → THQ interval-squared top-256 → exact FP32
+top-10 cascade.  Both preserve the FP32 quality frontier: mean candidate
+recall is `.9928/.9934/.9934/.9941` at 5k/10k/20k/50k for `A=8192` and
+`.9974` at every tested budget for `A=16384`.  Row-level audit recomputes
+candidate/THQ/exact-top-256 recall and binds every sidecar and native output.
+The experiment confirms that AoSoA is a coarse sequential-scan layout, not a
+sparse posting gather layout.  See `2026-09-14-r4-k1-aosoa-cascade.md` and
+the independent audit.

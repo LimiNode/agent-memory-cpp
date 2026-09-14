@@ -515,6 +515,18 @@ agent_memory_set_evaluator_build_environment(agent-memory-neuroute-r4-representa
 add_executable(agent-memory-neuroute-r4-k1-coarse-refine
     neuroute_r4_k1_coarse_refine.cpp)
 target_compile_features(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE cxx_std_17)
+set(AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2 0)
+if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+    set(AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2 1)
+    if(MSVC)
+        target_compile_options(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE -mavx2)
+    endif()
+endif()
+target_compile_definitions(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE
+    AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2})
 target_link_libraries(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE
     agent_memory::json)
 

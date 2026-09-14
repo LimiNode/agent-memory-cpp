@@ -14,10 +14,21 @@
 #include <utility>
 #include <vector>
 
+#if defined(AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2) && \
+    AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2
+#include <immintrin.h>
+#endif
+
 namespace {
 
 constexpr std::size_t dimensions = 384;
 constexpr std::size_t record_bytes = dimensions + sizeof(float);
+#if defined(AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2) && \
+    AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2
+constexpr bool avx2_compiled = true;
+#else
+constexpr bool avx2_compiled = false;
+#endif
 
 void require(bool value, const char* message) {
     if (!value) throw std::runtime_error(message);
@@ -59,6 +70,43 @@ float int8_dot(const std::uint8_t* record, const float* query) {
     return result;
 }
 
+#if defined(AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2) && \
+    AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2
+void score_aosoa_avx2(const std::int8_t* data, std::size_t rows,
+                      std::size_t lanes, const float* scales,
+                      const float* query, std::vector<float>& scores) {
+    const auto tiles = (rows + lanes - 1) / lanes;
+    scores.assign(rows, 0.0F);
+    for (std::size_t tile = 0; tile != tiles; ++tile) {
+        const auto valid = std::min(lanes, rows - tile * lanes);
+        std::vector<float> accum(lanes, 0.0F);
+        for (std::size_t dimension = 0; dimension != dimensions; ++dimension) {
+            const auto* values = data + (tile * dimensions + dimension) * lanes;
+            const float multiplier = scales[dimension] * query[dimension];
+            for (std::size_t lane = 0; lane < valid; lane += 8) {
+                const auto count = std::min<std::size_t>(8, valid - lane);
+                if (count == 8) {
+                    const auto bytes = _mm_loadl_epi64(
+                        reinterpret_cast<const __m128i*>(values + lane));
+                    const auto ints = _mm256_cvtepi8_epi32(bytes);
+                    const auto floats = _mm256_cvtepi32_ps(ints);
+                    const auto product = _mm256_mul_ps(
+                        floats, _mm256_set1_ps(multiplier));
+                    auto current = _mm256_loadu_ps(accum.data() + lane);
+                    current = _mm256_add_ps(current, product);
+                    _mm256_storeu_ps(accum.data() + lane, current);
+                } else {
+                    for (std::size_t index = 0; index != count; ++index)
+                        accum[lane + index] +=
+                            static_cast<float>(values[lane + index]) * multiplier;
+                }
+            }
+        }
+        std::copy_n(accum.data(), valid, scores.data() + tile * lanes);
+    }
+}
+#endif
+
 void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows,
                const std::filesystem::path& store_path, std::size_t store_rows,
                const std::filesystem::path& offsets_path,
@@ -67,8 +115,14 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
                const std::vector<std::size_t>& a_values, std::size_t measured_passes,
                const std::filesystem::path& output_path,
                const std::filesystem::path& order_path,
-               const std::filesystem::path* coarse_scale_path) {
+               const std::filesystem::path* coarse_scale_path,
+               const std::string& coarse_layout_mode = "row_scalar",
+               std::size_t coarse_lanes = 1) {
     const bool coarse_int8 = coarse_scale_path != nullptr;
+    const bool coarse_aosoa = coarse_int8 && coarse_layout_mode == "aosoa_avx2";
+    require(coarse_layout_mode == "row_scalar" || coarse_layout_mode == "aosoa_avx2",
+            "coarse layout mode differs");
+    require(!coarse_aosoa || coarse_lanes > 0, "coarse AoSoA lanes differ");
     const auto coarse = coarse_int8 ? std::vector<float>{}
                                     : read_values<float>(coarse_path);
     const auto coarse_codes = coarse_int8 ? read_values<std::int8_t>(coarse_path)
@@ -79,7 +133,10 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
     const auto offsets = read_values<std::uint32_t>(offsets_path);
     const auto counts = read_values<std::uint8_t>(counts_path);
     const auto queries = read_values<float>(queries_path);
-    require((coarse_int8 ? coarse_codes.size() == coarse_rows * dimensions &&
+    const auto expected_coarse_values = coarse_aosoa
+        ? ((coarse_rows + coarse_lanes - 1) / coarse_lanes) * dimensions * coarse_lanes
+        : coarse_rows * dimensions;
+    require((coarse_int8 ? coarse_codes.size() == expected_coarse_values &&
                             coarse_scales.size() == dimensions
                          : coarse.size() == coarse_rows * dimensions) &&
             store.size() == store_rows * record_bytes &&
@@ -110,7 +167,24 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
             const auto* query = queries.data() + query_index * dimensions;
             const auto coarse_begin = std::chrono::steady_clock::now();
             std::vector<float> coarse_scores(coarse_rows, 0.0F);
-            for (std::size_t address = 0; address != coarse_rows; ++address) {
+            if (coarse_aosoa) {
+#if defined(AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2) && \
+    AGENT_MEMORY_NEUROUTE_K1_AOSOA_HAS_AVX2
+                score_aosoa_avx2(coarse_codes.data(), coarse_rows, coarse_lanes,
+                                 coarse_scales.data(), query, coarse_scores);
+#else
+                for (std::size_t address = 0; address != coarse_rows; ++address) {
+                    const auto tile = address / coarse_lanes;
+                    const auto lane = address % coarse_lanes;
+                    float score = 0.0F;
+                    for (std::size_t dimension = 0; dimension != dimensions; ++dimension)
+                        score += static_cast<float>(coarse_codes[(tile * dimensions + dimension) *
+                                                                 coarse_lanes + lane]) *
+                                 coarse_scales[dimension] * query[dimension];
+                    coarse_scores[address] = score;
+                }
+#endif
+            } else for (std::size_t address = 0; address != coarse_rows; ++address) {
                 float score = 0.0F;
                 if (coarse_int8) {
                     const auto* row = coarse_codes.data() + address * dimensions;
@@ -172,6 +246,9 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
                     samples.push_back({
                         {"pass", pass - 1}, {"query", query_index},
                         {"addresses_refined", a},
+                        {"coarse_layout", coarse_layout_mode},
+                        {"coarse_lanes", coarse_lanes},
+                        {"coarse_avx2_compiled", avx2_compiled},
                         {"coarse_ms", coarse_ms},
                         {"refine_ms", std::chrono::duration<double, std::milli>(
                             refine_end - refine_begin).count()},
@@ -187,6 +264,8 @@ void benchmark(const std::filesystem::path& coarse_path, std::size_t coarse_rows
         {"schema_version", 1},
         {"family", "semantic_r4_k1_coarse_k16_native_samples_v1"},
         {"coarse_encoding", coarse_int8 ? "int8_per_dimension" : "fp32"},
+        {"coarse_layout", coarse_layout_mode}, {"coarse_lanes", coarse_lanes},
+        {"coarse_avx2_compiled", avx2_compiled},
         {"coarse_rows", coarse_rows}, {"store_rows", store_rows},
         {"queries", query_count}, {"measured_passes", measured_passes},
         {"a_values", a_values}, {"checksum", checksum}, {"samples", samples}
@@ -213,8 +292,19 @@ int main(int argc, char** argv) {
                       &scale_path);
             return 0;
         }
+        if (argc == 16 && std::string(argv[1]) ==
+            "--benchmark-coarse-refine-int8-layout") {
+            const std::filesystem::path scale_path = argv[13];
+            benchmark(argv[2], static_cast<std::size_t>(std::stoull(argv[3])),
+                      argv[4], static_cast<std::size_t>(std::stoull(argv[5])),
+                      argv[6], argv[7], argv[8], parse_a_values(argv[9]),
+                      static_cast<std::size_t>(std::stoull(argv[10])), argv[11], argv[12],
+                      &scale_path, argv[15],
+                      static_cast<std::size_t>(std::stoull(argv[14])));
+            return 0;
+        }
         throw std::runtime_error(
-            "usage: --benchmark-coarse-refine[-int8] COARSE COARSE_ROWS STORE STORE_ROWS OFFSETS COUNTS QUERIES A_VALUES PASSES OUTPUT ORDER_OUTPUT [SCALES]");
+            "usage: --benchmark-coarse-refine[-int8[-layout]] COARSE COARSE_ROWS STORE STORE_ROWS OFFSETS COUNTS QUERIES A_VALUES PASSES OUTPUT ORDER_OUTPUT [SCALES [LANES MODE]]");
     } catch (const std::exception& error) {
         std::cerr << "agent-memory-neuroute-r4-k1-coarse-refine: "
                   << error.what() << '\n';
