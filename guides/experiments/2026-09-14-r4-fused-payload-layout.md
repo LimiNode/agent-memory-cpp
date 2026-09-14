@@ -7,9 +7,10 @@ page-aligned immutable representation. It reports logical payload bytes,
 physical file bytes, a deterministic SHA, and a warm sequential scan timing.
 
 This is a storage-layout control, not an MDBX benchmark and not a production
-latency claim. The page-aligned arm intentionally exposes the upper bound on
-padding amplification; the next experiment will feed the actual AoSoA-32
-candidate stream and compare fused flat, page-ranged, and MDBX records.
+latency claim. Both arms are materialized in document-ID order; therefore the
+flat `1.0x` result proves only zero padding overhead, not candidate-friendly
+locality or random-gather latency. The next experiment must feed the actual
+AoSoA-32 candidate stream and compare fused flat, page-ranged, and MDBX records.
 
 The external receipt is independently checked by
 `audit-r4-fused-payload-layout.py` (PASS, two layouts). On the 200k-document

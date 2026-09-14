@@ -48,7 +48,7 @@ def main() -> None:
                      'read_ms': elapsed, 'checksum': checksum, 'sha256': sha256(path),
                      'page_amplification': path.stat().st_size / (count * RECORD_BYTES)})
     raw = {'schema_version': 1, 'family': 'semantic_r4_fused_payload_layout_v1', 'rows': rows,
-           'protocol': {'record': '[int32 doc_id][144-byte THQ4]', 'page_bytes': PAGE_BYTES,
+           'protocol': {'record': '[int32 doc_id][144-byte THQ4]', 'record_order': 'document_id', 'page_bytes': PAGE_BYTES,
                         'source_manifest_sha256': sha256(a.thq_manifest)}}
     raw_path = a.output_root / 'fused-payload.raw.json'; raw_path.write_text(json.dumps(raw, indent=2) + '\n')
     receipt = {'schema_version': 1, 'family': raw['family'], 'execution_status': 'EXECUTED',

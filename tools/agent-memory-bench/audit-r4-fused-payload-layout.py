@@ -16,6 +16,7 @@ def main() -> None:
     assert r['family']==raw['family']=='semantic_r4_fused_payload_layout_v1'
     assert r['execution_status']=='EXECUTED' and not r['production_activation']
     assert r['raw_sha256']==sha256(a.raw) and r['runner_sha256']==sha256(a.runner)
+    assert raw.get('protocol', {}).get('record_order') == 'document_id'
     rows={x['layout']:x for x in raw['rows']}; assert set(rows)=={'fused-flat','fused-page-aligned'}
     assert rows['fused-flat']['page_amplification']==1.0
     assert rows['fused-page-aligned']['file_bytes'] >= rows['fused-flat']['file_bytes']
