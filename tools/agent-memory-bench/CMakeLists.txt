@@ -518,6 +518,24 @@ target_compile_features(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE cxx_st
 target_link_libraries(agent-memory-neuroute-r4-k1-coarse-refine PRIVATE
     agent_memory::json)
 
+add_executable(agent-memory-neuroute-r4-k1-simd-layout
+    neuroute_r4_k1_simd_layout.cpp)
+target_compile_features(agent-memory-neuroute-r4-k1-simd-layout PRIVATE cxx_std_17)
+set(AGENT_MEMORY_NEUROUTE_K1_LAYOUT_HAS_AVX2 0)
+if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+    set(AGENT_MEMORY_NEUROUTE_K1_LAYOUT_HAS_AVX2 1)
+    if(MSVC)
+        target_compile_options(agent-memory-neuroute-r4-k1-simd-layout PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(agent-memory-neuroute-r4-k1-simd-layout PRIVATE -mavx2)
+    endif()
+endif()
+target_compile_definitions(agent-memory-neuroute-r4-k1-simd-layout PRIVATE
+    AGENT_MEMORY_NEUROUTE_K1_LAYOUT_HAS_AVX2=${AGENT_MEMORY_NEUROUTE_K1_LAYOUT_HAS_AVX2})
+target_link_libraries(agent-memory-neuroute-r4-k1-simd-layout PRIVATE
+    agent_memory::json)
+
 add_executable(agent-memory-neuroute-r4-full-route
     neuroute_r4_full_route.cpp)
 target_link_libraries(agent-memory-neuroute-r4-full-route PRIVATE

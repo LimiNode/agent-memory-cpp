@@ -929,3 +929,16 @@ budgets; at A=8,192 the largest mean loss is `.001316 @ 5k`. The independent
 audit passes 1,216 rows and eight summary cells. This licenses compact-store
 and SIMD/page controls, but not production or MDBX claims. See
 `2026-09-14-r4-k1-coarse-int8.md` and its compact receipt.
+
+### Native SIMD and page-shaped K1 INT8 coarse layout (2026-09-14)
+
+The compact K1 sidecar was materialized in row-major and AoSoA lane-major
+forms and scored for all three seeds and 152 queries. AoSoA-16/32 AVX2 reduced
+the local coarse arithmetic from `28.73 ms` p50 / `32.77 ms` p95 to about
+`8.10/9.57` and `7.88/8.38` ms, respectively. Minimum top-128 overlap was
+`1.0`; minimum set overlap was `.999878` at top-8,192 and `.999939` at
+top-16,384. The page-fitting 10-lane shape was slower (`18.01/19.64` ms), so
+page fit alone does not choose the layout. The result is a SIMD/layout
+component control only: logical payload bytes are reported, but physical
+OS/MDBX pages and end-to-end cascade latency remain unmeasured. See
+`2026-09-14-r4-k1-simd-layout.md` and its fail-closed audit.
