@@ -55,7 +55,7 @@ def main():
  for qi in ev:
   teachers_q=np.asarray(teachers[qi],dtype=np.int64); tset=set(int(x) for x in teachers_q); seen=np.zeros(n,bool); selected=0; entries=0; touched=0; order=deep['order'][qi]; fs=np.asarray([features(int(qi),int(ad),r) for r,ad in enumerate(order)],dtype=np.float32); pred=model.predict_proba(fs)[:,1]; ranked=order[np.lexsort((order,-pred))]
   # Rich ranker and original model order are evaluated with identical accounting.
- methods={'sampled_pointwise_logistic':ranked,'model_prefix_plus_coarse_tail':order}
+  methods={'sampled_pointwise_logistic':ranked,'model_prefix_plus_coarse_tail':order}
   for method,stream in methods.items():
    seen[:]=False; selected=entries=touched=0
    for ad in stream:
@@ -71,6 +71,11 @@ def main():
   for key,label in [('prefix_allocation_oracle','prefix_oracle'),('arbitrary_posting_oracle','arbitrary_oracle')]:
    for row in fr.get(key,[]):
     if int(row['query']) in set(int(x) for x in ev): rows.append({'query':int(row['query']),'method':label,'budget':int(row['budget']),'teacher_recall':float(row['recall']),'unique_candidates':int(row.get('unique_candidates',0)),'posting_entries':int(row['posting_entries']),'postings_touched':0})
+ expected_methods={'sampled_pointwise_logistic','model_prefix_plus_coarse_tail','prefix_oracle','arbitrary_oracle'}
+ expected_keys={(int(qi),method,int(budget)) for qi in ev for method in expected_methods for budget in budgets}
+ actual_keys={(int(r['query']),r['method'],int(r['budget'])) for r in rows}
+ if actual_keys != expected_keys:
+  raise ValueError('sampled pointwise method matrix is incomplete or mislabeled')
  summary=[]
  for method in sorted({r['method'] for r in rows}):
   for b in budgets:

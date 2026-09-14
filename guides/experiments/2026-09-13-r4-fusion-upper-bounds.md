@@ -64,3 +64,20 @@ regenerated coarse order rather than a learned model-ranked tail.
 
 See `2026-09-13-r4-fusion-upper-bounds-result.json` and the external raw bundle
 `r4-fusion-upper-bounds-raw.json`.
+
+## Corrective provenance replay (2026-09-14)
+
+The follow-up audit closed two evidence-integrity issues from review.  The
+sampled pointwise replay now emits the explicit method labels
+`sampled_pointwise_logistic` and `model_prefix_plus_coarse_tail`; its audit
+requires the exact query × budget × method Cartesian key set (456 rows) and
+the complete 12-row summary matrix.  The replayed runner SHA is recorded in
+`2026-09-13-r4-sampled-pointwise-ltr-result.json` and the corrected audit
+passes.
+
+The fusion audit no longer trusts the historical residual count.  It rebuilds
+the residual `(query, teacher)` pairs from the frozen teacher IDs and the
+immutable seed-2701/2702/2703 posting and shortlist artifacts, then compares
+the exact pair set, count, and pair uniqueness with the receipt.  The current
+source-derived result is 31 unique residual pairs, and the fail-closed audit
+passes with 1,824 jump rows.

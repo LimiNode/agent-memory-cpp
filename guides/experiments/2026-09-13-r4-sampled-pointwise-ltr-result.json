@@ -5,7 +5,7 @@
   "production_activation": false,
   "fixture_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
   "r4_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
-  "runner_sha256": "d085424536d4ae63bd6722b312e3747fdf07eb71e4a011a958a94278a094ce3b",
+  "runner_sha256": "79282e0b127199cd07fe0858bd542e1e6d052f8f4ea25cc3afb6aa9c52ed565d",
   "train_query_ids": [
     0,
     1,

@@ -26,6 +26,60 @@ def check_aggregate(expected: dict[str, Any], values: list[float], label: str) -
 def check_file(path: Path, record: dict[str, Any]) -> None:
     require(path.stat().st_size == int(record["bytes"]), f"size mismatch: {path}")
     require(sha256(path) == record["sha256"], f"SHA mismatch: {path}")
+
+def recompute_residual_rows(receipt: dict[str, Any], r4_manifest_path: Path,
+                            r4_root: Path) -> list[dict[str, Any]]:
+    """Recompute the residual support set from immutable posting artifacts.
+
+    The deep route's required support is its frozen 1,024-address prefix,
+    which is the seed-2701 frozen shortlist.  This deliberately avoids the
+    fusion receipt's stored residual count and does not rebuild the learned
+    deep tail.
+    """
+    manifest = json.loads(r4_manifest_path.read_text(encoding="utf-8"))
+    frozen_teachers = Path(receipt["input_artifacts"]["frozen"]["teacher_ids"]["path"])
+    teacher_values = np.fromfile(frozen_teachers, dtype="<i8")
+    require(teacher_values.size > 0 and teacher_values.size % 10 == 0,
+            "teacher artifact is not a non-empty top-10 matrix")
+    teachers = teacher_values.reshape(-1, 10)
+    query_count = teachers.shape[0]
+    by_seed = {int(row["seed"]): row for row in manifest["seeds"]}
+    support = np.zeros_like(teachers, dtype=np.bool_)
+    for seed in (2026082701, 2026082702, 2026082703):
+        require(seed in by_seed, f"residual source seed missing: {seed}")
+        record = by_seed[seed]
+        root = r4_root / "materialized" / f"seed-{seed}"
+        mappings = {row["role"]: row for row in record["mappings"]}
+        for role in ("address_offsets", "address_counts", "physical_to_document", "shortlist_rows"):
+            require(role in mappings, f"residual source mapping missing: {seed}/{role}")
+        offsets = np.fromfile(root / mappings["address_offsets"]["file"], dtype="<u4")
+        counts = np.fromfile(root / mappings["address_counts"]["file"], dtype="<u4")
+        physical = np.fromfile(root / mappings["physical_to_document"]["file"], dtype="<i4")
+        shortlist = np.fromfile(root / mappings["shortlist_rows"]["file"], dtype="<u4")
+        require(shortlist.size % 1024 == 0,
+                f"residual shortlist width differs for seed {seed}")
+        shortlist = shortlist.reshape(-1, 1024)
+        require(len(offsets) == len(counts) and shortlist.shape == (query_count, 1024),
+                f"residual source shape differs for seed {seed}")
+        require(len(offsets) > 0 and int(np.max(offsets + counts)) <= len(physical),
+                f"residual posting ranges exceed physical mapping for seed {seed}")
+        require(np.all((shortlist < len(offsets))),
+                f"residual shortlist address out of range for seed {seed}")
+        require(np.all((physical >= 0) & (physical < len(physical))),
+                f"residual physical document id out of range for seed {seed}")
+        for query in range(query_count):
+            visible = np.zeros(len(physical), dtype=np.bool_)
+            for address in shortlist[query]:
+                start = int(offsets[int(address)])
+                stop = start + int(counts[int(address)])
+                visible[physical[start:stop]] = True
+            support[query] |= visible[teachers[query]]
+    return [
+        {"query": int(query), "teacher": int(teacher)}
+        for query in range(152)
+        for teacher, covered in zip(teachers[query], support[query])
+        if not bool(covered)
+    ]
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--receipt", type=Path, required=True); p.add_argument("--raw", type=Path, required=True)
@@ -64,6 +118,16 @@ def main() -> None:
         require(len(selected) == 152, f"jump group mismatch: {cap}/{b}")
         for metric in ("teacher_recall", "posting_entries_touched", "postings_touched", "duplication_ratio", "actual_unique_candidates"):
             check_aggregate(summary[metric], [float(r[metric]) for r in selected], f"jump.{cap}.{b}.{metric}")
-    require(int(receipt["residual_diagnostics"]["count"]) == 31, "residual count changed")
-    print(json.dumps({"status": "PASS", "family": receipt["family"], "jump_rows": len(jumps)}, sort_keys=True))
+    recomputed = recompute_residual_rows(receipt, a.r4_manifest, a.r4_root)
+    recorded = receipt["residual_diagnostics"].get("rows", [])
+    recorded_pairs = sorted((int(row["query"]), int(row["teacher"])) for row in recorded)
+    recomputed_pairs = sorted((int(row["query"]), int(row["teacher"])) for row in recomputed)
+    require(recorded_pairs == recomputed_pairs, "residual rows differ from source topology")
+    require(int(receipt["residual_diagnostics"]["count"]) == len(recomputed),
+            "residual count differs from source topology")
+    require(len(recorded_pairs) == len(set(recorded_pairs)),
+            "residual rows contain duplicate query/teacher pairs")
+    print(json.dumps({"status": "PASS", "family": receipt["family"],
+                      "jump_rows": len(jumps), "residual_rows": len(recomputed)},
+                     sort_keys=True))
 if __name__ == "__main__": main()
