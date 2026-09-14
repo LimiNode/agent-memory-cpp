@@ -27,6 +27,12 @@ def require(value: bool, message: str) -> None:
         raise ValueError(message)
 
 
+def check_file(path: Path, record: dict[str, Any]) -> None:
+    require(path.is_file() and path.stat().st_size == int(record["bytes"]),
+            f"artifact size mismatch: {path}")
+    require(sha256(path) == record["sha256"], f"artifact SHA mismatch: {path}")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--receipt", type=Path, required=True)
@@ -64,11 +70,23 @@ def main() -> None:
                 "duplicate or unexpected row")
         seen.add(key)
         seed = codec_by_seed[key[0]]
-        base_counts = np.fromfile(args.codec_manifest.parent / f"seed-{key[0]}" /
-                                  "counts.u8", dtype=np.uint8)
+        codec_root = args.codec_manifest.parent / f"seed-{key[0]}"
+        codec_mappings = {item["role"]: item for item in seed["mappings"]}
+        require("address_counts" in codec_mappings,
+                f"missing address-count mapping: {key[0]}")
+        base_counts_path = codec_root / codec_mappings["address_counts"]["file"]
+        check_file(base_counts_path, codec_mappings["address_counts"])
+        base_counts = np.fromfile(base_counts_path, dtype=np.uint8)
         expected = int(np.minimum(base_counts, key[1]).sum())
         require(int(row["representative_count"]) == expected,
                 "representative count mismatch")
+        representation = next(item for item in seed["representations"]
+                              if item["id"] == "int8")
+        store = codec_root / representation["file"]
+        check_file(store, representation)
+        require(int(row["store_bytes"]) == int(representation["bytes"]) and
+                row["store_sha256"] == representation["sha256"],
+                f"INT8 store binding mismatch: {key}")
         shortlist = np.fromfile(
             args.layout_manifest.parent / f"seed-{key[0]}" / "shortlist-rows.u32le",
             dtype=np.uint32).reshape(152, 1024)
@@ -77,6 +95,11 @@ def main() -> None:
         require(output.is_file() and row["native_result_sha256"] == sha256(output),
                 "native result binding mismatch")
         native = json.loads(output.read_text(encoding="utf-8"))
+        require(native.get("family") == "neuroute_r4_nonlinear_codec_native_samples" and
+                int(native.get("bits")) == 8 and
+                native.get("compander") == "uniform" and
+                int(native.get("measured_passes")) == int(receipt["measured_passes"]),
+                f"native mode metadata mismatch: {key}")
         require(len(native["samples"]) == int(receipt["measured_passes"]) * 152,
                 "native sample count mismatch")
         actual_counts = [int(sample["representatives_scored"]) for sample in native["samples"]]
@@ -100,9 +123,12 @@ def main() -> None:
                             ("max", timings.max())):
             require(abs(float(row["timing_ms"][name]) - float(value)) < 1e-12,
                     f"timing aggregate mismatch {key}/{name}")
-        require(int(row["store_bytes"]) == next(item["bytes"] for item in seed["representations"]
-                                                if item["id"] == "int8"),
-                "INT8 store size differs")
+        counts_path = args.work_root / f"seed-{key[0]}-counts-k{key[1]}.u8"
+        clipped = np.minimum(base_counts, key[1]).astype(np.uint8)
+        require(counts_path.is_file() and counts_path.read_bytes() == clipped.tobytes(),
+                f"clipped count sidecar differs: {counts_path}")
+        require(row["counts_sha256"] == sha256(counts_path),
+                f"clipped count sidecar SHA mismatch: {key}")
     require(len(seen) == len(SEEDS) * len(PREFIXES), "missing matrix row")
     print(json.dumps({"status": "PASS", "family": receipt["family"],
                       "rows": len(rows)}, sort_keys=True))

@@ -58,8 +58,10 @@ SHA are bound in the receipt and the fail-closed audit.
 ## Provenance and limitations
 
 The receipt binds the codec and layout manifests, executable, source, clipped
-K-prefix count sidecars, and nine native result files. The audit reports
-`PASS` for all nine matrix rows. Physical page bytes, memory high-water marks,
+K-prefix count sidecars, and nine native result files. The audit independently
+re-hashes each clipped sidecar and INT8 store, verifies that sidecars equal
+`min(base_counts, K)`, and checks native family/bits/compander/pass metadata;
+it reports `PASS` for all nine matrix rows. Physical page bytes, memory high-water marks,
 cache state beyond the native warm-up, and end-to-end query latency were not
 measured. INT8 score fidelity for the full K=16 route is inherited from the
 earlier representative-codec evidence; this control measures cost only.
