@@ -39,6 +39,7 @@ def main() -> None:
     parser.add_argument("--r4-codec-manifest", type=Path, required=True)
     parser.add_argument("--native-executable", type=Path, required=True)
     parser.add_argument("--runner", type=Path, required=True)
+    parser.add_argument("--previous-raw", type=Path)
     args = parser.parse_args()
     receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
     raw = json.loads(args.raw.read_text(encoding="utf-8"))
@@ -55,6 +56,16 @@ def main() -> None:
             receipt["native_executable_sha256"] == sha256(args.native_executable) and
             receipt["runner_sha256"] == sha256(args.runner),
             "full native receipt binding differs")
+    previous_sha = receipt.get("previous_raw_sha256")
+    if previous_sha is not None:
+        require(args.previous_raw is not None and args.previous_raw.is_file() and
+                sha256(args.previous_raw) == previous_sha,
+                "inherited FP32 raw binding differs")
+        previous = json.loads(args.previous_raw.read_text(encoding="utf-8"))
+        require(previous.get("family") == receipt["family"] and
+                previous.get("schema_version") == raw.get("schema_version") and
+                len(previous.get("rows", [])) == len(KS) * len(BUDGETS) * QUERIES,
+                "inherited FP32 raw schema/grid differs")
     require(raw["family"] == receipt["family"] and raw["schema_version"] == 1,
             "full native raw schema differs")
     rows = raw["rows"]
@@ -101,6 +112,9 @@ def main() -> None:
                     float(np.isin(teacher, np.asarray(row["exact_top256_ids"], dtype=np.int64)).sum()
                           / TEACHERS_PER_QUERY)) < 1e-9,
                 f"cascade recall equality differs: {identity}")
+        require(set(int(x) for x in row["exact_top256_ids"]) ==
+                set(int(x) for x in row["thq_top256_ids"]),
+                f"exact top-256 set differs: {identity}")
         exact10 = np.asarray(row["exact_top10_ids"], dtype=np.int64)
         require(len(exact10) == 10 and np.unique(exact10).size == 10 and
                 np.all(np.isin(exact10, np.asarray(row["thq_top256_ids"], dtype=np.int64))) and

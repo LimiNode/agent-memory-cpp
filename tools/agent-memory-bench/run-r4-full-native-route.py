@@ -241,7 +241,7 @@ def fuse(route_list: list[dict[str, Any]], orders: list[np.ndarray], scores: lis
             "representative_vectors_scored": int(sum(int(x["effective_representatives"]) for x in route_list)),
             "representative_payload_bytes": int(sum(int(x["effective_representatives"]) for x in route_list) * document_bytes),
             "candidate_payload_bytes": int(len(candidate_ids) * 144),
-            "exact_payload_bytes": int(len(candidate_ids) * 1536),
+            "exact_payload_bytes": int(min(len(candidate_ids), TOP_K) * 1536),
             "candidate_teacher_recall": float(np.count_nonzero(present) / len(teachers)),
             "candidate_teacher_ids_hit": [int(x) for x, ok in zip(teachers, present) if ok],
             "candidate_teacher_ids_missed": [int(x) for x, ok in zip(teachers, present) if not ok],
