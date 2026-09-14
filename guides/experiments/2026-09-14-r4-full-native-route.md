@@ -61,6 +61,13 @@ its means are identical to the candidate means for every K/budget cell in this
 fixture.  Thus the top-10 stage does not add an observed loss, but this is a
 frozen-query result rather than a general guarantee.
 
+The corrective replay (`full-gate-v3`) preserves the FP32 rows and route metrics
+from the bound predecessor raw payload, validates its SHA/family/grid, and
+recomputes the INT8 cascade fields. The audit also requires exact-top-256 set
+equality (not only recall equality) and records useful exact input as at most
+`256 * 1536` bytes. Audit status is PASS for 1,824 cascade rows and 1,368
+inherited route-metric rows.
+
 ### Native scalar route timing
 
 The following values aggregate the three seeds and 152 queries.  They are
