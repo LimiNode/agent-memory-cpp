@@ -50,6 +50,13 @@ The FP32 candidate-recall delta is `-0.001316` for `A=8192` at 5k and zero
 for `A=16384` in this replay.  AoSoA-16 and AoSoA-32 therefore preserve the
 route quality of the FP32 comparison within the tested grid.
 
+The corrective AoSoA-32 replay also binds layout identity as `(mode, lanes)`
+and has a row identity `(mode, lanes, query, A, budget)`, so `--layout-filter`
+cannot silently collide the two AoSoA widths. Its fail-closed audit requires
+candidate recall equality with THQ top-256, exact top-256, and exact top-10;
+the refreshed AoSoA-32 raw payload SHA is
+`847ec704a826934adbc2f442edfce2ffce8c1ff547264344cd782bac4fc75077`.
+
 Native K1 arithmetic is about 8.10/9.57 ms p50/p95 for AoSoA-16 and
 7.88/8.38 ms for AoSoA-32 in the component benchmark, versus 28.73/32.77 ms
 for row-major scalar.  The full cascade remains dominated by K16 refinement
