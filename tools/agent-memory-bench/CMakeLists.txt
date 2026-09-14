@@ -536,6 +536,12 @@ target_compile_definitions(agent-memory-neuroute-r4-k1-simd-layout PRIVATE
 target_link_libraries(agent-memory-neuroute-r4-k1-simd-layout PRIVATE
     agent_memory::json)
 
+add_executable(agent-memory-neuroute-r4-k1-page-read
+    neuroute_r4_k1_page_read.cpp)
+target_compile_features(agent-memory-neuroute-r4-k1-page-read PRIVATE cxx_std_17)
+target_link_libraries(agent-memory-neuroute-r4-k1-page-read PRIVATE
+    agent_memory::json)
+
 add_executable(agent-memory-neuroute-r4-full-route
     neuroute_r4_full_route.cpp)
 target_link_libraries(agent-memory-neuroute-r4-full-route PRIVATE

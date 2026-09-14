@@ -942,3 +942,16 @@ page fit alone does not choose the layout. The result is a SIMD/layout
 component control only: logical payload bytes are reported, but physical
 OS/MDBX pages and end-to-end cascade latency remain unmeasured. See
 `2026-09-14-r4-k1-simd-layout.md` and its fail-closed audit.
+
+### K1 file/page-read gate (2026-09-14)
+
+The page/read control passed 5,508 independent samples for row-major,
+AoSoA-16, and AoSoA-32. A complete sidecar scan requests about 25.0 MB and
+6,105 4-KiB file pages for every layout, with no meaningful AoSoA footprint
+change. Gathering the actual top-128 K1 addresses is different: row-major
+requests about 49 KB and 119 pages/query, while AoSoA-16/32 request about
+661 KB/1.21 MB and 206/295 pages because complete tiles are the read unit.
+These are file-range/page-offset measurements only; OS cache eviction, MDBX
+pages, and physical media reads are not controlled. AoSoA remains appropriate
+for the sequential coarse scan, not arbitrary row gathers. See
+`2026-09-14-r4-k1-page-read.md` and its fail-closed audit.
