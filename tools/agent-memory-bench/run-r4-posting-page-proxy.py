@@ -112,7 +112,8 @@ def main() -> None:
                        row.get("layout", args.layout_mode) == args.layout_mode)
         order = Path(binding["order"])
         result_meta = json.loads(Path(binding["result"]).read_text(encoding="utf-8"))
-        addresses = int(result_meta.get("addresses", result_meta.get("rows", 0)))
+        addresses = int(result_meta.get("addresses", result_meta.get("rows",
+                                 result_meta.get("coarse_rows", 0))))
         current_order, current_scores = read_orders(order, queries, addresses)
         orders.append(current_order); scores.append(current_scores)
         native_bindings.append({"seed": seed, "layout": args.layout_mode, "lanes": args.layout_lanes,
