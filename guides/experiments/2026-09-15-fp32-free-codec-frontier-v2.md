@@ -42,12 +42,15 @@ Direct scalar controls reproduce the historical quality ordering:
 | INT10 power-.5 | 580 | .9987 | .9914 | .6569 |
 | INT12 power-.5 | 676 | 1.0000 | .9928 | .6558 |
 
-For the composed path, the cheapest strong point is an ordinal-levels-3
-96-byte THQ shortlist followed by INT8 linear:
+Packed-ordinal accounting changes the stage frontier: levels-3 and levels-4
+both cost 96 bytes/document. With proper interval-squared ADC, levels-4 reaches
+candidate-FP32 overlap `1.0` at top-128, while levels-3 needs top-256. The
+quality-equivalent composed points are therefore:
 
 | cascade | total logical bytes/doc | candidate-FP32 top-10 overlap | teacher top-10 recall | qrels nDCG@10 |
 | --- | ---: | ---: | ---: | ---: |
 | levels-3 → top-256 → INT8 linear | 484 | .9941 | .9868 | .6562 |
+| levels-4 → top-128 → INT8 linear | 484 | .9941 | .9868 | .6562 |
 | levels-3 → top-256 → INT9 power-.5 | 532 | .9961 | .9888 | .6571 |
 | levels-3 → top-256 → INT10 power-.5 | 580 | .9987 | .9914 | .6569 |
 | levels-3 → top-256 → INT12 power-.5 | 676 | 1.0000 | .9928 | .6558 |
@@ -60,16 +63,29 @@ shortlist=256 is ordinal-L1 `.59722`, interval-L1 `.61333`, and interval²
 quality. They may still affect work/latency, which this oracle does not
 measure.
 
+## Paired qrels diagnostics
+
+Mean qrels alone is not a safe scalar-codec gate. Relative to candidate-local
+FP32, INT6 linear has mean delta `+.00818` but a worst loss of `.36907` and a
+paired-bootstrap 95% CI of `[-.00094, +.01784]`. INT8 linear has mean delta
+`+.00198`, the same single-query worst loss, and CI `[-.00548, +.00971]`.
+INT8 power-.625 has mean delta `+.00432`, worst loss `.01096`, and CI
+`[+.00022, +.01073]`, but its candidate-FP32 overlap is only `.9888`.
+
+Thus qrels nDCG is the product metric, while FP32 overlap remains an explicit
+safety guardrail rather than the optimization objective. The final guardrail
+must be chosen before selecting between INT8 linear and power-.625.
+
 ## Interpretation and next gate
 
 The matrix supports a narrow architecture hypothesis, not a production
-decision. A 484-byte `THQ → INT8` logical cascade is a credible finalist and
-matches the historical #291/#292 direction, while INT7 is below the `.99`
-candidate-local gate. Before selecting it, the next PR must materialize the
-actual packed THQ and INT8 records, decode them in the native scorer, and
-measure candidate bytes/pages and cold/warm latency. The optional
-`.625/.75/.875` and mu-law companders for widths 5–9 remain a detached
-follow-up; they cannot overturn the current INT8/INT9/INT10 shortlist without
-an independently audited replay.
+decision. The native gate has two storage alternatives: direct shared INT8 at
+388 bytes/document, scoring roughly 5k candidates, versus shared levels-4 THQ
+plus INT8 at 484 bytes/document, scoring roughly 5k THQ records and 128 INT8
+records. Both have the same frozen quality here; THQ is justified only by a
+matched native bandwidth/latency win. INT8 linear and power-.625 must both be
+retained because they expose a real fidelity-versus-qrels-tail tradeoff.
 
 Raw receipt: `frontier-v2.receipt.json`; raw SHA is bound by that receipt.
+Packed ordinal accounting is `ceil(dimension * ceil(log2(levels)) / 8)`;
+thermometer storage is a separate diagnostic representation.

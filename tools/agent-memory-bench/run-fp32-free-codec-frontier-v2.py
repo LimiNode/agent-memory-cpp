@@ -25,6 +25,13 @@ STAGES = ((3, "ordinal_l1"), (3, "interval_l1"), (3, "interval_sq"),
 SHORTLISTS = (64, 128, 256, 512)
 
 
+def ordinal_payload_bytes(dimension: int, levels: int) -> int:
+    """Return packed ordinal level-ID bytes, including no per-record header."""
+    require(dimension > 0 and levels >= 2, "invalid ordinal payload shape")
+    bits_per_coordinate = int(np.ceil(np.log2(levels)))
+    return (dimension * bits_per_coordinate + 7) // 8
+
+
 def sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -169,7 +176,7 @@ def main() -> None:
             for shortlist in SHORTLISTS:
                 selected = stable_top(ids, scores, shortlist, ascending=ascending)
                 row = {"query": qi, "levels": levels, "mode": mode, "shortlist": shortlist,
-                       "candidate_count": count, "payload_bytes_per_document": (dimension * (levels - 1) + 7) // 8,
+                       "candidate_count": count, "payload_bytes_per_document": ordinal_payload_bytes(dimension, levels),
                        "exact_top10_overlap": float(np.intersect1d(selected, fp32_top10).size / TOP_K),
                        "teacher_top10_recall": float(np.isin(teacher, selected).sum() / len(teacher)),
                        "qrels_ndcg10": ndcg(selected, np.asarray(qrel_ids[qi]), np.asarray(qrel_scores[qi]))}
@@ -198,10 +205,36 @@ def main() -> None:
             row["query_count"] = len(values)
             result.append(row)
         return result
+    def paired_direct_summary(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        by_query = {(int(row["query"]), str(row["representation"])): row for row in items}
+        representations = sorted({str(row["representation"]) for row in items} - {"fp32"})
+        rng = np.random.default_rng(20260915)
+        result = []
+        for representation in representations:
+            deltas = np.asarray([
+                float(by_query[(query, representation)]["qrels_ndcg10"]) -
+                float(by_query[(query, "fp32")]["qrels_ndcg10"])
+                for query in range(QUERIES)
+            ], dtype=np.float64)
+            samples = rng.integers(0, QUERIES, size=(10_000, QUERIES))
+            bootstrap_means = deltas[samples].mean(axis=1)
+            result.append({
+                "representation": representation,
+                "qrels_ndcg10_delta_vs_candidate_fp32": aggregate(deltas.tolist()),
+                "maximum_positive_ndcg_loss": float(np.maximum(-deltas, 0.0).max()),
+                "paired_bootstrap_mean_delta_95ci": {
+                    "low": float(np.percentile(bootstrap_means, 2.5)),
+                    "high": float(np.percentile(bootstrap_means, 97.5)),
+                    "resamples": 10_000,
+                    "seed": 20260915,
+                },
+            })
+        return result
     raw = {"schema_version": 2, "family": "semantic_fp32_free_codec_frontier_v2",
            "execution_status": "EXECUTED", "production_activation": False,
            "protocol": {"candidate_semantics": "corrected whole-posting R4 stream",
                         "training_count": train_count, "stages": "THQ3/4/5/8 × ordinal-L1/interval-L1/interval-squared",
+                        "payload_accounting": "ordinal level IDs: ceil(dimension * ceil(log2(levels)) / 8); scalar records include one FP32 scale",
                         "shortlists": list(SHORTLISTS), "scalar_final": "FP16; INT4/5/6/7/8/9/10/12 linear and power-.5/.625/.75/.875",
                         "scores": "candidate-local FP32 top-10 reference; qrels nDCG@10"},
            "inputs": {"thq_manifest_sha256": sha256(args.thq_manifest), "candidate_receipt_sha256": sha256(args.candidate_receipt),
@@ -209,7 +242,8 @@ def main() -> None:
            "stage_rows": stage_rows, "final_rows": final_rows, "direct_rows": direct_rows,
            "stage_summary": summarize(stage_rows, ("levels", "mode", "shortlist")),
            "final_summary": summarize(final_rows, ("levels", "mode", "shortlist", "representation")),
-           "direct_summary": summarize(direct_rows, ("representation",))}
+           "direct_summary": summarize(direct_rows, ("representation",)),
+           "paired_direct_summary": paired_direct_summary(direct_rows)}
     args.raw_output.parent.mkdir(parents=True, exist_ok=True)
     raw_bytes = (json.dumps(raw, sort_keys=True, separators=(",", ":")) + "\n").encode()
     args.raw_output.write_bytes(raw_bytes)

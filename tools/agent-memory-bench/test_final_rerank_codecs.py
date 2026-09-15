@@ -19,6 +19,7 @@ def main() -> None:
     scalar = ScalarScorer.make(8, 1.0)
     assert scalar.payload_bytes_per_document == 388
     assert scalar.scores(vectors, query).shape == (17,)
+    assert ScalarScorer.make(8, .625).id == "int8_power0625"
     for bits in (16, 24, 32):
         for scorer in (ITQScorer.fit(training, bits, "hamming", 7),
                        ITQScorer.fit(training, bits, "adc", 7),
