@@ -198,11 +198,13 @@ def main() -> None:
                     transitions = 0
                     lengths: list[int] = [1]
                     for previous, current in zip(sequence, sequence[1:]):
-                        transitions += 1
+                        if current != previous:
+                            transitions += 1
                         if isinstance(current, tuple):
-                            contiguous = current[0] == previous[0] and current[1] == previous[1] + 1
+                            contiguous = (current == previous or
+                                          (current[0] == previous[0] and current[1] == previous[1] + 1))
                         else:
-                            contiguous = current == previous + 1
+                            contiguous = current == previous or current == previous + 1
                         if contiguous:
                             lengths[-1] += 1
                         else:

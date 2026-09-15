@@ -43,6 +43,36 @@ def aggregate(values: list[float]) -> dict[str, float]:
             "max": float(a.max())}
 
 
+def recompute_exact_top256(manifest: dict, candidate_ids: np.ndarray, query: int) -> np.ndarray:
+    dimension = int(manifest["dimension"])
+    documents = int(manifest["documents"])
+    queries = int(manifest["queries"])
+    qref = manifest["references"]["queries"]
+    dref = manifest["references"]["document_vectors"]
+    tref = manifest["outputs"]["thq4_thresholds"]
+    cref = manifest["outputs"]["thq4_document_codes"]
+    q = np.memmap(Path(qref["path"]), mode="r", dtype="<f4", shape=(queries, dimension))[query]
+    docs = np.memmap(Path(dref["path"]), mode="r", dtype="<f4", shape=(documents, dimension))
+    thresholds = np.memmap(Path(tref["path"]), mode="r", dtype="<f4", shape=(dimension, 3))
+    code_bytes = int(cref["bytes"]) // documents
+    codes = np.memmap(Path(cref["path"]), mode="r", dtype=np.uint8, shape=(documents, code_bytes))
+    t1, t2, t3 = thresholds[:, 0], thresholds[:, 1], thresholds[:, 2]
+    l1 = np.stack((np.maximum(q - t1, 0.0),
+                   np.where(q < t1, t1 - q,
+                            np.where(q >= t2, q - t2, 0.0)),
+                   np.where(q < t2, t2 - q,
+                            np.where(q >= t3, q - t3, 0.0)),
+                   np.maximum(t3 - q, 0.0)), axis=1)
+    lut = (l1 * l1).astype(np.float32)
+    bits = np.unpackbits(np.asarray(codes[candidate_ids]), axis=1,
+                         bitorder="little")[:, :dimension * 3]
+    levels = bits.reshape(len(candidate_ids), dimension, 3).sum(axis=2)
+    thq_scores = lut[np.arange(dimension)[None, :], levels].sum(axis=1)
+    thq_top = candidate_ids[np.lexsort((candidate_ids, thq_scores))[:256]]
+    exact_scores = docs[thq_top] @ q
+    return thq_top[np.lexsort((thq_top, -exact_scores))[:256]]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--receipt", type=Path, required=True)
@@ -54,6 +84,7 @@ def main() -> None:
     parser.add_argument("--r4-layout-root", type=Path, required=True)
     args = parser.parse_args()
     receipt = json.loads(args.receipt.read_text(encoding="utf-8")); raw = json.loads(args.raw.read_text(encoding="utf-8"))
+    thq_manifest = json.loads(args.thq_manifest.read_text(encoding="utf-8"))
     require(receipt["family"] == raw["family"] == "semantic_r4_posting_page_proxy_v1" and
             receipt["execution_status"] == "EXECUTED" and receipt["production_activation"] is False,
             "proxy identity differs")
@@ -143,6 +174,11 @@ def main() -> None:
             exact_pages.update(range(start // 4096, end // 4096 + 1))
         require(len(exact_pages) == int(row["exact_top256_fp32_record_pages"]),
                 f"exact FP32 page reconstruction differs: {identity}")
+        recomputed = recompute_exact_top256(thq_manifest,
+                                            np.asarray(sorted(seen_docs), dtype=np.int64),
+                                            int(row["query"]))
+        require(np.array_equal(recomputed, exact_ids),
+                f"exact top-256 sequence differs: {identity}")
         require(math.isclose(float(row["exact_fp32_page_amplification"]),
                              len(exact_pages) * 4096.0 / float(row["useful_exact_payload_bytes"]),
                              abs_tol=1e-12),
