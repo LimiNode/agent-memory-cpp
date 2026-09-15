@@ -675,3 +675,18 @@ prefix, then prunes later documents only when their nonnegative partial ADC
 score exceeds the current threshold. Active and fully evaluated fractions are
 recorded at all checkpoints. External DE-1M execution and physical layout
 measurements remain pending; no production activation is claimed.
+
+### Corrected R4 physical controls and FP32-removal gate (2026-09-15)
+
+The corrective wave for #408–#412 validates frozen native order/result bytes
+and route mappings, separates posting-page from THQ-gather locality, retains
+whole-posting candidate overshoot, and recomputes variable-count page
+arithmetic. Independent audits pass for the 608-row page proxy, 2,128-row
+seed-count frontier, 152-row candidate materialization, and eight-row storage
+model. The new #413 gate compares direct THQ, packed ordinal, compact INT8/INT4
+rerankers, and candidate-local FP32 on the corrected stream. Direct THQ is not
+top-10 equivalent (`.8145` overlap); INT8 is a promising compact final stage
+(`.9941` overlap, about 388 B/document), while INT4 is insufficient. This is
+still an offline NumPy control: native INT8 materialization and held-out qrels
+remain required before removing FP32 from production. `production_activation:
+false`.
