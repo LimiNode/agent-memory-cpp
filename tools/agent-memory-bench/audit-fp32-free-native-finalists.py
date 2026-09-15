@@ -25,7 +25,8 @@ def main() -> None:
     p.add_argument("--manifest", type=Path, required=True); p.add_argument("--receipt", type=Path, required=True)
     p.add_argument("--runner", type=Path, required=True); p.add_argument("--thq-manifest", type=Path, required=True)
     p.add_argument("--candidate-receipt", type=Path, required=True); p.add_argument("--candidate-raw", type=Path, required=True)
-    p.add_argument("--candidate-flat", type=Path, required=True); p.add_argument("--codec-frontier-receipt", type=Path, required=True); a = p.parse_args()
+    p.add_argument("--candidate-flat", type=Path, required=True); p.add_argument("--codec-frontier-receipt", type=Path, required=True)
+    p.add_argument("--codec-recompute-chunk", type=int, default=8192); a = p.parse_args()
     raw = json.loads(a.manifest.read_text(encoding="utf-8")); receipt = json.loads(a.receipt.read_text(encoding="utf-8"))
     require(raw["family"] == receipt["family"] == "semantic_fp32_free_native_finalist_materialization_v1", "family differs")
     require(receipt["runner_sha256"] == sha256(a.runner) and receipt["raw_sha256"] == sha256(a.manifest), "provenance differs")
@@ -48,6 +49,46 @@ def main() -> None:
     stored = np.fromfile(resolve_artifact(a.manifest, raw["files"]["document_ids"]["path"]), dtype="<i4")
     require(np.array_equal(stored, ids), "unique document ID sequence differs")
     require(len(stored) == int(raw["unique_candidate_documents"]), "unique document count differs")
+    thq_manifest = json.loads(a.thq_manifest.read_text(encoding="utf-8"))
+    dimension = int(thq_manifest["dimension"])
+    require(dimension == 384 and int(thq_manifest["documents"]) == int(raw["documents"]),
+            "source vector shape differs")
+    source_meta = thq_manifest["references"]["document_vectors"]
+    source_path = Path(source_meta["path"])
+    require(source_path.is_file(), "source vectors are missing")
+    if "bytes" in source_meta:
+        require(source_path.stat().st_size == int(source_meta["bytes"]), "source vector size differs")
+    if "sha256" in source_meta:
+        require(sha256(source_path) == source_meta["sha256"], "source vector SHA differs")
+    documents = np.memmap(source_path, mode="r", dtype="<f4",
+                          shape=(int(raw["documents"]), dimension))
+    training_count = int(raw["training_count"])
+    thresholds = np.quantile(np.asarray(documents[:training_count]),
+                             (1.0 / 3.0, 2.0 / 3.0), axis=0).T.astype(np.float32)
+    thq = np.memmap(resolve_artifact(a.manifest, raw["files"]["thq3_ordinal"]["path"]),
+                    mode="r", dtype=np.uint8, shape=(len(stored), 96))
+    scales = np.memmap(resolve_artifact(a.manifest, raw["files"]["int8_scales"]["path"]),
+                       mode="r", dtype="<f4", shape=(len(stored),))
+    int8 = np.memmap(resolve_artifact(a.manifest, raw["files"]["int8_linear"]["path"]),
+                     mode="r", dtype=np.int8, shape=(len(stored), dimension))
+    require(a.codec_recompute_chunk > 0, "codec recompute chunk differs")
+    for start in range(0, len(stored), a.codec_recompute_chunk):
+        stop = min(start + a.codec_recompute_chunk, len(stored))
+        vectors = np.asarray(documents[stored[start:stop]], dtype=np.float32)
+        levels = np.sum(vectors[:, :, None] > thresholds[None, :, :], axis=2,
+                        dtype=np.uint8)
+        expected_thq = (levels[:, 0::4] | (levels[:, 1::4] << 2) |
+                        (levels[:, 2::4] << 4) | (levels[:, 3::4] << 6)).astype(np.uint8)
+        expected_scales = np.maximum(np.max(np.abs(vectors), axis=1) / 127.0,
+                                     1e-8).astype(np.float32)
+        expected_int8 = np.rint(vectors / expected_scales[:, None]).clip(
+            -127, 127).astype(np.int8)
+        require(np.array_equal(thq[start:stop], expected_thq),
+                f"independent THQ recomputation differs at row {start}")
+        require(np.array_equal(scales[start:stop], expected_scales),
+                f"independent INT8 scale recomputation differs at row {start}")
+        require(np.array_equal(int8[start:stop], expected_int8),
+                f"independent INT8 code recomputation differs at row {start}")
     require(raw["logical_bytes_per_document"] == {"thq3_ordinal": 96, "int8_linear": 388, "cascade_total": 484}, "byte contract differs")
     require(int(raw.get("physical_subset_bytes_per_document", 0)) == 488, "subset physical byte contract differs")
     require(raw.get("materialization_scope") == "query-derived-evaluation-subset", "materialization scope differs")

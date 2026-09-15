@@ -13,7 +13,8 @@ unique document IDs. The materializer writes, in ascending document-ID order:
 * `int8-linear.i8` plus `int8-scales.f32`: 388-byte INT8 records;
 * `document_ids.i4`: the canonical mapping for both tables.
 
-The independent audit passed and checks file size/SHA, unique ID parity, the
+The independent audit checks file size/SHA, unique ID parity, byte-for-byte
+THQ3/INT8 recomputation from the frozen source vectors, the
 484-byte codec-payload contract, and all frozen input hashes. Including the
 `document_ids.i4` mapping, this subset is 488 bytes/document. The receipt is
 explicitly `PENDING_NATIVE_REPLAY`: no native scoring, OS/MDBX page count,
