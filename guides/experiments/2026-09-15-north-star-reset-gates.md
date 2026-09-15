@@ -37,9 +37,10 @@ The executed 152-query result (`quality.receipt.json`, raw SHA
 | exact E5 teacher | 0.65403 | 1.00000 | 0.99276 |
 
 Lower THQ teacher overlap therefore does not produce the same-sized product
-quality loss: direct THQ retains about 97.3% of teacher mean nDCG. This supports
-a THQ-only product path as a quality hypothesis, but does not license the
-latency or native-code choice yet.
+quality loss: direct THQ retains about 97.3% of teacher mean nDCG. This is a
+quality diagnostic, not authorization for a THQ-only product path: it does not
+measure a THQ shortlist followed by a compact final reranker, native latency,
+or held-out qrels.
 
 ## Gate B: canonical versus duplicated THQ
 
