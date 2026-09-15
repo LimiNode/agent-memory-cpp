@@ -15,4 +15,6 @@ AoSoA-32 candidate stream and compare fused flat, page-ranged, and MDBX records.
 The external receipt is independently checked by
 `audit-r4-fused-payload-layout.py` (PASS, two layouts). On the 200k-document
 control, flat storage is 29.6 MB (1.0x logical amplification), while
-per-record 4-KiB alignment is 819.2 MB (27.68x) and scans about 4x slower.
+per-record 4-KiB alignment is 819.2 MB (27.68x). The timing is only a
+one-byte-per-record touch benchmark, not a full payload scan or a production
+candidate-locality measurement.
