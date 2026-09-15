@@ -63,7 +63,8 @@ def main() -> None:
         mapping = {str(x["role"]): x for x in record["mappings"]}
         offsets = np.fromfile(root / mapping["address_offsets"]["file"], dtype="<u4")
         counts = np.fromfile(root / mapping["address_counts"]["file"], dtype="<u4")
-        route_maps.append((offsets, counts))
+        physical = np.fromfile(root / mapping["physical_to_document"]["file"], dtype="<i4")
+        route_maps.append((offsets, counts, physical))
     rows = raw["rows"]
     require(len(rows) == QUERIES * len(BUDGETS), "proxy row count differs")
     identities = set()
@@ -95,6 +96,23 @@ def main() -> None:
         require(len(set(int(x) for x in row["thq_candidate_page_ids"])) ==
                 int(row["thq_document_pages"]),
                 f"THQ candidate page accounting differs: {identity}")
+        seen_docs = set()
+        reconstructed_candidate_pages = set()
+        reconstructed_count = 0
+        for stream, address in row["touched_addresses"]:
+            offsets, counts, physical = route_maps[int(stream)]
+            offset = int(offsets[int(address)]); count = int(counts[int(address)])
+            for doc_id in physical[offset:offset + count]:
+                doc = int(doc_id)
+                if doc in seen_docs:
+                    continue
+                seen_docs.add(doc); reconstructed_count += 1
+                start = doc * 144; end = start + 143
+                reconstructed_candidate_pages.update(range(start // 4096, end // 4096 + 1))
+        require(reconstructed_count == int(row["candidate_count"]) and
+                reconstructed_candidate_pages ==
+                {int(x) for x in row["thq_candidate_page_ids"]},
+                f"THQ candidate stream reconstruction differs: {identity}")
         exact_pages = set()
         exact_ids = np.asarray(row["exact_top256_ids"], dtype=np.int64)
         require(len(exact_ids) == 256 and np.unique(exact_ids).size == 256 and
