@@ -47,7 +47,7 @@ amplification, and cold/warm latency. Compression may reduce disk footprint,
 but it is not a substitute for an uncompressed random-access representation
 unless the native gate shows an acceptable decode/page trade-off.
 
-## Gate 2: shared K16 representation — PLANNED
+## Gate 2: shared K16 representation — STORAGE EXECUTED; native quality/latency PENDING
 
 Replay the real `3 x A8192` route with both representative layouts:
 
@@ -59,7 +59,12 @@ rep_doc_id sidecars -> one shared document-major INT8 table
 Require address-prefix parity, candidate quality parity, representative and
 document-table bytes, cache/TLB/page counters, and native p50/p95/p99 per seed
 and for the complete cascade. This gate decides whether one shared INT8 table
-can serve both K16 refinement and final reranking.
+can serve both K16 refinement and final reranking. Existing manifest-bound
+storage accounting reports `469,127,530 B` for shared document-major INT8 plus
+`rep_doc_id` sidecars versus `1,234,461,302 B` for duplicated representative
+vectors (`61.9%` less), but that is a footprint result only; native quality,
+locality, and latency remain pending as documented in
+`2026-09-15-north-star-reset-gates.md`.
 
 ## Gate 3: THQ Flow, independent of R4 — REFERENCE EXECUTED; native gate DEFERRED
 
