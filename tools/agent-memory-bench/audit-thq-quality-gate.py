@@ -25,12 +25,30 @@ def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--receipt", type=Path, required=True)
     p.add_argument("--raw", type=Path, required=True)
+    p.add_argument("--runner", type=Path)
+    p.add_argument("--thq-manifest", type=Path)
+    p.add_argument("--candidate-receipt", type=Path)
+    p.add_argument("--candidate-raw", type=Path)
+    p.add_argument("--candidate-flat", type=Path)
+    p.add_argument("--packed-thq", type=Path)
     a = p.parse_args()
     receipt = json.loads(a.receipt.read_text())
     raw = json.loads(a.raw.read_text())
     require(receipt["family"] == "semantic_thq_quality_gate_v1", "family differs")
     require(receipt["execution_status"] == "EXECUTED", "receipt is not executed")
     require(receipt["raw_output"]["sha256"] == sha(a.raw), "raw SHA differs")
+    if a.runner:
+        require(receipt.get("runner_sha256") == sha(a.runner), "runner SHA differs")
+    for key, path in (("thq_manifest_sha256", a.thq_manifest),
+                      ("candidate_receipt_sha256", a.candidate_receipt),
+                      ("candidate_raw_sha256", a.candidate_raw),
+                      ("candidate_flat_sha256", a.candidate_flat)):
+        if path:
+            require(receipt.get(key) == sha(path), f"{key} differs")
+    if a.packed_thq:
+        packed = receipt.get("packed_thq", {})
+        require(packed.get("sha256") == sha(a.packed_thq), "packed THQ SHA differs")
+        require(int(packed.get("bytes", -1)) == a.packed_thq.stat().st_size, "packed THQ size differs")
     rows = raw["rows"]
     require(len(rows) == 152 * 4, "row count differs")
     names = {row["representation"] for row in rows}
@@ -39,6 +57,7 @@ def main() -> None:
         group = [row for row in rows if row["representation"] == name]
         require(len(group) == 152, f"query count differs for {name}")
         require(all(0.0 <= float(row["qrels_ndcg10"]) <= 1.0 for row in group), f"invalid nDCG for {name}")
+        require(all(len(row.get("top10_ids", [])) == 10 for row in group), f"top10 ids missing for {name}")
     exact = [row for row in rows if row["representation"] == "exact_e5_teacher"]
     require(all(float(row["teacher_overlap"]) == 1.0 for row in exact), "exact teacher is not identity")
     print("THQ North Star quality receipt audit passed")

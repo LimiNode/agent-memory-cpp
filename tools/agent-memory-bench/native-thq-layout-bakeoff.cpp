@@ -29,35 +29,33 @@ int main(int argc, char** argv) {
   const auto canonical = read_all(argv[1]);
   const auto duplicate = read_all(argv[2]);
   const auto counts = read_all(argv[3]);
-  const std::size_t page = std::stoull(argv[4]);
+  (void)std::stoull(argv[4]); // retained for CLI compatibility; no page faults are measured.
   if (canonical.size() % 96 || duplicate.size() % 100 || counts.size() % 4) return 3;
   std::vector<double> canonical_ms, duplicate_ms;
-  std::uint64_t checksum = 0, entries = 0, duplicate_reads = 0;
+  std::uint64_t checksum = 0, entries = 0;
   std::size_t offset = 0;
   for (std::size_t q = 0; q < counts.size() / 4; ++q) {
     std::uint32_t count = 0; std::memcpy(&count, counts.data() + q * 4, 4);
     if (offset + static_cast<std::size_t>(count) * 100 > duplicate.size()) return 4;
     const auto start = Clock::now();
-    std::vector<std::size_t> pages;
-    pages.reserve(count);
     for (std::uint32_t i = 0; i < count; ++i) {
       const auto* record = duplicate.data() + (offset + i * 100);
       std::uint32_t id = 0; std::memcpy(&id, record, 4);
       if (static_cast<std::size_t>(id) * 96 + 96 > canonical.size()) return 5;
       const auto* code = canonical.data() + static_cast<std::size_t>(id) * 96;
-      checksum += code[i % 96]; pages.push_back((static_cast<std::size_t>(id) * 96) / page);
+      checksum += code[i % 96];
     }
     canonical_ms.push_back(std::chrono::duration<double, std::milli>(Clock::now() - start).count());
     const auto duplicate_start = Clock::now();
     for (std::uint32_t i = 0; i < count; ++i) checksum += duplicate[offset + i * 100 + 4 + (i % 96)];
     duplicate_ms.push_back(std::chrono::duration<double, std::milli>(Clock::now() - duplicate_start).count());
-    std::sort(pages.begin(), pages.end()); pages.erase(std::unique(pages.begin(), pages.end()), pages.end());
-    entries += count; duplicate_reads += count;
+    entries += count;
     offset += static_cast<std::size_t>(count) * 100;
   }
   std::cout << "{\"queries\":" << canonical_ms.size() << ",\"entries\":" << entries
             << ",\"canonical_bytes\":" << canonical.size() << ",\"duplicated_bytes\":" << duplicate.size()
-            << ",\"duplicate_read_ratio\":1.0,\"canonical_p50_ms\":" << percentile(canonical_ms, .5)
+            << ",\"scope\":\"warm_resident_ram_one_byte_per_record_touch\""
+            << ",\"canonical_p50_ms\":" << percentile(canonical_ms, .5)
             << ",\"canonical_p95_ms\":" << percentile(canonical_ms, .95)
             << ",\"duplicate_p50_ms\":" << percentile(duplicate_ms, .5)
             << ",\"duplicate_p95_ms\":" << percentile(duplicate_ms, .95)

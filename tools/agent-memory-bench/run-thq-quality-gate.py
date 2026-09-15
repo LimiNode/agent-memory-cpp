@@ -32,6 +32,20 @@ def sha(path: Path) -> str:
     return digest.hexdigest()
 
 
+def resolve(root: Path, value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else root / path
+
+
+def validate_artifact(root: Path, descriptor: dict, label: str) -> Path:
+    require(isinstance(descriptor, dict), f"{label} descriptor is invalid")
+    path = resolve(root, str(descriptor["path"]))
+    require(path.is_file(), f"{label} is missing: {path}")
+    require(path.stat().st_size == int(descriptor["bytes"]), f"{label} size mismatch")
+    require(sha(path) == descriptor["sha256"], f"{label} SHA mismatch")
+    return path
+
+
 def top(ids: np.ndarray, scores: np.ndarray, k: int, *, lower: bool) -> np.ndarray:
     order = np.lexsort((ids, scores if lower else -scores))
     return ids[order[: min(k, len(order))]]
@@ -112,6 +126,19 @@ def main() -> None:
             "unexpected corpus shape")
     require(receipt["raw_sha256"] == sha(args.candidate_raw), "candidate raw SHA mismatch")
     require(receipt["flat_file"]["sha256"] == sha(args.candidate_flat), "candidate flat SHA mismatch")
+    manifest_root = args.thq_manifest.parent
+    for key, descriptor in manifest.get("references", {}).items():
+        validate_artifact(manifest_root, descriptor, f"reference {key}")
+    for key, descriptor in manifest.get("outputs", {}).items():
+        validate_artifact(manifest_root, descriptor, f"output {key}")
+    require(receipt.get("raw_sha256") == sha(args.candidate_raw), "candidate receipt/raw binding differs")
+    flat_descriptor = receipt.get("flat_file", {})
+    require(int(flat_descriptor.get("bytes", -1)) == args.candidate_flat.stat().st_size,
+            "candidate flat byte binding differs")
+    require(flat_descriptor.get("sha256") == sha(args.candidate_flat), "candidate flat binding differs")
+    packed_descriptor = manifest.get("outputs", {}).get("thq4_packed_96") or manifest.get("outputs", {}).get("thq4_packed")
+    if packed_descriptor:
+        require(packed_descriptor.get("sha256") == sha(args.packed_thq), "packed THQ SHA differs from manifest")
     total = sum(int(row["candidate_count"]) for row in candidate_raw["rows"])
     require(args.candidate_flat.stat().st_size == total * RECORD, "candidate flat shape mismatch")
     refs = manifest["references"]
@@ -149,6 +176,7 @@ def main() -> None:
                              ("candidate_fp32_rerank", candidate_fp32),
                              ("exact_e5_teacher", exact)):
             rows.append({"query": qi, "representation": name,
+                         "top10_ids": [int(value) for value in result],
                          "candidate_count": count,
                          "candidate_survival": float(np.isin(teacher, ids).sum() / len(teacher)),
                          "teacher_overlap": float(np.isin(teacher, result).sum() / len(teacher)),
@@ -173,7 +201,11 @@ def main() -> None:
                    "thq_manifest_sha256": sha(args.thq_manifest),
                    "candidate_receipt_sha256": sha(args.candidate_receipt),
                    "candidate_raw_sha256": sha(args.candidate_raw),
-                   "candidate_flat_sha256": sha(args.candidate_flat), "summaries": summaries,
+                   "candidate_flat_sha256": sha(args.candidate_flat),
+                   "packed_thq": {"path": str(args.packed_thq),
+                                  "bytes": args.packed_thq.stat().st_size,
+                                  "sha256": sha(args.packed_thq)},
+                   "summaries": summaries,
                    "raw_output": {"path": str(args.raw_output), "bytes": len(payload),
                                   "sha256": hashlib.sha256(payload).hexdigest(), "rows": len(rows)}}
     args.output.parent.mkdir(parents=True, exist_ok=True)

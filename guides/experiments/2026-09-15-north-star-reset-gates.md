@@ -37,10 +37,18 @@ The executed 152-query result (`quality.receipt.json`, raw SHA
 | exact E5 teacher | 0.65403 | 1.00000 | 0.99276 |
 
 Lower THQ teacher overlap therefore does not produce the same-sized product
-quality loss: direct THQ retains about 97.3% of teacher mean nDCG. This is a
-quality diagnostic, not authorization for a THQ-only product path: it does not
+quality loss: direct THQ retains about 97.3% of teacher mean nDCG (absolute loss
+0.01738, relative loss about 2.66% versus the teacher). This is a quality
+diagnostic, not authorization for a THQ-only product path: it does not
 measure a THQ shortlist followed by a compact final reranker, native latency,
 or held-out qrels.
+
+The predeclared acceptance gate for a production candidate is stricter than
+this exploratory result: paired mean nDCG loss must be explicitly capped,
+paired bootstrap confidence intervals must be reported, and p05/minimum
+per-query quality plus an untouched-domain confirmation must pass. Historical
+gates treated losses in the 0.005--0.008 range as material; this receipt does
+not retroactively declare 0.01738 acceptable.
 
 ## Gate B: canonical versus duplicated THQ
 
@@ -53,7 +61,9 @@ follow-up before production selection.
 
 The native control over the current 762,082-entry routed workload measured
 canonical gather p50/p95 0.254/0.310 ms versus sequential duplicated payload
-0.029/0.042 ms. Its duplicated file is only this routed control stream (76.2
+0.029/0.042 ms. These are warm resident-RAM one-byte-per-record touch metrics,
+not full 96-byte ADC scoring, mmap/MDBX page-fault latency, or production
+retrieval latency. Its duplicated file is only this routed control stream (76.2
 MB), not a complete three-seed persistent store, so it cannot justify
 duplicating production THQ.
 
@@ -71,7 +81,10 @@ INT8 representative layers plus sidecars total 1,245,127,530 bytes, while
 479,793,758 bytes (61.5% less). Native quality/latency replay is still needed
 before selecting the shared form. The currently measured subtotal of shared
 INT8, K16 sidecars, and canonical 96-byte THQ is 575,793,758 bytes (549.1 MiB);
-persistent R4 postings and MDBX overhead remain explicitly pending.
+persistent R4 postings and MDBX overhead remain explicitly pending. The K1
+AoSoA-32 table and its scale sidecars are counted separately when the K1
+materialization manifest is supplied; until then this remains a partial
+measured subtotal, never a total index footprint.
 
 ## Interpretation rule
 

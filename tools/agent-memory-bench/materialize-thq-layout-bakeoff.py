@@ -24,6 +24,18 @@ def sha(path: Path) -> str:
     return digest.hexdigest()
 
 
+def resolve(root: Path, value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else root / path
+
+
+def validate_descriptor(root: Path, descriptor: dict, label: str) -> Path:
+    path = resolve(root, str(descriptor["path"]))
+    if not path.is_file() or path.stat().st_size != int(descriptor["bytes"]) or sha(path) != descriptor["sha256"]:
+        raise RuntimeError(f"{label} provenance mismatch: {path}")
+    return path
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--thq-manifest", type=Path, required=True)
@@ -39,7 +51,14 @@ def main() -> None:
     n, q = int(manifest["documents"]), int(manifest["queries"])
     rows = raw["rows"]
     total = sum(int(row["candidate_count"]) for row in rows)
-    source = Path(manifest["outputs"]["thq4_document_codes"]["path"])
+    manifest_root = args.thq_manifest.parent
+    for key, descriptor in manifest.get("references", {}).items():
+        validate_descriptor(manifest_root, descriptor, f"reference {key}")
+    source = validate_descriptor(manifest_root, manifest["outputs"]["thq4_document_codes"], "THQ144 source")
+    if receipt.get("raw_sha256") != sha(args.candidate_raw):
+        raise RuntimeError("candidate raw receipt binding mismatch")
+    if receipt.get("flat_file", {}).get("sha256") != sha(args.candidate_flat):
+        raise RuntimeError("candidate flat receipt binding mismatch")
     source_codes = np.memmap(source, mode="r", dtype=np.uint8, shape=(n, 144))
     candidate = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(total, 148))
     args.output_root.mkdir(parents=True, exist_ok=True)
@@ -54,6 +73,12 @@ def main() -> None:
                                  ((levels[:, 1::4] & 3) << 2) |
                                  ((levels[:, 2::4] & 3) << 4) |
                                  ((levels[:, 3::4] & 3) << 6))
+        # Exact codec parity: unpacking the packed bytes must reproduce every
+        # three-bit ordinal level, not merely the file shape.
+        packed = np.asarray(canonical[start:stop])
+        unpacked = np.stack([(packed >> shift) & 3 for shift in (0, 2, 4, 6)], axis=2).reshape(stop - start, 384)
+        if not np.array_equal(unpacked, levels):
+            raise RuntimeError("THQ144 -> pack96 -> unpack96 level parity failed")
     canonical.flush()
     duplicate = np.memmap(duplicate_path, mode="w+", dtype=np.uint8, shape=(total, 100))
     offset = 0
@@ -64,6 +89,8 @@ def main() -> None:
         require = np.logical_and(ids >= 0, ids < n)
         if not bool(np.all(require)):
             raise RuntimeError("candidate document id out of range")
+        if not np.array_equal(block[:, 4:], np.asarray(source_codes[ids])):
+            raise RuntimeError("candidate THQ payload differs from frozen THQ144 source")
         duplicate[offset:offset + count, :4] = block[:, :4]
         duplicate[offset:offset + count, 4:] = np.asarray(canonical[ids])
         offset += count

@@ -20,6 +20,13 @@ def sha(path: Path) -> str:
     return d.hexdigest()
 
 
+def validate_items(root: Path, items: list[dict], label: str) -> None:
+    for item in items:
+        file = (root.parent if item.get("external_root") else root) / item["file"]
+        if not file.is_file() or file.stat().st_size != int(item["bytes"]) or sha(file) != item["sha256"]:
+            raise RuntimeError(f"{label} artifact binding mismatch: {file}")
+
+
 def main() -> None:
     p = argparse.ArgumentParser()
     p.add_argument("--manifest", type=Path, required=True)
@@ -29,18 +36,20 @@ def main() -> None:
     m = json.loads((a.manifest / "manifest.json").read_text())
     seeds = m["seeds"]
     for seed in seeds:
-        for item in seed["layouts"]:
-            file = a.manifest / item["file"]
-            if item.get("external_root"):
-                file = a.manifest.parent / file
-            if file.is_file():
-                if file.stat().st_size != int(item["bytes"]) or sha(file) != item["sha256"]:
-                    raise RuntimeError(f"layout binding mismatch: {file}")
+        validate_items(a.manifest, seed["layouts"], "layout")
+        validate_items(a.manifest, seed.get("mappings", []), "mapping")
+        validate_items(a.manifest, seed.get("model", []), "model")
+    validate_items(a.manifest, m.get("global_layouts", []), "global layout")
     representative_bytes = sum(next(int(item["bytes"]) for item in seed["mappings"]
                                     if item["role"] == "representative_documents")
                                for seed in seeds)
-    mapping_sidecars = sum(sum(int(item["bytes"]) for item in [*seed["mappings"], *seed["model"]]) for seed in seeds)
-    shared_doc_bytes = int(m["global_layouts"][0]["bytes"])
+    mapping_sidecars = sum(sum(int(item["bytes"]) for item in [*seed.get("mappings", []), *seed.get("model", [])]
+                               if item.get("role") != "representative_documents") for seed in seeds)
+    shared_rows = [item for item in m.get("global_layouts", []) if item.get("role") in
+                   {"document_major_int8", "shared_document_int8", "document_table"}]
+    if len(shared_rows) != 1:
+        raise RuntimeError("manifest must identify exactly one shared document table by role")
+    shared_doc_bytes = int(shared_rows[0]["bytes"])
     duplicated_vector_bytes = sum(next(int(item["bytes"]) for item in seed["layouts"] if item["role"] == "address_major_int8") for seed in seeds)
     shared_total = shared_doc_bytes + representative_bytes + mapping_sidecars
     duplicated_total = duplicated_vector_bytes + mapping_sidecars
