@@ -36,7 +36,9 @@ Direct scalar controls reproduce the historical quality ordering:
 | INT6 power-.5 | 292 | .9566 | .9513 | .6549 |
 | INT7 linear | 340 | .9829 | .9763 | .6567 |
 | INT8 linear | 388 | .9941 | .9868 | .6562 |
+| INT8 power-.625 | 388 | .9888 | .9829 | .6585 |
 | INT9 power-.5 | 532 | .9961 | .9888 | .6571 |
+| INT9 power-.625 | 532 | .9954 | .9888 | .6592 |
 | INT10 power-.5 | 580 | .9987 | .9914 | .6569 |
 | INT12 power-.5 | 676 | 1.0000 | .9928 | .6558 |
 
