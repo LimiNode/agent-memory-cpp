@@ -17,7 +17,8 @@ power-.5/.625/.75/.875 companders. Every scalar score is recomputed from the per
 quantized code; no parity is asserted by copying a score array.
 
 The corrected replay regenerated the receipt and raw SHA with per-coordinate
-squared ADC. The fail-closed audit passed:
+squared ADC. The fail-closed provenance, payload-accounting, aggregation, and
+paired-bootstrap audit passed; it is not an independent codec re-encoder:
 
 ```text
 semantic_fp32_free_codec_frontier_v2_audit_v1
