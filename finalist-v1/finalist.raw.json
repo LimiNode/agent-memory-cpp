@@ -36,11 +36,11 @@
     "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
     "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
     "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-    "corrected_codec_frontier_raw_sha256": "582d0f2304ccd04a0aa7ade39d763008cb227e67813831692418b59ffdf038cc",
-    "corrected_codec_frontier_receipt_sha256": "763d18a885eddcde66351538cff0836f745ae97b92931f16fec2c79949301ab1",
+    "corrected_codec_frontier_raw_sha256": "cc89745b4c481ccaf06edceaa6b74eba9639fa8e3691f716ae228728d50c7da0",
+    "corrected_codec_frontier_receipt_sha256": "bb839af2f70d102faa9ab98bf7b7ae3ba1e1129fdc05468b71e4c763d4091e67",
     "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b"
   },
-  "schema_version": 1,
+  "schema_version": 2,
   "training_count": 100000,
   "unique_candidate_documents": 463258
 }
