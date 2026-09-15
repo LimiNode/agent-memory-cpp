@@ -9,13 +9,13 @@ database benchmark.
 | Representation | Layout | Logical bytes | Physical bytes | Pages |
 |---|---|---:|---:|---:|
 | 144-byte thermometer | flat | 112.79 MB | 112.79 MB | 27,537 |
-| 144-byte thermometer | page-blocked | 112.79 MB | 115.94 MB | 28,305 |
+| 144-byte thermometer | page-blocked | 112.79 MB | 113.05 MB | 27,600 |
 | 96-byte ordinal | flat | 76.21 MB | 76.21 MB | 18,606 |
 | 96-byte ordinal | page-blocked | 76.21 MB | 76.64 MB | 18,712 |
 
-The logical MDBX blob model is 116.04 MB for thermometer and 78.48 MB for
-ordinal; the chunk model charges a key per roughly 4-KiB chunk and is slightly
-larger. The overshoot-aware counts are used throughout; no candidate stream is
+The logical MDBX blob model matches the page-blocked values (113.05 MB and
+76.64 MB). The chunk model charges a key per roughly 4-KiB chunk and is larger
+(115.94 MB thermometer, 78.48 MB ordinal). The overshoot-aware counts are used throughout; no candidate stream is
 truncated to 5,000.
 
 The external receipt binds the candidate-stream receipt/raw/file SHA values and
