@@ -61,9 +61,9 @@ control, not a claim that the candidate stream is a complete three-seed
 persistent store. Full posting duplication and MDBX page accounting remain a
 follow-up before production selection.
 
-The native control over the current 762,082-entry routed workload measured
-canonical gather p50/p95 0.254/0.310 ms versus sequential duplicated payload
-0.029/0.042 ms. These are warm resident-RAM one-byte-per-record touch metrics,
+The corrected native control over the current 762,082-entry routed workload
+measured canonical gather p50/p95 0.1654/0.2044 ms versus sequential duplicated
+payload 0.0264/0.0396 ms. These are warm resident-RAM one-byte-per-record touch metrics,
 not full 96-byte ADC scoring, mmap/MDBX page-fault latency, or production
 retrieval latency. Its duplicated file is only this routed control stream (76.2
 MB), not a complete three-seed persistent store, so it cannot justify
