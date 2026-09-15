@@ -116,6 +116,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--raw-output", type=Path, required=True)
     parser.add_argument("--packed-thq", type=Path, required=True)
+    parser.add_argument("--layout-receipt", type=Path)
     parser.add_argument("--chunk", type=int, default=32768)
     args = parser.parse_args()
     require(args.chunk > 0, "chunk must be positive")
@@ -139,6 +140,10 @@ def main() -> None:
     packed_descriptor = manifest.get("outputs", {}).get("thq4_packed_96") or manifest.get("outputs", {}).get("thq4_packed")
     if packed_descriptor:
         require(packed_descriptor.get("sha256") == sha(args.packed_thq), "packed THQ SHA differs from manifest")
+    if args.layout_receipt:
+        layout = json.loads(args.layout_receipt.read_text())
+        canonical = layout.get("representations", {}).get("canonical", {})
+        require(canonical.get("sha256") == sha(args.packed_thq), "packed THQ differs from layout receipt")
     total = sum(int(row["candidate_count"]) for row in candidate_raw["rows"])
     require(args.candidate_flat.stat().st_size == total * RECORD, "candidate flat shape mismatch")
     refs = manifest["references"]
@@ -202,6 +207,7 @@ def main() -> None:
                    "candidate_receipt_sha256": sha(args.candidate_receipt),
                    "candidate_raw_sha256": sha(args.candidate_raw),
                    "candidate_flat_sha256": sha(args.candidate_flat),
+                   "layout_receipt_sha256": sha(args.layout_receipt) if args.layout_receipt else None,
                    "packed_thq": {"path": str(args.packed_thq),
                                   "bytes": args.packed_thq.stat().st_size,
                                   "sha256": sha(args.packed_thq)},

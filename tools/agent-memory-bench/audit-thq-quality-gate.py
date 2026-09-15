@@ -43,6 +43,7 @@ def main() -> None:
     p.add_argument("--candidate-raw", type=Path)
     p.add_argument("--candidate-flat", type=Path)
     p.add_argument("--packed-thq", type=Path)
+    p.add_argument("--layout-receipt", type=Path)
     a = p.parse_args()
     receipt = json.loads(a.receipt.read_text())
     raw = json.loads(a.raw.read_text())
@@ -62,6 +63,8 @@ def main() -> None:
         packed = receipt.get("packed_thq", {})
         require(packed.get("sha256") == sha(a.packed_thq), "packed THQ SHA differs")
         require(int(packed.get("bytes", -1)) == a.packed_thq.stat().st_size, "packed THQ size differs")
+    if a.layout_receipt:
+        require(receipt.get("layout_receipt_sha256") == sha(a.layout_receipt), "layout receipt SHA differs")
     independent = bool(a.candidate_raw and a.candidate_flat and a.thq_manifest)
     if independent:
         manifest = json.loads(a.thq_manifest.read_text())
