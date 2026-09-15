@@ -4,6 +4,13 @@ This gate is the first executable step of the post-cleanup native wave.  It
 materializes production-shaped, document-ID-addressed tables for the four
 decision arms in `2026-09-15-next-native-research-plan.md`:
 
+All worktree copies and temporary payloads for this wave live under
+`E:\\_repoz\\agent-memory-workspaces\\native-full-corpus-gate`; the main
+checkout is intentionally left untouched because it contains user storage
+changes.  Future agents must continue this wave in that worktree (or a named
+successor under the same directory), not create another project directly under
+`E:\\_repoz`.
+
 * packed THQ4 ordinal: 96 logical bytes/document;
 * direct INT8 linear: 388 logical bytes/document;
 * direct INT8 power-.625: 388 logical bytes/document;
