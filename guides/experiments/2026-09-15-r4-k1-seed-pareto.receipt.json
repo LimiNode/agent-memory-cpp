@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "family": "semantic_r4_k1_seed_pareto_compact_receipt_v1",
+  "execution_status": "EXECUTED",
+  "audit_status": "PASS",
+  "rows": 2128,
+  "query_count": 152,
+  "raw_output_sha256": "3f383e218c95ee5a1352585a460d1b25c40fa3a3de2622a7175a3b5e275c1626",
+  "raw_receipt_sha256": "c427fb862e3c3b31b8cce6a0687f4468fc065d00091bea9cbb11fbc9c1233faa",
+  "runner_sha256": "949d1a51ad540665211657bc28202e6d5b96d6420b44736a86e4ccf5bf293c14",
+  "native_receipt_sha256": "4bc286df8bd5c3f2674eef18c8beb59d218ce34530d9b9a86aa611e507e0e360",
+  "r4_layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+  "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b",
+  "production_activation": false
+}

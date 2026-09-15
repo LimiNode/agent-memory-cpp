@@ -188,6 +188,7 @@ jobs:
           agent-memory-neuroute-r4-representative-codec
           agent-memory-neuroute-record-codec-contract
           agent-memory-neuroute-final-representation
+          agent-memory-native-full-corpus-codec-benchmark
 
       - name: Run R4 native self-test (Ubuntu)
         if: runner.os == 'Linux'
@@ -195,6 +196,7 @@ jobs:
           ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-r4-layout-benchmark --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-record-codec-contract --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-final-representation --self-test
+          ./build-r4/tools/agent-memory-bench/agent-memory-native-full-corpus-codec-benchmark --self-test
 
       - name: Run R4 native self-test (Windows)
         if: runner.os == 'Windows'
@@ -202,6 +204,7 @@ jobs:
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-r4-layout-benchmark.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-record-codec-contract.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-final-representation.exe --self-test
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-native-full-corpus-codec-benchmark.exe --self-test
 
       - name: Exercise R4 dense closure contracts
         run: >

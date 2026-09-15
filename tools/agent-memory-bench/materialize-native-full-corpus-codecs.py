@@ -75,7 +75,7 @@ def main() -> None:
     train_count = min(int(args.training_count), DOCUMENTS)
     require(train_count > 0 and args.chunk_size > 0, "invalid materialization parameters")
     thresholds = np.quantile(np.asarray(docs[:train_count], dtype=np.float32),
-                             (0.25, 0.5, 0.75), axis=0).T.astype(np.float32)
+                             (0.25, 0.5, 0.75), axis=0, method="linear").T.astype(np.float32)
     args.output_root.mkdir(parents=True, exist_ok=True)
     thq_path = args.output_root / "thq4-ordinal.u8"
     linear_path = args.output_root / "int8-linear.i8"
@@ -101,8 +101,8 @@ def main() -> None:
     thresholds.astype("<f4").tofile(thresholds_path)
     files = {}
     for role, path, payload in (("thq4_ordinal", thq_path, 96),
-                                ("int8_linear", linear_path, 388),
-                                ("int8_power0625", power_path, 388),
+                                ("int8_linear_codes", linear_path, 384),
+                                ("int8_power0625_codes", power_path, 384),
                                 ("int8_linear_scales", linear_scales_path, 4),
                                 ("int8_power0625_scales", power_scales_path, 4),
                                 ("thq4_thresholds", thresholds_path, 0)):
@@ -112,19 +112,39 @@ def main() -> None:
     raw = {"schema_version": 1, "family": "native_full_corpus_codec_materialization_v1",
            "execution_status": "EXECUTED", "production_activation": False,
            "documents": DOCUMENTS, "dimension": DIMENSION,
-           "training_count": train_count, "files": files,
+           "training_count": train_count, "quantile_method": "linear",
+           "numpy_version": np.__version__, "files": files,
            "manifest_sha256": sha256(args.manifest),
            "source_document_vectors": {"bytes": source.stat().st_size, "sha256": sha256(source)}}
+    raw["power0625_scale_semantics"] = {
+        "stored_value": "transformed_domain_scale",
+        "decode_gain": "pow(stored_value, 1.6)",
+        "native_query_path": "decode_gain_materialized_once_before_query_loop",
+    }
     raw_path = args.output_root / "native-full-corpus.raw.json"
+    # Keep file-level byte accounting separate from representation totals.  A
+    # future footprint composer must add the 384-byte code stream and the
+    # 4-byte scale stream exactly once.
+    raw["representations"] = {
+        "int8_linear": {"logical_bytes_per_document": 388,
+                         "components": ["int8_linear_codes", "int8_linear_scales"]},
+        "int8_power0625": {"logical_bytes_per_document": 388,
+                            "components": ["int8_power0625_codes", "int8_power0625_scales"]},
+    }
     raw_path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     receipt = {"schema_version": 1, "family": raw["family"],
                "execution_status": "EXECUTED", "production_activation": False,
                "runner_sha256": sha256(Path(__file__)), "raw_sha256": sha256(raw_path),
-               "manifest_sha256": raw["manifest_sha256"], "files": files}
+               "manifest_sha256": raw["manifest_sha256"], "files": files,
+               "representations": raw["representations"],
+               "documents": DOCUMENTS, "dimension": DIMENSION,
+               "training_count": train_count, "quantile_method": "linear",
+               "numpy_version": np.__version__,
+               "source_document_vectors": raw["source_document_vectors"]}
+    receipt["power0625_scale_semantics"] = raw["power0625_scale_semantics"]
     (args.output_root / "native-full-corpus.receipt.json").write_text(
         json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
 if __name__ == "__main__":
     main()
-

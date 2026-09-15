@@ -24,16 +24,20 @@ SHA-256 before any output is written.  Row `i` is document `i`; no subset ID
 sidecar is accepted for this gate.
 
 The output payloads are intentionally not committed to Git.  The receipt binds
-each payload's size and SHA, the source manifest, training count, and runner
-SHA.  Native scoring must consume these files directly and report top-10 IDs,
+each payload's size and SHA, the source manifest, training count, explicit
+`quantile_method: linear`, NumPy version, and runner SHA.  Native scoring must
+consume these files directly and report top-10 IDs,
 qrels nDCG, teacher overlap, logical bytes, unique 4-KiB pages, and resident
 versus memory-pressure latency.  A successful Python materialization alone is
 not a production result.
 
 ## Current execution state
 
-The repository contains the fail-closed runner and protocol, but no new
-authoritative native replay is claimed by this commit.  Run it only with the
+The repository contains the fail-closed materializer, independent audit, a
+Python reference candidate runner, and a native candidate-gate mode in
+`native-full-corpus-codec-benchmark.cpp`.  No authoritative native candidate
+replay is claimed until the frozen candidate payload is available and its
+output is compared with the Python reference.  Run it only with the
 frozen DE-1M manifest and source payloads that match the hashes in the prior
 provenance receipts.  If any source is absent or has a different SHA, leave
 the receipt pending rather than substituting a regenerated or subset fixture.
@@ -41,22 +45,48 @@ the receipt pending rather than substituting a regenerated or subset fixture.
 The existing 463,258-document finalist remains a query-derived subset and is
 not a substitute for this gate.
 
-The independent audit (`audit-native-full-corpus-codecs.py`) passes on the
-full 1M shape, all payload size/SHA bindings, training thresholds, and sample
-rows `0`, `1`, and `999999`.  This proves materialization/parity correctness,
-not serving quality or latency.
+The independent audit (`audit-native-full-corpus-codecs.py`) now recomputes
+every row in chunks and compares THQ4, both INT8 code streams, and both scale
+streams byte-for-byte.  The 2026-09-16 receipt records
+`rows_audited: 1000000`, the manifest/materializer/receipt/source SHA values,
+and every output payload SHA.  The power-.625 sidecar stores transformed-domain
+scales; native scoring materializes `pow(scale, 1.6)` once before the query loop.
+This proves materialization/parity correctness, not serving quality or latency.
+The current materialization receipt SHA is
+`113dae55124e43020b1c91bb70421c53885299791a9d580d5352e4c921d9890d`; the
+independent audit receipt SHA is
+`2f19699b79dff48d68cf658f5eeb86f030b7c8713e89d833c91a48142b4a4a71`.
 
 ## Initial native smoke
 
 The first eight DE-1M queries were replayed against the materialized tables by
-`native-full-corpus-codec-benchmark.cpp`.  The direct linear INT8 arm averaged
-`412.906 ms/query`; direct power-.625 averaged `780.821 ms/query`.  The scalar
-THQ4 interval-squared full scan followed by top-128 INT8 rerank averaged
-`4819.2 ms/query` (linear) and `4813.86 ms/query` (power-.625).  Top-1 IDs
-matched the corresponding direct arm for all eight queries.
+`native-full-corpus-codec-benchmark.cpp` after the corrective LUT rewrite.  The
+full-corpus scalar control averaged `406.74 ms/query` for direct linear INT8,
+`592.97 ms/query` for direct power-.625, `95.66 ms/query` for the THQ4 byte-LUT
+scan plus top-128 linear rerank, and `93.82 ms/query` for the corresponding
+power-.625 cascade.  Top-1 IDs matched the corresponding direct arm for all
+eight queries.  An independent coordinate-reference replay also found exact
+ordered top-128 parity for all eight queries; the receipt is
+`2026-09-16-native-full-corpus-thq-top128-parity.json`.  The old `4.82 s` number is retained only as a
+historical pre-LUT measurement and must not be used as an intrinsic THQ cost.
+
+This remains a **full-corpus scalar scan control**, not Gate 1: both arms scan
+all 1M documents.  The R4 candidate-stream four-arm runner is separate, is
+currently a Python reference implementation rather than a native-kernel
+benchmark, and must consume the same frozen approximately 5k-document stream for all four
+arms.  Page counts in the corrected control use distinct code-file and
+scale-file namespaces; they do not pretend that the two files are interleaved
+388-byte records.
+
+When the canonical candidate payload is available, create its little-endian
+offset sidecar with `materialize-native-candidate-offsets.py` and invoke the
+native executable with `--candidate-gate`. The mode rejects counts outside
+`5000..5099`, duplicate IDs, malformed offsets, and out-of-range document IDs;
+its output must still be compared with the Python reference before the receipt
+can leave `PENDING`.
 
 This is deliberately recorded as a smoke result only: it has no qrels, uses
-eight queries, and does not include the blocked/AVX2 THQ kernel or OS/MDBX page
-measurements.  It does establish the immediate optimization gate: a naive
-scalar full-corpus THQ scan is roughly an order of magnitude slower than the
-direct INT8 scan and cannot be treated as the production cascade.
+eight queries, and does not include blocked/AVX2 THQ kernels, cold/warm OS or
+MDBX measurements, or R4 candidate-local quality.  It establishes that the
+per-query LUT is necessary for a meaningful scalar reference; it does not by
+itself select the production cascade.
