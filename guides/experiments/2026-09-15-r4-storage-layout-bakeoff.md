@@ -14,7 +14,7 @@ database benchmark.
 | 96-byte ordinal | page-blocked | 76.21 MB | 78.48 MB | 19,161 |
 
 The record-aligned page-blocked layout uses `floor(4096 / record_bytes)` records
-per page (27 for 148-byte thermometer, 42 for 100-byte ordinal), hence its
+per page (27 for 148-byte thermometer, 40 for 100-byte ordinal), hence its
 physical sizes above. The logical MDBX blob model includes a 16-byte value
 header per posting and is smaller (113.05 MB thermometer, 76.64 MB ordinal).
 The chunk model charges a key per roughly 4-KiB chunk and equals the blocked
