@@ -78,11 +78,11 @@ and latency are fail-closed as `PENDING_NATIVE_REPLAY` until a native receipt
 for both representations is supplied.
 
 The manifest-bound storage accounting is decisive about scale: three separate
-INT8 representative layers plus sidecars total 1,245,127,530 bytes, while
-`rep_doc_id` references plus one shared 388,000,000-byte document table total
-479,793,758 bytes (61.5% less). Native quality/latency replay is still needed
+INT8 representative layers plus non-ID sidecars total 1,234,461,302 bytes,
+while `rep_doc_id` references plus one shared 388,000,000-byte document table
+total 469,127,530 bytes (61.9% less). Native quality/latency replay is still needed
 before selecting the shared form. The currently measured subtotal of shared
-INT8, K16 sidecars, and canonical 96-byte THQ is 575,793,758 bytes (549.1 MiB);
+INT8, K16 sidecars, and canonical 96-byte THQ is 565,127,530 bytes (538.9 MiB);
 persistent R4 postings and MDBX overhead remain explicitly pending. The K1
 AoSoA-32 table and its scale sidecars are counted separately when the K1
 materialization manifest is supplied; until then this remains a partial
