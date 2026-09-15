@@ -26,8 +26,10 @@ The receipt must report qrels nDCG@10 as primary, candidate survival
 separately, and teacher overlap only as a diagnostic. No candidate slab is a
 persistent index.
 
-The executed 152-query result (`quality.receipt.json`, raw SHA
-`62517d74e9741bb71c2e443ef78a2f62ef7da9f1c89b2146d6a0167b4142b641`) was:
+The corrected executed 152-query result (`artifacts/corrected-quality/quality.receipt.json`,
+raw SHA `bbe101225d298ce0a76d7baaa44e223b04605f88597224432e4c583b6c36e698`)
+binds the regenerated packed payload SHA
+`0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70` and was:
 
 | output | mean qrels nDCG@10 | mean teacher overlap | candidate survival |
 | --- | ---: | ---: | ---: |
