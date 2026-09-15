@@ -142,17 +142,17 @@ def main() -> None:
     total = sum(int(row["candidate_count"]) for row in candidate_raw["rows"])
     require(args.candidate_flat.stat().st_size == total * RECORD, "candidate flat shape mismatch")
     refs = manifest["references"]
-    queries = np.memmap(Path(refs["queries"]["path"]), mode="r", dtype="<f4", shape=(QUERIES, 384))
-    teachers = np.memmap(Path(refs["teacher_ids"]["path"]), mode="r", dtype="<i8", shape=(QUERIES, 10))
-    qrel_ids = np.memmap(Path(refs["qrel_ids"]["path"]), mode="r", dtype="<i8", shape=(QUERIES, 20))
-    qrel_scores = np.memmap(Path(refs["qrel_scores"]["path"]), mode="r", dtype="<f4", shape=(QUERIES, 20))
+    queries = np.memmap(resolve(manifest_root, refs["queries"]["path"]), mode="r", dtype="<f4", shape=(QUERIES, 384))
+    teachers = np.memmap(resolve(manifest_root, refs["teacher_ids"]["path"]), mode="r", dtype="<i8", shape=(QUERIES, 10))
+    qrel_ids = np.memmap(resolve(manifest_root, refs["qrel_ids"]["path"]), mode="r", dtype="<i8", shape=(QUERIES, 20))
+    qrel_scores = np.memmap(resolve(manifest_root, refs["qrel_scores"]["path"]), mode="r", dtype="<f4", shape=(QUERIES, 20))
     require(args.packed_thq.is_file() and args.packed_thq.stat().st_size == 1_000_000 * 96,
             "canonical packed THQ payload shape differs")
     thq_codes = np.memmap(args.packed_thq, mode="r", dtype=np.uint8, shape=(1_000_000, 96))
-    thresholds = np.memmap(Path(manifest["outputs"]["thq4_thresholds"]["path"]), mode="r",
+    thresholds = np.memmap(resolve(manifest_root, manifest["outputs"]["thq4_thresholds"]["path"]), mode="r",
                            dtype="<f4", shape=(384, 3))
     flat = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(total, RECORD))
-    docs = np.memmap(Path(refs["document_vectors"]["path"]), mode="r", dtype="<f4", shape=(1_000_000, 384))
+    docs = np.memmap(resolve(manifest_root, refs["document_vectors"]["path"]), mode="r", dtype="<f4", shape=(1_000_000, 384))
     rows = []
     offset = 0
     for qi in range(QUERIES):
