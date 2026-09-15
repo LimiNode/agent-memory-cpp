@@ -1,6 +1,6 @@
 # FP32-free native finalist materialization (2026-09-15)
 
-The v2 oracle selected a credible logical finalist: ordinal THQ with a
+The pre-correction v2 oracle selected a provisional logical finalist: ordinal THQ with a
 96-byte/document payload followed by a linear INT8 scalar reranker with a
 388-byte/document payload, for 484 logical bytes/document. This PR
 materializes that pair over the corrected whole-posting candidate union.
@@ -23,6 +23,12 @@ but are intentionally not committed to Git (the INT8 payload alone is about
 sizes and SHA-256 values are bound by `finalist.receipt.json`; a reviewer with
 the frozen checkout can regenerate them deterministically before running the
 audit.
+
+Because the interval-squared implementation in the v2 runner was corrected
+after this materialization, this payload is now a reproducible historical
+control, not an accepted codec selection. The next corrected v2 replay must
+confirm or supersede the 484-byte choice before these files are used for a
+production decision.
 
 The next corrective PR must consume these exact files in a native scorer and
 compare THQ→INT8 top-10 with the candidate-local FP32 oracle. Only that replay
