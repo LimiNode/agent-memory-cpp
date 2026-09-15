@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "family": "native_full_corpus_codec_smoke_v1",
+  "execution_status": "EXECUTED",
+  "production_activation": false,
+  "query_count": 8,
+  "query_source": "DE-1M evaluation-query-vectors.f32, first 8 rows",
+  "payload_receipt_sha256": "309c982600abd3cc41a1abc21f0ec1f1c030dc7d8ed8cb4dcd31141243d3d911",
+  "runner_source_sha256": "3ac4e978a6c0b13d7a7d39b436d60fe5ff6d4f1a7f9c2d0650ea7e7d0da1ed30",
+  "runner_binary_sha256": "e6961553162c7b073c80169e560e1748f6ccf88db55422ffb1c7b1469f2e8f9c",
+  "mean_latency_ms": {
+    "direct_int8_linear": 412.906,
+    "thq4_interval_squared_top128_int8_linear": 4819.2,
+    "direct_int8_power0625": 780.821,
+    "thq4_interval_squared_top128_int8_power0625": 4813.86
+  },
+  "top1_parity": {
+    "linear_direct_vs_cascade": 1.0,
+    "power0625_direct_vs_cascade": 1.0
+  },
+  "limitations": [
+    "eight queries only; no qrels or held-out quality claim",
+    "scalar native control; no AVX2/blocked THQ kernel yet",
+    "latency is a smoke measurement, not a cold/warm OS or MDBX page gate"
+  ]
+}

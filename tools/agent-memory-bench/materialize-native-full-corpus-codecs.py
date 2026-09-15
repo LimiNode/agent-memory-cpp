@@ -82,6 +82,7 @@ def main() -> None:
     linear_scales_path = args.output_root / "int8-linear-scales.f32"
     power_path = args.output_root / "int8-power0625.i8"
     power_scales_path = args.output_root / "int8-power0625-scales.f32"
+    thresholds_path = args.output_root / "thq4-thresholds.f32"
     thq = np.memmap(thq_path, mode="w+", dtype=np.uint8, shape=(DOCUMENTS, 96))
     linear = np.memmap(linear_path, mode="w+", dtype=np.int8, shape=(DOCUMENTS, DIMENSION))
     linear_scales = np.memmap(linear_scales_path, mode="w+", dtype=np.float32, shape=(DOCUMENTS,))
@@ -97,12 +98,14 @@ def main() -> None:
         power[start:stop], power_scales[start:stop] = encode_int8(values, 0.625)
     for array in (thq, linear, linear_scales, power, power_scales):
         array.flush()
+    thresholds.astype("<f4").tofile(thresholds_path)
     files = {}
     for role, path, payload in (("thq4_ordinal", thq_path, 96),
                                 ("int8_linear", linear_path, 388),
                                 ("int8_power0625", power_path, 388),
                                 ("int8_linear_scales", linear_scales_path, 4),
-                                ("int8_power0625_scales", power_scales_path, 4)):
+                                ("int8_power0625_scales", power_scales_path, 4),
+                                ("thq4_thresholds", thresholds_path, 0)):
         files[role] = {"path": str(path.relative_to(args.output_root)),
                        "bytes": path.stat().st_size, "sha256": sha256(path),
                        "logical_bytes_per_document": payload}
@@ -124,5 +127,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
 
