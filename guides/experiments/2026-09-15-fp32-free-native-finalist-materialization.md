@@ -15,10 +15,13 @@ unique document IDs. The materializer writes, in ascending document-ID order:
 
 The independent audit checks file size/SHA, unique ID parity, byte-for-byte
 THQ3/INT8 recomputation from the frozen source vectors, the
-484-byte codec-payload contract, and all frozen input hashes. Including the
-`document_ids.i4` mapping, this subset is 488 bytes/document. The receipt is
-explicitly `PENDING_NATIVE_REPLAY`: no native scoring, OS/MDBX page count,
-cold/warm latency, or production activation is claimed by this materializer.
+484-byte codec-payload contract, and all frozen input hashes. It also requires
+the bound codec-frontier receipt to carry the matched THQ4 interval-squared
+top-128 and direct INT8 arms. The current replay passes this audit on all
+463,258 rows. Including the `document_ids.i4` mapping, this subset is 488
+bytes/document. The receipt remains explicitly `PENDING_NATIVE_REPLAY`: no
+native scoring, OS/MDBX page count, cold/warm latency, or production activation
+is claimed by this materializer.
 
 The production representation remains a separate pending materialization over
 all 1,000,000 documents: 96 MB THQ plus 388 MB INT8 (484 MB codec payload),
@@ -26,10 +29,11 @@ with no document-ID sidecar because position is the document ID.
 
 The four binary payloads are retained in the local materialization directory
 but are intentionally not committed to Git (the INT8 payload alone is about
-170 MB and exceeds the repository's 100 MB object limit). Their absolute paths,
+170 MB and exceeds the repository's 100 MB object limit). Their relative paths,
 sizes and SHA-256 values are bound by `finalist.receipt.json`; a reviewer with
 the frozen checkout can regenerate them deterministically before running the
-audit.
+audit. The receipt binds both the codec-frontier receipt SHA and its raw-output
+SHA.
 
 The corrected replay fixes interval-squared ADC and expands the nonlinear
 scalar controls, but corrected packed-ordinal accounting makes levels-4 the

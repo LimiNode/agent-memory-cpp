@@ -15,10 +15,7 @@ def require(value: bool, message: str) -> None:
 
 def resolve_artifact(manifest: Path, value: str) -> Path:
     path = Path(value)
-    if path.is_absolute() or path.is_file():
-        return path
-    relative = manifest.parent / path
-    return relative if relative.is_file() else manifest.parent / path.name
+    return path if path.is_absolute() else manifest.parent / path
 
 def main() -> None:
     p = argparse.ArgumentParser()
@@ -36,6 +33,26 @@ def main() -> None:
     require(provenance.get("candidate_raw_sha256") == sha256(a.candidate_raw), "candidate raw provenance differs")
     require(provenance.get("candidate_flat_sha256") == sha256(a.candidate_flat), "candidate flat provenance differs")
     require(provenance.get("corrected_codec_frontier_receipt_sha256") == sha256(a.codec_frontier_receipt), "codec frontier provenance differs")
+    require(provenance.get("corrected_codec_frontier_raw_sha256"), "codec frontier raw provenance is missing")
+    require(receipt.get("provenance") == provenance, "receipt/raw provenance differs")
+    codec_frontier_receipt = json.loads(a.codec_frontier_receipt.read_text(encoding="utf-8"))
+    require(codec_frontier_receipt.get("family") == "semantic_fp32_free_codec_frontier_v2" and
+            int(codec_frontier_receipt.get("schema_version", 0)) >= 3 and
+            codec_frontier_receipt.get("execution_status") == "EXECUTED" and
+            codec_frontier_receipt.get("production_activation") is False,
+            "codec frontier receipt status differs")
+    frontier_raw_meta = codec_frontier_receipt.get("raw_output", {})
+    frontier_raw_path = resolve_artifact(a.codec_frontier_receipt, frontier_raw_meta.get("path", ""))
+    require(frontier_raw_path.is_file() and sha256(frontier_raw_path) == frontier_raw_meta.get("sha256"),
+            "codec frontier raw binding differs")
+    require(provenance["corrected_codec_frontier_raw_sha256"] == frontier_raw_meta.get("sha256"),
+            "codec frontier raw provenance differs")
+    frontier_raw = json.loads(frontier_raw_path.read_text(encoding="utf-8"))
+    require(any(int(row.get("levels", 0)) == 4 and row.get("mode") == "interval_sq" and
+                int(row.get("shortlist", 0)) == 128 for row in frontier_raw.get("stage_rows", [])),
+            "THQ4 interval-squared top128 arm is missing")
+    direct_names = {str(row.get("representation")) for row in frontier_raw.get("direct_rows", [])}
+    require({"int8_linear", "int8_power0625"}.issubset(direct_names), "matched INT8 finalists are missing")
     candidate_receipt = json.loads(a.candidate_receipt.read_text(encoding="utf-8"))
     require(candidate_receipt.get("raw_sha256") == sha256(a.candidate_raw), "candidate receipt/raw mismatch")
     require(candidate_receipt.get("flat_file", {}).get("sha256") == sha256(a.candidate_flat), "candidate receipt/flat mismatch")
@@ -54,7 +71,7 @@ def main() -> None:
     require(dimension == 384 and int(thq_manifest["documents"]) == int(raw["documents"]),
             "source vector shape differs")
     source_meta = thq_manifest["references"]["document_vectors"]
-    source_path = Path(source_meta["path"])
+    source_path = resolve_artifact(a.thq_manifest, source_meta["path"])
     require(source_path.is_file(), "source vectors are missing")
     if "bytes" in source_meta:
         require(source_path.stat().st_size == int(source_meta["bytes"]), "source vector size differs")
