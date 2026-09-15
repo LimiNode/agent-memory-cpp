@@ -1,0 +1,42 @@
+{
+  "documents": 1000000,
+  "execution_status": "EXECUTED",
+  "family": "semantic_fp32_free_native_finalist_materialization_v1",
+  "files": {
+    "document_ids": {
+      "bytes": 1853032,
+      "path": "finalist-v1\\document_ids.i4",
+      "sha256": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e"
+    },
+    "int8_linear": {
+      "bytes": 177891072,
+      "path": "finalist-v1\\int8-linear.i8",
+      "sha256": "c5f667fb31b3bf474558a50fdd9e974ae5cc01bdcc3b71db7dfaee848e6f4b2a"
+    },
+    "int8_scales": {
+      "bytes": 1853032,
+      "path": "finalist-v1\\int8-scales.f32",
+      "sha256": "605bdf640474a91db7a8d5a36b105982458dbddd66bc522fd29332326997621d"
+    },
+    "thq3_ordinal": {
+      "bytes": 44472768,
+      "path": "finalist-v1\\thq3-ordinal.u8",
+      "sha256": "627a5f316febee573130c281b0644226cbd09b2d1cef964d78aa9c422b27c089"
+    }
+  },
+  "logical_bytes_per_document": {
+    "cascade_total": 484,
+    "int8_linear": 388,
+    "thq3_ordinal": 96
+  },
+  "production_activation": false,
+  "provenance": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b"
+  },
+  "schema_version": 1,
+  "training_count": 100000,
+  "unique_candidate_documents": 463258
+}
