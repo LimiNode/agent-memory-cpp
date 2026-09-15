@@ -1,0 +1,8 @@
+{
+  "family": "native_full_corpus_codec_materialization_audit_v1",
+  "status": "PASS",
+  "documents": 1000000,
+  "sample_rows": [0, 1, 999999],
+  "audit_runner_sha256": "76586fe58345afd2931529764d3991a26698845a8f8460ee788949a1bde5934d",
+  "materialization_receipt_sha256": "309c982600abd3cc41a1abc21f0ec1f1c030dc7d8ed8cb4dcd31141243d3d911"
+}

@@ -41,6 +41,11 @@ the receipt pending rather than substituting a regenerated or subset fixture.
 The existing 463,258-document finalist remains a query-derived subset and is
 not a substitute for this gate.
 
+The independent audit (`audit-native-full-corpus-codecs.py`) passes on the
+full 1M shape, all payload size/SHA bindings, training thresholds, and sample
+rows `0`, `1`, and `999999`.  This proves materialization/parity correctness,
+not serving quality or latency.
+
 ## Initial native smoke
 
 The first eight DE-1M queries were replayed against the materialized tables by
