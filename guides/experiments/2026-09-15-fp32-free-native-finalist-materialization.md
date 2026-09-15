@@ -1,9 +1,10 @@
 # FP32-free native finalist materialization (2026-09-15)
 
-The corrected v2 oracle confirms the logical finalist: ordinal THQ with a
+The corrected v2 oracle established this provisional logical finalist: ordinal THQ with a
 96-byte/document payload followed by a linear INT8 scalar reranker with a
 388-byte/document payload, for 484 logical bytes/document. This PR
-materializes that pair over the corrected whole-posting candidate union.
+materializes that pair over the corrected whole-posting candidate union. This
+is a query-derived evaluation subset, not the persistent production table.
 
 The frozen candidate stream contains 762,082 posting entries and 463,258
 unique document IDs. The materializer writes, in ascending document-ID order:
@@ -13,9 +14,14 @@ unique document IDs. The materializer writes, in ascending document-ID order:
 * `document_ids.i4`: the canonical mapping for both tables.
 
 The independent audit passed and checks file size/SHA, unique ID parity, the
-484-byte logical contract, and all frozen input hashes. The receipt is
+484-byte codec-payload contract, and all frozen input hashes. Including the
+`document_ids.i4` mapping, this subset is 488 bytes/document. The receipt is
 explicitly `PENDING_NATIVE_REPLAY`: no native scoring, OS/MDBX page count,
 cold/warm latency, or production activation is claimed by this materializer.
+
+The production representation remains a separate pending materialization over
+all 1,000,000 documents: 96 MB THQ plus 388 MB INT8 (484 MB codec payload),
+with no document-ID sidecar because position is the document ID.
 
 The four binary payloads are retained in the local materialization directory
 but are intentionally not committed to Git (the INT8 payload alone is about
@@ -25,9 +31,10 @@ the frozen checkout can regenerate them deterministically before running the
 audit.
 
 The corrected replay fixes interval-squared ADC and expands the nonlinear
-scalar controls; it leaves the 484-byte THQ→INT8 finalist unchanged. This
-still remains a logical selection only until native scoring and page/latency
-replay complete.
+scalar controls, but corrected packed-ordinal accounting makes levels-4 the
+same 96 bytes as levels-3. This THQ3 subset is therefore retained as a codec
+control, not a canonical winner. Direct INT8 and levels-4 THQ top-128 followed
+by INT8 are the native decision-gate arms.
 
 The next corrective PR must consume these exact files in a native scorer and
 compare THQ→INT8 top-10 with the candidate-local FP32 oracle. Only that replay

@@ -29,11 +29,14 @@
     "int8_linear": 388,
     "thq3_ordinal": 96
   },
+  "materialization_scope": "query-derived-evaluation-subset",
+  "physical_subset_bytes_per_document": 488,
   "production_activation": false,
   "provenance": {
     "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
     "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
     "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "corrected_codec_frontier_receipt_sha256": "24fe34ddb3a02b0c5a11248663d718c3eb04567695415ef551ce99bf7387bd77",
     "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b"
   },
   "schema_version": 1,

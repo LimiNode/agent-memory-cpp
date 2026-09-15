@@ -26,6 +26,7 @@ def main() -> None:
     p.add_argument("--candidate-receipt", type=Path, required=True)
     p.add_argument("--candidate-raw", type=Path, required=True)
     p.add_argument("--candidate-flat", type=Path, required=True)
+    p.add_argument("--codec-frontier-receipt", type=Path, required=True)
     p.add_argument("--output-root", type=Path, required=True)
     p.add_argument("--training-count", type=int, default=100_000)
     a = p.parse_args()
@@ -59,13 +60,17 @@ def main() -> None:
     raw = {"schema_version": 1, "family": "semantic_fp32_free_native_finalist_materialization_v1",
            "execution_status": "EXECUTED", "production_activation": False,
            "documents": n, "unique_candidate_documents": int(len(unique)),
+           "materialization_scope": "query-derived-evaluation-subset",
            "logical_bytes_per_document": {"thq3_ordinal": 96, "int8_linear": 388, "cascade_total": 484},
+           "physical_subset_bytes_per_document": 488,
            "training_count": min(a.training_count, n), "files": files,
            "provenance": {"thq_manifest_sha256": sha256(a.thq_manifest), "candidate_receipt_sha256": sha256(a.candidate_receipt),
-                          "candidate_raw_sha256": sha256(a.candidate_raw), "candidate_flat_sha256": sha256(a.candidate_flat)}}
+                          "candidate_raw_sha256": sha256(a.candidate_raw), "candidate_flat_sha256": sha256(a.candidate_flat),
+                          "corrected_codec_frontier_receipt_sha256": sha256(a.codec_frontier_receipt)}}
     raw_path = a.output_root / "finalist.raw.json"; raw_path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     receipt = {"schema_version": 1, "family": raw["family"], "execution_status": "EXECUTED",
                "production_activation": False, "native_replay_status": "PENDING_NATIVE_REPLAY",
+               "selection_status": "PROVISIONAL_PENDING_NATIVE_FINALIST_SELECTION",
                "runner_sha256": sha256(Path(__file__)), "raw_sha256": sha256(raw_path), "provenance": raw["provenance"], "files": files}
     (a.output_root / "finalist.receipt.json").write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
