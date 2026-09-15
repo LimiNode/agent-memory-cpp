@@ -2,9 +2,9 @@
 
 ## Question
 
-Can the production path omit the 1,536-byte/document FP32 E5 store after the
-three-seed whole-posting R4 candidate stream, or is a compact final reranker
-still required?
+How much quality is lost by compact rerankers on the full whole-posting
+candidate stream? This is a diagnostic gate; it does not yet model a THQ
+top-256 shortlist followed by a final reranker.
 
 ## Protocol
 
@@ -50,9 +50,10 @@ subject to a native INT8 materialization/kernel replay and held-out qrels check.
 
 The INT8/INT4 arms are deterministic NumPy controls, not the native codec or
 SIMD kernel. Qrels nDCG is measured on the routed candidate set, not a new
-full-corpus end-to-end replay. The next required experiment is native INT8
-document materialization plus the same top-256 rerank, followed by a held-out
-query/domain confirmation. Until that passes, FP32 remains an offline oracle,
-not a required production payload.
+full-corpus end-to-end replay. The result does not authorize FP32 removal:
+the required next experiment is a composed `THQ top-256 → INT8 top-10` stage
+with independently packed/scored codes, followed by native materialization and
+held-out query/domain confirmation. Until that passes, FP32 remains an offline
+oracle and this study makes no production payload decision.
 
 Independent audit: `semantic_thq_fp32_removal_gate_audit_v1`, 760 rows, PASS.

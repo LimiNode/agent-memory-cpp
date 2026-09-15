@@ -81,7 +81,9 @@ def main() -> None:
         levels=np.unpackbits(codes,axis=1,bitorder="little")[:,:d*3].reshape(count,d,3).sum(axis=2).astype(np.uint8)
         lut=interval_lut(np.asarray(thresholds),np.asarray(queries[qi]))
         thq_score=lut[np.arange(d)[None,:],levels].sum(axis=1,dtype=np.float32)
-        ordinal_score=thq_score.copy()
+        ordinal_codes=packed_ordinal(levels)
+        ordinal_levels=np.unpackbits(ordinal_codes,axis=1,bitorder="little")[:,:d*2].reshape(count,d,2).sum(axis=2).astype(np.uint8)
+        ordinal_score=lut[np.arange(d)[None,:],ordinal_levels].sum(axis=1,dtype=np.float32)
         fp32_score=np.asarray(docs[ids],dtype=np.float32)@np.asarray(queries[qi])
         int8_score=quantized_score(np.asarray(docs[ids]),np.asarray(queries[qi]),8)
         int4_score=quantized_score(np.asarray(docs[ids]),np.asarray(queries[qi]),4)
@@ -112,7 +114,7 @@ def main() -> None:
                              ("candidate_count","candidate_teacher_survival","exact_top10_overlap",
                               "teacher_top10_recall","qrels_ndcg10","rank_inversions_top256")}})
     raw={"schema_version":1,"family":"semantic_thq_fp32_removal_gate_v1","rows":rows,
-         "protocol":{"candidate_semantics":"whole-posting fused stream","fp32_comparator":"exact within same candidate set","qrels_metric":"nDCG@10","rank_inversions":"top-256 permutation disagreement"}}
+         "protocol":{"candidate_semantics":"whole-posting fused stream","scope":"full-candidate diagnostic; no THQ shortlist stage","fp32_comparator":"exact within same candidate set","qrels_metric":"nDCG@10","rank_inversions":"top-256 permutation disagreement"}}
     args.raw_output.parent.mkdir(parents=True,exist_ok=True); payload=(json.dumps(raw,separators=(",",":"),sort_keys=True)+"\n").encode(); args.raw_output.write_bytes(payload)
     receipt_out={"schema_version":1,"family":raw["family"],"execution_status":"EXECUTED","production_activation":False,
                  "thq_manifest_sha256":sha(args.thq_manifest),"candidate_receipt_sha256":sha(args.candidate_receipt),

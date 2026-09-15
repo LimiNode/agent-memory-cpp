@@ -19,6 +19,7 @@ def main() -> None:
     require(receipt["execution_status"]=="EXECUTED" and not receipt["production_activation"],"status differs")
     require(receipt["raw_output"]["sha256"]==sha(args.raw) and receipt["runner_sha256"]==sha(args.runner),"runner/raw provenance differs")
     require(receipt["thq_manifest_sha256"]==sha(args.thq_manifest) and receipt["candidate_receipt_sha256"]==sha(args.candidate_receipt) and receipt["candidate_raw_sha256"]==sha(args.candidate_raw) and receipt["candidate_flat_sha256"]==sha(args.candidate_flat),"input provenance differs")
+    require(raw.get("protocol", {}).get("scope") == "full-candidate diagnostic; no THQ shortlist stage", "scope differs")
     rows=raw["rows"]; names={"thq_thermometer","packed_ordinal","int8_reranker","int4_reranker","fp32_exact"}
     require(len(rows)==152*5 and {row["representation"] for row in rows}==names,"row matrix differs")
     by_query={}
