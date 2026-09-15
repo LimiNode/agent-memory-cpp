@@ -919,3 +919,17 @@ occupied-address scalar scoring remains about 0.95 s/query for K16 over three
 seeds, so representative-layer arithmetic—not routing quality or THQ
 reranking—is now the dominant unresolved cost. MDBX and physical-page bytes
 remain unmeasured.
+
+### R4 posting and THQ logical page proxy (2026-09-14)
+
+Using the corrected AoSoA-32 stream at `A=16,384`, whole-posting fusion touches
+about `190/331/555/1,021` logical 4-KiB posting pages at 5k/10k/20k/50k. The
+144-byte THQ candidate gather touches `4,691/8,686/15,094/26,321` logical
+pages, so the combined proxy is `4,881/9,017/15,649/27,341` pages on average.
+After THQ selects top-256, the separate 1536-byte FP32 exact stage touches
+about 303--307 pages, for roughly `3.15--3.19x` page amplification over its
+393,216 useful bytes.
+This confirms that contiguous postings are not the dominant page footprint;
+candidate document payload locality is. The result is a file-range proxy only:
+MDBX pages, OS cache, and physical I/O remain unmeasured. See
+`2026-09-14-r4-posting-page-proxy.md` and its fail-closed audit.
