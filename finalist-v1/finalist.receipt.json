@@ -24,7 +24,7 @@
     }
   },
   "native_replay_status": "PENDING_NATIVE_REPLAY",
-  "selection_status": "PENDING_CORRECTED_CODEC_FRONTIER_REPLAY",
+  "selection_status": "CONFIRMED_BY_CORRECTED_CODEC_FRONTIER_REPLAY",
   "production_activation": false,
   "provenance": {
     "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
