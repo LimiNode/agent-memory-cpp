@@ -114,3 +114,4 @@ fixed environment notes, and preserved raw outputs.
 - [Landmark-affinity THQ locality](2026-09-08-landmark-affinity-thq.md)
 - [Research methodology audit and corrections](2026-09-08-research-methodology-audit.md)
 - [Random-projection THQ validation](2026-09-09-rp-thq-validation.md)
+- [North Star reset: quality and persistent-footprint gates](2026-09-15-north-star-reset-gates.md)
