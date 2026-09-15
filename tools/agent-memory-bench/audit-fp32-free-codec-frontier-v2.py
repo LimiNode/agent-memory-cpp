@@ -50,6 +50,8 @@ def main() -> None:
     receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
     raw = json.loads(args.raw.read_text(encoding="utf-8"))
     require(receipt.get("family") == raw.get("family") == "semantic_fp32_free_codec_frontier_v2", "family differs")
+    require(int(raw.get("schema_version")) == 3 and int(receipt.get("schema_version")) == 3,
+            "schema version differs")
     require(receipt.get("execution_status") == "EXECUTED" and receipt.get("production_activation") is False, "status differs")
     require(receipt["runner_sha256"] == sha256(args.runner), "runner provenance differs")
     require(receipt["raw_output"]["sha256"] == sha256(args.raw), "raw provenance differs")
@@ -123,6 +125,55 @@ def main() -> None:
         require(math.isclose(float(ci["low"]), float(np.percentile(means, 2.5)), abs_tol=1e-10) and
                 math.isclose(float(ci["high"]), float(np.percentile(means, 97.5)), abs_tol=1e-10),
                 f"paired bootstrap interval differs: {representation}")
+    parity = raw.get("direct_vs_cascade_parity", [])
+    require(len(parity) == 152 * 2, "direct/cascade parity row matrix differs")
+    parity_summary = {str(row["representation"]): row for row in raw.get("direct_vs_cascade_parity_summary", [])}
+    require(set(parity_summary) == {"int8_linear", "int8_power0625"}, "direct/cascade parity summary differs")
+    direct_by_query = {(int(row["query"]), str(row["representation"])): row for row in direct}
+    final_by_query = {(int(row["query"]), int(row["levels"]), str(row["mode"]), int(row["shortlist"]), str(row["representation"])): row for row in final}
+    rng = np.random.default_rng(20260916)
+    for representation in ("int8_linear", "int8_power0625"):
+        rows = [row for row in parity if str(row["representation"]) == representation]
+        require(len(rows) == 152, f"direct/cascade parity rows differ: {representation}")
+        deltas = []
+        for row in rows:
+            direct_ids = np.asarray(row["direct_top10_ids"], dtype=np.int64)
+            cascade_ids = np.asarray(row["cascade_top10_ids"], dtype=np.int64)
+            shortlist_ids = np.asarray(row["shortlist_ids"], dtype=np.int64)
+            require(len(direct_ids) == 10 and len(cascade_ids) == 10 and len(shortlist_ids) == 128,
+                    f"direct/cascade ID payload differs: {representation}")
+            set_overlap = float(np.intersect1d(direct_ids, cascade_ids).size / 10)
+            survival = float(np.isin(direct_ids, shortlist_ids).sum() / 10)
+            ordered = bool(np.array_equal(direct_ids, cascade_ids))
+            require(math.isclose(float(row["direct_top10_set_overlap"]), set_overlap, abs_tol=1e-12),
+                    f"direct/cascade set overlap differs: {representation}")
+            require(math.isclose(float(row["direct_top10_survival_in_thq_shortlist"]), survival, abs_tol=1e-12),
+                    f"direct/cascade survival differs: {representation}")
+            require(bool(row["exact_ordered_top10_parity"]) == ordered,
+                    f"direct/cascade ordered parity differs: {representation}")
+            query = int(row["query"])
+            direct_row = direct_by_query[(query, representation)]
+            cascade_row = final_by_query[(query, 4, "interval_sq", 128, representation)]
+            delta = float(cascade_row["qrels_ndcg10"]) - float(direct_row["qrels_ndcg10"])
+            deltas.append(delta)
+            require(math.isclose(float(row["qrels_ndcg10_delta_vs_direct"]), delta, abs_tol=1e-12),
+                    f"direct/cascade qrels delta differs: {representation}")
+        summary = parity_summary[representation]
+        expected = aggregate(deltas)
+        for key, value in expected.items():
+            require(math.isclose(float(summary["qrels_ndcg10_delta_vs_direct"][key]), value, abs_tol=1e-10),
+                    f"direct/cascade summary delta differs: {representation}/{key}")
+        expected_loss = float(np.maximum(-np.asarray(deltas), 0.0).max())
+        require(math.isclose(float(summary["maximum_positive_ndcg_loss"]), expected_loss, abs_tol=1e-10),
+                f"direct/cascade maximum loss differs: {representation}")
+        samples = rng.integers(0, 152, size=(10_000, 152))
+        means = np.asarray(deltas)[samples].mean(axis=1)
+        ci = summary["paired_bootstrap_mean_delta_95ci"]
+        require(int(ci["resamples"]) == 10_000 and int(ci["seed"]) == 20260916,
+                f"direct/cascade bootstrap protocol differs: {representation}")
+        require(math.isclose(float(ci["low"]), float(np.percentile(means, 2.5)), abs_tol=1e-10) and
+                math.isclose(float(ci["high"]), float(np.percentile(means, 97.5)), abs_tol=1e-10),
+                f"direct/cascade bootstrap interval differs: {representation}")
     print(json.dumps({"family": "semantic_fp32_free_codec_frontier_v2_audit_v1", "status": "PASS",
                       "stage_rows": len(stage), "final_rows": len(final), "direct_rows": len(direct)}, sort_keys=True))
 

@@ -23,6 +23,8 @@ STAGES = ((3, "ordinal_l1"), (3, "interval_l1"), (3, "interval_sq"),
           (5, "ordinal_l1"), (5, "interval_l1"), (5, "interval_sq"),
           (8, "ordinal_l1"), (8, "interval_l1"), (8, "interval_sq"))
 SHORTLISTS = (64, 128, 256, 512)
+PARITY_STAGE = (4, "interval_sq", 128)
+PARITY_REPRESENTATIONS = ("int8_linear", "int8_power0625")
 
 
 def ordinal_payload_bytes(dimension: int, levels: int) -> int:
@@ -121,6 +123,7 @@ def main() -> None:
     stage_rows: list[dict[str, Any]] = []
     final_rows: list[dict[str, Any]] = []
     direct_rows: list[dict[str, Any]] = []
+    direct_vs_cascade_parity: list[dict[str, Any]] = []
     counts = [int(row["candidate_count"]) for row in candidate_raw["rows"]]
     flat = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8,
                      shape=(sum(counts), 148))
@@ -143,8 +146,12 @@ def main() -> None:
                 name = f"int{bits}_{suffix}"
                 scalar_scores[name] = scalar_score(vectors, query, bits, power)
                 scalar_payloads[name] = (dimension * bits + 7) // 8 + 4
+        direct_rankings: dict[str, np.ndarray] = {}
+        direct_qrels: dict[str, float] = {}
         for name, scores in scalar_scores.items():
             ranked = stable_top(ids, scores, TOP_K, ascending=False)
+            direct_rankings[name] = ranked
+            direct_qrels[name] = ndcg(ranked, np.asarray(qrel_ids[qi]), np.asarray(qrel_scores[qi]))
             direct_rows.append({"query": qi, "representation": name,
                                 "candidate_count": count, "payload_bytes_per_document": scalar_payloads[name],
                                 "exact_top10_overlap": float(np.intersect1d(ranked, fp32_top10).size / TOP_K),
@@ -193,6 +200,20 @@ def main() -> None:
                                        "exact_top10_overlap": float(np.intersect1d(reranked, fp32_top10).size / TOP_K),
                                        "teacher_top10_recall": float(np.isin(teacher, reranked).sum() / len(teacher)),
                                        "qrels_ndcg10": ndcg(reranked, np.asarray(qrel_ids[qi]), np.asarray(qrel_scores[qi]))})
+                    if (levels, mode, shortlist) == PARITY_STAGE and name in PARITY_REPRESENTATIONS:
+                        direct_top10 = direct_rankings[name]
+                        cascade_qrels = ndcg(reranked, np.asarray(qrel_ids[qi]), np.asarray(qrel_scores[qi]))
+                        direct_vs_cascade_parity.append({
+                            "query": qi,
+                            "representation": name,
+                            "shortlist_ids": [int(value) for value in selected.tolist()],
+                            "direct_top10_ids": [int(value) for value in direct_top10.tolist()],
+                            "cascade_top10_ids": [int(value) for value in reranked.tolist()],
+                            "direct_top10_set_overlap": float(np.intersect1d(direct_top10, reranked).size / TOP_K),
+                            "exact_ordered_top10_parity": bool(np.array_equal(direct_top10, reranked)),
+                            "direct_top10_survival_in_thq_shortlist": float(np.isin(direct_top10, selected).sum() / TOP_K),
+                            "qrels_ndcg10_delta_vs_direct": float(cascade_qrels - direct_qrels[name]),
+                        })
     def summarize(items: list[dict[str, Any]], keys: tuple[str, ...]) -> list[dict[str, Any]]:
         groups: dict[tuple[Any, ...], list[dict[str, Any]]] = {}
         for item in items:
@@ -230,7 +251,30 @@ def main() -> None:
                 },
             })
         return result
-    raw = {"schema_version": 2, "family": "semantic_fp32_free_codec_frontier_v2",
+
+    def summarize_cascade_parity(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        rng = np.random.default_rng(20260916)
+        result = []
+        for representation in PARITY_REPRESENTATIONS:
+            values = [row for row in items if row["representation"] == representation]
+            deltas = np.asarray([float(row["qrels_ndcg10_delta_vs_direct"]) for row in values], dtype=np.float64)
+            samples = rng.integers(0, len(values), size=(10_000, len(values)))
+            means = deltas[samples].mean(axis=1)
+            result.append({
+                "representation": representation,
+                "stage": {"levels": PARITY_STAGE[0], "mode": PARITY_STAGE[1], "shortlist": PARITY_STAGE[2]},
+                "direct_top10_set_overlap": aggregate([float(row["direct_top10_set_overlap"]) for row in values]),
+                "direct_top10_survival_in_thq_shortlist": aggregate([float(row["direct_top10_survival_in_thq_shortlist"]) for row in values]),
+                "exact_ordered_top10_parity_rate": float(np.mean([bool(row["exact_ordered_top10_parity"]) for row in values])),
+                "qrels_ndcg10_delta_vs_direct": aggregate(deltas.tolist()),
+                "maximum_positive_ndcg_loss": float(np.maximum(-deltas, 0.0).max()),
+                "paired_bootstrap_mean_delta_95ci": {
+                    "low": float(np.percentile(means, 2.5)), "high": float(np.percentile(means, 97.5)),
+                    "resamples": 10_000, "seed": 20260916,
+                },
+            })
+        return result
+    raw = {"schema_version": 3, "family": "semantic_fp32_free_codec_frontier_v2",
            "execution_status": "EXECUTED", "production_activation": False,
            "protocol": {"candidate_semantics": "corrected whole-posting R4 stream",
                         "training_count": train_count, "stages": "THQ3/4/5/8 × ordinal-L1/interval-L1/interval-squared",
@@ -240,14 +284,16 @@ def main() -> None:
            "inputs": {"thq_manifest_sha256": sha256(args.thq_manifest), "candidate_receipt_sha256": sha256(args.candidate_receipt),
                       "candidate_raw_sha256": sha256(args.candidate_raw), "candidate_flat_sha256": sha256(args.candidate_flat)},
            "stage_rows": stage_rows, "final_rows": final_rows, "direct_rows": direct_rows,
+           "direct_vs_cascade_parity": direct_vs_cascade_parity,
            "stage_summary": summarize(stage_rows, ("levels", "mode", "shortlist")),
            "final_summary": summarize(final_rows, ("levels", "mode", "shortlist", "representation")),
            "direct_summary": summarize(direct_rows, ("representation",)),
-           "paired_direct_summary": paired_direct_summary(direct_rows)}
+           "paired_direct_summary": paired_direct_summary(direct_rows),
+           "direct_vs_cascade_parity_summary": summarize_cascade_parity(direct_vs_cascade_parity)}
     args.raw_output.parent.mkdir(parents=True, exist_ok=True)
     raw_bytes = (json.dumps(raw, sort_keys=True, separators=(",", ":")) + "\n").encode()
     args.raw_output.write_bytes(raw_bytes)
-    receipt = {"schema_version": 2, "family": raw["family"], "execution_status": "EXECUTED", "production_activation": False,
+    receipt = {"schema_version": 3, "family": raw["family"], "execution_status": "EXECUTED", "production_activation": False,
                "runner_sha256": sha256(Path(__file__)), "raw_output": {"path": str(args.raw_output), "bytes": len(raw_bytes),
                "sha256": hashlib.sha256(raw_bytes).hexdigest()}, "inputs": raw["inputs"],
                "row_counts": {"stage": len(stage_rows), "final": len(final_rows), "direct": len(direct_rows)}}

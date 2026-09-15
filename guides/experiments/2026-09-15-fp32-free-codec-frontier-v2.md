@@ -38,10 +38,10 @@ Direct scalar controls reproduce the historical quality ordering:
 | INT7 linear | 340 | .9829 | .9763 | .6567 |
 | INT8 linear | 388 | .9941 | .9868 | .6562 |
 | INT8 power-.625 | 388 | .9888 | .9829 | .6585 |
-| INT9 power-.5 | 532 | .9961 | .9888 | .6571 |
-| INT9 power-.625 | 532 | .9954 | .9888 | .6592 |
-| INT10 power-.5 | 580 | .9987 | .9914 | .6569 |
-| INT12 power-.5 | 676 | 1.0000 | .9928 | .6558 |
+| INT9 power-.5 | 436 | .9961 | .9888 | .6571 |
+| INT9 power-.625 | 436 | .9954 | .9888 | .6592 |
+| INT10 power-.5 | 484 | .9987 | .9914 | .6569 |
+| INT12 power-.5 | 580 | 1.0000 | .9928 | .6558 |
 
 Packed-ordinal accounting changes the stage frontier: levels-3 and levels-4
 both cost 96 bytes/document. With proper interval-squared ADC, levels-4 reaches
@@ -76,6 +76,24 @@ INT8 power-.625 has mean delta `+.00432`, worst loss `.01096`, and CI
 Thus qrels nDCG is the product metric, while FP32 overlap remains an explicit
 safety guardrail rather than the optimization objective. The final guardrail
 must be chosen before selecting between INT8 linear and power-.625.
+
+## Direct INT8 versus THQ4→INT8 parity
+
+The corrected replay also records the two matched finalist arms independently:
+direct INT8 scoring over the whole candidate stream, and THQ4 interval-squared
+top-128 followed by INT8 reranking. For each query and each compander it stores
+the direct and cascade top-10 IDs, exact set/ordered parity, survival of the
+direct top-10 inside the THQ shortlist, and paired qrels delta. This separates
+loss caused by the THQ shortlist from loss caused by INT8 quantization. The
+parity rows and their deterministic bootstrap summaries are in the raw receipt;
+they are an explicit gate for the native four-arm benchmark, not a claim that
+the cascade is already production-selected.
+
+On the frozen candidate stream, both finalist cascades reached exact parity in
+all 152 queries: set overlap `1.0`, ordered top-10 parity `1.0`, direct-INT8
+top-10 survival in the THQ4 shortlist `1.0`, and paired qrels delta `0.0` for
+both linear and power-.625. This is a control result for the present candidate
+stream, not a general theorem about other routers or corpora.
 
 ## Interpretation and next gate
 

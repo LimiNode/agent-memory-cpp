@@ -9,15 +9,15 @@
   },
   "production_activation": false,
   "raw_output": {
-    "bytes": 73062323,
-    "path": "corrected-frontier-v2.raw.json",
-    "sha256": "eb34df7325f6e9de250b3ef643a2fb11c3d0624720dd3fc7f050158f63b803d4"
+    "bytes": 73450548,
+    "path": "frontier-v2.raw.json",
+    "sha256": "582d0f2304ccd04a0aa7ade39d763008cb227e67813831692418b59ffdf038cc"
   },
   "row_counts": {
     "direct": 6384,
     "final": 299136,
     "stage": 7296
   },
-  "runner_sha256": "401412e8ccc9755ffb108f3fd43b00a87691aa0d92cdbd13442f0c34ee2df885",
-  "schema_version": 2
+  "runner_sha256": "b5efb0a38057f3fa7c8918ef644cbaa51b318d2102293fdf1798b19fa93e7449",
+  "schema_version": 3
 }
