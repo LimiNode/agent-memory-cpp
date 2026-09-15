@@ -10,3 +10,9 @@ tmp/
 __pycache__/
 CMakeUserPresets.json
 .omc/
+# Frozen finalist payloads are local materialization artifacts; receipt/raw
+# bind their exact paths, sizes and SHA-256 values without tracking large blobs.
+finalist-v1/*.i4
+finalist-v1/*.i8
+finalist-v1/*.f32
+finalist-v1/*.u8
