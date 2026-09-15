@@ -17,6 +17,13 @@ The independent audit passed and checks file size/SHA, unique ID parity, the
 explicitly `PENDING_NATIVE_REPLAY`: no native scoring, OS/MDBX page count,
 cold/warm latency, or production activation is claimed by this materializer.
 
+The four binary payloads are retained in the local materialization directory
+but are intentionally not committed to Git (the INT8 payload alone is about
+170 MB and exceeds the repository's 100 MB object limit). Their absolute paths,
+sizes and SHA-256 values are bound by `finalist.receipt.json`; a reviewer with
+the frozen checkout can regenerate them deterministically before running the
+audit.
+
 The next corrective PR must consume these exact files in a native scorer and
 compare THQ→INT8 top-10 with the candidate-local FP32 oracle. Only that replay
 can decide whether the logical 484-byte finalist is worth physical layout and
