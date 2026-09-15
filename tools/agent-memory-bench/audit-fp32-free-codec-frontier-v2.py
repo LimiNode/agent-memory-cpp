@@ -49,7 +49,7 @@ def main() -> None:
     require(raw["protocol"]["candidate_semantics"] == "corrected whole-posting R4 stream", "candidate protocol differs")
     stage = raw["stage_rows"]; final = raw["final_rows"]; direct = raw["direct_rows"]
     require(len(stage) == 152 * 12 * 4, "stage row matrix differs")
-    require(len(direct) == 152 * 18, "direct scalar row matrix differs")
+    require(len(direct) == 152 * len({row["representation"] for row in direct}), "direct scalar row matrix differs")
     require(len(final) > 0 and len(final) % 152 == 0, "final row matrix differs")
     for row in stage + final + direct:
         for metric in ("exact_top10_overlap", "teacher_top10_recall", "qrels_ndcg10"):

@@ -13,8 +13,12 @@ The THQ arm sweeps 3/4/5/8 ordinal levels (the result calls these
 `ordinal_levels` to avoid conflating level count with bit count), ordinal-L1,
 interval-L1 and interval-squared ADC, and top-64/128/256/512 shortlists. The
 final scalar controls are FP16 and INT4/5/6/7/8/9/10/12, with linear and
-power-.5 companders. Every scalar score is recomputed from the per-document
+power-.5/.625/.75/.875 companders. Every scalar score is recomputed from the per-document
 quantized code; no parity is asserted by copying a score array.
+
+The checked-in receipt below predates the interval-squared correction and is
+retained only as historical context. It is not authoritative until a fresh
+replay regenerates the receipt and raw SHA with per-coordinate squared ADC.
 
 The fail-closed audit passed:
 

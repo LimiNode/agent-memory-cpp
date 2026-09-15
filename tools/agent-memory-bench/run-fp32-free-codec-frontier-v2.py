@@ -130,7 +130,9 @@ def main() -> None:
         scalar_scores: dict[str, np.ndarray] = {"fp32": fp32_scores, "fp16": vectors.astype(np.float16).astype(np.float32) @ query}
         scalar_payloads = {"fp32": 1536, "fp16": 768}
         for bits in (4, 5, 6, 7, 8, 9, 10, 12):
-            for power, suffix in ((1.0, "linear"), (0.5, "power05")):
+            for power, suffix in ((1.0, "linear"), (0.5, "power05"),
+                                  (0.625, "power0625"), (0.75, "power075"),
+                                  (0.875, "power0875")):
                 name = f"int{bits}_{suffix}"
                 scalar_scores[name] = scalar_score(vectors, query, bits, power)
                 scalar_payloads[name] = (dimension * bits + 7) // 8 + 4
@@ -160,7 +162,9 @@ def main() -> None:
                                                                      np.where(query >= hi, query - hi, 0.0)))
                 scores = interval_l1[np.arange(dimension)[None, :], doc_levels].sum(axis=1, dtype=np.float32)
                 if mode == "interval_sq":
-                    scores = scores * scores
+                    # Squared interval ADC is the sum of per-coordinate
+                    # squared distances, not the square of aggregate L1.
+                    scores = (interval_l1 * interval_l1)[np.arange(dimension)[None, :], doc_levels].sum(axis=1, dtype=np.float32)
                 ascending = True
             for shortlist in SHORTLISTS:
                 selected = stable_top(ids, scores, shortlist, ascending=ascending)
@@ -198,7 +202,7 @@ def main() -> None:
            "execution_status": "EXECUTED", "production_activation": False,
            "protocol": {"candidate_semantics": "corrected whole-posting R4 stream",
                         "training_count": train_count, "stages": "THQ3/4/5/8 × ordinal-L1/interval-L1/interval-squared",
-                        "shortlists": list(SHORTLISTS), "scalar_final": "FP16; INT4/5/6/7/8/9/10/12 linear and power-.5",
+                        "shortlists": list(SHORTLISTS), "scalar_final": "FP16; INT4/5/6/7/8/9/10/12 linear and power-.5/.625/.75/.875",
                         "scores": "candidate-local FP32 top-10 reference; qrels nDCG@10"},
            "inputs": {"thq_manifest_sha256": sha256(args.thq_manifest), "candidate_receipt_sha256": sha256(args.candidate_receipt),
                       "candidate_raw_sha256": sha256(args.candidate_raw), "candidate_flat_sha256": sha256(args.candidate_flat)},
