@@ -15,13 +15,19 @@ unique document IDs. The materializer writes, in ascending document-ID order:
 
 The independent audit checks file size/SHA, unique ID parity, byte-for-byte
 THQ3/INT8 recomputation from the frozen source vectors, the
-484-byte codec-payload contract, and all frozen input hashes. It also requires
+484-byte codec-payload contract, and all frozen input hashes. The bound codec
+frontier now records size/SHA for every referenced frozen input
+(`document_vectors`, `queries`, `teacher_ids`, `qrel_ids`, `qrel_scores`), and
+the materializer requires those hashes to match the current manifest and
+candidate artifacts. It also requires
 the bound codec-frontier receipt to carry the matched THQ4 interval-squared
 top-128 and direct INT8 arms. The current replay passes this audit on all
 463,258 rows. Including the `document_ids.i4` mapping, this subset is 488
 bytes/document. The receipt remains explicitly `PENDING_NATIVE_REPLAY`: no
 native scoring, OS/MDBX page count, cold/warm latency, or production activation
-is claimed by this materializer.
+is claimed by this materializer. The executed audit is captured in the small
+machine-readable `finalist-v1/finalist.audit.receipt.json` alongside the
+materialization receipt.
 
 The production representation remains a separate pending materialization over
 all 1,000,000 documents: 96 MB THQ plus 388 MB INT8 (484 MB codec payload),

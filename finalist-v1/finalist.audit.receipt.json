@@ -1,0 +1,63 @@
+{
+  "audit_runner_sha256": "f5154be2d404a399ca1824806d82dd927128b21c43955b53e8384742164e404d",
+  "corpus_documents": 1000000,
+  "family": "semantic_fp32_free_native_finalist_materialization_audit_v1",
+  "frontier_input_files": {
+    "document_vectors": {
+      "bytes": 1536000000,
+      "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+    },
+    "qrel_ids": {
+      "bytes": 24320,
+      "sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af"
+    },
+    "qrel_scores": {
+      "bytes": 12160,
+      "sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec"
+    },
+    "queries": {
+      "bytes": 233472,
+      "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+    },
+    "teacher_ids": {
+      "bytes": 12160,
+      "sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d"
+    }
+  },
+  "manifest_sha256": "2e43b48d590386c98a325f31f627fedfb7e6df649fde33fe28f6485f99e17fa5",
+  "materialization_raw_sha256": "2e43b48d590386c98a325f31f627fedfb7e6df649fde33fe28f6485f99e17fa5",
+  "materialization_receipt_sha256": "3a752c36f2b8b0779b84c5d3d63452a1194f10939fe49b046da2c206014cf543",
+  "materialization_scope": "query-derived-evaluation-subset",
+  "materialized_files": {
+    "document_ids": {
+      "bytes": 1853032,
+      "path": "document_ids.i4",
+      "sha256": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e"
+    },
+    "int8_linear": {
+      "bytes": 177891072,
+      "path": "int8-linear.i8",
+      "sha256": "c5f667fb31b3bf474558a50fdd9e974ae5cc01bdcc3b71db7dfaee848e6f4b2a"
+    },
+    "int8_scales": {
+      "bytes": 1853032,
+      "path": "int8-scales.f32",
+      "sha256": "605bdf640474a91db7a8d5a36b105982458dbddd66bc522fd29332326997621d"
+    },
+    "thq3_ordinal": {
+      "bytes": 44472768,
+      "path": "thq3-ordinal.u8",
+      "sha256": "627a5f316febee573130c281b0644226cbd09b2d1cef964d78aa9c422b27c089"
+    }
+  },
+  "native_replay_status": "PENDING_NATIVE_REPLAY",
+  "schema_version": 1,
+  "source_inputs": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b"
+  },
+  "status": "PASS",
+  "unique_documents": 463258
+}

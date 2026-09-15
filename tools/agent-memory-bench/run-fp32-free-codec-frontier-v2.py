@@ -47,6 +47,24 @@ def require(value: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
+def resolve_artifact(manifest: Path, value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else manifest.parent / path
+
+
+def freeze_references(manifest_path: Path, refs: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    frozen: dict[str, dict[str, Any]] = {}
+    for name in ("document_vectors", "queries", "teacher_ids", "qrel_ids", "qrel_scores"):
+        meta = refs[name]
+        path = resolve_artifact(manifest_path, str(meta["path"]))
+        require(path.is_file(), f"referenced input is missing: {name}")
+        actual_bytes = path.stat().st_size
+        if "bytes" in meta:
+            require(actual_bytes == int(meta["bytes"]), f"referenced input size differs: {name}")
+        frozen[name] = {"bytes": actual_bytes, "sha256": sha256(path)}
+    return frozen
+
+
 def stable_top(ids: np.ndarray, scores: np.ndarray, k: int, ascending: bool) -> np.ndarray:
     order = np.lexsort((ids, scores if ascending else -scores))
     return ids[order[:min(k, len(ids))]]
@@ -112,11 +130,12 @@ def main() -> None:
     n, dimension, queries = int(manifest["documents"]), int(manifest["dimension"]), int(manifest["queries"])
     require(queries == QUERIES, "query count differs")
     refs = manifest["references"]
-    docs = np.memmap(Path(refs["document_vectors"]["path"]), mode="r", dtype="<f4", shape=(n, dimension))
-    query_vectors = np.memmap(Path(refs["queries"]["path"]), mode="r", dtype="<f4", shape=(queries, dimension))
-    teachers = np.memmap(Path(refs["teacher_ids"]["path"]), mode="r", dtype="<i8", shape=(queries, 10))
-    qrel_ids = np.memmap(Path(refs["qrel_ids"]["path"]), mode="r", dtype="<i8", shape=(queries, 20))
-    qrel_scores = np.memmap(Path(refs["qrel_scores"]["path"]), mode="r", dtype="<f4", shape=(queries, 20))
+    input_files = freeze_references(args.thq_manifest, refs)
+    docs = np.memmap(resolve_artifact(args.thq_manifest, refs["document_vectors"]["path"]), mode="r", dtype="<f4", shape=(n, dimension))
+    query_vectors = np.memmap(resolve_artifact(args.thq_manifest, refs["queries"]["path"]), mode="r", dtype="<f4", shape=(queries, dimension))
+    teachers = np.memmap(resolve_artifact(args.thq_manifest, refs["teacher_ids"]["path"]), mode="r", dtype="<i8", shape=(queries, 10))
+    qrel_ids = np.memmap(resolve_artifact(args.thq_manifest, refs["qrel_ids"]["path"]), mode="r", dtype="<i8", shape=(queries, 20))
+    qrel_scores = np.memmap(resolve_artifact(args.thq_manifest, refs["qrel_scores"]["path"]), mode="r", dtype="<f4", shape=(queries, 20))
     train_count = min(args.training_count, n)
     training = np.asarray(docs[:train_count])
     rows: list[dict[str, Any]] = []
@@ -274,7 +293,7 @@ def main() -> None:
                 },
             })
         return result
-    raw = {"schema_version": 3, "family": "semantic_fp32_free_codec_frontier_v2",
+    raw = {"schema_version": 4, "family": "semantic_fp32_free_codec_frontier_v2",
            "execution_status": "EXECUTED", "production_activation": False,
            "protocol": {"candidate_semantics": "corrected whole-posting R4 stream",
                         "training_count": train_count, "stages": "THQ3/4/5/8 × ordinal-L1/interval-L1/interval-squared",
@@ -283,6 +302,7 @@ def main() -> None:
                         "scores": "candidate-local FP32 top-10 reference; qrels nDCG@10"},
            "inputs": {"thq_manifest_sha256": sha256(args.thq_manifest), "candidate_receipt_sha256": sha256(args.candidate_receipt),
                       "candidate_raw_sha256": sha256(args.candidate_raw), "candidate_flat_sha256": sha256(args.candidate_flat)},
+           "input_files": input_files,
            "stage_rows": stage_rows, "final_rows": final_rows, "direct_rows": direct_rows,
            "direct_vs_cascade_parity": direct_vs_cascade_parity,
            "stage_summary": summarize(stage_rows, ("levels", "mode", "shortlist")),
@@ -293,9 +313,9 @@ def main() -> None:
     args.raw_output.parent.mkdir(parents=True, exist_ok=True)
     raw_bytes = (json.dumps(raw, sort_keys=True, separators=(",", ":")) + "\n").encode()
     args.raw_output.write_bytes(raw_bytes)
-    receipt = {"schema_version": 3, "family": raw["family"], "execution_status": "EXECUTED", "production_activation": False,
+    receipt = {"schema_version": 4, "family": raw["family"], "execution_status": "EXECUTED", "production_activation": False,
                "runner_sha256": sha256(Path(__file__)), "raw_output": {"path": str(args.raw_output), "bytes": len(raw_bytes),
-               "sha256": hashlib.sha256(raw_bytes).hexdigest()}, "inputs": raw["inputs"],
+               "sha256": hashlib.sha256(raw_bytes).hexdigest()}, "inputs": raw["inputs"], "input_files": input_files,
                "row_counts": {"stage": len(stage_rows), "final": len(final_rows), "direct": len(direct_rows)}}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(receipt, indent=2, sort_keys=True) + "\n", encoding="utf-8")

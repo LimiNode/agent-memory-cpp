@@ -23,9 +23,12 @@ def main() -> None:
     p.add_argument("--runner", type=Path, required=True); p.add_argument("--thq-manifest", type=Path, required=True)
     p.add_argument("--candidate-receipt", type=Path, required=True); p.add_argument("--candidate-raw", type=Path, required=True)
     p.add_argument("--candidate-flat", type=Path, required=True); p.add_argument("--codec-frontier-receipt", type=Path, required=True)
+    p.add_argument("--audit-receipt", type=Path)
     p.add_argument("--codec-recompute-chunk", type=int, default=8192); a = p.parse_args()
     raw = json.loads(a.manifest.read_text(encoding="utf-8")); receipt = json.loads(a.receipt.read_text(encoding="utf-8"))
     require(raw["family"] == receipt["family"] == "semantic_fp32_free_native_finalist_materialization_v1", "family differs")
+    require(int(raw.get("schema_version", 0)) == 2 and int(receipt.get("schema_version", 0)) == 2,
+            "materialization schema differs")
     require(receipt["runner_sha256"] == sha256(a.runner) and receipt["raw_sha256"] == sha256(a.manifest), "provenance differs")
     provenance = raw.get("provenance", {})
     require(provenance.get("thq_manifest_sha256") == sha256(a.thq_manifest), "THQ manifest provenance differs")
@@ -41,6 +44,14 @@ def main() -> None:
             codec_frontier_receipt.get("execution_status") == "EXECUTED" and
             codec_frontier_receipt.get("production_activation") is False,
             "codec frontier receipt status differs")
+    current_inputs = {
+        "thq_manifest_sha256": sha256(a.thq_manifest),
+        "candidate_receipt_sha256": sha256(a.candidate_receipt),
+        "candidate_raw_sha256": sha256(a.candidate_raw),
+        "candidate_flat_sha256": sha256(a.candidate_flat),
+    }
+    require(codec_frontier_receipt.get("inputs") == current_inputs,
+            "codec frontier inputs do not match current artifacts")
     frontier_raw_meta = codec_frontier_receipt.get("raw_output", {})
     frontier_raw_path = resolve_artifact(a.codec_frontier_receipt, frontier_raw_meta.get("path", ""))
     require(frontier_raw_path.is_file() and sha256(frontier_raw_path) == frontier_raw_meta.get("sha256"),
@@ -53,6 +64,19 @@ def main() -> None:
             "THQ4 interval-squared top128 arm is missing")
     direct_names = {str(row.get("representation")) for row in frontier_raw.get("direct_rows", [])}
     require({"int8_linear", "int8_power0625"}.issubset(direct_names), "matched INT8 finalists are missing")
+    require(frontier_raw.get("inputs") == current_inputs,
+            "codec frontier raw inputs do not match current artifacts")
+    parity_summary = {str(row["representation"]): row
+                      for row in frontier_raw.get("direct_vs_cascade_parity_summary", [])}
+    require(set(parity_summary) == {"int8_linear", "int8_power0625"}, "matched parity summaries are missing")
+    for representation, summary in parity_summary.items():
+        require(float(summary["exact_ordered_top10_parity_rate"]) == 1.0,
+                f"ordered parity invariant differs: {representation}")
+        require(float(summary["direct_top10_survival_in_thq_shortlist"]["min"]) == 1.0,
+                f"shortlist survival invariant differs: {representation}")
+        require(float(summary["qrels_ndcg10_delta_vs_direct"]["max"]) == 0.0 and
+                float(summary["qrels_ndcg10_delta_vs_direct"]["min"]) == 0.0,
+                f"qrels parity invariant differs: {representation}")
     candidate_receipt = json.loads(a.candidate_receipt.read_text(encoding="utf-8"))
     require(candidate_receipt.get("raw_sha256") == sha256(a.candidate_raw), "candidate receipt/raw mismatch")
     require(candidate_receipt.get("flat_file", {}).get("sha256") == sha256(a.candidate_flat), "candidate receipt/flat mismatch")
@@ -111,7 +135,19 @@ def main() -> None:
     require(raw.get("materialization_scope") == "query-derived-evaluation-subset", "materialization scope differs")
     require(int(raw["documents"]) == 1_000_000, "full corpus cardinality differs")
     require(len(stored) < int(raw["documents"]), "subset/full-corpus scope is not explicit")
-    print(json.dumps({"family": "semantic_fp32_free_native_finalist_materialization_audit_v1", "status": "PASS", "unique_documents": len(stored), "corpus_documents": int(raw["documents"]), "materialization_scope": "query-derived-evaluation-subset", "native_replay_status": receipt["native_replay_status"]}, sort_keys=True))
+    result = {"schema_version": 1, "family": "semantic_fp32_free_native_finalist_materialization_audit_v1",
+              "status": "PASS", "unique_documents": len(stored), "corpus_documents": int(raw["documents"]),
+              "materialization_scope": "query-derived-evaluation-subset",
+              "native_replay_status": receipt["native_replay_status"],
+              "audit_runner_sha256": sha256(Path(__file__)),
+              "manifest_sha256": sha256(a.manifest), "materialization_receipt_sha256": sha256(a.receipt),
+              "materialization_raw_sha256": sha256(a.manifest), "source_inputs": current_inputs,
+              "frontier_input_files": frontier_raw.get("input_files", {}),
+              "materialized_files": raw["files"]}
+    if a.audit_receipt:
+        a.audit_receipt.parent.mkdir(parents=True, exist_ok=True)
+        a.audit_receipt.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    print(json.dumps(result, sort_keys=True))
 
 if __name__ == "__main__":
     try: main()

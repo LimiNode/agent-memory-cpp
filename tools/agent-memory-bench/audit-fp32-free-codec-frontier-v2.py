@@ -24,6 +24,11 @@ def require(value: bool, message: str) -> None:
         raise RuntimeError(message)
 
 
+def resolve_artifact(manifest: Path, value: str) -> Path:
+    path = Path(value)
+    return path if path.is_absolute() else manifest.parent / path
+
+
 def ordinal_payload_bytes(dimension: int, levels: int) -> int:
     require(dimension > 0 and levels >= 2, "invalid ordinal payload shape")
     return (dimension * math.ceil(math.log2(levels)) + 7) // 8
@@ -46,15 +51,29 @@ def main() -> None:
     parser.add_argument("--receipt", type=Path, required=True)
     parser.add_argument("--raw", type=Path, required=True)
     parser.add_argument("--runner", type=Path, required=True)
+    parser.add_argument("--thq-manifest", type=Path, required=True)
     args = parser.parse_args()
     receipt = json.loads(args.receipt.read_text(encoding="utf-8"))
     raw = json.loads(args.raw.read_text(encoding="utf-8"))
     require(receipt.get("family") == raw.get("family") == "semantic_fp32_free_codec_frontier_v2", "family differs")
-    require(int(raw.get("schema_version")) == 3 and int(receipt.get("schema_version")) == 3,
+    require(int(raw.get("schema_version")) == 4 and int(receipt.get("schema_version")) == 4,
             "schema version differs")
     require(receipt.get("execution_status") == "EXECUTED" and receipt.get("production_activation") is False, "status differs")
     require(receipt["runner_sha256"] == sha256(args.runner), "runner provenance differs")
     require(receipt["raw_output"]["sha256"] == sha256(args.raw), "raw provenance differs")
+    require(raw["inputs"]["thq_manifest_sha256"] == sha256(args.thq_manifest), "manifest provenance differs")
+    require(receipt.get("input_files") == raw.get("input_files"), "receipt input-file provenance differs")
+    manifest = json.loads(args.thq_manifest.read_text(encoding="utf-8"))
+    for name in ("document_vectors", "queries", "teacher_ids", "qrel_ids", "qrel_scores"):
+        meta = manifest["references"][name]
+        path = resolve_artifact(args.thq_manifest, str(meta["path"]))
+        require(path.is_file(), f"referenced input is missing: {name}")
+        expected = raw["input_files"][name]
+        actual_sha = sha256(path)
+        require(("bytes" not in meta or int(meta["bytes"]) == path.stat().st_size) and
+                ("sha256" not in meta or meta["sha256"] == actual_sha) and
+                int(expected["bytes"]) == path.stat().st_size and expected["sha256"] == actual_sha,
+                f"referenced input provenance differs: {name}")
     require(raw["protocol"]["candidate_semantics"] == "corrected whole-posting R4 stream", "candidate protocol differs")
     require("ordinal level IDs" in raw["protocol"].get("payload_accounting", ""),
             "ordinal payload accounting contract missing")

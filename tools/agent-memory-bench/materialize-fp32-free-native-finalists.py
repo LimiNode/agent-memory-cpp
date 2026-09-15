@@ -60,6 +60,35 @@ def main() -> None:
     direct_names = {str(row.get("representation")) for row in frontier_raw.get("direct_rows", [])}
     require({"int8_linear", "int8_power0625"}.issubset(direct_names),
             "matched INT8 finalists are missing")
+    current_inputs = {
+        "thq_manifest_sha256": sha256(a.thq_manifest),
+        "candidate_receipt_sha256": sha256(a.candidate_receipt),
+        "candidate_raw_sha256": sha256(a.candidate_raw),
+        "candidate_flat_sha256": sha256(a.candidate_flat),
+    }
+    require(codec_frontier_receipt.get("inputs") == current_inputs,
+            "codec frontier inputs do not match current artifacts")
+    require(frontier_raw.get("inputs") == current_inputs,
+            "codec frontier raw inputs do not match current artifacts")
+    for name in ("document_vectors", "queries", "teacher_ids", "qrel_ids", "qrel_scores"):
+        source_meta = manifest["references"][name]
+        source_path = resolve_artifact(a.thq_manifest, source_meta["path"])
+        frozen_meta = frontier_raw.get("input_files", {}).get(name, {})
+        require(source_path.is_file() and source_path.stat().st_size == int(frozen_meta.get("bytes", -1)) and
+                sha256(source_path) == frozen_meta.get("sha256"),
+                f"codec frontier referenced input differs: {name}")
+    parity_summary = {str(row["representation"]): row
+                      for row in frontier_raw.get("direct_vs_cascade_parity_summary", [])}
+    require(set(parity_summary) == {"int8_linear", "int8_power0625"},
+            "matched parity summaries are missing")
+    for representation, summary in parity_summary.items():
+        require(float(summary["exact_ordered_top10_parity_rate"]) == 1.0,
+                f"ordered parity invariant differs: {representation}")
+        require(float(summary["direct_top10_survival_in_thq_shortlist"]["min"]) == 1.0,
+                f"shortlist survival invariant differs: {representation}")
+        require(float(summary["qrels_ndcg10_delta_vs_direct"]["max"]) == 0.0 and
+                float(summary["qrels_ndcg10_delta_vs_direct"]["min"]) == 0.0,
+                f"qrels parity invariant differs: {representation}")
     n = int(manifest["documents"]); refs = manifest["references"]
     source_meta = refs["document_vectors"]
     source_path = resolve_artifact(a.thq_manifest, source_meta["path"])
@@ -89,7 +118,7 @@ def main() -> None:
     files = {name: {"path": str(path.relative_to(a.output_root)), "bytes": path.stat().st_size, "sha256": sha256(path)}
              for name, path in (("document_ids", ids_path), ("thq3_ordinal", thq_path),
                                 ("int8_scales", scale_path), ("int8_linear", int8_path))}
-    raw = {"schema_version": 1, "family": "semantic_fp32_free_native_finalist_materialization_v1",
+    raw = {"schema_version": 2, "family": "semantic_fp32_free_native_finalist_materialization_v1",
            "execution_status": "EXECUTED", "production_activation": False,
            "documents": n, "unique_candidate_documents": int(len(unique)),
            "materialization_scope": "query-derived-evaluation-subset",
@@ -101,7 +130,7 @@ def main() -> None:
                           "corrected_codec_frontier_receipt_sha256": sha256(a.codec_frontier_receipt),
                           "corrected_codec_frontier_raw_sha256": frontier_raw_meta["sha256"]}}
     raw_path = a.output_root / "finalist.raw.json"; raw_path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    receipt = {"schema_version": 1, "family": raw["family"], "execution_status": "EXECUTED",
+    receipt = {"schema_version": 2, "family": raw["family"], "execution_status": "EXECUTED",
                "production_activation": False, "native_replay_status": "PENDING_NATIVE_REPLAY",
                "selection_status": "PROVISIONAL_PENDING_NATIVE_FINALIST_SELECTION",
                "runner_sha256": sha256(Path(__file__)), "raw_sha256": sha256(raw_path), "provenance": raw["provenance"], "files": files}
