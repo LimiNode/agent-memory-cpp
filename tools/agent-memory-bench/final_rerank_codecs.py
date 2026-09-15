@@ -57,7 +57,9 @@ class ScalarScorer:
 
     @classmethod
     def make(cls, bits: int, power: float) -> "ScalarScorer":
-        suffix = "linear" if power == 1.0 else "power05"
+        suffixes = {1.0: "linear", 0.5: "power05", 0.625: "power0625",
+                    0.75: "power075", 0.875: "power0875"}
+        suffix = suffixes.get(power, f"power{power:g}".replace(".", ""))
         # One FP32 symmetric scale belongs to every durable document record.
         payload = (384 * bits + 7) // 8 + 4
         return cls(f"int{bits}_{suffix}", bits, power, payload)

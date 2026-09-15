@@ -1,0 +1,23 @@
+{
+  "execution_status": "EXECUTED",
+  "family": "semantic_fp32_free_codec_frontier_v2",
+  "inputs": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b"
+  },
+  "production_activation": false,
+  "raw_output": {
+    "bytes": 73450548,
+    "path": "frontier-v2.raw.json",
+    "sha256": "582d0f2304ccd04a0aa7ade39d763008cb227e67813831692418b59ffdf038cc"
+  },
+  "row_counts": {
+    "direct": 6384,
+    "final": 299136,
+    "stage": 7296
+  },
+  "runner_sha256": "b5efb0a38057f3fa7c8918ef644cbaa51b318d2102293fdf1798b19fa93e7449",
+  "schema_version": 3
+}
