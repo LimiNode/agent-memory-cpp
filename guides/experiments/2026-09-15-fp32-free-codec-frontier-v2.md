@@ -16,17 +16,14 @@ final scalar controls are FP16 and INT4/5/6/7/8/9/10/12, with linear and
 power-.5/.625/.75/.875 companders. Every scalar score is recomputed from the per-document
 quantized code; no parity is asserted by copying a score array.
 
-The checked-in receipt below predates the interval-squared correction and is
-retained only as historical context. It is not authoritative until a fresh
-replay regenerates the receipt and raw SHA with per-coordinate squared ADC.
-
-The fail-closed audit passed:
+The corrected replay regenerated the receipt and raw SHA with per-coordinate
+squared ADC. The fail-closed audit passed:
 
 ```text
 semantic_fp32_free_codec_frontier_v2_audit_v1
 stage rows: 7,296
-final cascade rows: 124,032
-direct scalar rows: 2,736
+final cascade rows: 299,136
+direct scalar rows: 6,384
 ```
 
 ## Main result
@@ -36,8 +33,8 @@ Direct scalar controls reproduce the historical quality ordering:
 
 | final representation | logical bytes/doc | candidate-FP32 top-10 overlap | teacher top-10 recall | qrels nDCG@10 |
 | --- | ---: | ---: | ---: | ---: |
-| INT6 linear | 292 | .9632 | .9572 | .6624 |
-| INT7 linear | 436 | .9829 | .9763 | .6567 |
+| INT6 power-.5 | 292 | .9566 | .9513 | .6549 |
+| INT7 linear | 340 | .9829 | .9763 | .6567 |
 | INT8 linear | 388 | .9941 | .9868 | .6562 |
 | INT9 power-.5 | 532 | .9961 | .9888 | .6571 |
 | INT10 power-.5 | 580 | .9987 | .9914 | .6569 |
@@ -54,11 +51,12 @@ For the composed path, the cheapest strong point is an ordinal-levels-3
 | levels-3 → top-256 → INT12 power-.5 | 676 | 1.0000 | .9928 | .6558 |
 
 The same scalar result appears for several THQ stage variants because the
-shortlist already contains the candidate-local FP32 top-10. That is a useful
-negative result: on this corrected R4 stream, interval-L1 and interval-squared
-do not buy measurable final quality over the ordinal control at the tested
-shortlist sizes. They may still affect work/latency, which this oracle does
-not measure.
+shortlist already contains the candidate-local FP32 top-10. With corrected
+per-coordinate interval-squared ADC, stage-only quality at levels=3 and
+shortlist=256 is ordinal-L1 `.59722`, interval-L1 `.61333`, and interval²
+`.61550` nDCG; all three have identical candidate-local FP32 final-rerank
+quality. They may still affect work/latency, which this oracle does not
+measure.
 
 ## Interpretation and next gate
 
