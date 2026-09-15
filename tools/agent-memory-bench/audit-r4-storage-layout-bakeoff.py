@@ -27,7 +27,7 @@ def main() -> None:
         require(row["physical_bytes"]>=row["logical_payload_bytes"] and row["pages"]*4096==row["physical_bytes"],"physical bytes differ")
         name=row["representation"]; payload=int(row["record_bytes"])
         if row["layout"]=="flat": pages=math.ceil(sum(counts)*payload/4096); expected=pages*4096
-        elif row["layout"]=="page_blocked": pages=sum(math.ceil(count*payload/4096) for count in counts); expected=pages*4096
+        elif row["layout"]=="page_blocked": pages=sum(math.ceil(count/(4096//payload)) for count in counts); expected=pages*4096
         elif row["layout"]=="mdbx_blob_model": pages=sum(math.ceil((16+count*payload)/4096) for count in counts); expected=pages*4096
         else:
             records_per_chunk=max(1,(4096-16)//payload); pages=sum(math.ceil(count/records_per_chunk) for count in counts); expected=pages*4096

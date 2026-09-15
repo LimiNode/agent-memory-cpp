@@ -32,7 +32,7 @@ def main() -> None:
         logical=total*payload; flat_pages=math.ceil(logical/PAGE); offset=0
         blocked_pages=blob_pages=chunk_pages=0; records_per_chunk=max(1,(PAGE-16)//payload)
         for count in counts:
-            blocked_pages+=math.ceil(count*payload/PAGE)
+            blocked_pages+=math.ceil(count/(PAGE//payload))
             blob_pages+=math.ceil((16+count*payload)/PAGE)
             chunk_pages+=math.ceil(count/records_per_chunk)
             offset+=count
