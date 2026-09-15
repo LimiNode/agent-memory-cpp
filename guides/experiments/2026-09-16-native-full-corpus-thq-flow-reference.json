@@ -1,0 +1,31 @@
+{
+  "family": "native_full_corpus_thq_flow_reference_v1",
+  "status": "EXECUTED",
+  "evidence_status": "numpy_reference_quality_and_arithmetic_cost_only",
+  "documents": 1000000,
+  "dimension": 384,
+  "training_count": 100000,
+  "query_count": 8,
+  "chunk_size": 16384,
+  "document_vectors_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+  "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+  "modes": [
+    {"levels": 4, "mode": "ordinal-l1", "logical_packed_bytes_per_document": 96, "teacher_overlap_mean": 0.775, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 3999.8063500388525},
+    {"levels": 4, "mode": "interval-l1", "logical_packed_bytes_per_document": 96, "teacher_overlap_mean": 0.8375, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 3990.6839249888435},
+    {"levels": 4, "mode": "interval-squared", "logical_packed_bytes_per_document": 96, "teacher_overlap_mean": 0.875, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 3726.8174000200815},
+    {"levels": 5, "mode": "ordinal-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.8375, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 3737.898462510202},
+    {"levels": 5, "mode": "interval-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.85, "teacher_overlap_min": 0.4, "ordered_top10_parity": 0, "reference_scan_ms_mean": 4221.38659999473},
+    {"levels": 5, "mode": "interval-squared", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.875, "teacher_overlap_min": 0.6, "ordered_top10_parity": 0, "reference_scan_ms_mean": 3781.4054250484332},
+    {"levels": 6, "mode": "ordinal-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.85, "teacher_overlap_min": 0.6, "ordered_top10_parity": 0, "reference_scan_ms_mean": 3849.0319499978796},
+    {"levels": 6, "mode": "interval-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.8625, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 3949.8971875291318},
+    {"levels": 6, "mode": "interval-squared", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.8875, "teacher_overlap_min": 0.6, "ordered_top10_parity": 0, "reference_scan_ms_mean": 4352.471262507606},
+    {"levels": 7, "mode": "ordinal-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.7875, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 4025.4921375308186},
+    {"levels": 7, "mode": "interval-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.875, "teacher_overlap_min": 0.6, "ordered_top10_parity": 1, "reference_scan_ms_mean": 4055.914800032042},
+    {"levels": 7, "mode": "interval-squared", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.9125, "teacher_overlap_min": 0.7, "ordered_top10_parity": 0, "reference_scan_ms_mean": 4072.426800034009},
+    {"levels": 8, "mode": "ordinal-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.825, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 4697.830987512134},
+    {"levels": 8, "mode": "interval-l1", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.9, "teacher_overlap_min": 0.5, "ordered_top10_parity": 0, "reference_scan_ms_mean": 4417.88241249742},
+    {"levels": 8, "mode": "interval-squared", "logical_packed_bytes_per_document": 144, "teacher_overlap_mean": 0.9, "teacher_overlap_min": 0.6, "ordered_top10_parity": 0, "reference_scan_ms_mean": 4413.929937465582}
+  ],
+  "teacher_reference_build_ms": 1617.4785001203418,
+  "not_established": ["native SIMD throughput", "cold/warm OS or MDBX page latency", "thermometer XOR/POPCNT control"]
+}

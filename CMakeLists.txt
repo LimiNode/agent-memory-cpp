@@ -1762,6 +1762,18 @@ if(AGENT_MEMORY_BUILD_TESTS)
                 -P ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/validate-binary-lifecycle-config-compat.cmake
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_native_full_corpus_codec_benchmark_self_test
+            COMMAND $<TARGET_FILE:agent-memory-native-full-corpus-codec-benchmark> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_full_corpus_candidate_gate_reference_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-native-full-corpus-candidate-gate.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     endif()
     add_subdirectory(tests)
 endif()

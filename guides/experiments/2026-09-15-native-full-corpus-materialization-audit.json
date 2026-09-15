@@ -1,0 +1,32 @@
+{
+  "family": "native_full_corpus_codec_materialization_audit_v2",
+  "status": "PASS",
+  "documents": 1000000,
+  "rows_audited": 1000000,
+  "chunk_size": 16384,
+  "manifest_sha256": "9382ab970e684baa3dee8dd2200ac02a43206ca3e2e6c70ab41ce6f1c9f25b74",
+  "materializer_sha256": "2143d8fb148d8089d6c7613c85679982185579145fed7973328dafddaa91af92",
+  "materialization_raw_sha256": "6c113899a4c3e9f2a88cd4d7271aadd49dbf4e95d3c1fcb1a2f6d08b6669d345",
+  "materialization_receipt_sha256": "113dae55124e43020b1c91bb70421c53885299791a9d580d5352e4c921d9890d",
+  "audit_runner_sha256": "26a12c8a552fb7d9ae9a5e7807e94b501ea296c359d31436800e16ad92cf1e21",
+  "training_count": 100000,
+  "quantile_method": "linear",
+  "numpy_version": "2.4.6",
+  "power0625_scale_semantics": {
+    "stored_value": "transformed_domain_scale",
+    "decode_gain": "pow(stored_value, 1.6)",
+    "native_query_path": "decode_gain_materialized_once_before_query_loop"
+  },
+  "source_document_vectors": {
+    "bytes": 1536000000,
+    "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+  },
+  "output_payload_sha256": {
+    "thq4_ordinal": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "int8_linear_codes": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+    "int8_linear_scales": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+    "int8_power0625_codes": "1b70c6e1d7878e056ef97c7c6f2aca2d5d6c768e588f76a270f928da07d9b887",
+    "int8_power0625_scales": "7111c2836e8fa2a0e0817df6abf8b5bd60c223f5437dc00fcd5d5542920a6686"
+  }
+}

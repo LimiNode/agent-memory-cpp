@@ -586,6 +586,18 @@ add_executable(agent-memory-rthq-native-benchmark
     rthq_native_benchmark.cpp)
 target_compile_features(agent-memory-rthq-native-benchmark PRIVATE cxx_std_17)
 
+# Full-corpus scalar control for the native THQ/INT8 materialization.  The
+# executable is intentionally a portable reference target; it is not the
+# R4 candidate-stream gate and does not claim production latency.
+add_executable(agent-memory-native-full-corpus-codec-benchmark
+    native-full-corpus-codec-benchmark.cpp)
+target_compile_features(agent-memory-native-full-corpus-codec-benchmark PRIVATE cxx_std_17)
+agent_memory_set_evaluator_source_manifest(
+    agent-memory-native-full-corpus-codec-benchmark
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-full-corpus-codec-benchmark.cpp")
+agent_memory_set_evaluator_build_environment(
+    agent-memory-native-full-corpus-codec-benchmark)
+
 # Native packed ordinal THQ/ADC gate.  This benchmark is an exhaustive
 # validation harness: it compares the 144-byte thermometer representation with
 # a derived 96-byte ordinal payload and query-conditioned interval ADC.  It
