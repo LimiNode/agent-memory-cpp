@@ -31,6 +31,14 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def validate_file(path: Path, metadata: dict[str, Any], label: str) -> None:
+    require(path.is_file(), f"missing {label}: {path}")
+    if metadata.get("sha256") is not None:
+        require(sha256(path) == str(metadata["sha256"]), f"{label} SHA differs: {path}")
+    if metadata.get("bytes") is not None:
+        require(path.stat().st_size == int(metadata["bytes"]), f"{label} size differs: {path}")
+
+
 def aggregate(values: list[float]) -> dict[str, float]:
     array = np.asarray(values, dtype=np.float64)
     return {"min": float(array.min()), "mean": float(array.mean()),
@@ -41,6 +49,9 @@ def aggregate(values: list[float]) -> dict[str, float]:
 def load_route(root: Path, record: dict[str, Any]) -> dict[str, Any]:
     route_root = root / f"seed-{int(record['seed'])}"
     mapping = {str(item["role"]): item for item in record["mappings"]}
+    for role in ("address_offsets", "address_counts", "physical_to_document"):
+        validate_file(root / f"seed-{int(record['seed'])}" / mapping[role]["file"],
+                      mapping[role], f"{record['seed']}/{role}")
     offsets = np.fromfile(route_root / mapping["address_offsets"]["file"], dtype="<u4")
     counts = np.fromfile(route_root / mapping["address_counts"]["file"], dtype="<u4")
     physical = np.fromfile(route_root / mapping["physical_to_document"]["file"], dtype="<i4")
@@ -117,14 +128,23 @@ def main() -> None:
                        (int(row.get("lanes", 0)) == args.layout_lanes or int(row.get("k", 0)) == 16) and
                        row.get("layout", args.layout_mode) == args.layout_mode)
         order = Path(binding["order"])
-        result_meta = json.loads(Path(binding["result"]).read_text(encoding="utf-8"))
+        result = Path(binding["result"])
+        validate_file(order, {"sha256": binding.get("order_sha256"),
+                              "bytes": binding.get("order_bytes")},
+                      f"native order seed={seed}")
+        validate_file(result, {"sha256": binding.get("result_sha256"),
+                               "bytes": binding.get("result_bytes")},
+                      f"native result seed={seed}")
+        result_meta = json.loads(result.read_text(encoding="utf-8"))
         addresses = int(result_meta.get("addresses", result_meta.get("rows",
                                  result_meta.get("coarse_rows", 0))))
         current_order, current_scores = read_orders(order, queries, addresses, args.addresses_refined)
         orders.append(current_order); scores.append(current_scores)
         native_bindings.append({"seed": seed, "layout": args.layout_mode, "lanes": args.layout_lanes,
                                 "order": str(order), "order_sha256": sha256(order),
-                                "result": str(binding["result"]), "result_sha256": sha256(Path(binding["result"]))})
+                                "order_bytes": order.stat().st_size,
+                                "result": str(result), "result_sha256": sha256(result),
+                                "result_bytes": result.stat().st_size})
     documents = int(thq["documents"])
     queries_data = np.memmap(Path(thq["references"]["queries"]["path"]), mode="r",
                              dtype="<f4", shape=(queries, int(thq["dimension"])))
@@ -142,6 +162,7 @@ def main() -> None:
         posting_pages: set[tuple[int, int]] = set()
         document_pages: set[int] = set()
         page_sequence: list[tuple[int, int]] = []
+        thq_page_sequence: list[int] = []
         touched_addresses: list[tuple[int, int]] = []
         touched = 0
         entries = 0
@@ -168,19 +189,28 @@ def main() -> None:
                 dstart = int(doc_id) * code_bytes
                 dend = dstart + code_bytes - 1
                 document_pages.update(range(dstart // PAGE_BYTES, dend // PAGE_BYTES + 1))
+                thq_page_sequence.extend(range(dstart // PAGE_BYTES, dend // PAGE_BYTES + 1))
             if len(selected) >= BUDGETS[budget_index]:
-                page_runs = 0
-                transitions = 0
-                forward_lengths: list[int] = []
-                if page_sequence:
-                    run = 1; page_runs = 1
-                    for prev, cur in zip(page_sequence, page_sequence[1:]):
-                        if cur[0] == prev[0] and cur[1] == prev[1] + 1:
-                            run += 1
-                        else:
-                            forward_lengths.append(run); run = 1; page_runs += 1
+                def sequence_metrics(sequence: list[Any]) -> tuple[int, int, float, int]:
+                    if not sequence:
+                        return 0, 0, 0.0, 0
+                    runs = 1
+                    transitions = 0
+                    lengths: list[int] = [1]
+                    for previous, current in zip(sequence, sequence[1:]):
                         transitions += 1
-                    forward_lengths.append(run)
+                        if isinstance(current, tuple):
+                            contiguous = current[0] == previous[0] and current[1] == previous[1] + 1
+                        else:
+                            contiguous = current == previous + 1
+                        if contiguous:
+                            lengths[-1] += 1
+                        else:
+                            runs += 1
+                            lengths.append(1)
+                    return runs, transitions, float(np.mean(lengths)), max(lengths)
+                page_runs, transitions, posting_run_mean, posting_run_max = sequence_metrics(page_sequence)
+                thq_runs, thq_transitions, thq_run_mean, thq_run_max = sequence_metrics(thq_page_sequence)
                 candidate_arr = np.asarray(selected, dtype=np.int64)
                 qv = queries_data[query]
                 t1, t2, t3 = thresholds[:, 0], thresholds[:, 1], thresholds[:, 2]
@@ -216,10 +246,14 @@ def main() -> None:
                              "posting_page_keys": [[int(s), int(pg)] for s, pg in sorted(posting_pages)],
                              "touched_addresses": [[int(s), int(ad)] for s, ad in touched_addresses],
                              "thq_candidate_page_ids": sorted(int(x) for x in document_pages),
-                             "page_run_count": page_runs,
-                             "page_transitions": transitions,
-                             "forward_contiguous_run_mean": float(np.mean(forward_lengths)) if forward_lengths else 0.0,
-                             "forward_contiguous_run_max": max(forward_lengths) if forward_lengths else 0})
+                             "posting_page_run_count": page_runs,
+                             "posting_page_transitions": transitions,
+                             "posting_forward_contiguous_run_mean": posting_run_mean,
+                             "posting_forward_contiguous_run_max": posting_run_max,
+                             "thq_page_run_count": thq_runs,
+                             "thq_page_transitions": thq_transitions,
+                             "thq_forward_contiguous_run_mean": thq_run_mean,
+                             "thq_forward_contiguous_run_max": thq_run_max})
                 budget_index += 1
     summaries = []
     for budget in BUDGETS:
@@ -229,8 +263,11 @@ def main() -> None:
                              ("candidate_count", "postings_touched", "posting_entries_touched",
                               "posting_pages", "thq_document_pages", "union_pages",
                               "exact_top256_fp32_record_pages", "useful_exact_payload_bytes",
-                              "exact_fp32_page_amplification", "page_run_count", "page_transitions",
-                              "forward_contiguous_run_mean", "forward_contiguous_run_max")}})
+                              "exact_fp32_page_amplification", "posting_page_run_count",
+                              "posting_page_transitions", "posting_forward_contiguous_run_mean",
+                              "posting_forward_contiguous_run_max", "thq_page_run_count",
+                              "thq_page_transitions", "thq_forward_contiguous_run_mean",
+                              "thq_forward_contiguous_run_max")}})
     raw = {"schema_version": 1, "family": "semantic_r4_posting_page_proxy_v1", "rows": rows}
     raw_bytes = (json.dumps(raw, separators=(",", ":"), sort_keys=True) + "\n").encode()
     args.raw_output.parent.mkdir(parents=True, exist_ok=True); args.raw_output.write_bytes(raw_bytes)

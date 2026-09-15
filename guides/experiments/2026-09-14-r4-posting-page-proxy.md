@@ -16,7 +16,8 @@ code file. A THQ record uses the inclusive byte interval `[id*144,id*144+143]`;
 there are about 28.44 records per page, not 3.5. The production exact stage is
 modeled separately: THQ ADC selects top-256, then exact FP32 reads 1536-byte
 records for only those 256 documents. The receipt also records page
-runs/transitions and exact-stage pages.
+runs/transitions and exact-stage pages. Posting-page and THQ-document gather
+sequences are recorded separately; their locality metrics must not be mixed.
 
 This is deliberately not an MDBX benchmark: it does not create an MDBX
 database, control OS cache eviction, observe physical media reads, or report
@@ -33,8 +34,9 @@ service latency.  Page counts are file-range arithmetic only.
 
 The candidate THQ gather still dominates. At 5k the exact FP32 stage reads
 393,216 useful bytes (`256 * 1536`) and touches 306.5 pages on average, for
-3.19x page amplification. Page-run mean is 256.9 and forward contiguous runs
-average 1.02 pages, so distinct-page counts do not imply sequential I/O. The
+3.19x page amplification. Posting-page forward runs average 1.02 pages, while
+the THQ-document gather sequence averages about 1.03 pages at 5k. Distinct-page
+counts therefore do not imply sequential I/O. The
 result supports a fused contiguous payload or candidate-friendly secondary
 representation, but does not claim that the current document-ID layout is
 candidate-friendly.

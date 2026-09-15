@@ -23,6 +23,14 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def validate_file(path: Path, metadata: dict, label: str) -> None:
+    require(path.is_file(), f"missing {label}: {path}")
+    if metadata.get("sha256") is not None:
+        require(sha256(path) == str(metadata["sha256"]), f"{label} SHA differs")
+    if metadata.get("bytes") is not None:
+        require(path.stat().st_size == int(metadata["bytes"]), f"{label} size differs")
+
+
 def require(value: bool, message: str) -> None:
     if not value:
         raise RuntimeError(message)
@@ -54,6 +62,14 @@ def main() -> None:
             receipt["r4_layout_manifest_sha256"] == sha256(args.r4_layout_manifest) and
             receipt["native_receipt_sha256"] == sha256(args.native_receipt) and
             receipt["runner_sha256"] == sha256(args.runner), "proxy provenance differs")
+    for binding in receipt["native_bindings"]:
+        validate_file(Path(binding["order"]),
+                      {"sha256": binding.get("order_sha256"),
+                       "bytes": binding.get("order_bytes")},
+                      f"native order {binding['seed']}")
+        validate_file(Path(binding["result"]),
+                      {"sha256": binding["result_sha256"]},
+                      f"native result {binding['seed']}")
     require(int(receipt.get("native_layout", {}).get("lanes", 0)) == 32,
             "proxy must use production AoSoA-32 stream")
     layout = json.loads(args.r4_layout_manifest.read_text(encoding="utf-8"))
@@ -61,6 +77,8 @@ def main() -> None:
     for record in layout["seeds"]:
         root = args.r4_layout_root / f"seed-{int(record['seed'])}"
         mapping = {str(x["role"]): x for x in record["mappings"]}
+        for role in ("address_offsets", "address_counts", "physical_to_document"):
+            validate_file(root / mapping[role]["file"], mapping[role], f"{record['seed']}/{role}")
         offsets = np.fromfile(root / mapping["address_offsets"]["file"], dtype="<u4")
         counts = np.fromfile(root / mapping["address_counts"]["file"], dtype="<u4")
         physical = np.fromfile(root / mapping["physical_to_document"]["file"], dtype="<i4")
@@ -79,8 +97,11 @@ def main() -> None:
                 int(row["union_pages"]) == int(row["posting_pages"]) + int(row["thq_document_pages"]),
                 f"proxy accounting differs: {identity}")
         for field in ("exact_top256_fp32_record_pages", "useful_exact_payload_bytes",
-                      "exact_fp32_page_amplification", "page_run_count", "page_transitions",
-                      "forward_contiguous_run_mean", "forward_contiguous_run_max"):
+                      "exact_fp32_page_amplification", "posting_page_run_count",
+                      "posting_page_transitions", "posting_forward_contiguous_run_mean",
+                      "posting_forward_contiguous_run_max", "thq_page_run_count",
+                      "thq_page_transitions", "thq_forward_contiguous_run_mean",
+                      "thq_forward_contiguous_run_max"):
             require(float(row[field]) >= 0.0, f"proxy metric differs: {identity}/{field}")
         expected_posting_pages = set()
         for stream, address in row["touched_addresses"]:
@@ -133,8 +154,11 @@ def main() -> None:
         require(int(summary_map[budget]["query_count"]) == len(selected), f"proxy summary count differs: {budget}")
         for field in ("candidate_count", "postings_touched", "posting_entries_touched", "posting_pages",
                       "thq_document_pages", "union_pages", "exact_top256_fp32_record_pages",
-                      "useful_exact_payload_bytes", "exact_fp32_page_amplification", "page_run_count",
-                      "page_transitions", "forward_contiguous_run_mean", "forward_contiguous_run_max"):
+                      "useful_exact_payload_bytes", "exact_fp32_page_amplification",
+                      "posting_page_run_count", "posting_page_transitions",
+                      "posting_forward_contiguous_run_mean", "posting_forward_contiguous_run_max",
+                      "thq_page_run_count", "thq_page_transitions",
+                      "thq_forward_contiguous_run_mean", "thq_forward_contiguous_run_max"):
             for key, value in aggregate([float(row[field]) for row in selected]).items():
                 require(math.isclose(float(summary_map[budget][field][key]), value, abs_tol=1e-9),
                         f"proxy aggregate differs: {budget}/{field}/{key}")
