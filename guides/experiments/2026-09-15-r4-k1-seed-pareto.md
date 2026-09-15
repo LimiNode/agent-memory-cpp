@@ -1,4 +1,4 @@
-# K1→K16 seed-count/A Pareto gate (2026-09-15)
+# K1→K16 seed-count/A quality frontier (2026-09-15)
 
 This diagnostic reuses the frozen AoSoA-32 K1→K16 address orders from #407.
 It evaluates every non-empty subset of the three seeds at `A=8192` and
@@ -22,6 +22,9 @@ arm remains `.9928`, while the best pair is `.9829`. This confirms that seed
 diversity, rather than simply increasing A, is the dominant low-budget quality
 lever. Single-seed operation is not a viable default.
 
-Independent audit: `semantic_r4_k1_seed_pareto_audit_v1`, 2,128 rows, PASS.
+This is a quality frontier over `(seed_count, A)`, not a runtime Pareto curve:
+native representative/address work and latency are not measured here.
+
+Independent audit: `semantic_r4_k1_seed_pareto_audit_v2`, 2,128 rows, PASS.
 The raw receipt is retained outside Git and SHA-bound to the frozen manifests
 and native order files.
