@@ -17,11 +17,13 @@ def sha256(path: Path) -> str:
 
 def main() -> None:
     p=argparse.ArgumentParser(); p.add_argument('--receipt',type=Path,required=True); p.add_argument('--raw',type=Path,required=True); p.add_argument('--runner',type=Path,required=True); a=p.parse_args()
-    r=json.loads(a.receipt.read_text()); raw=json.loads(a.raw.read_text())
-    require(r['family']==raw['family']=='semantic_r4_fused_payload_layout_v1', 'family differs')
-    require(r['execution_status']=='EXECUTED' and not r['production_activation'], 'status differs')
+    r=json.loads(a.receipt.read_text(encoding='utf-8')); raw=json.loads(a.raw.read_text(encoding='utf-8'))
+    require(r.get('family')==raw.get('family')=='semantic_r4_fused_payload_layout_v1', 'family differs')
+    require(r.get('execution_status')=='EXECUTED' and r.get('production_activation') is False, 'status differs')
     require(r['raw_sha256']==sha256(a.raw) and r['runner_sha256']==sha256(a.runner), 'provenance differs')
     require(raw.get('protocol', {}).get('record_order') == 'document_id', 'record order differs')
+    require(raw.get('protocol', {}).get('touch_semantics') == 'one_byte_per_record',
+            'benchmark scope differs: only one byte per record is touched')
     rows={x['layout']:x for x in raw['rows']}
     require(set(rows)=={'fused-flat','fused-page-aligned'}, 'layout grid differs')
     require(rows['fused-flat']['page_amplification']==1.0, 'flat amplification differs')
