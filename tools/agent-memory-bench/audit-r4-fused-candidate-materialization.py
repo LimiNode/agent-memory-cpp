@@ -45,6 +45,10 @@ def main() -> None:
         binding=next(x for x in native["native_outputs"] if int(x["seed"])==seed and x["layout"]=="aosoa_avx2" and int(x["lanes"])==32)
         order=Path(binding["order"]); require(sha(order)==binding["order_sha256"] and order.stat().st_size==int(binding["order_bytes"]),"native order provenance differs"); orders[seed]=read_order(order)
     documents=int(thq["documents"]); rows=raw["rows"]; require(len(rows)==QUERIES,"row count differs")
+    code_path=Path(thq["outputs"]["thq4_document_codes"]["path"])
+    require(code_path.is_file() and sha(code_path)==thq["outputs"]["thq4_document_codes"]["sha256"], "THQ code provenance differs")
+    codes=np.memmap(code_path, mode="r", dtype=np.uint8, shape=(documents, 144))
+    expected_sequences=[]
     for row in rows:
         query=int(row["query"]); seen=np.zeros(documents,dtype=np.bool_); selected=[]; positions=[0,0,0]; touched=entries=0
         while len(selected)<BUDGET:
@@ -52,10 +56,26 @@ def main() -> None:
             stream=max(available,key=lambda i:(float(orders[SEEDS[i]][query][1][positions[i]]),-i)); address=int(orders[SEEDS[stream]][query][0][positions[stream]]); positions[stream]+=1
             posting=routes[SEEDS[stream]][address]; fresh=posting[~seen[posting]]; seen[posting]=True; selected.extend(int(x) for x in fresh); touched+=1; entries+=len(posting)
         require(len(selected)==int(row["candidate_count"]) and len(selected)>=BUDGET and int(row["postings_touched"])==touched and int(row["posting_entries_touched"])==entries,"candidate stream differs")
+        expected_sequences.append(np.asarray(selected, dtype=np.int32))
     flat=Path(receipt["flat_file"]["path"]); blocked=Path(receipt["blocked_file"]["path"]); require(flat.is_file() and blocked.is_file(),"materialized files missing")
     require(sha(flat)==receipt["flat_file"]["sha256"] and sha(blocked)==receipt["blocked_file"]["sha256"],"materialized file provenance differs")
     require(receipt["flat_file"]["bytes"]==sum(int(row["candidate_count"])*RECORD for row in rows),"flat size differs")
     require(receipt["blocked_file"]["bytes"]==sum((int(row["candidate_count"])+26)//27*PAGE for row in rows),"blocked size differs")
+    flat_mm=np.memmap(flat, mode="r", dtype=np.uint8)
+    blocked_mm=np.memmap(blocked, mode="r", dtype=np.uint8)
+    flat_offset=0; blocked_offset=0
+    for row, expected in zip(rows, expected_sequences):
+        count=len(expected); flat_bytes=np.asarray(flat_mm[flat_offset:flat_offset+count*RECORD], dtype=np.uint8).reshape(count, RECORD)
+        stored_ids=flat_bytes[:, :4].copy().view("<i4").reshape(-1)
+        require(np.array_equal(stored_ids, expected), f"stored candidate IDs differ: query={row['query']}")
+        require(np.array_equal(flat_bytes[:, 4:], np.asarray(codes[expected])), f"stored THQ payload differs: query={row['query']}")
+        require(float(np.abs(np.diff(expected.astype(np.int64))).mean()) == float(row["mean_abs_doc_delta"]), f"doc delta differs: query={row['query']}")
+        pages=(count+26)//27; block_bytes=np.asarray(blocked_mm[blocked_offset:blocked_offset+pages*PAGE], dtype=np.uint8).reshape(pages, PAGE)
+        for page in range(pages):
+            take=min(27, count-page*27); require(np.array_equal(block_bytes[page,:take*RECORD].reshape(take,RECORD), flat_bytes[page*27:page*27+take]), f"blocked payload differs: query={row['query']}")
+            require(not np.any(block_bytes[page,take*RECORD:] if take*RECORD < PAGE else np.asarray([],dtype=np.uint8)), f"blocked padding differs: query={row['query']}")
+        flat_offset += count*RECORD; blocked_offset += pages*PAGE
+    require(flat_offset==flat.stat().st_size and blocked_offset==blocked.stat().st_size, "materialized stream length differs")
     print(json.dumps({"family":"semantic_r4_fused_candidate_materialization_audit_v2","status":"PASS","rows":len(rows)},sort_keys=True))
 if __name__=="__main__":
     try: main()
