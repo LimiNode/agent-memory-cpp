@@ -8,8 +8,11 @@ complete persistent index footprint.
 
 1. Per-document FP32 E5 vectors are not stored in the production index.
 2. Exact FP32 E5 is an offline teacher/reference only.
-3. Packed ordinal THQ (96 bytes/document at 384 dimensions) is the canonical
-   production THQ representation. The 144-byte thermometer is research-only.
+3. Packed THQ4 ordinal (96 bytes/document at 384 dimensions) is the current
+   prefilter candidate. It is not a canonical production representation until
+   the native total-footprint/latency gate proves that THQ is better than a
+   direct shared scalar table. The 144-byte thermometer remains a research
+   control, not a production default.
 4. qrels nDCG@10 is the primary quality gate. Exact-teacher overlap is a
    diagnostic, not the product objective.
 5. No query-specific candidate slab or pre-materialized query result is part
@@ -24,6 +27,18 @@ complete persistent index footprint.
    physical MDBX/OS pages.
 10. The same document code is not stored once per seed unless a measured
     latency/quality gain justifies its additional footprint.
+
+The direct shared INT8 path and the THQ4-prefilter path therefore remain equal
+decision arms until native evidence resolves the trade-off:
+
+```text
+direct: shared INT8 -> top-10
+cascade: THQ4 interval-squared -> top-128 -> shared INT8 -> top-10
+```
+
+The current 96-byte THQ4 choice is a research hypothesis, not permission to
+add a second persistent representation without measured bandwidth, page and
+end-to-end latency benefit.
 
 ## Required architecture comparisons
 
@@ -60,4 +75,3 @@ offline exact E5 teacher top-10 over the full corpus
 For all 152 queries, report qrels nDCG@10 for each output, candidate
 survival separately, and teacher overlap only as a diagnostic. A lower teacher
 overlap is acceptable only when product qrels quality remains acceptable.
-
