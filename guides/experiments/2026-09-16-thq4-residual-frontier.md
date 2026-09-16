@@ -66,24 +66,31 @@ maximum absolute score discrepancy was below `1.8e-7` for all three payloads;
 this verifies the arithmetic path, not ranking quality.
 
 The centroid reconstruction residual has mean squared energy `0.038365` of
-the unit-norm source energy.  The first 32 PCA components explain only
-`0.129800` of that residual energy.  This is a broad residual, not a sharply
-low-rank correction.  Training-only scales caused document-side saturation of
+the unit-norm source energy.  The cumulative PCA spectrum is:
+
+| components | residual energy explained |
+| ---: | ---: |
+| 16 | 0.073844 |
+| 32 | 0.129800 |
+| 64 | 0.231401 |
+| 128 | 0.415658 |
+| 256 | 0.735764 |
+
+This is a broad residual, not a sharply low-rank correction.  Training-only scales caused document-side saturation of
 `2.85e-5`, `2.16e-5`, and `1.78e-5` of scalar values for the 8/16/32-byte
 streams respectively; the codes are clipped and the saturation is reported,
 not silently absorbed.
 
 ## Interpretation
 
-The diagnostic does not support the naive claim that THQ4 centroid plus a
-small PCA side-code is already a replacement for INT8.  Residual PQ is more
-effective than PCA on this slice: the 16-byte PQ row exceeds the INT8 qrels
-nDCG mean numerically, while its teacher overlap is still only `0.813` and it
-has no ordered top-10 parity.  The 32-byte PQ row approaches the interval
-THQ4 teacher overlap (`0.850` versus `0.875`) but does not improve qrels nDCG
-monotonically.  These are useful signs for a PQ follow-up, not a production
-selection result.  The residual spectrum remains a negative signal for a
-linear PCA side-code specifically.
+The direct full-corpus screen does not support the claim that THQ4 centroid
+plus a small PCA side-code is already a replacement for INT8.  Residual PQ is
+more effective than PCA on this slice, but these direct numbers conflate the
+retrieval/filtering task with the final scorer task.  In particular, the
+`0.850` PQ32 direct overlap is not the correct production-stage question when
+THQ4 has already supplied a top-128 candidate set.  The residual spectrum is
+still a negative signal for the narrow hypothesis "a few high-precision PCA
+components are sufficient"; rate-matched low-bit PCA remains untested here.
 
 This is not a rejection of all structured residual coding.  It is a bounded
 disconfirmation of the first PCA residual hypothesis.  Residual PQ/OPQ and
@@ -100,9 +107,44 @@ trained on the same detached sample before a final decision.
   25,000-row training split; this is intentional but means centroid and
   interval rows are different scorers.
 
+## Stage-local final-rerank diagnostic
+
+`tools/agent-memory-bench/run-thq-residual-stage-local.py` replays the actual
+stage boundary on the same eight-query slice:
+
+```text
+full corpus → THQ4 interval-squared → top128
+            → candidate-local residual scorer → top10
+```
+
+Every arm receives the identical 128 IDs.  The result is retained as
+`thq-residual-stage-local-8q.json` outside Git.  The mean teacher overlap is:
+
+| final scorer | raw dot product | exact reconstructed norm | FP16 norm | uint8 norm |
+| --- | ---: | ---: | ---: | ---: |
+| THQ4 centroid | 0.713 | 0.875 | 0.875 | 0.863 |
+| PCA8 | 0.750 | 0.888 | 0.888 | 0.888 |
+| PCA16 | 0.750 | 0.875 | 0.875 | 0.875 |
+| PCA32 | 0.750 | 0.875 | 0.875 | 0.875 |
+| residual PQ8 | 0.788 | 0.875 | 0.875 | 0.875 |
+| residual PQ16 | 0.813 | 0.888 | 0.888 | 0.888 |
+| residual PQ32 | 0.850 | 0.938 | 0.938 | 0.938 |
+| INT8 linear | 1.000 | 1.000 | 1.000 | 1.000 |
+
+The THQ4 prefilter itself retained the exact candidate top-10 on all eight
+queries in this diagnostic, so the differences above are final-scorer
+differences, not retrieval misses.  Norm correction is therefore a required
+control: raw reconstructed dot products materially understate every residual
+arm, while FP16 and training-range uint8 norms were indistinguishable from the
+exact-norm oracle on this slice.
+
+This is still not a production result.  It uses a full-corpus THQ4 top-128
+oracle rather than the unavailable canonical R4 candidate stream, and the
+query count is eight.
+
 ## Next check
 
-Run residual OPQ at 8/16/32 B and independently check PQ decode/ADC parity
-against an explicit reconstructed-vector scorer.  Then promote the question
-to the canonical quality gate only after the 152-query payload is restored;
-do not use this eight-query result to select a production codec.
+Run rate-matched low-bit PCA, PQ4/8 and OPQ arms with the same stage-local
+boundary and norm controls.  Then promote the question to the canonical
+quality gate only after the 152-query payload is restored; do not use this
+eight-query result to select a production codec.

@@ -169,7 +169,7 @@ def main() -> None:
     centroids = fit_centroids(np.asarray(train, dtype=np.float32), thresholds)
     training_reconstruction = reconstruct(pack_thq(np.asarray(train), thresholds), centroids)
     training_residual = np.asarray(train, dtype=np.float32) - training_reconstruction
-    basis, eigenvalues = fit_pca(training_residual, 32)
+    basis, eigenvalues = fit_pca(training_residual, min(256, DIMENSION))
     training_projected = training_residual @ basis
     scales = np.max(np.abs(training_projected), axis=0) / 127.0
     scales[scales == 0.0] = 1.0
@@ -370,7 +370,10 @@ def main() -> None:
         "pca_basis_sha256": hashlib.sha256(basis.astype("<f4").tobytes()).hexdigest(),
         "reconstruction": {"residual_energy": residual_energy, "source_energy": total_energy,
                            "residual_fraction": residual_energy / max(total_energy, 1e-12),
-                           "pca_top32_explained_residual_fraction": float(np.sum(explained)),
+                           "pca_top32_explained_residual_fraction": float(np.sum(explained[:32])),
+                           "pca_cumulative_explained_residual_fraction": {
+                               str(width): float(np.sum(explained[:width]))
+                               for width in (16, 32, 64, 128, 256)},
                            "pca_explained_fraction_by_component": explained.tolist()},
         "logical_payload_bytes_per_document": {"thq4": 96, "thq4_pca8": 104,
                                                 "thq4_pca16": 112, "thq4_pca32": 128,
