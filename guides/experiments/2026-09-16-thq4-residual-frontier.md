@@ -220,3 +220,27 @@ The next discriminating check, if this branch remains scientifically
 interesting, is therefore a retrieval-oriented decoder trained against dense
 teacher score differences on a separate query-training split.  It must not be
 promoted from this eight-query MSE failure directly to native implementation.
+
+## Held-out retrieval-distillation probe
+
+That next check was run as a bounded upper-bound probe with
+`tools/agent-memory-bench/run-thq-retrieval-distill-stage-local.py`.  The
+decoder was trained only on qrels from queries `8..304` (297 queries, 4,966
+positive/negative pairs); queries `0..7` were held out for the reported
+stage-local screen.  The loss was a normalized pairwise margin plus a small
+MSE stabilizer.
+
+The held-out result was `0.100` mean teacher overlap (minimum `0.0`) for the
+retrieval decoder, while the source-vector control was `1.000`.  Thus the
+decoder did fit the training objective (final loss `0.00031`) without
+preserving the held-out teacher geometry.  This is evidence against the
+specific one-hot THQ4 + small pairwise decoder, not against retrieval-aware
+compression in general: the model sees only independent THQ levels and the
+training objective is query-specific.
+
+The compact result SHA-256 is
+`d71a117b1683c40c479d66e9d0a76558a99b339d34b8b92764f82adf820769fd`; the
+receipt SHA-256 is
+`0057cee94a4d2de6a9845880bd3e9267121a4be7d22e06366a789d9eb09cf7a6`.
+The next useful upper bound is a decoder with explicit cross-coordinate
+features or a teacher-score table, not a larger blind MLP.
