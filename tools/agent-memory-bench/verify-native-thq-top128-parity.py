@@ -104,6 +104,9 @@ def main() -> None:
         observed_scores = np.asarray(row.get("cascade_thq_top128_scores", []),
                                      dtype=np.float32)
         require(len(observed) == K, f"native top-128 ID count differs at {qi}")
+        require(len(set(observed)) == K, f"native top-128 IDs are duplicated at {qi}")
+        require(all(0 <= value < N for value in observed),
+                f"native top-128 ID is out of range at {qi}")
         require(observed_scores.shape == (K,),
                 f"native top-128 score count differs at {qi}")
         if set(observed) != set(expected):
