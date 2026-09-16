@@ -1,0 +1,21 @@
+{
+  "compact_result_sha256": "104fe85519c6a09552b980fa0ea032484365a4fce3925e7c6ef3ce3ffbdc48ad",
+  "family": "thq_rq_stage_local_receipt_v1",
+  "input_hashes": {
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "result_sha256": "0ac917e318eff05a3f6660ac1c72c785636737aea741eb01e58d38b306eb5388",
+  "runner_sha256": "c075d806e58639ec042b3f62de528caa831622a0b2e72856ec2a7b7eb023970e",
+  "schema_version": 1,
+  "scope": {
+    "canonical_152_query_payload": false,
+    "native_latency": false,
+    "qinqo_reproduction": false,
+    "query_count": 8
+  },
+  "status": "EXECUTED"
+}

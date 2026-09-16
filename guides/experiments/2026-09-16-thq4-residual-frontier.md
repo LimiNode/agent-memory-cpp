@@ -244,3 +244,20 @@ receipt SHA-256 is
 `0057cee94a4d2de6a9845880bd3e9267121a4be7d22e06366a789d9eb09cf7a6`.
 The next useful upper bound is a decoder with explicit cross-coordinate
 features or a teacher-score table, not a larger blind MLP.
+
+## Additive residual-quantization control
+
+The bounded RQ control
+`tools/agent-memory-bench/run-thq-rq-stage-local.py` fits sequential residual
+codebooks on the detached training split.  It compares two-stage 4-bit,
+two-stage 8-bit, and three-stage 8-bit additive codes at total payloads
+`97/98/99 B` including THQ4.
+
+The exact-norm means were `0.850`, `0.863`, and `0.863`, respectively.  Thus
+this simple additive control did not exceed the stronger PQ32×8 (`0.938`) or
+RSLM-like (`0.9875`) arms on the eight-query screen.  It is a bounded RQ
+control, not a reproduction of QINCo/QINCo2 or a trained conditional
+codebook.  The compact result SHA-256 is
+`104fe85519c6a09552b980fa0ea032484365a4fce3925e7c6ef3ce3ffbdc48ad`; the
+receipt SHA-256 is
+`9bd4511b1a5b067d6f789ac441329de494dec59770734d429ef778257b4b601f`.
