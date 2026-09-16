@@ -103,6 +103,8 @@ def fit_pca(training_residual: np.ndarray, components: int) -> tuple[np.ndarray,
 
 def self_test() -> None:
     rng = np.random.default_rng(7)
+    if top_k(np.asarray([2.0, 1.0]), np.asarray([0, 1]), 1, ascending=True).tolist() != [1]:
+        raise RuntimeError("ascending top-k tie policy differs")
     values = rng.normal(size=(32, DIMENSION)).astype(np.float32)
     thresholds = np.quantile(values, (0.25, 0.5, 0.75), axis=0).T.astype(np.float32)
     codes = pack_thq(values, thresholds)
