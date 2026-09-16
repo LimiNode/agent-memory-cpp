@@ -6,6 +6,14 @@ replay is retained as historical evidence only: the runner now uses the exact
 native byte-LUT accumulation order and records quality-input hashes, so a new
 authoritative replay must be generated from the frozen candidate payload.
 
+The corrective native runner now emits per-query timings for direct linear,
+direct power-.625, THQ prefilter, each top-128 rerank, and both cascade totals,
+with mean/p50/p95/p99 summaries.  This removes the previous ambiguity where a
+single `direct_mean_ms` or `cascade_mean_ms` combined unrelated arms.  The
+full-corpus control also reports all `23,438` THQ scan pages separately from
+shortlisted INT8 payload pages; the candidate-stream page counts below remain
+candidate-local and must not be read as full-scan accounting.
+
 The frozen three-seed fused candidate stream was replayed for all 152 queries
 with four matched arms:
 

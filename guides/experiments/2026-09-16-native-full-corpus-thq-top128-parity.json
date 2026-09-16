@@ -1,12 +1,26 @@
 {
-  "family": "native_full_corpus_thq_top128_parity_v1",
-  "mismatch_count": 0,
-  "native_jsonl_sha256": "dbed9a353492cb208087817a00891d4e723dc42361f6780a66deb2ed92f09db4",
-  "ordered_top128_exact_parity": 8,
-  "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
-  "query_count": 8,
-  "schema_version": 1,
+  "schema_version": 2,
+  "family": "native_full_corpus_thq_coordinate_parity_v2",
   "status": "PASS",
+  "query_count": 8,
+  "candidate_set_top128_exact_parity": 8,
+  "ordered_top128_exact_parity": 7,
+  "set_mismatch_count": 0,
+  "order_difference_count": 1,
+  "score_bound_failure_count": 0,
+  "max_absolute_score_error": 1.4901161193847656e-07,
+  "queries_with_exact_cutoff_ties": 0,
+  "acceptance_contract": "exact retained-set parity; internal order is diagnostic before exact rerank",
+  "native_jsonl_sha256": "7348dce7b08b3f244e9c76255f73bbeef6a037e6d22eb721146eb2c5a867c07f",
+  "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
   "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
-  "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+  "coordinate_reference": {
+    "metric": "interval_squared",
+    "accumulation": "384 sequential float32 coordinate additions",
+    "byte_lut_used": false,
+    "chunk_rows": 65536,
+    "relative_score_error_bound": 5.0e-05,
+    "absolute_score_error_floor": 1.0e-06
+  }
 }

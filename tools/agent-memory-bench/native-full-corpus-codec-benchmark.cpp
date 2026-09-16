@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -22,7 +23,8 @@ constexpr std::size_t kCandidateRecordBytes = 148;
 struct Candidate { float score; std::int32_t id; };
 struct CascadeResult {
   Candidate best;
-  std::uint64_t pages;
+  std::uint64_t thq_scan_pages;
+  std::uint64_t rerank_payload_pages;
   std::vector<Candidate> coarse;
 };
 bool better(const Candidate& a, const Candidate& b) {
@@ -173,10 +175,6 @@ CascadeResult cascade(const std::vector<std::uint8_t>& thq,
     const Candidate exact = best_int8(codes, scales, power_gains, query, c.id, nonlinear);
     if (exact.score > best.score || (exact.score == best.score && exact.id < best.id)) best = exact;
     const auto id = static_cast<std::uint64_t>(c.id);
-    const auto thq_begin = id * kThqBytes;
-    const auto thq_end = thq_begin + kThqBytes - 1;
-    for (auto page = thq_begin / kPageBytes; page <= thq_end / kPageBytes; ++page)
-      pages.insert((1ULL << 49) | page); // THQ-file namespace
     const auto code_begin = id * kDimension;
     const auto code_end = code_begin + kDimension - 1;
     for (auto page = code_begin / kPageBytes; page <= code_end / kPageBytes; ++page)
@@ -184,7 +182,8 @@ CascadeResult cascade(const std::vector<std::uint8_t>& thq,
     const auto scale_page = (id * sizeof(float)) / kPageBytes;
     pages.insert((1ULL << 48) | scale_page); // distinct scale-file namespace
   }
-  return {best, pages.size(), coarse};
+  const auto thq_scan_pages = (kDocuments * kThqBytes + kPageBytes - 1) / kPageBytes;
+  return {best, static_cast<std::uint64_t>(thq_scan_pages), pages.size(), coarse};
 }
 
 template <typename CodeT>
@@ -221,6 +220,29 @@ template <typename CodeT>
 std::uint64_t exact_payload_pages(const std::vector<std::int32_t>& ids) {
   return namespaced_pages(ids, kDimension, 0) +
          namespaced_pages(ids, sizeof(float), 1ULL << 48);
+}
+
+double elapsed_ms(std::chrono::steady_clock::time_point begin,
+                  std::chrono::steady_clock::time_point end) {
+  return std::chrono::duration<double, std::milli>(end - begin).count();
+}
+
+double percentile(std::vector<double> values, double fraction) {
+  if (values.empty()) throw std::runtime_error("cannot summarize empty timing series");
+  std::sort(values.begin(), values.end());
+  const double position = fraction * static_cast<double>(values.size() - 1);
+  const auto lower = static_cast<std::size_t>(position);
+  const auto upper = std::min(lower + 1, values.size() - 1);
+  const double weight = position - static_cast<double>(lower);
+  return values[lower] * (1.0 - weight) + values[upper] * weight;
+}
+
+void emit_timing_summary(const char* name, const std::vector<double>& values) {
+  const double sum = std::accumulate(values.begin(), values.end(), 0.0);
+  std::cerr << '"' << name << "\":{\"mean_ms\":" << sum / values.size()
+            << ",\"p50_ms\":" << percentile(values, 0.50)
+            << ",\"p95_ms\":" << percentile(values, 0.95)
+            << ",\"p99_ms\":" << percentile(values, 0.99) << '}';
 }
 
 int run_candidate_gate(int argc, char** argv) {
@@ -262,7 +284,13 @@ int run_candidate_gate(int argc, char** argv) {
   query_stream.read(reinterpret_cast<char*>(queries.data()),
                     static_cast<std::streamsize>(queries.size() * sizeof(float)));
   if (!query_stream) throw std::runtime_error("candidate query payload is truncated");
-  double direct_ms = 0.0, cascade_ms = 0.0;
+  std::vector<double> direct_linear_ms, direct_power_ms, thq_prefilter_ms;
+  std::vector<double> linear_rerank_ms, power_rerank_ms;
+  std::vector<double> cascade_linear_ms, cascade_power_ms;
+  for (auto* values : {&direct_linear_ms, &direct_power_ms, &thq_prefilter_ms,
+                       &linear_rerank_ms, &power_rerank_ms,
+                       &cascade_linear_ms, &cascade_power_ms})
+    values->reserve(q);
   for (std::size_t qi = 0; qi < q; ++qi) {
     const auto begin_id = static_cast<std::size_t>(offsets[qi]);
     const auto end_id = static_cast<std::size_t>(offsets[qi + 1]);
@@ -274,24 +302,41 @@ int run_candidate_gate(int argc, char** argv) {
     if (unique.size() != ids.size())
       throw std::runtime_error("candidate IDs are duplicated within a query");
     const float* query = queries.data() + qi * kDimension;
-    const auto begin = std::chrono::steady_clock::now();
+    const auto direct_linear_begin = std::chrono::steady_clock::now();
     const auto direct_linear = exact_top10(linear, linear_scales, linear_gains,
                                            query, ids, false);
+    const auto direct_linear_end = std::chrono::steady_clock::now();
+    const auto direct_power_begin = direct_linear_end;
     const auto direct_power = exact_top10(power, power_scales, power_gains,
                                           query, ids, true);
-    const auto mid = std::chrono::steady_clock::now();
+    const auto direct_power_end = std::chrono::steady_clock::now();
+    const auto thq_begin = direct_power_end;
     const auto lut = build_lut(thresholds, query);
     const auto coarse = thq_top128_candidates(thq, lut, ids);
+    const auto thq_end = std::chrono::steady_clock::now();
     std::vector<std::int32_t> coarse_ids;
     coarse_ids.reserve(coarse.size());
     for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
+    const auto linear_rerank_begin = std::chrono::steady_clock::now();
     const auto cascade_linear = exact_top10(linear, linear_scales, linear_gains,
                                             query, coarse_ids, false);
+    const auto linear_rerank_end = std::chrono::steady_clock::now();
+    const auto power_rerank_begin = linear_rerank_end;
     const auto cascade_power = exact_top10(power, power_scales, power_gains,
                                            query, coarse_ids, true);
-    const auto end = std::chrono::steady_clock::now();
-    direct_ms += std::chrono::duration<double, std::milli>(mid - begin).count();
-    cascade_ms += std::chrono::duration<double, std::milli>(end - mid).count();
+    const auto power_rerank_end = std::chrono::steady_clock::now();
+    const double query_direct_linear_ms = elapsed_ms(direct_linear_begin, direct_linear_end);
+    const double query_direct_power_ms = elapsed_ms(direct_power_begin, direct_power_end);
+    const double query_thq_ms = elapsed_ms(thq_begin, thq_end);
+    const double query_linear_rerank_ms = elapsed_ms(linear_rerank_begin, linear_rerank_end);
+    const double query_power_rerank_ms = elapsed_ms(power_rerank_begin, power_rerank_end);
+    direct_linear_ms.push_back(query_direct_linear_ms);
+    direct_power_ms.push_back(query_direct_power_ms);
+    thq_prefilter_ms.push_back(query_thq_ms);
+    linear_rerank_ms.push_back(query_linear_rerank_ms);
+    power_rerank_ms.push_back(query_power_rerank_ms);
+    cascade_linear_ms.push_back(query_thq_ms + query_linear_rerank_ms);
+    cascade_power_ms.push_back(query_thq_ms + query_power_rerank_ms);
     auto emit = [](const std::vector<Candidate>& values) {
       std::cout << '[';
       for (std::size_t i = 0; i < values.size(); ++i) {
@@ -306,15 +351,35 @@ int run_candidate_gate(int argc, char** argv) {
     std::cout << ",\"direct_power0625_top10\":"; emit(direct_power);
     std::cout << ",\"cascade_power0625_top10\":"; emit(cascade_power);
     std::cout << ",\"cascade_thq_top128_ids\":"; emit(coarse);
+    std::cout << ",\"cascade_thq_top128_scores\":[" << std::setprecision(9);
+    for (std::size_t i = 0; i < coarse.size(); ++i) {
+      if (i) std::cout << ',';
+      std::cout << coarse[i].score;
+    }
+    std::cout << ']';
     std::cout << ",\"direct_payload_pages\":" << exact_payload_pages<std::int8_t>(ids)
               << ",\"cascade_thq_pages\":" << namespaced_pages(ids, kThqBytes, 1ULL << 49)
               << ",\"cascade_payload_pages\":" << exact_payload_pages<std::int8_t>(coarse_ids)
-              << "}\n";
+              << ",\"latency_ms\":{\"direct_linear\":" << query_direct_linear_ms
+              << ",\"direct_power0625\":" << query_direct_power_ms
+              << ",\"thq4_prefilter\":" << query_thq_ms
+              << ",\"linear_top128_rerank\":" << query_linear_rerank_ms
+              << ",\"power0625_top128_rerank\":" << query_power_rerank_ms
+              << ",\"cascade_linear_total\":" << query_thq_ms + query_linear_rerank_ms
+              << ",\"cascade_power0625_total\":" << query_thq_ms + query_power_rerank_ms
+              << "}}\n";
   }
   std::cerr << "{\"queries\":" << q
             << ",\"timing_scope\":\"native_scalar_candidate_gate; no OS-page latency claim\""
-            << ",\"direct_mean_ms\":" << direct_ms / q
-            << ",\"cascade_mean_ms\":" << cascade_ms / q << "}\n";
+            << ",\"percentile_method\":\"linear interpolation over per-query samples\",\"arms\":{";
+  emit_timing_summary("direct_linear", direct_linear_ms); std::cerr << ',';
+  emit_timing_summary("direct_power0625", direct_power_ms); std::cerr << ',';
+  emit_timing_summary("thq4_prefilter", thq_prefilter_ms); std::cerr << ',';
+  emit_timing_summary("linear_top128_rerank", linear_rerank_ms); std::cerr << ',';
+  emit_timing_summary("power0625_top128_rerank", power_rerank_ms); std::cerr << ',';
+  emit_timing_summary("cascade_linear_total", cascade_linear_ms); std::cerr << ',';
+  emit_timing_summary("cascade_power0625_total", cascade_power_ms);
+  std::cerr << "}}\n";
   return 0;
 }
 }
@@ -406,11 +471,19 @@ int main(int argc, char** argv) {
                 << ",\"direct_power0625_top1\":" << dp.first.id
                 << ",\"cascade_power0625_top1\":" << cp.best.id
                 << ",\"direct_code_scale_pages\":" << d.second
-                << ",\"cascade_total_namespaced_pages\":" << c.pages
+                << ",\"cascade_thq_scan_pages\":" << c.thq_scan_pages
+                << ",\"cascade_rerank_payload_pages\":" << c.rerank_payload_pages
+                << ",\"cascade_total_namespaced_pages\":"
+                << c.thq_scan_pages + c.rerank_payload_pages
                 << ",\"cascade_thq_top128_ids\":[";
       for (std::size_t j = 0; j < c.coarse.size(); ++j) {
         if (j != 0) std::cout << ',';
         std::cout << c.coarse[j].id;
+      }
+      std::cout << "],\"cascade_thq_top128_scores\":[" << std::setprecision(9);
+      for (std::size_t j = 0; j < c.coarse.size(); ++j) {
+        if (j != 0) std::cout << ',';
+        std::cout << c.coarse[j].score;
       }
       std::cout << "]}\n";
     }

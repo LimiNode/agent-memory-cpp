@@ -6,14 +6,16 @@
   "production_activation": false,
   "query_count": 8,
   "query_source": "DE-1M evaluation-query-vectors.f32, first 8 rows",
+  "query_source_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
   "materialization_audit": "2026-09-16 full chunk-wise audit, rows_audited=1000000",
   "materialization_receipt_sha256": "113dae55124e43020b1c91bb70421c53885299791a9d580d5352e4c921d9890d",
-  "materialization_audit_receipt_sha256": "b4bca0a9cac36fcc072ef87c4cbe5b9674a93218c5c07bcbdad159f34486d21f",
+  "materialization_audit_receipt_sha256": "2f19699b79dff48d68cf658f5eeb86f030b7c8713e89d833c91a48142b4a4a71",
+  "native_jsonl_sha256": "7348dce7b08b3f244e9c76255f73bbeef6a037e6d22eb721146eb2c5a867c07f",
   "mean_latency_ms": {
-    "direct_int8_linear": 406.743,
-    "thq4_byte_lut_top128_int8_linear": 95.6618,
-    "direct_int8_power0625": 592.971,
-    "thq4_byte_lut_top128_int8_power0625": 93.8247
+    "direct_int8_linear": 396.15,
+    "thq4_byte_lut_top128_int8_linear": 90.6703,
+    "direct_int8_power0625": 576.484,
+    "thq4_byte_lut_top128_int8_power0625": 89.322
   },
   "top1_parity": {
     "linear_direct_vs_cascade": 1.0,
@@ -21,27 +23,32 @@
   },
   "thq_top128_order_parity": {
     "status": "PASS",
-    "ordered_top128_exact_parity": 8,
+    "candidate_set_top128_exact_parity": 8,
+    "ordered_top128_exact_parity": 7,
+    "order_difference_count": 1,
     "query_count": 8,
-    "receipt": "native-thq-top128-parity.json"
+    "receipt": "native-thq-top128-parity.json",
+    "acceptance_contract": "exact retained-set parity; internal order is diagnostic before exact rerank"
   },
   "page_accounting": {
     "direct_code_scale_pages": 94727,
-    "cascade_total_namespaced_pages_range": [346, 370],
-    "namespaces": ["thq4_code_file", "int8_code_file", "int8_scale_file"]
+    "cascade_thq_scan_pages": 23438,
+    "cascade_rerank_payload_pages_range": [228, 246],
+    "cascade_total_namespaced_pages_range": [23666, 23684],
+    "namespaces": ["thq4_full_scan_file", "int8_code_file", "int8_scale_file"]
   },
   "timing_scope": "full-corpus scalar scan control; THQ uses a per-query 96x256 byte LUT; power inverse-domain gain is precomputed outside the query loop",
   "build_environment": {
     "configuration": "Release",
     "compiler": "MSVC 19.x (CMake/MSBuild 17.14.51)",
-    "binary_sha256": "216a59384bc32847b7e09b529b803dccce570e8e4fa6830f027ca64bb7bef57a",
+    "binary_sha256": "5e0163af0c6ecd44b979836d65ca3a36717fc8aaa70bdb9eca2a40c657cf422d",
     "cpu_model": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
     "avx2_enabled": false,
     "thread_count": 1
   },
   "limitations": [
     "eight queries only; no qrels or held-out quality claim",
-    "native THQ top-128 IDs are emitted, but reference-order parity is not yet independently recorded",
+    "native THQ top-128 retained-set parity is independently checked; one internal order difference remains from float32 accumulation order",
     "portable scalar control; no AVX2/blocked THQ kernel yet",
     "full-corpus scan, not the R4 candidate-stream Gate 1",
     "no cold/warm OS or MDBX page measurement"

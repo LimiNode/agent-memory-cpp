@@ -77,7 +77,7 @@
   },
   "interpretation": {
     "status_note": "Superseded after byte-LUT accumulation-order and quality-input provenance corrections; rerun is required before authoritative use.",
-    "confirmed": [
+    "historical_observation": [
       "The four arms consumed the same 152 frozen candidate slices.",
       "THQ4 prefilter preserved the direct INT8 top-10 order for all 152 queries for both codecs.",
       "The logical payload reduction is approximately 3.66x for the measured candidate stream.",

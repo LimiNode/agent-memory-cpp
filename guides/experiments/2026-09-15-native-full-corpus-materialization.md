@@ -61,12 +61,14 @@ independent audit receipt SHA is
 
 The first eight DE-1M queries were replayed against the materialized tables by
 `native-full-corpus-codec-benchmark.cpp` after the corrective LUT rewrite.  The
-full-corpus scalar control averaged `406.74 ms/query` for direct linear INT8,
-`592.97 ms/query` for direct power-.625, `95.66 ms/query` for the THQ4 byte-LUT
-scan plus top-128 linear rerank, and `93.82 ms/query` for the corresponding
+full-corpus scalar control averaged `396.15 ms/query` for direct linear INT8,
+`576.48 ms/query` for direct power-.625, `90.67 ms/query` for the THQ4 byte-LUT
+scan plus top-128 linear rerank, and `89.32 ms/query` for the corresponding
 power-.625 cascade.  Top-1 IDs matched the corresponding direct arm for all
-eight queries.  An independent coordinate-reference replay also found exact
-ordered top-128 parity for all eight queries; the receipt is
+eight queries.  An independent coordinate-reference replay found retained-set
+top-128 parity for all eight queries; one internal order difference is recorded
+because the native byte-LUT and coordinate reference group float32 additions
+differ.  The receipt is
 `2026-09-16-native-full-corpus-thq-top128-parity.json`.  The old `4.82 s` number is retained only as a
 historical pre-LUT measurement and must not be used as an intrinsic THQ cost.
 
@@ -74,9 +76,11 @@ This remains a **full-corpus scalar scan control**, not Gate 1: both arms scan
 all 1M documents.  The R4 candidate-stream four-arm runner is separate, is
 currently a Python reference implementation rather than a native-kernel
 benchmark, and must consume the same frozen approximately 5k-document stream for all four
-arms.  Page counts in the corrected control use distinct code-file and
-scale-file namespaces; they do not pretend that the two files are interleaved
-388-byte records.
+arms.  Page counts in the corrected control use the full THQ scan namespace plus
+distinct code-file and scale-file namespaces; they do not pretend that the two
+files are interleaved 388-byte records.  The THQ scan therefore accounts for
+all `23,438` 4-KiB pages of the 96-byte-per-document file before shortlisted
+INT8 rerank pages are added.
 
 When the canonical candidate payload is available, create its little-endian
 offset sidecar with `materialize-native-candidate-offsets.py` and invoke the

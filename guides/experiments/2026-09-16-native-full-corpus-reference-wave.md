@@ -3,12 +3,14 @@
 This note records two bounded controls run after the corrective audit.  They
 reuse the same 1,000,000 document vectors (`d4f67e…36007`) and the first eight
 evaluation queries (`fa6c46…d0d0d7b2`).  Both are explicitly reference runs;
-they do not establish native SIMD, OS-page, MDBX, or held-out quality.
+This is a separate DE-1M fixture, not the canonical 152-query quality payload
+used by the R4 candidate evidence; continuity of quality conclusions is not
+claimed.  They do not establish native SIMD, OS-page, MDBX, or held-out quality.
 
 ## THQ Flow
 
 `run-thq-flow-reference.py` compared ordinal-L1, interval-L1, and
-interval-squared for levels 4 through 8.  The best observed control was
+interval-squared for levels 4 through 8.  The best tested control was
 `7-level interval-squared`: mean teacher top-10 overlap `0.9125`, minimum
 `0.7`, with no ordered top-10 parity on the eight-query slice.  `4-level`
 interval-squared reached `0.875`; moving from four to eight levels therefore
@@ -41,8 +43,10 @@ raw result has SHA-256
 ## Decision
 
 The evidence does not justify promoting standalone THQ Flow to the production
-path: even the best eight-level reference leaves a substantial teacher tail.
-INT9/INT10 are not quality-cliff controls on this slice, so the next native
+path: even the best tested level leaves a substantial teacher tail on this
+eight-query screen.  INT9/INT10 are `deprioritized` controls rather than
+rejected codecs: they showed no observed quality benefit on this slice, but
+were not materialized or timed natively.  The next native
 work remains focused on the four-arm INT8/THQ4 candidate gate, followed by
 shared-K16 and persistent layout measurements.  A native multi-level THQ
 kernel is deferred until a quality-held-out gate shows a reason to pay its
