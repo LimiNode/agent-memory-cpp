@@ -195,3 +195,28 @@ strong on that gate, the next bounded experiments are a retrieval-oriented
 decoder/distillation objective and RQ/AQ/QINCo-like upper bounds.  If it does
 not, the residual side-code branch is recorded as negative and no native
 kernel work is justified for it.
+
+## Cross-coordinate learned decoder check
+
+The missed ML hypothesis was tested separately with
+`tools/agent-memory-bench/run-thq-learned-decoder-stage-local.py`.  It maps the
+1,536 one-hot THQ4 features through one 256-unit ReLU layer to the 384-vector.
+The target was standardized using the detached training split, and the model
+was fit with MSE only (`seed=20260916`, `max_iter=100`).  This is deliberately
+not a retrieval-oriented objective.
+
+On the same eight-query stage-local boundary the MSE decoder reached only
+`0.100` mean teacher top-10 overlap (minimum `0.0`) with exact or FP16 norms,
+versus `0.875` for the coordinate-centroid control.  The raw-dot decoder was
+`0.075`; training loss finished at `0.3806`.  This is a negative result for
+this specific small MSE decoder, not a proof that all learned decoders fail:
+the training loss is still high and no ranking/distillation loss was used.
+The compact result and receipt are committed as
+`2026-09-16-thq-learned-decoder-result.json` and
+`2026-09-16-thq-learned-decoder-receipt.json` (compact SHA-256
+`164932aa68408aaa897d89e09b4cf634fd83eae18512b84a9545fdf068cc4579`).
+
+The next discriminating check, if this branch remains scientifically
+interesting, is therefore a retrieval-oriented decoder trained against dense
+teacher score differences on a separate query-training split.  It must not be
+promoted from this eight-query MSE failure directly to native implementation.
