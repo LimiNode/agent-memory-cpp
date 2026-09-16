@@ -21,7 +21,7 @@
     "linear_direct_vs_cascade": 1.0,
     "power0625_direct_vs_cascade": 1.0
   },
-  "thq_top128_order_parity": {
+  "thq_top128_retained_set_parity": {
     "status": "PASS",
     "candidate_set_top128_exact_parity": 8,
     "ordered_top128_exact_parity": 7,
