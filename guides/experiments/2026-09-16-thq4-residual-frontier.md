@@ -142,9 +142,56 @@ This is still not a production result.  It uses a full-corpus THQ4 top-128
 oracle rather than the unavailable canonical R4 candidate stream, and the
 query count is eight.
 
-## Next check
+## Extended rate-matched screen
 
-Run rate-matched low-bit PCA, PQ4/8 and OPQ arms with the same stage-local
-boundary and norm controls.  Then promote the question to the canonical
-quality gate only after the 152-query payload is restored; do not use this
-eight-query result to select a production codec.
+The follow-up runner
+`tools/agent-memory-bench/run-thq-residual-extended-frontier.py` applies the
+same stage-local boundary to rate-matched PCA, PQ4/PQ8, OPQ4/OPQ8, a bounded
+FWHT/Lloyd-Max control (`RSLM-like`), THQ7 centroid reconstruction, and a
+one-hot ridge decoder.  The model fit uses only the detached training split;
+the query and qrels files are not used for fitting.  The result is retained
+outside Git as `thq-residual-extended-8q-v2.json` and is bound by the output
+hash in the accompanying receipt.
+
+The logical payload accounting is explicit: every residual arm is `96 B` of
+THQ4 plus its side-code, `thq7-centroid` is `144 B`, and `ridge-onehot` is the
+`96 B` THQ4 base.  This avoids comparing a side-code size with a full document
+representation.  The runner also has a CMake self-test and an explicit
+Faiss 4-bit unpacking check in the decode path.
+
+The corrected v2 eight-query screen (raw result SHA-256
+`76d5a9974e292554a17624dada132ef89e30ffd9c12b578b32413185f0d5b826`;
+compact result SHA-256
+`6cfd59c3cce3fc1813f9906c1558ba5fb1db66868c55e1175097447914ff6e00`;
+receipt SHA-256
+`9bfbed6cc974385289a6400c17a8c1a37a74ef7756a89fd986be2560e1fb88b8`) reports
+the following exact-norm means:
+
+| arm | payload | teacher top-10 overlap |
+| --- | ---: | ---: |
+| PCA256×1 | 128 B | 0.925 |
+| PQ32×8 | 128 B | 0.938 |
+| OPQ32×8 | 128 B | 0.913 |
+| PQ16/32/64×4 | 104/112/128 B | 0.900/0.875/0.900 |
+| OPQ16/32/64×4 | 104/112/128 B | 0.850/0.838/0.838 |
+| RSLM-like 1/2/3/4 bit | 144/192/240/288 B | 0.900/0.975/0.988/0.963 |
+| THQ7 centroid | 144 B | 0.925 |
+| ridge one-hot | 96 B | 0.875 |
+
+The norm controls are not interchangeable: for example, RSLM3 is `0.9875`
+with exact, FP16, or uint8 training-range norms, while its raw-dot result is
+`0.9375`.  The 4-bit Faiss path is explicitly unpacked and accepts both packed
+and binding-level unpacked representations; the CMake self-test exercises the
+decoder helper.  These values remain a diagnostic eight-query screen, not a
+claim about a production Pareto frontier.
+
+## Decision boundary
+
+The extended screen is sufficient to choose the next *check*, not a
+production representation.  A candidate must first survive the canonical
+152-query stage-local quality gate with an independently audited model and
+then a native latency/page measurement.  If the residual frontier remains
+strong on that gate, the next bounded experiments are a retrieval-oriented
+decoder/distillation objective and RQ/AQ/QINCo-like upper bounds.  If it does
+not, the residual side-code branch is recorded as negative and no native
+kernel work is justified for it.
