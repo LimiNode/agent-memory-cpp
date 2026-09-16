@@ -66,6 +66,7 @@
       }
     }
   },
+  "target": "full",
   "target_mean_sha256": "0f9a438382ad3448cfb98dbd2f09876ade24537aa2d90381650c87deb7f3522d",
   "target_scale_sha256": "74324cd27a44481f1dd007a8748e4c48cf1ba1d37165c46257adff421eaadbc4",
   "training_count": 25000,

@@ -216,24 +216,24 @@
   "summaries": {
     "opq16x4": {
       "exact": {
-        "qrels_ndcg10_mean": 0.5643582884210081,
-        "teacher_overlap_mean": 0.8500000000000001,
-        "teacher_overlap_min": 0.5
-      },
-      "fp16": {
-        "qrels_ndcg10_mean": 0.5667070729148996,
-        "teacher_overlap_mean": 0.8500000000000001,
-        "teacher_overlap_min": 0.5
-      },
-      "raw": {
-        "qrels_ndcg10_mean": 0.5242702055929834,
-        "teacher_overlap_mean": 0.725,
+        "qrels_ndcg10_mean": 0.5584511736146767,
+        "teacher_overlap_mean": 0.8875,
         "teacher_overlap_min": 0.6
       },
-      "uint8": {
-        "qrels_ndcg10_mean": 0.5643582884210081,
-        "teacher_overlap_mean": 0.8500000000000001,
+      "fp16": {
+        "qrels_ndcg10_mean": 0.5584511736146767,
+        "teacher_overlap_mean": 0.8875,
+        "teacher_overlap_min": 0.6
+      },
+      "raw": {
+        "qrels_ndcg10_mean": 0.5627245904780993,
+        "teacher_overlap_mean": 0.7750000000000001,
         "teacher_overlap_min": 0.5
+      },
+      "uint8": {
+        "qrels_ndcg10_mean": 0.5584511736146767,
+        "teacher_overlap_mean": 0.8875,
+        "teacher_overlap_min": 0.6
       }
     },
     "opq16x8": {
@@ -260,24 +260,24 @@
     },
     "opq32x4": {
       "exact": {
-        "qrels_ndcg10_mean": 0.563016511801181,
-        "teacher_overlap_mean": 0.8375,
-        "teacher_overlap_min": 0.5
-      },
-      "fp16": {
-        "qrels_ndcg10_mean": 0.563016511801181,
-        "teacher_overlap_mean": 0.85,
-        "teacher_overlap_min": 0.5
-      },
-      "raw": {
-        "qrels_ndcg10_mean": 0.5165453498059884,
-        "teacher_overlap_mean": 0.7375,
+        "qrels_ndcg10_mean": 0.6039190791584219,
+        "teacher_overlap_mean": 0.8875,
         "teacher_overlap_min": 0.6
       },
+      "fp16": {
+        "qrels_ndcg10_mean": 0.6039190791584219,
+        "teacher_overlap_mean": 0.8875,
+        "teacher_overlap_min": 0.6
+      },
+      "raw": {
+        "qrels_ndcg10_mean": 0.5611784514010203,
+        "teacher_overlap_mean": 0.7749999999999999,
+        "teacher_overlap_min": 0.7
+      },
       "uint8": {
-        "qrels_ndcg10_mean": 0.563016511801181,
-        "teacher_overlap_mean": 0.8375,
-        "teacher_overlap_min": 0.5
+        "qrels_ndcg10_mean": 0.6039190791584219,
+        "teacher_overlap_mean": 0.8875,
+        "teacher_overlap_min": 0.6
       }
     },
     "opq32x8": {
@@ -304,24 +304,24 @@
     },
     "opq64x4": {
       "exact": {
-        "qrels_ndcg10_mean": 0.5760239297722014,
-        "teacher_overlap_mean": 0.8375,
-        "teacher_overlap_min": 0.5
+        "qrels_ndcg10_mean": 0.5830240222876466,
+        "teacher_overlap_mean": 0.925,
+        "teacher_overlap_min": 0.7
       },
       "fp16": {
-        "qrels_ndcg10_mean": 0.5760239297722014,
-        "teacher_overlap_mean": 0.8375,
-        "teacher_overlap_min": 0.5
+        "qrels_ndcg10_mean": 0.5830240222876466,
+        "teacher_overlap_mean": 0.925,
+        "teacher_overlap_min": 0.7
       },
       "raw": {
-        "qrels_ndcg10_mean": 0.5265390404604434,
-        "teacher_overlap_mean": 0.725,
-        "teacher_overlap_min": 0.6
+        "qrels_ndcg10_mean": 0.5672037248971232,
+        "teacher_overlap_mean": 0.825,
+        "teacher_overlap_min": 0.7
       },
       "uint8": {
-        "qrels_ndcg10_mean": 0.5760239297722014,
-        "teacher_overlap_mean": 0.8375,
-        "teacher_overlap_min": 0.5
+        "qrels_ndcg10_mean": 0.5830240222876466,
+        "teacher_overlap_mean": 0.925,
+        "teacher_overlap_min": 0.7
       }
     },
     "opq8x8": {

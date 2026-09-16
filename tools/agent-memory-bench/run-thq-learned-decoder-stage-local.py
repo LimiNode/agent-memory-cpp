@@ -84,6 +84,7 @@ def main() -> None:
     parser.add_argument("--chunk-size", type=int, default=16384)
     parser.add_argument("--hidden", type=int, default=256)
     parser.add_argument("--max-iter", type=int, default=30)
+    parser.add_argument("--target", choices=("full", "centroid"), default="full")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -108,9 +109,10 @@ def main() -> None:
     decoder = MLPRegressor(hidden_layer_sizes=(args.hidden,), activation="relu", solver="adam",
                            batch_size=512, max_iter=args.max_iter, random_state=20260916,
                            early_stopping=False, verbose=False)
-    target_mean = np.mean(train, axis=0, dtype=np.float32)
-    target_scale = np.maximum(np.std(train, axis=0, dtype=np.float32), 1e-4)
-    decoder.fit(features, (train - target_mean) / target_scale)
+    target = train if args.target == "full" else train_base
+    target_mean = np.mean(target, axis=0, dtype=np.float32)
+    target_scale = np.maximum(np.std(target, axis=0, dtype=np.float32), 1e-4)
+    decoder.fit(features, (target - target_mean) / target_scale)
     train_prediction = decoder.predict(features).astype(np.float32) * target_scale + target_mean
     norm_range = (float(np.min(np.linalg.norm(train_prediction, axis=1))),
                   float(np.max(np.linalg.norm(train_prediction, axis=1))))
@@ -163,6 +165,7 @@ def main() -> None:
               "status": "EXECUTED", "evidence_status": "eight_query_numpy_stage_local_screen",
               "documents": count, "training_count": train_count, "query_count": query_count,
               "prefilter": "full_corpus_thq4_interval_squared_top128", "hidden": args.hidden,
+              "target": args.target,
               "max_iter": args.max_iter, "seed": 20260916, "norm_range_from_training": norm_range,
               "documents_sha256": sha256(args.documents), "training_sha256": sha256(args.train_vectors),
               "queries_sha256": sha256(args.queries), "thq_sha256": sha256(args.thq4_codes),

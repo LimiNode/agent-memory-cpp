@@ -160,11 +160,11 @@ representation.  The runner also has a CMake self-test and an explicit
 Faiss 4-bit unpacking check in the decode path.
 
 The corrected v2 eight-query screen (raw result SHA-256
-`76d5a9974e292554a17624dada132ef89e30ffd9c12b578b32413185f0d5b826`;
+`57e93c7e0247039e1fa5ab5ac11bdcf152f3e501b1b9e5b964de2c28aa2a3644`;
 compact result SHA-256
-`6cfd59c3cce3fc1813f9906c1558ba5fb1db66868c55e1175097447914ff6e00`;
+`de1abf886380b8a43799b08f1ba536f8ab2d70f2f1962a747508d70b8bf0c8d4`;
 receipt SHA-256
-`9bfbed6cc974385289a6400c17a8c1a37a74ef7756a89fd986be2560e1fb88b8`) reports
+`836190853dc33436e133d390c5728cd85ec93ad8913d7086dc25745399b857c4`) reports
 the following exact-norm means:
 
 | arm | payload | teacher top-10 overlap |
@@ -173,7 +173,7 @@ the following exact-norm means:
 | PQ32×8 | 128 B | 0.938 |
 | OPQ32×8 | 128 B | 0.913 |
 | PQ16/32/64×4 | 104/112/128 B | 0.900/0.875/0.900 |
-| OPQ16/32/64×4 | 104/112/128 B | 0.850/0.838/0.838 |
+| OPQ16/32/64×4 | 104/112/128 B | 0.888/0.888/0.925 |
 | RSLM-like 1/2/3/4 bit | 144/192/240/288 B | 0.900/0.975/0.988/0.963 |
 | THQ7 centroid | 144 B | 0.925 |
 | ridge one-hot | 96 B | 0.875 |
@@ -211,10 +211,13 @@ versus `0.875` for the coordinate-centroid control.  The raw-dot decoder was
 `0.075`; training loss finished at `0.3806`.  This is a negative result for
 this specific small MSE decoder, not a proof that all learned decoders fail:
 the training loss is still high and no ranking/distillation loss was used.
+As a direct optimization sanity check, fitting the same network to the
+centroid target gave `0.0` overlap with hidden=256 and `0.7` on the first
+query with hidden=1024; the established ridge one-hot control remains `.875`.
 The compact result and receipt are committed as
 `2026-09-16-thq-learned-decoder-result.json` and
 `2026-09-16-thq-learned-decoder-receipt.json` (compact SHA-256
-`164932aa68408aaa897d89e09b4cf634fd83eae18512b84a9545fdf068cc4579`).
+`7042aa2cc40104bdea10acc1be221497c81150811720bc7beb45cffb92c4d5b5`).
 
 The next discriminating check, if this branch remains scientifically
 interesting, is therefore a retrieval-oriented decoder trained against dense
@@ -239,9 +242,9 @@ compression in general: the model sees only independent THQ levels and the
 training objective is query-specific.
 
 The compact result SHA-256 is
-`d71a117b1683c40c479d66e9d0a76558a99b339d34b8b92764f82adf820769fd`; the
+`7042aa2cc40104bdea10acc1be221497c81150811720bc7beb45cffb92c4d5b5`; the
 receipt SHA-256 is
-`0057cee94a4d2de6a9845880bd3e9267121a4be7d22e06366a789d9eb09cf7a6`.
+`39594061a689585f67e36ca5b20fc0a622ce602f5ac77447ae7c8ac620683b5e`.
 The next useful upper bound is a decoder with explicit cross-coordinate
 features or a teacher-score table, not a larger blind MLP.
 

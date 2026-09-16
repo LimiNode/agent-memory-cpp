@@ -372,7 +372,7 @@ def main() -> None:
                 reconstructions[name] = base + reconstruct_pq(codes, model["centers"])
             elif kind == "opq":
                 transformed = (np.asarray(documents[candidate]) - base) @ model["rotation"].T
-                pq = faiss.ProductQuantizer(D, model["subquantizers"], 8)
+                pq = faiss.ProductQuantizer(D, model["subquantizers"], model["bits"])
                 faiss.copy_array_to_vector(np.ascontiguousarray(model["centers"].reshape(-1)), pq.centroids)
                 codes = np.asarray(pq.compute_codes(np.ascontiguousarray(transformed)), dtype=np.uint8)
                 codes = unpack_pq_codes(codes, model["subquantizers"], model["bits"])
