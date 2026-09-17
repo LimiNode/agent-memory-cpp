@@ -154,17 +154,17 @@ outside Git as `thq-residual-extended-8q-v2.json` and is bound by the output
 hash in the accompanying receipt.
 
 The logical payload accounting is explicit: every residual arm is `96 B` of
-THQ4 plus its side-code, `thq7-centroid` is `144 B`, and `ridge-onehot` is the
-`96 B` THQ4 base.  This avoids comparing a side-code size with a full document
-representation.  The runner also has a CMake self-test and an explicit
-Faiss 4-bit unpacking check in the decode path.
+THQ4 plus its side-code.  Thus THQ4→THQ7 is `240 B` (`96+144`), and a direct
+INT8 control is `388 B` while the THQ4→INT8 cascade is `484 B` (`96+388`).
+The runner also has a CMake self-test and an explicit Faiss 4-bit unpacking
+check in the decode path.
 
 The corrected joint-bit-width eight-query screen (raw result SHA-256
-`54899b231a336880c23df21cac9c99fc6d0bc3a8d8d4a45209981d1f50f1b6c6`;
+`4e0f77ba6c82ef18bd93da446096e5851876611cf0e286f73417f8550e7ee301`;
 compact result SHA-256
-`0985259bffb37c9d7933f7a8bfe142e7d67cc378c0f6b9e7de2a7ee6981c7bb`;
+`effcecad2e37e0ab4baa0110805efe35880122fae7f812da23fe1563751507af`;
 receipt SHA-256
-`3f9477efa38aca7d0d35e50f5259a5f80ca21c24835b059ff7f436e15d117156`) reports
+`b8d696ff5aadb70a28f983534fcaf6f8e404cc7ef3b91aa768979ff4e89e2db4`) reports
 the following exact-norm means:
 
 | arm | payload | teacher top-10 overlap |
@@ -175,7 +175,7 @@ the following exact-norm means:
 | PQ16/32/64×4 | 104/112/128 B | 0.900/0.875/0.900 |
 | OPQ16/32/64×4 | 104/112/128 B | 0.888/0.900/0.913 |
 | RSLM-like 1/2/3/4 bit | 144/192/240/288 B | 0.900/0.975/0.988/0.963 |
-| THQ7 centroid | 144 B | 0.925 |
+| THQ7 centroid (THQ4→THQ7) | 240 B | 0.925 |
 | ridge one-hot | 96 B | 0.875 |
 
 The norm controls are not interchangeable: for example, RSLM3 is `0.9875`
@@ -184,6 +184,19 @@ with exact, FP16, or uint8 training-range norms, while its raw-dot result is
 and binding-level unpacked representations; the CMake self-test exercises the
 decoder helper.  These values remain a diagnostic eight-query screen, not a
 claim about a production Pareto frontier.
+
+The replay also records independent RSLM-like distortion diagnostics.  The
+bounded FWHT/Lloyd-Max control is monotone in training reconstruction MSE:
+`3.66e-5 / 1.19e-5 / 3.70e-6 / 1.36e-6` for 1/2/3/4 bits.  Candidate-shell
+score MAE is likewise monotone: `0.00404 / 0.00198 / 0.00111 / 0.00070`.
+The quality inversion (`3-bit .9875` versus `4-bit .9625`) is therefore not a
+reconstruction failure in this bounded eight-query screen; it is ranking
+instability and needs a larger query replay before interpretation.
+
+The newly tested nested intra-bin controls reach exact-norm means `.9375 /
+.9625 / .9625` at total payloads `144 / 192 / 240 B` for 1/2/3 conditional
+residual bits.  These are useful classical controls, but they do not yet
+establish a production winner or replace the canonical 152-query gate.
 
 ## Decision boundary
 

@@ -1,10 +1,12 @@
 {
-  "compact_result_sha256": "0985259bffb37c9d7933f7a8bfe142e7d67ccb378c0f6b9e7de2a7ee6981c7bb",
+  "compact_result_sha256": "effcecad2e37e0ab4baa0110805efe35880122fae7f812da23fe1563751507af",
   "family": "thq_residual_extended_frontier_receipt_v1",
   "model_hashes": {
     "opq16x4": {
       "bits": 4,
       "bytes": 8,
+      "faiss_parity_code_mismatches": 0,
+      "faiss_parity_max_abs": 8.381903171539307e-09,
       "kind": "opq",
       "model_sha256": "8608c3820ad2adb9c39b391c9fa61b362a0bdd0b22247b642668637f6d418cd0",
       "rotation_sha256": "9f840cda6bdac3583d2e07c62560938608c3c5ca0749ea68832ba06102819d18",
@@ -13,6 +15,8 @@
     "opq16x8": {
       "bits": 8,
       "bytes": 16,
+      "faiss_parity_code_mismatches": 0,
+      "faiss_parity_max_abs": 9.313225746154785e-09,
       "kind": "opq",
       "model_sha256": "a5277d56ee5bf61d0e452900dcbbe5efd017050555170a92f3458c43c2c0cee7",
       "rotation_sha256": "e1129b79f90bd4b7584d1187e6cc5dcea1710bb9f4c3476d37af5ba678d1389d",
@@ -21,6 +25,8 @@
     "opq32x4": {
       "bits": 4,
       "bytes": 16,
+      "faiss_parity_code_mismatches": 0,
+      "faiss_parity_max_abs": 7.450580596923828e-09,
       "kind": "opq",
       "model_sha256": "f1238a77c3bcc41ab52d4c52abee60c8988a033a1079ebbd99fe3fc596891ba8",
       "rotation_sha256": "1c25987ba88f534f364d62bb6a7261628a5d932dadbc817ea486cf5e959c266e",
@@ -29,6 +35,8 @@
     "opq32x8": {
       "bits": 8,
       "bytes": 32,
+      "faiss_parity_code_mismatches": 0,
+      "faiss_parity_max_abs": 1.210719347000122e-08,
       "kind": "opq",
       "model_sha256": "f4edb95fa7598707429adb693054c3ad8c69a3801243478230b47b995c0d8581",
       "rotation_sha256": "04cf26a4f1c98bb921295ce2da32a9e4a741ecf2e5bd5c2bd7bbeeb90010ab88",
@@ -37,6 +45,8 @@
     "opq64x4": {
       "bits": 4,
       "bytes": 32,
+      "faiss_parity_code_mismatches": 0,
+      "faiss_parity_max_abs": 1.862645149230957e-08,
       "kind": "opq",
       "model_sha256": "115a8d176183e223cd9ef1d3ee12f549aeb6b5e62b134a07021d8c587a444ccc",
       "rotation_sha256": "b725a33aa1f60d8b6597cfc2a00b13540b6254cf07b9d0fd4a278d5b9c25694c",
@@ -45,6 +55,8 @@
     "opq8x8": {
       "bits": 8,
       "bytes": 8,
+      "faiss_parity_code_mismatches": 0,
+      "faiss_parity_max_abs": 8.381903171539307e-09,
       "kind": "opq",
       "model_sha256": "8bdcc8a3f922eb99ea3de47c0df3afa1d5a5fd3a7153e4cd2a163dd429fc5ac4",
       "rotation_sha256": "40b68fd9e8111d67a0f95c55f64750c49af9cb42e0bb3111224c7acf3d135847",
@@ -196,6 +208,24 @@
       "model_sha256": "7a901a22bd835bc269946caf3a1c90b42de42492549f308fe4c9ce6cda781734",
       "rotation_sha256": "08b7095b3a273c71880eb32ced6210d9c737d5a23250cd727f84d43789a8fa5d"
     },
+    "thq4-hierarchical-1bit": {
+      "bits": 1,
+      "bytes": 48,
+      "kind": "hierarchical",
+      "model_sha256": "9f6f97907e8933ec65a825cdb3a5e04094905990ebb9a63446d1a5c540f11bae"
+    },
+    "thq4-hierarchical-2bit": {
+      "bits": 2,
+      "bytes": 96,
+      "kind": "hierarchical",
+      "model_sha256": "ab8a9749d9e939ec82aaf5b8611d97fea1360116b287ae793ce65aafbb91195d"
+    },
+    "thq4-hierarchical-3bit": {
+      "bits": 3,
+      "bytes": 144,
+      "kind": "hierarchical",
+      "model_sha256": "1b86ccb6c3f33caf9cc2483213c7fb64a3570f34fa6f980e0663b8c557459f03"
+    },
     "thq7-centroid": {
       "bytes": 144,
       "kind": "thq7",
@@ -210,8 +240,70 @@
     "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
     "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
-  "result_sha256": "54899b231a336880c23df21cac9c99fc6d0bc3a8d8d4a45209981d1f50f1b6c6",
-  "runner_sha256": "cf8f320bbf4035def67bdad31dd03a94857b31842f519b57d1ff91a649f2abf9",
+  "result_sha256": "4e0f77ba6c82ef18bd93da446096e5851876611cf0e286f73417f8550e7ee301",
+  "rslm_diagnostics": {
+    "rslm1": {
+      "candidate_score_mae_by_query": [
+        0.003287821145493714,
+        0.003971120381336391,
+        0.004515571912368429,
+        0.004930541316941069,
+        0.00427146012709192,
+        0.0039121900327144625,
+        0.003206384976403487,
+        0.0042528959937818385
+      ],
+      "candidate_score_mae_max": 0.004930541316941069,
+      "candidate_score_mae_mean": 0.004043498235766414,
+      "training_reconstruction_mse": 3.65876265329295e-05
+    },
+    "rslm2": {
+      "candidate_score_mae_by_query": [
+        0.0019880614534397694,
+        0.001990821813436635,
+        0.0021748853680076804,
+        0.001988357121291453,
+        0.00195646428086032,
+        0.0019560127221131263,
+        0.0016637177457737183,
+        0.002138688274710197
+      ],
+      "candidate_score_mae_max": 0.0021748853680076804,
+      "candidate_score_mae_mean": 0.0019821260974541123,
+      "training_reconstruction_mse": 1.1915140912700339e-05
+    },
+    "rslm3": {
+      "candidate_score_mae_by_query": [
+        0.0009774638315729863,
+        0.0010522215209533706,
+        0.001098822401172963,
+        0.001250049986450002,
+        0.001209253483334903,
+        0.0010963444737269006,
+        0.0009093435527963356,
+        0.0012472757407122363
+      ],
+      "candidate_score_mae_max": 0.001250049986450002,
+      "candidate_score_mae_mean": 0.001105096873839962,
+      "training_reconstruction_mse": 3.704961706238324e-06
+    },
+    "rslm4": {
+      "candidate_score_mae_by_query": [
+        0.0006452425655433611,
+        0.000700357539985986,
+        0.0007095454849583164,
+        0.0006912227325773556,
+        0.0007676548604384778,
+        0.0006977892875129491,
+        0.0006225061327744443,
+        0.0007477526163384126
+      ],
+      "candidate_score_mae_max": 0.0007676548604384778,
+      "candidate_score_mae_mean": 0.0006977589025161629,
+      "training_reconstruction_mse": 1.3586615123951683e-06
+    }
+  },
+  "runner_sha256": "d85b5b37bbe4e32445f59bd6b2e6c36da8f84bf52ab1346a0079ce168686084d",
   "schema_version": 1,
   "scope": {
     "canonical_152_query_payload": false,
