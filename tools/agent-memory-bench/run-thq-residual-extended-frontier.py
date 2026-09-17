@@ -213,52 +213,33 @@ def main() -> None:
                                                    "subquantizers": subquantizers,
                                                    "centers": centers, "bytes": payload,
                                                    "model_sha256": digest_array(centers)}
-    for subquantizers in (8, 16, 32):
-        opq = faiss.OPQMatrix(D, subquantizers)
-        opq.niter = 8
-        opq.niter_pq = 4
-        opq.niter_pq_0 = 4
-        opq.verbose = False
-        opq.train(np.ascontiguousarray(train_residual))
-        rotation = faiss.vector_to_array(opq.A).reshape(D, D).astype(np.float32)
-        rotated = np.ascontiguousarray(train_residual @ rotation.T, dtype=np.float32)
-        pq = faiss.ProductQuantizer(D, subquantizers, 8)
-        pq.cp.niter = 12
-        pq.cp.seed = 20260916
-        pq.cp.verbose = False
-        pq.train(rotated)
-        centers = faiss.vector_to_array(pq.centroids).reshape(
-            subquantizers, 256, D // subquantizers).astype(np.float32)
-        models[f"opq{subquantizers}x8"] = {"kind": "opq", "bits": 8,
-                                             "subquantizers": subquantizers,
-                                             "centers": centers, "rotation": rotation,
-                                             "bytes": subquantizers,
-                                             "model_sha256": digest_array(centers),
-                                             "rotation_sha256": digest_array(rotation)}
-    # A rate-matched OPQ control.  The rotation is trained without query or
-    # qrels access; only the residual training split is used.
-    for subquantizers in (16, 32, 64):
-        opq = faiss.OPQMatrix(D, subquantizers)
-        opq.niter = 8
-        opq.niter_pq = 4
-        opq.niter_pq_0 = 4
-        opq.verbose = False
-        opq.train(np.ascontiguousarray(train_residual))
-        rotation = faiss.vector_to_array(opq.A).reshape(D, D).astype(np.float32)
-        rotated = np.ascontiguousarray(train_residual @ rotation.T, dtype=np.float32)
-        pq = faiss.ProductQuantizer(D, subquantizers, 4)
-        pq.cp.niter = 12
-        pq.cp.seed = 20260916
-        pq.cp.verbose = False
-        pq.train(rotated)
-        centers = faiss.vector_to_array(pq.centroids).reshape(
-            subquantizers, 16, D // subquantizers).astype(np.float32)
-        models[f"opq{subquantizers}x4"] = {"kind": "opq", "bits": 4,
-                                             "subquantizers": subquantizers,
-                                             "centers": centers, "rotation": rotation,
-                                             "bytes": subquantizers // 2,
-                                             "model_sha256": digest_array(centers),
-                                             "rotation_sha256": digest_array(rotation)}
+    # Train the rotation and codebooks jointly at the advertised bit width.
+    # A bare OPQMatrix otherwise allocates an internal 8-bit PQ, which would
+    # make the nominal OPQ4 rotation an 8-bit-optimized control.
+    for bits in (4, 8):
+        for subquantizers in (8, 16, 32, 64):
+            payload = subquantizers * bits // 8
+            if payload not in (8, 16, 32):
+                continue
+            opq = faiss.OPQMatrix(D, subquantizers)
+            pq = faiss.ProductQuantizer(D, subquantizers, bits)
+            pq.cp.niter = 12
+            pq.cp.seed = 20260916
+            pq.cp.verbose = False
+            opq.pq = pq
+            opq.niter = 8
+            opq.niter_pq = 4
+            opq.niter_pq_0 = 4
+            opq.verbose = False
+            opq.train(np.ascontiguousarray(train_residual))
+            rotation = faiss.vector_to_array(opq.A).reshape(D, D).astype(np.float32)
+            centers = faiss.vector_to_array(pq.centroids).reshape(
+                subquantizers, 1 << bits, D // subquantizers).astype(np.float32)
+            models[f"opq{subquantizers}x{bits}"] = {
+                "kind": "opq", "bits": bits, "subquantizers": subquantizers,
+                "centers": centers, "rotation": rotation,
+                "bytes": payload, "model_sha256": digest_array(centers),
+                "rotation_sha256": digest_array(rotation)}
 
     rslm_centers = {}
     for bits in (1, 2, 3, 4):

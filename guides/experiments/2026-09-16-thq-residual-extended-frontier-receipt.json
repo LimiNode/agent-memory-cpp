@@ -1,53 +1,53 @@
 {
-  "compact_result_sha256": "de1abf886380b8a43799b08f1ba536f8ab2d70f2f1962a747508d70b8bf0c8d4",
+  "compact_result_sha256": "0985259bffb37c9d7933f7a8bfe142e7d67ccb378c0f6b9e7de2a7ee6981c7bb",
   "family": "thq_residual_extended_frontier_receipt_v1",
   "model_hashes": {
     "opq16x4": {
       "bits": 4,
       "bytes": 8,
       "kind": "opq",
-      "model_sha256": "4643a81f4b3644d8425ac533d6d2e1b862719883c05e8a9880a74489e61c0eb5",
-      "rotation_sha256": "9ec3b806843e4c900fa068c7e326c662e17ef52862548da27be0672f088e7d54",
+      "model_sha256": "8608c3820ad2adb9c39b391c9fa61b362a0bdd0b22247b642668637f6d418cd0",
+      "rotation_sha256": "9f840cda6bdac3583d2e07c62560938608c3c5ca0749ea68832ba06102819d18",
       "subquantizers": 16
     },
     "opq16x8": {
       "bits": 8,
       "bytes": 16,
       "kind": "opq",
-      "model_sha256": "2d80bb3ed22ce2a65c177ee1a2a51a39c16ee964d15d6be639e86a4e740bf44a",
-      "rotation_sha256": "9ec3b806843e4c900fa068c7e326c662e17ef52862548da27be0672f088e7d54",
+      "model_sha256": "a5277d56ee5bf61d0e452900dcbbe5efd017050555170a92f3458c43c2c0cee7",
+      "rotation_sha256": "e1129b79f90bd4b7584d1187e6cc5dcea1710bb9f4c3476d37af5ba678d1389d",
       "subquantizers": 16
     },
     "opq32x4": {
       "bits": 4,
       "bytes": 16,
       "kind": "opq",
-      "model_sha256": "e6494e8878ad3a88149623100670b4387b21b56fb57a9c5af43b00915ba8b4bf",
-      "rotation_sha256": "7aaed749b10a40e6de4f199e0cb6560d6df3595f2840cddd674554fa9cd7d24e",
+      "model_sha256": "f1238a77c3bcc41ab52d4c52abee60c8988a033a1079ebbd99fe3fc596891ba8",
+      "rotation_sha256": "1c25987ba88f534f364d62bb6a7261628a5d932dadbc817ea486cf5e959c266e",
       "subquantizers": 32
     },
     "opq32x8": {
       "bits": 8,
       "bytes": 32,
       "kind": "opq",
-      "model_sha256": "a12279240dfba3e9d418aca0f227915df0b7deae7365aa952bcd238c67854a84",
-      "rotation_sha256": "7aaed749b10a40e6de4f199e0cb6560d6df3595f2840cddd674554fa9cd7d24e",
+      "model_sha256": "f4edb95fa7598707429adb693054c3ad8c69a3801243478230b47b995c0d8581",
+      "rotation_sha256": "04cf26a4f1c98bb921295ce2da32a9e4a741ecf2e5bd5c2bd7bbeeb90010ab88",
       "subquantizers": 32
     },
     "opq64x4": {
       "bits": 4,
       "bytes": 32,
       "kind": "opq",
-      "model_sha256": "b9afbc980bd890dead41d41b5e5dfb88ab77b8069749492cd1cc9bee404e75de",
-      "rotation_sha256": "39ee0347b0a40647820c2c0ef37f7802a1dafc20af631c75c18cd0de6851d7f7",
+      "model_sha256": "115a8d176183e223cd9ef1d3ee12f549aeb6b5e62b134a07021d8c587a444ccc",
+      "rotation_sha256": "b725a33aa1f60d8b6597cfc2a00b13540b6254cf07b9d0fd4a278d5b9c25694c",
       "subquantizers": 64
     },
     "opq8x8": {
       "bits": 8,
       "bytes": 8,
       "kind": "opq",
-      "model_sha256": "9970d0ca7909bfbbdb16bf8f45100ed2765d22fcda0d7dfef03ff0195e9798ff",
-      "rotation_sha256": "a04aec78ac70b1029ffe8b50a40c3ae28ca6b47906ada7a49c62511e9667d730",
+      "model_sha256": "8bdcc8a3f922eb99ea3de47c0df3afa1d5a5fd3a7153e4cd2a163dd429fc5ac4",
+      "rotation_sha256": "40b68fd9e8111d67a0f95c55f64750c49af9cb42e0bb3111224c7acf3d135847",
       "subquantizers": 8
     },
     "pca128x1": {
@@ -210,8 +210,8 @@
     "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
     "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
-  "result_sha256": "57e93c7e0247039e1fa5ab5ac11bdcf152f3e501b1b9e5b964de2c28aa2a3644",
-  "runner_sha256": "43d3eb2ac654d2d788c4ab3eee2592102bffabae83537d9a67a56087db4201ed",
+  "result_sha256": "54899b231a336880c23df21cac9c99fc6d0bc3a8d8d4a45209981d1f50f1b6c6",
+  "runner_sha256": "cf8f320bbf4035def67bdad31dd03a94857b31842f519b57d1ff91a649f2abf9",
   "schema_version": 1,
   "scope": {
     "canonical_152_query_payload": false,

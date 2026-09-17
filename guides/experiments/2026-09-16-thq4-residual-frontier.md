@@ -159,12 +159,12 @@ THQ4 plus its side-code, `thq7-centroid` is `144 B`, and `ridge-onehot` is the
 representation.  The runner also has a CMake self-test and an explicit
 Faiss 4-bit unpacking check in the decode path.
 
-The corrected v2 eight-query screen (raw result SHA-256
-`57e93c7e0247039e1fa5ab5ac11bdcf152f3e501b1b9e5b964de2c28aa2a3644`;
+The corrected joint-bit-width eight-query screen (raw result SHA-256
+`54899b231a336880c23df21cac9c99fc6d0bc3a8d8d4a45209981d1f50f1b6c6`;
 compact result SHA-256
-`de1abf886380b8a43799b08f1ba536f8ab2d70f2f1962a747508d70b8bf0c8d4`;
+`0985259bffb37c9d7933f7a8bfe142e7d67cc378c0f6b9e7de2a7ee6981c7bb`;
 receipt SHA-256
-`836190853dc33436e133d390c5728cd85ec93ad8913d7086dc25745399b857c4`) reports
+`3f9477efa38aca7d0d35e50f5259a5f80ca21c24835b059ff7f436e15d117156`) reports
 the following exact-norm means:
 
 | arm | payload | teacher top-10 overlap |
@@ -173,7 +173,7 @@ the following exact-norm means:
 | PQ32×8 | 128 B | 0.938 |
 | OPQ32×8 | 128 B | 0.913 |
 | PQ16/32/64×4 | 104/112/128 B | 0.900/0.875/0.900 |
-| OPQ16/32/64×4 | 104/112/128 B | 0.888/0.888/0.925 |
+| OPQ16/32/64×4 | 104/112/128 B | 0.888/0.900/0.913 |
 | RSLM-like 1/2/3/4 bit | 144/192/240/288 B | 0.900/0.975/0.988/0.963 |
 | THQ7 centroid | 144 B | 0.925 |
 | ridge one-hot | 96 B | 0.875 |
