@@ -67,7 +67,7 @@ def norm_rank(values: np.ndarray, query: np.ndarray, ids: np.ndarray) -> np.ndar
 
 
 def parse_pairs(path: Path, id_to_index: dict[str, int], query_start: int,
-                query_ids: list[str], rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, int]:
+                query_ids: list[str], rng: np.random.Generator) -> tuple[np.ndarray, np.ndarray, int, dict[int, list[int]]]:
     query_order = {value: i for i, value in enumerate(query_ids)}
     positives: dict[int, list[int]] = {}
     negatives: dict[int, list[int]] = {}
@@ -92,7 +92,37 @@ def parse_pairs(path: Path, id_to_index: dict[str, int], query_start: int,
             chosen = rng.choice(neg, size=min(8, len(neg)), replace=False)
             for negative in chosen:
                 pos_rows.append((qi, positive)); neg_rows.append((qi, int(negative)))
-    return np.asarray(pos_rows, dtype=np.int64), np.asarray(neg_rows, dtype=np.int64), len(positives)
+    return np.asarray(pos_rows, dtype=np.int64), np.asarray(neg_rows, dtype=np.int64), len(positives), positives
+
+
+def mine_hard_negatives(documents: np.ndarray, thq_codes: np.ndarray, thresholds: np.ndarray,
+                        queries: np.ndarray, positives: dict[int, list[int]], query_limit: int,
+                        chunk_size: int) -> list[tuple[int, int, int]]:
+    """Mine non-relevant documents from the actual THQ4 top-128 shell."""
+    ids = np.arange(len(documents), dtype=np.int64)
+    mined: list[tuple[int, int, int]] = []
+    for qi in sorted(positives)[:query_limit]:
+        query = np.asarray(queries[qi], dtype=np.float32)
+        lut = np.empty((D, 4), dtype=np.float32)
+        for coordinate in range(D):
+            for level in range(4):
+                low = -np.inf if level == 0 else thresholds[coordinate, level - 1]
+                high = np.inf if level == 3 else thresholds[coordinate, level]
+                delta = low - query[coordinate] if query[coordinate] < low else (
+                    query[coordinate] - high if query[coordinate] > high else 0.0)
+                lut[coordinate, level] = delta * delta
+        interval = np.empty(len(documents), dtype=np.float32)
+        for start in range(0, len(documents), chunk_size):
+            stop = min(start + chunk_size, len(documents))
+            levels = h.unpack_thq(np.asarray(thq_codes[start:stop]))
+            interval[start:stop] = np.sum(lut[np.arange(D)[None, :], levels], axis=1)
+        candidates = h.top_k(interval, ids, TOP, ascending=True)
+        positive_set = set(positives[qi])
+        for negative in candidates:
+            if int(negative) not in positive_set:
+                for positive in positives[qi]:
+                    mined.append((qi, int(positive), int(negative)))
+    return mined
 
 
 def main() -> None:
@@ -107,6 +137,8 @@ def main() -> None:
     parser.add_argument("--hidden", type=int, default=128)
     parser.add_argument("--epochs", type=int, default=8)
     parser.add_argument("--batch-size", type=int, default=512)
+    parser.add_argument("--hard-negative-queries", type=int, default=0,
+                        help="number of training queries for THQ top-128 hard-negative mining")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -124,8 +156,18 @@ def main() -> None:
     grades = h.load_qrels(args.qrels, id_to_index, query_ids)
 
     rng = np.random.default_rng(20260916)
-    positive_rows, negative_rows, train_queries = parse_pairs(
+    positive_rows, negative_rows, train_queries, positive_map = parse_pairs(
         args.qrels, id_to_index, args.train_query_start, all_query_ids, rng)
+    hard_rows = mine_hard_negatives(documents, thq_codes, thresholds, queries_all,
+                                    positive_map, args.hard_negative_queries, 16384) if args.hard_negative_queries else []
+    hard_query_indices = sorted({int(q) for q, _, _ in hard_rows})
+    if any(q < args.train_query_start for q in hard_query_indices):
+        raise RuntimeError("hard-negative mining crossed the held-out query boundary")
+    if hard_rows:
+        hard_pos = np.asarray([(q, p) for q, p, _ in hard_rows], dtype=np.int64)
+        hard_neg = np.asarray([(q, n) for q, _, n in hard_rows], dtype=np.int64)
+        positive_rows = np.vstack((positive_rows, hard_pos))
+        negative_rows = np.vstack((negative_rows, hard_neg))
     if len(positive_rows) == 0:
         raise RuntimeError("no retrieval training pairs were found")
     pair_queries = torch.from_numpy(np.asarray(queries_all[positive_rows[:, 0]], dtype=np.float32))
@@ -151,10 +193,14 @@ def main() -> None:
             pred_neg = model(features_neg[batch])
             pos_score = torch.sum(torch.nn.functional.normalize(pred_pos, dim=1) * q, dim=1)
             neg_score = torch.sum(torch.nn.functional.normalize(pred_neg, dim=1) * q, dim=1)
+            teacher_pos = torch.sum(source_pos[batch] * q, dim=1)
+            teacher_neg = torch.sum(source_neg[batch] * q, dim=1)
             margin = torch.relu(0.1 - pos_score + neg_score).mean()
             mse = 0.01 * (torch.mean((pred_pos - source_pos[batch]) ** 2) +
                           torch.mean((pred_neg - source_neg[batch]) ** 2))
-            loss = margin + mse
+            score_regression = 0.1 * (torch.mean((pos_score - teacher_pos) ** 2) +
+                                      torch.mean((neg_score - teacher_neg) ** 2))
+            loss = margin + mse + score_regression
             optimizer.zero_grad(); loss.backward(); optimizer.step()
             epoch_loss += float(loss.detach()) * len(batch)
         loss_history.append(epoch_loss / len(order))
@@ -203,6 +249,8 @@ def main() -> None:
               "status": "EXECUTED", "evidence_status": "heldout_query_retrieval_loss_probe",
               "documents": count, "query_count": query_count, "training_query_start": args.train_query_start,
               "training_queries_with_pairs": train_queries, "pair_count": int(len(positive_rows)),
+              "hard_negative_queries": args.hard_negative_queries, "hard_negative_pair_count": len(hard_rows),
+              "hard_negative_query_indices": hard_query_indices,
               "hidden": args.hidden, "epochs": args.epochs, "seed": 20260916,
               "prefilter": "full_corpus_thq4_interval_squared_top128",
               "documents_sha256": sha256(args.documents), "queries_sha256": sha256(args.queries),

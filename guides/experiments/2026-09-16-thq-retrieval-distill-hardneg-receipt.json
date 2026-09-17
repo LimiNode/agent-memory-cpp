@@ -1,5 +1,5 @@
 {
-  "compact_result_sha256": "1b45361521bbf4705220a32042ed536a76de550064201aa925e6ad0830c6cbe6",
+  "compact_result_sha256": "28f876af292e7556a53cec98fa2dccf66b2c6a56508f421b6a5279263c483bd3",
   "family": "thq_retrieval_distill_stage_local_receipt_v1",
   "input_hashes": {
     "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
@@ -9,7 +9,7 @@
     "query_ids_sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385",
     "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70"
   },
-  "result_sha256": "0097d639575a149b2b109102732d568813189364ca0338ffea8599d6928dd0d9",
+  "result_sha256": "aaf2a4e6c4de28e9fb3ca5cc8047e78bf3176ab3e3223d2e8e982b60c9a01a49",
   "runner_sha256": "c58c7a7a378af295b3313b33ea8c5ea823f38decc45e64a9e0c740c4965903c6",
   "schema_version": 1,
   "scope": {

@@ -28,7 +28,11 @@ def main() -> None:
     compact = {key: result.get(key) for key in (
         "schema_version", "family", "status", "evidence_status", "documents", "query_count",
         "training_query_start", "training_queries_with_pairs", "pair_count", "hidden", "epochs", "seed",
-        "prefilter", "loss_history", "summaries", "limitations")}
+        "hard_negative_queries", "hard_negative_pair_count", "hard_negative_query_indices", "prefilter", "loss_history", "summaries",
+        "limitations")}
+    compact["hard_negative_queries"] = int(result.get("hard_negative_queries", 0) or 0)
+    compact["hard_negative_pair_count"] = int(result.get("hard_negative_pair_count", 0) or 0)
+    compact["hard_negative_query_indices"] = list(result.get("hard_negative_query_indices", []) or [])
     args.output.write_text(json.dumps(compact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     receipt = {
         "schema_version": 1,

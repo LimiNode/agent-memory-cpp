@@ -212,26 +212,37 @@ versus `0.875` for the coordinate-centroid control.  The raw-dot decoder was
 this specific small MSE decoder, not a proof that all learned decoders fail:
 the training loss is still high and no ranking/distillation loss was used.
 As a direct optimization sanity check, fitting the same network to the
-centroid target gave `0.0` overlap with hidden=256 and `0.7` on the first
-query with hidden=1024; the established ridge one-hot control remains `.875`.
+centroid target gave `0.0` overlap with hidden=256 on the first query.  A
+larger hidden=1024 replay over all eight held-out queries reached `.8125`
+mean teacher overlap (minimum `.5`, FP16 norm `.825`) versus `.875` for the
+coordinate-centroid control.  This is materially better than the original
+`.100` full-target MLP, but still below the centroid itself; the established
+ridge one-hot control remains `.875`.  The compact centroid-target result and
+receipt are `2026-09-16-thq-learned-decoder-centroid-1024-result.json` and
+`2026-09-16-thq-learned-decoder-centroid-1024-receipt.json` (SHA-256
+`b40f51ec7a81f38f378dd226f5c9297678c2a0cde4333a495d81cae082307c98` and
+`f3805e53c0bcbe370af605f15893542fae9229c7b22cc0fe24d4f3ae4b4b6e56`).
 The compact result and receipt are committed as
 `2026-09-16-thq-learned-decoder-result.json` and
 `2026-09-16-thq-learned-decoder-receipt.json` (compact SHA-256
 `7042aa2cc40104bdea10acc1be221497c81150811720bc7beb45cffb92c4d5b5`).
 
-The next discriminating check, if this branch remains scientifically
-interesting, is therefore a retrieval-oriented decoder trained against dense
-teacher score differences on a separate query-training split.  It must not be
-promoted from this eight-query MSE failure directly to native implementation.
+The retrieval-oriented check below was therefore run against a separate
+query-training split.  Neither this centroid sanity replay nor the following
+retrieval probe is a reason to promote an ML decoder directly to native
+implementation.
 
 ## Held-out retrieval-distillation probe
 
 That next check was run as a bounded upper-bound probe with
 `tools/agent-memory-bench/run-thq-retrieval-distill-stage-local.py`.  The
-decoder was trained only on qrels from queries `8..304` (297 queries, 4,966
-positive/negative pairs); queries `0..7` were held out for the reported
-stage-local screen.  The loss was a normalized pairwise margin plus a small
-MSE stabilizer.
+decoder was trained only on qrels from queries `8..304` (297 queries); queries
+`0..7` were held out for the reported stage-local screen.  The original
+qrels-only run used 4,966 pairs and a normalized pairwise margin plus a small
+MSE stabilizer.  A corrective run added 1,764 pairs mined from the actual
+THQ4 full-corpus top-128 shell for the first eight training queries and added
+explicit teacher-score regression to the loss.  No held-out query was used
+for mining.
 
 The held-out result was `0.100` mean teacher overlap (minimum `0.0`) for the
 retrieval decoder, while the source-vector control was `1.000`.  Thus the
@@ -239,12 +250,25 @@ decoder did fit the training objective (final loss `0.00031`) without
 preserving the held-out teacher geometry.  This is evidence against the
 specific one-hot THQ4 + small pairwise decoder, not against retrieval-aware
 compression in general: the model sees only independent THQ levels and the
-training objective is query-specific.
+training objective is query-specific.  The hard-negative/score-regression
+variant was worse on this screen: `.050` mean teacher overlap (minimum `0.0`)
+and `.0255` mean qrels nDCG@10, despite a final loss of `0.00273`.  This is
+useful as a corrective negative result, but it does not validate a general
+claim that hard-negative mining is harmful: the mined shell contains
+unjudged non-positive documents, and the decoder is still code-only with a
+single shared mapping.  The two runs are kept as separate evidence artifacts:
+`2026-09-16-thq-retrieval-distill-result.json` (qrels-only) and
+`2026-09-16-thq-retrieval-distill-hardneg-result.json` (hard-negative plus
+teacher-score).
 
-The compact result SHA-256 is
-`7042aa2cc40104bdea10acc1be221497c81150811720bc7beb45cffb92c4d5b5`; the
+The regenerated qrels-only compact result SHA-256 is
+`1b45361521bbf4705220a32042ed536a76de550064201aa925e6ad0830c6cbe6`; its
 receipt SHA-256 is
-`39594061a689585f67e36ca5b20fc0a622ce602f5ac77447ae7c8ac620683b5e`.
+`e6ccb4b9478830e6fa541359034de1bc3c988ac5b907e0ddcc9acc9427cf28c4`.
+The hard-negative compact result SHA-256 is
+`28f876af292e7556a53cec98fa2dccf66b2c6a56508f421b6a5279263c483bd3`; its
+receipt SHA-256 is
+`8b1f65bca5f9207d4af3a20e3d6bff02eedf95b29dd0795ee5b7a7fba58ef358`.
 The next useful upper bound is a decoder with explicit cross-coordinate
 features or a teacher-score table, not a larger blind MLP.
 

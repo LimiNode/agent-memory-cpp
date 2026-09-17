@@ -3,9 +3,18 @@
   "epochs": 8,
   "evidence_status": "heldout_query_retrieval_loss_probe",
   "family": "thq_retrieval_distill_stage_local_v1",
-  "hard_negative_pair_count": 0,
-  "hard_negative_queries": 0,
-  "hard_negative_query_indices": [],
+  "hard_negative_pair_count": 1764,
+  "hard_negative_queries": 8,
+  "hard_negative_query_indices": [
+    8,
+    9,
+    10,
+    11,
+    12,
+    13,
+    14,
+    15
+  ],
   "hidden": 128,
   "limitations": [
     "eight held-out queries",
@@ -14,16 +23,16 @@
     "not native/page/MDBX latency"
   ],
   "loss_history": [
-    0.047301734764274454,
-    0.0020584203910958016,
-    0.0006769033263412976,
-    0.0004324200518357639,
-    0.00044391913822129295,
-    0.0003737295462669819,
-    0.00044757203223161996,
-    0.00031023195893528107
+    0.10073394999904406,
+    0.022039197429593923,
+    0.007956067819347575,
+    0.004805249940565224,
+    0.0037022166978844607,
+    0.0032044328888255497,
+    0.0029193254068693116,
+    0.002734430414523492
   ],
-  "pair_count": 4966,
+  "pair_count": 6730,
   "prefilter": "full_corpus_thq4_interval_squared_top128",
   "query_count": 8,
   "schema_version": 1,
@@ -31,8 +40,8 @@
   "status": "EXECUTED",
   "summaries": {
     "retrieval-decoder": {
-      "qrels_ndcg10_mean": 0.09603747921533187,
-      "teacher_overlap_mean": 0.1,
+      "qrels_ndcg10_mean": 0.025547799698560764,
+      "teacher_overlap_mean": 0.05,
       "teacher_overlap_min": 0.0
     },
     "source-control": {
