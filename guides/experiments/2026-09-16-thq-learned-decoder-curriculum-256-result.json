@@ -1,0 +1,79 @@
+{
+  "centroid_pretrain_iter": 5,
+  "decoder_coef_sha256": "da27400df3e1a604d4d94e1743c9f955e33c7298667aff8fdb4237cc2e5d2129",
+  "documents": 1000000,
+  "evidence_status": "eight_query_numpy_stage_local_screen",
+  "family": "thq_learned_decoder_stage_local_v1",
+  "hidden": 256,
+  "limitations": [
+    "diagnostic eight-query screen",
+    "MSE-only decoder; no retrieval-oriented loss",
+    "not canonical 152-query payload",
+    "not native/page/MDBX latency"
+  ],
+  "max_iter": 10,
+  "norm_range_from_training": [
+    0.8529485464096069,
+    0.9495453238487244
+  ],
+  "prefilter": "full_corpus_thq4_interval_squared_top128",
+  "query_count": 8,
+  "schema_version": 1,
+  "seed": 20260916,
+  "status": "EXECUTED",
+  "summaries": {
+    "mlp-decoder": {
+      "exact": {
+        "qrels_ndcg10_mean": 0.12499999999999999,
+        "teacher_overlap_mean": 0.1,
+        "teacher_overlap_min": 0.0
+      },
+      "fp16": {
+        "qrels_ndcg10_mean": 0.12499999999999999,
+        "teacher_overlap_mean": 0.11250000000000002,
+        "teacher_overlap_min": 0.0
+      },
+      "raw": {
+        "qrels_ndcg10_mean": 0.0,
+        "teacher_overlap_mean": 0.0625,
+        "teacher_overlap_min": 0.0
+      },
+      "uint8": {
+        "qrels_ndcg10_mean": 0.12499999999999999,
+        "teacher_overlap_mean": 0.1,
+        "teacher_overlap_min": 0.0
+      }
+    },
+    "thq4-centroid": {
+      "exact": {
+        "qrels_ndcg10_mean": 0.5667070729148996,
+        "teacher_overlap_mean": 0.875,
+        "teacher_overlap_min": 0.5
+      },
+      "fp16": {
+        "qrels_ndcg10_mean": 0.5667070729148996,
+        "teacher_overlap_mean": 0.875,
+        "teacher_overlap_min": 0.5
+      },
+      "raw": {
+        "qrels_ndcg10_mean": 0.5211030391501876,
+        "teacher_overlap_mean": 0.7124999999999999,
+        "teacher_overlap_min": 0.6
+      },
+      "uint8": {
+        "qrels_ndcg10_mean": 0.5211030391501876,
+        "teacher_overlap_mean": 0.7124999999999999,
+        "teacher_overlap_min": 0.6
+      }
+    }
+  },
+  "target": "full",
+  "target_mean_sha256": "0f9a438382ad3448cfb98dbd2f09876ade24537aa2d90381650c87deb7f3522d",
+  "target_scale_sha256": "74324cd27a44481f1dd007a8748e4c48cf1ba1d37165c46257adff421eaadbc4",
+  "training_count": 25000,
+  "training_loss_final": 0.3822740471076965,
+  "training_prediction_norm_range": [
+    0.8529485464096069,
+    0.9495453238487244
+  ]
+}

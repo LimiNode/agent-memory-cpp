@@ -1,0 +1,79 @@
+{
+  "centroid_pretrain_iter": null,
+  "decoder_coef_sha256": "d03bb58a250359a658a08a597401a34e77d57f54360aba3e8dc44b65eab541c0",
+  "documents": 1000000,
+  "evidence_status": "eight_query_numpy_stage_local_screen",
+  "family": "thq_learned_decoder_stage_local_v1",
+  "hidden": 1024,
+  "limitations": [
+    "diagnostic eight-query screen",
+    "MSE-only decoder; no retrieval-oriented loss",
+    "not canonical 152-query payload",
+    "not native/page/MDBX latency"
+  ],
+  "max_iter": 30,
+  "norm_range_from_training": [
+    0.9309961795806885,
+    1.0043144226074219
+  ],
+  "prefilter": "full_corpus_thq4_interval_squared_top128",
+  "query_count": 8,
+  "schema_version": 1,
+  "seed": 20260916,
+  "status": "EXECUTED",
+  "summaries": {
+    "mlp-decoder": {
+      "exact": {
+        "qrels_ndcg10_mean": 0.5721541564506127,
+        "teacher_overlap_mean": 0.8125,
+        "teacher_overlap_min": 0.5
+      },
+      "fp16": {
+        "qrels_ndcg10_mean": 0.5721541564506127,
+        "teacher_overlap_mean": 0.825,
+        "teacher_overlap_min": 0.6
+      },
+      "raw": {
+        "qrels_ndcg10_mean": 0.6582276928461086,
+        "teacher_overlap_mean": 0.7,
+        "teacher_overlap_min": 0.4
+      },
+      "uint8": {
+        "qrels_ndcg10_mean": 0.5721541564506127,
+        "teacher_overlap_mean": 0.8125,
+        "teacher_overlap_min": 0.5
+      }
+    },
+    "thq4-centroid": {
+      "exact": {
+        "qrels_ndcg10_mean": 0.5667070729148996,
+        "teacher_overlap_mean": 0.875,
+        "teacher_overlap_min": 0.5
+      },
+      "fp16": {
+        "qrels_ndcg10_mean": 0.5667070729148996,
+        "teacher_overlap_mean": 0.875,
+        "teacher_overlap_min": 0.5
+      },
+      "raw": {
+        "qrels_ndcg10_mean": 0.5211030391501876,
+        "teacher_overlap_mean": 0.7124999999999999,
+        "teacher_overlap_min": 0.6
+      },
+      "uint8": {
+        "qrels_ndcg10_mean": 0.5667070729148996,
+        "teacher_overlap_mean": 0.8875,
+        "teacher_overlap_min": 0.5
+      }
+    }
+  },
+  "target": "centroid",
+  "target_mean_sha256": "c3885b05a8a85088690f2cb82bc28c3ffb963f08184c682bd972e761178a56e4",
+  "target_scale_sha256": "d3e63f7c25b806ecd36da812c4cbb21d145ee60a0d28c317b15ffc10745d582e",
+  "training_count": 25000,
+  "training_loss_final": 0.051699009815454486,
+  "training_prediction_norm_range": [
+    0.9309961795806885,
+    1.0043144226074219
+  ]
+}

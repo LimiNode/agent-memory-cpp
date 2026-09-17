@@ -1,0 +1,156 @@
+{
+  "compact_result_sha256": "84d289ac5ea52a790200b763a84b6aec739ba6cac53a6f23e0030a9d6af0b6d9",
+  "family": "thq_residual_frontier_receipt_v1",
+  "frontier_artifacts": {
+    "materialized_residual_codes": {
+      "16": {
+        "bytes": 16000000,
+        "path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\codes\\thq4-pca16.i8",
+        "saturated_values": 346,
+        "saturation_fraction": 2.1625e-05,
+        "scale": [
+          0.000718379276804626,
+          0.0005764703964814544,
+          0.0005561301368288696,
+          0.0005914282519370317,
+          0.0005429500015452504,
+          0.0005010849563404918,
+          0.0005411208840087056,
+          0.0004618156235665083,
+          0.0004432427231222391,
+          0.000503090675920248,
+          0.00046240820665843785,
+          0.0005319906631484628,
+          0.0005224462365731597,
+          0.0004650562768802047,
+          0.0003955218126066029,
+          0.0005168912466615438
+        ],
+        "scale_fit_scope": "training_residual_only",
+        "sha256": "8e529af7293d2342506a42b680b12f19d903a6b2eb0ead69be59b17408f02c46"
+      },
+      "32": {
+        "bytes": 32000000,
+        "path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\codes\\thq4-pca32.i8",
+        "saturated_values": 570,
+        "saturation_fraction": 1.78125e-05,
+        "scale": [
+          0.000718379276804626,
+          0.0005764703964814544,
+          0.0005561301368288696,
+          0.0005914282519370317,
+          0.0005429500015452504,
+          0.0005010849563404918,
+          0.0005411208840087056,
+          0.0004618156235665083,
+          0.0004432427231222391,
+          0.000503090675920248,
+          0.00046240820665843785,
+          0.0005319906631484628,
+          0.0005224462365731597,
+          0.0004650562768802047,
+          0.0003955218126066029,
+          0.0005168912466615438,
+          0.0004947567940689623,
+          0.00041430050623603165,
+          0.00046965086949057877,
+          0.00039486581226810813,
+          0.0004350505187176168,
+          0.0004736581176985055,
+          0.0004124636761844158,
+          0.00041839509503915906,
+          0.0004027157847303897,
+          0.00037270120810717344,
+          0.0004535676271189004,
+          0.0004281227011233568,
+          0.0004104125255253166,
+          0.0004036347381770611,
+          0.00038452897570095956,
+          0.0004005122173111886
+        ],
+        "scale_fit_scope": "training_residual_only",
+        "sha256": "f91d294f05f0ab2e1d4efd02bd75a8866210a0137d5aef9285ef02e679044897"
+      },
+      "8": {
+        "bytes": 8000000,
+        "path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\codes\\thq4-pca8.i8",
+        "saturated_values": 228,
+        "saturation_fraction": 2.85e-05,
+        "scale": [
+          0.000718379276804626,
+          0.0005764703964814544,
+          0.0005561301368288696,
+          0.0005914282519370317,
+          0.0005429500015452504,
+          0.0005010849563404918,
+          0.0005411208840087056,
+          0.0004618156235665083
+        ],
+        "scale_fit_scope": "training_residual_only",
+        "sha256": "acce0ca4ed0a3bdb7f537ca736d1fe910d136fb1f0b19ee71857ce16018e8ec0"
+      }
+    },
+    "materialized_residual_pq": {
+      "16": {
+        "centroids_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\pq\\thq4-pq16.centroids.f32",
+        "centroids_sha256": "0c6beb95bcf3cc0576c8ae4a24e2712cc143e496ca251ee46be38dad3eb62262",
+        "codes_bytes": 16000000,
+        "codes_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\pq\\thq4-pq16.u8",
+        "codes_sha256": "5a4e17f3a4f9a1d1494b71f5577265bfc9a0522498b6ec52e092d7b863472b1f",
+        "payload_bytes": 16,
+        "scale_fit_scope": "training_residual_only_codebook"
+      },
+      "32": {
+        "centroids_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\pq\\thq4-pq32.centroids.f32",
+        "centroids_sha256": "5aff09855714e80226728c2be038950b839550c794d41c60b6b9e8c680888d6a",
+        "codes_bytes": 32000000,
+        "codes_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\pq\\thq4-pq32.u8",
+        "codes_sha256": "812dc6069ff6e4c2e26e13e445c225941cd047ea20bd8f7830c84c0de441f21a",
+        "payload_bytes": 32,
+        "scale_fit_scope": "training_residual_only_codebook"
+      },
+      "8": {
+        "centroids_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\pq\\thq4-pq8.centroids.f32",
+        "centroids_sha256": "84ebf4b3286a45eed4b6b4ae40869a6bf9a3b1942dff2823504431534cee5619",
+        "codes_bytes": 8000000,
+        "codes_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-frontier-artifacts\\pq\\thq4-pq8.u8",
+        "codes_sha256": "62f23df076c197989dfd0735edfce0ab2e3398756117c8b16069b4c716f02846",
+        "payload_bytes": 8,
+        "scale_fit_scope": "training_residual_only_codebook"
+      }
+    },
+    "pca_basis_sha256": "30150bedcea1e9867a06c9ed2e141b6e15666598ddfb048c768a06c51fd4587f",
+    "thq4_centroids_sha256": "1dd563197d82cd4796625d2ae5ed877ca67efaafcfb215145a7113a2cc17ebd8"
+  },
+  "frontier_result_sha256": "3d89e173938cc34929903950845d6bc14fd147a0edaab1d212b6cfc7b32658bf",
+  "input_hashes": {
+    "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
+    "document_vectors_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071",
+    "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "query_ids_sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "quality_scope": {
+    "canonical_152_query_payload": false,
+    "native_latency": false,
+    "query_count": 8
+  },
+  "runner_sha256": "962ddfead226aa0b8dfeba5d3da8882c59ad5c6afc4b8c48671e070b90ff5b6d",
+  "runtime": {
+    "faiss_version": "1.15.0",
+    "numpy_version": null
+  },
+  "schema_version": 1,
+  "stage_input_hashes": {
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "stage_result_sha256": "51423d0414a4ad6603743030b3328e966f1dc8d7143a31152b93c76feb507bc0",
+  "stage_runner_sha256": "ae93ab865f5c23639a2c47e4b19fa7fb38e12844a1baa835f6b77a88f6ede64e",
+  "status": "EXECUTED"
+}
