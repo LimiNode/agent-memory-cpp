@@ -1,0 +1,92 @@
+{
+  "schema_version": 2,
+  "family": "native_full_corpus_candidate_gate_reference_v2",
+  "status": "SUPERSEDED",
+  "evidence_status": "historical_reference_quality_and_logical_cost_only",
+  "runner": "tools/agent-memory-bench/run-native-full-corpus-candidate-gate.py",
+  "raw_result_sha256": "79bba1d55831c3a1f30a7270ae83a0a347381e0e4c08fb1e9ea6ad0976b7da66",
+  "native_receipt_sha256": "113dae55124e43020b1c91bb70421c53885299791a9d580d5352e4c921d9890d",
+  "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+  "quality_inputs": {
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "query_count": 152
+  },
+  "arms": {
+    "direct_linear": {
+      "qrels_ndcg10_mean": 0.6561834737589588,
+      "qrels_ndcg10_p05": 0.0,
+      "qrels_ndcg10_min": 0.0,
+      "teacher_overlap_mean": 0.9868421052631579,
+      "teacher_overlap_min": 0.9,
+      "reference_latency_ms_mean": 15.26774932924462,
+      "reference_latency_ms_p50": 14.293750049546361,
+      "reference_latency_ms_p95": 21.25456505455076,
+      "reference_latency_ms_p99": 23.930203896015893,
+      "logical_payload_bytes_mean": 1945314.5789473683,
+      "unique_4k_pages_mean": 6034.5723684210525,
+      "unique_4k_pages_p95": 6108.45
+    },
+    "thq4_linear": {
+      "qrels_ndcg10_mean": 0.6561834737589588,
+      "qrels_ndcg10_p05": 0.0,
+      "qrels_ndcg10_min": 0.0,
+      "teacher_overlap_mean": 0.9868421052631579,
+      "teacher_overlap_min": 0.9,
+      "reference_latency_ms_mean": 30.63114144912872,
+      "reference_latency_ms_p50": 30.43815027922392,
+      "reference_latency_ms_p95": 34.297805139794946,
+      "reference_latency_ms_p99": 38.48820007871838,
+      "logical_payload_bytes_mean": 530978.9473684211,
+      "unique_4k_pages_mean": 4681.1578947368425,
+      "unique_4k_pages_p95": 4779.15,
+      "direct_top10_order_parity": 1.0
+    },
+    "direct_power0625": {
+      "qrels_ndcg10_mean": 0.658522846754497,
+      "qrels_ndcg10_p05": 0.0,
+      "qrels_ndcg10_min": 0.0,
+      "teacher_overlap_mean": 0.9828947368421053,
+      "teacher_overlap_min": 0.9,
+      "reference_latency_ms_mean": 43.35769078706538,
+      "reference_latency_ms_p50": 42.827049968764186,
+      "reference_latency_ms_p95": 49.56826993729919,
+      "reference_latency_ms_p99": 51.54861086979509,
+      "logical_payload_bytes_mean": 1945314.5789473683,
+      "unique_4k_pages_mean": 6034.5723684210525,
+      "unique_4k_pages_p95": 6108.45
+    },
+    "thq4_power0625": {
+      "qrels_ndcg10_mean": 0.658522846754497,
+      "qrels_ndcg10_p05": 0.0,
+      "qrels_ndcg10_min": 0.0,
+      "teacher_overlap_mean": 0.9828947368421053,
+      "teacher_overlap_min": 0.9,
+      "reference_latency_ms_mean": 30.959917131296702,
+      "reference_latency_ms_p50": 30.876399949193,
+      "reference_latency_ms_p95": 32.9923351528123,
+      "reference_latency_ms_p99": 34.31255901698024,
+      "logical_payload_bytes_mean": 530978.9473684211,
+      "unique_4k_pages_mean": 4681.1578947368425,
+      "unique_4k_pages_p95": 4779.15,
+      "direct_top10_order_parity": 1.0
+    }
+  },
+  "interpretation": {
+    "status_note": "Superseded after byte-LUT accumulation-order and quality-input provenance corrections; rerun is required before authoritative use.",
+    "historical_observation": [
+      "The four arms consumed the same 152 frozen candidate slices.",
+      "THQ4 prefilter preserved the direct INT8 top-10 order for all 152 queries for both codecs.",
+      "The logical payload reduction is approximately 3.66x for the measured candidate stream.",
+      "THQ4 and INT8 candidate-local qrels/teacher results are identical at the recorded top-10 output."
+    ],
+    "not_established": [
+      "The latency fields are Python reference timings, not native-kernel or OS-page serving latency.",
+      "The result does not establish cold/warm storage behavior, MDBX behavior, AVX2 throughput, or production architecture.",
+      "The qrels result is candidate-stream quality; it does not measure route recall outside the supplied stream."
+    ]
+  }
+}
