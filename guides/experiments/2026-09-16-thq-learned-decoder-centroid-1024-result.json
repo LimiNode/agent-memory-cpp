@@ -1,4 +1,5 @@
 {
+  "centroid_pretrain_iter": null,
   "decoder_coef_sha256": "d03bb58a250359a658a08a597401a34e77d57f54360aba3e8dc44b65eab541c0",
   "documents": 1000000,
   "evidence_status": "eight_query_numpy_stage_local_screen",

@@ -27,7 +27,7 @@ def main() -> None:
         raise SystemExit("unexpected learned decoder family")
     compact = {key: result.get(key) for key in (
         "schema_version", "family", "status", "evidence_status", "documents", "training_count",
-        "query_count", "prefilter", "hidden", "max_iter", "target", "seed", "norm_range_from_training",
+        "query_count", "prefilter", "hidden", "max_iter", "centroid_pretrain_iter", "target", "seed", "norm_range_from_training",
         "decoder_coef_sha256", "target_mean_sha256", "target_scale_sha256", "training_loss_final",
         "training_prediction_norm_range", "summaries", "limitations")}
     args.output.write_text(json.dumps(compact, indent=2, sort_keys=True) + "\n", encoding="utf-8")

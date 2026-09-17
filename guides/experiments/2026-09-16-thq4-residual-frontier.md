@@ -222,10 +222,19 @@ receipt are `2026-09-16-thq-learned-decoder-centroid-1024-result.json` and
 `2026-09-16-thq-learned-decoder-centroid-1024-receipt.json` (SHA-256
 `b40f51ec7a81f38f378dd226f5c9297678c2a0cde4333a495d81cae082307c98` and
 `f3805e53c0bcbe370af605f15893542fae9229c7b22cc0fe24d4f3ae4b4b6e56`).
-The compact result and receipt are committed as
+An explicit hidden=256 centroid→full warm-start (5 centroid iterations, then
+10 full-target iterations) still reached only `.100` mean overlap (FP16
+`.1125`, minimum `0.0`; final loss `.3823`).  It is recorded separately in
+`2026-09-16-thq-learned-decoder-curriculum-256-result.json` and its receipt;
+their SHA-256 values are
+`6df616cc43026d484c0b2e5d7560a2acbd7ea8fb5257915d82254513f548f1a9` and
+`9d0b85a7dfc9b124ef59f416a6688e25dc561a7ae96e68e7e759aeb8e4e76504`.
+The full-target compact result and receipt are committed as
 `2026-09-16-thq-learned-decoder-result.json` and
 `2026-09-16-thq-learned-decoder-receipt.json` (compact SHA-256
-`7042aa2cc40104bdea10acc1be221497c81150811720bc7beb45cffb92c4d5b5`).
+`3f17ccfdec44b06d4c9175558781d0ac73bec10d6c92d811fa73c15f66da4422`;
+receipt SHA-256
+`f14267b13e42f0e68858eb9e5b570fdb8aac9200b3ac8e6885abaf9115756197`).
 
 The retrieval-oriented check below was therefore run against a separate
 query-training split.  Neither this centroid sanity replay nor the following

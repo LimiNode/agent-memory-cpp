@@ -1,5 +1,5 @@
 {
-  "compact_result_sha256": "42205479eaecc09f862592a9e337ccaac3dd992c173b37f7eb95b9825cb8196b",
+  "compact_result_sha256": "6df616cc43026d484c0b2e5d7560a2acbd7ea8fb5257915d82254513f548f1a9",
   "family": "thq_learned_decoder_stage_local_receipt_v1",
   "input_hashes": {
     "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
@@ -7,7 +7,7 @@
     "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
     "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
-  "result_sha256": "78f61e6d4ca5fd25771b3f34f66961f586e7271311d477fbaba33789c1bc562f",
+  "result_sha256": "af301269f3f685e7d8a368f9559f0147bcbf7dea183cad81b31acc3b6c7fd57a",
   "runner_sha256": "c5f64b76b5311bd5fb700ed7f44a03718dfd9101eff6b58dafa8f155d8c14485",
   "schema_version": 1,
   "scope": {

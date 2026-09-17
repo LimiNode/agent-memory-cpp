@@ -85,6 +85,8 @@ def main() -> None:
     parser.add_argument("--hidden", type=int, default=256)
     parser.add_argument("--max-iter", type=int, default=30)
     parser.add_argument("--target", choices=("full", "centroid"), default="full")
+    parser.add_argument("--centroid-pretrain-iter", type=int, default=0,
+                        help="optional centroid-target warm start before full-target fit")
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -108,10 +110,19 @@ def main() -> None:
     features = one_hot(train_levels)
     decoder = MLPRegressor(hidden_layer_sizes=(args.hidden,), activation="relu", solver="adam",
                            batch_size=512, max_iter=args.max_iter, random_state=20260916,
-                           early_stopping=False, verbose=False)
+                           early_stopping=False, warm_start=args.centroid_pretrain_iter > 0,
+                           verbose=False)
+    if args.centroid_pretrain_iter > 0 and args.target != "full":
+        raise ValueError("centroid pretraining is only meaningful before a full-target fit")
+    if args.centroid_pretrain_iter > 0:
+        centroid_mean = np.mean(train_base, axis=0, dtype=np.float32)
+        centroid_scale = np.maximum(np.std(train_base, axis=0, dtype=np.float32), 1e-4)
+        decoder.max_iter = args.centroid_pretrain_iter
+        decoder.fit(features, (train_base - centroid_mean) / centroid_scale)
     target = train if args.target == "full" else train_base
     target_mean = np.mean(target, axis=0, dtype=np.float32)
     target_scale = np.maximum(np.std(target, axis=0, dtype=np.float32), 1e-4)
+    decoder.max_iter = args.max_iter
     decoder.fit(features, (target - target_mean) / target_scale)
     train_prediction = decoder.predict(features).astype(np.float32) * target_scale + target_mean
     norm_range = (float(np.min(np.linalg.norm(train_prediction, axis=1))),
@@ -167,6 +178,7 @@ def main() -> None:
               "prefilter": "full_corpus_thq4_interval_squared_top128", "hidden": args.hidden,
               "target": args.target,
               "max_iter": args.max_iter, "seed": 20260916, "norm_range_from_training": norm_range,
+              "centroid_pretrain_iter": args.centroid_pretrain_iter,
               "documents_sha256": sha256(args.documents), "training_sha256": sha256(args.train_vectors),
               "queries_sha256": sha256(args.queries), "thq_sha256": sha256(args.thq4_codes),
               "decoder_coef_sha256": hashlib.sha256(np.asarray(decoder.coefs_[0], dtype="<f4").tobytes()).hexdigest(),
