@@ -1,0 +1,57 @@
+{
+  "documents": 1000000,
+  "epochs": 10,
+  "evidence_status": "eight_query_numpy_stage_local_screen",
+  "family": "thq_learned_latent_stage_local_v1",
+  "hidden": 256,
+  "latent_bytes": [
+    8,
+    16,
+    32
+  ],
+  "latent_high_sha256": "63ad94add5202a6e2c87a8726c876e6a2d9db5119db660bcf36193228a14cf8f",
+  "latent_low_sha256": "6422108eec53139ea5b34fa9891d06789de1c8ed2b59831f825f4e0609b09f23",
+  "limitations": [
+    "diagnostic eight-query screen",
+    "single conditional autoencoder with prefix dropout",
+    "not QINCo/AQ reproduction",
+    "not canonical 152-query payload",
+    "not native/page/MDBX latency"
+  ],
+  "loss_history": [
+    0.0009155918679572642,
+    0.00012083589556394145,
+    0.00010008674010634423,
+    9.992395005421713e-05,
+    9.992522421292961e-05,
+    9.992660118732601e-05,
+    9.992772198515013e-05,
+    9.993046630639583e-05,
+    9.993166990112513e-05,
+    9.993314620340243e-05
+  ],
+  "prefilter": "full_corpus_thq4_interval_squared_top128",
+  "query_count": 8,
+  "schema_version": 1,
+  "seed": 20260917,
+  "status": "EXECUTED",
+  "summaries": {
+    "learned-latent-16B": {
+      "qrels_ndcg10_mean": 0.5667070729148996,
+      "teacher_overlap_mean": 0.875,
+      "teacher_overlap_min": 0.5
+    },
+    "learned-latent-32B": {
+      "qrels_ndcg10_mean": 0.5667070729148996,
+      "teacher_overlap_mean": 0.875,
+      "teacher_overlap_min": 0.5
+    },
+    "learned-latent-8B": {
+      "qrels_ndcg10_mean": 0.5667070729148996,
+      "teacher_overlap_mean": 0.875,
+      "teacher_overlap_min": 0.5
+    }
+  },
+  "training_count": 25000,
+  "training_loss_final": 9.993314620340243e-05
+}

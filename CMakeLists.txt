@@ -1810,6 +1810,13 @@ if(AGENT_MEMORY_BUILD_TESTS)
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
+            NAME agent_memory_thq_learned_latent_stage_local_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-thq-learned-latent-stage-local.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
             NAME agent_memory_thq_rq_stage_local_self_test
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-thq-rq-stage-local.py

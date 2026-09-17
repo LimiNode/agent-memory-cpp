@@ -32,6 +32,7 @@
     0.0029193254068693116,
     0.002734430414523492
   ],
+  "loss_mode": null,
   "pair_count": 6730,
   "prefilter": "full_corpus_thq4_interval_squared_top128",
   "query_count": 8,
@@ -50,6 +51,8 @@
       "teacher_overlap_min": 1.0
     }
   },
+  "teacher_only_example_count": 0,
+  "teacher_only_query_count": 0,
   "training_queries_with_pairs": 297,
   "training_query_start": 8
 }

@@ -283,16 +283,40 @@ single shared mapping.  The two runs are kept as separate evidence artifacts:
 `2026-09-16-thq-retrieval-distill-hardneg-result.json` (hard-negative plus
 teacher-score).
 
+A teacher-only variant then used all `297` non-held-out training queries and
+all `128` THQ shell documents per query (`38,016` exact teacher-scored
+examples), with no qrels margin at all.  Its held-out result was only `.0625`
+mean teacher overlap (minimum `0.0`, qrels nDCG@10 `0.0`).  This closes the
+data-coverage objection, but remains a negative result for this shared
+code-only decoder: more shell supervision alone did not recover teacher
+geometry.  The run is recorded separately in
+`2026-09-16-thq-teacher-only-result.json` and its receipt.
+
 The regenerated qrels-only compact result SHA-256 is
-`1b45361521bbf4705220a32042ed536a76de550064201aa925e6ad0830c6cbe6`; its
+`9501b5d9082c08c29282c94cfdc5f4b7a6f52d4e47d401db84f5fe70c4b48f43`; its
 receipt SHA-256 is
-`e6ccb4b9478830e6fa541359034de1bc3c988ac5b907e0ddcc9acc9427cf28c4`.
+`e4c5a8294d044f20ad94a0bab05a0be512c39cf16df9586a66b028e9e90cc4fc`.
 The hard-negative compact result SHA-256 is
-`28f876af292e7556a53cec98fa2dccf66b2c6a56508f421b6a5279263c483bd3`; its
+`98068b3ca24d417e23c4fcf4e10e6cc2e57e74d3e4c42e0a7361ade389697e93`; its
 receipt SHA-256 is
-`8b1f65bca5f9207d4af3a20e3d6bff02eedf95b29dd0795ee5b7a7fba58ef358`.
+`46bfb54847a056fa81fa88be5e6cf566ad4a96e5bfc459cc39a1f6c2a0578814`.
 The next useful upper bound is a decoder with explicit cross-coordinate
 features or a teacher-score table, not a larger blind MLP.
+
+## Conditional learned-latent probe
+
+The previously missing non-zero-side-byte ML arm is now represented by
+`run-thq-learned-latent-stage-local.py`.  A conditional autoencoder receives
+the THQ4 one-hot code and residual, emits a 32-byte latent, and is trained with
+prefix dropout so the same model can be evaluated at 8/16/32 bytes.  On the
+eight-query screen all three prefixes reached the THQ4 centroid baseline
+(`.875` mean teacher overlap, minimum `.5`); the bounded model therefore did
+not recover additional residual signal at this training budget.  This is a
+valid first learned-latent control, not a QINCo/AQ reproduction: it uses a
+single shared model, no native kernel, and no canonical 152-query replay.
+The compact result and receipt are
+`2026-09-16-thq-learned-latent-result.json` and
+`2026-09-16-thq-learned-latent-receipt.json`.
 
 ## Additive residual-quantization control
 
