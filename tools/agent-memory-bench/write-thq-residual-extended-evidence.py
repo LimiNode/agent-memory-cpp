@@ -43,6 +43,7 @@ def main() -> None:
         "query_count": result.get("query_count"),
         "prefilter": result.get("prefilter"),
         "model_hashes": result.get("model_hashes"),
+        "rslm_diagnostics": result.get("rslm_diagnostics"),
         "summaries": result.get("summaries"),
         "limitations": result.get("limitations"),
     }
@@ -58,6 +59,7 @@ def main() -> None:
             "documents_sha256", "training_sha256", "queries_sha256", "thq_sha256",
             "thresholds_sha256", "signs_sha256")},
         "model_hashes": result.get("model_hashes"),
+        "rslm_diagnostics": result.get("rslm_diagnostics"),
         "scope": {
             "query_count": result.get("query_count"),
             "canonical_152_query_payload": False,

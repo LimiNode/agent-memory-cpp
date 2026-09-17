@@ -67,6 +67,35 @@ def quantize_decode(values: np.ndarray, centers: np.ndarray) -> np.ndarray:
     return np.take_along_axis(centers[None, :, :], symbols[:, :, None], axis=2)[:, :, 0]
 
 
+def fit_hierarchical_residual(train: np.ndarray, base: np.ndarray,
+                              levels: np.ndarray, bits: int) -> np.ndarray:
+    """Fit per-coordinate residual codebooks conditional on the THQ4 bin."""
+    codebook = np.empty((D, 4, 1 << bits), dtype=np.float32)
+    residual = train - base
+    for coordinate in range(D):
+        for coarse in range(4):
+            values = residual[levels[:, coordinate] == coarse, coordinate]
+            if len(values) == 0:
+                values = residual[:, coordinate]
+            fractions = (np.arange(1 << bits, dtype=np.float64) + 0.5) / (1 << bits)
+            codebook[coordinate, coarse] = np.quantile(values, fractions, method="linear")
+    return codebook
+
+
+def decode_hierarchical(levels: np.ndarray, codebook: np.ndarray,
+                        residual: np.ndarray | None = None) -> np.ndarray:
+    """Decode conditional residual symbols; optional residual selects symbols."""
+    if residual is None:
+        raise ValueError("hierarchical decode requires residual values for symbol selection")
+    output = np.empty_like(residual, dtype=np.float32)
+    for coordinate in range(D):
+        coarse = levels[:, coordinate]
+        symbols = np.argmin(np.abs(residual[:, coordinate, None] -
+                                   codebook[coordinate, coarse]), axis=1)
+        output[:, coordinate] = codebook[coordinate, coarse, symbols]
+    return output
+
+
 def reconstruct_pq(codes: np.ndarray, centers: np.ndarray) -> np.ndarray:
     subquantizers = centers.shape[0]
     width = centers.shape[2]
@@ -96,11 +125,9 @@ def unpack_pq_codes(codes: np.ndarray, subquantizers: int, bits: int) -> np.ndar
 
 
 def payload_bytes(arm: str, model: dict) -> int:
-    """Logical bytes per document, including the shared 96-byte THQ4 base."""
+    """Logical persistent bytes per document, including the THQ4 base."""
     if arm == "thq4-centroid" or arm == "ridge-onehot":
         return 96
-    if arm == "thq7-centroid":
-        return 144
     return 96 + int(model.get("bytes", 0))
 
 
@@ -144,6 +171,13 @@ def self_test() -> None:
     centers = lloyd_centers(values, 1, iterations=2)
     if centers.shape != (2, 2):
         raise RuntimeError("Lloyd-Max center shape differs")
+    levels = np.zeros((2, D), dtype=np.uint8)
+    base = np.zeros((2, D), dtype=np.float32)
+    probe = np.ones((2, D), dtype=np.float32)
+    hierarchical = fit_hierarchical_residual(probe, base, levels, 1)
+    decoded = decode_hierarchical(levels, hierarchical, probe)
+    if decoded.shape != probe.shape:
+        raise RuntimeError("hierarchical residual shape differs")
     print("THQ residual extended frontier self-test PASS")
 
 
@@ -235,11 +269,39 @@ def main() -> None:
             rotation = faiss.vector_to_array(opq.A).reshape(D, D).astype(np.float32)
             centers = faiss.vector_to_array(pq.centroids).reshape(
                 subquantizers, 1 << bits, D // subquantizers).astype(np.float32)
+            probe = np.ascontiguousarray(train_residual[:32])
+            reference_rotated = opq.apply_py(probe)
+            reference_codes = np.asarray(pq.compute_codes(reference_rotated), dtype=np.uint8)
+            reference = opq.reverse_transform(pq.decode(reference_codes))
+            parity_pq = faiss.ProductQuantizer(D, subquantizers, bits)
+            faiss.copy_array_to_vector(np.ascontiguousarray(centers.reshape(-1)), parity_pq.centroids)
+            custom_rotated = np.ascontiguousarray(probe @ rotation.T)
+            custom_codes_raw = np.asarray(parity_pq.compute_codes(custom_rotated), dtype=np.uint8)
+            custom_codes = unpack_pq_codes(custom_codes_raw, subquantizers, bits)
+            custom = reconstruct_pq(custom_codes, centers) @ rotation
+            parity_max_abs = float(np.max(np.abs(reference - custom)))
+            parity_code_mismatches = int(np.count_nonzero(reference_codes != custom_codes_raw))
+            if parity_code_mismatches or parity_max_abs > 2e-6:
+                raise RuntimeError(
+                    f"OPQ{subquantizers}x{bits} Faiss parity differs: "
+                    f"codes={parity_code_mismatches}, max_abs={parity_max_abs}")
             models[f"opq{subquantizers}x{bits}"] = {
                 "kind": "opq", "bits": bits, "subquantizers": subquantizers,
                 "centers": centers, "rotation": rotation,
                 "bytes": payload, "model_sha256": digest_array(centers),
-                "rotation_sha256": digest_array(rotation)}
+                "rotation_sha256": digest_array(rotation),
+                "faiss_parity_max_abs": parity_max_abs,
+                "faiss_parity_code_mismatches": parity_code_mismatches}
+
+    # Nested intra-bin controls retain the THQ4 address and add a small
+    # conditional residual code per coordinate.  Unlike THQ7, the extra code
+    # is explicitly conditioned on the already stored coarse bin.
+    train_levels = h.unpack_thq(h.pack_thq(train, thresholds))
+    for bits in (1, 2, 3):
+        codebook = fit_hierarchical_residual(train, train_base, train_levels, bits)
+        models[f"thq4-hierarchical-{bits}bit"] = {
+            "kind": "hierarchical", "bits": bits, "centers": codebook,
+            "bytes": D * bits // 8, "model_sha256": digest_array(codebook)}
 
     rslm_centers = {}
     for bits in (1, 2, 3, 4):
@@ -264,7 +326,6 @@ def main() -> None:
 
     from scipy import sparse
     from sklearn.linear_model import Ridge
-    train_levels = h.unpack_thq(h.pack_thq(train, thresholds))
     one_hot = sparse.csr_matrix((np.ones(train_count * D, dtype=np.float32),
                                  (np.repeat(np.arange(train_count), D),
                                   np.arange(train_count * D) % D * 4 + train_levels.reshape(-1))),
@@ -303,11 +364,25 @@ def main() -> None:
             train_reconstructions[name] = train_base + fwht_blocks(decoded, signs, inverse=True)
         elif kind == "thq7":
             train_reconstructions[name] = model["centroids"][np.arange(D)[None, :], thq7_levels]
+        elif kind == "hierarchical":
+            train_reconstructions[name] = train_base + decode_hierarchical(
+                train_levels, model["centers"], train - train_base)
         elif kind == "ridge":
             train_reconstructions[name] = model["model"].predict(one_hot).astype(np.float32)
     norm_ranges = {name: (float(np.min(np.linalg.norm(values, axis=1))),
                           float(np.max(np.linalg.norm(values, axis=1))))
                    for name, values in train_reconstructions.items()}
+    rslm_diagnostics = {
+        name: {
+            "training_reconstruction_mse": float(np.mean((values - train) ** 2)),
+            "candidate_score_mae_by_query": [],
+        }
+        for name, values in train_reconstructions.items() if name.startswith("rslm")
+    }
+    rslm_mse = [rslm_diagnostics[f"rslm{bits}"]["training_reconstruction_mse"]
+                for bits in (1, 2, 3, 4)]
+    if any(right > left + 1e-12 for left, right in zip(rslm_mse, rslm_mse[1:])):
+        raise RuntimeError(f"RSLM reconstruction MSE is not monotone: {rslm_mse}")
 
     rows = []
     ids = np.arange(count, dtype=np.int64)
@@ -366,12 +441,21 @@ def main() -> None:
             elif kind == "thq7":
                 levels = np.sum(np.asarray(documents[candidate])[:, :, None] > model["thresholds"][None, :, :], axis=2, dtype=np.uint8)
                 reconstructions[name] = model["centroids"][np.arange(D)[None, :], levels]
+            elif kind == "hierarchical":
+                reconstructions[name] = base + decode_hierarchical(
+                    candidate_levels, model["centers"], np.asarray(documents[candidate]) - base)
             elif kind == "ridge":
                 features = sparse.csr_matrix((np.ones(TOP * D, dtype=np.float32),
                                                (np.repeat(np.arange(TOP), D),
                                                 np.arange(TOP * D) % D * 4 + candidate_levels.reshape(-1))),
                                               shape=(TOP, D * 4))
                 reconstructions[name] = model["model"].predict(features).astype(np.float32)
+        for name, diagnostic in rslm_diagnostics.items():
+            values = reconstructions[name]
+            predicted = (values @ query) / np.maximum(
+                np.linalg.norm(values, axis=1), np.finfo(np.float32).tiny)
+            diagnostic["candidate_score_mae_by_query"].append(
+                float(np.mean(np.abs(predicted - exact_scores[candidate]))))
         for name, values in reconstructions.items():
             for norm in ("raw", "exact", "fp16", "uint8"):
                 selected, outside = stage_rank(values, query, candidate, norm, norm_ranges[name])
@@ -400,8 +484,19 @@ def main() -> None:
               "thresholds_sha256": h.sha256(args.thq4_thresholds), "signs_sha256": digest_array(signs),
               "norm_ranges_from_training": norm_ranges,
               "model_hashes": {name: {key: value for key, value in model.items()
-                                      if key.endswith("sha256") or key in ("bytes", "kind", "bits", "subquantizers")}
+                                      if key.endswith("sha256") or key in (
+                                          "bytes", "kind", "bits", "subquantizers",
+                                          "faiss_parity_max_abs", "faiss_parity_code_mismatches")}
                                for name, model in models.items()},
+              "rslm_diagnostics": {
+                  name: {
+                      "training_reconstruction_mse": value["training_reconstruction_mse"],
+                      "candidate_score_mae_mean": float(np.mean(value["candidate_score_mae_by_query"])),
+                      "candidate_score_mae_max": float(np.max(value["candidate_score_mae_by_query"])),
+                      "candidate_score_mae_by_query": value["candidate_score_mae_by_query"],
+                  }
+                  for name, value in rslm_diagnostics.items()
+              },
               "summaries": summaries, "rows": rows,
               "limitations": ["diagnostic eight-query screen", "not canonical 152-query payload",
                               "not native/page/MDBX latency", "RSLM arm is a bounded FWHT/Lloyd-Max control, not a reproduction of every paper detail"]}
