@@ -131,6 +131,14 @@ def pairwise_order(approx: np.ndarray, exact: np.ndarray, rng: np.random.Generat
     return float(np.mean((approx[left] - approx[right]) * (exact[left] - exact[right]) >= 0.0))
 
 
+def focused_pairwise(approx: np.ndarray, exact: np.ndarray, rng: np.random.Generator,
+                     limit: int) -> float:
+    """Pairwise accuracy among the exact top boundary, not the easy tail."""
+    order = np.argsort(-exact, kind="stable")
+    focused = order[:min(limit, len(order))]
+    return pairwise_order(approx[focused], exact[focused], rng)
+
+
 def ndcg(ids: np.ndarray, qrel_ids: np.ndarray, qrel_scores: np.ndarray) -> float:
     grades = {int(doc): float(score) for doc, score in zip(qrel_ids, qrel_scores)
               if int(doc) >= 0 and float(score) > 0.0}
@@ -232,6 +240,8 @@ def main() -> None:
                                  "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
                                  "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
                                  "pairwise_order": pairwise_order(scores, exact_local, rng),
+                                 "pairwise_top32": focused_pairwise(scores, exact_local, rng, 32),
+                                 "pairwise_top10_boundary": focused_pairwise(scores, exact_local, rng, 12),
                                  "side_payload_bytes": side_bytes,
                                  "total_payload_bytes": payload,
                                  "logical_payload_bytes_per_document": payload,
@@ -245,7 +255,8 @@ def main() -> None:
             selected = arm_rows if split == "all" else [row for row in arm_rows if row["split"] == split]
             summaries[name][split] = {key: float(np.mean([row[key] for row in selected]))
                                       for key in ("qrels_ndcg10", "teacher_overlap",
-                                                  "candidate_fp32_overlap", "pairwise_order")}
+                                                  "candidate_fp32_overlap", "pairwise_order",
+                                                  "pairwise_top32", "pairwise_top10_boundary")}
     summaries_by_scope = {}
     for scope in ("full-shell", "thq4-top128"):
         summaries_by_scope[scope] = {}
@@ -256,7 +267,8 @@ def main() -> None:
                 selected = scope_rows if split == "all" else [row for row in scope_rows if row["split"] == split]
                 summaries_by_scope[scope][name][split] = {
                     key: float(np.mean([row[key] for row in selected]))
-                    for key in ("qrels_ndcg10", "teacher_overlap", "candidate_fp32_overlap", "pairwise_order")}
+                    for key in ("qrels_ndcg10", "teacher_overlap", "candidate_fp32_overlap", "pairwise_order",
+                                "pairwise_top32", "pairwise_top10_boundary")}
     result = {"schema_version": 1, "family": "thq_learned_adc_gate_v1", "status": "EXECUTED",
               "runner_sha256": sha(Path(__file__)), "documents": document_count,
               "training_count": train_count, "query_count": query_count,

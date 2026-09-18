@@ -61,7 +61,8 @@ def main() -> None:
             scoped = [row for row in rows if row["scope"] == scope and row["arm"] == arm]
             require(len(scoped) == 152, "scope summary row count differs")
             recorded = scopes[scope][arm]["all"]
-            for metric in ("qrels_ndcg10", "teacher_overlap", "candidate_fp32_overlap", "pairwise_order"):
+            for metric in ("qrels_ndcg10", "teacher_overlap", "candidate_fp32_overlap", "pairwise_order",
+                           "pairwise_top32", "pairwise_top10_boundary"):
                 require(abs(float(recorded[metric]) - float(np.mean([row[metric] for row in scoped]))) < 1e-6,
                         f"summary mismatch for {scope}/{arm}/{metric}")
     if args.candidate_flat and args.candidate_raw:
