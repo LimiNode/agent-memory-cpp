@@ -29,7 +29,11 @@ def main() -> None:
     compact = {key: result[key] for key in (
         "schema_version", "family", "status", "evidence_status", "runner_sha256",
         "candidate_receipt_sha256", "documents", "training_count", "query_count",
-        "train_query_count", "model_hashes", "summaries", "limitations")}
+        "train_query_count", "model_hashes", "summaries", "summaries_by_scope", "limitations")}
+    compact["input_hashes"] = {key: result[key] for key in (
+        "documents_sha256", "training_sha256", "queries_sha256", "qrel_ids_sha256",
+        "qrel_scores_sha256", "teacher_ids_sha256", "candidate_flat_sha256",
+        "candidate_raw_sha256", "candidate_receipt_sha256")}
     if args.score_baseline:
         baseline = json.loads(args.score_baseline.read_text(encoding="utf-8"))
         by_query = {(row["query"], row["arm"]): row for row in baseline["rows"]}

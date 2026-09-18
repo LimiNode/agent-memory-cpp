@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Evaluate score-aware additive/block ADC on the frozen THQ4 R4 shell.
+"""Evaluate score-weighted block/PQ-like ADC on the frozen THQ4 R4 shell.
 
 The codebooks are fitted in a query-weighted Mahalanobis space and the
 document code is a packed 4-bit symbol per block.  Query scoring uses block
@@ -61,11 +61,12 @@ def kmeans(values: np.ndarray, count: int, iterations: int = 5) -> np.ndarray:
 
 
 def fit_codebooks(train_residual: np.ndarray, query_covariance: np.ndarray,
-                  blocks: int, bits: int) -> np.ndarray:
-    """Fit one score-weighted codebook per disjoint block."""
+                  blocks: int, bits: int) -> tuple[np.ndarray, np.ndarray]:
+    """Fit block codebooks and retain the transform used for assignment."""
     width = D // blocks
     levels = 1 << bits
     codebooks = np.empty((blocks, levels, width), dtype=np.float32)
+    transforms = np.empty((blocks, width, width), dtype=np.float32)
     for block in range(blocks):
         sl = slice(block * width, (block + 1) * width)
         covariance = query_covariance[sl, sl].astype(np.float64)
@@ -73,10 +74,11 @@ def fit_codebooks(train_residual: np.ndarray, query_covariance: np.ndarray,
         eigenvalues, eigenvectors = np.linalg.eigh(covariance)
         transform = (eigenvectors * np.sqrt(np.maximum(eigenvalues, 1e-8))) @ eigenvectors.T
         inverse = (eigenvectors * (1.0 / np.sqrt(np.maximum(eigenvalues, 1e-8)))) @ eigenvectors.T
+        transforms[block] = transform.astype(np.float32)
         weighted = np.asarray(train_residual[:, sl], dtype=np.float64) @ transform.T
         fitted = kmeans(weighted.astype(np.float32), levels)
         codebooks[block] = (fitted.astype(np.float64) @ inverse.T).astype(np.float32)
-    return codebooks
+    return codebooks, transforms
 
 
 def direct_adc_scores(base: np.ndarray, codebooks: np.ndarray,
@@ -97,13 +99,19 @@ def direct_adc_scores(base: np.ndarray, codebooks: np.ndarray,
     return numerator / denominator
 
 
-def encode(residual: np.ndarray, codebooks: np.ndarray) -> np.ndarray:
+def encode(residual: np.ndarray, codebooks: np.ndarray,
+           transforms: np.ndarray | None = None) -> np.ndarray:
     blocks, levels, width = codebooks.shape
     symbols = np.empty((len(residual), blocks), dtype=np.uint8)
     for block in range(blocks):
         sl = slice(block * width, (block + 1) * width)
         values = residual[:, sl]
-        distances = np.sum((values[:, None, :] - codebooks[block][None, :, :]) ** 2, axis=2)
+        if transforms is not None:
+            values = values @ transforms[block].T
+            centers = codebooks[block] @ transforms[block].T
+        else:
+            centers = codebooks[block]
+        distances = np.sum((values[:, None, :] - centers[None, :, :]) ** 2, axis=2)
         symbols[:, block] = np.argmin(distances, axis=1).astype(np.uint8)
     return symbols
 
@@ -140,6 +148,13 @@ def main() -> None:
         symbols = np.zeros((2, 2), dtype=np.uint8)
         if direct_adc_scores(base, codebooks, symbols, np.ones(D, dtype=np.float32)).shape != (2,):
             raise RuntimeError("ADC score shape differs")
+        residual = np.asarray([[1.0, 0.0], [0.0, 1.0]], dtype=np.float32)
+        words = np.asarray([[[0.0, 0.0], [1.0, 1.0]]], dtype=np.float32)
+        transform = np.asarray([[[3.0, 0.0], [0.0, 0.25]]], dtype=np.float32)
+        euclidean = encode(residual, words)
+        mahalanobis = encode(residual, words, transform)
+        if np.array_equal(euclidean, mahalanobis):
+            raise RuntimeError("assignment self-test did not distinguish metrics")
         print("run-thq-learned-adc-gate self-test PASS")
         return
 
@@ -170,8 +185,12 @@ def main() -> None:
     covariance = np.asarray(queries[:min(TRAIN_QUERIES, query_count)], dtype=np.float64).T @ np.asarray(
         queries[:min(TRAIN_QUERIES, query_count)], dtype=np.float64)
     rng = np.random.default_rng(20260918)
-    arms = {f"learned-adc-{bytes_per_doc}B": fit_codebooks(train_residual, covariance,
-              bytes_per_doc * 2, 4) for bytes_per_doc in (8, 16, 32)}
+    arms = {}
+    for bytes_per_doc in (8, 16, 32):
+        for bits in (2, 4, 8):
+            blocks = bytes_per_doc * 8 // bits
+            codebooks, transforms = fit_codebooks(train_residual, covariance, blocks, bits)
+            arms[f"learned-adc-{bytes_per_doc}B-{bits}bit"] = (codebooks, transforms)
     rows: list[dict] = []
     for qi in range(query_count):
         ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
@@ -182,22 +201,42 @@ def main() -> None:
         residual = docs - base
         exact = docs @ query
         exact_top = top_ids(exact, ids)
-        for name, codebooks in arms.items():
-            symbols = encode(residual, codebooks)
+        interval_lut = np.empty((D, 4), dtype=np.float32)
+        for coordinate in range(D):
+            for level in range(4):
+                low = -np.inf if level == 0 else thresholds[coordinate, level - 1]
+                high = np.inf if level == 3 else thresholds[coordinate, level]
+                delta = low - query[coordinate] if query[coordinate] < low else (
+                    query[coordinate] - high if query[coordinate] > high else 0.0)
+                interval_lut[coordinate, level] = delta * delta
+        interval = np.sum(interval_lut[np.arange(D)[None, :], levels], axis=1)
+        thq_top = ids[np.lexsort((ids, interval))[:min(TOP, len(ids))]]
+        top_positions = np.asarray([int(np.flatnonzero(ids == doc)[0]) for doc in thq_top])
+        for name, (codebooks, transforms) in arms.items():
+            symbols = encode(residual, codebooks, transforms)
             exact_norm_fp16 = np.asarray(np.linalg.norm(docs, axis=1), dtype=np.float16).astype(np.float32)
-            for variant, scores, payload in (
-                    (name, direct_adc_scores(base, codebooks, symbols, query), int(name.rsplit("-", 1)[1][:-1])),
-                    (f"{name}+norm2", direct_adc_scores(base, codebooks, symbols, query, exact_norm_fp16),
-                     int(name.rsplit("-", 1)[1][:-1]) + 2)):
-                selected = top_ids(scores, ids)
-                rows.append({"query": qi, "split": "train" if qi < TRAIN_QUERIES else "heldout",
-                             "arm": variant, "top10_ids": selected.astype(int).tolist(),
-                             "qrels_ndcg10": ndcg(selected, qrel_ids[qi], qrel_scores[qi]),
-                             "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
-                             "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
-                             "pairwise_order": pairwise_order(scores, exact, rng),
-                             "logical_payload_bytes_per_document": payload,
-                             "timing_scope": "numpy_reference_direct_adc_quality_only"})
+            side_bytes = int(name.split("-")[2][:-1])
+            for scope, positions, scope_ids in (("full-shell", np.arange(len(ids)), ids),
+                                                  ("thq4-top128", top_positions, thq_top)):
+                local_norm = exact_norm_fp16[positions]
+                for variant, scores, payload in (
+                        (name, direct_adc_scores(base[positions], codebooks, symbols[positions], query),
+                         96 + side_bytes),
+                        (f"{name}+norm2", direct_adc_scores(base[positions], codebooks, symbols[positions], query,
+                         local_norm), 96 + side_bytes + 2)):
+                    selected = top_ids(scores, scope_ids)
+                    exact_local = exact[positions]
+                    rows.append({"query": qi, "split": "train" if qi < TRAIN_QUERIES else "heldout",
+                                 "arm": variant, "scope": scope, "top10_ids": selected.astype(int).tolist(),
+                                 "qrels_ndcg10": ndcg(selected, qrel_ids[qi], qrel_scores[qi]),
+                                 "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
+                                 "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
+                                 "pairwise_order": pairwise_order(scores, exact_local, rng),
+                                 "side_payload_bytes": side_bytes,
+                                 "total_payload_bytes": payload,
+                                 "logical_payload_bytes_per_document": payload,
+                                 "thq4_top128_count": int(len(thq_top)),
+                                 "timing_scope": "numpy_reference_direct_adc_quality_only"})
     summaries = {}
     for name in sorted({row["arm"] for row in rows}):
         arm_rows = [row for row in rows if row["arm"] == name]
@@ -207,6 +246,17 @@ def main() -> None:
             summaries[name][split] = {key: float(np.mean([row[key] for row in selected]))
                                       for key in ("qrels_ndcg10", "teacher_overlap",
                                                   "candidate_fp32_overlap", "pairwise_order")}
+    summaries_by_scope = {}
+    for scope in ("full-shell", "thq4-top128"):
+        summaries_by_scope[scope] = {}
+        for name in sorted({row["arm"] for row in rows}):
+            scope_rows = [row for row in rows if row["arm"] == name and row["scope"] == scope]
+            summaries_by_scope[scope][name] = {}
+            for split in ("all", "train", "heldout"):
+                selected = scope_rows if split == "all" else [row for row in scope_rows if row["split"] == split]
+                summaries_by_scope[scope][name][split] = {
+                    key: float(np.mean([row[key] for row in selected]))
+                    for key in ("qrels_ndcg10", "teacher_overlap", "candidate_fp32_overlap", "pairwise_order")}
     result = {"schema_version": 1, "family": "thq_learned_adc_gate_v1", "status": "EXECUTED",
               "runner_sha256": sha(Path(__file__)), "documents": document_count,
               "training_count": train_count, "query_count": query_count,
@@ -216,9 +266,10 @@ def main() -> None:
               "training_sha256": sha(args.train_vectors), "queries_sha256": sha(args.queries),
               "qrel_ids_sha256": sha(args.qrel_ids), "qrel_scores_sha256": sha(args.qrel_scores),
               "teacher_ids_sha256": sha(args.teacher_ids),
-              "model_hashes": {name: hashlib.sha256(codebooks.astype("<f4").tobytes()).hexdigest()
-                               for name, codebooks in arms.items()},
-              "summaries": summaries, "rows": rows,
+              "model_hashes": {name: hashlib.sha256(codebooks.astype("<f4").tobytes() +
+                               transforms.astype("<f4").tobytes()).hexdigest()
+                               for name, (codebooks, transforms) in arms.items()},
+              "summaries": summaries, "summaries_by_scope": summaries_by_scope, "rows": rows,
               "evidence_status": "152_query_frozen_r4_score_aware_block_adc_numpy_reference",
               "limitations": ["candidate-local replay; no routing membership claim",
                                "score-aware codebooks use first 120 query rows; held-out rows are not used for fitting",
