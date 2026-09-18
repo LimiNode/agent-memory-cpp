@@ -800,5 +800,6 @@ the remaining 32 queries were held out. All-query teacher overlap was
 reached `.6893` nDCG@10 on the held-out split. The arms remain below the
 existing direct INT8 and RSLM3 controls on the common 152-query shell. This is
 a bounded negative for covariance-weighted block ADC, not for pairwise-trained
-or neural ADC. See `2026-09-18-thq-learned-adc-gate.md` and its compact
-SHA-bound evidence.
+or neural ADC. A 2-byte FP16 document-norm side-code was also negative: it
+reduced all-query teacher overlap to `.7737/.7954/.8046` at 8/16/32 B. See
+`2026-09-18-thq-learned-adc-gate.md` and its compact SHA-bound evidence.

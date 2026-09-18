@@ -30,55 +30,133 @@
         "worst_query_delta": -0.32123777053982383
       }
     },
+    "learned-adc-16B+norm2": {
+      "candidate-fp32": {
+        "bootstrap_ci95": [
+          -0.10955338055320889,
+          -0.020296160030059775
+        ],
+        "mean_delta": -0.06252136116327306,
+        "worst_query_delta": -0.36907024642854247
+      },
+      "direct-int8": {
+        "bootstrap_ci95": [
+          -0.11068919114817191,
+          -0.01804285545511202
+        ],
+        "mean_delta": -0.06243415999305136,
+        "worst_query_delta": -0.36907024642854247
+      },
+      "rslm3-direct-score": {
+        "bootstrap_ci95": [
+          -0.10949329364851434,
+          -0.020471505658835112
+        ],
+        "mean_delta": -0.06434755122419933,
+        "worst_query_delta": -0.36907024642854247
+      }
+    },
     "learned-adc-32B": {
       "candidate-fp32": {
         "bootstrap_ci95": [
-          -0.016611514230157904,
-          0.016366429381874353
+          -0.01735209326246374,
+          0.01710502678037575
         ],
         "mean_delta": -0.00021677993369486823,
         "worst_query_delta": -0.17723928678404774
       },
       "direct-int8": {
         "bootstrap_ci95": [
-          -0.016791191689009742,
-          0.017474127497472212
+          -0.016619224917609914,
+          0.01650180748478006
         ],
         "mean_delta": -0.00012957876347316748,
         "worst_query_delta": -0.17723928678404774
       },
       "rslm3-direct-score": {
         "bootstrap_ci95": [
-          -0.022973489459437925,
-          0.018066623619670655
+          -0.023132582464328862,
+          0.017151398842513155
         ],
         "mean_delta": -0.0020429699946211367,
         "worst_query_delta": -0.185585797107376
       }
     },
+    "learned-adc-32B+norm2": {
+      "candidate-fp32": {
+        "bootstrap_ci95": [
+          -0.05765561790122804,
+          0.015332041057537705
+        ],
+        "mean_delta": -0.020386365536384225,
+        "worst_query_delta": -0.3315546295836225
+      },
+      "direct-int8": {
+        "bootstrap_ci95": [
+          -0.05780585512851541,
+          0.01432131035113457
+        ],
+        "mean_delta": -0.020299164366162525,
+        "worst_query_delta": -0.3315546295836225
+      },
+      "rslm3-direct-score": {
+        "bootstrap_ci95": [
+          -0.058776433052885886,
+          0.008070760152077782
+        ],
+        "mean_delta": -0.022212555597310498,
+        "worst_query_delta": -0.3315546295836225
+      }
+    },
     "learned-adc-8B": {
       "candidate-fp32": {
         "bootstrap_ci95": [
-          -0.04439378008295178,
-          0.017774791314157316
+          -0.044715882434989515,
+          0.01588377549877442
         ],
         "mean_delta": -0.012191768468210146,
         "worst_query_delta": -0.36907024642854247
       },
       "direct-int8": {
         "bootstrap_ci95": [
-          -0.043758963318792615,
-          0.017260540572234438
+          -0.04505990988738757,
+          0.01607201166451117
         ],
         "mean_delta": -0.012104567297988447,
         "worst_query_delta": -0.36907024642854247
       },
       "rslm3-direct-score": {
         "bootstrap_ci95": [
-          -0.051543009490771625,
-          0.0179207699134829
+          -0.0520832257979856,
+          0.018315279685283438
         ],
         "mean_delta": -0.014017958529136416,
+        "worst_query_delta": -0.36907024642854247
+      }
+    },
+    "learned-adc-8B+norm2": {
+      "candidate-fp32": {
+        "bootstrap_ci95": [
+          -0.0765951089876843,
+          0.014301736335988111
+        ],
+        "mean_delta": -0.03151522879816107,
+        "worst_query_delta": -0.36907024642854247
+      },
+      "direct-int8": {
+        "bootstrap_ci95": [
+          -0.07745752189097334,
+          0.012105082227255164
+        ],
+        "mean_delta": -0.03142802762793937,
+        "worst_query_delta": -0.36907024642854247
+      },
+      "rslm3-direct-score": {
+        "bootstrap_ci95": [
+          -0.08079523901328246,
+          0.00926649263903513
+        ],
+        "mean_delta": -0.03334141885908734,
         "worst_query_delta": -0.36907024642854247
       }
     }
@@ -94,68 +172,128 @@
     "learned-adc-8B": "ea5ebf10f31cb51e387c40064354422fffd4435398870f24d82fc9c835cbc7a7"
   },
   "query_count": 152,
-  "runner_sha256": "abb0de5d0106954cdcf6a5632afd1714fb4a0acf4a33f9420abfa9737234b941",
+  "runner_sha256": "7d0c39607d9cc71c3b04f243bb5c2d6322ee1db9667ba7ee737b0eb428aaab5f",
   "schema_version": 1,
   "status": "EXECUTED",
   "summaries": {
     "learned-adc-16B": {
       "all": {
         "candidate_fp32_overlap": 0.8625000000000002,
-        "pairwise_order": 0.9087052498622624,
+        "pairwise_order": 0.9075931617486802,
         "qrels_ndcg10": 0.6542936732497332,
         "teacher_overlap": 0.8598684210526317
       },
       "heldout": {
         "candidate_fp32_overlap": 0.890625,
-        "pairwise_order": 0.9061962685441848,
+        "pairwise_order": 0.9046700157232483,
         "qrels_ndcg10": 0.6892508354683886,
         "teacher_overlap": 0.8875
       },
       "train": {
         "candidate_fp32_overlap": 0.8550000000000002,
-        "pairwise_order": 0.909374311547083,
+        "pairwise_order": 0.9083726673554618,
         "qrels_ndcg10": 0.6449717633247584,
         "teacher_overlap": 0.8525000000000001
+      }
+    },
+    "learned-adc-16B+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.7999999999999999,
+        "pairwise_order": 0.9120819263411598,
+        "qrels_ndcg10": 0.6192543735949556,
+        "teacher_overlap": 0.7953947368421053
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.828125,
+        "pairwise_order": 0.9099974473383735,
+        "qrels_ndcg10": 0.6224447083198738,
+        "teacher_overlap": 0.815625
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.7925,
+        "pairwise_order": 0.9126377874085693,
+        "qrels_ndcg10": 0.6184036176683108,
+        "teacher_overlap": 0.7899999999999999
       }
     },
     "learned-adc-32B": {
       "all": {
         "candidate_fp32_overlap": 0.875,
-        "pairwise_order": 0.9211593999257129,
+        "pairwise_order": 0.9201681860861417,
         "qrels_ndcg10": 0.6536969126365498,
         "teacher_overlap": 0.8730263157894738
       },
       "heldout": {
         "candidate_fp32_overlap": 0.9031250000000001,
-        "pairwise_order": 0.9176433576345957,
+        "pairwise_order": 0.9175687939871741,
         "qrels_ndcg10": 0.684749289549452,
         "teacher_overlap": 0.9
       },
       "train": {
         "candidate_fp32_overlap": 0.8675,
-        "pairwise_order": 0.9220970112033439,
+        "pairwise_order": 0.9208613573125332,
         "qrels_ndcg10": 0.6454162787931093,
         "teacher_overlap": 0.8658333333333333
+      }
+    },
+    "learned-adc-32B+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8085526315789474,
+        "pairwise_order": 0.918653132358446,
+        "qrels_ndcg10": 0.6231217053281034,
+        "teacher_overlap": 0.8046052631578948
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8531250000000001,
+        "pairwise_order": 0.9173892770381061,
+        "qrels_ndcg10": 0.6645797039467626,
+        "teacher_overlap": 0.840625
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.7966666666666669,
+        "pairwise_order": 0.9189901604438702,
+        "qrels_ndcg10": 0.6120662390297943,
+        "teacher_overlap": 0.795
       }
     },
     "learned-adc-8B": {
       "all": {
         "candidate_fp32_overlap": 0.8513157894736842,
-        "pairwise_order": 0.9018578405345824,
+        "pairwise_order": 0.9022546258211219,
         "qrels_ndcg10": 0.6526134446418439,
         "teacher_overlap": 0.8493421052631579
       },
       "heldout": {
         "candidate_fp32_overlap": 0.884375,
-        "pairwise_order": 0.8986877955073935,
+        "pairwise_order": 0.8985730339612304,
         "qrels_ndcg10": 0.6727743010149366,
         "teacher_overlap": 0.8812500000000001
       },
       "train": {
         "candidate_fp32_overlap": 0.8425,
-        "pairwise_order": 0.9027031858751661,
+        "pairwise_order": 0.9032363836504264,
         "qrels_ndcg10": 0.6472372162756859,
         "teacher_overlap": 0.8408333333333334
+      }
+    },
+    "learned-adc-8B+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.7769736842105264,
+        "pairwise_order": 0.9061257024224503,
+        "qrels_ndcg10": 0.616461313641396,
+        "teacher_overlap": 0.7736842105263158
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.821875,
+        "pairwise_order": 0.9025263353188967,
+        "qrels_ndcg10": 0.6534508406849857,
+        "teacher_overlap": 0.8125
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.7650000000000001,
+        "pairwise_order": 0.9070855336500645,
+        "qrels_ndcg10": 0.6065974397631053,
+        "teacher_overlap": 0.7633333333333333
       }
     }
   },

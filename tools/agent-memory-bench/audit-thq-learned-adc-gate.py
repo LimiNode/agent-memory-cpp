@@ -30,9 +30,11 @@ def main() -> None:
     require(result.get("query_count") == 152, "canonical query count differs")
     require(result.get("train_query_count") == 120, "held-out split differs")
     arms = set(result.get("summaries", {}))
-    require(arms == {"learned-adc-8B", "learned-adc-16B", "learned-adc-32B"}, "learned ADC arm set differs")
+    require(arms == {"learned-adc-8B", "learned-adc-16B", "learned-adc-32B",
+                     "learned-adc-8B+norm2", "learned-adc-16B+norm2", "learned-adc-32B+norm2"},
+            "learned ADC arm set differs")
     rows = result.get("rows", [])
-    require(len(rows) == 152 * 3, "learned ADC row cardinality differs")
+    require(len(rows) == 152 * 6, "learned ADC row cardinality differs")
     require(all(row.get("timing_scope") == "numpy_reference_direct_adc_quality_only" for row in rows),
             "learned ADC timing scope differs")
     require(all(len(row.get("top10_ids", [])) == 10 for row in rows), "learned ADC top10 cardinality differs")

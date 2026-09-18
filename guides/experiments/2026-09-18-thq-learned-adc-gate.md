@@ -26,6 +26,11 @@ gate, not native latency, persistence, or page-accounting evidence.
 | learned ADC | 16 B | .8599 | .8875 | .8625 | .6893 | .9087 |
 | learned ADC | 32 B | .8730 | .9000 | .8750 | .6847 | .9212 |
 
+Adding a 2-byte FP16 per-document norm did not help: the corresponding
+all-query teacher overlap was `.7737/.7954/.8046` for 8/16/32 B, despite a
+small pairwise-order increase. This side information is therefore a negative
+control, not a storage recommendation.
+
 The held-out split is not directly comparable to the all-query score-only
 receipt because the latter reports all 152 queries. On the common all-query
 shell, the earlier controls were: direct INT8 `.9895` teacher overlap and
@@ -48,7 +53,8 @@ statistically established by this single split.
   bound to the canonical candidate receipt, and has a distinct 120/32 query
   split;
 * **bounded negative:** the tested 4-bit-per-block additive codebooks do not
-  match direct INT8 or direct RSLM3 on this frozen shell;
+  match direct INT8 or direct RSLM3 on this frozen shell; adding a 2-byte
+  FP16 norm side-code makes the ranking worse;
 * **not tested:** pairwise-gradient codebook learning, learned query-side
   transforms beyond the covariance weighting, native SIMD timing, persistent
   side-code materialization, and held-out-domain replay.

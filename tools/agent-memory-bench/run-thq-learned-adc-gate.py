@@ -80,7 +80,8 @@ def fit_codebooks(train_residual: np.ndarray, query_covariance: np.ndarray,
 
 
 def direct_adc_scores(base: np.ndarray, codebooks: np.ndarray,
-                      symbols: np.ndarray, query: np.ndarray) -> np.ndarray:
+                      symbols: np.ndarray, query: np.ndarray,
+                      norm_override: np.ndarray | None = None) -> np.ndarray:
     blocks, _, width = codebooks.shape
     numerator = base @ query
     norm_sq = np.sum(base * base, axis=1)
@@ -90,7 +91,10 @@ def direct_adc_scores(base: np.ndarray, codebooks: np.ndarray,
         numerator += words @ query[sl]
         norm_sq += 2.0 * np.sum(base[:, sl] * words, axis=1)
         norm_sq += np.sum(words * words, axis=1)
-    return numerator / np.sqrt(np.maximum(norm_sq, np.finfo(np.float32).tiny))
+    denominator = np.sqrt(np.maximum(norm_sq, np.finfo(np.float32).tiny))
+    if norm_override is not None:
+        denominator = np.asarray(norm_override, dtype=np.float32)
+    return numerator / denominator
 
 
 def encode(residual: np.ndarray, codebooks: np.ndarray) -> np.ndarray:
@@ -180,18 +184,22 @@ def main() -> None:
         exact_top = top_ids(exact, ids)
         for name, codebooks in arms.items():
             symbols = encode(residual, codebooks)
-            scores = direct_adc_scores(base, codebooks, symbols, query)
-            selected = top_ids(scores, ids)
-            rows.append({"query": qi, "split": "train" if qi < TRAIN_QUERIES else "heldout",
-                         "arm": name, "top10_ids": selected.astype(int).tolist(),
-                         "qrels_ndcg10": ndcg(selected, qrel_ids[qi], qrel_scores[qi]),
-                         "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
-                         "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
-                         "pairwise_order": pairwise_order(scores, exact, rng),
-                         "logical_payload_bytes_per_document": int(name.rsplit("-", 1)[1][:-1]),
-                         "timing_scope": "numpy_reference_direct_adc_quality_only"})
+            exact_norm_fp16 = np.asarray(np.linalg.norm(docs, axis=1), dtype=np.float16).astype(np.float32)
+            for variant, scores, payload in (
+                    (name, direct_adc_scores(base, codebooks, symbols, query), int(name.rsplit("-", 1)[1][:-1])),
+                    (f"{name}+norm2", direct_adc_scores(base, codebooks, symbols, query, exact_norm_fp16),
+                     int(name.rsplit("-", 1)[1][:-1]) + 2)):
+                selected = top_ids(scores, ids)
+                rows.append({"query": qi, "split": "train" if qi < TRAIN_QUERIES else "heldout",
+                             "arm": variant, "top10_ids": selected.astype(int).tolist(),
+                             "qrels_ndcg10": ndcg(selected, qrel_ids[qi], qrel_scores[qi]),
+                             "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
+                             "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
+                             "pairwise_order": pairwise_order(scores, exact, rng),
+                             "logical_payload_bytes_per_document": payload,
+                             "timing_scope": "numpy_reference_direct_adc_quality_only"})
     summaries = {}
-    for name in arms:
+    for name in sorted({row["arm"] for row in rows}):
         arm_rows = [row for row in rows if row["arm"] == name]
         summaries[name] = {}
         for split in ("all", "train", "heldout"):
