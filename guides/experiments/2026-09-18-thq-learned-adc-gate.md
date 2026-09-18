@@ -35,8 +35,10 @@ Held-out (queries 120--151) results by equal side-code budget:
 
 For the 32 B rows, held-out candidate-FP32 overlap is `.8969`, `.9000`, and
 `.9062` (2/4/8 bits). Top-10-boundary pairwise accuracy in stage-local mode is
-`.6406`, `.6927`, and `.6667`. There is no monotone rate frontier: bit depth
-and block count trade off at fixed bytes. The 32 B/2-bit arm has held-out
+`.6406`, `.6927`, and `.6667`. Within the 2-bit and 4-bit families, quality
+increases with side budget; the 8-bit family decreases across this grid. There
+is therefore no uniform rate frontier across bit widths: bit depth and block
+count trade off at fixed bytes. The 32 B/2-bit arm has held-out
 nDCG@10 `.698282`, versus reconstructed direct INT8 `.684879` (mean delta
 `+.013403`, bootstrap CI95 `[-.002125, +.033602]`, worst query `-.032532`)
 and reconstructed RSLM3 `.686792` (mean delta `+.011490`, CI95
@@ -62,7 +64,8 @@ or jointly fitted norm side information is useless.
   candidate-FP32 fidelity remain imperfect;
 * **bounded negative:** the remaining block/PQ-like ADC arms do not establish
   a win over direct INT8 or direct RSLM3 on the frozen shell;
-* **not tested:** pairwise/listwise-trained codebooks, AVQ/Distill-VQ-style
+* **not tested:** cross-fitted query training, convergence/restart controls for
+  the small custom k-means, pairwise/listwise-trained codebooks, AVQ/Distill-VQ-style
   retrieval objective, score-aware rotation/grouping, faithful RSLM, full AQ or
   QINCo-like codebooks, native SIMD timing, persistent side-code materialization,
   and held-out-domain replay. The diagnostic pairwise metric treats an
@@ -76,12 +79,14 @@ THQ4 layout is the canonical 96-byte ordinal materialization; the discarded
 
 ## Discriminating next step
 
-Do not add native kernels yet. The next algorithmic gate is a genuinely
-pairwise/listwise-trained scorer inside the THQ4 top-128 shell, concentrating
-teacher score differences near the top-10 boundary at the same rate-matched
-budgets. Require a held-out paired bootstrap delta against direct INT8 before
-considering materialization. A faithful RSLM2/3/4 replay is a parallel control,
-not evidence that this block ADC is additive quantization.
+Do not add native kernels yet. First run a bounded convergence control for
+32 B/2-bit and 32 B/8-bit (larger training sample, more Lloyd iterations and
+restarts), then evaluate 32 B/2-bit with four-fold query cross-fitting. If it
+survives, the next algorithmic gate is a cutoff-aware pairwise/listwise scorer
+inside the THQ4 top-128 shell, concentrating teacher score differences near
+the top-10 boundary. Require an out-of-fold paired bootstrap delta against
+direct INT8 before considering materialization. A faithful RSLM2/3/4 replay is
+a parallel control, not evidence that this block ADC is additive quantization.
 
 Committed evidence:
 

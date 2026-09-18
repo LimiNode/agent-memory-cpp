@@ -796,8 +796,9 @@ The original receipt mixed Mahalanobis-trained codebooks with Euclidean symbol
 assignment and is superseded. The corrective replay uses the same transform for
 both operations, adds a rate-matched 2/4/8-bit grid at 8/16/32 B side budgets,
 and evaluates both the full shell and `THQ4 top128 → ADC`. On held-out queries,
-the 32 B nDCG values are `.6983/.6800/.6794` for 2/4/8 bits per block; no
-monotone rate frontier appears. The 32 B/2-bit arm is an inconclusive
+the 32 B nDCG values are `.6983/.6800/.6794` for 2/4/8 bits per block. The
+2-bit and 4-bit families improve with side budget while the 8-bit family
+degrades, so there is no uniform cross-bit rate frontier. The 32 B/2-bit arm is an inconclusive
 survivor: its held-out nDCG is `.698282`, but paired bootstrap CIs for deltas
 versus direct INT8 and RSLM3 include zero. The remaining arms do not establish
 a quality improvement over those controls.

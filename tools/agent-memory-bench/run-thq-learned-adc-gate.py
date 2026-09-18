@@ -45,6 +45,10 @@ def sha(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sequence_sha256(values: np.ndarray) -> str:
+    return hashlib.sha256(np.asarray(values, dtype="<u4").tobytes()).hexdigest()
+
+
 def kmeans(values: np.ndarray, count: int, iterations: int = 5) -> np.ndarray:
     """Small deterministic Lloyd fit used only for the bounded reference gate."""
     rng = np.random.default_rng(20260918 + values.shape[1] + count)
@@ -246,6 +250,7 @@ def main() -> None:
                                  "qrels_ndcg10": ndcg(selected, qrel_ids[qi], qrel_scores[qi]),
                                  "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
                                  "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
+                                 "thq4_top128_sequence_sha256": sequence_sha256(thq_top),
                                  "pairwise_order": pairwise_order(scores, exact_local, rng),
                                  "pairwise_top32": focused_pairwise(scores, exact_local, rng, 0, 32),
                                  "pairwise_top10_boundary": focused_pairwise(scores, exact_local, rng, 8, 4),
@@ -282,6 +287,7 @@ def main() -> None:
               "train_query_count": min(TRAIN_QUERIES, query_count),
               "candidate_flat_sha256": sha(args.candidate_flat), "candidate_raw_sha256": sha(args.candidate_raw),
               "candidate_receipt_sha256": sha(args.candidate_receipt), "documents_sha256": sha(args.documents),
+              "thq4_codes_sha256": sha(args.thq4_codes), "thq4_thresholds_sha256": sha(args.thq4_thresholds),
               "training_sha256": sha(args.train_vectors), "queries_sha256": sha(args.queries),
               "qrel_ids_sha256": sha(args.qrel_ids), "qrel_scores_sha256": sha(args.qrel_scores),
               "teacher_ids_sha256": sha(args.teacher_ids),

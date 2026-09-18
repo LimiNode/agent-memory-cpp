@@ -38,7 +38,8 @@ def main() -> None:
         "train_query_count", "model_hashes", "summaries_by_scope", "limitations")}
     compact["diagnostic_scope_mixed_summaries"] = result.get("summaries")
     compact["input_hashes"] = {key: result[key] for key in (
-        "documents_sha256", "training_sha256", "queries_sha256", "qrel_ids_sha256",
+        "documents_sha256", "training_sha256", "thq4_codes_sha256", "thq4_thresholds_sha256",
+        "queries_sha256", "qrel_ids_sha256",
         "qrel_scores_sha256", "teacher_ids_sha256", "candidate_flat_sha256",
         "candidate_raw_sha256", "candidate_receipt_sha256")}
     if args.score_baseline:
@@ -74,9 +75,14 @@ def main() -> None:
                     "worst_query_delta": float(delta.min())}
         compact["heldout_paired_qrels_ndcg10"] = paired
         compact["paired_scope"] = "thq4-top128"
+        if audit.get("score_baseline_sha256") != sha(args.score_baseline):
+            raise RuntimeError("learned ADC audit/score baseline binding differs")
+        if audit.get("paired_qrels_ndcg10") != paired:
+            raise RuntimeError("learned ADC paired baseline audit differs")
         compact["score_baseline_provenance"] = {
             "raw_sha256": sha(args.score_baseline),
             "family": baseline["family"],
+            "runner_sha256": baseline.get("runner_sha256"),
             "candidate_receipt_sha256": baseline["candidate_receipt_sha256"],
             "documents_sha256": baseline["documents_sha256"],
             "queries_sha256": baseline["queries_sha256"],
@@ -101,8 +107,13 @@ def main() -> None:
             "result_sha256": audit["result_sha256"],
             "runner_sha256": audit["runner_sha256"],
             "candidate_receipt_sha256": audit["candidate_receipt_sha256"],
+            "training_sha256": audit["training_sha256"],
+            "thq4_codes_sha256": audit["thq4_codes_sha256"],
+            "thq4_thresholds_sha256": audit["thq4_thresholds_sha256"],
         },
-        "score_baseline_sha256": sha(args.score_baseline) if args.score_baseline else None},
+        "score_baseline_sha256": sha(args.score_baseline) if args.score_baseline else None,
+        "score_baseline_runner_sha256": (baseline.get("runner_sha256")
+                                          if args.score_baseline else None)},
         indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("THQ learned ADC compact evidence written")
 

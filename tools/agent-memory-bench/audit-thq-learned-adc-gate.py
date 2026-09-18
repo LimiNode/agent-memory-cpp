@@ -31,6 +31,13 @@ def ndcg(ids: np.ndarray, qrel_ids: np.ndarray, qrel_scores: np.ndarray) -> floa
     ideal_dcg = float(np.sum(ideal / np.log2(np.arange(2, 2 + len(ideal), dtype=np.float64))))
     return float(np.sum(gains / discounts) / ideal_dcg) if ideal_dcg else 0.0
 
+
+def unpack_thq(codes: np.ndarray) -> np.ndarray:
+    shifts = np.asarray((0, 2, 4, 6), dtype=np.uint8)
+    return ((np.asarray(codes, dtype=np.uint8)[:, :, None] >>
+             shifts[None, None, :]) & 3).reshape(len(codes), 384)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--result", type=Path, required=True)
@@ -39,10 +46,14 @@ def main() -> None:
     parser.add_argument("--candidate-flat", type=Path, required=True)
     parser.add_argument("--candidate-raw", type=Path, required=True)
     parser.add_argument("--documents", type=Path, required=True)
+    parser.add_argument("--training", type=Path, required=True)
+    parser.add_argument("--thq4-codes", type=Path, required=True)
+    parser.add_argument("--thq4-thresholds", type=Path, required=True)
     parser.add_argument("--queries", type=Path, required=True)
     parser.add_argument("--qrel-ids", type=Path, required=True)
     parser.add_argument("--qrel-scores", type=Path, required=True)
     parser.add_argument("--teacher-ids", type=Path, required=True)
+    parser.add_argument("--score-baseline", type=Path)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = json.loads(args.result.read_text(encoding="utf-8"))
@@ -105,12 +116,16 @@ def main() -> None:
     query_count = args.queries.stat().st_size // (4 * 384)
     require(query_count == result["query_count"], "query source count differs")
     documents = np.memmap(args.documents, mode="r", dtype="<f4", shape=(document_count, 384))
+    thq_codes = np.memmap(args.thq4_codes, mode="r", dtype=np.uint8, shape=(document_count, 96))
+    thresholds = np.fromfile(args.thq4_thresholds, dtype="<f4").reshape(384, 3)
     queries = np.memmap(args.queries, mode="r", dtype="<f4", shape=(query_count, 384))
     qrel_ids = np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(query_count, 20))
     qrel_scores = np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(query_count, 20))
     teacher_ids = np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(query_count, 10))
     source_hashes = {
-        "documents_sha256": sha(args.documents), "queries_sha256": sha(args.queries),
+        "documents_sha256": sha(args.documents), "training_sha256": sha(args.training),
+        "thq4_codes_sha256": sha(args.thq4_codes), "thq4_thresholds_sha256": sha(args.thq4_thresholds),
+        "queries_sha256": sha(args.queries),
         "qrel_ids_sha256": sha(args.qrel_ids), "qrel_scores_sha256": sha(args.qrel_scores),
         "teacher_ids_sha256": sha(args.teacher_ids), "candidate_flat_sha256": sha(args.candidate_flat),
         "candidate_raw_sha256": sha(args.candidate_raw), "candidate_receipt_sha256": sha(args.candidate_receipt),
@@ -122,11 +137,25 @@ def main() -> None:
         require(np.all((shell >= 0) & (shell < document_count)), "candidate ID out of range")
         require(len(np.unique(shell)) == len(shell), "candidate shell contains duplicate IDs")
         exact_top = top_ids(documents[shell] @ queries[query], shell, 10)
+        levels = unpack_thq(np.asarray(thq_codes[shell]))
+        interval_lut = np.empty((384, 4), dtype=np.float32)
+        for coordinate in range(384):
+            for level in range(4):
+                low = -np.inf if level == 0 else thresholds[coordinate, level - 1]
+                high = np.inf if level == 3 else thresholds[coordinate, level]
+                delta = low - queries[query, coordinate] if queries[query, coordinate] < low else (
+                    queries[query, coordinate] - high if queries[query, coordinate] > high else 0.0)
+                interval_lut[coordinate, level] = delta * delta
+        interval = np.sum(interval_lut[np.arange(384)[None, :], levels], axis=1)
+        thq_top = shell[np.lexsort((shell, interval))[:min(128, len(shell))]]
+        thq_top_sha = hashlib.sha256(np.asarray(thq_top, dtype="<u4").tobytes()).hexdigest()
         for row in rows:
             if int(row["query"]) != query:
                 continue
             selected = np.asarray(row["top10_ids"], dtype=np.int64)
             require(np.all(np.isin(selected, shell)), "top10 ID escaped candidate shell")
+            require(row.get("thq4_top128_sequence_sha256") == thq_top_sha,
+                    f"independent THQ4 top128 sequence differs: {row['arm']}/{row['scope']}/{query}")
             expected_metrics = {
                 "qrels_ndcg10": ndcg(selected, qrel_ids[query], qrel_scores[query]),
                 "teacher_overlap": float(np.isin(teacher_ids[query], selected).sum() / 10.0),
@@ -135,9 +164,43 @@ def main() -> None:
             for metric, expected_value in expected_metrics.items():
                 require(abs(float(row[metric]) - expected_value) < 1e-12,
                         f"independent metric differs: {row['arm']}/{row['scope']}/{query}/{metric}")
+    paired_baseline = None
+    if args.score_baseline:
+        baseline = json.loads(args.score_baseline.read_text(encoding="utf-8"))
+        require(baseline.get("family") == "thq_score_only_codec_gate_v1",
+                "score baseline family differs")
+        require(baseline.get("status") == "EXECUTED", "score baseline status differs")
+        for field in ("candidate_receipt_sha256", "documents_sha256", "queries_sha256",
+                      "qrel_ids_sha256", "qrel_scores_sha256", "teacher_ids_sha256"):
+            require(baseline.get(field) == result.get(field),
+                    f"score baseline input differs: {field}")
+        baseline_rows = {(int(row["query"]), row["arm"]): row for row in baseline["rows"]
+                         if row.get("scope", "full-shell") == "full-shell"}
+        paired_baseline = {}
+        rng = np.random.default_rng(20260918)
+        for arm in sorted(result["summaries"]):
+            heldout = [row for row in rows if row["arm"] == arm and
+                       row["scope"] == "thq4-top128" and int(row["query"]) >= result["train_query_count"]]
+            paired_baseline[arm] = {}
+            for control in ("candidate-fp32", "direct-int8", "rslm3-direct-score"):
+                delta = np.asarray([row["qrels_ndcg10"] - baseline_rows[(int(row["query"]), control)]["qrels_ndcg10"]
+                                    for row in heldout], dtype=float)
+                bootstrap = delta[rng.integers(0, len(delta), size=(5000, len(delta)))].mean(axis=1)
+                paired_baseline[arm][control] = {
+                    "mean_delta": float(delta.mean()),
+                    "bootstrap_ci95": [float(np.quantile(bootstrap, .025)),
+                                        float(np.quantile(bootstrap, .975))],
+                    "worst_query_delta": float(delta.min())}
+
     output = {"schema_version": 1, "family": "thq_learned_adc_gate_audit_v1", "status": "PASS",
               "result_sha256": sha(args.result), "runner_sha256": sha(args.runner),
               "candidate_receipt_sha256": sha(args.candidate_receipt),
+              "training_sha256": sha(args.training),
+              "thq4_codes_sha256": sha(args.thq4_codes),
+              "thq4_thresholds_sha256": sha(args.thq4_thresholds),
+              "score_baseline_sha256": sha(args.score_baseline) if args.score_baseline else None,
+              "paired_scope": "thq4-top128" if paired_baseline is not None else None,
+              "paired_qrels_ndcg10": paired_baseline,
               "checks": ["runner/result binding", "candidate provenance binding", "source SHA bindings",
                          "independent qrels nDCG, teacher overlap and candidate-FP32 overlap",
                          "held-out split",

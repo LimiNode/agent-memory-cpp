@@ -1,16 +1,20 @@
 {
   "audit_bindings": {
     "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-    "result_sha256": "34e14571df2db849eb84e614d5f68d035d2381375d24e88e0d6217d52bb9d783",
-    "runner_sha256": "59ee3f2d4a8762740e6772098c995af3197b8322fc46f4fb4c4149cf85fbbd75"
+    "result_sha256": "38f3a1c25a8be29520cf9075c008996ed75141f30dcad8b07c4a50cbeadad82f",
+    "runner_sha256": "11a5046d8fee5595445e688677f95446ac80e92661b3d00ccdc74a45644af574",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
-  "audit_sha256": "51cc16338a3fff14fe67ba2ddc2039d5dcad2cb16a341e11d0dca594fcd5a66b",
+  "audit_sha256": "fc4ffc07492854bab86f76901db036c8d41e9b12eaf7e78a74827c65d8c78626",
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-  "compact_sha256": "e1ca93ab0e0ca29e1a15f3cca07bfff58a35c6e8b792003f812f6a19549444c5",
+  "compact_sha256": "01efb262913a70d3e13654d41900183124972b83e4e524756ebeb192df64b141",
   "family": "thq_learned_adc_gate_evidence_receipt_v1",
-  "raw_sha256": "34e14571df2db849eb84e614d5f68d035d2381375d24e88e0d6217d52bb9d783",
-  "runner_sha256": "59ee3f2d4a8762740e6772098c995af3197b8322fc46f4fb4c4149cf85fbbd75",
+  "raw_sha256": "38f3a1c25a8be29520cf9075c008996ed75141f30dcad8b07c4a50cbeadad82f",
+  "runner_sha256": "11a5046d8fee5595445e688677f95446ac80e92661b3d00ccdc74a45644af574",
   "schema_version": 1,
+  "score_baseline_runner_sha256": "e5deadee00b6eb1e5a7061b5e6b85901dae34d455bc252b6c9ec683e3a4992e7",
   "score_baseline_sha256": "ddbbc80b7576b54f3b0706ca52efb1c94524711293d6fea7cd3575749e5d269b",
   "status": "PASS"
 }
