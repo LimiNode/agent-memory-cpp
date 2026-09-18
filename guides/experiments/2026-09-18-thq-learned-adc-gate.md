@@ -35,7 +35,7 @@ Held-out (queries 120--151) results by equal side-code budget:
 
 For the 32 B rows, held-out candidate-FP32 overlap is `.8969`, `.9000`, and
 `.9062` (2/4/8 bits). Top-10-boundary pairwise accuracy in stage-local mode is
-`.9037`, `.8882`, and `.9083`. There is no monotone rate frontier: bit depth
+`.6406`, `.6927`, and `.6667`. There is no monotone rate frontier: bit depth
 and block count trade off at fixed bytes, and every configuration remains below
 the direct INT8/RSLM controls from the earlier score-only gate.
 
