@@ -154,6 +154,8 @@ def main() -> None:
                 continue
             selected = np.asarray(row["top10_ids"], dtype=np.int64)
             require(np.all(np.isin(selected, shell)), "top10 ID escaped candidate shell")
+            require(int(row.get("thq4_top128_count", -1)) == min(128, len(shell)),
+                    f"THQ4 top128 count differs: {row['arm']}/{row['scope']}/{query}")
             require(row.get("thq4_top128_sequence_sha256") == thq_top_sha,
                     f"independent THQ4 top128 sequence differs: {row['arm']}/{row['scope']}/{query}")
             expected_metrics = {
