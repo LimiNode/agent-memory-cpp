@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -34,6 +35,23 @@ def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def model_state_sha256(model: nn.Module) -> str:
+    """Hash parameter names, shapes, dtypes, and contiguous tensor bytes."""
+    digest = hashlib.sha256()
+    for name, parameter in sorted(model.named_parameters(), key=lambda item: item[0]):
+        tensor = parameter.detach().cpu().contiguous()
+        array = tensor.numpy()
+        metadata = json.dumps(
+            {"name": name, "shape": list(array.shape), "dtype": array.dtype.str},
+            separators=(",", ":"), sort_keys=True).encode("utf-8")
+        raw = array.tobytes(order="C")
+        digest.update(struct.pack("<Q", len(metadata)))
+        digest.update(metadata)
+        digest.update(struct.pack("<Q", len(raw)))
+        digest.update(raw)
     return digest.hexdigest()
 
 
@@ -274,6 +292,7 @@ def main() -> None:
                 epoch_loss += float(loss.detach()) * len(batch)
             loss_history.append(epoch_loss / len(order))
 
+    state_hash = model_state_sha256(model)
     rows = []
     ids = np.arange(count, dtype=np.int64)
     for qi in range(query_count):
@@ -325,6 +344,7 @@ def main() -> None:
               "loss_mode": "teacher_score_plus_vector_mse" if args.teacher_only_query_count else
                            "qrels_margin_plus_teacher_score_plus_vector_mse",
               "hidden": args.hidden, "epochs": args.epochs, "seed": 20260916,
+              "model_state_sha256": state_hash,
               "prefilter": "full_corpus_thq4_interval_squared_top128",
               "documents_sha256": sha256(args.documents), "queries_sha256": sha256(args.queries),
               "query_ids_sha256": sha256(args.query_ids), "document_ids_sha256": sha256(args.document_ids),

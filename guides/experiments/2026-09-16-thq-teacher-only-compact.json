@@ -1,0 +1,50 @@
+{
+  "documents": 1000000,
+  "epochs": 8,
+  "evidence_status": "heldout_query_retrieval_loss_probe",
+  "family": "thq_retrieval_distill_stage_local_v1",
+  "hard_negative_pair_count": 0,
+  "hard_negative_queries": 0,
+  "hard_negative_query_indices": [],
+  "hidden": 128,
+  "limitations": [
+    "eight held-out queries",
+    "decoder is a bounded research probe",
+    "full-corpus THQ4 top128 is not the canonical R4 stream",
+    "not native/page/MDBX latency"
+  ],
+  "loss_history": [
+    0.02689855521065042,
+    0.0013081408129308862,
+    0.0009232512720302375,
+    0.0007974493732011128,
+    0.0007022442100161956,
+    0.0006262970927974165,
+    0.0005632843877116739,
+    0.0005078997125109087
+  ],
+  "loss_mode": "teacher_score_plus_vector_mse",
+  "model_state_sha256": "d06c759f6f48f2ef1c93210475fc48f363fcfca8e6ac08db906601828596a343",
+  "pair_count": 38016,
+  "prefilter": "full_corpus_thq4_interval_squared_top128",
+  "query_count": 8,
+  "schema_version": 1,
+  "seed": 20260916,
+  "status": "EXECUTED",
+  "summaries": {
+    "retrieval-decoder": {
+      "qrels_ndcg10_mean": 0.0,
+      "teacher_overlap_mean": 0.0625,
+      "teacher_overlap_min": 0.0
+    },
+    "source-control": {
+      "qrels_ndcg10_mean": 0.5757561895337391,
+      "teacher_overlap_mean": 1.0,
+      "teacher_overlap_min": 1.0
+    }
+  },
+  "teacher_only_example_count": 38016,
+  "teacher_only_query_count": 297,
+  "training_queries_with_pairs": 297,
+  "training_query_start": 8
+}

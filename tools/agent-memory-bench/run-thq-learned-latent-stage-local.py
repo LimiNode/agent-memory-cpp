@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import struct
 from pathlib import Path
 
 import numpy as np
@@ -35,6 +36,23 @@ def sha256(path: Path) -> str:
     with path.open("rb") as stream:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(chunk)
+    return digest.hexdigest()
+
+
+def model_state_sha256(model: nn.Module) -> str:
+    """Hash parameter names, shapes, dtypes, and contiguous tensor bytes."""
+    digest = hashlib.sha256()
+    for name, parameter in sorted(model.named_parameters(), key=lambda item: item[0]):
+        tensor = parameter.detach().cpu().contiguous()
+        array = tensor.numpy()
+        metadata = json.dumps(
+            {"name": name, "shape": list(array.shape), "dtype": array.dtype.str},
+            separators=(",", ":"), sort_keys=True).encode("utf-8")
+        raw = array.tobytes(order="C")
+        digest.update(struct.pack("<Q", len(metadata)))
+        digest.update(metadata)
+        digest.update(struct.pack("<Q", len(raw)))
+        digest.update(raw)
     return digest.hexdigest()
 
 
@@ -140,6 +158,23 @@ def main() -> None:
     low = train_latent.min(axis=0)
     high = train_latent.max(axis=0)
     train_codes = quantize_latent(train_latent, low, high)
+    state_hash = model_state_sha256(model)
+
+    diagnostics = {
+        str(width): {
+            "candidate_value_count": 0,
+            "clipped_value_count": 0,
+            "saturated_code_count": 0,
+            "reconstruction_mse_sum": 0.0,
+            "centroid_mse_sum": 0.0,
+            "score_mae_sum": 0.0,
+            "centroid_score_mae_sum": 0.0,
+            "latent_energy_mean": float(np.mean(train_latent[:, :width] ** 2)),
+            "latent_variance_mean": float(np.mean(np.var(train_latent[:, :width], axis=0))),
+            "query_count": 0,
+        }
+        for width in LATENT_BYTES
+    }
 
     rows = []
     ids = np.arange(count, dtype=np.int64)
@@ -171,6 +206,13 @@ def main() -> None:
             latent = model.encode(torch.from_numpy(candidate_residual), code_candidate).numpy().astype(np.float32)
         for width in LATENT_BYTES:
             quantized = quantize_latent(latent[:, :width], low[:width], high[:width])
+            diagnostic = diagnostics[str(width)]
+            diagnostic["candidate_value_count"] += int(latent[:, :width].size)
+            diagnostic["clipped_value_count"] += int(
+                np.count_nonzero((latent[:, :width] < low[:width]) |
+                                 (latent[:, :width] > high[:width])))
+            diagnostic["saturated_code_count"] += int(
+                np.count_nonzero((quantized == 0) | (quantized == 255)))
             decoded_input = np.zeros((TOP, max(LATENT_BYTES)), dtype=np.float32)
             decoded_input[:, :width] = dequantize_latent(quantized, low[:width], high[:width])
             with torch.no_grad():
@@ -178,6 +220,18 @@ def main() -> None:
             values = candidate_base + decoded_residual
             norms = np.linalg.norm(values, axis=1)
             selected = h.top_k((values @ query) / np.maximum(norms, np.finfo(np.float32).tiny), candidate)
+            source_norms = np.linalg.norm(np.asarray(documents[candidate], dtype=np.float32), axis=1)
+            centroid_norms = np.linalg.norm(candidate_base, axis=1)
+            source_scores = (np.asarray(documents[candidate], dtype=np.float32) @ query) / np.maximum(
+                source_norms, np.finfo(np.float32).tiny)
+            centroid_scores = (candidate_base @ query) / np.maximum(
+                centroid_norms, np.finfo(np.float32).tiny)
+            reconstructed_scores = (values @ query) / np.maximum(norms, np.finfo(np.float32).tiny)
+            diagnostic["reconstruction_mse_sum"] += float(np.mean((values - documents[candidate]) ** 2))
+            diagnostic["centroid_mse_sum"] += float(np.mean((candidate_base - documents[candidate]) ** 2))
+            diagnostic["score_mae_sum"] += float(np.mean(np.abs(reconstructed_scores - source_scores)))
+            diagnostic["centroid_score_mae_sum"] += float(np.mean(np.abs(centroid_scores - source_scores)))
+            diagnostic["query_count"] += 1
             rows.append({"query": qi, "query_id": query_ids[qi], "arm": f"learned-latent-{width}B",
                          "bytes": 96 + width, "teacher_overlap": float(np.isin(teacher, selected).sum() / 10.0),
                          "candidate_fp32_overlap": float(np.isin(candidate_exact, selected).sum() / 10.0),
@@ -185,6 +239,17 @@ def main() -> None:
     summaries = {}
     for width in LATENT_BYTES:
         values = [row for row in rows if row["arm"] == f"learned-latent-{width}B"]
+        diagnostic = diagnostics[str(width)]
+        value_count = max(diagnostic["candidate_value_count"], 1)
+        query_count_for_metrics = max(diagnostic["query_count"], 1)
+        diagnostic.update({
+            "clipped_value_fraction": diagnostic.pop("clipped_value_count") / value_count,
+            "saturated_code_fraction": diagnostic.pop("saturated_code_count") / value_count,
+            "reconstruction_mse_mean": diagnostic.pop("reconstruction_mse_sum") / query_count_for_metrics,
+            "centroid_mse_mean": diagnostic.pop("centroid_mse_sum") / query_count_for_metrics,
+            "score_mae_mean": diagnostic.pop("score_mae_sum") / query_count_for_metrics,
+            "centroid_score_mae_mean": diagnostic.pop("centroid_score_mae_sum") / query_count_for_metrics,
+        })
         summaries[f"learned-latent-{width}B"] = {
             "teacher_overlap_mean": float(np.mean([row["teacher_overlap"] for row in values])),
             "teacher_overlap_min": float(np.min([row["teacher_overlap"] for row in values])),
@@ -198,10 +263,12 @@ def main() -> None:
               "loss_history": loss_history, "training_loss_final": loss_history[-1],
               "latent_low_sha256": hashlib.sha256(low.astype("<f4").tobytes()).hexdigest(),
               "latent_high_sha256": hashlib.sha256(high.astype("<f4").tobytes()).hexdigest(),
+              "model_state_sha256": state_hash,
               "documents_sha256": sha256(args.documents), "training_sha256": sha256(args.train_vectors),
               "queries_sha256": sha256(args.queries), "query_ids_sha256": sha256(args.query_ids),
               "document_ids_sha256": sha256(args.document_ids), "qrels_sha256": sha256(args.qrels),
-              "thq_sha256": sha256(args.thq4_codes), "summaries": summaries, "rows": rows,
+              "thq_sha256": sha256(args.thq4_codes), "summaries": summaries,
+              "latent_diagnostics": diagnostics, "rows": rows,
               "limitations": ["diagnostic eight-query screen", "single conditional autoencoder with prefix dropout",
                               "not QINCo/AQ reproduction", "not canonical 152-query payload", "not native/page/MDBX latency"]}
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

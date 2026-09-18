@@ -1,5 +1,7 @@
 {
+  "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
   "documents": 1000000,
+  "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
   "epochs": 8,
   "evidence_status": "heldout_query_retrieval_loss_probe",
   "family": "thq_retrieval_distill_stage_local_v1",
@@ -9,31 +11,357 @@
   "hidden": 128,
   "limitations": [
     "eight held-out queries",
-    "qrels-trained decoder is a research probe",
+    "decoder is a bounded research probe",
     "full-corpus THQ4 top128 is not the canonical R4 stream",
     "not native/page/MDBX latency"
   ],
   "loss_history": [
-    0.047301734764274454,
-    0.0020584203910958016,
-    0.0006769033263412976,
-    0.0004324200518357639,
-    0.00044391913822129295,
-    0.0003737295462669819,
-    0.00044757203223161996,
-    0.00031023195893528107
+    0.1307931291183252,
+    0.05924250780665918,
+    0.019593200984287542,
+    0.008847251350672986,
+    0.005549915620072194,
+    0.0042370261833187236,
+    0.003660104166419274,
+    0.0032897898565379183
   ],
-  "loss_mode": null,
+  "loss_mode": "qrels_margin_plus_teacher_score_plus_vector_mse",
+  "model_state_sha256": "37a50cfe8e23444f5fa00b9f47346a84833080def01798726cafdf797eb64c58",
   "pair_count": 4966,
   "prefilter": "full_corpus_thq4_interval_squared_top128",
+  "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071",
+  "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
   "query_count": 8,
+  "query_ids_sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385",
+  "rows": [
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.0,
+      "qrels_ndcg10": 0.0,
+      "query": 0,
+      "query_id": "de:10055536#0",
+      "teacher_overlap": 0.0,
+      "top10": [
+        900164,
+        240846,
+        842711,
+        655526,
+        219571,
+        683965,
+        587064,
+        431072,
+        770862,
+        584912
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.5,
+      "query": 0,
+      "query_id": "de:10055536#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        459756,
+        323232,
+        362152,
+        749547,
+        742689,
+        323234,
+        462512,
+        829335,
+        399543,
+        802302
+      ]
+    },
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.1,
+      "qrels_ndcg10": 0.15642624200758548,
+      "query": 1,
+      "query_id": "de:10127282#0",
+      "teacher_overlap": 0.1,
+      "top10": [
+        423427,
+        441402,
+        315979,
+        185009,
+        479909,
+        639694,
+        885202,
+        714056,
+        638206,
+        899276
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.812653045383133,
+      "query": 1,
+      "query_id": "de:10127282#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        957336,
+        957335,
+        957338,
+        885202,
+        885204,
+        113919,
+        957339,
+        298202,
+        790680,
+        423743
+      ]
+    },
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.0,
+      "qrels_ndcg10": 0.0,
+      "query": 2,
+      "query_id": "de:10146364#0",
+      "teacher_overlap": 0.0,
+      "top10": [
+        672323,
+        661329,
+        531074,
+        266293,
+        512042,
+        200414,
+        262112,
+        959948,
+        642135,
+        910410
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.7653606369886217,
+      "query": 2,
+      "query_id": "de:10146364#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        398806,
+        257957,
+        257955,
+        448518,
+        257958,
+        737820,
+        641776,
+        257956,
+        737819,
+        898803
+      ]
+    },
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.1,
+      "qrels_ndcg10": 0.0,
+      "query": 3,
+      "query_id": "de:10179805#0",
+      "teacher_overlap": 0.1,
+      "top10": [
+        496359,
+        680234,
+        594072,
+        936769,
+        69517,
+        296032,
+        732103,
+        18937,
+        618927,
+        285466
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.0,
+      "query": 3,
+      "query_id": "de:10179805#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        603425,
+        442943,
+        917283,
+        321214,
+        208371,
+        464537,
+        18937,
+        907097,
+        240122,
+        304405
+      ]
+    },
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.1,
+      "qrels_ndcg10": 0.0,
+      "query": 4,
+      "query_id": "de:10216007#0",
+      "teacher_overlap": 0.1,
+      "top10": [
+        580342,
+        120817,
+        229114,
+        757069,
+        519184,
+        403535,
+        143893,
+        507596,
+        808418,
+        539424
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.5706417189553201,
+      "query": 4,
+      "query_id": "de:10216007#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        78715,
+        104374,
+        299352,
+        342429,
+        114142,
+        81558,
+        229114,
+        113795,
+        409857,
+        525625
+      ]
+    },
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.0,
+      "qrels_ndcg10": 0.0,
+      "query": 5,
+      "query_id": "de:10263256#0",
+      "teacher_overlap": 0.0,
+      "top10": [
+        59469,
+        932861,
+        33699,
+        675485,
+        131306,
+        833414,
+        141775,
+        103633,
+        626893,
+        849523
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.6508205185601091,
+      "query": 5,
+      "query_id": "de:10263256#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        675484,
+        675486,
+        675487,
+        675488,
+        354803,
+        407617,
+        407618,
+        27560,
+        752858,
+        369269
+      ]
+    },
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.0,
+      "qrels_ndcg10": 0.0,
+      "query": 6,
+      "query_id": "de:10391411#0",
+      "teacher_overlap": 0.0,
+      "top10": [
+        373964,
+        630730,
+        662394,
+        233317,
+        676368,
+        939645,
+        28195,
+        367682,
+        291981,
+        736662
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.3065735963827292,
+      "query": 6,
+      "query_id": "de:10391411#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        353471,
+        503631,
+        503629,
+        503628,
+        503627,
+        503630,
+        503626,
+        503625,
+        329356,
+        63467
+      ]
+    },
+    {
+      "arm": "retrieval-decoder",
+      "candidate_fp32_overlap": 0.0,
+      "qrels_ndcg10": 0.0,
+      "query": 7,
+      "query_id": "de:1040819#0",
+      "teacher_overlap": 0.0,
+      "top10": [
+        243647,
+        231079,
+        187840,
+        528739,
+        844931,
+        355542,
+        271961,
+        514208,
+        21777,
+        225203
+      ]
+    },
+    {
+      "arm": "source-control",
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 1.0,
+      "query": 7,
+      "query_id": "de:1040819#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        242838,
+        245495,
+        242840,
+        245492,
+        245494,
+        242932,
+        245493,
+        245496,
+        157800,
+        157798
+      ]
+    }
+  ],
   "schema_version": 1,
   "seed": 20260916,
   "status": "EXECUTED",
   "summaries": {
     "retrieval-decoder": {
-      "qrels_ndcg10_mean": 0.09603747921533187,
-      "teacher_overlap_mean": 0.1,
+      "qrels_ndcg10_mean": 0.019553280250948185,
+      "teacher_overlap_mean": 0.037500000000000006,
       "teacher_overlap_min": 0.0
     },
     "source-control": {
@@ -44,6 +372,7 @@
   },
   "teacher_only_example_count": 0,
   "teacher_only_query_count": 0,
+  "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
   "training_queries_with_pairs": 297,
   "training_query_start": 8
 }

@@ -35,6 +35,7 @@ def main() -> None:
     compact["hard_negative_query_indices"] = list(result.get("hard_negative_query_indices", []) or [])
     compact["teacher_only_query_count"] = int(result.get("teacher_only_query_count", 0) or 0)
     compact["teacher_only_example_count"] = int(result.get("teacher_only_example_count", 0) or 0)
+    compact["model_state_sha256"] = result.get("model_state_sha256")
     args.output.write_text(json.dumps(compact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     receipt = {
         "schema_version": 1,
@@ -43,6 +44,7 @@ def main() -> None:
         "runner_sha256": sha256(Path(__file__).with_name("run-thq-retrieval-distill-stage-local.py")),
         "result_sha256": sha256(args.result),
         "compact_result_sha256": sha256(args.output),
+        "model_state_sha256": result.get("model_state_sha256"),
         "input_hashes": {key: result.get(key) for key in (
             "documents_sha256", "queries_sha256", "query_ids_sha256", "document_ids_sha256",
             "qrels_sha256", "thq_sha256")},

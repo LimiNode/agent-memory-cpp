@@ -35,8 +35,10 @@ The source corpus is the frozen DE-1M E5 materialization:
 * query slice: the first eight rows of the 305-query DE evaluation materialization,
   query-vector SHA-256 `fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2`.
 
-The raw results and 8/16/32-byte code streams are retained outside Git under
-`E:\_repoz\agent-memory-workspaces\thq-residual-frontier-artifacts`.
+The large raw code streams are retained outside Git under
+`E:\_repoz\agent-memory-workspaces\thq-residual-frontier-artifacts`; the
+compact results, receipts, and the small JSON result records below are the
+committed evidence surface.
 The PCA result is `thq4-residual-diagnostic-8q.json`; the residual-PQ result is
 `thq4-residual-pq-diagnostic-8q.json`.
 
@@ -287,9 +289,13 @@ A teacher-only variant then used all `297` non-held-out training queries and
 all `128` THQ shell documents per query (`38,016` exact teacher-scored
 examples), with no qrels margin at all.  Its held-out result was only `.0625`
 mean teacher overlap (minimum `0.0`, qrels nDCG@10 `0.0`).  This closes the
-data-coverage objection, but remains a negative result for this shared
-code-only decoder: more shell supervision alone did not recover teacher
-geometry.  The run is recorded separately in
+simple shell-count objection, but does not distinguish optimization failure
+from overfitting or the capacity limit of the `1536 -> 128 -> 384` decoder.
+It remains a negative result only for this from-scratch shared code-only
+recipe: more shell supervision alone did not recover held-out teacher
+geometry.  A follow-up must compare centroid, ridge, and decoder score MSE and
+top-10 overlap on the same training shells before making a claim about teacher
+distillation.  The run is recorded separately in
 `2026-09-16-thq-teacher-only-result.json` and its receipt.
 
 The regenerated qrels-only compact result SHA-256 is
@@ -310,13 +316,66 @@ The previously missing non-zero-side-byte ML arm is now represented by
 the THQ4 one-hot code and residual, emits a 32-byte latent, and is trained with
 prefix dropout so the same model can be evaluated at 8/16/32 bytes.  On the
 eight-query screen all three prefixes reached the THQ4 centroid baseline
-(`.875` mean teacher overlap, minimum `.5`); the bounded model therefore did
-not recover additional residual signal at this training budget.  This is a
-valid first learned-latent control, not a QINCo/AQ reproduction: it uses a
-single shared model, no native kernel, and no canonical 152-query replay.
+(`.875` mean teacher overlap, minimum `.5`).  This model/training recipe did
+not recover additional residual signal.  It is evidence of a failed bounded
+training recipe, not evidence that a useful learned latent does not exist:
+the shared prefix model can minimize its objective by ignoring the latent and
+predicting a near-zero residual.  This is not a QINCo/AQ reproduction; it uses
+a single shared model, no native kernel, and no canonical 152-query replay.
 The compact result and receipt are
 `2026-09-16-thq-learned-latent-result.json` and
 `2026-09-16-thq-learned-latent-receipt.json`.
+
+## Corrective provenance and latent diagnostics (2026-09-18)
+
+The learned-latent and retrieval runners were corrected to bind the trained
+model itself.  `model_state_sha256` is a canonical SHA-256 over parameter
+names in sorted order, each parameter shape and dtype, and its contiguous raw
+tensor bytes.  The value is present in each raw result, compact result, and
+receipt.  The latent result also records, for every 8/16/32-byte prefix,
+candidate latent clipping and endpoint-code saturation, centroid versus
+decoded reconstruction MSE, centroid versus decoded cosine-score MAE, and
+the training latent energy and variance.
+
+The frozen eight-query latent replay remains `.875` mean teacher overlap for
+all three prefixes (minimum `.5`).  Clipping is effectively absent
+(`0` for 8 B, `0.000122` for 16 B, `0.000061` for 32 B), and the decoded
+reconstruction/score errors are indistinguishable from the centroid control
+in this screen (`MSE ≈ 0.00010365`, score MAE ≈ `0.007976`).  This rules out
+quantizer saturation as the explanation for the missing gain.
+
+The stronger diagnostic is the training loss itself.  The centroid residual
+has mean squared energy `0.038365`; divided across 384 coordinates, a zero
+residual predictor has coordinate MSE about `9.991e-5`.  The final training
+loss is `9.9933e-5`, effectively the same value.  Together with the identical
+8/16/32-byte outputs, this is evidence that the current optimization collapsed
+to a near-zero correction.  It does not establish a capacity limit for a
+learned residual representation.  The next ML sanity check must compare zero,
+shuffled, continuous, and quantized latents and must first require a linear
+32-dimensional autoencoder to approach the PCA32 reconstruction bound.
+
+The model identities are:
+
+* learned latent: `d2c8ddd8f72a314fe066be9798219a0d8f51ac1250b95beefde41e619db2d668`;
+* qrels-trained decoder: `37a50cfe8e23444f5fa00b9f47346a84833080def01798726cafdf797eb64c58`;
+* hard-negative decoder: `8bdf34bb3aa5b10421f113ff3e88fa1f33b2534505c765aec3f4eaf6c9ca22c5`;
+* qrels-free teacher-supervised decoder: `d06c759f6f48f2ef1c93210475fc48f363fcfca8e6ac08db906601828596a343`.
+
+All three retrieval variants were replayed because their runner SHA changed.
+The hard-negative result is unchanged at `.050` mean teacher overlap and
+`.0255` mean nDCG@10; the qrels-free teacher-supervised result remains `.0625`
+with minimum `0.0` and `38,016` training examples.  The current qrels-only
+replay is `.0375` mean teacher overlap (minimum `0.0`, nDCG@10 `.0196`), not
+the older committed `.100`.  The older raw artifact did not bind input
+SHA-256 values, so the discrepancy cannot be attributed to a known frozen
+input revision or explained as an algorithmic change.  The current replay is
+the authoritative input-bound result for this runner/data/environment; the
+older number is superseded rather than silently combined with it.
+
+The compact artifacts and receipts are retained as
+`2026-09-16-thq-{learned-latent,retrieval-distill,retrieval-distill-hardneg,teacher-only}-{compact,receipt}.json`.
+These remain stage-local diagnostics, not evidence for the canonical
+152-query R4 gate or for a native ML implementation.
 
 ## Additive residual-quantization control
 
