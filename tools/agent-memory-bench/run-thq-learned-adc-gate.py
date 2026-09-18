@@ -127,6 +127,9 @@ def top_ids(scores: np.ndarray, ids: np.ndarray, limit: int = 10) -> np.ndarray:
 def pairwise_order(approx: np.ndarray, exact: np.ndarray, rng: np.random.Generator) -> float:
     if len(approx) < 2:
         return 1.0
+    if len(approx) <= 64:
+        left, right = np.triu_indices(len(approx), k=1)
+        return float(np.mean((approx[left] - approx[right]) * (exact[left] - exact[right]) >= 0.0))
     count = min(4096, len(approx) * (len(approx) - 1) // 2)
     left = rng.integers(0, len(approx), count)
     right = rng.integers(0, len(approx), count)
