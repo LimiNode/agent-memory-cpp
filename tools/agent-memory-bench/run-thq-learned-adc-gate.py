@@ -136,10 +136,10 @@ def pairwise_order(approx: np.ndarray, exact: np.ndarray, rng: np.random.Generat
 
 
 def focused_pairwise(approx: np.ndarray, exact: np.ndarray, rng: np.random.Generator,
-                     limit: int) -> float:
-    """Pairwise accuracy among the exact top boundary, not the easy tail."""
+                     start: int, limit: int) -> float:
+    """Pairwise accuracy in an exact-rank window, not the easy tail."""
     order = np.argsort(-exact, kind="stable")
-    focused = order[:min(limit, len(order))]
+    focused = order[start:min(start + limit, len(order))]
     return pairwise_order(approx[focused], exact[focused], rng)
 
 
@@ -244,8 +244,8 @@ def main() -> None:
                                  "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
                                  "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
                                  "pairwise_order": pairwise_order(scores, exact_local, rng),
-                                 "pairwise_top32": focused_pairwise(scores, exact_local, rng, 32),
-                                 "pairwise_top10_boundary": focused_pairwise(scores, exact_local, rng, 12),
+                                 "pairwise_top32": focused_pairwise(scores, exact_local, rng, 0, 32),
+                                 "pairwise_top10_boundary": focused_pairwise(scores, exact_local, rng, 8, 4),
                                  "side_payload_bytes": side_bytes,
                                  "total_payload_bytes": payload,
                                  "logical_payload_bytes_per_document": payload,
