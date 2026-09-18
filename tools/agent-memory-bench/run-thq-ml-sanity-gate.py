@@ -11,6 +11,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -57,6 +58,13 @@ def mse(left: np.ndarray, right: np.ndarray) -> float:
 
 
 def main() -> None:
+    if "--self-test" in sys.argv[1:]:
+        model = LinearAutoencoder(4)
+        probe = torch.zeros((2, D), dtype=torch.float32)
+        if model(probe).shape != (2, D):
+            raise RuntimeError("linear autoencoder shape differs")
+        print("run-thq-ml-sanity-gate self-test PASS")
+        return
     parser = argparse.ArgumentParser()
     parser.add_argument("--documents", type=Path, required=True)
     parser.add_argument("--train-vectors", type=Path, required=True)

@@ -14,7 +14,6 @@ import hashlib
 import importlib.util
 import json
 import sys
-import time
 from pathlib import Path
 
 import numpy as np
@@ -150,6 +149,33 @@ def load_candidate_ids(flat: Path, raw: Path) -> tuple[np.ndarray, np.ndarray]:
     return ids, offsets
 
 
+def validate_candidate_receipt(receipt_path: Path, raw: Path, flat: Path) -> dict:
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    raw_sha = sha(raw)
+    flat_sha = sha(flat)
+    if receipt.get("family") != "semantic_r4_fused_candidate_materialization_v1":
+        raise RuntimeError("candidate receipt family differs")
+    if receipt.get("execution_status") != "EXECUTED":
+        raise RuntimeError("candidate receipt is not executed")
+    if receipt.get("raw_sha256") != raw_sha:
+        raise RuntimeError("candidate receipt/raw binding differs")
+    flat_entry = receipt.get("flat_file", {})
+    if flat_entry.get("sha256") != flat_sha or int(flat_entry.get("bytes", -1)) != flat.stat().st_size:
+        raise RuntimeError("candidate receipt/flat binding differs")
+    for field in ("runner_sha256", "thq_manifest_sha256", "layout_manifest_sha256", "native_receipt_sha256"):
+        if not receipt.get(field):
+            raise RuntimeError(f"candidate receipt missing {field}")
+    return {
+        "receipt_sha256": sha(receipt_path),
+        "raw_sha256": raw_sha,
+        "flat_sha256": flat_sha,
+        "runner_sha256": receipt["runner_sha256"],
+        "thq_manifest_sha256": receipt["thq_manifest_sha256"],
+        "layout_manifest_sha256": receipt["layout_manifest_sha256"],
+        "native_receipt_sha256": receipt["native_receipt_sha256"],
+    }
+
+
 def main() -> None:
     if "--self-test" in sys.argv[1:]:
         probe = np.asarray([2.0, 1.0], dtype=np.float32)
@@ -166,6 +192,7 @@ def main() -> None:
     parser.add_argument("--int8-scales", type=Path, required=True)
     parser.add_argument("--candidate-flat", type=Path, required=True)
     parser.add_argument("--candidate-raw", type=Path, required=True)
+    parser.add_argument("--candidate-receipt", type=Path, required=True)
     parser.add_argument("--queries", type=Path, required=True)
     parser.add_argument("--qrel-ids", type=Path, required=True)
     parser.add_argument("--qrel-scores", type=Path, required=True)
@@ -190,6 +217,8 @@ def main() -> None:
     qrel_scores = np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(query_count, 20))
     teacher_ids = np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(query_count, 10))
     candidate_ids, offsets = load_candidate_ids(args.candidate_flat, args.candidate_raw)
+    candidate_provenance = validate_candidate_receipt(args.candidate_receipt, args.candidate_raw,
+                                                      args.candidate_flat)
     if len(offsets) - 1 != query_count:
         raise RuntimeError("candidate/query count differs")
 
@@ -218,7 +247,7 @@ def main() -> None:
     signs = np.random.default_rng(20260916).choice(
         np.asarray([-1.0, 1.0], dtype=np.float32), size=(3, 128))
     rotated_train = h.fwht_blocks(train_residual, signs)
-    for bits in (2, 3):
+    for bits in (2, 3, 4):
         centers = h.lloyd_centers(rotated_train, bits)
         name = f"rslm{bits}"
         models[name] = {"kind": "rslm", "bits": bits, "centers": centers,
@@ -283,7 +312,7 @@ def main() -> None:
         for name, codebook in levels_models.items():
             reconstructions[name] = base + decode_hierarchical(residual, thq_levels, codebook)
         rotated = h.fwht_blocks(residual, signs)
-        for name in ("rslm2", "rslm3"):
+        for name in ("rslm2", "rslm3", "rslm4"):
             decoded = h.quantize_decode(rotated, models[name]["centers"])
             reconstructions[name] = base + h.fwht_blocks(decoded, signs, inverse=True)
         pq_codes = h.unpack_pq_codes(np.asarray(models["pq32x8"]["pq"].compute_codes(
@@ -319,17 +348,42 @@ def main() -> None:
                           "teacher_overlap": stats("teacher_overlap"),
                           "candidate_fp32_overlap": stats("candidate_fp32_overlap")}
 
+    by_query_arm = {(row["query"], row["arm"]): row for row in rows}
+    baseline_names = ("candidate-fp32", "direct-int8")
+    for arm in summaries:
+        summaries[arm]["qrels_ndcg10_paired"] = {}
+        for baseline in baseline_names:
+            if arm == baseline:
+                continue
+            deltas = np.asarray([
+                by_query_arm[(query, arm)]["qrels_ndcg10"] -
+                by_query_arm[(query, baseline)]["qrels_ndcg10"]
+                for query in range(query_count)
+            ], dtype=np.float64)
+            rng = np.random.default_rng(20260918)
+            samples = deltas[rng.integers(0, len(deltas), size=(2000, len(deltas)))].mean(axis=1)
+            summaries[arm]["qrels_ndcg10_paired"][baseline] = {
+                "mean_delta": float(np.mean(deltas)),
+                "p05_delta": float(np.quantile(deltas, 0.05)),
+                "min_delta": float(np.min(deltas)),
+                "worst_query_loss": float(np.min(deltas)),
+                "bootstrap_ci95": [float(np.quantile(samples, 0.025)),
+                                    float(np.quantile(samples, 0.975))],
+            }
+
     result = {
         "schema_version": 1,
-        "family": "thq_r4_classical_gate_v1",
+        "family": "thq_r4_codec_function_gate_v1",
         "status": "EXECUTED",
         "runner_sha256": sha(Path(__file__)),
-        "evidence_status": "152_query_frozen_r4_candidate_shell_numpy_reference",
+        "evidence_status": "152_query_frozen_r4_codec_function_oracle_numpy_reference",
         "documents": document_count,
         "training_count": train_count,
         "query_count": query_count,
         "candidate_flat_sha256": sha(args.candidate_flat),
         "candidate_raw_sha256": sha(args.candidate_raw),
+        "candidate_receipt_sha256": candidate_provenance["receipt_sha256"],
+        "candidate_provenance": candidate_provenance,
         "documents_sha256": sha(args.documents),
         "training_sha256": sha(args.train_vectors),
         "thq4_codes_sha256": sha(args.thq4_codes),

@@ -1,0 +1,9 @@
+{
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "compact_sha256": "58026fa2cc22107953b9fee33730e295a501b1dc5ecedfdcf1c176592d93cf99",
+  "family": "thq_r4_teacher_diagnostics_v1_evidence_receipt_v1",
+  "raw_sha256": "a734e395cf0b15380d7a99deeb1dd1329adf8e5a82594ab7129742501eceb87a",
+  "runner_sha256": "18de46f7db209a15d8f30062a2828e464a2064724e37f3d3be97de114b6a7353",
+  "schema_version": 1,
+  "status": "PASS"
+}

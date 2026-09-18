@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -72,11 +73,48 @@ def load_ids(flat: Path, raw: Path) -> tuple[np.ndarray, np.ndarray]:
     return ids, offsets
 
 
+def validate_candidate_receipt(receipt_path: Path, raw: Path, flat: Path) -> dict:
+    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
+    raw_sha = sha(raw)
+    flat_sha = sha(flat)
+    if receipt.get("family") != "semantic_r4_fused_candidate_materialization_v1":
+        raise RuntimeError("candidate receipt family differs")
+    if receipt.get("execution_status") != "EXECUTED":
+        raise RuntimeError("candidate receipt is not executed")
+    if receipt.get("raw_sha256") != raw_sha:
+        raise RuntimeError("candidate receipt/raw binding differs")
+    flat_entry = receipt.get("flat_file", {})
+    if flat_entry.get("sha256") != flat_sha or int(flat_entry.get("bytes", -1)) != flat.stat().st_size:
+        raise RuntimeError("candidate receipt/flat binding differs")
+    for field in ("runner_sha256", "thq_manifest_sha256", "layout_manifest_sha256", "native_receipt_sha256"):
+        if not receipt.get(field):
+            raise RuntimeError(f"candidate receipt missing {field}")
+    return {
+        "receipt_sha256": sha(receipt_path),
+        "raw_sha256": raw_sha,
+        "flat_sha256": flat_sha,
+        "runner_sha256": receipt["runner_sha256"],
+        "thq_manifest_sha256": receipt["thq_manifest_sha256"],
+        "layout_manifest_sha256": receipt["layout_manifest_sha256"],
+        "native_receipt_sha256": receipt["native_receipt_sha256"],
+    }
+
+
 def overlap(predicted: np.ndarray, teacher: np.ndarray) -> float:
     return float(np.isin(teacher, predicted).sum() / 10.0)
 
 
 def main() -> None:
+    if "--self-test" in sys.argv[1:]:
+        model = Decoder(8)
+        probe = torch.zeros((2, D * 4), dtype=torch.float32)
+        if model(probe).shape != (2, D):
+            raise RuntimeError("teacher decoder shape differs")
+        if not all(torch.count_nonzero(parameter).item() == 0
+                   for parameter in model.layers[-1].parameters()):
+            raise RuntimeError("teacher residual head is not zero initialized")
+        print("run-thq-r4-teacher-diagnostics self-test PASS")
+        return
     parser = argparse.ArgumentParser()
     parser.add_argument("--documents", type=Path, required=True)
     parser.add_argument("--train-vectors", type=Path, required=True)
@@ -84,6 +122,7 @@ def main() -> None:
     parser.add_argument("--thq4-thresholds", type=Path, required=True)
     parser.add_argument("--candidate-flat", type=Path, required=True)
     parser.add_argument("--candidate-raw", type=Path, required=True)
+    parser.add_argument("--candidate-receipt", type=Path, required=True)
     parser.add_argument("--queries", type=Path, required=True)
     parser.add_argument("--teacher-ids", type=Path, required=True)
     parser.add_argument("--train-query-count", type=int, default=120)
@@ -105,6 +144,8 @@ def main() -> None:
     queries = np.memmap(args.queries, mode="r", dtype="<f4", shape=(query_count, D))
     teacher_ids = np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(query_count, 10))
     candidate_ids, offsets = load_ids(args.candidate_flat, args.candidate_raw)
+    candidate_provenance = validate_candidate_receipt(args.candidate_receipt, args.candidate_raw,
+                                                      args.candidate_flat)
     train_queries = min(args.train_query_count, query_count - 1)
     heldout_queries = list(range(train_queries, query_count))
 
@@ -213,6 +254,8 @@ def main() -> None:
         "heldout_query_count": len(heldout_queries),
         "candidate_flat_sha256": sha(args.candidate_flat),
         "candidate_raw_sha256": sha(args.candidate_raw),
+        "candidate_receipt_sha256": candidate_provenance["receipt_sha256"],
+        "candidate_provenance": candidate_provenance,
         "documents_sha256": sha(args.documents),
         "training_sha256": sha(args.train_vectors),
         "thq4_codes_sha256": sha(args.thq4_codes),

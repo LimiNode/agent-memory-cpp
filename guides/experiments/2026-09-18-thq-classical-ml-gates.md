@@ -1,4 +1,4 @@
-# THQ4 classical 152-query gate and ML sanity diagnostics
+# THQ4 classical 152-query codec-function gate and ML sanity diagnostics
 
 Date: 2026-09-18  
 Context: `main` after merge #423 (`497f8f87a79651e3062ee2a14d635e5b32a65b4c`);
@@ -11,61 +11,63 @@ classical residual codecs, and is the weak learned-decoder result caused by a
 basic reconstruction/optimization failure rather than by the THQ4 feature
 representation itself?
 
-## Setup
+## Setup and evidence boundary
 
-The classical replay uses the frozen 152-query R4 stream (5000--5099 unique
-candidate IDs per query), the 1M-row multilingual-E5 document vectors, the
-detached 25k training vectors, and the production-shaped THQ4 materialization.
-All model fitting is detached from qrels and teacher IDs.  The reference
-runner is:
+The replay uses the frozen 152-query R4 stream (5000--5099 unique candidate
+IDs per query), bound by the external canonical
+`semantic_r4_fused_candidate_materialization_v1` receipt. It reads the 1M-row
+multilingual-E5 document vectors, detached 25k training vectors, and the
+native-full-corpus THQ4/INT8 materialization. All model fitting is detached
+from qrels and teacher IDs.
+
+The reference runners are:
 
 ```text
 tools/agent-memory-bench/run-thq-r4-classical-gate.py
-```
-
-The ML reconstruction control is:
-
-```text
 tools/agent-memory-bench/run-thq-ml-sanity-gate.py
-```
-
-Teacher-score train/held-out diagnostics use the first 120 query rows for
-training and the remaining 32 rows for evaluation inside the same frozen
-candidate shell:
-
-```text
 tools/agent-memory-bench/run-thq-r4-teacher-diagnostics.py
 ```
 
-Raw outputs are retained outside Git in the worktree `tmp/` directory.  Their
-input SHA-256 values and model hashes are recorded in each JSON receipt.
+This is a **codec-function quality gate**: residual codes are formed from
+FP32 candidate rows during replay. It is not a persistent side-code replay,
+native SIMD benchmark, page-fault measurement, or production activation.
+Raw outputs remain outside Git in `tmp/`; compact evidence and fail-closed
+receipts are committed beside this note. The replay binds candidate raw/flat
+files and receipt, all external input SHA-256 values, runner hashes, and model
+hashes.
 
 ## Classical result
 
-Teacher overlap is the overlap with the full FP32 teacher top-10.  The
-`candidate-fp32` row is the ceiling when all frozen candidates may be reranked;
-`thq4-fp32` is the stricter ceiling after THQ4 top-128 membership.
+`candidate-fp32` is the quality ceiling when all frozen candidates may be
+reranked. `thq4-fp32` is the ceiling after THQ4 top-128 membership. The table
+reports both the teacher top-10 overlap and the primary qrels metric,
+nDCG@10.
 
-| arm | teacher overlap mean | p05 | min | candidate-FP32 top-10 overlap mean |
-| --- | ---: | ---: | ---: | ---: |
-| candidate FP32 ceiling | 0.9928 | 0.9000 | 0.9000 | 1.0000 |
-| THQ4 → FP32 | 0.9928 | 0.9000 | 0.9000 | 1.0000 |
-| direct INT8 linear | 0.9895 | 0.9000 | 0.9000 | 0.9967 |
-| RSLM-like 3-bit | 0.9658 | 0.9000 | 0.8000 | 0.9711 |
-| hierarchical residual 3-bit | 0.9454 | 0.8000 | 0.7000 | 0.9513 |
-| RSLM-like 2-bit | 0.9329 | 0.8000 | 0.7000 | 0.9382 |
-| hierarchical residual 2-bit | 0.9375 | 0.8000 | 0.7000 | 0.9414 |
-| hierarchical residual 1-bit | 0.9020 | 0.8000 | 0.6000 | 0.9053 |
-| PQ32×8 | 0.8822 | 0.7000 | 0.6000 | 0.8855 |
-| OPQ32×4 | 0.8553 | 0.7000 | 0.6000 | 0.8566 |
-| PCA32×8 | 0.8467 | 0.7000 | 0.5000 | 0.8493 |
-| THQ4 centroid | 0.8368 | 0.6000 | 0.5000 | 0.8395 |
+| arm | teacher mean | teacher p05 | teacher min | qrels mean | qrels p05 | qrels min |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| candidate FP32 ceiling | 0.9928 | 0.9000 | 0.9000 | 0.6542 | 0.0000 | 0.0000 |
+| THQ4 -> FP32 | 0.9928 | 0.9000 | 0.9000 | 0.6542 | 0.0000 | 0.0000 |
+| direct INT8 linear | 0.9895 | 0.9000 | 0.9000 | 0.6570 | 0.0000 | 0.0000 |
+| RSLM-like 4-bit | 0.9697 | 0.9000 | 0.8000 | 0.6593 | 0.0000 | 0.0000 |
+| RSLM-like 3-bit | 0.9658 | 0.9000 | 0.8000 | 0.6540 | 0.0000 | 0.0000 |
+| RSLM-like 2-bit | 0.9329 | 0.8000 | 0.7000 | 0.6533 | 0.0000 | 0.0000 |
+| hierarchical residual 3-bit | 0.9454 | 0.8000 | 0.7000 | 0.6550 | 0.0000 | 0.0000 |
+| hierarchical residual 2-bit | 0.9375 | 0.8000 | 0.7000 | 0.6525 | 0.0000 | 0.0000 |
+| hierarchical residual 1-bit | 0.9020 | 0.8000 | 0.6000 | 0.6514 | 0.0000 | 0.0000 |
+| PQ32x8 | 0.8822 | 0.7000 | 0.6000 | 0.6472 | 0.0000 | 0.0000 |
+| OPQ32x4 | 0.8553 | 0.7000 | 0.6000 | 0.6495 | 0.0000 | 0.0000 |
+| PCA32x8 | 0.8467 | 0.7000 | 0.5000 | 0.6460 | 0.0000 | 0.0000 |
+| THQ4 centroid | 0.8368 | 0.6000 | 0.5000 | 0.6484 | 0.0000 | 0.0000 |
 
-The THQ4→FP32 ceiling is equal to the all-candidate FP32 ceiling on this
-stream.  Therefore the observed residual-codec loss is not explained by a
-second top-128 rerank approximation; it is caused by the codec reconstruction
-after the frozen candidate membership.  The result is a reference quality
-gate, not a native latency benchmark.
+The `candidate-fp32` and `thq4-fp32` top-10 IDs are identical for all 152
+queries. Therefore the observed residual-codec loss is downstream of frozen
+candidate membership, not a second THQ4 top-128 approximation. Paired qrels
+bootstrap summaries are stored in the compact receipt; for example direct
+INT8 versus candidate FP32 has mean delta `+0.00279`, 95% bootstrap interval
+`[-0.00028, +0.00866]`, and worst-query delta `-0.0140`.
+
+These are NumPy/Faiss reference quality results. They do not establish native
+latency or a persistent storage layout.
 
 ## ML sanity result
 
@@ -79,14 +81,15 @@ Reconstruction MSE (train / 10k held-out document rows) was:
 | PCA32 residual | 8.6941e-5 | 8.8062e-5 |
 | linear AE32, random-init (64 epochs) | 8.7002e-5 | 8.8166e-5 |
 
-The random-init linear bottleneck reaches the PCA32 optimum within `0.12%` on
-held-out vectors.  The one-hot/THQ4 residual representation therefore passes
-this basic learnability check without relying on PCA initialization.
+The random-init linear bottleneck reaches the PCA32 reconstruction optimum
+within `0.12%` on held-out vectors. This checks optimization of an exact-FP32
+residual bottleneck only; it does **not** test whether THQ4 one-hot features
+predict residuals. That question belongs to the teacher-shell diagnostic.
 
 ## Teacher-score diagnostics
 
 Scores and top-10 overlap are measured inside each query's frozen candidate
-shell against exact FP32 candidate scores.  The decoder is a 1536→128→384
+shell against exact FP32 candidate scores. The decoder is a 1536->128->384
 ReLU network trained with vector MSE plus teacher-score regression; ridge is a
 detached linear one-hot control.
 
@@ -99,34 +102,40 @@ detached linear one-hot control.
 | held-out / ridge | 1.984e-4 | 0.866 |
 | held-out / decoder | 6.409e-5 | 0.866 |
 
-The zero-initialized residual decoder learns teacher-score structure: its
-score-MSE is lower than both centroid and ridge on train and held-out shells.
-However, its held-out top-10 overlap (`.866`) is not better than the centroid
-control (`.872`), and the train ranking is also slightly lower.  Thus the
-decoder objective captures score calibration without a demonstrated retrieval
-gain.  This is evidence against the current decoder as a quality improvement,
-not evidence that cross-coordinate information is absent or that learned
-latent methods are impossible.
+The zero-initialized residual decoder improves score calibration but not
+held-out ranking over the centroid control. This is a bounded negative result
+for the tested training configuration, not evidence that cross-coordinate
+information is absent or that learned latent methods are impossible.
 
 ## Evidence status and limitations
 
-* **confirmed:** the classical numbers above are reproducible on the frozen
-  152-query candidate shell with input and model SHA bindings;
-* **confirmed:** a PCA-initialized linear AE32 reaches the PCA reconstruction
-  optimum on train and held-out vectors;
+* **confirmed:** the classical numbers and RSLM4 are reproducible on the
+  frozen 152-query shell with canonical candidate-receipt, input, runner, and
+  model SHA bindings;
+* **confirmed:** a random-initialized linear AE32 reaches the PCA32
+  reconstruction optimum on train and held-out vectors;
 * **bounded negative:** the tested hierarchical/PQ/OPQ/RSLM controls do not
-  preserve the candidate FP32 ranking at the same level as direct INT8;
-* **investigation target:** the tested teacher decoder remains a failed
-  training configuration, not a universal ML impossibility result;
-* **not checked:** native SIMD latency, page faults, MDBX behaviour, and
-  held-out domain quality.
+  preserve candidate FP32 ranking at the same level as direct INT8;
+* **bounded negative:** the tested teacher decoder improves score-MSE but not
+  held-out top-10 overlap over centroid;
+* **unknown:** persistent side-code replay, native SIMD latency, page faults,
+  MDBX behavior, and held-out domain quality.
 
 ## Follow-up
 
 1. Keep direct INT8 as the current quality/storage control and do not promote
-   residual codecs from this reference gate to production.
+   residual codecs from this codec-function gate to production.
 2. Keep the teacher decoder as a bounded score-regression control; a next ML
    attempt must target top-10/order loss or hard negatives inside the candidate
    shell rather than only reducing score MSE.
-3. Only after a learned decoder beats the centroid/ridge controls on held-out
-   top-10 overlap should it receive a native-kernel or storage benchmark.
+3. Only after a learned decoder beats centroid/ridge on held-out top-10
+   overlap should it receive a native-kernel or storage benchmark.
+
+Committed evidence:
+
+* `2026-09-18-thq-r4-classical-gate.compact.json` and `.receipt.json`;
+* `2026-09-18-thq-ml-sanity-gate.compact.json` and `.receipt.json`;
+* `2026-09-18-thq-r4-teacher-diagnostics.compact.json` and `.receipt.json`;
+* `2026-09-18-thq-r4-classical-ml-gates.audit.receipt.json`.
+
+The former prose-only record is superseded by these SHA-bound artifacts.

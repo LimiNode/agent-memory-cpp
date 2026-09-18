@@ -50,6 +50,10 @@ def main() -> None:
     parser.add_argument("--int8-scales", type=Path, required=True)
     parser.add_argument("--candidate-flat", type=Path, required=True)
     parser.add_argument("--candidate-raw", type=Path, required=True)
+    parser.add_argument("--candidate-receipt", type=Path, required=True)
+    parser.add_argument("--classical-runner", type=Path, required=True)
+    parser.add_argument("--ml-runner", type=Path, required=True)
+    parser.add_argument("--teacher-runner", type=Path, required=True)
     parser.add_argument("--queries", type=Path, required=True)
     parser.add_argument("--qrel-ids", type=Path, required=True)
     parser.add_argument("--qrel-scores", type=Path, required=True)
@@ -61,6 +65,20 @@ def main() -> None:
     ml = json.loads(args.ml_sanity.read_text(encoding="utf-8"))
     teacher = json.loads(args.teacher.read_text(encoding="utf-8"))
     candidate_raw = json.loads(args.candidate_raw.read_text(encoding="utf-8"))
+    candidate_receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8"))
+    require(candidate_receipt.get("family") == "semantic_r4_fused_candidate_materialization_v1",
+            "candidate receipt family differs")
+    require(candidate_receipt.get("raw_sha256") == sha(args.candidate_raw),
+            "candidate receipt/raw binding differs")
+    flat_entry = candidate_receipt.get("flat_file", {})
+    require(flat_entry.get("sha256") == sha(args.candidate_flat),
+            "candidate receipt/flat binding differs")
+    require(int(flat_entry.get("bytes", -1)) == args.candidate_flat.stat().st_size,
+            "candidate receipt/flat byte count differs")
+    require(candidate_receipt.get("execution_status") == "EXECUTED",
+            "candidate receipt execution status differs")
+    for field in ("runner_sha256", "thq_manifest_sha256", "layout_manifest_sha256", "native_receipt_sha256"):
+        require(candidate_receipt.get(field), f"candidate receipt missing {field}")
     candidate_rows = candidate_raw["rows"]
     require(len(candidate_rows) == 152, "candidate raw query count differs")
     candidate_counts = [int(row["candidate_count"]) for row in candidate_rows]
@@ -85,6 +103,7 @@ def main() -> None:
         "int8_scales_sha256": args.int8_scales,
         "candidate_flat_sha256": args.candidate_flat,
         "candidate_raw_sha256": args.candidate_raw,
+        "candidate_receipt_sha256": args.candidate_receipt,
         "queries_sha256": args.queries,
         "qrel_ids_sha256": args.qrel_ids,
         "qrel_scores_sha256": args.qrel_scores,
@@ -105,8 +124,19 @@ def main() -> None:
     arms = set(classical["summaries"])
     expected_arms = {"candidate-fp32", "thq4-fp32", "direct-int8", "thq4-centroid",
                      "pca32x8", "pq32x8", "opq32x4", "hierarchical-1bit",
-                     "hierarchical-2bit", "hierarchical-3bit", "rslm2", "rslm3"}
+                     "hierarchical-2bit", "hierarchical-3bit", "rslm2", "rslm3", "rslm4"}
     require(arms == expected_arms, "classical arm set differs")
+    require(classical.get("family") == "thq_r4_codec_function_gate_v1",
+            "classical family differs")
+    require(classical.get("runner_sha256") == sha(args.classical_runner),
+            "classical runner binding differs")
+    require(ml.get("runner_sha256") == sha(args.ml_runner), "ML runner binding differs")
+    require(teacher.get("runner_sha256") == sha(args.teacher_runner),
+            "teacher runner binding differs")
+    require(classical.get("candidate_receipt_sha256") == sha(args.candidate_receipt),
+            "classical candidate receipt binding differs")
+    require(teacher.get("candidate_receipt_sha256") == sha(args.candidate_receipt),
+            "teacher candidate receipt binding differs")
     check_summary(classical["rows"], classical["summaries"], arms)
     by_query = {(row["query"], row["arm"]): row for row in classical["rows"]}
     for query in range(152):
@@ -115,6 +145,33 @@ def main() -> None:
         require(by_query[(query, "candidate-fp32")]["top10_ids"] ==
                 by_query[(query, "thq4-fp32")]["top10_ids"],
                 f"THQ4 top128 FP32 ceiling differs for query {query}")
+    for arm in arms:
+        for baseline in ("candidate-fp32", "direct-int8"):
+            if arm == baseline:
+                continue
+            deltas = np.asarray([
+                by_query[(query, arm)]["qrels_ndcg10"] -
+                by_query[(query, baseline)]["qrels_ndcg10"]
+                for query in range(152)
+            ], dtype=np.float64)
+            rng = np.random.default_rng(20260918)
+            bootstrap = deltas[rng.integers(0, len(deltas), size=(2000, len(deltas)))].mean(axis=1)
+            observed = classical["summaries"][arm]["qrels_ndcg10_paired"][baseline]
+            expected = {
+                "mean_delta": float(np.mean(deltas)),
+                "p05_delta": float(np.quantile(deltas, 0.05)),
+                "min_delta": float(np.min(deltas)),
+                "worst_query_loss": float(np.min(deltas)),
+                "bootstrap_ci95": [float(np.quantile(bootstrap, 0.025)),
+                                    float(np.quantile(bootstrap, 0.975))],
+            }
+            for key, value in expected.items():
+                if isinstance(value, list):
+                    require(np.allclose(observed[key], value, atol=1e-12),
+                            f"paired summary differs: {arm}/{baseline}/{key}")
+                else:
+                    require(abs(float(observed[key]) - value) < 1e-12,
+                            f"paired summary differs: {arm}/{baseline}/{key}")
 
     require(ml["status"] == "EXECUTED" and ml["heldout_count"] == 10000,
             "ML sanity execution contract differs")
@@ -148,9 +205,11 @@ def main() -> None:
         "schema_version": 1,
         "family": "thq_r4_classical_ml_gate_audit_v1",
         "status": "PASS",
+        "runner_sha256": sha(Path(__file__)),
         "classical_sha256": sha(args.classical),
         "ml_sanity_sha256": sha(args.ml_sanity),
         "teacher_sha256": sha(args.teacher),
+        "candidate_receipt_sha256": sha(args.candidate_receipt),
         "checks": [
             "all external input SHA-256 bindings",
             "classical arm/query cardinality and independently recomputed aggregates",

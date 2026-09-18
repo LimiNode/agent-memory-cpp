@@ -1,0 +1,16 @@
+{
+  "audit_raw_sha256": "421c479248c1120de116f67a353266969df7ba93300a1ce4611e9a1bb24b154c",
+  "audit_runner_sha256": "1fa263ce11374cc952cd93f4946989ba0037f78aed564ca4702a9f758ff0553e",
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "classical_raw_sha256": "311631579b500ab47118ab282cab6c5a14c5e40f5f85a5a363176d11b9efa4ff",
+  "compact_receipts": [
+    "2026-09-18-thq-r4-classical-gate.receipt.json",
+    "2026-09-18-thq-ml-sanity-gate.receipt.json",
+    "2026-09-18-thq-r4-teacher-diagnostics.receipt.json"
+  ],
+  "family": "thq_r4_classical_ml_gate_audit_receipt_v1",
+  "ml_sanity_raw_sha256": "acb154320ef74c3d0e67d42462b349c403216954b306388e6cd6fb8b4079515c",
+  "schema_version": 1,
+  "status": "PASS",
+  "teacher_raw_sha256": "a734e395cf0b15380d7a99deeb1dd1329adf8e5a82594ab7129742501eceb87a"
+}
