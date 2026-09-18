@@ -35,6 +35,13 @@ INT8/RSLM3 controls at all tested payloads. Increasing the payload from 8 B to
 32 B improves pairwise order (`.9019 → .9212`) but does not produce a quality
 frontier gain.
 
+For the held-out 32-query slice, the 16 B arm has mean nDCG delta `+0.0043`
+against candidate FP32 and `+0.0044` against direct INT8, but the paired
+bootstrap 95% intervals are `[-.0170, +.0293]` and `[-.0172, +.0293]`.
+The 8 B arm is negative (`-.0122` against candidate FP32), while the 32 B arm
+is effectively flat (`-.0002`). No held-out improvement is therefore
+statistically established by this single split.
+
 ## Evidence status
 
 * **confirmed:** the score-aware block ADC scorer is executable, provenance

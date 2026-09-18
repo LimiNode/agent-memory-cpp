@@ -3,6 +3,86 @@
   "documents": 1000000,
   "evidence_status": "152_query_frozen_r4_score_aware_block_adc_numpy_reference",
   "family": "thq_learned_adc_gate_v1",
+  "heldout_paired_qrels_ndcg10": {
+    "learned-adc-16B": {
+      "candidate-fp32": {
+        "bootstrap_ci95": [
+          -0.01699312191432253,
+          0.02931405807843095
+        ],
+        "mean_delta": 0.004284765985241902,
+        "worst_query_delta": -0.14126697285982903
+      },
+      "direct-int8": {
+        "bootstrap_ci95": [
+          -0.017174215217002128,
+          0.029323545361038785
+        ],
+        "mean_delta": 0.004371967155463603,
+        "worst_query_delta": -0.14126697285982903
+      },
+      "rslm3-direct-score": {
+        "bootstrap_ci95": [
+          -0.02778729669851031,
+          0.02996869928970725
+        ],
+        "mean_delta": 0.0024585759243156338,
+        "worst_query_delta": -0.32123777053982383
+      }
+    },
+    "learned-adc-32B": {
+      "candidate-fp32": {
+        "bootstrap_ci95": [
+          -0.016611514230157904,
+          0.016366429381874353
+        ],
+        "mean_delta": -0.00021677993369486823,
+        "worst_query_delta": -0.17723928678404774
+      },
+      "direct-int8": {
+        "bootstrap_ci95": [
+          -0.016791191689009742,
+          0.017474127497472212
+        ],
+        "mean_delta": -0.00012957876347316748,
+        "worst_query_delta": -0.17723928678404774
+      },
+      "rslm3-direct-score": {
+        "bootstrap_ci95": [
+          -0.022973489459437925,
+          0.018066623619670655
+        ],
+        "mean_delta": -0.0020429699946211367,
+        "worst_query_delta": -0.185585797107376
+      }
+    },
+    "learned-adc-8B": {
+      "candidate-fp32": {
+        "bootstrap_ci95": [
+          -0.04439378008295178,
+          0.017774791314157316
+        ],
+        "mean_delta": -0.012191768468210146,
+        "worst_query_delta": -0.36907024642854247
+      },
+      "direct-int8": {
+        "bootstrap_ci95": [
+          -0.043758963318792615,
+          0.017260540572234438
+        ],
+        "mean_delta": -0.012104567297988447,
+        "worst_query_delta": -0.36907024642854247
+      },
+      "rslm3-direct-score": {
+        "bootstrap_ci95": [
+          -0.051543009490771625,
+          0.0179207699134829
+        ],
+        "mean_delta": -0.014017958529136416,
+        "worst_query_delta": -0.36907024642854247
+      }
+    }
+  },
   "limitations": [
     "candidate-local replay; no routing membership claim",
     "score-aware codebooks use first 120 query rows; held-out rows are not used for fitting",

@@ -1,7 +1,7 @@
 {
   "audit_sha256": "4bf90a4301b9fc530f67d5666456bc52543e28af586c6692ab0e1514331e1249",
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-  "compact_sha256": "40233b46ebb8c455b07a606f8ccbf25bb3020bf5decd09326fe099bb4f4a8aef",
+  "compact_sha256": "c6cfce4150db478434529cb6898179d682fdaea675c6b2d0bbc9fbe78d1b0c0b",
   "family": "thq_learned_adc_gate_evidence_receipt_v1",
   "raw_sha256": "8e8a44aa4785968fb90f362f764dade406b1301013240fb8d67b7f2ee94346f7",
   "runner_sha256": "abb0de5d0106954cdcf6a5632afd1714fb4a0acf4a33f9420abfa9737234b941",

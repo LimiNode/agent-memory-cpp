@@ -17,6 +17,7 @@ def main() -> None:
     parser.add_argument("--audit", type=Path, required=True)
     parser.add_argument("--runner", type=Path, required=True)
     parser.add_argument("--candidate-receipt", type=Path, required=True)
+    parser.add_argument("--score-baseline", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
     result = json.loads(args.result.read_text(encoding="utf-8"))
@@ -29,6 +30,26 @@ def main() -> None:
         "schema_version", "family", "status", "evidence_status", "runner_sha256",
         "candidate_receipt_sha256", "documents", "training_count", "query_count",
         "train_query_count", "model_hashes", "summaries", "limitations")}
+    if args.score_baseline:
+        baseline = json.loads(args.score_baseline.read_text(encoding="utf-8"))
+        by_query = {(row["query"], row["arm"]): row for row in baseline["rows"]}
+        paired = {}
+        rng = __import__("numpy").random.default_rng(20260918)
+        for arm in result["summaries"]:
+            heldout = [row for row in json.loads(args.result.read_text(encoding="utf-8"))["rows"]
+                       if row["arm"] == arm and row["query"] >= result["train_query_count"]]
+            paired[arm] = {}
+            for control in ("candidate-fp32", "direct-int8", "rslm3-direct-score"):
+                delta = __import__("numpy").asarray([
+                    row["qrels_ndcg10"] - by_query[(row["query"], control)]["qrels_ndcg10"]
+                    for row in heldout], dtype=float)
+                bootstrap = delta[rng.integers(0, len(delta), size=(5000, len(delta)))].mean(axis=1)
+                paired[arm][control] = {
+                    "mean_delta": float(delta.mean()),
+                    "bootstrap_ci95": [float(__import__("numpy").quantile(bootstrap, .025)),
+                                        float(__import__("numpy").quantile(bootstrap, .975))],
+                    "worst_query_delta": float(delta.min())}
+        compact["heldout_paired_qrels_ndcg10"] = paired
     args.output_dir.mkdir(parents=True, exist_ok=True)
     compact_path = args.output_dir / "2026-09-18-thq-learned-adc-gate.compact.json"
     receipt_path = args.output_dir / "2026-09-18-thq-learned-adc-gate.receipt.json"
