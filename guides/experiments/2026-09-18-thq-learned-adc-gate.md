@@ -47,6 +47,15 @@ The 8 B arm is negative (`-.0122` against candidate FP32), while the 32 B arm
 is effectively flat (`-.0002`). No held-out improvement is therefore
 statistically established by this single split.
 
+As a distribution-shift control, the same fitter was rerun on 25k unique
+documents sampled from the first frozen candidate stream rather than on the
+detached train corpus (training SHA
+`b32df01a98dfe6a5c29b1eb9588a8e0109cf9e8b1a366b667f6e14f9506b6c0e`). The
+candidate-trained 32 B arm reached `.6580` all-query nDCG@10, but only `.6823`
+on held-out queries versus `.6847` for the detached-trained arm. This small
+in-sample gain does not establish a deployable improvement and is recorded as
+an exploratory distribution-matching control.
+
 ## Evidence status
 
 * **confirmed:** the score-aware block ADC scorer is executable, provenance
