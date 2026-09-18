@@ -212,6 +212,7 @@ jobs:
           python tools/agent-memory-bench/run-thq-ml-sanity-gate.py --self-test &&
           python tools/agent-memory-bench/run-thq-r4-teacher-diagnostics.py --self-test &&
           python tools/agent-memory-bench/run-thq-score-codec-gate.py --self-test &&
+          python tools/agent-memory-bench/run-thq-learned-adc-gate.py --self-test &&
           python -m py_compile
           tools/agent-memory-bench/run-thq-r4-classical-gate.py
           tools/agent-memory-bench/run-thq-ml-sanity-gate.py
@@ -220,7 +221,10 @@ jobs:
           tools/agent-memory-bench/write-thq-r4-classical-ml-evidence.py
           tools/agent-memory-bench/run-thq-score-codec-gate.py
           tools/agent-memory-bench/audit-thq-score-codec-gate.py
-          tools/agent-memory-bench/write-thq-score-codec-evidence.py &&
+          tools/agent-memory-bench/write-thq-score-codec-evidence.py
+          tools/agent-memory-bench/run-thq-learned-adc-gate.py
+          tools/agent-memory-bench/audit-thq-learned-adc-gate.py
+          tools/agent-memory-bench/write-thq-learned-adc-evidence.py &&
           python tools/agent-memory-bench/plan-neuroute-final-nonlinear-int5.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-final-nonlinear-int5.py --self-test &&
           python tools/agent-memory-bench/run-neuroute-final-nonlinear-int5-native-sensitivity.py --self-test &&

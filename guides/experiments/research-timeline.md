@@ -789,3 +789,16 @@ of training score-error energy at ranks 8--64, but reached only `.8658` teacher
 overlap at 64 B and did not approach direct INT8. This is a bounded negative
 for the tested analytic basis, not for learned ADC in general. See
 `2026-09-18-thq-score-codec-gate.md` and its compact SHA-bound receipts.
+
+### THQ score-aware learned ADC gate (2026-09-18)
+
+The first genuine score-aware additive/block ADC was evaluated with 4-bit
+symbols per block at 8/16/32 B per document. Codebooks were fitted from the
+detached 25k train vectors with query covariance from 120 training queries;
+the remaining 32 queries were held out. All-query teacher overlap was
+`.8493/.8599/.8730`, with pairwise order `.9019/.9087/.9212`; the 16 B arm
+reached `.6893` nDCG@10 on the held-out split. The arms remain below the
+existing direct INT8 and RSLM3 controls on the common 152-query shell. This is
+a bounded negative for covariance-weighted block ADC, not for pairwise-trained
+or neural ADC. See `2026-09-18-thq-learned-adc-gate.md` and its compact
+SHA-bound evidence.

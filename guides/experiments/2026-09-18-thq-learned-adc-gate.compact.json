@@ -1,0 +1,84 @@
+{
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "documents": 1000000,
+  "evidence_status": "152_query_frozen_r4_score_aware_block_adc_numpy_reference",
+  "family": "thq_learned_adc_gate_v1",
+  "limitations": [
+    "candidate-local replay; no routing membership claim",
+    "score-aware codebooks use first 120 query rows; held-out rows are not used for fitting",
+    "reference quality only, with no native latency, persistent materialization, or page evidence"
+  ],
+  "model_hashes": {
+    "learned-adc-16B": "fca1779b1c904214df7476585837ef3f8e7c3cbb813c9c0b8debac105c05ff0e",
+    "learned-adc-32B": "08427654c6680374cba58a8b43a961dc1644228846b4dbedd99e206f4f1ad4d6",
+    "learned-adc-8B": "ea5ebf10f31cb51e387c40064354422fffd4435398870f24d82fc9c835cbc7a7"
+  },
+  "query_count": 152,
+  "runner_sha256": "abb0de5d0106954cdcf6a5632afd1714fb4a0acf4a33f9420abfa9737234b941",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "summaries": {
+    "learned-adc-16B": {
+      "all": {
+        "candidate_fp32_overlap": 0.8625000000000002,
+        "pairwise_order": 0.9087052498622624,
+        "qrels_ndcg10": 0.6542936732497332,
+        "teacher_overlap": 0.8598684210526317
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.890625,
+        "pairwise_order": 0.9061962685441848,
+        "qrels_ndcg10": 0.6892508354683886,
+        "teacher_overlap": 0.8875
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8550000000000002,
+        "pairwise_order": 0.909374311547083,
+        "qrels_ndcg10": 0.6449717633247584,
+        "teacher_overlap": 0.8525000000000001
+      }
+    },
+    "learned-adc-32B": {
+      "all": {
+        "candidate_fp32_overlap": 0.875,
+        "pairwise_order": 0.9211593999257129,
+        "qrels_ndcg10": 0.6536969126365498,
+        "teacher_overlap": 0.8730263157894738
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.9031250000000001,
+        "pairwise_order": 0.9176433576345957,
+        "qrels_ndcg10": 0.684749289549452,
+        "teacher_overlap": 0.9
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8675,
+        "pairwise_order": 0.9220970112033439,
+        "qrels_ndcg10": 0.6454162787931093,
+        "teacher_overlap": 0.8658333333333333
+      }
+    },
+    "learned-adc-8B": {
+      "all": {
+        "candidate_fp32_overlap": 0.8513157894736842,
+        "pairwise_order": 0.9018578405345824,
+        "qrels_ndcg10": 0.6526134446418439,
+        "teacher_overlap": 0.8493421052631579
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.884375,
+        "pairwise_order": 0.8986877955073935,
+        "qrels_ndcg10": 0.6727743010149366,
+        "teacher_overlap": 0.8812500000000001
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8425,
+        "pairwise_order": 0.9027031858751661,
+        "qrels_ndcg10": 0.6472372162756859,
+        "teacher_overlap": 0.8408333333333334
+      }
+    }
+  },
+  "train_query_count": 120,
+  "training_count": 25000
+}
