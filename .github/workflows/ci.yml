@@ -217,7 +217,7 @@ jobs:
           tools/agent-memory-bench/run-thq-ml-sanity-gate.py
           tools/agent-memory-bench/run-thq-r4-teacher-diagnostics.py
           tools/agent-memory-bench/audit-thq-r4-classical-ml-gates.py
-          tools/agent-memory-bench/write-thq-r4-classical-ml-evidence.py &&
+          tools/agent-memory-bench/write-thq-r4-classical-ml-evidence.py
           tools/agent-memory-bench/run-thq-score-codec-gate.py
           tools/agent-memory-bench/audit-thq-score-codec-gate.py
           tools/agent-memory-bench/write-thq-score-codec-evidence.py &&
