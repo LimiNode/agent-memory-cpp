@@ -1,5 +1,6 @@
 {
-  "audit_raw_sha256": "6ec48aea37659a7b02f3f11fea804b63e1843e9d810e2b69579b0e96b0c8c461",
+  "audit_artifact": "2026-09-18-thq-r4-classical-ml-gates.audit.json",
+  "audit_raw_sha256": "10ac3d0144ccae45b0c17c09a2aaa18e2532c6404dfa0d9e4127937148d9fd97",
   "audit_runner_sha256": "35d91133906e3da0e004635ac7d871fdffa3b40af65c9aa506639d432db85ed5",
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
   "classical_raw_sha256": "311631579b500ab47118ab282cab6c5a14c5e40f5f85a5a363176d11b9efa4ff",
