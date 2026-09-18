@@ -752,3 +752,23 @@ posting proxies, not MDBX/OS page or latency measurements; no payload rerank or
 production selection is licensed. See
 `2026-09-12-semantic-routing-scale-r4-gate.md`, both compact receipts, and
 `audit-semantic-routing-scale-r4-gate.py`.
+
+### THQ4 classical 152-query gate and ML sanity diagnostics (2026-09-18)
+
+The first production-shaped residual replay on the frozen 152-query R4 shell
+separates candidate membership from rerank reconstruction.  The all-candidate
+FP32 ceiling and the `THQ4 -> FP32` top-128 ceiling both reach mean teacher
+overlap `.9928`, while direct INT8 reaches `.9895`.  The best bounded residual
+control is RSLM-like 3-bit at `.9658`; refined hierarchical 3-bit reaches
+`.9454`, PQ32x8 `.8822`, PCA32x8 `.8467`, and OPQ32x4 `.8553`.  These are
+quality-only NumPy/Faiss reference results, not native latency claims.
+
+The independent ML sanity gate shows a random-init linear AE32 approaching the
+PCA32 reconstruction MSE on 10k held-out documents (`8.8166e-5` versus
+`8.8062e-5`, a `.12%` gap).  On a query-disjoint 120/32 candidate-shell split,
+the zero-initialized residual teacher decoder lowers score-MSE below centroid
+and ridge, but does not improve held-out top-10 overlap (`.866` versus `.872`
+for centroid).  The correct conclusion is a bounded score-calibration result
+without a retrieval gain, not an impossibility result for learned latent or
+teacher distillation.  See `2026-09-18-thq-classical-ml-gates.md` and the three
+runner artifacts recorded there.
