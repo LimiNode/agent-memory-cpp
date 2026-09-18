@@ -1,0 +1,10 @@
+{
+  "audit_sha256": "edd0ad943aea139ca02404ae8baf11fea931d90b2b7887c8ebc4c95e76cbe198",
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "compact_sha256": "245be1f1cfa87e12e4f4bc07e2f625500b12a0b412d23082995f096b984e73cb",
+  "family": "thq_score_only_codec_gate_evidence_receipt_v1",
+  "raw_sha256": "ddbbc80b7576b54f3b0706ca52efb1c94524711293d6fea7cd3575749e5d269b",
+  "runner_sha256": "e5deadee00b6eb1e5a7061b5e6b85901dae34d455bc252b6c9ec683e3a4992e7",
+  "schema_version": 1,
+  "status": "PASS"
+}

@@ -777,3 +777,15 @@ that learned latent or teacher-distillation methods are impossible.
 
 See `2026-09-18-thq-classical-ml-gates.md`, the three compact evidence files,
 their receipts, and `2026-09-18-thq-r4-classical-ml-gates.audit.receipt.json`.
+
+### THQ score-only side-code gate (2026-09-18)
+
+The follow-up gate changed the target from vector reconstruction to direct
+scoring. RSLM3 direct LUT scoring matched its reconstructive scorer on all
+152/152 queries (maximum score error `2.39e-7`). Refined THQ-SDC controls gave
+teacher overlap `.9020/.9375/.9454` at 1/2/3 bits per coordinate. A
+query-weighted low-rank INT8 coefficient control captured `77.2%` to `95.5%`
+of training score-error energy at ranks 8--64, but reached only `.8658` teacher
+overlap at 64 B and did not approach direct INT8. This is a bounded negative
+for the tested analytic basis, not for learned ADC in general. See
+`2026-09-18-thq-score-codec-gate.md` and its compact SHA-bound receipts.
