@@ -1,5 +1,5 @@
 {
-  "compact_result_sha256": "caa76f6e8922bfdac06307d91dcdc8d9f179ea62f91d22c54df54318c1d2949d",
+  "compact_result_sha256": "8878294827801d4d7e8349e24389021ee0fae9792dc20d4d645595aa09982b7f",
   "family": "thq_learned_latent_stage_local_receipt_v1",
   "input_hashes": {
     "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
@@ -10,8 +10,9 @@
     "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
     "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
-  "result_sha256": "313c098a4e97aa3d9286242c99910e6c6ed9663055546f58b3a7ed33a7997e65",
-  "runner_sha256": "575e077f0b267e026d6e539ad37f27fd55b22a3c1d1f82c35950b2bce1d33b03",
+  "model_state_sha256": "d2c8ddd8f72a314fe066be9798219a0d8f51ac1250b95beefde41e619db2d668",
+  "result_sha256": "d23c486f9051d88c8bf9e2d1b7aed088624a1dd885c049ab9b38aea9948092ba",
+  "runner_sha256": "43eca2ef26c8b3871d2ec0ba8eb2267c1dbcff1a80c899a0ea36e4270320c46b",
   "schema_version": 1,
   "scope": {
     "canonical_152_query_payload": false,

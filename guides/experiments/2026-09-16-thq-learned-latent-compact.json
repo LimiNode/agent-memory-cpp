@@ -1,0 +1,96 @@
+{
+  "documents": 1000000,
+  "epochs": 10,
+  "evidence_status": "eight_query_numpy_stage_local_screen",
+  "family": "thq_learned_latent_stage_local_v1",
+  "hidden": 256,
+  "latent_bytes": [
+    8,
+    16,
+    32
+  ],
+  "latent_diagnostics": {
+    "16": {
+      "candidate_value_count": 16384,
+      "centroid_mse_mean": 0.00010362055218138266,
+      "centroid_score_mae_mean": 0.00798660988220945,
+      "clipped_value_fraction": 0.0001220703125,
+      "latent_energy_mean": 12.743040084838867,
+      "latent_variance_mean": 0.009427947923541069,
+      "query_count": 8,
+      "reconstruction_mse_mean": 0.00010365255548094865,
+      "saturated_code_fraction": 0.0001220703125,
+      "score_mae_mean": 0.007975590589921921
+    },
+    "32": {
+      "candidate_value_count": 32768,
+      "centroid_mse_mean": 0.00010362055218138266,
+      "centroid_score_mae_mean": 0.00798660988220945,
+      "clipped_value_fraction": 6.103515625e-05,
+      "latent_energy_mean": 6.60085916519165,
+      "latent_variance_mean": 0.008765485137701035,
+      "query_count": 8,
+      "reconstruction_mse_mean": 0.00010365255548094865,
+      "saturated_code_fraction": 6.103515625e-05,
+      "score_mae_mean": 0.007975590589921921
+    },
+    "8": {
+      "candidate_value_count": 8192,
+      "centroid_mse_mean": 0.00010362055218138266,
+      "centroid_score_mae_mean": 0.00798660988220945,
+      "clipped_value_fraction": 0.0,
+      "latent_energy_mean": 21.129844665527344,
+      "latent_variance_mean": 0.010502074845135212,
+      "query_count": 8,
+      "reconstruction_mse_mean": 0.00010365255548094865,
+      "saturated_code_fraction": 0.0,
+      "score_mae_mean": 0.007975590589921921
+    }
+  },
+  "latent_high_sha256": "63ad94add5202a6e2c87a8726c876e6a2d9db5119db660bcf36193228a14cf8f",
+  "latent_low_sha256": "6422108eec53139ea5b34fa9891d06789de1c8ed2b59831f825f4e0609b09f23",
+  "limitations": [
+    "diagnostic eight-query screen",
+    "single conditional autoencoder with prefix dropout",
+    "not QINCo/AQ reproduction",
+    "not canonical 152-query payload",
+    "not native/page/MDBX latency"
+  ],
+  "loss_history": [
+    0.0009155918679572642,
+    0.00012083589556394145,
+    0.00010008674010634423,
+    9.992395005421713e-05,
+    9.992522421292961e-05,
+    9.992660118732601e-05,
+    9.992772198515013e-05,
+    9.993046630639583e-05,
+    9.993166990112513e-05,
+    9.993314620340243e-05
+  ],
+  "model_state_sha256": "d2c8ddd8f72a314fe066be9798219a0d8f51ac1250b95beefde41e619db2d668",
+  "prefilter": "full_corpus_thq4_interval_squared_top128",
+  "query_count": 8,
+  "schema_version": 1,
+  "seed": 20260917,
+  "status": "EXECUTED",
+  "summaries": {
+    "learned-latent-16B": {
+      "qrels_ndcg10_mean": 0.5667070729148996,
+      "teacher_overlap_mean": 0.875,
+      "teacher_overlap_min": 0.5
+    },
+    "learned-latent-32B": {
+      "qrels_ndcg10_mean": 0.5667070729148996,
+      "teacher_overlap_mean": 0.875,
+      "teacher_overlap_min": 0.5
+    },
+    "learned-latent-8B": {
+      "qrels_ndcg10_mean": 0.5667070729148996,
+      "teacher_overlap_mean": 0.875,
+      "teacher_overlap_min": 0.5
+    }
+  },
+  "training_count": 25000,
+  "training_loss_final": 9.993314620340243e-05
+}

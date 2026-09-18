@@ -1,5 +1,7 @@
 {
+  "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
   "documents": 1000000,
+  "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
   "epochs": 10,
   "evidence_status": "eight_query_numpy_stage_local_screen",
   "family": "thq_learned_latent_stage_local_v1",
@@ -9,6 +11,44 @@
     16,
     32
   ],
+  "latent_diagnostics": {
+    "16": {
+      "candidate_value_count": 16384,
+      "centroid_mse_mean": 0.00010362055218138266,
+      "centroid_score_mae_mean": 0.00798660988220945,
+      "clipped_value_fraction": 0.0001220703125,
+      "latent_energy_mean": 12.743040084838867,
+      "latent_variance_mean": 0.009427947923541069,
+      "query_count": 8,
+      "reconstruction_mse_mean": 0.00010365255548094865,
+      "saturated_code_fraction": 0.0001220703125,
+      "score_mae_mean": 0.007975590589921921
+    },
+    "32": {
+      "candidate_value_count": 32768,
+      "centroid_mse_mean": 0.00010362055218138266,
+      "centroid_score_mae_mean": 0.00798660988220945,
+      "clipped_value_fraction": 6.103515625e-05,
+      "latent_energy_mean": 6.60085916519165,
+      "latent_variance_mean": 0.008765485137701035,
+      "query_count": 8,
+      "reconstruction_mse_mean": 0.00010365255548094865,
+      "saturated_code_fraction": 6.103515625e-05,
+      "score_mae_mean": 0.007975590589921921
+    },
+    "8": {
+      "candidate_value_count": 8192,
+      "centroid_mse_mean": 0.00010362055218138266,
+      "centroid_score_mae_mean": 0.00798660988220945,
+      "clipped_value_fraction": 0.0,
+      "latent_energy_mean": 21.129844665527344,
+      "latent_variance_mean": 0.010502074845135212,
+      "query_count": 8,
+      "reconstruction_mse_mean": 0.00010365255548094865,
+      "saturated_code_fraction": 0.0,
+      "score_mae_mean": 0.007975590589921921
+    }
+  },
   "latent_high_sha256": "63ad94add5202a6e2c87a8726c876e6a2d9db5119db660bcf36193228a14cf8f",
   "latent_low_sha256": "6422108eec53139ea5b34fa9891d06789de1c8ed2b59831f825f4e0609b09f23",
   "limitations": [
@@ -30,8 +70,518 @@
     9.993166990112513e-05,
     9.993314620340243e-05
   ],
+  "model_state_sha256": "d2c8ddd8f72a314fe066be9798219a0d8f51ac1250b95beefde41e619db2d668",
   "prefilter": "full_corpus_thq4_interval_squared_top128",
+  "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071",
+  "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
   "query_count": 8,
+  "query_ids_sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385",
+  "rows": [
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.5,
+      "query": 0,
+      "query_id": "de:10055536#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        459756,
+        323232,
+        362152,
+        749547,
+        829335,
+        399543,
+        323234,
+        462512,
+        742689,
+        103951
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.5,
+      "query": 0,
+      "query_id": "de:10055536#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        459756,
+        323232,
+        362152,
+        749547,
+        829335,
+        399543,
+        323234,
+        462512,
+        742689,
+        103951
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.5,
+      "query": 0,
+      "query_id": "de:10055536#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        459756,
+        323232,
+        362152,
+        749547,
+        829335,
+        399543,
+        323234,
+        462512,
+        742689,
+        103951
+      ]
+    },
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.8710785440003369,
+      "query": 1,
+      "query_id": "de:10127282#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        957336,
+        957338,
+        885202,
+        885204,
+        957335,
+        790680,
+        113919,
+        610202,
+        298202,
+        957339
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.8710785440003369,
+      "query": 1,
+      "query_id": "de:10127282#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        957336,
+        957338,
+        885202,
+        885204,
+        957335,
+        790680,
+        113919,
+        610202,
+        298202,
+        957339
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.8710785440003369,
+      "query": 1,
+      "query_id": "de:10127282#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        957336,
+        957338,
+        885202,
+        885204,
+        957335,
+        790680,
+        113919,
+        610202,
+        298202,
+        957339
+      ]
+    },
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.7039180890341347,
+      "query": 2,
+      "query_id": "de:10146364#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        398806,
+        257955,
+        257957,
+        448518,
+        737820,
+        257958,
+        641776,
+        257956,
+        737819,
+        383091
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.7039180890341347,
+      "query": 2,
+      "query_id": "de:10146364#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        398806,
+        257955,
+        257957,
+        448518,
+        737820,
+        257958,
+        641776,
+        257956,
+        737819,
+        383091
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.7039180890341347,
+      "query": 2,
+      "query_id": "de:10146364#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        398806,
+        257955,
+        257957,
+        448518,
+        737820,
+        257958,
+        641776,
+        257956,
+        737819,
+        383091
+      ]
+    },
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 0.5,
+      "qrels_ndcg10": 0.0,
+      "query": 3,
+      "query_id": "de:10179805#0",
+      "teacher_overlap": 0.5,
+      "top10": [
+        603425,
+        442943,
+        917283,
+        732103,
+        240122,
+        318310,
+        470693,
+        304405,
+        208370,
+        324092
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 0.5,
+      "qrels_ndcg10": 0.0,
+      "query": 3,
+      "query_id": "de:10179805#0",
+      "teacher_overlap": 0.5,
+      "top10": [
+        603425,
+        442943,
+        917283,
+        732103,
+        240122,
+        318310,
+        470693,
+        304405,
+        208370,
+        324092
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 0.5,
+      "qrels_ndcg10": 0.0,
+      "query": 3,
+      "query_id": "de:10179805#0",
+      "teacher_overlap": 0.5,
+      "top10": [
+        603425,
+        442943,
+        917283,
+        732103,
+        240122,
+        318310,
+        470693,
+        304405,
+        208370,
+        324092
+      ]
+    },
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.5706417189553201,
+      "query": 4,
+      "query_id": "de:10216007#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        78715,
+        104374,
+        299352,
+        342429,
+        114142,
+        81558,
+        229114,
+        525625,
+        113795,
+        409857
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.5706417189553201,
+      "query": 4,
+      "query_id": "de:10216007#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        78715,
+        104374,
+        299352,
+        342429,
+        114142,
+        81558,
+        229114,
+        525625,
+        113795,
+        409857
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 0.5706417189553201,
+      "query": 4,
+      "query_id": "de:10216007#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        78715,
+        104374,
+        299352,
+        342429,
+        114142,
+        81558,
+        229114,
+        525625,
+        113795,
+        409857
+      ]
+    },
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.6508205185601091,
+      "query": 5,
+      "query_id": "de:10263256#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        675484,
+        675486,
+        675488,
+        675487,
+        354803,
+        407617,
+        723394,
+        407618,
+        752858,
+        27560
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.6508205185601091,
+      "query": 5,
+      "query_id": "de:10263256#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        675484,
+        675486,
+        675488,
+        675487,
+        354803,
+        407617,
+        723394,
+        407618,
+        752858,
+        27560
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.6508205185601091,
+      "query": 5,
+      "query_id": "de:10263256#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        675484,
+        675486,
+        675488,
+        675487,
+        354803,
+        407617,
+        723394,
+        407618,
+        752858,
+        27560
+      ]
+    },
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.23719771276929622,
+      "query": 6,
+      "query_id": "de:10391411#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        503631,
+        353471,
+        503628,
+        503630,
+        503629,
+        503627,
+        503625,
+        503626,
+        329356,
+        822989
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.23719771276929622,
+      "query": 6,
+      "query_id": "de:10391411#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        503631,
+        353471,
+        503628,
+        503630,
+        503629,
+        503627,
+        503625,
+        503626,
+        329356,
+        822989
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 0.9,
+      "qrels_ndcg10": 0.23719771276929622,
+      "query": 6,
+      "query_id": "de:10391411#0",
+      "teacher_overlap": 0.9,
+      "top10": [
+        503631,
+        353471,
+        503628,
+        503630,
+        503629,
+        503627,
+        503625,
+        503626,
+        329356,
+        822989
+      ]
+    },
+    {
+      "arm": "learned-latent-8B",
+      "bytes": 104,
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 1.0,
+      "query": 7,
+      "query_id": "de:1040819#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        242838,
+        245492,
+        245495,
+        242840,
+        245494,
+        242932,
+        245496,
+        245493,
+        157800,
+        157798
+      ]
+    },
+    {
+      "arm": "learned-latent-16B",
+      "bytes": 112,
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 1.0,
+      "query": 7,
+      "query_id": "de:1040819#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        242838,
+        245492,
+        245495,
+        242840,
+        245494,
+        242932,
+        245496,
+        245493,
+        157800,
+        157798
+      ]
+    },
+    {
+      "arm": "learned-latent-32B",
+      "bytes": 128,
+      "candidate_fp32_overlap": 1.0,
+      "qrels_ndcg10": 1.0,
+      "query": 7,
+      "query_id": "de:1040819#0",
+      "teacher_overlap": 1.0,
+      "top10": [
+        242838,
+        245492,
+        245495,
+        242840,
+        245494,
+        242932,
+        245496,
+        245493,
+        157800,
+        157798
+      ]
+    }
+  ],
   "schema_version": 1,
   "seed": 20260917,
   "status": "EXECUTED",
@@ -52,6 +602,8 @@
       "teacher_overlap_min": 0.5
     }
   },
+  "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
   "training_count": 25000,
-  "training_loss_final": 9.993314620340243e-05
+  "training_loss_final": 9.993314620340243e-05,
+  "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
 }
