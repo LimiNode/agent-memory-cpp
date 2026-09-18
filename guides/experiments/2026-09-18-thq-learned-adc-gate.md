@@ -1,7 +1,7 @@
 # THQ score-weighted block/PQ-like ADC gate
 
-Date: 2026-09-18  
-Branch: `research/thq-score-codecs`  
+Date: 2026-09-18
+Branch: `research/thq-score-codecs`
 Scope: canonical frozen 152-query semantic R4 candidate shell, 1M DE-1M rows.
 
 ## Question
