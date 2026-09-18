@@ -51,7 +51,9 @@ def kmeans(values: np.ndarray, count: int, iterations: int = 5) -> np.ndarray:
     sample = values if len(values) <= 8192 else values[rng.choice(len(values), 8192, replace=False)]
     centers = sample[np.linspace(0, len(sample) - 1, count, dtype=np.int64)].copy()
     for _ in range(iterations):
-        distances = np.sum((sample[:, None, :] - centers[None, :, :]) ** 2, axis=2)
+        distances = (np.sum(sample * sample, axis=1)[:, None] +
+                     np.sum(centers * centers, axis=1)[None, :] -
+                     2.0 * (sample @ centers.T))
         symbols = np.argmin(distances, axis=1)
         for level in range(count):
             selected = sample[symbols == level]
@@ -111,7 +113,9 @@ def encode(residual: np.ndarray, codebooks: np.ndarray,
             centers = codebooks[block] @ transforms[block].T
         else:
             centers = codebooks[block]
-        distances = np.sum((values[:, None, :] - centers[None, :, :]) ** 2, axis=2)
+        distances = (np.sum(values * values, axis=1)[:, None] +
+                     np.sum(centers * centers, axis=1)[None, :] -
+                     2.0 * (values @ centers.T))
         symbols[:, block] = np.argmin(distances, axis=1).astype(np.uint8)
     return symbols
 
