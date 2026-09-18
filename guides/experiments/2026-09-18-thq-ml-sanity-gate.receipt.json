@@ -1,7 +1,12 @@
 {
   "candidate_receipt_sha256": null,
-  "compact_sha256": "32747c992fdb9e2c8772c128804424e91ece1c94f3ea3d86183ecbb05e04ce88",
+  "compact_sha256": "f22220e15bf70b6b9cd28c6d4bec66d498edeb100b2bdb52fb1eae72bc3015e0",
   "family": "thq_ml_sanity_gate_v1_evidence_receipt_v1",
+  "input_hashes": {
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
   "raw_sha256": "acb154320ef74c3d0e67d42462b349c403216954b306388e6cd6fb8b4079515c",
   "runner_sha256": "167a4fbffd62dd5e4f846f05cc667d95e8adbd9b3a563ed1e0472b2dfa39d682",
   "schema_version": 1,

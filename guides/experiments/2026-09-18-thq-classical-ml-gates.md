@@ -112,6 +112,10 @@ information is absent or that learned latent methods are impossible.
 * **confirmed:** the classical numbers and RSLM4 are reproducible on the
   frozen 152-query shell with canonical candidate-receipt, input, runner, and
   model SHA bindings;
+* **implemented, pending replay:** the hardened audit independently recomputes
+  each per-query primary metric from IDs and qrels before aggregating, and the
+  writer rejects stale PASS audits; the committed PASS receipt predates this
+  hardening and must be regenerated from the external raw inputs;
 * **confirmed:** a random-initialized linear AE32 reaches the PCA32
   reconstruction optimum on train and held-out vectors;
 * **bounded negative:** the tested hierarchical/PQ/OPQ/RSLM controls do not
@@ -123,8 +127,9 @@ information is absent or that learned latent methods are impossible.
 
 ## Follow-up
 
-1. Keep direct INT8 as the current quality/storage control and do not promote
-   residual codecs from this codec-function gate to production.
+1. Keep direct INT8 as the current quality/storage control. Carry RSLM4 into a
+   persistent code-only replay because its lower payload and nominal qrels
+   result remain plausible, while treating its worst-query loss as a guardrail.
 2. Keep the teacher decoder as a bounded score-regression control; a next ML
    attempt must target top-10/order loss or hard negatives inside the candidate
    shell rather than only reducing score MSE.
