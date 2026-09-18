@@ -289,9 +289,13 @@ A teacher-only variant then used all `297` non-held-out training queries and
 all `128` THQ shell documents per query (`38,016` exact teacher-scored
 examples), with no qrels margin at all.  Its held-out result was only `.0625`
 mean teacher overlap (minimum `0.0`, qrels nDCG@10 `0.0`).  This closes the
-data-coverage objection, but remains a negative result for this shared
-code-only decoder: more shell supervision alone did not recover teacher
-geometry.  The run is recorded separately in
+simple shell-count objection, but does not distinguish optimization failure
+from overfitting or the capacity limit of the `1536 -> 128 -> 384` decoder.
+It remains a negative result only for this from-scratch shared code-only
+recipe: more shell supervision alone did not recover held-out teacher
+geometry.  A follow-up must compare centroid, ridge, and decoder score MSE and
+top-10 overlap on the same training shells before making a claim about teacher
+distillation.  The run is recorded separately in
 `2026-09-16-thq-teacher-only-result.json` and its receipt.
 
 The regenerated qrels-only compact result SHA-256 is
@@ -312,10 +316,12 @@ The previously missing non-zero-side-byte ML arm is now represented by
 the THQ4 one-hot code and residual, emits a 32-byte latent, and is trained with
 prefix dropout so the same model can be evaluated at 8/16/32 bytes.  On the
 eight-query screen all three prefixes reached the THQ4 centroid baseline
-(`.875` mean teacher overlap, minimum `.5`); the bounded model therefore did
-not recover additional residual signal at this training budget.  This is a
-valid first learned-latent control, not a QINCo/AQ reproduction: it uses a
-single shared model, no native kernel, and no canonical 152-query replay.
+(`.875` mean teacher overlap, minimum `.5`).  This model/training recipe did
+not recover additional residual signal.  It is evidence of a failed bounded
+training recipe, not evidence that a useful learned latent does not exist:
+the shared prefix model can minimize its objective by ignoring the latent and
+predicting a near-zero residual.  This is not a QINCo/AQ reproduction; it uses
+a single shared model, no native kernel, and no canonical 152-query replay.
 The compact result and receipt are
 `2026-09-16-thq-learned-latent-result.json` and
 `2026-09-16-thq-learned-latent-receipt.json`.
@@ -336,8 +342,17 @@ all three prefixes (minimum `.5`).  Clipping is effectively absent
 (`0` for 8 B, `0.000122` for 16 B, `0.000061` for 32 B), and the decoded
 reconstruction/score errors are indistinguishable from the centroid control
 in this screen (`MSE ≈ 0.00010365`, score MAE ≈ `0.007976`).  This rules out
-quantizer saturation as the explanation for the missing gain, while still
-remaining a bounded negative for this particular autoencoder.
+quantizer saturation as the explanation for the missing gain.
+
+The stronger diagnostic is the training loss itself.  The centroid residual
+has mean squared energy `0.038365`; divided across 384 coordinates, a zero
+residual predictor has coordinate MSE about `9.991e-5`.  The final training
+loss is `9.9933e-5`, effectively the same value.  Together with the identical
+8/16/32-byte outputs, this is evidence that the current optimization collapsed
+to a near-zero correction.  It does not establish a capacity limit for a
+learned residual representation.  The next ML sanity check must compare zero,
+shuffled, continuous, and quantized latents and must first require a linear
+32-dimensional autoencoder to approach the PCA32 reconstruction bound.
 
 The model identities are:
 
