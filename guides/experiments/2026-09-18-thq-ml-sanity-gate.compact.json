@@ -6,6 +6,11 @@
   "family": "thq_ml_sanity_gate_v1",
   "heldout_count": 10000,
   "heldout_query_count": null,
+  "input_hashes": {
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
   "limitations": null,
   "model_hashes": null,
   "query_count": null,

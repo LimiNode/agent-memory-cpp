@@ -211,6 +211,8 @@ jobs:
           python tools/agent-memory-bench/run-thq-r4-classical-gate.py --self-test &&
           python tools/agent-memory-bench/run-thq-ml-sanity-gate.py --self-test &&
           python tools/agent-memory-bench/run-thq-r4-teacher-diagnostics.py --self-test &&
+          python tools/agent-memory-bench/audit-thq-r4-classical-ml-gates.py --self-test &&
+          python tools/agent-memory-bench/write-thq-r4-classical-ml-evidence.py --self-test &&
           python -m py_compile
           tools/agent-memory-bench/run-thq-r4-classical-gate.py
           tools/agent-memory-bench/run-thq-ml-sanity-gate.py
