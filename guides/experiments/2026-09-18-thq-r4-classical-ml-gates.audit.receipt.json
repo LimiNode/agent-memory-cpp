@@ -9,6 +9,7 @@
     "2026-09-18-thq-r4-teacher-diagnostics.receipt.json": "f64fb723bf989e55f56ef07ec9b8fd5efab00b983ccb503a34dca0f3364fa03f"
   },
   "family": "thq_r4_classical_ml_gate_audit_receipt_v1",
+  "evidence_status": "legacy_pass_requires_regeneration_after_audit_hardening",
   "input_hashes": {
     "classical": {
       "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",

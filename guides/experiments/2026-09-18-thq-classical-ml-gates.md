@@ -111,8 +111,11 @@ information is absent or that learned latent methods are impossible.
 
 * **confirmed:** the classical numbers and RSLM4 are reproducible on the
   frozen 152-query shell with canonical candidate-receipt, input, runner, and
-  model SHA bindings; the evidence audit independently recomputes each
-  per-query primary metric from IDs and qrels before aggregating;
+  model SHA bindings;
+* **implemented, pending replay:** the hardened audit independently recomputes
+  each per-query primary metric from IDs and qrels before aggregating, and the
+  writer rejects stale PASS audits; the committed PASS receipt predates this
+  hardening and must be regenerated from the external raw inputs;
 * **confirmed:** a random-initialized linear AE32 reaches the PCA32
   reconstruction optimum on train and held-out vectors;
 * **bounded negative:** the tested hierarchical/PQ/OPQ/RSLM controls do not
