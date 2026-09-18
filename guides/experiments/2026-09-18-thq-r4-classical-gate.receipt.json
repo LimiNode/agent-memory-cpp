@@ -1,6 +1,6 @@
 {
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-  "compact_sha256": "0b6eaf95654d0281efd3dde07e14a5a3f56fe5730c43b2678aed5a3fe4eb17f1",
+  "compact_sha256": "8fe2d77ece1a8a855d63abcd7e9e88a558ff1c6d84e7ec167de96e35d85b4c5e",
   "family": "thq_r4_codec_function_gate_v1_evidence_receipt_v1",
   "input_hashes": {
     "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",

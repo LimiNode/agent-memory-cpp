@@ -1,6 +1,6 @@
 {
   "candidate_receipt_sha256": null,
-  "compact_sha256": "f22220e15bf70b6b9cd28c6d4bec66d498edeb100b2bdb52fb1eae72bc3015e0",
+  "compact_sha256": "32deeebd697be033adafb92a7578c9558e63fa08a3739e8fddecb928b3e23791",
   "family": "thq_ml_sanity_gate_v1_evidence_receipt_v1",
   "input_hashes": {
     "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",

@@ -1,17 +1,21 @@
 {
-  "audit_raw_sha256": "421c479248c1120de116f67a353266969df7ba93300a1ce4611e9a1bb24b154c",
-  "audit_runner_sha256": "1fa263ce11374cc952cd93f4946989ba0037f78aed564ca4702a9f758ff0553e",
+  "audit_raw_sha256": "6ec48aea37659a7b02f3f11fea804b63e1843e9d810e2b69579b0e96b0c8c461",
+  "audit_runner_sha256": "35d91133906e3da0e004635ac7d871fdffa3b40af65c9aa506639d432db85ed5",
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
   "classical_raw_sha256": "311631579b500ab47118ab282cab6c5a14c5e40f5f85a5a363176d11b9efa4ff",
   "compact_receipts": {
-    "2026-09-18-thq-r4-classical-gate.receipt.json": "2fc3063029bd909c6ae5c905a775f87013d2374da8a55027d913417c220df5ab",
-    "2026-09-18-thq-ml-sanity-gate.receipt.json": "a5bb1c50ab1d0ef92d26785f1a674efa474cb7a8cf21297eb271b73c43fcf096",
-    "2026-09-18-thq-r4-teacher-diagnostics.receipt.json": "f64fb723bf989e55f56ef07ec9b8fd5efab00b983ccb503a34dca0f3364fa03f"
+    "2026-09-18-thq-ml-sanity-gate.receipt.json": "3a27301ce30c605c8c33f73f9a6677cab48a77d90a2fe359b5b686684664ec1e",
+    "2026-09-18-thq-r4-classical-gate.receipt.json": "c22506505c79ca72107f45ca25a0fd815e47ed4fa8fd91b46ba56d8798b93d8d",
+    "2026-09-18-thq-r4-teacher-diagnostics.receipt.json": "b0c3b6a208db7d54f13fc9516178e620912ca0848da10fef67d367c23c59d40b"
   },
   "family": "thq_r4_classical_ml_gate_audit_receipt_v1",
-  "evidence_status": "legacy_pass_requires_regeneration_after_audit_hardening",
   "input_hashes": {
-    "classical": {
+    "2026-09-18-thq-ml-sanity-gate": {
+      "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+      "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+      "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+    },
+    "2026-09-18-thq-r4-classical-gate": {
       "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
       "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
       "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
@@ -26,12 +30,7 @@
       "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
       "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
     },
-    "ml_sanity": {
-      "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
-      "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
-      "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
-    },
-    "teacher": {
+    "2026-09-18-thq-r4-teacher-diagnostics": {
       "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
       "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
       "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
