@@ -797,7 +797,10 @@ assignment and is superseded. The corrective replay uses the same transform for
 both operations, adds a rate-matched 2/4/8-bit grid at 8/16/32 B side budgets,
 and evaluates both the full shell and `THQ4 top128 → ADC`. On held-out queries,
 the 32 B nDCG values are `.6983/.6800/.6794` for 2/4/8 bits per block; no
-monotone rate frontier appears, and all arms remain below direct INT8/RSLM3.
+monotone rate frontier appears. The 32 B/2-bit arm is an inconclusive
+survivor: its held-out nDCG is `.698282`, but paired bootstrap CIs for deltas
+versus direct INT8 and RSLM3 include zero. The remaining arms do not establish
+a quality improvement over those controls.
 Non-norm stage-local top-10 lists exactly match full-shell lists for all 152
 queries. The exact-source-norm +2 B control remains only a negative control for
 this ADC, not evidence against learned norm correction. See

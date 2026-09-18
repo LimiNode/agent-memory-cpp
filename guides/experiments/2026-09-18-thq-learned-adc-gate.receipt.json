@@ -1,10 +1,16 @@
 {
-  "audit_sha256": "81544f8bb9f2e10084dd2d8c45b7618697fa24b2a208e9727efbb63ddab9f21b",
+  "audit_bindings": {
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "result_sha256": "34e14571df2db849eb84e614d5f68d035d2381375d24e88e0d6217d52bb9d783",
+    "runner_sha256": "59ee3f2d4a8762740e6772098c995af3197b8322fc46f4fb4c4149cf85fbbd75"
+  },
+  "audit_sha256": "51cc16338a3fff14fe67ba2ddc2039d5dcad2cb16a341e11d0dca594fcd5a66b",
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-  "compact_sha256": "5a44090b159d035f23ad2de1e5905ba2310d873faea8131c751e390ca4c49382",
+  "compact_sha256": "e1ca93ab0e0ca29e1a15f3cca07bfff58a35c6e8b792003f812f6a19549444c5",
   "family": "thq_learned_adc_gate_evidence_receipt_v1",
-  "raw_sha256": "dc573a8ed76401003d71b1882b9d6d2809db8145daf530fb794be71460f8792e",
+  "raw_sha256": "34e14571df2db849eb84e614d5f68d035d2381375d24e88e0d6217d52bb9d783",
   "runner_sha256": "59ee3f2d4a8762740e6772098c995af3197b8322fc46f4fb4c4149cf85fbbd75",
   "schema_version": 1,
+  "score_baseline_sha256": "ddbbc80b7576b54f3b0706ca52efb1c94524711293d6fea7cd3575749e5d269b",
   "status": "PASS"
 }

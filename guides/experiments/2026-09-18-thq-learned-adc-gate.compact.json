@@ -1,5 +1,475 @@
 {
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "diagnostic_scope_mixed_summaries": {
+    "learned-adc-16B-2bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8572368421052632,
+        "pairwise_order": 0.8760089299134636,
+        "pairwise_top10_boundary": 0.6381578947368421,
+        "pairwise_top32": 0.8515359719864177,
+        "qrels_ndcg10": 0.6564258893491993,
+        "teacher_overlap": 0.8552631578947368
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.878125,
+        "pairwise_order": 0.8780262677082934,
+        "pairwise_top10_boundary": 0.6302083333333333,
+        "pairwise_top32": 0.8470577116935484,
+        "qrels_ndcg10": 0.6941302468284634,
+        "teacher_overlap": 0.875
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8516666666666667,
+        "pairwise_order": 0.8754709731681757,
+        "pairwise_top10_boundary": 0.6402777777777777,
+        "pairwise_top32": 0.8527301747311828,
+        "qrels_ndcg10": 0.6463713940213954,
+        "teacher_overlap": 0.8500000000000001
+      }
+    },
+    "learned-adc-16B-2bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8125,
+        "pairwise_order": 0.872644457575365,
+        "pairwise_top10_boundary": 0.6359649122807017,
+        "pairwise_top32": 0.8125464240237692,
+        "qrels_ndcg10": 0.6239386472478011,
+        "teacher_overlap": 0.8092105263157895
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8218750000000001,
+        "pairwise_order": 0.8739463756213016,
+        "pairwise_top10_boundary": 0.65625,
+        "pairwise_top32": 0.810578377016129,
+        "qrels_ndcg10": 0.6641869715120143,
+        "teacher_overlap": 0.815625
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.81,
+        "pairwise_order": 0.872297279429782,
+        "pairwise_top10_boundary": 0.6305555555555556,
+        "pairwise_top32": 0.8130712365591398,
+        "qrels_ndcg10": 0.6132057607773442,
+        "teacher_overlap": 0.8075
+      }
+    },
+    "learned-adc-16B-4bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8592105263157894,
+        "pairwise_order": 0.8777583810189276,
+        "pairwise_top10_boundary": 0.6217105263157895,
+        "pairwise_top32": 0.8504947474533108,
+        "qrels_ndcg10": 0.6560339844406113,
+        "teacher_overlap": 0.8559210526315791
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8812500000000001,
+        "pairwise_order": 0.8778555021497323,
+        "pairwise_top10_boundary": 0.6354166666666666,
+        "pairwise_top32": 0.8479712701612904,
+        "qrels_ndcg10": 0.6789501575284609,
+        "teacher_overlap": 0.878125
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8533333333333334,
+        "pairwise_order": 0.8777324820507129,
+        "pairwise_top10_boundary": 0.6180555555555556,
+        "pairwise_top32": 0.8511676747311828,
+        "qrels_ndcg10": 0.6499230049505181,
+        "teacher_overlap": 0.8500000000000001
+      }
+    },
+    "learned-adc-16B-4bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8236842105263157,
+        "pairwise_order": 0.885650063617469,
+        "pairwise_top10_boundary": 0.6469298245614035,
+        "pairwise_top32": 0.8236749257215619,
+        "qrels_ndcg10": 0.6312325162490514,
+        "teacher_overlap": 0.8203947368421052
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8625,
+        "pairwise_order": 0.8852930266236831,
+        "pairwise_top10_boundary": 0.6614583333333335,
+        "pairwise_top32": 0.8240612399193548,
+        "qrels_ndcg10": 0.65061503518694,
+        "teacher_overlap": 0.8531250000000001
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8133333333333332,
+        "pairwise_order": 0.8857452734824788,
+        "pairwise_top10_boundary": 0.6430555555555555,
+        "pairwise_top32": 0.8235719086021506,
+        "qrels_ndcg10": 0.6260638445322811,
+        "teacher_overlap": 0.8116666666666668
+      }
+    },
+    "learned-adc-16B-8bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8625000000000002,
+        "pairwise_order": 0.8837372163628352,
+        "pairwise_top10_boundary": 0.6425438596491228,
+        "pairwise_top32": 0.8555019100169781,
+        "qrels_ndcg10": 0.6544669783520723,
+        "teacher_overlap": 0.8611842105263158
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8843750000000001,
+        "pairwise_order": 0.8837559664258261,
+        "pairwise_top10_boundary": 0.640625,
+        "pairwise_top32": 0.8510899697580645,
+        "qrels_ndcg10": 0.6850496404165158,
+        "teacher_overlap": 0.8812500000000001
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8566666666666668,
+        "pairwise_order": 0.8837322163460375,
+        "pairwise_top10_boundary": 0.6430555555555555,
+        "pairwise_top32": 0.8566784274193548,
+        "qrels_ndcg10": 0.6463116018015543,
+        "teacher_overlap": 0.8558333333333334
+      }
+    },
+    "learned-adc-16B-8bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8447368421052632,
+        "pairwise_order": 0.8966486192254465,
+        "pairwise_top10_boundary": 0.6699561403508772,
+        "pairwise_top32": 0.836991988539898,
+        "qrels_ndcg10": 0.6328685278167023,
+        "teacher_overlap": 0.8427631578947368
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.853125,
+        "pairwise_order": 0.8954060695455892,
+        "pairwise_top10_boundary": 0.7083333333333334,
+        "pairwise_top32": 0.8323147681451613,
+        "qrels_ndcg10": 0.6671242974164089,
+        "teacher_overlap": 0.846875
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8425,
+        "pairwise_order": 0.8969799658067418,
+        "pairwise_top10_boundary": 0.6597222222222222,
+        "pairwise_top32": 0.8382392473118279,
+        "qrels_ndcg10": 0.6237336559234473,
+        "teacher_overlap": 0.8416666666666668
+      }
+    },
+    "learned-adc-32B-2bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.869736842105263,
+        "pairwise_order": 0.8867842568210064,
+        "pairwise_top10_boundary": 0.6491228070175439,
+        "pairwise_top32": 0.8625384656196943,
+        "qrels_ndcg10": 0.6542180289323671,
+        "teacher_overlap": 0.8677631578947369
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8968750000000001,
+        "pairwise_order": 0.888494198935954,
+        "pairwise_top10_boundary": 0.640625,
+        "pairwise_top32": 0.8607925907258065,
+        "qrels_ndcg10": 0.6982819602533663,
+        "teacher_overlap": 0.89375
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8625000000000002,
+        "pairwise_order": 0.8863282722570204,
+        "pairwise_top10_boundary": 0.6513888888888888,
+        "pairwise_top32": 0.8630040322580645,
+        "qrels_ndcg10": 0.6424676472467674,
+        "teacher_overlap": 0.8608333333333335
+      }
+    },
+    "learned-adc-32B-2bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8075657894736842,
+        "pairwise_order": 0.8801970979926768,
+        "pairwise_top10_boundary": 0.6271929824561403,
+        "pairwise_top32": 0.8205711481324279,
+        "qrels_ndcg10": 0.6193079986531486,
+        "teacher_overlap": 0.8055921052631579
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8375000000000001,
+        "pairwise_order": 0.8800536387205211,
+        "pairwise_top10_boundary": 0.671875,
+        "pairwise_top32": 0.8216355846774193,
+        "qrels_ndcg10": 0.6706729834417775,
+        "teacher_overlap": 0.8343750000000001
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.7995833333333334,
+        "pairwise_order": 0.8802353537985849,
+        "pairwise_top10_boundary": 0.6152777777777777,
+        "pairwise_top32": 0.8202872983870968,
+        "qrels_ndcg10": 0.6056106693761808,
+        "teacher_overlap": 0.7979166666666667
+      }
+    },
+    "learned-adc-32B-4bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8756578947368423,
+        "pairwise_order": 0.8915294124822716,
+        "pairwise_top10_boundary": 0.6655701754385964,
+        "pairwise_top32": 0.8656886672325976,
+        "qrels_ndcg10": 0.659000543560046,
+        "teacher_overlap": 0.8730263157894737
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8999999999999999,
+        "pairwise_order": 0.8914367609858074,
+        "pairwise_top10_boundary": 0.6927083333333333,
+        "pairwise_top32": 0.8646988407258065,
+        "qrels_ndcg10": 0.6800078216482239,
+        "teacher_overlap": 0.896875
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8691666666666668,
+        "pairwise_order": 0.8915541195479953,
+        "pairwise_top10_boundary": 0.6583333333333333,
+        "pairwise_top32": 0.8659526209677418,
+        "qrels_ndcg10": 0.6533986027365319,
+        "teacher_overlap": 0.8666666666666667
+      }
+    },
+    "learned-adc-32B-4bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.842763157894737,
+        "pairwise_order": 0.8950684701618287,
+        "pairwise_top10_boundary": 0.6425438596491229,
+        "pairwise_top32": 0.8366007003395586,
+        "qrels_ndcg10": 0.6293317460961813,
+        "teacher_overlap": 0.8407894736842105
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8718750000000001,
+        "pairwise_order": 0.8944280591655185,
+        "pairwise_top10_boundary": 0.671875,
+        "pairwise_top32": 0.8345514112903225,
+        "qrels_ndcg10": 0.6728311743469306,
+        "teacher_overlap": 0.8656250000000001
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8350000000000002,
+        "pairwise_order": 0.8952392464275114,
+        "pairwise_top10_boundary": 0.6347222222222223,
+        "pairwise_top32": 0.8371471774193548,
+        "qrels_ndcg10": 0.6177318985626482,
+        "teacher_overlap": 0.8341666666666668
+      }
+    },
+    "learned-adc-32B-8bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8828947368421054,
+        "pairwise_order": 0.9024624259891398,
+        "pairwise_top10_boundary": 0.6447368421052632,
+        "pairwise_top32": 0.872499734719864,
+        "qrels_ndcg10": 0.6555639508013795,
+        "teacher_overlap": 0.881578947368421
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.90625,
+        "pairwise_order": 0.9028237307128709,
+        "pairwise_top10_boundary": 0.6666666666666666,
+        "pairwise_top32": 0.8658329133064515,
+        "qrels_ndcg10": 0.6793559262953701,
+        "teacher_overlap": 0.9
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8766666666666668,
+        "pairwise_order": 0.9023660780628118,
+        "pairwise_top10_boundary": 0.6388888888888888,
+        "pairwise_top32": 0.8742775537634409,
+        "qrels_ndcg10": 0.649219424002982,
+        "teacher_overlap": 0.8766666666666668
+      }
+    },
+    "learned-adc-32B-8bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8651315789473685,
+        "pairwise_order": 0.9112576365893089,
+        "pairwise_top10_boundary": 0.6776315789473685,
+        "pairwise_top32": 0.8579491192699491,
+        "qrels_ndcg10": 0.6317569441729964,
+        "teacher_overlap": 0.8625000000000002
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.89375,
+        "pairwise_order": 0.9107997037883518,
+        "pairwise_top10_boundary": 0.7083333333333333,
+        "pairwise_top32": 0.8532321068548386,
+        "qrels_ndcg10": 0.653684563385674,
+        "teacher_overlap": 0.8875000000000001
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8575,
+        "pairwise_order": 0.9113797520028976,
+        "pairwise_top10_boundary": 0.6694444444444445,
+        "pairwise_top32": 0.8592069892473118,
+        "qrels_ndcg10": 0.6259095790496156,
+        "teacher_overlap": 0.8558333333333334
+      }
+    },
+    "learned-adc-8B-2bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8486842105263158,
+        "pairwise_order": 0.8697809790856279,
+        "pairwise_top10_boundary": 0.6304824561403509,
+        "pairwise_top32": 0.8447713285229203,
+        "qrels_ndcg10": 0.6521932862859858,
+        "teacher_overlap": 0.8460526315789475
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.871875,
+        "pairwise_order": 0.871770426615696,
+        "pairwise_top10_boundary": 0.6197916666666666,
+        "pairwise_top32": 0.8416708669354839,
+        "qrels_ndcg10": 0.69278539674607,
+        "teacher_overlap": 0.86875
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8425,
+        "pairwise_order": 0.8692504597442763,
+        "pairwise_top10_boundary": 0.6333333333333333,
+        "pairwise_top32": 0.8455981182795699,
+        "qrels_ndcg10": 0.6413687234966299,
+        "teacher_overlap": 0.8400000000000001
+      }
+    },
+    "learned-adc-8B-2bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.7950657894736842,
+        "pairwise_order": 0.8691751240129745,
+        "pairwise_top10_boundary": 0.6381578947368421,
+        "pairwise_top32": 0.8067765810696095,
+        "qrels_ndcg10": 0.6080404722948388,
+        "teacher_overlap": 0.7924342105263158
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8078125,
+        "pairwise_order": 0.8708147426618847,
+        "pairwise_top10_boundary": 0.6822916666666667,
+        "pairwise_top32": 0.8062626008064515,
+        "qrels_ndcg10": 0.6632837182806273,
+        "teacher_overlap": 0.8015625
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.7916666666666666,
+        "pairwise_order": 0.8687378923732649,
+        "pairwise_top10_boundary": 0.6263888888888888,
+        "pairwise_top32": 0.8069136424731181,
+        "qrels_ndcg10": 0.5933089400319619,
+        "teacher_overlap": 0.7900000000000001
+      }
+    },
+    "learned-adc-8B-4bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8513157894736842,
+        "pairwise_order": 0.8708069369823398,
+        "pairwise_top10_boundary": 0.6271929824561403,
+        "pairwise_top32": 0.8480342741935483,
+        "qrels_ndcg10": 0.6539773023934559,
+        "teacher_overlap": 0.849342105263158
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.875,
+        "pairwise_order": 0.8711720756214678,
+        "pairwise_top10_boundary": 0.5989583333333333,
+        "pairwise_top32": 0.842867943548387,
+        "qrels_ndcg10": 0.6739487729935216,
+        "teacher_overlap": 0.871875
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8450000000000001,
+        "pairwise_order": 0.8707095666785724,
+        "pairwise_top10_boundary": 0.6347222222222222,
+        "pairwise_top32": 0.8494119623655915,
+        "qrels_ndcg10": 0.648651576900105,
+        "teacher_overlap": 0.8433333333333335
+      }
+    },
+    "learned-adc-8B-4bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8164473684210526,
+        "pairwise_order": 0.880696662194224,
+        "pairwise_top10_boundary": 0.6228070175438597,
+        "pairwise_top32": 0.8146023450764006,
+        "qrels_ndcg10": 0.628432170198427,
+        "teacher_overlap": 0.8138157894736843
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.83125,
+        "pairwise_order": 0.88158861787048,
+        "pairwise_top10_boundary": 0.625,
+        "pairwise_top32": 0.8112714213709677,
+        "qrels_ndcg10": 0.6728281626334311,
+        "teacher_overlap": 0.825
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8125000000000001,
+        "pairwise_order": 0.8804588073472225,
+        "pairwise_top10_boundary": 0.6222222222222221,
+        "pairwise_top32": 0.8154905913978493,
+        "qrels_ndcg10": 0.616593238882426,
+        "teacher_overlap": 0.8108333333333334
+      }
+    },
+    "learned-adc-8B-8bit": {
+      "all": {
+        "candidate_fp32_overlap": 0.8486842105263158,
+        "pairwise_order": 0.8743315252062276,
+        "pairwise_top10_boundary": 0.6282894736842105,
+        "pairwise_top32": 0.8482000742784379,
+        "qrels_ndcg10": 0.6489995084127453,
+        "teacher_overlap": 0.8460526315789475
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.8718750000000001,
+        "pairwise_order": 0.8739985202200248,
+        "pairwise_top10_boundary": 0.6197916666666666,
+        "pairwise_top32": 0.8458921370967742,
+        "qrels_ndcg10": 0.6902175932049409,
+        "teacher_overlap": 0.86875
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8425,
+        "pairwise_order": 0.8744203265358819,
+        "pairwise_top10_boundary": 0.6305555555555554,
+        "pairwise_top32": 0.8488155241935484,
+        "qrels_ndcg10": 0.6380080191348264,
+        "teacher_overlap": 0.8400000000000001
+      }
+    },
+    "learned-adc-8B-8bit+norm2": {
+      "all": {
+        "candidate_fp32_overlap": 0.8286184210526316,
+        "pairwise_order": 0.8886090265666056,
+        "pairwise_top10_boundary": 0.6578947368421053,
+        "pairwise_top32": 0.8259032788624787,
+        "qrels_ndcg10": 0.6293176111679989,
+        "teacher_overlap": 0.8253289473684211
+      },
+      "heldout": {
+        "candidate_fp32_overlap": 0.84375,
+        "pairwise_order": 0.8862476626127118,
+        "pairwise_top10_boundary": 0.6510416666666667,
+        "pairwise_top32": 0.8211630544354839,
+        "qrels_ndcg10": 0.70445613885814,
+        "teacher_overlap": 0.834375
+      },
+      "train": {
+        "candidate_fp32_overlap": 0.8245833333333334,
+        "pairwise_order": 0.8892387236209771,
+        "pairwise_top10_boundary": 0.6597222222222221,
+        "pairwise_top32": 0.8271673387096773,
+        "qrels_ndcg10": 0.6092806704506281,
+        "teacher_overlap": 0.8229166666666667
+      }
+    }
+  },
   "documents": 1000000,
   "evidence_status": "152_query_frozen_r4_score_aware_block_adc_numpy_reference",
   "family": "thq_learned_adc_gate_v1",
@@ -504,485 +974,25 @@
   "query_count": 152,
   "runner_sha256": "59ee3f2d4a8762740e6772098c995af3197b8322fc46f4fb4c4149cf85fbbd75",
   "schema_version": 1,
-  "status": "EXECUTED",
-  "summaries": {
-    "learned-adc-16B-2bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8572368421052632,
-        "pairwise_order": 0.8760117596150474,
-        "pairwise_top10_boundary": 0.6381578947368421,
-        "pairwise_top32": 0.8515492359932089,
-        "qrels_ndcg10": 0.6564258893491993,
-        "teacher_overlap": 0.8552631578947368
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.878125,
-        "pairwise_order": 0.8780281872414629,
-        "pairwise_top10_boundary": 0.6302083333333333,
-        "pairwise_top32": 0.8470577116935484,
-        "qrels_ndcg10": 0.6941302468284634,
-        "teacher_overlap": 0.875
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8516666666666667,
-        "pairwise_order": 0.8754740455813368,
-        "pairwise_top10_boundary": 0.6402777777777777,
-        "pairwise_top32": 0.8527469758064516,
-        "qrels_ndcg10": 0.6463713940213954,
-        "teacher_overlap": 0.8500000000000001
-      }
-    },
-    "learned-adc-16B-2bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.8125,
-        "pairwise_order": 0.8726456656757186,
-        "pairwise_top10_boundary": 0.6359649122807017,
-        "pairwise_top32": 0.8125530560271648,
-        "qrels_ndcg10": 0.6239386472478011,
-        "teacher_overlap": 0.8092105263157895
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8218750000000001,
-        "pairwise_order": 0.8739482989349402,
-        "pairwise_top10_boundary": 0.65625,
-        "pairwise_top32": 0.810578377016129,
-        "qrels_ndcg10": 0.6641869715120143,
-        "teacher_overlap": 0.815625
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.81,
-        "pairwise_order": 0.8722982968065928,
-        "pairwise_top10_boundary": 0.6305555555555556,
-        "pairwise_top32": 0.8130796370967742,
-        "qrels_ndcg10": 0.6132057607773442,
-        "teacher_overlap": 0.8075
-      }
-    },
-    "learned-adc-16B-4bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8592105263157894,
-        "pairwise_order": 0.8777612050924299,
-        "pairwise_top10_boundary": 0.6217105263157895,
-        "pairwise_top32": 0.8505013794567065,
-        "qrels_ndcg10": 0.6560339844406113,
-        "teacher_overlap": 0.8559210526315791
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8812500000000001,
-        "pairwise_order": 0.8778555021497323,
-        "pairwise_top10_boundary": 0.6354166666666666,
-        "pairwise_top32": 0.8479712701612904,
-        "qrels_ndcg10": 0.6789501575284609,
-        "teacher_overlap": 0.878125
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8533333333333334,
-        "pairwise_order": 0.8777360592104827,
-        "pairwise_top10_boundary": 0.6180555555555556,
-        "pairwise_top32": 0.8511760752688172,
-        "qrels_ndcg10": 0.6499230049505181,
-        "teacher_overlap": 0.8500000000000001
-      }
-    },
-    "learned-adc-16B-4bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.8236842105263157,
-        "pairwise_order": 0.8856508703719511,
-        "pairwise_top10_boundary": 0.6469298245614035,
-        "pairwise_top32": 0.8236815577249575,
-        "qrels_ndcg10": 0.6312325162490514,
-        "teacher_overlap": 0.8203947368421052
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8625,
-        "pairwise_order": 0.8852930266236831,
-        "pairwise_top10_boundary": 0.6614583333333335,
-        "pairwise_top32": 0.8240612399193548,
-        "qrels_ndcg10": 0.65061503518694,
-        "teacher_overlap": 0.8531250000000001
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8133333333333332,
-        "pairwise_order": 0.8857462953714891,
-        "pairwise_top10_boundary": 0.6430555555555555,
-        "pairwise_top32": 0.823580309139785,
-        "qrels_ndcg10": 0.6260638445322811,
-        "teacher_overlap": 0.8116666666666668
-      }
-    },
-    "learned-adc-16B-8bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8625000000000002,
-        "pairwise_order": 0.8837400426044232,
-        "pairwise_top10_boundary": 0.6425438596491228,
-        "pairwise_top32": 0.8555085420203735,
-        "qrels_ndcg10": 0.6544669783520723,
-        "teacher_overlap": 0.8611842105263158
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8843750000000001,
-        "pairwise_order": 0.8837559664258261,
-        "pairwise_top10_boundary": 0.640625,
-        "pairwise_top32": 0.8510899697580645,
-        "qrels_ndcg10": 0.6850496404165158,
-        "teacher_overlap": 0.8812500000000001
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8566666666666668,
-        "pairwise_order": 0.883735796252049,
-        "pairwise_top10_boundary": 0.6430555555555555,
-        "pairwise_top32": 0.8566868279569894,
-        "qrels_ndcg10": 0.6463116018015543,
-        "teacher_overlap": 0.8558333333333334
-      }
-    },
-    "learned-adc-16B-8bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.8447368421052632,
-        "pairwise_order": 0.8966514496293391,
-        "pairwise_top10_boundary": 0.6699561403508772,
-        "pairwise_top32": 0.8369986205432935,
-        "qrels_ndcg10": 0.6328685278167023,
-        "teacher_overlap": 0.8427631578947368
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.853125,
-        "pairwise_order": 0.895409909557507,
-        "pairwise_top10_boundary": 0.7083333333333334,
-        "pairwise_top32": 0.8323147681451613,
-        "qrels_ndcg10": 0.6671242974164089,
-        "teacher_overlap": 0.846875
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8425,
-        "pairwise_order": 0.8969825269818278,
-        "pairwise_top10_boundary": 0.6597222222222222,
-        "pairwise_top32": 0.8382476478494623,
-        "qrels_ndcg10": 0.6237336559234473,
-        "teacher_overlap": 0.8416666666666668
-      }
-    },
-    "learned-adc-32B-2bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.869736842105263,
-        "pairwise_order": 0.8867858776585805,
-        "pairwise_top10_boundary": 0.6491228070175439,
-        "pairwise_top32": 0.8625517296264855,
-        "qrels_ndcg10": 0.6542180289323671,
-        "teacher_overlap": 0.8677631578947369
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8968750000000001,
-        "pairwise_order": 0.8884980569606455,
-        "pairwise_top10_boundary": 0.640625,
-        "pairwise_top32": 0.8607925907258065,
-        "qrels_ndcg10": 0.6982819602533663,
-        "teacher_overlap": 0.89375
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8625000000000002,
-        "pairwise_order": 0.8863292965113632,
-        "pairwise_top10_boundary": 0.6513888888888888,
-        "pairwise_top32": 0.8630208333333333,
-        "qrels_ndcg10": 0.6424676472467674,
-        "teacher_overlap": 0.8608333333333335
-      }
-    },
-    "learned-adc-32B-2bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.8075657894736842,
-        "pairwise_order": 0.8801974995397573,
-        "pairwise_top10_boundary": 0.6271929824561403,
-        "pairwise_top32": 0.8205777801358235,
-        "qrels_ndcg10": 0.6193079986531486,
-        "teacher_overlap": 0.8055921052631579
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8375000000000001,
-        "pairwise_order": 0.8800536387205211,
-        "pairwise_top10_boundary": 0.671875,
-        "pairwise_top32": 0.8216355846774193,
-        "qrels_ndcg10": 0.6706729834417775,
-        "teacher_overlap": 0.8343750000000001
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.7995833333333334,
-        "pairwise_order": 0.880235862424887,
-        "pairwise_top10_boundary": 0.6152777777777777,
-        "pairwise_top32": 0.8202956989247312,
-        "qrels_ndcg10": 0.6056106693761808,
-        "teacher_overlap": 0.7979166666666667
-      }
-    },
-    "learned-adc-32B-4bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8756578947368423,
-        "pairwise_order": 0.8915310262668248,
-        "pairwise_top10_boundary": 0.6655701754385964,
-        "pairwise_top32": 0.8656952992359933,
-        "qrels_ndcg10": 0.659000543560046,
-        "teacher_overlap": 0.8730263157894737
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8999999999999999,
-        "pairwise_order": 0.8914406000521464,
-        "pairwise_top10_boundary": 0.6927083333333333,
-        "pairwise_top32": 0.8646988407258065,
-        "qrels_ndcg10": 0.6800078216482239,
-        "teacher_overlap": 0.896875
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8691666666666668,
-        "pairwise_order": 0.8915551399240722,
-        "pairwise_top10_boundary": 0.6583333333333333,
-        "pairwise_top32": 0.8659610215053762,
-        "qrels_ndcg10": 0.6533986027365319,
-        "teacher_overlap": 0.8666666666666667
-      }
-    },
-    "learned-adc-32B-4bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.842763157894737,
-        "pairwise_order": 0.8950688718069671,
-        "pairwise_top10_boundary": 0.6425438596491229,
-        "pairwise_top32": 0.8366073323429541,
-        "qrels_ndcg10": 0.6293317460961813,
-        "teacher_overlap": 0.8407894736842105
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8718750000000001,
-        "pairwise_order": 0.8944280591655185,
-        "pairwise_top10_boundary": 0.671875,
-        "pairwise_top32": 0.8345514112903225,
-        "qrels_ndcg10": 0.6728311743469306,
-        "teacher_overlap": 0.8656250000000001
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8350000000000002,
-        "pairwise_order": 0.8952397551780201,
-        "pairwise_top10_boundary": 0.6347222222222223,
-        "pairwise_top32": 0.8371555779569892,
-        "qrels_ndcg10": 0.6177318985626482,
-        "teacher_overlap": 0.8341666666666668
-      }
-    },
-    "learned-adc-32B-8bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8828947368421054,
-        "pairwise_order": 0.9024640434324951,
-        "pairwise_top10_boundary": 0.6447368421052632,
-        "pairwise_top32": 0.8725063667232598,
-        "qrels_ndcg10": 0.6555639508013795,
-        "teacher_overlap": 0.881578947368421
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.90625,
-        "pairwise_order": 0.9028256511897637,
-        "pairwise_top10_boundary": 0.6666666666666666,
-        "pairwise_top32": 0.8658329133064515,
-        "qrels_ndcg10": 0.6793559262953701,
-        "teacher_overlap": 0.9
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8766666666666668,
-        "pairwise_order": 0.9023676146972233,
-        "pairwise_top10_boundary": 0.6388888888888888,
-        "pairwise_top32": 0.8742859543010753,
-        "qrels_ndcg10": 0.649219424002982,
-        "teacher_overlap": 0.8766666666666668
-      }
-    },
-    "learned-adc-32B-8bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.8651315789473685,
-        "pairwise_order": 0.9112608644656158,
-        "pairwise_top10_boundary": 0.6776315789473685,
-        "pairwise_top32": 0.8579557512733447,
-        "qrels_ndcg10": 0.6317569441729964,
-        "teacher_overlap": 0.8625000000000002
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.89375,
-        "pairwise_order": 0.9108035368209877,
-        "pairwise_top10_boundary": 0.7083333333333333,
-        "pairwise_top32": 0.8532321068548386,
-        "qrels_ndcg10": 0.653684563385674,
-        "teacher_overlap": 0.8875000000000001
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8575,
-        "pairwise_order": 0.9113828185041833,
-        "pairwise_top10_boundary": 0.6694444444444445,
-        "pairwise_top32": 0.8592153897849462,
-        "qrels_ndcg10": 0.6259095790496156,
-        "teacher_overlap": 0.8558333333333334
-      }
-    },
-    "learned-adc-8B-2bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8486842105263158,
-        "pairwise_order": 0.8697825997178871,
-        "pairwise_top10_boundary": 0.6304824561403509,
-        "pairwise_top32": 0.8447779605263158,
-        "qrels_ndcg10": 0.6521932862859858,
-        "teacher_overlap": 0.8460526315789475
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.871875,
-        "pairwise_order": 0.871770426615696,
-        "pairwise_top10_boundary": 0.6197916666666666,
-        "pairwise_top32": 0.8416708669354839,
-        "qrels_ndcg10": 0.69278539674607,
-        "teacher_overlap": 0.86875
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8425,
-        "pairwise_order": 0.869252512545138,
-        "pairwise_top10_boundary": 0.6333333333333333,
-        "pairwise_top32": 0.8456065188172043,
-        "qrels_ndcg10": 0.6413687234966299,
-        "teacher_overlap": 0.8400000000000001
-      }
-    },
-    "learned-adc-8B-2bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.7950657894736842,
-        "pairwise_order": 0.8691771451705342,
-        "pairwise_top10_boundary": 0.6381578947368421,
-        "pairwise_top32": 0.806783213073005,
-        "qrels_ndcg10": 0.6080404722948388,
-        "teacher_overlap": 0.7924342105263158
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8078125,
-        "pairwise_order": 0.8708166612522581,
-        "pairwise_top10_boundary": 0.6822916666666667,
-        "pairwise_top32": 0.8062626008064515,
-        "qrels_ndcg10": 0.6632837182806273,
-        "teacher_overlap": 0.8015625
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.7916666666666666,
-        "pairwise_order": 0.8687399408820744,
-        "pairwise_top10_boundary": 0.6263888888888888,
-        "pairwise_top32": 0.8069220430107527,
-        "qrels_ndcg10": 0.5933089400319619,
-        "teacher_overlap": 0.7900000000000001
-      }
-    },
-    "learned-adc-8B-4bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8513157894736842,
-        "pairwise_order": 0.87080814864316,
-        "pairwise_top10_boundary": 0.6271929824561403,
-        "pairwise_top32": 0.8480409061969439,
-        "qrels_ndcg10": 0.6539773023934559,
-        "teacher_overlap": 0.849342105263158
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.875,
-        "pairwise_order": 0.8711720756214678,
-        "pairwise_top10_boundary": 0.5989583333333333,
-        "pairwise_top32": 0.842867943548387,
-        "qrels_ndcg10": 0.6739487729935216,
-        "teacher_overlap": 0.871875
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8450000000000001,
-        "pairwise_order": 0.8707111014489449,
-        "pairwise_top10_boundary": 0.6347222222222222,
-        "pairwise_top32": 0.8494203629032259,
-        "qrels_ndcg10": 0.648651576900105,
-        "teacher_overlap": 0.8433333333333335
-      }
-    },
-    "learned-adc-8B-4bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.8164473684210526,
-        "pairwise_order": 0.880698682376649,
-        "pairwise_top10_boundary": 0.6228070175438597,
-        "pairwise_top32": 0.8146089770797962,
-        "qrels_ndcg10": 0.628432170198427,
-        "teacher_overlap": 0.8138157894736843
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.83125,
-        "pairwise_order": 0.88158861787048,
-        "pairwise_top10_boundary": 0.625,
-        "pairwise_top32": 0.8112714213709677,
-        "qrels_ndcg10": 0.6728281626334311,
-        "teacher_overlap": 0.825
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8125000000000001,
-        "pairwise_order": 0.8804613662449606,
-        "pairwise_top10_boundary": 0.6222222222222221,
-        "pairwise_top32": 0.8154989919354839,
-        "qrels_ndcg10": 0.616593238882426,
-        "teacher_overlap": 0.8108333333333334
-      }
-    },
-    "learned-adc-8B-8bit": {
-      "all": {
-        "candidate_fp32_overlap": 0.8486842105263158,
-        "pairwise_order": 0.8743351581924541,
-        "pairwise_top10_boundary": 0.6282894736842105,
-        "pairwise_top32": 0.8482067062818337,
-        "qrels_ndcg10": 0.6489995084127453,
-        "teacher_overlap": 0.8460526315789475
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.8718750000000001,
-        "pairwise_order": 0.8739985202200248,
-        "pairwise_top10_boundary": 0.6197916666666666,
-        "pairwise_top32": 0.8458921370967742,
-        "qrels_ndcg10": 0.6902175932049409,
-        "teacher_overlap": 0.86875
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8425,
-        "pairwise_order": 0.8744249283184353,
-        "pairwise_top10_boundary": 0.6305555555555554,
-        "pairwise_top32": 0.8488239247311828,
-        "qrels_ndcg10": 0.6380080191348264,
-        "teacher_overlap": 0.8400000000000001
-      }
-    },
-    "learned-adc-8B-8bit+norm2": {
-      "all": {
-        "candidate_fp32_overlap": 0.8286184210526316,
-        "pairwise_order": 0.8886118569703626,
-        "pairwise_top10_boundary": 0.6578947368421053,
-        "pairwise_top32": 0.8259099108658743,
-        "qrels_ndcg10": 0.6293176111679989,
-        "teacher_overlap": 0.8253289473684211
-      },
-      "heldout": {
-        "candidate_fp32_overlap": 0.84375,
-        "pairwise_order": 0.8862534132711385,
-        "pairwise_top10_boundary": 0.6510416666666667,
-        "pairwise_top32": 0.8211630544354839,
-        "qrels_ndcg10": 0.70445613885814,
-        "teacher_overlap": 0.834375
-      },
-      "train": {
-        "candidate_fp32_overlap": 0.8245833333333334,
-        "pairwise_order": 0.8892407752901558,
-        "pairwise_top10_boundary": 0.6597222222222221,
-        "pairwise_top32": 0.8271757392473119,
-        "qrels_ndcg10": 0.6092806704506281,
-        "teacher_overlap": 0.8229166666666667
-      }
-    }
+  "score_baseline_provenance": {
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "family": "thq_score_only_codec_gate_v1",
+    "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "raw_sha256": "ddbbc80b7576b54f3b0706ca52efb1c94524711293d6fea7cd3575749e5d269b",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d"
   },
+  "status": "EXECUTED",
   "summaries_by_scope": {
     "full-shell": {
       "learned-adc-16B-2bit": {
         "all": {
           "candidate_fp32_overlap": 0.8572368421052632,
-          "pairwise_order": 0.9061397864205408,
+          "pairwise_order": 0.9061389831302639,
           "pairwise_top10_boundary": 0.638157894736842,
-          "pairwise_top32": 0.8519604202037352,
+          "pairwise_top32": 0.8519471561969439,
           "qrels_ndcg10": 0.6564258893491992,
           "teacher_overlap": 0.8552631578947368
         },
@@ -996,9 +1006,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8516666666666667,
-          "pairwise_order": 0.9065131595468238,
+          "pairwise_order": 0.9065121420458062,
           "pairwise_top10_boundary": 0.6402777777777777,
-          "pairwise_top32": 0.8530913978494624,
+          "pairwise_top32": 0.8530745967741936,
           "qrels_ndcg10": 0.6463713940213954,
           "teacher_overlap": 0.85
         }
@@ -1006,9 +1016,9 @@
       "learned-adc-16B-2bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8125,
-          "pairwise_order": 0.9193715316965787,
+          "pairwise_order": 0.9193699253121406,
           "pairwise_top10_boundary": 0.6359649122807017,
-          "pairwise_top32": 0.8126326400679118,
+          "pairwise_top32": 0.8126260080645162,
           "qrels_ndcg10": 0.623938647247801,
           "teacher_overlap": 0.8092105263157895
         },
@@ -1022,9 +1032,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8100000000000002,
-          "pairwise_order": 0.9197410412034437,
+          "pairwise_order": 0.919739006449822,
           "pairwise_top10_boundary": 0.6305555555555556,
-          "pairwise_top32": 0.8128864247311828,
+          "pairwise_top32": 0.8128780241935483,
           "qrels_ndcg10": 0.6132057607773442,
           "teacher_overlap": 0.8075
         }
@@ -1032,9 +1042,9 @@
       "learned-adc-16B-4bit": {
         "all": {
           "candidate_fp32_overlap": 0.8592105263157896,
-          "pairwise_order": 0.9073366594719722,
+          "pairwise_order": 0.9073342499933729,
           "pairwise_top10_boundary": 0.6217105263157895,
-          "pairwise_top32": 0.8509258276740238,
+          "pairwise_top32": 0.8509191956706282,
           "qrels_ndcg10": 0.6560339844406113,
           "teacher_overlap": 0.8559210526315791
         },
@@ -1048,9 +1058,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8533333333333334,
-          "pairwise_order": 0.90819221955903,
+          "pairwise_order": 0.9081891675528041,
           "pairwise_top10_boundary": 0.6180555555555555,
-          "pairwise_top32": 0.8516129032258064,
+          "pairwise_top32": 0.851604502688172,
           "qrels_ndcg10": 0.6499230049505181,
           "teacher_overlap": 0.8500000000000001
         }
@@ -1058,9 +1068,9 @@
       "learned-adc-16B-4bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8236842105263158,
-          "pairwise_order": 0.9297358674743728,
+          "pairwise_order": 0.9297350643802116,
           "pairwise_top10_boundary": 0.6469298245614036,
-          "pairwise_top32": 0.8233499575551783,
+          "pairwise_top32": 0.8233433255517827,
           "qrels_ndcg10": 0.6312325162490514,
           "teacher_overlap": 0.8203947368421053
         },
@@ -1074,9 +1084,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8133333333333334,
-          "pairwise_order": 0.9303879434827539,
+          "pairwise_order": 0.9303869262301496,
           "pairwise_top10_boundary": 0.6430555555555556,
-          "pairwise_top32": 0.8229838709677418,
+          "pairwise_top32": 0.8229754704301074,
           "qrels_ndcg10": 0.626063844532281,
           "teacher_overlap": 0.8116666666666668
         }
@@ -1084,9 +1094,9 @@
       "learned-adc-16B-8bit": {
         "all": {
           "candidate_fp32_overlap": 0.8625000000000002,
-          "pairwise_order": 0.9138110727926624,
+          "pairwise_order": 0.91380946660434,
           "pairwise_top10_boundary": 0.6425438596491228,
-          "pairwise_top32": 0.8557008701188454,
+          "pairwise_top32": 0.8556942381154499,
           "qrels_ndcg10": 0.6544669783520725,
           "teacher_overlap": 0.8611842105263158
         },
@@ -1100,9 +1110,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8566666666666668,
-          "pairwise_order": 0.9145056140831619,
+          "pairwise_order": 0.9145035795779536,
           "pairwise_top10_boundary": 0.6430555555555556,
-          "pairwise_top32": 0.8568884408602151,
+          "pairwise_top32": 0.8568800403225807,
           "qrels_ndcg10": 0.6463116018015543,
           "teacher_overlap": 0.8558333333333334
         }
@@ -1110,9 +1120,9 @@
       "learned-adc-16B-8bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.844736842105263,
-          "pairwise_order": 0.9374281131338664,
+          "pairwise_order": 0.9374273098435895,
           "pairwise_top10_boundary": 0.6699561403508771,
-          "pairwise_top32": 0.8366537563667232,
+          "pairwise_top32": 0.8366471243633277,
           "qrels_ndcg10": 0.6328685278167023,
           "teacher_overlap": 0.8427631578947368
         },
@@ -1126,9 +1136,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8425000000000001,
-          "pairwise_order": 0.9385857526242118,
+          "pairwise_order": 0.9385847351231944,
           "pairwise_top10_boundary": 0.6597222222222222,
-          "pairwise_top32": 0.8377688172043011,
+          "pairwise_top32": 0.8377604166666667,
           "qrels_ndcg10": 0.6237336559234473,
           "teacher_overlap": 0.8416666666666668
         }
@@ -1138,7 +1148,7 @@
           "candidate_fp32_overlap": 0.8697368421052633,
           "pairwise_order": 0.9141470088381878,
           "pairwise_top10_boundary": 0.6491228070175438,
-          "pairwise_top32": 0.863088921901528,
+          "pairwise_top32": 0.8630756578947368,
           "qrels_ndcg10": 0.6542180289323671,
           "teacher_overlap": 0.8677631578947367
         },
@@ -1154,7 +1164,7 @@
           "candidate_fp32_overlap": 0.8625000000000002,
           "pairwise_order": 0.9144736445151094,
           "pairwise_top10_boundary": 0.6513888888888889,
-          "pairwise_top32": 0.8635584677419355,
+          "pairwise_top32": 0.8635416666666667,
           "qrels_ndcg10": 0.6424676472467673,
           "teacher_overlap": 0.8608333333333335
         }
@@ -1162,9 +1172,9 @@
       "learned-adc-32B-2bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8072368421052631,
-          "pairwise_order": 0.9237128842802218,
+          "pairwise_order": 0.9237120811860606,
           "pairwise_top10_boundary": 0.6271929824561404,
-          "pairwise_top32": 0.8205114601018676,
+          "pairwise_top32": 0.8205048280984719,
           "qrels_ndcg10": 0.6193079986531486,
           "teacher_overlap": 0.8052631578947369
         },
@@ -1178,9 +1188,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.7991666666666667,
-          "pairwise_order": 0.9243001531325177,
+          "pairwise_order": 0.9242991358799135,
           "pairwise_top10_boundary": 0.6152777777777778,
-          "pairwise_top32": 0.8200772849462366,
+          "pairwise_top32": 0.8200688844086022,
           "qrels_ndcg10": 0.605610669376181,
           "teacher_overlap": 0.7975000000000001
         }
@@ -1188,9 +1198,9 @@
       "learned-adc-32B-4bit": {
         "all": {
           "candidate_fp32_overlap": 0.8756578947368423,
-          "pairwise_order": 0.9181150454150153,
+          "pairwise_order": 0.9181142423208541,
           "pairwise_top10_boundary": 0.6655701754385964,
-          "pairwise_top32": 0.8661396434634975,
+          "pairwise_top32": 0.8661330114601019,
           "qrels_ndcg10": 0.659000543560046,
           "teacher_overlap": 0.8730263157894738
         },
@@ -1204,9 +1214,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8691666666666668,
-          "pairwise_order": 0.9187570757166666,
+          "pairwise_order": 0.9187560584640625,
           "pairwise_top10_boundary": 0.6583333333333333,
-          "pairwise_top32": 0.866448252688172,
+          "pairwise_top32": 0.8664398521505376,
           "qrels_ndcg10": 0.6533986027365319,
           "teacher_overlap": 0.8666666666666668
         }
@@ -1214,9 +1224,9 @@
       "learned-adc-32B-4bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.842763157894737,
-          "pairwise_order": 0.9355039172731493,
+          "pairwise_order": 0.9355031139828723,
           "pairwise_top10_boundary": 0.6425438596491228,
-          "pairwise_top32": 0.8366007003395586,
+          "pairwise_top32": 0.8365940683361629,
           "qrels_ndcg10": 0.6293317460961813,
           "teacher_overlap": 0.8407894736842106
         },
@@ -1230,9 +1240,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8350000000000002,
-          "pairwise_order": 0.9361455901554692,
+          "pairwise_order": 0.9361445726544517,
           "pairwise_top10_boundary": 0.6347222222222222,
-          "pairwise_top32": 0.8370799731182798,
+          "pairwise_top32": 0.8370715725806454,
           "qrels_ndcg10": 0.6177318985626481,
           "teacher_overlap": 0.8341666666666667
         }
@@ -1242,7 +1252,7 @@
           "candidate_fp32_overlap": 0.8828947368421054,
           "pairwise_order": 0.9287770734495396,
           "pairwise_top10_boundary": 0.6447368421052632,
-          "pairwise_top32": 0.8727318548387096,
+          "pairwise_top32": 0.8727252228353141,
           "qrels_ndcg10": 0.6555639508013795,
           "teacher_overlap": 0.881578947368421
         },
@@ -1258,7 +1268,7 @@
           "candidate_fp32_overlap": 0.8766666666666668,
           "pairwise_order": 0.9295062930594639,
           "pairwise_top10_boundary": 0.638888888888889,
-          "pairwise_top32": 0.8745127688172043,
+          "pairwise_top32": 0.8745043682795699,
           "qrels_ndcg10": 0.649219424002982,
           "teacher_overlap": 0.8766666666666668
         }
@@ -1266,15 +1276,15 @@
       "learned-adc-32B-8bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8651315789473685,
-          "pairwise_order": 0.9460249450159415,
+          "pairwise_order": 0.9460233384352916,
           "pairwise_top10_boundary": 0.6776315789473685,
-          "pairwise_top32": 0.8577567911714771,
+          "pairwise_top32": 0.8577501591680815,
           "qrels_ndcg10": 0.6317569441729964,
           "teacher_overlap": 0.8625000000000002
         },
         "heldout": {
           "candidate_fp32_overlap": 0.89375,
-          "pairwise_order": 0.9444856288826515,
+          "pairwise_order": 0.9444818141853859,
           "pairwise_top10_boundary": 0.7083333333333333,
           "pairwise_top32": 0.8531376008064515,
           "qrels_ndcg10": 0.653684563385674,
@@ -1282,9 +1292,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8575,
-          "pairwise_order": 0.9464354293181519,
+          "pairwise_order": 0.9464344115685999,
           "pairwise_top10_boundary": 0.6694444444444445,
-          "pairwise_top32": 0.8589885752688172,
+          "pairwise_top32": 0.8589801747311828,
           "qrels_ndcg10": 0.6259095790496156,
           "teacher_overlap": 0.8558333333333334
         }
@@ -1294,7 +1304,7 @@
           "candidate_fp32_overlap": 0.8486842105263158,
           "pairwise_order": 0.9009926389846508,
           "pairwise_top10_boundary": 0.6304824561403508,
-          "pairwise_top32": 0.8451161926994906,
+          "pairwise_top32": 0.8451095606960951,
           "qrels_ndcg10": 0.6521932862859858,
           "teacher_overlap": 0.8460526315789475
         },
@@ -1310,7 +1320,7 @@
           "candidate_fp32_overlap": 0.8424999999999999,
           "pairwise_order": 0.9016415087500469,
           "pairwise_top10_boundary": 0.6333333333333333,
-          "pairwise_top32": 0.8459005376344085,
+          "pairwise_top32": 0.8458921370967741,
           "qrels_ndcg10": 0.64136872349663,
           "teacher_overlap": 0.8400000000000001
         }
@@ -1320,7 +1330,7 @@
           "candidate_fp32_overlap": 0.7947368421052632,
           "pairwise_order": 0.9173061666102081,
           "pairwise_top10_boundary": 0.6381578947368421,
-          "pairwise_top32": 0.8065842529711374,
+          "pairwise_top32": 0.8065776209677419,
           "qrels_ndcg10": 0.6080404722948388,
           "teacher_overlap": 0.7921052631578948
         },
@@ -1336,7 +1346,7 @@
           "candidate_fp32_overlap": 0.7916666666666666,
           "pairwise_order": 0.9175861048954578,
           "pairwise_top10_boundary": 0.626388888888889,
-          "pairwise_top32": 0.8064348118279571,
+          "pairwise_top32": 0.8064264112903227,
           "qrels_ndcg10": 0.5933089400319619,
           "teacher_overlap": 0.7900000000000001
         }
@@ -1344,9 +1354,9 @@
       "learned-adc-8B-4bit": {
         "all": {
           "candidate_fp32_overlap": 0.8513157894736842,
-          "pairwise_order": 0.9016249152528697,
+          "pairwise_order": 0.9016241119625927,
           "pairwise_top10_boundary": 0.6271929824561404,
-          "pairwise_top32": 0.8483924023769099,
+          "pairwise_top32": 0.8483857703735144,
           "qrels_ndcg10": 0.6539773023934559,
           "teacher_overlap": 0.849342105263158
         },
@@ -1360,9 +1370,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8450000000000001,
-          "pairwise_order": 0.9026205843490123,
+          "pairwise_order": 0.9026195668479947,
           "pairwise_top10_boundary": 0.6347222222222222,
-          "pairwise_top32": 0.8497647849462365,
+          "pairwise_top32": 0.8497563844086021,
           "qrels_ndcg10": 0.648651576900105,
           "teacher_overlap": 0.8433333333333335
         }
@@ -1370,9 +1380,9 @@
       "learned-adc-8B-4bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8164473684210527,
-          "pairwise_order": 0.9264113187029799,
+          "pairwise_order": 0.9264105154127029,
           "pairwise_top10_boundary": 0.6228070175438596,
-          "pairwise_top32": 0.8143834889643463,
+          "pairwise_top32": 0.8143768569609507,
           "qrels_ndcg10": 0.6284321701984271,
           "teacher_overlap": 0.8138157894736843
         },
@@ -1386,9 +1396,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8125000000000001,
-          "pairwise_order": 0.9271680618251321,
+          "pairwise_order": 0.9271670443241147,
           "pairwise_top10_boundary": 0.6222222222222222,
-          "pairwise_top32": 0.8150537634408602,
+          "pairwise_top32": 0.8150453629032258,
           "qrels_ndcg10": 0.616593238882426,
           "teacher_overlap": 0.8108333333333334
         }
@@ -1396,9 +1406,9 @@
       "learned-adc-8B-8bit": {
         "all": {
           "candidate_fp32_overlap": 0.8486842105263158,
-          "pairwise_order": 0.9049668481605968,
+          "pairwise_order": 0.9049652419722743,
           "pairwise_top10_boundary": 0.6282894736842105,
-          "pairwise_top32": 0.8486046264855688,
+          "pairwise_top32": 0.8485979944821732,
           "qrels_ndcg10": 0.6489995084127453,
           "teacher_overlap": 0.8460526315789473
         },
@@ -1412,9 +1422,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8425000000000001,
-          "pairwise_order": 0.9062298474072447,
+          "pairwise_order": 0.9062278129020364,
           "pairwise_top10_boundary": 0.6305555555555556,
-          "pairwise_top32": 0.8491599462365592,
+          "pairwise_top32": 0.8491515456989248,
           "qrels_ndcg10": 0.6380080191348264,
           "teacher_overlap": 0.8400000000000001
         }
@@ -1422,15 +1432,15 @@
       "learned-adc-8B-8bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8282894736842106,
-          "pairwise_order": 0.9315067159850031,
+          "pairwise_order": 0.9315059126947262,
           "pairwise_top10_boundary": 0.6578947368421053,
-          "pairwise_top32": 0.8258435908319185,
+          "pairwise_top32": 0.8258369588285229,
           "qrels_ndcg10": 0.6293176111679989,
           "teacher_overlap": 0.8250000000000001
         },
         "heldout": {
           "candidate_fp32_overlap": 0.84375,
-          "pairwise_order": 0.9267741795259326,
+          "pairwise_order": 0.9267703638971169,
           "pairwise_top10_boundary": 0.6510416666666666,
           "pairwise_top32": 0.8220136088709677,
           "qrels_ndcg10": 0.70445613885814,
@@ -1440,7 +1450,7 @@
           "candidate_fp32_overlap": 0.8241666666666667,
           "pairwise_order": 0.9327687257074221,
           "pairwise_top10_boundary": 0.6597222222222221,
-          "pairwise_top32": 0.8268649193548386,
+          "pairwise_top32": 0.8268565188172042,
           "qrels_ndcg10": 0.6092806704506281,
           "teacher_overlap": 0.8225
         }
@@ -1450,15 +1460,15 @@
       "learned-adc-16B-2bit": {
         "all": {
           "candidate_fp32_overlap": 0.8572368421052632,
-          "pairwise_order": 0.8458837328095544,
+          "pairwise_order": 0.8458788766966633,
           "pairwise_top10_boundary": 0.638157894736842,
-          "pairwise_top32": 0.8511380517826825,
+          "pairwise_top32": 0.8511247877758914,
           "qrels_ndcg10": 0.6564258893491992,
           "teacher_overlap": 0.8552631578947368
         },
         "heldout": {
           "candidate_fp32_overlap": 0.878125,
-          "pairwise_order": 0.8513167372859458,
+          "pairwise_order": 0.8513128982196068,
           "pairwise_top10_boundary": 0.6302083333333334,
           "pairwise_top32": 0.8463961693548387,
           "qrels_ndcg10": 0.6941302468284634,
@@ -1466,9 +1476,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8516666666666667,
-          "pairwise_order": 0.8444349316158498,
+          "pairwise_order": 0.8444298042905451,
           "pairwise_top10_boundary": 0.6402777777777777,
-          "pairwise_top32": 0.8524025537634408,
+          "pairwise_top32": 0.852385752688172,
           "qrels_ndcg10": 0.6463713940213954,
           "teacher_overlap": 0.85
         }
@@ -1476,15 +1486,15 @@
       "learned-adc-16B-2bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8125,
-          "pairwise_order": 0.8259197996548583,
+          "pairwise_order": 0.8259189898385894,
           "pairwise_top10_boundary": 0.6359649122807017,
-          "pairwise_top32": 0.8124734719864177,
+          "pairwise_top32": 0.812466839983022,
           "qrels_ndcg10": 0.623938647247801,
           "teacher_overlap": 0.8092105263157895
         },
         "heldout": {
           "candidate_fp32_overlap": 0.821875,
-          "pairwise_order": 0.8299107268240444,
+          "pairwise_order": 0.8299068801967673,
           "pairwise_top10_boundary": 0.65625,
           "pairwise_top32": 0.8094758064516128,
           "qrels_ndcg10": 0.6641869715120143,
@@ -1494,7 +1504,7 @@
           "candidate_fp32_overlap": 0.8100000000000002,
           "pairwise_order": 0.824855552409742,
           "pairwise_top10_boundary": 0.6305555555555556,
-          "pairwise_top32": 0.8132728494623656,
+          "pairwise_top32": 0.8132644489247312,
           "qrels_ndcg10": 0.6132057607773442,
           "teacher_overlap": 0.8075
         }
@@ -1502,9 +1512,9 @@
       "learned-adc-16B-4bit": {
         "all": {
           "candidate_fp32_overlap": 0.8592105263157896,
-          "pairwise_order": 0.8481857507128878,
+          "pairwise_order": 0.8481825120444821,
           "pairwise_top10_boundary": 0.6217105263157895,
-          "pairwise_top32": 0.8500769312393889,
+          "pairwise_top32": 0.8500702992359933,
           "qrels_ndcg10": 0.6560339844406113,
           "teacher_overlap": 0.8559210526315791
         },
@@ -1518,9 +1528,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8533333333333334,
-          "pairwise_order": 0.8472798988619356,
+          "pairwise_order": 0.8472757965486217,
           "pairwise_top10_boundary": 0.6180555555555555,
-          "pairwise_top32": 0.850739247311828,
+          "pairwise_top32": 0.8507308467741936,
           "qrels_ndcg10": 0.6499230049505181,
           "teacher_overlap": 0.8500000000000001
         }
@@ -1528,9 +1538,9 @@
       "learned-adc-16B-4bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8236842105263158,
-          "pairwise_order": 0.8415658732695293,
+          "pairwise_order": 0.8415650628547267,
           "pairwise_top10_boundary": 0.6469298245614036,
-          "pairwise_top32": 0.8240131578947368,
+          "pairwise_top32": 0.8240065258913413,
           "qrels_ndcg10": 0.6312325162490514,
           "teacher_overlap": 0.8203947368421053
         },
@@ -1544,9 +1554,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8133333333333334,
-          "pairwise_order": 0.8411046472602245,
+          "pairwise_order": 0.8411036207348078,
           "pairwise_top10_boundary": 0.6430555555555556,
-          "pairwise_top32": 0.824176747311828,
+          "pairwise_top32": 0.8241683467741936,
           "qrels_ndcg10": 0.626063844532281,
           "teacher_overlap": 0.8116666666666668
         }
@@ -1554,9 +1564,9 @@
       "learned-adc-16B-8bit": {
         "all": {
           "candidate_fp32_overlap": 0.8625000000000002,
-          "pairwise_order": 0.853669012416184,
+          "pairwise_order": 0.85366496612133,
           "pairwise_top10_boundary": 0.6425438596491228,
-          "pairwise_top32": 0.8553162139219015,
+          "pairwise_top32": 0.855309581918506,
           "qrels_ndcg10": 0.6544669783520725,
           "teacher_overlap": 0.8611842105263158
         },
@@ -1570,9 +1580,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8566666666666668,
-          "pairwise_order": 0.8529659784209362,
+          "pairwise_order": 0.8529608531141214,
           "pairwise_top10_boundary": 0.6430555555555556,
-          "pairwise_top32": 0.8564852150537635,
+          "pairwise_top32": 0.8564768145161291,
           "qrels_ndcg10": 0.6463116018015543,
           "teacher_overlap": 0.8558333333333334
         }
@@ -1580,15 +1590,15 @@
       "learned-adc-16B-8bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.844736842105263,
-          "pairwise_order": 0.8558747861248118,
+          "pairwise_order": 0.8558699286073036,
           "pairwise_top10_boundary": 0.6699561403508771,
-          "pairwise_top32": 0.8373434847198642,
+          "pairwise_top32": 0.8373368527164686,
           "qrels_ndcg10": 0.6328685278167023,
           "teacher_overlap": 0.8427631578947368
         },
         "heldout": {
           "candidate_fp32_overlap": 0.853125,
-          "pairwise_order": 0.8577328540699428,
+          "pairwise_order": 0.8577251740461072,
           "pairwise_top10_boundary": 0.7083333333333334,
           "pairwise_top32": 0.8321572580645162,
           "qrels_ndcg10": 0.6671242974164089,
@@ -1596,9 +1606,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8425000000000001,
-          "pairwise_order": 0.8553793013394435,
+          "pairwise_order": 0.8553751964902891,
           "pairwise_top10_boundary": 0.6597222222222222,
-          "pairwise_top32": 0.8387264784946237,
+          "pairwise_top32": 0.8387180779569893,
           "qrels_ndcg10": 0.6237336559234473,
           "teacher_overlap": 0.8416666666666668
         }
@@ -1606,15 +1616,15 @@
       "learned-adc-32B-2bit": {
         "all": {
           "candidate_fp32_overlap": 0.8697368421052633,
-          "pairwise_order": 0.8594247464789732,
+          "pairwise_order": 0.8594215048038251,
           "pairwise_top10_boundary": 0.6491228070175438,
-          "pairwise_top32": 0.862014537351443,
+          "pairwise_top32": 0.8620012733446518,
           "qrels_ndcg10": 0.6542180289323671,
           "teacher_overlap": 0.8677631578947367
         },
         "heldout": {
           "candidate_fp32_overlap": 0.896875,
-          "pairwise_order": 0.8640739888715586,
+          "pairwise_order": 0.8640662728221759,
           "pairwise_top10_boundary": 0.640625,
           "pairwise_top32": 0.8602570564516129,
           "qrels_ndcg10": 0.6982819602533664,
@@ -1622,9 +1632,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8625000000000002,
-          "pairwise_order": 0.8581849485076171,
+          "pairwise_order": 0.8581828999989314,
           "pairwise_top10_boundary": 0.6513888888888889,
-          "pairwise_top32": 0.8624831989247312,
+          "pairwise_top32": 0.8624663978494624,
           "qrels_ndcg10": 0.6424676472467673,
           "teacher_overlap": 0.8608333333333335
         }
@@ -1634,7 +1644,7 @@
           "candidate_fp32_overlap": 0.8078947368421053,
           "pairwise_order": 0.8366821147992929,
           "pairwise_top10_boundary": 0.6271929824561404,
-          "pairwise_top32": 0.8206441001697793,
+          "pairwise_top32": 0.8206374681663837,
           "qrels_ndcg10": 0.6193079986531486,
           "teacher_overlap": 0.805921052631579
         },
@@ -1650,7 +1660,7 @@
           "candidate_fp32_overlap": 0.8000000000000002,
           "pairwise_order": 0.8361715717172565,
           "pairwise_top10_boundary": 0.6152777777777778,
-          "pairwise_top32": 0.8205141129032258,
+          "pairwise_top32": 0.8205057123655914,
           "qrels_ndcg10": 0.605610669376181,
           "teacher_overlap": 0.7983333333333335
         }
@@ -1658,15 +1668,15 @@
       "learned-adc-32B-4bit": {
         "all": {
           "candidate_fp32_overlap": 0.8756578947368423,
-          "pairwise_order": 0.8649470071186341,
+          "pairwise_order": 0.8649445826436889,
           "pairwise_top10_boundary": 0.6655701754385964,
-          "pairwise_top32": 0.8652509550084888,
+          "pairwise_top32": 0.8652443230050935,
           "qrels_ndcg10": 0.659000543560046,
           "teacher_overlap": 0.8730263157894738
         },
         "heldout": {
           "candidate_fp32_overlap": 0.8999999999999999,
-          "pairwise_order": 0.8671737683204699,
+          "pairwise_order": 0.8671660901877918,
           "pairwise_top10_boundary": 0.6927083333333334,
           "pairwise_top32": 0.8644153225806451,
           "qrels_ndcg10": 0.6800078216482239,
@@ -1674,9 +1684,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8691666666666668,
-          "pairwise_order": 0.8643532041314779,
+          "pairwise_order": 0.8643521806319282,
           "pairwise_top10_boundary": 0.6583333333333333,
-          "pairwise_top32": 0.8654737903225805,
+          "pairwise_top32": 0.8654653897849461,
           "qrels_ndcg10": 0.6533986027365319,
           "teacher_overlap": 0.8666666666666668
         }
@@ -1686,7 +1696,7 @@
           "candidate_fp32_overlap": 0.842763157894737,
           "pairwise_order": 0.8546338263407849,
           "pairwise_top10_boundary": 0.6425438596491228,
-          "pairwise_top32": 0.8366139643463498,
+          "pairwise_top32": 0.8366073323429543,
           "qrels_ndcg10": 0.6293317460961813,
           "teacher_overlap": 0.8407894736842106
         },
@@ -1702,7 +1712,7 @@
           "candidate_fp32_overlap": 0.8350000000000002,
           "pairwise_order": 0.8543339202005709,
           "pairwise_top10_boundary": 0.6347222222222222,
-          "pairwise_top32": 0.837231182795699,
+          "pairwise_top32": 0.8372227822580646,
           "qrels_ndcg10": 0.6177318985626481,
           "teacher_overlap": 0.8341666666666667
         }
@@ -1710,15 +1720,15 @@
       "learned-adc-32B-8bit": {
         "all": {
           "candidate_fp32_overlap": 0.8828947368421054,
-          "pairwise_order": 0.8761510134154503,
+          "pairwise_order": 0.8761477785287403,
           "pairwise_top10_boundary": 0.6447368421052632,
-          "pairwise_top32": 0.8722808786078097,
+          "pairwise_top32": 0.8722742466044143,
           "qrels_ndcg10": 0.6555639508013795,
           "teacher_overlap": 0.881578947368421
         },
         "heldout": {
           "candidate_fp32_overlap": 0.90625,
-          "pairwise_order": 0.8796088024672035,
+          "pairwise_order": 0.8796049615134178,
           "pairwise_top10_boundary": 0.6666666666666666,
           "pairwise_top32": 0.8656123991935484,
           "qrels_ndcg10": 0.6793559262953702,
@@ -1726,9 +1736,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8766666666666668,
-          "pairwise_order": 0.8752289363349829,
+          "pairwise_order": 0.8752258630661595,
           "pairwise_top10_boundary": 0.638888888888889,
-          "pairwise_top32": 0.8740591397849463,
+          "pairwise_top32": 0.8740507392473119,
           "qrels_ndcg10": 0.649219424002982,
           "teacher_overlap": 0.8766666666666668
         }
@@ -1736,15 +1746,15 @@
       "learned-adc-32B-8bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8651315789473685,
-          "pairwise_order": 0.8764967839152903,
+          "pairwise_order": 0.8764919347433263,
           "pairwise_top10_boundary": 0.6776315789473685,
-          "pairwise_top32": 0.8581547113752123,
+          "pairwise_top32": 0.8581480793718166,
           "qrels_ndcg10": 0.6317569441729964,
           "teacher_overlap": 0.8625000000000002
         },
         "heldout": {
           "candidate_fp32_overlap": 0.89375,
-          "pairwise_order": 0.8771214447593236,
+          "pairwise_order": 0.8771175933913178,
           "pairwise_top10_boundary": 0.7083333333333333,
           "pairwise_top32": 0.8533266129032258,
           "qrels_ndcg10": 0.653684563385674,
@@ -1752,9 +1762,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8575,
-          "pairwise_order": 0.8763302076902147,
+          "pairwise_order": 0.8763250924371953,
           "pairwise_top10_boundary": 0.6694444444444445,
-          "pairwise_top32": 0.8594422043010753,
+          "pairwise_top32": 0.8594338037634408,
           "qrels_ndcg10": 0.6259095790496156,
           "teacher_overlap": 0.8558333333333334
         }
@@ -1762,9 +1772,9 @@
       "learned-adc-8B-2bit": {
         "all": {
           "candidate_fp32_overlap": 0.8486842105263158,
-          "pairwise_order": 0.8385725604511235,
+          "pairwise_order": 0.8385693191866052,
           "pairwise_top10_boundary": 0.6304824561403508,
-          "pairwise_top32": 0.8444397283531411,
+          "pairwise_top32": 0.8444330963497453,
           "qrels_ndcg10": 0.6521932862859858,
           "teacher_overlap": 0.8460526315789475
         },
@@ -1778,9 +1788,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8424999999999999,
-          "pairwise_order": 0.836863516340229,
+          "pairwise_order": 0.836859410738506,
           "pairwise_top10_boundary": 0.6333333333333333,
-          "pairwise_top32": 0.8453125,
+          "pairwise_top32": 0.8453040994623656,
           "qrels_ndcg10": 0.64136872349663,
           "teacher_overlap": 0.8400000000000001
         }
@@ -1788,15 +1798,15 @@
       "learned-adc-8B-2bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.7953947368421053,
-          "pairwise_order": 0.8210481237308601,
+          "pairwise_order": 0.8210440814157406,
           "pairwise_top10_boundary": 0.6381578947368421,
-          "pairwise_top32": 0.8069821731748726,
+          "pairwise_top32": 0.8069755411714771,
           "qrels_ndcg10": 0.6080404722948388,
           "teacher_overlap": 0.792763157894737
         },
         "heldout": {
           "candidate_fp32_overlap": 0.809375,
-          "pairwise_order": 0.8253769244639941,
+          "pairwise_order": 0.8253730872832475,
           "pairwise_top10_boundary": 0.6822916666666667,
           "pairwise_top32": 0.8053805443548387,
           "qrels_ndcg10": 0.6632837182806273,
@@ -1804,9 +1814,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.7916666666666666,
-          "pairwise_order": 0.819893776868691,
+          "pairwise_order": 0.8198896798510721,
           "pairwise_top10_boundary": 0.626388888888889,
-          "pairwise_top32": 0.8074092741935482,
+          "pairwise_top32": 0.8074008736559138,
           "qrels_ndcg10": 0.5933089400319619,
           "teacher_overlap": 0.7900000000000001
         }
@@ -1814,9 +1824,9 @@
       "learned-adc-8B-4bit": {
         "all": {
           "candidate_fp32_overlap": 0.8513157894736842,
-          "pairwise_order": 0.8399913820334506,
+          "pairwise_order": 0.8399897620020867,
           "pairwise_top10_boundary": 0.6271929824561404,
-          "pairwise_top32": 0.847689410016978,
+          "pairwise_top32": 0.8476827780135823,
           "qrels_ndcg10": 0.6539773023934559,
           "teacher_overlap": 0.849342105263158
         },
@@ -1830,9 +1840,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8450000000000001,
-          "pairwise_order": 0.8388016185488776,
+          "pairwise_order": 0.83879956650915,
           "pairwise_top10_boundary": 0.6347222222222222,
-          "pairwise_top32": 0.849075940860215,
+          "pairwise_top32": 0.8490675403225806,
           "qrels_ndcg10": 0.648651576900105,
           "teacher_overlap": 0.8433333333333335
         }
@@ -1840,9 +1850,9 @@
       "learned-adc-8B-4bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8164473684210527,
-          "pairwise_order": 0.8349860460503181,
+          "pairwise_order": 0.8349828089757453,
           "pairwise_top10_boundary": 0.6228070175438596,
-          "pairwise_top32": 0.8148344651952462,
+          "pairwise_top32": 0.8148278331918506,
           "qrels_ndcg10": 0.6284321701984271,
           "teacher_overlap": 0.8138157894736843
         },
@@ -1856,9 +1866,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8125000000000001,
-          "pairwise_order": 0.8337546706647891,
+          "pairwise_order": 0.8337505703703303,
           "pairwise_top10_boundary": 0.6222222222222222,
-          "pairwise_top32": 0.8159442204301076,
+          "pairwise_top32": 0.8159358198924732,
           "qrels_ndcg10": 0.616593238882426,
           "teacher_overlap": 0.8108333333333334
         }
@@ -1866,9 +1876,9 @@
       "learned-adc-8B-8bit": {
         "all": {
           "candidate_fp32_overlap": 0.8486842105263158,
-          "pairwise_order": 0.8437034682243115,
+          "pairwise_order": 0.843697808440181,
           "pairwise_top10_boundary": 0.6282894736842105,
-          "pairwise_top32": 0.8478087860780985,
+          "pairwise_top32": 0.8478021540747029,
           "qrels_ndcg10": 0.6489995084127453,
           "teacher_overlap": 0.8460526315789473
         },
@@ -1882,9 +1892,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.8425000000000001,
-          "pairwise_order": 0.842620009229626,
+          "pairwise_order": 0.8426128401697274,
           "pairwise_top10_boundary": 0.6305555555555556,
-          "pairwise_top32": 0.8484879032258064,
+          "pairwise_top32": 0.848479502688172,
           "qrels_ndcg10": 0.6380080191348264,
           "teacher_overlap": 0.8400000000000001
         }
@@ -1892,15 +1902,15 @@
       "learned-adc-8B-8bit+norm2": {
         "all": {
           "candidate_fp32_overlap": 0.8289473684210527,
-          "pairwise_order": 0.845716997955722,
+          "pairwise_order": 0.8457121404384845,
           "pairwise_top10_boundary": 0.6578947368421053,
-          "pairwise_top32": 0.8259762308998302,
+          "pairwise_top32": 0.8259695988964346,
           "qrels_ndcg10": 0.6293176111679989,
           "teacher_overlap": 0.8256578947368421
         },
         "heldout": {
           "candidate_fp32_overlap": 0.84375,
-          "pairwise_order": 0.8457326470163444,
+          "pairwise_order": 0.8457249613283068,
           "pairwise_top10_boundary": 0.6510416666666666,
           "pairwise_top32": 0.8203125,
           "qrels_ndcg10": 0.70445613885814,
@@ -1908,9 +1918,9 @@
         },
         "train": {
           "candidate_fp32_overlap": 0.825,
-          "pairwise_order": 0.8457128248728895,
+          "pairwise_order": 0.8457087215345321,
           "pairwise_top10_boundary": 0.6597222222222221,
-          "pairwise_top32": 0.827486559139785,
+          "pairwise_top32": 0.8274781586021506,
           "qrels_ndcg10": 0.6092806704506281,
           "teacher_overlap": 0.8233333333333334
         }

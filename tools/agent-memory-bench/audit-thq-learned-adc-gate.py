@@ -16,13 +16,33 @@ def require(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
 
+
+def top_ids(scores: np.ndarray, ids: np.ndarray, limit: int) -> np.ndarray:
+    order = np.lexsort((ids, -np.asarray(scores, dtype=np.float64)))
+    return np.asarray(ids, dtype=np.int64)[order[:limit]]
+
+
+def ndcg(ids: np.ndarray, qrel_ids: np.ndarray, qrel_scores: np.ndarray) -> float:
+    grades = {int(doc): float(score) for doc, score in zip(qrel_ids, qrel_scores)
+              if int(doc) >= 0 and float(score) > 0.0}
+    gains = np.asarray([2.0 ** grades.get(int(doc), 0.0) - 1.0 for doc in ids[:10]])
+    discounts = np.log2(np.arange(2, 2 + len(gains), dtype=np.float64))
+    ideal = np.sort(np.asarray([2.0 ** score - 1.0 for score in grades.values()]))[::-1][:10]
+    ideal_dcg = float(np.sum(ideal / np.log2(np.arange(2, 2 + len(ideal), dtype=np.float64))))
+    return float(np.sum(gains / discounts) / ideal_dcg) if ideal_dcg else 0.0
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--result", type=Path, required=True)
     parser.add_argument("--runner", type=Path, required=True)
     parser.add_argument("--candidate-receipt", type=Path, required=True)
-    parser.add_argument("--candidate-flat", type=Path)
-    parser.add_argument("--candidate-raw", type=Path)
+    parser.add_argument("--candidate-flat", type=Path, required=True)
+    parser.add_argument("--candidate-raw", type=Path, required=True)
+    parser.add_argument("--documents", type=Path, required=True)
+    parser.add_argument("--queries", type=Path, required=True)
+    parser.add_argument("--qrel-ids", type=Path, required=True)
+    parser.add_argument("--qrel-scores", type=Path, required=True)
+    parser.add_argument("--teacher-ids", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = json.loads(args.result.read_text(encoding="utf-8"))
@@ -71,21 +91,56 @@ def main() -> None:
                            "pairwise_top32", "pairwise_top10_boundary"):
                 require(abs(float(recorded[metric]) - float(np.mean([row[metric] for row in scoped]))) < 1e-6,
                         f"summary mismatch for {scope}/{arm}/{metric}")
-    if args.candidate_flat and args.candidate_raw:
-        raw_rows = json.loads(args.candidate_raw.read_text(encoding="utf-8"))["rows"]
-        counts = [int(row["candidate_count"]) for row in raw_rows]
-        offsets = [0]
-        for count in counts:
-            offsets.append(offsets[-1] + count)
-        records = np.memmap(args.candidate_flat, mode="r", dtype="<i4",
-                            shape=(offsets[-1], 37))
+    raw_rows = json.loads(args.candidate_raw.read_text(encoding="utf-8"))["rows"]
+    counts = [int(row["candidate_count"]) for row in raw_rows]
+    offsets = [0]
+    for count in counts:
+        offsets.append(offsets[-1] + count)
+    require(len(counts) == result["query_count"], "candidate query count differs")
+    require(args.candidate_flat.stat().st_size == offsets[-1] * 148,
+            "candidate flat byte count differs")
+    records = np.memmap(args.candidate_flat, mode="r", dtype="<i4",
+                        shape=(offsets[-1], 37))
+    document_count = args.documents.stat().st_size // (4 * 384)
+    query_count = args.queries.stat().st_size // (4 * 384)
+    require(query_count == result["query_count"], "query source count differs")
+    documents = np.memmap(args.documents, mode="r", dtype="<f4", shape=(document_count, 384))
+    queries = np.memmap(args.queries, mode="r", dtype="<f4", shape=(query_count, 384))
+    qrel_ids = np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(query_count, 20))
+    qrel_scores = np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(query_count, 20))
+    teacher_ids = np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(query_count, 10))
+    source_hashes = {
+        "documents_sha256": sha(args.documents), "queries_sha256": sha(args.queries),
+        "qrel_ids_sha256": sha(args.qrel_ids), "qrel_scores_sha256": sha(args.qrel_scores),
+        "teacher_ids_sha256": sha(args.teacher_ids), "candidate_flat_sha256": sha(args.candidate_flat),
+        "candidate_raw_sha256": sha(args.candidate_raw), "candidate_receipt_sha256": sha(args.candidate_receipt),
+    }
+    for field, value in source_hashes.items():
+        require(result.get(field) == value, f"learned ADC source binding differs: {field}")
+    for query in range(query_count):
+        shell = np.asarray(records[offsets[query]:offsets[query + 1], 0], dtype=np.int64)
+        require(np.all((shell >= 0) & (shell < document_count)), "candidate ID out of range")
+        require(len(np.unique(shell)) == len(shell), "candidate shell contains duplicate IDs")
+        exact_top = top_ids(documents[shell] @ queries[query], shell, 10)
         for row in rows:
-            shell = set(int(value) for value in records[offsets[row["query"]]:offsets[row["query"] + 1], 0])
-            require(set(row["top10_ids"]).issubset(shell), "top10 ID escaped candidate shell")
+            if int(row["query"]) != query:
+                continue
+            selected = np.asarray(row["top10_ids"], dtype=np.int64)
+            require(np.all(np.isin(selected, shell)), "top10 ID escaped candidate shell")
+            expected_metrics = {
+                "qrels_ndcg10": ndcg(selected, qrel_ids[query], qrel_scores[query]),
+                "teacher_overlap": float(np.isin(teacher_ids[query], selected).sum() / 10.0),
+                "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
+            }
+            for metric, expected_value in expected_metrics.items():
+                require(abs(float(row[metric]) - expected_value) < 1e-12,
+                        f"independent metric differs: {row['arm']}/{row['scope']}/{query}/{metric}")
     output = {"schema_version": 1, "family": "thq_learned_adc_gate_audit_v1", "status": "PASS",
               "result_sha256": sha(args.result), "runner_sha256": sha(args.runner),
               "candidate_receipt_sha256": sha(args.candidate_receipt),
-              "checks": ["runner/result binding", "candidate provenance binding", "held-out split",
+              "checks": ["runner/result binding", "candidate provenance binding", "source SHA bindings",
+                         "independent qrels nDCG, teacher overlap and candidate-FP32 overlap",
+                         "held-out split",
                          "rate-matched 2/4/8-bit arms", "row cardinality", "scope split",
                          "unique top10 IDs", "payload accounting", "direct ADC quality scope"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)

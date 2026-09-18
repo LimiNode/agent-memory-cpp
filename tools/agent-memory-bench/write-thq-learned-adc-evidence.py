@@ -24,18 +24,35 @@ def main() -> None:
     audit = json.loads(args.audit.read_text(encoding="utf-8"))
     if audit.get("status") != "PASS":
         raise RuntimeError("cannot write learned ADC evidence for a failed audit")
+    if audit.get("result_sha256") != sha(args.result):
+        raise RuntimeError("learned ADC audit/result binding differs")
+    if audit.get("runner_sha256") != sha(args.runner):
+        raise RuntimeError("learned ADC audit/runner binding differs")
+    if audit.get("candidate_receipt_sha256") != sha(args.candidate_receipt):
+        raise RuntimeError("learned ADC audit/candidate receipt binding differs")
     if result.get("runner_sha256") != sha(args.runner):
         raise RuntimeError("learned ADC runner binding differs")
     compact = {key: result[key] for key in (
         "schema_version", "family", "status", "evidence_status", "runner_sha256",
         "candidate_receipt_sha256", "documents", "training_count", "query_count",
-        "train_query_count", "model_hashes", "summaries", "summaries_by_scope", "limitations")}
+        "train_query_count", "model_hashes", "summaries_by_scope", "limitations")}
+    compact["diagnostic_scope_mixed_summaries"] = result.get("summaries")
     compact["input_hashes"] = {key: result[key] for key in (
         "documents_sha256", "training_sha256", "queries_sha256", "qrel_ids_sha256",
         "qrel_scores_sha256", "teacher_ids_sha256", "candidate_flat_sha256",
         "candidate_raw_sha256", "candidate_receipt_sha256")}
     if args.score_baseline:
         baseline = json.loads(args.score_baseline.read_text(encoding="utf-8"))
+        if baseline.get("family") != "thq_score_only_codec_gate_v1":
+            raise RuntimeError("score baseline family differs")
+        if baseline.get("status") != "EXECUTED":
+            raise RuntimeError("score baseline is not executed")
+        if baseline.get("candidate_receipt_sha256") != sha(args.candidate_receipt):
+            raise RuntimeError("score baseline candidate receipt differs")
+        for field in ("documents_sha256", "queries_sha256", "qrel_ids_sha256",
+                      "qrel_scores_sha256", "teacher_ids_sha256"):
+            if baseline.get(field) != result.get(field):
+                raise RuntimeError(f"score baseline input differs: {field}")
         by_query = {(row["query"], row["arm"]): row for row in baseline["rows"]
                     if row.get("scope", "full-shell") == "full-shell"}
         paired = {}
@@ -57,6 +74,16 @@ def main() -> None:
                     "worst_query_delta": float(delta.min())}
         compact["heldout_paired_qrels_ndcg10"] = paired
         compact["paired_scope"] = "thq4-top128"
+        compact["score_baseline_provenance"] = {
+            "raw_sha256": sha(args.score_baseline),
+            "family": baseline["family"],
+            "candidate_receipt_sha256": baseline["candidate_receipt_sha256"],
+            "documents_sha256": baseline["documents_sha256"],
+            "queries_sha256": baseline["queries_sha256"],
+            "qrel_ids_sha256": baseline["qrel_ids_sha256"],
+            "qrel_scores_sha256": baseline["qrel_scores_sha256"],
+            "teacher_ids_sha256": baseline["teacher_ids_sha256"],
+        }
     args.output_dir.mkdir(parents=True, exist_ok=True)
     compact_path = args.output_dir / "2026-09-18-thq-learned-adc-gate.compact.json"
     receipt_path = args.output_dir / "2026-09-18-thq-learned-adc-gate.receipt.json"
@@ -69,7 +96,13 @@ def main() -> None:
         "compact_sha256": sha(compact_path),
         "audit_sha256": sha(args.audit),
         "runner_sha256": sha(args.runner),
-        "candidate_receipt_sha256": sha(args.candidate_receipt)},
+        "candidate_receipt_sha256": sha(args.candidate_receipt),
+        "audit_bindings": {
+            "result_sha256": audit["result_sha256"],
+            "runner_sha256": audit["runner_sha256"],
+            "candidate_receipt_sha256": audit["candidate_receipt_sha256"],
+        },
+        "score_baseline_sha256": sha(args.score_baseline) if args.score_baseline else None},
         indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("THQ learned ADC compact evidence written")
 

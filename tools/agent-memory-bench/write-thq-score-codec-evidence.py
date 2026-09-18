@@ -32,6 +32,12 @@ def main() -> None:
     audit = json.loads(args.audit.read_text(encoding="utf-8"))
     if audit.get("status") != "PASS":
         raise RuntimeError("cannot write score evidence for a failed audit")
+    if audit.get("result_sha256") != sha(args.result):
+        raise RuntimeError("score audit/result binding differs")
+    if audit.get("runner_sha256") != sha(args.runner):
+        raise RuntimeError("score audit/runner binding differs")
+    if audit.get("candidate_receipt_sha256") != sha(args.candidate_receipt):
+        raise RuntimeError("score audit/candidate receipt binding differs")
     if result.get("runner_sha256") != sha(args.runner):
         raise RuntimeError("score runner binding differs")
     compact = {
@@ -65,6 +71,11 @@ def main() -> None:
         "runner_sha256": sha(args.runner),
         "candidate_receipt_sha256": sha(args.candidate_receipt),
         "audit_sha256": sha(args.audit),
+        "audit_bindings": {
+            "result_sha256": audit["result_sha256"],
+            "runner_sha256": audit["runner_sha256"],
+            "candidate_receipt_sha256": audit["candidate_receipt_sha256"],
+        },
     })
     audit_receipt_path = args.output_dir / "2026-09-18-thq-score-codec-gate.audit.receipt.json"
     write(audit_receipt_path, {

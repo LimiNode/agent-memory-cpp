@@ -36,8 +36,13 @@ Held-out (queries 120--151) results by equal side-code budget:
 For the 32 B rows, held-out candidate-FP32 overlap is `.8969`, `.9000`, and
 `.9062` (2/4/8 bits). Top-10-boundary pairwise accuracy in stage-local mode is
 `.6406`, `.6927`, and `.6667`. There is no monotone rate frontier: bit depth
-and block count trade off at fixed bytes, and every configuration remains below
-the direct INT8/RSLM controls from the earlier score-only gate.
+and block count trade off at fixed bytes. The 32 B/2-bit arm has held-out
+nDCG@10 `.698282`, versus reconstructed direct INT8 `.684879` (mean delta
+`+.013403`, bootstrap CI95 `[-.002125, +.033602]`, worst query `-.032532`)
+and reconstructed RSLM3 `.686792` (mean delta `+.011490`, CI95
+`[-.000348, +.029352]`, worst query `-.032532`). It is therefore an
+inconclusive survivor, not a confirmed improvement: both bootstrap intervals
+include zero. The other tested arms do not establish a quality win.
 
 The corresponding full-shell and stage-local non-norm top-10 lists are exactly
 equal for all 152 queries. This is the required production-shaped check, not an
@@ -52,12 +57,17 @@ or jointly fitted norm side information is useless.
 * **confirmed:** transform-consistent Mahalanobis assignment, rate-matched
   2/4/8-bit grid, top-aware pairwise diagnostics, and stage-local top128 replay
   with SHA-bound raw/compact evidence;
-* **bounded negative:** this block/PQ-like ADC does not match direct INT8 or
-  direct RSLM3 on the frozen shell;
+* **inconclusive:** 32 B/2-bit has the highest held-out qrels nDCG in this
+  grid, but its paired bootstrap intervals include zero and its teacher and
+  candidate-FP32 fidelity remain imperfect;
+* **bounded negative:** the remaining block/PQ-like ADC arms do not establish
+  a win over direct INT8 or direct RSLM3 on the frozen shell;
 * **not tested:** pairwise/listwise-trained codebooks, AVQ/Distill-VQ-style
   retrieval objective, score-aware rotation/grouping, faithful RSLM, full AQ or
   QINCo-like codebooks, native SIMD timing, persistent side-code materialization,
-  and held-out-domain replay.
+  and held-out-domain replay. The diagnostic pairwise metric treats an
+  approximate tie as correct; it is not a top-10 retrieval proof and should be
+  replaced by deterministic score/doc-ID tie ordering in a future replay.
 
 The input binding is retained in the compact evidence (`documents`, `training`,
 `queries`, qrels, teacher IDs, candidate flat/raw/receipt hashes). The accepted
