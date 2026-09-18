@@ -1,10 +1,10 @@
 {
-  "audit_sha256": "5a1c47f21024f0a968b7b0d798e066ae02b98153898d41b815823e4f53f6a748",
+  "audit_sha256": "925b112acc348d95f3c644861861ed858813bd306252a8712b5fb9c18c2b6ff1",
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-  "compact_sha256": "a0fd9699cb0e253fbf750a3486e0b393ad8f715dd14f15ced8900600dc6dafc2",
+  "compact_sha256": "af34716fe8147abb6e811e296078da8133968a395f1eb685311dff8a7c86ded0",
   "family": "thq_learned_adc_gate_evidence_receipt_v1",
-  "raw_sha256": "3b8dce4ccc2f743e49bbef45941ab42098664c8f1fa6b9436c6bacd2a7b544f9",
-  "runner_sha256": "7d0c39607d9cc71c3b04f243bb5c2d6322ee1db9667ba7ee737b0eb428aaab5f",
+  "raw_sha256": "45322beeb3a70d10d8db3293fc2e70aa13978fab88366427946227ef821ac0c3",
+  "runner_sha256": "54eda4762711e5668a1d1c861d9e879f87abcbba23dcbde6287504a14e01c26f",
   "schema_version": 1,
   "status": "PASS"
 }

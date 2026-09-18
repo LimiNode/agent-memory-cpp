@@ -790,16 +790,15 @@ overlap at 64 B and did not approach direct INT8. This is a bounded negative
 for the tested analytic basis, not for learned ADC in general. See
 `2026-09-18-thq-score-codec-gate.md` and its compact SHA-bound receipts.
 
-### THQ score-aware learned ADC gate (2026-09-18)
+### THQ score-weighted block/PQ-like ADC gate (2026-09-18)
 
-The first genuine score-aware additive/block ADC was evaluated with 4-bit
-symbols per block at 8/16/32 B per document. Codebooks were fitted from the
-detached 25k train vectors with query covariance from 120 training queries;
-the remaining 32 queries were held out. All-query teacher overlap was
-`.8493/.8599/.8730`, with pairwise order `.9019/.9087/.9212`; the 16 B arm
-reached `.6893` nDCG@10 on the held-out split. The arms remain below the
-existing direct INT8 and RSLM3 controls on the common 152-query shell. This is
-a bounded negative for covariance-weighted block ADC, not for pairwise-trained
-or neural ADC. A 2-byte FP16 document-norm side-code was also negative: it
-reduced all-query teacher overlap to `.7737/.7954/.8046` at 8/16/32 B. See
-`2026-09-18-thq-learned-adc-gate.md` and its compact SHA-bound evidence.
+The original receipt mixed Mahalanobis-trained codebooks with Euclidean symbol
+assignment and is superseded. The corrective replay uses the same transform for
+both operations, adds a rate-matched 2/4/8-bit grid at 8/16/32 B side budgets,
+and evaluates both the full shell and `THQ4 top128 → ADC`. On held-out queries,
+the 32 B nDCG values are `.6983/.6800/.6794` for 2/4/8 bits per block; no
+monotone rate frontier appears, and all arms remain below direct INT8/RSLM3.
+Non-norm stage-local top-10 lists exactly match full-shell lists for all 152
+queries. The exact-source-norm +2 B control remains only a negative control for
+this ADC, not evidence against learned norm correction. See
+`2026-09-18-thq-learned-adc-gate.md` and its corrected SHA-bound evidence.

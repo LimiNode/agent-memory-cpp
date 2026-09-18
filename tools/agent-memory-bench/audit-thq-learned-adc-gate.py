@@ -54,6 +54,12 @@ def main() -> None:
     require(all(row.get("total_payload_bytes") == row.get("side_payload_bytes") + 96 +
                 (2 if row["arm"].endswith("+norm2") else 0) for row in rows),
             "learned ADC payload accounting differs")
+    indexed = {(row["query"], row["arm"], row["scope"]): row for row in rows}
+    for arm in expected:
+        if not arm.endswith("+norm2"):
+            require(all(indexed[q, arm, "full-shell"]["top10_ids"] ==
+                        indexed[q, arm, "thq4-top128"]["top10_ids"] for q in range(152)),
+                    f"stage-local top10 differs for {arm}")
     scopes = result.get("summaries_by_scope", {})
     require(set(scopes) == {"full-shell", "thq4-top128"}, "scope summaries missing")
     for scope in scopes:
