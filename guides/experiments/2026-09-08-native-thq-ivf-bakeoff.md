@@ -17,8 +17,10 @@ The E5 IVF materialization is produced by
 `train_limit=100000`, `niter=15`, seed `20260908`, spherical inner-product
 assignment, and stable document-id ordering inside postings.  The native
 runner is `agent-memory-native-thq-ivf-bakeoff`; it performs centroid scoring,
-posting traversal, THQ4 Hamming top-256, and three final reranks (FP32,
-packed INT10, packed INT12).  Flat THQ uses the existing
+posting traversal, a legacy Gaussian-threshold packed Hamming top-256, and
+three final reranks (FP32, packed INT10, packed INT12).  This is not the
+canonical interval-squared THQ4 ADC scorer used by the later production-shaped
+gate.  Flat THQ uses the existing
 `agent-memory-native-thq-full-scan` runner.
 
 The native E5-IVF run used one measured pass over all 152 queries.  Timings
@@ -29,9 +31,9 @@ reads.
 
 ## Results
 
-### E5-IVF → THQ4 → final rerank (native, 152 queries)
+### E5-IVF → legacy Gaussian-Hamming control → final rerank (native, 152 queries)
 
-| candidate budget | mean candidates | route survival | THQ@256 survival | nDCG FP32 | nDCG INT10 | nDCG INT12 | p50 ms | p95 ms | p99 ms |
+| candidate budget | mean candidates | route survival | Gaussian-Hamming@256 survival | nDCG FP32 | nDCG INT10 | nDCG INT12 | p50 ms | p95 ms | p99 ms |
 |---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
 | 20k | 19,659 | .834 | .833 | .6390 | .6410 | .6390 | 33.7 | 36.5 | 38.0 |
 | 50k | 49,708 | .914 | .913 | .6458 | .6477 | .6458 | 75.0 | 83.7 | 85.1 |
@@ -44,7 +46,7 @@ they are not FP32-free claims for the flat route until the corresponding flat
 final-code rows are compared.  On this corpus INT10 is slightly above FP32 in
 mean qrels nDCG due to tie/order effects, while INT12 is effectively equal.
 
-### Flat THQ4 control (native, 152 queries)
+### Flat legacy Gaussian-Hamming control (native, 152 queries)
 
 | K | payload | mean nDCG | mean top-10 overlap | p95 scan | p95 total | p99 total |
 |---:|---:|---:|---:|---:|---:|---:|

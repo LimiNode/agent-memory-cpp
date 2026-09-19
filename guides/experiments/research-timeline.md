@@ -555,14 +555,16 @@ were unchanged; the corrected receipt supersedes the historical hash.
 ### #359 THQ-ADC interval-distance oracle (2026-09-11)
 
 The exhaustive THQ-ADC replay tested continuous query-to-level interval
-distances against the canonical raw THQ4-384 Hamming/ordinal-L1 baseline on
+distances against the legacy raw THQ4-384 packed-Hamming/ordinal-L1 control on
 all 152 semantic queries.  Interval L1, squared interval, and train-IQR-
 normalized variants each reached `1.0 @256` teacher survival (worst query
 `1.0`), versus `.999342` mean / `.9` worst for plain Hamming.  At `@64`, the
 means were `.996711`, `.997368`, and `.996711` versus `.989474`; squared
 interval also reduced mean teacher-rank p95 from `26.99` to `16.60`.
 
-This is a representation/ranking result only: every arm remains an exhaustive
+The packed-Hamming row here is a historical control, not the canonical
+interval-squared THQ4 production scorer.  This is a representation/ranking
+result only: every arm remains an exhaustive
 scan and the Python timing is diagnostic.  It licenses a follow-up candidate
 generation oracle using continuous margins, but no ANN index, MDBX backend, or
 production activation (`production_activation: false`).  The compact receipt
@@ -839,3 +841,21 @@ THQ-pattern-conditioned residual codes at 32/48 B, and independent
 RaBitQ/TurboQuant/NEQ residual controls. Retrieval-aware training and native
 materialization remain conditional on those classical gates. See
 `2026-09-19-next-score-codec-wave.md`.
+
+### Persisted packed residual evidence and scorer taxonomy correction (2026-09-20)
+
+The RSLM, scalar-conditioned, and joint-conditioned packed gates are now
+closed as source-replay evidence: their committed audits are `PASS`, include
+`source_replay: true`, bind the result and runner hashes, and account for the
+candidate-ID mapping in complete candidate-union footprints.  The packed
+round-trip contract is also exercised by CI.  These changes close the
+evidence/storage issues from #431/#432; they do not add a new quality or
+latency measurement.
+
+Several older notes used “THQ4 Hamming” as shorthand for a separate
+Gaussian-threshold packed-Hamming control.  That wording is corrected here and
+in the affected notes: canonical THQ4 uses interval-squared ADC.  The old
+binary and local RaBitQ/BBQ-like results remain valid bounded controls on their
+original fixtures, but a matched R4 comparison of canonical THQ4, pinned
+RaBitQ-RR-1, and BBQ-block-1 through the same final rerank is still open.  See
+`2026-09-20-thq-scorer-taxonomy-and-binary-gap.md`.
