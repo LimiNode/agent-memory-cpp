@@ -17,31 +17,34 @@ Each fold fits 128×3D×2-bit codebooks on 4,096 detached residual rows plus
 The final control uses ten Lloyd iterations and four randomized restarts. A
 preliminary single-initialization replay was also run and is not used as the
 conclusion because its result changed when the input-row order changed.
-The scorer, THQ4 shell, tie ordering, and four-fold split are unchanged from
-the preceding cross-fit gate.
+The scorer, THQ4 shell and tie ordering are unchanged from the preceding
+cross-fit gate. This corrected replay uses the same seeded shuffled fold
+assignment as the production-shaped and pairwise gates (`seed=20260919`).
 
 ## Result
 
 | fit | OOF nDCG@10 | candidate-FP32 overlap | boundary pairwise |
 | --- | ---: | ---: | ---: |
 | ordinary 32B/2-bit cross-fit | .653856 | .869079 | .657895 |
-| cutoff-aware top-32-in-THQ fit (10 iterations, 4 restarts) | .654264 | .866447 | .652412 |
+| cutoff-aware top-32-in-THQ fit, contiguous folds (10 iterations, 4 restarts) | .654264 | .866447 | .652412 |
+| cutoff-aware top-32-in-THQ fit, shuffled folds (10 iterations, 4 restarts) | .645956 | .866447 | .654605 |
 
-The final cutoff-aware per-fold nDCG values are recorded in the raw receipt;
-the paired delta to candidate-FP32 is `+0.000064`, with bootstrap CI95
-`[-.013881,+.014651]` and worst-query loss `-.369070`. Thus the corrected
-teacher-ranked sample plus more serious fitting is statistically
-indistinguishable from the candidate-FP32 reference. The preliminary
-single-initialization `.648924` result and the earlier global-R4 top32 replay
-are retained only as diagnostics, not pooled with the corrected control.
+The shuffled replay's paired delta to the production-shaped FP32 reference is
+`-.008244`, with bootstrap CI95 `[-.022850,+.006192]` and worst-query loss
+`-.369070`. The earlier `.654264` result is therefore a contiguous-fold
+historical control, not apples-to-apples evidence against the shuffled gate.
+Both intervals include zero; this remains a bounded neutral/negative result,
+not a claim of a decisive quality separation. The preliminary
+single-initialization `.648924` result and earlier global-R4 top32 replay are
+retained only as diagnostics.
 
 ## Interpretation
 
-This is a bounded neutral result for this particular cutoff-aware sampling
-recipe. It does not show that pairwise/listwise learning is impossible; it
-shows that simply oversampling teacher top-32 documents inside the correct
-THQ4 shell while retaining the same block codebook parameterization and
-distortion objective is insufficient.
+This is a bounded negative/neutral result for this particular cutoff-aware
+sampling recipe. It does not show that pairwise/listwise learning is
+impossible; it shows that simply oversampling teacher top-32 documents inside
+the correct THQ4 shell while retaining the same block codebook parameterization
+and distortion objective is insufficient on either fold assignment.
 The initialization sensitivity is itself a methodological warning: a future
 gate must use order-independent initialization or multiple restarts. A genuine
 pairwise/listwise gate would need an explicit score-order loss (and careful
@@ -51,7 +54,9 @@ Given the negative OOF result and the fixed-capacity controls, no further
 32/48/64 B sweep is justified before changing the objective family. Native
 materialization remains deferred.
 
-Raw output (kept locally): `tmp/thq-adc-cutoff-aware.json`, SHA-256
-`165a20d3e5859cb91c07da934b29e6e4c56060089c1d7e9b5e79e7050b505c4f`.
+Raw output (shuffled corrected replay): `tmp/thq-adc-cutoff-aware-shuffled.json`,
+SHA-256 `2d0ae89b4d40b86e8e651141ea3bd600460ab0d9349f43644bd4ba039018accd`.
 Runner SHA-256:
-`dc8b4ab302c9091b27a8621bfbc7d67cf9b141935012aebd0831437110850826`.
+`d79f3fe262f6faca9b0215a1266eb1ccb0aa6c4e24ecd120b579a94da77b80dc`.
+Independent source-replay audit SHA-256:
+`5ba3cea5c273dcca76ddec4f9f42e32b733eb167111ae4170b0f88a834879042`.

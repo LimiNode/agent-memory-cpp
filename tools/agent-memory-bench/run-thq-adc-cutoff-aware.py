@@ -63,7 +63,9 @@ def main() -> None:
     train_levels = h.unpack_thq(h.pack_thq(train, thresholds))
     train_base = centroids[np.arange(D)[None, :], train_levels]
     train_residual = train - train_base
-    folds = np.array_split(np.arange(query_count), 4)
+    fold_seed = 20260919
+    shuffled = np.random.default_rng(fold_seed).permutation(query_count)
+    folds = np.array_split(shuffled, 4)
     rows = []
     fit_diagnostics = {}
     for fold, test_ids in enumerate(folds):
@@ -129,6 +131,8 @@ def main() -> None:
             scores = gate.gate.direct_adc_scores(base[positions], codebooks, symbols[positions], query)
             selected = gate.gate.top_ids(scores, thq_top)
             rows.append({"fold": fold, "query": int(qi), "top10_ids": selected.astype(int).tolist(),
+                         "candidate_fp32_top10_ids": exact_top.astype(int).tolist(),
+                         "thq4_top128_ids": thq_top.astype(int).tolist(),
                          "qrels_ndcg10": gate.gate.ndcg(selected, qrel_ids[qi], qrel_scores[qi]),
                          "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
                          "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
@@ -141,7 +145,9 @@ def main() -> None:
     result = {"schema_version": 1, "family": "thq_adc_cutoff_aware_crossfit_v1", "status": "EXECUTED",
               "runner_sha256": sha(Path(__file__)), "documents": document_count,
               "training_count": train_count, "query_count": query_count, "fold_count": 4,
-              "fold_sizes": [len(fold) for fold in folds], "candidate_flat_sha256": sha(args.candidate_flat),
+              "fold_sizes": [len(fold) for fold in folds], "fold_seed": fold_seed,
+              "fold_queries": [fold.astype(int).tolist() for fold in folds],
+              "candidate_flat_sha256": sha(args.candidate_flat),
               "candidate_raw_sha256": sha(args.candidate_raw), "candidate_receipt_sha256": sha(args.candidate_receipt),
               "documents_sha256": sha(args.documents), "thq4_codes_sha256": sha(args.thq4_codes),
               "thq4_thresholds_sha256": sha(args.thq4_thresholds), "training_sha256": sha(args.train_vectors),
@@ -149,10 +155,10 @@ def main() -> None:
               "qrel_scores_sha256": sha(args.qrel_scores), "teacher_ids_sha256": sha(args.teacher_ids),
               "training_protocol": "detached_4096_plus_teacher_top32_per_fit_query",
               "fit_diagnostics": fit_diagnostics, "summary": summary, "rows": rows,
-              "evidence_status": "four_fold_out_of_fold_cutoff_aware_reference_quality",
+              "evidence_status": "four_fold_shuffled_out_of_fold_cutoff_aware_reference_quality",
               "limitations": ["teacher-ranked training sample; no qrels labels used",
                                "candidate-local replay", "no native latency or persistent materialization",
-                               "no cross-domain holdout"]}
+                               "no cross-domain holdout", "single shuffled fold assignment"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"wrote {args.output}")

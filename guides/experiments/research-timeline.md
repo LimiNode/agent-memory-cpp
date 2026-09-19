@@ -828,3 +828,14 @@ Both results have independent source-replay audits and are recorded as
 quality-only reference evidence; no native latency or production codec choice
 is licensed. See the stable/pairwise corrected notes and receipts dated
 2026-09-19.
+
+The cutoff-aware teacher-top32 control was also replayed with the same seeded
+shuffled folds. Its nDCG is `.645956` (paired delta `-.008244` versus the
+shuffled FP32 control, CI95 `[-.022850,+.006192]`), so the earlier `.654264`
+contiguous-fold number is retained only as a fold-assignment control.
+
+The next planned wave is deliberately split: faithful persistable RSLM2/3/4,
+THQ-pattern-conditioned residual codes at 32/48 B, and independent
+RaBitQ/TurboQuant/NEQ residual controls. Retrieval-aware training and native
+materialization remain conditional on those classical gates. See
+`2026-09-19-next-score-codec-wave.md`.
