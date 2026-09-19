@@ -37,7 +37,10 @@ codebooks are 24,576/49,152 B; candidate-union totals including THQ4 and the
 codebook are 88,970,112/111,231,072 B, and one-million-document
 extrapolations are 192,024,576/240,049,152 B. These figures describe the
 candidate-union reference and its extrapolation, not a full production
-materialization.
+materialization. The candidate-union ID mapping adds 1,853,032 B, giving
+complete physical footprints of 90,823,144/113,084,104 B. The one-million-row
+figures assume row index equals document ID; shared THQ thresholds and
+centroids are excluded.
 
 ## Evidence
 
@@ -45,7 +48,7 @@ Raw result SHA-256:
 `cc972068c6564c01fad068b54aa748913c725ff64562e814a9783912a8de5ed1`
 
 Independent source-replay audit SHA-256:  
-`4b6aee0c518fe56a06fb93e26dc19157cc17ac4620d6cc027b0bad6826a9b69e`
+`8eadb9420df4a4964f49db8339f4f3ff5348cc58c41f47117203339ffecec4ee`
 
 The audit independently checks source bindings, persisted ID/packed-symbol/codebook
 hashes, exact packed sizes, row cardinality and fold membership, THQ top-128

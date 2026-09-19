@@ -1,0 +1,28 @@
+{
+  "checks": ["result/source SHA binding", "persisted ID/packed-symbol/codebook hashes", "packed size and storage metadata", "family cardinality", "fold membership", "candidate FP32 top10", "independent conditional decode and top10 replay", "qrels nDCG", "teacher and candidate overlap"],
+  "family": "thq_conditioned_residual_audit_v1",
+  "input_hashes": {
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_ids": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq-conditioned2_codebook": "ab8a9749d9e939ec82aaf5b8611d97fea1360116b287ae793ce65aafbb91195d",
+    "thq-conditioned2_symbols": "855e83fdbc7cd4700e32b0361f7ed32bf4cd9e1ca61bc0d066babc7ccbc5fd85",
+    "thq-conditioned3_codebook": "1b86ccb6c3f33caf9cc2483213c7fb64a3570f34fa6f980e0663b8c557459f03",
+    "thq-conditioned3_symbols": "a194b9287ec998ce784d7550c8b571ddba8c724963b116788a480156e66092ac",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "query_count": 152,
+  "result_sha256": "cc972068c6564c01fad068b54aa748913c725ff64562e814a9783912a8de5ed1",
+  "row_count": 304,
+  "runner_sha256": "dd0ecd17be15ce3a3a69666fcc8daa781db5a069e9c98d2d2d09ffe76a85c9af",
+  "schema_version": 1,
+  "source_replay": true,
+  "status": "PASS"
+}
