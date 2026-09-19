@@ -10,8 +10,8 @@ This gate tests a joint 3D residual codebook for each THQ4 pattern. The 384
 coordinates are partitioned into 128 three-dimensional blocks; each block has
 up to 64 THQ4 level patterns and a document-only Lloyd codebook with 2 or 3
 bits per block. Sparse patterns fall back to the block-global codebook. Symbols
-and codebooks are persisted for the 463,258 unique documents in the canonical
-R4 candidate shell.
+are bit-packed; the packed streams and codebooks are persisted for the 463,258
+unique documents in the canonical R4 candidate shell.
 
 The same four shuffled folds and 152-query shell are used as in the ADC,
 RSLM and scalar-conditioned gates. Direct analytic cosine scoring is checked
@@ -34,17 +34,25 @@ RSLM4 (`.659320`), while candidate-FP32 overlap is lower than those controls.
 The gain therefore supports joint conditional structure as a useful direction,
 but does not yet justify production selection.
 
+The packed side streams are exactly 32/48 B per document. The global codebooks
+are 393,216/786,432 B; candidate-union totals including THQ4 and the codebook
+are 59,690,240/67,495,584 B, and one-million-document extrapolations are
+128,393,216/144,786,432 B. These figures describe the candidate-union
+reference and its extrapolation, not a full production materialization.
+
 ## Evidence
 
 Raw result SHA-256:  
-`1d172415d72ec1b049e38ba701623c07a6d4818ab0360df4ba539ed48c6c8c68`
+`985d8d0ac90d3fd8c82e0da400503ea59fa9689b4a0dd0a0be480fe5efa8b87e`
 
 Independent source-replay audit SHA-256:  
-`865af430240a8562987102d2d6a2a868cfd5450b147a97a7bc890ef125853a5a`
+`d9925babc0f8d5794453f0ffce6240a2a778069e0b41d4de6bb3e973104c4441`
 
-The audit checks source bindings, persisted ID/symbol/codebook hashes, family
-cardinality and fold membership, independently recomputed THQ top-128 and
-candidate FP32 top-10 sequences, nDCG and teacher overlap.
+The audit checks source bindings, persisted ID/packed-symbol/codebook hashes,
+exact packed sizes, family cardinality and fold membership, independently
+recomputed THQ top-128 and candidate FP32 top-10 sequences, and a codec
+decode/re-score whose top-10 must exactly match every result row, followed by
+nDCG and teacher overlap.
 
 ## Decision
 

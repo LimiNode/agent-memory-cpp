@@ -34,6 +34,19 @@ def load_helpers():
 h = load_helpers()
 
 
+def load_packed_helpers():
+    path = Path(__file__).with_name("thq-packed-codecs.py")
+    spec = importlib.util.spec_from_file_location("thq_packed_codecs", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load packed codec helpers")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+p = load_packed_helpers()
+
+
 def sha(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -122,14 +135,17 @@ def main() -> None:
     models = {}
     for bits in BITS:
         centers = h.lloyd_centers(h.fwht_blocks(train_residual, signs), bits, iterations=8)
-        symbols_path = args.artifact_dir / f"rslm{bits}.candidate.u8"
+        symbols_path = args.artifact_dir / f"rslm{bits}.candidate.packed"
         symbols = source_symbols(np.asarray(documents[unique_ids], dtype=np.float32) -
                                  centroids[np.arange(D)[None, :], h.h.unpack_thq(np.asarray(thq_codes[unique_ids]))],
                                  centers, signs)
-        symbols.astype(np.uint8).tofile(symbols_path)
+        p.pack_symbols(symbols, bits).tofile(symbols_path)
+        p.assert_packed_size(symbols_path, len(unique_ids), D, bits)
         centers_path = args.artifact_dir / f"rslm{bits}.centers.f32"
         np.asarray(centers, dtype="<f4").tofile(centers_path)
-        models[bits] = {"centers": centers, "symbols": symbols,
+        packed = np.memmap(symbols_path, mode="r", dtype=np.uint8,
+                           shape=(len(unique_ids), p.packed_width(D, bits)))
+        models[bits] = {"centers": centers, "packed": packed,
                         "symbols_path": symbols_path, "centers_path": centers_path}
     folds = np.array_split(np.random.default_rng(20260919).permutation(query_count), 4)
     rows, parity = [], {str(bits): {"max_abs_score_error": 0.0, "ordered_top10_matches": 0} for bits in BITS}
@@ -156,7 +172,7 @@ def main() -> None:
             for bits in BITS:
                 model = models[bits]
                 symbol_rows = np.asarray([id_to_row[int(doc)] for doc in thq_top])
-                selected_symbols = model["symbols"][symbol_rows]
+                selected_symbols = p.unpack_symbols(model["packed"][symbol_rows], D, bits)
                 decoded_rotated = model["centers"][np.arange(D)[None, :], selected_symbols]
                 decoded = h.fwht_blocks(decoded_rotated, signs, inverse=True)
                 direct = direct_scores(base[pos], decoded, query)
@@ -181,7 +197,16 @@ def main() -> None:
               "qrel_ids_sha256": sha(args.qrel_ids), "qrel_scores_sha256": sha(args.qrel_scores), "teacher_ids_sha256": sha(args.teacher_ids),
               "protocol": "deterministic randomized block FWHT + per-coordinate Lloyd-Max; document-only fit; candidate symbols persisted",
               "candidate_ids_sha256": sha(unique_ids_path), "candidate_unique_documents": int(len(unique_ids)),
-              "models": {str(bits): {"bits": bits, "side_payload_bytes": 48 * bits, "centers_sha256": sha(v["centers_path"]), "symbols_sha256": sha(v["symbols_path"]), "candidate_unique_documents": int(len(unique_ids))} for bits, v in models.items()},
+              "models": {str(bits): {
+                  "bits": bits, "symbol_width": D, "side_payload_bytes": 48 * bits,
+                  "physical_side_bytes_candidate_union": int(len(unique_ids) * 48 * bits),
+                  "global_codebook_bytes": int(D * (1 << bits) * 4),
+                  "candidate_union_total_bytes": int(len(unique_ids) * (96 + 48 * bits) + D * (1 << bits) * 4),
+                  "full_1m_logical_total_bytes": int(1_000_000 * (96 + 48 * bits) + D * (1 << bits) * 4),
+                  "full_1m_physical_total_bytes": int(1_000_000 * (96 + 48 * bits) + D * (1 << bits) * 4),
+                  "centers_sha256": sha(v["centers_path"]), "packed_symbols_sha256": sha(v["symbols_path"]),
+                  "candidate_unique_documents": int(len(unique_ids))
+              } for bits, v in models.items()},
               "parity": parity, "summaries": summaries, "rows": rows,
               "evidence_status": "four_fold_shuffled_persistable_rslm_reference_gate",
               "limitations": ["local FWHT/Lloyd-Max reference, not a claim of reproducing every paper-specific RSLM detail", "candidate-local symbol materialization", "NumPy reference quality only", "no held-out-domain confirmation"]}

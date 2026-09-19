@@ -1,11 +1,11 @@
 {
   "family": "thq_joint_conditional_gate_receipt_v1",
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "EXECUTED",
-  "runner_sha256": "67e427c9780fe866bb52d339f4504475169958487649709cb26c67a960b097c5",
-  "raw_sha256": "1d172415d72ec1b049e38ba701623c07a6d4818ab0360df4ba539ed48c6c8c68",
-  "audit_sha256": "865af430240a8562987102d2d6a2a868cfd5450b147a97a7bc890ef125853a5a",
-  "audit_runner_sha256": "560ca565f1fcffbcb1d9239679b1865d005d1e753fcd72919bf051e0b76ccb45",
+  "runner_sha256": "773dd29f5fbe2fe80b1cb4e2c9d5e386599ef476b61954dcd66a2f61ba3fa38d",
+  "raw_sha256": "985d8d0ac90d3fd8c82e0da400503ea59fa9689b4a0dd0a0be480fe5efa8b87e",
+  "audit_sha256": "d9925babc0f8d5794453f0ffce6240a2a778069e0b41d4de6bb3e973104c4441",
+  "audit_runner_sha256": "fd5aaade03d727d436d06eafd879a1bb63f9427e0c802513d5d01b143e81869b",
   "query_count": 152,
   "fold_count": 4,
   "fold_seed": 20260919,
@@ -15,10 +15,15 @@
   "cascade_total_bytes": {"thq-joint2": 128, "thq-joint3": 144},
   "artifact_hashes": {
     "candidate_ids": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
-    "thq-joint2_symbols": "283d089ccb08429a2f070597d9ebe2f01f012310f7f08a3bea89a16a50984c56",
-    "thq-joint3_symbols": "df095291a7a13795ee72b7780ea2a0df6bccf5a6291c00d3dfd0155a2f4275aa",
+    "thq-joint2_symbols": "f49230175a2b2f3733b6adccd81745687a3d39ee0e2d9e4decb2da8635005bda",
+    "thq-joint3_symbols": "d431ddd48299179f1962f4d67b91ef71d1c00d7b082b068f7cd9027d786955f0",
     "thq-joint2_codebook": "fd007dc303b816ab9a3b238ce83d7d296b9080e33dda1d08ae75df34d28771fa",
     "thq-joint3_codebook": "0c94defbc1518ec26dd1612851ba2f3e48d1185d754b844c36621aa94f9936ef"
   },
-  "evidence_status": "bounded_persistable_joint_conditional_reference_gate"
+  "physical_side_bytes_candidate_union": {"thq-joint2": 14824256, "thq-joint3": 22236384},
+  "global_codebook_bytes": {"thq-joint2": 393216, "thq-joint3": 786432},
+  "candidate_union_total_bytes": {"thq-joint2": 59690240, "thq-joint3": 67495584},
+  "full_1m_logical_total_bytes": {"thq-joint2": 128393216, "thq-joint3": 144786432},
+  "full_1m_physical_total_bytes": {"thq-joint2": 128393216, "thq-joint3": 144786432},
+  "evidence_status": "bounded_persistable_joint_conditional_reference_gate_with_packed_replay"
 }

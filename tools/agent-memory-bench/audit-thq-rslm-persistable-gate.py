@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 from pathlib import Path
 
@@ -12,6 +13,43 @@ import numpy as np
 D = 384
 TOP = 128
 ARMS = ("rslm2", "rslm3", "rslm4")
+
+
+def load_packed_helpers():
+    path = Path(__file__).with_name("thq-packed-codecs.py")
+    spec = importlib.util.spec_from_file_location("thq_packed_codecs_audit", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("cannot load packed codec helpers")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+p = load_packed_helpers()
+
+
+def fwht_blocks(values: np.ndarray, signs: np.ndarray, inverse: bool = False) -> np.ndarray:
+    result = np.asarray(values, dtype=np.float32).copy().reshape(len(values), 3, 128)
+    if not inverse:
+        result *= signs[None, :, :]
+    width = 1
+    while width < 128:
+        for start in range(0, 128, width * 2):
+            left = result[:, :, start:start + width].copy()
+            right = result[:, :, start + width:start + width * 2].copy()
+            result[:, :, start:start + width] = left + right
+            result[:, :, start + width:start + width * 2] = left - right
+        width *= 2
+    if inverse:
+        result *= signs[None, :, :]
+    return (result / np.sqrt(128.0)).reshape(len(values), D)
+
+
+def direct_scores(base: np.ndarray, decoded: np.ndarray, query: np.ndarray) -> np.ndarray:
+    numerator = base @ query + decoded @ query
+    norm_sq = np.sum(base * base, axis=1) + 2.0 * np.sum(base * decoded, axis=1)
+    norm_sq += np.sum(decoded * decoded, axis=1)
+    return numerator / np.sqrt(np.maximum(norm_sq, np.finfo(np.float32).tiny))
 
 
 def sha(path: Path) -> str:
@@ -43,11 +81,11 @@ def ndcg(ids: list[int], qrel_ids: np.ndarray, qrel_scores: np.ndarray) -> float
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    for name in ("result", "runner", "candidate-flat", "candidate-raw", "documents", "thq4-codes",
+    for name in ("result", "runner", "candidate-flat", "candidate-raw", "documents", "train-vectors", "thq4-codes",
                  "thq4-thresholds", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "artifact-dir", "output"):
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     args = parser.parse_args()
-    paths = (args.result, args.runner, args.candidate_flat, args.candidate_raw, args.documents,
+    paths = (args.result, args.runner, args.candidate_flat, args.candidate_raw, args.documents, args.train_vectors,
              args.thq4_codes, args.thq4_thresholds, args.queries, args.qrel_ids, args.qrel_scores,
              args.teacher_ids, args.artifact_dir)
     require(all(path.is_file() if path.suffix else path.is_dir() for path in paths), "audit input missing")
@@ -56,7 +94,20 @@ def main() -> None:
     require(result.get("runner_sha256") == sha(args.runner), "runner/result SHA binding differs")
     query_count = int(result["query_count"])
     document_count = args.documents.stat().st_size // (4 * D)
+    expected_sources = {
+        "candidate_flat_sha256": args.candidate_flat, "candidate_raw_sha256": args.candidate_raw,
+        "documents_sha256": args.documents, "training_sha256": args.train_vectors,
+        "thq4_codes_sha256": args.thq4_codes, "thq4_thresholds_sha256": args.thq4_thresholds,
+        "queries_sha256": args.queries, "qrel_ids_sha256": args.qrel_ids,
+        "qrel_scores_sha256": args.qrel_scores, "teacher_ids_sha256": args.teacher_ids,
+    }
+    for field, path in expected_sources.items():
+        require(result.get(field) == sha(path), f"result/{field} binding differs")
+    require(int(result["documents"]) == document_count, "document cardinality differs")
+    require(int(result["query_count"]) == args.queries.stat().st_size // (4 * D), "query cardinality differs")
     documents = np.memmap(args.documents, mode="r", dtype="<f4", shape=(document_count, D))
+    train_count = args.train_vectors.stat().st_size // (4 * D)
+    train = np.memmap(args.train_vectors, mode="r", dtype="<f4", shape=(train_count, D))
     codes = np.memmap(args.thq4_codes, mode="r", dtype=np.uint8, shape=(len(documents), 96))
     thresholds = np.fromfile(args.thq4_thresholds, dtype="<f4").reshape(D, 3)
     queries = np.memmap(args.queries, mode="r", dtype="<f4", shape=(query_count, D))
@@ -75,11 +126,17 @@ def main() -> None:
     centers = {}
     for arm in ARMS:
         bits = int(arm[-1])
-        symbol_path = args.artifact_dir / f"{arm}.candidate.u8"
+        symbol_path = args.artifact_dir / f"{arm}.candidate.packed"
         center_path = args.artifact_dir / f"{arm}.centers.f32"
-        symbols[arm] = np.memmap(symbol_path, mode="r", dtype=np.uint8, shape=(len(unique_ids), D))
+        symbols[arm] = np.memmap(symbol_path, mode="r", dtype=np.uint8,
+                                  shape=(len(unique_ids), p.packed_width(D, bits)))
         centers[arm] = np.fromfile(center_path, dtype="<f4").reshape(D, 1 << bits)
-        require(sha(symbol_path) == result["models"][str(bits)]["symbols_sha256"], f"{arm} symbol hash differs")
+        p.assert_packed_size(symbol_path, len(unique_ids), D, bits)
+        model_meta = result["models"][str(bits)]
+        require(int(model_meta["symbol_width"]) == D and int(model_meta["side_payload_bytes"]) == 48 * bits, f"{arm} storage metadata differs")
+        require(int(model_meta["physical_side_bytes_candidate_union"]) == symbol_path.stat().st_size, f"{arm} physical side size differs")
+        require(int(model_meta["global_codebook_bytes"]) == center_path.stat().st_size, f"{arm} codebook size differs")
+        require(sha(symbol_path) == result["models"][str(bits)]["packed_symbols_sha256"], f"{arm} packed symbol hash differs")
         require(sha(center_path) == result["models"][str(bits)]["centers_sha256"], f"{arm} center hash differs")
     folds = [set(map(int, fold)) for fold in result["fold_queries"]]
     fold_by_query = {query: fold for fold, values in enumerate(folds) for query in values}
@@ -87,6 +144,14 @@ def main() -> None:
     require(len(rows) == query_count * 3 and len({(int(row["query"]), row["arm"]) for row in rows}) == len(rows), "row cardinality differs")
     require({row["arm"] for row in rows} == set(ARMS), "arm set differs")
     id_to_row = {int(doc): i for i, doc in enumerate(unique_ids)}
+    thresholds_levels = np.sum(np.asarray(train)[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
+    centroids = np.empty((D, 4), dtype=np.float32)
+    fallback = np.mean(np.asarray(train), axis=0, dtype=np.float64).astype(np.float32)
+    for coordinate in range(D):
+        for level in range(4):
+            values = np.asarray(train)[thresholds_levels[:, coordinate] == level, coordinate]
+            centroids[coordinate, level] = float(np.mean(values)) if len(values) else fallback[coordinate]
+    signs = np.random.default_rng(20260916).choice(np.asarray([-1.0, 1.0], dtype=np.float32), size=(3, 128))
     checked = 0
     for row in rows:
         query = int(row["query"])
@@ -109,10 +174,21 @@ def main() -> None:
         thq_positions = np.asarray([int(np.flatnonzero(ids == doc)[0]) for doc in thq_top])
         exact_top = top_ids(exact[thq_positions], thq_top, 10).tolist()
         require(row["candidate_fp32_top10_ids"] == exact_top, "candidate FP32 top10 differs")
+        arm = row["arm"]
+        bits = int(arm[-1])
+        symbol_rows = np.asarray([id_to_row[int(doc)] for doc in thq_top])
+        decoded_rotated = centers[arm][np.arange(D)[None, :],
+                                       p.unpack_symbols(symbols[arm][symbol_rows], D, bits)]
+        decoded = fwht_blocks(decoded_rotated, signs, inverse=True)
+        levels_top = levels[thq_positions]
+        base = centroids[np.arange(D)[None, :], levels_top]
+        replayed = top_ids(direct_scores(base, decoded, np.asarray(queries[query], dtype=np.float32)), thq_top, 10).tolist()
+        require(row["top10_ids"] == replayed, "replayed codec top10 differs")
         selected = list(map(int, row["top10_ids"]))
         require(len(selected) == 10 and len(set(selected)) == 10 and set(selected).issubset(set(map(int, row["thq4_top128_ids"]))), "top10 containment differs")
         require(abs(float(row["qrels_ndcg10"]) - ndcg(selected, qrel_ids[query], qrel_scores[query])) < 1e-12, "nDCG differs")
         require(abs(float(row["teacher_overlap"]) - np.isin(teacher_ids[query], selected).sum() / 10.0) < 1e-12, "teacher overlap differs")
+        require(abs(float(row["candidate_fp32_overlap"]) - np.isin(exact_top, selected).sum() / 10.0) < 1e-12, "candidate FP32 overlap differs")
         checked += 1
     audit = {"schema_version": 1, "family": "thq_rslm_persistable_audit_v1", "status": "PASS", "source_replay": True,
              "result_sha256": sha(args.result), "runner_sha256": sha(args.runner), "row_count": checked,
@@ -120,11 +196,12 @@ def main() -> None:
                               "documents": sha(args.documents), "thq4_codes": sha(args.thq4_codes),
                               "thq4_thresholds": sha(args.thq4_thresholds), "queries": sha(args.queries),
                               "qrel_ids": sha(args.qrel_ids), "qrel_scores": sha(args.qrel_scores),
-                              "teacher_ids": sha(args.teacher_ids), "candidate_ids": sha(args.artifact_dir / "candidate.ids.i4"),
-                              "rslm2_symbols": sha(args.artifact_dir / "rslm2.candidate.u8"),
-                              "rslm3_symbols": sha(args.artifact_dir / "rslm3.candidate.u8"),
-                              "rslm4_symbols": sha(args.artifact_dir / "rslm4.candidate.u8")},
-             "query_count": query_count, "checks": ["source SHA binding", "persisted ID/symbol/center hashes", "family cardinality", "fold membership", "candidate FP32 top10", "qrels nDCG", "teacher overlap"]}
+             "teacher_ids": sha(args.teacher_ids), "train_vectors": sha(args.train_vectors),
+                              "candidate_ids": sha(args.artifact_dir / "candidate.ids.i4"),
+                              "rslm2_symbols": sha(args.artifact_dir / "rslm2.candidate.packed"),
+                              "rslm3_symbols": sha(args.artifact_dir / "rslm3.candidate.packed"),
+                              "rslm4_symbols": sha(args.artifact_dir / "rslm4.candidate.packed")},
+             "query_count": query_count, "checks": ["result/source SHA binding", "persisted ID/packed-symbol/center hashes", "packed size and storage metadata", "family cardinality", "fold membership", "candidate FP32 top10", "independent RSLM decode and top10 replay", "qrels nDCG", "teacher and candidate overlap"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("THQ persistable RSLM audit PASS")

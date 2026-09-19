@@ -1,11 +1,11 @@
 {
   "family": "thq_conditioned_residual_gate_receipt_v1",
-  "schema_version": 1,
+  "schema_version": 2,
   "status": "EXECUTED",
-  "runner_sha256": "0c6b7310678f4e231ae17e7999e848c0fc373f29455d209e90de93ae376056f6",
-  "raw_sha256": "4d1bec192f8cf3c19d57f53ee88b8adeeae1bd0d0df32576cedb4837a6e0c762",
-  "audit_sha256": "b0b60c72e9a9b35f10c035f6bb9eee8ed2070048e8888fc96dc0517802ac2561",
-  "audit_runner_sha256": "7e786002db91028703e476588e39166bb030e129ac5ff8657274ad61fc98f849",
+  "runner_sha256": "dd0ecd17be15ce3a3a69666fcc8daa781db5a069e9c98d2d2d09ffe76a85c9af",
+  "raw_sha256": "cc972068c6564c01fad068b54aa748913c725ff64562e814a9783912a8de5ed1",
+  "audit_sha256": "4b6aee0c518fe56a06fb93e26dc19157cc17ac4620d6cc027b0bad6826a9b69e",
+  "audit_runner_sha256": "576014ac0d4f3b6fbbc3ee5159dad6e2ac971b856ee0af92d45c17c29db07bf6",
   "query_count": 152,
   "fold_count": 4,
   "fold_seed": 20260919,
@@ -15,10 +15,15 @@
   "cascade_total_bytes": {"thq-conditioned2": 192, "thq-conditioned3": 240},
   "artifact_hashes": {
     "candidate_ids": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
-    "thq-conditioned2_symbols": "dbf1890e18d67c97a02a74997cb76d9d0438f3493b94b85ffa533b09ac689c7e",
-    "thq-conditioned3_symbols": "cec774117ea4d86304a7d65e3f798db1fcfefaaa314ca36316f35157f5934039",
+    "thq-conditioned2_symbols": "855e83fdbc7cd4700e32b0361f7ed32bf4cd9e1ca61bc0d066babc7ccbc5fd85",
+    "thq-conditioned3_symbols": "a194b9287ec998ce784d7550c8b571ddba8c724963b116788a480156e66092ac",
     "thq-conditioned2_codebook": "ab8a9749d9e939ec82aaf5b8611d97fea1360116b287ae793ce65aafbb91195d",
     "thq-conditioned3_codebook": "1b86ccb6c3f33caf9cc2483213c7fb64a3570f34fa6f980e0663b8c557459f03"
   },
-  "evidence_status": "bounded_persistable_thq_conditioned_negative"
+  "physical_side_bytes_candidate_union": {"thq-conditioned2": 44472768, "thq-conditioned3": 66709152},
+  "global_codebook_bytes": {"thq-conditioned2": 24576, "thq-conditioned3": 49152},
+  "candidate_union_total_bytes": {"thq-conditioned2": 88970112, "thq-conditioned3": 111231072},
+  "full_1m_logical_total_bytes": {"thq-conditioned2": 192024576, "thq-conditioned3": 240049152},
+  "full_1m_physical_total_bytes": {"thq-conditioned2": 192024576, "thq-conditioned3": 240049152},
+  "evidence_status": "bounded_persistable_thq_conditioned_negative_with_packed_replay"
 }
