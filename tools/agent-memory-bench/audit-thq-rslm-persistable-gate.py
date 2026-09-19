@@ -200,7 +200,10 @@ def main() -> None:
                               "candidate_ids": sha(args.artifact_dir / "candidate.ids.i4"),
                               "rslm2_symbols": sha(args.artifact_dir / "rslm2.candidate.packed"),
                               "rslm3_symbols": sha(args.artifact_dir / "rslm3.candidate.packed"),
-                              "rslm4_symbols": sha(args.artifact_dir / "rslm4.candidate.packed")},
+                              "rslm4_symbols": sha(args.artifact_dir / "rslm4.candidate.packed"),
+                              "rslm2_centers": sha(args.artifact_dir / "rslm2.centers.f32"),
+                              "rslm3_centers": sha(args.artifact_dir / "rslm3.centers.f32"),
+                              "rslm4_centers": sha(args.artifact_dir / "rslm4.centers.f32")},
              "query_count": query_count, "checks": ["result/source SHA binding", "persisted ID/packed-symbol/center hashes", "packed size and storage metadata", "family cardinality", "fold membership", "candidate FP32 top10", "independent RSLM decode and top10 replay", "qrels nDCG", "teacher and candidate overlap"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")

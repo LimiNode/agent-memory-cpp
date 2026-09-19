@@ -1,0 +1,28 @@
+{
+  "checks": ["result/source SHA binding", "persisted ID/packed-symbol/codebook hashes", "packed size and storage metadata", "family cardinality", "fold membership", "candidate FP32 top10", "independent joint decode and top10 replay", "qrels nDCG", "teacher and candidate overlap"],
+  "family": "thq_joint_conditional_audit_v1",
+  "input_hashes": {
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_ids": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq-joint2_codebook": "fd007dc303b816ab9a3b238ce83d7d296b9080e33dda1d08ae75df34d28771fa",
+    "thq-joint2_symbols": "f49230175a2b2f3733b6adccd81745687a3d39ee0e2d9e4decb2da8635005bda",
+    "thq-joint3_codebook": "0c94defbc1518ec26dd1612851ba2f3e48d1185d754b844c36621aa94f9936ef",
+    "thq-joint3_symbols": "d431ddd48299179f1962f4d67b91ef71d1c00d7b082b068f7cd9027d786955f0",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "query_count": 152,
+  "result_sha256": "985d8d0ac90d3fd8c82e0da400503ea59fa9689b4a0dd0a0be480fe5efa8b87e",
+  "row_count": 304,
+  "runner_sha256": "773dd29f5fbe2fe80b1cb4e2c9d5e386599ef476b61954dcd66a2f61ba3fa38d",
+  "schema_version": 1,
+  "source_replay": true,
+  "status": "PASS"
+}

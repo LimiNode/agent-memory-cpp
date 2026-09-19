@@ -4,8 +4,8 @@
   "status": "EXECUTED",
   "runner_sha256": "dd0ecd17be15ce3a3a69666fcc8daa781db5a069e9c98d2d2d09ffe76a85c9af",
   "raw_sha256": "cc972068c6564c01fad068b54aa748913c725ff64562e814a9783912a8de5ed1",
-  "audit_sha256": "4b6aee0c518fe56a06fb93e26dc19157cc17ac4620d6cc027b0bad6826a9b69e",
-  "audit_runner_sha256": "576014ac0d4f3b6fbbc3ee5159dad6e2ac971b856ee0af92d45c17c29db07bf6",
+  "audit_sha256": "8eadb9420df4a4964f49db8339f4f3ff5348cc58c41f47117203339ffecec4ee",
+  "audit_runner_sha256": "83a6bdc8ad36a146d380d1b5454cbe6721a6b9f1b65fc0c9bf859a3212ba44e6",
   "query_count": 152,
   "fold_count": 4,
   "fold_seed": 20260919,
@@ -23,7 +23,12 @@
   "physical_side_bytes_candidate_union": {"thq-conditioned2": 44472768, "thq-conditioned3": 66709152},
   "global_codebook_bytes": {"thq-conditioned2": 24576, "thq-conditioned3": 49152},
   "candidate_union_total_bytes": {"thq-conditioned2": 88970112, "thq-conditioned3": 111231072},
+  "candidate_union_mapping_bytes": 1853032,
+  "candidate_union_complete_physical_bytes": {"thq-conditioned2": 90823144, "thq-conditioned3": 113084104},
   "full_1m_logical_total_bytes": {"thq-conditioned2": 192024576, "thq-conditioned3": 240049152},
   "full_1m_physical_total_bytes": {"thq-conditioned2": 192024576, "thq-conditioned3": 240049152},
+  "full_1m_indexed_total_bytes": {"thq-conditioned2": 192024576, "thq-conditioned3": 240049152},
+  "full_1m_mapping_assumption": "row index equals document ID; candidate-union ID mapping is not extrapolated",
+  "shared_thq_globals_included": false,
   "evidence_status": "bounded_persistable_thq_conditioned_negative_with_packed_replay"
 }

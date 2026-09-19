@@ -194,7 +194,9 @@ def main() -> None:
                               "teacher_ids": sha(args.teacher_ids), "train_vectors": sha(args.train_vectors),
                               "candidate_ids": sha(args.artifact_dir / "candidate.ids.i4"),
                               "thq-joint2_symbols": sha(args.artifact_dir / "thq-joint2.candidate.packed"),
-                              "thq-joint3_symbols": sha(args.artifact_dir / "thq-joint3.candidate.packed")},
+                              "thq-joint3_symbols": sha(args.artifact_dir / "thq-joint3.candidate.packed"),
+                              "thq-joint2_codebook": sha(args.artifact_dir / "thq-joint2.codebook.f32"),
+                              "thq-joint3_codebook": sha(args.artifact_dir / "thq-joint3.codebook.f32")},
              "query_count": query_count, "checks": ["result/source SHA binding", "persisted ID/packed-symbol/codebook hashes", "packed size and storage metadata", "family cardinality", "fold membership", "candidate FP32 top10", "independent joint decode and top10 replay", "qrels nDCG", "teacher and candidate overlap"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
