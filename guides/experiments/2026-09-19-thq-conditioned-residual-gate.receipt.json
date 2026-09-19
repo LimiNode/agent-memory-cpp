@@ -1,0 +1,24 @@
+{
+  "family": "thq_conditioned_residual_gate_receipt_v1",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "runner_sha256": "0c6b7310678f4e231ae17e7999e848c0fc373f29455d209e90de93ae376056f6",
+  "raw_sha256": "4d1bec192f8cf3c19d57f53ee88b8adeeae1bd0d0df32576cedb4837a6e0c762",
+  "audit_sha256": "b0b60c72e9a9b35f10c035f6bb9eee8ed2070048e8888fc96dc0517802ac2561",
+  "audit_runner_sha256": "7e786002db91028703e476588e39166bb030e129ac5ff8657274ad61fc98f849",
+  "query_count": 152,
+  "fold_count": 4,
+  "fold_seed": 20260919,
+  "candidate_unique_documents": 463258,
+  "arms": ["thq-conditioned2", "thq-conditioned3"],
+  "side_payload_bytes": {"thq-conditioned2": 96, "thq-conditioned3": 144},
+  "cascade_total_bytes": {"thq-conditioned2": 192, "thq-conditioned3": 240},
+  "artifact_hashes": {
+    "candidate_ids": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
+    "thq-conditioned2_symbols": "dbf1890e18d67c97a02a74997cb76d9d0438f3493b94b85ffa533b09ac689c7e",
+    "thq-conditioned3_symbols": "cec774117ea4d86304a7d65e3f798db1fcfefaaa314ca36316f35157f5934039",
+    "thq-conditioned2_codebook": "ab8a9749d9e939ec82aaf5b8611d97fea1360116b287ae793ce65aafbb91195d",
+    "thq-conditioned3_codebook": "1b86ccb6c3f33caf9cc2483213c7fb64a3570f34fa6f980e0663b8c557459f03"
+  },
+  "evidence_status": "bounded_persistable_thq_conditioned_negative"
+}
