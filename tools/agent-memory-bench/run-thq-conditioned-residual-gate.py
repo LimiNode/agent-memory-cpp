@@ -27,6 +27,7 @@ def load_base():
 
 b = load_base()
 h = b.h
+p = b.load_packed_helpers()
 
 
 def fit_symbols(residual: np.ndarray, levels: np.ndarray, codebook: np.ndarray) -> np.ndarray:
@@ -80,11 +81,14 @@ def main() -> None:
     for bits in BITS:
         codebook = h.fit_hierarchical_residual(train, train_base, train_levels, bits)
         symbols = fit_symbols(unique_residual, unique_levels, codebook)
-        symbol_path = args.artifact_dir / f"thq-conditioned{bits}.candidate.u8"
+        symbol_path = args.artifact_dir / f"thq-conditioned{bits}.candidate.packed"
         center_path = args.artifact_dir / f"thq-conditioned{bits}.codebook.f32"
-        symbols.tofile(symbol_path)
+        p.pack_symbols(symbols, bits).tofile(symbol_path)
+        p.assert_packed_size(symbol_path, len(unique_ids), D, bits)
         np.asarray(codebook, dtype="<f4").tofile(center_path)
-        models[bits] = {"codebook": codebook, "symbols": symbols, "symbol_path": symbol_path, "center_path": center_path}
+        packed = np.memmap(symbol_path, mode="r", dtype=np.uint8,
+                           shape=(len(unique_ids), p.packed_width(D, bits)))
+        models[bits] = {"codebook": codebook, "packed": packed, "symbol_path": symbol_path, "center_path": center_path}
     folds = np.array_split(np.random.default_rng(20260919).permutation(query_count), 4)
     rows, parity = [], {str(bits): {"max_abs_score_error": 0.0, "ordered_top10_matches": 0} for bits in BITS}
     id_to_row = {int(doc): i for i, doc in enumerate(unique_ids)}
@@ -110,7 +114,7 @@ def main() -> None:
             for bits in BITS:
                 model = models[bits]
                 symbol_rows = np.asarray([id_to_row[int(doc)] for doc in thq_top])
-                selected_symbols = model["symbols"][symbol_rows]
+                selected_symbols = p.unpack_symbols(model["packed"][symbol_rows], D, bits)
                 selected_levels = levels[pos]
                 decoded = decode_symbols(selected_symbols, selected_levels, model["codebook"])
                 direct = b.direct_scores(base[pos], decoded, query)
@@ -135,7 +139,15 @@ def main() -> None:
               "qrel_ids_sha256": b.sha(args.qrel_ids), "qrel_scores_sha256": b.sha(args.qrel_scores), "teacher_ids_sha256": b.sha(args.teacher_ids),
               "protocol": "document-only THQ4-bin-conditioned per-coordinate Lloyd-Max residual codebooks",
               "candidate_ids_sha256": b.sha(ids_path), "candidate_unique_documents": int(len(unique_ids)),
-              "models": {str(bits): {"bits": bits, "side_payload_bytes": 48 * bits, "codebook_sha256": b.sha(v["center_path"]), "symbols_sha256": b.sha(v["symbol_path"])} for bits, v in models.items()},
+              "models": {str(bits): {
+                  "bits": bits, "symbol_width": D, "side_payload_bytes": 48 * bits,
+                  "physical_side_bytes_candidate_union": int(len(unique_ids) * 48 * bits),
+                  "global_codebook_bytes": int(D * 4 * (1 << bits) * 4),
+                  "candidate_union_total_bytes": int(len(unique_ids) * (96 + 48 * bits) + D * 4 * (1 << bits) * 4),
+                  "full_1m_logical_total_bytes": int(1_000_000 * (96 + 48 * bits) + D * 4 * (1 << bits) * 4),
+                  "full_1m_physical_total_bytes": int(1_000_000 * (96 + 48 * bits) + D * 4 * (1 << bits) * 4),
+                  "codebook_sha256": b.sha(v["center_path"]), "packed_symbols_sha256": b.sha(v["symbol_path"])
+              } for bits, v in models.items()},
               "parity": parity, "summaries": summaries, "rows": rows,
               "evidence_status": "four_fold_shuffled_persistable_thq_conditioned_reference_gate",
               "limitations": ["document-only fit; no retrieval-aware labels", "candidate-local symbol materialization", "NumPy reference quality only", "no held-out-domain confirmation"]}
