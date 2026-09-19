@@ -112,10 +112,10 @@ information is absent or that learned latent methods are impossible.
 * **confirmed:** the classical numbers and RSLM4 are reproducible on the
   frozen 152-query shell with canonical candidate-receipt, input, runner, and
   model SHA bindings;
-* **implemented, pending replay:** the hardened audit independently recomputes
-  each per-query primary metric from IDs and qrels before aggregating, and the
-  writer rejects stale PASS audits; the committed PASS receipt predates this
-  hardening and must be regenerated from the external raw inputs;
+* **confirmed:** the hardened audit was run against the authoritative external
+  classical, ML-sanity, teacher, candidate, vector, query and qrels artifacts;
+  it independently recomputed each per-query primary metric before aggregating,
+  and the committed PASS receipt is bound to that audit artifact;
 * **confirmed:** a random-initialized linear AE32 reaches the PCA32
   reconstruction optimum on train and held-out vectors;
 * **bounded negative:** the tested hierarchical/PQ/OPQ/RSLM controls do not
@@ -141,6 +141,7 @@ Committed evidence:
 * `2026-09-18-thq-r4-classical-gate.compact.json` and `.receipt.json`;
 * `2026-09-18-thq-ml-sanity-gate.compact.json` and `.receipt.json`;
 * `2026-09-18-thq-r4-teacher-diagnostics.compact.json` and `.receipt.json`;
+* `2026-09-18-thq-r4-classical-ml-gates.audit.json`;
 * `2026-09-18-thq-r4-classical-ml-gates.audit.receipt.json`.
 
 The former prose-only record is superseded by these SHA-bound artifacts.

@@ -1,6 +1,6 @@
 {
   "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
-  "compact_sha256": "40920f6fecdc317c9e4589037d6af3ba56963e57f76c97ef5605d1ad6586dd5b",
+  "compact_sha256": "48f478b9d88fbbcd285c0f704003b522a6cc93001ca7083f6de36e7b9686dca6",
   "family": "thq_r4_teacher_diagnostics_v1_evidence_receipt_v1",
   "input_hashes": {
     "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",

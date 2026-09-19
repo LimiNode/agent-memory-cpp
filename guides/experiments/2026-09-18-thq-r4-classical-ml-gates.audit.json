@@ -1,0 +1,17 @@
+{
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "checks": [
+    "all external input SHA-256 bindings",
+    "classical arm/query cardinality and independently recomputed primary metrics and aggregates",
+    "THQ4 top128 FP32 ceiling parity with the candidate FP32 ceiling",
+    "linear AE32 within one percent of PCA32 on train and held-out",
+    "teacher split cardinality and independently recomputed aggregates"
+  ],
+  "classical_sha256": "311631579b500ab47118ab282cab6c5a14c5e40f5f85a5a363176d11b9efa4ff",
+  "family": "thq_r4_classical_ml_gate_audit_v1",
+  "ml_sanity_sha256": "acb154320ef74c3d0e67d42462b349c403216954b306388e6cd6fb8b4079515c",
+  "runner_sha256": "35d91133906e3da0e004635ac7d871fdffa3b40af65c9aa506639d432db85ed5",
+  "schema_version": 1,
+  "status": "PASS",
+  "teacher_sha256": "a734e395cf0b15380d7a99deeb1dd1329adf8e5a82594ab7129742501eceb87a"
+}
