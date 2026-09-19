@@ -98,6 +98,20 @@ candidate shell:
 * provenance for rotation, scales/corrections, query encoding, tie policy, and
   the exact candidate stream.
 
+The common final stage is pinned to the source FP32 **cosine** oracle over the
+K documents emitted by each arm, with document-ID ascending as the secondary
+tie key.  It is not a binary-to-binary cascade and it is not the legacy
+144-byte Hamming payload.  The implementation contract is
+`run-thq-binary-r4-matched-gate.py`; its companion
+`audit-thq-binary-r4-matched-gate.py` replays source hashes, row cardinality,
+arm/K/query uniqueness, and byte accounting before accepting a result.
+
+At the current checkout the gate is implemented but not executed: the required
+1M-row FP32 document matrix, matching query matrix, qrels, and teacher-ID
+artifacts are not present in the workspace.  Existing INT8/THQ materializations
+and compact diagnostics are intentionally rejected as substitutes.  This is a
+source-availability blocker, not a negative quality result.
+
 Without this gate, statements such as “binary is faster” are only statements
 about a primitive per-document operation.  They do not establish a cheaper
 R4 cascade, because a weaker binary filter may require a larger `K` and a more
