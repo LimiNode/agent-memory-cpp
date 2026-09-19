@@ -68,8 +68,8 @@ or jointly fitted norm side information is useless.
   candidate-FP32 fidelity remain imperfect;
 * **bounded negative:** the remaining block/PQ-like ADC arms do not establish
   a win over direct INT8 or direct RSLM3 on the frozen shell;
-* **not tested:** cross-fitted query training, convergence/restart controls for
-  the small custom k-means, pairwise/listwise-trained codebooks, AVQ/Distill-VQ-style
+* **not tested at the time of this gate:** cross-fitted query training,
+  convergence/restart controls for the small custom k-means, pairwise/listwise-trained codebooks, AVQ/Distill-VQ-style
   retrieval objective, score-aware rotation/grouping, faithful RSLM, full AQ or
   QINCo-like codebooks, native SIMD timing, persistent side-code materialization,
   and held-out-domain replay. The diagnostic pairwise metric treats an
@@ -97,3 +97,18 @@ Committed evidence:
 * `2026-09-18-thq-learned-adc-gate.compact.json`;
 * `2026-09-18-thq-learned-adc-gate.receipt.json`;
 * `2026-09-18-thq-learned-adc-gate.audit.json` (committed independent audit).
+
+## Follow-up status (2026-09-19)
+
+The convergence/restart, fixed-capacity, four-fold cross-fitting, and bounded
+cutoff-aware controls originally listed as not tested are now recorded in:
+
+* `2026-09-19-thq-adc-convergence-capacity.md`;
+* `2026-09-19-thq-adc-crossfit.md`;
+* `2026-09-19-thq-adc-cutoff-aware.md`.
+
+Those follow-ups supersede the pending wording above: convergence and extra
+capacity did not improve the fixed recipe, the `.698282` advantage did not
+survive OOF replay, and teacher-top32 oversampling was negative. Explicit
+pairwise/listwise objectives, faithful RSLM controls, native timing,
+persistence, and held-out-domain replay remain not tested.
