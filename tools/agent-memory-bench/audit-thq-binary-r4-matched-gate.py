@@ -136,6 +136,7 @@ def main() -> None:
     require(result.get("status") == "EXECUTED" and result.get("source_replay") is True, "result is not source-replay bound")
     require(result.get("metric") == "cosine" and result.get("final_reranker") == "same FP32 cosine oracle over K filtered documents", "reranker contract differs")
     require(result.get("timing_semantics") == "python_reference_numpy_not_native_serving_latency", "timing semantics are not explicit")
+    require(result.get("payload_bytes") == {"thq4": 96, "rabitq_rr1": 52, "bbq_block1": 64}, "payload manifest differs")
     runner = args.runner or Path(__file__).with_name("run-thq-binary-r4-matched-gate.py")
     require(result.get("runner_sha256") == sha256(runner), "runner SHA mismatch")
     sources = {name: Path(path) for name, path in args.source}
