@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Capacity upper bounds for AVQ/AAQ/QINCo-like THQ residual codecs.
+"""Capacity diagnostics for additive THQ residual codecs.
 
-These are intentionally local references.  The query-oracle row is explicitly
-leaky: it chooses among a document's retained reconstruction beam using the
-query score.  It is a ceiling diagnostic, never a production recommendation.
+These are deliberately neutral local references, not reproductions of AVQ,
+AAQ, or QINCo.  The score oracle uses the exact document score to choose the
+closest retained beam score; it is therefore a leaky per-document score
+approximation diagnostic, never a retrieval or production upper bound.
 """
 from __future__ import annotations
 
@@ -18,7 +19,10 @@ D = 384
 THQ_BYTES = 96
 TOP = 128
 SEED = 20260920
-STAGES = {32: 4, 48: 6, 64: 8}
+VARIANTS = ("additive_greedy", "additive_mse_beam", "additive_fp32_score_oracle")
+# A 256-way stage stores one 8-bit index, hence one byte.  These are actual
+# side-code bytes, not bit counts; total THQ4 sizes are 100/102/104 B.
+STAGES = {4: 4, 6: 6, 8: 8}
 
 
 def sha256(path: Path) -> str:
@@ -84,8 +88,7 @@ def kmeans(values: np.ndarray, k: int, iterations: int, seed: int) -> np.ndarray
         counts = np.zeros(k, dtype=np.int64)
         for start in range(0, len(x), 4096):
             block = x[start:start + 4096]
-            distances = np.sum((block[:, None, :] - centers[None, :, :]) ** 2, axis=2)
-            labels = np.argmin(distances, axis=1)
+            labels = nearest_indices(block, centers)
             np.add.at(sums, labels, block)
             np.add.at(counts, labels, 1)
         nonempty = counts > 0
@@ -100,30 +103,44 @@ def fit_additive(residual: np.ndarray, stages: int, iterations: int = 8) -> list
     codebooks = []
     for stage in range(stages):
         centers = kmeans(remaining, 256, iterations, SEED + stage)
-        distances = np.sum((remaining[:, None, :] - centers[None, :, :]) ** 2, axis=2)
-        remaining -= centers[np.argmin(distances, axis=1)]
+        remaining -= centers[nearest_indices(remaining, centers)]
         codebooks.append(centers)
     return codebooks
 
 
-def greedy_encode(values: np.ndarray, codebooks: list[np.ndarray]) -> np.ndarray:
+def nearest_indices(values: np.ndarray, centers: np.ndarray) -> np.ndarray:
+    values = np.asarray(values, dtype=np.float32)
+    centers = np.asarray(centers, dtype=np.float32)
+    out = np.empty(len(values), dtype=np.int64)
+    center_norm = np.sum(centers * centers, axis=1, dtype=np.float32)
+    for start in range(0, len(values), 4096):
+        block = values[start:start + 4096]
+        distances = (np.sum(block * block, axis=1, keepdims=True)
+                     + center_norm[None, :] - 2.0 * (block @ centers.T))
+        out[start:start + len(block)] = np.argmin(distances, axis=1)
+    return out
+
+
+def greedy_encode(values: np.ndarray, codebooks: list[np.ndarray]) -> tuple[np.ndarray, np.ndarray]:
     remaining = np.asarray(values, dtype=np.float32).copy()
     decoded = np.zeros_like(remaining)
-    for centers in codebooks:
-        distances = np.sum((remaining[:, None, :] - centers[None, :, :]) ** 2, axis=2)
-        chosen = centers[np.argmin(distances, axis=1)]
+    codes = np.empty((len(remaining), len(codebooks)), dtype=np.uint8)
+    for stage, centers in enumerate(codebooks):
+        chosen_ids = nearest_indices(remaining, centers)
+        codes[:, stage] = chosen_ids.astype(np.uint8)
+        chosen = centers[chosen_ids]
         decoded += chosen
         remaining -= chosen
-    return decoded
+    return decoded, codes
 
 
-def beam_encode(values: np.ndarray, codebooks: list[np.ndarray], width: int) -> tuple[np.ndarray, np.ndarray]:
+def beam_encode(values: np.ndarray, codebooks: list[np.ndarray], width: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Retain a reconstruction beam per row; this is an optimistic encoder control."""
     if width < 1:
         raise ValueError("beam width must be positive")
     x = np.asarray(values, dtype=np.float32)
     recon = np.zeros((len(x), 1, D), dtype=np.float32)
-    residual = x[:, None, :].copy()
+    paths = np.zeros((len(x), 1, 0), dtype=np.uint8)
     for centers in codebooks:
         candidates = recon[:, :, None, :] + centers[None, None, :, :]
         errors = np.sum((x[:, None, None, :] - candidates) ** 2, axis=3)
@@ -135,25 +152,34 @@ def beam_encode(values: np.ndarray, codebooks: list[np.ndarray], width: int) -> 
         prev = keep // centers.shape[0]
         code = keep % centers.shape[0]
         recon = candidates[row, prev, code]
-        residual = order[:, :, None]
-    return recon, residual[:, :, 0]
+        paths = np.concatenate((paths[np.arange(len(x))[:, None], prev, :],
+                                code[..., None].astype(np.uint8)), axis=2)
+    return recon, order, paths
 
 
 def self_test() -> None:
     rng = np.random.default_rng(SEED)
     values = rng.normal(size=(96, D)).astype(np.float32)
     centers = kmeans(values, 8, 2, SEED)
-    decoded = greedy_encode(values[:5], [centers, centers])
-    beam, errors = beam_encode(values[:5], [centers, centers], 4)
+    decoded, greedy_codes = greedy_encode(values[:5], [centers, centers])
+    beam, errors, beam_codes = beam_encode(values[:5], [centers, centers], 4)
     if decoded.shape != (5, D) or beam.shape != (5, 4, D) or errors.shape != (5, 4):
         raise RuntimeError("additive upper-bound self-test shape mismatch")
     if np.any(~np.isfinite(beam)) or np.any(~np.isfinite(errors)):
         raise RuntimeError("additive upper-bound self-test produced non-finite values")
+    if greedy_codes.shape != (5, 2) or beam_codes.shape != (5, 4, 2):
+        raise RuntimeError("additive code-stream shape mismatch")
+    decoded_again = sum((centers[greedy_codes[:, i]] for i, centers in enumerate([centers, centers])),
+                        start=np.zeros_like(decoded))
+    if not np.allclose(decoded, decoded_again):
+        raise RuntimeError("greedy code stream does not decode to reconstruction")
     query = rng.normal(size=D).astype(np.float32)
-    oracle_scores = np.einsum("kbd,d->kb", beam, query)
-    if oracle_scores.shape != (5, 4) or not np.isfinite(oracle_scores).all():
-        raise RuntimeError("query-oracle beam score shape mismatch")
-    print("THQ additive upper-bound self-test: ok")
+    exact = np.einsum("kd,d->k", values[:5], query)
+    beam_scores = np.einsum("kbd,d->kb", beam, query)
+    chosen = np.argmin(np.abs(beam_scores - exact[:, None]), axis=1)
+    if chosen.shape != (5,) or not np.isfinite(beam_scores).all():
+        raise RuntimeError("score-approximation oracle mismatch")
+    print("THQ additive codec self-test: ok")
 
 
 def main() -> None:
@@ -164,6 +190,8 @@ def main() -> None:
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
     parser.add_argument("--beam-width", type=int, default=8)
     parser.add_argument("--iterations", type=int, default=8)
+    parser.add_argument("--models-output", type=Path)
+    parser.add_argument("--codes-output", type=Path)
     args = parser.parse_args()
     if args.self_test:
         self_test()
@@ -213,6 +241,7 @@ def main() -> None:
     models = {}
     for payload, stages in STAGES.items():
         models[payload] = fit_additive(train - train_base, stages, args.iterations)
+    code_artifacts = {payload: {} for payload in STAGES}
     rows = []
     for qi, query in enumerate(queries):
         ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
@@ -235,30 +264,35 @@ def main() -> None:
         teacher = teacher_ids[qi]
         for payload, codebooks in models.items():
             residual = selected_docs - selected_base
-            greedy = greedy_encode(residual, codebooks)
-            beam, _errors = beam_encode(residual, codebooks, args.beam_width)
+            greedy, greedy_codes = greedy_encode(residual, codebooks)
+            beam, _errors, beam_codes = beam_encode(residual, codebooks, args.beam_width)
             recon_greedy = selected_base + greedy
             # The MSE beam is the optimistic document-side encoder.
             recon_beam = beam[np.arange(len(selected)), np.argmin(np.sum((residual[:, None, :] - beam) ** 2, axis=2), axis=1)] + selected_base
-            # Query-oracle path selection is intentionally leaky and is the
-            # upper bound: it may choose the best retained beam member for q.
+            # Leaky score-approximation oracle: choose the beam member whose
+            # cosine score is closest to the exact FP32 document score.
             beam_all = beam + selected_base[:, None, :]
             qnorm = max(float(np.linalg.norm(query)), np.finfo(np.float32).tiny)
             beam_scores = np.einsum("kbd,d->kb", beam_all, query) / np.maximum(np.linalg.norm(beam_all, axis=2) * qnorm, np.finfo(np.float32).tiny)
-            oracle = beam_all[np.arange(len(selected)), np.argmax(beam_scores, axis=1)]
-            for variant, values, leaky in (("avq_like_greedy", recon_greedy, False),
-                                           ("aaq_like_beam", recon_beam, False),
-                                           ("qinco_like_query_oracle", oracle, True)):
+            exact_scores = np.einsum("kd,d->k", selected_docs, query) / np.maximum(np.linalg.norm(selected_docs, axis=1) * qnorm, np.finfo(np.float32).tiny)
+            oracle = beam_all[np.arange(len(selected)), np.argmin(np.abs(beam_scores - exact_scores[:, None]), axis=1)]
+            code_artifacts[payload][qi] = {"selected_ids": selected.astype(np.int64),
+                                           "greedy_codes": greedy_codes,
+                                           "beam_codes": beam_codes}
+            for variant, values, leaky in (("additive_greedy", recon_greedy, False),
+                                           ("additive_mse_beam", recon_beam, False),
+                                           ("additive_fp32_score_oracle", oracle, True)):
                 scores = np.einsum("kd,d->k", values, query) / np.maximum(np.linalg.norm(values, axis=1) * qnorm, np.finfo(np.float32).tiny)
                 ranked = top_ids(scores, selected)
                 rows.append({"query": qi, "payload_bytes": payload, "variant": variant, "query_leaking": leaky,
+                             "selected_ids": selected.astype(int).tolist(),
                              "teacher_overlap": float(np.isin(teacher, ranked).sum() / 10.0),
                              "qrels_ndcg10": ndcg10(ranked, qrel_ids[qi], qrel_scores[qi]),
                              "top10_ids": ranked.astype(int).tolist()})
     summaries = {}
     for payload in STAGES:
         summaries[str(payload)] = {}
-        for variant in ("avq_like_greedy", "aaq_like_beam", "qinco_like_query_oracle"):
+        for variant in VARIANTS:
             subset = [row for row in rows if row["payload_bytes"] == payload and row["variant"] == variant]
             quality = [float(row["qrels_ndcg10"]) for row in subset]
             summaries[str(payload)][variant] = {"mean_qrels_ndcg10": float(np.mean(quality)),
@@ -266,17 +300,32 @@ def main() -> None:
                                                  "worst_qrels_ndcg10": float(np.min(quality)),
                                                  "mean_teacher_overlap": float(np.mean([row["teacher_overlap"] for row in subset])),
                                                  "query_leaking": bool(subset[0]["query_leaking"])}
-    result = {"schema_version": 1, "family": "thq_additive_upper_bounds_v1", "status": "EXECUTED",
+    model_path = args.models_output or args.output.with_suffix(".models.npz")
+    codes_path = args.codes_output or args.output.with_suffix(".codes.npz")
+    model_path.parent.mkdir(parents=True, exist_ok=True)
+    codes_path.parent.mkdir(parents=True, exist_ok=True)
+    model_arrays = {f"payload_{payload}_stage_{stage}": centers.astype("<f4")
+                    for payload, codebooks in models.items() for stage, centers in enumerate(codebooks)}
+    np.savez_compressed(model_path, **model_arrays)
+    code_arrays = {}
+    for payload, per_query in code_artifacts.items():
+        code_arrays[f"payload_{payload}_selected_ids"] = np.stack([per_query[q]["selected_ids"] for q in range(152)])
+        code_arrays[f"payload_{payload}_greedy_codes"] = np.stack([per_query[q]["greedy_codes"] for q in range(152)])
+        code_arrays[f"payload_{payload}_beam_codes"] = np.stack([per_query[q]["beam_codes"] for q in range(152)])
+    np.savez_compressed(codes_path, **code_arrays)
+    result = {"schema_version": 2, "family": "thq_additive_upper_bounds_v2", "status": "EXECUTED",
               "source_replay": True, "metric": "cosine", "seed": SEED, "query_count": 152,
               "prefilter": "frozen R4 candidate stream -> canonical THQ4 interval-squared top128",
               "beam_width": args.beam_width, "stages_by_payload_bytes": STAGES,
+              "side_code_bytes": sorted(STAGES), "total_bytes_by_side_code": {str(p): THQ_BYTES + p for p in STAGES},
+              "artifact_hashes": {"models": sha256(model_path), "codes": sha256(codes_path)},
               "source_hashes": {name: sha256(path) for name, path in {
                   "documents": args.documents, "train_vectors": args.train_vectors, "queries": args.queries,
                   "qrel_ids": args.qrel_ids, "qrel_scores": args.qrel_scores, "teacher_ids": args.teacher_ids,
                   "thq4_codes": args.thq4_codes, "thq4_thresholds": args.thq4_thresholds,
                   "candidate_flat": args.candidate_flat, "candidate_raw": args.candidate_raw,
                   "candidate_receipt": args.candidate_receipt}.items()},
-              "limitations": ["local additive reference, not faithful AVQ/AAQ/QINCo", "query-oracle row is leaky",
+              "limitations": ["local additive reference, not faithful AVQ/AAQ/QINCo", "score oracle is query-leaking and not a retrieval upper bound",
                               "NumPy quality only", "no native latency or persistent layout"],
               "model_hashes": {str(payload): [hashlib.sha256(c.astype("<f4").tobytes()).hexdigest() for c in codebooks]
                               for payload, codebooks in models.items()},
