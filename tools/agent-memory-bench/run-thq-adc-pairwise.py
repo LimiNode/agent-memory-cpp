@@ -91,11 +91,22 @@ def _model_stats(centers, groups, transforms):
             torch.zeros((len(groups), 32, D), dtype=torch.float32), centers,
             torch.from_numpy(np.asarray(transforms, dtype=np.float32)),
             torch.from_numpy(np.asarray([np.linalg.inv(t) for t in transforms], dtype=np.float32)))
-    counts = np.bincount(symbols.numpy().reshape(-1), minlength=128 * 8)
+    local_symbols = symbols.numpy()
+    block_ids = np.arange(128, dtype=np.int64)[None, None, :]
+    global_symbols = local_symbols.astype(np.int64) + block_ids * 8
+    counts = np.bincount(global_symbols.reshape(-1), minlength=128 * 8)
+    block_counts = counts.reshape(128, 8)
     probabilities = counts[counts > 0] / max(1, counts.sum())
     entropy = float(-(probabilities * np.log2(probabilities)).sum()) if len(probabilities) else 0.0
+    block_entropy = []
+    for row in block_counts:
+        mass = row.sum()
+        p = row[row > 0] / max(1, mass)
+        block_entropy.append(float(-(p * np.log2(p)).sum()) if len(p) else 0.0)
     return {"unused_centers": int(np.sum(counts == 0)),
+            "unused_centers_per_block": [int(np.sum(row == 0)) for row in block_counts],
             "assignment_entropy_bits": entropy,
+            "assignment_entropy_bits_per_block_mean": float(np.mean(block_entropy)),
             "center_l2": float(torch.linalg.vector_norm(centers).detach())}
 
 

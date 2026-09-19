@@ -60,8 +60,13 @@ def main() -> None:
     if args.self_test:
         self_test()
         return
-    required = (args.result, args.runner, args.qrel_ids, args.qrel_scores, args.teacher_ids, args.output)
-    require(all(required), "result, runner, qrels, teacher IDs and output are required")
+    required_inputs = (args.result, args.runner, args.qrel_ids, args.qrel_scores, args.teacher_ids,
+                       args.candidate_flat, args.candidate_raw, args.documents, args.thq4_codes,
+                       args.thq4_thresholds, args.queries)
+    require(all(required_inputs) and args.output is not None,
+            "result, runner, qrels, teacher IDs, source replay inputs and output are required")
+    for path in required_inputs:
+        require(path.is_file(), f"required audit input is not a file: {path}")
     result = json.loads(args.result.read_text(encoding="utf-8"))
     require(result.get("status") == "EXECUTED", "ADC result is not executed")
     require(result.get("runner_sha256") == sha(args.runner), "runner/result SHA binding differs")
@@ -77,8 +82,12 @@ def main() -> None:
     qrel_ids = np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(query_count, 20))
     qrel_scores = np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(query_count, 20))
     teacher_ids = np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(query_count, 10))
-    recompute_shell = all((args.candidate_flat, args.candidate_raw, args.documents,
-                           args.thq4_codes, args.thq4_thresholds, args.queries))
+    recompute_shell = True
+    input_paths = {"candidate_flat": args.candidate_flat, "candidate_raw": args.candidate_raw,
+                   "documents": args.documents, "thq4_codes": args.thq4_codes,
+                   "thq4_thresholds": args.thq4_thresholds, "queries": args.queries,
+                   "qrel_ids": args.qrel_ids, "qrel_scores": args.qrel_scores,
+                   "teacher_ids": args.teacher_ids}
     if recompute_shell:
         raw_rows = json.loads(args.candidate_raw.read_text(encoding="utf-8"))["rows"]
         counts = [int(row["candidate_count"]) for row in raw_rows]
@@ -95,9 +104,12 @@ def main() -> None:
                             ("documents_sha256", args.documents),
                             ("thq4_codes_sha256", args.thq4_codes),
                             ("thq4_thresholds_sha256", args.thq4_thresholds),
-                            ("queries_sha256", args.queries)):
-            if field in result:
-                require(result[field] == sha(path), f"source SHA differs: {field}")
+                            ("queries_sha256", args.queries),
+                            ("qrel_ids_sha256", args.qrel_ids),
+                            ("qrel_scores_sha256", args.qrel_scores),
+                            ("teacher_ids_sha256", args.teacher_ids)):
+            require(field in result, f"result missing source SHA: {field}")
+            require(result[field] == sha(path), f"source SHA differs: {field}")
     folds = [set(map(int, fold)) for fold in result.get("fold_queries", [])]
     require(len(folds) == int(result.get("fold_count", 0)), "fold list missing")
     require(set().union(*folds) == set(range(query_count)), "folds do not cover all queries")
@@ -105,8 +117,31 @@ def main() -> None:
             "folds overlap")
     rows = result.get("rows", [])
     require(rows, "result has no rows")
+    family = result.get("family", "")
+    fold_by_query = {}
+    for fold_index, fold in enumerate(folds):
+        for query in fold:
+            require(query not in fold_by_query, "query appears in multiple folds")
+            fold_by_query[query] = fold_index
+    if family.endswith("production_shaped_crossfit_v1"):
+        require(len(rows) == query_count * 4, "production row cardinality differs")
+        expected_arms = {"direct_fp32", "direct_int8", "direct_rslm4", "adc48"}
+        require({row.get("arm") for row in rows} == expected_arms, "production arms differ")
+        keys = [(int(row["query"]), row.get("arm")) for row in rows]
+    elif family.endswith("cutoff_aware_crossfit_v1"):
+        require(len(rows) == query_count, "cutoff row cardinality differs")
+        keys = [int(row["query"]) for row in rows]
+    elif family.endswith("pairwise_crossfit_v1"):
+        require(len(rows) == query_count * 3, "pairwise row cardinality differs")
+        require({int(row["seed"]) for row in rows} == {11, 22, 33}, "pairwise seeds differ")
+        keys = [(int(row["query"]), int(row["seed"])) for row in rows]
+    else:
+        raise RuntimeError(f"unsupported ADC result family: {family}")
+    require(len(set(keys)) == len(keys), "duplicate family row key")
     for row in rows:
         query = int(row["query"])
+        require(query in fold_by_query, "row query is outside declared folds")
+        require(int(row["fold"]) == fold_by_query[query], "row fold does not match fold membership")
         selected = list(map(int, row["top10_ids"]))
         candidate = list(map(int, row["candidate_fp32_top10_ids"]))
         top128 = set(map(int, row["thq4_top128_ids"]))
@@ -141,6 +176,8 @@ def main() -> None:
                     "independent THQ4 top128 differs")
     audit = {"schema_version": 1, "family": "thq_adc_research_audit_v1", "status": "PASS",
              "result_sha256": sha(args.result), "runner_sha256": sha(args.runner),
+             "source_replay": True,
+             "input_hashes": {name: sha(path) for name, path in input_paths.items()},
              "query_count": query_count, "row_count": len(rows), "fold_count": len(folds),
              "checks": ["runner/result SHA binding", "disjoint fold coverage",
                         "independent qrels nDCG", "independent teacher overlap",

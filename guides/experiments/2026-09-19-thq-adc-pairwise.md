@@ -33,8 +33,10 @@ retained only as historical evidence and is not pooled with this replay.
 
 Per-seed nDCG@10 was `.640683`, `.642764` and `.634850` (seeds 11, 22 and
 33). The corrected pairwise objective is below the ordinary ADC48/3bit OOF
-control (`.649128`). All fold models left 1016 of 1024 transformed centers
-unused after the hard-assignment updates, a direct collapse diagnostic.
+control (`.649128`). After correcting block-local symbol accounting, the
+representative diagnostic leaves 429 of 1024 global centers unused (the
+per-block mean is 3.35 unused centers out of 8). This is non-uniform
+occupancy, but not evidence of total codebook collapse by itself.
 
 All four folds reproduced the direct scorer's top-10 on the four parity groups
 checked in each fold; maximum absolute score error was below `7.2e-7`.
@@ -43,8 +45,8 @@ checked in each fold; maximum absolute score error was below `7.2e-7`.
 
 This is a bounded negative for this stabilized hard-assignment pairwise
 implementation: shuffling, three seeds and a reconstruction term calibrated to
-10% of the initial pairwise loss did not prevent collapse or recover the
-ordinary ADC quality. It does not disprove AVQ, Distill-VQ, QINCo, or a
+10% of the initial pairwise loss did not recover the ordinary ADC quality. It
+does not disprove AVQ, Distill-VQ, QINCo, or a
 carefully regularized listwise method, but it removes this naive objective as a
 credible next production candidate.
 
@@ -54,5 +56,5 @@ hash bindings. Native latency, persistent storage, and held-out-domain evidence
 remain outside this gate.
 
 Raw output (corrected replay): `tmp/thq-adc-pairwise-corrected.json`, SHA-256
-`f489dfdd05e935aca376396dc9d71ac68e7d9da7514c548702ab52f991610b79`.
-Runner SHA-256: `7f17022f67e8359356b9a919e49dd76a56fb645e7390aa40643a302f943b98d5`.
+`6a9b41b3c9a9ebcb50d3ca458652e2b016f0ab8daad60fa4bad3b09006812946`.
+Runner SHA-256: `7d92b4394a3bafcc2fc6469303182f4bcba2fa441c39d5a93914a20287bfe05c`.
