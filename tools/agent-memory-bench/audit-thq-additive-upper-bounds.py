@@ -179,6 +179,7 @@ def main() -> None:
             for variant, values in values_by_variant.items():
                 ranked = top_ids(cosine(values, query), selected)
                 row = row_map[(qi, payload, variant)]
+                require(np.array_equal(selected, np.asarray(row["selected_ids"], dtype=np.int64)), f"row selected-ID mismatch: {(qi, payload, variant)}")
                 require(np.array_equal(ranked, np.asarray(row["top10_ids"], dtype=np.int64)), f"top10 replay mismatch: {(qi, payload, variant)}")
                 require(np.isclose(ndcg10(ranked, qrel_ids[qi], qrel_scores[qi]), float(row["qrels_ndcg10"]), atol=1e-6), f"nDCG replay mismatch: {(qi, payload, variant)}")
                 overlap = float(np.isin(teacher_ids[qi], ranked).sum() / 10.0)
