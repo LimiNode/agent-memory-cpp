@@ -1,0 +1,20 @@
+{
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "compact_sha256": "48f478b9d88fbbcd285c0f704003b522a6cc93001ca7083f6de36e7b9686dca6",
+  "family": "thq_r4_teacher_diagnostics_v1_evidence_receipt_v1",
+  "input_hashes": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "raw_sha256": "a734e395cf0b15380d7a99deeb1dd1329adf8e5a82594ab7129742501eceb87a",
+  "runner_sha256": "18de46f7db209a15d8f30062a2828e464a2064724e37f3d3be97de114b6a7353",
+  "schema_version": 1,
+  "status": "PASS"
+}

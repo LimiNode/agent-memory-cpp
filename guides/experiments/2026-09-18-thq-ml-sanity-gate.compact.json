@@ -1,0 +1,57 @@
+{
+  "candidate_provenance": null,
+  "candidate_receipt_sha256": null,
+  "documents": 1000000,
+  "evidence_status": "reconstruction_only_train_and_heldout",
+  "family": "thq_ml_sanity_gate_v1",
+  "heldout_count": 10000,
+  "heldout_query_count": null,
+  "input_hashes": {
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "limitations": null,
+  "model_hashes": null,
+  "query_count": null,
+  "raw_sha256": "acb154320ef74c3d0e67d42462b349c403216954b306388e6cd6fb8b4079515c",
+  "results": {
+    "linear_ae32_random_init": {
+      "final_loss": 0.8711146044731141,
+      "heldout_mse": 8.816609624773264e-05,
+      "model_sha256": "18d0cd93b2304768fece7d424ac4e922eabb0b5f74c1b7c73d800134d24f147b",
+      "pca32_heldout_mse": 8.806247933534905e-05,
+      "pca32_train_mse": 8.694126881891862e-05,
+      "residual_heldout_mse": 8.816609624773264e-05,
+      "residual_scale": 0.009995443746447563,
+      "residual_train_mse": 8.70022558956407e-05,
+      "train_mse": 8.70022558956407e-05
+    },
+    "pca16": {
+      "heldout_mse": 9.324048005510122e-05,
+      "model_sha256": "4ed096f00720351c8eeb6b574f28a252d61b06efa91b7d5f5e4850d21ae3e08e",
+      "train_mse": 9.253156167687848e-05
+    },
+    "pca32": {
+      "heldout_mse": 8.806247933534905e-05,
+      "model_sha256": "14346475b96384352b762ce0c1de8f3f93ef71521979805231b7958d579f340b",
+      "train_mse": 8.694126881891862e-05
+    },
+    "pca8": {
+      "heldout_mse": 9.6178671810776e-05,
+      "model_sha256": "d62e2d661a52d01ea3d3c1899ce6b4723f23405930755745ed3cbdcf22d76db6",
+      "train_mse": 9.565227810526267e-05
+    },
+    "zero_residual": {
+      "heldout_mse": 0.00010038367327069864,
+      "model_sha256": "1dd563197d82cd4796625d2ae5ed877ca67efaafcfb215145a7113a2cc17ebd8",
+      "train_mse": 9.990889520850033e-05
+    }
+  },
+  "runner_sha256": "167a4fbffd62dd5e4f846f05cc667d95e8adbd9b3a563ed1e0472b2dfa39d682",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "summaries": null,
+  "train_query_count": null,
+  "training_count": 25000
+}

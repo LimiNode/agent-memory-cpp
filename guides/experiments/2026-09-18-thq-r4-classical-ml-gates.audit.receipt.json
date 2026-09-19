@@ -1,0 +1,50 @@
+{
+  "audit_artifact": "2026-09-18-thq-r4-classical-ml-gates.audit.json",
+  "audit_raw_sha256": "10ac3d0144ccae45b0c17c09a2aaa18e2532c6404dfa0d9e4127937148d9fd97",
+  "audit_runner_sha256": "35d91133906e3da0e004635ac7d871fdffa3b40af65c9aa506639d432db85ed5",
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "classical_raw_sha256": "311631579b500ab47118ab282cab6c5a14c5e40f5f85a5a363176d11b9efa4ff",
+  "compact_receipts": {
+    "2026-09-18-thq-ml-sanity-gate.receipt.json": "3a27301ce30c605c8c33f73f9a6677cab48a77d90a2fe359b5b686684664ec1e",
+    "2026-09-18-thq-r4-classical-gate.receipt.json": "c22506505c79ca72107f45ca25a0fd815e47ed4fa8fd91b46ba56d8798b93d8d",
+    "2026-09-18-thq-r4-teacher-diagnostics.receipt.json": "b0c3b6a208db7d54f13fc9516178e620912ca0848da10fef67d367c23c59d40b"
+  },
+  "family": "thq_r4_classical_ml_gate_audit_receipt_v1",
+  "input_hashes": {
+    "2026-09-18-thq-ml-sanity-gate": {
+      "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+      "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+      "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+    },
+    "2026-09-18-thq-r4-classical-gate": {
+      "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+      "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+      "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+      "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+      "int8_codes_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+      "int8_scales_sha256": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+      "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+      "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+      "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+      "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+      "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+      "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+      "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+    },
+    "2026-09-18-thq-r4-teacher-diagnostics": {
+      "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+      "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+      "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+      "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+      "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+      "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+      "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+      "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+      "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+    }
+  },
+  "ml_sanity_raw_sha256": "acb154320ef74c3d0e67d42462b349c403216954b306388e6cd6fb8b4079515c",
+  "schema_version": 1,
+  "status": "PASS",
+  "teacher_raw_sha256": "a734e395cf0b15380d7a99deeb1dd1329adf8e5a82594ab7129742501eceb87a"
+}

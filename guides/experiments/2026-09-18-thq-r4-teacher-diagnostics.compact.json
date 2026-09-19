@@ -1,0 +1,121 @@
+{
+  "candidate_provenance": {
+    "flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "native_receipt_sha256": "4bc286df8bd5c3f2674eef18c8beb59d218ce34530d9b9a86aa611e507e0e360",
+    "raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "runner_sha256": "12780d472bcecfbcfb91852350652c13f98d557bed5330a8f6427cf79cd966ac",
+    "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b"
+  },
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "documents": 1000000,
+  "evidence_status": "candidate_shell_train_heldout_teacher_score_diagnostics",
+  "family": "thq_r4_teacher_diagnostics_v1",
+  "heldout_count": null,
+  "heldout_query_count": 32,
+  "input_hashes": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "limitations": [
+    "train and held-out splits are query-disjoint within the frozen 152-query R4 shell",
+    "documents may recur across the query-disjoint train and held-out shells",
+    "teacher targets are exact FP32 scores only for candidate documents",
+    "no full-corpus routing or native latency claim"
+  ],
+  "model_hashes": null,
+  "query_count": 152,
+  "raw_sha256": "a734e395cf0b15380d7a99deeb1dd1329adf8e5a82594ab7129742501eceb87a",
+  "results": null,
+  "runner_sha256": "18de46f7db209a15d8f30062a2828e464a2064724e37f3d3be97de114b6a7353",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "summaries": {
+    "heldout": {
+      "centroid": {
+        "score_mse": {
+          "mean": 0.00016700722653695266,
+          "min": 0.0001158444574684836,
+          "p05": 0.0001281674445635872
+        },
+        "top10_overlap": {
+          "mean": 0.871875,
+          "min": 0.7,
+          "p05": 0.7
+        }
+      },
+      "decoder": {
+        "score_mse": {
+          "mean": 6.408613114672335e-05,
+          "min": 4.855872975895181e-05,
+          "p05": 5.237770437815925e-05
+        },
+        "top10_overlap": {
+          "mean": 0.865625,
+          "min": 0.7,
+          "p05": 0.7
+        }
+      },
+      "ridge": {
+        "score_mse": {
+          "mean": 0.00019841095127048902,
+          "min": 0.00014645785267930478,
+          "p05": 0.00016197410368476995
+        },
+        "top10_overlap": {
+          "mean": 0.865625,
+          "min": 0.6,
+          "p05": 0.7
+        }
+      }
+    },
+    "train": {
+      "centroid": {
+        "score_mse": {
+          "mean": 0.00016654981348741179,
+          "min": 0.00010349169315304607,
+          "p05": 0.00011753093458537478
+        },
+        "top10_overlap": {
+          "mean": 0.8308333333333334,
+          "min": 0.5,
+          "p05": 0.6
+        }
+      },
+      "decoder": {
+        "score_mse": {
+          "mean": 5.849970387619881e-05,
+          "min": 4.837776577915065e-05,
+          "p05": 5.141964447830105e-05
+        },
+        "top10_overlap": {
+          "mean": 0.8141666666666668,
+          "min": 0.4,
+          "p05": 0.6
+        }
+      },
+      "ridge": {
+        "score_mse": {
+          "mean": 0.00019278077088529243,
+          "min": 0.00013304997992236167,
+          "p05": 0.00014423643879126757
+        },
+        "top10_overlap": {
+          "mean": 0.8183333333333335,
+          "min": 0.4,
+          "p05": 0.6
+        }
+      }
+    }
+  },
+  "train_query_count": 120,
+  "training_count": 25000
+}
