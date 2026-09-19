@@ -8,8 +8,8 @@ Branch: `research/thq-score-codecs`
 The previous ADC fit minimized a query-weighted residual distortion objective,
 which improved neither fixed-split convergence nor four-fold OOF qrels. A
 bounded alternative is to bias codebook fitting toward the actual retrieval
-boundary: for each fitting query, include its exact FP32 top-32 documents from
-the THQ4 candidate shell in the training sample. This uses teacher scores only
+boundary: for each fitting query, first form the THQ4 top-128 set and then
+include the exact FP32 top-32 documents inside that set. This uses teacher scores only
 from the 114 in-fold queries; the 38 evaluation queries are untouched.
 
 Each fold fits 128×3D×2-bit codebooks on 4,096 detached residual rows plus
@@ -25,22 +25,23 @@ the preceding cross-fit gate.
 | fit | OOF nDCG@10 | candidate-FP32 overlap | boundary pairwise |
 | --- | ---: | ---: | ---: |
 | ordinary 32B/2-bit cross-fit | .653856 | .869079 | .657895 |
-| cutoff-aware top-32 fit (10 iterations, 4 restarts) | .654191 | .863816 | .650219 |
+| cutoff-aware top-32-in-THQ fit (10 iterations, 4 restarts) | .654264 | .866447 | .652412 |
 
 The final cutoff-aware per-fold nDCG values are recorded in the raw receipt;
-the paired delta to candidate-FP32 is `-0.000009`, with bootstrap CI95
-`[-.013711,+.014596]` and worst-query loss `-.369070`. Thus the teacher-ranked
-sample plus more serious fitting is statistically indistinguishable from the
-candidate-FP32 reference and does not improve the boundary metric. The
-preliminary single-initialization `.648924` result is retained only as an
-initialization-sensitivity diagnostic, not pooled with the final control.
+the paired delta to candidate-FP32 is `+0.000064`, with bootstrap CI95
+`[-.013881,+.014651]` and worst-query loss `-.369070`. Thus the corrected
+teacher-ranked sample plus more serious fitting is statistically
+indistinguishable from the candidate-FP32 reference. The preliminary
+single-initialization `.648924` result and the earlier global-R4 top32 replay
+are retained only as diagnostics, not pooled with the corrected control.
 
 ## Interpretation
 
-This is a bounded neutral/negative for this particular cutoff-aware sampling
+This is a bounded neutral result for this particular cutoff-aware sampling
 recipe. It does not show that pairwise/listwise learning is impossible; it
-shows that simply oversampling teacher top-32 documents while retaining the
-same block codebook parameterization and distortion objective is insufficient.
+shows that simply oversampling teacher top-32 documents inside the correct
+THQ4 shell while retaining the same block codebook parameterization and
+distortion objective is insufficient.
 The initialization sensitivity is itself a methodological warning: a future
 gate must use order-independent initialization or multiple restarts. A genuine
 pairwise/listwise gate would need an explicit score-order loss (and careful
@@ -51,6 +52,6 @@ Given the negative OOF result and the fixed-capacity controls, no further
 materialization remains deferred.
 
 Raw output (kept locally): `tmp/thq-adc-cutoff-aware.json`, SHA-256
-`dbbf3d0d784a672bff9c3171d3f581a9db3ce211f013684f77f54b4d9167bb50`.
+`165a20d3e5859cb91c07da934b29e6e4c56060089c1d7e9b5e79e7050b505c4f`.
 Runner SHA-256:
-`db1f2b4047ac69f6f5ff037fa7161d13171692962e6df800065313ea4bb62234`.
+`dc8b4ab302c9091b27a8621bfbc7d67cf9b141935012aebd0831437110850826`.

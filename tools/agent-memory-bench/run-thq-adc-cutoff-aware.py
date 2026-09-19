@@ -74,8 +74,21 @@ def main() -> None:
         # fold.  It is a teacher-ranked training sample, not a held-out score.
         for qi in fit_ids:
             ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
-            exact = np.asarray(documents[ids], dtype=np.float32) @ queries[qi]
-            focused_ids = gate.gate.top_ids(exact, ids, 32)
+            query = queries[qi]
+            docs = np.asarray(documents[ids], dtype=np.float32)
+            levels_all = h.unpack_thq(np.asarray(thq_codes[ids]))
+            interval_lut = np.empty((D, 4), dtype=np.float32)
+            for coordinate in range(D):
+                for level in range(4):
+                    low = -np.inf if level == 0 else thresholds[coordinate, level - 1]
+                    high = np.inf if level == 3 else thresholds[coordinate, level]
+                    delta = low - query[coordinate] if query[coordinate] < low else (
+                        query[coordinate] - high if query[coordinate] > high else 0.0)
+                    interval_lut[coordinate, level] = delta * delta
+            interval = np.sum(interval_lut[np.arange(D)[None, :], levels_all], axis=1)
+            thq_ids = ids[np.lexsort((ids, interval))[:min(TOP, len(ids))]]
+            thq_positions = np.asarray([int(np.flatnonzero(ids == doc)[0]) for doc in thq_ids])
+            focused_ids = gate.gate.top_ids(docs[thq_positions] @ query, thq_ids, 32)
             levels = h.unpack_thq(np.asarray(thq_codes[focused_ids]))
             base = centroids[np.arange(D)[None, :], levels]
             focused.append(np.asarray(documents[focused_ids], dtype=np.float32) - base)
