@@ -103,8 +103,11 @@ K documents emitted by each arm, with document-ID ascending as the secondary
 tie key.  It is not a binary-to-binary cascade and it is not the legacy
 144-byte Hamming payload.  The implementation contract is
 `run-thq-binary-r4-matched-gate.py`; its companion
-`audit-thq-binary-r4-matched-gate.py` replays source hashes, row cardinality,
-arm/K/query uniqueness, and byte accounting before accepting a result.
+`audit-thq-binary-r4-matched-gate.py` independently replays every filter
+top-K, FP32 rerank, nDCG, and teacher-overlap result from the source bundle.
+The runner records Python/NumPy reference timings explicitly; these are not
+native serving latency. Byte accounting separates global model reads,
+candidate IDs, per-document filter payloads, and final-rerank records.
 
 At the current checkout the gate is implemented but not executed: the required
 1M-row FP32 document matrix, matching query matrix, qrels, and teacher-ID

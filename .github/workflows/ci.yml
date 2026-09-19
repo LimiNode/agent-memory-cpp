@@ -214,6 +214,8 @@ jobs:
           python tools/agent-memory-bench/run-thq-score-codec-gate.py --self-test &&
           python tools/agent-memory-bench/run-thq-learned-adc-gate.py --self-test &&
           python tools/agent-memory-bench/audit-thq-adc-research.py --self-test &&
+          python tools/agent-memory-bench/run-thq-binary-r4-matched-gate.py --self-test &&
+          python tools/agent-memory-bench/audit-thq-binary-r4-matched-gate.py --self-test &&
           python -m py_compile
           tools/agent-memory-bench/run-thq-adc-convergence-capacity.py
           tools/agent-memory-bench/run-thq-adc-crossfit.py

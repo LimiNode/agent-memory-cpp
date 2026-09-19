@@ -171,10 +171,20 @@ def self_test() -> None:
     train = rng.normal(size=(128, D)).astype(np.float32)
     rabitq, bbq = candidate_codec_models(train, docs, np.arange(len(docs)))
     for query in queries:
+        positions = np.arange(len(docs), dtype=np.int64)
+        encoded_r = (query - rabitq.mean) @ rabitq.rotation
+        encoded_b = (query - bbq.mean) @ bbq.rotation
         a = rabitq.scores(query)
         b = bbq.scores(query)
+        a_control = score_from_encoded("rabitq_rr1", query, encoded_r, positions,
+                                       rabitq, bbq, np.zeros((len(docs), D), dtype=np.uint8),
+                                       np.zeros((D, 3), dtype=np.float32))
+        b_control = score_from_encoded("bbq_block1", query, encoded_b, positions,
+                                       rabitq, bbq, np.zeros((len(docs), D), dtype=np.uint8),
+                                       np.zeros((D, 3), dtype=np.float32))
         assert np.isfinite(a).all() and np.isfinite(b).all()
-        assert np.array_equal(top_indices(a, np.arange(len(docs)), 17), top_indices(a, np.arange(len(docs)), 17))
+        assert np.allclose(a, a_control, rtol=1e-6, atol=1e-6)
+        assert np.allclose(b, b_control, rtol=1e-6, atol=1e-6)
     levels = np.zeros((2, THQ_BYTES), dtype=np.uint8)
     levels[0, 0] = 0b11100100
     assert np.array_equal(unpack_thq(levels)[0, :4], np.array([0, 1, 2, 3], dtype=np.uint8))
@@ -223,6 +233,8 @@ def main() -> None:
     id_to_pos = {int(doc): pos for pos, doc in enumerate(unique_ids)}
     rows: list[dict[str, object]] = []
     arm_payload = {"thq4": THQ_BYTES, "rabitq_rr1": 48 + 4, "bbq_block1": 48 + 8 * 2}
+    model_bytes = {"thq4": D * 3 * 4, "rabitq_rr1": D * D * 4 + D * 4,
+                   "bbq_block1": D * D * 4 + D * 4}
     for query_index, query in enumerate(queries):
         ids = candidate_ids[offsets[query_index]:offsets[query_index + 1]]
         positions = np.asarray([id_to_pos[int(doc)] for doc in ids], dtype=np.int64)
@@ -262,20 +274,23 @@ def main() -> None:
                 assert selected_ids is not None and final_ids is not None
                 rows.append({
                     "query": query_index, "arm": arm, "K": k,
+                    "candidate_count": int(len(ids)),
                     "filter_top10_overlap": float(np.isin(exact_top10, selected_ids).sum() / 10.0),
                     "final_top10_overlap": float(np.isin(exact_top10, final_ids).sum() / 10.0),
                     "qrels_ndcg10": ndcg10(final_ids, qrel_ids[query_index], qrel_scores[query_index]),
                     "teacher_overlap": float(np.isin(teacher_ids[query_index], final_ids).sum() / 10.0),
-                    "filter_only_ms": statistics.median(filter_times),
-                    "filter_plus_fp32_cosine_rerank_ms": statistics.median(total_times),
-                    "query_encode_ms": statistics.median(encode_times),
-                    "filter_p50_ms": percentile(filter_times, .50), "filter_p95_ms": percentile(filter_times, .95),
-                    "filter_p99_ms": percentile(filter_times, .99),
-                    "cascade_p50_ms": percentile(total_times, .50), "cascade_p95_ms": percentile(total_times, .95),
-                    "cascade_p99_ms": percentile(total_times, .99),
-                    "filter_document_bytes": int(len(ids) * arm_payload[arm]),
+                    "python_reference_filter_only_ms": statistics.median(filter_times),
+                    "python_reference_filter_plus_fp32_cosine_rerank_ms": statistics.median(total_times),
+                    "python_reference_query_encode_ms": statistics.median(encode_times),
+                    "python_reference_filter_p50_ms": percentile(filter_times, .50), "python_reference_filter_p95_ms": percentile(filter_times, .95),
+                    "python_reference_filter_p99_ms": percentile(filter_times, .99),
+                    "python_reference_cascade_p50_ms": percentile(total_times, .50), "python_reference_cascade_p95_ms": percentile(total_times, .95),
+                    "python_reference_cascade_p99_ms": percentile(total_times, .99),
+                    "global_model_bytes": int(model_bytes[arm]),
+                    "candidate_id_bytes": int(len(ids) * 4),
+                    "filter_payload_bytes": int(len(ids) * arm_payload[arm]),
                     "rerank_document_bytes": int(k * DOC_BYTES),
-                    "filter_plus_rerank_bytes": int(len(ids) * arm_payload[arm] + k * DOC_BYTES),
+                    "total_bytes_touched": int(model_bytes[arm] + len(ids) * 4 + len(ids) * arm_payload[arm] + k * DOC_BYTES),
                     "downstream_documents": int(k),
                     "selected_ids": selected_ids.astype(int).tolist(),
                     "final_ids": final_ids.astype(int).tolist(),
@@ -291,16 +306,17 @@ def main() -> None:
                 "worst_query_ndcg10": float(np.min(quality)),
                 "mean_filter_top10_overlap": float(np.mean([row["filter_top10_overlap"] for row in subset])),
                 "mean_final_top10_overlap": float(np.mean([row["final_top10_overlap"] for row in subset])),
-                "mean_filter_only_ms": float(np.mean([row["filter_only_ms"] for row in subset])),
-                "mean_cascade_ms": float(np.mean([row["filter_plus_fp32_cosine_rerank_ms"] for row in subset])),
-                "p95_cascade_ms": percentile([float(row["filter_plus_fp32_cosine_rerank_ms"]) for row in subset], .95),
-                "mean_filter_plus_rerank_bytes": float(np.mean([row["filter_plus_rerank_bytes"] for row in subset])),
+                "mean_python_reference_filter_only_ms": float(np.mean([row["python_reference_filter_only_ms"] for row in subset])),
+                "mean_python_reference_cascade_ms": float(np.mean([row["python_reference_filter_plus_fp32_cosine_rerank_ms"] for row in subset])),
+                "p95_python_reference_cascade_ms": percentile([float(row["python_reference_filter_plus_fp32_cosine_rerank_ms"]) for row in subset], .95),
+                "mean_total_bytes_touched": float(np.mean([row["total_bytes_touched"] for row in subset])),
             }
     result = {
-        "schema_version": 1, "family": "thq_binary_r4_matched_gate_v1", "status": "EXECUTED",
+        "schema_version": 2, "family": "thq_binary_r4_matched_gate_v2", "status": "EXECUTED",
         "source_replay": True,
         "runner_sha256": sha256(Path(__file__)),
         "metric": "cosine", "final_reranker": "same FP32 cosine oracle over K filtered documents",
+        "timing_semantics": "python_reference_numpy_not_native_serving_latency",
         "candidate_count": int(len(candidate_ids)), "query_count": 152, "candidate_unique_documents": int(len(unique_ids)),
         "K_values": list(K_VALUES), "seed": SEED, "tie_policy": "score descending, document ID ascending",
         "source_hashes": {name: sha256(path) for name, path in {
