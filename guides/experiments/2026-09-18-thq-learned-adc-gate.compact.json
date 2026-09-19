@@ -974,7 +974,7 @@
   },
   "paired_scope": "thq4-top128",
   "query_count": 152,
-  "runner_sha256": "11a5046d8fee5595445e688677f95446ac80e92661b3d00ccdc74a45644af574",
+  "runner_sha256": "9c284cfac240031bf95300adedf3c5cde538ca797932c4996ac732aca55ffc26",
   "schema_version": 1,
   "score_baseline_provenance": {
     "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",

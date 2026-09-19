@@ -58,7 +58,11 @@ or jointly fitted norm side information is useless.
 
 * **confirmed:** transform-consistent Mahalanobis assignment, rate-matched
   2/4/8-bit grid, top-aware pairwise diagnostics, and stage-local top128 replay
-  with SHA-bound raw/compact evidence;
+  with SHA-bound raw/compact evidence; the committed independent audit also
+  verifies candidate raw/flat/byte bindings, recomputes THQ4 top128 membership
+  from source codes and thresholds, requires stage-local top-10 IDs to be a
+  subset of that recomputed top128, and recomputes paired baseline metrics from
+  qrels, teacher IDs, and candidate FP32 scores;
 * **inconclusive:** 32 B/2-bit has the highest held-out qrels nDCG in this
   grid, but its paired bootstrap intervals include zero and its teacher and
   candidate-FP32 fidelity remain imperfect;
@@ -92,4 +96,4 @@ Committed evidence:
 
 * `2026-09-18-thq-learned-adc-gate.compact.json`;
 * `2026-09-18-thq-learned-adc-gate.receipt.json`;
-* `tmp/thq-learned-adc-gate-corrected.audit.json` (local audit output).
+* `2026-09-18-thq-learned-adc-gate.audit.json` (committed independent audit).

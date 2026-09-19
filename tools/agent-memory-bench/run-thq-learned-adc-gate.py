@@ -2,10 +2,10 @@
 """Evaluate score-weighted block/PQ-like ADC on the frozen THQ4 R4 shell.
 
 The codebooks are fitted in a query-weighted Mahalanobis space and the
-document code is a packed 4-bit symbol per block.  Query scoring uses block
-LUTs plus analytic norm terms; it does not materialize a document FP32 vector
-as a stored representation.  This is a reference quality gate, not native
-latency evidence.
+document code uses rate-matched 2/4/8-bit symbols per block. Query scoring
+uses block LUTs plus analytic norm terms; it does not materialize a document
+FP32 vector as a stored representation. This is a reference quality gate, not
+native latency evidence.
 """
 from __future__ import annotations
 

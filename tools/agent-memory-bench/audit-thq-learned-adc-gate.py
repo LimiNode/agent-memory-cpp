@@ -65,6 +65,13 @@ def main() -> None:
     require(candidate.get("family") == "semantic_r4_fused_candidate_materialization_v1",
             "candidate receipt family differs")
     require(candidate.get("execution_status") == "EXECUTED", "candidate receipt is not executed")
+    flat_entry = candidate.get("flat_file", {})
+    require(candidate.get("raw_sha256") == sha(args.candidate_raw),
+            "candidate receipt/raw binding differs")
+    require(flat_entry.get("sha256") == sha(args.candidate_flat),
+            "candidate receipt/flat binding differs")
+    require(int(flat_entry.get("bytes", -1)) == args.candidate_flat.stat().st_size,
+            "candidate receipt/flat byte count differs")
     require(result.get("query_count") == 152, "canonical query count differs")
     require(result.get("train_query_count") == 120, "held-out split differs")
     arms = set(result.get("summaries", {}))
@@ -158,6 +165,9 @@ def main() -> None:
                     f"THQ4 top128 count differs: {row['arm']}/{row['scope']}/{query}")
             require(row.get("thq4_top128_sequence_sha256") == thq_top_sha,
                     f"independent THQ4 top128 sequence differs: {row['arm']}/{row['scope']}/{query}")
+            if row["scope"] == "thq4-top128":
+                require(np.all(np.isin(selected, thq_top)),
+                        f"stage-local top10 escaped recomputed THQ4 top128: {row['arm']}/{query}")
             expected_metrics = {
                 "qrels_ndcg10": ndcg(selected, qrel_ids[query], qrel_scores[query]),
                 "teacher_overlap": float(np.isin(teacher_ids[query], selected).sum() / 10.0),
@@ -178,6 +188,20 @@ def main() -> None:
                     f"score baseline input differs: {field}")
         baseline_rows = {(int(row["query"]), row["arm"]): row for row in baseline["rows"]
                          if row.get("scope", "full-shell") == "full-shell"}
+        for (query, arm), baseline_row in baseline_rows.items():
+            require(abs(float(baseline_row["qrels_ndcg10"]) -
+                        ndcg(np.asarray(baseline_row["top10_ids"], dtype=np.int64),
+                             qrel_ids[query], qrel_scores[query])) < 1e-12,
+                    f"baseline qrels nDCG differs: {arm}/{query}")
+            require(abs(float(baseline_row["teacher_overlap"]) -
+                        float(np.isin(teacher_ids[query], baseline_row["top10_ids"]).sum() / 10.0)) < 1e-12,
+                    f"baseline teacher overlap differs: {arm}/{query}")
+            require(abs(float(baseline_row["candidate_fp32_overlap"]) -
+                        float(np.isin(top_ids(documents[np.asarray(records[offsets[query]:offsets[query + 1], 0], dtype=np.int64)] @
+                                                     queries[query],
+                                             np.asarray(records[offsets[query]:offsets[query + 1], 0], dtype=np.int64), 10),
+                                             baseline_row["top10_ids"]).sum() / 10.0)) < 1e-12,
+                    f"baseline candidate overlap differs: {arm}/{query}")
         paired_baseline = {}
         rng = np.random.default_rng(20260918)
         for arm in sorted(result["summaries"]):
@@ -203,7 +227,8 @@ def main() -> None:
               "score_baseline_sha256": sha(args.score_baseline) if args.score_baseline else None,
               "paired_scope": "thq4-top128" if paired_baseline is not None else None,
               "paired_qrels_ndcg10": paired_baseline,
-              "checks": ["runner/result binding", "candidate provenance binding", "source SHA bindings",
+              "checks": ["runner/result binding", "candidate receipt/raw/flat/byte bindings",
+                         "source SHA bindings", "independent THQ4 top128 membership",
                          "independent qrels nDCG, teacher overlap and candidate-FP32 overlap",
                          "held-out split",
                          "rate-matched 2/4/8-bit arms", "row cardinality", "scope split",
