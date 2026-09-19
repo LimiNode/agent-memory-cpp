@@ -1,0 +1,23 @@
+{
+  "family": "thq_adc_cutoff_aware_receipt_v2",
+  "schema_version": 2,
+  "status": "EXECUTED",
+  "runner_sha256": "d79f3fe262f6faca9b0215a1266eb1ccb0aa6c4e24ecd120b579a94da77b80dc",
+  "raw_sha256": "2d0ae89b4d40b86e8e651141ea3bd600460ab0d9349f43644bd4ba039018accd",
+  "audit_sha256": "5ba3cea5c273dcca76ddec4f9f42e32b733eb167111ae4170b0f88a834879042",
+  "query_count": 152,
+  "fold_count": 4,
+  "fold_size": 38,
+  "fold_seed": 20260919,
+  "training_count": 25000,
+  "candidate_shell": "canonical_r4_fused_v2",
+  "training_protocol": "4096_detached_plus_exact_teacher_top32_within_thq4_top128_per_fit_query",
+  "evidence_status": "bounded_out_of_fold_shuffled_neutral_negative",
+  "limitations": [
+    "teacher-ranked training sample; no qrels labels used",
+    "candidate-local replay",
+    "single shuffled fold assignment",
+    "no native latency or persistent materialization",
+    "no held-out-domain confirmation"
+  ]
+}

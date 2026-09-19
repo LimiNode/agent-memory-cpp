@@ -1,0 +1,481 @@
+{
+  "candidate_provenance": {
+    "flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "layout_manifest_sha256": "95886a3b62eb0c2fc9182b721e94a252097395edc34d7604f7d11872bb5c039c",
+    "native_receipt_sha256": "4bc286df8bd5c3f2674eef18c8beb59d218ce34530d9b9a86aa611e507e0e360",
+    "raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "runner_sha256": "12780d472bcecfbcfb91852350652c13f98d557bed5330a8f6427cf79cd966ac",
+    "thq_manifest_sha256": "f58e074e481dc910ca7b12b35bc27dc51097640704fb2b0c749018bcf2edd57b"
+  },
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "documents": 1000000,
+  "evidence_status": "152_query_frozen_r4_direct_score_only_numpy_reference",
+  "family": "thq_score_only_codec_gate_v1",
+  "limitations": [
+    "candidate-local replay; no routing membership claim",
+    "direct score formulas are NumPy reference code, not native SIMD timing",
+    "score-aware basis is trained on detached vectors and the first 120 query rows",
+    "persistent side-code materialization and held-out-domain confirmation remain open"
+  ],
+  "model_hashes": {
+    "centroids": "1dd563197d82cd4796625d2ae5ed877ca67efaafcfb215145a7113a2cc17ebd8",
+    "coefficient_scales": "7e3704b05db6c02e017892a087d061087f8107d0859dfdc8ad442be4b78cf781",
+    "rotation": "08b7095b3a273c71880eb32ced6210d9c737d5a23250cd727f84d43789a8fa5d",
+    "rslm3_centers": "28a4a9799416b207fe5082ccebad7bd2f50afab956fe8f3b2568182db4e3917f",
+    "score_basis": "fd2fb05d3af939fe59ad001caf0ce4e31d82bdb53219ce7de2bff46d457f2b2d",
+    "thq_sdc_codebooks": {
+      "1": "07aef8bac3d53a3e094aa484a97e7d99adf7418e6df7b405f5903f4edfb7ed79",
+      "2": "dcbd4e3cd686ed65f47ea73655e615d3d568910dff81263317014488c2d60387",
+      "3": "57f5dc98c303eef599063f8c3c4b088b86ec4b0613bd2f4906a4a596e78af255"
+    }
+  },
+  "query_count": 152,
+  "raw_sha256": "ddbbc80b7576b54f3b0706ca52efb1c94524711293d6fea7cd3575749e5d269b",
+  "rslm3_direct_reconstruction_parity": {
+    "max_abs_score_error": 2.3891857303670605e-07,
+    "query_count": 152,
+    "top10_equal_queries": 152
+  },
+  "runner_sha256": "e5deadee00b6eb1e5a7061b5e6b85901dae34d455bc252b6c9ec683e3a4992e7",
+  "schema_version": 1,
+  "score_basis_explained_fraction": {
+    "16": 0.8210359811782837,
+    "32": 0.8844029903411865,
+    "64": 0.9546039700508118,
+    "8": 0.772344172000885
+  },
+  "status": "EXECUTED",
+  "summaries": {
+    "candidate-fp32": {
+      "candidate_fp32_overlap": {
+        "mean": 1.0,
+        "min": 1.0,
+        "p05": 1.0
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6542006212030269,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            0.0,
+            0.0
+          ],
+          "mean_delta": 0.0,
+          "min_delta": 0.0,
+          "p05_delta": 0.0,
+          "worst_query_loss": 0.0
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.008663074600322574,
+            0.0002825644038686966
+          ],
+          "mean_delta": -0.0027904519347298003,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": 0.0,
+          "worst_query_loss": -0.36907024642854247
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.9927631578947369,
+        "min": 0.9,
+        "p05": 0.9
+      }
+    },
+    "direct-int8": {
+      "candidate_fp32_overlap": {
+        "mean": 0.9967105263157895,
+        "min": 0.9,
+        "p05": 1.0
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6569910731377566,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.00028256440386869826,
+            0.008663074600322574
+          ],
+          "mean_delta": 0.0027904519347298003,
+          "min_delta": -0.014025039229678071,
+          "p05_delta": 0.0,
+          "worst_query_loss": -0.014025039229678071
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            0.0,
+            0.0
+          ],
+          "mean_delta": 0.0,
+          "min_delta": 0.0,
+          "p05_delta": 0.0,
+          "worst_query_loss": 0.0
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.9894736842105264,
+        "min": 0.9,
+        "p05": 0.9
+      }
+    },
+    "rslm3-direct-score": {
+      "candidate_fp32_overlap": {
+        "mean": 0.9710526315789475,
+        "min": 0.8,
+        "p05": 0.9
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6540277642321383,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.007402216163224665,
+            0.006311649607941543
+          ],
+          "mean_delta": -0.0001728569708886857,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.037020072295519096,
+          "worst_query_loss": -0.36907024642854247
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.0119363789829274,
+            0.00476172160013682
+          ],
+          "mean_delta": -0.002963308905618485,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.04637857428068165,
+          "worst_query_loss": -0.36907024642854247
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.9657894736842106,
+        "min": 0.8,
+        "p05": 0.9
+      }
+    },
+    "score-basis-16x8": {
+      "candidate_fp32_overlap": {
+        "mean": 0.8572368421052632,
+        "min": 0.5,
+        "p05": 0.7
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6518220544951271,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.018819762584156803,
+            0.01582324583927269
+          ],
+          "mean_delta": -0.0023785667078998463,
+          "min_delta": -0.5,
+          "p05_delta": -0.16162302166999057,
+          "worst_query_loss": -0.5
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.02122715215378663,
+            0.012134901252386128
+          ],
+          "mean_delta": -0.005169018642629645,
+          "min_delta": -0.5,
+          "p05_delta": -0.16162302166999057,
+          "worst_query_loss": -0.5
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.8552631578947368,
+        "min": 0.5,
+        "p05": 0.7
+      }
+    },
+    "score-basis-32x8": {
+      "candidate_fp32_overlap": {
+        "mean": 0.8585526315789473,
+        "min": 0.5,
+        "p05": 0.7
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6519238869323729,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.0182977522189706,
+            0.014495668652799509
+          ],
+          "mean_delta": -0.002276734270654047,
+          "min_delta": -0.3263802971916471,
+          "p05_delta": -0.16409865608855972,
+          "worst_query_loss": -0.3263802971916471
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.02094172297462195,
+            0.011099382650097526
+          ],
+          "mean_delta": -0.0050671862053838475,
+          "min_delta": -0.3263802971916471,
+          "p05_delta": -0.17736993262201514,
+          "worst_query_loss": -0.3263802971916471
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.8559210526315791,
+        "min": 0.5,
+        "p05": 0.7
+      }
+    },
+    "score-basis-64x8": {
+      "candidate_fp32_overlap": {
+        "mean": 0.8690789473684212,
+        "min": 0.6,
+        "p05": 0.7
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6532844609183771,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.01589507752924345,
+            0.014423324506256118
+          ],
+          "mean_delta": -0.0009161602846498299,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.13817872317476934,
+          "worst_query_loss": -0.36907024642854247
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.017991106632522937,
+            0.01129911469033828
+          ],
+          "mean_delta": -0.00370661221937963,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.13817872317476934,
+          "worst_query_loss": -0.36907024642854247
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.8657894736842107,
+        "min": 0.6,
+        "p05": 0.7
+      }
+    },
+    "score-basis-8x8": {
+      "candidate_fp32_overlap": {
+        "mean": 0.8467105263157894,
+        "min": 0.5,
+        "p05": 0.7
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6474431886075621,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.024994675795101094,
+            0.01194791484214045
+          ],
+          "mean_delta": -0.006757432595464752,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.16112665738440946,
+          "worst_query_loss": -0.36907024642854247
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.02707293878066279,
+            0.008546862607303795
+          ],
+          "mean_delta": -0.009547884530194553,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.17276624418739905,
+          "worst_query_loss": -0.36907024642854247
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.8460526315789475,
+        "min": 0.5,
+        "p05": 0.7
+      }
+    },
+    "thq-sdc-1bit-direct-score": {
+      "candidate_fp32_overlap": {
+        "mean": 0.905263157894737,
+        "min": 0.6,
+        "p05": 0.8
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6514177229567399,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.01459907565920319,
+            0.008893282655183497
+          ],
+          "mean_delta": -0.0027828982462868948,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.11157765229487122,
+          "worst_query_loss": -0.36907024642854247
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.01872345380946057,
+            0.006976069216959317
+          ],
+          "mean_delta": -0.005573350181016695,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.12098321684907028,
+          "worst_query_loss": -0.36907024642854247
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.9019736842105265,
+        "min": 0.6,
+        "p05": 0.8
+      }
+    },
+    "thq-sdc-2bit-direct-score": {
+      "candidate_fp32_overlap": {
+        "mean": 0.9414473684210528,
+        "min": 0.7,
+        "p05": 0.8
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6525088682874873,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.01315859648009976,
+            0.009023097342926698
+          ],
+          "mean_delta": -0.0016917529155395699,
+          "min_delta": -0.5,
+          "p05_delta": -0.04863195419448817,
+          "worst_query_loss": -0.5
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.015118126935613105,
+            0.005322616547948054
+          ],
+          "mean_delta": -0.00448220485026937,
+          "min_delta": -0.5,
+          "p05_delta": -0.05800368078498723,
+          "worst_query_loss": -0.5
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.9375,
+        "min": 0.7,
+        "p05": 0.8
+      }
+    },
+    "thq-sdc-3bit-direct-score": {
+      "candidate_fp32_overlap": {
+        "mean": 0.9513157894736843,
+        "min": 0.8,
+        "p05": 0.8
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6549830165735289,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.010005310669863226,
+            0.012469346644518065
+          ],
+          "mean_delta": 0.0007823953705019674,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.04417600205651924,
+          "worst_query_loss": -0.36907024642854247
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.012015294163473352,
+            0.008444290054924794
+          ],
+          "mean_delta": -0.0020080565642278327,
+          "min_delta": -0.36907024642854247,
+          "p05_delta": -0.04417600205651924,
+          "worst_query_loss": -0.36907024642854247
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.9453947368421052,
+        "min": 0.7,
+        "p05": 0.8
+      }
+    },
+    "thq4-centroid-direct": {
+      "candidate_fp32_overlap": {
+        "mean": 0.8394736842105264,
+        "min": 0.5,
+        "p05": 0.6
+      },
+      "qrels_ndcg10": {
+        "mean": 0.6484280824430028,
+        "min": 0.0,
+        "p05": 0.0
+      },
+      "qrels_ndcg10_paired": {
+        "candidate-fp32": {
+          "bootstrap_ci95": [
+            -0.023501072644274913,
+            0.01101340213172887
+          ],
+          "mean_delta": -0.005772538760024153,
+          "min_delta": -0.38268031849431083,
+          "p05_delta": -0.1496535351708254,
+          "worst_query_loss": -0.38268031849431083
+        },
+        "direct-int8": {
+          "bootstrap_ci95": [
+            -0.025250981375372274,
+            0.007363219305360652
+          ],
+          "mean_delta": -0.008562990694753954,
+          "min_delta": -0.38268031849431083,
+          "p05_delta": -0.14965509446524541,
+          "worst_query_loss": -0.38268031849431083
+        }
+      },
+      "teacher_overlap": {
+        "mean": 0.836842105263158,
+        "min": 0.5,
+        "p05": 0.6
+      }
+    }
+  },
+  "training_count": 25000
+}

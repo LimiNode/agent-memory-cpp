@@ -1,0 +1,22 @@
+{
+  "family": "thq_adc_cutoff_aware_receipt_v1",
+  "schema_version": 1,
+  "status": "SUPERSEDED",
+  "runner_sha256": "dc8b4ab302c9091b27a8621bfbc7d67cf9b141935012aebd0831437110850826",
+  "raw_sha256": "165a20d3e5859cb91c07da934b29e6e4c56060089c1d7e9b5e79e7050b505c4f",
+  "query_count": 152,
+  "fold_count": 4,
+  "fold_size": 38,
+  "training_count": 25000,
+  "candidate_shell": "canonical_r4_fused_v2",
+  "training_protocol": "4096_detached_plus_exact_teacher_top32_within_thq4_top128_per_fit_query",
+  "evidence_status": "SUPERSEDED_BY_SHUFFLED_FOLD_REPLAY",
+  "superseded_by": "2026-09-19-thq-adc-cutoff-aware-shuffled.receipt.json",
+  "limitations": [
+    "single query domain",
+    "candidate-local replay",
+    "sampling control rather than explicit pairwise/listwise loss",
+    "no native latency or persistent materialization",
+    "no held-out-domain confirmation"
+  ]
+}

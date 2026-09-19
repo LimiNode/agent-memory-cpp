@@ -1,0 +1,28 @@
+{
+  "family": "thq_adc_convergence_capacity_receipt_v1",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "runner_sha256": "d2080bf314d0b7eb0110301f0878deea64a896d164245e9529ba4f05e0606151",
+  "raw_sha256": "fb688e4b8cc908358099e90d50c33b1ae709d361477771f3ab5c0e85a3a197d1",
+  "query_count": 152,
+  "train_query_count": 120,
+  "training_count": 25000,
+  "candidate_shell": "canonical_r4_fused_v2",
+  "evidence_status": "bounded_reference_quality",
+  "arms": [
+    "32B-2bit-current",
+    "32B-2bit-converged",
+    "32B-8bit-current",
+    "32B-8bit-restart",
+    "48B-3bit-128x3D",
+    "48B-2bit-192x2D",
+    "64B-4bit-128x3D"
+  ],
+  "limitations": [
+    "single held-out query split",
+    "no four-fold cross-fitting",
+    "candidate-local reference quality only",
+    "no native latency or persistent storage evidence",
+    "Mahalanobis reconstruction objective is not a retrieval objective"
+  ]
+}

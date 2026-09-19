@@ -1,0 +1,21 @@
+{
+  "family": "thq_adc_crossfit_receipt_v1",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "runner_sha256": "dbb20b36e450c5b9147f1a7569adfe90a8bd4ef95a7acadfdc34e4c5e5f232f5",
+  "raw_sha256": "5243776bff0193fa43d2c3c95b20d9a1d7e0dd9839dc6fd759bb67e1a9250bad",
+  "query_count": 152,
+  "fold_count": 4,
+  "fold_size": 38,
+  "training_count": 25000,
+  "candidate_shell": "canonical_r4_fused_v2",
+  "evidence_status": "bounded_out_of_fold_reference_quality",
+  "conclusion": "current_ADC_recipe_does_not_generalize_as_a_qrels_gain",
+  "limitations": [
+    "single query domain",
+    "candidate-local replay",
+    "no native latency or persistent materialization",
+    "no held-out-domain confirmation",
+    "no cutoff-aware pairwise/listwise objective"
+  ]
+}

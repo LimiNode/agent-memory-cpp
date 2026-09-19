@@ -1,0 +1,31 @@
+{
+  "checks": [
+    "runner/result SHA binding",
+    "disjoint fold coverage",
+    "independent qrels nDCG",
+    "independent teacher overlap",
+    "independent candidate-FP32 overlap",
+    "independent candidate/THQ4 source replay",
+    "unique top10 IDs"
+  ],
+  "family": "thq_adc_research_audit_v1",
+  "fold_count": 4,
+  "query_count": 152,
+  "result_sha256": "6a9b41b3c9a9ebcb50d3ca458652e2b016f0ab8daad60fa4bad3b09006812946",
+  "row_count": 456,
+  "runner_sha256": "7d92b4394a3bafcc2fc6469303182f4bcba2fa441c39d5a93914a20287bfe05c",
+  "schema_version": 1,
+  "status": "PASS",
+  "source_replay": true,
+  "input_hashes": {
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  }
+}
