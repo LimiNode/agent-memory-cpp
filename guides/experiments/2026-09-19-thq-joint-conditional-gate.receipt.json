@@ -1,0 +1,24 @@
+{
+  "family": "thq_joint_conditional_gate_receipt_v1",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "runner_sha256": "67e427c9780fe866bb52d339f4504475169958487649709cb26c67a960b097c5",
+  "raw_sha256": "1d172415d72ec1b049e38ba701623c07a6d4818ab0360df4ba539ed48c6c8c68",
+  "audit_sha256": "865af430240a8562987102d2d6a2a868cfd5450b147a97a7bc890ef125853a5a",
+  "audit_runner_sha256": "560ca565f1fcffbcb1d9239679b1865d005d1e753fcd72919bf051e0b76ccb45",
+  "query_count": 152,
+  "fold_count": 4,
+  "fold_seed": 20260919,
+  "candidate_unique_documents": 463258,
+  "arms": ["thq-joint2", "thq-joint3"],
+  "side_payload_bytes": {"thq-joint2": 32, "thq-joint3": 48},
+  "cascade_total_bytes": {"thq-joint2": 128, "thq-joint3": 144},
+  "artifact_hashes": {
+    "candidate_ids": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
+    "thq-joint2_symbols": "283d089ccb08429a2f070597d9ebe2f01f012310f7f08a3bea89a16a50984c56",
+    "thq-joint3_symbols": "df095291a7a13795ee72b7780ea2a0df6bccf5a6291c00d3dfd0155a2f4275aa",
+    "thq-joint2_codebook": "fd007dc303b816ab9a3b238ce83d7d296b9080e33dda1d08ae75df34d28771fa",
+    "thq-joint3_codebook": "0c94defbc1518ec26dd1612851ba2f3e48d1185d754b844c36621aa94f9936ef"
+  },
+  "evidence_status": "bounded_persistable_joint_conditional_reference_gate"
+}
