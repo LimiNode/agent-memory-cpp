@@ -1,0 +1,17 @@
+{
+  "family": "thq_adc_production_shaped_receipt_v2",
+  "schema_version": 2,
+  "status": "EXECUTED",
+  "runner_sha256": "1259e14bf0107ae510666330b5cf6ec4f55cf3418270994edea68c2cf5a3a516",
+  "raw_sha256": "68729d931c8edb5ec0f24d5700203d9eae4b15281ee2223d9b56399a7b8df671",
+  "audit_sha256": "126a5bd6a43b90c3b94cb7ad6799b814f40cbe5eb4d6b2d580e57fb89d34bd3d",
+  "query_count": 152,
+  "fold_count": 4,
+  "fold_size": 38,
+  "fold_seed": 20260919,
+  "fit": {"sample_limit": 25000, "iterations": 20, "restarts": 4},
+  "candidate_shell": "canonical_r4_fused_v2",
+  "stage": "r4_to_thq4_top128_to_scorer",
+  "arms": ["thq4-fp32", "thq4-int8", "thq4-rslm4", "adc48-3bit"],
+  "evidence_status": "bounded_out_of_fold_production_shaped_reference_quality"
+}

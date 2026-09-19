@@ -806,3 +806,25 @@ Non-norm stage-local top-10 lists exactly match full-shell lists for all 152
 queries. The exact-source-norm +2 B control remains only a negative control for
 this ADC, not evidence against learned norm correction. See
 `2026-09-18-thq-learned-adc-gate.md` and its corrected SHA-bound evidence.
+
+### THQ ADC convergence, OOF controls and pairwise correction (2026-09-19)
+
+The production-shaped ADC48 replay was repeated with a 25k training sample,
+20 Lloyd iterations and four restarts per fold. On the identical
+`R4 → THQ4 top128 → scorer` boundary it reached nDCG `.647401`, below the
+FP32/INT8/RSLM4 controls (`.654201/.656991/.659320`); paired deltas were
+`-.006800/-.009590/-.011919` with bootstrap intervals crossing zero. The
+single-init `.649128` result is therefore not a stable-fit improvement.
+
+The pairwise teacher-loss runner was corrected from a mislabeled 32B/2bit
+claim to its actual 48B/3bit (144 B total) protocol. A 10%-of-initial-loss
+reconstruction regularizer, shuffled mini-batches and three seeds were added,
+with direct-ADC parity below `7.2e-7` before training. Corrected OOF nDCG is
+`.639432` (per-seed `.640683/.642764/.634850`), and 1016/1024 transformed
+centers are unused after hard-assignment updates. This is a bounded negative
+for the tested pairwise optimization, not a theorem about learned ADC.
+
+Both results have independent source-replay audits and are recorded as
+quality-only reference evidence; no native latency or production codec choice
+is licensed. See the stable/pairwise corrected notes and receipts dated
+2026-09-19.

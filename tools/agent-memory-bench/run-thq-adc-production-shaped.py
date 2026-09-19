@@ -82,13 +82,19 @@ def main() -> None:
     shuffled = np.random.default_rng(20260919).permutation(query_count)
     folds = np.array_split(shuffled, 4)
     rows = []
+    model_hashes = {}
     for fold, test_ids in enumerate(folds):
         fit_ids = np.setdiff1d(np.arange(query_count), test_ids)
         covariance = queries[fit_ids].astype(np.float64).T @ queries[fit_ids].astype(np.float64)
         print(f"fold {fold}: fitting ADC48/3bit", flush=True)
         codebooks, transforms, diagnostics = gate.fit_codebooks(
-            train_residual, covariance, 128, 3, sample_limit=8192, iterations=5, restarts=1,
+            train_residual, covariance, 128, 3, sample_limit=25000, iterations=20, restarts=4,
             seed=20260919 + fold * 100003)
+        model_hashes[str(fold)] = {
+            "codebooks_sha256": hashlib.sha256(np.asarray(codebooks, dtype="<f4").tobytes()).hexdigest(),
+            "transforms_sha256": hashlib.sha256(np.asarray(transforms, dtype="<f4").tobytes()).hexdigest(),
+            "fit_diagnostics": diagnostics,
+        }
         for qi in test_ids:
             ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
             docs = np.asarray(documents[ids], dtype=np.float32)
@@ -117,16 +123,23 @@ def main() -> None:
             rslm_scores = score.cosine_from_parts(np.zeros_like(rslm_values), rslm_values, query)
             symbols = gate.gate.encode(residual, codebooks, transforms)
             adc_scores = gate.gate.direct_adc_scores(base[positions], codebooks, symbols[positions], query)
-            arms = {"thq4-fp32": (exact[positions], 1536), "thq4-int8": (int8_scores, 388),
-                    "thq4-rslm4": (rslm_scores, 288), "adc48-3bit": (adc_scores, 144)}
-            for arm, (scores, payload) in arms.items():
+            arms = {"thq4-fp32": (exact[positions], 1536, 1632),
+                    "thq4-int8": (int8_scores, 388, 484),
+                    "thq4-rslm4": (rslm_scores, 192, 288),
+                    "adc48-3bit": (adc_scores, 48, 144)}
+            for arm, (scores, side_payload, cascade_payload) in arms.items():
                 selected = gate.gate.top_ids(scores, thq_top)
                 rows.append({"fold": fold, "query": int(qi), "arm": arm,
                              "top10_ids": selected.astype(int).tolist(),
+                             "candidate_fp32_top10_ids": exact_top.astype(int).tolist(),
+                             "thq4_top128_ids": thq_top.astype(int).tolist(),
                              "qrels_ndcg10": gate.gate.ndcg(selected, qrel_ids[qi], qrel_scores[qi]),
                              "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0),
                              "candidate_fp32_overlap": float(np.isin(exact_top, selected).sum() / 10.0),
-                             "payload_bytes": payload, "thq4_top128_count": int(len(thq_top))})
+                             "side_payload_bytes": side_payload,
+                             "cascade_total_bytes": cascade_payload,
+                             "payload_bytes": cascade_payload,
+                             "thq4_top128_count": int(len(thq_top))})
     by_query = {(row["query"], row["arm"]): row for row in rows}
     summaries = {}
     for arm in ("thq4-fp32", "thq4-int8", "thq4-rslm4", "adc48-3bit"):
@@ -143,14 +156,17 @@ def main() -> None:
     result = {"schema_version": 1, "family": "thq_adc_production_shaped_crossfit_v1", "status": "EXECUTED",
               "runner_sha256": sha(Path(__file__)), "documents": document_count, "training_count": train_count,
               "query_count": query_count, "fold_count": 4, "fold_sizes": [len(fold) for fold in folds],
-              "fold_seed": 20260919, "candidate_flat_sha256": sha(args.candidate_flat),
+               "fold_seed": 20260919, "fold_queries": [fold.astype(int).tolist() for fold in folds],
+               "candidate_flat_sha256": sha(args.candidate_flat),
               "candidate_raw_sha256": sha(args.candidate_raw), "candidate_receipt_sha256": sha(args.candidate_receipt),
               "documents_sha256": sha(args.documents), "training_sha256": sha(args.train_vectors),
               "thq4_codes_sha256": sha(args.thq4_codes), "thq4_thresholds_sha256": sha(args.thq4_thresholds),
               "int8_codes_sha256": sha(args.int8_codes), "int8_scales_sha256": sha(args.int8_scales),
               "queries_sha256": sha(args.queries), "qrel_ids_sha256": sha(args.qrel_ids),
               "qrel_scores_sha256": sha(args.qrel_scores), "teacher_ids_sha256": sha(args.teacher_ids),
-              "rslm4_centers_sha256": hashlib.sha256(np.asarray(rslm4_centers, dtype="<f4").tobytes()).hexdigest(),
+               "rslm4_centers_sha256": hashlib.sha256(np.asarray(rslm4_centers, dtype="<f4").tobytes()).hexdigest(),
+               "fit": {"sample_limit": 25000, "iterations": 20, "restarts": 4},
+               "model_hashes": model_hashes,
               "summary": summaries, "rows": rows,
               "evidence_status": "four_fold_shuffled_production_shaped_reference_quality",
               "limitations": ["candidate-local replay", "NumPy reference quality only",

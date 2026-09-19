@@ -1,0 +1,19 @@
+{
+  "checks": [
+    "runner/result SHA binding",
+    "disjoint fold coverage",
+    "independent qrels nDCG",
+    "independent teacher overlap",
+    "independent candidate-FP32 overlap",
+    "independent candidate/THQ4 recomputation when source paths are supplied",
+    "unique top10 IDs"
+  ],
+  "family": "thq_adc_research_audit_v1",
+  "fold_count": 4,
+  "query_count": 152,
+  "result_sha256": "f489dfdd05e935aca376396dc9d71ac68e7d9da7514c548702ab52f991610b79",
+  "row_count": 456,
+  "runner_sha256": "7f17022f67e8359356b9a919e49dd76a56fb645e7390aa40643a302f943b98d5",
+  "schema_version": 1,
+  "status": "PASS"
+}

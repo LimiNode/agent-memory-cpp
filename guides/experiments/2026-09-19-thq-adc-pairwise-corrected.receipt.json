@@ -1,0 +1,17 @@
+{
+  "family": "thq_adc_pairwise_receipt_v2",
+  "schema_version": 2,
+  "status": "EXECUTED",
+  "runner_sha256": "7f17022f67e8359356b9a919e49dd76a56fb645e7390aa40643a302f943b98d5",
+  "raw_sha256": "f489dfdd05e935aca376396dc9d71ac68e7d9da7514c548702ab52f991610b79",
+  "audit_sha256": "08662ab12893173fff3f37fd853e595077a86c9124feaaf11574a3cefe01a79c",
+  "query_count": 152,
+  "fold_count": 4,
+  "fold_size": 38,
+  "fold_seed": 20260919,
+  "pairwise_seeds": [11, 22, 33],
+  "code_rate": {"blocks": 128, "dimensions_per_block": 3, "bits_per_block": 3,
+                "adc_side_bytes": 48, "thq4_bytes": 96, "total_payload_bytes": 144},
+  "candidate_shell": "canonical_r4_fused_v2",
+  "evidence_status": "bounded_out_of_fold_multi_seed_pairwise_negative"
+}

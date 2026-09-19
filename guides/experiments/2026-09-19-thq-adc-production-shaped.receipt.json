@@ -1,7 +1,7 @@
 {
   "family": "thq_adc_production_shaped_receipt_v1",
   "schema_version": 1,
-  "status": "EXECUTED",
+  "status": "SUPERSEDED",
   "runner_sha256": "ec3650b15c607c5a57f91e25e82a16314ca3172ab2cb91597b25570696123000",
   "raw_sha256": "abda5bdc604cda8e21485f43542ce274f2adc7d69d3f4d7dc69de36962106ee2",
   "query_count": 152,
@@ -12,7 +12,9 @@
   "candidate_shell": "canonical_r4_fused_v2",
   "stage": "r4_to_thq4_top128_to_scorer",
   "arms": ["thq4-fp32", "thq4-int8", "thq4-rslm4", "adc48-3bit"],
-  "evidence_status": "bounded_out_of_fold_production_shaped_reference_quality",
+  "evidence_status": "SUPERSEDED_BY_STABLE_FIT_REPLAY",
+  "superseded_by": "2026-09-19-thq-adc-production-shaped-stable.receipt.json",
+  "historical_fit": {"sample_limit": 8192, "iterations": 5, "restarts": 1},
   "limitations": [
     "single shuffled fold assignment",
     "candidate-local replay",
