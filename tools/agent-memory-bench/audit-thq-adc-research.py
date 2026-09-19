@@ -125,7 +125,7 @@ def main() -> None:
             fold_by_query[query] = fold_index
     if family.endswith("production_shaped_crossfit_v1"):
         require(len(rows) == query_count * 4, "production row cardinality differs")
-        expected_arms = {"direct_fp32", "direct_int8", "direct_rslm4", "adc48"}
+        expected_arms = {"thq4-fp32", "thq4-int8", "thq4-rslm4", "adc48-3bit"}
         require({row.get("arm") for row in rows} == expected_arms, "production arms differ")
         keys = [(int(row["query"]), row.get("arm")) for row in rows]
     elif family.endswith("cutoff_aware_crossfit_v1"):
