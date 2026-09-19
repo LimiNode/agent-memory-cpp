@@ -4,40 +4,45 @@ Date: 2026-09-08.
 
 ## Question
 
-THQ has excellent document ranking but weak local Hamming topology.  This
+The legacy Gaussian-threshold control has useful document ranking but weak
+local Hamming topology.  This
 replay tests whether a data-adaptive partition can recover the advantage of
 IVF without assuming that relevant documents form a Hamming sphere around the
 query:
 
 ```text
-E5-IVF or THQ-native IVF -> selected postings -> local THQ4 Hamming@256
+E5-IVF or THQ-native IVF -> selected postings -> local Gaussian-threshold
+Hamming@256
                          -> exact FP32 top-10
 ```
 
 ## Setup
 
 The frozen 1M-document, 152-query E5 materialization and qrels were reused.
-THQ4 is the existing three-bit thermometer code (144 bytes/document).  Both
+The control is the existing three-bit thermometer-like packed code (144
+bytes/document), scored by plain Hamming.  It is not the canonical THQ4
+interval-squared ADC representation.  Both
 variants used `nlist=4096`, 100,000 document vectors for 15-iteration CPU
 k-means training, deterministic stable list ordering, and candidate targets
 of 20k/50k/100k documents.  The E5 variant clusters normalized FP32 vectors
 with inner-product assignment.  The THQ-native variant decodes thermometer
 levels and clusters the 384-dimensional ordinal level vectors with L2
-assignment.  In both cases runtime list ranking is followed by local THQ4
-Hamming and exact FP32 reranking.
+assignment.  In both cases runtime list ranking is followed by local
+Gaussian-threshold Hamming and exact FP32 reranking.
 
 ## Results
 
 | route | target | mean candidates | mean survival | mean nDCG@10 | p95 Python query ms |
 |---|---:|---:|---:|---:|---:|
-| E5-IVF → THQ4 | 20k | 20.3k | .836 | .640 | 24.2 |
-| E5-IVF → THQ4 | 50k | 50.3k | .914 | .646 | 52.6 |
-| E5-IVF → THQ4 | 100k | 100.3k | .957 | .650 | 102.0 |
-| THQ-native-IVF → THQ4 | 20k | 20.3k | .803 | .592 | 26.8 |
-| THQ-native-IVF → THQ4 | 50k | 50.3k | .899 | .645 | 54.8 |
-| THQ-native-IVF → THQ4 | 100k | 100.3k | .946 | .650 | 104.9 |
+| E5-IVF → Gaussian-Hamming | 20k | 20.3k | .836 | .640 | 24.2 |
+| E5-IVF → Gaussian-Hamming | 50k | 50.3k | .914 | .646 | 52.6 |
+| E5-IVF → Gaussian-Hamming | 100k | 100.3k | .957 | .650 | 102.0 |
+| THQ-native-IVF → Gaussian-Hamming | 20k | 20.3k | .803 | .592 | 26.8 |
+| THQ-native-IVF → Gaussian-Hamming | 50k | 50.3k | .899 | .645 | 54.8 |
+| THQ-native-IVF → Gaussian-Hamming | 100k | 100.3k | .946 | .650 | 104.9 |
 
-The flat THQ4 reference on the same materialization reports mean nDCG
+The flat legacy Gaussian-Hamming reference on the same materialization reports
+mean nDCG
 `.6540`, 144 MB sequential THQ payload read, and native p95 total around
 39 ms at K=256.  The IVF numbers above are Python directional timings (they
 include list materialization and NumPy scoring, not a fused native kernel),

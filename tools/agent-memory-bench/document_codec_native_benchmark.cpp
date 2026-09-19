@@ -539,6 +539,9 @@ float score_int4_integer_avx2(const std::uint8_t* bytes, float scale,
 #endif
 
 Packed encode_thq(const float* vector, int levels) {
+  // Legacy Gaussian-threshold packed Hamming control.  This intentionally is
+  // not the canonical interval-squared THQ4 representation used by the
+  // production-shaped THQ gate; keep the distinction explicit at the source.
   const int bits = levels - 1;
   Packed result{std::vector<std::uint8_t>((kDimensions * bits + 7) / 8, 0), 1.0f, bits};
   // Normal-quantile thresholds approximate the quantile THQ setup used by the Python study.
