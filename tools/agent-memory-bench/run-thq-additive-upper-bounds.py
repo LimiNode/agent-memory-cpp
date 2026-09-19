@@ -178,14 +178,24 @@ def main() -> None:
     if args.documents.stat().st_size != 1_000_000 * D * 4:
         raise RuntimeError("upper-bound gate requires the 1M-row FP32 document source")
     documents = np.memmap(args.documents, mode="r", dtype="<f4", shape=(1_000_000, D))
+    if args.train_vectors.stat().st_size % (D * 4):
+        raise RuntimeError("training source is not an exact FP32x384 matrix")
     train_rows = args.train_vectors.stat().st_size // (D * 4)
     if train_rows < 256:
         raise RuntimeError("training source is too small for 256-way additive codebooks")
     train = np.asarray(np.memmap(args.train_vectors, mode="r", dtype="<f4", shape=(train_rows, D)), dtype=np.float32)
+    if args.queries.stat().st_size != 152 * D * 4:
+        raise RuntimeError("queries source must contain exactly 152 x 384 FP32 rows")
+    if args.qrel_ids.stat().st_size != 152 * 20 * 8 or args.qrel_scores.stat().st_size != 152 * 20 * 4:
+        raise RuntimeError("qrels sources must contain exactly 152 x 20 rows")
+    if args.teacher_ids.stat().st_size != 152 * 10 * 8:
+        raise RuntimeError("teacher source must contain exactly 152 x 10 IDs")
     queries = np.asarray(np.memmap(args.queries, mode="r", dtype="<f4", shape=(152, D)), dtype=np.float32)
     qrel_ids = np.asarray(np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(152, 20)))
     qrel_scores = np.asarray(np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(152, 20)))
     teacher_ids = np.asarray(np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(152, 10)))
+    if args.thq4_codes.stat().st_size != 1_000_000 * THQ_BYTES:
+        raise RuntimeError("THQ4 source must contain exactly 1M x 96 bytes")
     thq_codes = np.memmap(args.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
     thresholds = np.fromfile(args.thq4_thresholds, dtype="<f4")
     if thresholds.size != D * 3:
