@@ -40,6 +40,9 @@ The stronger fit therefore does not license production selection. The replay
 does not provide native latency, persistent-storage or held-out-domain evidence.
 An independent audit recomputes the per-row qrels metrics, teacher/candidate
 overlaps, fold coverage, and top128 containment before the result is cited.
+The committed audit is fail-closed source replay with input SHA bindings
+(`source_replay: true`). Audit SHA-256:
+`08594c9f02e300bf20cdea41f4ae714e3cf1c9502f27092bb90cd0ec2d4e82cf`.
 
 Raw output (corrected replay): `tmp/thq-adc-production-shaped-stable.json`,
 SHA-256 `68729d931c8edb5ec0f24d5700203d9eae4b15281ee2223d9b56399a7b8df671`.

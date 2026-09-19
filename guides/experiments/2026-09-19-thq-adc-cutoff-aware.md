@@ -59,4 +59,6 @@ SHA-256 `2d0ae89b4d40b86e8e651141ea3bd600460ab0d9349f43644bd4ba039018accd`.
 Runner SHA-256:
 `d79f3fe262f6faca9b0215a1266eb1ccb0aa6c4e24ecd120b579a94da77b80dc`.
 Independent source-replay audit SHA-256:
-`5ba3cea5c273dcca76ddec4f9f42e32b733eb167111ae4170b0f88a834879042`.
+`25c6ba061e5742b95004dcb29308b4f1e2d4cf32829233aed046096e394ad9a2`.
+The audit is fail-closed source replay with input SHA bindings
+(`source_replay: true`).

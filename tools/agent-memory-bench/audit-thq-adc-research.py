@@ -181,7 +181,7 @@ def main() -> None:
              "query_count": query_count, "row_count": len(rows), "fold_count": len(folds),
              "checks": ["runner/result SHA binding", "disjoint fold coverage",
                         "independent qrels nDCG", "independent teacher overlap",
-                         "independent candidate-FP32 overlap", "independent candidate/THQ4 recomputation when source paths are supplied",
+                         "independent candidate-FP32 overlap", "independent candidate/THQ4 source replay",
                         "unique top10 IDs"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
