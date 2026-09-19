@@ -75,7 +75,7 @@ def main() -> None:
         for qi in fit_ids:
             ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
             exact = np.asarray(documents[ids], dtype=np.float32) @ queries[qi]
-            focused_ids = ids[gate.gate.top_ids(exact, ids, 32).argsort(kind="stable")]
+            focused_ids = gate.gate.top_ids(exact, ids, 32)
             levels = h.unpack_thq(np.asarray(thq_codes[focused_ids]))
             base = centroids[np.arange(D)[None, :], levels]
             focused.append(np.asarray(documents[focused_ids], dtype=np.float32) - base)
@@ -85,7 +85,7 @@ def main() -> None:
         fit_residual = np.concatenate([train_residual[detached_idx], focused_residual], axis=0)
         print(f"fold {fold}: fitting cutoff-aware 32B/2bit on {len(fit_residual)} rows", flush=True)
         codebooks, transforms, diagnostics = gate.fit_codebooks(
-            fit_residual, covariance, 128, 2, sample_limit=8192, iterations=5, restarts=1,
+            fit_residual, covariance, 128, 2, sample_limit=8192, iterations=10, restarts=4,
             seed=20260918 + fold * 100003)
         fit_diagnostics[str(fold)] = {
             "focused_rows": int(len(focused_residual)),
