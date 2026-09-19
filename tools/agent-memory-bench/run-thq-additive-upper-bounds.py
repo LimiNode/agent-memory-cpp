@@ -315,6 +315,7 @@ def main() -> None:
     np.savez_compressed(codes_path, **code_arrays)
     result = {"schema_version": 2, "family": "thq_additive_upper_bounds_v2", "status": "EXECUTED",
               "source_replay": True, "metric": "cosine", "seed": SEED, "query_count": 152,
+              "runner_sha256": sha256(Path(__file__)),
               "prefilter": "frozen R4 candidate stream -> canonical THQ4 interval-squared top128",
               "beam_width": args.beam_width, "stages_by_payload_bytes": STAGES,
               "side_code_bytes": sorted(STAGES), "total_bytes_by_side_code": {str(p): THQ_BYTES + p for p in STAGES},

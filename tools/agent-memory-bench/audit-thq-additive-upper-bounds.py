@@ -107,6 +107,7 @@ def main() -> None:
     parser.add_argument("--result", type=Path)
     parser.add_argument("--models", type=Path)
     parser.add_argument("--codes", type=Path)
+    parser.add_argument("--runner", type=Path)
     parser.add_argument("--source", action="append", nargs=2, metavar=("NAME", "PATH"))
     args = parser.parse_args()
     if args.self_test:
@@ -118,6 +119,8 @@ def main() -> None:
     require(result.get("family") == "thq_additive_upper_bounds_v2", "wrong result family")
     require(result.get("status") == "EXECUTED" and result.get("source_replay") is True,
             "result is not source-replay bound")
+    runner = args.runner or Path(__file__).with_name("run-thq-additive-upper-bounds.py")
+    require(result.get("runner_sha256") == sha256(runner), "runner SHA mismatch")
     sources = {name: Path(path) for name, path in args.source}
     hashes = result.get("source_hashes", {})
     require(set(sources) == set(hashes), "source manifest differs")
