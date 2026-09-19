@@ -55,22 +55,45 @@ quality or serving latency.
 
 ## Still not checked
 
-The following single matched gate remains open:
+The following single matched bake-off remains open.  The three methods are
+**alternative filter arms**, not a sequential THQ4 -> RaBitQ -> BBQ cascade:
 
 ```text
-frozen R4 candidate stream
-  -> canonical THQ4 interval-squared scorer
-  -> pinned RaBitQ-RR-1 and BBQ-block-1 scorers
-  -> identical final rerank
+                         ┌→ THQ4 interval² → top-K ─┐
+frozen R4 candidate set ├→ RaBitQ-RR-1   → top-K ─┼→ same FP32 oracle rerank
+                         └→ BBQ-block-1    → top-K ─┘
 ```
 
-For `K = 32, 64, 128, 256, 512`, it must report, on the same 152-query
+The pinned codec configurations are:
+
+```text
+THQ4:
+  representation = canonical 384D ordinal, 4 interval levels, 96 B/document
+  scorer = interval-squared ADC
+
+RaBitQ-RR-1:
+  bits = 384 (full-dimensional one-bit estimator)
+  metric = ip
+  seed = 20260920
+  gain = ||rotated_centered_document||² / L1(rotated_centered_document)
+
+BBQ-block-1 (BBQ-like):
+  bits = 384
+  blocks = 8 (48 bits/block)
+  scale_storage = fp16
+  metric = ip
+  seed = 20260920
+```
+
+`K` is the number of candidates emitted by each alternative filter arm.  For
+`K = 32, 64, 128, 256, 512`, the gate must report, on the same 152-query
 candidate shell:
 
-* top-10 survival/overlap, qrels nDCG, p05, and worst-query loss;
+* top-10 survival/overlap, qrels nDCG, p05 **per-query nDCG@10**, and
+  worst-query nDCG@10;
 * filter-only latency and bytes touched;
-* filter plus the *same* final-rerank cost, including the number of documents
-  sent downstream;
+* filter plus the same **FP32 oracle rerank** cost, including the number of
+  documents sent downstream;
 * packed/native warm-up and repeated p50/p95/p99 measurements;
 * provenance for rotation, scales/corrections, query encoding, tie policy, and
   the exact candidate stream.
@@ -87,4 +110,3 @@ research PR should implement the matched gate above, retain the old controls as
 separate lanes, and publish one source-replay audit per codec family.  A
 binary method should advance only if its complete-cascade cost is lower at the
 same required top-10 survival, not merely if its inner loop is faster.
-
