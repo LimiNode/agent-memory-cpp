@@ -45,10 +45,15 @@ overlap, qrels nDCG, worst-query loss, and score bias; do not infer MIPS quality
 from reconstruction MSE alone.
 
 Only if a classical conditional codec survives Gates A–C should we spend effort
-on retrieval-aware training (AVQ/AAQ/Distill-VQ/QINCo-like). That stage needs a
-substantially larger independent query pool, repeated shuffled OOF, and a
-properly normalized cosine/IP objective. The current 114 fit queries per fold
-are not sufficient evidence for such a claim.
+on retrieval-aware training (AVQ/AAQ/Distill-VQ/QINCo-like). Before making a
+production decision, the additive upper-bound suite in
+`2026-09-20-thq-additive-upper-bounds.md` must establish whether the missing
+quality is a representation-capacity limit or an encoder/search limit. That
+suite is explicitly an upper-bound diagnostic; its query-oracle row is leaky
+and cannot be promoted to a serving codec. A faithful implementation still
+needs a substantially larger independent query pool, repeated shuffled OOF,
+and a properly normalized cosine/IP objective. The current 114 fit queries
+per fold are not sufficient evidence for such a claim.
 
 No native SIMD, persistent layout, or production selection is authorized by
 this plan alone. Those follow only after a codec has a reproducible offline
