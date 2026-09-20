@@ -1,0 +1,38 @@
+{
+  "family": "thq_fastscan_kernel_benchmark_v1",
+  "status": "EXECUTED_BOUNDED",
+  "documents": 1000000,
+  "queries": 8,
+  "repeats": 3,
+  "warmups": 1,
+  "avx2_compiled": true,
+  "runner_sha256": "1d7c72d57e3ba5263b225761c89e6b199e4cc1f5bf09dc4780383ee51660d40d",
+  "pair_score_mismatches_gt_1e5": 0,
+  "pair_max_abs_error": 5.36441803e-07,
+  "pair_ordered_top128_mismatches": 0,
+  "byte_lut_mismatches_gt_1e5": 0,
+  "byte_lut_max_abs_error": 4.76837158e-07,
+  "avx2_packed96_max_abs_error": 0.0,
+  "quantized_top128_mismatches": 8,
+  "quantized_top128_mean_overlap": 0.998046875,
+  "avx2_packed96_top128_mismatches": 8,
+  "avx2_packed96_top128_mean_overlap": 0.998046875,
+  "kernels": {
+    "coordinate_fp32": {"p50_ms": 589.5312, "p95_ms": 603.5531},
+    "pair_lut_fp32": {"p50_ms": 202.2448, "p95_ms": 204.8742},
+    "byte_lut_fp32": {"p50_ms": 136.1393, "p95_ms": 138.6863},
+    "pair_lut_u8": {"p50_ms": 219.0108, "p95_ms": 222.0865},
+    "pair_lut_u8_avx2_packed96": {"p50_ms": 93.1093, "p95_ms": 96.2025}
+  },
+  "source_hashes": {
+    "thq4_ordinal": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+  },
+  "limitations": [
+    "bounded eight-query hardening replay, not the canonical 152-query result",
+    "score-scan kernel timings, not complete R4 query latency",
+    "packed96 AVX2 retains the canonical 96 B/document payload",
+    "uint8 quality remains pending a full R4 cascade gate"
+  ]
+}

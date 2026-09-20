@@ -608,9 +608,9 @@ target_compile_features(agent-memory-native-packed-thq-adc-benchmark PRIVATE cxx
 target_link_libraries(agent-memory-native-packed-thq-adc-benchmark PRIVATE
     agent_memory::json)
 
-# Canonical THQ4 interval² kernel bakeoff.  The AVX2 arm uses a blocked,
-# pair-transposed payload and PSHUFB over quantized 16-entry pair tables; the
-# portable arms remain the correctness references.
+# Portable THQ4 interval² kernel-bakeoff target.  The target is always exposed;
+# AGENT_MEMORY_NEUROUTE_ENABLE_AVX2 only enables its AVX2 arm and compile flags.
+# The AVX2 path retains a canonical 96 B/document packed pair-major layout.
 add_executable(agent-memory-thq-fastscan-kernel-benchmark
     thq_fastscan_kernel_benchmark.cpp)
 target_compile_features(agent-memory-thq-fastscan-kernel-benchmark PRIVATE cxx_std_17)

@@ -24,6 +24,7 @@ using Clock = std::chrono::steady_clock;
 
 struct QueryTables {
   std::array<float, kDimensions * 4> coordinate{};
+  std::array<float, kOrdinalBytes * 256> byte{};
   std::array<float, 192 * 16> pair{};
   std::array<std::uint8_t, 192 * 16> pair_u8{};
   std::array<float, 192> pair_scales{};
@@ -115,6 +116,14 @@ QueryTables make_tables(const std::vector<float>& thresholds,
           std::clamp(std::lround(value), 0L, 255L));
     }
   }
+  for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
+    for (std::size_t packed = 0; packed < 256; ++packed) {
+      float score = 0.0F;
+      for (std::size_t lane = 0; lane < 4; ++lane)
+        score += tables.coordinate[(byte * 4 + lane) * 4 + ((packed >> (lane * 2)) & 3U)];
+      tables.byte[byte * 256 + packed] = score;
+    }
+  }
   return tables;
 }
 
@@ -135,6 +144,13 @@ float score_pair(const std::uint8_t* code, const QueryTables& tables) {
   return score;
 }
 
+float score_byte_lut(const std::uint8_t* code, const QueryTables& tables) {
+  float score = 0.0F;
+  for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte)
+    score += tables.byte[byte * 256 + code[byte]];
+  return score;
+}
+
 std::uint32_t score_pair_u8(const std::uint8_t* code,
                             const QueryTables& tables) {
   std::uint32_t score = 0;
@@ -152,6 +168,19 @@ float score_pair_u8_scaled(const std::uint8_t* code, const QueryTables& tables) 
     const auto value = code[byte];
     score += static_cast<float>(tables.pair_u8[(byte * 2) * 16 + (value & 0x0FU)]) * tables.pair_scales[byte * 2];
     score += static_cast<float>(tables.pair_u8[(byte * 2 + 1) * 16 + (value >> 4U)]) * tables.pair_scales[byte * 2 + 1];
+  }
+  return score;
+}
+
+float score_pair_u8_packed_layout(const std::uint8_t* packed,
+                                  const QueryTables& tables) {
+  float score = 0.0F;
+  for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
+    const auto value = packed[byte];
+    score += static_cast<float>(tables.pair_u8[(byte * 2) * 16 + (value & 0x0FU)]) *
+             tables.pair_scales[byte * 2];
+    score += static_cast<float>(tables.pair_u8[(byte * 2 + 1) * 16 + (value >> 4U)]) *
+             tables.pair_scales[byte * 2 + 1];
   }
   return score;
 }
@@ -187,30 +216,88 @@ void score_pair_u8_avx2_block(const std::vector<std::uint8_t>& transposed,
   _mm256_storeu_ps(output + 24, sums[3]);
   (void)count;
 }
+
+void score_pair_u8_avx2_packed_block(const std::vector<std::uint8_t>& packed,
+                                     std::size_t block_start, std::size_t count,
+                                     const QueryTables& tables, float* output) {
+  __m256 sums[4] = {_mm256_setzero_ps(), _mm256_setzero_ps(),
+                    _mm256_setzero_ps(), _mm256_setzero_ps()};
+  for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
+    alignas(32) std::uint8_t low_lut[32];
+    alignas(32) std::uint8_t high_lut[32];
+    for (std::size_t i = 0; i < 16; ++i) {
+      low_lut[i] = low_lut[i + 16] = tables.pair_u8[(byte * 2) * 16 + i];
+      high_lut[i] = high_lut[i + 16] = tables.pair_u8[(byte * 2 + 1) * 16 + i];
+    }
+    const __m256i packed_values = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(
+        packed.data() + byte * kDocuments + block_start));
+    const __m256i low_values = _mm256_shuffle_epi8(
+        _mm256_load_si256(reinterpret_cast<const __m256i*>(low_lut)),
+        _mm256_and_si256(packed_values, _mm256_set1_epi8(0x0F)));
+    const __m256i high_values = _mm256_shuffle_epi8(
+        _mm256_load_si256(reinterpret_cast<const __m256i*>(high_lut)),
+        _mm256_and_si256(_mm256_srli_epi16(packed_values, 4), _mm256_set1_epi8(0x0F)));
+    const __m128i low0 = _mm256_castsi256_si128(low_values);
+    const __m128i low1 = _mm256_extracti128_si256(low_values, 1);
+    const __m128i high0 = _mm256_castsi256_si128(high_values);
+    const __m128i high1 = _mm256_extracti128_si256(high_values, 1);
+    const __m256 scale_low = _mm256_set1_ps(tables.pair_scales[byte * 2]);
+    const __m256 scale_high = _mm256_set1_ps(tables.pair_scales[byte * 2 + 1]);
+    sums[0] = _mm256_add_ps(sums[0], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(low0)), scale_low));
+    sums[1] = _mm256_add_ps(sums[1], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(low0, 8))), scale_low));
+    sums[2] = _mm256_add_ps(sums[2], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(low1)), scale_low));
+    sums[3] = _mm256_add_ps(sums[3], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(low1, 8))), scale_low));
+    sums[0] = _mm256_add_ps(sums[0], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(high0)), scale_high));
+    sums[1] = _mm256_add_ps(sums[1], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(high0, 8))), scale_high));
+    sums[2] = _mm256_add_ps(sums[2], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(high1)), scale_high));
+    sums[3] = _mm256_add_ps(sums[3], _mm256_mul_ps(_mm256_cvtepi32_ps(_mm256_cvtepu8_epi32(_mm_srli_si128(high1, 8))), scale_high));
+  }
+  _mm256_storeu_ps(output, sums[0]);
+  _mm256_storeu_ps(output + 8, sums[1]);
+  _mm256_storeu_ps(output + 16, sums[2]);
+  _mm256_storeu_ps(output + 24, sums[3]);
+  (void)count;
+}
 #else
 void score_pair_u8_avx2_block(const std::vector<std::uint8_t>&,
                               std::size_t, std::size_t,
                               const QueryTables&, float*) {}
+void score_pair_u8_avx2_packed_block(const std::vector<std::uint8_t>&,
+                                     std::size_t, std::size_t,
+                                     const QueryTables&, float*) {}
 #endif
 
-template <typename Score>
-std::vector<double> benchmark(const std::vector<std::uint8_t>& codes,
-                              std::size_t documents, std::size_t queries,
-                              std::size_t repeats, Score scorer,
-                              const std::vector<QueryTables>& tables) {
+struct BenchmarkOutput {
   std::vector<double> timings;
+  double checksum = 0.0;
+};
+
+template <typename Score>
+BenchmarkOutput benchmark(const std::vector<std::uint8_t>& codes,
+                          std::size_t documents, std::size_t queries,
+                          std::size_t repeats, std::size_t warmups, Score scorer,
+                          const std::vector<QueryTables>& tables) {
+  BenchmarkOutput output;
   std::vector<float> scores(documents);
-  for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
+  auto run = [&](bool timed) {
     for (std::size_t query = 0; query < queries; ++query) {
       const auto started = Clock::now();
       for (std::size_t id = 0; id < documents; ++id)
         scores[id] = scorer(codes.data() + id * kOrdinalBytes, tables[query]);
-      volatile float guard = scores[query % documents];
+      double checksum = 0.0;
+      for (const float value : scores) checksum += value;
+      if (timed) output.checksum += checksum;
+      volatile double guard = checksum;
       (void)guard;
-      timings.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
+      if (timed)
+        output.timings.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
     }
+  };
+  for (std::size_t repeat = 0; repeat < warmups; ++repeat) run(false);
+  for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
+    run(true);
   }
-  return timings;
+  return output;
 }
 
 double percentile(std::vector<double> values, double fraction) {
@@ -223,8 +310,8 @@ double percentile(std::vector<double> values, double fraction) {
 
 int main(int argc, char** argv) {
   try {
-    if (argc < 4 || argc > 6) {
-      std::cerr << "usage: thq_fastscan_kernel_benchmark CODES THRESHOLDS QUERIES [query-limit] [repeats]\n";
+    if (argc < 4 || argc > 7) {
+      std::cerr << "usage: thq_fastscan_kernel_benchmark CODES THRESHOLDS QUERIES [query-limit] [repeats] [warmups]\n";
       return 2;
     }
     const auto raw_codes = read_file<std::uint8_t>(argv[1]);
@@ -235,6 +322,7 @@ int main(int argc, char** argv) {
       throw std::runtime_error("source shape mismatch");
     const std::size_t query_limit = argc >= 5 ? std::stoull(argv[4]) : queries.size() / kDimensions;
     const std::size_t repeats = argc >= 6 ? std::stoull(argv[5]) : 1;
+    const std::size_t warmups = argc >= 7 ? std::stoull(argv[6]) : 1;
     const std::size_t query_count = std::min(query_limit, queries.size() / kDimensions);
     if (query_count == 0 || repeats == 0) throw std::runtime_error("query-limit and repeats must be positive");
     std::vector<QueryTables> tables;
@@ -244,33 +332,52 @@ int main(int argc, char** argv) {
                                                                    queries.begin() + (q + 1) * kDimensions)));
     const std::vector<std::uint8_t> codes = raw_codes;
     std::vector<std::uint8_t> transposed(192 * kDocuments);
+    std::vector<std::uint8_t> packed_pair_major(kOrdinalBytes * kDocuments);
     for (std::size_t id = 0; id < kDocuments; ++id) {
       const auto* code = codes.data() + id * kOrdinalBytes;
       for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
         const auto value = code[byte];
         transposed[(byte * 2) * kDocuments + id] = value & 0x0FU;
         transposed[(byte * 2 + 1) * kDocuments + id] = value >> 4U;
+        packed_pair_major[byte * kDocuments + id] =
+            static_cast<std::uint8_t>((value & 0x0FU) | ((value >> 4U) << 4U));
       }
     }
     std::vector<float> reference(kDocuments);
     std::vector<float> pair_scores(kDocuments);
     std::vector<std::uint32_t> quantized(kDocuments);
     std::size_t pair_exact_mismatches = 0;
+    float pair_max_abs_error = 0.0F;
+    std::size_t pair_ordered_top_mismatches = 0;
+    std::size_t byte_lut_mismatches = 0;
+    float byte_lut_max_abs_error = 0.0F;
     std::size_t quantized_top_mismatches = 0;
     std::size_t avx_top_mismatches = 0;
+    std::size_t avx_packed_top_mismatches = 0;
     double quantized_top_overlap = 0.0;
     double avx_top_overlap = 0.0;
+    double avx_packed_top_overlap = 0.0;
     float avx_max_abs_error = 0.0F;
+    float avx_packed_max_abs_error = 0.0F;
     for (std::size_t q = 0; q < query_count; ++q) {
       for (std::size_t id = 0; id < kDocuments; ++id) {
         const auto* code = codes.data() + id * kOrdinalBytes;
         reference[id] = score_coordinate(code, tables[q]);
         pair_scores[id] = score_pair(code, tables[q]);
         quantized[id] = score_pair_u8(code, tables[q]);
+        const float byte_score = score_byte_lut(code, tables[q]);
+        if (std::abs(reference[id] - byte_score) > 1.0e-5F) ++byte_lut_mismatches;
+        byte_lut_max_abs_error = std::max(byte_lut_max_abs_error,
+                                          std::abs(reference[id] - byte_score));
       }
       for (std::size_t id = 0; id < kDocuments; ++id)
         if (std::abs(reference[id] - pair_scores[id]) > 1.0e-5F) ++pair_exact_mismatches;
+      for (std::size_t id = 0; id < kDocuments; ++id)
+        pair_max_abs_error = std::max(pair_max_abs_error,
+                                      std::abs(reference[id] - pair_scores[id]));
       const auto ref_top = top128(reference);
+      const auto pair_top = top128(pair_scores);
+      if (!same_top(ref_top, pair_top)) ++pair_ordered_top_mismatches;
       std::vector<float> qscore(kDocuments);
       for (std::size_t id = 0; id < kDocuments; ++id)
         qscore[id] = score_pair_u8_scaled(codes.data() + id * kOrdinalBytes, tables[q]);
@@ -288,17 +395,40 @@ int main(int argc, char** argv) {
       if (!same_top(ref_top, avx_top)) ++avx_top_mismatches;
       for (std::size_t id = 0; id < kDocuments; ++id)
         avx_max_abs_error = std::max(avx_max_abs_error, std::abs(avx_score[id] - qscore[id]));
+      std::vector<float> avx_packed_score(kDocuments);
+      for (std::size_t block = 0; block < kDocuments; block += 32) {
+        const auto count = std::min<std::size_t>(32, kDocuments - block);
+        score_pair_u8_avx2_packed_block(packed_pair_major, block, count, tables[q],
+                                        avx_packed_score.data() + block);
+      }
+      const auto avx_packed_top = top128(avx_packed_score);
+      avx_packed_top_overlap += top_overlap(ref_top, avx_packed_top);
+      if (!same_top(ref_top, avx_packed_top)) ++avx_packed_top_mismatches;
+      for (std::size_t id = 0; id < kDocuments; ++id)
+        avx_packed_max_abs_error = std::max(avx_packed_max_abs_error,
+                                            std::abs(avx_packed_score[id] - qscore[id]));
 #endif
     }
-    const auto scalar = benchmark(codes, kDocuments, query_count, repeats,
+    const auto scalar = benchmark(codes, kDocuments, query_count, repeats, warmups,
                                   [](const auto* code, const auto& table) { return score_coordinate(code, table); }, tables);
-    const auto pair = benchmark(codes, kDocuments, query_count, repeats,
+    const auto pair = benchmark(codes, kDocuments, query_count, repeats, warmups,
                                 [](const auto* code, const auto& table) { return score_pair(code, table); }, tables);
-    const auto quant = benchmark(codes, kDocuments, query_count, repeats,
+    const auto byte = benchmark(codes, kDocuments, query_count, repeats, warmups,
+                                [](const auto* code, const auto& table) { return score_byte_lut(code, table); }, tables);
+    const auto quant = benchmark(codes, kDocuments, query_count, repeats, warmups,
                                  [](const auto* code, const auto& table) { return score_pair_u8_scaled(code, table); }, tables);
     std::vector<double> avx;
+    std::vector<double> avx_packed;
+    double avx_checksum = 0.0;
+    double avx_packed_checksum = 0.0;
 #if AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2
     std::vector<float> avx_scores(kDocuments);
+    for (std::size_t repeat = 0; repeat < warmups; ++repeat) {
+      for (std::size_t query = 0; query < query_count; ++query)
+        for (std::size_t block = 0; block < kDocuments; block += 32)
+          score_pair_u8_avx2_block(transposed, block, std::min<std::size_t>(32, kDocuments - block),
+                                   tables[query], avx_scores.data() + block);
+    }
     for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
       for (std::size_t query = 0; query < query_count; ++query) {
         const auto started = Clock::now();
@@ -306,28 +436,67 @@ int main(int argc, char** argv) {
           const auto count = std::min<std::size_t>(32, kDocuments - block);
           score_pair_u8_avx2_block(transposed, block, count, tables[query], avx_scores.data() + block);
         }
-        volatile float guard = avx_scores[query % kDocuments];
-        (void)guard;
+        for (const float value : avx_scores) avx_checksum += value;
         avx.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
+      }
+    }
+    std::vector<float> avx_packed_scores(kDocuments);
+    for (std::size_t repeat = 0; repeat < warmups; ++repeat) {
+      for (std::size_t query = 0; query < query_count; ++query)
+        for (std::size_t block = 0; block < kDocuments; block += 32)
+          score_pair_u8_avx2_packed_block(packed_pair_major, block,
+                                          std::min<std::size_t>(32, kDocuments - block),
+                                          tables[query], avx_packed_scores.data() + block);
+    }
+    for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
+      for (std::size_t query = 0; query < query_count; ++query) {
+        const auto started = Clock::now();
+        for (std::size_t block = 0; block < kDocuments; block += 32) {
+          const auto count = std::min<std::size_t>(32, kDocuments - block);
+          score_pair_u8_avx2_packed_block(packed_pair_major, block, count,
+                                           tables[query], avx_packed_scores.data() + block);
+        }
+        for (const float value : avx_packed_scores) avx_packed_checksum += value;
+        avx_packed.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
       }
     }
 #endif
     std::cout << std::setprecision(9)
               << "{\"family\":\"thq_fastscan_kernel_benchmark_v1\",\"documents\":" << kDocuments
               << ",\"queries\":" << query_count << ",\"repeats\":" << repeats
+              << ",\"warmups\":" << warmups
               << ",\"avx2_compiled\":" << (AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2 ? "true" : "false")
               << ",\"pair_exact_mismatches\":" << pair_exact_mismatches
+              << ",\"pair_score_mismatches_gt_1e5\":" << pair_exact_mismatches
+              << ",\"pair_max_abs_error\":" << pair_max_abs_error
+              << ",\"pair_ordered_top128_mismatches\":" << pair_ordered_top_mismatches
+              << ",\"byte_lut_mismatches_gt_1e5\":" << byte_lut_mismatches
+              << ",\"byte_lut_max_abs_error\":" << byte_lut_max_abs_error
+              << ",\"checksum_coordinate_fp32\":" << scalar.checksum
+              << ",\"checksum_pair_lut_fp32\":" << pair.checksum
+              << ",\"checksum_byte_lut_fp32\":" << byte.checksum
+              << ",\"checksum_pair_lut_u8\":" << quant.checksum
+              << ",\"checksum_pair_lut_u8_avx2\":" << avx_checksum
+              << ",\"checksum_pair_lut_u8_avx2_packed96\":" << avx_packed_checksum
               << ",\"quantized_top128_mismatches\":" << quantized_top_mismatches
               << ",\"avx2_top128_mismatches\":" << avx_top_mismatches
+              << ",\"avx2_packed96_top128_mismatches\":" << avx_packed_top_mismatches
               << ",\"quantized_top128_mean_overlap\":" << (quantized_top_overlap / query_count)
               << ",\"avx2_top128_mean_overlap\":" << (avx_top_overlap / query_count)
+              << ",\"avx2_packed96_top128_mean_overlap\":" << (avx_packed_top_overlap / query_count)
               << ",\"avx2_max_abs_error\":" << avx_max_abs_error
-              << ",\"kernels\":{\"coordinate_fp32\":{\"p50_ms\":" << percentile(scalar, .5)
-              << ",\"p95_ms\":" << percentile(scalar, .95) << "},\"pair_lut_fp32\":{\"p50_ms\":"
-              << percentile(pair, .5) << ",\"p95_ms\":" << percentile(pair, .95)
-              << "},\"pair_lut_u8\":{\"p50_ms\":" << percentile(quant, .5)
-              << ",\"p95_ms\":" << percentile(quant, .95) << "},\"pair_lut_u8_avx2\":{\"p50_ms\":"
-              << percentile(avx, .5) << ",\"p95_ms\":" << percentile(avx, .95) << "}}}\n";
+              << ",\"avx2_packed96_max_abs_error\":" << avx_packed_max_abs_error
+              << ",\"kernels\":{\"coordinate_fp32\":{\"p50_ms\":" << percentile(scalar.timings, .5)
+              << ",\"p95_ms\":" << percentile(scalar.timings, .95) << "},\"pair_lut_fp32\":{\"p50_ms\":"
+              << percentile(pair.timings, .5) << ",\"p95_ms\":" << percentile(pair.timings, .95)
+              << "},\"byte_lut_fp32\":{\"p50_ms\":" << percentile(byte.timings, .5)
+              << ",\"p95_ms\":" << percentile(byte.timings, .95)
+              << "},\"pair_lut_u8\":{\"p50_ms\":" << percentile(quant.timings, .5)
+              << ",\"p95_ms\":" << percentile(quant.timings, .95) << "},\"pair_lut_u8_avx2\":{\"p50_ms\":"
+              << percentile(avx, .5) << ",\"p95_ms\":" << percentile(avx, .95)
+              << "},\"pair_lut_u8_avx2_packed96\":{\"p50_ms\":"
+              << percentile(avx_packed, .5) << ",\"p95_ms\":" << percentile(avx_packed, .95)
+              << "}}}\n";
     return 0;
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';
