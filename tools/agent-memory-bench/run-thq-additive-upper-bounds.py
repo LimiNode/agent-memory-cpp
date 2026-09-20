@@ -14,7 +14,6 @@ import json
 from pathlib import Path
 
 import numpy as np
-import faiss
 
 D = 384
 THQ_BYTES = 96
@@ -123,7 +122,10 @@ def fit_additive_faiss(residual: np.ndarray, stages: int, iterations: int = 8,
     prefix semantics as the transparent reference fitter.
     """
     try:
+        import faiss
         quantizer = faiss.ResidualQuantizer(residual.shape[1], stages, 8)
+    except ImportError as exc:
+        raise RuntimeError("--fit-backend faiss requires the optional faiss-cpu package") from exc
     except (AttributeError, TypeError) as exc:
         raise RuntimeError("installed Faiss lacks ResidualQuantizer(d, M, nbits)") from exc
     # Faiss defaults to progressive-dimension training, which repeats the
@@ -141,6 +143,14 @@ def fit_additive_faiss(residual: np.ndarray, stages: int, iterations: int = 8,
         raise RuntimeError("Faiss residual codebook manifest is inconsistent")
     return [codebooks[offsets[i] * residual.shape[1]:offsets[i + 1] * residual.shape[1]]
             .reshape(256, residual.shape[1]).copy() for i in range(stages)]
+
+
+def faiss_provenance() -> tuple[str, str]:
+    try:
+        import faiss
+    except ImportError as exc:
+        raise RuntimeError("--fit-backend faiss requires the optional faiss-cpu package") from exc
+    return getattr(faiss, "__version__", "unknown"), "Train_default"
 
 
 def nearest_indices(values: np.ndarray, centers: np.ndarray) -> np.ndarray:
@@ -393,8 +403,8 @@ def main() -> None:
               "fit_rows": int(len(fit_train)),
               "fit_strategy": "all_train_rows" if not args.fit_rows else "uniform_stride",
               "fit_backend": args.fit_backend,
-              "faiss_version": getattr(faiss, "__version__", "unknown") if args.fit_backend == "faiss" else None,
-              "faiss_train_type": "Train_default" if args.fit_backend == "faiss" else None,
+              "faiss_version": faiss_provenance()[0] if args.fit_backend == "faiss" else None,
+              "faiss_train_type": faiss_provenance()[1] if args.fit_backend == "faiss" else None,
               "faiss_beam_width": args.faiss_beam_width if args.fit_backend == "faiss" else None,
               "fit_indices_sha256": fit_indices_sha256,
               "shared_fit": True,
