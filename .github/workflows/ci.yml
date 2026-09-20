@@ -177,6 +177,7 @@ jobs:
           cmake -S . -B build-r4
           -DCMAKE_BUILD_TYPE=Release
           -DAGENT_MEMORY_BUILD_BENCHMARKS=ON
+          -DAGENT_MEMORY_NEUROUTE_ENABLE_AVX2=ON
           -DAGENT_MEMORY_BUILD_TESTS=OFF
           -DAGENT_MEMORY_BUILD_EXAMPLES=OFF
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
@@ -189,6 +190,7 @@ jobs:
           agent-memory-neuroute-record-codec-contract
           agent-memory-neuroute-final-representation
           agent-memory-native-full-corpus-codec-benchmark
+          agent-memory-thq-fastscan-kernel-benchmark
 
       - name: Run R4 native self-test (Ubuntu)
         if: runner.os == 'Linux'
