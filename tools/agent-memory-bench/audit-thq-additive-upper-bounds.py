@@ -120,6 +120,7 @@ def main() -> None:
     require(result.get("family") == "thq_additive_upper_bounds_v2", "wrong result family")
     require(result.get("status") == "EXECUTED" and result.get("source_replay") is True,
             "result is not source-replay bound")
+    require(int(result.get("iterations", 0)) >= 1, "invalid training iteration count")
     runner = args.runner or Path(__file__).with_name("run-thq-additive-upper-bounds.py")
     require(result.get("runner_sha256") == sha256(runner), "runner SHA mismatch")
     sources = {name: Path(path) for name, path in args.source}
@@ -155,6 +156,8 @@ def main() -> None:
     documents = np.memmap(sources["documents"], mode="r", dtype="<f4", shape=(1_000_000, D))
     train_rows = sources["train_vectors"].stat().st_size // (D * 4)
     train = np.asarray(np.memmap(sources["train_vectors"], mode="r", dtype="<f4", shape=(train_rows, D)), dtype=np.float32)
+    fit_rows = int(result.get("fit_rows", train_rows))
+    require(256 <= fit_rows <= train_rows, "fit_rows outside training source")
     queries = np.asarray(np.memmap(sources["queries"], mode="r", dtype="<f4", shape=(152, D)), dtype=np.float32)
     qrel_ids = np.asarray(np.memmap(sources["qrel_ids"], mode="r", dtype="<i8", shape=(152, 20)))
     qrel_scores = np.asarray(np.memmap(sources["qrel_scores"], mode="r", dtype="<f4", shape=(152, 20)))

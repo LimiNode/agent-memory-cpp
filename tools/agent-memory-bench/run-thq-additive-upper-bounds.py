@@ -193,6 +193,8 @@ def main() -> None:
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
     parser.add_argument("--beam-width", type=int, default=8)
     parser.add_argument("--iterations", type=int, default=8)
+    parser.add_argument("--fit-rows", type=int, default=0,
+                        help="uniformly subsample this many training rows for additive codebooks; 0 uses all rows")
     parser.add_argument("--models-output", type=Path)
     parser.add_argument("--codes-output", type=Path)
     args = parser.parse_args()
@@ -204,8 +206,8 @@ def main() -> None:
                 args.candidate_raw, args.candidate_receipt, args.output)
     if any(value is None for value in required):
         parser.error("all source paths and --output are required unless --self-test is used")
-    if args.beam_width < 1 or args.iterations < 1:
-        parser.error("beam width and iterations must be positive")
+    if args.beam_width < 1 or args.iterations < 1 or args.fit_rows < 0:
+        parser.error("beam width and iterations must be positive; fit rows must be non-negative")
     if args.documents.stat().st_size != 1_000_000 * D * 4:
         raise RuntimeError("upper-bound gate requires the 1M-row FP32 document source")
     documents = np.memmap(args.documents, mode="r", dtype="<f4", shape=(1_000_000, D))
@@ -215,6 +217,13 @@ def main() -> None:
     if train_rows < 256:
         raise RuntimeError("training source is too small for 256-way additive codebooks")
     train = np.asarray(np.memmap(args.train_vectors, mode="r", dtype="<f4", shape=(train_rows, D)), dtype=np.float32)
+    if args.fit_rows:
+        if args.fit_rows < 256 or args.fit_rows > train_rows:
+            raise RuntimeError("fit-rows must be zero or in [256, train_rows]")
+        fit_indices = np.linspace(0, train_rows - 1, args.fit_rows, dtype=np.int64)
+        fit_train = train[fit_indices]
+    else:
+        fit_train = train
     if args.queries.stat().st_size != 152 * D * 4:
         raise RuntimeError("queries source must contain exactly 152 x 384 FP32 rows")
     if args.qrel_ids.stat().st_size != 152 * 20 * 8 or args.qrel_scores.stat().st_size != 152 * 20 * 4:
@@ -243,7 +252,9 @@ def main() -> None:
     train_base = centroids[np.arange(D)[None, :], train_levels]
     models = {}
     for payload, stages in STAGES.items():
-        models[payload] = fit_additive(train - train_base, stages, args.iterations)
+        fit_levels = np.sum(fit_train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
+        fit_base = centroids[np.arange(D)[None, :], fit_levels]
+        models[payload] = fit_additive(fit_train - fit_base, stages, args.iterations)
     code_artifacts = {payload: {} for payload in STAGES}
     rows = []
     for qi, query in enumerate(queries):
@@ -333,7 +344,10 @@ def main() -> None:
               "source_replay": True, "metric": "cosine", "seed": SEED, "query_count": 152,
               "runner_sha256": sha256(Path(__file__)),
               "prefilter": "frozen R4 candidate stream -> canonical THQ4 interval-squared top128",
-              "beam_width": args.beam_width, "stages_by_payload_bytes": STAGES,
+              "beam_width": args.beam_width, "iterations": args.iterations,
+              "fit_rows": int(len(fit_train)),
+              "fit_strategy": "all_train_rows" if not args.fit_rows else "uniform_stride",
+              "stages_by_payload_bytes": STAGES,
               "side_code_bytes": sorted(STAGES), "total_bytes_by_side_code": {str(p): THQ_BYTES + p for p in STAGES},
               "global_codebook_bytes_by_side_code": {str(payload): int(stages * 256 * D * 4) for payload, stages in STAGES.items()},
               "storage_semantics": {"greedy_and_mse_beam": "THQ4 plus one selected path",

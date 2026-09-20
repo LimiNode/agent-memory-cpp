@@ -1,7 +1,7 @@
 # THQ additive-codec capacity diagnostic
 
 Date: 2026-09-20  
-Status: `IMPLEMENTED; FULL REPLAY BLOCKED`
+Status: `IMPLEMENTED; SOURCE FOUND; FULL TRAINING REPLAY COMPUTE-BLOCKED`
 
 ## Purpose
 
@@ -51,9 +51,23 @@ codebook bytes, per-document record bytes, retained-beam bytes, and a complete
 1M-document footprint for non-leaky variants. The independent audit replays
 THQ top-128, additive decoding, final top-10 IDs, nDCG, and teacher overlap
 from those artifacts and the source bundle. It rejects compact result JSON,
-decoded INT8, and legacy Hamming payloads as document substitutes. Until the
-1M FP32 documents, matching queries, qrels, and teacher IDs are available, the
-gate remains `not executed`; no quality number is inferred from earlier
-eight-query compact artifacts.
+decoded INT8, and legacy Hamming payloads as document substitutes.
+
+The canonical source bundle is now available locally: the 1M FP32 documents,
+25k training rows, 152 queries, qrels, teacher IDs, THQ4 materialization, and
+the frozen R4 candidate stream are all present and SHA-identified in the
+binary-gate receipt. A declared full run (`beam_width=8`, `iterations=8`, all
+4/6/8/32/48-byte arms) was started but did not finish within a 30-minute
+bounded execution window; it produced no result artifacts and no quality
+numbers are claimed. A one-iteration attempt on the same full training set
+also exceeded the bounded window. This is a compute/implementation limit of
+the current pure-NumPy 48-stage reference, not a quality result.
+
+The runner now exposes an explicit `--fit-rows` uniform-stride subsample for a
+future bounded capacity diagnostic. The default remains all training rows;
+when the option is used, `fit_rows`, `fit_strategy`, and `iterations` are
+persisted in the result and checked by the independent audit. A subsampled run
+must be reported as such and cannot be promoted to the full-training
+upper-bound claim.
 
 Implementation: `tools/agent-memory-bench/run-thq-additive-upper-bounds.py`.
