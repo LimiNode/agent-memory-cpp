@@ -129,6 +129,18 @@ def main() -> None:
     require(result.get("runner_sha256") == sha256(runner), "runner SHA mismatch")
     require(result.get("shared_fit") is True, "shared prefix fit is not declared")
     require(int(result.get("fit_stage_count", 0)) == max(PAYLOADS), "shared fit stage count differs")
+    fit_backend = result.get("fit_backend")
+    require(fit_backend in ("numpy", "faiss"), "unknown additive fit backend")
+    if fit_backend == "faiss":
+        require(isinstance(result.get("faiss_version"), str) and result["faiss_version"],
+                "Faiss fit lacks version provenance")
+        require(result.get("faiss_train_type") == "Train_default",
+                "Faiss train type is not pinned")
+        require(int(result.get("faiss_beam_width", 0)) >= 1, "invalid Faiss beam width")
+    else:
+        require(result.get("faiss_version") is None and result.get("faiss_train_type") is None
+                and result.get("faiss_beam_width") is None,
+                "NumPy fit carries Faiss-only provenance")
     sources = {name: Path(path) for name, path in args.source}
     hashes = result.get("source_hashes", {})
     require(set(sources) == set(hashes), "source manifest differs")
