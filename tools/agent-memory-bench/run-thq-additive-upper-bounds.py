@@ -159,6 +159,8 @@ def beam_encode(values: np.ndarray, codebooks: list[np.ndarray], width: int) -> 
 
 
 def self_test() -> None:
+    if STAGES != {4: 4, 6: 6, 8: 8, 32: 32, 48: 48}:
+        raise RuntimeError("rate-matched additive stage manifest drift")
     rng = np.random.default_rng(SEED)
     values = rng.normal(size=(96, D)).astype(np.float32)
     centers = kmeans(values, 8, 2, SEED)

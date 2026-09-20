@@ -96,6 +96,7 @@ def cosine(values: np.ndarray, query: np.ndarray) -> np.ndarray:
 
 
 def self_test() -> None:
+    require(PAYLOADS == (4, 6, 8, 32, 48), "rate-matched payload manifest drift")
     require(top_ids(np.array([1.0, 2.0]), np.array([4, 3]), 1).tolist() == [3], "top-id ordering")
     require(np.isclose(ndcg10(np.array([1, 2]), np.array([1, 2]), np.array([2.0, 1.0])), 1.0), "nDCG check")
     print(json.dumps({"status": "PASS", "checks": ["independent top-id ordering", "nDCG calculation"]}, indent=2))
