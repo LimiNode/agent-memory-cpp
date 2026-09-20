@@ -67,20 +67,29 @@ corrected score-scan medians are:
 
 | kernel | p50 | p95 |
 | --- | ---: | ---: |
-| coordinate FP32 | 589.53 ms | 603.55 ms |
-| exact byte LUT (96 B/document) | 136.14 ms | 138.69 ms |
-| pair LUT FP32 | 202.24 ms | 204.87 ms |
-| pair LUT uint8 + AVX2 packed96 | 93.11 ms | 96.20 ms |
+| coordinate FP32 | 483.95 ms | 490.70 ms |
+| exact byte LUT (96 B/document) | 87.59 ms | 88.27 ms |
+| pair LUT FP32 | 196.34 ms | 201.84 ms |
+| pair LUT uint8, scalar AoS | 210.79 ms | 218.47 ms |
+| pair LUT uint8, scalar packed96 | 185.33 ms | 191.24 ms |
+| pair LUT uint8 + AVX2 packed96 | 238.94 ms | 241.03 ms |
 
-Pair and byte LUTs have zero score mismatches above `1e-5`; packed96 AVX2 has
-zero absolute error against scalar uint8. This is an eight-query bounded
-diagnostic, not a replacement for the canonical 152-query timing artifact. The
-attempted 152-query run with checksums and warmups exceeded a 15-minute local
-bound and produced no artifact.
+Pair and byte LUTs have zero score mismatches above `1e-5`; the scalar packed96
+control agrees with the scalar AoS uint8 scorer exactly on this run, and packed96
+AVX2 has zero absolute error against that control. The checksum is consumed
+after the timestamp, so these rows measure score production rather than a
+second full pass over the output. This is an eight-query bounded diagnostic,
+not a replacement for the canonical 152-query timing artifact. The attempted
+152-query run with checksums and warmups exceeded a 15-minute local bound and
+produced no artifact.
 
-The evidence therefore supports the narrower statement that exact byte/pair
-LUTs are equivalent factorizations of canonical interval² and packed96 AVX2 is
-a promising score-scan prototype. It does not yet support production latency
+The evidence therefore supports the narrower statement that byte/pair LUTs are
+mathematically exact factorizations of canonical interval², with FP32
+agreement within the recorded tolerance, and packed96 AVX2 is a promising
+score-scan implementation whose bounded timing still requires a broader
+cross-host check. This replay does not establish an AVX2 speedup: on the
+recorded host the scalar packed96 control was faster. It does not yet support
+production latency
 or complete R4 cascade claims. The next gate is a chunked/native 152-query
 replay with the same 96 B layout, followed by candidate-membership and final
 rerank quality checks.

@@ -172,17 +172,22 @@ float score_pair_u8_scaled(const std::uint8_t* code, const QueryTables& tables) 
   return score;
 }
 
-float score_pair_u8_packed_layout(const std::uint8_t* packed,
-                                  const QueryTables& tables) {
-  float score = 0.0F;
+void score_pair_u8_packed_scalar(const std::vector<std::uint8_t>& packed,
+                                 std::size_t documents,
+                                 const QueryTables& tables, float* output) {
+  std::fill_n(output, documents, 0.0F);
   for (std::size_t byte = 0; byte < kOrdinalBytes; ++byte) {
-    const auto value = packed[byte];
-    score += static_cast<float>(tables.pair_u8[(byte * 2) * 16 + (value & 0x0FU)]) *
-             tables.pair_scales[byte * 2];
-    score += static_cast<float>(tables.pair_u8[(byte * 2 + 1) * 16 + (value >> 4U)]) *
-             tables.pair_scales[byte * 2 + 1];
+    const auto* source = packed.data() + byte * documents;
+    const auto* low_lut = tables.pair_u8.data() + (byte * 2) * 16;
+    const auto* high_lut = low_lut + 16;
+    const float low_scale = tables.pair_scales[byte * 2];
+    const float high_scale = tables.pair_scales[byte * 2 + 1];
+    for (std::size_t id = 0; id < documents; ++id) {
+      const auto value = source[id];
+      output[id] += static_cast<float>(low_lut[value & 0x0FU]) * low_scale;
+      output[id] += static_cast<float>(high_lut[value >> 4U]) * high_scale;
+    }
   }
-  return score;
 }
 
 #if AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2
@@ -284,19 +289,44 @@ BenchmarkOutput benchmark(const std::vector<std::uint8_t>& codes,
       const auto started = Clock::now();
       for (std::size_t id = 0; id < documents; ++id)
         scores[id] = scorer(codes.data() + id * kOrdinalBytes, tables[query]);
+      const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
       double checksum = 0.0;
       for (const float value : scores) checksum += value;
       if (timed) output.checksum += checksum;
       volatile double guard = checksum;
       (void)guard;
       if (timed)
-        output.timings.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
+        output.timings.push_back(elapsed);
     }
   };
   for (std::size_t repeat = 0; repeat < warmups; ++repeat) run(false);
   for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
     run(true);
   }
+  return output;
+}
+
+BenchmarkOutput benchmark_packed_pair_major_scalar(
+    const std::vector<std::uint8_t>& packed, std::size_t documents,
+    std::size_t queries, std::size_t repeats, std::size_t warmups,
+    const std::vector<QueryTables>& tables) {
+  BenchmarkOutput output;
+  std::vector<float> scores(documents);
+  auto run = [&](bool timed) {
+    for (std::size_t query = 0; query < queries; ++query) {
+      const auto started = Clock::now();
+      score_pair_u8_packed_scalar(packed, documents, tables[query], scores.data());
+      const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+      double checksum = 0.0;
+      for (const float value : scores) checksum += value;
+      if (timed) output.checksum += checksum;
+      volatile double guard = checksum;
+      (void)guard;
+      if (timed) output.timings.push_back(elapsed);
+    }
+  };
+  for (std::size_t repeat = 0; repeat < warmups; ++repeat) run(false);
+  for (std::size_t repeat = 0; repeat < repeats; ++repeat) run(true);
   return output;
 }
 
@@ -357,8 +387,11 @@ int main(int argc, char** argv) {
     double quantized_top_overlap = 0.0;
     double avx_top_overlap = 0.0;
     double avx_packed_top_overlap = 0.0;
+    std::size_t packed_scalar_top_mismatches = 0;
+    double packed_scalar_top_overlap = 0.0;
     float avx_max_abs_error = 0.0F;
     float avx_packed_max_abs_error = 0.0F;
+    float packed_scalar_max_abs_error = 0.0F;
     for (std::size_t q = 0; q < query_count; ++q) {
       for (std::size_t id = 0; id < kDocuments; ++id) {
         const auto* code = codes.data() + id * kOrdinalBytes;
@@ -384,6 +417,15 @@ int main(int argc, char** argv) {
       const auto quantized_top = top128(qscore);
       quantized_top_overlap += top_overlap(ref_top, quantized_top);
       if (!same_top(ref_top, quantized_top)) ++quantized_top_mismatches;
+      std::vector<float> packed_scalar_score(kDocuments);
+      score_pair_u8_packed_scalar(packed_pair_major, kDocuments, tables[q],
+                                  packed_scalar_score.data());
+      const auto packed_scalar_top = top128(packed_scalar_score);
+      packed_scalar_top_overlap += top_overlap(ref_top, packed_scalar_top);
+      if (!same_top(ref_top, packed_scalar_top)) ++packed_scalar_top_mismatches;
+      for (std::size_t id = 0; id < kDocuments; ++id)
+        packed_scalar_max_abs_error = std::max(
+            packed_scalar_max_abs_error, std::abs(packed_scalar_score[id] - qscore[id]));
 #if AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2
       std::vector<float> avx_score(kDocuments);
       for (std::size_t block = 0; block < kDocuments; block += 32) {
@@ -417,6 +459,8 @@ int main(int argc, char** argv) {
                                 [](const auto* code, const auto& table) { return score_byte_lut(code, table); }, tables);
     const auto quant = benchmark(codes, kDocuments, query_count, repeats, warmups,
                                  [](const auto* code, const auto& table) { return score_pair_u8_scaled(code, table); }, tables);
+    const auto packed_scalar = benchmark_packed_pair_major_scalar(
+        packed_pair_major, kDocuments, query_count, repeats, warmups, tables);
     std::vector<double> avx;
     std::vector<double> avx_packed;
     double avx_checksum = 0.0;
@@ -436,8 +480,9 @@ int main(int argc, char** argv) {
           const auto count = std::min<std::size_t>(32, kDocuments - block);
           score_pair_u8_avx2_block(transposed, block, count, tables[query], avx_scores.data() + block);
         }
+        const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+        avx.push_back(elapsed);
         for (const float value : avx_scores) avx_checksum += value;
-        avx.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
       }
     }
     std::vector<float> avx_packed_scores(kDocuments);
@@ -456,8 +501,9 @@ int main(int argc, char** argv) {
           score_pair_u8_avx2_packed_block(packed_pair_major, block, count,
                                            tables[query], avx_packed_scores.data() + block);
         }
+        const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+        avx_packed.push_back(elapsed);
         for (const float value : avx_packed_scores) avx_packed_checksum += value;
-        avx_packed.push_back(std::chrono::duration<double, std::milli>(Clock::now() - started).count());
       }
     }
 #endif
@@ -476,14 +522,18 @@ int main(int argc, char** argv) {
               << ",\"checksum_pair_lut_fp32\":" << pair.checksum
               << ",\"checksum_byte_lut_fp32\":" << byte.checksum
               << ",\"checksum_pair_lut_u8\":" << quant.checksum
+              << ",\"checksum_pair_lut_u8_scalar_packed96\":" << packed_scalar.checksum
               << ",\"checksum_pair_lut_u8_avx2\":" << avx_checksum
               << ",\"checksum_pair_lut_u8_avx2_packed96\":" << avx_packed_checksum
               << ",\"quantized_top128_mismatches\":" << quantized_top_mismatches
+              << ",\"packed96_scalar_top128_mismatches\":" << packed_scalar_top_mismatches
               << ",\"avx2_top128_mismatches\":" << avx_top_mismatches
               << ",\"avx2_packed96_top128_mismatches\":" << avx_packed_top_mismatches
               << ",\"quantized_top128_mean_overlap\":" << (quantized_top_overlap / query_count)
+              << ",\"packed96_scalar_top128_mean_overlap\":" << (packed_scalar_top_overlap / query_count)
               << ",\"avx2_top128_mean_overlap\":" << (avx_top_overlap / query_count)
               << ",\"avx2_packed96_top128_mean_overlap\":" << (avx_packed_top_overlap / query_count)
+              << ",\"packed96_scalar_max_abs_error\":" << packed_scalar_max_abs_error
               << ",\"avx2_max_abs_error\":" << avx_max_abs_error
               << ",\"avx2_packed96_max_abs_error\":" << avx_packed_max_abs_error
               << ",\"kernels\":{\"coordinate_fp32\":{\"p50_ms\":" << percentile(scalar.timings, .5)
@@ -494,6 +544,9 @@ int main(int argc, char** argv) {
               << "},\"pair_lut_u8\":{\"p50_ms\":" << percentile(quant.timings, .5)
               << ",\"p95_ms\":" << percentile(quant.timings, .95) << "},\"pair_lut_u8_avx2\":{\"p50_ms\":"
               << percentile(avx, .5) << ",\"p95_ms\":" << percentile(avx, .95)
+              << "},\"pair_lut_u8_scalar_packed96\":{\"p50_ms\":"
+              << percentile(packed_scalar.timings, .5) << ",\"p95_ms\":"
+              << percentile(packed_scalar.timings, .95)
               << "},\"pair_lut_u8_avx2_packed96\":{\"p50_ms\":"
               << percentile(avx_packed, .5) << ",\"p95_ms\":" << percentile(avx_packed, .95)
               << "}}}\n";
