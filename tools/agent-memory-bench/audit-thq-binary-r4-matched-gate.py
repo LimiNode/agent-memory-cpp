@@ -14,6 +14,7 @@ from binary_code_references import BBQLikeReference, RabitQReference, _packed_si
 
 D = 384
 THQ_BYTES = 96
+NORM_TOL = 1e-3
 K_VALUES = (32, 64, 128, 256, 512)
 ARMS = ("thq4", "rabitq_rr1", "bbq_block1")
 
@@ -72,6 +73,14 @@ def load_f32(path: Path, rows: int | None = None) -> np.ndarray:
     return np.asarray(np.memmap(path, mode="r", dtype="<f4", shape=(actual, D)), dtype=np.float32)
 
 
+def max_norm_error(values: np.ndarray) -> float:
+    maximum = 0.0
+    for start in range(0, len(values), 65536):
+        block = np.asarray(values[start:start + 65536], dtype=np.float32)
+        maximum = max(maximum, float(np.max(np.abs(np.linalg.norm(block, axis=1) - 1.0))))
+    return maximum
+
+
 def load_matrix(path: Path, dtype: str, rows: int, cols: int) -> np.ndarray:
     require(path.stat().st_size == rows * cols * np.dtype(dtype).itemsize, f"unexpected matrix size: {path}")
     return np.asarray(np.memmap(path, mode="r", dtype=dtype, shape=(rows, cols)))
@@ -114,7 +123,7 @@ def fit_models(train: np.ndarray, docs: np.ndarray):
 
 
 def self_test() -> None:
-    require(top_indices(np.array([1.0, 2.0]), np.array([4, 3]), 1).tolist() == [1], "tie ordering")
+    require(top_indices(np.array([2.0, 2.0]), np.array([4, 3]), 1).tolist() == [1], "document-ID tie ordering")
     require(np.isclose(ndcg10(np.array([1]), np.array([1]), np.array([1.0])), 1.0), "nDCG calculation")
     print(json.dumps({"status": "PASS", "checks": ["independent top-id ordering", "nDCG calculation"]}, indent=2))
 
@@ -160,13 +169,22 @@ def main() -> None:
         require(row["filter_payload_bytes"] == row["candidate_count"] * payload, f"payload bytes differ: {key}")
         require(row["global_model_bytes"] == model, f"model bytes differ: {key}")
         require(row["rerank_document_bytes"] == key[1] * D * 4, f"rerank bytes differ: {key}")
-        require(row["total_bytes_touched"] == row["global_model_bytes"] + row["candidate_id_bytes"] + row["filter_payload_bytes"] + row["rerank_document_bytes"], f"total byte accounting differs: {key}")
+        require(row["logical_bytes_addressed"] == row["global_model_bytes"] + row["candidate_id_bytes"] + row["filter_payload_bytes"] + row["rerank_document_bytes"], f"logical byte accounting differs: {key}")
         row_map[key] = row
     required = {"documents", "train_vectors", "thq4_codes", "thq4_thresholds", "candidate_flat", "candidate_raw", "candidate_receipt", "queries", "qrel_ids", "qrel_scores", "teacher_ids"}
     require(set(sources) == required, "full source replay manifest is required")
     documents = load_f32(sources["documents"], 1_000_000)
     train = load_f32(sources["train_vectors"])
     queries = load_f32(sources["queries"], 152)
+    norm_errors = {"documents": max_norm_error(documents), "queries": max_norm_error(queries),
+                   "train_vectors": max_norm_error(train)}
+    require(all(value <= NORM_TOL for value in norm_errors.values()), f"IP/cosine unit-norm contract violated: {norm_errors}")
+    require(result.get("norm_contract", {}).get("required") == "unit_l2_norm", "norm contract missing")
+    require(float(result["norm_contract"].get("tolerance", -1.0)) == NORM_TOL, "norm tolerance differs")
+    recorded_norms = result["norm_contract"].get("max_abs_error", {})
+    require(set(recorded_norms) == set(norm_errors), "norm diagnostic fields differ")
+    for name, value in norm_errors.items():
+        require(np.isclose(float(recorded_norms[name]), value, rtol=0.0, atol=1e-7), f"norm diagnostic differs: {name}")
     qrel_ids = load_matrix(sources["qrel_ids"], "<i8", 152, 20)
     qrel_scores = load_matrix(sources["qrel_scores"], "<f4", 152, 20)
     teacher_ids = load_matrix(sources["teacher_ids"], "<i8", 152, 10)

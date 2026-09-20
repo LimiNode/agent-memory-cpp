@@ -25,6 +25,7 @@ DOC_BYTES = D * 4
 THQ_BYTES = 96
 K_VALUES = (32, 64, 128, 256, 512)
 SEED = 20260920
+NORM_TOL = 1e-3
 
 
 def sha256(path: Path) -> str:
@@ -88,6 +89,14 @@ def load_f32(path: Path, rows: int | None = None) -> np.ndarray:
     if rows is not None and actual != rows:
         raise RuntimeError(f"{path} has {actual} rows, expected {rows}")
     return np.asarray(np.memmap(path, mode="r", dtype="<f4", shape=(actual, D)), dtype=np.float32)
+
+
+def max_norm_error(values: np.ndarray) -> float:
+    maximum = 0.0
+    for start in range(0, len(values), 65536):
+        block = np.asarray(values[start:start + 65536], dtype=np.float32)
+        maximum = max(maximum, float(np.max(np.abs(np.linalg.norm(block, axis=1) - 1.0))))
+    return maximum
 
 
 def load_int_matrix(path: Path, dtype: str, cols: int, rows: int) -> np.ndarray:
@@ -216,6 +225,10 @@ def main() -> None:
     documents = load_f32(args.documents, rows=1_000_000)
     train = load_f32(args.train_vectors)
     queries = load_f32(args.queries, rows=152)
+    norm_errors = {"documents": max_norm_error(documents), "queries": max_norm_error(queries),
+                   "train_vectors": max_norm_error(train)}
+    if any(value > NORM_TOL for value in norm_errors.values()):
+        raise RuntimeError(f"IP/cosine unit-norm contract violated: {norm_errors}")
     qrel_ids = load_int_matrix(args.qrel_ids, "<i8", 20, 152)
     qrel_scores = load_int_matrix(args.qrel_scores, "<f4", 20, 152)
     teacher_ids = load_int_matrix(args.teacher_ids, "<i8", 10, 152)
@@ -290,7 +303,7 @@ def main() -> None:
                     "candidate_id_bytes": int(len(ids) * 4),
                     "filter_payload_bytes": int(len(ids) * arm_payload[arm]),
                     "rerank_document_bytes": int(k * DOC_BYTES),
-                    "total_bytes_touched": int(model_bytes[arm] + len(ids) * 4 + len(ids) * arm_payload[arm] + k * DOC_BYTES),
+                    "logical_bytes_addressed": int(model_bytes[arm] + len(ids) * 4 + len(ids) * arm_payload[arm] + k * DOC_BYTES),
                     "downstream_documents": int(k),
                     "selected_ids": selected_ids.astype(int).tolist(),
                     "final_ids": final_ids.astype(int).tolist(),
@@ -309,7 +322,7 @@ def main() -> None:
                 "mean_python_reference_filter_only_ms": float(np.mean([row["python_reference_filter_only_ms"] for row in subset])),
                 "mean_python_reference_cascade_ms": float(np.mean([row["python_reference_filter_plus_fp32_cosine_rerank_ms"] for row in subset])),
                 "p95_python_reference_cascade_ms": percentile([float(row["python_reference_filter_plus_fp32_cosine_rerank_ms"]) for row in subset], .95),
-                "mean_total_bytes_touched": float(np.mean([row["total_bytes_touched"] for row in subset])),
+                "mean_logical_bytes_addressed": float(np.mean([row["logical_bytes_addressed"] for row in subset])),
             }
     result = {
         "schema_version": 2, "family": "thq_binary_r4_matched_gate_v2", "status": "EXECUTED",
@@ -317,6 +330,7 @@ def main() -> None:
         "runner_sha256": sha256(Path(__file__)),
         "metric": "cosine", "final_reranker": "same FP32 cosine oracle over K filtered documents",
         "timing_semantics": "python_reference_numpy_not_native_serving_latency",
+        "norm_contract": {"required": "unit_l2_norm", "tolerance": NORM_TOL, "max_abs_error": norm_errors},
         "candidate_count": int(len(candidate_ids)), "query_count": 152, "candidate_unique_documents": int(len(unique_ids)),
         "K_values": list(K_VALUES), "seed": SEED, "tie_policy": "score descending, document ID ascending",
         "source_hashes": {name: sha256(path) for name, path in {

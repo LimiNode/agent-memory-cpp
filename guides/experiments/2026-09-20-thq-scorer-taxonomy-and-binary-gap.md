@@ -91,14 +91,20 @@ candidate shell:
 
 * top-10 survival/overlap, qrels nDCG, p05 **per-query nDCG@10**, and
   worst-query nDCG@10;
-* filter-only latency and bytes touched;
+* Python/NumPy reference p50/p95/p99 measurements are diagnostic only; native
+  packed filter/cascade timings remain a separate follow-up gate for surviving
+  arms;
+* logical bytes addressed, split into global model, candidate IDs, filter
+  payload, and rerank records; this is not a DRAM/cache/page measurement;
 * filter plus the same **FP32 oracle rerank** cost, including the number of
   documents sent downstream;
-* packed/native warm-up and repeated p50/p95/p99 measurements;
 * provenance for rotation, scales/corrections, query encoding, tie policy, and
   the exact candidate stream.
 
-The common final stage is pinned to the source FP32 **cosine** oracle over the
+The binary filter metric is `ip`, and the source contract fail-closes unless
+documents, training rows, and queries are unit-L2-normalized within `1e-3`.
+This is what makes the IP filter and final FP32 **cosine** reranker comparable;
+the norm diagnostics are persisted and independently audited. The common final stage is pinned to the source FP32 **cosine** oracle over the
 K documents emitted by each arm, with document-ID ascending as the secondary
 tie key.  It is not a binary-to-binary cascade and it is not the legacy
 144-byte Hamming payload.  The implementation contract is
@@ -124,6 +130,7 @@ expensive final rerank.
 
 No production codec selection is licensed by the current evidence.  The next
 research PR should implement the matched gate above, retain the old controls as
-separate lanes, and publish one source-replay audit per codec family.  A
-binary method should advance only if its complete-cascade cost is lower at the
-same required top-10 survival, not merely if its inner loop is faster.
+separate lanes, and publish one source-replay audit per codec family. A binary
+method should advance only after a native follow-up confirms lower
+complete-cascade cost at the same required top-10 survival; this Python gate
+must not be used to claim serving latency or physical memory traffic.
