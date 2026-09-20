@@ -21,8 +21,9 @@ TOP = 128
 SEED = 20260920
 VARIANTS = ("additive_greedy", "additive_mse_beam", "additive_fp32_score_oracle")
 # A 256-way stage stores one 8-bit index, hence one byte.  These are actual
-# side-code bytes, not bit counts; total THQ4 sizes are 100/102/104 B.
-STAGES = {4: 4, 6: 6, 8: 8}
+# side-code bytes, not bit counts.  32/48 B arms are explicit rate-matched
+# controls for THQ-joint2/joint3-sized side payloads.
+STAGES = {4: 4, 6: 6, 8: 8, 32: 32, 48: 48}
 
 
 def sha256(path: Path) -> str:
@@ -268,7 +269,8 @@ def main() -> None:
             beam, _errors, beam_codes = beam_encode(residual, codebooks, args.beam_width)
             recon_greedy = selected_base + greedy
             # The MSE beam is the optimistic document-side encoder.
-            recon_beam = beam[np.arange(len(selected)), np.argmin(np.sum((residual[:, None, :] - beam) ** 2, axis=2), axis=1)] + selected_base
+            mse_indices = np.argmin(np.sum((residual[:, None, :] - beam) ** 2, axis=2), axis=1)
+            recon_beam = beam[np.arange(len(selected)), mse_indices] + selected_base
             # Leaky score-approximation oracle: choose the beam member whose
             # cosine score is closest to the exact FP32 document score.
             beam_all = beam + selected_base[:, None, :]
@@ -278,14 +280,21 @@ def main() -> None:
             oracle = beam_all[np.arange(len(selected)), np.argmin(np.abs(beam_scores - exact_scores[:, None]), axis=1)]
             code_artifacts[payload][qi] = {"selected_ids": selected.astype(np.int64),
                                            "greedy_codes": greedy_codes,
-                                           "beam_codes": beam_codes}
+                                           "beam_codes": beam_codes,
+                                           "mse_codes": beam_codes[np.arange(len(selected)), mse_indices]}
             for variant, values, leaky in (("additive_greedy", recon_greedy, False),
                                            ("additive_mse_beam", recon_beam, False),
                                            ("additive_fp32_score_oracle", oracle, True)):
                 scores = np.einsum("kd,d->k", values, query) / np.maximum(np.linalg.norm(values, axis=1) * qnorm, np.finfo(np.float32).tiny)
                 ranked = top_ids(scores, selected)
+                serving_bytes = payload if variant != "additive_fp32_score_oracle" else None
+                global_codebook_bytes = len(codebooks) * 256 * D * 4
                 rows.append({"query": qi, "payload_bytes": payload, "variant": variant, "query_leaking": leaky,
                              "selected_ids": selected.astype(int).tolist(),
+                             "serving_payload_bytes": serving_bytes,
+                             "retained_beam_code_bytes": payload * args.beam_width if leaky else payload,
+                             "global_codebook_bytes": int(global_codebook_bytes),
+                             "complete_1m_bytes": None if serving_bytes is None else int(global_codebook_bytes + 1_000_000 * (THQ_BYTES + serving_bytes)),
                              "teacher_overlap": float(np.isin(teacher, ranked).sum() / 10.0),
                              "qrels_ndcg10": ndcg10(ranked, qrel_ids[qi], qrel_scores[qi]),
                              "top10_ids": ranked.astype(int).tolist()})
@@ -299,7 +308,11 @@ def main() -> None:
                                                  "p05_qrels_ndcg10": float(np.percentile(quality, 5)),
                                                  "worst_qrels_ndcg10": float(np.min(quality)),
                                                  "mean_teacher_overlap": float(np.mean([row["teacher_overlap"] for row in subset])),
-                                                 "query_leaking": bool(subset[0]["query_leaking"])}
+                                                 "query_leaking": bool(subset[0]["query_leaking"]),
+                                                 "serving_payload_bytes": subset[0]["serving_payload_bytes"],
+                                                 "retained_beam_code_bytes": subset[0]["retained_beam_code_bytes"],
+                                                 "global_codebook_bytes": subset[0]["global_codebook_bytes"],
+                                                 "complete_1m_bytes": subset[0]["complete_1m_bytes"]}
     model_path = args.models_output or args.output.with_suffix(".models.npz")
     codes_path = args.codes_output or args.output.with_suffix(".codes.npz")
     model_path.parent.mkdir(parents=True, exist_ok=True)
@@ -312,6 +325,7 @@ def main() -> None:
         code_arrays[f"payload_{payload}_selected_ids"] = np.stack([per_query[q]["selected_ids"] for q in range(152)])
         code_arrays[f"payload_{payload}_greedy_codes"] = np.stack([per_query[q]["greedy_codes"] for q in range(152)])
         code_arrays[f"payload_{payload}_beam_codes"] = np.stack([per_query[q]["beam_codes"] for q in range(152)])
+        code_arrays[f"payload_{payload}_mse_codes"] = np.stack([per_query[q]["mse_codes"] for q in range(152)])
     np.savez_compressed(codes_path, **code_arrays)
     result = {"schema_version": 2, "family": "thq_additive_upper_bounds_v2", "status": "EXECUTED",
               "source_replay": True, "metric": "cosine", "seed": SEED, "query_count": 152,
@@ -319,6 +333,9 @@ def main() -> None:
               "prefilter": "frozen R4 candidate stream -> canonical THQ4 interval-squared top128",
               "beam_width": args.beam_width, "stages_by_payload_bytes": STAGES,
               "side_code_bytes": sorted(STAGES), "total_bytes_by_side_code": {str(p): THQ_BYTES + p for p in STAGES},
+              "global_codebook_bytes_by_side_code": {str(payload): int(stages * 256 * D * 4) for payload, stages in STAGES.items()},
+              "storage_semantics": {"greedy_and_mse_beam": "THQ4 plus one selected path",
+                                    "score_oracle": "retained beam paths plus exact FP32 document score; no serving payload"},
               "artifact_hashes": {"models": sha256(model_path), "codes": sha256(codes_path)},
               "source_hashes": {name: sha256(path) for name, path in {
                   "documents": args.documents, "train_vectors": args.train_vectors, "queries": args.queries,

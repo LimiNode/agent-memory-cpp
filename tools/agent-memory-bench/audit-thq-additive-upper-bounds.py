@@ -12,7 +12,7 @@ import numpy as np
 D = 384
 THQ_BYTES = 96
 TOP = 128
-PAYLOADS = (4, 6, 8)
+PAYLOADS = (4, 6, 8, 32, 48)
 VARIANTS = ("additive_greedy", "additive_mse_beam", "additive_fp32_score_oracle")
 
 
@@ -130,7 +130,7 @@ def main() -> None:
     artifact_hashes = result.get("artifact_hashes", {})
     require(artifact_hashes.get("models") == sha256(args.models), "model artifact SHA mismatch")
     require(artifact_hashes.get("codes") == sha256(args.codes), "code artifact SHA mismatch")
-    require(result.get("stages_by_payload_bytes") == {"4": 4, "6": 6, "8": 8}, "stage/rate manifest differs")
+    require(result.get("stages_by_payload_bytes") == {str(payload): payload for payload in PAYLOADS}, "stage/rate manifest differs")
     rows = result.get("rows")
     require(isinstance(rows, list) and len(rows) == 152 * len(PAYLOADS) * len(VARIANTS), "row cardinality differs")
     row_map = {}
@@ -139,6 +139,14 @@ def main() -> None:
         require(key not in row_map, f"duplicate row: {key}")
         require(0 <= key[0] < 152 and key[1] in PAYLOADS and key[2] in VARIANTS, f"invalid row key: {key}")
         require(len(row.get("top10_ids", [])) == 10 and len(row.get("selected_ids", [])) == TOP, f"ID cardinality differs: {key}")
+        expected_serving = key[1] if key[2] != "additive_fp32_score_oracle" else None
+        expected_retained = key[1] * int(result.get("beam_width", 0)) if key[2] == "additive_fp32_score_oracle" else key[1]
+        expected_global = key[1] * 256 * D * 4
+        require(row.get("serving_payload_bytes") == expected_serving, f"serving payload accounting differs: {key}")
+        require(row.get("retained_beam_code_bytes") == expected_retained, f"beam storage accounting differs: {key}")
+        require(row.get("global_codebook_bytes") == expected_global, f"global codebook accounting differs: {key}")
+        expected_complete = None if expected_serving is None else expected_global + 1_000_000 * (THQ_BYTES + expected_serving)
+        require(row.get("complete_1m_bytes") == expected_complete, f"complete footprint differs: {key}")
         row_map[key] = row
     required = {"documents", "train_vectors", "queries", "qrel_ids", "qrel_scores", "teacher_ids",
                 "thq4_codes", "thq4_thresholds", "candidate_flat", "candidate_raw", "candidate_receipt"}
@@ -168,10 +176,12 @@ def main() -> None:
             greedy_codes = codes[f"payload_{payload}_greedy_codes"][qi]
             greedy = base + sum((codebooks[i][greedy_codes[:, i]] for i in range(payload)), start=np.zeros_like(base))
             beam_codes = codes[f"payload_{payload}_beam_codes"][qi]
+            mse_codes = codes[f"payload_{payload}_mse_codes"][qi]
             beam = base[:, None, :] + sum((codebooks[i][beam_codes[:, :, i]] for i in range(payload)), start=np.zeros_like(base[:, None, :]))
             exact = cosine(docs, query)
             beam_scores = np.asarray([cosine(beam[k], query) for k in range(len(selected))])
             mse_idx = np.argmin(np.sum((docs[:, None, :] - beam) ** 2, axis=2), axis=1)
+            require(np.array_equal(mse_codes, beam_codes[np.arange(len(selected)), mse_idx]), f"MSE path replay mismatch: q={qi}, payload={payload}")
             oracle_idx = np.argmin(np.abs(beam_scores - exact[:, None]), axis=1)
             values_by_variant = {"additive_greedy": greedy,
                                  "additive_mse_beam": beam[np.arange(len(selected)), mse_idx] + 0.0,
