@@ -1,0 +1,55 @@
+{
+  "family": "thq_additive_upper_bounds_v2",
+  "status": "BLOCKED_COMPUTE",
+  "source_bundle_found": true,
+  "runner_sha256": "e96bc91727fc244d7170380c9d1643c04e4bf3802ced4b903e28204dff87927e",
+  "attempts": [
+    {
+      "head_sha": "a095472",
+      "runner_sha256": "5c6b0d2f19381ce46fa96e6e669fb270b52e4d08696d0b1ac2ca6339349ba88f",
+      "beam_width": 8,
+      "iterations": 8,
+      "fit_rows": "all",
+      "arms": [4, 6, 8, 32, 48],
+      "bounded_window_minutes": 30,
+      "outcome": "no_result_artifact"
+    },
+    {
+      "head_sha": "a095472",
+      "runner_sha256": "5c6b0d2f19381ce46fa96e6e669fb270b52e4d08696d0b1ac2ca6339349ba88f",
+      "beam_width": 8,
+      "iterations": 1,
+      "fit_rows": "all",
+      "arms": [4, 6, 8, 32, 48],
+      "bounded_window_minutes": 15,
+      "outcome": "no_result_artifact"
+    },
+    {
+      "head_sha": "a095472",
+      "runner_sha256": "5c6b0d2f19381ce46fa96e6e669fb270b52e4d08696d0b1ac2ca6339349ba88f",
+      "beam_width": 8,
+      "iterations": 1,
+      "fit_rows": 256,
+      "fit_strategy": "uniform_stride",
+      "shared_fit": true,
+      "fit_stage_count": 48,
+      "runner_sha256": "e96bc91727fc244d7170380c9d1643c04e4bf3802ced4b903e28204dff87927e",
+      "timeout_seconds": 600,
+      "outcome": "no_result_artifact_compute_blocked"
+    }
+  ],
+  "interpretation": "The old five-arm pure-NumPy fit did not finish within the bounded windows, and a corrected shared-prefix 48-stage attempt with fit_rows=256 also produced no artifact within 600 seconds. This is a compute/implementation blocker, not a quality result; no retrieval number is claimed.",
+  "source_hashes": {
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "teacher_ids": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b"
+  }
+}
