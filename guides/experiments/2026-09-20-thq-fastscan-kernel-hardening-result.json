@@ -1,0 +1,76 @@
+{
+    "family":  "thq_fastscan_kernel_benchmark_v1",
+    "documents":  1000000,
+    "queries":  8,
+    "repeats":  3,
+    "warmups":  1,
+    "avx2_compiled":  true,
+    "pair_exact_mismatches":  0,
+    "pair_score_mismatches_gt_1e5":  0,
+    "pair_max_abs_error":  5.36441803E-07,
+    "pair_ordered_top128_mismatches":  0,
+    "byte_lut_mismatches_gt_1e5":  0,
+    "byte_lut_max_abs_error":  4.76837158E-07,
+    "checksum_coordinate_fp32":  6785671.59,
+    "checksum_pair_lut_fp32":  6785671.45,
+    "checksum_byte_lut_fp32":  6785671.25,
+    "checksum_pair_lut_u8":  6785540.69,
+    "checksum_pair_lut_u8_scalar_packed96":  6785540.69,
+    "checksum_pair_lut_u8_avx2":  6785540.69,
+    "checksum_pair_lut_u8_avx2_packed96":  6785540.69,
+    "quantized_top128_mismatches":  8,
+    "packed96_scalar_top128_mismatches":  8,
+    "avx2_top128_mismatches":  8,
+    "avx2_packed96_top128_mismatches":  8,
+    "quantized_top128_mean_overlap":  0.998046875,
+    "packed96_scalar_top128_mean_overlap":  0.998046875,
+    "avx2_top128_mean_overlap":  0.998046875,
+    "avx2_packed96_top128_mean_overlap":  0.998046875,
+    "packed96_scalar_max_abs_error":  0,
+    "avx2_max_abs_error":  0,
+    "avx2_packed96_max_abs_error":  0,
+    "kernels":  {
+                    "coordinate_fp32":  {
+                                            "p50_ms":  483.9527,
+                                            "p95_ms":  490.6989
+                                        },
+                    "pair_lut_fp32":  {
+                                          "p50_ms":  196.3418,
+                                          "p95_ms":  201.8377
+                                      },
+                    "byte_lut_fp32":  {
+                                          "p50_ms":  87.585,
+                                          "p95_ms":  88.2664
+                                      },
+                    "pair_lut_u8":  {
+                                        "p50_ms":  210.7873,
+                                        "p95_ms":  218.4692
+                                    },
+                    "pair_lut_u8_avx2":  {
+                                             "p50_ms":  294.7403,
+                                             "p95_ms":  302.8728
+                                         },
+                    "pair_lut_u8_scalar_packed96":  {
+                                                        "p50_ms":  185.3296,
+                                                        "p95_ms":  191.2381
+                                                    },
+                    "pair_lut_u8_avx2_packed96":  {
+                                                      "p50_ms":  238.9405,
+                                                      "p95_ms":  241.0337
+                                                  }
+                },
+    "status":  "EXECUTED_BOUNDED",
+    "runner_sha256":  "1c69d18966401887ce04f427e4c4d78552efc3b83c58100e8c02904300ac9769",
+    "source_hashes":  {
+                          "thq4_ordinal":  "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+                          "thq4_thresholds":  "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+                          "queries":  "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+                      },
+    "limitations":  [
+                        "bounded eight-query corrective replay, not the canonical 152-query result",
+                        "score-scan kernel timings, not complete R4 query latency",
+                        "packed96 scalar and AVX2 retain the canonical 96 B/document payload",
+                        "uint8 quality remains pending a full R4 cascade gate",
+                        "timings exclude post-score checksum consumption"
+                    ]
+}

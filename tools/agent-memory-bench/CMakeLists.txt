@@ -608,6 +608,25 @@ target_compile_features(agent-memory-native-packed-thq-adc-benchmark PRIVATE cxx
 target_link_libraries(agent-memory-native-packed-thq-adc-benchmark PRIVATE
     agent_memory::json)
 
+# Portable THQ4 interval² kernel-bakeoff target.  The target is always exposed;
+# AGENT_MEMORY_NEUROUTE_ENABLE_AVX2 only enables its AVX2 arm and compile flags.
+# The AVX2 path retains a canonical 96 B/document packed pair-major layout.
+add_executable(agent-memory-thq-fastscan-kernel-benchmark
+    thq_fastscan_kernel_benchmark.cpp)
+target_compile_features(agent-memory-thq-fastscan-kernel-benchmark PRIVATE cxx_std_17)
+set(AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2 0)
+if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+    set(AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2 1)
+    if(MSVC)
+        target_compile_options(agent-memory-thq-fastscan-kernel-benchmark PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(agent-memory-thq-fastscan-kernel-benchmark PRIVATE -mavx2)
+    endif()
+endif()
+target_compile_definitions(agent-memory-thq-fastscan-kernel-benchmark PRIVATE
+    AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2=${AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2})
+
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 0)
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 0)
 add_library(agent_memory_neuroute_record_codec STATIC
