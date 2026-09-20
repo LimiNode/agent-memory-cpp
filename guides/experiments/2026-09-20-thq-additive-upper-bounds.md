@@ -59,15 +59,23 @@ the frozen R4 candidate stream are all present and SHA-identified in the
 binary-gate receipt. A declared full run (`beam_width=8`, `iterations=8`, all
 4/6/8/32/48-byte arms) was started but did not finish within a 30-minute
 bounded execution window; it produced no result artifacts and no quality
-numbers are claimed. A one-iteration attempt on the same full training set
-also exceeded the bounded window. This is a compute/implementation limit of
-the current pure-NumPy 48-stage reference, not a quality result.
+numbers are claimed. At the time of those attempts the five-arm implementation
+performed 98 aggregate fitting stages (4+6+8+32+48), not one shared 48-stage
+fit. A one-iteration attempt on the same full training set also exceeded the
+bounded window. This is a compute/implementation limit of the old runner, not
+a quality result.
 
 The runner now exposes an explicit `--fit-rows` uniform-stride subsample for a
 future bounded capacity diagnostic. The default remains all training rows;
 when the option is used, `fit_rows`, `fit_strategy`, and `iterations` are
-persisted in the result and checked by the independent audit. A subsampled run
-must be reported as such and cannot be promoted to the full-training
-upper-bound claim.
+persisted in the result and checked by the independent audit. The runner now
+fits one deterministic 48-stage sequence and reuses its prefixes for the
+4/6/8/32/48 arms; the audit verifies shared-prefix equality. A subsampled run
+must still be reported as such and cannot be promoted to the full-training
+upper-bound claim. A bounded shared-prefix attempt with `fit_rows=256`,
+`iterations=1`, and `beam_width=8` was then run for 600 seconds from this
+corrected runner; it produced no result/model/code artifacts. The pure-NumPy
+implementation therefore remains compute-blocked even after removing the
+duplicate fitting work. No quality numbers are claimed.
 
 Implementation: `tools/agent-memory-bench/run-thq-additive-upper-bounds.py`.

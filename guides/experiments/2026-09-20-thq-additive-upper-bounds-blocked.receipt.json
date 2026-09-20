@@ -2,9 +2,11 @@
   "family": "thq_additive_upper_bounds_v2",
   "status": "BLOCKED_COMPUTE",
   "source_bundle_found": true,
-  "runner_sha256": "0b34bb612acb8f3da43ffdad377dc5df03f02cfe8cac93af1523fa3912ba82ee",
+  "runner_sha256": "e96bc91727fc244d7170380c9d1643c04e4bf3802ced4b903e28204dff87927e",
   "attempts": [
     {
+      "head_sha": "a095472",
+      "runner_sha256": "5c6b0d2f19381ce46fa96e6e669fb270b52e4d08696d0b1ac2ca6339349ba88f",
       "beam_width": 8,
       "iterations": 8,
       "fit_rows": "all",
@@ -13,15 +15,30 @@
       "outcome": "no_result_artifact"
     },
     {
+      "head_sha": "a095472",
+      "runner_sha256": "5c6b0d2f19381ce46fa96e6e669fb270b52e4d08696d0b1ac2ca6339349ba88f",
       "beam_width": 8,
       "iterations": 1,
       "fit_rows": "all",
       "arms": [4, 6, 8, 32, 48],
       "bounded_window_minutes": 15,
       "outcome": "no_result_artifact"
+    },
+    {
+      "head_sha": "a095472",
+      "runner_sha256": "5c6b0d2f19381ce46fa96e6e669fb270b52e4d08696d0b1ac2ca6339349ba88f",
+      "beam_width": 8,
+      "iterations": 1,
+      "fit_rows": 256,
+      "fit_strategy": "uniform_stride",
+      "shared_fit": true,
+      "fit_stage_count": 48,
+      "runner_sha256": "e96bc91727fc244d7170380c9d1643c04e4bf3802ced4b903e28204dff87927e",
+      "timeout_seconds": 600,
+      "outcome": "no_result_artifact_compute_blocked"
     }
   ],
-  "interpretation": "The pure-NumPy 48-stage fit did not finish within the bounded windows. This is a compute/implementation blocker, not a quality result; no retrieval number is claimed.",
+  "interpretation": "The old five-arm pure-NumPy fit did not finish within the bounded windows, and a corrected shared-prefix 48-stage attempt with fit_rows=256 also produced no artifact within 600 seconds. This is a compute/implementation blocker, not a quality result; no retrieval number is claimed.",
   "source_hashes": {
     "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
     "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",

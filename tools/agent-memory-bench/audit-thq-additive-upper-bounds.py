@@ -24,6 +24,10 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise RuntimeError(message)
@@ -123,6 +127,8 @@ def main() -> None:
     require(int(result.get("iterations", 0)) >= 1, "invalid training iteration count")
     runner = args.runner or Path(__file__).with_name("run-thq-additive-upper-bounds.py")
     require(result.get("runner_sha256") == sha256(runner), "runner SHA mismatch")
+    require(result.get("shared_fit") is True, "shared prefix fit is not declared")
+    require(int(result.get("fit_stage_count", 0)) == max(PAYLOADS), "shared fit stage count differs")
     sources = {name: Path(path) for name, path in args.source}
     hashes = result.get("source_hashes", {})
     require(set(sources) == set(hashes), "source manifest differs")
@@ -158,6 +164,15 @@ def main() -> None:
     train = np.asarray(np.memmap(sources["train_vectors"], mode="r", dtype="<f4", shape=(train_rows, D)), dtype=np.float32)
     fit_rows = int(result.get("fit_rows", train_rows))
     require(256 <= fit_rows <= train_rows, "fit_rows outside training source")
+    fit_strategy = result.get("fit_strategy")
+    if fit_rows == train_rows:
+        require(fit_strategy == "all_train_rows", "fit strategy differs for full training")
+        fit_indices = np.arange(train_rows, dtype=np.int64)
+    else:
+        require(fit_strategy == "uniform_stride", "fit strategy differs for subsampled training")
+        fit_indices = np.linspace(0, train_rows - 1, fit_rows, dtype=np.int64)
+    require(result.get("fit_indices_sha256") == sha256_bytes(fit_indices.astype("<i8", copy=False).tobytes()),
+            "fit index provenance mismatch")
     queries = np.asarray(np.memmap(sources["queries"], mode="r", dtype="<f4", shape=(152, D)), dtype=np.float32)
     qrel_ids = np.asarray(np.memmap(sources["qrel_ids"], mode="r", dtype="<i8", shape=(152, 20)))
     qrel_scores = np.asarray(np.memmap(sources["qrel_scores"], mode="r", dtype="<f4", shape=(152, 20)))
@@ -168,6 +183,11 @@ def main() -> None:
     centroids = centroids_from_train(train, thresholds)
     models = np.load(args.models, allow_pickle=False)
     codes = np.load(args.codes, allow_pickle=False)
+    for payload in PAYLOADS[1:]:
+        for stage in range(payload):
+            require(np.array_equal(models[f"payload_{payload}_stage_{stage}"],
+                                   models[f"payload_{PAYLOADS[-1]}_stage_{stage}"]),
+                    f"shared prefix model mismatch: payload={payload}, stage={stage}")
     for qi, query in enumerate(queries):
         candidate_slice = ids[offsets[qi]:offsets[qi + 1]]
         selected = interval_top(query, candidate_slice, thq_codes, thresholds)

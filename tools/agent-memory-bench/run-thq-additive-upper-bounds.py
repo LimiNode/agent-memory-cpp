@@ -34,6 +34,10 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_bytes(value: bytes) -> str:
+    return hashlib.sha256(value).hexdigest()
+
+
 def top_ids(scores: np.ndarray, ids: np.ndarray, count: int = 10) -> np.ndarray:
     return ids[np.lexsort((ids, -np.asarray(scores, dtype=np.float64)))[:count]]
 
@@ -223,7 +227,9 @@ def main() -> None:
         fit_indices = np.linspace(0, train_rows - 1, args.fit_rows, dtype=np.int64)
         fit_train = train[fit_indices]
     else:
+        fit_indices = np.arange(train_rows, dtype=np.int64)
         fit_train = train
+    fit_indices_sha256 = sha256_bytes(fit_indices.astype("<i8", copy=False).tobytes())
     if args.queries.stat().st_size != 152 * D * 4:
         raise RuntimeError("queries source must contain exactly 152 x 384 FP32 rows")
     if args.qrel_ids.stat().st_size != 152 * 20 * 8 or args.qrel_scores.stat().st_size != 152 * 20 * 4:
@@ -250,11 +256,13 @@ def main() -> None:
             values = train[train_levels[:, coordinate] == level, coordinate]
             centroids[coordinate, level] = float(np.mean(values)) if len(values) else float(np.mean(train[:, coordinate]))
     train_base = centroids[np.arange(D)[None, :], train_levels]
-    models = {}
-    for payload, stages in STAGES.items():
-        fit_levels = np.sum(fit_train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
-        fit_base = centroids[np.arange(D)[None, :], fit_levels]
-        models[payload] = fit_additive(fit_train - fit_base, stages, args.iterations)
+    fit_levels = np.sum(fit_train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
+    fit_base = centroids[np.arange(D)[None, :], fit_levels]
+    shared_codebooks = fit_additive(fit_train - fit_base, max(STAGES.values()), args.iterations)
+    # Every rate arm is a prefix of the same deterministic 48-stage fit. This
+    # avoids repeating identical work and makes the prefix relationship
+    # explicit in the persisted model manifest.
+    models = {payload: shared_codebooks[:stages] for payload, stages in STAGES.items()}
     code_artifacts = {payload: {} for payload in STAGES}
     rows = []
     for qi, query in enumerate(queries):
@@ -347,6 +355,9 @@ def main() -> None:
               "beam_width": args.beam_width, "iterations": args.iterations,
               "fit_rows": int(len(fit_train)),
               "fit_strategy": "all_train_rows" if not args.fit_rows else "uniform_stride",
+              "fit_indices_sha256": fit_indices_sha256,
+              "shared_fit": True,
+              "fit_stage_count": max(STAGES.values()),
               "stages_by_payload_bytes": STAGES,
               "side_code_bytes": sorted(STAGES), "total_bytes_by_side_code": {str(p): THQ_BYTES + p for p in STAGES},
               "global_codebook_bytes_by_side_code": {str(payload): int(stages * 256 * D * 4) for payload, stages in STAGES.items()},
