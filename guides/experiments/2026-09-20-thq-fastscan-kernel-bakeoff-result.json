@@ -1,0 +1,32 @@
+{
+  "family": "thq_fastscan_kernel_benchmark_v1",
+  "status": "EXECUTED",
+  "documents": 1000000,
+  "queries": 152,
+  "repeats": 1,
+  "avx2_compiled": true,
+  "pair_exact_mismatches": 0,
+  "quantized_top128_mismatches": 152,
+  "avx2_top128_mismatches": 152,
+  "quantized_top128_mean_overlap": 0.997532895,
+  "avx2_top128_mean_overlap": 0.997532895,
+  "avx2_max_abs_error": 0.0,
+  "kernels": {
+    "coordinate_fp32": {"p50_ms": 580.2713, "p95_ms": 593.5776},
+    "pair_lut_fp32": {"p50_ms": 200.7746, "p95_ms": 206.0332},
+    "pair_lut_u8": {"p50_ms": 218.4155, "p95_ms": 221.7175},
+    "pair_lut_u8_avx2": {"p50_ms": 159.668, "p95_ms": 167.1534}
+  },
+  "source_hashes": {
+    "thq4_ordinal": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+  },
+  "runner_sha256": "0413dc546fb9f34622cccd7a35a981a2ae83d53c773c50107fcf1b09b671c00e",
+  "limitations": [
+    "Python-independent native reference benchmark; no production storage/page claims",
+    "AVX2 arm uses a 32-document pair-transposed working layout and uint8 pair tables",
+    "quantized top-128 reports set overlap; ordered parity is not preserved",
+    "timings are one warm repeated run on the local host and are not cross-machine claims"
+  ]
+}
