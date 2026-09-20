@@ -1,0 +1,63 @@
+{
+  "family": "thq_binary_r4_matched_gate_receipt_v2",
+  "status": "EXECUTED",
+  "audit_status": "PASS",
+  "runner_sha256": "5f7399f8c5fd803bbfb5ed40f2ae79bc24dfad7b7af65d73ca5ce8a6f5f238f8",
+  "result_sha256": "a548fa865e199e3c0cab7382a9f341801f38e446c51a9372e7ada9aabc9aa7d0",
+  "result_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-diagnostics\\tmp\\thq-binary-r4-matched-full.json",
+  "protocol": {
+    "candidate_count": 762082,
+    "candidate_unique_documents": 463258,
+    "queries": 152,
+    "K": [32, 64, 128, 256, 512],
+    "final_reranker": "same FP32 cosine oracle over K filtered documents",
+    "timing_semantics": "python_reference_numpy_not_native_serving_latency",
+    "norm_contract": {
+      "required": "unit_l2_norm",
+      "tolerance": 0.001,
+      "max_abs_error": {
+        "documents": 1.7881393432617188e-07,
+        "queries": 1.1920928955078125e-07,
+        "train_vectors": 1.7881393432617188e-07
+      }
+    }
+  },
+  "summary": {
+    "thq4": {
+      "K32_mean_ndcg10": 0.6554149349976294,
+      "K32_final_top10_overlap": 0.9921052631578946,
+      "K128_mean_ndcg10": 0.6542006212030269,
+      "K128_final_top10_overlap": 1.0
+    },
+    "rabitq_rr1": {
+      "K32_mean_ndcg10": 0.6427405891206752,
+      "K32_final_top10_overlap": 0.9164473684210527,
+      "K128_mean_ndcg10": 0.6533904159769061,
+      "K128_final_top10_overlap": 0.9927631578947367
+    },
+    "bbq_block1": {
+      "K32_mean_ndcg10": 0.6408010855906938,
+      "K32_final_top10_overlap": 0.9171052631578948,
+      "K128_mean_ndcg10": 0.6533904159769061,
+      "K128_final_top10_overlap": 0.993421052631579
+    }
+  },
+  "source_hashes": {
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "teacher_ids": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b"
+  },
+  "limitations": [
+    "quality replay is source-bound and complete for the stated 152-query shell",
+    "timings are Python/NumPy reference measurements, not native serving latency",
+    "no production codec selection is licensed by this receipt"
+  ]
+}
