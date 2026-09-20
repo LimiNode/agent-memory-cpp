@@ -53,9 +53,9 @@ run locally; the packed THQ contract and Python compilation are also enforced
 by CI.  These checks establish representation correctness, not retrieval
 quality or serving latency.
 
-## Still not checked
+## Matched bake-off — executed
 
-The following single matched bake-off remains open.  The three methods are
+The following matched bake-off was executed. The three methods are
 **alternative filter arms**, not a sequential THQ4 -> RaBitQ -> BBQ cascade:
 
 ```text
@@ -115,17 +115,19 @@ The runner records Python/NumPy reference timings explicitly; these are not
 native serving latency. Byte accounting separates global model reads,
 candidate IDs, per-document filter payloads, and final-rerank records.
 
-The full source replay is now **EXECUTED** on the canonical 1M-row FP32
+The full source replay is **EXECUTED** on the canonical 1M-row FP32
 documents/train/query/qrels bundle and the frozen R4 candidate stream.  The
 independent audit is **PASS**: it replays source hashes, every filter top-K,
 the common FP32 rerank, nDCG, teacher overlap, and split byte accounting.
 The committed receipt records result SHA
 `a548fa865e199e3c0cab7382a9f341801f38e446c51a9372e7ada9aabc9aa7d0`, runner
 SHA `5f7399f8c5fd803bbfb5ed40f2ae79bc24dfad7b7af65d73ca5ce8a6f5f238f8`, and
-all canonical source hashes.  At K=128 the final top-10 overlap is 1.0 for
-THQ4, 0.992763 for RaBitQ-RR-1, and 0.993421 for BBQ-block-1; the corresponding
-mean nDCG@10 values are 0.654201, 0.653390, and 0.653390.  These are quality
-results for the stated 152-query shell, not native serving measurements.
+all canonical source hashes. The receipt now includes the complete K=32/64/
+128/256/512 compact summary and binds the committed audit artifact plus its
+audit-runner SHA. At K=128 the final top-10 overlap is 1.0 for THQ4, 0.992763
+for RaBitQ-RR-1, and 0.993421 for BBQ-block-1; the corresponding mean nDCG@10
+values are 0.654201, 0.653390, and 0.653390. These are quality results for
+the stated 152-query shell, not native serving measurements.
 
 Existing INT8/THQ materializations and compact diagnostics were not used as
 substitutes.  The canonical source bundle was found under the repository's
@@ -139,9 +141,8 @@ expensive final rerank.
 
 ## Decision
 
-No production codec selection is licensed by the current evidence.  The next
-research PR should implement the matched gate above, retain the old controls as
-separate lanes, and publish one source-replay audit per codec family. A binary
-method should advance only after a native follow-up confirms lower
-complete-cascade cost at the same required top-10 survival; this Python gate
-must not be used to claim serving latency or physical memory traffic.
+No production codec selection is licensed by this Python quality gate alone.
+The next native gate should retain these three arms, measure complete-cascade
+cost at the K values recorded in the receipt, and advance a binary method only
+if it is cheaper at the same required top-10 survival. This gate must not be
+used to claim native serving latency or physical memory traffic.

@@ -2,6 +2,9 @@
   "family": "thq_binary_r4_matched_gate_receipt_v2",
   "status": "EXECUTED",
   "audit_status": "PASS",
+  "audit_runner_sha256": "c11b07c1373334ed8f7c1a3cb6e5ddf78e46cc39e527445188bc91a664793958",
+  "audit_artifact": "guides/experiments/2026-09-20-thq-binary-r4-matched.audit.json",
+  "audit_sha256": "8bccbdf09ee518f1094839d27adac2011c10486e2ffd4c2c1a6233287c50879f",
   "runner_sha256": "5f7399f8c5fd803bbfb5ed40f2ae79bc24dfad7b7af65d73ca5ce8a6f5f238f8",
   "result_sha256": "a548fa865e199e3c0cab7382a9f341801f38e446c51a9372e7ada9aabc9aa7d0",
   "result_path": "E:\\_repoz\\agent-memory-workspaces\\thq-residual-diagnostics\\tmp\\thq-binary-r4-matched-full.json",
@@ -26,20 +29,38 @@
     "thq4": {
       "K32_mean_ndcg10": 0.6554149349976294,
       "K32_final_top10_overlap": 0.9921052631578946,
+      "K64_mean_ndcg10": 0.6542006212030269,
+      "K64_final_top10_overlap": 0.9993421052631579,
       "K128_mean_ndcg10": 0.6542006212030269,
-      "K128_final_top10_overlap": 1.0
+      "K128_final_top10_overlap": 1.0,
+      "K256_mean_ndcg10": 0.6542006212030269,
+      "K256_final_top10_overlap": 1.0,
+      "K512_mean_ndcg10": 0.6542006212030269,
+      "K512_final_top10_overlap": 1.0
     },
     "rabitq_rr1": {
       "K32_mean_ndcg10": 0.6427405891206752,
       "K32_final_top10_overlap": 0.9164473684210527,
+      "K64_mean_ndcg10": 0.6513567009903105,
+      "K64_final_top10_overlap": 0.969736842105263,
       "K128_mean_ndcg10": 0.6533904159769061,
-      "K128_final_top10_overlap": 0.9927631578947367
+      "K128_final_top10_overlap": 0.9927631578947367,
+      "K256_mean_ndcg10": 0.6542006212030269,
+      "K256_final_top10_overlap": 1.0,
+      "K512_mean_ndcg10": 0.6542006212030269,
+      "K512_final_top10_overlap": 1.0
     },
     "bbq_block1": {
       "K32_mean_ndcg10": 0.6408010855906938,
       "K32_final_top10_overlap": 0.9171052631578948,
+      "K64_mean_ndcg10": 0.6493880352903946,
+      "K64_final_top10_overlap": 0.9657894736842106,
       "K128_mean_ndcg10": 0.6533904159769061,
-      "K128_final_top10_overlap": 0.993421052631579
+      "K128_final_top10_overlap": 0.993421052631579,
+      "K256_mean_ndcg10": 0.6542006212030269,
+      "K256_final_top10_overlap": 1.0,
+      "K512_mean_ndcg10": 0.6542006212030269,
+      "K512_final_top10_overlap": 1.0
     }
   },
   "source_hashes": {
