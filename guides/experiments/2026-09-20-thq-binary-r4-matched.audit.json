@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "family": "thq_binary_r4_matched_gate_audit_v1",
+  "status": "PASS",
+  "source_replay": true,
+  "result_sha256": "a548fa865e199e3c0cab7382a9f341801f38e446c51a9372e7ada9aabc9aa7d0",
+  "runner_sha256": "5f7399f8c5fd803bbfb5ed40f2ae79bc24dfad7b7af65d73ca5ce8a6f5f238f8",
+  "audit_runner_sha256": "c11b07c1373334ed8f7c1a3cb6e5ddf78e46cc39e527445188bc91a664793958",
+  "checks": [
+    "source SHA replay",
+    "runner SHA replay",
+    "independent filter score replay",
+    "top-K replay for K=32,64,128,256,512",
+    "FP32 rerank replay",
+    "nDCG replay",
+    "teacher-overlap replay",
+    "split byte accounting"
+  ],
+  "source_hashes_bound_by_result": true,
+  "timing_semantics": "python_reference_numpy_not_native_serving_latency"
+}
