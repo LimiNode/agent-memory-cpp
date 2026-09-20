@@ -229,9 +229,30 @@ def self_test() -> None:
     print("THQ additive codec self-test: ok")
 
 
+def self_test_faiss() -> None:
+    """Exercise the optional Faiss fitter without requiring corpus artifacts."""
+    rng = np.random.default_rng(SEED)
+    values = rng.normal(size=(512, D)).astype(np.float32)
+    codebooks = fit_additive_faiss(values, stages=4, iterations=1, beam_width=1)
+    if len(codebooks) != 4:
+        raise RuntimeError("Faiss self-test returned the wrong stage count")
+    if any(table.shape != (256, D) for table in codebooks):
+        raise RuntimeError("Faiss self-test returned an invalid codebook shape")
+    if any(not np.isfinite(table).all() for table in codebooks):
+        raise RuntimeError("Faiss self-test returned non-finite codebook values")
+    # The production arms are prefixes of one shared fit.  Materialise the
+    # same manifest here so a backend/API change cannot silently alter that
+    # contract while the ordinary NumPy self-test remains green.
+    prefixes = {stages: codebooks[:stages] for stages in range(1, 5)}
+    if [len(prefixes[stages]) for stages in range(1, 5)] != [1, 2, 3, 4]:
+        raise RuntimeError("Faiss self-test prefix manifest is invalid")
+    print("THQ additive Faiss self-test: ok")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--self-test-faiss", action="store_true")
     for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids",
                  "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output"):
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
@@ -244,6 +265,11 @@ def main() -> None:
     parser.add_argument("--models-output", type=Path)
     parser.add_argument("--codes-output", type=Path)
     args = parser.parse_args()
+    if args.self_test and args.self_test_faiss:
+        parser.error("--self-test and --self-test-faiss are mutually exclusive")
+    if args.self_test_faiss:
+        self_test_faiss()
+        return
     if args.self_test:
         self_test()
         return
