@@ -113,6 +113,46 @@ def fit_additive(residual: np.ndarray, stages: int, iterations: int = 8) -> list
     return codebooks
 
 
+def fit_additive_faiss(residual: np.ndarray, stages: int, iterations: int = 8,
+                       beam_width: int = 1) -> list[np.ndarray]:
+    """Fit one additive sequence through Faiss' native residual quantizer.
+
+    This is an implementation acceleration/control, not a claim that Faiss RQ
+    reproduces AVQ, AAQ, or QINCo.  The returned stage tables have the same
+    prefix semantics as the transparent reference fitter.
+    """
+    try:
+        import faiss
+        quantizer = faiss.ResidualQuantizer(residual.shape[1], stages, 8)
+    except ImportError as exc:
+        raise RuntimeError("--fit-backend faiss requires the optional faiss-cpu package") from exc
+    except (AttributeError, TypeError) as exc:
+        raise RuntimeError("installed Faiss lacks ResidualQuantizer(d, M, nbits)") from exc
+    # Faiss defaults to progressive-dimension training, which repeats the
+    # expensive dimensional schedule for every stage.  The matched gate needs
+    # one ordinary full-dimensional residual sequence; pin that mode so the
+    # acceleration comparison is reproducible.
+    quantizer.train_type = faiss.ResidualQuantizer.Train_default
+    quantizer.cp.niter = int(iterations)
+    quantizer.max_beam_size = int(beam_width)
+    quantizer.verbose = False
+    quantizer.train(np.ascontiguousarray(residual, dtype=np.float32))
+    codebooks = faiss.vector_to_array(quantizer.codebooks).astype(np.float32, copy=False)
+    offsets = faiss.vector_to_array(quantizer.codebook_offsets).astype(np.int64, copy=False)
+    if len(offsets) != stages + 1 or offsets[-1] * residual.shape[1] != len(codebooks):
+        raise RuntimeError("Faiss residual codebook manifest is inconsistent")
+    return [codebooks[offsets[i] * residual.shape[1]:offsets[i + 1] * residual.shape[1]]
+            .reshape(256, residual.shape[1]).copy() for i in range(stages)]
+
+
+def faiss_provenance() -> tuple[str, str]:
+    try:
+        import faiss
+    except ImportError as exc:
+        raise RuntimeError("--fit-backend faiss requires the optional faiss-cpu package") from exc
+    return getattr(faiss, "__version__", "unknown"), "Train_default"
+
+
 def nearest_indices(values: np.ndarray, centers: np.ndarray) -> np.ndarray:
     values = np.asarray(values, dtype=np.float32)
     centers = np.asarray(centers, dtype=np.float32)
@@ -189,19 +229,47 @@ def self_test() -> None:
     print("THQ additive codec self-test: ok")
 
 
+def self_test_faiss() -> None:
+    """Exercise the optional Faiss fitter without requiring corpus artifacts."""
+    rng = np.random.default_rng(SEED)
+    values = rng.normal(size=(512, D)).astype(np.float32)
+    codebooks = fit_additive_faiss(values, stages=4, iterations=1, beam_width=1)
+    if len(codebooks) != 4:
+        raise RuntimeError("Faiss self-test returned the wrong stage count")
+    if any(table.shape != (256, D) for table in codebooks):
+        raise RuntimeError("Faiss self-test returned an invalid codebook shape")
+    if any(not np.isfinite(table).all() for table in codebooks):
+        raise RuntimeError("Faiss self-test returned non-finite codebook values")
+    # The production arms are prefixes of one shared fit.  Materialise the
+    # same manifest here so a backend/API change cannot silently alter that
+    # contract while the ordinary NumPy self-test remains green.
+    prefixes = {stages: codebooks[:stages] for stages in range(1, 5)}
+    if [len(prefixes[stages]) for stages in range(1, 5)] != [1, 2, 3, 4]:
+        raise RuntimeError("Faiss self-test prefix manifest is invalid")
+    print("THQ additive Faiss self-test: ok")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--self-test-faiss", action="store_true")
     for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids",
                  "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output"):
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
     parser.add_argument("--beam-width", type=int, default=8)
     parser.add_argument("--iterations", type=int, default=8)
+    parser.add_argument("--fit-backend", choices=("numpy", "faiss"), default="numpy")
+    parser.add_argument("--faiss-beam-width", type=int, default=1)
     parser.add_argument("--fit-rows", type=int, default=0,
                         help="uniformly subsample this many training rows for additive codebooks; 0 uses all rows")
     parser.add_argument("--models-output", type=Path)
     parser.add_argument("--codes-output", type=Path)
     args = parser.parse_args()
+    if args.self_test and args.self_test_faiss:
+        parser.error("--self-test and --self-test-faiss are mutually exclusive")
+    if args.self_test_faiss:
+        self_test_faiss()
+        return
     if args.self_test:
         self_test()
         return
@@ -210,7 +278,7 @@ def main() -> None:
                 args.candidate_raw, args.candidate_receipt, args.output)
     if any(value is None for value in required):
         parser.error("all source paths and --output are required unless --self-test is used")
-    if args.beam_width < 1 or args.iterations < 1 or args.fit_rows < 0:
+    if args.beam_width < 1 or args.iterations < 1 or args.fit_rows < 0 or args.faiss_beam_width < 1:
         parser.error("beam width and iterations must be positive; fit rows must be non-negative")
     if args.documents.stat().st_size != 1_000_000 * D * 4:
         raise RuntimeError("upper-bound gate requires the 1M-row FP32 document source")
@@ -258,7 +326,12 @@ def main() -> None:
     train_base = centroids[np.arange(D)[None, :], train_levels]
     fit_levels = np.sum(fit_train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
     fit_base = centroids[np.arange(D)[None, :], fit_levels]
-    shared_codebooks = fit_additive(fit_train - fit_base, max(STAGES.values()), args.iterations)
+    residual_train = fit_train - fit_base
+    if args.fit_backend == "faiss":
+        shared_codebooks = fit_additive_faiss(residual_train, max(STAGES.values()),
+                                              args.iterations, args.faiss_beam_width)
+    else:
+        shared_codebooks = fit_additive(residual_train, max(STAGES.values()), args.iterations)
     # Every rate arm is a prefix of the same deterministic 48-stage fit. This
     # avoids repeating identical work and makes the prefix relationship
     # explicit in the persisted model manifest.
@@ -355,6 +428,10 @@ def main() -> None:
               "beam_width": args.beam_width, "iterations": args.iterations,
               "fit_rows": int(len(fit_train)),
               "fit_strategy": "all_train_rows" if not args.fit_rows else "uniform_stride",
+              "fit_backend": args.fit_backend,
+              "faiss_version": faiss_provenance()[0] if args.fit_backend == "faiss" else None,
+              "faiss_train_type": faiss_provenance()[1] if args.fit_backend == "faiss" else None,
+              "faiss_beam_width": args.faiss_beam_width if args.fit_backend == "faiss" else None,
               "fit_indices_sha256": fit_indices_sha256,
               "shared_fit": True,
               "fit_stage_count": max(STAGES.values()),
