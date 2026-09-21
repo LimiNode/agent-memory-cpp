@@ -38,6 +38,11 @@ documents. Raw result SHA-256:
 `2cf18c5189f51e22af16baf6985743be73a32e19c26f07d498c9256b43a92e6b`.
 The committed fail-closed source-binding audit is
 `2026-09-21-thq-rslm-faithful-gate.audit.json`.
+The canonical replay was first produced against the later notebook snapshot;
+the pinned initial release differs only by explicit little-endian spelling.
+The committed golden vectors were executed against the initial release and
+match symbol, scale, and decode bytes, so the quality rows are unchanged by
+that provenance correction.
 
 ## Result
 
