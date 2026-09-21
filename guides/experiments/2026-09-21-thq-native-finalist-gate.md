@@ -1,6 +1,6 @@
 # THQ4 native finalist gate (2026-09-21)
 
-Lifecycle: `planned`
+Lifecycle: `active`
 
 ## Decision boundary
 
@@ -61,7 +61,15 @@ parity, the THQ4 top-128 set matches the independent interval² reference, and
 all source/producers are SHA-bound. Until then this note remains `planned` and
 the current RSLM result remains NumPy quality evidence only.
 
-The first implementation step is materialization of candidate-union RSLM3/4
-records with official packing and scales, followed by a portable C++ decode/
-score control. AVX2, page locality, and held-out-domain replay are separate
-steps and cannot be inferred from this initial control.
+The first implementation step is complete. Candidate-union RSLM3/4 records
+were materialized for 463,258 unique documents. The external raw artifact is
+bound by SHA-256
+`ee6df345ce968407c647ba62f868f7100534a41c583ac093a0c976bde96a0b4c`; its
+source-bound sample audit is `PASS` with `sample_replay: true`. The materializer
+stores official symbols and both UE7M9 scales, with 148 B/document for RSLM3
+and 196 B/document for RSLM4.
+
+The next discriminating check is a portable C++ decode/score control that
+must reproduce the Python sample bytes and top-10 lists before timing is
+reported. AVX2, page locality, and held-out-domain replay are separate steps
+and cannot be inferred from this materialization result.
