@@ -1,0 +1,30 @@
+{
+  "checks": [
+    "source and runner SHA binding",
+    "canonical cardinality and timing protocol",
+    "complete arm manifest",
+    "exact score/top128 tolerances",
+    "local-u8 implementation quality parity",
+    "global-u8 plane/block quality parity",
+    "final-rerank metric ranges",
+    "observable checksum"
+  ],
+  "family": "thq_fastscan_v3_audit",
+  "input_hashes": {
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  },
+  "mode": "production",
+  "query_count": 152,
+  "result_sha256": "308bf409efaaadd2bf22c035a57aaf56978bb48410370c5aa07dd8e8c828b65e",
+  "runner_sha256": "e20592c44611e25c6ef83c647160d4c320c2fb49f1d2e73268ff233f0b6d310b",
+  "schema_version": 1,
+  "source_binding": true,
+  "status": "PASS"
+}
