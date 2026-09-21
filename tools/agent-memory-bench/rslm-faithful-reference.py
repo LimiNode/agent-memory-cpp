@@ -151,7 +151,7 @@ def encode(values: np.ndarray, bits: int) -> tuple[np.ndarray, np.ndarray]:
         width = (D * bits + 7) // 8
         packed = np.zeros((len(vectors), width), dtype=np.uint8)
         if bits == 4:
-            packed[:, :D // 2] = symbols[:, 0::2] | (symbols[:, 1::2] << 4)
+            packed[:, :D // 2] = (symbols[:, 0::2] << 4) | symbols[:, 1::2]
         else:
             for i in range(0, D, 8):
                 chunk = symbols[:, i:i + 8].astype(np.uint32)
@@ -167,7 +167,7 @@ def encode(values: np.ndarray, bits: int) -> tuple[np.ndarray, np.ndarray]:
         symbols = np.argmin(dist, axis=2).astype(np.uint8)
         quant = C2D[symbols]
         scales[:] = _scale_for(rotated, quant.reshape(len(rotated), D))
-        return _pack_symbols(symbols, 4), scales
+        return ((symbols[:, 0::2] << 4) | symbols[:, 1::2]), scales
     raise ValueError("bits must be 2, 3, or 4")
 
 
@@ -208,9 +208,11 @@ def decode(packed: np.ndarray, scales: np.ndarray, bits: int) -> np.ndarray:
     scales = np.asarray(scales, dtype=np.uint16)
     if bits in (3, 4):
         symbols = _unpack_symbols(packed, D, bits)
+        if bits == 4:
+            symbols = np.concatenate(((packed >> 4).reshape(len(packed), D // 2, 1), (packed & 15).reshape(len(packed), D // 2, 1)), axis=2).reshape(len(packed), D)
         quant = C1D[bits][0][symbols]
     elif bits == 2:
-        symbols = _unpack_symbols(packed, D // 2, 4)
+        symbols = np.concatenate(((packed >> 4).reshape(len(packed), D // 4, 1), (packed & 15).reshape(len(packed), D // 4, 1)), axis=2).reshape(len(packed), D // 2)
         quant = C2D[symbols].reshape(len(packed), D)
     else:
         raise ValueError("bits must be 2, 3, or 4")
