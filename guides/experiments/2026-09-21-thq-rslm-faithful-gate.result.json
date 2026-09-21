@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "family": "thq_rslm_faithful_gate_v1",
+  "status": "EXECUTED",
+  "raw_result_sha256": "2cf18c5189f51e22af16baf6985743be73a32e19c26f07d498c9256b43a92e6b",
+  "reference": {
+    "paper": "arXiv:2608.30384",
+    "repository_commit": "4700efb9afa54286b0e04473ba80a13e8461e25f",
+    "notebook_blob": "41b4f1aca8bea8eba952d3ca874711f97e7025f2",
+    "notebook_sha256": "f16c92855f0ae55dd36442cf30f09c18aa5fcceff9b80beb4e9db48aa4a9b315"
+  },
+  "query_count": 152,
+  "candidate_unique_documents": 463258,
+  "local_fit_rows": 8192,
+  "local_iterations": 2,
+  "arms": {
+    "rslm2-faithful": {"side_payload_bytes": 100, "cascade_total_bytes": 196, "candidate_fp32_overlap": 0.9361842105263158, "teacher_overlap": 0.9315789473684212, "qrels_ndcg10": 0.6456891916538513},
+    "rslm2-local": {"side_payload_bytes": 96, "cascade_total_bytes": 192, "candidate_fp32_overlap": 0.9361842105263158, "teacher_overlap": 0.9309210526315791, "qrels_ndcg10": 0.6524281500369604},
+    "rslm3-faithful": {"side_payload_bytes": 148, "cascade_total_bytes": 244, "candidate_fp32_overlap": 0.9690789473684212, "teacher_overlap": 0.9631578947368421, "qrels_ndcg10": 0.6567211710335974},
+    "rslm3-local": {"side_payload_bytes": 144, "cascade_total_bytes": 240, "candidate_fp32_overlap": 0.9697368421052632, "teacher_overlap": 0.9638157894736842, "qrels_ndcg10": 0.6601158299243334},
+    "rslm4-faithful": {"side_payload_bytes": 196, "cascade_total_bytes": 292, "candidate_fp32_overlap": 0.9855263157894738, "teacher_overlap": 0.9789473684210527, "qrels_ndcg10": 0.6592013731297126},
+    "rslm4-local": {"side_payload_bytes": 192, "cascade_total_bytes": 288, "candidate_fp32_overlap": 0.9750000000000001, "teacher_overlap": 0.9697368421052632, "qrels_ndcg10": 0.6609743978255688}
+  },
+  "limitations": [
+    "NumPy quality replay, not native serving latency",
+    "local control is bounded to 8192 fit rows and two iterations",
+    "RQ32/RQ48 are external audit baselines, not relabelled matched rows",
+    "RSLM4Lite and held-out-domain confirmation remain pending"
+  ]
+}

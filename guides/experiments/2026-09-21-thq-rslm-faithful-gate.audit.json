@@ -1,0 +1,34 @@
+{
+  "checks": [
+    "paper/source provenance",
+    "result status",
+    "152-query cardinality",
+    "unique query/arm rows",
+    "metric bounds",
+    "THQ4+side-byte accounting",
+    "all source SHA-256 bindings"
+  ],
+  "failures": [],
+  "family": "thq_rslm_faithful_gate_audit_v1",
+  "input_hashes": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "note": "This audit validates provenance, structure, metric bounds, and storage accounting. It does not independently recompute RSLM code assignment or scoring. The RQ audit is an external baseline only.",
+  "reference_commit": "4700efb9afa54286b0e04473ba80a13e8461e25f",
+  "reference_notebook_blob": "41b4f1aca8bea8eba952d3ca874711f97e7025f2",
+  "result_sha256": "2cf18c5189f51e22af16baf6985743be73a32e19c26f07d498c9256b43a92e6b",
+  "runner_sha256": "1f637102fc2aeff62b391780ff0370e4875bd6b8b57d25ae9db31a0a209132ce",
+  "schema_version": 1,
+  "source_binding": true,
+  "source_replay": false,
+  "status": "PASS"
+}

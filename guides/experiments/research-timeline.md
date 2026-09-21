@@ -879,3 +879,23 @@ finalist gate, conditional on the still-open faithful RSLM comparison; no
 production codec or serving latency claim is made. See
 `2026-09-20-thq-faiss-additive-acceleration.md` and the three
 `2026-09-21-thq-faiss-rq-seed*.audit.json` files.
+
+### Paper-faithful RSLM matched gate (2026-09-21)
+
+The official Google Research RSLM notebook was located and pinned by
+repository commit, notebook blob, and SHA-256. Its two-pass block-128 FWHT,
+data-independent Gaussian codebooks, and UE7M9 scale path were implemented
+as a separate NumPy correctness oracle. A full 152-query replay over 463,258
+unique candidate documents compared faithful RSLM2/3/4 relative mode with
+the historical local FWHT/Lloyd-Max control after the identical THQ4
+interval-squared top-128 filter.
+
+Faithful nDCG is `.645689/.656721/.659201` for RSLM2/3/4 at 100/148/196 B
+side payload respectively (outer THQ4 cascade totals 196/244/292 B). The
+bounded local control is `.652428/.660116/.660974` at 96/144/192 B, using an
+explicit 8,192-row, two-iteration fit. These are quality-only NumPy results;
+the local fit is not the older full-fit protocol, and RQ32/RQ48 remain an
+external audit baseline rather than a relabelled matched replay. The
+fail-closed source-binding audit is
+`2026-09-21-thq-rslm-faithful-gate.audit.json`; RSLM4Lite, native scoring,
+and held-out-domain confirmation remain open.

@@ -332,11 +332,15 @@ jobs:
       - name: Test packed codec contract
         run: |
           python tools/agent-memory-bench/test-thq-packed-codecs.py
+          python tools/agent-memory-bench/run-thq-rslm-faithful-gate.py --self-test
           python -m py_compile \
             tools/agent-memory-bench/thq-packed-codecs.py \
             tools/agent-memory-bench/test-thq-packed-codecs.py \
             tools/agent-memory-bench/run-thq-rslm-persistable-gate.py \
             tools/agent-memory-bench/audit-thq-rslm-persistable-gate.py \
+            tools/agent-memory-bench/rslm-faithful-reference.py \
+            tools/agent-memory-bench/run-thq-rslm-faithful-gate.py \
+            tools/agent-memory-bench/audit-thq-rslm-faithful-gate.py \
             tools/agent-memory-bench/run-thq-conditioned-residual-gate.py \
             tools/agent-memory-bench/audit-thq-conditioned-residual-gate.py \
             tools/agent-memory-bench/run-thq-joint-conditional-gate.py \
