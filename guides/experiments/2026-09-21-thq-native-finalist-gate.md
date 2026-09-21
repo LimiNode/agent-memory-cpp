@@ -1,0 +1,67 @@
+# THQ4 native finalist gate (2026-09-21)
+
+Lifecycle: `planned`
+
+## Decision boundary
+
+This gate decides whether a persistable final document code can replace the
+current FP32-side reranker on the frozen R4 candidate stream. It is a native
+latency/quality gate, not another codec taxonomy study.
+
+The candidate protocol is three parallel alternatives, never a sequential
+`THQ4 -> RQ -> RSLM` cascade:
+
+```text
+frozen R4 candidate stream (152 queries, 5,000--5,099 IDs/query)
+  ├─ fixed THQ4 exact byte-LUT filter -> top-128
+  ├─ final arm: THQ-joint2
+  ├─ final arm: RQ32
+  ├─ final arm: faithful RSLM3
+  ├─ final arm: faithful RSLM4
+  └─ final arm: direct INT8 control
+```
+
+Every arm receives the same THQ4 top-128 IDs and uses the same final FP32
+oracle rerank for the quality reference. A separate native scorer measurement
+may replace that oracle only after exact top-10 parity is established.
+
+## Frozen inputs
+
+The gate must bind the existing candidate flat/raw/receipt trio, canonical
+1M document vectors, queries, qrels, teacher IDs, THQ4 ordinal codes, and
+thresholds by SHA-256. Candidate offsets are a derived little-endian sidecar
+whose receipt binds the candidate raw SHA and the 152 row counts.
+
+The RSLM arms use official relative payloads: RSLM3 stores 144 symbol bytes
+plus two-byte inner and outer UE7M9 scales (148 B side payload); RSLM4 stores
+192 symbol bytes plus the same two scales (196 B). `RSLM4Lite` is excluded:
+the official notebook does not support it in residual mode.
+
+`FastScan` names the THQ filter kernel and is not a sixth final-codec arm.
+
+## Required measurements
+
+For every arm and every query record:
+
+* exact top-10 list and approximate top-10 list;
+* candidate-FP32 overlap, teacher overlap, qrels nDCG@10, p05 per-query
+  nDCG@10, and worst-query loss;
+* filter-only latency, final-rerank latency, total cascade latency, and
+  p50/p95/p99 over per-query samples;
+* logical bytes touched, unique 4 KiB pages, and candidate IDs refined.
+
+The native scorer's checksum is computed after the timed region. Correctness
+checksums must remain non-zero and finite, but must not contaminate reported
+latency. Scalar and any SIMD implementation must read the same record layout.
+
+## Acceptance and evidence status
+
+The gate is `EXECUTED` only when all five arms have native/reference top-10
+parity, the THQ4 top-128 set matches the independent interval² reference, and
+all source/producers are SHA-bound. Until then this note remains `planned` and
+the current RSLM result remains NumPy quality evidence only.
+
+The first implementation step is materialization of candidate-union RSLM3/4
+records with official packing and scales, followed by a portable C++ decode/
+score control. AVX2, page locality, and held-out-domain replay are separate
+steps and cannot be inferred from this initial control.
