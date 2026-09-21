@@ -12,6 +12,8 @@ import numpy as np
 
 D = 384
 BITS = (3, 4)
+PRODUCTION_METRIC = "cosine"
+CONTROL_METRIC = "paper-faithful-ip"
 
 
 def load_module(name: str, path: Path):
@@ -38,6 +40,10 @@ def main() -> None:
     parser.add_argument("--train-vectors", type=Path, required=True)
     parser.add_argument("--thq4-codes", type=Path, required=True)
     parser.add_argument("--thq4-thresholds", type=Path, required=True)
+    parser.add_argument("--candidate-flat", type=Path, required=True)
+    parser.add_argument("--candidate-raw", type=Path, required=True)
+    parser.add_argument("--candidate-receipt", type=Path, required=True)
+    parser.add_argument("--materializer", type=Path, required=True)
     parser.add_argument("--reference", type=Path, required=True)
     parser.add_argument("--frontier-helper", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -57,6 +63,8 @@ def main() -> None:
         "documents_sha256": args.documents, "train_vectors_sha256": args.train_vectors,
         "thq4_codes_sha256": args.thq4_codes, "thq4_thresholds_sha256": args.thq4_thresholds,
         "faithful_reference_sha256": args.reference, "frontier_helper_sha256": args.frontier_helper,
+        "candidate_flat_sha256": args.candidate_flat, "candidate_raw_sha256": args.candidate_raw,
+        "candidate_receipt_sha256": args.candidate_receipt,
     }
     for field, path in expected_sources.items():
         if not path.is_file() or sha256(path) != raw.get(field): failures.append(f"source binding: {field}")
@@ -70,6 +78,23 @@ def main() -> None:
 
     # Recompute a deterministic sample through the reference path.  This is a
     # source-bound assignment check, not an independent RSLM implementation.
+    if args.materializer.is_file() and sha256(args.materializer) != raw.get("runner_sha256"): failures.append("materializer binding")
+    candidate_raw = json.loads(args.candidate_raw.read_text(encoding="utf-8"))
+    candidate_receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8"))
+    if candidate_receipt.get("execution_status") != "EXECUTED": failures.append("candidate receipt status")
+    if candidate_receipt.get("raw_sha256") != sha256(args.candidate_raw): failures.append("candidate receipt/raw binding")
+    if candidate_receipt.get("flat_file", {}).get("sha256") != sha256(args.candidate_flat): failures.append("candidate receipt/flat binding")
+    counts = np.asarray([int(row["candidate_count"]) for row in candidate_raw.get("rows", [])], dtype=np.int64)
+    if len(counts) != 152 or np.any(counts < 5000) or np.any(counts > 5099): failures.append("candidate cardinality")
+    if not failures:
+        total = int(np.sum(counts))
+        if args.candidate_flat.stat().st_size != total * 148: failures.append("candidate flat size")
+        records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(total, 148))
+        candidate_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
+        replay_ids = np.unique(candidate_ids)
+        if not np.array_equal(replay_ids, ids.astype(np.int64)): failures.append("candidate ID replay")
+        if sha256(ids_path) != raw.get("candidate_ids_sha256"): failures.append("candidate ID hash binding")
+
     if not failures:
         faithful = load_module("rslm_faithful_audit", args.reference)
         frontier = load_module("thq_frontier_audit", args.frontier_helper)
@@ -97,7 +122,7 @@ def main() -> None:
             stored_outer = np.memmap(args.materialization / f"rslm{bits}.outer-scale.u16", mode="r", dtype="<u2", shape=(len(ids),))[sample]
             if not np.array_equal(stored_symbols, symbols) or not np.array_equal(stored_inner, inner) or not np.array_equal(stored_outer, outer):
                 failures.append(f"sample replay: RSLM{bits}")
-    audit = {"schema_version": 1, "family": "thq_rslm_faithful_candidate_materialization_audit_v1", "status": "PASS" if not failures else "FAIL", "source_binding": True, "sample_replay": not bool(failures), "materialization_raw_sha256": sha256(raw_path), "failures": failures}
+    audit = {"schema_version": 2, "family": "thq_rslm_faithful_candidate_materialization_audit_v1", "status": "PASS" if not failures else "FAIL", "source_binding": not any(item.startswith("source binding:") or item.endswith("binding") for item in failures), "source_replay": False, "candidate_stream_replay": not bool(failures), "sample_replay": not bool(failures), "control_metric": CONTROL_METRIC, "production_serving_metric": PRODUCTION_METRIC, "production_payload_bytes": {"rslm3": 146, "rslm4": 194}, "materialization_raw_sha256": sha256(raw_path), "materializer_sha256": sha256(args.materializer), "candidate_flat_sha256": sha256(args.candidate_flat), "candidate_raw_sha256": sha256(args.candidate_raw), "candidate_receipt_sha256": sha256(args.candidate_receipt), "candidate_ids_sha256": sha256(ids_path), "thq4_centroids_sha256": sha256(centroids_path), "failures": failures}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(audit, indent=2, sort_keys=True))

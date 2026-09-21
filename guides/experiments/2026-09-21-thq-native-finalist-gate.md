@@ -8,6 +8,13 @@ This gate decides whether a persistable final document code can replace the
 current FP32-side reranker on the frozen R4 candidate stream. It is a native
 latency/quality gate, not another codec taxonomy study.
 
+The production serving metric is fixed to **cosine**. The oracle is cosine
+between the original unit-normalized FP32 query and document vectors (equal to
+their inner product only because both source vectors are unit norm). Every
+approximate final arm is scored with cosine semantics. Paper-faithful RSLM IP
+scoring remains a separate reproduction/control line and is not mixed into the
+production finalist decision.
+
 The candidate protocol is three parallel alternatives, never a sequential
 `THQ4 -> RQ -> RSLM` cascade:
 
@@ -32,10 +39,16 @@ The gate must bind the existing candidate flat/raw/receipt trio, canonical
 thresholds by SHA-256. Candidate offsets are a derived little-endian sidecar
 whose receipt binds the candidate raw SHA and the 152 row counts.
 
-The RSLM arms use official relative payloads: RSLM3 stores 144 symbol bytes
-plus two-byte inner and outer UE7M9 scales (148 B side payload); RSLM4 stores
-192 symbol bytes plus the same two scales (196 B). `RSLM4Lite` is excluded:
-the official notebook does not support it in residual mode.
+The RSLM arms use the official relative codec for the paper-faithful IP
+control: RSLM3 stores 144 symbol bytes plus two-byte inner and outer UE7M9
+scales (148 B side payload); RSLM4 stores 192 symbol bytes plus the same two
+scales (196 B). For the production cosine scorer the positive outer scale is
+mathematically cancelled, so the persistable layouts are RSLM3 = 144 symbol
+bytes + 2-byte inner scale (146 B) and RSLM4 = 192 symbol bytes + 2-byte inner
+scale (194 B). The current 148/196 B materialization is therefore retained as
+paper-faithful IP/control evidence, not as the minimal production cosine
+layout. `RSLM4Lite` is excluded: the official notebook does not support it in
+residual mode.
 
 `FastScan` names the THQ filter kernel and is not a sixth final-codec arm.
 
@@ -65,9 +78,12 @@ The first implementation step is complete. Candidate-union RSLM3/4 records
 were materialized for 463,258 unique documents. The external raw artifact is
 bound by SHA-256
 `ee6df345ce968407c647ba62f868f7100534a41c583ac093a0c976bde96a0b4c`; its
-source-bound sample audit is `PASS` with `sample_replay: true`. The materializer
+source-bound candidate-stream and sample audit are committed in
+`2026-09-21-thq-rslm-faithful-candidates.audit.json` with `PASS`,
+`candidate_stream_replay: true`, and `sample_replay: true`. The materializer
 stores official symbols and both UE7M9 scales, with 148 B/document for RSLM3
-and 196 B/document for RSLM4.
+and 196 B/document for RSLM4. This is a correctness/parity artifact over the
+candidate union, not a page-locality or serving-latency measurement.
 
 The next discriminating check is a portable C++ decode/score control that
 must reproduce the Python sample bytes and top-10 lists before timing is
