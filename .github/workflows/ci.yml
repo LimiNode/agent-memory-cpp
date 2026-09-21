@@ -316,6 +316,10 @@ jobs:
           python tools/agent-memory-bench/run-thq-additive-upper-bounds.py --self-test-faiss
           python tools/agent-memory-bench/run-thq-faiss-rq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-faiss-rq-replay.py --self-test
+          python tools/agent-memory-bench/run-thq-faiss-lsq-replay.py --self-test
+          python tools/agent-memory-bench/audit-thq-faiss-lsq-replay.py --self-test
+          python tools/agent-memory-bench/run-thq-residual-binary-gate.py --self-test
+          python tools/agent-memory-bench/audit-thq-residual-binary-gate.py --self-test
 
   thq-packed-codec-contract:
     name: THQ packed codec contract
