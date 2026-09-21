@@ -4,6 +4,8 @@
   "status": "EXECUTED",
   "source_binding": true,
   "source_cpp_sha256": "941bc5976fde1a14f5452e279a8aaa5b2280d4de551ff77e059b66165fda8aab",
+  "audit_runner_sha256": "079aa2f41ee012de89cdbf0c41434535b77310a62ece4dce0b4ea21821c46aa6",
+  "audit_sha256": "d9ecc9b6d5608a980ad655bdef0b2edea3b579d3e031acfa514f13d2120d0893",
   "query_count": 152,
   "candidate_count_total": 762082,
   "thq_top128_set_parity": "152/152",
