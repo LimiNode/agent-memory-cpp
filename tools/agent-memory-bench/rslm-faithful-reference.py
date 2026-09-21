@@ -18,9 +18,14 @@ import numpy as np
 
 
 D = 384
-REFERENCE_REPO_COMMIT = "34628fefe172e081abc9d0a368fabe0009975a7f"
+REFERENCE_INITIAL_COMMIT = "34628fefe172e081abc9d0a368fabe0009975a7f"
+REFERENCE_CONTENT_COMMIT = "40b1135c9eb083dee0edb513c2723ca65e289e8f"
+REFERENCE_SNAPSHOT_COMMIT = "4700efb9afa54286b0e04473ba80a13e8461e25f"
+REFERENCE_REPO_COMMIT = REFERENCE_CONTENT_COMMIT
 REFERENCE_NOTEBOOK_BLOB = "41b4f1aca8bea8eba952d3ca874711f97e7025f2"
-REFERENCE_NOTEBOOK_SHA256 = "b89f7f820d43878d1db25d96b1be3f5aff7ae9820014143a2897d02e09d538ce"
+REFERENCE_NOTEBOOK_SHA256 = "f16c92855f0ae55dd36442cf30f09c18aa5fcceff9b80beb4e9db48aa4a9b315"
+REFERENCE_INITIAL_NOTEBOOK_BLOB = "e8d658e38d38396032185f7a783c3674ee79f6a6"
+REFERENCE_INITIAL_NOTEBOOK_SHA256 = "b89f7f820d43878d1db25d96b1be3f5aff7ae9820014143a2897d02e09d538ce"
 FLIPS = np.asarray([1.0 if c == "+" else -1.0 for c in (
     "+-----+--+----+++++--+++-++++-++-++++-++--+--+----++----+--+---++++-++++--+--++++---++++"
     "-+--++-++++-++++--+----+----++++-++-++--++++-++++-++-++-++-++--++--+--+-++++--++-++++--++"
@@ -146,7 +151,8 @@ def encode(values: np.ndarray, bits: int) -> tuple[np.ndarray, np.ndarray]:
     scales = np.empty(len(rotated), dtype=np.uint16)
     if bits in (3, 4):
         cents, mids = C1D[bits]
-        normalized = rotated / np.maximum(np.max(np.abs(rotated), axis=1, keepdims=True) * _expected_max_inv(), 1e-12)
+        amax = np.max(np.abs(rotated), axis=1)
+        normalized = rotated / np.maximum(amax[:, None] * _expected_max_inv(), 1e-12)
         symbols = _nearest_1d(normalized, mids)
         quant = cents[symbols]
         scales[:] = _scale_for(rotated, quant)
@@ -154,6 +160,12 @@ def encode(values: np.ndarray, bits: int) -> tuple[np.ndarray, np.ndarray]:
         packed = np.zeros((len(vectors), width), dtype=np.uint8)
         if bits == 4:
             packed[:, :D // 2] = (symbols[:, 0::2] << 4) | symbols[:, 1::2]
+            # The official Rslm4Codec reserves an all-zero record for an
+            # exactly zero rotated vector rather than encoding its midpoint
+            # symbol (8) in every coordinate.
+            zero = amax == 0.0
+            packed[zero] = 0
+            scales[zero] = np.uint16(0)
         else:
             for i in range(0, D, 8):
                 chunk = symbols[:, i:i + 8].astype(np.uint32)
@@ -238,9 +250,14 @@ def self_test() -> dict:
             "max_abs_error": float(np.max(np.abs(decoded - values))),
             "mse": float(np.mean((decoded - values) ** 2)),
         }
+    zero = np.zeros((1, D), dtype=np.float32)
+    zero_packed, zero_scales = encode(zero, 4)
+    if np.any(zero_packed) or int(zero_scales[0]) != 0 or np.any(decode(zero_packed, zero_scales, 4)):
+        raise RuntimeError("RSLM4 zero-vector record is not canonical")
+    result["zero_vector"] = {"status": "PASS", "rslm4_packed_zero": True}
     golden_path = Path(__file__).with_name("rslm-faithful-golden.json")
     golden = json.loads(golden_path.read_text(encoding="utf-8"))
-    if golden.get("reference_commit") != REFERENCE_REPO_COMMIT:
+    if golden.get("reference_initial_commit") != REFERENCE_INITIAL_COMMIT:
         raise RuntimeError("golden vector reference commit differs")
     golden_rng = np.random.default_rng(int(golden["seed"]))
     golden_values = golden_rng.normal(size=(4, D)).astype(np.float32)
@@ -261,7 +278,8 @@ def self_test() -> dict:
                 _sha256_array(scales) != expected["scales_sha256"] or
                 _sha256_array(decoded) != expected["decoded_sha256"]):
             raise RuntimeError(f"golden codec {bits}-bit vector differs")
-    result["golden_vectors"] = {"status": "PASS", "reference_commit": REFERENCE_REPO_COMMIT}
+    result["golden_vectors"] = {"status": "PASS", "reference_initial_commit": REFERENCE_INITIAL_COMMIT,
+                                "reference_content_commit": REFERENCE_CONTENT_COMMIT}
     return result
 
 

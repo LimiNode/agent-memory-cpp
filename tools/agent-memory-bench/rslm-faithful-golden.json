@@ -1,7 +1,9 @@
 {
   "schema_version": 1,
-  "reference_commit": "34628fefe172e081abc9d0a368fabe0009975a7f",
-  "reference_notebook_sha256": "b89f7f820d43878d1db25d96b1be3f5aff7ae9820014143a2897d02e09d538ce",
+  "reference_initial_commit": "34628fefe172e081abc9d0a368fabe0009975a7f",
+  "reference_initial_notebook_blob": "e8d658e38d38396032185f7a783c3674ee79f6a6",
+  "reference_initial_notebook_sha256": "b89f7f820d43878d1db25d96b1be3f5aff7ae9820014143a2897d02e09d538ce",
+  "reference_content_commit": "40b1135c9eb083dee0edb513c2723ca65e289e8f",
   "seed": 260830384,
   "input_sha256": "478f159f52311ce11755ecf910f6d63c19f6496b69df63ee88047a8177b41dea",
   "transform_sha256": "fdd0b1b3d75492afc201b79eb6101a3064d85f31c8fa4bd25ddbb59124b82bdd",

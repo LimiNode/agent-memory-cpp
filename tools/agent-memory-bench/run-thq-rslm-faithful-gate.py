@@ -17,6 +17,7 @@ import numpy as np
 
 
 D, TOP, QUERY_COUNT = 384, 128, 152
+UNIT_NORM_TOLERANCE = 1e-4
 
 
 def sha256(path: Path) -> str:
@@ -113,7 +114,7 @@ def self_test() -> None:
     result = faithful.self_test()
     assert result["rotation_max_abs_error"] < 2e-4
     assert all(result["codecs"][str(bits)]["packed_bytes"] == {2: 96, 3: 144, 4: 192}[bits] for bits in (2, 3, 4))
-    print(json.dumps({"status": "PASS", "reference": "google-research/rslm", "reference_commit": faithful.REFERENCE_REPO_COMMIT, "reference_notebook_blob": faithful.REFERENCE_NOTEBOOK_BLOB, "reference_notebook_sha256": faithful.REFERENCE_NOTEBOOK_SHA256, **result}, indent=2, sort_keys=True))
+    print(json.dumps({"status": "PASS", "reference": "google-research/rslm", "reference_initial_commit": faithful.REFERENCE_INITIAL_COMMIT, "reference_content_commit": faithful.REFERENCE_CONTENT_COMMIT, "reference_snapshot_commit": faithful.REFERENCE_SNAPSHOT_COMMIT, "reference_notebook_blob": faithful.REFERENCE_NOTEBOOK_BLOB, "reference_notebook_sha256": faithful.REFERENCE_NOTEBOOK_SHA256, **result}, indent=2, sort_keys=True))
 
 
 def main() -> None:
@@ -139,6 +140,18 @@ def main() -> None:
     train = np.asarray(np.memmap(args.train_vectors, mode="r", dtype="<f4", shape=(train_count, D)), dtype=np.float32)
     query_count = args.queries.stat().st_size // (4 * D)
     queries = np.asarray(np.memmap(args.queries, mode="r", dtype="<f4", shape=(query_count, D)), dtype=np.float32)
+    document_norm_max_error = 0.0
+    for norm_start in range(0, count, 16384):
+        norm_chunk = np.asarray(documents[norm_start:norm_start + 16384], dtype=np.float32)
+        document_norm_max_error = max(document_norm_max_error, float(np.max(np.abs(np.linalg.norm(norm_chunk, axis=1) - 1.0))))
+    query_norms = np.linalg.norm(queries, axis=1)
+    norm_diagnostics = {
+        "document_max_abs_error": document_norm_max_error,
+        "query_max_abs_error": float(np.max(np.abs(query_norms - 1.0))),
+        "tolerance": UNIT_NORM_TOLERANCE,
+    }
+    if norm_diagnostics["document_max_abs_error"] > UNIT_NORM_TOLERANCE or norm_diagnostics["query_max_abs_error"] > UNIT_NORM_TOLERANCE:
+        raise RuntimeError(f"canonical IP/cosine comparison requires unit-normalized inputs: {norm_diagnostics}")
     qrel_ids = np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(len(queries), 20))
     qrel_scores = np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(len(queries), 20))
     teacher_ids = np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(len(queries), 10))
@@ -205,18 +218,35 @@ def main() -> None:
         positions = np.asarray([id_to_row[int(doc)] for doc in filtered])
         levels = unpack_thq(np.asarray(thq_codes[filtered]))
         base = centroids[np.arange(D)[None, :], levels]
-        exact = top10(np.asarray(documents[filtered]) @ query, filtered)
+        exact_ip = top10(np.asarray(documents[filtered]) @ query, filtered)
+        exact_cosine_scores = np.einsum("kd,d->k", np.asarray(documents[filtered]), query) / np.maximum(np.linalg.norm(np.asarray(documents[filtered]), axis=1) * query_norms[qi], np.finfo(np.float32).tiny)
+        exact_cosine = top10(exact_cosine_scores, filtered)
         for name, model in models.items():
             decoded = np.asarray(model["decoded"])[positions]
             values = decoded if bool(model["full_vector"]) else base + decoded
-            scores = np.einsum("kd,d->k", values, query) / np.maximum(np.linalg.norm(values, axis=1) * np.linalg.norm(query), np.finfo(np.float32).tiny)
-            selected = top10(scores, filtered)
-            rows.append({"query": qi, "arm": name, "top10_ids": selected.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact, selected).sum() / 10.0), "teacher_overlap": float(np.isin(teacher_ids[qi], selected).sum() / 10.0), "qrels_ndcg10": ndcg10(selected, qrel_ids[qi], qrel_scores[qi]), "side_payload_bytes": int(model["side_bytes"]), "raw_codec_payload_bytes": int(model["raw_payload_bytes"]), "inner_scale_bytes": int(model["inner_scale_bytes"]), "outer_scale_bytes": int(model["outer_scale_bytes"]), "cascade_total_bytes": 96 + int(model["side_bytes"])})
+            ip_scores = np.einsum("kd,d->k", values, query)
+            cosine_scores = ip_scores / np.maximum(np.linalg.norm(values, axis=1) * query_norms[qi], np.finfo(np.float32).tiny)
+            selected_ip = top10(ip_scores, filtered)
+            selected_cosine = top10(cosine_scores, filtered)
+            rows.append({"query": qi, "arm": name,
+                         "ip_top10_ids": selected_ip.astype(int).tolist(),
+                         "cosine_top10_ids": selected_cosine.astype(int).tolist(),
+                         "ip_candidate_fp32_overlap": float(np.isin(exact_ip, selected_ip).sum() / 10.0),
+                         "cosine_candidate_fp32_overlap": float(np.isin(exact_cosine, selected_cosine).sum() / 10.0),
+                         "ip_teacher_overlap": float(np.isin(teacher_ids[qi], selected_ip).sum() / 10.0),
+                         "cosine_teacher_overlap": float(np.isin(teacher_ids[qi], selected_cosine).sum() / 10.0),
+                         "ip_qrels_ndcg10": ndcg10(selected_ip, qrel_ids[qi], qrel_scores[qi]),
+                         "cosine_qrels_ndcg10": ndcg10(selected_cosine, qrel_ids[qi], qrel_scores[qi]),
+                         "side_payload_bytes": int(model["side_bytes"]),
+                         "raw_codec_payload_bytes": int(model["raw_payload_bytes"]),
+                         "inner_scale_bytes": int(model["inner_scale_bytes"]),
+                         "outer_scale_bytes": int(model["outer_scale_bytes"]),
+                         "cascade_total_bytes": 96 + int(model["side_bytes"])})
     summaries = {}
     for name in models:
         subset = [row for row in rows if row["arm"] == name]
-        summaries[name] = {metric: float(np.mean([row[metric] for row in subset])) for metric in ("qrels_ndcg10", "teacher_overlap", "candidate_fp32_overlap")}
-    result = {"schema_version": 1, "family": "thq_rslm_faithful_gate_v1", "status": "EXECUTED", "reference_source": f"https://github.com/google-research/google-research/tree/{faithful.REFERENCE_REPO_COMMIT}/rslm", "reference_commit": faithful.REFERENCE_REPO_COMMIT, "reference_notebook_blob": faithful.REFERENCE_NOTEBOOK_BLOB, "reference_notebook_sha256": faithful.REFERENCE_NOTEBOOK_SHA256, "paper": "arXiv:2608.30384", "documents": count, "training_count": train_count, "query_count": len(queries), "local_fit_rows": local_fit_rows, "local_iterations": int(args.local_iterations), "candidate_flat_sha256": sha256(args.candidate_flat), "candidate_raw_sha256": sha256(args.candidate_raw), "documents_sha256": sha256(args.documents), "training_sha256": sha256(args.train_vectors), "queries_sha256": sha256(args.queries), "qrel_ids_sha256": sha256(args.qrel_ids), "qrel_scores_sha256": sha256(args.qrel_scores), "teacher_ids_sha256": sha256(args.teacher_ids), "thq4_codes_sha256": sha256(args.thq4_codes), "thq4_thresholds_sha256": sha256(args.thq4_thresholds), "candidate_unique_documents": int(len(unique_ids)), "models": {name: {"bits": int(model["bits"]), "side_payload_bytes": int(model["side_bytes"]), "raw_codec_payload_bytes": int(model["raw_payload_bytes"]), "inner_scale_bytes": int(model["inner_scale_bytes"]), "outer_scale_bytes": int(model["outer_scale_bytes"]), "source": model["source"]} for name, model in models.items()}, "summaries": summaries, "rows": rows, "rq_audit_sha256": sha256(args.rq_audit) if args.rq_audit else None, "limitations": ["RSLM uses the official paper constants, two-pass transform, inner UE7M9 norm scale, and relative-mode outer UE7M9 full-vector norm scale", "direct/raw codec payload and official relative residual payload are reported separately; relative mode adds the second UE7M9 scale", "this is a NumPy correctness oracle, not native latency", "RSLM and local control are matched after the same THQ4 top128 filter", "local control fit is explicitly bounded by local_fit_rows/local_iterations and is not the historical full-fit result", "RQ32/RQ48 audit is accepted only as an external baseline; no claim of matched RQ replay is made by this runner", "held-out domain confirmation remains pending"]}
+        summaries[name] = {metric: float(np.mean([row[metric] for row in subset])) for metric in ("ip_qrels_ndcg10", "cosine_qrels_ndcg10", "ip_teacher_overlap", "cosine_teacher_overlap", "ip_candidate_fp32_overlap", "cosine_candidate_fp32_overlap")}
+    result = {"schema_version": 1, "family": "thq_rslm_faithful_gate_v1", "status": "EXECUTED", "reference_source": f"https://github.com/google-research/google-research/tree/{faithful.REFERENCE_CONTENT_COMMIT}/rslm", "reference_initial_commit": faithful.REFERENCE_INITIAL_COMMIT, "reference_content_commit": faithful.REFERENCE_CONTENT_COMMIT, "reference_snapshot_commit": faithful.REFERENCE_SNAPSHOT_COMMIT, "reference_notebook_blob": faithful.REFERENCE_NOTEBOOK_BLOB, "reference_notebook_sha256": faithful.REFERENCE_NOTEBOOK_SHA256, "paper": "arXiv:2608.30384", "documents": count, "training_count": train_count, "query_count": len(queries), "local_fit_rows": local_fit_rows, "local_iterations": int(args.local_iterations), "runner_sha256": sha256(Path(__file__)), "faithful_reference_sha256": sha256(HERE / "rslm-faithful-reference.py"), "local_helper_sha256": sha256(HERE / "run-thq-residual-extended-frontier.py"), "packed_codec_helper_sha256": sha256(HERE / "thq-packed-codecs.py"), "candidate_flat_sha256": sha256(args.candidate_flat), "candidate_raw_sha256": sha256(args.candidate_raw), "candidate_receipt_sha256": sha256(args.candidate_receipt), "documents_sha256": sha256(args.documents), "training_sha256": sha256(args.train_vectors), "queries_sha256": sha256(args.queries), "qrel_ids_sha256": sha256(args.qrel_ids), "qrel_scores_sha256": sha256(args.qrel_scores), "teacher_ids_sha256": sha256(args.teacher_ids), "thq4_codes_sha256": sha256(args.thq4_codes), "thq4_thresholds_sha256": sha256(args.thq4_thresholds), "candidate_unique_documents": int(len(unique_ids)), "norm_diagnostics": norm_diagnostics, "scoring_protocol": {"primary": "ip", "diagnostic": "cosine_adapted", "unit_norm_tolerance": UNIT_NORM_TOLERANCE, "exact_ip_oracle": "documents @ query", "approx_ip": "outer-scaled reconstructed vector @ query", "approx_cosine": "reconstructed vector cosine query; positive outer scale cancels"}, "models": {name: {"bits": int(model["bits"]), "side_payload_bytes": int(model["side_bytes"]), "raw_codec_payload_bytes": int(model["raw_payload_bytes"]), "inner_scale_bytes": int(model["inner_scale_bytes"]), "outer_scale_bytes": int(model["outer_scale_bytes"]), "source": model["source"]} for name, model in models.items()}, "summaries": summaries, "rows": rows, "rq_audit_sha256": sha256(args.rq_audit) if args.rq_audit else None, "limitations": ["RSLM uses the official paper constants, two-pass transform, inner UE7M9 norm scale, and relative-mode outer UE7M9 full-vector norm scale", "direct/raw codec payload and official relative residual payload are reported separately; relative mode adds the second UE7M9 scale", "this is a NumPy correctness oracle, not native latency", "RSLM and local control are matched after the same THQ4 top128 filter", "IP is the paper-faithful primary line; cosine-adapted is a separate product diagnostic", "local control fit is explicitly bounded by local_fit_rows/local_iterations and is not the historical full-fit result", "RQ32/RQ48 audit is accepted only as an external baseline; no claim of matched RQ replay is made by this runner", "held-out domain confirmation remains pending"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(f"wrote {args.output}")
