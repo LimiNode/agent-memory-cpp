@@ -1,0 +1,20 @@
+{
+  "schema_version": 2,
+  "family": "thq_rslm_faithful_candidate_materialization_audit_v1",
+  "status": "PASS",
+  "source_binding": true,
+  "source_replay": false,
+  "candidate_stream_replay": true,
+  "control_metric": "paper-faithful-ip",
+  "sample_replay": true,
+  "production_payload_bytes": {"rslm3": 146, "rslm4": 194},
+  "production_serving_metric": "cosine",
+  "materialization_raw_sha256": "ee6df345ce968407c647ba62f868f7100534a41c583ac093a0c976bde96a0b4c",
+  "materializer_sha256": "e450aab78d89bb545ad5c66381c208af9e00ec02c0b7eaccf1a69e759c61487d",
+  "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "candidate_ids_sha256": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
+  "thq4_centroids_sha256": "1dd563197d82cd4796625d2ae5ed877ca67efaafcfb215145a7113a2cc17ebd8",
+  "failures": []
+}
