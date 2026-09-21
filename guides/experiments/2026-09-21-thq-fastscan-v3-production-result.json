@@ -1,0 +1,126 @@
+{
+  "arm_order_randomized": true,
+  "avx2_compiled": true,
+  "checksum": 12388735590.0,
+  "documents": 1000000,
+  "family": "thq_fastscan_v3_benchmark",
+  "limitations": [
+    "local single-host timing",
+    "no cache/NUMA counters",
+    "candidate codes are gathered from doc-major THQ storage",
+    "full 152-query confirmation remains required after bounded replay"
+  ],
+  "mode": "production",
+  "production": {
+    "byte_lut_scalar": {
+      "max_abs_exact_score_error": 0.0,
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 1.0,
+      "samples": 3040,
+      "total_p50_ms": 0.8050999999999999,
+      "total_p95_ms": 0.89631,
+      "total_p99_ms": 0.9991540000000002,
+      "workload_p50_ms": 0.7431000000000001,
+      "workload_p95_ms": 0.831,
+      "workload_p99_ms": 0.9347010000000004
+    },
+    "byte_lut_unrolled4": {
+      "max_abs_exact_score_error": 2.682209014892578e-07,
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 1.0,
+      "samples": 3040,
+      "total_p50_ms": 0.64145,
+      "total_p95_ms": 0.7256449999999998,
+      "total_p99_ms": 0.8203060000000006,
+      "workload_p50_ms": 0.57905,
+      "workload_p95_ms": 0.6618999999999999,
+      "workload_p99_ms": 0.7533830000000001
+    },
+    "pair_fp32_avx2_block32": {
+      "max_abs_exact_score_error": 3.8743019104003906e-07,
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 1.0,
+      "samples": 3040,
+      "total_p50_ms": 1.3737,
+      "total_p95_ms": 1.6797299999999997,
+      "total_p99_ms": 2.0312840000000003,
+      "workload_p50_ms": 1.3654,
+      "workload_p95_ms": 1.665905,
+      "workload_p99_ms": 2.022984000000001
+    },
+    "pair_fp32_scalar": {
+      "max_abs_exact_score_error": 3.8743019104003906e-07,
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 1.0,
+      "samples": 3040,
+      "total_p50_ms": 1.2633,
+      "total_p95_ms": 1.3769099999999999,
+      "total_p99_ms": 1.470583,
+      "workload_p50_ms": 1.2549000000000001,
+      "workload_p95_ms": 1.3686349999999998,
+      "workload_p99_ms": 1.4618830000000003
+    },
+    "pair_u8_global_u16_block32": {
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 0.9198704769736842,
+      "samples": 3040,
+      "total_p50_ms": 1.2325,
+      "total_p95_ms": 1.5319449999999997,
+      "total_p99_ms": 1.8445930000000077,
+      "workload_p50_ms": 1.1737,
+      "workload_p95_ms": 1.47132,
+      "workload_p99_ms": 1.7876420000000053
+    },
+    "pair_u8_global_u16_plane": {
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 0.9198704769736842,
+      "samples": 3040,
+      "total_p50_ms": 1.26725,
+      "total_p95_ms": 1.5580249999999995,
+      "total_p99_ms": 1.7933000000000012,
+      "workload_p50_ms": 1.2079,
+      "workload_p95_ms": 1.4940049999999996,
+      "workload_p99_ms": 1.7389720000000009
+    },
+    "pair_u8_prepacked_plane": {
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 0.9986636513157895,
+      "samples": 3040,
+      "total_p50_ms": 1.3894,
+      "total_p95_ms": 1.6750449999999997,
+      "total_p99_ms": 2.022994000000004,
+      "workload_p50_ms": 1.3503500000000002,
+      "workload_p95_ms": 1.6349449999999988,
+      "workload_p99_ms": 1.9855150000000041
+    },
+    "pair_u8_scalar": {
+      "mean_final_fp32_top10_overlap": 1.0,
+      "mean_qrels_ndcg10": 0.6542006212030267,
+      "mean_top128_overlap": 0.9986636513157895,
+      "samples": 3040,
+      "total_p50_ms": 1.3558,
+      "total_p95_ms": 1.48431,
+      "total_p99_ms": 1.6035590000000002,
+      "workload_p50_ms": 1.31565,
+      "workload_p95_ms": 1.4432499999999997,
+      "workload_p99_ms": 1.567266
+    }
+  },
+  "queries": 152,
+  "repeats": 20,
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "timing_scope": {
+    "dense": "score plus top128; persistent layouts prebuilt",
+    "production": "gathered candidate codes plus per-arm pack where required, score and top128",
+    "total": "workload plus arm-specific query table setup"
+  },
+  "warmups": 1
+}

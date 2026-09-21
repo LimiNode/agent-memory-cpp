@@ -1,0 +1,25 @@
+{
+  "checks": [
+    "source and runner SHA binding",
+    "canonical cardinality and timing protocol",
+    "complete arm manifest",
+    "exact score/top128 tolerances",
+    "local-u8 implementation quality parity",
+    "global-u8 plane/block quality parity",
+    "final-rerank metric ranges",
+    "observable checksum"
+  ],
+  "family": "thq_fastscan_v3_audit",
+  "input_hashes": {
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  },
+  "mode": "dense",
+  "query_count": 8,
+  "result_sha256": "283c4d200a822d48dd283643125030f3bd8b96b72cc0b11819d996b39e49bfb2",
+  "runner_sha256": "e20592c44611e25c6ef83c647160d4c320c2fb49f1d2e73268ff233f0b6d310b",
+  "schema_version": 1,
+  "source_binding": true,
+  "status": "PASS"
+}

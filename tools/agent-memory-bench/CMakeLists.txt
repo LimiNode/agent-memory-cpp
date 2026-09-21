@@ -627,6 +627,24 @@ endif()
 target_compile_definitions(agent-memory-thq-fastscan-kernel-benchmark PRIVATE
     AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2=${AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2})
 
+# Matched FastScan v3 bakeoff. This target keeps the historical v1 benchmark
+# intact while comparing query-prepacked and block32 layouts in both dense and
+# production-shaped candidate workloads.
+add_executable(agent-memory-thq-fastscan-v3-benchmark
+    thq_fastscan_v3_benchmark.cpp)
+target_compile_features(agent-memory-thq-fastscan-v3-benchmark PRIVATE cxx_std_17)
+if(AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2)
+    if(MSVC)
+        target_compile_options(agent-memory-thq-fastscan-v3-benchmark PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(agent-memory-thq-fastscan-v3-benchmark PRIVATE -mavx2)
+    endif()
+endif()
+target_compile_definitions(agent-memory-thq-fastscan-v3-benchmark PRIVATE
+    AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2=${AGENT_MEMORY_THQ_FASTSCAN_HAS_AVX2})
+target_link_libraries(agent-memory-thq-fastscan-v3-benchmark PRIVATE
+    agent_memory::json)
+
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_SSE2 0)
 set(AGENT_MEMORY_NEUROUTE_CODEC_HAS_AVX2 0)
 add_library(agent_memory_neuroute_record_codec STATIC
