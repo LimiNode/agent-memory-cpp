@@ -859,3 +859,23 @@ binary and local RaBitQ/BBQ-like results remain valid bounded controls on their
 original fixtures, but a matched R4 comparison of canonical THQ4, pinned
 RaBitQ-RR-1, and BBQ-block-1 through the same final rerank is still open.  See
 `2026-09-20-thq-scorer-taxonomy-and-binary-gap.md`.
+
+### Full Faiss RQ32/RQ48 replay (2026-09-21)
+
+The canonical 25,000-row document-only fit and full 152-query
+`R4 -> THQ4 top128 -> reconstructed cosine top10` replay is now executed
+for three fixed clustering seeds. RQ32 nDCG ranges from `.651069` to
+`.659922` (mean `.655891`) at 128 B total; RQ48 ranges from `.648379`
+to `.651655` (mean `.650457`) at 144 B. RQ48 consistently has lower
+reconstruction and score error and higher candidate/teacher overlap, but its
+nDCG delta changes sign across seeds. The single best RQ32 run is therefore
+not a stable frontier claim.
+
+The independent audits rebuilt THQ top-128, summed persisted codebook vectors
+without `faiss.decode`, and reproduced all 304 top-10 rows and metrics for
+each seed. Faiss assignment itself remains hash-bound rather than independently
+reproduced. The predeclared seed-`20260921` RQ32 arm advances to the native
+finalist gate, conditional on the still-open faithful RSLM comparison; no
+production codec or serving latency claim is made. See
+`2026-09-20-thq-faiss-additive-acceleration.md` and the three
+`2026-09-21-thq-faiss-rq-seed*.audit.json` files.
