@@ -16,6 +16,17 @@ static C++17 library target, CMake options, a smoke test, and a small example.
 Follow-up PRs are adding stable domain primitives before storage, retrieval, and
 embedding integrations.
 
+Roadmap scope and evidence are split deliberately:
+
+* [milestones](guides/milestones.md) is the normative capability manifest;
+* [roadmap coverage](guides/retrieval-roadmap-coverage.md) distinguishes code,
+  contracts, tests, and proposals;
+* [evaluation roadmap](guides/evaluation-roadmap.md) defines quality, latency,
+  storage, and provenance requirements for claims;
+* [index lifecycle](guides/index-lifecycle-roadmap.md), [source trust](guides/source-trust-roadmap.md),
+  and [retrieval explainability](guides/retrieval-explainability-roadmap.md)
+  define the deferred operational contracts.
+
 ## Goals
 
 * Native C++17 API

@@ -475,7 +475,28 @@ baselines on the target corpus and hardware.
 | Late interaction | [ColBERTv2](https://arxiv.org/abs/2112.01488), [PLAID reproduction](https://arxiv.org/abs/2404.14989) | Separate multi-vector challenger, not a free replacement for a cross-encoder. |
 | Listwise LLM reranking | [RankGPT](https://arxiv.org/abs/2305.02156), [Rank-without-GPT](https://arxiv.org/abs/2312.02969) | Deferred host-side final-stage research only. |
 
-## 13. Open Research Questions
+## 13. Decision ledger
+
+The bibliography is useful only when it changes a bounded engineering decision.
+This table records the adoption boundary; a citation is not a production
+recommendation.
+
+| Topic | Problem addressed | Adopt in `agent-memory-cpp` | Do not adopt yet | Evidence required |
+|---|---|---|---|---|
+| BM25/BM25F | lexical matching and field weighting | deterministic std-only scorer and explain payload | learned sparse as a core dependency | qrels, term/field fixtures, p95 |
+| DPR/E5/BEIR | dense retrieval and model compatibility | `EmbeddingModelInfo`, exact oracle, parity manifest | assuming one model works for every domain | model-bound recall/nDCG and compatibility checks |
+| HNSW/FAISS/DiskANN | candidate generation at scale | optional adapters behind exact baseline | mandatory server/GPU dependency | recall-latency-memory and lifecycle replay |
+| PQ/Matryoshka/binary codecs | memory and scan cost | isolated storage/search codec experiments | production choice from reconstruction error alone | bytes, pages, quality, native cascade |
+| RRF and calibrated fusion | combining lexical/dense/graph candidates | deterministic RRF first | hidden score normalization or opaque learned fusion | candidate parity and per-source trace |
+| GraphRAG/RAPTOR | global questions and hierarchical context | optional graph/summary profiles | replacing canonical storage with summaries | path evidence, source coverage, update replay |
+| LLMLingua/RECOMP | context-token budget | no-op and extractive compressor contracts | unverified abstractive compression in core | budget, citation retention, answer/task quality |
+| SPLADE/ColBERT-like systems | learned sparse and late interaction | external adapters and later experiments | shipping model inference in the core library | write/query cost, license, provenance, held-out quality |
+
+The mandatory comparison order is `exact -> simplest approximate -> optional
+advanced method`. Each experiment note must state which row it addresses and
+which claims remain outside its evidence boundary.
+
+## 14. Open Research Questions
 
 - FreshDiskANN-style disk-based ANN для on-disk storage mode (M3+).
 - Adaptive RAG: model-driven выбор retrieval strategy per query.
