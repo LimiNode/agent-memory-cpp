@@ -33,6 +33,10 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def maybe_sha256(path: Path) -> str | None:
+    return sha256(path) if path.is_file() else None
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--materialization", type=Path, required=True)
@@ -79,11 +83,21 @@ def main() -> None:
     # Recompute a deterministic sample through the reference path.  This is a
     # source-bound assignment check, not an independent RSLM implementation.
     if args.materializer.is_file() and sha256(args.materializer) != raw.get("runner_sha256"): failures.append("materializer binding")
-    candidate_raw = json.loads(args.candidate_raw.read_text(encoding="utf-8"))
-    candidate_receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8"))
+    candidate_raw = {}
+    candidate_receipt = {}
+    if args.candidate_raw.is_file():
+        try:
+            candidate_raw = json.loads(args.candidate_raw.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            failures.append("candidate raw JSON")
+    if args.candidate_receipt.is_file():
+        try:
+            candidate_receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            failures.append("candidate receipt JSON")
     if candidate_receipt.get("execution_status") != "EXECUTED": failures.append("candidate receipt status")
-    if candidate_receipt.get("raw_sha256") != sha256(args.candidate_raw): failures.append("candidate receipt/raw binding")
-    if candidate_receipt.get("flat_file", {}).get("sha256") != sha256(args.candidate_flat): failures.append("candidate receipt/flat binding")
+    if candidate_receipt.get("raw_sha256") != maybe_sha256(args.candidate_raw): failures.append("candidate receipt/raw binding")
+    if candidate_receipt.get("flat_file", {}).get("sha256") != maybe_sha256(args.candidate_flat): failures.append("candidate receipt/flat binding")
     counts = np.asarray([int(row["candidate_count"]) for row in candidate_raw.get("rows", [])], dtype=np.int64)
     if len(counts) != 152 or np.any(counts < 5000) or np.any(counts > 5099): failures.append("candidate cardinality")
     if not failures:
@@ -122,7 +136,7 @@ def main() -> None:
             stored_outer = np.memmap(args.materialization / f"rslm{bits}.outer-scale.u16", mode="r", dtype="<u2", shape=(len(ids),))[sample]
             if not np.array_equal(stored_symbols, symbols) or not np.array_equal(stored_inner, inner) or not np.array_equal(stored_outer, outer):
                 failures.append(f"sample replay: RSLM{bits}")
-    audit = {"schema_version": 2, "family": "thq_rslm_faithful_candidate_materialization_audit_v1", "status": "PASS" if not failures else "FAIL", "source_binding": not any(item.startswith("source binding:") or item.endswith("binding") for item in failures), "source_replay": False, "candidate_stream_replay": not bool(failures), "sample_replay": not bool(failures), "control_metric": CONTROL_METRIC, "production_serving_metric": PRODUCTION_METRIC, "production_payload_bytes": {"rslm3": 146, "rslm4": 194}, "materialization_raw_sha256": sha256(raw_path), "materializer_sha256": sha256(args.materializer), "candidate_flat_sha256": sha256(args.candidate_flat), "candidate_raw_sha256": sha256(args.candidate_raw), "candidate_receipt_sha256": sha256(args.candidate_receipt), "candidate_ids_sha256": sha256(ids_path), "thq4_centroids_sha256": sha256(centroids_path), "failures": failures}
+    audit = {"schema_version": 2, "family": "thq_rslm_faithful_candidate_materialization_audit_v1", "status": "PASS" if not failures else "FAIL", "source_binding": not any(item.startswith("source binding:") or item.endswith("binding") for item in failures), "source_replay": False, "candidate_stream_replay": not bool(failures), "sample_replay": not bool(failures), "control_metric": CONTROL_METRIC, "production_serving_metric": PRODUCTION_METRIC, "production_payload_bytes": {"rslm3": 146, "rslm4": 194}, "materialization_raw_sha256": maybe_sha256(raw_path), "materializer_sha256": maybe_sha256(args.materializer), "candidate_flat_sha256": maybe_sha256(args.candidate_flat), "candidate_raw_sha256": maybe_sha256(args.candidate_raw), "candidate_receipt_sha256": maybe_sha256(args.candidate_receipt), "candidate_ids_sha256": maybe_sha256(ids_path), "thq4_centroids_sha256": maybe_sha256(centroids_path), "failures": failures}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(audit, indent=2, sort_keys=True))
