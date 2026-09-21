@@ -87,16 +87,27 @@ Those proxies do not guarantee better sparse-qrels nDCG at the top-10
 boundary. Conversely, the repeatedly studied 152-query shell does not
 establish that RQ32 generalizes better.
 
-RQ32 remains the more interesting rate/quality candidate at 128 B total, but
-the single-seed `.659922` value is not a stable frontier claim. The
+RQ32 remains the more interesting rate/quality candidate at 32 B/document
+side payload (128 B/document payload including THQ4), but the single-seed
+`.659922` value is not a stable frontier claim. The
 three-seed mean is close to THQ-joint2 and direct INT8 and below the existing
 local RSLM4-like result; faithful paper-level RSLM and native latency remain
 open. Any future model selection must be fixed before qrels evaluation rather
 than choosing the best seed by reported nDCG.
 
-Logical one-million-row accounting is 140,582,912 B for RQ32 and 162,874,368
-B for RQ48, including 12,582,912 B and 18,874,368 B global codebooks. Shared
-THQ thresholds and centroids are excluded. These are extrapolations from
+This is a bounded, compute-conscious Faiss RQ control, not a strongest-quality
+upper bound. It uses `Train_default`, eight iterations, `fit_beam=1`, and
+`encode_beam=8`. In Faiss, `max_beam_size` controls both training and encoding;
+the deliberately small fit beam makes the replay reproducible and affordable,
+but does not establish the quality ceiling of a higher-beam or
+`Train_progressive_dim` fit.
+
+The per-document code payloads are 32 B (RQ32) and 48 B (RQ48), so the
+THQ4+cascade payloads are 128 B/document and 144 B/document respectively.
+Complete logical one-million-row accounting is 140,582,912 B for RQ32 and
+162,874,368 B for RQ48, including 12,582,912 B and 18,874,368 B global
+codebooks. Shared THQ thresholds and centroids are excluded. These are
+extrapolations from
 candidate-local codes, not physical materializations.
 
 The three committed audits named
