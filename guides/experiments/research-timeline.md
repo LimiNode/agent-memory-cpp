@@ -865,8 +865,10 @@ RaBitQ-RR-1, and BBQ-block-1 through the same final rerank is still open.  See
 The canonical 25,000-row document-only fit and full 152-query
 `R4 -> THQ4 top128 -> reconstructed cosine top10` replay is now executed
 for three fixed clustering seeds. RQ32 nDCG ranges from `.651069` to
-`.659922` (mean `.655891`) at 128 B total; RQ48 ranges from `.648379`
-to `.651655` (mean `.650457`) at 144 B. RQ48 consistently has lower
+`.659922` (mean `.655891`) at 32 B/document side payload, or 128
+B/document including THQ4; RQ48 ranges from `.648379` to `.651655`
+(mean `.650457`) at 48 B side payload, or 144 B/document including THQ4.
+RQ48 consistently has lower
 reconstruction and score error and higher candidate/teacher overlap, but its
 nDCG delta changes sign across seeds. The single best RQ32 run is therefore
 not a stable frontier claim.
@@ -879,3 +881,36 @@ finalist gate, conditional on the still-open faithful RSLM comparison; no
 production codec or serving latency claim is made. See
 `2026-09-20-thq-faiss-additive-acceleration.md` and the three
 `2026-09-21-thq-faiss-rq-seed*.audit.json` files.
+
+### Paper-faithful RSLM matched gate (2026-09-21)
+
+The initial published official Google Research RSLM notebook was located and
+pinned by initial commit `34628fefe172e081abc9d0a368fabe0009975a7f`, content
+commit `40b1135c9eb083dee0edb513c2723ca65e289e8f`, snapshot commit
+`4700efb9afa54286b0e04473ba80a13e8461e25f`, notebook blob, and SHA-256. Its
+two-pass block-128 FWHT, data-independent codebooks, UE7M9 scales, and the
+canonical RSLM4 zero-vector record were implemented as a separate NumPy
+correctness oracle. A full 152-query replay over 463,258 unique candidate
+documents compared faithful RSLM2/3/4 relative mode with the historical local
+FWHT/Lloyd-Max control after the identical THQ4 interval-squared top-128
+filter.
+
+The primary paper-faithful IP nDCG is `.649370/.654857/.658635` for
+RSLM2/3/4; the separate cosine-adapted diagnostic is `.645689/.656721/.659201`.
+Official direct/raw records are 98/146/194 B; relative records add a second
+UE7M9 full-vector scale and are 100/148/196 B side payload respectively (outer
+THQ4 cascade totals 196/244/292 B). The bounded local IP control is
+`.636814/.657863/.651702` at 96/144/192 B, using an explicit 8,192-row,
+two-iteration fit. The canonical source norm diagnostic passes with maximum
+errors below `2e-7` against a `1e-4` tolerance.
+
+The final raw result is bound by SHA
+`584a6d58ff75a91cee585a454af3ac315d4d66890da350675d8be1d970623135`; the
+fail-closed audit is `PASS` with `source_binding: true`, while
+`source_replay: false` and `rslm_assignment_replay: false` state its limits.
+These are quality-only NumPy results; the local fit is not the older full-fit
+protocol, and RQ32/RQ48 remain external audit baselines rather than relabelled
+matched rows. RSLM4Lite is not a faithful residual arm, native scorer timing
+and held-out-domain confirmation remain open. The next gate fixes the THQ4
+exact byte-LUT filter and compares alternative final arms `THQ-joint2`,
+`RQ32`, `RSLM3`, `RSLM4`, and `INT8`.

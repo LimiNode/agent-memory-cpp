@@ -1,0 +1,140 @@
+{
+  "arms": {
+    "rslm2-faithful": {
+      "cascade_payload_bytes_per_document": 196,
+      "cosine_candidate_fp32_overlap": 0.9361842105263158,
+      "cosine_qrels_ndcg10": 0.6456891916538513,
+      "cosine_teacher_overlap": 0.9315789473684212,
+      "inner_scale_bytes": 2,
+      "ip_candidate_fp32_overlap": 0.9368421052631581,
+      "ip_qrels_ndcg10": 0.6493701233756299,
+      "ip_teacher_overlap": 0.9322368421052633,
+      "outer_scale_bytes": 2,
+      "raw_codec_payload_bytes": 98,
+      "side_payload_bytes": 100
+    },
+    "rslm2-local": {
+      "cascade_payload_bytes_per_document": 192,
+      "cosine_candidate_fp32_overlap": 0.9361842105263158,
+      "cosine_qrels_ndcg10": 0.6524281500369604,
+      "cosine_teacher_overlap": 0.9309210526315791,
+      "inner_scale_bytes": 0,
+      "ip_candidate_fp32_overlap": 0.8940789473684211,
+      "ip_qrels_ndcg10": 0.6368142765068422,
+      "ip_teacher_overlap": 0.8888157894736843,
+      "outer_scale_bytes": 0,
+      "raw_codec_payload_bytes": 96,
+      "side_payload_bytes": 96
+    },
+    "rslm3-faithful": {
+      "cascade_payload_bytes_per_document": 244,
+      "cosine_candidate_fp32_overlap": 0.9690789473684212,
+      "cosine_qrels_ndcg10": 0.6567211710335974,
+      "cosine_teacher_overlap": 0.9631578947368421,
+      "inner_scale_bytes": 2,
+      "ip_candidate_fp32_overlap": 0.9703947368421053,
+      "ip_qrels_ndcg10": 0.6548574083533009,
+      "ip_teacher_overlap": 0.9644736842105263,
+      "outer_scale_bytes": 2,
+      "raw_codec_payload_bytes": 146,
+      "side_payload_bytes": 148
+    },
+    "rslm3-local": {
+      "cascade_payload_bytes_per_document": 240,
+      "cosine_candidate_fp32_overlap": 0.9697368421052632,
+      "cosine_qrels_ndcg10": 0.6601158299243334,
+      "cosine_teacher_overlap": 0.9638157894736842,
+      "inner_scale_bytes": 0,
+      "ip_candidate_fp32_overlap": 0.9381578947368423,
+      "ip_qrels_ndcg10": 0.6578631737011916,
+      "ip_teacher_overlap": 0.930921052631579,
+      "outer_scale_bytes": 0,
+      "raw_codec_payload_bytes": 144,
+      "side_payload_bytes": 144
+    },
+    "rslm4-faithful": {
+      "cascade_payload_bytes_per_document": 292,
+      "cosine_candidate_fp32_overlap": 0.9855263157894738,
+      "cosine_qrels_ndcg10": 0.6592013731297126,
+      "cosine_teacher_overlap": 0.9789473684210527,
+      "inner_scale_bytes": 2,
+      "ip_candidate_fp32_overlap": 0.9802631578947368,
+      "ip_qrels_ndcg10": 0.6586350375950495,
+      "ip_teacher_overlap": 0.9730263157894737,
+      "outer_scale_bytes": 2,
+      "raw_codec_payload_bytes": 194,
+      "side_payload_bytes": 196
+    },
+    "rslm4-local": {
+      "cascade_payload_bytes_per_document": 288,
+      "cosine_candidate_fp32_overlap": 0.9750000000000001,
+      "cosine_qrels_ndcg10": 0.6609743978255688,
+      "cosine_teacher_overlap": 0.9697368421052632,
+      "inner_scale_bytes": 0,
+      "ip_candidate_fp32_overlap": 0.9532894736842108,
+      "ip_qrels_ndcg10": 0.6517020010970554,
+      "ip_teacher_overlap": 0.9480263157894738,
+      "outer_scale_bytes": 0,
+      "raw_codec_payload_bytes": 192,
+      "side_payload_bytes": 192
+    }
+  },
+  "candidate_unique_documents": 463258,
+  "family": "thq_rslm_faithful_gate_v1",
+  "input_hashes": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "limitations": [
+    "RSLM uses the official paper constants, two-pass transform, inner UE7M9 norm scale, and relative-mode outer UE7M9 full-vector norm scale",
+    "direct/raw codec payload and official relative residual payload are reported separately; relative mode adds the second UE7M9 scale",
+    "this is a NumPy correctness oracle, not native latency",
+    "RSLM and local control are matched after the same THQ4 top128 filter",
+    "IP is the paper-faithful primary line; cosine-adapted is a separate product diagnostic",
+    "local control fit is explicitly bounded by local_fit_rows/local_iterations and is not the historical full-fit result",
+    "RQ32/RQ48 audit is accepted only as an external baseline; no claim of matched RQ replay is made by this runner",
+    "held-out domain confirmation remains pending"
+  ],
+  "local_fit_rows": 8192,
+  "local_iterations": 2,
+  "norm_diagnostics": {
+    "document_max_abs_error": 1.7881393432617188e-07,
+    "query_max_abs_error": 1.1920928955078125e-07,
+    "tolerance": 0.0001
+  },
+  "producer_hashes": {
+    "faithful_reference_sha256": "0a981d875c576c4af45261f3cebc814a2efc5660b898d358d4c794d5d77d4dd0",
+    "local_helper_sha256": "d85b5b37bbe4e32445f59bd6b2e6c36da8f84bf52ab1346a0079ce168686084d",
+    "packed_codec_helper_sha256": "94f22860b5a8532235427f063d4f4e39db47709d2d016d7ce4f7415a1e92dcdf",
+    "runner_sha256": "51286cff2c6402c18f412ed5fac69c7a592c8689451ddbdb55e304b82278f7b5"
+  },
+  "query_count": 152,
+  "raw_result_sha256": "584a6d58ff75a91cee585a454af3ac315d4d66890da350675d8be1d970623135",
+  "reference": {
+    "content_commit": "40b1135c9eb083dee0edb513c2723ca65e289e8f",
+    "initial_commit": "34628fefe172e081abc9d0a368fabe0009975a7f",
+    "notebook_blob": "41b4f1aca8bea8eba952d3ca874711f97e7025f2",
+    "notebook_sha256": "f16c92855f0ae55dd36442cf30f09c18aa5fcceff9b80beb4e9db48aa4a9b315",
+    "paper": "arXiv:2608.30384",
+    "snapshot_commit": "4700efb9afa54286b0e04473ba80a13e8461e25f"
+  },
+  "schema_version": 2,
+  "scoring_protocol": {
+    "approx_cosine": "reconstructed vector cosine query; positive outer scale cancels",
+    "approx_ip": "outer-scaled reconstructed vector @ query",
+    "diagnostic": "cosine_adapted",
+    "exact_ip_oracle": "documents @ query",
+    "primary": "ip",
+    "unit_norm_tolerance": 0.0001
+  },
+  "status": "EXECUTED"
+}
