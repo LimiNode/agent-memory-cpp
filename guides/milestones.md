@@ -252,6 +252,11 @@ incomparable vector-search score.
 | `agent-runtime-integration-roadmap.md` | Proposal / A-lane | Cognitive runtime integration without core execution |
 | `mdbx-containers-extension-tz.md` | Normative for physical DBI manifest and upstream primitive contracts | Must track exact upstream compatibility snapshots |
 | `memory-lifecycle-governance-roadmap.md` | Proposal / M2+ | AM-13..AM-21 are not M1 scope |
+| `evaluation-roadmap.md` | Normative | Evidence required for retrieval and index claims; no mandatory runtime dependency |
+| `index-lifecycle-roadmap.md` | Proposal | Generation, publication, tombstone, rebuild, and crash contracts for derived indexes |
+| `source-trust-roadmap.md` | Normative | Provenance and trust propagation for raw and derived memory |
+| `retrieval-explainability-roadmap.md` | Proposal | Optional diagnostic records; not on the fast path by default |
+| `retrieval-roadmap-coverage.md` | Informational | Conservative audit of implementation versus contract versus roadmap status |
 | `memory-architectures-roadmap.md` | Informational | External architecture mapping |
 | `usage-memory-models.md` | Informational | Usage guidance and examples |
 | `advanced-binary-techniques-roadmap.md` | Experiment / M3 research | Not M0/M1/M2 ship-it scope |

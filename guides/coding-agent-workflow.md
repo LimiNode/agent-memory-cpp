@@ -63,6 +63,25 @@ benchmark evidence, or changes the roadmap, update `guides/experiments/`.
 - Follow [`guides/experiments/README.md`](experiments/README.md) for raw
   artifact policy and timing-methodology terminology.
 
+## Roadmap and evidence changes
+
+Roadmap edits describe intended scope; they are not evidence that a capability
+exists. Before changing a roadmap, classify the area in
+[`retrieval-roadmap-coverage.md`](retrieval-roadmap-coverage.md) and preserve
+the distinction between `Implemented`, `Contract only`, `Docs/tests only`,
+`Roadmap only`, and `Not covered`.
+
+For research or benchmark PRs, record the evidence rung from
+[`evaluation-roadmap.md`](evaluation-roadmap.md). Bind quality and latency
+claims to the runner, inputs, configuration, and raw artifact hashes. If a
+required source or replay is unavailable, use `PENDING_SOURCE_REPLAY`; do not
+replace it with a synthetic or compact-result substitute.
+
+Every proposed feature names its milestone, dependencies, minimal
+implementation, benchmark, acceptance check, and known risk. External
+libraries, learned models, and LLM-backed services remain optional unless a
+normative milestone explicitly adopts them.
+
 ## Context Hygiene
 
 - Keep the root `AGENTS.md` short. Add detailed rules under `guides/`.
