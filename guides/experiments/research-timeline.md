@@ -865,8 +865,10 @@ RaBitQ-RR-1, and BBQ-block-1 through the same final rerank is still open.  See
 The canonical 25,000-row document-only fit and full 152-query
 `R4 -> THQ4 top128 -> reconstructed cosine top10` replay is now executed
 for three fixed clustering seeds. RQ32 nDCG ranges from `.651069` to
-`.659922` (mean `.655891`) at 128 B total; RQ48 ranges from `.648379`
-to `.651655` (mean `.650457`) at 144 B. RQ48 consistently has lower
+`.659922` (mean `.655891`) at 32 B/document side payload, or 128
+B/document including THQ4; RQ48 ranges from `.648379` to `.651655`
+(mean `.650457`) at 48 B side payload, or 144 B/document including THQ4.
+RQ48 consistently has lower
 reconstruction and score error and higher candidate/teacher overlap, but its
 nDCG delta changes sign across seeds. The single best RQ32 run is therefore
 not a stable frontier claim.
@@ -882,16 +884,19 @@ production codec or serving latency claim is made. See
 
 ### Paper-faithful RSLM matched gate (2026-09-21)
 
-The official Google Research RSLM notebook was located and pinned by
-repository commit, notebook blob, and SHA-256. Its two-pass block-128 FWHT,
+The initial published official Google Research RSLM notebook was located and
+pinned by repository commit `34628fefe172e081abc9d0a368fabe0009975a7f`,
+notebook blob, and SHA-256. Its two-pass block-128 FWHT,
 data-independent Gaussian codebooks, and UE7M9 scale path were implemented
 as a separate NumPy correctness oracle. A full 152-query replay over 463,258
 unique candidate documents compared faithful RSLM2/3/4 relative mode with
 the historical local FWHT/Lloyd-Max control after the identical THQ4
 interval-squared top-128 filter.
 
-Faithful nDCG is `.645689/.656721/.659201` for RSLM2/3/4 at 100/148/196 B
-side payload respectively (outer THQ4 cascade totals 196/244/292 B). The
+Faithful nDCG is `.645689/.656721/.659201` for RSLM2/3/4. The official
+direct/raw records are 98/146/194 B; relative residual records add a second
+UE7M9 full-vector scale and are 100/148/196 B side payload respectively
+(outer THQ4 cascade totals 196/244/292 B). The
 bounded local control is `.652428/.660116/.660974` at 96/144/192 B, using an
 explicit 8,192-row, two-iteration fit. These are quality-only NumPy results;
 the local fit is not the older full-fit protocol, and RQ32/RQ48 remain an

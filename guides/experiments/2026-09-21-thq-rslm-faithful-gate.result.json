@@ -5,20 +5,32 @@
   "raw_result_sha256": "2cf18c5189f51e22af16baf6985743be73a32e19c26f07d498c9256b43a92e6b",
   "reference": {
     "paper": "arXiv:2608.30384",
-    "repository_commit": "4700efb9afa54286b0e04473ba80a13e8461e25f",
+    "repository_commit": "34628fefe172e081abc9d0a368fabe0009975a7f",
     "notebook_blob": "41b4f1aca8bea8eba952d3ca874711f97e7025f2",
-    "notebook_sha256": "f16c92855f0ae55dd36442cf30f09c18aa5fcceff9b80beb4e9db48aa4a9b315"
+    "notebook_sha256": "b89f7f820d43878d1db25d96b1be3f5aff7ae9820014143a2897d02e09d538ce"
   },
   "query_count": 152,
   "candidate_unique_documents": 463258,
   "local_fit_rows": 8192,
   "local_iterations": 2,
+  "input_hashes": {
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  },
   "arms": {
-    "rslm2-faithful": {"side_payload_bytes": 100, "cascade_total_bytes": 196, "candidate_fp32_overlap": 0.9361842105263158, "teacher_overlap": 0.9315789473684212, "qrels_ndcg10": 0.6456891916538513},
+    "rslm2-faithful": {"side_payload_bytes": 100, "raw_codec_payload_bytes": 98, "inner_scale_bytes": 2, "outer_scale_bytes": 2, "cascade_total_bytes": 196, "candidate_fp32_overlap": 0.9361842105263158, "teacher_overlap": 0.9315789473684212, "qrels_ndcg10": 0.6456891916538513},
     "rslm2-local": {"side_payload_bytes": 96, "cascade_total_bytes": 192, "candidate_fp32_overlap": 0.9361842105263158, "teacher_overlap": 0.9309210526315791, "qrels_ndcg10": 0.6524281500369604},
-    "rslm3-faithful": {"side_payload_bytes": 148, "cascade_total_bytes": 244, "candidate_fp32_overlap": 0.9690789473684212, "teacher_overlap": 0.9631578947368421, "qrels_ndcg10": 0.6567211710335974},
+    "rslm3-faithful": {"side_payload_bytes": 148, "raw_codec_payload_bytes": 146, "inner_scale_bytes": 2, "outer_scale_bytes": 2, "cascade_total_bytes": 244, "candidate_fp32_overlap": 0.9690789473684212, "teacher_overlap": 0.9631578947368421, "qrels_ndcg10": 0.6567211710335974},
     "rslm3-local": {"side_payload_bytes": 144, "cascade_total_bytes": 240, "candidate_fp32_overlap": 0.9697368421052632, "teacher_overlap": 0.9638157894736842, "qrels_ndcg10": 0.6601158299243334},
-    "rslm4-faithful": {"side_payload_bytes": 196, "cascade_total_bytes": 292, "candidate_fp32_overlap": 0.9855263157894738, "teacher_overlap": 0.9789473684210527, "qrels_ndcg10": 0.6592013731297126},
+    "rslm4-faithful": {"side_payload_bytes": 196, "raw_codec_payload_bytes": 194, "inner_scale_bytes": 2, "outer_scale_bytes": 2, "cascade_total_bytes": 292, "candidate_fp32_overlap": 0.9855263157894738, "teacher_overlap": 0.9789473684210527, "qrels_ndcg10": 0.6592013731297126},
     "rslm4-local": {"side_payload_bytes": 192, "cascade_total_bytes": 288, "candidate_fp32_overlap": 0.9750000000000001, "teacher_overlap": 0.9697368421052632, "qrels_ndcg10": 0.6609743978255688}
   },
   "limitations": [

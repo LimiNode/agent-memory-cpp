@@ -2,8 +2,7 @@
   "checks": [
     "paper/source provenance",
     "result status",
-    "152-query cardinality",
-    "unique query/arm rows",
+    "152-query/arm cardinality",
     "metric bounds",
     "THQ4+side-byte accounting",
     "all source SHA-256 bindings"
@@ -22,11 +21,11 @@
     "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
     "training_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
-  "note": "This audit validates provenance, structure, metric bounds, and storage accounting. It does not independently recompute RSLM code assignment or scoring. The RQ audit is an external baseline only.",
-  "reference_commit": "4700efb9afa54286b0e04473ba80a13e8461e25f",
+  "note": "This audit validates provenance, structure, metrics bounds, and storage accounting. It does not independently recompute RSLM code assignment or scoring. The RQ audit is an external baseline only.",
+  "reference_commit": "34628fefe172e081abc9d0a368fabe0009975a7f",
   "reference_notebook_blob": "41b4f1aca8bea8eba952d3ca874711f97e7025f2",
-  "result_sha256": "2cf18c5189f51e22af16baf6985743be73a32e19c26f07d498c9256b43a92e6b",
-  "runner_sha256": "1f637102fc2aeff62b391780ff0370e4875bd6b8b57d25ae9db31a0a209132ce",
+  "result_sha256": "392cc366ba73b00c99eac893b22f5970768f202ee9acf3748a2ca01b5d691c07",
+  "runner_sha256": "68fb832737560cf545f18b0d27ff32a4cda4690d3e3644ea4088311635e38e21",
   "schema_version": 1,
   "source_binding": true,
   "source_replay": false,

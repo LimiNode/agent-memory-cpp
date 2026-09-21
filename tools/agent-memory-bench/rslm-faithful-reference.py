@@ -9,16 +9,18 @@ kernel.  It implements the regular codecs with a two-byte UE7M9 scale.
 from __future__ import annotations
 
 import math
+import json
 import struct
+from pathlib import Path
 from typing import Iterable
 
 import numpy as np
 
 
 D = 384
-REFERENCE_REPO_COMMIT = "4700efb9afa54286b0e04473ba80a13e8461e25f"
+REFERENCE_REPO_COMMIT = "34628fefe172e081abc9d0a368fabe0009975a7f"
 REFERENCE_NOTEBOOK_BLOB = "41b4f1aca8bea8eba952d3ca874711f97e7025f2"
-REFERENCE_NOTEBOOK_SHA256 = "f16c92855f0ae55dd36442cf30f09c18aa5fcceff9b80beb4e9db48aa4a9b315"
+REFERENCE_NOTEBOOK_SHA256 = "b89f7f820d43878d1db25d96b1be3f5aff7ae9820014143a2897d02e09d538ce"
 FLIPS = np.asarray([1.0 if c == "+" else -1.0 for c in (
     "+-----+--+----+++++--+++-++++-++-++++-++--+--+----++----+--+---++++-++++--+--++++---++++"
     "-+--++-++++-++++--+----+----++++-++-++--++++-++++-++-++-++-++--++--+--+-++++--++-++++--++"
@@ -236,7 +238,36 @@ def self_test() -> dict:
             "max_abs_error": float(np.max(np.abs(decoded - values))),
             "mse": float(np.mean((decoded - values) ** 2)),
         }
+    golden_path = Path(__file__).with_name("rslm-faithful-golden.json")
+    golden = json.loads(golden_path.read_text(encoding="utf-8"))
+    if golden.get("reference_commit") != REFERENCE_REPO_COMMIT:
+        raise RuntimeError("golden vector reference commit differs")
+    golden_rng = np.random.default_rng(int(golden["seed"]))
+    golden_values = golden_rng.normal(size=(4, D)).astype(np.float32)
+    if _sha256_array(golden_values) != golden["input_sha256"]:
+        raise RuntimeError("golden input vector differs")
+    rotated = rotate(golden_values)
+    if _sha256_array(rotated) != golden["transform_sha256"]:
+        raise RuntimeError("golden transform differs")
+    if float(np.max(np.abs(rotate(rotated, inverse=True) - golden_values))) > 2e-5:
+        raise RuntimeError("golden transform inverse differs")
+    for bits in (2, 3, 4):
+        packed, scales = encode(golden_values, bits)
+        symbols = _unpack_symbols(packed, D, bits)
+        decoded = decode(packed, scales, bits)
+        expected = golden["codecs"][str(bits)]
+        if (_sha256_array(symbols) != expected["symbols_sha256"] or
+                _sha256_array(packed) != expected["packed_sha256"] or
+                _sha256_array(scales) != expected["scales_sha256"] or
+                _sha256_array(decoded) != expected["decoded_sha256"]):
+            raise RuntimeError(f"golden codec {bits}-bit vector differs")
+    result["golden_vectors"] = {"status": "PASS", "reference_commit": REFERENCE_REPO_COMMIT}
     return result
+
+
+def _sha256_array(values: np.ndarray) -> str:
+    import hashlib
+    return hashlib.sha256(np.ascontiguousarray(values).tobytes()).hexdigest()
 
 
 if __name__ == "__main__":
