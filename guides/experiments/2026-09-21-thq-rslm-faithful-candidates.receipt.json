@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "family": "thq_rslm_faithful_candidate_materialization_v1",
+  "status": "EXECUTED",
+  "raw_sha256": "ee6df345ce968407c647ba62f868f7100534a41c583ac093a0c976bde96a0b4c",
+  "candidate_unique_documents": 463258,
+  "control_metric": "paper-faithful-ip",
+  "candidate_ids_sha256": "0d3366eb8276fc080574a80db0f23552d97d6159d1b2e6a8194701943a16a29e",
+  "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+  "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+  "materializer_sha256": "e450aab78d89bb545ad5c66381c208af9e00ec02c0b7eaccf1a69e759c61487d",
+  "faithful_reference_sha256": "0a981d875c576c4af45261f3cebc814a2efc5660b898d358d4c794d5d77d4dd0",
+  "frontier_helper_sha256": "962ddfead226aa0b8dfeba5d3da8882c59ad5c6afc4b8c48671e070b90ff5b6d",
+  "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+  "train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+  "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+  "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+  "thq4_centroids_sha256": "1dd563197d82cd4796625d2ae5ed877ca67efaafcfb215145a7113a2cc17ebd8",
+  "models": {
+    "3": {"symbol_bytes_per_document": 144, "side_payload_bytes": 148, "symbols_sha256": "75167de2674ca803e7a68f03aa2a24f35096b2ce0a6374cdd2ad3f3cbaa23ed1", "inner_scale_sha256": "a2a5a74d3004af7dd7ed9953cd718ad6abff44b11cd8bc3e5d78d6fe087be4c2", "outer_scale_sha256": "2d1f5a868412b81cd43e32cf83d481bd02752ab8c562bd5ec57efc2bcf0fc9c3"},
+    "4": {"symbol_bytes_per_document": 192, "side_payload_bytes": 196, "symbols_sha256": "eff7dfc41b0c41e4ef7d92091db2def87d18eec418b5825d0b3a645d8080983f", "inner_scale_sha256": "67c5c42d26cb9d9d06a239c24c21a24195025d4ab13bbf32f374965658bc6d48", "outer_scale_sha256": "87f17b7bf055f7eb665ec7b2a06a287ef13e9c5ca660d31dd06d2b488e17a7f9"}
+  },
+  "production_payload_bytes": {"rslm3": 146, "rslm4": 194},
+  "production_serving_metric": "cosine",
+  "limitations": ["candidate-union materialization, not a full 1M direct table", "portable native scorer and top-10 parity are a separate gate", "this artifact does not claim serving latency"]
+}
