@@ -8,7 +8,7 @@
     "local single-host timing",
     "no cache/NUMA counters",
     "candidate codes are gathered from doc-major THQ storage",
-    "full 152-query confirmation remains required after bounded replay"
+    "production replay covers all 152 canonical queries; held-out domain and native serving confirmation remain pending"
   ],
   "mode": "production",
   "production": {
