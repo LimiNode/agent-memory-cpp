@@ -341,6 +341,7 @@ jobs:
             tools/agent-memory-bench/rslm-faithful-reference.py \
             tools/agent-memory-bench/run-thq-rslm-faithful-gate.py \
             tools/agent-memory-bench/compact-thq-rslm-faithful-gate.py \
+            tools/agent-memory-bench/materialize-thq-rslm-faithful-candidates.py \
             tools/agent-memory-bench/audit-thq-rslm-faithful-gate.py \
             tools/agent-memory-bench/run-thq-conditioned-residual-gate.py \
             tools/agent-memory-bench/audit-thq-conditioned-residual-gate.py \
