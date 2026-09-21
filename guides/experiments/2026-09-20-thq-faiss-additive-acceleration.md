@@ -34,3 +34,97 @@ bounded subsampled run remains a bounded diagnostic and cannot be promoted to
 a full-training upper bound.
 
 Implementation: `tools/agent-memory-bench/run-thq-additive-upper-bounds.py`.
+
+
+## Full canonical RQ32/RQ48 replay (2026-09-21)
+
+Status: `EXECUTED`, independently decoded and source-replayed.
+
+The follow-up used all 25,000 canonical document-only training vectors. One
+Faiss `ResidualQuantizer(d=384, M=48, nbits=8)` was trained with
+`Train_default`, eight iterations, fit beam one, encode beam eight and eight
+OpenMP threads. The clustering seed is explicit. RQ32 and RQ48 share the first
+32 codebook stages, but their candidate-local codes are assigned by separate
+prefix quantizers. They are shared-model capacity controls, not a requirement
+that an RQ32 code equal the first 32 symbols of an independently optimized
+RQ48 code.
+
+Both arms use the same production-shaped quality boundary:
+
+```text
+frozen R4 candidates
+  -> canonical THQ4 interval-squared top128
+  -> THQ centroid + persisted Faiss RQ residual reconstruction
+  -> cosine top10
+```
+
+No qrels or query vectors enter fitting. Each saved code artifact has shapes
+`(152, 128, 32)` and `(152, 128, 48)`; none is a one-million-row
+materialization.
+
+### Seed stability
+
+Three predeclared/documented seeds were replayed under the same thread count
+and protocol. Seed `20260921` is the canonical arm; the better seed `1234`
+was not selected post hoc.
+
+| seed | RQ32 nDCG@10 | RQ32 candidate overlap | RQ48 nDCG@10 | RQ48 candidate overlap | RQ48 - RQ32 nDCG |
+| ---: | ---: | ---: | ---: | ---: | ---: |
+| 1234 | `.659922` | `.882237` | `.648379` | `.892105` | `-.011543` |
+| 20260921 | `.656683` | `.885526` | `.651655` | `.902632` | `-.005028` |
+| 20260922 | `.651069` | `.880263` | `.651338` | `.901974` | `+.000269` |
+| three-seed mean | `.655891` | `.882675` | `.650457` | `.898904` | `-.005434` |
+
+RQ32 spans `.651069-.659922`; RQ48 spans `.648379-.651655`.
+The sign of the per-seed quality difference is not invariant. The canonical
+seed's paired bootstrap interval for `RQ48 - RQ32` is
+`[-.015779, +.005302]`, so that run does not establish a qrels difference.
+
+Across the three runs, RQ48 consistently improves the geometric proxies:
+mean residual MSE is `4.05e-5` versus `5.48e-5`, mean cosine-score MAE is
+`.003152` versus `.003737`, and candidate/teacher overlaps are higher.
+Those proxies do not guarantee better sparse-qrels nDCG at the top-10
+boundary. Conversely, the repeatedly studied 152-query shell does not
+establish that RQ32 generalizes better.
+
+RQ32 remains the more interesting rate/quality candidate at 32 B/document
+side payload (128 B/document payload including THQ4), but the single-seed
+`.659922` value is not a stable frontier claim. The
+three-seed mean is close to THQ-joint2 and direct INT8 and below the existing
+local RSLM4-like result; faithful paper-level RSLM and native latency remain
+open. Any future model selection must be fixed before qrels evaluation rather
+than choosing the best seed by reported nDCG.
+
+This is a bounded, compute-conscious Faiss RQ control, not a strongest-quality
+upper bound. It uses `Train_default`, eight iterations, `fit_beam=1`, and
+`encode_beam=8`. In Faiss, `max_beam_size` controls both training and encoding;
+the deliberately small fit beam makes the replay reproducible and affordable,
+but does not establish the quality ceiling of a higher-beam or
+`Train_progressive_dim` fit.
+
+The per-document code payloads are 32 B (RQ32) and 48 B (RQ48), so the
+THQ4+cascade payloads are 128 B/document and 144 B/document respectively.
+Complete logical one-million-row accounting is 140,582,912 B for RQ32 and
+162,874,368 B for RQ48, including 12,582,912 B and 18,874,368 B global
+codebooks. Shared THQ thresholds and centroids are excluded. These are
+extrapolations from
+candidate-local codes, not physical materializations.
+
+The three committed audits named
+`2026-09-21-thq-faiss-rq-seed*.audit.json` bind each raw result, source,
+model and code archive. They independently rebuild THQ centroids and top-128
+sets, decode every persisted side code as an explicit sum of codebook vectors
+without `faiss.decode`, and recompute all 304 top-10 rows and metrics. They
+record `faiss_assignment_replay: false`: Faiss training and beam assignment
+are hash-bound evidence, not an independently implemented assignment oracle.
+
+External evidence hashes are retained in the audit files. The canonical
+seed-`20260921` hashes are:
+
+- raw result: `a5aa6a6b8cdb587d17d3176dd543107104a79faf2652757752f25e42d5a8a372`;
+- model archive: `bbea47623c4bba63e26609332947d6e250419f2de74cc5690db35cd6803664c3`;
+- candidate-code archive: `28ef76ea9e499a2d0fe7dfe50c55c1e80d6638a241fc34d71345c2e090142ad6`.
+
+The next decision gate is faithful RSLM reproduction. After that, canonical
+RQ32, faithful RSLM, THQ-joint2 and INT8 can enter the same native end-to-end
+cascade comparison.

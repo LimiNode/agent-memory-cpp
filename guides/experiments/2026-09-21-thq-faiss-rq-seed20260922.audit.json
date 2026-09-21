@@ -1,0 +1,154 @@
+{
+  "artifact_hashes": {
+    "codes": "f495e57adc0f5316e3fb1ab2a78b86a813821c03d392c58698a7609532fdbe57",
+    "models": "d6b544b6f39dd9faae2a4e0609667d948beefa350d1f77932ff65e2330305881"
+  },
+  "checks": [
+    "result/source/artifact SHA binding",
+    "canonical full-training protocol and shared 48-stage fit metadata",
+    "candidate receipt, row cardinality, bounds, and uniqueness",
+    "independent THQ centroid and top128 replay",
+    "persisted code and model shapes",
+    "independent additive codebook-sum decode without Faiss",
+    "candidate FP32 and reconstructed top10 replay",
+    "qrels nDCG and candidate/teacher overlap replay",
+    "logical per-document and global-codebook storage accounting"
+  ],
+  "faiss_assignment_replay": false,
+  "faiss_clustering_seed": 20260922,
+  "faiss_threads": 8,
+  "family": "thq_faiss_rq_replay_audit_v1",
+  "input_hashes": {
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b",
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "teacher_ids": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "limitations": [
+    "Faiss training and code assignment are hash-bound, not independently reproduced",
+    "RQ32 and RQ48 use shared codebooks but independent beam assignments; RQ32 codes are not required to equal the first 32 RQ48 codes",
+    "candidate-local side codes are persisted; full 1M storage is logical accounting",
+    "reference Python timing is not a native serving latency measurement",
+    "held-out domain confirmation remains pending"
+  ],
+  "persisted_code_decode_replay": true,
+  "query_count": 152,
+  "result_sha256": "420a77ad2a405abfb37c40566749ddfdadf7e3c76a518e56c544cd166d339011",
+  "row_count": 304,
+  "rq48_vs_rq32": {
+    "documents_with_identical_rq32_and_rq48_prefix_fraction": 0.3918585526315789,
+    "mean_ndcg_delta_rq48_minus_rq32": 0.0002685159409027142,
+    "mean_top10_set_disagreement": 0.6644736842105263,
+    "paired_bootstrap_95pct_mean_ndcg_delta": [
+      -0.011058156500675206,
+      0.010810583404593347
+    ],
+    "paired_bootstrap_samples": 20000,
+    "paired_bootstrap_seed": 20260921,
+    "queries_equal": 86,
+    "queries_rq48_better": 37,
+    "queries_rq48_worse": 29,
+    "rq32_vs_independent_rq48_prefix_symbol_mismatch_fraction": 0.045649478310032895,
+    "worst_rq48_minus_rq32": [
+      {
+        "delta": -0.4293582810446799,
+        "query": 77,
+        "rq32_ndcg10": 1.0,
+        "rq48_ndcg10": 0.5706417189553201
+      },
+      {
+        "delta": -0.36907024642854247,
+        "query": 57,
+        "rq32_ndcg10": 1.0,
+        "rq48_ndcg10": 0.6309297535714575
+      },
+      {
+        "delta": -0.1480409554829326,
+        "query": 85,
+        "rq32_ndcg10": 0.1480409554829326,
+        "rq48_ndcg10": 0.0
+      },
+      {
+        "delta": -0.1440776612513717,
+        "query": 141,
+        "rq32_ndcg10": 0.3903800499921017,
+        "rq48_ndcg10": 0.24630238874073
+      },
+      {
+        "delta": -0.13092975357145753,
+        "query": 42,
+        "rq32_ndcg10": 0.6309297535714575,
+        "rq48_ndcg10": 0.5
+      },
+      {
+        "delta": -0.13092975357145753,
+        "query": 107,
+        "rq32_ndcg10": 0.6309297535714575,
+        "rq48_ndcg10": 0.5
+      },
+      {
+        "delta": -0.12491776047383096,
+        "query": 117,
+        "rq32_ndcg10": 0.4401191709229659,
+        "rq48_ndcg10": 0.3152014104491349
+      },
+      {
+        "delta": -0.12480858006596485,
+        "query": 49,
+        "rq32_ndcg10": 0.7843714928995427,
+        "rq48_ndcg10": 0.6595629128335778
+      },
+      {
+        "delta": -0.12127063586129733,
+        "query": 48,
+        "rq32_ndcg10": 0.5049197748991976,
+        "rq48_ndcg10": 0.38364913903790027
+      },
+      {
+        "delta": -0.07217676091310388,
+        "query": 149,
+        "rq32_ndcg10": 0.9325210919548239,
+        "rq48_ndcg10": 0.86034433104172
+      }
+    ]
+  },
+  "runner_sha256": "1f4759039164280a5ca4e89230c0839673813c73c280b4992b03a8d4221a1270",
+  "schema_version": 1,
+  "source_replay": true,
+  "status": "PASS",
+  "summaries": {
+    "faiss_rq32": {
+      "cascade_total_bytes": 128,
+      "full_1m_logical_total_bytes": 140582912,
+      "global_codebook_bytes": 12582912,
+      "mean_candidate_fp32_overlap": 0.880263157894737,
+      "mean_qrels_ndcg10": 0.6510692728169262,
+      "mean_reconstruction_mse": 5.4869743061684475e-05,
+      "mean_score_mae": 0.0037285052002798648,
+      "mean_teacher_overlap": 0.8776315789473684,
+      "p05_qrels_ndcg10": 0.0,
+      "side_payload_bytes": 32,
+      "worst_qrels_ndcg10": 0.0
+    },
+    "faiss_rq48": {
+      "cascade_total_bytes": 144,
+      "full_1m_logical_total_bytes": 162874368,
+      "global_codebook_bytes": 18874368,
+      "mean_candidate_fp32_overlap": 0.9019736842105265,
+      "mean_qrels_ndcg10": 0.6513377887578289,
+      "mean_reconstruction_mse": 4.051653736382086e-05,
+      "mean_score_mae": 0.0031418527114930542,
+      "mean_teacher_overlap": 0.9,
+      "p05_qrels_ndcg10": 0.0,
+      "side_payload_bytes": 48,
+      "worst_qrels_ndcg10": 0.0
+    }
+  }
+}
