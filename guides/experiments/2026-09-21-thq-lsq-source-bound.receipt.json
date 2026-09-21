@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "family": "thq_faiss_lsq_replay_v1",
+  "status": "EXECUTED",
+  "audit_status": "PASS",
+  "result_sha256": "c15f91a5c2fa1a37f354b9541f0a4881a4cb48173f144608e5ac9767f46a1a90",
+  "audit_sha256": "f78fac4492b27e521baf45ba6d0b91c296f55c7a346f1f36c647bf651e70730c",
+  "runner_sha256": "4f8dd71c8783bee06c95a9f5a4ce8e871898b2b0d85689651af02adfc5d95346",
+  "audit_runner_sha256": "24ee5e642514efbf1a3e8db0973b90678f21ff5bd736144e05ee5b4d819d165b",
+  "models_sha256": "5410f1bf60053406d50721032c068dfefbcf5b5ce5acbaaec4d6ae6036dfbf7b",
+  "codes_sha256": "f8053e134e893f1102d6d278f2adac4abaf0d759d3b1f57664fcced49fa7152d",
+  "faiss_version": "1.15.0",
+  "query_count": 152,
+  "summaries": {
+    "faiss_lsq32": {"mean_qrels_ndcg10": 0.650175202134961, "side_payload_bytes": 32, "cascade_total_bytes": 128},
+    "faiss_lsq48": {"mean_qrels_ndcg10": 0.641876610644879, "side_payload_bytes": 48, "cascade_total_bytes": 144}
+  },
+  "artifact_location": "E:/_repoz/research-wave-2026-09-21/lsq.{result,audit,models,codes}.*",
+  "limitations": ["candidate-local replay", "research LSQ control; not AVQ/AAQ/QINCo", "no production selection claim"]
+}

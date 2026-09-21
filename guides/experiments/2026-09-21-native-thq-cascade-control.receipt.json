@@ -1,0 +1,36 @@
+{
+  "schema_version": 1,
+  "family": "native_thq_candidate_cascade_controls_v1",
+  "status": "EXECUTED",
+  "source_binding": true,
+  "source_cpp_sha256": "941bc5976fde1a14f5452e279a8aaa5b2280d4de551ff77e059b66165fda8aab",
+  "query_count": 152,
+  "candidate_count_total": 762082,
+  "thq_top128_set_parity": "152/152",
+  "fp32_cosine_top10_parity": "152/152",
+  "int8_cosine_top10_parity": "152/152",
+  "fp32_oracle_mean_ms": 1.51261,
+  "int8_linear_cosine_mean_ms": 1.44184,
+  "int8_linear_cosine_mean_qrels_ndcg10": 0.6569910731377566,
+  "payload_hashes": {
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "int8_linear_codes": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+    "int8_linear_scales": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec"
+  },
+  "raw_artifacts": {
+    "fp32": "E:/_repoz/research-wave-2026-09-21/native-fp32-cascade.raw.jsonl",
+    "fp32_sha256": "77a8ef2556acc27909d5c40f928b75dc01ddf2d698c059a6d651cd587953bbb9",
+    "int8": "E:/_repoz/research-wave-2026-09-21/native-int8-cascade.raw.jsonl",
+    "int8_sha256": "10a9933a334ead2505595580d0facce59fb18b2b4cf5e9a66a49ccab2be153cc"
+  },
+  "limitations": [
+    "candidate-local native controls, not full-corpus serving latency",
+    "FP32 arm is an oracle control",
+    "LSQ/RSLM native payload integration and cold/warm page gate remain pending"
+  ]
+}

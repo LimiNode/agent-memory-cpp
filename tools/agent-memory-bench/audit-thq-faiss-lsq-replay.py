@@ -31,8 +31,9 @@ def ndcg10(ids, qids, grades):
     idcg = np.sum(ideal / np.log2(np.arange(2, 2 + len(ideal)))) if len(ideal) else 0.0
     return float(dcg / idcg) if idcg else 0.0
 def decode(codebooks, offsets, codes):
-    m, dsub = len(offsets) - 1, D // (len(offsets) - 1); out = np.zeros((len(codes), D), dtype=np.float64)
-    for j in range(m): out[:, j*dsub:(j+1)*dsub] = codebooks[offsets[j] + codes[:, j]]
+    m = len(offsets) - 1; out = np.zeros((len(codes), D), dtype=np.float64)
+    require(codebooks.shape[1] == D, "LSQ codebooks must contain full-dimensional additive vectors")
+    for j in range(m): out += codebooks[offsets[j] + codes[:, j]]
     return out
 def fit_centroids(train, thresholds):
     levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8); out = np.empty((D, 4), dtype=np.float32); fallback = np.mean(train, axis=0).astype(np.float32)
@@ -47,26 +48,30 @@ def interval_top(query, ids, codes, thresholds):
             low = -np.inf if level == 0 else thresholds[d, level-1]; high = np.inf if level == 3 else thresholds[d, level]; delta = low-query[d] if query[d] < low else query[d]-high if query[d] > high else 0.0; lut[d, level] = delta * delta
     return ids[np.lexsort((ids, np.sum(lut[np.arange(D)[None, :], levels], axis=1)))[:min(TOP, len(ids))]]
 def self_test():
-    cb = np.zeros((512, 192), dtype=np.float32); cb[7, 0] = 1.0; cb[260, 0] = -2.0; codes = np.asarray([[7, 4]], dtype=np.uint8); out = decode(cb, np.asarray([0, 256, 512]), codes); require(out[0, 0] == 1.0 and out[0, 192] == -2.0, "LSQ decoder self-test failed"); print("THQ Faiss LSQ audit self-test: PASS")
+    cb = np.zeros((512, D), dtype=np.float32); cb[7, 0] = 1.0; cb[260, 0] = -2.0; codes = np.asarray([[7, 4]], dtype=np.uint8); out = decode(cb, np.asarray([0, 256, 512]), codes); require(out[0, 0] == -1.0, "LSQ additive decoder self-test failed"); print("THQ Faiss LSQ audit self-test: PASS")
 def main():
     p = argparse.ArgumentParser(); p.add_argument("--self-test", action="store_true")
     names = ("result", "runner", "models", "codes", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output")
     for n in names: p.add_argument(f"--{n}", dest=n.replace("-", "_"), type=Path)
     a = p.parse_args()
     if a.self_test: self_test(); return
-    req = [getattr(a, n.replace("-", "_")) for n in names]; require(all(x is not None and x.is_file() for x in req), "all audit inputs must be files")
+    input_names = names[:-1]
+    req = [getattr(a, n.replace("-", "_")) for n in input_names]; require(all(x is not None and x.is_file() for x in req), "all audit inputs must be files")
+    require(a.output is not None, "--output is required")
     result = json.loads(a.result.read_text(encoding="utf-8")); require(result.get("family") == "thq_faiss_lsq_replay_v1" and result.get("status") == "EXECUTED" and result.get("source_replay") is True, "result is not LSQ source-replay evidence"); require(result.get("runner_sha256") == sha256(a.runner), "runner SHA differs"); require(result.get("query_count") == QUERY_COUNT and result.get("metric") == "cosine" and result.get("faiss_version") == "1.15.0", "LSQ protocol differs")
-    source_names = names[:11]; source_hashes = {n: sha256(getattr(a, n.replace("-", "_"))) for n in source_names}; require(result.get("source_hashes") == source_hashes, "source SHA binding differs"); require(result.get("artifact_hashes") == {"models": sha256(a.models), "codes": sha256(a.codes)}, "artifact SHA binding differs")
+    source_names = ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt")
+    source_hashes = {n: sha256(getattr(a, n.replace("-", "_"))) for n in source_names}; require(result.get("source_hashes") == source_hashes, "source SHA binding differs"); require(result.get("artifact_hashes") == {"models": sha256(a.models), "codes": sha256(a.codes)}, "artifact SHA binding differs")
     docs = np.memmap(a.documents, mode="r", dtype="<f4", shape=(1_000_000, D)); train_n = a.train_vectors.stat().st_size // (D * 4); train = np.asarray(np.memmap(a.train_vectors, mode="r", dtype="<f4", shape=(train_n, D)), dtype=np.float32); queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D)); qids = np.memmap(a.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20)); qscores = np.memmap(a.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20)); teacher = np.memmap(a.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10)); thresholds = np.fromfile(a.thq4_thresholds, dtype="<f4").reshape(D, 3); thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
     raw = json.loads(a.candidate_raw.read_text(encoding="utf-8")); counts = np.asarray([int(r["candidate_count"]) for r in raw["rows"]], dtype=np.int64); offsets = np.concatenate(([0], np.cumsum(counts))); records = np.memmap(a.candidate_flat, mode="r", dtype=np.uint8, shape=(int(offsets[-1]), 148)); candidate_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64); rec = json.loads(a.candidate_receipt.read_text(encoding="utf-8")); require(rec.get("raw_sha256") == sha256(a.candidate_raw) and rec.get("flat_file", {}).get("sha256") == sha256(a.candidate_flat), "candidate receipt differs")
     with np.load(a.models, allow_pickle=False) as m: centroids = np.asarray(m["centroids"], dtype=np.float32); models = {x: (np.asarray(m[f"lsq{x}_codebooks"], dtype=np.float64), np.asarray(m[f"lsq{x}_offsets"], dtype=np.int64)) for x in PAYLOADS}
+    require(all(models[x][0].shape[1] == D for x in PAYLOADS), "persisted LSQ codebooks are not full-dimensional")
     with np.load(a.codes, allow_pickle=False) as c: selected_saved = np.asarray(c["selected_ids"], dtype=np.int64); codes_saved = {x: np.asarray(c[f"codes_{x}"], dtype=np.uint8) for x in PAYLOADS}
     require(centroids.shape == (D, 4) and selected_saved.shape == (QUERY_COUNT, TOP), "artifact shape differs")
     rows = result.get("rows"); row_map = {(int(r["query"]), r["arm"]): r for r in rows}; metrics = {m: [] for m in PAYLOADS}
     for qi, query in enumerate(queries):
         ids = candidate_ids[offsets[qi]:offsets[qi+1]]; selected = interval_top(query, ids, thq, thresholds); require(np.array_equal(selected_saved[qi], selected), f"query {qi}: THQ selection differs"); lv = unpack_thq(np.asarray(thq[selected])); base = centroids[np.arange(D)[None, :], lv]; exact = top_ids(cosine(np.asarray(docs[ids]), query), ids)
         for m in PAYLOADS:
-            ranked = top_ids(cosine(base + decode(models[m][0].reshape(-1, D//m), models[m][1], codes_saved[m][qi]), query), selected); row = row_map[(qi, f"faiss_lsq{m}")]; require(row["top10_ids"] == ranked.astype(int).tolist() and row["thq4_top128_ids"] == selected.astype(int).tolist() and row["candidate_fp32_top10_ids"] == exact.astype(int).tolist(), f"query {qi}: LSQ{m} row differs"); value = ndcg10(ranked, qids[qi], qscores[qi]); require(abs(float(row["qrels_ndcg10"]) - value) < 1e-12, f"query {qi}: nDCG differs"); metrics[m].append(value)
+            ranked = top_ids(cosine(base + decode(models[m][0], models[m][1], codes_saved[m][qi]), query), selected); row = row_map[(qi, f"faiss_lsq{m}")]; require(row["top10_ids"] == ranked.astype(int).tolist() and row["thq4_top128_ids"] == selected.astype(int).tolist() and row["candidate_fp32_top10_ids"] == exact.astype(int).tolist(), f"query {qi}: LSQ{m} row differs"); value = ndcg10(ranked, qids[qi], qscores[qi]); require(abs(float(row["qrels_ndcg10"]) - value) < 1e-12, f"query {qi}: nDCG differs"); metrics[m].append(value)
     summaries = {f"faiss_lsq{m}": {"mean_qrels_ndcg10": float(np.mean(metrics[m])), "p05_qrels_ndcg10": float(np.percentile(metrics[m], 5)), "worst_qrels_ndcg10": float(np.min(metrics[m]))} for m in PAYLOADS}
     audit = {"schema_version": 1, "family": "thq_faiss_lsq_replay_audit_v1", "status": "PASS", "source_replay": True, "persisted_code_decode_replay": True, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "input_hashes": source_hashes, "artifact_hashes": {"models": sha256(a.models), "codes": sha256(a.codes)}, "query_count": QUERY_COUNT, "row_count": len(rows), "summaries": summaries, "checks": ["source/result/artifact SHA binding", "independent THQ top128 replay", "independent LSQ subcodebook decode without Faiss", "cosine top10 and nDCG replay"], "limitations": ["Faiss fit/assignment is hash-bound, not independently retrained", "research LSQ control, not AVQ/AAQ/QINCo", "candidate-local side-code replay; held-out confirmation pending"]}
     a.output.parent.mkdir(parents=True, exist_ok=True); a.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"); print("THQ Faiss LSQ replay audit PASS")

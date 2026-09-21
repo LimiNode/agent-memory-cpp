@@ -382,11 +382,201 @@ int run_candidate_gate(int argc, char** argv) {
   std::cerr << "}}\n";
   return 0;
 }
+
+std::vector<Candidate> exact_cosine_top10(const std::vector<float>& documents,
+                                          const std::vector<std::int32_t>& ids,
+                                          const float* query) {
+  float query_norm = 0.0f;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    query_norm += query[d] * query[d];
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<float>::min()));
+  std::vector<Candidate> scored;
+  scored.reserve(ids.size());
+  for (const auto id : ids) {
+    const auto* row = documents.data() + static_cast<std::size_t>(id) * kDimension;
+    float dot = 0.0f;
+    float norm = 0.0f;
+    for (std::size_t d = 0; d < kDimension; ++d) {
+      dot += row[d] * query[d];
+      norm += row[d] * row[d];
+    }
+    const float denominator = std::max(std::sqrt(norm) * query_norm,
+                                       std::numeric_limits<float>::min());
+    scored.push_back({dot / denominator, id});
+  }
+  const auto limit = std::min<std::size_t>(10, scored.size());
+  std::partial_sort(scored.begin(), scored.begin() + limit, scored.end(), better_desc);
+  scored.resize(limit);
+  return scored;
+}
+
+std::vector<Candidate> exact_cosine_top10_int8(
+    const std::vector<std::int8_t>& codes, const std::vector<float>& scales,
+    const std::vector<std::int32_t>& ids, const float* query) {
+  float query_norm = 0.0f;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    query_norm += query[d] * query[d];
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<float>::min()));
+  std::vector<Candidate> scored;
+  scored.reserve(ids.size());
+  for (const auto id : ids) {
+    const auto index = static_cast<std::size_t>(id);
+    const auto* row = codes.data() + index * kDimension;
+    const float scale = scales[index];
+    float dot = 0.0f;
+    float norm = 0.0f;
+    for (std::size_t d = 0; d < kDimension; ++d) {
+      const float value = static_cast<float>(row[d]) * scale;
+      dot += value * query[d];
+      norm += value * value;
+    }
+    const float denominator = std::max(std::sqrt(norm) * query_norm,
+                                       std::numeric_limits<float>::min());
+    scored.push_back({dot / denominator, id});
+  }
+  const auto limit = std::min<std::size_t>(10, scored.size());
+  std::partial_sort(scored.begin(), scored.begin() + limit, scored.end(), better_desc);
+  scored.resize(limit);
+  return scored;
+}
+
+int run_fp32_candidate_gate(int argc, char** argv) {
+  if (argc != 9)
+    throw std::runtime_error("usage: benchmark --fp32-candidate-gate thq thresholds documents candidate_flat offsets query_file query_count");
+  const auto thq = read<std::uint8_t>(argv[2]);
+  const auto thresholds = read<float>(argv[3]);
+  const auto documents = read<float>(argv[4]);
+  const auto flat = read<std::uint8_t>(argv[5]);
+  const auto offsets = read<std::uint64_t>(argv[6]);
+  const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[8]));
+  if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
+      documents.size() != kDocuments * kDimension || flat.size() % kCandidateRecordBytes != 0 ||
+      offsets.size() != query_count + 1 || offsets.front() != 0 ||
+      offsets.back() != flat.size() / kCandidateRecordBytes)
+    throw std::runtime_error("FP32 candidate cascade payload shape differs");
+  const auto queries = read<float>(argv[7]);
+  if (queries.size() != query_count * kDimension)
+    throw std::runtime_error("FP32 candidate cascade query shape differs");
+  std::vector<std::int32_t> candidate_ids(flat.size() / kCandidateRecordBytes);
+  for (std::size_t i = 0; i < candidate_ids.size(); ++i) {
+    std::int32_t id = 0;
+    std::memcpy(&id, flat.data() + i * kCandidateRecordBytes, sizeof(id));
+    if (id < 0 || id >= static_cast<std::int32_t>(kDocuments))
+      throw std::runtime_error("FP32 candidate ID out of range");
+    candidate_ids[i] = id;
+  }
+  double total_ms = 0.0;
+  for (std::size_t qi = 0; qi < query_count; ++qi) {
+    const auto begin_id = static_cast<std::size_t>(offsets[qi]);
+    const auto end_id = static_cast<std::size_t>(offsets[qi + 1]);
+    std::vector<std::int32_t> ids(candidate_ids.begin() + begin_id,
+                                  candidate_ids.begin() + end_id);
+    if (ids.empty()) throw std::runtime_error("FP32 candidate query is empty");
+    const float* query = queries.data() + qi * kDimension;
+    const auto start = std::chrono::steady_clock::now();
+    const auto lut = build_lut(thresholds, query);
+    const auto coarse = thq_top128_candidates(thq, lut, ids);
+    std::vector<std::int32_t> coarse_ids;
+    coarse_ids.reserve(coarse.size());
+    for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
+    const auto reranked = exact_cosine_top10(documents, coarse_ids, query);
+    const auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+    total_ms += elapsed;
+    std::cout << "{\"query\":" << qi << ",\"candidate_count\":" << ids.size()
+              << ",\"latency_ms\":" << elapsed << ",\"thq4_top128_ids\":[";
+    for (std::size_t j = 0; j < coarse_ids.size(); ++j) {
+      if (j != 0) std::cout << ',';
+      std::cout << coarse_ids[j];
+    }
+    std::cout << "],\"fp32_cosine_top10_ids\":[";
+    for (std::size_t j = 0; j < reranked.size(); ++j) {
+      if (j != 0) std::cout << ',';
+      std::cout << reranked[j].id;
+    }
+    std::cout << "]}\n";
+  }
+  std::cerr << "{\"queries\":" << query_count
+            << ",\"timing_scope\":\"native scalar THQ byte-LUT plus FP32 cosine oracle over candidate top128; no OS-page latency claim\",\"mean_ms\":"
+            << total_ms / static_cast<double>(query_count) << "}\n";
+  return 0;
+}
+
+int run_int8_cosine_candidate_gate(int argc, char** argv) {
+  if (argc != 10)
+    throw std::runtime_error("usage: benchmark --int8-cosine-candidate-gate thq thresholds codes scales candidate_flat offsets query_file query_count");
+  const auto thq = read<std::uint8_t>(argv[2]);
+  const auto thresholds = read<float>(argv[3]);
+  const auto codes = read<std::int8_t>(argv[4]);
+  const auto scales = read<float>(argv[5]);
+  const auto flat = read<std::uint8_t>(argv[6]);
+  const auto offsets = read<std::uint64_t>(argv[7]);
+  const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[9]));
+  if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
+      codes.size() != kDocuments * kDimension || scales.size() != kDocuments ||
+      flat.size() % kCandidateRecordBytes != 0 || offsets.size() != query_count + 1 ||
+      offsets.front() != 0 || offsets.back() != flat.size() / kCandidateRecordBytes)
+    throw std::runtime_error("INT8 cosine candidate cascade payload shape differs");
+  const auto queries = read<float>(argv[8]);
+  if (queries.size() != query_count * kDimension)
+    throw std::runtime_error("INT8 cosine candidate cascade query shape differs");
+  std::vector<std::int32_t> candidate_ids(flat.size() / kCandidateRecordBytes);
+  for (std::size_t i = 0; i < candidate_ids.size(); ++i) {
+    std::int32_t id = 0;
+    std::memcpy(&id, flat.data() + i * kCandidateRecordBytes, sizeof(id));
+    if (id < 0 || id >= static_cast<std::int32_t>(kDocuments))
+      throw std::runtime_error("INT8 cosine candidate ID out of range");
+    candidate_ids[i] = id;
+  }
+  double total_ms = 0.0;
+  for (std::size_t qi = 0; qi < query_count; ++qi) {
+    const auto begin_id = static_cast<std::size_t>(offsets[qi]);
+    const auto end_id = static_cast<std::size_t>(offsets[qi + 1]);
+    std::vector<std::int32_t> ids(candidate_ids.begin() + begin_id,
+                                  candidate_ids.begin() + end_id);
+    if (ids.empty()) throw std::runtime_error("INT8 cosine candidate query is empty");
+    const float* query = queries.data() + qi * kDimension;
+    const auto start = std::chrono::steady_clock::now();
+    const auto lut = build_lut(thresholds, query);
+    const auto coarse = thq_top128_candidates(thq, lut, ids);
+    std::vector<std::int32_t> coarse_ids;
+    coarse_ids.reserve(coarse.size());
+    for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
+    const auto reranked = exact_cosine_top10_int8(codes, scales, coarse_ids, query);
+    const auto elapsed = std::chrono::duration<double, std::milli>(
+        std::chrono::steady_clock::now() - start).count();
+    total_ms += elapsed;
+    std::cout << "{\"query\":" << qi << ",\"candidate_count\":" << ids.size()
+              << ",\"latency_ms\":" << elapsed << ",\"thq4_top128_ids\":[";
+    for (std::size_t j = 0; j < coarse_ids.size(); ++j) {
+      if (j != 0) std::cout << ',';
+      std::cout << coarse_ids[j];
+    }
+    std::cout << "],\"int8_cosine_top10_ids\":[";
+    for (std::size_t j = 0; j < reranked.size(); ++j) {
+      if (j != 0) std::cout << ',';
+      std::cout << reranked[j].id;
+    }
+    std::cout << "]}\n";
+  }
+  std::cerr << "{\"queries\":" << query_count
+            << ",\"timing_scope\":\"native scalar THQ byte-LUT plus INT8 decode and FP32 cosine over candidate top128; no OS-page latency claim\",\"mean_ms\":"
+            << total_ms / static_cast<double>(query_count) << "}\n";
+  return 0;
+}
 }
 
 int main(int argc, char** argv) {
   if (argc >= 2 && std::string(argv[1]) == "--candidate-gate") {
     try { return run_candidate_gate(argc, argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+  }
+  if (argc >= 2 && std::string(argv[1]) == "--fp32-candidate-gate") {
+    try { return run_fp32_candidate_gate(argc, argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+  }
+  if (argc >= 2 && std::string(argv[1]) == "--int8-cosine-candidate-gate") {
+    try { return run_int8_cosine_candidate_gate(argc, argv); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
   }
   if (argc == 2 && std::string(argv[1]) == "--self-test") {

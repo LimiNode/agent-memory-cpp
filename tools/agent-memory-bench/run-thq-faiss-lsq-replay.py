@@ -81,16 +81,19 @@ def fit_lsq(residual, m, seed, train_iters, icm_iters, nperts):
     q.train(np.ascontiguousarray(residual, dtype=np.float32))
     cb = faiss.vector_to_array(q.codebooks).astype(np.float32, copy=True)
     offsets = faiss.vector_to_array(q.codebook_offsets).astype(np.int64, copy=True)
-    dsub = D // m
-    if offsets.shape != (m + 1,) or offsets[-1] * dsub != cb.size: raise RuntimeError("unexpected LSQ codebook layout")
-    return q, cb.reshape(-1, dsub), offsets
+    if offsets.shape != (m + 1,) or offsets[-1] * D != cb.size: raise RuntimeError("unexpected additive LSQ codebook layout")
+    return q, cb.reshape(-1, D), offsets
 
 def self_test():
     import faiss
     x = np.random.default_rng(20260921).normal(size=(32, 16)).astype(np.float32)
     q = faiss.LocalSearchQuantizer(16, 2, 8); q.train_iters = q.icm_iters = q.nperts = 1; q.random_seed = 1; q.train(x)
-    codes, decoded = q.compute_codes(x[:4]), q.decode(q.compute_codes(x[:4]))
-    if codes.shape != (4, 2) or decoded.shape != (4, 16) or not np.isfinite(decoded).all(): raise RuntimeError("LSQ self-test failed")
+    codes = q.compute_codes(x[:4]); decoded = q.decode(codes)
+    cb = faiss.vector_to_array(q.codebooks).astype(np.float32).reshape(-1, 16)
+    offsets = faiss.vector_to_array(q.codebook_offsets).astype(np.int64)
+    manual = np.zeros_like(decoded)
+    for j in range(2): manual += cb[offsets[j] + codes[:, j]]
+    if codes.shape != (4, 2) or decoded.shape != (4, 16) or not np.isfinite(decoded).all() or not np.allclose(decoded, manual, rtol=0.0, atol=1e-5): raise RuntimeError("LSQ additive self-test failed")
     print("THQ Faiss LSQ replay self-test: PASS")
 
 def main():
@@ -111,11 +114,36 @@ def main():
     centroids = fit_centroids(train, thresholds); levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8); base_train = centroids[np.arange(D)[None, :], levels]; residual = np.ascontiguousarray(train - base_train, dtype=np.float32)
     quantizers, model_data = {}, {}
     for m in PAYLOADS: quantizers[m], model_data[m] = (lambda z: (z[0], (z[1], z[2])))(fit_lsq(residual, m, a.lsq_seed + m, a.train_iters, a.icm_iters, a.nperts))
-    rows, selected_all, codes_all = [], [], {m: [] for m in PAYLOADS}
+    # Select the THQ shell once, then batch LSQ assignment over the union of
+    # selected documents.  Calling compute_codes 152*2 times makes Faiss
+    # rebuild its local-search workspaces for every tiny batch and obscures the
+    # codec comparison with avoidable fitting overhead.
+    selected_all = []
     for qi, query in enumerate(queries):
-        ids = candidate_ids[offsets[qi]:offsets[qi+1]]; selected = interval_top(query, ids, thq, thresholds); selected_all.append(selected); lv = unpack_thq(np.asarray(thq[selected])); base = centroids[np.arange(D)[None, :], lv]; exact = top_ids(cosine(np.asarray(docs[ids]), query), ids)
+        ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
+        selected_all.append(interval_top(query, ids, thq, thresholds))
+    selected_union = np.unique(np.concatenate(selected_all)).astype(np.int64)
+    union_levels = unpack_thq(np.asarray(thq[selected_union]))
+    union_base = centroids[np.arange(D)[None, :], union_levels]
+    union_residual = np.ascontiguousarray(np.asarray(docs[selected_union], dtype=np.float32) - union_base)
+    union_pos = {int(document): position for position, document in enumerate(selected_union)}
+    codes_union = {}
+    for m in PAYLOADS:
+        codes_union[m] = np.asarray(quantizers[m].compute_codes(union_residual), dtype=np.uint8)
+
+    rows, codes_all = [], {m: [] for m in PAYLOADS}
+    for qi, query in enumerate(queries):
+        ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
+        selected = selected_all[qi]
+        positions = np.asarray([union_pos[int(document)] for document in selected], dtype=np.int64)
+        lv = unpack_thq(np.asarray(thq[selected]))
+        base = centroids[np.arange(D)[None, :], lv]
+        exact = top_ids(cosine(np.asarray(docs[ids]), query), ids)
         for m in PAYLOADS:
-            codes = np.asarray(quantizers[m].compute_codes(np.asarray(docs[selected], dtype=np.float32) - base), dtype=np.uint8); decoded = np.asarray(quantizers[m].decode(codes), dtype=np.float32); ranked = top_ids(cosine(base + decoded, query), selected); codes_all[m].append(codes)
+            codes = codes_union[m][positions]
+            decoded = np.asarray(quantizers[m].decode(codes), dtype=np.float32)
+            ranked = top_ids(cosine(base + decoded, query), selected)
+            codes_all[m].append(codes)
             rows.append({"query": qi, "arm": f"faiss_lsq{m}", "side_payload_bytes": m, "cascade_total_bytes": THQ_BYTES + m, "top10_ids": ranked.astype(int).tolist(), "thq4_top128_ids": selected.astype(int).tolist(), "candidate_fp32_top10_ids": exact.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact, ranked).sum() / 10), "teacher_overlap": float(np.isin(teacher[qi], ranked).sum() / 10), "qrels_ndcg10": ndcg10(ranked, qrel_ids[qi], qrel_scores[qi])})
     a.models_output.parent.mkdir(parents=True, exist_ok=True); a.codes_output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.models_output, centroids=centroids.astype("<f4"), **{f"lsq{m}_codebooks": model_data[m][0].astype("<f4") for m in PAYLOADS}, **{f"lsq{m}_offsets": model_data[m][1].astype("<i8") for m in PAYLOADS}); np.savez_compressed(a.codes_output, selected_ids=np.stack(selected_all).astype("<i8"), **{f"codes_{m}": np.stack(codes_all[m]) for m in PAYLOADS})
