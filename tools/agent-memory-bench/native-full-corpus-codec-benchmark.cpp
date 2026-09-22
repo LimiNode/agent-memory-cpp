@@ -21,6 +21,7 @@ constexpr std::size_t kThqBytes = 96;
 constexpr std::size_t kPageBytes = 4096;
 constexpr std::size_t kCandidateRecordBytes = 148;
 struct Candidate { float score; std::int32_t id; };
+struct DenseCandidate { double score; std::int32_t id; };
 struct CascadeResult {
   Candidate best;
   std::uint64_t thq_scan_pages;
@@ -31,6 +32,9 @@ bool better(const Candidate& a, const Candidate& b) {
   return a.score < b.score || (a.score == b.score && a.id < b.id);
 }
 bool better_desc(const Candidate& a, const Candidate& b) {
+  return a.score > b.score || (a.score == b.score && a.id < b.id);
+}
+bool better_dense_desc(const DenseCandidate& a, const DenseCandidate& b) {
   return a.score > b.score || (a.score == b.score && a.id < b.id);
 }
 template <typename T> std::vector<T> read(const std::string& path) {
@@ -440,14 +444,14 @@ std::vector<Candidate> exact_cosine_top10_int8(
   return scored;
 }
 
-std::vector<Candidate> exact_cosine_top10_dense(
+std::vector<DenseCandidate> exact_cosine_top10_dense(
     const std::vector<float>& vectors, const std::vector<std::int32_t>& ids,
     const std::vector<std::int32_t>& selected_ids, const float* query) {
-  float query_norm = 0.0f;
+  double query_norm = 0.0;
   for (std::size_t d = 0; d < kDimension; ++d)
-    query_norm += query[d] * query[d];
-  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<float>::min()));
-  std::vector<Candidate> scored;
+    query_norm += static_cast<double>(query[d]) * static_cast<double>(query[d]);
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<double>::min()));
+  std::vector<DenseCandidate> scored;
   scored.reserve(ids.size());
   for (const auto id : ids) {
     const auto position = std::lower_bound(selected_ids.begin(), selected_ids.end(), id);
@@ -455,18 +459,19 @@ std::vector<Candidate> exact_cosine_top10_dense(
       throw std::runtime_error("dense codec payload is missing candidate document");
     const auto row = static_cast<std::size_t>(position - selected_ids.begin());
     const auto* vector = vectors.data() + row * kDimension;
-    float dot = 0.0f;
-    float norm = 0.0f;
+    double dot = 0.0;
+    double norm = 0.0;
     for (std::size_t d = 0; d < kDimension; ++d) {
-      dot += vector[d] * query[d];
-      norm += vector[d] * vector[d];
+      dot += static_cast<double>(vector[d]) * static_cast<double>(query[d]);
+      norm += static_cast<double>(vector[d]) * static_cast<double>(vector[d]);
     }
-    const float denominator = std::max(std::sqrt(norm) * query_norm,
-                                       std::numeric_limits<float>::min());
+    const double denominator = std::max(std::sqrt(norm) * query_norm,
+                                        std::numeric_limits<double>::min());
     scored.push_back({dot / denominator, id});
   }
   const auto limit = std::min<std::size_t>(10, scored.size());
-  std::partial_sort(scored.begin(), scored.begin() + limit, scored.end(), better_desc);
+  std::partial_sort(scored.begin(), scored.begin() + limit, scored.end(),
+                    better_dense_desc);
   scored.resize(limit);
   return scored;
 }
@@ -521,7 +526,7 @@ int run_dense_candidate_gate(int argc, char** argv) {
     const auto codec_begin = std::chrono::steady_clock::now();
     const auto reranked = exact_cosine_top10_dense(vectors, coarse_ids, selected_ids, query);
     const auto codec_end = std::chrono::steady_clock::now();
-    auto emit_ids = [](const std::vector<Candidate>& values) {
+    auto emit_ids = [](const auto& values) {
       std::cout << '[';
       for (std::size_t i = 0; i < values.size(); ++i) {
         if (i) std::cout << ',';
@@ -536,6 +541,12 @@ int run_dense_candidate_gate(int argc, char** argv) {
     emit_ids(coarse);
     std::cout << ",\"top10_ids\":";
     emit_ids(reranked);
+    std::cout << ",\"top10_scores\":[" << std::setprecision(17);
+    for (std::size_t i = 0; i < reranked.size(); ++i) {
+      if (i) std::cout << ',';
+      std::cout << reranked[i].score;
+    }
+    std::cout << ']';
     std::cout << ",\"timing_ms\":{\"thq4_prefilter\":"
               << elapsed_ms(thq_begin, thq_end) << ",\"codec_rerank\":"
               << elapsed_ms(codec_begin, codec_end) << ",\"total\":"
@@ -723,6 +734,15 @@ int main(int argc, char** argv) {
     const Candidate tie_b{1.0f, 8};
     if (!better(tie_a, tie_b) || better(tie_b, tie_a))
       throw std::runtime_error("deterministic tie policy differs");
+    const DenseCandidate dense_tie_a{1.0, 7};
+    const DenseCandidate dense_tie_b{1.0, 8};
+    if (!better_dense_desc(dense_tie_a, dense_tie_b) ||
+        better_dense_desc(dense_tie_b, dense_tie_a))
+      throw std::runtime_error("dense deterministic tie policy differs");
+    if (namespaced_pages({0}, kThqBytes, 0) != 1 ||
+        namespaced_pages({42}, kThqBytes, 0) != 2 ||
+        namespaced_pages({0, 42}, kThqBytes, 0) != 2)
+      throw std::runtime_error("cross-page record accounting differs");
     std::cout << "native-full-corpus-codec-benchmark self-test PASS\n";
     return 0;
   }

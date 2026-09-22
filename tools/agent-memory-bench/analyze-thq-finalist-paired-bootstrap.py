@@ -12,6 +12,7 @@ import numpy as np
 QUERY_COUNT = 152
 DEFAULT_RESAMPLES = 100_000
 DEFAULT_SEED = 20260922
+CI_METHOD = "paired query bootstrap percentile interval"
 
 
 def sha256(path: Path) -> str:
@@ -40,6 +41,8 @@ def rows(path: Path, arm: str, metric: str) -> np.ndarray:
 
 def compare(left: np.ndarray, right: np.ndarray, rng: np.random.Generator,
             resamples: int) -> dict[str, object]:
+    require(left.shape == (QUERY_COUNT,) and right.shape == (QUERY_COUNT,),
+            "paired comparison requires exactly 152 aligned query rows")
     differences = left - right
     indices = rng.integers(0, QUERY_COUNT, size=(resamples, QUERY_COUNT))
     means = differences[indices].mean(axis=1)
@@ -54,16 +57,36 @@ def compare(left: np.ndarray, right: np.ndarray, rng: np.random.Generator,
     }
 
 
+def self_test() -> None:
+    baseline = np.arange(QUERY_COUNT, dtype=np.float64)
+    result = compare(baseline + 3.0, baseline,
+                     np.random.default_rng(DEFAULT_SEED), DEFAULT_RESAMPLES)
+    require(result["mean_delta"] == 3.0,
+            "paired point estimate differs")
+    require(result["bootstrap_ci95_low"] == 3.0 and
+            result["bootstrap_ci95_high"] == 3.0,
+            "bootstrap did not preserve query pairing")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--lsq-result", type=Path, required=True)
-    parser.add_argument("--turbo-result", type=Path, required=True)
-    parser.add_argument("--rslm-result", type=Path, required=True)
-    parser.add_argument("--joint-result", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--lsq-result", type=Path)
+    parser.add_argument("--turbo-result", type=Path)
+    parser.add_argument("--rslm-result", type=Path)
+    parser.add_argument("--joint-result", type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--resamples", type=int, default=DEFAULT_RESAMPLES)
     parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        print("analyze-thq-finalist-paired-bootstrap self-test PASS")
+        return
+    require(all(path is not None for path in
+                (args.lsq_result, args.turbo_result, args.rslm_result,
+                 args.joint_result, args.output)),
+            "all source results and --output are required")
     require(args.resamples >= 100_000, "at least 100000 bootstrap resamples are required")
     data = {
         "lsq48": rows(args.lsq_result, "faiss_lsq48", "qrels_ndcg10"),
@@ -80,13 +103,15 @@ def main() -> None:
         "lsq32_minus_joint2": ("lsq32", "joint2"),
     }
     result = {
-        "schema_version": 1,
-        "family": "thq_finalist_paired_bootstrap_v1",
+        "schema_version": 2,
+        "family": "thq_finalist_paired_bootstrap_v2",
         "status": "EXECUTED",
         "metric": "query-level qrels nDCG@10",
         "query_count": QUERY_COUNT,
         "resamples": args.resamples,
         "seed": args.seed,
+        "ci_method": CI_METHOD,
+        "confidence_level": 0.95,
         "source_hashes": {name: sha256(path) for name, path in {
             "lsq": args.lsq_result, "turboquant": args.turbo_result,
             "rslm": args.rslm_result, "joint2": args.joint_result}.items()},
@@ -97,6 +122,9 @@ def main() -> None:
         },
         "limitations": [
             "paired query bootstrap describes uncertainty on this fixed 152-query evaluation",
+            "an interval crossing zero does not establish practical equivalence",
+            "no equivalence margin or TOST analysis is defined",
+            "the replay holds the fitted models fixed and does not measure LSQ training-seed variance",
             "it does not establish held-out-domain generalization or production latency",
             "quality rows are source-bound outputs from the referenced codec replays",
         ],

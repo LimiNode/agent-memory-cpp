@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize finalist payloads and run the native THQ complete-cascade control.
+"""Materialize finalist payloads and run the native THQ + predecoded-rerank gate.
 
 The native executable scores the THQ byte-LUT and cosine-reranks predecoded
 rows.  It intentionally does not claim compressed-code decode throughput;
@@ -245,10 +245,11 @@ def main() -> None:
                      "decoded_payload_sha256": sha256(payload_path),
                      "top10_rows": query_rows})
     result = {
-        "schema_version": 2,
-        "family": "thq_native_complete_cascade_predecoded_v2",
+        "schema_version": 3,
+        "family": "thq_native_predecoded_rerank_v3",
         "status": "EXECUTED",
         "metric": "cosine",
+        "score_precision": "float64 scalar accumulation",
         "query_count": QUERY_COUNT,
         "candidate_scope": "frozen R4 candidate stream -> native THQ4 byte-LUT top128",
         "decode_scope": "native cosine rerank over persisted predecoded rows; compressed decode excluded",
@@ -271,7 +272,7 @@ def main() -> None:
         },
         "rows": rows,
     }
-    result_path = args.output_root / "native-complete-cascade.result.json"
+    result_path = args.output_root / "native-predecoded-rerank.result.json"
     result_path.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",
                            encoding="utf-8")
     print(json.dumps({"result": str(result_path), "codecs": list(CODECS),

@@ -141,8 +141,8 @@ research workspace named by those receipts; large model and code archives are
 not committed to Git.
 
 The bounded protocol is audited, but the algorithmic gap is not closed. The
-remaining algorithmic work is the native complete-cascade gate (plus optional
-QJL and a full Lucene query-side implementation):
+remaining systems work is a true native compressed-code scorer gate (plus
+optional QJL and a full Lucene query-side implementation):
 
 ```text
 R4 candidate stream -> native THQ4 byte-LUT top128 -> selected codec
@@ -169,6 +169,7 @@ linear INT8 code and then applies FP32 cosine to the decoded vector.
 These measurements are candidate-local native controls, not full-corpus
 serving latency. The parity audit uses the canonical source bundle and checks
 the retained set as a set (the native and NumPy tie order can differ inside an
-equal-score top-128 boundary) and the final ordered top-10 exactly. A native
-complete-cascade gate for LSQ/RSLM payloads, with codec-specific storage and
-cold/warm page accounting, remains the next implementation step.
+equal-score top-128 boundary) and the final ordered top-10 exactly. The
+completed native THQ + predecoded-rerank gate covers orchestration and ordered
+parity, but not compressed-code cost. A codec-specific native scorer gate with
+cold/warm page accounting remains the next implementation step.

@@ -3,8 +3,8 @@
 Status: `EXECUTED` / `AUDITED` (2026-09-22)
 
 This note owns the remaining algorithm checks. It is deliberately separate
-from the reconstructed-cosine Gate C and from the native complete-cascade
-benchmark.
+from the reconstructed-cosine Gate C and from the native THQ +
+predecoded-rerank gate.
 
 ## Corrective replay update (2026-09-22)
 
@@ -188,10 +188,11 @@ candidate-local replay alone.
    remain optional follow-ups.
 4. Keep the independent BBQ payload/decode audit and portable 4-bit control as
    bounded evidence; native transpose/oversampling remains open.
-5. Run the native complete cascade with persisted finalist payloads, quantiles,
-   page accounting, and exact top-10 parity. This bounded predecoded native
-   control is now recorded in `2026-09-22-native-complete-cascade.md`; a
-   separate compressed-decode/native-SIMD gate remains optional.
+5. Keep the native THQ + predecoded-rerank gate with persisted finalist
+   reconstructions, quantiles, exact crossing-page accounting, and exact
+   top-10 parity. This bounded control is recorded in
+   `2026-09-22-native-complete-cascade.md`; it does not replace the separate
+   compressed-code scorer gate.
 
 The current controls are useful bounded evidence. They are not a license to
 select a production codec before these acceptance conditions are met.
