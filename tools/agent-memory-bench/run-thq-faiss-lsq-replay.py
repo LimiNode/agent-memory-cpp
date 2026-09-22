@@ -74,10 +74,13 @@ def interval_top(query, ids, codes, thresholds):
             lut[d, level] = delta * delta
     return ids[np.lexsort((ids, np.sum(lut[np.arange(D)[None, :], levels], axis=1)))[:min(TOP, len(ids))]]
 
-def fit_lsq(residual, m, seed, train_iters, icm_iters, nperts):
+def fit_lsq(residual, m, seed, train_iters, train_ils_iters, encode_ils_iters, icm_iters, nperts):
     import faiss
     q = faiss.LocalSearchQuantizer(D, m, 8)
-    q.train_iters, q.icm_iters, q.nperts, q.random_seed = int(train_iters), int(icm_iters), int(nperts), int(seed)
+    q.train_iters = int(train_iters)
+    q.train_ils_iters = int(train_ils_iters)
+    q.encode_ils_iters = int(encode_ils_iters)
+    q.icm_iters, q.nperts, q.random_seed = int(icm_iters), int(nperts), int(seed)
     q.train(np.ascontiguousarray(residual, dtype=np.float32))
     cb = faiss.vector_to_array(q.codebooks).astype(np.float32, copy=True)
     offsets = faiss.vector_to_array(q.codebook_offsets).astype(np.int64, copy=True)
@@ -100,7 +103,12 @@ def main():
     p = argparse.ArgumentParser(); p.add_argument("--self-test", action="store_true")
     names = ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output", "models-output", "codes-output")
     for n in names: p.add_argument(f"--{n}", dest=n.replace("-", "_"), type=Path)
-    p.add_argument("--train-iters", type=int, default=4); p.add_argument("--icm-iters", type=int, default=4); p.add_argument("--nperts", type=int, default=1); p.add_argument("--lsq-seed", type=int, default=20260921)
+    p.add_argument("--train-iters", type=int, default=25)
+    p.add_argument("--train-ils-iters", type=int, default=8)
+    p.add_argument("--encode-ils-iters", type=int, default=16)
+    p.add_argument("--icm-iters", type=int, default=4)
+    p.add_argument("--nperts", type=int, default=4)
+    p.add_argument("--lsq-seed", type=int, default=20260921)
     a = p.parse_args()
     if a.self_test: self_test(); return
     vals = [getattr(a, n.replace("-", "_")) for n in names]
@@ -113,7 +121,11 @@ def main():
     candidate_ids, offsets = load_candidates(a.candidate_flat, a.candidate_raw, a.candidate_receipt)
     centroids = fit_centroids(train, thresholds); levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8); base_train = centroids[np.arange(D)[None, :], levels]; residual = np.ascontiguousarray(train - base_train, dtype=np.float32)
     quantizers, model_data = {}, {}
-    for m in PAYLOADS: quantizers[m], model_data[m] = (lambda z: (z[0], (z[1], z[2])))(fit_lsq(residual, m, a.lsq_seed + m, a.train_iters, a.icm_iters, a.nperts))
+    for m in PAYLOADS:
+        quantizers[m], model_data[m] = (lambda z: (z[0], (z[1], z[2])))(
+            fit_lsq(residual, m, a.lsq_seed + m, a.train_iters, a.train_ils_iters,
+                    a.encode_ils_iters, a.icm_iters, a.nperts)
+        )
     # Select the THQ shell once, then batch LSQ assignment over the union of
     # selected documents.  Calling compute_codes 152*2 times makes Faiss
     # rebuild its local-search workspaces for every tiny batch and obscures the
@@ -151,7 +163,7 @@ def main():
     for m in PAYLOADS:
         r = [x for x in rows if x["arm"] == f"faiss_lsq{m}"]; summaries[f"faiss_lsq{m}"] = {"mean_qrels_ndcg10": float(np.mean([x["qrels_ndcg10"] for x in r])), "p05_qrels_ndcg10": float(np.percentile([x["qrels_ndcg10"] for x in r], 5)), "worst_qrels_ndcg10": float(np.min([x["qrels_ndcg10"] for x in r])), "mean_candidate_fp32_overlap": float(np.mean([x["candidate_fp32_overlap"] for x in r])), "mean_teacher_overlap": float(np.mean([x["teacher_overlap"] for x in r])), "side_payload_bytes": m, "cascade_total_bytes": THQ_BYTES + m, "global_codebook_bytes": int(model_data[m][0].size * 4), "full_1m_logical_total_bytes": 1_000_000 * (THQ_BYTES + m) + int(model_data[m][0].size * 4)}
     sources = {n: getattr(a, n.replace("-", "_")) for n in names[:11]}; import faiss
-    result = {"schema_version": 1, "family": "thq_faiss_lsq_replay_v1", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_train_iters": a.train_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed": a.lsq_seed, "independent_fits": True, "payloads": list(PAYLOADS), "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ32/LSQ48 fits; no shared-prefix assumption", "candidate-local side-code replay; 1M storage is logical accounting", "held-out confirmation pending"]}
+    result = {"schema_version": 2, "family": "thq_faiss_lsq_replay_v1", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_config": {"train_iters": a.train_iters, "train_ils_iters": a.train_ils_iters, "encode_ils_iters": a.encode_ils_iters, "icm_iters": a.icm_iters, "nperts": a.nperts, "random_seed": a.lsq_seed}, "lsq_train_iters": a.train_iters, "lsq_train_ils_iters": a.train_ils_iters, "lsq_encode_ils_iters": a.encode_ils_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed": a.lsq_seed, "independent_fits": True, "payloads": list(PAYLOADS), "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ32/LSQ48 fits; no shared-prefix assumption", "candidate-local side-code replay; 1M storage is logical accounting", "held-out confirmation pending"]}
     a.output.parent.mkdir(parents=True, exist_ok=True); a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 if __name__ == "__main__": main()

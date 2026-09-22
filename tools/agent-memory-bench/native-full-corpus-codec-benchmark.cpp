@@ -440,6 +440,114 @@ std::vector<Candidate> exact_cosine_top10_int8(
   return scored;
 }
 
+std::vector<Candidate> exact_cosine_top10_dense(
+    const std::vector<float>& vectors, const std::vector<std::int32_t>& ids,
+    const std::vector<std::int32_t>& selected_ids, const float* query) {
+  float query_norm = 0.0f;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    query_norm += query[d] * query[d];
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<float>::min()));
+  std::vector<Candidate> scored;
+  scored.reserve(ids.size());
+  for (const auto id : ids) {
+    const auto position = std::lower_bound(selected_ids.begin(), selected_ids.end(), id);
+    if (position == selected_ids.end() || *position != id)
+      throw std::runtime_error("dense codec payload is missing candidate document");
+    const auto row = static_cast<std::size_t>(position - selected_ids.begin());
+    const auto* vector = vectors.data() + row * kDimension;
+    float dot = 0.0f;
+    float norm = 0.0f;
+    for (std::size_t d = 0; d < kDimension; ++d) {
+      dot += vector[d] * query[d];
+      norm += vector[d] * vector[d];
+    }
+    const float denominator = std::max(std::sqrt(norm) * query_norm,
+                                       std::numeric_limits<float>::min());
+    scored.push_back({dot / denominator, id});
+  }
+  const auto limit = std::min<std::size_t>(10, scored.size());
+  std::partial_sort(scored.begin(), scored.begin() + limit, scored.end(), better_desc);
+  scored.resize(limit);
+  return scored;
+}
+
+int run_dense_candidate_gate(int argc, char** argv) {
+  if (argc != 11)
+    throw std::runtime_error("usage: benchmark --dense-candidate-gate thq thresholds codec_ids codec_vectors candidate_flat offsets query_file query_count payload_bytes");
+  const auto thq = read<std::uint8_t>(argv[2]);
+  const auto thresholds = read<float>(argv[3]);
+  const auto selected_ids = read<std::int32_t>(argv[4]);
+  const auto vectors = read<float>(argv[5]);
+  const auto flat = read<std::uint8_t>(argv[6]);
+  const auto offsets = read<std::uint64_t>(argv[7]);
+  const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[9]));
+  const std::size_t payload_bytes = static_cast<std::size_t>(std::stoull(argv[10]));
+  if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
+      selected_ids.empty() || vectors.size() != selected_ids.size() * kDimension ||
+      flat.size() % kCandidateRecordBytes != 0 || offsets.size() != query_count + 1 ||
+      offsets.front() != 0 || offsets.back() != flat.size() / kCandidateRecordBytes ||
+      payload_bytes == 0)
+    throw std::runtime_error("dense candidate cascade payload shape differs");
+  if (!std::is_sorted(selected_ids.begin(), selected_ids.end()))
+    throw std::runtime_error("dense codec IDs must be sorted");
+  const auto queries = read<float>(argv[8]);
+  if (queries.size() != query_count * kDimension)
+    throw std::runtime_error("dense candidate query shape differs");
+  std::vector<std::int32_t> candidate_ids(flat.size() / kCandidateRecordBytes);
+  for (std::size_t i = 0; i < candidate_ids.size(); ++i) {
+    std::int32_t id = 0;
+    std::memcpy(&id, flat.data() + i * kCandidateRecordBytes, sizeof(id));
+    if (id < 0 || id >= static_cast<std::int32_t>(kDocuments))
+      throw std::runtime_error("dense candidate ID out of range");
+    candidate_ids[i] = id;
+  }
+  for (std::size_t i = 1; i < selected_ids.size(); ++i)
+    if (selected_ids[i] == selected_ids[i - 1])
+      throw std::runtime_error("dense codec IDs contain duplicates");
+  for (std::size_t qi = 0; qi < query_count; ++qi) {
+    const auto begin = static_cast<std::size_t>(offsets[qi]);
+    const auto end = static_cast<std::size_t>(offsets[qi + 1]);
+    std::vector<std::int32_t> ids(candidate_ids.begin() + begin,
+                                  candidate_ids.begin() + end);
+    if (ids.empty()) throw std::runtime_error("dense candidate query is empty");
+    const float* query = queries.data() + qi * kDimension;
+    const auto thq_begin = std::chrono::steady_clock::now();
+    const auto lut = build_lut(thresholds, query);
+    const auto coarse = thq_top128_candidates(thq, lut, ids);
+    const auto thq_end = std::chrono::steady_clock::now();
+    std::vector<std::int32_t> coarse_ids;
+    coarse_ids.reserve(coarse.size());
+    for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
+    const auto codec_begin = std::chrono::steady_clock::now();
+    const auto reranked = exact_cosine_top10_dense(vectors, coarse_ids, selected_ids, query);
+    const auto codec_end = std::chrono::steady_clock::now();
+    auto emit_ids = [](const std::vector<Candidate>& values) {
+      std::cout << '[';
+      for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i) std::cout << ',';
+        std::cout << values[i].id;
+      }
+      std::cout << ']';
+    };
+    const auto thq_pages = namespaced_pages(ids, kThqBytes, 1ULL << 47);
+    const auto touched_pages = namespaced_pages(coarse_ids, payload_bytes, 1ULL << 48);
+    std::cout << "{\"query\":" << qi << ",\"candidate_count\":" << ids.size()
+              << ",\"thq4_top128_ids\":";
+    emit_ids(coarse);
+    std::cout << ",\"top10_ids\":";
+    emit_ids(reranked);
+    std::cout << ",\"timing_ms\":{\"thq4_prefilter\":"
+              << elapsed_ms(thq_begin, thq_end) << ",\"codec_rerank\":"
+              << elapsed_ms(codec_begin, codec_end) << ",\"total\":"
+              << elapsed_ms(thq_begin, codec_end) << "},\"thq_pages\":"
+              << thq_pages << ",\"codec_pages\":" << touched_pages
+              << ",\"logical_payload_bytes\":" << payload_bytes << "}\n";
+  }
+  std::cerr << "{\"queries\":" << query_count
+            << ",\"timing_scope\":\"native scalar THQ byte-LUT over frozen candidates plus native cosine rerank over predecoded codec rows; decode cost excluded\"}\n";
+  return 0;
+}
+
 int run_fp32_candidate_gate(int argc, char** argv) {
   if (argc != 9)
     throw std::runtime_error("usage: benchmark --fp32-candidate-gate thq thresholds documents candidate_flat offsets query_file query_count");
@@ -577,6 +685,10 @@ int main(int argc, char** argv) {
   }
   if (argc >= 2 && std::string(argv[1]) == "--int8-cosine-candidate-gate") {
     try { return run_int8_cosine_candidate_gate(argc, argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+  }
+  if (argc >= 2 && std::string(argv[1]) == "--dense-candidate-gate") {
+    try { return run_dense_candidate_gate(argc, argv); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
   }
   if (argc == 2 && std::string(argv[1]) == "--self-test") {
