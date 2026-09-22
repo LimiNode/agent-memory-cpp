@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "family": "thq_finalist_paired_bootstrap_receipt_v1",
+  "status": "EXECUTED",
+  "runner": "tools/agent-memory-bench/analyze-thq-finalist-paired-bootstrap.py",
+  "runner_sha256": "e7f8be6e6b98f01f772d099d47b7513d0b3bbf1deabed0b961ecf11fbb5eabb4",
+  "result": "E:/_repoz/research-wave-2026-09-22-native-complete-cascade/finalist-paired-bootstrap.json",
+  "result_sha256": "c9127f8ea825e7eab483ab33aa122ecad9cc2c5f701d044b89b900f0dd6b9cea",
+  "query_count": 152,
+  "resamples": 100000,
+  "seed": 20260922,
+  "comparisons": [
+    "lsq48_minus_turboquant1",
+    "lsq48_minus_rslm4",
+    "turboquant1_minus_rslm4",
+    "lsq32_minus_joint2"
+  ],
+  "limitations": [
+    "fixed 152-query source-bound quality rows",
+    "no held-out-domain confirmation",
+    "no codec decode or native latency claim"
+  ]
+}

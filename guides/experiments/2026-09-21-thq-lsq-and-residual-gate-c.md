@@ -1,9 +1,12 @@
 # THQ4 LSQ32/48 and residual Gate C
 
-Status: `EXECUTED` / `AUDITED` (2026-09-21)
+Status: `EXECUTED` / `AUDITED` (2026-09-22)
 
-This wave closes the two algorithmic checks left after the Faiss RQ and
-faithful RSLM studies. It remains separate from the native serving benchmark.
+This wave records the first source-bound LSQ and residual controls after the
+Faiss RQ and faithful RSLM studies. It does not close the whole algorithmic
+frontier: LSQ remains a research additive control, and the residual arms below
+are local controls rather than vendor-compatible
+TurboQuant, BBQ, or a paper-faithful RaBitQ implementation.
 The canonical source bundle was found under the existing `tmp/` and workspace
 materializations; all source hashes are recorded in the compact receipts
 committed next to this note.
@@ -41,8 +44,8 @@ Faiss workspace setup does not contaminate the codec comparison.
 
 | arm | side bytes | cascade bytes | mean nDCG@10 | p05 nDCG@10 | worst query | mean candidate FP32 overlap | mean teacher overlap |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| LSQ32 | 32 | 128 | 0.650175 | 0.000000 | 0.000000 | 0.886842 | 0.882895 |
-| LSQ48 | 48 | 144 | 0.641877 | 0.000000 | 0.000000 | 0.894079 | 0.889474 |
+| LSQ32 strong | 32 | 128 | 0.657264 | 0.000000 | 0.000000 | 0.890132 | 0.886842 |
+| LSQ48 strong | 48 | 144 | 0.661515 | 0.000000 | 0.000000 | 0.896711 | 0.894079 |
 
 The independent audit reports `status: PASS`, `source_replay: true`, and
 `persisted_code_decode_replay: true`. It reconstructs the THQ shell and sums
@@ -50,6 +53,21 @@ the persisted LSQ codewords without calling Faiss. The result is therefore a
 source-bound candidate-local quality comparison, not a full-corpus serving
 latency claim. LSQ48 does not improve mean qrels quality over LSQ32 in this
 protocol despite its larger side payload.
+
+The earlier replay (`0.650175` / `0.641877`) is retained only as a weak-budget
+control. The completed strong replay uses the following pinned configuration:
+
+```text
+M=32, nbits=8
+train_iters=25
+train_ils_iters=8
+encode_ils_iters=16
+icm_iters=4
+nperts=4
+```
+
+The strong replay is still candidate-local and does not establish held-out or
+native serving quality. It is not AVQ/AAQ/QINCo.
 
 ## Residual Gate C
 
@@ -79,6 +97,42 @@ norm-explicit correction. The very low `code_only` score is a diagnostic that
 the scale is essential for this local construction, not evidence for a
 production codec.
 
+The official RaBitQ estimator is a separate direct-IP/distance protocol. Its
+one-bit IP form stores document-side factors (`F_add` and `F_rescale`) and
+scores the packed sign dot against a transformed query with the `c_B S_q`
+correction. The existing `rabitq_rr1` matched gate is an algebraically reduced
+centered, full-dimensional one-bit form only when the `metric=ip` contract is
+explicit; the residual reconstruction lane above must not be renamed RaBitQ.
+A source-grounded direct-IP replay is now available in
+`audit-thq-rabitq-official-ip.py`. On the canonical 152-query IP lane it
+reports `0.558582` mean nDCG for both the explicit public-factor estimator and
+the packed scorer; the common FP32 rerank diagnostic is `0.653278`. The
+explicit public-factor form and packed scorer differ by at most `0.001658`;
+25 of the 760 `(query, K)` selections differ, while direct top-10 sets match
+on all 152 queries. This is numerical/protocol diagnostic evidence, not a
+cosine reconstruction claim.
+
+The Qdrant-pinned TurboQuant normal-mode control is now implemented in
+`run-thq-turboquant-reference.py`. It reproduces the upstream seeded WHT
+rotation, Lloyd-Max centroids, length rescaling, and 1/2-bit payloads. The
+candidate-local cosine replay reports mean nDCG `0.659176` for 1-bit (52 B)
+and `0.656254` for 2-bit (100 B). A separate bounded `TQMode::Plus` algebraic
+control is now also executed by `run-thq-turboquant-plus-reference.py`: the
+56 B lane reaches `0.653643` with direct decode and `0.633163` with the
+query-side correction formula. It is source-pinned algebra, not QJL, wire
+compatibility, or native SIMD evidence.
+
+The corrected 1-bit Elastic/Lucene document payload is now reproduced by
+`run-thq-elastic-bbq-reference.py`: 384 packed bits plus the public inline
+correction trailer (62 logical bytes, 64-byte aligned), with centered
+unit-cosine fitting and an independently audited optional block-PCA
+preconditioner. The old `0.635520` residual-only row is superseded. The new
+source-bound rows are `0.573386/0.585536` (direct/asymmetric, no
+preconditioner) and `0.563219/0.589484` (direct/asymmetric, block-PCA).
+Both artifacts reproduce all 304 top-10 rows exactly. Native SIMD, query-side
+transpose, oversampling, and `bbq_disk` serving gates remain open; the older
+`bbq_like` arm remains a separate local control.
+
 ## Evidence and next gate
 
 Compact receipts bind result, audit, runner, source, and (external) model/code
@@ -86,8 +140,9 @@ artifact hashes. The full result rows and NPZ artifacts remain in the external
 research workspace named by those receipts; large model and code archives are
 not committed to Git.
 
-The algorithmic gap is now closed for this bounded protocol. The next,
-separate task is the native complete-cascade gate:
+The bounded protocol is audited, but the algorithmic gap is not closed. The
+remaining algorithmic work is the native complete-cascade gate (plus optional
+QJL and a full Lucene query-side implementation):
 
 ```text
 R4 candidate stream -> native THQ4 byte-LUT top128 -> selected codec
