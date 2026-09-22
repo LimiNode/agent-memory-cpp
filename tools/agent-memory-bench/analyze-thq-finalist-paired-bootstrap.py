@@ -34,6 +34,8 @@ def rows(path: Path, arm: str, metric: str) -> np.ndarray:
     require(len(selected) == QUERY_COUNT,
             f"{path}: expected {QUERY_COUNT} rows for {arm}, got {len(selected)}")
     selected.sort(key=lambda row: int(row["query"]))
+    require([int(row["query"]) for row in selected] == list(range(QUERY_COUNT)),
+            f"{path}: query identity/order differs for {arm}")
     values = np.asarray([float(row[metric]) for row in selected], dtype=np.float64)
     require(np.isfinite(values).all(), f"{path}: non-finite quality values")
     return values

@@ -23,13 +23,14 @@ Corrective artifacts (outside the repository) are under
 |---|---|---:|---:|
 | BBQ-Lucene | none | 0.573386 | 0.585536 |
 | BBQ-Lucene | deterministic block-PCA 8x8 | 0.563219 | 0.589484 |
+| BBQ-Lucene | Elastic random block-32, seed 42 | 0.556678 | 0.584974 |
 
-Both rows are `EXECUTED`; both v4 artifacts pass the independent persisted
+All three rows are `EXECUTED`; all artifacts pass the independent persisted
 decode audit with `304/304` top-10 matches. These are candidate-local scalar
 controls (62 logical / 64 aligned side bytes), not Elastic SIMD or `bbq_disk`
-serving measurements. The block-PCA result is a research preconditioner, not a
-free production improvement: it changes the global metadata and must be paid
-for in any native/layout gate.
+serving measurements. Block-PCA is a custom exploratory preconditioner. The
+random block-32 row follows the pinned Elastic `Preconditioner.java` contract;
+the clustered local-centroid result is reported below.
 
 ## RaBitQ
 
@@ -114,21 +115,25 @@ source-bound 152-query candidate-shell replay produced:
 
 These are candidate-local reconstructed-cosine controls, not native latency
 or a production selection. They do not include Qdrant's QJL residual
-estimator. A separate bounded `TurboQuant+` algebraic control is now
-`EXECUTED` and independently audited. It fits a persisted global shift/scale
-table on the 25k training rows, stores a 48-bit sign code plus residual length
-and `ec_correction` (56 B/document), and evaluates both direct decode and the
-query-side correction formula:
+estimator. A faithful pinned Qdrant `TQMode::Plus` Bits1 control is now
+`EXECUTED` and independently audited. It uses revision
+`6ab21cac18ebb6f4ae29102c7f8f5cc11affd5de`, seven-marker P-square
+estimators, outer centroid `0.7978846`, `MIN_QUANTILE_WIDTH=1e-3`, and the
+`Query1bitWideSimd` model. The calibration sample is the first 2048 rows of
+the fixed canonical training stream. This deterministic policy is a bounded
+replay contract; it is not a claim of byte-identical Qdrant sampling unless
+the upstream sampler's exact seed/index stream is separately reproduced. It
+stores a 48-bit sign code plus residual length and `ec_correction` (56 B/document):
 
 | arm | side bytes | mean qrels nDCG@10 | p05 | worst |
 |---|---:|---:|---:|---:|
-| TurboQuant+ direct decode | 56 | 0.653643 | 0.000000 | 0.000000 |
-| TurboQuant+ asymmetric correction | 56 | 0.633163 | 0.000000 | 0.000000 |
+| TurboQuant+ faithful direct diagnostic | 56 | 0.657829 | 0.000000 | 0.000000 |
+| TurboQuant+ faithful asymmetric wide-query | 56 | 0.626174 | 0.000000 | 0.000000 |
 
-This is a source-pinned Qdrant `TQMode::Plus` **algebraic control**, not a
-claim of Qdrant wire compatibility, QJL fidelity, or native SIMD performance.
-The fit contract is explicit (`shift=-mean`, `scale=1/std` with a `1e-4`
-floor), and the independent audit reproduces all `304/304` top-10 lists.
+The direct row is a reconstruction diagnostic; the asymmetric row is the
+serving-relevant score. The independent audit reproduces all `304/304` top-10
+lists. This is not QJL or native SIMD evidence, and the bounded calibration
+policy must not be promoted to a wire-compatibility claim.
 
 The selected IDs, THQ base and decoded 1/2-bit residual payloads are persisted;
 the independent TurboQuant audit replays all 304 top-10 lists with zero
@@ -157,10 +162,20 @@ the decode/provenance gap, but not the serving-kernel gap below.
 As a bounded serving-formula check, the same payload was also scored with a
 4-bit query and the published asymmetric correction
 `base_dot + ax*ay*D + ay*lx*doc_sum + ax*ly*query_sum + lx*ly*quantized_dot`.
-That portable scalar control reached only `0.461179` mean nDCG@10 (192 B
-ephemeral query code; 62 B/document side payload). It is a useful negative
-result: the formula alone does not turn this THQ-residual payload into a
-competitive BBQ arm, and it must not be presented as complete Lucene serving.
+The old residual-only portable control reached `0.461179` mean nDCG@10. It is
+historical and **SUPERSEDED**: it used the wrong THQ-residual document
+semantics and must not be compared with the centered Lucene or clustered
+controls below.
+
+The modern clustered control is recorded under
+`E:/_repoz/research-wave-2026-09-23-finalist-clustered-bbq/`. It uses Elastic's
+block-32 random preconditioner with seed 42, `cluster_size=384` approximated by
+`64 × 41 = 2624` local spherical-k-means centroids, local 1-bit documents,
+4-bit queries, exact corrective scoring, and no FP32 rescore. The mean
+nDCG@10 is `0.591167`; the persisted-code audit is `PASS` with zero top-10
+mismatches. This is a source-bound clustered control, not a byte-identical
+port of Elastic's `HierarchicalKMeans`, and it carries no IVF probing or
+latency claim.
 
 This is a faithful document quantizer/decode control, not a complete
 Elastic/Lucene BBQ serving reproduction. The current score is local

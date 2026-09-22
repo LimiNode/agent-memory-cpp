@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "date": "2026-09-23",
+  "source_replay": true,
+  "external_workspaces": {
+    "faithful_turboquant_plus": "E:/_repoz/research-wave-2026-09-23-finalist-faithful-plus",
+    "corrected_flat_bbq": "E:/_repoz/research-wave-2026-09-23-finalist-bbq-corrected",
+    "clustered_bbq": "E:/_repoz/research-wave-2026-09-23-finalist-clustered-bbq"
+  },
+  "runner_sha256": {
+    "turboquant_plus": "e89dd3d9d9fd0d90e5e0cf523803bce29f83a93dd5c7d2a41b1500de62ef5da7",
+    "turboquant_plus_audit": "09eedecd436d6078542a14a4462ba2896ad64d9df813826b37dfa76f5c71c8dc",
+    "bbq": "562f491643ea101c3375bde6e4e60272f150857f8efe99c656eb04665b2ff783",
+    "bbq_audit": "ad86f1de340b55fdde11186814749cc62eaf16c16700fe2d04ac0194e537cf4c",
+    "clustered_bbq": "d67b45a4068cb8db4e33772c16b1578c19ebbf37857cffd35e3f8de58a2ee200",
+    "clustered_bbq_audit": "48dd7498947b884aa21a5ef4e51a722845b92b2df327427fe8d48cbbcc390172"
+  },
+  "artifacts": {
+    "turboquant_plus_result": "e934474daeb580ce1aab3f90c0032acb5ebece58dd419e03376377b079e795e1",
+    "turboquant_plus_audit": "207b8bff0d7a21014d62ded90d928473c415d0544f37f45a92884a1df6add447",
+    "turboquant_plus_payload": "82a1bf0af79b655937d987bb19830a8cf3d6fe6186b39084722fd3edb99f7771",
+    "bbq_none_result": "c03f53e8d24932e8a2c4c01b11f43d034b1b7a19fd781c0a666df4efbdb4b051",
+    "bbq_none_audit": "5f30f6b5e8fc3e36a09f4aacb2fc6a82b3239a3c7057c37394dee07c5850a15f",
+    "bbq_none_payload": "4557e69805200ed2de3b5bd27ebef65c49ca7ff2fbc7f8a93d2f12d14de65846",
+    "bbq_block_pca_result": "dc565099899e145f3fb6cbeb33800fea80a88af095731ec0b4e0855332aa6856",
+    "bbq_block_pca_audit": "03a1e46ab2d88b5b883f10a3d45b15e921659f5c29e026f9e5ff7bb5eeaedf51",
+    "bbq_elastic_random_result": "10f0f93d1735d3c289da8c82809c6cf9b4bb5d928025d9883efb471ea2b5ba9d",
+    "bbq_elastic_random_audit": "45c97e8d72c2399526c85a2d7c0fab6b39215819456887b1acdf0f2e31485030",
+    "bbq_elastic_random_payload": "3f1f8e4aa2d8285fec59fd0c19e38fa3869d77e5a47b3517f5b778edf6a2b4da",
+    "clustered_bbq_result": "eb6a57a4e159eb30ad3a8c04179cfb27e81344d7064c9a43ac1cc41672bad92d",
+    "clustered_bbq_audit": "a33162511e35239e77963514ddb9bb54d9224bf353411b52d332a84599ea09fb",
+    "clustered_bbq_payload": "0009cb0225f69a5fef733e32eac0930359ee07e20a92b7cfad0957dcb61bd412"
+  },
+  "summaries": {
+    "turboquant_plus_faithful_direct": {"side_payload_bytes": 56, "mean_qrels_ndcg10": 0.65782912},
+    "turboquant_plus_faithful_asymmetric_wide": {"side_payload_bytes": 56, "mean_qrels_ndcg10": 0.6261740660407656},
+    "bbq_flat_none_asymmetric": {"side_payload_bytes": 62, "mean_qrels_ndcg10": 0.585535532943873},
+    "bbq_flat_block_pca_asymmetric": {"side_payload_bytes": 62, "mean_qrels_ndcg10": 0.5894841033060465},
+    "bbq_flat_elastic_random32_asymmetric": {"side_payload_bytes": 62, "mean_qrels_ndcg10": 0.58497377172377},
+    "bbq_clustered_elastic_1x4": {"side_payload_bytes": 64, "mean_qrels_ndcg10": 0.5911671327237586}
+  },
+  "interpretation": "Faithful Qdrant Plus and current-Elastic BBQ controls are source-bound candidate-shell evidence. The clustered control uses a pinned Elastic preconditioner and cluster-size contract with a bounded Faiss hierarchical fit; it is not a byte-identical Elastic IVF implementation or a native latency claim.",
+  "calibration_contracts": {
+    "turboquant_plus": {
+      "sample_size": 2048,
+      "sample_policy": "first 2048 rows of the fixed canonical training stream",
+      "sampling_status": "deterministic bounded replay; not byte-identical Qdrant sampling without upstream seed/index reproduction",
+      "estimator": "P2Quantile<7>",
+      "outer_centroid": 0.7978845608028654,
+      "min_quantile_width": 0.001,
+      "query_path": "Query1bitWideSimd"
+    },
+    "elastic_bbq": {
+      "centroid_contract": "normalize(mean(per-document normalized vectors))",
+      "document_norm_diagnostics": "persisted in independent audit"
+    }
+  },
+  "superseded": {
+    "turboquant_plus_mean_std_v1": {"status": "SUPERSEDED", "direct_mean_qrels_ndcg10": 0.6536431464284411, "asymmetric_mean_qrels_ndcg10": 0.6331632371680458},
+    "elastic_bbq_residual_v1": {"status": "SUPERSEDED", "mean_qrels_ndcg10": 0.6355198731743864},
+    "elastic_bbq_old_query_control": {"status": "SUPERSEDED", "mean_qrels_ndcg10": 0.4611792619031063}
+  }
+}

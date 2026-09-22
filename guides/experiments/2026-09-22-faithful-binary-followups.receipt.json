@@ -74,29 +74,15 @@
       "p05_qrels_ndcg10": 0.0,
       "worst_qrels_ndcg10": 0.0
     },
-    "elastic_bbq_1bit_osq": {
-      "logical_side_payload_bytes": 62,
-      "aligned_side_payload_bytes": 64,
-      "mean_qrels_ndcg10": 0.6355198731743864,
-      "p05_qrels_ndcg10": 0.0,
-      "worst_qrels_ndcg10": 0.0
-    },
-    "elastic_bbq_1bit_doc_4bit_query": {
-      "logical_side_payload_bytes": 62,
-      "query_ephemeral_bytes": 192,
-      "mean_qrels_ndcg10": 0.4611792619031063,
-      "p05_qrels_ndcg10": 0.0,
-      "worst_qrels_ndcg10": 0.0
-    },
-    "turboquant_plus1_direct": {
+    "turboquant_plus1_faithful_direct": {
       "side_payload_bytes": 56,
-      "mean_qrels_ndcg10": 0.6536431464284411,
+      "mean_qrels_ndcg10": 0.6578291200000000,
       "p05_qrels_ndcg10": 0.0,
       "worst_qrels_ndcg10": 0.0
     },
-    "turboquant_plus1_asymmetric": {
+    "turboquant_plus1_faithful_asymmetric": {
       "side_payload_bytes": 56,
-      "mean_qrels_ndcg10": 0.6331632371680458,
+      "mean_qrels_ndcg10": 0.6261740660407656,
       "p05_qrels_ndcg10": 0.0,
       "worst_qrels_ndcg10": 0.0
     },
@@ -125,6 +111,11 @@
     "receipt": "2026-09-22-native-complete-cascade.receipt.json",
     "status": "EXECUTED_PREDECODED_CONTROL",
     "compressed_decode_status": "PENDING_OPTIONAL_CODEC_SPECIFIC_GATE"
+  },
+  "superseded": {
+    "elastic_bbq_residual_v1": {"status": "SUPERSEDED", "mean_qrels_ndcg10": 0.6355198731743864},
+    "elastic_bbq_old_query_control": {"status": "SUPERSEDED", "mean_qrels_ndcg10": 0.4611792619031063},
+    "turboquant_plus_mean_std_v1": {"status": "SUPERSEDED", "direct_mean_qrels_ndcg10": 0.6536431464284411, "asymmetric_mean_qrels_ndcg10": 0.6331632371680458}
   },
   "limitations": [
     "candidate-local source replay, not native serving latency",

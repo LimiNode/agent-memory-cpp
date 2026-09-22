@@ -90,10 +90,13 @@ def source_rows(path: Path, arm: str, ids_field: str) -> list[dict]:
     raw = json.loads(path.read_text(encoding="utf-8"))
     rows = [row for row in raw["rows"] if row.get("arm") == arm]
     require(len(rows) == QUERY_COUNT, f"source row cardinality differs: {arm}")
+    ordered_rows = sorted(rows, key=lambda row: int(row["query"]))
+    require([int(row["query"]) for row in ordered_rows] == list(range(QUERY_COUNT)),
+            f"source query identity/order differs: {arm}")
     return [{"top10": [int(x) for x in row[ids_field]],
              "thq": ([int(x) for x in row["thq4_top128_ids"]]
                      if "thq4_top128_ids" in row else None)}
-            for row in sorted(rows, key=lambda row: int(row["query"]))]
+            for row in ordered_rows]
 
 
 def main() -> None:

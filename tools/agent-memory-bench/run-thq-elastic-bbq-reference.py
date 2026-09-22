@@ -15,6 +15,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -119,6 +120,62 @@ def fit_block_pca(train: np.ndarray, centroid: np.ndarray, block: int = 8) -> np
     return rotation
 
 
+def fit_elastic_random(block: int = 32, seed: int = 42) -> np.ndarray:
+    """Current Elastic diskBBQ random block-orthogonal preconditioner."""
+    class JavaRandom:
+        def __init__(self, value: int) -> None:
+            self.state = (value ^ 0x5DEECE66D) & ((1 << 48) - 1)
+            self.cached: float | None = None
+        def bits(self, count: int) -> int:
+            self.state = (self.state * 0x5DEECE66D + 0xB) & ((1 << 48) - 1)
+            return self.state >> (48 - count)
+        def double(self) -> float:
+            return ((self.bits(26) << 27) + self.bits(27)) / float(1 << 53)
+        def gaussian(self) -> float:
+            if self.cached is not None:
+                value, self.cached = self.cached, None
+                return value
+            while True:
+                v1, v2 = 2.0 * self.double() - 1.0, 2.0 * self.double() - 1.0
+                radius = v1 * v1 + v2 * v2
+                if 0.0 < radius < 1.0:
+                    factor = math.sqrt(-2.0 * math.log(radius) / radius)
+                    self.cached = v2 * factor
+                    return v1 * factor
+        def integer(self, bound: int) -> int:
+            if bound & (bound - 1) == 0:
+                return (bound * self.bits(31)) >> 31
+            while True:
+                value = self.bits(31); result = value % bound
+                if value - result + (bound - 1) < (1 << 31): return result
+    rng = JavaRandom(seed)
+    rotation = np.zeros((D, D), dtype=np.float32)
+    matrices: list[np.ndarray] = []
+    for start in range(0, D, block):
+        size = min(block, D - start)
+        matrix = np.asarray([[np.float32(rng.gaussian()) for _ in range(size)]
+                             for _ in range(size)], dtype=np.float32)
+        for i in range(size):
+            norm = math.sqrt(sum(float(np.float32(v * v)) for v in matrix[i]))
+            matrix[i] = np.asarray([np.float32(v / np.float32(norm)) for v in matrix[i]], dtype=np.float32)
+            for j in range(i + 1, size):
+                dot = sum(float(np.float32(a * b)) for a, b in zip(matrix[i], matrix[j]))
+                matrix[j] = np.asarray([np.float32(v - np.float32(dot * float(axis)))
+                                        for v, axis in zip(matrix[j], matrix[i])], dtype=np.float32)
+        matrices.append(matrix)
+    permutation = list(range(D))
+    for index in range(D, 1, -1):
+        swap = rng.integer(index)
+        permutation[index - 1], permutation[swap] = permutation[swap], permutation[index - 1]
+    for block_index, start in enumerate(range(0, D, block)):
+        size = min(block, D - start)
+        indices = sorted(permutation[start:start + size])
+        matrix = matrices[block_index]
+        for row in range(size):
+            rotation[indices, start + row] = matrix[row].astype(np.float32)
+    return rotation
+
+
 def mixed_score(query: np.ndarray, qfit: tuple[np.ndarray, float, float, float, int],
                 codes: np.ndarray, lows: np.ndarray, highs: np.ndarray,
                 corrections: np.ndarray, centroid: np.ndarray) -> np.ndarray:
@@ -136,7 +193,7 @@ def self_test() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true"); parser.add_argument("--preconditioner", choices=("none", "block-pca"), default="none"); names = ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output")
+    parser = argparse.ArgumentParser(); parser.add_argument("--self-test", action="store_true"); parser.add_argument("--preconditioner", choices=("none", "block-pca", "elastic-random"), default="none"); parser.add_argument("--preconditioner-block", type=int, default=32); names = ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output")
     for name in names: parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
     parser.add_argument("--artifact", type=Path, help="persisted BBQ payload used by the independent decode audit")
     args = parser.parse_args()
@@ -145,12 +202,20 @@ def main() -> None:
     docs = load_f32(args.documents, 1_000_000); train = unit_rows(load_f32(args.train_vectors)); queries = unit_rows(load_f32(args.queries, QUERY_COUNT)); qids = np.asarray(np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20))); grades = np.asarray(np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20))); teacher = np.asarray(np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10)))
     raw = json.loads(args.candidate_raw.read_text(encoding="utf-8")); counts = np.asarray([int(row["candidate_count"]) for row in raw["rows"]], dtype=np.int64); offsets = np.concatenate(([0], np.cumsum(counts))); total = int(offsets[-1]); records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(total, 148)); candidate_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64); receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8")); require(receipt.get("execution_status") == "EXECUTED" and receipt.get("raw_sha256") == sha256(args.candidate_raw) and receipt.get("flat_file", {}).get("sha256") == sha256(args.candidate_flat), "candidate provenance differs")
     thresholds = np.fromfile(args.thq4_thresholds, dtype="<f4").reshape(D, 3); thq_codes = np.memmap(args.thq4_codes, mode="r", dtype="<u1", shape=(1_000_000, THQ_BYTES)); selected_rows = [interval_top(queries[qi], candidate_ids[offsets[qi]:offsets[qi + 1]], thq_codes, thresholds) for qi in range(QUERY_COUNT)]; selected_unique = np.unique(np.concatenate(selected_rows));
-    # Lucene's cosine contract uses unit vectors and a segment/corpus centroid.
-    # Compute it in float64 so the persisted global metadata is deterministic.
+    # Lucene's cosine contract normalizes every source vector before accumulating
+    # the segment centroid.  Averaging raw rows is only equivalent when all rows
+    # have identical norms, which is not a source contract.
     centroid = np.zeros(D, dtype=np.float64)
-    for start in range(0, len(docs), 65536): centroid += np.asarray(docs[start:start + 65536], dtype=np.float64).sum(axis=0)
+    norm_min, norm_max, norm_deviation = np.inf, 0.0, 0.0
+    for start in range(0, len(docs), 65536):
+        batch = np.asarray(docs[start:start + 65536], dtype=np.float64)
+        norms = np.linalg.norm(batch, axis=1)
+        centroid += (batch / np.maximum(norms, np.finfo(np.float64).tiny)[:, None]).sum(axis=0)
+        norm_min = min(norm_min, float(np.min(norms)))
+        norm_max = max(norm_max, float(np.max(norms)))
+        norm_deviation = max(norm_deviation, float(np.max(np.abs(norms - 1.0))))
     centroid = centroid / max(len(docs), 1); centroid = centroid / max(float(np.linalg.norm(centroid)), np.finfo(np.float64).tiny); centroid = centroid.astype(np.float32)
-    rotation = fit_block_pca(train, centroid) if args.preconditioner == "block-pca" else np.eye(D, dtype=np.float32)
+    rotation = fit_block_pca(train, centroid) if args.preconditioner == "block-pca" else fit_elastic_random(args.preconditioner_block) if args.preconditioner == "elastic-random" else np.eye(D, dtype=np.float32)
     transformed_centroid = centroid @ rotation
     selected_original = unit_rows(np.asarray(docs[selected_unique], dtype=np.float32)); selected_transformed = selected_original @ rotation
     fitted = [fit_one(row, transformed_centroid) for row in selected_transformed]; codes = np.stack([x[0] for x in fitted]); lows = np.asarray([x[1] for x in fitted], np.float32); highs = np.asarray([x[2] for x in fitted], np.float32); corrections = np.asarray([x[3] for x in fitted], np.float32); pos = {int(doc): i for i, doc in enumerate(selected_unique)}
@@ -166,7 +231,7 @@ def main() -> None:
         # query residual.  The THQ centroid contribution is kept exact; the
         # corrected OSQ term ranks the residual without reconstructing it.
         qfit = fit_one(query @ rotation, transformed_centroid, bits=4); asymmetric_scores = mixed_score(query, qfit, codes[indexes].astype(np.float64), lows[indexes].astype(np.float64), highs[indexes].astype(np.float64), corrections[indexes].astype(np.float64), transformed_centroid); asymmetric_ranked = top_ids(asymmetric_scores, ids, 10); rows.append({"query": qi, "arm": "bbq_lucene_asymmetric", "top10_ids": asymmetric_ranked.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(asymmetric_ranked, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], asymmetric_ranked).sum() / 10), "side_payload_bytes": 62, "aligned_payload_bytes": 64, "query_bits": 4, "query_ephemeral_bytes": D // 2, "cascade_total_bytes": THQ_BYTES + 62})
-    summaries = {arm: {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in rows if r["arm"] == arm])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in rows if r["arm"] == arm], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in rows if r["arm"] == arm]))} for arm in ("bbq_lucene_direct", "bbq_lucene_asymmetric")}; sources = {name: getattr(args, name.replace("-", "_")) for name in names[:-1]}; result = {"schema_version": 4, "family": "thq_elastic_bbq_reference_gate_c_v2", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "codec_metric": "Lucene OSQ centered cosine; direct decode and mixed asymmetric scorer", "preconditioner": args.preconditioner, "reference_revision": LUCENE_REVISION, "reference_source": LUCENE_SOURCE, "bits": 1, "query_bits_control": 4, "lambda": LAMBDA, "iters": ITERS, "inline_trailer": "float lowerInterval, float upperInterval, float additionalCorrection, uint16 quantizedComponentSum", "query_correction_formula": "doc_centroid_dot + query_centroid_dot - centroid_norm2 + ax*ay*D + ay*lx*doc_sum + ax*ly*query_sum + lx*ly*quantized_dot", "query_count": QUERY_COUNT, "selected_unique_documents": int(len(selected_unique)), "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_path": str(artifact), "artifact_sha256": sha256(artifact), "payload_contract": {"logical_side_payload_bytes": 62, "aligned_side_payload_bytes": 64, "persisted_fields": ["document_ids", "centroid", "rotation", "codes", "lows", "highs", "corrections", "row_ids", "row_offsets"], "global_metadata_bytes": int(centroid.nbytes + rotation.nbytes)}, "summaries": summaries, "rows": rows, "limitations": ["portable scalar control, not native Elastic SIMD or BBQ-disk serving", "candidate-local THQ top128 replay; oversampling/rescore is a separate diagnostic", "reference source is pinned to Lucene revision, not a released compatibility promise"]}
+    summaries = {arm: {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in rows if r["arm"] == arm])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in rows if r["arm"] == arm], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in rows if r["arm"] == arm]))} for arm in ("bbq_lucene_direct", "bbq_lucene_asymmetric")}; sources = {name: getattr(args, name.replace("-", "_")) for name in names[:-1]}; result = {"schema_version": 5, "family": "thq_elastic_bbq_reference_gate_c_v3", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "codec_metric": "Lucene OSQ centered cosine; direct decode and mixed asymmetric scorer", "preconditioner": args.preconditioner, "preconditioner_contract": ({"kind": "Elastic diskBBQ random block orthogonal", "block_dim": args.preconditioner_block, "seed": 42, "construction": "Gaussian blocks, modified Gram-Schmidt, random permutation"} if args.preconditioner == "elastic-random" else {"kind": args.preconditioner}), "reference_revision": LUCENE_REVISION, "reference_source": LUCENE_SOURCE, "bits": 1, "query_bits_control": 4, "lambda": LAMBDA, "iters": ITERS, "inline_trailer": "float lowerInterval, float upperInterval, float additionalCorrection, uint16 quantizedComponentSum", "query_correction_formula": "doc_centroid_dot + query_centroid_dot - centroid_norm2 + ax*ay*D + ay*lx*doc_sum + ax*ly*query_sum + lx*ly*quantized_dot", "query_count": QUERY_COUNT, "selected_unique_documents": int(len(selected_unique)), "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_path": str(artifact), "artifact_sha256": sha256(artifact), "payload_contract": {"logical_side_payload_bytes": 62, "aligned_side_payload_bytes": 64, "persisted_fields": ["document_ids", "centroid", "rotation", "codes", "lows", "highs", "corrections", "row_ids", "row_offsets"], "global_metadata_bytes": int(centroid.nbytes + rotation.nbytes)}, "summaries": summaries, "rows": rows, "limitations": ["portable scalar control, not native Elastic SIMD or BBQ-disk serving", "candidate-local THQ top128 replay; oversampling/rescore is a separate diagnostic", "reference source is pinned to Lucene revision, not a released compatibility promise"]}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

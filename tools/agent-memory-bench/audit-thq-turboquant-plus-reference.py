@@ -68,7 +68,7 @@ def main() -> None:
     args = parser.parse_args()
     result = json.loads(args.result.read_text(encoding="utf-8"))
     rows = result.get("rows", [])
-    require(result.get("status") == "EXECUTED" and result.get("source_replay") is True and result.get("schema_version") == 1, "result is not the TurboQuant+ source replay")
+    require(result.get("status") == "EXECUTED" and result.get("source_replay") is True and result.get("schema_version") == 2 and result.get("family") == "thq_qdrant_tq_plus_faithful_gate_c_v2", "result is not the faithful TurboQuant+ source replay")
     require(result.get("upstream_revision") == REVISION and result.get("bits") == 1, "TurboQuant+ source or bit contract differs")
     require(len(rows) == 304 and all(int(row.get("side_payload_bytes")) == 56 for row in rows), "TurboQuant+ row or payload accounting differs")
     require(result.get("runner_sha256") == sha256(args.runner), "result runner binding differs")
@@ -90,7 +90,8 @@ def main() -> None:
     require(row_offsets.shape == (QUERY_COUNT + 1,) and row_offsets[-1] == len(row_ids), "persisted row offsets differ")
     positions = {int(doc): i for i, doc in enumerate(document_ids)}
     queries = unit_rows(np.asarray(np.memmap(args.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D)), dtype=np.float32))
-    transformed = ((2.0 * codes.astype(np.float32) - 1.0) / scale[None, :]) - shift[None, :]
+    outer = float(result["fit_contract"]["outer_centroid"])
+    transformed = (((2.0 * codes.astype(np.float32) - 1.0) * outer) / scale[None, :]) - shift[None, :]
     decoded_residual = _normal.inverse_rotate(transformed * (lengths / np.sqrt(float(D)))[:, None])
     mismatches = {"turboquant_plus1_direct": 0, "turboquant_plus1_asymmetric": 0}
     for row in rows:
@@ -102,12 +103,12 @@ def main() -> None:
             scores = (values @ query) / np.maximum(np.linalg.norm(values, axis=1) * np.linalg.norm(query), np.finfo(np.float64).tiny)
         else:
             rotated_q = _normal.rotate(query[None, :])[0]; q_plus = rotated_q / scale; qm = float(np.dot(rotated_q, -shift))
-            residual_scores = (codes[indexes] * 2.0 - 1.0) @ q_plus + qm
+            residual_scores = ((codes[indexes] * 2.0 - 1.0) * outer) @ q_plus + qm
             scores = (base[indexes] @ query) + residual_scores * (lengths[indexes] / np.sqrt(float(D)))
         ranked = top_ids(scores, ids, 10)
         mismatches[row["arm"]] += int(not np.array_equal(ranked, np.asarray(row["top10_ids"], dtype=np.int64)))
     require(all(value == 0 for value in mismatches.values()), f"independent TurboQuant+ top10 mismatches: {mismatches}")
-    audit = {"schema_version": 1, "family": "thq_turboquant_plus_reference_audit_v1", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "result_sha256": sha256(args.result), "runner_sha256": sha256(args.runner), "artifact_sha256": sha256(args.artifact), "query_sha256": sha256(args.queries), "row_count": len(rows), "independent_decode_top10_mismatch_count": mismatches, "checks": ["Qdrant revision binding", "all canonical source SHA-256 bindings", "persisted shift/scale validation", "independent inverse-rotation decode", "direct and asymmetric top10 parity", "56-byte payload accounting"], "limitations": ["bounded algebraic control, not Qdrant wire compatibility", "no QJL/native SIMD", "candidate-local THQ top128 replay"]}
+    audit = {"schema_version": 2, "family": "thq_qdrant_tq_plus_faithful_audit_v2", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "result_sha256": sha256(args.result), "runner_sha256": sha256(args.runner), "artifact_sha256": sha256(args.artifact), "query_sha256": sha256(args.queries), "row_count": len(rows), "independent_decode_top10_mismatch_count": mismatches, "checks": ["Qdrant revision binding", "all canonical source SHA-256 bindings", "P2/quantile fit contract", "Query1bitWideSimd asymmetric model", "independent inverse-rotation decode", "direct and asymmetric top10 parity", "56-byte payload accounting"], "limitations": ["Python float64 model of native SIMD arithmetic", "candidate-local THQ top128 replay"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("TurboQuant+ reference audit PASS")

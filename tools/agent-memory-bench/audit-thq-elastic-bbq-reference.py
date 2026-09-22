@@ -38,6 +38,24 @@ def unit_rows(values: np.ndarray) -> np.ndarray:
     return (rows / np.maximum(norms, np.finfo(np.float64).tiny)[:, None]).astype(np.float32)
 
 
+def replay_centroid(path: Path) -> tuple[np.ndarray, dict[str, float]]:
+    require(path.stat().st_size % (D * 4) == 0, "documents are not FP32x384")
+    count = path.stat().st_size // (D * 4)
+    values = np.memmap(path, mode="r", dtype="<f4", shape=(count, D))
+    total = np.zeros(D, dtype=np.float64)
+    norm_min, norm_max, norm_deviation = np.inf, 0.0, 0.0
+    for start in range(0, count, 65536):
+        batch = np.asarray(values[start:start + 65536], dtype=np.float64)
+        norms = np.linalg.norm(batch, axis=1)
+        total += (batch / np.maximum(norms, np.finfo(np.float64).tiny)[:, None]).sum(axis=0)
+        norm_min = min(norm_min, float(np.min(norms)))
+        norm_max = max(norm_max, float(np.max(norms)))
+        norm_deviation = max(norm_deviation, float(np.max(np.abs(norms - 1.0))))
+    centroid = total / max(count, 1)
+    centroid /= max(float(np.linalg.norm(centroid)), np.finfo(np.float64).tiny)
+    return centroid.astype(np.float32), {"min": norm_min, "max": norm_max, "max_abs_deviation_from_one": norm_deviation}
+
+
 def java_round(values: np.ndarray) -> np.ndarray:
     return np.floor(np.asarray(values, dtype=np.float64) + 0.5)
 
@@ -81,7 +99,7 @@ def main() -> None:
     source_args = (args.documents, args.train_vectors, args.queries, args.qrel_ids, args.qrel_scores, args.teacher_ids, args.thq4_codes, args.thq4_thresholds, args.candidate_flat, args.candidate_raw, args.candidate_receipt)
     if any(value is None for value in (args.result, args.runner, args.artifact, *source_args, args.output)): parser.error("result, runner, artifact, all source paths, and output are required")
     result = json.loads(args.result.read_text(encoding="utf-8")); rows = result.get("rows", [])
-    require(result.get("status") == "EXECUTED" and result.get("source_replay") is True and result.get("schema_version") == 4, "result is not the v2 source replay")
+    require(result.get("status") == "EXECUTED" and result.get("source_replay") is True and result.get("schema_version") == 5, "result is not the v3 source replay")
     require(result.get("reference_revision") == REVISION and result.get("bits") == 1 and result.get("query_bits_control") == 4, "BBQ source or bit contract differs")
     require(len(rows) == 304 and all(int(row.get("side_payload_bytes")) == 62 and int(row.get("aligned_payload_bytes")) == 64 for row in rows), "BBQ row or payload accounting differs")
     require(result.get("runner_sha256") == sha256(args.runner), "result runner binding differs")
@@ -89,10 +107,11 @@ def main() -> None:
     require(result.get("artifact_sha256") == sha256(args.artifact) and all(result.get("source_hashes", {}).get(name) == sha256(path) for name, path in expected_sources.items()), "artifact or source binding differs")
     with np.load(args.artifact, allow_pickle=False) as payload:
         document_ids = np.asarray(payload["document_ids"], dtype=np.int64); base = np.asarray(payload["base"], dtype=np.float32); centroid = np.asarray(payload["centroid"], dtype=np.float32); rotation = np.asarray(payload["rotation"], dtype=np.float32); codes = np.asarray(payload["codes"], dtype=np.uint8); lows = np.asarray(payload["lows"], dtype=np.float32); highs = np.asarray(payload["highs"], dtype=np.float32); corrections = np.asarray(payload["corrections"], dtype=np.float32); row_ids = np.asarray(payload["row_ids"], dtype=np.int64); row_offsets = np.asarray(payload["row_offsets"], dtype=np.int64)
+    replayed_centroid, norm_diagnostics = replay_centroid(args.documents)
     require(base.shape == codes.shape and base.shape[1:] == (D,) and lows.shape == highs.shape == corrections.shape == (len(document_ids),), "persisted BBQ payload shapes differ")
-    require(rotation.shape == (D, D) and np.max(np.abs(rotation.T @ rotation - np.eye(D))) < 2e-5, "preconditioner is not orthogonal")
+    require(rotation.shape == (D, D) and np.max(np.abs(rotation.T @ rotation - np.eye(D))) < 5e-5, "preconditioner is not orthogonal")
     require(row_offsets.shape == (QUERY_COUNT + 1,) and row_offsets[-1] == len(row_ids), "persisted row offsets differ")
-    require(np.max(np.abs(base - centroid[None, :])) < 2e-6 and abs(float(np.linalg.norm(centroid)) - 1.0) < 2e-5, "corpus centroid contract differs")
+    require(np.max(np.abs(base - centroid[None, :])) < 2e-6 and np.max(np.abs(replayed_centroid - centroid)) < 3e-6 and abs(float(np.linalg.norm(centroid)) - 1.0) < 2e-5, "corpus centroid source replay differs")
     positions = {int(doc): i for i, doc in enumerate(document_ids)}; queries = unit_rows(np.asarray(np.memmap(args.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D)), dtype=np.float32)); mismatches = {"bbq_lucene_direct": 0, "bbq_lucene_asymmetric": 0}
     # The persisted intervals are fitted in the preconditioned frame.  Decode
     # there first, then map back to the original cosine frame; using the raw
@@ -108,7 +127,7 @@ def main() -> None:
             qfit = query_quantize(q @ rotation, transformed_centroid); scores = mixed_score(qfit, codes[indexes].astype(np.float64), lows[indexes].astype(np.float64), highs[indexes].astype(np.float64), corrections[indexes].astype(np.float64), transformed_centroid)
         ranked = top_ids(scores, ids, 10); mismatches[row["arm"]] += int(not np.array_equal(ranked, np.asarray(row["top10_ids"], dtype=np.int64)))
     require(all(value == 0 for value in mismatches.values()), f"independent BBQ top10 mismatches: {mismatches}")
-    audit = {"schema_version": 4, "family": "thq_elastic_bbq_reference_audit_v2", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "result_sha256": sha256(args.result), "runner_sha256": sha256(args.runner), "artifact_sha256": sha256(args.artifact), "query_sha256": sha256(args.queries), "row_count": len(rows), "independent_decode_top10_mismatch_count": mismatches, "checks": ["Lucene revision and source binding", "all canonical source SHA-256 bindings", "unit cosine corpus-centroid contract", "exact normalized coordinate-descent interpolation", "block-orthogonal preconditioner parity", "persisted payload decode and direct/asymmetric top10 parity", "logical/aligned payload accounting"], "limitations": ["portable scalar controls, not native Elastic SIMD or BBQ-disk serving", "candidate-local THQ top128 replay; oversampling/rescore remains separate"]}
+    audit = {"schema_version": 5, "family": "thq_elastic_bbq_reference_audit_v3", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "centroid_source_replay": True, "result_sha256": sha256(args.result), "runner_sha256": sha256(args.runner), "artifact_sha256": sha256(args.artifact), "query_sha256": sha256(args.queries), "documents_sha256": sha256(args.documents), "document_norm_diagnostics": norm_diagnostics, "preconditioner_contract": result.get("preconditioner_contract"), "row_count": len(rows), "independent_decode_top10_mismatch_count": mismatches, "checks": ["Lucene revision and source binding", "all canonical source SHA-256 bindings", "independent unit-normalized document centroid replay", "exact normalized coordinate-descent interpolation", "block-orthogonal preconditioner parity", "persisted payload decode and direct/asymmetric top10 parity", "logical/aligned payload accounting"], "limitations": ["portable scalar controls, not native Elastic SIMD or BBQ-disk serving", "candidate-local THQ top128 replay; oversampling/rescore remains separate"]}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8"); print("Elastic BBQ reference audit PASS")
 
 

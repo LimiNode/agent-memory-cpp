@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
-"""Source-bound bounded TurboQuant+ residual control.
+"""Source-bound faithful Qdrant TurboQuant+ Bits1 control.
 
-This runner follows Qdrant's public TQMode::Plus algebra (global per-coordinate
-shift/scale and the per-vector error-correction scalar) on the canonical THQ
-candidate shell.  It is intentionally named a reference *control*: fitting the
-shift/scale table is explicit and persisted, while QJL/native SIMD and wire
-compatibility are outside this gate.
+This runner follows the pinned Qdrant ``TQMode::Plus`` Bits1 calibration on the
+canonical THQ candidate shell.  It persists the 48-byte sign code, per-vector
+length and error-correction scalar (56 bytes total), while the query-side
+calculation models the ``Query1bitWideSimd`` asymmetric path in float64.
 """
 from __future__ import annotations
 
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 import numpy as np
@@ -75,17 +75,66 @@ def fit_levels(train: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
     return centroids
 
 
-def fit_error_correction(train_residual: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+class P2:
+    """Qdrant's seven-marker streaming P-square estimator."""
+    def __init__(self, probability: float) -> None:
+        self.p = float(probability); self.values: list[float] = []
+        self.h = self.n = self.np = None
+        self.count = 0
+        self.targets = np.asarray([0.0, self.p * .5, self.p * .8, self.p,
+                                   1.0 + (self.p - 1.0) * .8,
+                                   1.0 + (self.p - 1.0) * .5, 1.0])
+    def push(self, value: float) -> None:
+        self.count += 1
+        if self.h is None:
+            self.values.append(float(value))
+            if len(self.values) < 7: return
+            self.values.sort(); self.h = np.asarray(self.values, dtype=np.float64)
+            self.n = np.arange(1, 8, dtype=np.float64)
+            self.np = 1.0 + 6.0 * self.targets
+            return
+        if value < self.h[0]: self.h[0] = value; k = 0
+        elif value > self.h[6]: self.h[6] = value; k = 5
+        else: k = min(5, int(np.searchsorted(self.h[1:], value, side="left")))
+        self.n[k + 1:] += 1.0
+        self.np = 1.0 + self.targets * (self.count - 1.0)
+        for i in range(1, 6):
+            while True:
+                d = self.np[i] - self.n[i]
+                if d >= 1.0 and self.n[i + 1] - self.n[i] > 1.0: sign = 1.0
+                elif d <= -1.0 and self.n[i - 1] - self.n[i] < -1.0: sign = -1.0
+                else: break
+                prev_h, cur_h, next_h = self.h[i - 1:i + 2]
+                prev_n, cur_n, next_n = self.n[i - 1:i + 2]
+                q = cur_h + sign / (next_n - prev_n) * ((cur_n - prev_n + sign) * (next_h - cur_h) / (next_n - cur_n) + (next_n - cur_n - sign) * (cur_h - prev_h) / (cur_n - prev_n))
+                if not np.isfinite(q) or not prev_h < q < next_h:
+                    j = i + (1 if sign > 0 else -1)
+                    q = cur_h + sign * (self.h[j] - cur_h) / (self.n[j] - cur_n)
+                self.h[i] = q; self.n[i] += sign
+    def estimate(self) -> float:
+        return float(np.quantile(self.values, self.p)) if self.h is None else float(self.h[3])
+
+
+def fit_error_correction(train_residual: np.ndarray) -> tuple[np.ndarray, np.ndarray, float, dict[str, object]]:
     rotated = _normal.rotate(train_residual)
     lengths = np.linalg.norm(rotated.astype(np.float64), axis=1)
     pre = rotated * (np.sqrt(float(D)) / np.maximum(lengths, 1e-12))[:, None]
-    shift = -np.mean(pre, axis=0)
-    std = np.std(pre, axis=0)
-    scale = 1.0 / np.maximum(std, 1e-4)
-    return shift.astype(np.float32), scale.astype(np.float32)
+    outer = float(np.sqrt(2.0 / np.pi))
+    p_outer = 0.5 * (1.0 + math.erf(outer / math.sqrt(2.0)))
+    low_p, high_p = 1.0 - p_outer, p_outer
+    sample = pre[: min(2048, len(pre))]
+    low = [P2(low_p) for _ in range(D)]; high = [P2(high_p) for _ in range(D)]
+    for row in sample:
+        for d, value in enumerate(row): low[d].push(float(value)); high[d].push(float(value))
+    lows = np.asarray([e.estimate() for e in low], dtype=np.float64)
+    highs = np.asarray([e.estimate() for e in high], dtype=np.float64)
+    width = highs - lows
+    shift = -(lows + highs) / 2.0
+    scale = np.where(width > 1e-3, 2.0 * outer / width, 1.0)
+    return shift.astype(np.float32), scale.astype(np.float32), outer, {"sample_size": int(len(sample)), "sample_policy": "first 2048 rows of the fixed canonical train stream", "estimator": "P2Quantile<7>", "quantile_interval": [low_p, high_p], "min_quantile_width": 1e-3, "outer_centroid": outer}
 
 
-def encode_plus(residual: np.ndarray, shift: np.ndarray, scale: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def encode_plus(residual: np.ndarray, shift: np.ndarray, scale: np.ndarray, outer: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     rotated = _normal.rotate(residual)
     lengths = np.linalg.norm(rotated.astype(np.float64), axis=1).astype(np.float32)
     safe = np.maximum(lengths, 1e-12)
@@ -96,8 +145,8 @@ def encode_plus(residual: np.ndarray, shift: np.ndarray, scale: np.ndarray) -> t
     return levels, lengths, ec, pre
 
 
-def decode_plus(levels: np.ndarray, lengths: np.ndarray, shift: np.ndarray, scale: np.ndarray) -> np.ndarray:
-    values = ((2.0 * levels.astype(np.float32) - 1.0) / scale[None, :]) - shift[None, :]
+def decode_plus(levels: np.ndarray, lengths: np.ndarray, shift: np.ndarray, scale: np.ndarray, outer: float) -> np.ndarray:
+    values = (((2.0 * levels.astype(np.float32) - 1.0) * outer) / scale[None, :]) - shift[None, :]
     pre = values * (lengths / np.sqrt(float(D)))[:, None]
     return _normal.inverse_rotate(pre)
 
@@ -129,15 +178,15 @@ def main() -> None:
     train_centroids = fit_levels(train, thresholds)
     train_levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
     train_base = train_centroids[np.arange(D)[None, :], train_levels]
-    shift, scale = fit_error_correction(train - train_base)
+    shift, scale, outer, fit_contract = fit_error_correction(train - train_base)
     thq_codes = np.memmap(args.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
     selected_rows = [interval_top(queries[qi], candidate_ids[offsets[qi]:offsets[qi + 1]], thq_codes, thresholds) for qi in range(QUERY_COUNT)]
     selected_unique = np.unique(np.concatenate(selected_rows))
     levels = unpack_thq(np.asarray(thq_codes[selected_unique]))
     base = train_centroids[np.arange(D)[None, :], levels]
     residual = np.asarray(docs[selected_unique], dtype=np.float32) - base
-    codes, lengths, ec, _ = encode_plus(residual, shift, scale)
-    decoded = decode_plus(codes, lengths, shift, scale)
+    codes, lengths, ec, _ = encode_plus(residual, shift, scale, outer)
+    decoded = decode_plus(codes, lengths, shift, scale, outer)
     pos = {int(doc): i for i, doc in enumerate(selected_unique)}
     row_ids = np.concatenate(selected_rows).astype(np.int64)
     row_offsets = np.concatenate(([0], np.cumsum([len(row) for row in selected_rows], dtype=np.int64)))
@@ -154,13 +203,13 @@ def main() -> None:
         rotated_q = _normal.rotate(query[None, :])[0]
         q_plus = (rotated_q / scale).astype(np.float32)
         qm = float(np.dot(rotated_q, -shift))
-        raw_residual = (codes[indexes] * 2.0 - 1.0) @ q_plus + qm
+        raw_residual = ((codes[indexes] * 2.0 - 1.0) * outer) @ q_plus + qm
         asym_scores = (base[indexes] @ query) + raw_residual * (lengths[indexes] / np.sqrt(float(D)))
         asym_ranked = top_ids(asym_scores, ids, 10)
         rows.append({"query": qi, "arm": "turboquant_plus1_asymmetric", "top10_ids": asym_ranked.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(asym_ranked, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], asym_ranked).sum() / 10), "side_payload_bytes": 56, "cascade_total_bytes": THQ_BYTES + 56, "query_ephemeral_bytes": 56})
     summaries = {arm: {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in rows if r["arm"] == arm])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in rows if r["arm"] == arm], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in rows if r["arm"] == arm]))} for arm in ("turboquant_plus1_direct", "turboquant_plus1_asymmetric")}
     sources = {name: getattr(args, name.replace("-", "_")) for name in names[:-1]}
-    result = {"schema_version": 1, "family": "thq_turboquant_plus_reference_gate_c_v1", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "codec_metric": "Qdrant TQMode::Plus algebra on a residual control", "upstream_revision": UPSTREAM_REVISION, "upstream_source": UPSTREAM_SOURCE, "bits": 1, "query_count": QUERY_COUNT, "selected_unique_documents": int(len(selected_unique)), "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_path": str(args.artifact), "artifact_sha256": sha256(args.artifact), "payload_contract": {"side_payload_bytes": 56, "fields": ["48-bit sign code", "float32 residual length", "float32 ec_correction"], "global_metadata_bytes": int(shift.nbytes + scale.nbytes)}, "fit_contract": "shift=-mean(normalized rotated THQ residual), scale=1/std with 1e-4 floor; fit uses 25k train rows only", "summaries": summaries, "rows": rows, "limitations": ["bounded source-pinned algebraic control, not a Qdrant wire-format artifact", "no QJL residual estimator or native SIMD", "candidate-local THQ top128 replay"]}
+    result = {"schema_version": 2, "family": "thq_qdrant_tq_plus_faithful_gate_c_v2", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "codec_metric": "Qdrant TQMode::Plus Bits1 asymmetric Query1bitWideSimd model", "upstream_revision": UPSTREAM_REVISION, "upstream_source": UPSTREAM_SOURCE, "bits": 1, "query_path": "Query1bitWideSimd", "query_count": QUERY_COUNT, "selected_unique_documents": int(len(selected_unique)), "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_path": str(args.artifact), "artifact_sha256": sha256(args.artifact), "payload_contract": {"side_payload_bytes": 56, "fields": ["48-bit sign code", "float32 residual length", "float32 ec_correction"], "global_metadata_bytes": int(shift.nbytes + scale.nbytes)}, "fit_contract": fit_contract, "summaries": summaries, "rows": rows, "limitations": ["Python float64 model of Qdrant wide-query arithmetic; no native SIMD", "candidate-local THQ top128 replay", "wire-format bytes are represented by a persisted NumPy audit artifact"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
