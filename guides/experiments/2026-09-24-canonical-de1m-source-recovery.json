@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "family": "canonical_de1m_source_recovery_v1",
+  "status": "PASS",
+  "source_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+  "legacy_payload_root": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5",
+  "canonical_workspace_junction": "E:\\_repoz\\agent-memory-workspaces\\canonical-de1m-source\\payload",
+  "embedding": {
+    "model_id": "intfloat/multilingual-e5-small",
+    "model_revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+    "normalized": true,
+    "dimension": 384
+  },
+  "counts": {
+    "documents": 1000000,
+    "queries": 305,
+    "train_vectors": 25000,
+    "qrels": 3144
+  },
+  "files": {
+    "evaluation-document-vectors.f32": {
+      "bytes": 1536000000,
+      "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+    },
+    "evaluation-query-vectors.f32": {
+      "bytes": 468480,
+      "sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2"
+    },
+    "train-vectors.f32": {
+      "bytes": 38400000,
+      "sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+    },
+    "evaluation-qrels.tsv": {
+      "sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071"
+    },
+    "evaluation-document-ids.jsonl": {
+      "sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c"
+    },
+    "evaluation-query-ids.jsonl": {
+      "sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385"
+    },
+    "train-document-ids.jsonl": {
+      "sha256": "c3b04e10f3994415f8861a42aa7bfb72e1092f1e2ba3353b76fde80475bf9c98"
+    }
+  },
+  "validation": {
+    "runner": "tools/agent-memory-bench/validate-canonical-de1m-source.py",
+    "mode": "read_only",
+    "implicit_download_or_copy": false
+  },
+  "limitations": [
+    "This receipt proves source presence and byte/hash binding only.",
+    "No fresh LSQ, PQ, OPQ, QJL, or Gate C quality claim is made by this receipt.",
+    "The junction is transitional until a dedicated payload migration is verified."
+  ]
+}
