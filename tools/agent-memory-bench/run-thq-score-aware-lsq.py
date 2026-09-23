@@ -154,7 +154,6 @@ def main() -> None:
                     "cascade_total_bytes": THQ_BYTES + payload, "neighbor_count": a.neighbors,
                     "passes": a.passes, "top10_ids": rank.astype(int).tolist(),
                     "thq4_top128_ids": ids.astype(int).tolist(),
-                    "candidate_fp32_overlap": float(np.isin(rank, ids).sum() / 10.0),
                     "teacher_overlap": float(np.isin(teacher[qi], rank).sum() / 10.0),
                     "qrels_ndcg10": ndcg10(rank, qrel_ids[qi], qrel_scores[qi]),
                     "changed_code_fraction": float(np.mean(code != codes[qi])),
