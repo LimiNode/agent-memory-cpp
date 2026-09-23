@@ -67,7 +67,7 @@ def main() -> None:
         "upstream_revision": revision,
         "qinco_root": str(root),
         "config": {"dimension": dim, "stages": stages, "codebook_size": codebook, "hidden_dim": 32, "beam": 1, "substep_candidates": 0, "device": "cpu", "seed": a.seed},
-        "fixture": {"rows": len(values), "codes_shape": list(codes.shape), "decoded_shape": list(replay.shape), "mse": float(torch.mean((replay - values) ** 2))},
+        "fixture": {"rows": len(values), "codes_shape": list(codes.shape), "decoded_shape": list(replay.shape), "mse": float(torch.mean((replay - values) ** 2).detach())},
         "limitations": ["synthetic smoke only", "no E5/R4-trained checkpoint", "no 32/48-byte corpus quality number", "official QINCo2 source is an external dependency and was not modified"],
     }
     a.output.parent.mkdir(parents=True, exist_ok=True)
