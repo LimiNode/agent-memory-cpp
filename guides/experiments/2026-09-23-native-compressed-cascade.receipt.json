@@ -1,18 +1,18 @@
 {
   "schema_version": 1,
-  "status": "PLANNED",
+  "status": "PARTIALLY_EXECUTED",
   "date": "2026-09-23",
   "experiment_note": "guides/experiments/2026-09-23-native-compressed-cascade.md",
   "direct_scorer": {
     "source": "tools/agent-memory-bench/native-full-corpus-codec-benchmark.cpp",
     "mode": "--lsq-candidate-gate",
     "payload_materializer": "tools/agent-memory-bench/materialize-native-lsq-payload.py",
-    "payload_contract": "LSQ stage codes + THQ base vectors + FP32 final norm",
-    "quality_status": "NOT_EXECUTED"
+    "payload_contract": "LSQ stage codes + shared THQ centroids + packed THQ rows + FP32 final norm",
+    "quality_status": "LSQ32/48 EXECUTED; broader codec matrix pending"
   },
   "limitations": [
     "candidate-local frozen R4 shell",
-    "native build/replay pending",
+    "native LSQ32/48 build/replay completed; broader codec matrix pending",
     "LSQ only; TurboQuant/joint2 direct payloads remain future arms",
     "no production selection claim"
   ]

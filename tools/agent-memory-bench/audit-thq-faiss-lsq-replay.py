@@ -67,6 +67,7 @@ def main():
     source_centroids = fit_centroids(train, thresholds)
     require(np.allclose(centroids, source_centroids, rtol=0.0, atol=1e-6), "persisted centroid table differs from source replay")
     require(all(models[x][0].shape[1] == D for x in PAYLOADS), "persisted LSQ codebooks are not full-dimensional")
+    require(all(np.array_equal(models[x][1], np.arange(len(models[x][1]), dtype=np.int64) * 256) for x in PAYLOADS), "persisted LSQ offsets do not match the native stage*256 contract")
     with np.load(a.codes, allow_pickle=False) as c: selected_saved = np.asarray(c["selected_ids"], dtype=np.int64); codes_saved = {x: np.asarray(c[f"codes_{x}"], dtype=np.uint8) for x in PAYLOADS}
     require(centroids.shape == (D, 4) and selected_saved.shape == (QUERY_COUNT, TOP), "artifact shape differs")
     rows = result.get("rows")

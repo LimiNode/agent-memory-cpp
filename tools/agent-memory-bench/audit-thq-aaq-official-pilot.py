@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import subprocess
 from pathlib import Path
 
 import numpy as np
@@ -40,10 +41,13 @@ def cosine(values: np.ndarray, query: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    for name in ("result", "runner", "artifact", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes", "output"):
+    for name in ("result", "runner", "artifact", "aaq-root", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes", "output"):
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     a = p.parse_args()
     result = json.loads(a.result.read_text(encoding="utf-8"))
+    upstream_revision = subprocess.check_output(["git", "-C", str(a.aaq_root.resolve()), "rev-parse", "HEAD"], text=True).strip()
+    if result.get("upstream_revision") != upstream_revision:
+        raise RuntimeError("AAQ upstream revision differs from the result provenance")
     if (result.get("family") not in ("thq_official_aaq_pca32_bounded_pilot_v1", "thq_official_aaq_full384_bounded_pilot_v1") or
             result.get("quality_status") != "BOUNDED_PILOT" or
             result.get("threshold_layout") != "D,3"):
@@ -82,7 +86,7 @@ def main() -> None:
         mismatches += int(rank.tolist() != row["top10_ids"])
     if mismatches:
         raise RuntimeError(f"{mismatches} independent AAQ top10 mismatches")
-    audit = {"schema_version": 1, "family": "thq_official_aaq_bounded_pilot_audit_v2", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "optimizer_replay": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "artifact_sha256": sha256(a.artifact), "source_hashes": {name: sha256(path) for name, path in source_paths.items()}, "row_count": len(rows), "top10_mismatch_count": mismatches, "checks": ["runner/artifact/source binding", "all training and evaluation input hash binding", "independent packed THQ decode", "independent AAQ additive decode", "persisted component inverse reconstruction", "152-query top10 replay"], "limitations": ["persisted decode audit; official optimizer is source-bound but not independently reimplemented", "bounded M8K16 pilot"]}
+    audit = {"schema_version": 1, "family": "thq_official_aaq_bounded_pilot_audit_v3", "status": "PASS", "source_binding": True, "upstream_revision_binding": True, "upstream_revision": upstream_revision, "independent_decode_replay": True, "optimizer_replay": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "artifact_sha256": sha256(a.artifact), "source_hashes": {name: sha256(path) for name, path in source_paths.items()}, "row_count": len(rows), "top10_mismatch_count": mismatches, "checks": ["runner/artifact/source binding", "AAQ checkout HEAD equals result upstream_revision", "all training and evaluation input hash binding", "independent packed THQ decode", "independent AAQ additive decode", "persisted component inverse reconstruction", "152-query top10 replay"], "limitations": ["persisted decode audit; official optimizer is source-bound but not independently reimplemented", "bounded M8K16 pilot"]}
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

@@ -99,7 +99,10 @@ def main() -> None:
         if native.get("codec_layout") != "candidate_local_packed_rows":
             raise RuntimeError("codec layout contract missing")
         for name in timings:
-            timings[name].append(float(native["timing_ms"][name]))
+            value = float(native["timing_ms"][name])
+            if not np.isfinite(value) or value < 0.0:
+                raise RuntimeError(f"non-finite timing row at query {query}: {name}")
+            timings[name].append(value)
         codec_page_values.append(int(native["codec_pages"]))
         thq_page_values.append(int(native["thq_pages"]))
 
@@ -128,7 +131,7 @@ def main() -> None:
         "full_corpus_codec_pages": full_corpus_pages,
         "codec_layout": "candidate_local_packed_rows",
         "checks": ["source top10 parity", "THQ retained-set parity", "candidate stream binding", "packed-row codec pages", "shared-model pages", "full-corpus hypothetical pages", "finite timing rows"],
-        "limitations": ["candidate-local frozen R4 stream, not a full-corpus serving replay", "two ordered THQ mismatches are deterministic tie-order differences with set parity 152/152", "native timing is scalar C++ on one host; no OS page-latency claim"],
+        "limitations": ["candidate-local frozen R4 stream, not a full-corpus serving replay", "two ordered THQ mismatches are ordering-only numerical/accumulation differences with set parity 152/152; equal-score identity was not independently established", "native timing is scalar C++ on one host; no OS page-latency claim"],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")

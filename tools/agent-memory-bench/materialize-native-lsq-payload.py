@@ -44,7 +44,7 @@ def main() -> None:
         stages = int(codes.shape[-1])
         books = np.asarray(model[f"lsq{args.payload}_codebooks"], dtype=np.float32)
         offsets = np.asarray(model[f"lsq{args.payload}_offsets"], dtype=np.int64)
-        if books.shape != (stages * 256, D) or offsets.shape != (stages + 1,):
+        if books.shape != (stages * 256, D) or offsets.shape != (stages + 1,) or not np.array_equal(offsets, np.arange(stages + 1, dtype=np.int64) * 256):
             raise RuntimeError("unexpected LSQ model shape")
         thq = np.memmap(args.thq, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
         levels = unpack_thq(np.asarray(thq[selected_unique]))

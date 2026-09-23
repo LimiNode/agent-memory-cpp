@@ -14,12 +14,15 @@ and direct compressed-code cosine scoring; no FP32 vector is materialized.
 
 Independent audits pass for both arms. Ordered top-10 parity is `152/152`;
 THQ top-128 set parity is `152/152`. The two ordered THQ differences are
-deterministic equal-score tie-order swaps and do not change the retained set
-or final top-10. Candidate-local codec pages average `92.97` (LSQ32) and
+ordering-only numerical/accumulation differences and do not change the
+retained set or final top-10; equal-score identity was not independently
+established. Candidate-local codec pages average `92.97` (LSQ32) and
 `103.74` (LSQ48); shared-model pages are `3074` and `4610`. Hypothetical
 row-aligned full-corpus codec pages are `8790` and `12696`, respectively.
 
 The page audit uses packed row positions for the candidate-local payload and
 counts only shared codebooks/centroids as model pages. It does not claim OS
-page latency or full-corpus serving performance. Cold/warm here means two
-consecutive native process runs on one host; no production codec is selected.
+page latency or full-corpus serving performance. The two reported runs are
+`run1/run2 (warm-process diagnostic)`: inputs are loaded before timing, so this
+is not a cold-storage or OS page-fault measurement. No production codec is
+selected.
