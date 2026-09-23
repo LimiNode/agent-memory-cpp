@@ -56,7 +56,9 @@ quality on this bounded fit (`0.654856` for PQ4 and `0.656326` for PQ8), and
 all K values are identical within each family. Thus the earlier apparent PQ4
 gain was entirely explained by refitting the first THQ/TQ1 stage on only 1,024
 rows; it was not an improvement over canonical TQ1. The margin policy does
-not demonstrate a quality/latency advantage.
+not demonstrate a quality/latency advantage. This is a bounded negative for
+this raw-space, undertrained PQ configuration, not a family-level conclusion
+about residual correction.
 
 Serving accounting separates the raw code and norm sidecars. TQ1 alone is
 `52 B` of code plus one `4 B` norm (`56 B/doc`). A persisted hybrid stores
@@ -105,3 +107,7 @@ not ranking-aware codebook/stage training. A real MA-LSQ gate needs multiple
 query folds/seeds and codebook/stage training independent of the 152-query
 evaluation set. Bootstrap provenance is payload-specific: the runner records
 seeds `20260955` for LSQ32 and `20260971` for LSQ48.
+
+The targeted follow-up matrix (stronger fit, rotated-normalized residual,
+OPQ/AAQ/LSQ correction, and direct QJL score correction) is recorded in
+[`2026-09-24-thq-tq1-residual-correction-next-wave.md`](2026-09-24-thq-tq1-residual-correction-next-wave.md).
