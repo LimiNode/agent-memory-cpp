@@ -28,6 +28,16 @@ struct CascadeResult {
   std::uint64_t rerank_payload_pages;
   std::vector<Candidate> coarse;
 };
+struct LsqPayload {
+  std::uint32_t stages = 0;
+  std::uint32_t dimensions = 0;
+  std::vector<std::int32_t> ids;
+  std::vector<std::uint8_t> codes;
+  std::vector<float> codebooks;
+  std::vector<float> base;
+  std::vector<float> norms;
+  std::size_t serialized_bytes = 0;
+};
 bool better(const Candidate& a, const Candidate& b) {
   return a.score < b.score || (a.score == b.score && a.id < b.id);
 }
@@ -218,6 +228,160 @@ std::uint64_t namespaced_pages(const std::vector<std::int32_t>& ids,
       pages.insert(namespace_tag | page);
   }
   return pages.size();
+}
+
+double elapsed_ms(std::chrono::steady_clock::time_point begin,
+                  std::chrono::steady_clock::time_point end);
+
+LsqPayload read_lsq_payload(const std::string& path) {
+  const auto bytes = read<std::uint8_t>(path);
+  constexpr std::size_t kHeader = 20;
+  if (bytes.size() < kHeader || std::memcmp(bytes.data(), "AMLSQ01", 7) != 0)
+    throw std::runtime_error("invalid LSQ payload header");
+  auto u32 = [&](std::size_t offset) {
+    std::uint32_t value = 0;
+    std::memcpy(&value, bytes.data() + offset, sizeof(value));
+    return value;
+  };
+  const std::uint32_t stages = u32(8);
+  const std::uint32_t dimensions = u32(12);
+  const std::uint32_t count = u32(16);
+  constexpr std::uint32_t kCodebookSize = 256;
+  if (stages == 0 || dimensions != kDimension || count == 0)
+    throw std::runtime_error("invalid LSQ payload dimensions");
+  const std::size_t ids_bytes = static_cast<std::size_t>(count) * sizeof(std::int32_t);
+  const std::size_t codes_bytes = static_cast<std::size_t>(count) * stages;
+  const std::size_t books_bytes = static_cast<std::size_t>(stages) * kCodebookSize * dimensions * sizeof(float);
+  const std::size_t base_bytes = static_cast<std::size_t>(count) * dimensions * sizeof(float);
+  const std::size_t norm_bytes = static_cast<std::size_t>(count) * sizeof(float);
+  const std::size_t expected = kHeader + ids_bytes + codes_bytes + books_bytes + base_bytes + norm_bytes;
+  if (bytes.size() != expected) throw std::runtime_error("LSQ payload size differs");
+  LsqPayload out;
+  out.stages = stages;
+  out.dimensions = dimensions;
+  out.ids.resize(count);
+  out.codes.resize(static_cast<std::size_t>(count) * stages);
+  out.codebooks.resize(static_cast<std::size_t>(stages) * kCodebookSize * dimensions);
+  out.base.resize(static_cast<std::size_t>(count) * dimensions);
+  out.norms.resize(count);
+  std::size_t offset = kHeader;
+  auto copy = [&](void* dst, std::size_t size) {
+    std::memcpy(dst, bytes.data() + offset, size);
+    offset += size;
+  };
+  copy(out.ids.data(), ids_bytes);
+  copy(out.codes.data(), codes_bytes);
+  copy(out.codebooks.data(), books_bytes);
+  copy(out.base.data(), base_bytes);
+  copy(out.norms.data(), norm_bytes);
+  if (!std::is_sorted(out.ids.begin(), out.ids.end()))
+    throw std::runtime_error("LSQ payload IDs must be sorted");
+  out.serialized_bytes = bytes.size();
+  return out;
+}
+
+std::vector<DenseCandidate> exact_cosine_top10_lsq(
+    const LsqPayload& payload, const std::vector<std::int32_t>& ids,
+    const float* query) {
+  double query_norm = 0.0;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    query_norm += static_cast<double>(query[d]) * static_cast<double>(query[d]);
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<double>::min()));
+  std::vector<DenseCandidate> scored;
+  scored.reserve(ids.size());
+  for (const auto id : ids) {
+    const auto position = std::lower_bound(payload.ids.begin(), payload.ids.end(), id);
+    if (position == payload.ids.end() || *position != id)
+      throw std::runtime_error("LSQ payload is missing candidate document");
+    const auto row = static_cast<std::size_t>(position - payload.ids.begin());
+    const auto* code = payload.codes.data() + row * payload.stages;
+    double dot = 0.0;
+    const auto* base = payload.base.data() + row * kDimension;
+    for (std::size_t d = 0; d < kDimension; ++d)
+      dot += static_cast<double>(base[d]) * query[d];
+    for (std::size_t stage = 0; stage < payload.stages; ++stage) {
+      const auto* book = payload.codebooks.data() +
+          (stage * 256ULL + code[stage]) * kDimension;
+      for (std::size_t d = 0; d < kDimension; ++d)
+        dot += static_cast<double>(book[d]) * query[d];
+    }
+    const double denominator = std::max(static_cast<double>(payload.norms[row]) * query_norm,
+                                        std::numeric_limits<double>::min());
+    scored.push_back({dot / denominator, id});
+  }
+  const auto limit = std::min<std::size_t>(10, scored.size());
+  std::partial_sort(scored.begin(), scored.begin() + limit, scored.end(), better_dense_desc);
+  scored.resize(limit);
+  return scored;
+}
+
+int run_lsq_candidate_gate(int argc, char** argv) {
+  if (argc != 10)
+    throw std::runtime_error("usage: benchmark --lsq-candidate-gate thq thresholds model candidate_flat offsets query_file query_count payload_bytes");
+  const auto thq = read<std::uint8_t>(argv[2]);
+  const auto thresholds = read<float>(argv[3]);
+  const auto payload = read_lsq_payload(argv[4]);
+  const auto flat = read<std::uint8_t>(argv[5]);
+  const auto offsets = read<std::uint64_t>(argv[6]);
+  const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[8]));
+  const std::size_t payload_bytes = static_cast<std::size_t>(std::stoull(argv[9]));
+  if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
+      flat.size() % kCandidateRecordBytes != 0 || offsets.size() != query_count + 1 ||
+      offsets.front() != 0 || offsets.back() != flat.size() / kCandidateRecordBytes ||
+      payload_bytes != payload.stages + sizeof(float))
+    throw std::runtime_error("LSQ candidate cascade payload shape differs");
+  const auto queries = read<float>(argv[7]);
+  if (queries.size() != query_count * kDimension)
+    throw std::runtime_error("LSQ candidate query shape differs");
+  std::vector<std::int32_t> candidate_ids(flat.size() / kCandidateRecordBytes);
+  for (std::size_t i = 0; i < candidate_ids.size(); ++i)
+    std::memcpy(&candidate_ids[i], flat.data() + i * kCandidateRecordBytes, sizeof(std::int32_t));
+  for (const auto id : candidate_ids)
+    if (id < 0 || id >= static_cast<std::int32_t>(kDocuments))
+      throw std::runtime_error("LSQ candidate ID out of range");
+  for (std::size_t qi = 0; qi < query_count; ++qi) {
+    const auto begin = static_cast<std::size_t>(offsets[qi]);
+    const auto end = static_cast<std::size_t>(offsets[qi + 1]);
+    std::vector<std::int32_t> ids(candidate_ids.begin() + begin, candidate_ids.begin() + end);
+    if (ids.empty()) throw std::runtime_error("LSQ candidate query is empty");
+    const float* query = queries.data() + qi * kDimension;
+    const auto thq_begin = std::chrono::steady_clock::now();
+    const auto lut = build_lut(thresholds, query);
+    const auto coarse = thq_top128_candidates(thq, lut, ids);
+    const auto thq_end = std::chrono::steady_clock::now();
+    std::vector<std::int32_t> coarse_ids;
+    coarse_ids.reserve(coarse.size());
+    for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
+    const auto codec_begin = std::chrono::steady_clock::now();
+    const auto reranked = exact_cosine_top10_lsq(payload, coarse_ids, query);
+    const auto codec_end = std::chrono::steady_clock::now();
+    auto emit_ids = [](const auto& values) {
+      std::cout << '[';
+      for (std::size_t i = 0; i < values.size(); ++i) {
+        if (i) std::cout << ',';
+        std::cout << values[i].id;
+      }
+      std::cout << ']';
+    };
+    const auto thq_pages = namespaced_pages(ids, kThqBytes, 1ULL << 47);
+    const auto codec_pages = namespaced_pages(coarse_ids, payload_bytes, 1ULL << 48);
+    const auto model_pages = (payload.serialized_bytes + kPageBytes - 1) / kPageBytes;
+    std::cout << "{\"query\":" << qi << ",\"candidate_count\":" << ids.size()
+              << ",\"thq4_top128_ids\":";
+    emit_ids(coarse);
+    std::cout << ",\"top10_ids\":";
+    emit_ids(reranked);
+    std::cout << ",\"timing_ms\":{\"thq4_prefilter\":"
+              << elapsed_ms(thq_begin, thq_end) << ",\"codec_rerank\":"
+              << elapsed_ms(codec_begin, codec_end) << ",\"total\":"
+              << elapsed_ms(thq_begin, codec_end) << "},\"thq_pages\":"
+              << thq_pages << ",\"codec_pages\":" << codec_pages
+              << ",\"model_pages\":" << model_pages
+              << ",\"logical_payload_bytes\":" << payload_bytes << "}\n";
+  }
+  std::cerr << "{\"queries\":" << query_count
+            << ",\"timing_scope\":\"native THQ byte-LUT plus direct compressed LSQ cosine scorer; FP32 final norm sidecar included\"}\n";
+  return 0;
 }
 
 template <typename CodeT>
@@ -700,6 +864,10 @@ int main(int argc, char** argv) {
   }
   if (argc >= 2 && std::string(argv[1]) == "--dense-candidate-gate") {
     try { return run_dense_candidate_gate(argc, argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+  }
+  if (argc >= 2 && std::string(argv[1]) == "--lsq-candidate-gate") {
+    try { return run_lsq_candidate_gate(argc, argv); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
   }
   if (argc == 2 && std::string(argv[1]) == "--self-test") {
