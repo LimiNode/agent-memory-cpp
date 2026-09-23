@@ -130,10 +130,33 @@ stores a 48-bit sign code plus residual length and `ec_correction` (56 B/documen
 | TurboQuant+ faithful direct diagnostic | 56 | 0.657829 | 0.000000 | 0.000000 |
 | TurboQuant+ faithful asymmetric wide-query | 56 | 0.626174 | 0.000000 | 0.000000 |
 
-The direct row is a reconstruction diagnostic; the asymmetric row is the
-serving-relevant score. The independent audit reproduces all `304/304` top-10
-lists. This is not QJL or native SIMD evidence, and the bounded calibration
-policy must not be promoted to a wire-compatibility claim.
+The direct row is a reconstruction diagnostic. The earlier asymmetric row
+(`.626174`) was computed with an ideal float wide-query surrogate and omitted
+the residual composite-cosine denominator; it is therefore
+`SUPERSEDED_UNNORMALIZED_COMPOSITE_DOT`, not a serving-quality result.
+
+The corrective runner now has three explicit lanes: reconstructed cosine,
+ideal float TQ+ residual with the composite denominator, and a scalar port of
+Qdrant `QuerySimd<8,2>` (the `Query1bitWideSimd` path) with the same denominator.
+The scalar wide-query lane stores the Qdrant-style
+`scaling_factor = residual_l2 / quantized_centroid_norm`; the optional
+composite diagnostic adds a persisted FP32 `final_norm` (60 B/document).
+An executed replay on the currently available canonical documents, train,
+queries and qrels passed the independent audit:
+
+| arm | side bytes | mean qrels nDCG@10 | p05 | worst |
+|---|---:|---:|---:|---:|
+| TQ+ reconstructed cosine diagnostic | 56 | 0.657829 | 0.000000 | 0.000000 |
+| TQ+ ideal float composite | 60 | 0.657829 | 0.000000 | 0.000000 |
+| TQ+ exact-wide scalar composite | 60 | 0.654486 | 0.000000 | 0.000000 |
+
+This replay uses candidate stream SHA
+`df1d5504e3ffc2c0acd4af2e5bf573049e9464d4e1d4bff10fa96e4ac1c8dd1d`, which
+differs from the earlier frozen R4 stream. It is consequently a corrective
+protocol replay, not a paired replacement for the old candidate-local number.
+The independent audit reproduces all `456/456` top-10 lists. The result is
+now evidence for the algorithmic lane, not a claim of byte-identical Qdrant
+wire format or native SIMD serving.
 
 The selected IDs, THQ base and decoded 1/2-bit residual payloads are persisted;
 the independent TurboQuant audit replays all 304 top-10 lists with zero
