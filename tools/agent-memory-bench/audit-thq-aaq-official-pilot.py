@@ -40,16 +40,20 @@ def cosine(values: np.ndarray, query: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    for name in ("result", "runner", "artifact", "documents", "queries", "thq4-codes", "output"):
+    for name in ("result", "runner", "artifact", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes", "output"):
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     a = p.parse_args()
     result = json.loads(a.result.read_text(encoding="utf-8"))
-    if (result.get("family") != "thq_official_aaq_pca32_bounded_pilot_v1" or
+    if (result.get("family") not in ("thq_official_aaq_pca32_bounded_pilot_v1", "thq_official_aaq_full384_bounded_pilot_v1") or
             result.get("quality_status") != "BOUNDED_PILOT" or
             result.get("threshold_layout") != "D,3"):
         raise RuntimeError("unexpected AAQ pilot result")
     if result.get("runner_sha256") != sha256(a.runner) or result.get("artifact_sha256") != sha256(a.artifact):
         raise RuntimeError("AAQ runner/artifact binding differs")
+    expected_hashes = result.get("source_hashes", {})
+    source_paths = {name: getattr(a, name.replace("-", "_")) for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes")}
+    if any(expected_hashes.get(name) != sha256(path) for name, path in source_paths.items()):
+        raise RuntimeError("AAQ training/source input hash binding differs")
     docs = np.memmap(a.documents, mode="r", dtype="<f4", shape=(1_000_000, D))
     queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D))
     thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
@@ -73,11 +77,12 @@ def main() -> None:
         ids = selected[qi]
         indexes = np.asarray([position[int(doc)] for doc in ids], dtype=np.int64)
         rank = top_ids(cosine(reconstructed[indexes], queries[qi]), ids)
-        row = next(row for row in rows if row["query"] == qi and row["arm"] == "official_aaq_pca32_m8k16")
+        suffix = "pca32" if result["family"].endswith("pca32_bounded_pilot_v1") else "full384"
+        row = next(row for row in rows if row["query"] == qi and row["arm"] == f"official_aaq_{suffix}_m8k16")
         mismatches += int(rank.tolist() != row["top10_ids"])
     if mismatches:
         raise RuntimeError(f"{mismatches} independent AAQ top10 mismatches")
-    audit = {"schema_version": 1, "family": "thq_official_aaq_pca32_bounded_pilot_audit_v1", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "optimizer_replay": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "artifact_sha256": sha256(a.artifact), "documents_sha256": sha256(a.documents), "queries_sha256": sha256(a.queries), "thq4_codes_sha256": sha256(a.thq4_codes), "row_count": len(rows), "top10_mismatch_count": mismatches, "checks": ["runner/artifact/source binding", "independent packed THQ decode", "independent AAQ additive decode", "PCA32 inverse reconstruction", "152-query top10 replay"], "limitations": ["persisted decode audit; official optimizer is source-bound but not independently reimplemented", "bounded PCA32 M8K16 pilot"]}
+    audit = {"schema_version": 1, "family": "thq_official_aaq_bounded_pilot_audit_v2", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "optimizer_replay": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "artifact_sha256": sha256(a.artifact), "source_hashes": {name: sha256(path) for name, path in source_paths.items()}, "row_count": len(rows), "top10_mismatch_count": mismatches, "checks": ["runner/artifact/source binding", "all training and evaluation input hash binding", "independent packed THQ decode", "independent AAQ additive decode", "persisted component inverse reconstruction", "152-query top10 replay"], "limitations": ["persisted decode audit; official optimizer is source-bound but not independently reimplemented", "bounded M8K16 pilot"]}
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

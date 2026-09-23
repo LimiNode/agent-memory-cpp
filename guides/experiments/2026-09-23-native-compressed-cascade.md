@@ -22,6 +22,14 @@ benchmark therefore charges `stages + 4` bytes/document and reports separate
 THQ, codec, and total timings. It does not materialize a decoded FP32 vector in
 the timed region.
 
+Page accounting distinguishes the candidate-local packed layout from a
+hypothetical production full-corpus layout. `codec_pages` uses the packed row
+position in the persisted `selected_unique` table, not the document ID;
+`model_pages` counts only shared codebooks and THQ centroids; and
+`full_corpus_codec_pages` is reported separately for a row-aligned 1M-document
+layout. This prevents candidate-local IDs from being mistaken for production
+row offsets.
+
 The command is `--lsq-candidate-gate` in
 `native-full-corpus-codec-benchmark.cpp`; payloads are produced by
 `materialize-native-lsq-payload.py`. The scorer is candidate-local to the

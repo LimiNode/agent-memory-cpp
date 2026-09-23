@@ -230,6 +230,35 @@ std::uint64_t namespaced_pages(const std::vector<std::int32_t>& ids,
   return pages.size();
 }
 
+std::uint64_t packed_lsq_pages(const LsqPayload& payload,
+                               const std::vector<std::int32_t>& ids) {
+  std::unordered_set<std::uint64_t> pages;
+  for (const auto id : ids) {
+    const auto position = std::lower_bound(payload.ids.begin(), payload.ids.end(), id);
+    if (position == payload.ids.end() || *position != id)
+      throw std::runtime_error("LSQ payload is missing page-accounting candidate");
+    const auto row = static_cast<std::uint64_t>(position - payload.ids.begin());
+    const auto code_begin = row * payload.stages;
+    const auto code_end = code_begin + payload.stages - 1;
+    for (auto page = code_begin / kPageBytes; page <= code_end / kPageBytes; ++page)
+      pages.insert(page); // packed candidate-local code namespace
+    pages.insert((1ULL << 48) | ((row * sizeof(float)) / kPageBytes));
+  }
+  return pages.size();
+}
+
+std::uint64_t lsq_model_pages(const LsqPayload& payload) {
+  const auto model_bytes = payload.codebooks.size() * sizeof(float) +
+                           payload.centroids.size() * sizeof(float);
+  return (model_bytes + kPageBytes - 1) / kPageBytes;
+}
+
+std::uint64_t full_corpus_lsq_pages(const LsqPayload& payload) {
+  const auto code_pages = (kDocuments * payload.stages + kPageBytes - 1) / kPageBytes;
+  const auto norm_pages = (kDocuments * sizeof(float) + kPageBytes - 1) / kPageBytes;
+  return static_cast<std::uint64_t>(code_pages + norm_pages);
+}
+
 double elapsed_ms(std::chrono::steady_clock::time_point begin,
                   std::chrono::steady_clock::time_point end);
 
@@ -329,16 +358,26 @@ int run_lsq_candidate_gate(int argc, char** argv) {
   const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[8]));
   const std::size_t payload_bytes = static_cast<std::size_t>(std::stoull(argv[9]));
   if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
-      flat.size() % kCandidateRecordBytes != 0 || offsets.size() != query_count + 1 ||
-      offsets.front() != 0 || offsets.back() != flat.size() / kCandidateRecordBytes ||
+      offsets.size() != query_count + 1 || offsets.front() != 0 ||
       payload_bytes != payload.stages + sizeof(float))
     throw std::runtime_error("LSQ candidate cascade payload shape differs");
   const auto queries = read<float>(argv[7]);
   if (queries.size() != query_count * kDimension)
     throw std::runtime_error("LSQ candidate query shape differs");
-  std::vector<std::int32_t> candidate_ids(flat.size() / kCandidateRecordBytes);
-  for (std::size_t i = 0; i < candidate_ids.size(); ++i)
-    std::memcpy(&candidate_ids[i], flat.data() + i * kCandidateRecordBytes, sizeof(std::int32_t));
+  std::vector<std::int32_t> candidate_ids;
+  if (flat.size() % kCandidateRecordBytes == 0 &&
+      offsets.back() == flat.size() / kCandidateRecordBytes) {
+    candidate_ids.resize(flat.size() / kCandidateRecordBytes);
+    for (std::size_t i = 0; i < candidate_ids.size(); ++i)
+      std::memcpy(&candidate_ids[i], flat.data() + i * kCandidateRecordBytes,
+                  sizeof(std::int32_t));
+  } else if (flat.size() % sizeof(std::int32_t) == 0 &&
+             offsets.back() == flat.size() / sizeof(std::int32_t)) {
+    candidate_ids.resize(flat.size() / sizeof(std::int32_t));
+    std::memcpy(candidate_ids.data(), flat.data(), flat.size());
+  } else {
+    throw std::runtime_error("LSQ candidate IDs do not match offsets");
+  }
   for (const auto id : candidate_ids)
     if (id < 0 || id >= static_cast<std::int32_t>(kDocuments))
       throw std::runtime_error("LSQ candidate ID out of range");
@@ -367,8 +406,8 @@ int run_lsq_candidate_gate(int argc, char** argv) {
       std::cout << ']';
     };
     const auto thq_pages = namespaced_pages(ids, kThqBytes, 1ULL << 47);
-    const auto codec_pages = namespaced_pages(coarse_ids, payload_bytes, 1ULL << 48);
-    const auto model_pages = (payload.serialized_bytes + kPageBytes - 1) / kPageBytes;
+    const auto codec_pages = packed_lsq_pages(payload, coarse_ids);
+    const auto model_pages = lsq_model_pages(payload);
     std::cout << "{\"query\":" << qi << ",\"candidate_count\":" << ids.size()
               << ",\"thq4_top128_ids\":";
     emit_ids(coarse);
@@ -380,6 +419,8 @@ int run_lsq_candidate_gate(int argc, char** argv) {
               << elapsed_ms(thq_begin, codec_end) << "},\"thq_pages\":"
               << thq_pages << ",\"codec_pages\":" << codec_pages
               << ",\"model_pages\":" << model_pages
+              << ",\"full_corpus_codec_pages\":" << full_corpus_lsq_pages(payload)
+              << ",\"codec_layout\":\"candidate_local_packed_rows\""
               << ",\"logical_payload_bytes\":" << payload_bytes << "}\n";
   }
   std::cerr << "{\"queries\":" << query_count
@@ -914,6 +955,15 @@ int main(int argc, char** argv) {
         namespaced_pages({42}, kThqBytes, 0) != 2 ||
         namespaced_pages({0, 42}, kThqBytes, 0) != 2)
       throw std::runtime_error("cross-page record accounting differs");
+    LsqPayload page_payload;
+    page_payload.stages = 32;
+    page_payload.ids = {100, 900000};
+    page_payload.codebooks.resize(page_payload.stages * 256ULL * kDimension);
+    page_payload.centroids.resize(4 * kDimension);
+    if (packed_lsq_pages(page_payload, {100, 900000}) != 2 ||
+        lsq_model_pages(page_payload) != 3074 ||
+        full_corpus_lsq_pages(page_payload) != 8790)
+      throw std::runtime_error("packed LSQ page accounting differs");
     std::cout << "native-full-corpus-codec-benchmark self-test PASS\n";
     return 0;
   }

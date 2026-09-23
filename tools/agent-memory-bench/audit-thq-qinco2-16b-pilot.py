@@ -38,7 +38,7 @@ def top_ids(scores: np.ndarray, ids: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    for name in ("qinco-root", "result", "runner", "model-artifact", "codes-artifact", "queries", "thq4-codes", "output"):
+    for name in ("qinco-root", "result", "runner", "model-artifact", "codes-artifact", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes", "output"):
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     a = p.parse_args()
     result = json.loads(a.result.read_text(encoding="utf-8"))
@@ -50,6 +50,10 @@ def main() -> None:
         raise RuntimeError("unexpected QINCo2 pilot/source revision")
     if result.get("runner_sha256") != sha256(a.runner) or result.get("model_artifact_sha256") != sha256(a.model_artifact) or result.get("codes_artifact_sha256") != sha256(a.codes_artifact):
         raise RuntimeError("QINCo2 runner/artifact binding differs")
+    source_paths = {name: getattr(a, name.replace("-", "_")) for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes")}
+    expected_hashes = result.get("source_hashes", {})
+    if any(expected_hashes.get(name) != sha256(path) for name, path in source_paths.items()):
+        raise RuntimeError("QINCo2 training/source input hash binding differs")
     sys.path.insert(0, str(root))
     import torch
     from qinco.model.qinco_base import QINCo
@@ -84,7 +88,7 @@ def main() -> None:
         mismatches += int(rank.tolist() != row["top10_ids"])
     if mismatches:
         raise RuntimeError(f"{mismatches} QINCo2 model/code replay mismatches")
-    audit = {"schema_version": 1, "family": "thq_qinco2_16b_bounded_pilot_audit_v1", "status": "PASS", "source_binding": True, "official_model_decode_replay": True, "independent_decoder": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "model_artifact_sha256": sha256(a.model_artifact), "codes_artifact_sha256": sha256(a.codes_artifact), "queries_sha256": sha256(a.queries), "thq4_codes_sha256": sha256(a.thq4_codes), "row_count": len(rows), "top10_mismatch_count": mismatches, "checks": ["upstream revision binding", "runner/model/code artifact binding", "official QINCo2 model reload", "persisted 16-byte code decode", "152-query top10 replay"], "limitations": ["source-bound official decoder replay, not an independent QINCo2 reimplementation", "bounded undertrained CPU pilot"]}
+    audit = {"schema_version": 1, "family": "thq_qinco2_16b_bounded_pilot_audit_v2", "status": "PASS", "source_binding": True, "official_model_decode_replay": True, "independent_decoder": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "model_artifact_sha256": sha256(a.model_artifact), "codes_artifact_sha256": sha256(a.codes_artifact), "source_hashes": {name: sha256(path) for name, path in source_paths.items()}, "row_count": len(rows), "top10_mismatch_count": mismatches, "checks": ["upstream revision binding", "runner/model/code artifact binding", "all training and evaluation input hash binding", "official QINCo2 model reload", "persisted 16-byte code decode", "152-query top10 replay"], "limitations": ["source-bound official decoder replay, not an independent QINCo2 reimplementation", "bounded undertrained CPU pilot"]}
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

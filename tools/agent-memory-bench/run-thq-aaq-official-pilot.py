@@ -18,7 +18,7 @@ from types import SimpleNamespace
 
 import numpy as np
 
-D, PROJECTED_D, THQ_BYTES, QUERY_COUNT, TOP = 384, 32, 96, 152, 128
+D, DEFAULT_PROJECTED_D, THQ_BYTES, QUERY_COUNT, TOP = 384, 32, 96, 152, 128
 M, K = 8, 16
 
 
@@ -68,9 +68,11 @@ def main() -> None:
     p.add_argument("--coordinate-passes", type=int, default=3)
     p.add_argument("--threshold", type=float, default=0.2)
     p.add_argument("--pool-size", type=int, default=4)
+    p.add_argument("--projected-dim", type=int, choices=(32, 384), default=DEFAULT_PROJECTED_D)
     a = p.parse_args()
     if a.train_rows < M * K or a.fit_iters < 1 or a.coordinate_passes < 1 or not 0.0 < a.threshold < 1.0:
         p.error("invalid bounded AAQ configuration")
+    projected_d = a.projected_dim
 
     root = a.aaq_root.resolve()
     revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
@@ -101,14 +103,14 @@ def main() -> None:
     train_residual = train_values - train_base
     residual_mean = train_residual.mean(axis=0, dtype=np.float64).astype(np.float32)
     _, _, vt = np.linalg.svd(np.asarray(train_residual - residual_mean, dtype=np.float32), full_matrices=False)
-    components = np.asarray(vt[:PROJECTED_D], dtype=np.float32)
+    components = np.asarray(vt[:projected_d], dtype=np.float32)
     projected_train = np.asarray((train_residual - residual_mean) @ components.T, dtype=np.float64)
     projected_norms = np.linalg.norm(projected_train, axis=1)
     normalized_train = projected_train / np.maximum(projected_norms[:, None], 1e-30)
 
     parameter = SimpleNamespace(M=M, K=K, poolSize=a.pool_size, encodeidea=CoordinateDes, N=16, nor=1, T=a.threshold, iter_num=a.coordinate_passes)
-    parameter.D = PROJECTED_D
-    parameter.eta = (PROJECTED_D - 1) * a.threshold**2 / (1.0 - a.threshold**2)
+    parameter.D = projected_d
+    parameter.eta = (projected_d - 1) * a.threshold**2 / (1.0 - a.threshold**2)
     codebook = codebook_init(normalized_train, M, K)
     trainer = ScannAQ(normalized_train, parameter)
     codebook, _, _ = trainer.codebook_train(normalized_train, codebook, parameter, maxiter=a.fit_iters)
@@ -130,13 +132,14 @@ def main() -> None:
     final_norms = np.linalg.norm(reconstructed, axis=1).astype(np.float32)
     position = {int(doc): index for index, doc in enumerate(unique_ids)}
 
+    arm_suffix = "pca32" if projected_d == 32 else "full384"
     rows = []
     for qi, query in enumerate(np.asarray(queries, dtype=np.float32)):
         ids = selected[qi]
         indexes = np.asarray([position[int(doc)] for doc in ids], dtype=np.int64)
         for arm, values, side_bytes in (
-            ("pca32_projection_upper", projected_upper[indexes], 0),
-            ("official_aaq_pca32_m8k16", reconstructed[indexes], 12),
+            (f"{arm_suffix}_projection_upper", projected_upper[indexes], 0),
+            (f"official_aaq_{arm_suffix}_m8k16", reconstructed[indexes], 12),
         ):
             rank = top_ids(cosine(values, query), ids)
             rows.append({"query": qi, "arm": arm, "top10_ids": rank.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(rank, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], rank).sum() / 10.0), "side_payload_bytes": side_bytes, "cascade_total_bytes": THQ_BYTES + side_bytes})
@@ -149,7 +152,13 @@ def main() -> None:
         summaries[arm] = {"mean_qrels_ndcg10": float(np.mean([row["qrels_ndcg10"] for row in arm_rows])), "p05_qrels_ndcg10": float(np.percentile([row["qrels_ndcg10"] for row in arm_rows], 5)), "worst_qrels_ndcg10": float(np.min([row["qrels_ndcg10"] for row in arm_rows])), "mean_teacher_overlap": float(np.mean([row["teacher_overlap"] for row in arm_rows])), "side_payload_bytes": arm_rows[0]["side_payload_bytes"], "cascade_total_bytes": arm_rows[0]["cascade_total_bytes"]}
     global_model_bytes = int(persisted_codebook.nbytes + centroids.nbytes + residual_mean.nbytes + components.nbytes)
     sources = {name: getattr(a, name.replace("-", "_")) for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes")}
-    result = {"schema_version": 1, "family": "thq_official_aaq_pca32_bounded_pilot_v1", "status": "EXECUTED", "source_replay": True, "quality_status": "BOUNDED_PILOT", "metric": "cosine", "upstream_repository": "https://github.com/jzhang-0/Anisotropic-Additive-Quantization", "upstream_revision": revision, "upstream_license_status": "NO_LICENSE_FILE_OBSERVED", "official_source_usage": ["ScannAQ.codebook_train", "encoding.CoordinateDes", "encoding.multiprocessing_index", "scannAQ_function.codebook_init"], "config": {"train_rows": a.train_rows, "projected_dimensions": PROJECTED_D, "M": M, "K": K, "code_bytes": 4, "residual_scale_bytes": 4, "final_norm_bytes": 4, "fit_iters": a.fit_iters, "coordinate_passes": a.coordinate_passes, "threshold": a.threshold, "eta": parameter.eta, "pool_size": a.pool_size}, "payload_contract": {"final_norm_included": True, "side_payload_bytes": 12, "fields": ["4-byte M8K16 code", "FP32 projected residual scale", "FP32 final norm"]}, "candidate_stream_hash": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79", "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_sha256": sha256(a.artifact), "global_model_bytes": global_model_bytes, "summaries": summaries, "rows": rows, "limitations": ["official AAQ mechanics but bounded PCA32 residual pilot, not full-dimensional AAQ", "4-byte M8K16 code follows the upstream example and is not a 32/48-byte capacity comparison", "first canonical training rows only; no qrels tuning", "FP32 residual scale and final norm charged in 12-byte side payload", "external unlicensed checkout is source-pinned and no upstream code is vendored", "candidate-local quality only; no native timing"]}
+    family_suffix = "pca32" if projected_d == 32 else "full384"
+    limitations = ["4-byte M8K16 code follows the upstream example and is not a 32/48-byte capacity comparison", "first canonical training rows only; no qrels tuning", "FP32 residual scale and final norm charged in 12-byte side payload", "external unlicensed checkout is source-pinned and no upstream code is vendored", "candidate-local quality only; no native timing"]
+    if projected_d == 32:
+        limitations.insert(0, "official AAQ mechanics but bounded PCA32 residual pilot, not full-dimensional AAQ")
+    else:
+        limitations.insert(0, "official AAQ mechanics with a bounded full-dimensional 384D residual pilot; not a converged capacity result")
+    result = {"schema_version": 1, "family": f"thq_official_aaq_{family_suffix}_bounded_pilot_v1", "status": "EXECUTED", "source_replay": True, "quality_status": "BOUNDED_PILOT", "metric": "cosine", "upstream_repository": "https://github.com/jzhang-0/Anisotropic-Additive-Quantization", "upstream_revision": revision, "upstream_license_status": "NO_LICENSE_FILE_OBSERVED", "official_source_usage": ["ScannAQ.codebook_train", "encoding.CoordinateDes", "encoding.multiprocessing_index", "scannAQ_function.codebook_init"], "config": {"train_rows": a.train_rows, "projected_dimensions": projected_d, "M": M, "K": K, "code_bytes": 4, "residual_scale_bytes": 4, "final_norm_bytes": 4, "fit_iters": a.fit_iters, "coordinate_passes": a.coordinate_passes, "threshold": a.threshold, "eta": parameter.eta, "pool_size": a.pool_size}, "payload_contract": {"final_norm_included": True, "side_payload_bytes": 12, "fields": ["4-byte M8K16 code", "FP32 projected residual scale", "FP32 final norm"]}, "candidate_stream_hash": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79", "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_sha256": sha256(a.artifact), "global_model_bytes": global_model_bytes, "summaries": summaries, "rows": rows, "limitations": limitations}
     result["threshold_layout"] = "D,3"
     a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

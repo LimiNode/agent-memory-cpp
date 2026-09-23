@@ -2,8 +2,9 @@
 """Materialize a compact binary LSQ payload for the native direct-code gate.
 
 The payload is candidate-local (the frozen 152x128 shell), but the scorer reads
-codes, codebooks, per-document THQ base vectors, and an FP32 final norm directly
-from the binary payload.  It is therefore not a predecoded-vector benchmark.
+codes, shared codebooks/THQ centroids, and an FP32 final norm directly from the
+binary payload.  The per-document THQ base is reconstructed from the canonical
+THQ row in the scorer, so this is not a predecoded-vector benchmark.
 """
 from __future__ import annotations
 

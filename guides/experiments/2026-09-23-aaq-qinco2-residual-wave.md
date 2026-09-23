@@ -7,8 +7,9 @@ shell. Executed arms below are bound to candidate stream SHA
 `d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79`.
 
 The first AAQ/QINCo2 artifacts from this wave used an invalid `(3,D)` threshold
-view and are superseded. The corrected rerun uses the canonical `(D,3)` layout;
-the old `.614895` AAQ and `.604745` QINCo2 numbers must not be used.
+view and are superseded. The corrected rerun uses the canonical `(D,3)` layout.
+The superseded values are retained only in the receipt's explicit
+`superseded_results` section and are not active evidence.
 
 ## Query-local LSQ diagnostics
 
@@ -47,12 +48,20 @@ The first-author repository
 because no explicit license file was observed. The runner invokes its official
 `ScannAQ`, `CoordinateDes`, and score-aware codebook update. The bounded PCA32
 residual pilot uses M=8, K=16, 4096 training rows and one official fit
-iteration. It obtains `.614895` nDCG with 12 B side (4-byte code, FP32 scale,
-FP32 final norm); the PCA reconstruction upper control is `.624730`. Independent
-persisted decode audit: PASS, 304/304 top-10. This is a mechanics/provenance
-gate, not a full-dimensional AAQ32/48 capacity result. After correcting the
-threshold layout, the official arm is `.649382` and the PCA32 projection upper
-control is `.654714` at the same 108 B / 96 B totals.
+iteration. After correcting the threshold layout, the official PCA32 arm is
+`.649382` and the PCA32 projection upper control is `.654714` at the same
+108 B / 96 B totals. Independent persisted decode audit: PASS, 304/304
+top-10. This is a mechanics/provenance gate, not a full-dimensional AAQ32/48
+capacity result.
+
+The requested full-dimensional control uses the same bounded protocol with
+`D=384`, `M=8`, `K=16`, 4096 training rows, one fit iteration, and three
+coordinate passes. It obtains `.529736` nDCG at 108 B/doc, while the direct
+full-dimensional reconstruction upper control is `.654201` at 96 B/doc; the
+independent decode audit is PASS. The large gap to the upper control is a
+bounded-training/4-byte-capacity negative diagnostic, not a converged family
+claim. It removes the PCA32 bottleneck as an explanation for the earlier
+result.
 
 ## QINCo2 source and 16-byte pilot
 
@@ -63,12 +72,10 @@ determinism checks. `quality_status` remains `NOT_EXECUTED` for the smoke.
 
 A separate bounded CPU fit uses the official model with 16 stages, K=256,
 A=8, B=4, 4096 training rows, 5 epochs and 640 optimizer steps. Final loss
-falls from 27.9266 to 10.2852; mean nDCG is `.604745` at 20 B side including
-FP32 final norm, with a 14.76 MB global model. The persisted model/code replay
-is independently audited (`PASS`, 152/152). This is explicitly an
-undertrained pilot, not a family-level negative result. With canonical
-thresholds the corrected mean nDCG is `.640309` at 116 B/doc; the model/code
-replay remains independently audited (`PASS`, 152/152).
+falls from 27.9266 to 10.2852; the corrected canonical-threshold mean nDCG is
+`.640309` at 116 B/doc, with a 14.76 MB global model. The persisted model/code
+replay is independently audited (`PASS`, 152/152). This is explicitly an
+undertrained pilot, not a family-level negative result.
 
 ## Residual-hybrid matrix
 
@@ -85,14 +92,16 @@ their payload already includes one. The regenerated matrix has
 | THQ + Faiss LSQ32 + FP32 norm | 132 | 0.657264 | source-bound, audited; 12.58 MB model |
 | THQ + Faiss LSQ48 + FP32 norm | 148 | 0.661515 | source-bound, audited; 18.87 MB model |
 | THQ + TQ+ exact-wide composite | 156 | 0.654486 | corrected canonical replay |
-| THQ + official AAQ PCA32 bounded | 108 | 0.614895 | source-pinned bounded pilot |
-| THQ + QINCo2 16B bounded | 116 | 0.604745 | source-bound undertrained pilot |
+| THQ + official AAQ PCA32 bounded | 108 | 0.649382 | source-pinned bounded pilot |
+| THQ + official AAQ full384 bounded | 108 | 0.529736 | source-pinned bounded pilot; negative capacity diagnostic |
+| THQ + QINCo2 16B bounded | 116 | 0.640309 | source-bound undertrained pilot |
 
 ## Provenance and next gate
 
 Large generated arrays remain outside Git, while committed runners, receipts,
 source hashes, and independent audits bind all evidence. Full-dimensional
-AAQ32/48 and converged QINCo2 remain open; no production codec is selected.
+AAQ32/48 remains a bounded negative diagnostic rather than a converged capacity
+result; converged QINCo2 remains open. No production codec is selected.
 The next gate is the compressed-native complete cascade on the canonical
 stream, using real codes/layouts, direct scoring, FP32 norm accounting,
 native p50/p95/p99, cold/warm behavior, pages, and independent top-10 parity.
