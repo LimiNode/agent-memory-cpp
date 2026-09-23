@@ -1,7 +1,7 @@
 # Native compressed complete-cascade gate
 
 Date: 2026-09-23
-Status: `PLANNED` / direct LSQ scorer implemented, replay pending
+Status: `EXECUTED` for direct LSQ32/LSQ48; broader codec matrix remains pending
 
 This gate is the follow-up to the bounded AAQ/LSQ/QINCo2 wave. Its purpose is
 to measure the serving path over compressed payloads rather than persisted
@@ -35,10 +35,11 @@ The command is `--lsq-candidate-gate` in
 `materialize-native-lsq-payload.py`. The scorer is candidate-local to the
 frozen 152-query/128-document shell, matching the source-bound quality gates.
 
-Execution remains pending until the native build is configured and the
-canonical source paths are supplied. The final gate must additionally record
-Python-to-native top-10 parity, p50/p95/p99, cold/warm behavior, THQ/codec/model
-pages, checksums, and an independent audit. Existing predecoded timings must
-not be substituted for this result.
+The LSQ32/LSQ48 replay is recorded in
+`2026-09-23-native-compressed-lsq-result.md` with source-bound checksums,
+Python-to-native top-10 parity, p50/p95/p99, two process runs, THQ/codec/model
+pages, and an independent audit. Existing predecoded timings were not used as
+a substitute. RSLM/QINCo2/AAQ compressed payloads still require separate
+materializers before they can enter this native matrix.
 
 No production codec selection is made by this planned gate.
