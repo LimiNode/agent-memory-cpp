@@ -70,7 +70,7 @@ def main() -> None:
         for arm, summary in summaries.items():
             if not isinstance(summary, dict) or "mean_qrels_ndcg10" not in summary:
                 continue
-            rows.append({"arm": arm, "mean_qrels_ndcg10": summary["mean_qrels_ndcg10"], "p05_qrels_ndcg10": summary.get("p05_qrels_ndcg10"), "worst_qrels_ndcg10": summary.get("worst_qrels_ndcg10"), "source_replay": payload.get("source_replay"), "candidate_flat_sha256": stream_hash, **storage(payload, arm, summary)})
+            rows.append({"arm": arm, "mean_qrels_ndcg10": summary["mean_qrels_ndcg10"], "p05_qrels_ndcg10": summary.get("p05_qrels_ndcg10"), "worst_qrels_ndcg10": summary.get("worst_qrels_ndcg10"), "source_replay": payload.get("source_replay"), "candidate_stream_hash": stream_hash, "candidate_flat_sha256": stream_hash, **storage(payload, arm, summary)})
         entries.append({"label": label, "path": str(path), "family": payload.get("family"), "status": payload.get("status"), "metric": payload.get("metric"), "rows": rows})
     all_rows = [row for entry in entries for row in entry["rows"]]
     all_hashes_present = bool(all_rows) and all(row.get("candidate_flat_sha256") for row in all_rows)

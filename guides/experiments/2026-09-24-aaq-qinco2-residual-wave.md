@@ -1,6 +1,6 @@
 # AAQ / score-aware LSQ / QINCo2 / residual-hybrid wave
 
-Date: 2026-09-24
+Date: 2026-09-23
 
 This wave uses the recovered canonical E5/R4 bundle and frozen THQ top-128
 shell. Executed arms below are bound to candidate stream SHA
@@ -65,7 +65,8 @@ undertrained pilot, not a family-level negative result.
 ## Residual-hybrid matrix
 
 The matrix writer now fails closed: `paired_candidate_stream` is true only
-when every row carries the same candidate hash. It reports normalized
+when every row carries the same candidate hash. Each emitted row also carries
+the exact `candidate_stream_hash` used for the pairing decision. It reports normalized
 `side_bytes`, `thq_plus_side_bytes`, `global_model_bytes`, and
 `full_1m_footprint_bytes`; direct cosine arms are charged a FP32 norm unless
 their payload already includes one. The regenerated matrix has
