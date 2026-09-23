@@ -1,8 +1,33 @@
 # THQ4 → canonical TQ1 residual-correction next wave
 
 Date: 2026-09-24
-Status: `PLANNED` — source-bound execution pending restoration of the canonical
-1M bundle.
+Status: `SOURCE_AVAILABLE; EXECUTION_PENDING` — the canonical source bundle has
+been recovered locally and validated read-only.  The quality claims below are
+still pending fresh source-bound replay; no old bounded result is promoted by
+this status change.
+
+## Recovered source binding
+
+The persisted E5 bundle is currently available at the legacy payload location
+`E:\_repoz\agent-memory-cpp\tmp\native-ann-confirmation-v1\de-1m\e5`.
+It is the exact materialization described by `manifest.json`:
+
+| input | shape/count | SHA-256 |
+|---|---:|---|
+| evaluation documents | `1,000,000 × 384`, float32 little-endian | `d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007` |
+| evaluation queries | `305 × 384`, float32 little-endian | `fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2` |
+| train vectors | `25,000 × 384`, float32 little-endian | `1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80` |
+| evaluation qrels | `3,144` rows | `5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071` |
+
+The read-only validator is
+`tools/agent-memory-bench/validate-canonical-de1m-source.py`; it checks the
+manifest, exact byte sizes, normalization contract, and every source SHA.
+A junction is now present at
+`E:\_repoz\agent-memory-workspaces\canonical-de1m-source\payload` and has
+passed the same validator.  It avoids a second 1.5-GB copy while the legacy
+materialization is audited.  Do not copy or mutate the payload implicitly from
+a research runner; the legacy target remains the source of truth until a
+future byte-for-byte migration is explicitly verified.
 
 The bounded PQ4/PQ8 replay does not justify the broad statement “residual
 correction fails”. It only establishes that a raw-space PQ trained on 1,024

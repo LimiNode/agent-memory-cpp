@@ -23,3 +23,15 @@ The current residual-correction wave uses the existing checkout
 should use a child checkout under `agent-memory-workspaces` rather than adding
 another top-level clone under `E:\_repoz`; migration of this checkout must not
 delete unreviewed commits or payloads.
+
+The recovered canonical DE-1M payload is also transitional for now. Its current
+index row is:
+
+| experiment | branch | checkout | payload | state |
+|---|---|---|---|---|
+| `canonical-de1m-source` | n/a (payload-only) | `E:\_repoz\agent-memory-workspaces\canonical-de1m-source` | `payload\` junction to legacy `E:\_repoz\agent-memory-cpp\tmp\native-ann-confirmation-v1\de-1m\e5` | recovered; junction active |
+
+The payload is bound by the E5 `manifest.json` and by the hashes recorded in
+`2026-09-24-thq-tq1-residual-correction-next-wave.md`. A runner must accept an
+explicit payload root and must not search arbitrary clones or silently copy
+large files.

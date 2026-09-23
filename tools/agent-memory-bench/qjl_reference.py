@@ -192,6 +192,44 @@ def self_test() -> None:
     mc_se = np.std(mc_values, axis=0, ddof=1) / math.sqrt(len(mc_values))
     if np.any(np.abs(mc_mean - mc_exact) > 4.0 * mc_se + 1e-4):
         raise RuntimeError("QJL Gaussian scaling Monte Carlo self-test failed")
+
+    # Edge cases are part of the storage/scoring contract, not just numerical
+    # smoke tests.  A zero residual must remain an exact zero correction,
+    # while tiny finite residuals must not trigger a false norm rejection.
+    edge_projection = make_projection(32, 384, 20261128, "gaussian")
+    zero = np.zeros((1, 384), dtype=np.float32)
+    zero_codes, zero_norms = encode(zero, edge_projection)
+    zero_score, zero_se = estimate_dot_reference_with_uncertainty(
+        query, zero_codes, zero_norms, edge_projection
+    )
+    if not np.array_equal(zero_score, np.zeros(1, dtype=np.float32)):
+        raise RuntimeError("QJL zero-residual score self-test failed")
+    if not np.array_equal(zero_se, np.zeros(1, dtype=np.float32)):
+        raise RuntimeError("QJL zero-residual uncertainty self-test failed")
+
+    parallel = np.zeros((1, 384), dtype=np.float32)
+    parallel[0] = query
+    parallel_codes, parallel_norms = encode(parallel, edge_projection)
+    parallel_score = estimate_dot_reference(query, parallel_codes, parallel_norms, edge_projection)
+    if not np.isfinite(parallel_score).all():
+        raise RuntimeError("QJL parallel-vector self-test failed")
+    tiny = np.full((1, 384), np.float32(1e-20))
+    tiny_codes, tiny_norms = encode(tiny, edge_projection)
+    if not np.isfinite(estimate_dot_reference(query, tiny_codes, tiny_norms, edge_projection)).all():
+        raise RuntimeError("QJL tiny-residual self-test failed")
+
+    try:
+        encode(np.full((1, 384), np.nan, dtype=np.float32), edge_projection)
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError("QJL NaN rejection self-test failed")
+    try:
+        ProjectionSpec(np.full((32, 384), np.inf, dtype=np.float32), "gaussian", 1)
+    except ValueError:
+        pass
+    else:
+        raise RuntimeError("QJL non-finite projection rejection self-test failed")
     print("QJL residual score reference self-test: PASS (Gaussian reference + Rademacher control)")
 
 
