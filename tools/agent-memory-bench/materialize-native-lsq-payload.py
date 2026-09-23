@@ -66,7 +66,7 @@ def main() -> None:
         payload.extend(selected_unique.astype("<i4").tobytes())
         payload.extend(persisted_codes.tobytes())
         payload.extend(books.astype("<f4").tobytes())
-        payload.extend(base.astype("<f4").tobytes())
+        payload.extend(centroids.astype("<f4").tobytes())
         payload.extend(norms.astype("<f4").tobytes())
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_bytes(payload)

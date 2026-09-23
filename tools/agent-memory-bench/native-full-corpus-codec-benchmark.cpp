@@ -34,7 +34,7 @@ struct LsqPayload {
   std::vector<std::int32_t> ids;
   std::vector<std::uint8_t> codes;
   std::vector<float> codebooks;
-  std::vector<float> base;
+  std::vector<float> centroids;
   std::vector<float> norms;
   std::size_t serialized_bytes = 0;
 };
@@ -252,9 +252,9 @@ LsqPayload read_lsq_payload(const std::string& path) {
   const std::size_t ids_bytes = static_cast<std::size_t>(count) * sizeof(std::int32_t);
   const std::size_t codes_bytes = static_cast<std::size_t>(count) * stages;
   const std::size_t books_bytes = static_cast<std::size_t>(stages) * kCodebookSize * dimensions * sizeof(float);
-  const std::size_t base_bytes = static_cast<std::size_t>(count) * dimensions * sizeof(float);
+  const std::size_t centroid_bytes = static_cast<std::size_t>(4) * dimensions * sizeof(float);
   const std::size_t norm_bytes = static_cast<std::size_t>(count) * sizeof(float);
-  const std::size_t expected = kHeader + ids_bytes + codes_bytes + books_bytes + base_bytes + norm_bytes;
+  const std::size_t expected = kHeader + ids_bytes + codes_bytes + books_bytes + centroid_bytes + norm_bytes;
   if (bytes.size() != expected) throw std::runtime_error("LSQ payload size differs");
   LsqPayload out;
   out.stages = stages;
@@ -262,7 +262,7 @@ LsqPayload read_lsq_payload(const std::string& path) {
   out.ids.resize(count);
   out.codes.resize(static_cast<std::size_t>(count) * stages);
   out.codebooks.resize(static_cast<std::size_t>(stages) * kCodebookSize * dimensions);
-  out.base.resize(static_cast<std::size_t>(count) * dimensions);
+  out.centroids.resize(static_cast<std::size_t>(4) * dimensions);
   out.norms.resize(count);
   std::size_t offset = kHeader;
   auto copy = [&](void* dst, std::size_t size) {
@@ -272,7 +272,7 @@ LsqPayload read_lsq_payload(const std::string& path) {
   copy(out.ids.data(), ids_bytes);
   copy(out.codes.data(), codes_bytes);
   copy(out.codebooks.data(), books_bytes);
-  copy(out.base.data(), base_bytes);
+  copy(out.centroids.data(), centroid_bytes);
   copy(out.norms.data(), norm_bytes);
   if (!std::is_sorted(out.ids.begin(), out.ids.end()))
     throw std::runtime_error("LSQ payload IDs must be sorted");
@@ -281,7 +281,8 @@ LsqPayload read_lsq_payload(const std::string& path) {
 }
 
 std::vector<DenseCandidate> exact_cosine_top10_lsq(
-    const LsqPayload& payload, const std::vector<std::int32_t>& ids,
+    const LsqPayload& payload, const std::vector<std::uint8_t>& thq,
+    const std::vector<std::int32_t>& ids,
     const float* query) {
   double query_norm = 0.0;
   for (std::size_t d = 0; d < kDimension; ++d)
@@ -296,9 +297,11 @@ std::vector<DenseCandidate> exact_cosine_top10_lsq(
     const auto row = static_cast<std::size_t>(position - payload.ids.begin());
     const auto* code = payload.codes.data() + row * payload.stages;
     double dot = 0.0;
-    const auto* base = payload.base.data() + row * kDimension;
-    for (std::size_t d = 0; d < kDimension; ++d)
-      dot += static_cast<double>(base[d]) * query[d];
+    const auto* thq_row = thq.data() + static_cast<std::size_t>(id) * kThqBytes;
+    for (std::size_t d = 0; d < kDimension; ++d) {
+      const auto level = (thq_row[d / 4] >> ((d % 4) * 2)) & 3U;
+      dot += static_cast<double>(payload.centroids[d * 4 + level]) * query[d];
+    }
     for (std::size_t stage = 0; stage < payload.stages; ++stage) {
       const auto* book = payload.codebooks.data() +
           (stage * 256ULL + code[stage]) * kDimension;
@@ -353,7 +356,7 @@ int run_lsq_candidate_gate(int argc, char** argv) {
     coarse_ids.reserve(coarse.size());
     for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
     const auto codec_begin = std::chrono::steady_clock::now();
-    const auto reranked = exact_cosine_top10_lsq(payload, coarse_ids, query);
+    const auto reranked = exact_cosine_top10_lsq(payload, thq, coarse_ids, query);
     const auto codec_end = std::chrono::steady_clock::now();
     auto emit_ids = [](const auto& values) {
       std::cout << '[';

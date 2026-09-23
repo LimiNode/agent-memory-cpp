@@ -15,8 +15,9 @@ frozen R4 candidate stream
 ```
 
 The first implemented arm is Faiss LSQ32/LSQ48. The binary payload contains
-sorted candidate IDs, one-byte stage codes, the fitted codebooks, per-document
-THQ base vectors, and an FP32 reconstructed-vector norm sidecar. The native
+sorted candidate IDs, one-byte stage codes, the fitted codebooks, shared THQ
+centroids (the per-document base is reconstructed from the already-scanned THQ
+row), and an FP32 reconstructed-vector norm sidecar. The native
 benchmark therefore charges `stages + 4` bytes/document and reports separate
 THQ, codec, and total timings. It does not materialize a decoded FP32 vector in
 the timed region.
