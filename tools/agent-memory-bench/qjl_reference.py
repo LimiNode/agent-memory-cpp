@@ -1,51 +1,69 @@
 #!/usr/bin/env python3
-"""Small source-independent QJL residual score-correction reference.
+"""Source-independent QJL residual score-correction reference.
 
-The database stores a packed sign sketch of a residual and its norm.  A float32
-query stays uncompressed and the scorer estimates ``q·e`` directly; this is
-deliberately a score-correction primitive, not a vector decoder.
+The database stores a packed sign sketch of a residual and its norm. A float32
+query stays uncompressed and the scorer estimates ``q·e`` directly; this is a
+score-correction primitive, not a vector decoder.
 
 The ``sqrt(pi / 2)`` estimator is unbiased for an i.i.d. Gaussian projection.
-Rademacher projections are retained as a deterministic fast pilot, but they do
-not have the same rotational-invariance guarantee and must be reported as a
-separate control arm.
+Rademacher projections are retained as an explicit heuristic control and never
+share the reference scorer API.
 """
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 
 import numpy as np
 
 
+@dataclass(frozen=True)
+class ProjectionSpec:
+    """Projection matrix and the distribution/seed provenance contract."""
+
+    matrix: np.ndarray
+    distribution: str
+    seed: int
+
+    def __post_init__(self) -> None:
+        matrix = np.asarray(self.matrix, dtype=np.float32)
+        if matrix.ndim != 2 or matrix.shape[0] <= 0 or matrix.shape[1] <= 0:
+            raise ValueError("projection matrix must be a non-empty 2D array")
+        if matrix.shape[0] % 8:
+            raise ValueError("projection rows must be a multiple of eight")
+        if not np.isfinite(matrix).all():
+            raise ValueError("projection contains non-finite values")
+        if self.distribution not in ("gaussian", "rademacher"):
+            raise ValueError("distribution must be 'gaussian' or 'rademacher'")
+        if self.distribution == "rademacher" and not np.isin(matrix, (-1.0, 1.0)).all():
+            raise ValueError("rademacher projection must contain only -1 and +1")
+        object.__setattr__(self, "matrix", matrix)
+
+
 def make_projection(
     rows: int, dimensions: int, seed: int, distribution: str = "gaussian"
-) -> np.ndarray:
-    """Create the global QJL projection matrix.
-
-    Gaussian is the reference distribution for the estimator.  Rademacher is
-    useful for a cheap binary-friendly control, but is intentionally explicit
-    so a caller cannot silently treat it as the exact Gaussian construction.
-    """
+) -> ProjectionSpec:
+    """Create a persisted Gaussian reference or explicit Rademacher control."""
     if rows <= 0 or dimensions <= 0:
         raise ValueError("projection dimensions must be positive")
     rng = np.random.default_rng(seed)
     if distribution == "gaussian":
-        return rng.standard_normal(size=(rows, dimensions)).astype(np.float32)
-    if distribution == "rademacher":
-        return (2 * rng.integers(0, 2, size=(rows, dimensions), dtype=np.int8) - 1).astype(np.float32)
-    raise ValueError("distribution must be 'gaussian' or 'rademacher'")
+        matrix = rng.standard_normal(size=(rows, dimensions)).astype(np.float32)
+    elif distribution == "rademacher":
+        matrix = (2 * rng.integers(0, 2, size=(rows, dimensions), dtype=np.int8) - 1).astype(np.float32)
+    else:
+        raise ValueError("distribution must be 'gaussian' or 'rademacher'")
+    return ProjectionSpec(matrix=matrix, distribution=distribution, seed=seed)
 
 
-def encode(residuals: np.ndarray, projection: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+def encode(residuals: np.ndarray, projection: ProjectionSpec) -> tuple[np.ndarray, np.ndarray]:
     values = np.asarray(residuals, dtype=np.float32)
-    matrix = np.asarray(projection, dtype=np.float32)
-    if values.ndim != 2 or matrix.ndim != 2 or values.shape[1] != matrix.shape[1]:
+    matrix = projection.matrix
+    if values.ndim != 2 or values.shape[1] != matrix.shape[1]:
         raise ValueError("residual/projection shape mismatch")
-    if matrix.shape[0] % 8:
-        raise ValueError("projection rows must be a multiple of eight for packed signs")
-    if not np.isfinite(matrix).all():
-        raise ValueError("projection contains non-finite values")
-    signs = (values @ matrix.astype(np.float32).T) >= 0.0
+    if not np.isfinite(values).all():
+        raise ValueError("residual contains non-finite values")
+    signs = (values @ matrix.T) >= 0.0
     return np.packbits(signs, axis=1, bitorder="little"), np.linalg.norm(values, axis=1).astype(np.float32)
 
 
@@ -56,20 +74,14 @@ def unpack(sign_codes: np.ndarray, rows: int) -> np.ndarray:
     return np.unpackbits(codes, axis=1, bitorder="little").astype(np.int8) * 2 - 1
 
 
-def estimate_dot_with_uncertainty(
+def _estimate_dot_with_uncertainty(
     query: np.ndarray,
     sign_codes: np.ndarray,
     residual_norms: np.ndarray,
-    projection: np.ndarray,
+    projection: ProjectionSpec,
 ) -> tuple[np.ndarray, np.ndarray]:
-    """Estimate ``q·e`` and a per-document standard-error proxy.
-
-    The second output is the sample standard error of the projection terms.
-    It is a calibration diagnostic, not a distribution-free confidence bound.
-    A held-out query fold must calibrate any adaptive correction threshold.
-    """
     q = np.asarray(query, dtype=np.float32)
-    matrix = np.asarray(projection, dtype=np.float32)
+    matrix = projection.matrix
     norms = np.asarray(residual_norms, dtype=np.float32)
     if q.ndim != 1 or q.shape[0] != matrix.shape[1] or norms.shape[0] != len(sign_codes):
         raise ValueError("query/code shape mismatch")
@@ -86,14 +98,47 @@ def estimate_dot_with_uncertainty(
     return estimates.astype(np.float32), standard_error.astype(np.float32)
 
 
-def estimate_dot(
+def estimate_dot_reference_with_uncertainty(
     query: np.ndarray,
     sign_codes: np.ndarray,
     residual_norms: np.ndarray,
-    projection: np.ndarray,
+    projection: ProjectionSpec,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Gaussian QJL reference scorer with a fail-closed distribution guard."""
+    if projection.distribution != "gaussian":
+        raise ValueError("Gaussian reference scorer requires distribution='gaussian'")
+    return _estimate_dot_with_uncertainty(query, sign_codes, residual_norms, projection)
+
+
+def estimate_dot_reference(
+    query: np.ndarray,
+    sign_codes: np.ndarray,
+    residual_norms: np.ndarray,
+    projection: ProjectionSpec,
 ) -> np.ndarray:
-    """Estimate ``q·e`` while keeping the historical scalar-return API."""
-    return estimate_dot_with_uncertainty(query, sign_codes, residual_norms, projection)[0]
+    """Estimate ``q·e`` using the unbiased Gaussian QJL reference."""
+    return estimate_dot_reference_with_uncertainty(query, sign_codes, residual_norms, projection)[0]
+
+
+def estimate_dot_rademacher_control_with_uncertainty(
+    query: np.ndarray,
+    sign_codes: np.ndarray,
+    residual_norms: np.ndarray,
+    projection: ProjectionSpec,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Explicit heuristic control; never label it as the QJL reference."""
+    if projection.distribution != "rademacher":
+        raise ValueError("Rademacher control requires distribution='rademacher'")
+    return _estimate_dot_with_uncertainty(query, sign_codes, residual_norms, projection)
+
+
+def estimate_dot_rademacher_control(
+    query: np.ndarray,
+    sign_codes: np.ndarray,
+    residual_norms: np.ndarray,
+    projection: ProjectionSpec,
+) -> np.ndarray:
+    return estimate_dot_rademacher_control_with_uncertainty(query, sign_codes, residual_norms, projection)[0]
 
 
 def self_test() -> None:
@@ -104,28 +149,35 @@ def self_test() -> None:
     for distribution in ("gaussian", "rademacher"):
         for rows in (32, 64, 128):
             projection = make_projection(rows, 384, 20260924 + rows, distribution)
-            if not np.array_equal(
-                projection,
-                make_projection(rows, 384, 20260924 + rows, distribution),
-            ):
+            repeat = make_projection(rows, 384, 20260924 + rows, distribution)
+            if not np.array_equal(projection.matrix, repeat.matrix):
                 raise RuntimeError("QJL projection determinism failed")
             codes, norms = encode(residuals, projection)
             if codes.shape != (17, rows // 8) or not np.isfinite(norms).all():
                 raise RuntimeError("QJL encoding self-test failed")
             decoded_signs = unpack(codes, rows)
-            if not np.array_equal(decoded_signs > 0, ((residuals @ projection.T) >= 0.0)):
+            if not np.array_equal(decoded_signs > 0, ((residuals @ projection.matrix.T) >= 0.0)):
                 raise RuntimeError("QJL packed sign parity failed")
-            estimates, uncertainty = estimate_dot_with_uncertainty(query, codes, norms, projection)
+            scorer = (estimate_dot_reference_with_uncertainty
+                      if distribution == "gaussian"
+                      else estimate_dot_rademacher_control_with_uncertainty)
+            estimates, uncertainty = scorer(query, codes, norms, projection)
             if estimates.shape != (17,) or not np.isfinite(estimates).all():
                 raise RuntimeError("QJL score self-test failed")
             if uncertainty.shape != (17,) or not np.isfinite(uncertainty).all() or (uncertainty < 0).any():
                 raise RuntimeError("QJL uncertainty self-test failed")
-            if not np.array_equal(estimates, estimate_dot(query, codes, norms, projection)):
+            scalar_scorer = (estimate_dot_reference
+                             if distribution == "gaussian"
+                             else estimate_dot_rademacher_control)
+            if not np.array_equal(estimates, scalar_scorer(query, codes, norms, projection)):
                 raise RuntimeError("QJL scalar API parity failed")
-    # This is an algebra/contract check only.  It deliberately does not assert
-    # a retrieval-quality threshold on a tiny synthetic sample.  A small
-    # deterministic Monte Carlo check does, however, catch a wrong scaling
-    # constant in the Gaussian reference estimator.
+            if distribution == "gaussian":
+                try:
+                    estimate_dot_rademacher_control(query, codes, norms, projection)
+                except ValueError:
+                    pass
+                else:
+                    raise RuntimeError("QJL distribution guard failed")
     if not np.isfinite(exact).all():
         raise RuntimeError("QJL exact reference self-test failed")
     mc_residuals = residuals[:4]
@@ -134,10 +186,11 @@ def self_test() -> None:
     for seed in range(128):
         projection = make_projection(64, 384, 20261000 + seed, "gaussian")
         codes, norms = encode(mc_residuals, projection)
-        mc_estimates.append(estimate_dot(query, codes, norms, projection))
-    mc_mean = np.mean(np.stack(mc_estimates), axis=0)
-    mc_se = np.std(np.stack(mc_estimates), axis=0, ddof=1) / math.sqrt(len(mc_estimates))
-    if np.max(np.abs(mc_mean - mc_exact)) > 3.0 * np.max(mc_se) + 1e-4:
+        mc_estimates.append(estimate_dot_reference(query, codes, norms, projection))
+    mc_values = np.stack(mc_estimates)
+    mc_mean = np.mean(mc_values, axis=0)
+    mc_se = np.std(mc_values, axis=0, ddof=1) / math.sqrt(len(mc_values))
+    if np.any(np.abs(mc_mean - mc_exact) > 4.0 * mc_se + 1e-4):
         raise RuntimeError("QJL Gaussian scaling Monte Carlo self-test failed")
     print("QJL residual score reference self-test: PASS (Gaussian reference + Rademacher control)")
 

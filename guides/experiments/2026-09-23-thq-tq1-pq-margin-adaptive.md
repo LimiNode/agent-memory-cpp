@@ -108,6 +108,13 @@ query folds/seeds and codebook/stage training independent of the 152-query
 evaluation set. Bootstrap provenance is payload-specific: the runner records
 seeds `20260955` for LSQ32 and `20260971` for LSQ48.
 
+The ranking pilot's training contract is now judged-only: documents absent from
+the sparse qrels are excluded from pairwise loss rather than treated as
+irrelevant. Existing MA-LSQ numbers above were produced by the earlier
+`unjudged-as-negative` runner and remain bounded historical diagnostics; they
+must not be used as evidence for a corrected ranking-aware gain until replayed
+with judged pairs or an explicitly constructed hard-negative set.
+
 The targeted follow-up matrix (stronger fit, rotated-normalized residual,
 OPQ/AAQ/LSQ correction, and direct QJL score correction) is recorded in
 [`2026-09-24-thq-tq1-residual-correction-next-wave.md`](2026-09-24-thq-tq1-residual-correction-next-wave.md).

@@ -2,9 +2,10 @@
 """Bounded held-out ranking-aware scalar LSQ correction pilot.
 
 This is a diagnostic MA-LSQ control: it learns one residual scale per payload
-from the first half of the frozen queries using qrels pairwise hinge loss and
-evaluates the untouched second half. It is intentionally not a query-local
-codec or a production claim.
+from the first half of the frozen queries using judged-qrels pairwise hinge
+loss and evaluates the untouched second half. Unjudged documents are excluded
+from training pairs; they are not treated as negatives. It is intentionally
+not a query-local codec or a production claim.
 """
 from __future__ import annotations
 
@@ -60,6 +61,7 @@ def main() -> None:
     selected = np.asarray(z["selected_ids"], dtype=np.int64)
     if selected.shape != (Q, TOP): raise RuntimeError("expected 152x128 frozen shell")
     rows, summaries = [], {}
+    training_diagnostics = {}
     for payload in (32, 48):
         codes = np.asarray(z[f"codes_{payload}"], dtype=np.uint8)
         books = np.asarray(m[f"lsq{payload}_codebooks"], dtype=np.float32)
@@ -72,9 +74,22 @@ def main() -> None:
             base = np.asarray(m["centroids"], dtype=np.float32)[np.arange(D)[None, :], levels]
             residual = np.zeros_like(exact)
             for stage in range(payload): residual += books[offsets[stage] + codes[qi, :, stage]]
-            rel = {int(d): float(g) for d, g in zip(qids[qi], grades[qi])}
+            rel = {
+                int(d): float(g)
+                for d, g in zip(qids[qi], grades[qi])
+                if int(d) >= 0 and np.isfinite(float(g))
+            }
             positive = [i for i, d in enumerate(ids) if rel.get(int(d), 0.0) > 0]
-            negative = [i for i, d in enumerate(ids) if rel.get(int(d), 0.0) <= 0]
+            negative = [i for i, d in enumerate(ids) if int(d) in rel and rel[int(d)] <= 0]
+            training_diagnostics.setdefault(str(payload), []).append({
+                "query": qi,
+                "candidate_count": int(len(ids)),
+                "judged_count": int(sum(int(d) in rel for d in ids)),
+                "unjudged_count": int(sum(int(d) not in rel for d in ids)),
+                "positive_count": int(len(positive)),
+                "judged_negative_count": int(len(negative)),
+                "pair_count": int(len(positive) * len(negative)),
+            })
             if not positive or not negative: continue
             for ai, alpha in enumerate(alpha_values):
                 values = base + alpha * residual
@@ -103,7 +118,7 @@ def main() -> None:
         rng = np.random.default_rng(bootstrap_seed)
         bootstrap = np.asarray([np.mean(delta[rng.integers(0, len(delta), len(delta))]) for _ in range(2000)])
         summaries[f"ma_lsq{payload}"] = {"alpha": best_alpha, "alpha_grid": alpha_values.tolist(), "bootstrap_seed": bootstrap_seed, "train_pairwise_hinge": float(np.min(losses)), "heldout_baseline_alpha1_mean_ndcg10": float(np.mean(held_baseline)), "heldout_selected_mean_ndcg10": float(np.mean(held_selected)), "heldout_mean_paired_delta": float(np.mean(delta)), "heldout_paired_delta_bootstrap_ci95": [float(np.percentile(bootstrap, 2.5)), float(np.percentile(bootstrap, 97.5))], "wins": int(np.sum(delta > 0.0)), "ties": int(np.sum(delta == 0.0)), "losses": int(np.sum(delta < 0.0)), "quality_status": "BOUNDED_HELDOUT_DIAGNOSTIC"}
-    result = {"schema_version": 2, "family": "thq_ma_lsq_ranking_scalar_pilot_v2", "status": "EXECUTED", "metric": "cosine", "train_queries": args.train_queries, "heldout_queries": Q - args.train_queries, "bootstrap_base_seed": BOOTSTRAP_BASE_SEED, "bootstrap_seed_by_payload": {"32": BOOTSTRAP_BASE_SEED + 32, "48": BOOTSTRAP_BASE_SEED + 48}, "bootstrap_replicates": 2000, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "queries", "qrel-ids", "qrel-scores", "thq4-codes", "lsq-models", "lsq-codes")}, "runner_sha256": sha256(Path(__file__)), "summaries": summaries, "rows": rows, "limitations": ["single global residual scale per payload, not full MA-LSQ codebook training", "qrels are used only on the first query fold", "alpha is selected only on train-fold pairwise hinge loss", "diagnostic decode uses fixed LSQ residual codes and is not a deployable query-conditioned codec"]}
+    result = {"schema_version": 3, "family": "thq_ma_lsq_ranking_scalar_pilot_v3", "status": "EXECUTED", "metric": "cosine", "train_queries": args.train_queries, "heldout_queries": Q - args.train_queries, "bootstrap_base_seed": BOOTSTRAP_BASE_SEED, "bootstrap_seed_by_payload": {"32": BOOTSTRAP_BASE_SEED + 32, "48": BOOTSTRAP_BASE_SEED + 48}, "bootstrap_replicates": 2000, "training_pair_policy": "judged_positive_vs_judged_nonpositive_v1", "unjudged_training_policy": "excluded_not_negative", "training_diagnostics": training_diagnostics, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "queries", "qrel-ids", "qrel-scores", "thq4-codes", "lsq-models", "lsq-codes")}, "runner_sha256": sha256(Path(__file__)), "summaries": summaries, "rows": rows, "limitations": ["single global residual scale per payload, not full MA-LSQ codebook training", "qrels are used only on the first query fold", "alpha is selected only on train-fold judged pairwise hinge loss", "unjudged candidate documents are excluded from the training loss and may leave some queries without pairs", "diagnostic decode uses fixed LSQ residual codes and is not a deployable query-conditioned codec", "152-query benchmark has been reused for exploratory decisions; an untouched query set is required for a strong final claim"]}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

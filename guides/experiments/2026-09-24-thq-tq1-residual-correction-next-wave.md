@@ -22,6 +22,11 @@ payload, final cosine evaluator, and identical query/qrels split.
    `δ = R(e) * sqrt(D) / ||e||` in the TQ rotated domain, persist the residual
    norm, and decode with `R⁻¹(δ̂) * ||e|| / sqrt(D)`. This is a distinct codec,
    not a relabeling of raw-space PQ.
+   Also run the TQ-domain error arm: with TQ's persisted normalized residual
+   `u = R(r) * sqrt(D) / ||r||` and decoded `û`, quantize `δ_TQ = u - û`
+   directly and reconstruct the correction as
+   `R⁻¹(δ̂_TQ) * ||r|| / sqrt(D)`. This arm reuses the TQ residual-norm
+   sidecar and must be accounted separately from the raw residual-norm arm.
 3. **OPQ4/OPQ8 residual control** — fit the rotation and product codebooks
    only on the residual-training fold; persist rotation provenance and use an
    independent decode audit.
@@ -35,12 +40,18 @@ payload, final cosine evaluator, and identical query/qrels split.
    is a separate fast control and must not be merged into the reference claim.
    The scorer must report both a TQ-norm denominator arm and an exact corrected
    norm upper control; QJL is not a reconstructed-vector claim.
+   The implementation exposes separate `estimate_dot_reference(...)` and
+   `estimate_dot_rademacher_control(...)` entry points; there is no generic
+   scorer that can silently apply Gaussian scaling to a Rademacher matrix.
 
-For the QJL cosine rows, report the two denominator variants explicitly. The
-serving-shaped arm uses `||b||` from the frozen TQ1 base and computes
-`(q·b + q·e_hat) / (||q|| ||b||)`. The exact-corrected-norm arm is an oracle
-upper control using `||b + e||`; it is not a persistable serving score and must
-never be counted as a production byte budget.
+For the QJL cosine rows, report the denominator variants explicitly. Because
+the canonical E5 vectors are L2-normalized, the primary serving-shaped arm
+uses the persisted source norm (normally `1`) and computes
+`(q·b + q·e_hat) / (||q|| ||x||)`. A `||b||` denominator from the frozen TQ1
+base is a separate ablation, not the production reference. The
+exact-corrected-norm arm using `||b + e||` is an oracle upper control; it is
+not a persistable serving score and must never be counted as a production byte
+budget.
 
 QJL storage accounting must include `m/8` sign bytes plus one `fp32` residual
 norm per document, and the global projection matrix (`m × 384 × fp32`) as a
@@ -79,3 +90,10 @@ distribution, seed, calibration fold, and correction-decision counts.
 No production codec selection is allowed until at least one of the stronger
 residual-domain or score-aware arms beats canonical TQ1 on the same held-out
 queries with source-replay and independent decode evidence.
+
+The 152-query collection has already been reused for exploratory architecture
+decisions. A 76/76 split is useful for diagnostics, but it is not an untouched
+final test. Any positive codec claim must therefore be confirmed once on a
+new, pre-registered query/qrels set. Training losses must use judged-positive
+versus judged-negative pairs (or an explicitly materialized hard-negative set);
+unjudged candidate documents are excluded from training loss.
