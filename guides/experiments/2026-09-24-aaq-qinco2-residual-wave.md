@@ -78,7 +78,7 @@ their payload already includes one. The regenerated matrix has
 | THQ + Faiss LSQ48 + FP32 norm | 148 | 0.661515 | source-bound, audited; 18.87 MB model |
 | THQ + TQ+ exact-wide composite | 156 | 0.654486 | corrected canonical replay |
 | THQ + official AAQ PCA32 bounded | 108 | 0.614895 | source-pinned bounded pilot |
-| THQ + QINCo2 16B bounded | 120 | 0.604745 | source-bound undertrained pilot |
+| THQ + QINCo2 16B bounded | 116 | 0.604745 | source-bound undertrained pilot |
 
 ## Provenance and next gate
 
