@@ -86,7 +86,9 @@ def main() -> None:
     grades = np.memmap(a.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20))
     teacher = np.memmap(a.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10))
     thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
-    thresholds = np.fromfile(a.thq4_thresholds, dtype="<f4").reshape(3, D)
+    thresholds = np.fromfile(a.thq4_thresholds, dtype="<f4").reshape(D, 3)
+    if not np.all(np.diff(thresholds, axis=1) >= 0.0):
+        raise RuntimeError("THQ thresholds are not ordered in canonical (D,3) layout")
     models = np.load(a.lsq_models, allow_pickle=False)
     centroids = np.asarray(models["centroids"], dtype=np.float32)
     source_codes = np.load(a.lsq_codes, allow_pickle=False)
@@ -94,7 +96,7 @@ def main() -> None:
     unique_ids = np.unique(selected)
 
     train_values = np.asarray(train[: a.train_rows], dtype=np.float32)
-    train_levels = np.sum(train_values[:, None, :] > thresholds[None, :, :], axis=1)
+    train_levels = np.sum(train_values[:, :, None] > thresholds[None, :, :], axis=2)
     train_base = centroids[np.arange(D)[None, :], train_levels]
     train_residual = train_values - train_base
     residual_mean = train_residual.mean(axis=0, dtype=np.float64).astype(np.float32)
@@ -110,6 +112,7 @@ def main() -> None:
     codebook = codebook_init(normalized_train, M, K)
     trainer = ScannAQ(normalized_train, parameter)
     codebook, _, _ = trainer.codebook_train(normalized_train, codebook, parameter, maxiter=a.fit_iters)
+    persisted_codebook = np.asarray(codebook, dtype=np.float32)
 
     exact_unique = np.asarray(docs[unique_ids], dtype=np.float32)
     unique_levels = unpack(np.asarray(thq[unique_ids]))
@@ -119,7 +122,7 @@ def main() -> None:
     residual_scales = np.linalg.norm(projected, axis=1).astype(np.float32)
     normalized = projected / np.maximum(residual_scales[:, None], 1e-30)
     _, local_codes = multiprocessing_index(normalized, np.zeros((len(normalized), 2)), codebook, parameter, a.pool_size)
-    decoded_projected = np.sum(codebook[:, local_codes + np.arange(M) * K], axis=2).T
+    decoded_projected = np.sum(persisted_codebook[:, local_codes + np.arange(M) * K], axis=2).T
     decoded_residual = (decoded_projected * residual_scales[:, None]) @ components + residual_mean
     projected_upper_residual = projected @ components + residual_mean
     reconstructed = unique_base + decoded_residual.astype(np.float32)
@@ -139,14 +142,15 @@ def main() -> None:
             rows.append({"query": qi, "arm": arm, "top10_ids": rank.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(rank, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], rank).sum() / 10.0), "side_payload_bytes": side_bytes, "cascade_total_bytes": THQ_BYTES + side_bytes})
 
     a.artifact.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(a.artifact, selected_ids=selected, unique_ids=unique_ids, codes=local_codes.astype(np.uint8), codebook=np.asarray(codebook, dtype=np.float32), centroids=centroids, residual_mean=residual_mean, components=components, residual_scales=residual_scales, final_norms=final_norms)
+    np.savez_compressed(a.artifact, selected_ids=selected, unique_ids=unique_ids, codes=local_codes.astype(np.uint8), codebook=persisted_codebook, centroids=centroids, residual_mean=residual_mean, components=components, residual_scales=residual_scales, final_norms=final_norms)
     summaries = {}
     for arm in sorted({row["arm"] for row in rows}):
         arm_rows = [row for row in rows if row["arm"] == arm]
         summaries[arm] = {"mean_qrels_ndcg10": float(np.mean([row["qrels_ndcg10"] for row in arm_rows])), "p05_qrels_ndcg10": float(np.percentile([row["qrels_ndcg10"] for row in arm_rows], 5)), "worst_qrels_ndcg10": float(np.min([row["qrels_ndcg10"] for row in arm_rows])), "mean_teacher_overlap": float(np.mean([row["teacher_overlap"] for row in arm_rows])), "side_payload_bytes": arm_rows[0]["side_payload_bytes"], "cascade_total_bytes": arm_rows[0]["cascade_total_bytes"]}
-    global_model_bytes = int(codebook.nbytes + centroids.nbytes + residual_mean.nbytes + components.nbytes)
+    global_model_bytes = int(persisted_codebook.nbytes + centroids.nbytes + residual_mean.nbytes + components.nbytes)
     sources = {name: getattr(a, name.replace("-", "_")) for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes")}
     result = {"schema_version": 1, "family": "thq_official_aaq_pca32_bounded_pilot_v1", "status": "EXECUTED", "source_replay": True, "quality_status": "BOUNDED_PILOT", "metric": "cosine", "upstream_repository": "https://github.com/jzhang-0/Anisotropic-Additive-Quantization", "upstream_revision": revision, "upstream_license_status": "NO_LICENSE_FILE_OBSERVED", "official_source_usage": ["ScannAQ.codebook_train", "encoding.CoordinateDes", "encoding.multiprocessing_index", "scannAQ_function.codebook_init"], "config": {"train_rows": a.train_rows, "projected_dimensions": PROJECTED_D, "M": M, "K": K, "code_bytes": 4, "residual_scale_bytes": 4, "final_norm_bytes": 4, "fit_iters": a.fit_iters, "coordinate_passes": a.coordinate_passes, "threshold": a.threshold, "eta": parameter.eta, "pool_size": a.pool_size}, "payload_contract": {"final_norm_included": True, "side_payload_bytes": 12, "fields": ["4-byte M8K16 code", "FP32 projected residual scale", "FP32 final norm"]}, "candidate_stream_hash": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79", "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_sha256": sha256(a.artifact), "global_model_bytes": global_model_bytes, "summaries": summaries, "rows": rows, "limitations": ["official AAQ mechanics but bounded PCA32 residual pilot, not full-dimensional AAQ", "4-byte M8K16 code follows the upstream example and is not a 32/48-byte capacity comparison", "first canonical training rows only; no qrels tuning", "FP32 residual scale and final norm charged in 12-byte side payload", "external unlicensed checkout is source-pinned and no upstream code is vendored", "candidate-local quality only; no native timing"]}
+    result["threshold_layout"] = "D,3"
     a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

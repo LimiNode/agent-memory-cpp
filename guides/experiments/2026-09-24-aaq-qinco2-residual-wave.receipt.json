@@ -61,5 +61,32 @@
       "codes_artifact_sha256": "37fdbe450e91075dafeccff0e1e15d3158ca9b2449574f5ed3c5e372a8ecc989",
       "quality_status": "BOUNDED_UNDERTRAINED_PILOT",
       "mean_ndcg10": 0.6047445085795053
+    },
+    "corrected_threshold_layout_rerun": {
+      "date": "2026-09-23",
+      "threshold_layout": "D,3",
+      "candidate_stream": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+      "official_aaq": {
+        "result_sha256": "9ce5c48a6a9f70d6fe5d2f8ed2efec4dafd594d078276664eddfde3ee8612212",
+        "audit_sha256": "bad9140040e1f5f942b19722e237f43c648f7da2b35984080d62fdeee934b6fb",
+        "artifact_sha256": "83173fd7d89154943ca3768aa07753df258065c2f9755f8cffa88de5fd4b1b88",
+        "mean_ndcg10": 0.6493816670318221,
+        "upper_control_ndcg10": 0.6547142375425828,
+        "audit_status": "PASS"
+      },
+      "qinco2_16b": {
+        "result_sha256": "d0660ec8e785d1e71ee40d1a987c2aa4b75f006863a9eddf1b5097272f8b2e8d",
+        "audit_sha256": "6528ea3c22bb335896945b857a5dbf04b33fd7ccf8387f022ae7c96ecc6db621",
+        "model_artifact_sha256": "6cc8192f31dda0b9c5c21da96f14037c4e53008b7f953d3d8bdf7f73ed8c3c56",
+        "codes_artifact_sha256": "375a828902b314017be45ee168d4a12bbcbf932de3b6e91104cda6246e85a4c1",
+        "mean_ndcg10": 0.6403090175142833,
+        "cascade_total_bytes": 116,
+        "audit_status": "PASS"
+      },
+      "matrix": {
+        "artifact_sha256": "c34f1d4cac561b48fbd1963ce414236b209ab272d80fcf06b51ce2f422c83e96",
+        "paired_candidate_stream": true
+      },
+      "superseded_reason": "prior pilots used invalid threshold reshape (3,D)"
     }
 }

@@ -44,7 +44,9 @@ def main() -> None:
     result = json.loads(a.result.read_text(encoding="utf-8"))
     root = a.qinco_root.resolve()
     revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
-    if result.get("family") != "thq_qinco2_16b_bounded_pilot_v1" or result.get("upstream_revision") != revision:
+    if (result.get("family") != "thq_qinco2_16b_bounded_pilot_v1" or
+            result.get("upstream_revision") != revision or
+            result.get("threshold_layout") != "D,3"):
         raise RuntimeError("unexpected QINCo2 pilot/source revision")
     if result.get("runner_sha256") != sha256(a.runner) or result.get("model_artifact_sha256") != sha256(a.model_artifact) or result.get("codes_artifact_sha256") != sha256(a.codes_artifact):
         raise RuntimeError("QINCo2 runner/artifact binding differs")

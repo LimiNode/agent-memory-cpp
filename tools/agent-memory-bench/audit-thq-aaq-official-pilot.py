@@ -44,7 +44,9 @@ def main() -> None:
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     a = p.parse_args()
     result = json.loads(a.result.read_text(encoding="utf-8"))
-    if result.get("family") != "thq_official_aaq_pca32_bounded_pilot_v1" or result.get("quality_status") != "BOUNDED_PILOT":
+    if (result.get("family") != "thq_official_aaq_pca32_bounded_pilot_v1" or
+            result.get("quality_status") != "BOUNDED_PILOT" or
+            result.get("threshold_layout") != "D,3"):
         raise RuntimeError("unexpected AAQ pilot result")
     if result.get("runner_sha256") != sha256(a.runner) or result.get("artifact_sha256") != sha256(a.artifact):
         raise RuntimeError("AAQ runner/artifact binding differs")

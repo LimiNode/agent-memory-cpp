@@ -94,7 +94,9 @@ def main() -> None:
     grades = np.memmap(a.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20))
     teacher = np.memmap(a.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10))
     thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
-    thresholds = np.fromfile(a.thq4_thresholds, dtype="<f4").reshape(3, D)
+    thresholds = np.fromfile(a.thq4_thresholds, dtype="<f4").reshape(D, 3)
+    if not np.all(np.diff(thresholds, axis=1) >= 0.0):
+        raise RuntimeError("THQ thresholds are not ordered in canonical (D,3) layout")
     lsq_models = np.load(a.lsq_models, allow_pickle=False)
     centroids = np.asarray(lsq_models["centroids"], dtype=np.float32)
     books = np.asarray(lsq_models["lsq32_codebooks"], dtype=np.float32)
@@ -103,7 +105,7 @@ def main() -> None:
     unique_ids = np.unique(selected)
 
     train_values = np.asarray(train[: a.train_rows], dtype=np.float32)
-    train_levels = np.sum(train_values[:, None, :] > thresholds[None, :, :], axis=1)
+    train_levels = np.sum(train_values[:, :, None] > thresholds[None, :, :], axis=2)
     train_base = centroids[np.arange(D)[None, :], train_levels]
     residual_train = np.asarray(train_values - train_base, dtype=np.float32)
     data_mean = residual_train.mean(axis=0, dtype=np.float64).astype(np.float32)
@@ -160,6 +162,7 @@ def main() -> None:
     summary = {"mean_qrels_ndcg10": float(np.mean([row["qrels_ndcg10"] for row in rows])), "p05_qrels_ndcg10": float(np.percentile([row["qrels_ndcg10"] for row in rows], 5)), "worst_qrels_ndcg10": float(np.min([row["qrels_ndcg10"] for row in rows])), "mean_teacher_overlap": float(np.mean([row["teacher_overlap"] for row in rows])), "side_payload_bytes": 20, "cascade_total_bytes": 116, "global_model_bytes": int(sum(value.numel() * value.element_size() for value in model.state_dict().values()))}
     sources = {name: getattr(a, name.replace("-", "_")) for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "lsq-models", "lsq-codes")}
     result = {"schema_version": 1, "family": "thq_qinco2_16b_bounded_pilot_v1", "status": "EXECUTED", "source_replay": True, "quality_status": "BOUNDED_UNDERTRAINED_PILOT", "metric": "cosine", "upstream_repository": "https://github.com/facebookresearch/Qinco", "upstream_revision": revision, "upstream_license": "CC-BY-NC", "payload_contract": {"final_norm_included": True, "side_payload_bytes": 20, "fields": ["16-byte QINCo2 code", "FP32 final norm"]}, "candidate_stream_hash": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79", "config": {"stages": STAGES, "codebook_size": K, "code_bytes": 16, "final_norm_bytes": 4, "train_rows": a.train_rows, "epochs": a.epochs, "batch_size": a.batch_size, "learning_rate": a.learning_rate, "seed": a.seed, "hidden_dim": 64, "embedding_dim": 32, "substep_candidates": 8, "beam": 4, "initialization": "first 16 train-fitted LSQ32 codebooks"}, "training": {"optimizer_steps": len(losses), "initial_total_loss": losses[0], "final_total_loss": losses[-1]}, "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "model_artifact_sha256": sha256(a.model_artifact), "codes_artifact_sha256": sha256(a.codes_artifact), "summaries": {"qinco2_16b_bounded": summary}, "rows": rows, "limitations": ["bounded CPU fit on the first canonical training rows, not a converged QINCo2 training schedule", "LSQ32 initialization gives a stronger start but is not the official RQ initialization pipeline", "candidate-local quality only; no native timing", "FP32 final norm charged in the 20-byte side payload", "external CC-BY-NC source is not vendored", "this pilot cannot support a family-level negative conclusion if undertraining remains material"]}
+    result["threshold_layout"] = "D,3"
     a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

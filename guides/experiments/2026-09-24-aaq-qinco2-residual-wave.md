@@ -6,6 +6,10 @@ This wave uses the recovered canonical E5/R4 bundle and frozen THQ top-128
 shell. Executed arms below are bound to candidate stream SHA
 `d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79`.
 
+The first AAQ/QINCo2 artifacts from this wave used an invalid `(3,D)` threshold
+view and are superseded. The corrected rerun uses the canonical `(D,3)` layout;
+the old `.614895` AAQ and `.604745` QINCo2 numbers must not be used.
+
 ## Query-local LSQ diagnostics
 
 The runner freezes Faiss LSQ32/LSQ48 codebooks. The historical control is now
@@ -46,7 +50,9 @@ residual pilot uses M=8, K=16, 4096 training rows and one official fit
 iteration. It obtains `.614895` nDCG with 12 B side (4-byte code, FP32 scale,
 FP32 final norm); the PCA reconstruction upper control is `.624730`. Independent
 persisted decode audit: PASS, 304/304 top-10. This is a mechanics/provenance
-gate, not a full-dimensional AAQ32/48 capacity result.
+gate, not a full-dimensional AAQ32/48 capacity result. After correcting the
+threshold layout, the official arm is `.649382` and the PCA32 projection upper
+control is `.654714` at the same 108 B / 96 B totals.
 
 ## QINCo2 source and 16-byte pilot
 
@@ -60,7 +66,9 @@ A=8, B=4, 4096 training rows, 5 epochs and 640 optimizer steps. Final loss
 falls from 27.9266 to 10.2852; mean nDCG is `.604745` at 20 B side including
 FP32 final norm, with a 14.76 MB global model. The persisted model/code replay
 is independently audited (`PASS`, 152/152). This is explicitly an
-undertrained pilot, not a family-level negative result.
+undertrained pilot, not a family-level negative result. With canonical
+thresholds the corrected mean nDCG is `.640309` at 116 B/doc; the model/code
+replay remains independently audited (`PASS`, 152/152).
 
 ## Residual-hybrid matrix
 
