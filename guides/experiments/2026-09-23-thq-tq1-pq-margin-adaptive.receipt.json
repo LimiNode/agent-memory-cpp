@@ -1,0 +1,45 @@
+{
+  "schema_version": 2,
+  "status": "EXECUTED",
+  "date": "2026-09-23",
+  "experiment_note": "guides/experiments/2026-09-23-thq-tq1-pq-margin-adaptive.md",
+  "git_branch": "research/aaq-qinco2-residual-wave",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "canonical_tq_payload_sha256": "123e015bdca05edae64fb3e05a996c7c9f5ae72a117c96364a3739d4760a965a",
+  "runner": {
+    "path": "tools/agent-memory-bench/run-thq-tq1-pq-residual-gate.py",
+    "sha256": "0b08601a821b9a1979f847792b28af52d92a4d09da3ed075e9b7ab60abc7c384"
+  },
+  "audit_runner": {
+    "path": "tools/agent-memory-bench/audit-thq-tq1-pq-residual-gate.py",
+    "sha256": "5eea34fbe5e2959ab545c60c6c7b1e92c49b3255bbd6e23b0f826ae7d1a3ceb5"
+  },
+  "arms": {
+    "pq4": {
+      "result_sha256": "10efadd622dd4327c2ad74d76e4720a1f905d16446492a1ca7e0a3f6f722233f",
+      "artifact_sha256": "3c0d8554802cf377f361403345eea6ad7f2b569c205d2b4e0ce2b07b63a490c8",
+      "audit_sha256": "590838d2285824719cb0b5f92b077f9de2fb8aa9f539a9b08209fd92fe2d3350",
+      "audit_status": "PASS"
+    },
+    "pq8": {
+      "result_sha256": "d199235573b297a78dcc1184ba5db8f1fab979a97557ac83f7e10ffe562e98f1",
+      "artifact_sha256": "bc946d9ed417e67789d6f6603f763dd215049f7e9d3a7f66efd0ba4efb6c9a47",
+      "audit_sha256": "ce7ce42cac3d73b64bab5335637ae9cda131b22270750ab59f109e1270c5609d",
+      "audit_status": "PASS"
+    },
+    "ma_lsq_scalar_pilot": {
+      "runner": "tools/agent-memory-bench/run-thq-ma-lsq-ranking-pilot.py",
+      "runner_sha256": "81ef65fa90347d049840fb60c617d255e4ee86ceaf80b47f61ffc4f10950e399",
+      "result_sha256": "d5c36784e57c9b9f33da2bacb3135cf636b359fa6079e075e04e24f09603ec1e",
+      "quality_status": "BOUNDED_HELDOUT_DIAGNOSTIC"
+    }
+  },
+  "quality_status": "BOUNDED_PILOT_CANONICAL_TQ1",
+  "limitations": [
+    "canonical TQ1 stage is frozen from the 25k source-bound payload",
+    "second residual PQ fit uses 1,024 train rows and four bounded Lloyd iterations",
+    "source-bound reference with norm accounting; no native direct scorer",
+    "margin policy is unsupervised and not qrels-tuned",
+    "MA-LSQ/ranking-aware training is a separate pending gate"
+  ]
+}

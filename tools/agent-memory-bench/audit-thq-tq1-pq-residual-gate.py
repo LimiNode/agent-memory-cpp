@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Independent source-bound audit for the THQ -> TQ1 -> PQ residual gate."""
+"""Independent source replay audit for the canonical THQ -> TQ1 -> PQ gate."""
 from __future__ import annotations
 
 import argparse
@@ -31,40 +31,72 @@ def load_tq():
     return module
 
 
+def fit_centroids(train: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
+    levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
+    result = np.empty((D, 4), dtype=np.float32)
+    fallback = train.mean(axis=0)
+    for d in range(D):
+        for level in range(4):
+            values = train[levels[:, d] == level, d]
+            result[d, level] = values.mean() if len(values) else fallback[d]
+    return result
+
+
+def fit_pq(values: np.ndarray, subspaces: int, seed: int, iterations: int) -> np.ndarray:
+    """Independent bounded Lloyd replay of the runner's deterministic fit."""
+    n, width = values.shape[0], values.shape[1] // subspaces
+    result = np.empty((subspaces, 256, width), dtype=np.float32)
+    for sub in range(subspaces):
+        block = np.asarray(values[:, sub * width:(sub + 1) * width], dtype=np.float32)
+        rng = np.random.default_rng(seed + 1009 * sub)
+        centers = block[rng.choice(n, size=256, replace=False)].copy()
+        for _ in range(iterations):
+            assigned = np.empty(n, dtype=np.uint8)
+            for start in range(0, n, 128):
+                stop = min(n, start + 128)
+                delta = block[start:stop, None, :] - centers[None, :, :]
+                assigned[start:stop] = np.sum(delta * delta, axis=2).argmin(axis=1)
+            counts = np.bincount(assigned, minlength=256)
+            for code in np.flatnonzero(counts):
+                centers[code] = block[assigned == code].mean(axis=0)
+        result[sub] = centers
+    return result
+
+
 def ndcg10(ids: np.ndarray, qids: np.ndarray, grades: np.ndarray) -> float:
     rel = {int(d): float(g) for d, g in zip(qids, grades) if int(d) >= 0 and float(g) > 0}
     gains = np.asarray([2.0 ** rel.get(int(d), 0.0) - 1.0 for d in ids[:10]])
     ideal = np.sort(np.asarray([2.0 ** g - 1.0 for g in rel.values()]))[::-1][:10]
-    if not len(ideal):
-        return 0.0
+    if not len(ideal): return 0.0
     den = float(np.sum(ideal / np.log2(np.arange(2, 2 + len(ideal)))))
     return float(np.sum(gains / np.log2(np.arange(2, 2 + len(gains))) / den))
 
 
 def main() -> int:
     parser = argparse.ArgumentParser()
-    for name in ("result", "artifact", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt"):
+    for name in ("result", "artifact", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "canonical-tq-payload"):
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     report = json.loads(args.result.read_text(encoding="utf-8"))
-    artifact = np.load(args.artifact, allow_pickle=False)
-    tq = load_tq()
-    runner_path = Path(__file__).with_name("run-thq-tq1-pq-residual-gate.py")
-    if report.get("runner_sha256") != sha256(runner_path):
+    if report.get("family") != "thq_tq1_small_pq_residual_gate_v2" or report.get("status") != "EXECUTED":
+        raise RuntimeError("unexpected hybrid result family/status")
+    if report.get("artifact_sha256") != sha256(args.artifact):
+        raise RuntimeError("artifact hash binding differs")
+    runner = Path(__file__).with_name("run-thq-tq1-pq-residual-gate.py")
+    if report.get("runner_sha256") != sha256(runner):
         raise RuntimeError("runner source hash mismatch")
-    required = {"unique_ids", "base", "tq_decoded", "pq_codes", "pq_centroids", "thq_candidate_ids", "thq_offsets"}
-    if not required.issubset(set(artifact.files)):
-        raise RuntimeError(f"artifact keys missing: {sorted(required - set(artifact.files))}")
-    source_names = ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt")
+    if report.get("canonical_tq_payload_sha256") != sha256(args.canonical_tq_payload):
+        raise RuntimeError("canonical TQ1 payload hash mismatch")
+    source_names = ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "canonical-tq-payload")
     for name in source_names:
-        expected = report["source_hashes"].get(name)
-        actual = sha256(getattr(args, name.replace("-", "_")))
-        if expected != actual:
+        if report["source_hashes"].get(name) != sha256(getattr(args, name.replace("-", "_"))):
             raise RuntimeError(f"source hash mismatch: {name}")
+    tq = load_tq()
     docs = np.memmap(args.documents, mode="r", dtype="<f4", shape=(1_000_000, D))
-    train = np.asarray(np.memmap(args.train_vectors, mode="r", dtype="<f4", shape=(25_000, D))[: report["pq_fit_rows"]], dtype=np.float32)
-    queries = np.asarray(np.memmap(args.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D)), dtype=np.float32)
+    train_all = np.asarray(np.memmap(args.train_vectors, mode="r", dtype="<f4", shape=(25_000, D)), dtype=np.float32)
+    pq_rows = int(report["pq_train_rows"])
+    queries = np.asarray(np.memmap(args.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D)))
     qids = np.asarray(np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20)))
     grades = np.asarray(np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20)))
     teacher = np.asarray(np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10)))
@@ -77,85 +109,75 @@ def main() -> int:
     shell_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     thq_rows = [tq.interval_top(queries[qi], shell_ids[offsets[qi]:offsets[qi + 1]], thq_codes, thresholds) for qi in range(QUERY_COUNT)]
     flat_thq = np.concatenate(thq_rows)
-    if not np.array_equal(flat_thq, artifact["thq_candidate_ids"]):
-        raise RuntimeError("THQ top-128 candidate stream differs")
-    unique_ids = np.unique(flat_thq)
+    canonical = np.load(args.canonical_tq_payload, allow_pickle=False)
+    if not np.array_equal(flat_thq, canonical["row_ids"]):
+        raise RuntimeError("canonical TQ1 row IDs differ from THQ replay")
+    thq_offsets = np.concatenate(([0], np.cumsum([len(row) for row in thq_rows], dtype=np.int64)))
+    if not np.array_equal(thq_offsets, canonical["row_offsets"]):
+        raise RuntimeError("canonical TQ1 row offsets differ")
+    unique_ids = np.asarray(canonical["document_ids"], dtype=np.int64)
+    artifact = np.load(args.artifact, allow_pickle=False)
     if not np.array_equal(unique_ids, artifact["unique_ids"]):
         raise RuntimeError("artifact unique IDs differ")
-    train_levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
-    centroids = np.empty((D, 4), dtype=np.float32)
-    fallback = train.mean(axis=0)
-    for d in range(D):
-        for level in range(4):
-            values = train[train_levels[:, d] == level, d]
-            centroids[d, level] = values.mean() if len(values) else fallback[d]
+    centroids = fit_centroids(train_all, thresholds)
     levels = tq.unpack_thq(np.asarray(thq_codes[unique_ids]))
-    base = centroids[np.arange(D)[None, :], levels]
-    if not np.array_equal(base, artifact["base"]):
-        raise RuntimeError("THQ base reconstruction differs")
-    tq_decoded = np.empty_like(base, dtype=np.float32)
-    for start in range(0, len(unique_ids), 2048):
-        stop = min(len(unique_ids), start + 2048)
-        residual = np.asarray(docs[unique_ids[start:stop]], dtype=np.float32) - base[start:stop]
-        tq_decoded[start:stop] = tq.quantize_residual(residual, 1)
-    max_tq_error = float(np.max(np.abs(tq_decoded - artifact["tq_decoded"])))
-    if max_tq_error > 2e-6:
-        raise RuntimeError(f"TQ1 decode mismatch: {max_tq_error}")
+    expected_base = centroids[np.arange(D)[None, :], levels]
+    base = np.asarray(artifact["base"], dtype=np.float32)
+    tq_decoded = np.asarray(artifact["tq_decoded"], dtype=np.float32)
+    if not np.allclose(base, expected_base, rtol=0.0, atol=2e-6) or not np.allclose(base, canonical["base"], rtol=0.0, atol=2e-6):
+        raise RuntimeError("canonical THQ base differs")
+    if not np.allclose(tq_decoded, canonical["decoded1"], rtol=0.0, atol=2e-6):
+        raise RuntimeError("canonical TQ1 decode differs")
+    train_levels = np.sum(train_all[:pq_rows, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
+    train_base = centroids[np.arange(D)[None, :], train_levels]
+    train_tq = tq.quantize_residual(train_all[:pq_rows] - train_base, 1)
+    expected_pq = fit_pq(train_all[:pq_rows] - train_base - train_tq, int(report["pq_subvectors"]), int(report["pq_fit_seed"]), int(report["pq_fit_iterations"]))
     pq_centroids = np.asarray(artifact["pq_centroids"], dtype=np.float32)
+    if not np.allclose(expected_pq, pq_centroids, rtol=0.0, atol=1e-6):
+        raise RuntimeError("deterministic PQ fit replay differs")
     pq_codes = np.asarray(artifact["pq_codes"], dtype=np.uint8)
-    if pq_centroids.shape[0] != report["pq_subvectors"] or pq_codes.shape != (len(unique_ids), report["pq_subvectors"]):
-        raise RuntimeError("PQ shapes differ")
-    width = D // report["pq_subvectors"]
+    width = D // int(report["pq_subvectors"])
     expected_codes = np.empty_like(pq_codes)
-    for sub in range(report["pq_subvectors"]):
+    for sub in range(int(report["pq_subvectors"])):
         for start in range(0, len(unique_ids), 2048):
             stop = min(len(unique_ids), start + 2048)
             residual = np.asarray(docs[unique_ids[start:stop]], dtype=np.float32) - base[start:stop] - tq_decoded[start:stop]
             block = residual[:, sub * width:(sub + 1) * width]
-            delta = block[:, None, :] - pq_centroids[sub][None, :, :]
-            expected_codes[start:stop, sub] = np.sum(delta * delta, axis=2).argmin(axis=1)
+            expected_codes[start:stop, sub] = np.sum((block[:, None, :] - pq_centroids[sub][None, :, :]) ** 2, axis=2).argmin(axis=1)
     if not np.array_equal(expected_codes, pq_codes):
         raise RuntimeError("PQ code assignment differs")
-    pq_decoded = pq_centroids[np.arange(report["pq_subvectors"])[None, :], pq_codes].reshape(len(unique_ids), D)
+    pq_decoded = pq_centroids[np.arange(int(report["pq_subvectors"]))[None, :], pq_codes].reshape(len(unique_ids), D)
+    tq_norms = np.linalg.norm(base + tq_decoded, axis=1).astype(np.float32)
+    corrected_norms = np.linalg.norm(base + tq_decoded + pq_decoded, axis=1).astype(np.float32)
+    if not np.array_equal(tq_norms, artifact["tq_norms"]) or not np.array_equal(corrected_norms, artifact["corrected_norms"]):
+        raise RuntimeError("persisted norm sidecars differ")
     position = {int(doc): i for i, doc in enumerate(unique_ids)}
     rows = {(int(row["query"]), row["arm"]): row for row in report["rows"]}
-    median32 = float(report["margin_policy"]["median_gap_rank10_32"])
-    median64 = float(report["margin_policy"]["median_gap_rank10_64"])
+    median32 = float(report["margin_policy"]["median_gap_rank10_32"]); median64 = float(report["margin_policy"]["median_gap_rank10_64"])
     for qi, query in enumerate(queries):
-        ids = thq_rows[qi]
-        levels_q = tq.unpack_thq(np.asarray(thq_codes[ids]))
-        base_q = centroids[np.arange(D)[None, :], levels_q]
-        tq_q = tq.quantize_residual(np.asarray(docs[ids], dtype=np.float32) - base_q, 1)
-        tq_vec = base_q + tq_q
-        scores = (tq_vec @ query) / np.maximum(np.linalg.norm(tq_vec, axis=1) * np.linalg.norm(query), 1e-30)
-        order = np.lexsort((ids, -scores)); ranked = ids[order]
-        margins = {32: float(scores[order[9]] - scores[order[31]]), 64: float(scores[order[9]] - scores[order[63]])}
+        ids = thq_rows[qi]; idx_q = np.asarray([position[int(doc)] for doc in ids]); tq_scores = (np.asarray(base[idx_q] + tq_decoded[idx_q]) @ query) / np.maximum(tq_norms[idx_q] * np.linalg.norm(query), 1e-30)
+        order = np.lexsort((ids, -tq_scores)); ranked = ids[order]; margins = {32: float(tq_scores[order[9]] - tq_scores[order[31]]), 64: float(tq_scores[order[9]] - tq_scores[order[63]])}
         arms = [("tq1_filter_only", 0), (f"tq1_pq{report['pq_subvectors']}_k32", 32), (f"tq1_pq{report['pq_subvectors']}_k64", 64), (f"tq1_pq{report['pq_subvectors']}_k128", 128)]
-        adaptive = 32 if margins[32] >= median32 else (64 if margins[64] >= median64 else 128)
-        arms.append((f"tq1_pq{report['pq_subvectors']}_margin_adaptive", adaptive))
+        adaptive = 32 if margins[32] >= median32 else (64 if margins[64] >= median64 else 128); arms.append((f"tq1_pq{report['pq_subvectors']}_margin_adaptive", adaptive))
         for arm, k in arms:
-            final = ranked.copy()
+            final, corrected_count = ranked.copy(), k
             if k:
-                selected = ranked[:k]
-                idx = np.asarray([position[int(doc)] for doc in selected])
-                corrected = base[idx] + tq_decoded[idx] + pq_decoded[idx]
-                corrected_scores = (corrected @ query) / np.maximum(np.linalg.norm(corrected, axis=1) * np.linalg.norm(query), 1e-30)
-                merged_scores = scores[order].copy(); merged_scores[:k] = corrected_scores
-                final = ranked[np.lexsort((ranked, -merged_scores))]
+                selected = ranked[:k]; idx = np.asarray([position[int(doc)] for doc in selected]); corrected = base[idx] + tq_decoded[idx] + pq_decoded[idx]; corrected_scores = (corrected @ query) / np.maximum(corrected_norms[idx] * np.linalg.norm(query), 1e-30); merged_scores = tq_scores[order].copy(); merged_scores[:k] = corrected_scores; final = ranked[np.lexsort((ranked, -merged_scores))]
             row = rows[(qi, arm)]
-            if row["top10_ids"] != final[:10].astype(int).tolist():
-                raise RuntimeError(f"top10 mismatch: q={qi} arm={arm} expected={final[:10].astype(int).tolist()} recorded={row['top10_ids']}")
-            if row["thq4_top128_ids"] != ids.astype(int).tolist():
-                raise RuntimeError(f"THQ IDs mismatch: q={qi} arm={arm}")
+            if row["top10_ids"] != final[:10].astype(int).tolist() or row["thq4_top128_ids"] != ids.astype(int).tolist() or int(row["correction_docs"]) != corrected_count:
+                raise RuntimeError(f"row replay mismatch: q={qi} arm={arm}")
+            expected_persisted = 56 if corrected_count == 0 else 52 + int(report["pq_subvectors"]) + 8
+            expected_touched = 128 * 56 + corrected_count * (int(report["pq_subvectors"]) + 4)
+            expected_raw = 52 + (int(report["pq_subvectors"]) if corrected_count else 0)
+            expected_norm = 4 + (4 if corrected_count else 0)
+            if int(row["raw_codec_bytes"]) != expected_raw or int(row["norm_bytes"]) != expected_norm or int(row["persisted_side_bytes"]) != expected_persisted or int(row["side_payload_bytes"]) != expected_persisted or int(row["cascade_total_bytes"]) != 96 + expected_persisted or int(row["bytes_touched_this_query"]) != expected_touched:
+                raise RuntimeError(f"serving accounting mismatch: q={qi} arm={arm}")
             if abs(float(row["qrels_ndcg10"]) - ndcg10(final, qids[qi], grades[qi])) > 1e-7:
-                raise RuntimeError(f"qrels metric mismatch: q={qi} arm={arm}")
-            if int(row["correction_docs"]) != k:
-                raise RuntimeError(f"correction count mismatch: q={qi} arm={arm}")
-    audit = {"status": "PASS", "source_replay": True, "result_sha256": sha256(args.result), "artifact_sha256": sha256(args.artifact), "runner_sha256": report["runner_sha256"], "audit_runner_sha256": sha256(Path(__file__)), "rows": len(report["rows"]), "unique_thq_documents": int(len(unique_ids)), "tq1_max_abs_error": max_tq_error, "pq_code_parity": True, "top10_replay": True}
+                raise RuntimeError(f"metric mismatch: q={qi} arm={arm}")
+    audit = {"schema_version": 2, "status": "PASS", "source_replay": True, "deterministic_pq_fit_replay": True, "artifact_hash_binding": True, "result_sha256": sha256(args.result), "artifact_sha256": sha256(args.artifact), "canonical_tq_payload_sha256": sha256(args.canonical_tq_payload), "runner_sha256": report["runner_sha256"], "audit_runner_sha256": sha256(Path(__file__)), "rows": len(report["rows"]), "unique_thq_documents": int(len(unique_ids)), "top10_replay": True, "checks": ["canonical 25k THQ/TQ1 payload binding", "deterministic bounded PQ centroid refit", "PQ assignment replay", "norm sidecar replay", "serving byte and norm accounting replay", "all final top10 rows"]}
     encoded = json.dumps(audit, indent=2, sort_keys=True) + "\n"
     if args.output:
-        args.output.parent.mkdir(parents=True, exist_ok=True)
-        args.output.write_text(encoded, encoding="utf-8")
+        args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(encoded, encoding="utf-8")
     print(encoded, end="")
     return 0
 

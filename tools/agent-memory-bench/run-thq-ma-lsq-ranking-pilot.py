@@ -63,7 +63,7 @@ def main() -> None:
         codes = np.asarray(z[f"codes_{payload}"], dtype=np.uint8)
         books = np.asarray(m[f"lsq{payload}_codebooks"], dtype=np.float32)
         offsets = np.asarray(m[f"lsq{payload}_offsets"], dtype=np.int64)
-        alpha_values = np.asarray([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0], dtype=np.float32)
+        alpha_values = np.asarray([0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0, 3.5, 4.0], dtype=np.float32)
         losses = np.zeros(len(alpha_values), dtype=np.float64)
         for qi in range(args.train_queries):
             ids = selected[qi]; exact = np.asarray(docs[ids], dtype=np.float32)
@@ -80,18 +80,28 @@ def main() -> None:
                 scores = (values @ queries[qi]) / np.maximum(np.linalg.norm(values, axis=1) * np.linalg.norm(queries[qi]), 1e-30)
                 losses[ai] += sum(max(0.0, 0.05 - float(scores[i] - scores[j])) for i in positive for j in negative)
         best_alpha = float(alpha_values[int(np.argmin(losses))])
+        selected_rows = []
+        baseline_rows = []
         for qi in range(Q):
             ids = selected[qi]; levels = unpack_thq(np.asarray(thq[ids]))
             base = np.asarray(m["centroids"], dtype=np.float32)[np.arange(D)[None, :], levels]
             residual = np.zeros((TOP, D), dtype=np.float32)
             for stage in range(payload): residual += books[offsets[stage] + codes[qi, :, stage]]
-            values = base + best_alpha * residual
-            scores = (values @ queries[qi]) / np.maximum(np.linalg.norm(values, axis=1) * np.linalg.norm(queries[qi]), 1e-30)
-            ranked = ids[np.lexsort((ids, -scores))]
-            rows.append({"query": qi, "arm": f"ma_lsq{payload}_alpha{best_alpha:g}", "split": "train" if qi < args.train_queries else "heldout", "alpha": best_alpha, "top10_ids": ranked[:10].astype(int).tolist(), "qrels_ndcg10": ndcg(ranked, qids[qi], grades[qi])})
-        held = [r["qrels_ndcg10"] for r in rows if r["arm"] == f"ma_lsq{payload}_alpha{best_alpha:g}" and r["split"] == "heldout"]
-        summaries[f"ma_lsq{payload}"] = {"alpha": best_alpha, "train_pairwise_hinge": float(np.min(losses)), "heldout_mean_ndcg10": float(np.mean(held)), "heldout_p05_ndcg10": float(np.percentile(held, 5)), "quality_status": "BOUNDED_HELDOUT_DIAGNOSTIC"}
-    result = {"schema_version": 1, "family": "thq_ma_lsq_ranking_scalar_pilot_v1", "status": "EXECUTED", "metric": "cosine", "train_queries": args.train_queries, "heldout_queries": Q - args.train_queries, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "queries", "qrel-ids", "qrel-scores", "thq4-codes", "lsq-models", "lsq-codes")}, "runner_sha256": sha256(Path(__file__)), "summaries": summaries, "rows": rows, "limitations": ["single global residual scale per payload, not full MA-LSQ codebook training", "qrels are used only on the first query fold", "diagnostic decode uses fixed LSQ residual codes and is not a deployable query-conditioned codec"]}
+            split = "train" if qi < args.train_queries else "heldout"
+            for alpha, arm, target in ((1.0, f"lsq{payload}_alpha1_baseline", baseline_rows), (best_alpha, f"ma_lsq{payload}_alpha{best_alpha:g}", selected_rows)):
+                values = base + alpha * residual
+                scores = (values @ queries[qi]) / np.maximum(np.linalg.norm(values, axis=1) * np.linalg.norm(queries[qi]), 1e-30)
+                ranked = ids[np.lexsort((ids, -scores))]
+                row = {"query": qi, "arm": arm, "split": split, "alpha": alpha, "top10_ids": ranked[:10].astype(int).tolist(), "qrels_ndcg10": ndcg(ranked, qids[qi], grades[qi])}
+                rows.append(row)
+                target.append(row)
+        held_selected = np.asarray([r["qrels_ndcg10"] for r in selected_rows if r["split"] == "heldout"], dtype=np.float64)
+        held_baseline = np.asarray([r["qrels_ndcg10"] for r in baseline_rows if r["split"] == "heldout"], dtype=np.float64)
+        delta = held_selected - held_baseline
+        rng = np.random.default_rng(20260923 + payload)
+        bootstrap = np.asarray([np.mean(delta[rng.integers(0, len(delta), len(delta))]) for _ in range(2000)])
+        summaries[f"ma_lsq{payload}"] = {"alpha": best_alpha, "alpha_grid": alpha_values.tolist(), "train_pairwise_hinge": float(np.min(losses)), "heldout_baseline_alpha1_mean_ndcg10": float(np.mean(held_baseline)), "heldout_selected_mean_ndcg10": float(np.mean(held_selected)), "heldout_mean_paired_delta": float(np.mean(delta)), "heldout_paired_delta_bootstrap_ci95": [float(np.percentile(bootstrap, 2.5)), float(np.percentile(bootstrap, 97.5))], "wins": int(np.sum(delta > 0.0)), "ties": int(np.sum(delta == 0.0)), "losses": int(np.sum(delta < 0.0)), "quality_status": "BOUNDED_HELDOUT_DIAGNOSTIC"}
+    result = {"schema_version": 2, "family": "thq_ma_lsq_ranking_scalar_pilot_v2", "status": "EXECUTED", "metric": "cosine", "train_queries": args.train_queries, "heldout_queries": Q - args.train_queries, "bootstrap_seed": 20260923, "bootstrap_replicates": 2000, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "queries", "qrel-ids", "qrel-scores", "thq4-codes", "lsq-models", "lsq-codes")}, "runner_sha256": sha256(Path(__file__)), "summaries": summaries, "rows": rows, "limitations": ["single global residual scale per payload, not full MA-LSQ codebook training", "qrels are used only on the first query fold", "alpha is selected only on train-fold pairwise hinge loss", "diagnostic decode uses fixed LSQ residual codes and is not a deployable query-conditioned codec"]}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
