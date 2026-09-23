@@ -1,0 +1,35 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "experiment_note": "guides/experiments/2026-09-24-aaq-qinco2-residual-wave.md",
+  "git_branch": "research/aaq-qinco2-residual-wave",
+  "score_aware_lsq": {
+    "runner": "tools/agent-memory-bench/run-thq-score-aware-lsq.py",
+    "runner_sha256": "c9a2bccafc57a9134a7a4b22f070b7a574e5e4cd48c580369d5cb8bc1b46cc89",
+    "audit_runner": "tools/agent-memory-bench/audit-thq-score-aware-lsq.py",
+    "audit_runner_sha256": "c14669b3f31632f66db104eed3e7915e435a57d16c541d7a466ab18986188c0b",
+    "result_sha256": "a7cc594f8f0a72a580e09d93ec9fe6e8b48b34e9e0680bcf403959e03c3f2476",
+    "audit_sha256": "03551e9648de32621caef52c77bff4427f7190ca9c9e73bdac5a16a133e196db",
+    "codes_sha256": "e2b3a11128fd83f0f5525f9e34a54ba1cfd9782854764d161571a60502e4784b",
+    "config": {"neighbors": 8, "passes": 1, "query_count": 152, "shell_width": 128},
+    "audit_status": "PASS",
+    "source_scope": "canonical E5/R4 documents, queries, qrels, teacher IDs, THQ4 codes; frozen LSQ strong shell/models"
+  },
+  "residual_hybrid_matrix": {
+    "runner": "tools/agent-memory-bench/write-residual-hybrid-matrix.py",
+    "runner_sha256": "63bc2ee03ba6823eea6fe0ea73ef376a82fd28605f22eaa2b48c192f2ce721c5",
+    "artifact_sha256": "948b83ec040fa4bd434ce3e32daf3259e9b6cec485a06239891a84d059b1f89d",
+    "paired_candidate_stream": false,
+    "interpretation": "directional matrix; TQ+ corrected replay uses a different candidate-flat stream"
+  },
+  "qinco2_source_smoke": {
+    "runner": "tools/agent-memory-bench/run-qinco2-source-smoke.py",
+    "runner_sha256": "b0a21ee4fbdeea7dfc1883f0f7d77c5b2c27605b9940f106893e497adff27c81",
+    "artifact_sha256": "f18905d7a71e70b9d39a24b81cf9b43562304cf2f76a51053f104b6c9ba0481b",
+    "upstream_repository": "https://github.com/facebookresearch/Qinco",
+    "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
+    "status": "EXECUTED",
+    "quality_status": "NOT_EXECUTED",
+    "reason": "no E5/R4-trained QINCo2 checkpoint"
+  }
+}
