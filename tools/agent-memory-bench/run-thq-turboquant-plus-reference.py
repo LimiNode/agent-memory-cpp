@@ -146,12 +146,42 @@ def encode_wide_query(values: np.ndarray) -> tuple[np.ndarray, np.float32]:
     return np.clip(signed, -32639, 32639).astype(np.int32), q_scale
 
 
+def balanced_radix256_planes(signed: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Scalar equivalent of the two signed-byte QueryPlanes<8,2> split."""
+    values = np.asarray(signed, dtype=np.int32)
+    high = np.floor_divide(values + 128, 256)
+    low = values - high * 256
+    require(np.all(low >= -128) and np.all(low <= 127), "radix low plane overflow")
+    require(np.all(high >= -128) and np.all(high <= 127), "radix high plane overflow")
+    return low.astype(np.int8), high.astype(np.int8)
+
+
 def wide_dot(sign_codes: np.ndarray, values: np.ndarray, outer: float) -> float:
     """Exact scalar Query1bitWideSimd score before EC correction."""
     signed, q_scale = encode_wide_query(values)
+    low, high = balanced_radix256_planes(signed)
     signs = (np.asarray(sign_codes, dtype=np.int64) * 2) - 1
-    dot = int(np.dot(signs, signed.astype(np.int64)))
+    dot = int(np.dot(signs, low.astype(np.int64)))
+    dot += 256 * int(np.dot(signs, high.astype(np.int64)))
     return float(np.float32((float(outer) * dot) / float(q_scale)))
+
+
+def self_test() -> None:
+    signed = np.arange(-32639, 32640, dtype=np.int32)
+    low, high = balanced_radix256_planes(signed)
+    replayed = low.astype(np.int32) + 256 * high.astype(np.int32)
+    require(np.array_equal(replayed, signed), "exhaustive balanced radix-256 replay differs")
+    values = np.asarray([-1.0, -0.501, -1e-6, 0.0, 1e-6, 0.501, 1.0], dtype=np.float32)
+    quantized, _ = encode_wide_query(values)
+    require(int(quantized[0]) == -32639 and int(quantized[-1]) == 32639,
+            "wide-query endpoint quantization differs")
+    shift = np.linspace(-0.1, 0.1, D, dtype=np.float32)
+    scale = np.linspace(0.75, 1.25, D, dtype=np.float32)
+    zero = np.zeros((1, D), dtype=np.float32)
+    levels, factors, _, _, _ = encode_plus(zero, shift, scale, float(np.sqrt(2.0 / np.pi)))
+    decoded = decode_plus(levels, factors, shift, scale, float(np.sqrt(2.0 / np.pi)))
+    require(float(factors[0]) == 0.0 and np.array_equal(decoded, zero), "zero-residual fallback differs")
+    print("TurboQuant+ scalar reference self-test: PASS")
 
 
 def encode_plus(residual: np.ndarray, shift: np.ndarray, scale: np.ndarray, outer: float) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -182,8 +212,14 @@ def main() -> None:
     names = ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output")
     for name in names:
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
-    parser.add_argument("--artifact", type=Path, required=True)
+    parser.add_argument("--artifact", type=Path)
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return
+    if args.artifact is None:
+        parser.error("--artifact is required outside --self-test")
     if any(getattr(args, name.replace("-", "_")) is None for name in names):
         parser.error("all source and output paths are required")
 
@@ -233,13 +269,13 @@ def main() -> None:
         ideal_residual = (decoded[indexes] @ query)
         ideal_scores = ((base[indexes] @ query) + ideal_residual) / np.maximum(composite_norms[indexes], 1e-12)
         ideal_ranked = top_ids(ideal_scores, ids, 10)
-        rows.append({"query": qi, "arm": "turboquant_plus1_float_composite", "top10_ids": ideal_ranked.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(ideal_ranked, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], ideal_ranked).sum() / 10), "side_payload_bytes": 60, "cascade_total_bytes": THQ_BYTES + 60, "query_ephemeral_bytes": 0})
+        rows.append({"query": qi, "arm": "turboquant_plus1_float_composite", "top10_ids": ideal_ranked.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(ideal_ranked, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], ideal_ranked).sum() / 10), "side_payload_bytes": 60, "cascade_total_bytes": THQ_BYTES + 60})
         wide_scores = np.asarray([(base[int(pos[int(doc)])] @ query + (wide_dot(codes[int(pos[int(doc)])], rotated_q / scale, outer) + qm) * float(scaling_factors[int(pos[int(doc)])])) / max(float(composite_norms[int(pos[int(doc)])]), 1e-12) for doc in ids], dtype=np.float64)
         wide_ranked = top_ids(wide_scores, ids, 10)
-        rows.append({"query": qi, "arm": "turboquant_plus1_wide_composite", "top10_ids": wide_ranked.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(wide_ranked, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], wide_ranked).sum() / 10), "side_payload_bytes": 60, "cascade_total_bytes": THQ_BYTES + 60, "query_ephemeral_bytes": 56})
+        rows.append({"query": qi, "arm": "turboquant_plus1_wide_composite", "top10_ids": wide_ranked.astype(int).tolist(), "thq4_top128_ids": ids.astype(int).tolist(), "qrels_ndcg10": ndcg10(wide_ranked, qids[qi], grades[qi]), "teacher_overlap": float(np.isin(teacher[qi], wide_ranked).sum() / 10), "side_payload_bytes": 60, "cascade_total_bytes": THQ_BYTES + 60, "query_logical_bytes": D * 2, "query_plane_bytes": 2 * 8 * 64})
     summaries = {arm: {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in rows if r["arm"] == arm])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in rows if r["arm"] == arm], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in rows if r["arm"] == arm]))} for arm in ("turboquant_plus1_direct", "turboquant_plus1_float_composite", "turboquant_plus1_wide_composite")}
     sources = {name: getattr(args, name.replace("-", "_")) for name in names[:-1]}
-    result = {"schema_version": 3, "family": "thq_qdrant_tq_plus_residual_composite_gate_c_v3", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "codec_metric": "Qdrant TQMode::Plus Bits1 scalar Query1bitWideSimd plus residual composite cosine correction", "upstream_revision": UPSTREAM_REVISION, "upstream_source": UPSTREAM_SOURCE, "bits": 1, "query_path": "Query1bitWideSimd scalar reference", "query_count": QUERY_COUNT, "selected_unique_documents": int(len(selected_unique)), "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_path": str(args.artifact), "artifact_sha256": sha256(args.artifact), "payload_contract": {"base_side_payload_bytes": 56, "composite_side_payload_bytes": 60, "fields": ["48-bit sign code", "float32 scaling_factor = residual_l2 / quantized_centroid_norm", "float32 ec_correction", "float32 final composite norm diagnostic"], "global_metadata_bytes": int(shift.nbytes + scale.nbytes)}, "fit_contract": fit_contract, "summaries": summaries, "rows": rows, "limitations": ["Python scalar model of Qdrant QuerySimd<8,2>; no native SIMD", "candidate-local THQ top128 replay", "composite norm is persisted as a diagnostic payload field", "wire-format bytes are represented by a persisted NumPy audit artifact"]}
+    result = {"schema_version": 3, "family": "thq_qdrant_tq_plus_residual_composite_gate_c_v3", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "codec_metric": "Qdrant TQMode::Plus Bits1 scalar Query1bitWideSimd plus residual composite cosine correction", "upstream_revision": UPSTREAM_REVISION, "upstream_source": UPSTREAM_SOURCE, "bits": 1, "query_path": "Query1bitWideSimd scalar reference", "query_memory_contract": {"logical_int16_bytes": D * 2, "qdrant_query_plane_bytes": 2 * 8 * 64, "plane_length_bytes": 64}, "query_count": QUERY_COUNT, "selected_unique_documents": int(len(selected_unique)), "source_hashes": {name: sha256(path) for name, path in sources.items()}, "runner_sha256": sha256(Path(__file__)), "artifact_path": str(args.artifact), "artifact_sha256": sha256(args.artifact), "payload_contract": {"base_side_payload_bytes": 56, "composite_side_payload_bytes": 60, "fields": ["48-bit sign code", "float32 scaling_factor = residual_l2 / quantized_centroid_norm", "float32 ec_correction", "float32 final composite norm diagnostic"], "global_metadata_bytes": int(shift.nbytes + scale.nbytes)}, "fit_contract": fit_contract, "summaries": summaries, "rows": rows, "limitations": ["Python scalar model of Qdrant QuerySimd<8,2>; no native SIMD", "candidate-local THQ top128 replay", "composite norm is persisted as a diagnostic payload field", "wire-format bytes are represented by a persisted NumPy audit artifact"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

@@ -82,6 +82,7 @@ def main() -> None:
     rows = result.get("rows", [])
     require(result.get("status") == "EXECUTED" and result.get("source_replay") is True and result.get("schema_version") == 3 and result.get("family") == "thq_qdrant_tq_plus_residual_composite_gate_c_v3", "result is not the corrected TurboQuant+ composite source replay")
     require(result.get("upstream_revision") == REVISION and result.get("bits") == 1, "TurboQuant+ source or bit contract differs")
+    require(result.get("query_memory_contract") == {"logical_int16_bytes": 768, "qdrant_query_plane_bytes": 1024, "plane_length_bytes": 64}, "wide-query memory contract differs")
     require(len(rows) == 456, "TurboQuant+ row cardinality differs")
     require(set(row.get("arm") for row in rows) == {"turboquant_plus1_direct", "turboquant_plus1_float_composite", "turboquant_plus1_wide_composite"}, "TurboQuant+ arm set differs")
     require(result.get("runner_sha256") == sha256(args.runner), "result runner binding differs")
@@ -126,13 +127,14 @@ def main() -> None:
             values = base[indexes] + decoded_residual[indexes]
             scores = (values @ query) / np.maximum(final_norms[indexes], 1e-12)
         else:
+            require(row.get("query_logical_bytes") == 768 and row.get("query_plane_bytes") == 1024, "wide-query row memory accounting differs")
             rotated_q = _normal.rotate(query[None, :])[0]; q_plus = rotated_q / scale; qm = float(np.dot(rotated_q, -shift))
             residual_scores = np.asarray([wide_dot(codes[index], q_plus, outer) + qm for index in indexes], dtype=np.float64)
             scores = ((base[indexes] @ query) + residual_scores * scaling_factors[indexes]) / np.maximum(final_norms[indexes], 1e-12)
         ranked = top_ids(scores, ids, 10)
         mismatches[row["arm"]] += int(not np.array_equal(ranked, np.asarray(row["top10_ids"], dtype=np.int64)))
     require(all(value == 0 for value in mismatches.values()), f"independent TurboQuant+ top10 mismatches: {mismatches}")
-    audit = {"schema_version": 3, "family": "thq_qdrant_tq_plus_residual_composite_audit_v3", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "result_sha256": sha256(args.result), "runner_sha256": sha256(args.runner), "artifact_sha256": sha256(args.artifact), "query_sha256": sha256(args.queries), "row_count": len(rows), "independent_decode_top10_mismatch_count": mismatches, "checks": ["Qdrant revision binding", "all canonical source SHA-256 bindings", "P2/quantile fit contract", "scalar QuerySimd<8,2> wide-query parity", "scaling_factor = residual_l2 / quantized_centroid_norm", "independent inverse-rotation decode", "composite cosine denominator replay", "direct, float-composite and wide-composite top10 parity", "60-byte composite payload accounting"], "limitations": ["Python scalar model of native SIMD arithmetic", "candidate-local THQ top128 replay"]}
+    audit = {"schema_version": 3, "family": "thq_qdrant_tq_plus_residual_composite_audit_v3", "status": "PASS", "source_binding": True, "independent_decode_replay": True, "result_sha256": sha256(args.result), "runner_sha256": sha256(args.runner), "artifact_sha256": sha256(args.artifact), "query_sha256": sha256(args.queries), "row_count": len(rows), "independent_decode_top10_mismatch_count": mismatches, "checks": ["Qdrant revision binding", "all canonical source SHA-256 bindings", "P2/quantile fit contract", "scalar QuerySimd<8,2> wide-query parity", "768-byte logical / 1024-byte QueryPlanes accounting", "scaling_factor = residual_l2 / quantized_centroid_norm", "independent inverse-rotation decode", "composite cosine denominator replay", "direct, float-composite and wide-composite top10 parity", "60-byte composite payload accounting"], "limitations": ["Python scalar model of native SIMD arithmetic", "candidate-local THQ top128 replay"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print("TurboQuant+ reference audit PASS")
