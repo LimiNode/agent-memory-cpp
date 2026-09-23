@@ -29,8 +29,8 @@
     },
     "ma_lsq_scalar_pilot": {
       "runner": "tools/agent-memory-bench/run-thq-ma-lsq-ranking-pilot.py",
-      "runner_sha256": "81ef65fa90347d049840fb60c617d255e4ee86ceaf80b47f61ffc4f10950e399",
-      "result_sha256": "d5c36784e57c9b9f33da2bacb3135cf636b359fa6079e075e04e24f09603ec1e",
+      "runner_sha256": "c98de7b735327196dae5212591a6af7d12150a88a0343cd565e6dcff77874618",
+      "result_sha256": "a3ffe709ba84701f527441d2302124d82440faabaa6fa497550cdd5742c05ea8",
       "quality_status": "BOUNDED_HELDOUT_DIAGNOSTIC"
     }
   },

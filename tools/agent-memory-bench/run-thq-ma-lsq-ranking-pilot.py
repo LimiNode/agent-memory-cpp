@@ -16,6 +16,7 @@ from pathlib import Path
 import numpy as np
 
 D, Q, TOP = 384, 152, 128
+BOOTSTRAP_BASE_SEED = 20260923
 
 
 def sha256(path: Path) -> str:
@@ -98,10 +99,11 @@ def main() -> None:
         held_selected = np.asarray([r["qrels_ndcg10"] for r in selected_rows if r["split"] == "heldout"], dtype=np.float64)
         held_baseline = np.asarray([r["qrels_ndcg10"] for r in baseline_rows if r["split"] == "heldout"], dtype=np.float64)
         delta = held_selected - held_baseline
-        rng = np.random.default_rng(20260923 + payload)
+        bootstrap_seed = BOOTSTRAP_BASE_SEED + payload
+        rng = np.random.default_rng(bootstrap_seed)
         bootstrap = np.asarray([np.mean(delta[rng.integers(0, len(delta), len(delta))]) for _ in range(2000)])
-        summaries[f"ma_lsq{payload}"] = {"alpha": best_alpha, "alpha_grid": alpha_values.tolist(), "train_pairwise_hinge": float(np.min(losses)), "heldout_baseline_alpha1_mean_ndcg10": float(np.mean(held_baseline)), "heldout_selected_mean_ndcg10": float(np.mean(held_selected)), "heldout_mean_paired_delta": float(np.mean(delta)), "heldout_paired_delta_bootstrap_ci95": [float(np.percentile(bootstrap, 2.5)), float(np.percentile(bootstrap, 97.5))], "wins": int(np.sum(delta > 0.0)), "ties": int(np.sum(delta == 0.0)), "losses": int(np.sum(delta < 0.0)), "quality_status": "BOUNDED_HELDOUT_DIAGNOSTIC"}
-    result = {"schema_version": 2, "family": "thq_ma_lsq_ranking_scalar_pilot_v2", "status": "EXECUTED", "metric": "cosine", "train_queries": args.train_queries, "heldout_queries": Q - args.train_queries, "bootstrap_seed": 20260923, "bootstrap_replicates": 2000, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "queries", "qrel-ids", "qrel-scores", "thq4-codes", "lsq-models", "lsq-codes")}, "runner_sha256": sha256(Path(__file__)), "summaries": summaries, "rows": rows, "limitations": ["single global residual scale per payload, not full MA-LSQ codebook training", "qrels are used only on the first query fold", "alpha is selected only on train-fold pairwise hinge loss", "diagnostic decode uses fixed LSQ residual codes and is not a deployable query-conditioned codec"]}
+        summaries[f"ma_lsq{payload}"] = {"alpha": best_alpha, "alpha_grid": alpha_values.tolist(), "bootstrap_seed": bootstrap_seed, "train_pairwise_hinge": float(np.min(losses)), "heldout_baseline_alpha1_mean_ndcg10": float(np.mean(held_baseline)), "heldout_selected_mean_ndcg10": float(np.mean(held_selected)), "heldout_mean_paired_delta": float(np.mean(delta)), "heldout_paired_delta_bootstrap_ci95": [float(np.percentile(bootstrap, 2.5)), float(np.percentile(bootstrap, 97.5))], "wins": int(np.sum(delta > 0.0)), "ties": int(np.sum(delta == 0.0)), "losses": int(np.sum(delta < 0.0)), "quality_status": "BOUNDED_HELDOUT_DIAGNOSTIC"}
+    result = {"schema_version": 2, "family": "thq_ma_lsq_ranking_scalar_pilot_v2", "status": "EXECUTED", "metric": "cosine", "train_queries": args.train_queries, "heldout_queries": Q - args.train_queries, "bootstrap_base_seed": BOOTSTRAP_BASE_SEED, "bootstrap_seed_by_payload": {"32": BOOTSTRAP_BASE_SEED + 32, "48": BOOTSTRAP_BASE_SEED + 48}, "bootstrap_replicates": 2000, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "queries", "qrel-ids", "qrel-scores", "thq4-codes", "lsq-models", "lsq-codes")}, "runner_sha256": sha256(Path(__file__)), "summaries": summaries, "rows": rows, "limitations": ["single global residual scale per payload, not full MA-LSQ codebook training", "qrels are used only on the first query fold", "alpha is selected only on train-fold pairwise hinge loss", "diagnostic decode uses fixed LSQ residual codes and is not a deployable query-conditioned codec"]}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 

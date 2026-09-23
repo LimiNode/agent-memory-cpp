@@ -103,4 +103,5 @@ the LSQ48 diagnostic is negative on this split. These are not validated
 MA-LSQ results: this is only scalar residual calibration over fixed codebooks,
 not ranking-aware codebook/stage training. A real MA-LSQ gate needs multiple
 query folds/seeds and codebook/stage training independent of the 152-query
-evaluation set.
+evaluation set. Bootstrap provenance is payload-specific: the runner records
+seeds `20260955` for LSQ32 and `20260971` for LSQ48.
