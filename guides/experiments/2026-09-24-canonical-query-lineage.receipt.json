@@ -337,11 +337,14 @@
       70
     ],
     "qrels": {
+      "canonical_mapped_pair_count": 1557,
       "comparison": "document ID and grade exact within 1e-6",
-      "matched_pairs": 1557
+      "legacy_pair_count": 1557,
+      "matched_pairs": 1557,
+      "set_equality": true
     },
     "vector_equality": {
-      "comparison": "float32 row bytes / exact array equality",
+      "comparison": "float32 row bytes / exact byte equality",
       "duplicate_vector_candidates": {
         "32": [
           160,

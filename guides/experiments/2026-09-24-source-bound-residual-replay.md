@@ -28,11 +28,11 @@ results remain historical-152 reproduction rather than a blind holdout claim.
 | TQ1 | canonical TQ1 | 56 | 0.659176 | 0 | regenerated |
 | TQ1 + PQ4 | 25k rows, Faiss Kmeans, 25 iters, 3 restarts | 64 | 0.656730 | -0.002446 | PASS |
 | TQ1 + PQ8 | 25k rows, Faiss Kmeans, 25 iters, 3 restarts | 68 | 0.660526 | +0.001351 | PASS |
-| TQ1 + LSQ32 | Faiss LSQ, 1,024 rows, 1/1/1/1, nperts=1 | 32 | 0.656379 | -0.002796 | PASS |
-| TQ1 + LSQ48 | Faiss LSQ, 1,024 rows, 1/1/1/1, nperts=1 | 48 | 0.662620 | +0.003445 | PASS |
+| THQ25k + LSQ1024-32 | Faiss LSQ, frozen 25k-row THQ centroids; 1,024-row LSQ fit, 1/1/1/1, nperts=1 | 36 (32 + FP32 norm) | 0.655921 | -0.003255 | PASS |
+| THQ25k + LSQ1024-48 | Faiss LSQ, frozen 25k-row THQ centroids; 1,024-row LSQ fit, 1/1/1/1, nperts=1 | 52 (48 + FP32 norm) | 0.663288 | +0.004112 | PASS |
 | TQ1 + TQ+ | source-bound TurboQuant+ reference (direct) | reference-defined | 0.657829 | -0.001347 | PASS |
-| QJL Gaussian m=32/64/128 | score correction, source-norm denominator | 8/12/20 | 0.402911/0.508609/0.556806 | negative | PASS |
-| QJL Rademacher m=32/64/128 | explicit heuristic control | 8/12/20 | 0.436845/0.502227/0.595290 | negative | PASS |
+| QJL Gaussian m=32/64/128/256/384 | score correction, unit-norm denominator contract | 8/12/20/36/52 (+ global model) | 0.402911/0.508609/0.556806/0.586868/0.614050 | negative | PASS |
+| QJL Rademacher m=32/64/128/256/384 | explicit heuristic control, unit-norm denominator contract | 8/12/20/36/52 (+ global model) | 0.436845/0.502227/0.595290/0.604507/0.639023 | negative | PASS |
 
 For PQ, K=32/64/128 and the median-gap adaptive policy produced identical
 quality within each codebook; only touched bytes changed.  Thus the stronger
@@ -43,13 +43,20 @@ architecture decisions and requires confirmation on a fresh pre-registered
 query split.
 
 LSQ48 is also a positive point estimate, but this run is explicitly a bounded
-fit control (1,024 rows and one iteration).  It must not be described as a
-converged LSQ result.  Full 25k LSQ fitting and a multi-seed held-out replay
-remain open because Faiss LocalSearchQuantizer is substantially more expensive.
+fit control (1,024 rows and one iteration) on frozen THQ centroids fit from
+25,000 rows.  The serving-shaped payload is 52 B/doc because direct cosine
+requires a 4-byte FP32 norm sidecar; the old 48-B label was incomplete.  It
+must not be described as a converged LSQ result.  Full 25k LSQ fitting and a
+multi-seed held-out replay remain open because Faiss LocalSearchQuantizer is
+substantially more expensive.
 
-QJL is a score-correction primitive, not a reconstructed-vector codec.  Both
-the Gaussian reference and Rademacher control are far below TQ1 at these
-widths, so this implementation does not support a QJL production direction.
+QJL is a score-correction primitive, not a reconstructed-vector codec.  The
+audit now replays persisted projections/signs through score, top-10 and nDCG
+summaries.  Widths m=256 and m=384 are paper-faithful sanity controls and
+persist a global projection model (393,216 and 589,824 B respectively).  The
+unit-norm denominator is a serving contract for normalized E5; source norms
+remain diagnostics only.  Even m=384 Rademacher reaches only 0.639023, below
+TQ1, so this implementation does not support a QJL production direction.
 
 ## Evidence hashes
 
@@ -57,13 +64,14 @@ widths, so this implementation does not support a QJL production direction.
 - canonical TQ1 payload: `123e015bdca05edae64fb3e05a996c7c9f5ae72a117c96364a3739d4760a965a`;
 - PQ4 result/audit: `245721d4`, `70ea4509`;
 - PQ8 result/audit: `eca6d9f7`, `6e52555d`;
-- LSQ result/audit: `ba433dcb`, `aab8f26`;
-- QJL result/artifact/audit: `f5f45ceaf83d`, `50a24b56fcce`, `ef5e5bbfcd65`;
+- LSQ result/models/codes/audit: `53459f76`, `595d6e09`, `79c9f578`, `2d94310d`;
+- QJL result/artifact/audit: `7d646e6b`, `c9a7be19`, `a7e66750`;
 - TQ+ result/audit: `bc923bf1`, `90364933`.
 
 The QJL artifact now persists residual norms and packed sign sketches for all
-Gaussian/Rademacher widths; its v2 audit independently replays residual norms,
-source norms, projection shapes, and packed signs. The complete raw reports and model/code payloads remain in the centralized
+Gaussian/Rademacher widths; its v3 audit independently replays residual norms,
+source norms, projection shapes, packed signs, scores, top-10 IDs, and nDCG
+aggregates. The complete raw reports and model/code payloads remain in the centralized
 research workspace; only compact provenance is committed.  OPQ, TQ-domain
 normalized residual correction, and a fresh held-out query split remain
 explicit follow-up gates rather than being inferred from these results.

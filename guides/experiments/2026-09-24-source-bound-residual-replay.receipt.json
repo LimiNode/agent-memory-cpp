@@ -10,9 +10,9 @@
   "arms": {
     "pq4": {"result_sha256": "245721d4fb5539de1e97fb0191b8bc37031daf8623f7357ff9176cfa8359c51d", "audit_sha256": "70ea4509b7e5008620118e7195122f22ed83e0b6dd3fa15abe5f3bcf8cb5ba55"},
     "pq8": {"result_sha256": "eca6d9f782b61ecdd837eafdc0555b57ae7a2aa4a5ae71e54fe0a69eeaeeb50e", "audit_sha256": "6e52555d8eaadd98fb2231459e2f55c8b6b8db67f85fd791131f37ee02d9c702"},
-    "lsq": {"result_sha256": "ba433dcb46b953dc4c770c6f0e9c46f066bd1e1a56772d5feb4a25aa3e51cd07", "audit_sha256": "aab8f26d2e9e880245e004e7e3ad461a0a6cc9a0db2270f12bb65f5a797c571f"},
+    "lsq": {"result_sha256": "53459f76dfeeeb04cde5f513634f31f78ebd5f6ca612341c68c1806a1c357695", "models_sha256": "595d6e091a280898ae8a858e4bffea03613b0c88e21f2823231942e46ed17e03", "codes_sha256": "79c9f578459936f7ddeec8e983d51c5cdb927a4d016f873ae316422a7ec66af1", "audit_sha256": "2d94310da507ada8a20aba224a460a60c250005c820c5a11ec43f93f7076f4bb"},
     "tqplus": {"result_sha256": "bc923bf1c77508511fb94a1c848654f5cd048008d7fdea22ee5e8a1b27b300d1", "audit_sha256": "9036493383ff8181c37892dbf76dd84f54a11822fa2afeb9f177d4de755e8f01"},
-    "qjl": {"result_sha256": "f5f45ceaf83db74cb73f01ec314617a9f359bdcf86c63c55418987f3d3a73029", "artifact_sha256": "50a24b56fccee4300b0dccab2b13ebf9950cca65e1770a3d23c11b5d183dc78c", "audit_sha256": "ef5e5bbfcd656dc0bad4c83b5d921cb0d1bf6da86a425e190c1da54b43473efe"}
+    "qjl": {"result_sha256": "7d646e6b6777f9a9df258348918332deb2b9a3cdebcd6f4de202587c8a6830c0", "artifact_sha256": "c9a7be19a7f1d286d6a823555583da5e3ffab158c0a2f3e31a8aa112555a3f41", "audit_sha256": "a7e66750cca2722d780d54ad09ae92c4aa65a9710b6d2cdfb9fe51b15711e0a6"}
   },
   "quality_status": "SOURCE_BOUND_RESEARCH; NO_PRODUCTION_SELECTION",
   "pending": ["OPQ residual control", "TQ-domain normalized residual correction", "full-25k LSQ multi-seed fit", "fresh held-out query replay"]

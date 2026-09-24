@@ -77,7 +77,11 @@ def main() -> int:
     max_abs_error = 0.0
     duplicate_candidates: dict[str, list[int]] = {}
     for legacy_row, canonical_row in enumerate(mapping):
-        exact = np.where(np.all(canonical_queries == legacy_queries[legacy_row], axis=1))[0]
+        legacy_bytes = np.asarray(legacy_queries[legacy_row]).view(np.uint8)
+        exact = np.asarray([
+            index for index in range(CANONICAL_Q)
+            if np.array_equal(np.asarray(canonical_queries[index]).view(np.uint8), legacy_bytes)
+        ], dtype=np.int64)
         require(len(exact) > 0 and int(canonical_row) in set(exact.tolist()),
                 f"query vector mismatch at legacy row {legacy_row}")
         if len(exact) > 1:
@@ -112,6 +116,7 @@ def main() -> int:
     require(qrel_row_count == 3144, f"canonical qrels row count differs: {qrel_row_count}")
 
     matched_qrels = 0
+    legacy_pairs: set[tuple[str, str, float]] = set()
     for legacy_row, canonical_row in enumerate(mapping):
         bucket = qrels.get(query_ids[int(canonical_row)], {})
         for document_row, grade in zip(qrel_ids[legacy_row], qrel_scores[legacy_row]):
@@ -122,6 +127,14 @@ def main() -> int:
             require(actual is not None and np.isclose(actual, float(grade), rtol=0.0, atol=1e-6),
                     f"qrels mismatch at legacy row {legacy_row}, document {int(document_row)}")
             matched_qrels += 1
+            legacy_pairs.add((query_ids[int(canonical_row)], document_ids[int(document_row)], float(grade)))
+    canonical_mapped_pairs = {
+        (query_ids[int(canonical_row)], document_id, float(grade))
+        for canonical_row in mapping
+        for document_id, grade in qrels.get(query_ids[int(canonical_row)], {}).items()
+    }
+    require(legacy_pairs == canonical_mapped_pairs,
+            "legacy qrels are not equal to the complete canonical mapped qrels set")
 
     complement = sorted(set(range(CANONICAL_Q)) - set(int(value) for value in mapping))
     mapped_ids = [query_ids[int(value)] for value in mapping]
@@ -156,11 +169,13 @@ def main() -> int:
             "complement_canonical_rows": complement,
             "complement_query_ids_sha256": canonical_json_sha256(complement_ids),
             "vector_equality": {
-                "comparison": "float32 row bytes / exact array equality",
+                "comparison": "float32 row bytes / exact byte equality",
                 "max_abs_error": max_abs_error,
                 "duplicate_vector_candidates": duplicate_candidates,
             },
-            "qrels": {"matched_pairs": matched_qrels, "comparison": "document ID and grade exact within 1e-6"},
+            "qrels": {"matched_pairs": matched_qrels, "legacy_pair_count": len(legacy_pairs),
+                      "canonical_mapped_pair_count": len(canonical_mapped_pairs), "set_equality": True,
+                      "comparison": "document ID and grade exact within 1e-6"},
         },
         "limitations": [
             "The persisted mapping proves historical row identity, not how the original 152 rows were selected.",
