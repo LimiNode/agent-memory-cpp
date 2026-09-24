@@ -15,6 +15,12 @@ canonical TQ1 payload, cosine metric, and 152-query qrels split.  The TQ1
 baseline is independently regenerated in the same run (`mean nDCG@10 =
 0.659176`).
 
+The 152-query split is explicitly bound to the recovered 305-query source by
+`2026-09-24-canonical-query-lineage.receipt.json` (exact vector equality,
+persisted row order, and 1,557 qrels matches). The receipt does not establish
+that the 153-row complement was untouched during earlier research, so these
+results remain historical-152 reproduction rather than a blind holdout claim.
+
 ## Results
 
 | arm | fit | side bytes/doc | mean nDCG@10 | delta vs TQ1 | audit |
@@ -52,10 +58,12 @@ widths, so this implementation does not support a QJL production direction.
 - PQ4 result/audit: `245721d4`, `70ea4509`;
 - PQ8 result/audit: `eca6d9f7`, `6e52555d`;
 - LSQ result/audit: `ba433dcb`, `aab8f26`;
-- QJL result/audit: `b555328b`, `702347b6`;
+- QJL result/artifact/audit: `f5f45ceaf83d`, `50a24b56fcce`, `ef5e5bbfcd65`;
 - TQ+ result/audit: `bc923bf1`, `90364933`.
 
-The complete raw reports and model/code payloads remain in the centralized
+The QJL artifact now persists residual norms and packed sign sketches for all
+Gaussian/Rademacher widths; its v2 audit independently replays residual norms,
+source norms, projection shapes, and packed signs. The complete raw reports and model/code payloads remain in the centralized
 research workspace; only compact provenance is committed.  OPQ, TQ-domain
 normalized residual correction, and a fresh held-out query split remain
 explicit follow-up gates rather than being inferred from these results.

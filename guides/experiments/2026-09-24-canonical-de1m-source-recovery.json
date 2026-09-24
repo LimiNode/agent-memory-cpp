@@ -46,8 +46,11 @@
   "validation": {
     "runner": "tools/agent-memory-bench/validate-canonical-de1m-source.py",
     "mode": "read_only",
-    "implicit_download_or_copy": false
+    "implicit_download_or_copy": false,
+    "deep_validation_receipt": "2026-09-24-canonical-de1m-source.validation.json",
+    "deep_norm_tolerance": 0.0005
   },
+  "query_lineage_receipt": "2026-09-24-canonical-query-lineage.receipt.json",
   "limitations": [
     "This receipt proves source presence and byte/hash binding only.",
     "No fresh LSQ, PQ, OPQ, QJL, or Gate C quality claim is made by this receipt.",

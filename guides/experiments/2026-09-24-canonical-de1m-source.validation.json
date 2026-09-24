@@ -1,0 +1,74 @@
+{
+  "checks": {
+    "deep_norms": {
+      "documents": {
+        "count": 1000000,
+        "maximum": 1.000000179781523,
+        "maximum_absolute_error_from_one": 1.824873365752211e-07,
+        "mean": 1.0000000000563314,
+        "minimum": 0.9999998175126634
+      },
+      "queries": {
+        "count": 305,
+        "maximum": 1.0000001034545645,
+        "maximum_absolute_error_from_one": 1.1021138179856393e-07,
+        "mean": 0.9999999962136409,
+        "minimum": 0.9999998897886182
+      },
+      "tolerance": 0.0005,
+      "train": {
+        "count": 25000,
+        "maximum": 1.0000001628625659,
+        "maximum_absolute_error_from_one": 1.6685846859765263e-07,
+        "mean": 1.0000000005326837,
+        "minimum": 0.9999998331415314
+      }
+    },
+    "evaluation_document_ids": {
+      "bytes": 23107678,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5\\evaluation-document-ids.jsonl",
+      "sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c"
+    },
+    "evaluation_document_vectors": {
+      "bytes": 1536000000,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5\\evaluation-document-vectors.f32",
+      "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007"
+    },
+    "evaluation_qrels": {
+      "bytes": 96215,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5\\evaluation-qrels.tsv",
+      "sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071"
+    },
+    "evaluation_query_ids": {
+      "bytes": 6996,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5\\evaluation-query-ids.jsonl",
+      "sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385"
+    },
+    "evaluation_query_vectors": {
+      "bytes": 468480,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5\\evaluation-query-vectors.f32",
+      "sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2"
+    },
+    "semantic": {
+      "document_id_count": 1000000,
+      "qrels_row_count": 3144,
+      "qrels_unique_pair_count": 3144,
+      "query_id_count": 305,
+      "train_id_count": 25000
+    },
+    "train_ids": {
+      "bytes": 577574,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5\\train-document-ids.jsonl",
+      "sha256": "c3b04e10f3994415f8861a42aa7bfb72e1092f1e2ba3353b76fde80475bf9c98"
+    },
+    "train_vectors": {
+      "bytes": 38400000,
+      "path": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5\\train-vectors.f32",
+      "sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+    }
+  },
+  "deep": true,
+  "manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+  "root": "E:\\_repoz\\agent-memory-cpp\\tmp\\native-ann-confirmation-v1\\de-1m\\e5",
+  "status": "PASS"
+}

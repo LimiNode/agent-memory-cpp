@@ -22,13 +22,27 @@ It is the exact materialization described by `manifest.json`:
 
 The read-only validator is
 `tools/agent-memory-bench/validate-canonical-de1m-source.py`; it checks the
-manifest, exact byte sizes, normalization contract, and every source SHA.
+manifest, exact byte sizes, model/schema metadata, ID uniqueness, qrels
+membership/cardinality, and every source SHA. Its optional `--deep` mode
+streams all 1M document rows (and all query/train rows) and verifies actual
+unit norms rather than trusting only the manifest flag. The 2026-09-24 deep
+validation passed with maximum norm error `1.83e-7`.
 A junction is now present at
 `E:\_repoz\agent-memory-workspaces\canonical-de1m-source\payload` and has
 passed the same validator.  It avoids a second 1.5-GB copy while the legacy
 materialization is audited.  Do not copy or mutate the payload implicitly from
 a research runner; the legacy target remains the source of truth until a
 future byte-for-byte migration is explicitly verified.
+
+The ordered relationship between this historical split and the recovered
+305-query source is bound by
+`2026-09-24-canonical-query-lineage.receipt.json`. It proves exact float32
+query-vector equality, the persisted 152-row order, and 1,557 qrels matches,
+plus the exact 153-row complement. It does not prove the historical selection
+rule, so the complement is not labelled an untouched holdout. Until that
+selection lineage is recovered, results are reported as `legacy-152`
+reproduction or descriptive `full-305` aggregates, never as a blind
+153-query confirmation.
 
 The bounded PQ4/PQ8 replay does not justify the broad statement “residual
 correction fails”. It only establishes that a raw-space PQ trained on 1,024
@@ -64,8 +78,11 @@ payload, final cosine evaluator, and identical query/qrels split.
    arm uses a persisted Gaussian projection matrix, for which the
    `sqrt(pi/2)` estimator has the stated unbiasedness; a Rademacher projection
    is a separate fast control and must not be merged into the reference claim.
-   The scorer must report both a TQ-norm denominator arm and an exact corrected
-   norm upper control; QJL is not a reconstructed-vector claim.
+   The scorer must report a source-norm serving arm and a TQ-reconstruction-norm
+   ablation; QJL is not a reconstructed-vector claim. An exact `||b+e||`
+   denominator is not a distinct oracle here because `e = x - b`, hence
+   `b + e = x`; if an oracle is needed, expose the exact numerator `q·x`
+   separately rather than counting a duplicate denominator arm.
    The implementation exposes separate `estimate_dot_reference(...)` and
    `estimate_dot_rademacher_control(...)` entry points; there is no generic
    scorer that can silently apply Gaussian scaling to a Rademacher matrix.
@@ -74,10 +91,9 @@ For the QJL cosine rows, report the denominator variants explicitly. Because
 the canonical E5 vectors are L2-normalized, the primary serving-shaped arm
 uses the persisted source norm (normally `1`) and computes
 `(q·b + q·e_hat) / (||q|| ||x||)`. A `||b||` denominator from the frozen TQ1
-base is a separate ablation, not the production reference. The
-exact-corrected-norm arm using `||b + e||` is an oracle upper control; it is
-not a persistable serving score and must never be counted as a production byte
-budget.
+base is a separate ablation, not the production reference. Do not report
+`||b + e||` as another arm: with the defined residual it is exactly the source
+norm and duplicates the primary arm.
 
 QJL storage accounting must include `m/8` sign bytes plus one `fp32` residual
 norm per document, and the global projection matrix (`m × 384 × fp32`) as a
