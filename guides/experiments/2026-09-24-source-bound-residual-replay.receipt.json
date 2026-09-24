@@ -11,6 +11,7 @@
     "pq4": {"result_sha256": "245721d4fb5539de1e97fb0191b8bc37031daf8623f7357ff9176cfa8359c51d", "audit_sha256": "70ea4509b7e5008620118e7195122f22ed83e0b6dd3fa15abe5f3bcf8cb5ba55"},
     "pq8": {"result_sha256": "eca6d9f782b61ecdd837eafdc0555b57ae7a2aa4a5ae71e54fe0a69eeaeeb50e", "audit_sha256": "6e52555d8eaadd98fb2231459e2f55c8b6b8db67f85fd791131f37ee02d9c702"},
     "lsq": {"result_sha256": "ba433dcb46b953dc4c770c6f0e9c46f066bd1e1a56772d5feb4a25aa3e51cd07", "audit_sha256": "aab8f26d2e9e880245e004e7e3ad461a0a6cc9a0db2270f12bb65f5a797c571f"},
+    "tqplus": {"result_sha256": "bc923bf1c77508511fb94a1c848654f5cd048008d7fdea22ee5e8a1b27b300d1", "audit_sha256": "9036493383ff8181c37892dbf76dd84f54a11822fa2afeb9f177d4de755e8f01"},
     "qjl": {"result_sha256": "b555328bf01d90d40baa46c89571a0d15b36b725faf22513dbda0b7349c5f08c", "audit_sha256": "702347b6a7eefd7a708b589d70291118dbc5aa0c8c13e8480bcd90a18e9aa059"}
   },
   "quality_status": "SOURCE_BOUND_RESEARCH; NO_PRODUCTION_SELECTION",

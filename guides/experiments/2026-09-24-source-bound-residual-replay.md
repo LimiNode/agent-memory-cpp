@@ -24,6 +24,7 @@ baseline is independently regenerated in the same run (`mean nDCG@10 =
 | TQ1 + PQ8 | 25k rows, Faiss Kmeans, 25 iters, 3 restarts | 68 | 0.660526 | +0.001351 | PASS |
 | TQ1 + LSQ32 | Faiss LSQ, 1,024 rows, 1/1/1/1, nperts=1 | 32 | 0.656379 | -0.002796 | PASS |
 | TQ1 + LSQ48 | Faiss LSQ, 1,024 rows, 1/1/1/1, nperts=1 | 48 | 0.662620 | +0.003445 | PASS |
+| TQ1 + TQ+ | source-bound TurboQuant+ reference (direct) | reference-defined | 0.657829 | -0.001347 | PASS |
 | QJL Gaussian m=32/64/128 | score correction, source-norm denominator | 8/12/20 | 0.402911/0.508609/0.556806 | negative | PASS |
 | QJL Rademacher m=32/64/128 | explicit heuristic control | 8/12/20 | 0.436845/0.502227/0.595290 | negative | PASS |
 
@@ -51,7 +52,8 @@ widths, so this implementation does not support a QJL production direction.
 - PQ4 result/audit: `245721d4`, `70ea4509`;
 - PQ8 result/audit: `eca6d9f7`, `6e52555d`;
 - LSQ result/audit: `ba433dcb`, `aab8f26`;
-- QJL result/audit: `b555328b`, `702347b6`.
+- QJL result/audit: `b555328b`, `702347b6`;
+- TQ+ result/audit: `bc923bf1`, `90364933`.
 
 The complete raw reports and model/code payloads remain in the centralized
 research workspace; only compact provenance is committed.  OPQ, TQ-domain
