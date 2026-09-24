@@ -20,7 +20,7 @@
       "optimization_budget": "train_iters=1, train_ils_iters=1, encode_ils_iters=1, icm_iters=1, nperts=1"
     },
     "tqplus": {"result_sha256": "bc923bf1c77508511fb94a1c848654f5cd048008d7fdea22ee5e8a1b27b300d1", "audit_sha256": "9036493383ff8181c37892dbf76dd84f54a11822fa2afeb9f177d4de755e8f01"},
-    "qjl": {"result_sha256": "7d646e6b6777f9a9df258348918332deb2b9a3cdebcd6f4de202587c8a6830c0", "artifact_sha256": "c9a7be19a7f1d286d6a823555583da5e3ffab158c0a2f3e31a8aa112555a3f41", "audit_sha256": "b99b2567443735bbdcce52c055045edc55dc9b5004baf2618d238f6a466e7c0a"}
+    "qjl": {"result_sha256": "7d646e6b6777f9a9df258348918332deb2b9a3cdebcd6f4de202587c8a6830c0", "artifact_sha256": "c9a7be19a7f1d286d6a823555583da5e3ffab158c0a2f3e31a8aa112555a3f41", "audit_sha256": "b99b2567443735bbdcce52c055045edc55dc9b5004baf2618d238f6a466e7c0a", "m384_seed_stability_sha256": "59457ef5e1f198d75fc27ee6ecef38fcf730ceced13929951a085866673d5a20"}
   },
   "quality_status": "SOURCE_BOUND_RESEARCH; NO_PRODUCTION_SELECTION",
   "pending": ["OPQ residual control", "TQ-domain normalized residual correction", "full-25k LSQ multi-seed fit", "fresh held-out query replay"]

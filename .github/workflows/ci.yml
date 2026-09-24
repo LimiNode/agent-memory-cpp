@@ -380,6 +380,7 @@ jobs:
             tools/agent-memory-bench/audit-thq-tq1-pq-residual-gate.py \
             tools/agent-memory-bench/run-thq-qjl-residual-gate.py \
             tools/agent-memory-bench/audit-thq-qjl-residual-gate.py \
+            tools/agent-memory-bench/run-thq-qjl-seed-stability.py \
             tools/agent-memory-bench/reconcile-canonical-query-lineage.py \
             tools/agent-memory-bench/analyze-thq-finalist-paired-bootstrap.py
 

@@ -78,6 +78,10 @@ persist a global projection model (393,216 and 589,824 B respectively).  The
 unit-norm denominator is a serving contract for normalized E5; source norms
 remain diagnostics only.  Even m=384 Rademacher reaches only 0.639023, below
 TQ1, so this implementation does not support a QJL production direction.
+A five-draw Gaussian m=384 seed stability diagnostic gives means
+`0.632900/0.621886/0.614363/0.613028/0.618578` (mean `0.620151`), so the
+single-seed result is not an unusually unlucky draw; all five remain below
+TQ1.  This is still the reused historical-152 fold, not confirmatory evidence.
 
 ## Evidence hashes
 
