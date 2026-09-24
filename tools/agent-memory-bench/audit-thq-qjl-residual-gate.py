@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -41,6 +42,17 @@ def ndcg(ids: np.ndarray, qids: np.ndarray, grades: np.ndarray) -> float:
     ideal = np.sort(np.asarray([2.0 ** grade - 1.0 for grade in relevance.values()]))[::-1][:10]
     denominator = float(np.sum(ideal / np.log2(np.arange(2, 2 + len(ideal))))) if len(ideal) else 0.0
     return float(np.sum(gains / np.log2(np.arange(2, 2 + len(gains))) / denominator)) if denominator else 0.0
+
+
+def direct_qjl_score(query: np.ndarray, sign_codes: np.ndarray,
+                     residual_norms: np.ndarray, projection: np.ndarray) -> np.ndarray:
+    """Small independent formula replay, avoiding the reference scorer API."""
+    signs = np.unpackbits(np.asarray(sign_codes, dtype=np.uint8), axis=1,
+                          bitorder="little").astype(np.float32) * 2.0 - 1.0
+    projected_query = np.asarray(projection, dtype=np.float32) @ np.asarray(query, dtype=np.float32)
+    terms = signs * projected_query[None, :]
+    return (math.sqrt(math.pi / 2.0) * np.asarray(residual_norms, dtype=np.float32)
+            * terms.mean(axis=1)).astype(np.float32)
 
 
 def main() -> None:
@@ -118,6 +130,8 @@ def main() -> None:
                         correction = qjl.estimate_dot_reference(query, signs[name][indexes], residual_norms[indexes], projection)
                     else:
                         correction = qjl.estimate_dot_rademacher_control(query, signs[name][indexes], residual_norms[indexes], projection)
+                    direct_correction = direct_qjl_score(query, signs[name][indexes], residual_norms[indexes], projections[name])
+                    assert np.allclose(correction, direct_correction, rtol=0.0, atol=2e-6)
                     scores = (base_values @ query + correction) / query_norm
                     ranked = candidate_ids[np.lexsort((candidate_ids, -scores))]
                     row = row_map[(query_index, name)]
@@ -151,6 +165,8 @@ def main() -> None:
         "independent_decode_replay": True,
         "independent_score_top10_replay": True,
         "artifact_hash_binding": True,
+        "audit_runner_sha256": sha(Path(__file__)),
+        "input_hashes": result["source_hashes"],
         "row_count": len(rows),
         "projection_rows": list(WIDTHS),
         "denominator_contract": "unit_norm_constant_1",

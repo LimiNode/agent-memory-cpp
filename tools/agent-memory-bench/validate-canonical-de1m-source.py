@@ -71,10 +71,15 @@ def validate(root: Path, deep: bool = False) -> dict[str, object]:
     require(vector_format == {"dimension": 384, "dtype": "float32_le", "endianness": "little"},
             "canonical vector format differs")
     embedding = manifest.get("embedding", {})
-    require(isinstance(embedding.get("model_id"), str) and embedding["model_id"],
-            "canonical embedding model_id missing")
-    require(isinstance(embedding.get("model_revision"), str) and embedding["model_revision"],
-            "canonical embedding model_revision missing")
+    require(embedding.get("model_id") == "intfloat/multilingual-e5-small",
+            "canonical embedding model_id differs")
+    require(embedding.get("model_revision") == "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+            "canonical embedding model_revision differs")
+    require(embedding.get("document_prefix") == "passage: " and
+            embedding.get("query_prefix") == "query: ",
+            "canonical E5 prefixes differ")
+    require(embedding.get("normalized") is True,
+            "canonical E5 source must be L2-normalized")
     outputs = manifest.get("outputs", {})
     required = {
         "evaluation_document_vectors": ("evaluation-document-vectors.f32", 1_536_000_000),
@@ -100,8 +105,6 @@ def validate(root: Path, deep: bool = False) -> dict[str, object]:
         actual_sha = sha256(path)
         require(actual_sha == entry["sha256"], f"{key}: SHA-256 differs from manifest")
         checks[key] = {"path": str(path.resolve()), "bytes": actual_bytes, "sha256": actual_sha}
-    require(embedding.get("normalized") is True,
-            "canonical E5 source must be L2-normalized")
     require(outputs["evaluation_document_vectors"]["count"] == 1_000_000,
             "canonical document count differs")
     require(outputs["evaluation_query_vectors"]["count"] == 305,

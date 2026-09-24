@@ -151,6 +151,7 @@ def main() -> int:
         raise RuntimeError("persisted norm sidecars differ")
     position = {int(doc): i for i, doc in enumerate(unique_ids)}
     rows = {(int(row["query"]), row["arm"]): row for row in report["rows"]}
+    replay = {}
     median32 = float(report["margin_policy"]["median_gap_rank10_32"]); median64 = float(report["margin_policy"]["median_gap_rank10_64"])
     for qi, query in enumerate(queries):
         ids = thq_rows[qi]; idx_q = np.asarray([position[int(doc)] for doc in ids]); tq_scores = (np.asarray(base[idx_q] + tq_decoded[idx_q]) @ query) / np.maximum(tq_norms[idx_q] * np.linalg.norm(query), 1e-30)
@@ -172,7 +173,30 @@ def main() -> int:
                 raise RuntimeError(f"serving accounting mismatch: q={qi} arm={arm}")
             if abs(float(row["qrels_ndcg10"]) - ndcg10(final, qids[qi], grades[qi])) > 1e-7:
                 raise RuntimeError(f"metric mismatch: q={qi} arm={arm}")
-    audit = {"schema_version": 2, "status": "PASS", "source_replay": True, "deterministic_pq_fit_replay": True, "artifact_hash_binding": True, "result_sha256": sha256(args.result), "artifact_sha256": sha256(args.artifact), "canonical_tq_payload_sha256": sha256(args.canonical_tq_payload), "runner_sha256": report["runner_sha256"], "audit_runner_sha256": sha256(Path(__file__)), "rows": len(report["rows"]), "unique_thq_documents": int(len(unique_ids)), "top10_replay": True, "checks": ["canonical 25k THQ/TQ1 payload binding", "deterministic bounded PQ centroid refit", "PQ assignment replay", "norm sidecar replay", "serving byte and norm accounting replay", "all final top10 rows"]}
+            replay.setdefault(arm, []).append({
+                "qrels_ndcg10": ndcg10(final, qids[qi], grades[qi]),
+                "teacher_overlap": float(np.isin(teacher[qi], final[:10]).sum() / 10.0),
+                "k_after_tq1": k,
+                "correction_docs": corrected_count,
+                "bytes_touched_this_query": int(row["bytes_touched_this_query"]),
+            })
+    for arm, values in replay.items():
+        expected = {
+            "mean_qrels_ndcg10": float(np.mean([x["qrels_ndcg10"] for x in values])),
+            "p05_qrels_ndcg10": float(np.percentile([x["qrels_ndcg10"] for x in values], 5)),
+            "worst_qrels_ndcg10": float(np.min([x["qrels_ndcg10"] for x in values])),
+            "mean_teacher_overlap": float(np.mean([x["teacher_overlap"] for x in values])),
+            "mean_k_after_tq1": float(np.mean([x["k_after_tq1"] for x in values])),
+            "mean_correction_docs": float(np.mean([x["correction_docs"] for x in values])),
+            "mean_bytes_touched_per_query": float(np.mean([x["bytes_touched_this_query"] for x in values])),
+        }
+        recorded = report["summaries"].get(arm)
+        if not isinstance(recorded, dict):
+            raise RuntimeError(f"missing summary: {arm}")
+        for field, value in expected.items():
+            if abs(float(recorded.get(field, np.nan)) - value) > 1e-12:
+                raise RuntimeError(f"summary replay mismatch: {arm}/{field}")
+    audit = {"schema_version": 3, "status": "PASS", "source_replay": True, "deterministic_pq_fit_replay": True, "artifact_hash_binding": True, "result_sha256": sha256(args.result), "artifact_sha256": sha256(args.artifact), "canonical_tq_payload_sha256": sha256(args.canonical_tq_payload), "runner_sha256": report["runner_sha256"], "audit_runner_sha256": sha256(Path(__file__)), "rows": len(report["rows"]), "unique_thq_documents": int(len(unique_ids)), "top10_replay": True, "summary_replay": True, "checks": ["canonical 25k THQ/TQ1 payload binding", "deterministic strong PQ centroid refit", "PQ assignment replay", "norm sidecar replay", "serving byte and norm accounting replay", "all final top10 rows", "aggregate summary replay"]}
     encoded = json.dumps(audit, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(encoded, encoding="utf-8")

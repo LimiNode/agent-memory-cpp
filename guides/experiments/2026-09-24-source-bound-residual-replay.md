@@ -10,9 +10,10 @@ to the canonical 96-byte ordinal THQ4 table.  The resulting 100-byte records,
 raw manifest, and receipt are retained outside Git under
 `E:\_repoz\agent-memory-workspaces\canonical-thq4-rebound-candidate-v1`.
 
-All rows use the same frozen candidate shell, canonical THQ interval² top-128,
-canonical TQ1 payload, cosine metric, and 152-query qrels split.  The TQ1
-baseline is independently regenerated in the same run (`mean nDCG@10 =
+All rows share the same frozen candidate shell, canonical THQ interval²
+top-128, cosine metric, and 152-query qrels split.  TQ1-based residual arms
+also bind the canonical TQ1 payload; standalone THQ/LSQ and TQ+ rows do not
+use that payload.  The TQ1 baseline is independently regenerated in the same run (`mean nDCG@10 =
 0.659176`).
 
 The 152-query split is explicitly bound to the recovered 305-query source by
@@ -34,18 +35,38 @@ results remain historical-152 reproduction rather than a blind holdout claim.
 | QJL Gaussian m=32/64/128/256/384 | score correction, unit-norm denominator contract | 8/12/20/36/52 (+ global model) | 0.402911/0.508609/0.556806/0.586868/0.614050 | negative | PASS |
 | QJL Rademacher m=32/64/128/256/384 | explicit heuristic control, unit-norm denominator contract | 8/12/20/36/52 (+ global model) | 0.436845/0.502227/0.595290/0.604507/0.639023 | negative | PASS |
 
+### LSQ fit-row budget curve
+
+With the optimization budget held at `1/1/1/1`, `nperts=1`, and the same
+25k-trained THQ base, changing only the LSQ fit-row count gives:
+
+| LSQ fit rows | LSQ32 mean nDCG@10 | LSQ48 mean nDCG@10 | audit |
+| ---: | ---: | ---: | --- |
+| 1,024 | 0.655921 | 0.663288 | PASS |
+| 4,096 | 0.647225 | 0.663554 | PASS |
+| 25,000 | 0.654756 | 0.636061 | PASS |
+
+This is not a monotone capacity curve: more fit rows do not automatically
+improve retrieval quality, and the 25k one-iteration LSQ48 arm is materially
+worse.  It confirms that the 1,024-row `.663288` point is not sufficient to
+close LSQ; optimization-budget and seed variance remain open.
+
 For PQ, K=32/64/128 and the median-gap adaptive policy produced identical
 quality within each codebook; only touched bytes changed.  Thus the stronger
 fit changes PQ8 from the old bounded negative result to a small positive point
 estimate, while PQ4 remains negative.  This is a source-bound research signal,
 not a production claim: the evaluation fold has already been reused for prior
 architecture decisions and requires confirmation on a fresh pre-registered
-query split.
+query split.  The deterministic `nredo=3` fit is audited, including aggregate
+summary replay, but it is not an outer-seed variance estimate; independent PQ
+fit seeds and paired confidence intervals remain open.
 
 LSQ48 is also a positive point estimate, but this run is explicitly a bounded
 fit control (1,024 rows and one iteration) on frozen THQ centroids fit from
 25,000 rows.  The serving-shaped payload is 52 B/doc because direct cosine
-requires a 4-byte FP32 norm sidecar; the old 48-B label was incomplete.  It
+requires a 4-byte FP32 norm sidecar; the sidecars are now materialized in the
+persisted LSQ code artifact and independently replayed by the audit.  The old
+48-B label was incomplete.  It
 must not be described as a converged LSQ result.  Full 25k LSQ fitting and a
 multi-seed held-out replay remain open because Faiss LocalSearchQuantizer is
 substantially more expensive.
