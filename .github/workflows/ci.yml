@@ -373,6 +373,13 @@ jobs:
             tools/agent-memory-bench/run-thq-elastic-bbq-reference.py \
             tools/agent-memory-bench/audit-thq-elastic-bbq-reference.py \
             tools/agent-memory-bench/audit-thq-rabitq-official-ip.py \
+            tools/agent-memory-bench/rebind-candidate-stream-canonical-thq.py \
+            tools/agent-memory-bench/run-thq-faiss-lsq-replay.py \
+            tools/agent-memory-bench/audit-thq-faiss-lsq-replay.py \
+            tools/agent-memory-bench/run-thq-tq1-pq-residual-gate.py \
+            tools/agent-memory-bench/audit-thq-tq1-pq-residual-gate.py \
+            tools/agent-memory-bench/run-thq-qjl-residual-gate.py \
+            tools/agent-memory-bench/audit-thq-qjl-residual-gate.py \
             tools/agent-memory-bench/analyze-thq-finalist-paired-bootstrap.py
 
   ann-cascade:

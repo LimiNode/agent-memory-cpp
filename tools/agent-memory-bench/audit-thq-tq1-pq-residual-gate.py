@@ -42,24 +42,19 @@ def fit_centroids(train: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
     return result
 
 
-def fit_pq(values: np.ndarray, subspaces: int, seed: int, iterations: int) -> np.ndarray:
-    """Independent bounded Lloyd replay of the runner's deterministic fit."""
+def fit_pq(values: np.ndarray, subspaces: int, seed: int, iterations: int,
+           restarts: int) -> np.ndarray:
+    """Independent Faiss Kmeans replay of the runner's deterministic fit."""
+    import faiss
     n, width = values.shape[0], values.shape[1] // subspaces
     result = np.empty((subspaces, 256, width), dtype=np.float32)
     for sub in range(subspaces):
         block = np.asarray(values[:, sub * width:(sub + 1) * width], dtype=np.float32)
-        rng = np.random.default_rng(seed + 1009 * sub)
-        centers = block[rng.choice(n, size=256, replace=False)].copy()
-        for _ in range(iterations):
-            assigned = np.empty(n, dtype=np.uint8)
-            for start in range(0, n, 128):
-                stop = min(n, start + 128)
-                delta = block[start:stop, None, :] - centers[None, :, :]
-                assigned[start:stop] = np.sum(delta * delta, axis=2).argmin(axis=1)
-            counts = np.bincount(assigned, minlength=256)
-            for code in np.flatnonzero(counts):
-                centers[code] = block[assigned == code].mean(axis=0)
-        result[sub] = centers
+        km = faiss.Kmeans(width, 256, niter=int(iterations), nredo=int(restarts),
+                          seed=int(seed + 1009 * sub), verbose=False,
+                          spherical=False, update_index=False)
+        km.train(np.ascontiguousarray(block, dtype=np.float32))
+        result[sub] = np.asarray(km.centroids, dtype=np.float32).reshape(256, width).copy()
     return result
 
 
@@ -105,7 +100,10 @@ def main() -> int:
     raw = json.loads(args.candidate_raw.read_text(encoding="utf-8"))
     counts = np.asarray([int(row["candidate_count"]) for row in raw["rows"]], dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts)))
-    records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(int(offsets[-1]), 148))
+    record_bytes = int(json.loads(args.candidate_receipt.read_text(encoding="utf-8")).get("flat_file", {}).get("record_bytes", 148))
+    if record_bytes not in (100, 148) or args.candidate_flat.stat().st_size != int(offsets[-1]) * record_bytes:
+        raise RuntimeError("candidate record layout differs")
+    records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(int(offsets[-1]), record_bytes))
     shell_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     thq_rows = [tq.interval_top(queries[qi], shell_ids[offsets[qi]:offsets[qi + 1]], thq_codes, thresholds) for qi in range(QUERY_COUNT)]
     flat_thq = np.concatenate(thq_rows)
@@ -131,7 +129,7 @@ def main() -> int:
     train_levels = np.sum(train_all[:pq_rows, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
     train_base = centroids[np.arange(D)[None, :], train_levels]
     train_tq = tq.quantize_residual(train_all[:pq_rows] - train_base, 1)
-    expected_pq = fit_pq(train_all[:pq_rows] - train_base - train_tq, int(report["pq_subvectors"]), int(report["pq_fit_seed"]), int(report["pq_fit_iterations"]))
+    expected_pq = fit_pq(train_all[:pq_rows] - train_base - train_tq, int(report["pq_subvectors"]), int(report["pq_fit_seed"]), int(report["pq_fit_iterations"]), int(report.get("pq_fit_restarts", 1)))
     pq_centroids = np.asarray(artifact["pq_centroids"], dtype=np.float32)
     if not np.allclose(expected_pq, pq_centroids, rtol=0.0, atol=1e-6):
         raise RuntimeError("deterministic PQ fit replay differs")

@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "date": "2026-09-24",
+  "experiment_note": "guides/experiments/2026-09-24-source-bound-residual-replay.md",
+  "candidate_rebound_flat_sha256": "b77d29f0435faf581576581ca7ccb812700ea87fe831610cae595fbdadb46096",
+  "candidate_rebound_raw_sha256": "4e98f84c39a617c36dd5e749a2165d5a1e187ee2a2039d96d748cdce32a0ada7",
+  "candidate_rebound_receipt_sha256": "7128cc29c60343fadfa178751ed5f6bab7bf8b3b83e91abaad36be3710346fd3",
+  "canonical_tq_payload_sha256": "123e015bdca05edae64fb3e05a996c7c9f5ae72a117c96364a3739d4760a965a",
+  "arms": {
+    "pq4": {"result_sha256": "245721d4fb5539de1e97fb0191b8bc37031daf8623f7357ff9176cfa8359c51d", "audit_sha256": "70ea4509b7e5008620118e7195122f22ed83e0b6dd3fa15abe5f3bcf8cb5ba55"},
+    "pq8": {"result_sha256": "eca6d9f782b61ecdd837eafdc0555b57ae7a2aa4a5ae71e54fe0a69eeaeeb50e", "audit_sha256": "6e52555d8eaadd98fb2231459e2f55c8b6b8db67f85fd791131f37ee02d9c702"},
+    "lsq": {"result_sha256": "ba433dcb46b953dc4c770c6f0e9c46f066bd1e1a56772d5feb4a25aa3e51cd07", "audit_sha256": "aab8f26d2e9e880245e004e7e3ad461a0a6cc9a0db2270f12bb65f5a797c571f"},
+    "qjl": {"result_sha256": "b555328bf01d90d40baa46c89571a0d15b36b725faf22513dbda0b7349c5f08c", "audit_sha256": "702347b6a7eefd7a708b589d70291118dbc5aa0c8c13e8480bcd90a18e9aa059"}
+  },
+  "quality_status": "SOURCE_BOUND_RESEARCH; NO_PRODUCTION_SELECTION",
+  "pending": ["OPQ residual control", "TQ-domain normalized residual correction", "full-25k LSQ multi-seed fit", "fresh held-out query replay"]
+}

@@ -1,10 +1,11 @@
 # THQ4 → canonical TQ1 residual-correction next wave
 
 Date: 2026-09-24
-Status: `SOURCE_AVAILABLE; EXECUTION_PENDING` — the canonical source bundle has
-been recovered locally and validated read-only.  The quality claims below are
-still pending fresh source-bound replay; no old bounded result is promoted by
-this status change.
+Status: `SOURCE_AVAILABLE; PARTIALLY_EXECUTED` — the canonical source bundle
+has been recovered and the first source-bound strong-PQ, LSQ, and QJL replay is
+recorded in [the executed residual replay note](2026-09-24-source-bound-residual-replay.md).
+OPQ, TQ-domain normalized correction, full-25k LSQ, and a fresh held-out query
+confirmation remain pending; no production choice is made here.
 
 ## Recovered source binding
 

@@ -44,11 +44,16 @@ def load_candidates(flat, raw, receipt):
     if not isinstance(rows, list) or len(rows) != QUERY_COUNT: raise RuntimeError("candidate raw must contain 152 rows")
     counts = np.asarray([int(r["candidate_count"]) for r in rows], dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts)))
-    if flat.stat().st_size != int(offsets[-1]) * 148: raise RuntimeError("candidate flat/raw cardinality mismatch")
-    records = np.memmap(flat, mode="r", dtype=np.uint8, shape=(int(offsets[-1]), 148))
+    rec = json.loads(receipt.read_text(encoding="utf-8"))
+    record_bytes = int(rec.get("flat_file", {}).get("record_bytes", 148))
+    if record_bytes not in (100, 148):
+        raise RuntimeError("candidate receipt has unsupported record size")
+    if flat.stat().st_size != int(offsets[-1]) * record_bytes:
+        raise RuntimeError("candidate flat/raw cardinality mismatch")
+    records = np.memmap(flat, mode="r", dtype=np.uint8,
+                        shape=(int(offsets[-1]), record_bytes))
     ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     if np.any(ids < 0) or np.any(ids >= 1_000_000): raise RuntimeError("candidate ID outside corpus")
-    rec = json.loads(receipt.read_text(encoding="utf-8"))
     if rec.get("execution_status") != "EXECUTED" or rec.get("raw_sha256") != sha256(raw) or rec.get("flat_file", {}).get("sha256") != sha256(flat):
         raise RuntimeError("candidate receipt binding differs")
     return ids, offsets
@@ -109,13 +114,15 @@ def main():
     p.add_argument("--icm-iters", type=int, default=4)
     p.add_argument("--nperts", type=int, default=4)
     p.add_argument("--lsq-seed", type=int, default=20260921)
+    p.add_argument("--train-rows", type=int, default=25_000)
     a = p.parse_args()
     if a.self_test: self_test(); return
     vals = [getattr(a, n.replace("-", "_")) for n in names]
     if any(v is None for v in vals): p.error("all source and output paths are required")
     if a.documents.stat().st_size != 1_000_000 * D * 4: raise RuntimeError("documents must be 1M FP32x384")
     docs = np.memmap(a.documents, mode="r", dtype="<f4", shape=(1_000_000, D)); ntrain = a.train_vectors.stat().st_size // (D * 4)
-    train = np.asarray(np.memmap(a.train_vectors, mode="r", dtype="<f4", shape=(ntrain, D)), dtype=np.float32)
+    if a.train_rows < 256 or a.train_rows > ntrain: raise RuntimeError("train rows outside [256, canonical]")
+    train = np.asarray(np.memmap(a.train_vectors, mode="r", dtype="<f4", shape=(ntrain, D))[:a.train_rows], dtype=np.float32)
     thresholds = np.fromfile(a.thq4_thresholds, dtype="<f4").reshape(D, 3); thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
     queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D)); qrel_ids = np.memmap(a.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20)); qrel_scores = np.memmap(a.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20)); teacher = np.memmap(a.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10))
     candidate_ids, offsets = load_candidates(a.candidate_flat, a.candidate_raw, a.candidate_receipt)
@@ -163,7 +170,7 @@ def main():
     for m in PAYLOADS:
         r = [x for x in rows if x["arm"] == f"faiss_lsq{m}"]; summaries[f"faiss_lsq{m}"] = {"mean_qrels_ndcg10": float(np.mean([x["qrels_ndcg10"] for x in r])), "p05_qrels_ndcg10": float(np.percentile([x["qrels_ndcg10"] for x in r], 5)), "worst_qrels_ndcg10": float(np.min([x["qrels_ndcg10"] for x in r])), "mean_candidate_fp32_overlap": float(np.mean([x["candidate_fp32_overlap"] for x in r])), "mean_teacher_overlap": float(np.mean([x["teacher_overlap"] for x in r])), "side_payload_bytes": m, "cascade_total_bytes": THQ_BYTES + m, "global_codebook_bytes": int(model_data[m][0].size * 4), "full_1m_logical_total_bytes": 1_000_000 * (THQ_BYTES + m) + int(model_data[m][0].size * 4)}
     sources = {n: getattr(a, n.replace("-", "_")) for n in names[:11]}; import faiss
-    result = {"schema_version": 2, "family": "thq_faiss_lsq_replay_v1", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_config": {"train_iters": a.train_iters, "train_ils_iters": a.train_ils_iters, "encode_ils_iters": a.encode_ils_iters, "icm_iters": a.icm_iters, "nperts": a.nperts, "random_seed": a.lsq_seed}, "lsq_train_iters": a.train_iters, "lsq_train_ils_iters": a.train_ils_iters, "lsq_encode_ils_iters": a.encode_ils_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed": a.lsq_seed, "independent_fits": True, "payloads": list(PAYLOADS), "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ32/LSQ48 fits; no shared-prefix assumption", "candidate-local side-code replay; 1M storage is logical accounting", "held-out confirmation pending"]}
+    result = {"schema_version": 2, "family": "thq_faiss_lsq_replay_v1", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_config": {"train_iters": a.train_iters, "train_ils_iters": a.train_ils_iters, "encode_ils_iters": a.encode_ils_iters, "icm_iters": a.icm_iters, "nperts": a.nperts, "random_seed": a.lsq_seed, "train_rows": int(len(train))}, "lsq_train_rows": int(len(train)), "lsq_train_iters": a.train_iters, "lsq_train_ils_iters": a.train_ils_iters, "lsq_encode_ils_iters": a.encode_ils_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed": a.lsq_seed, "independent_fits": True, "payloads": list(PAYLOADS), "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ32/LSQ48 fits; no shared-prefix assumption", "candidate-local side-code replay; 1M storage is logical accounting", "bounded train_rows control; full-25k confirmation remains separate"]}
     a.output.parent.mkdir(parents=True, exist_ok=True); a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 if __name__ == "__main__": main()

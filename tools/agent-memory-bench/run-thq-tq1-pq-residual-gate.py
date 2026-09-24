@@ -34,8 +34,10 @@ def load_tq():
 tq = load_tq()
 
 
-def train_pq(values: np.ndarray, subspaces: int, seed: int, iterations: int = 4) -> tuple[np.ndarray, np.ndarray]:
-    """Bounded deterministic 8-bit PQ fit without Faiss's large workspaces."""
+def train_pq(values: np.ndarray, subspaces: int, seed: int, iterations: int = 25,
+             restarts: int = 3) -> tuple[np.ndarray, np.ndarray]:
+    """Strong deterministic 8-bit PQ fit using Faiss Kmeans per subspace."""
+    import faiss
     if values.ndim != 2 or values.shape[1] % subspaces:
         raise ValueError("invalid PQ shape")
     n, width = values.shape[0], values.shape[1] // subspaces
@@ -45,19 +47,14 @@ def train_pq(values: np.ndarray, subspaces: int, seed: int, iterations: int = 4)
     codes = np.empty((n, subspaces), dtype=np.uint8)
     for sub in range(subspaces):
         block = np.asarray(values[:, sub * width:(sub + 1) * width], dtype=np.float32)
-        rng = np.random.default_rng(seed + 1009 * sub)
-        centers = block[rng.choice(n, size=256, replace=False)].copy()
-        for _ in range(iterations):
-            assigned = np.empty(n, dtype=np.uint8)
-            for start in range(0, n, 128):
-                stop = min(n, start + 128)
-                delta = block[start:stop, None, :] - centers[None, :, :]
-                assigned[start:stop] = np.sum(delta * delta, axis=2).argmin(axis=1)
-            counts = np.bincount(assigned, minlength=256)
-            for code in np.flatnonzero(counts):
-                centers[code] = block[assigned == code].mean(axis=0)
+        km = faiss.Kmeans(width, 256, niter=int(iterations), nredo=int(restarts),
+                          seed=int(seed + 1009 * sub), verbose=False,
+                          spherical=False, update_index=False)
+        km.train(np.ascontiguousarray(block, dtype=np.float32))
+        centers = np.asarray(km.centroids, dtype=np.float32).reshape(256, width).copy()
+        _, assigned = km.index.search(np.ascontiguousarray(block, dtype=np.float32), 1)
         centers_all[sub] = centers
-        codes[:, sub] = assigned
+        codes[:, sub] = assigned[:, 0].astype(np.uint8)
     return centers_all, codes
 
 
@@ -99,7 +96,9 @@ def main() -> None:
     for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "canonical-tq-payload", "output", "artifact"):
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     p.add_argument("--pq-subvectors", type=int, choices=(4, 8), default=8)
-    p.add_argument("--train-rows", "--pq-train-rows", dest="pq_train_rows", type=int, default=1024)
+    p.add_argument("--train-rows", "--pq-train-rows", dest="pq_train_rows", type=int, default=25_000)
+    p.add_argument("--pq-iterations", type=int, default=25)
+    p.add_argument("--pq-restarts", type=int, default=3)
     args = p.parse_args()
     if D % args.pq_subvectors:
         p.error("PQ subvectors must divide 384")
@@ -121,9 +120,12 @@ def main() -> None:
     raw = json.loads(args.candidate_raw.read_text(encoding="utf-8"))
     counts = np.asarray([int(row["candidate_count"]) for row in raw["rows"]], dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts)))
-    records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(int(offsets[-1]), 148))
-    candidate_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8"))
+    record_bytes = int(receipt.get("flat_file", {}).get("record_bytes", 148))
+    if record_bytes not in (100, 148) or args.candidate_flat.stat().st_size != int(offsets[-1]) * record_bytes:
+        raise RuntimeError("candidate record layout differs")
+    records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(int(offsets[-1]), record_bytes))
+    candidate_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     if receipt.get("execution_status") != "EXECUTED" or receipt.get("raw_sha256") != sha256(args.candidate_raw) or receipt.get("flat_file", {}).get("sha256") != sha256(args.candidate_flat):
         raise RuntimeError("candidate provenance differs")
 
@@ -134,7 +136,8 @@ def main() -> None:
     train_base = centroids[np.arange(D)[None, :], train_levels]
     train_tq = tq.quantize_residual(pq_train - train_base, 1)
     train_residual2 = np.asarray(pq_train - train_base - train_tq, dtype=np.float32)
-    pq_centroids, _ = train_pq(train_residual2, args.pq_subvectors, seed=20260924)
+    pq_centroids, _ = train_pq(train_residual2, args.pq_subvectors, seed=20260924,
+                                iterations=args.pq_iterations, restarts=args.pq_restarts)
 
     # THQ is the first stage: TQ1 is intentionally evaluated only on the
     # canonical THQ top-128, never on the full ~5k R4 shell.
@@ -219,7 +222,7 @@ def main() -> None:
         summaries[arm] = {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in arm_rows])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in arm_rows], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in arm_rows])), "mean_teacher_overlap": float(np.mean([r["teacher_overlap"] for r in arm_rows])), "mean_k_after_tq1": float(np.mean([r["k_after_tq1"] for r in arm_rows])), "mean_correction_docs": float(np.mean([r["correction_docs"] for r in arm_rows])), "mean_bytes_touched_per_query": float(np.mean([r["bytes_touched_this_query"] for r in arm_rows])), "raw_codec_bytes": int(arm_rows[0]["raw_codec_bytes"]), "norm_bytes": int(arm_rows[0]["norm_bytes"]), "persisted_side_payload_bytes": int(arm_rows[0]["persisted_side_bytes"]), "cascade_storage_bytes_per_doc": int(arm_rows[0]["cascade_total_bytes"])}
     args.artifact.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(args.artifact, unique_ids=unique_ids, base=base, tq_decoded=tq_decoded, tq_norms=tq_norms, corrected_norms=corrected_norms, pq_codes=pq_codes, pq_centroids=pq_centroids, candidate_ids=candidate_ids, offsets=offsets, thq_candidate_ids=np.concatenate(thq_rows), thq_offsets=thq_offsets)
-    result = {"schema_version": 2, "family": "thq_tq1_small_pq_residual_gate_v2", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "pq_fit_backend": "bounded_chunked_lloyd_v1", "pq_fit_seed": 20260924, "pq_fit_iterations": 4, "pq_train_rows": int(len(pq_train)), "canonical_train_rows": int(len(canonical_train)), "canonical_tq_payload_sha256": sha256(args.canonical_tq_payload), "pq_subvectors": args.pq_subvectors, "pq_bits": 8, "tq1_codec_bytes": 52, "tq1_norm_bytes": 4, "residual_side_bytes": args.pq_subvectors, "candidate_stream_hash": sha256(args.candidate_flat), "threshold_layout": "D,3", "margin_policy": {"kind": "unsupervised_query_margin_median", "median_gap_rank10_32": median32, "median_gap_rank10_64": median64, "rule": "K=32 if gap10-32 >= median32, else K=64 if gap10-64 >= median64 else K=128"}, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "canonical-tq-payload")}, "runner_sha256": sha256(Path(__file__)), "artifact_sha256": sha256(args.artifact), "global_model_bytes": int(pq_centroids.nbytes), "summaries": summaries, "rows": rows, "limitations": ["canonical 25k THQ/TQ1 stage is frozen from the source-bound payload", "PQ residual is fitted on fixed bounded rows and not qrels-tuned", "margin policy uses unsupervised query-score gaps over the evaluation distribution; calibration fold pending", "candidate-local frozen R4 shell; native timing not measured"]}
+    result = {"schema_version": 2, "family": "thq_tq1_small_pq_residual_gate_v2", "status": "EXECUTED", "source_replay": True, "metric": "cosine", "pq_fit_backend": "faiss_kmeans_per_subspace_v1", "pq_fit_seed": 20260924, "pq_fit_iterations": int(args.pq_iterations), "pq_fit_restarts": int(args.pq_restarts), "pq_train_rows": int(len(pq_train)), "canonical_train_rows": int(len(canonical_train)), "canonical_tq_payload_sha256": sha256(args.canonical_tq_payload), "pq_subvectors": args.pq_subvectors, "pq_bits": 8, "tq1_codec_bytes": 52, "tq1_norm_bytes": 4, "residual_side_bytes": args.pq_subvectors, "candidate_stream_hash": sha256(args.candidate_flat), "threshold_layout": "D,3", "margin_policy": {"kind": "unsupervised_query_margin_median", "median_gap_rank10_32": median32, "median_gap_rank10_64": median64, "rule": "K=32 if gap10-32 >= median32, else K=64 if gap10-64 >= median64 else K=128"}, "source_hashes": {name: sha256(getattr(args, name.replace("-", "_"))) for name in ("documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "canonical-tq-payload")}, "runner_sha256": sha256(Path(__file__)), "artifact_sha256": sha256(args.artifact), "global_model_bytes": int(pq_centroids.nbytes), "summaries": summaries, "rows": rows, "limitations": ["canonical 25k THQ/TQ1 stage is frozen from the source-bound payload", "PQ residual is fitted on all 25k canonical training rows with Faiss Kmeans and three deterministic restarts", "margin policy uses unsupervised query-score gaps over the evaluation distribution; calibration fold pending", "candidate-local frozen R4 shell; native timing not measured"]}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
