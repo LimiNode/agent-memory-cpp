@@ -83,6 +83,47 @@ persisted additive subcodebook decode, final norm sidecars, cosine top-10, and
 nDCG. Additional outer seeds, strong LSQ48, and fresh-query confirmation
 remain pending.
 
+### Strong full-budget LSQ32 outer-seed confirmation (2026-09-25)
+
+The same full-budget configuration was fit with outer seed `20260926` and
+the corrected runner (the effective Faiss seed is exactly `20260926`). The
+independent audit passes on the same source-bound historical-152 fold, but the
+point estimate is lower than seed `20260925`:
+
+| arm | seed | side bytes/doc | total THQ+side | mean nDCG@10 | mean teacher overlap | audit |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| strong LSQ32 | 20260925 | 36 | 132 | 0.660215 | 0.890789 | PASS |
+| strong LSQ32 | 20260926 | 36 | 132 | 0.659335 | 0.892105 | PASS |
+
+The two full-budget seeds therefore differ by `-0.0008794` nDCG. This is
+seed variance, not evidence of a stable LSQ32 improvement; CPU/OMP provenance
+for these historical artifacts predates the hardened timing schema, so their
+encode seconds are not suitable for cross-run performance claims. New LSQ
+replays record CPU model, physical/logical cores, Faiss compile options and
+OMP threads fail-closed.
+
+### Official multi-bit RaBitQ replay (2026-09-25)
+
+The pinned Apache-2.0 `VectorDB-NTU/RaBitQ-Library` snapshot
+`a010649f8faabc286070e5ed18c7dc121e01ffe3` was run through its official
+multi-bit quantizer and compact split scorer on the same canonical THQ
+top-128 shell. Widths are total bits/dimension; cosine is evaluated by
+normalizing vectors and using the upstream inner-product path. The persisted
+split payload includes the upstream binary factors and ex-code factors; its
+logical side payload is therefore larger than the bare packed code.
+
+| arm | side bytes/doc | total THQ+side | mean nDCG@10 | candidate-union compact encode | candidate score | audit |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| official RaBitQ B=2 | 116 | 212 | 0.5842888 | 0.614 s (29,910 docs/s) | 20.73 ms | PASS |
+| official RaBitQ B=3 | 164 | 260 | 0.6348183 | 0.690 s (26,596 docs/s) | 20.88 ms | PASS |
+| official RaBitQ B=4 | 212 | 308 | 0.6513442 | 0.595 s (30,865 docs/s) | 21.57 ms | PASS |
+
+The independent audit replays canonical THQ top-128, rotation orthogonality,
+the expanded-code RaBitQ score equation, official compact/full scorer parity,
+top-10 IDs, nDCG, and source/model SHA bindings. These are historical-152
+engineering results, not final production selection; the global rotation
+matrix is additionally persisted and charged in the model accounting.
+
 For PQ, K=32/64/128 and the median-gap adaptive policy produced identical
 quality within each codebook; only touched bytes changed.  Thus the stronger
 fit changes PQ8 from the old bounded negative result to a small positive point
@@ -126,6 +167,8 @@ reused historical-152 fold, not confirmatory evidence.
 - PQ8 result/audit: `eca6d9f7`, `6e52555d`;
 - LSQ result/models/codes/audit: `53459f76`, `595d6e09`, `79c9f578`, `2d94310d`;
 - strong LSQ32 seed result/models/codes/audit: `2ee70c37`, `74749100`, `4c49d6ba`, `8192c83d`;
+- strong LSQ32 seed `20260926` result/models/codes/audit: `7046a84a`, `55ea740e`, `4ea044e3`, `f1276385`;
+- official RaBitQ B=2/3/4 result/audit: `873980ff`, `354ff5e9`;
 - QJL result/artifact/audit: `7d646e6b`, `c9a7be19`, `a7e66750`;
 - QJL m=384 five-seed result/audit: `8d93a034`, `49b47b3a`;
 - TQ+ result/audit: `bc923bf1`, `90364933`.
