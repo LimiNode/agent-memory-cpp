@@ -1,6 +1,6 @@
 # Codec closure protocol
 
-Date: 2026-09-25  
+Date: 2026-09-25
 Status: `IN_PROGRESS`; no product selection.
 
 This is the bounded final research program for compressed final scorers.  It
