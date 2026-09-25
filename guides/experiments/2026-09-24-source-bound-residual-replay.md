@@ -58,6 +58,27 @@ improve retrieval quality, and the 25k one-iteration LSQ48 arm is materially
 worse.  It confirms that the 1,024-row `.663288` point is not sufficient to
 close LSQ; optimization-budget and seed variance remain open.
 
+### Strong full-budget LSQ32 follow-up (2026-09-25)
+
+The first full-budget outer seed completed on the recovered canonical table
+with `train_rows=25,000`, `base_train_rows=25,000`,
+`train_iters/train_ils_iters/encode_ils_iters/icm_iters=25/8/16/4`,
+`nperts=4`, and `lsq_seed=20260925`. It is a single historical-152
+exploratory seed, not a converged production selection.
+
+| arm | side bytes/doc | total THQ+side | mean nDCG@10 | mean teacher overlap | fit seconds | candidate-union encode seconds | audit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| strong LSQ32 | 36 | 132 | 0.660215 | 0.890789 | 1651.11 | 69.70 | PASS |
+
+This point is below the earlier bounded LSQ48 `.663288` and strong PQ8
+`.660526` point estimates in the current historical-fold comparison, but those
+are not seed-matched confirmation. The full-budget fit is materially more
+expensive than the one-iteration control, so fit cost is part of the result.
+The independent audit replays source-derived THQ centroids, top-128 selection,
+persisted additive subcodebook decode, final norm sidecars, cosine top-10, and
+nDCG. Additional outer seeds, strong LSQ48, and fresh-query confirmation
+remain pending.
+
 For PQ, K=32/64/128 and the median-gap adaptive policy produced identical
 quality within each codebook; only touched bytes changed.  Thus the stronger
 fit changes PQ8 from the old bounded negative result to a small positive point
@@ -100,6 +121,7 @@ reused historical-152 fold, not confirmatory evidence.
 - PQ4 result/audit: `245721d4`, `70ea4509`;
 - PQ8 result/audit: `eca6d9f7`, `6e52555d`;
 - LSQ result/models/codes/audit: `53459f76`, `595d6e09`, `79c9f578`, `2d94310d`;
+- strong LSQ32 seed result/models/codes/audit: `2ee70c37`, `74749100`, `4c49d6ba`, `8192c83d`;
 - QJL result/artifact/audit: `7d646e6b`, `c9a7be19`, `a7e66750`;
 - QJL m=384 five-seed result/audit: `8d93a034`, `49b47b3a`;
 - TQ+ result/audit: `bc923bf1`, `90364933`.

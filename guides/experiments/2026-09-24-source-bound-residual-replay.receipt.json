@@ -12,6 +12,7 @@
     "pq4": {"result_sha256": "245721d4fb5539de1e97fb0191b8bc37031daf8623f7357ff9176cfa8359c51d", "audit_sha256": "58ae7285d226b3b47dda3d467e4b16c9c34ba05504e91967c0b784e0db200d9e"},
     "pq8": {"result_sha256": "eca6d9f782b61ecdd837eafdc0555b57ae7a2aa4a5ae71e54fe0a69eeaeeb50e", "audit_sha256": "4550970ce13aec57eab4f5a4ea34ecf5d2a9da4ca51ec62eb60d9c402a11a455"},
     "lsq": {"result_sha256": "8a2f35361e8d111f9f0ebfa04d32030e0e1c1939db1198346a22d4a5717b3eb3", "models_sha256": "595d6e091a280898ae8a858e4bffea03613b0c88e21f2823231942e46ed17e03", "codes_sha256": "c07f5883367ca67687d631a79f1be96d7faff3753a660608676a666b8a7966c9", "audit_sha256": "1523981eb20203d43c010d055965575ea7a042883bf3c8ac15e5060d7cc2f866"},
+    "lsq_strong_seed_20260925": {"result_sha256": "2ee70c372023627b615e7bd5e8d420df770da04bc89de8e8b6691c21dc03c942", "models_sha256": "74749100834e1a7a9b9fcb462e779a7101463f33c19e154ac218ccd96bd7c639", "codes_sha256": "4c49d6ba5c071b5c23f4b28fa02efc7414c32b7eb5c5ec3693d9f1c25da4d842", "audit_sha256": "8192c83d13fda9a448701b2a9bcf247bc5cb0d4f2e650b30dc23f2841e1fda9d", "fit_seconds": 1651.111036799848, "candidate_union_encode_seconds": 69.69715499971062, "mean_ndcg10": 0.6602148919120238},
     "lsq_budget_curve": {
       "fit_rows": {
         "1024": {"result_sha256": "8a2f35361e8d111f9f0ebfa04d32030e0e1c1939db1198346a22d4a5717b3eb3", "audit_sha256": "1523981eb20203d43c010d055965575ea7a042883bf3c8ac15e5060d7cc2f866"},
@@ -24,5 +25,5 @@
     "qjl": {"result_sha256": "7d646e6b6777f9a9df258348918332deb2b9a3cdebcd6f4de202587c8a6830c0", "artifact_sha256": "c9a7be19a7f1d286d6a823555583da5e3ffab158c0a2f3e31a8aa112555a3f41", "audit_sha256": "b99b2567443735bbdcce52c055045edc55dc9b5004baf2618d238f6a466e7c0a", "m384_seed_stability_sha256": "8d93a034cb18bceb7aec1e857b0aaa82548b47dddc3b2855e81ead4b5432aa3e", "m384_seed_stability_audit_sha256": "49b47b3abfc9435d13b8b8b169393f4d66e697979a673c98691297f2686fd5bb"}
   },
   "quality_status": "SOURCE_BOUND_RESEARCH; NO_PRODUCTION_SELECTION",
-  "pending": ["OPQ residual control", "TQ-domain normalized residual correction", "full-25k LSQ multi-seed fit", "fresh held-out query replay"]
+  "pending": ["additional full-budget LSQ outer seeds", "strong LSQ48", "OPQ residual control", "TQ-domain normalized residual correction", "fresh held-out query replay"]
 }
