@@ -82,7 +82,8 @@ with `L=2`, `M=16`, `K=256`, `A=16`, `B=32`, `dh=256`, and `de=128` on the
 canonical 25k training subset. The upstream scheduler completed three short
 epochs before the best checkpoint was frozen. The source-bound replay on the
 same 152-query THQ top-128 shell obtains mean nDCG@10 `0.616420` at 112 B/doc
-(16-byte QINCo2 code plus THQ4), with p05/worst-query nDCG `0.0`. The official
+(16-byte QINCo2 code plus THQ4), with a 29,942,788-byte persisted model and
+p05/worst-query nDCG `0.0`. The official
 model persisted-code decode audit is `PASS` with zero top-10 mismatches over
 152 queries. This is a bounded undertrained control, not a converged QINCo2
 result and not a production selection.

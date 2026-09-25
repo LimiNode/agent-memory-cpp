@@ -125,11 +125,12 @@ def main() -> None:
             "cascade_total_bytes": THQ_BYTES + int(params["M"])})
     a.codes_output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.codes_output, selected_ids=selected, unique_ids=unique_ids, codes=codes)
+    model_bytes = int(sum(value.numel() * value.element_size() for value in saved["model"].values() if hasattr(value, "numel")))
     summary = {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in rows])),
                "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in rows], 5)),
                "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in rows])),
                "side_payload_bytes": int(params["M"]), "cascade_total_bytes": THQ_BYTES + int(params["M"]),
-               "global_model_bytes": int(a.checkpoint.stat().st_size)}
+               "global_model_bytes": model_bytes, "checkpoint_bytes": int(a.checkpoint.stat().st_size)}
     sources = {"documents": a.documents, "queries": a.queries, "qrel-ids": a.qrel_ids, "qrel-scores": a.qrel_scores, "teacher-ids": a.teacher_ids, "thq4-codes": a.thq4_codes,
                "lsq-models": a.lsq_models, "lsq-codes": a.lsq_codes}
     result = {"schema_version": 1, "family": "thq_qinco2_official_replay_v1", "status": "EXECUTED",

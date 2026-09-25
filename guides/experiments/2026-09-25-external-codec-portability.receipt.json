@@ -32,8 +32,9 @@
       "quality_claim": false
     },
     "checkpoint_status": "DECODE_AUDIT_PASS",
-    "result_sha256": "99992f630d5929abe1bb85a9ccda1a368ab71eb589f3be845404177d76f06498",
-    "audit_sha256": "7ae1d409ee65a11cc9a4d5ced6cbfba450d86a7cc887c14e355ad127d438b0db",
+    "result_sha256": "343f995194a2b39992fcc8b2c9852f6083e7c15d9235e964ec3b2156a9e013bd",
+    "audit_sha256": "37318c22df03add3a668fed4d688983220159b24de3a822d00c36abf55621f8f",
+    "runner_sha256": "bbc64f0e82c48d919517860f8dc5b7e5348cd24b215ae5d4daf50eb769544d37",
     "mean_ndcg10": 0.6164195004136372,
     "cascade_total_bytes": 112,
     "quality_claim": false,
