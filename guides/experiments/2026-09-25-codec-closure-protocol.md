@@ -31,10 +31,10 @@ research inputs, not vendored product dependencies.
 | Family | Snapshot | License implication | Gate |
 | --- | --- | --- | --- |
 | RaBitQ Library | `VectorDB-NTU/RaBitQ-Library` `a010649f8faabc286070e5ed18c7dc121e01ffe3` | Apache-2.0; integration may be evaluated separately | Official 2/3/4-bit IP/cosine candidate scorer with real sidecar and model accounting |
+| SAQ | `howarlii/saq` `2163ebcedd0ad9c9f4de326e6ca7a860f9eafe52` | Apache-2.0; integration may be evaluated separately | External PCA/segmentation/code-adjustment control at a pinned official snapshot |
 | QINCo2 | `facebookresearch/QINCo` `5a324954d5c9b3700d4407d6cc24c3db6e52890e` | CC-BY-NC-4.0; research-only reference, do not vendor or present as a product dependency | Adequately trained external control with 25k/100k/database-vector scaling |
 | AAQ | Existing source-pinned bounded reference | License must be rechecked before any integration | Separate reconstruction and query-aware objectives on a new query-training pool |
 | LeanVec/GleanVec | External-only control pending source/license review | No library implementation implied | SVS-supported external matched benchmark, with proprietary pieces declared |
-| SAQ | Paper/repository source pending verification | No implementation before a pinned source and license | PCA/segmentation/code-adjustment external control |
 
 ## Ordered gates
 
