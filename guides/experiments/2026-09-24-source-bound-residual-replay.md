@@ -68,8 +68,8 @@ effective Faiss seed as `20260957` (`base + 32`); this is now recorded
 explicitly, and new payload-separated runs pass the user seed directly. It is a single historical-152
 exploratory seed, not a converged production selection.
 
-| arm | side bytes/doc | total THQ+side | mean nDCG@10 | mean teacher overlap | fit seconds | candidate-union encode seconds | audit |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| arm | side bytes/doc | total THQ+side | mean nDCG@10 | mean teacher overlap | fit seconds | candidate-union docs | candidate-union encode seconds | audit |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
 | strong LSQ32 | 36 | 132 | 0.660215 | 0.890789 | 1651.11 | 18,362 | 69.70 (263.45 docs/s) | PASS |
 
 This point is below the earlier bounded LSQ48 `.663288` and strong PQ8
