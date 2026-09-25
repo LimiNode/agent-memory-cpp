@@ -63,18 +63,22 @@ close LSQ; optimization-budget and seed variance remain open.
 The first full-budget outer seed completed on the recovered canonical table
 with `train_rows=25,000`, `base_train_rows=25,000`,
 `train_iters/train_ils_iters/encode_ils_iters/icm_iters=25/8/16/4`,
-`nperts=4`, and `lsq_seed=20260925`. It is a single historical-152
+`nperts=4`, and base seed `20260925`. The historical runner derived the
+effective Faiss seed as `20260957` (`base + 32`); this is now recorded
+explicitly, and new payload-separated runs pass the user seed directly. It is a single historical-152
 exploratory seed, not a converged production selection.
 
 | arm | side bytes/doc | total THQ+side | mean nDCG@10 | mean teacher overlap | fit seconds | candidate-union encode seconds | audit |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| strong LSQ32 | 36 | 132 | 0.660215 | 0.890789 | 1651.11 | 69.70 | PASS |
+| strong LSQ32 | 36 | 132 | 0.660215 | 0.890789 | 1651.11 | 18,362 | 69.70 (263.45 docs/s) | PASS |
 
 This point is below the earlier bounded LSQ48 `.663288` and strong PQ8
 `.660526` point estimates in the current historical-fold comparison, but those
 are not seed-matched confirmation. The full-budget fit is materially more
 expensive than the one-iteration control, so fit cost is part of the result.
-The independent audit replays source-derived THQ centroids, top-128 selection,
+The `69.70 s` number is only candidate-union `compute_codes()` assignment, not
+end-to-end insertion throughput; it excludes THQ encoding, norm generation,
+serialization, and storage writes. The independent audit replays source-derived THQ centroids, top-128 selection,
 persisted additive subcodebook decode, final norm sidecars, cosine top-10, and
 nDCG. Additional outer seeds, strong LSQ48, and fresh-query confirmation
 remain pending.
