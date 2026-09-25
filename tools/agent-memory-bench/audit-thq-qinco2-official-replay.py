@@ -37,7 +37,7 @@ def top_ids(scores: np.ndarray, ids: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    for name in ("qinco-root", "result", "runner", "checkpoint", "codes-artifact", "documents", "queries", "qrels", "thq4-codes", "lsq-models", "lsq-codes", "output"):
+    for name in ("qinco-root", "result", "runner", "checkpoint", "codes-artifact", "documents", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "lsq-models", "lsq-codes", "output"):
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     a = p.parse_args()
     result = json.loads(a.result.read_text(encoding="utf-8"))
@@ -47,7 +47,7 @@ def main() -> None:
         raise RuntimeError("unexpected QINCo2 result/upstream revision")
     if result.get("runner_sha256") != sha256(a.runner) or result.get("checkpoint_sha256") != sha256(a.checkpoint) or result.get("codes_artifact_sha256") != sha256(a.codes_artifact):
         raise RuntimeError("runner/checkpoint/code artifact binding differs")
-    sources = {"documents": a.documents, "queries": a.queries, "qrels": a.qrels, "thq4-codes": a.thq4_codes,
+    sources = {"documents": a.documents, "queries": a.queries, "qrel-ids": a.qrel_ids, "qrel-scores": a.qrel_scores, "teacher-ids": a.teacher_ids, "thq4-codes": a.thq4_codes,
                "lsq-models": a.lsq_models, "lsq-codes": a.lsq_codes}
     for name, path in sources.items():
         if result.get("source_hashes", {}).get(name) != sha256(path):
@@ -71,7 +71,10 @@ def main() -> None:
         raise RuntimeError("persisted QINCo2 code shape/cardinality mismatch")
     centroids = np.asarray(np.load(a.lsq_models, allow_pickle=False)["centroids"], dtype=np.float32)
     docs = np.memmap(a.documents, mode="r", dtype="<f4", shape=(1_000_000, D))
-    queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(305, D))
+    queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D))
+    qrel_ids = np.memmap(a.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20))
+    qrel_scores = np.memmap(a.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20))
+    teacher_ids = np.memmap(a.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10))
     thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
     with torch.inference_mode():
         decoded = model.decode(torch.from_numpy(codes)).cpu().numpy() * float(model.data_std.item()) + model.data_mean.cpu().numpy()
@@ -89,6 +92,16 @@ def main() -> None:
         ranked = top_ids(scores, ids).astype(int).tolist()
         if ranked != rows[qi]["top10_ids"]:
             mismatches += 1
+        grades = {int(doc): float(score) for doc, score in zip(qrel_ids[qi], qrel_scores[qi]) if int(doc) >= 0 and float(score) > 0}
+        gains = np.asarray([2.0 ** grades.get(int(doc), 0.0) - 1.0 for doc in ranked])
+        ideal = np.sort(np.asarray([2.0 ** grade - 1.0 for grade in grades.values()]))[::-1][:10]
+        denom = float(np.sum(ideal / np.log2(np.arange(2, 2 + len(ideal)))))
+        value = float(np.sum(gains / np.log2(np.arange(2, 2 + len(gains))) / denom)) if denom else 0.0
+        if abs(value - float(rows[qi]["qrels_ndcg10"])) > 1e-12:
+            raise RuntimeError(f"qrels nDCG mismatch for query {qi}")
+        teacher_overlap = float(np.isin(teacher_ids[qi], ranked).sum() / 10.0)
+        if abs(teacher_overlap - float(rows[qi].get("teacher_overlap", teacher_overlap))) > 1e-12:
+            raise RuntimeError(f"teacher overlap mismatch for query {qi}")
     if mismatches:
         raise RuntimeError(f"persisted official QINCo2 decode mismatches: {mismatches}")
     audit = {"schema_version": 1, "family": "thq_qinco2_official_replay_audit_v1", "status": "PASS",

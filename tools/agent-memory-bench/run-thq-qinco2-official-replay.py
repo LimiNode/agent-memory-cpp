@@ -43,18 +43,6 @@ def top_ids(scores: np.ndarray, ids: np.ndarray) -> np.ndarray:
     return ids[np.lexsort((ids, -np.asarray(scores, dtype=np.float64)))[:10]]
 
 
-def parse_qrels(path: Path) -> dict[int, dict[int, float]]:
-    out: dict[int, dict[int, float]] = {}
-    with path.open(encoding="utf-8") as f:
-        for line in f:
-            fields = line.rstrip("\n").split("\t")
-            if len(fields) < 3:
-                continue
-            qi, doc, grade = int(fields[0]), int(fields[1]), float(fields[2])
-            out.setdefault(qi, {})[doc] = grade
-    return out
-
-
 def ndcg10(ids: np.ndarray, grades: dict[int, float]) -> float:
     gains = np.asarray([2.0 ** grades.get(int(doc), 0.0) - 1.0 for doc in ids])
     ideal = np.sort(np.asarray([2.0 ** g - 1.0 for g in grades.values()]))[::-1][:10]
@@ -64,7 +52,7 @@ def ndcg10(ids: np.ndarray, grades: dict[int, float]) -> float:
 
 def main() -> None:
     p = argparse.ArgumentParser()
-    for name in ("qinco-root", "checkpoint", "documents", "queries", "qrels", "thq4-codes", "lsq-models", "lsq-codes", "output", "codes-output"):
+    for name in ("qinco-root", "checkpoint", "documents", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "lsq-models", "lsq-codes", "output", "codes-output"):
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     p.add_argument("--batch-size", type=int, default=64)
     a = p.parse_args()
@@ -100,7 +88,7 @@ def main() -> None:
     unique_ids = np.unique(selected)
     centroids = np.asarray(lsq["centroids"], dtype=np.float32)
     docs = np.memmap(a.documents, mode="r", dtype="<f4", shape=(1_000_000, D))
-    queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(305, D))
+    queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D))
     thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
     levels = unpack(np.asarray(thq[unique_ids]))
     base = centroids[np.arange(D)[None, :], levels]
@@ -115,7 +103,9 @@ def main() -> None:
     codes = np.concatenate(codes_parts, axis=1)
     decoded = np.concatenate(decode_parts, axis=0)
     reconstructed = base + decoded
-    qrels = parse_qrels(a.qrels)
+    qrel_ids = np.memmap(a.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20))
+    qrel_scores = np.memmap(a.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20))
+    teacher_ids = np.memmap(a.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10))
     position = {int(doc): i for i, doc in enumerate(unique_ids)}
     rows = []
     for qi in range(QUERY_COUNT):
@@ -128,9 +118,10 @@ def main() -> None:
         exact_scores = (exact @ query) / np.maximum(np.linalg.norm(exact, axis=1) * np.linalg.norm(query), 1e-30)
         ranked = top_ids(scores, ids)
         exact_top = top_ids(exact_scores, ids)
+        grades = {int(doc): float(score) for doc, score in zip(qrel_ids[qi], qrel_scores[qi]) if int(doc) >= 0 and float(score) > 0}
         rows.append({"query": qi, "arm": "qinco2_official_16b", "top10_ids": ranked.astype(int).tolist(),
             "candidate_fp32_top10_ids": exact_top.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact_top, ranked).sum() / 10.0),
-            "qrels_ndcg10": ndcg10(ranked, qrels.get(qi, {})), "side_payload_bytes": int(params["M"]),
+            "qrels_ndcg10": ndcg10(ranked, grades), "teacher_overlap": float(np.isin(teacher_ids[qi], ranked).sum() / 10.0), "side_payload_bytes": int(params["M"]),
             "cascade_total_bytes": THQ_BYTES + int(params["M"])})
     a.codes_output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.codes_output, selected_ids=selected, unique_ids=unique_ids, codes=codes)
@@ -139,7 +130,7 @@ def main() -> None:
                "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in rows])),
                "side_payload_bytes": int(params["M"]), "cascade_total_bytes": THQ_BYTES + int(params["M"]),
                "global_model_bytes": int(a.checkpoint.stat().st_size)}
-    sources = {"documents": a.documents, "queries": a.queries, "qrels": a.qrels, "thq4-codes": a.thq4_codes,
+    sources = {"documents": a.documents, "queries": a.queries, "qrel-ids": a.qrel_ids, "qrel-scores": a.qrel_scores, "teacher-ids": a.teacher_ids, "thq4-codes": a.thq4_codes,
                "lsq-models": a.lsq_models, "lsq-codes": a.lsq_codes}
     result = {"schema_version": 1, "family": "thq_qinco2_official_replay_v1", "status": "EXECUTED",
         "quality_status": "BOUNDED_UNDERTRAINED_CONTROL", "metric": "cosine", "query_count": QUERY_COUNT,

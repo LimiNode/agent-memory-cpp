@@ -77,6 +77,16 @@ falls from 27.9266 to 10.2852; the corrected canonical-threshold mean nDCG is
 replay is independently audited (`PASS`, 152/152). This is explicitly an
 undertrained pilot, not a family-level negative result.
 
+The official QINCo2-S control was subsequently run from the pinned checkout
+with `L=2`, `M=16`, `K=256`, `A=16`, `B=32`, `dh=256`, and `de=128` on the
+canonical 25k training subset. The upstream scheduler completed three short
+epochs before the best checkpoint was frozen. The source-bound replay on the
+same 152-query THQ top-128 shell obtains mean nDCG@10 `0.616420` at 112 B/doc
+(16-byte QINCo2 code plus THQ4), with p05/worst-query nDCG `0.0`. The official
+model persisted-code decode audit is `PASS` with zero top-10 mismatches over
+152 queries. This is a bounded undertrained control, not a converged QINCo2
+result and not a production selection.
+
 ## Residual-hybrid matrix
 
 The matrix writer now fails closed: `paired_candidate_stream` is true only
@@ -94,7 +104,8 @@ their payload already includes one. The regenerated matrix has
 | THQ + TQ+ exact-wide composite | 156 | 0.654486 | corrected canonical replay |
 | THQ + official AAQ PCA32 bounded | 108 | 0.649382 | source-pinned bounded pilot |
 | THQ + official AAQ full384 bounded | 108 | 0.529736 | source-pinned bounded pilot; negative capacity diagnostic |
-| THQ + QINCo2 16B bounded | 116 | 0.640309 | source-bound undertrained pilot |
+| THQ + QINCo2 16B bounded pilot | 116 | 0.640309 | source-bound local pilot; audited |
+| THQ + official QINCo2-S 16B bounded | 112 | 0.616420 | official source-bound control; decode audit PASS |
 
 ## Provenance and next gate
 

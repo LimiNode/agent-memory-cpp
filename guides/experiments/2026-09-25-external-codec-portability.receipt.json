@@ -19,18 +19,23 @@
   "qinco2": {
     "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
     "license": "CC-BY-NC-4.0",
-    "official_fit_status": "RUNNING_BOUNDED_25K_CONTROL",
+    "official_fit_status": "EXECUTED_BOUNDED_25K_CONTROL",
     "fit_workspace": "E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1",
     "fit_config": {
       "train_rows": 25000,
       "stages": 16,
       "codebook_size": 256,
-      "epochs": 1,
+      "requested_epochs": 1,
+      "completed_checkpoint_epoch": 3,
       "batch_size": 256,
       "cpu": true,
       "quality_claim": false
     },
-    "checkpoint_status": "PENDING",
+    "checkpoint_status": "DECODE_AUDIT_PASS",
+    "result_sha256": "99992f630d5929abe1bb85a9ccda1a368ab71eb589f3be845404177d76f06498",
+    "audit_sha256": "7ae1d409ee65a11cc9a4d5ced6cbfba450d86a7cc887c14e355ad127d438b0db",
+    "mean_ndcg10": 0.6164195004136372,
+    "cascade_total_bytes": 112,
     "quality_claim": false,
     "native_timing_claim": false
   }

@@ -37,11 +37,13 @@ QINCo2 training configuration (M=16, K=256, official preselection/beam and
 approximately 60 epochs). The current shared Python environment has
 `torch`, `faiss`, and `omegaconf`, but no `hydra` package. An isolated runtime
 now supplies the missing Hydra packages. A bounded official QINCo2-S control
-has been started on the canonical 25k training subset (`L=2`, `M=16`, `K=256`,
-one epoch, CPU) in
-`E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1`. This is an
-execution/provenance milestone only: one epoch is deliberately labelled
-`BOUNDED_UNDERTRAINED_CONTROL` and cannot support a family-level conclusion.
+has been run on the canonical 25k training subset (`L=2`, `M=16`, `K=256`,
+`A=16`, `B=32`, CPU) in
+`E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1`. The upstream
+scheduler completed three short epochs before the best checkpoint was frozen.
+This remains an execution/provenance milestone only: it is deliberately
+labelled `BOUNDED_UNDERTRAINED_CONTROL` and cannot support a family-level
+conclusion.
 The earlier 16-byte local pilot remains separate and is not silently replaced
 by this run.
 
@@ -49,6 +51,7 @@ The next executable QINCo2 gate is: install the pinned upstream environment in
 an isolated research workspace, adapt the canonical E5 train/database/query
 files without changing vector order or metric, train first on a 25k control,
 then repeat at 100k/250k/1M unsupervised pool sizes, and independently replay
-decode, cosine top-10 and storage accounting. Until the checkpoint exists and
-the source-bound decode/replay audit passes, QINCo2 has no source-bound quality
-claim in this repository.
+decode, cosine top-10 and storage accounting. The official-model persisted-code
+audit now passes for all 152 queries: mean nDCG@10 is `0.616420` at 112 B/doc
+(16-byte QINCo2 code plus the 96-byte THQ shell), with p05/worst-query nDCG
+equal to zero. No production selection claim is made.
