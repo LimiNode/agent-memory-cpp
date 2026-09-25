@@ -32,7 +32,7 @@ research inputs, not vendored product dependencies.
 | --- | --- | --- | --- |
 | RaBitQ Library | `VectorDB-NTU/RaBitQ-Library` `a010649f8faabc286070e5ed18c7dc121e01ffe3` | Apache-2.0; integration may be evaluated separately | **Executed** official 2/3/4-bit IP/cosine candidate scorer with real sidecar, expanded/compact parity audit, and model accounting; historical-152 quality is `.584289/.634818/.651344` |
 | SAQ | `howarlii/saq` `2163ebcedd0ad9c9f4de326e6ca7a860f9eafe52` | Apache-2.0; integration may be evaluated separately | **Portability gate executed:** upstream configure is blocked by missing AVX-512 on the current host; quality/timing remains pending an AVX-512 host or validated fallback |
-| QINCo2 | `facebookresearch/QINCo` `5a324954d5c9b3700d4407d6cc24c3db6e52890e` | CC-BY-NC-4.0; research-only reference, do not vendor or present as a product dependency | Adequately trained external control with 25k/100k/database-vector scaling |
+| QINCo2 | `facebookresearch/QINCo` `5a324954d5c9b3700d4407d6cc24c3db6e52890e` | CC-BY-NC-4.0; research-only reference, do not vendor or present as a product dependency | **Bounded official 25k control executed:** 3-epoch checkpoint, 16 B code, 112 B THQ cascade, mean nDCG `.616420`, persisted decode audit PASS; larger/converged pools remain open |
 | AAQ | Existing source-pinned bounded reference | License must be rechecked before any integration | Separate reconstruction and query-aware objectives on a new query-training pool |
 | LeanVec/GleanVec | External-only control pending source/license review | No library implementation implied | SVS-supported external matched benchmark, with proprietary pieces declared |
 
@@ -47,10 +47,12 @@ research inputs, not vendored product dependencies.
    same top-128 and cosine protocol. Do not call a local approximation
    vendor-compatible. Fresh-query confirmation and native complete-cascade
    comparison remain open.
-3. **Learned controls.** Train QINCo2 on unsupervised database vectors at
-   sufficient scale.  Treat it as an external non-commercial research control.
-   Run AAQ/query-aware codecs only after a separate judged query-training pool
-   and a pre-registered evaluation split exist.
+3. **Learned controls.** The bounded official QINCo2 control is now executed,
+   but it is explicitly undertrained and cannot support a production choice.
+   Larger 100k/250k/1M unsupervised pools remain a separate gate. Treat
+   QINCo2 as an external non-commercial research control. Run AAQ/query-aware
+   codecs only after a separate judged query-training pool and a pre-registered
+   evaluation split exist.
 4. **External dimensionality baseline.** Record LeanVec/GleanVec behavior as
    an external benchmark, including implementation availability and all model
    state.  Do not infer a library feature from it.
