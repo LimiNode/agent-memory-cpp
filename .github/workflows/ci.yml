@@ -322,7 +322,7 @@ jobs:
           python tools/agent-memory-bench/run-thq-turboquant-reference.py --self-test
           python tools/agent-memory-bench/qjl_reference.py
           python tools/agent-memory-bench/audit-thq-turboquant-reference.py --self-test
-          python -m py_compile tools/agent-memory-bench/qjl_reference.py tools/agent-memory-bench/validate-canonical-de1m-source.py tools/agent-memory-bench/run-thq-ma-lsq-ranking-pilot.py tools/agent-memory-bench/run-thq-turboquant-plus-reference.py tools/agent-memory-bench/audit-thq-turboquant-plus-reference.py
+          python -m py_compile tools/agent-memory-bench/qjl_reference.py tools/agent-memory-bench/validate-canonical-de1m-source.py tools/agent-memory-bench/run-thq-ma-lsq-ranking-pilot.py tools/agent-memory-bench/run-thq-turboquant-plus-reference.py tools/agent-memory-bench/audit-thq-turboquant-plus-reference.py tools/agent-memory-bench/run-thq-qjl-seed-stability.py tools/agent-memory-bench/audit-thq-qjl-seed-stability.py
           python tools/agent-memory-bench/run-thq-elastic-bbq-reference.py --self-test
           python tools/agent-memory-bench/audit-thq-elastic-bbq-reference.py --self-test
           python tools/agent-memory-bench/run-thq-residual-binary-gate.py --self-test
@@ -381,6 +381,8 @@ jobs:
             tools/agent-memory-bench/run-thq-qjl-residual-gate.py \
             tools/agent-memory-bench/audit-thq-qjl-residual-gate.py \
             tools/agent-memory-bench/run-thq-qjl-seed-stability.py \
+            tools/agent-memory-bench/audit-thq-qjl-seed-stability.py \
+            tools/agent-memory-bench/materialize-canonical-thq4-table.py \
             tools/agent-memory-bench/reconcile-canonical-query-lineage.py \
             tools/agent-memory-bench/analyze-thq-finalist-paired-bootstrap.py
 

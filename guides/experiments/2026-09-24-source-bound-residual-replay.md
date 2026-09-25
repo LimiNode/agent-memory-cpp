@@ -10,6 +10,13 @@ to the canonical 96-byte ordinal THQ4 table.  The resulting 100-byte records,
 raw manifest, and receipt are retained outside Git under
 `E:\_repoz\agent-memory-workspaces\canonical-thq4-rebound-candidate-v1`.
 
+The complete canonical 1M THQ4 table is now reproducibly materialized at
+`E:\_repoz\agent-memory-workspaces\canonical-thq4-table-v1`. Its SHA-256 is
+`0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70`, matching
+the table bound by the candidate materialization receipt. This removes the
+previous ambiguity between that canonical 96-byte ordinal table and an older
+144-byte thermometer table.
+
 All rows share the same frozen candidate shell, canonical THQ interval²
 top-128, cosine metric, and 152-query qrels split.  TQ1-based residual arms
 also bind the canonical TQ1 payload; standalone THQ/LSQ and TQ+ rows do not
@@ -81,7 +88,10 @@ TQ1, so this implementation does not support a QJL production direction.
 A five-draw Gaussian m=384 seed stability diagnostic gives means
 `0.632900/0.621886/0.614363/0.613028/0.618578` (mean `0.620151`), so the
 single-seed result is not an unusually unlucky draw; all five remain below
-TQ1.  This is still the reused historical-152 fold, not confirmatory evidence.
+TQ1.  A separate source-bound audit regenerates each Gaussian projection and
+packed sign code without using the producer scorer API, then replays score,
+top-10, each seed's nDCG, and the min/max/mean summary.  This is still the
+reused historical-152 fold, not confirmatory evidence.
 
 ## Evidence hashes
 
@@ -91,6 +101,7 @@ TQ1.  This is still the reused historical-152 fold, not confirmatory evidence.
 - PQ8 result/audit: `eca6d9f7`, `6e52555d`;
 - LSQ result/models/codes/audit: `53459f76`, `595d6e09`, `79c9f578`, `2d94310d`;
 - QJL result/artifact/audit: `7d646e6b`, `c9a7be19`, `a7e66750`;
+- QJL m=384 five-seed result/audit: `8d93a034`, `49b47b3a`;
 - TQ+ result/audit: `bc923bf1`, `90364933`.
 
 The QJL artifact now persists residual norms and packed sign sketches for all

@@ -77,7 +77,12 @@ def main() -> None:
             ranked = docs_q[np.lexsort((docs_q, -scores))]
             values.append(ndcg(ranked, qids[qi], grades[qi]))
         rows.append({"seed": seed, "mean_qrels_ndcg10": float(np.mean(values)), "p05_qrels_ndcg10": float(np.percentile(values, 5)), "worst_qrels_ndcg10": float(np.min(values))})
-    result = {"schema_version": 1, "family": "thq_qjl_m384_seed_stability_v1", "status": "EXECUTED", "width": 384, "distribution": "gaussian", "query_count": Q, "seed_count": len(seeds), "seeds": seeds, "side_payload_bytes": 52, "global_model_bytes": D * D * 4, "source_hashes": {name: sha(getattr(args, name.replace("-", "_"))) for name in ("documents", "queries", "qrel-ids", "qrel-scores", "artifact", "tq-payload")}, "runner_sha256": sha(Path(__file__)), "rows": rows, "summaries": {"mean_of_seed_means": float(np.mean([x["mean_qrels_ndcg10"] for x in rows])), "min_seed_mean": float(np.min([x["mean_qrels_ndcg10"] for x in rows])), "max_seed_mean": float(np.max([x["mean_qrels_ndcg10"] for x in rows]))}, "limitations": ["five independent projection draws, candidate-local frozen shell", "not a fresh query split", "score-correction primitive, not a vector decoder"]}
+    sources = {
+        name: sha(getattr(args, name.replace("-", "_")))
+        for name in ("documents", "queries", "qrel-ids", "qrel-scores", "artifact", "tq-payload")
+    }
+    sources["qjl-reference"] = sha(Path(__file__).with_name("qjl_reference.py"))
+    result = {"schema_version": 2, "family": "thq_qjl_m384_seed_stability_v1", "status": "EXECUTED", "width": 384, "distribution": "gaussian", "query_count": Q, "seed_count": len(seeds), "seeds": seeds, "side_payload_bytes": 52, "global_model_bytes": D * D * 4, "source_hashes": sources, "runner_sha256": sha(Path(__file__)), "rows": rows, "summaries": {"mean_of_seed_means": float(np.mean([x["mean_qrels_ndcg10"] for x in rows])), "min_seed_mean": float(np.min([x["mean_qrels_ndcg10"] for x in rows])), "max_seed_mean": float(np.max([x["mean_qrels_ndcg10"] for x in rows]))}, "limitations": ["five independent projection draws, candidate-local frozen shell", "not a fresh query split", "score-correction primitive, not a vector decoder"]}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result["summaries"], sort_keys=True))

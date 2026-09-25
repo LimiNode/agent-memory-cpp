@@ -7,6 +7,7 @@
   "candidate_rebound_raw_sha256": "4e98f84c39a617c36dd5e749a2165d5a1e187ee2a2039d96d748cdce32a0ada7",
   "candidate_rebound_receipt_sha256": "7128cc29c60343fadfa178751ed5f6bab7bf8b3b83e91abaad36be3710346fd3",
   "canonical_tq_payload_sha256": "123e015bdca05edae64fb3e05a996c7c9f5ae72a117c96364a3739d4760a965a",
+  "canonical_thq4_table": {"sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70", "materialization_receipt_sha256": "40aed03abc4bf084ba6cc44a8e44ec20a43c2b0beb40505f7f23213a7e7e1e5d"},
   "arms": {
     "pq4": {"result_sha256": "245721d4fb5539de1e97fb0191b8bc37031daf8623f7357ff9176cfa8359c51d", "audit_sha256": "58ae7285d226b3b47dda3d467e4b16c9c34ba05504e91967c0b784e0db200d9e"},
     "pq8": {"result_sha256": "eca6d9f782b61ecdd837eafdc0555b57ae7a2aa4a5ae71e54fe0a69eeaeeb50e", "audit_sha256": "4550970ce13aec57eab4f5a4ea34ecf5d2a9da4ca51ec62eb60d9c402a11a455"},
@@ -20,7 +21,7 @@
       "optimization_budget": "train_iters=1, train_ils_iters=1, encode_ils_iters=1, icm_iters=1, nperts=1"
     },
     "tqplus": {"result_sha256": "bc923bf1c77508511fb94a1c848654f5cd048008d7fdea22ee5e8a1b27b300d1", "audit_sha256": "9036493383ff8181c37892dbf76dd84f54a11822fa2afeb9f177d4de755e8f01"},
-    "qjl": {"result_sha256": "7d646e6b6777f9a9df258348918332deb2b9a3cdebcd6f4de202587c8a6830c0", "artifact_sha256": "c9a7be19a7f1d286d6a823555583da5e3ffab158c0a2f3e31a8aa112555a3f41", "audit_sha256": "b99b2567443735bbdcce52c055045edc55dc9b5004baf2618d238f6a466e7c0a", "m384_seed_stability_sha256": "59457ef5e1f198d75fc27ee6ecef38fcf730ceced13929951a085866673d5a20"}
+    "qjl": {"result_sha256": "7d646e6b6777f9a9df258348918332deb2b9a3cdebcd6f4de202587c8a6830c0", "artifact_sha256": "c9a7be19a7f1d286d6a823555583da5e3ffab158c0a2f3e31a8aa112555a3f41", "audit_sha256": "b99b2567443735bbdcce52c055045edc55dc9b5004baf2618d238f6a466e7c0a", "m384_seed_stability_sha256": "8d93a034cb18bceb7aec1e857b0aaa82548b47dddc3b2855e81ead4b5432aa3e", "m384_seed_stability_audit_sha256": "49b47b3abfc9435d13b8b8b169393f4d66e697979a673c98691297f2686fd5bb"}
   },
   "quality_status": "SOURCE_BOUND_RESEARCH; NO_PRODUCTION_SELECTION",
   "pending": ["OPQ residual control", "TQ-domain normalized residual correction", "full-25k LSQ multi-seed fit", "fresh held-out query replay"]
