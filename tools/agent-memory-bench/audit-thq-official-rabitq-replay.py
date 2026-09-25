@@ -91,21 +91,30 @@ def ndcg10(ids, qrel_ids, grades):
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--result", type=Path, required=True)
-    parser.add_argument("--producer", type=Path, required=True)
-    parser.add_argument("--native-source", type=Path, required=True)
-    parser.add_argument("--native-cmake", type=Path, required=True)
-    parser.add_argument("--rabitq-root", type=Path, required=True)
-    parser.add_argument("--artifact-dir", type=Path, required=True)
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--result", type=Path)
+    parser.add_argument("--producer", type=Path)
+    parser.add_argument("--native-source", type=Path)
+    parser.add_argument("--native-cmake", type=Path)
+    parser.add_argument("--rabitq-root", type=Path)
+    parser.add_argument("--artifact-dir", type=Path)
     source_names = (
         "documents", "queries", "qrel-ids", "qrel-scores", "teacher-ids",
         "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw",
         "candidate-receipt",
     )
     for name in source_names:
-        parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+        parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    if args.self_test:
+        if not (2 <= D <= 4096 and TOP == 128 and QUERY_COUNT == 152):
+            raise RuntimeError("official RaBitQ audit protocol self-test failed")
+        print("official multi-bit RaBitQ audit self-test: PASS")
+        return
+    for name in ("result", "producer", "native_source", "native_cmake", "rabitq_root", "artifact_dir", "output") + source_names:
+        if getattr(args, name.replace("-", "_")) is None:
+            parser.error(f"--{name} is required")
 
     result = json.loads(args.result.read_text(encoding="utf-8"))
     require(result.get("family") == "official_rabitq_multibit_thq_replay_v1", "result family differs")

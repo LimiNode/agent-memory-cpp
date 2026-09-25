@@ -109,6 +109,10 @@ def ndcg10(ids: np.ndarray, qrel_ids: np.ndarray, grades: np.ndarray) -> float:
     return float(dcg / idcg) if idcg else 0.0
 
 
+def parse_widths_for_self_test() -> tuple[int, ...]:
+    return (2, 3, 4)
+
+
 def deterministic_rotation(seed: int) -> np.ndarray:
     gaussian = np.random.default_rng(seed).standard_normal((D, D))
     orthogonal, upper = np.linalg.qr(gaussian)
@@ -119,6 +123,7 @@ def deterministic_rotation(seed: int) -> np.ndarray:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--self-test", action="store_true")
     source_names = (
         "documents",
         "queries",
@@ -132,14 +137,25 @@ def main() -> None:
         "candidate-receipt",
     )
     for name in source_names:
-        parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
-    parser.add_argument("--native-runner", type=Path, required=True)
-    parser.add_argument("--rabitq-root", type=Path, required=True)
-    parser.add_argument("--artifact-dir", type=Path, required=True)
-    parser.add_argument("--output", type=Path, required=True)
+        parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path)
+    parser.add_argument("--native-runner", type=Path)
+    parser.add_argument("--rabitq-root", type=Path)
+    parser.add_argument("--artifact-dir", type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--widths", default="2,3,4")
     parser.add_argument("--rotation-seed", type=int, default=20260925)
     args = parser.parse_args()
+    if args.self_test:
+        rotation = deterministic_rotation(20260925).astype(np.float64)
+        if float(np.max(np.abs(rotation @ rotation.T - np.eye(D)))) >= 2e-6:
+            raise RuntimeError("official RaBitQ rotation self-test failed")
+        if set(parse_widths_for_self_test()) != {2, 3, 4}:
+            raise RuntimeError("official RaBitQ width self-test failed")
+        print("official multi-bit RaBitQ runner self-test: PASS")
+        return
+    for name in source_names + ("native_runner", "rabitq_root", "artifact_dir", "output"):
+        if getattr(args, name.replace("-", "_")) is None:
+            parser.error(f"--{name} is required")
 
     widths = tuple(int(value) for value in args.widths.split(",") if value.strip())
     if not widths or len(set(widths)) != len(widths) or any(value not in (2, 3, 4) for value in widths):
