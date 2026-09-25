@@ -19,7 +19,18 @@
   "qinco2": {
     "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
     "license": "CC-BY-NC-4.0",
-    "official_fit_status": "NOT_STARTED_MISSING_HYDRA_RUNTIME",
+    "official_fit_status": "RUNNING_BOUNDED_25K_CONTROL",
+    "fit_workspace": "E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1",
+    "fit_config": {
+      "train_rows": 25000,
+      "stages": 16,
+      "codebook_size": 256,
+      "epochs": 1,
+      "batch_size": 256,
+      "cpu": true,
+      "quality_claim": false
+    },
+    "checkpoint_status": "PENDING",
     "quality_claim": false,
     "native_timing_claim": false
   }
