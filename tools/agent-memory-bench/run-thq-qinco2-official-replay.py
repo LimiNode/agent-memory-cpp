@@ -86,7 +86,11 @@ def main() -> None:
         L=int(params["L"]), de=int(params["de"]), dh=int(params["dh"]), A=int(params["A"]),
         B=int(params["B"]), _ivf_book=None, _qinco_jit=False, ivf_in_use=False, task="eval",
         _data_mean=np.zeros(D, np.float32), _data_std=1.0, codebook_noise_init=0.0,
-        qinco1_mode=False, enc_max_bs=32768)
+        qinco1_mode=False,
+        # Keep the upstream beam search intact, but let the research runner
+        # choose a larger inference chunk than the upstream conservative
+        # default.  This changes batching only, not code assignment semantics.
+        enc_max_bs=max(32768, int(a.batch_size) * int(params["A"]) * int(params["B"])))
     model = QINCo(cfg)
     model.load_state_dict(saved["model"])
     model.eval()
