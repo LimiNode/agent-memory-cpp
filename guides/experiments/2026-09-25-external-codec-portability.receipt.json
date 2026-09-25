@@ -21,6 +21,7 @@
     "license": "CC-BY-NC-4.0",
     "official_fit_status": "EXECUTED_BOUNDED_25K_CONTROL",
     "fit_workspace": "E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1",
+    "checkpoint_file": "checkpoint-epoch2.pt",
     "fit_config": {
       "train_rows": 25000,
       "stages": 16,
@@ -32,6 +33,7 @@
       "quality_claim": false
     },
     "checkpoint_status": "DECODE_AUDIT_PASS",
+    "unbounded_scheduler_tail": "STOPPED_AFTER_BOUNDED_CHECKPOINT",
     "result_sha256": "343f995194a2b39992fcc8b2c9852f6083e7c15d9235e964ec3b2156a9e013bd",
     "audit_sha256": "37318c22df03add3a668fed4d688983220159b24de3a822d00c36abf55621f8f",
     "runner_sha256": "bbc64f0e82c48d919517860f8dc5b7e5348cd24b215ae5d4daf50eb769544d37",
