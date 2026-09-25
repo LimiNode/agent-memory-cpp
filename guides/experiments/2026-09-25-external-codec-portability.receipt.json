@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "status": "BLOCKED",
+  "date": "2026-09-25",
+  "experiment_note": "guides/experiments/2026-09-25-external-codec-portability.md",
+  "host": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "physical_cores": 18,
+    "logical_cores": 36,
+    "operating_system": "Windows"
+  },
+  "saq": {
+    "upstream_revision": "2163ebcedd0ad9c9f4de326e6ca7a860f9eafe52",
+    "license": "Apache-2.0",
+    "configure_status": "BLOCKED_AVX512_UNAVAILABLE",
+    "quality_claim": false,
+    "native_timing_claim": false
+  },
+  "qinco2": {
+    "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
+    "license": "CC-BY-NC-4.0",
+    "official_fit_status": "NOT_STARTED_MISSING_HYDRA_RUNTIME",
+    "quality_claim": false,
+    "native_timing_claim": false
+  }
+}
