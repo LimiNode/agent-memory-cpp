@@ -47,11 +47,9 @@ conclusion.
 The earlier 16-byte local pilot remains separate and is not silently replaced
 by this run.
 
-The next executable QINCo2 gate is: install the pinned upstream environment in
-an isolated research workspace, adapt the canonical E5 train/database/query
-files without changing vector order or metric, train first on a 25k control,
-then repeat at 100k/250k/1M unsupervised pool sizes, and independently replay
-decode, cosine top-10 and storage accounting. The official-model persisted-code
-audit now passes for all 152 queries: mean nDCG@10 is `0.616420` at 112 B/doc
-(16-byte QINCo2 code plus the 96-byte THQ shell), with p05/worst-query nDCG
-equal to zero. No production selection claim is made.
+The remaining QINCo2 gates are stronger training on larger unsupervised pools
+(100k/250k/1M), followed by the same independent decode, cosine top-10, and
+storage audit. The official-model persisted-code audit already passes for all
+152 queries: mean nDCG@10 is `0.616420` at 112 B/doc (16-byte QINCo2 code plus
+the 96-byte THQ shell), with p05/worst-query nDCG equal to zero. No production
+selection claim is made.
