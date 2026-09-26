@@ -19,6 +19,8 @@ def sha256(path: Path) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--runner", type=Path)
+    parser.add_argument("--runner-binary", type=Path)
+    parser.add_argument("--build-manifest", type=Path)
     parser.add_argument("--payload", type=Path)
     parser.add_argument("--payload-receipt", type=Path)
     parser.add_argument("--thq", type=Path)
@@ -34,6 +36,8 @@ def main() -> None:
     if args.self_test:
         print("native TQ1/PQ8 run-receipt self-test PASS")
         return
+    if args.runner_binary is None or args.build_manifest is None:
+        parser.error("--runner-binary and --build-manifest are required for executed receipts")
     paths = (args.runner, args.payload, args.payload_receipt, args.thq,
              args.thresholds, args.candidate_flat, args.offsets, args.queries,
              args.native_jsonl, args.output)
@@ -44,6 +48,9 @@ def main() -> None:
         "schema_version": 1,
         "status": "EXECUTED",
         "runner_sha256": sha256(args.runner),
+        "runner_source_sha256": sha256(args.runner),
+        "runner_binary_sha256": sha256(args.runner_binary),
+        "build_manifest_sha256": sha256(args.build_manifest),
         "payload_sha256": sha256(args.payload),
         "payload_receipt_sha256": sha256(args.payload_receipt),
         "thq_sha256": sha256(args.thq),
@@ -52,6 +59,16 @@ def main() -> None:
         "offsets_sha256": sha256(args.offsets),
         "queries_sha256": sha256(args.queries),
         "native_jsonl_sha256": sha256(args.native_jsonl),
+        "payload_receipt_path": str(args.payload_receipt),
+        "thq_path": str(args.thq),
+        "thresholds_path": str(args.thresholds),
+        "candidate_flat_path": str(args.candidate_flat),
+        "offsets_path": str(args.offsets),
+        "queries_path": str(args.queries),
+        "native_jsonl_path": str(args.native_jsonl),
+        "runner_source_path": str(args.runner),
+        "runner_binary_path": str(args.runner_binary),
+        "build_manifest_path": str(args.build_manifest),
         "payload_side_bytes_per_document": receipt["side_bytes_per_document"],
         "argv": args.argv or [],
     }

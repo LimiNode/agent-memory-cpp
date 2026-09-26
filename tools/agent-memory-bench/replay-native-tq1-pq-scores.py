@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import struct
+import tempfile
 from pathlib import Path
 
 import numpy as np
 
 D, TQ_BYTES, PQ_SUBSPACES, PQ_WIDTH = 384, 48, 8, 48
 CENTROID = 0.7978846
+SCORE_TOLERANCE = 1e-8
 
 
 def load_tq():
@@ -27,6 +30,14 @@ def load_tq():
 def require(ok: bool, message: str) -> None:
     if not ok:
         raise RuntimeError(message)
+
+
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def load_payload(path: Path) -> dict[str, np.ndarray | int | bool]:
@@ -61,6 +72,7 @@ def main() -> None:
     parser.add_argument("--native-jsonl", type=Path)
     parser.add_argument("--queries", type=Path)
     parser.add_argument("--thq", type=Path)
+    parser.add_argument("--payload-receipt", type=Path)
     parser.add_argument("--output", type=Path)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
@@ -68,9 +80,21 @@ def main() -> None:
         require(np.array_equal(np.asarray([[-1.0, 0.0, 1.0]]) > 0.0,
                                np.asarray([[False, False, True]])),
                 "boundary replay failed")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "value"
+            path.write_bytes(b"score-replay")
+            require(len(sha256(path)) == 64, "score replay hash self-test failed")
+            require(np.isfinite(0.0) and 0.0 <= SCORE_TOLERANCE,
+                    "score replay tolerance self-test failed")
+            try:
+                require(1e-3 <= SCORE_TOLERANCE,
+                        "deliberate score-error rejection was not exercised")
+            except RuntimeError:
+                pass
         print("native TQ1/PQ8 score replay self-test PASS")
         return
-    if any(value is None for value in (args.payload, args.native_jsonl, args.queries, args.thq, args.output)):
+    if any(value is None for value in (args.payload, args.native_jsonl, args.queries,
+                                      args.thq, args.output)):
         parser.error("all replay paths are required")
     payload = load_payload(args.payload)
     ids = np.asarray(payload["ids"]); rows = {int(row["query"]): row for row in (json.loads(line) for line in args.native_jsonl.read_text(encoding="utf-8").splitlines() if line.strip())}
@@ -111,9 +135,23 @@ def main() -> None:
             require(native_tq.shape == (len(coarse),), "native TQ score array shape differs")
             max_tq = max(max_tq, float(np.max(np.abs(native_tq - tq_scores))))
         checked += len(coarse)
-    result = {"status": "PASS", "rows": len(rows), "scores": checked,
+    require(np.isfinite(max_pq) and max_pq <= SCORE_TOLERANCE,
+            f"PQ score replay error exceeds tolerance: {max_pq}")
+    if bool(payload["has_tq_norm"]):
+        require(np.isfinite(max_tq) and max_tq <= SCORE_TOLERANCE,
+                f"TQ score replay error exceeds tolerance: {max_tq}")
+    require(checked == sum(len(row["thq4_top128_ids"]) for row in rows),
+            "score replay count does not match frozen candidate lists")
+    result = {"schema_version": 1, "status": "PASS", "rows": len(rows), "scores": checked,
+              "score_tolerance": SCORE_TOLERANCE,
               "max_abs_tq_score_error": max_tq if bool(payload["has_tq_norm"]) else None,
-              "max_abs_pq8_score_error": max_pq}
+              "max_abs_pq8_score_error": max_pq,
+              "payload_sha256": sha256(args.payload),
+              "native_jsonl_sha256": sha256(args.native_jsonl),
+              "queries_sha256": sha256(args.queries),
+              "thq_sha256": sha256(args.thq),
+              "payload_receipt_sha256": sha256(args.payload_receipt) if args.payload_receipt else None,
+              "replay_runner_sha256": sha256(Path(__file__))}
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, sort_keys=True))
 
