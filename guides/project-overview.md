@@ -111,6 +111,8 @@ src/agent_memory/
     memory/
     context/
     infrastructure/
+        sqlite/              (planned optional adapter)
+        semantic/            (planned optional backend adapters)
 ```
 
 The layout is expected to grow incrementally. Do not create empty directories or
@@ -136,6 +138,21 @@ audio and video extension in `guides/multimodal-binary-retrieval-roadmap.md`.
 This keeps a future external model adapter, cross-encoder, chunk-expansion
 policy, or ANN backend from becoming an implicit core dependency. Each remains
 optional and must be promoted through its own frozen evaluation evidence.
+
+## Semantic Execution Backlog
+
+Optional semantic filtering, scoring, joins, batching, planner policy,
+provider provenance, and external/embedded model adapters are specified in
+[`guides/semantic-execution-roadmap.md`](semantic-execution-roadmap.md). They
+remain outside the dependency-free core until the documented fake-backend,
+failure, provenance, and benchmark gates pass.
+
+## Portable Storage Backlog
+
+The planned SQLite adapter is documented in
+[`guides/sqlite-adapter-roadmap.md`](sqlite-adapter-roadmap.md). SQLite is an
+explicit optional backend; it does not replace MDBX, canonical storage
+contracts, or the separate vector-index boundary.
 
 ## Reindexing Backlog
 

@@ -147,6 +147,34 @@ and immutable derived-vector blob deduplication. These are benchmark-gated
 optimisations over the canonical M1 storage contracts, not alternate sources of
 truth.
 
+### Optional semantic execution lane (cross-cutting, not an M0/M1 gate)
+
+Semantic execution is intentionally an optional lane. The contract and
+dependency boundary are specified in
+[`semantic-execution-roadmap.md`](semantic-execution-roadmap.md); no milestone
+is complete merely because an external model adapter exists. A future M2
+profile may opt in only after it has:
+
+| Capability | Required evidence | Status |
+|---|---|---|
+| Semantic filter/score/rerank/join contract | dependency-free request/result types and capability discovery | **Contract only** |
+| Bounded planner and batching | candidate cap, ordering, batch, timeout, retry, cancellation, and fallback tests | **Roadmap only** |
+| Provenance-bound semantic results | source revision, task/prompt hash, provider/model revision, parameters, result and error metadata | **Roadmap only** |
+| HTTP backend | OpenAI-compatible adapter with structured output and provider-error fixtures | **Roadmap only** |
+| Embedded `llama.cpp` backend | separate opt-in target and platform/license/memory tests | **Not covered** |
+
+Semantic calls must be outside storage transactions. They do not become M0/M1
+requirements and do not make model output canonical memory by default.
+
+### Optional SQLite storage lane
+
+SQLite is a portable adapter proposal, not a new source of truth. It may be
+selected by a future profile after the contract, reopen/crash/migration,
+targeted-reindex, and benchmark tests in
+[`sqlite-adapter-roadmap.md`](sqlite-adapter-roadmap.md) pass. Until then its
+status is **Roadmap only**, and MDBX remains the existing optional storage
+direction.
+
 ### M2+ - Research / Optional
 
 Bi-temporal storage, abstraction graphs, causal relations, entity resolution,
@@ -260,3 +288,5 @@ incomparable vector-search score.
 | `memory-architectures-roadmap.md` | Informational | External architecture mapping |
 | `usage-memory-models.md` | Informational | Usage guidance and examples |
 | `advanced-binary-techniques-roadmap.md` | Experiment / M3 research | Not M0/M1/M2 ship-it scope |
+| `semantic-execution-roadmap.md` | Proposal / optional cross-cutting lane | Contract and gates only; no core model runtime |
+| `sqlite-adapter-roadmap.md` | Proposal / optional storage adapter | Must preserve MDBX-independent storage contracts |

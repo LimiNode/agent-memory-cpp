@@ -47,3 +47,19 @@ The host may receive a context fingerprint plus durable evidence identifiers
 from its retrieval adapter. It must revalidate a cache hit against the current
 canonical revisions before reuse. The embedded library remains usable without
 an LLM, a provider SDK or any cache implementation.
+
+## Semantic Result Cache Extension
+
+An application may also cache a semantic filter/score/rerank result, but this
+is a derived host artifact rather than canonical memory. The cache key must
+include the record revision, operation/task id, prompt or instruction hash,
+provider and model revision, and generation parameters. A hit must be
+revalidated against current authorization and source revisions. Unknown,
+timeout, and provider-error outcomes must not be silently rewritten as a
+negative decision.
+
+The execution boundary is deliberately outside storage transactions: storage
+returns bounded candidates, a semantic executor performs batched calls, and a
+separate result writer records provenance. See
+[`semantic-execution-roadmap.md`](semantic-execution-roadmap.md) for the
+contract and failure policy.
