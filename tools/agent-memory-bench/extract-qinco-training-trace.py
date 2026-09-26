@@ -31,15 +31,32 @@ def main() -> None:
     validations = [float(value) for value in re.findall(r"Validation metrics: \[\[MSE=([0-9.eE+-]+)\]\]", log)]
     learning_rates = {int(epoch): float(value) for epoch, value in re.findall(r"Start epoch (\d+) with lr=([0-9.eE+-]+)", log)}
     entropy_rows = re.findall(r"train_codeword_entropy=([0-9.eE+-]+).*?val_codeword_entropy=([0-9.eE+-]+).*?step_entropies=\[([^\]]+)\]", log)
-    reset_rows = re.findall(r"Reset \d+/\d+ codewords at the end of epoch (\d+) \(for each step: \[(.*?)\]\)", log)
-    reset_by_epoch = {int(epoch): [int(value) for value in re.findall(r"(\d+)/\d+", values)] for epoch, values in reset_rows}
-    if not epochs or len(validations) < len(epochs) or len(entropy_rows) < len(epochs) or len(reset_by_epoch) < len(epochs):
+    reset_by_epoch = {}
+    for line in log.splitlines():
+        reset_match = re.search(
+            r"Reset \d+/\d+ codewords at the end of epoch (\d+) "
+            r"\(for each step: \[(.*?)\]\)", line
+        )
+        if reset_match:
+            reset_by_epoch[int(reset_match.group(1))] = [
+                int(value) for value in re.findall(r"(\d+)/\d+", reset_match.group(2))
+            ]
+            continue
+        no_reset_match = re.search(r"No codeword to reset after epoch (\d+)", line)
+        if no_reset_match:
+            reset_by_epoch[int(no_reset_match.group(1))] = None
+    # The first validation is the pre-training measurement. One post-epoch
+    # validation is required for every completed epoch.
+    post_epoch_validations = validations[1:]
+    if not epochs or len(post_epoch_validations) < len(epochs) or len(entropy_rows) < len(epochs) or len(reset_by_epoch) < len(epochs):
         raise RuntimeError("training log lacks complete per-epoch/per-stage trace")
     trace = []
     for index, (epoch, steps, loss) in enumerate(epochs):
         epoch_id = int(epoch)
         stage_entropies = [float(value) for value in re.findall(r"[0-9.eE+-]+", entropy_rows[index][2])]
         resets = reset_by_epoch[epoch_id]
+        if resets is None:
+            resets = [0] * len(stage_entropies)
         if len(stage_entropies) != len(resets):
             raise RuntimeError(f"stage trace length mismatch at epoch {epoch_id}")
         stages = [{
@@ -54,7 +71,7 @@ def main() -> None:
             "epoch": epoch_id,
             "optimizer_steps": int(steps),
             "train_loss": float(loss),
-            "validation_mse": validations[index],
+            "validation_mse": post_epoch_validations[index],
             "learning_rate": learning_rates.get(epoch_id),
             "train_codeword_entropy": float(entropy_rows[index][0]),
             "validation_codeword_entropy": float(entropy_rows[index][1]),
@@ -69,6 +86,7 @@ def main() -> None:
         "training_log_sha256": sha256(args.training_log),
         "upstream_revision": upstream_revision,
         "epoch_trace": trace,
+        "initial_validation_mse": validations[0],
         "source": "official QINCo training log; reset counts are upstream per-stage assignment diagnostics",
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

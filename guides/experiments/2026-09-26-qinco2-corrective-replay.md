@@ -153,6 +153,20 @@ validation MSE, learning rate, aggregate entropy, per-stage entropy,
 used-codeword count, and reset count.  Both replay audits are `PASS` with 304
 rows and zero persisted-decode top-10 mismatches.
 
+### Follow-up tooling corrections
+
+After this bounded replay, the QINCo tooling was hardened before any larger
+fit is attempted. The trace extractor now treats the first validation as a
+pre-training measurement, maps each epoch to its post-epoch validation, and
+accepts both explicit reset diagnostics and the upstream `No codeword to reset`
+line (recording zero resets). The finalizer binds a checkpoint to the best
+post-epoch validation and its cumulative optimizer step, rather than requiring
+the checkpoint to be from the last epoch. The immutable training plan derives
+source-pool and effective train rows from the actual `.npy` shape; an optional
+upstream-emitted resolved configuration can be persisted and hashed. Existing
+bounded numbers above are unchanged; these are safeguards for future
+25k/100k/250k/1M fits.
+
 ## Interpretation
 
 The corrected replay is diagnostic evidence only.  It does not establish a
