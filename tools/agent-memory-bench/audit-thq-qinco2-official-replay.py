@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -214,7 +215,18 @@ def main() -> None:
         raise RuntimeError("persisted QINCo2 final norms differ from decoded vectors")
     position = {int(doc): i for i, doc in enumerate(unique_ids)}
     rows = {(str(row["arm"]), int(row["query"])): row for row in result.get("rows", [])}
-    arms = {"qinco2_official_16b_residual_mismatch": (reconstructed, residual_norms), "qinco2_official_16b_raw_vector": (raw_reconstructed, raw_norms)}
+    arm_vectors = {
+        "train_thq_residual__eval_thq_residual": (reconstructed, residual_norms),
+        "train_thq_residual__eval_raw": (raw_reconstructed, raw_norms),
+    }
+    for name in result.get("arms", {}):
+        if re.fullmatch(r"qinco2_official_\d+b_residual_mismatch", name):
+            arm_vectors[name] = (reconstructed, residual_norms)
+        elif re.fullmatch(r"qinco2_official_\d+b_raw_vector", name):
+            arm_vectors[name] = (raw_reconstructed, raw_norms)
+    arms = {name: arm_vectors[name] for name in result.get("arms", {}) if name in arm_vectors}
+    if len(arms) != 2:
+        raise RuntimeError("QINCo2 result must declare exactly two recognized domain arms")
     expected_keys = {(arm, qi) for arm in arms for qi in range(QUERY_COUNT)}
     if len(result.get("rows", [])) != len(expected_keys) or set(rows) != expected_keys:
         raise RuntimeError("QINCo2 result rows must contain exactly one row per arm and query")
@@ -235,6 +247,11 @@ def main() -> None:
             scores = (values @ query) / np.maximum(np.asarray(norms[indexes], dtype=np.float64) * np.linalg.norm(query), 1e-30)
             ranked = top_ids(scores, ids).astype(int).tolist()
             row = rows[(arm, qi)]
+            if "training_domain" in row:
+                expected_training = "thq_residual" if arm.startswith("train_thq_residual__") else "raw"
+                expected_evaluation = "thq_residual" if arm.endswith("eval_thq_residual") else "raw"
+                if row.get("training_domain") != expected_training or row.get("evaluation_domain") != expected_evaluation:
+                    raise RuntimeError(f"domain semantics mismatch for {arm} query {qi}")
             if ranked != row["top10_ids"]:
                 mismatches += 1
             if row["candidate_fp32_top10_ids"] != candidate_fp32[qi]:
@@ -262,7 +279,7 @@ def main() -> None:
         raise RuntimeError("top-level QINCo2 storage contract differs")
     if mismatches:
         raise RuntimeError(f"persisted official QINCo2 decode mismatches: {mismatches}")
-    audit = {"schema_version": 3, "family": "thq_qinco2_official_replay_audit_v3", "status": "PASS", "source_replay": True, "source_binding": True, "official_model_decode_replay": True, "independent_decoder": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "checkpoint_sha256": sha256(a.checkpoint), "codes_artifact_sha256": sha256(a.codes_artifact), "source_hashes": {k: sha256(v) for k, v in sources.items()}, "row_count": int(len(result.get("rows", []))), "query_count": QUERY_COUNT, "top10_mismatch_count": mismatches, "persisted_code_dtype": str(residual_codes.dtype), "persisted_code_shape": list(residual_codes.shape), "persisted_norm_sidecar": True, "checks": ["upstream revision and runner/checkpoint/code binding", "all canonical source input SHA binding", "independent candidate-stream and THQ interval² top128 replay", "persisted uint8 code shape/cardinality/range for both diagnostic arms", "official QINCo2 decode for raw and THQ-residual arms", "persisted FP32 norm sidecar parity", "candidate FP32 top10 and overlap replay", "152-query per-arm top10 and summary replay", "logical storage contract 16 B code + 4 B norm", "checkpoint configuration equality"], "limitations": ["official decoder replay, not an independent QINCo2 reimplementation", "bounded undertrained 25k control", "historical 152-query fold"]}
+    audit = {"schema_version": 3, "family": "thq_qinco2_official_replay_audit_v3", "status": "PASS", "source_replay": True, "source_binding": True, "official_model_decode_replay": True, "independent_decoder": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "checkpoint_sha256": sha256(a.checkpoint), "codes_artifact_sha256": sha256(a.codes_artifact), "source_hashes": {k: sha256(v) for k, v in sources.items()}, "row_count": int(len(result.get("rows", []))), "query_count": QUERY_COUNT, "top10_mismatch_count": mismatches, "persisted_code_dtype": str(residual_codes.dtype), "persisted_code_shape": list(residual_codes.shape), "persisted_norm_sidecar": True, "checks": ["upstream revision and runner/checkpoint/code binding", "all canonical source input SHA binding", "independent candidate-stream and THQ interval² top128 replay", "persisted uint8 code shape/cardinality/range for both diagnostic arms", "official QINCo2 decode for raw and THQ-residual arms", "persisted FP32 norm sidecar parity", "candidate FP32 top10 and overlap replay", "152-query per-arm top10 and summary replay", "logical storage contract M-byte code + 4 B norm", "checkpoint configuration equality"], "limitations": ["official decoder replay, not an independent QINCo2 reimplementation", "bounded undertrained 25k control", "historical 152-query fold"]}
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

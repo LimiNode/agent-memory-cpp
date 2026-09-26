@@ -2,7 +2,7 @@
 
 Date: 2026-09-26  
 Status: `EXECUTED` for the corrected diagnostic replay and matched residual
-training replay; no production selection.
+training replays; no production selection.
 
 ## Protocol correction
 
@@ -14,9 +14,9 @@ r = x - THQ(x)
 reconstruction = THQ(x) + QINCo(r)
 ```
 
-That arm is now named `qinco2_official_16b_residual_mismatch`, a
+That arm is now represented as `train_raw__eval_thq_residual`, a
 `TRAINING_DOMAIN_MISMATCH_CONTROL`.  The same checkpoint is replayed in a
-matched diagnostic arm, `qinco2_official_16b_raw_vector`, which encodes and
+matched diagnostic arm, `train_raw__eval_raw`, which encodes and
 decodes `x` directly.  Both use the independently recomputed canonical THQ
 interval-squared top-128 candidate shell and persist separate uint8 code and
 FP32 final-norm arrays.
@@ -67,25 +67,97 @@ also remains out-of-domain because the checkpoint was trained on raw vectors.
 
 The canonical residual matrix was then used for a matched 20,000-train / 5,000
 validation fit with the same official model, seed, batch, and scheduler.  The
-best checkpoint was saved after four completed epochs (316 optimizer steps),
-with validation MSE `0.0390571`.  The official training log also shows severe
-codeword under-utilization: 4,034/4,096 codewords were reset after epoch 3.
+exploratory checkpoint was saved after four completed epochs (316 optimizer
+steps), with validation MSE `0.0390571`.  The official training log also shows
+severe codeword under-utilization: 4,034/4,096 codewords were reset after epoch
+3.
 
 | arm | mean nDCG@10 | p05 | worst | side bytes | status |
 | --- | ---: | ---: | ---: | ---: | --- |
 | residual-trained → THQ residual | 0.653377 | 0 | 0 | 20 | matched bounded control |
 | residual-trained → raw vector | 0.082992 | 0 | 0 | 20 | reverse-domain diagnostic |
 
-The matched residual fit improves over the raw-trained residual mismatch arm
-by `+0.036958` nDCG, confirming that training-domain alignment matters.  It
-still does not beat the current compact classical frontier, and the occupancy
-collapse plus historical query reuse make this a bounded negative for this
-short 25k setup, not a family-level QINCo2 rejection.
+The exploratory matched residual fit improves over the raw-trained residual
+mismatch arm by `+0.036958` nDCG, but that comparison also used 316 rather than
+237 optimizer steps.  It is therefore support for the domain-alignment
+hypothesis, not a pure causal ablation.
+
+## Exact-budget domain ablation
+
+To remove the budget confound, a second residual-trained M16 checkpoint was fit
+from a pre-fit immutable plan and stopped at the same checkpoint budget as the
+raw-trained control: three completed epochs and 237 optimizer steps.  The
+source pool, split, model, seed, batch, and scheduler are unchanged.
+
+| training domain | evaluation domain | steps | mean nDCG@10 | side bytes | cascade bytes |
+| --- | --- | ---: | ---: | ---: | ---: |
+| raw | THQ residual | 237 | 0.616420 | 20 | 116 |
+| THQ residual | THQ residual | 237 | **0.649912** | 20 | 116 |
+
+The same-budget paired delta is `+0.033492`.  This is a materially cleaner
+domain-ablation control, but it remains bounded evidence: codeword reset
+trajectories differ and the evaluation fold is the historical 152-query fold.
+
+The exact-budget artifacts are bound by the M16 plan, training log, checkpoint,
+result, persisted codes, and replay audit.  The audit is `PASS`, with 304 rows,
+zero persisted-decode top-10 mismatches, and independent THQ shell replay.
+
+## Occupancy diagnostic and M8 control
+
+The M16 logs show a collapse signal rather than merely low occupancy.
+`extract-qinco-training-trace.py` fail-closed parses the official immutable log
+and retains train loss, validation MSE, learning rate, aggregate entropy,
+per-stage entropy, used-codeword count, and reset count for every completed
+epoch.  This diagnostic is intentionally run before increasing the training
+pool, so later larger-pool fits can distinguish a training-budget failure from
+a structural capacity failure.
+
+The matched M8 residual control was executed under a separate immutable plan
+with the same 25k/20k/5k pool, seed, and 237-step budget.  Its contract is:
+
+* 8 uint8 stage codes plus a 4-byte FP32 final norm = 12 bytes/doc;
+* THQ4 cascade total = 108 bytes/doc;
+* the same cosine metric, candidate shell, qrels, and audit as M16;
+* quality, per-stage occupancy, model bytes, and encode/decode cost reported
+  side by side with M16.
+
+The source-bound replay and persisted-code audit are complete:
+
+| model | steps | validation MSE | mean nDCG@10 | final used codewords | side bytes | cascade bytes | global model bytes |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| QINCo2 M8 | 237 | 0.039545 | **0.648116** | 142/2,048 | 12 | 108 | 14,185,476 |
+| QINCo2 M16 | 237 | 0.043334 | **0.649912** | 47/4,096 | 20 | 116 | 29,942,788 |
+
+M8 loses only `0.001796` mean nDCG while saving 8 bytes/doc and about 15.8 MB
+of global model state.  At one million documents its effective footprint is
+about 122.2 bytes/doc versus 145.9 bytes/doc for M16.  However, M8 also
+collapses severely: 1,906/2,048 codewords were unused in the final epoch, and
+stages 3 and 6 used only one codeword.  The result favors M8 over M16 within
+this short collapsed regime, but does not establish that either fit is a
+healthy or production-ready QINCo operating point.
+
+A bounded warm-process CPU timing control over the same first 256 residual
+rows (batch 64, one warmup, three repeats) gives:
+
+| model | encode + reconstruct median | persisted-code decode median |
+| --- | ---: | ---: |
+| QINCo2 M8 | 2,148.2 ms | 33.9 ms |
+| QINCo2 M16 | 4,862.8 ms | 74.9 ms |
+
+These timings establish only the relative cost of the two Python/upstream CPU
+controls on this host.  They are not native serving latency and are not mixed
+with the full-cascade product benchmark.
+
+Both training traces persist per epoch: optimizer steps, train loss,
+validation MSE, learning rate, aggregate entropy, per-stage entropy,
+used-codeword count, and reset count.  Both replay audits are `PASS` with 304
+rows and zero persisted-decode top-10 mismatches.
 
 ## Interpretation
 
 The corrected replay is diagnostic evidence only.  It does not establish a
-production codec choice: the checkpoint is short-budget, the query fold is
-historical, and a source-bound residual-trained checkpoint plus post-fit
-receipt is still required.  Larger corpus-trained pools must be reported as a
-separate `CORPUS_TRAINED` regime or matched with classical baselines.
+production codec choice: the checkpoint is short-budget and the query fold is
+historical.  Larger corpus-trained pools must be reported as a separate
+`CORPUS_TRAINED` regime or matched with classical baselines.  QINCo2 remains an
+exploratory family: neither bounded result is a production selection or a
+family-level negative conclusion.

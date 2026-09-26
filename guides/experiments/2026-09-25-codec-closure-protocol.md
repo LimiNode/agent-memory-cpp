@@ -32,7 +32,7 @@ research inputs, not vendored product dependencies.
 | --- | --- | --- | --- |
 | RaBitQ Library | `VectorDB-NTU/RaBitQ-Library` `a010649f8faabc286070e5ed18c7dc121e01ffe3` | Apache-2.0; integration may be evaluated separately | **Executed** official 2/3/4-bit IP/cosine candidate scorer with real sidecar, expanded/compact parity audit, and model accounting; historical-152 quality is `.584289/.634818/.651344` |
 | SAQ | `howarlii/saq` `2163ebcedd0ad9c9f4de326e6ca7a860f9eafe52` | Apache-2.0; integration may be evaluated separately | **BLOCKED_HARDWARE:** upstream configure is blocked by missing AVX-512 on the current host; quality/timing remains pending an AVX-512 host or validated fallback |
-| QINCo2 | `facebookresearch/QINCo` `5a324954d5c9b3700d4407d6cc24c3db6e52890e` | CC-BY-NC-4.0; research-only reference, do not vendor or present as a product dependency | **Bounded official raw-vector control executed:** 16 `uint8` stage indices plus persisted FP32 norm (20 B side / 116 B THQ cascade), independently recomputed THQ shell and persisted decode audit; residual-trained and larger/converged pools remain open |
+| QINCo2 | `facebookresearch/QINCo` `5a324954d5c9b3700d4407d6cc24c3db6e52890e` | CC-BY-NC-4.0; research-only reference, do not vendor or present as a product dependency | **Bounded matched residual control executed:** explicit raw/raw, raw/residual, residual/raw, and residual/residual diagnostics; M16 uses 16 `uint8` stage indices plus persisted FP32 norm (20 B side / 116 B THQ cascade), independently recomputed THQ shell and persisted decode audit; larger/converged pools remain open |
 | AAQ | Existing source-pinned bounded reference | License must be rechecked before any integration | Separate reconstruction and query-aware objectives on a new query-training pool |
 | LeanVec/GleanVec | External-only control pending source/license review | No library implementation implied | SVS-supported external matched benchmark, with proprietary pieces declared |
 
@@ -47,11 +47,12 @@ research inputs, not vendored product dependencies.
    same top-128 and cosine protocol. Do not call a local approximation
    vendor-compatible. Fresh-query confirmation and native complete-cascade
    comparison remain open.
-3. **Learned controls.** The bounded official raw-vector QINCo2 control is now executed,
-   but it is explicitly undertrained and cannot support a production choice.
-   Larger 100k/250k/1M unsupervised pools remain a separate gate. Treat
-   QINCo2 as an external non-commercial research control. A THQ-residual-trained
-   QINCo2 control is still required before comparing residual codecs. Run AAQ/query-aware
+3. **Learned controls.** The bounded official QINCo2 raw and THQ-residual
+   diagnostics are executed, including exact-budget matched residual-trained
+   M8 and M16 controls under separate immutable plans.  The fits are explicitly
+   undertrained, both collapse severely, and cannot support a
+   production choice. Larger 100k/250k/1M unsupervised pools remain a separate gate. Treat
+   QINCo2 as an external non-commercial research control. Run AAQ/query-aware
    codecs only after a separate judged query-training pool and a pre-registered
    evaluation split exist.
 4. **SAQ portability and quality.** Execute the pinned SAQ source on an
@@ -75,8 +76,9 @@ the bounded controls above:
 - third strong LSQ32 outer seed and at least three strong LSQ48 seeds;
 - three-to-five outer seeds for strong raw PQ8, plus canonical OPQ8;
 - normalized TQ-domain residual PQ8 and OPQ8 on the frozen TQ1 base;
-- THQ-residual-trained QINCo2 (the current official control is raw-vector
-  trained), followed by larger 100k/250k/1M pools;
+- stabilized QINCo2 residual controls (M8/M16 occupancy and budget-matched
+  comparison; the current M16 fit has severe codeword under-utilization),
+  followed by larger 100k/250k/1M pools;
 - strong/full query-aware AAQ on a separate judged query-training pool;
 - native RSLM, PQ/LSQ, RaBitQ, and SAQ encode/ingest measurements;
 - LeanVec/GleanVec source, license, and executable audit;

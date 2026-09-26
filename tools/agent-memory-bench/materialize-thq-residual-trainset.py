@@ -54,7 +54,12 @@ def main() -> None:
     levels = np.sum(np.asarray(train)[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8)
     residual = np.asarray(train, dtype=np.float32) - centroids[np.arange(D)[None, :], levels]
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    residual.astype("<f4", copy=False).tofile(args.output)
+    # Write the actual NumPy container consumed by the upstream QINCo loader;
+    # a raw float32 stream is not a valid .npy training dataset.
+    persisted = np.lib.format.open_memmap(args.output, mode="w+", dtype="<f4", shape=(count, D))
+    persisted[:] = residual
+    persisted.flush()
+    del persisted
     manifest = {
         "schema_version": 1,
         "status": "PREFIT_MATERIALIZED",
@@ -65,7 +70,7 @@ def main() -> None:
         "thq4_codes_reference": {"path": str(args.thq4_codes), "sha256": sha256(args.thq4_codes), "role": "canonical table provenance; train assignment is recomputed from thresholds"},
         "centroid_rule": "per-coordinate mean of threshold-assigned four ordinal levels; global-coordinate mean fallback for empty levels",
         "residual_rule": "r = x - centroid[level(x)]",
-        "output": {"path": str(args.output), "sha256": sha256(args.output), "dtype": "float32", "shape": [int(count), D]},
+        "output": {"path": str(args.output), "sha256": sha256(args.output), "dtype": "float32", "shape": [int(count), D], "format": "numpy_npy_open_memmap"},
         "fit_split": {"source_pool_rows": int(count), "effective_train_rows": max(0, int(count) - 5000), "validation_rows": min(5000, int(count))},
         "environment": {"python": sys.version, "numpy": np.__version__, "platform": platform.platform()},
         "argv": sys.argv,
