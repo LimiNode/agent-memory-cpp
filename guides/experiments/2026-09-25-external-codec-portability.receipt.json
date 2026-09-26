@@ -1,0 +1,67 @@
+{
+  "schema_version": 1,
+  "status": "BLOCKED",
+  "date": "2026-09-25",
+  "experiment_note": "guides/experiments/2026-09-25-external-codec-portability.md",
+  "host": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "physical_cores": 18,
+    "logical_cores": 36,
+    "operating_system": "Windows"
+  },
+  "saq": {
+    "upstream_revision": "2163ebcedd0ad9c9f4de326e6ca7a860f9eafe52",
+    "license": "Apache-2.0",
+    "configure_status": "BLOCKED_AVX512_UNAVAILABLE",
+    "quality_claim": false,
+    "native_timing_claim": false
+  },
+  "qinco2": {
+    "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
+    "license": "CC-BY-NC-4.0",
+    "official_fit_status": "EXECUTED_BOUNDED_25K_CONTROL",
+    "fit_workspace": "E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1",
+    "checkpoint_file": "checkpoint-epoch2.pt",
+    "fit_config": {
+      "train_rows": 25000,
+      "stages": 16,
+      "codebook_size": 256,
+      "requested_epochs": 1,
+      "completed_checkpoint_epoch": 3,
+      "batch_size": 256,
+      "cpu": true,
+      "quality_claim": false
+    },
+    "training_provenance": {
+      "resolved_config": {"M": 16, "K": 256, "L": 2, "de": 128, "dh": 256, "A": 16, "B": 32},
+      "optimizer": "AdamW",
+      "learning_rate": 0.0008,
+      "optimizer_steps": 237,
+      "ds": {"trainset": null, "valset": 5000, "loop": 20000},
+      "seed": 0,
+      "scheduler": "upstream QINCo cosine/ramp scheduler",
+      "schedule_note": "The upstream scheduler records completed epoch/step state; the requested max epoch and checkpoint epoch differ because terminal scheduler/ramp steps are persisted after the final data epoch.",
+      "canonical_train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+      "training_dataset_sha256": "a466ed151f9d0454b160aa3b3a13eff20c6f17fc26f85d50d44b396530971255",
+      "dataset_semantics": "raw canonical train vectors; residual-trained QINCo remains pending",
+      "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+      "exact_command": "run.py cpu=true task=train L=2 dh=256 de=128 A=16 B=32 M=16 K=256 output=qinco2-S-M16-25k-1epoch.pt trainset=qinco2-canonical-train25k.npy ds.valset=5000 ds.loop=20000 epochs=1 batch=256 verbose=false",
+      "candidate_shell": "canonical candidate stream plus independently recomputed THQ interval-squared top128"
+    },
+    "checkpoint_status": "DECODE_AUDIT_PASS_SOURCE_REPLAY",
+    "unbounded_scheduler_tail": "STOPPED_AFTER_BOUNDED_CHECKPOINT",
+    "result_sha256": "fd87b4cb54300535511ce39b7f864a9432892d964bf57e0899d530cbb8201326",
+    "audit_sha256": "cfe85118c702388c4ddf56ba5ea3d1ff993b71167e2be92cb40ca17cafe25dd2",
+    "codes_artifact_sha256": "7718b8bf70b878aff2e39f6aabfbd6fc7bb95bc8149b816176a08519a442b8aa",
+    "runner_sha256": "5d4a3a75f531f51ea7301923ef42bc4bfbb4d58545bbb00cf6de46c66853e75f",
+    "mean_ndcg10": 0.6164195004136372,
+    "side_payload_bytes": 20,
+    "final_norm_sidecar_bytes": 4,
+    "cascade_total_bytes": 116,
+    "persisted_code_dtype": "uint8",
+    "independent_thq_shell": true,
+    "quality_status": "BOUNDED_UNDERTRAINED_RAW_VECTOR_CONTROL",
+    "quality_claim": false,
+    "native_timing_claim": false
+  }
+}

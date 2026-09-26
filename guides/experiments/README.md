@@ -5,6 +5,10 @@ not raw benchmark dumps; they are compact research logs that explain why a run
 was performed, what was expected, what happened, and what should be checked
 next.
 
+The location and lifecycle rules for source bundles, raw artifacts, and
+temporary worktrees are in [research workspace layout](research-workspace-layout.md).
+The active bounded research program is the [codec closure protocol](2026-09-25-codec-closure-protocol.md).
+
 For the cross-PR causal history and merge/evidence ledger, see
 [`research-timeline.md`](research-timeline.md). It is an index into the
 experiment notes, not a replacement for them.

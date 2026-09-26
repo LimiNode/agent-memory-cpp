@@ -232,6 +232,16 @@ jobs:
           tools/agent-memory-bench/run-thq-adc-production-shaped.py
           tools/agent-memory-bench/run-thq-adc-pairwise.py
           tools/agent-memory-bench/audit-thq-adc-research.py &&
+          python -m py_compile
+          tools/agent-memory-bench/run-thq-qinco2-official-replay.py
+          tools/agent-memory-bench/audit-thq-qinco2-official-replay.py
+          tools/agent-memory-bench/materialize-thq-residual-trainset.py
+          tools/agent-memory-bench/finalize-thq-qinco2-training-receipt.py
+          tools/agent-memory-bench/write-qinco-training-plan.py
+          tools/agent-memory-bench/extract-qinco-training-trace.py
+          tools/agent-memory-bench/benchmark-qinco-codec.py &&
+          python tools/agent-memory-bench/run-thq-qinco2-official-replay.py --self-test &&
+          python tools/agent-memory-bench/audit-thq-qinco2-official-replay.py --self-test &&
           python tools/agent-memory-bench/audit-thq-r4-classical-ml-gates.py --self-test &&
           python tools/agent-memory-bench/write-thq-r4-classical-ml-evidence.py --self-test &&
           python -m py_compile
@@ -318,10 +328,13 @@ jobs:
           python tools/agent-memory-bench/audit-thq-faiss-rq-replay.py --self-test
           python tools/agent-memory-bench/run-thq-faiss-lsq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-faiss-lsq-replay.py --self-test
+          python tools/agent-memory-bench/run-thq-official-rabitq-replay.py --self-test
+          python tools/agent-memory-bench/audit-thq-official-rabitq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-rabitq-official-ip.py --self-test
           python tools/agent-memory-bench/run-thq-turboquant-reference.py --self-test
+          python tools/agent-memory-bench/qjl_reference.py
           python tools/agent-memory-bench/audit-thq-turboquant-reference.py --self-test
-          python -m py_compile tools/agent-memory-bench/run-thq-turboquant-plus-reference.py tools/agent-memory-bench/audit-thq-turboquant-plus-reference.py
+          python -m py_compile tools/agent-memory-bench/qjl_reference.py tools/agent-memory-bench/validate-canonical-de1m-source.py tools/agent-memory-bench/run-thq-ma-lsq-ranking-pilot.py tools/agent-memory-bench/run-thq-turboquant-plus-reference.py tools/agent-memory-bench/audit-thq-turboquant-plus-reference.py tools/agent-memory-bench/run-thq-qjl-seed-stability.py tools/agent-memory-bench/audit-thq-qjl-seed-stability.py
           python tools/agent-memory-bench/run-thq-elastic-bbq-reference.py --self-test
           python tools/agent-memory-bench/audit-thq-elastic-bbq-reference.py --self-test
           python tools/agent-memory-bench/run-thq-residual-binary-gate.py --self-test
@@ -372,6 +385,17 @@ jobs:
             tools/agent-memory-bench/run-thq-elastic-bbq-reference.py \
             tools/agent-memory-bench/audit-thq-elastic-bbq-reference.py \
             tools/agent-memory-bench/audit-thq-rabitq-official-ip.py \
+            tools/agent-memory-bench/rebind-candidate-stream-canonical-thq.py \
+            tools/agent-memory-bench/run-thq-faiss-lsq-replay.py \
+            tools/agent-memory-bench/audit-thq-faiss-lsq-replay.py \
+            tools/agent-memory-bench/run-thq-tq1-pq-residual-gate.py \
+            tools/agent-memory-bench/audit-thq-tq1-pq-residual-gate.py \
+            tools/agent-memory-bench/run-thq-qjl-residual-gate.py \
+            tools/agent-memory-bench/audit-thq-qjl-residual-gate.py \
+            tools/agent-memory-bench/run-thq-qjl-seed-stability.py \
+            tools/agent-memory-bench/audit-thq-qjl-seed-stability.py \
+            tools/agent-memory-bench/materialize-canonical-thq4-table.py \
+            tools/agent-memory-bench/reconcile-canonical-query-lineage.py \
             tools/agent-memory-bench/analyze-thq-finalist-paired-bootstrap.py
 
   ann-cascade:

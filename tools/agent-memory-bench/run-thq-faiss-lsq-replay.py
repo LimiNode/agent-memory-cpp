@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """Source-bound THQ4 + Faiss LocalSearchQuantizer 32/48-byte replay."""
 from __future__ import annotations
-import argparse, hashlib, json
+import argparse, hashlib, json, time
 from pathlib import Path
 import numpy as np
+
+from research_hardware_provenance import hardware_snapshot
 
 D, THQ_BYTES, TOP, QUERY_COUNT = 384, 96, 128, 152
 PAYLOADS = (32, 48)
@@ -44,11 +46,16 @@ def load_candidates(flat, raw, receipt):
     if not isinstance(rows, list) or len(rows) != QUERY_COUNT: raise RuntimeError("candidate raw must contain 152 rows")
     counts = np.asarray([int(r["candidate_count"]) for r in rows], dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts)))
-    if flat.stat().st_size != int(offsets[-1]) * 148: raise RuntimeError("candidate flat/raw cardinality mismatch")
-    records = np.memmap(flat, mode="r", dtype=np.uint8, shape=(int(offsets[-1]), 148))
+    rec = json.loads(receipt.read_text(encoding="utf-8"))
+    record_bytes = int(rec.get("flat_file", {}).get("record_bytes", 148))
+    if record_bytes not in (100, 148):
+        raise RuntimeError("candidate receipt has unsupported record size")
+    if flat.stat().st_size != int(offsets[-1]) * record_bytes:
+        raise RuntimeError("candidate flat/raw cardinality mismatch")
+    records = np.memmap(flat, mode="r", dtype=np.uint8,
+                        shape=(int(offsets[-1]), record_bytes))
     ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     if np.any(ids < 0) or np.any(ids >= 1_000_000): raise RuntimeError("candidate ID outside corpus")
-    rec = json.loads(receipt.read_text(encoding="utf-8"))
     if rec.get("execution_status") != "EXECUTED" or rec.get("raw_sha256") != sha256(raw) or rec.get("flat_file", {}).get("sha256") != sha256(flat):
         raise RuntimeError("candidate receipt binding differs")
     return ids, offsets
@@ -109,23 +116,37 @@ def main():
     p.add_argument("--icm-iters", type=int, default=4)
     p.add_argument("--nperts", type=int, default=4)
     p.add_argument("--lsq-seed", type=int, default=20260921)
+    p.add_argument("--train-rows", type=int, default=25_000,
+                   help="rows used to fit LSQ codebooks")
+    p.add_argument("--base-train-rows", type=int, default=25_000,
+                   help="rows used to fit the frozen THQ centroid table")
+    p.add_argument("--payloads", default="32,48",
+                   help="comma-separated LSQ code widths selected from 32,48")
     a = p.parse_args()
     if a.self_test: self_test(); return
     vals = [getattr(a, n.replace("-", "_")) for n in names]
     if any(v is None for v in vals): p.error("all source and output paths are required")
     if a.documents.stat().st_size != 1_000_000 * D * 4: raise RuntimeError("documents must be 1M FP32x384")
+    payloads = tuple(int(value) for value in a.payloads.split(",") if value.strip())
+    if not payloads or len(set(payloads)) != len(payloads) or any(value not in PAYLOADS for value in payloads):
+        raise RuntimeError("--payloads must be a non-empty unique subset of 32,48")
     docs = np.memmap(a.documents, mode="r", dtype="<f4", shape=(1_000_000, D)); ntrain = a.train_vectors.stat().st_size // (D * 4)
-    train = np.asarray(np.memmap(a.train_vectors, mode="r", dtype="<f4", shape=(ntrain, D)), dtype=np.float32)
+    if a.train_rows < 256 or a.train_rows > ntrain or a.base_train_rows < 256 or a.base_train_rows > ntrain: raise RuntimeError("train rows outside [256, canonical]")
+    train_all = np.memmap(a.train_vectors, mode="r", dtype="<f4", shape=(ntrain, D))
+    base_train = np.asarray(train_all[:a.base_train_rows], dtype=np.float32)
+    train = np.asarray(train_all[:a.train_rows], dtype=np.float32)
     thresholds = np.fromfile(a.thq4_thresholds, dtype="<f4").reshape(D, 3); thq = np.memmap(a.thq4_codes, mode="r", dtype=np.uint8, shape=(1_000_000, THQ_BYTES))
     queries = np.memmap(a.queries, mode="r", dtype="<f4", shape=(QUERY_COUNT, D)); qrel_ids = np.memmap(a.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20)); qrel_scores = np.memmap(a.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20)); teacher = np.memmap(a.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10))
     candidate_ids, offsets = load_candidates(a.candidate_flat, a.candidate_raw, a.candidate_receipt)
-    centroids = fit_centroids(train, thresholds); levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8); base_train = centroids[np.arange(D)[None, :], levels]; residual = np.ascontiguousarray(train - base_train, dtype=np.float32)
-    quantizers, model_data = {}, {}
-    for m in PAYLOADS:
+    centroids = fit_centroids(base_train, thresholds); levels = np.sum(train[:, :, None] > thresholds[None, :, :], axis=2, dtype=np.uint8); base_train_encoded = centroids[np.arange(D)[None, :], levels]; residual = np.ascontiguousarray(train - base_train_encoded, dtype=np.float32)
+    quantizers, model_data, fit_seconds = {}, {}, {}
+    for m in payloads:
+        started = time.perf_counter()
         quantizers[m], model_data[m] = (lambda z: (z[0], (z[1], z[2])))(
-            fit_lsq(residual, m, a.lsq_seed + m, a.train_iters, a.train_ils_iters,
+            fit_lsq(residual, m, a.lsq_seed, a.train_iters, a.train_ils_iters,
                     a.encode_ils_iters, a.icm_iters, a.nperts)
         )
+        fit_seconds[m] = time.perf_counter() - started
     # Select the THQ shell once, then batch LSQ assignment over the union of
     # selected documents.  Calling compute_codes 152*2 times makes Faiss
     # rebuild its local-search workspaces for every tiny batch and obscures the
@@ -139,11 +160,14 @@ def main():
     union_base = centroids[np.arange(D)[None, :], union_levels]
     union_residual = np.ascontiguousarray(np.asarray(docs[selected_union], dtype=np.float32) - union_base)
     union_pos = {int(document): position for position, document in enumerate(selected_union)}
-    codes_union = {}
-    for m in PAYLOADS:
+    codes_union, encode_seconds = {}, {}
+    for m in payloads:
+        started = time.perf_counter()
         codes_union[m] = np.asarray(quantizers[m].compute_codes(union_residual), dtype=np.uint8)
+        encode_seconds[m] = time.perf_counter() - started
 
-    rows, codes_all = [], {m: [] for m in PAYLOADS}
+    rows, codes_all = [], {m: [] for m in payloads}
+    norms_all = {m: [] for m in payloads}
     for qi, query in enumerate(queries):
         ids = candidate_ids[offsets[qi]:offsets[qi + 1]]
         selected = selected_all[qi]
@@ -151,19 +175,22 @@ def main():
         lv = unpack_thq(np.asarray(thq[selected]))
         base = centroids[np.arange(D)[None, :], lv]
         exact = top_ids(cosine(np.asarray(docs[ids]), query), ids)
-        for m in PAYLOADS:
+        for m in payloads:
             codes = codes_union[m][positions]
             decoded = np.asarray(quantizers[m].decode(codes), dtype=np.float32)
-            ranked = top_ids(cosine(base + decoded, query), selected)
+            reconstructed = base + decoded
+            final_norms = np.linalg.norm(np.asarray(reconstructed, dtype=np.float64), axis=1).astype(np.float32)
+            ranked = top_ids(cosine(reconstructed, query), selected)
             codes_all[m].append(codes)
-            rows.append({"query": qi, "arm": f"faiss_lsq{m}", "side_payload_bytes": m, "cascade_total_bytes": THQ_BYTES + m, "top10_ids": ranked.astype(int).tolist(), "thq4_top128_ids": selected.astype(int).tolist(), "candidate_fp32_top10_ids": exact.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact, ranked).sum() / 10), "teacher_overlap": float(np.isin(teacher[qi], ranked).sum() / 10), "qrels_ndcg10": ndcg10(ranked, qrel_ids[qi], qrel_scores[qi])})
+            norms_all[m].append(final_norms)
+            rows.append({"query": qi, "arm": f"faiss_lsq{m}", "base_codec": "thq_centroids", "base_train_rows": int(a.base_train_rows), "side_payload_bytes": m + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + m + 4, "top10_ids": ranked.astype(int).tolist(), "thq4_top128_ids": selected.astype(int).tolist(), "candidate_fp32_top10_ids": exact.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact, ranked).sum() / 10), "teacher_overlap": float(np.isin(teacher[qi], ranked).sum() / 10), "qrels_ndcg10": ndcg10(ranked, qrel_ids[qi], qrel_scores[qi])})
     a.models_output.parent.mkdir(parents=True, exist_ok=True); a.codes_output.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(a.models_output, centroids=centroids.astype("<f4"), **{f"lsq{m}_codebooks": model_data[m][0].astype("<f4") for m in PAYLOADS}, **{f"lsq{m}_offsets": model_data[m][1].astype("<i8") for m in PAYLOADS}); np.savez_compressed(a.codes_output, selected_ids=np.stack(selected_all).astype("<i8"), **{f"codes_{m}": np.stack(codes_all[m]) for m in PAYLOADS})
+    np.savez_compressed(a.models_output, centroids=centroids.astype("<f4"), **{f"lsq{m}_codebooks": model_data[m][0].astype("<f4") for m in payloads}, **{f"lsq{m}_offsets": model_data[m][1].astype("<i8") for m in payloads}); np.savez_compressed(a.codes_output, selected_ids=np.stack(selected_all).astype("<i8"), **{f"codes_{m}": np.stack(codes_all[m]) for m in payloads}, **{f"final_norms_{m}": np.stack(norms_all[m]).astype("<f4") for m in payloads})
     summaries = {}
-    for m in PAYLOADS:
-        r = [x for x in rows if x["arm"] == f"faiss_lsq{m}"]; summaries[f"faiss_lsq{m}"] = {"mean_qrels_ndcg10": float(np.mean([x["qrels_ndcg10"] for x in r])), "p05_qrels_ndcg10": float(np.percentile([x["qrels_ndcg10"] for x in r], 5)), "worst_qrels_ndcg10": float(np.min([x["qrels_ndcg10"] for x in r])), "mean_candidate_fp32_overlap": float(np.mean([x["candidate_fp32_overlap"] for x in r])), "mean_teacher_overlap": float(np.mean([x["teacher_overlap"] for x in r])), "side_payload_bytes": m, "cascade_total_bytes": THQ_BYTES + m, "global_codebook_bytes": int(model_data[m][0].size * 4), "full_1m_logical_total_bytes": 1_000_000 * (THQ_BYTES + m) + int(model_data[m][0].size * 4)}
+    for m in payloads:
+        r = [x for x in rows if x["arm"] == f"faiss_lsq{m}"]; summaries[f"faiss_lsq{m}"] = {"mean_qrels_ndcg10": float(np.mean([x["qrels_ndcg10"] for x in r])), "p05_qrels_ndcg10": float(np.percentile([x["qrels_ndcg10"] for x in r], 5)), "worst_qrels_ndcg10": float(np.min([x["qrels_ndcg10"] for x in r])), "mean_candidate_fp32_overlap": float(np.mean([x["candidate_fp32_overlap"] for x in r])), "mean_teacher_overlap": float(np.mean([x["teacher_overlap"] for x in r])), "side_payload_bytes": m + 4, "cascade_total_bytes": THQ_BYTES + m + 4, "global_codebook_bytes": int(model_data[m][0].size * 4), "full_1m_logical_total_bytes": 1_000_000 * (THQ_BYTES + m + 4) + int(model_data[m][0].size * 4), "base_codec": "thq_centroids", "base_train_rows": int(a.base_train_rows), "lsq_train_rows": int(a.train_rows), "final_norm_sidecar_bytes": 4}
     sources = {n: getattr(a, n.replace("-", "_")) for n in names[:11]}; import faiss
-    result = {"schema_version": 2, "family": "thq_faiss_lsq_replay_v1", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_config": {"train_iters": a.train_iters, "train_ils_iters": a.train_ils_iters, "encode_ils_iters": a.encode_ils_iters, "icm_iters": a.icm_iters, "nperts": a.nperts, "random_seed": a.lsq_seed}, "lsq_train_iters": a.train_iters, "lsq_train_ils_iters": a.train_ils_iters, "lsq_encode_ils_iters": a.encode_ils_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed": a.lsq_seed, "independent_fits": True, "payloads": list(PAYLOADS), "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ32/LSQ48 fits; no shared-prefix assumption", "candidate-local side-code replay; 1M storage is logical accounting", "held-out confirmation pending"]}
+    result = {"schema_version": 6, "family": "thq_faiss_lsq_replay_v2", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_config": {"train_iters": a.train_iters, "train_ils_iters": a.train_ils_iters, "encode_ils_iters": a.encode_ils_iters, "icm_iters": a.icm_iters, "nperts": a.nperts, "random_seed": a.lsq_seed, "train_rows": int(len(train)), "base_train_rows": int(a.base_train_rows)}, "lsq_train_rows": int(len(train)), "base_train_rows": int(a.base_train_rows), "lsq_train_iters": a.train_iters, "lsq_train_ils_iters": a.train_ils_iters, "lsq_encode_ils_iters": a.encode_ils_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed_base": a.lsq_seed, "effective_seed_by_payload": {str(m): a.lsq_seed for m in payloads}, "independent_fits": True, "payloads": list(payloads), "candidate_union_documents": int(len(selected_union)), "fit_seconds_by_payload": {str(m): fit_seconds[m] for m in payloads}, "candidate_union_encode_seconds_by_payload": {str(m): encode_seconds[m] for m in payloads}, "candidate_union_encode_docs_per_second_by_payload": {str(m): float(len(selected_union) / encode_seconds[m]) if encode_seconds[m] > 0 else float("inf") for m in payloads}, "faiss_omp_threads": int(faiss.omp_get_max_threads()), "faiss_compile_options": str(faiss.get_compile_options()), "hardware": hardware_snapshot(), "storage_contract": {"metric": "cosine", "final_norm_sidecar_bytes": 4, "side_payload_bytes_by_width": {str(m): m + 4 for m in payloads}}, "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ fits; no shared-prefix assumption", "candidate-local side-code assignment benchmark, not end-to-end insertion throughput", "fit and candidate-union encoding time are recorded separately; full-1M materialization remains pending"]}
     a.output.parent.mkdir(parents=True, exist_ok=True); a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 if __name__ == "__main__": main()
