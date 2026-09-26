@@ -46,10 +46,12 @@ positive norms. Each replay has a separate native-run receipt binding the
 runner, all input files, payload receipt, exact invocation and JSONL output.
 
 An independent Python score replay covered all `152 x 128 = 19,456`
-candidate scores per layout. Maximum absolute error against the packed
-payload arithmetic was `7.93e-10` for PQ8; the 68 B layout's intermediate TQ
-scores had maximum error `7.94e-10`. These score checks are stronger than
-top-10 parity alone.
+candidate scores per layout. Its fail-closed numerical contract is a frozen
+`1e-8` maximum absolute error (finite values required); the observed maximum
+was `7.93e-10` for PQ8 and `7.94e-10` for the 68 B layout's intermediate TQ
+scores. The replay receipt also binds payload, native JSONL, queries, THQ
+bytes, and the replay source SHA. These score checks are stronger than top-10
+parity alone.
 
 The 68 B run reports, for query 0, 4.42 ms THQ prefilter, 0.69 ms query
 preparation, 0.13 ms top-128 scoring, and 5.24 ms total. These are single
@@ -65,6 +67,9 @@ the materializer, source files, payload hash, and native output hash.
 
 The candidate stream is not the full 1M row-aligned payload, query timing does
 not include mmap/page-fault behavior, and the scorer is not yet a public
-`IVectorIndex` codec. A follow-up must materialize all 1M rows and collect
-repeated p50/p95/p99 plus encode/materialization throughput and storage-page
-measurements. OPQ/direct ADC and native RSLM remain separate open gates.
+`IVectorIndex` codec. Executed receipts additionally require separate source
+and binary hashes plus a build manifest; source-only receipts are incomplete
+for native serving claims. A follow-up must materialize all 1M rows and
+collect repeated p50/p95/p99 plus encode/materialization throughput and
+storage-page measurements. OPQ/direct ADC and native RSLM remain separate open
+gates.
