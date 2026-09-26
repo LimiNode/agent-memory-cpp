@@ -283,6 +283,41 @@ fit them. The project should expose its own embedding contract with explicit
 model metadata, dimensions, similarity metric, normalization, pooling, and
 query/document purpose semantics.
 
+## Planned Semantic Execution Direction
+
+Semantic filtering, scoring, joins, and reranking are an optional execution
+layer over bounded candidates; they are not LLM inference in the core target.
+The normative design is in
+[`semantic-execution-roadmap.md`](semantic-execution-roadmap.md). Its intended
+flow is deterministic metadata/lexical/vector filtering, a bounded batch of
+semantic requests, then a provenance-aware merge. A planner may use measured
+cost/selectivity and model/KV prefix reuse when the backend supports it, but it
+must preserve cancellation,
+timeouts, provider errors, and an explicit `unknown` result.
+
+The core target must not depend on HTTP clients, model runtimes, provider SDKs,
+or Python. OpenAI-compatible HTTP and optional embedded `llama.cpp` backends
+belong under infrastructure adapters. Embedded `llama.cpp`, if implemented,
+must be gated by `AGENT_MEMORY_ENABLE_LLAMA_CPP` and excluded from the default
+build. Model output is a derived heuristic signal and is never canonical truth
+without the normal curation/provenance path.
+
+Network-backed semantic calls must not run inside SQLite/MDBX user functions or
+write transactions. Storage returns candidates; an executor performs bounded
+batch calls outside the transaction; a derived result store records the
+provider/model/prompt and source revision metadata. See
+[`sqlite-adapter-roadmap.md`](sqlite-adapter-roadmap.md).
+
+## Planned SQLite Direction
+
+SQLite is a portable optional storage adapter, not a replacement for the MDBX
+profile or for vector indexes. It may provide documents/chunks, resource
+manifests, FTS5/BM25 projections, embedding BLOBs, and temporary candidate
+tables while implementing the same dependency-free storage contracts. It is
+tracked as **Roadmap only** and must be gated by a future
+`AGENT_MEMORY_ENABLE_SQLITE` option with adapter-specific reopen, migration,
+crash, and reindex tests.
+
 ## Planned Index Direction
 
 Index contracts live under `src/agent_memory/index/` and stay dependency free.

@@ -172,6 +172,10 @@ When MDBX support is enabled, the build adds `external/libmdbx` before
 Storage interfaces are separated from memory and retrieval algorithms so that
 additional backends can be added later.
 
+SQLite is a planned optional portable adapter, not a replacement for MDBX or
+the vector-index contracts. Its boundary and future build/test gates are
+documented in [`guides/sqlite-adapter-roadmap.md`](guides/sqlite-adapter-roadmap.md).
+
 When `AGENT_MEMORY_ENABLE_MDBX=ON`, the library also builds
 `agent_memory/infrastructure/mdbx/MdbxDocumentStorage.hpp`, an MDBX-backed
 implementation of `IDocumentStorage`. Optional infrastructure headers are not
@@ -231,6 +235,14 @@ Retrieval contracts stay dependency-free and describe text, embedding, or mixed
 queries with result limits and metadata filters. `IRetriever` returns ordered
 scored chunks; concrete retrieval pipelines can compose embedders, indexes, and
 document storage without leaking backend details into the public contract.
+
+Optional semantic filtering, scoring, joins, batching, and reranking are an
+execution layer over bounded local candidates, not an LLM runtime in the core
+library. The dependency boundary, provenance rules, OpenAI-compatible HTTP
+lane, and optional embedded llama.cpp lane are documented in
+[`guides/semantic-execution-roadmap.md`](guides/semantic-execution-roadmap.md).
+Model calls happen outside storage transactions and model output is treated as
+a derived heuristic signal unless it follows the normal curation path.
 
 ## Evaluation
 
