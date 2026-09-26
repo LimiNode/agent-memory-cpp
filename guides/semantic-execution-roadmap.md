@@ -28,12 +28,13 @@ it as such.
 ## What the Quail pattern contributes
 
 Quail is useful here as a reference for mass execution of already-trained
-models: planning, batching, prompt-prefix reuse, intermediate-state caching,
-and ordering checks by cost and selectivity can matter more than adding another
-model. Those ideas are execution optimisations for this project, not a Quail
+models: planning, batching, cost/selectivity ordering, join anchors, and
+model/KV intermediate-state reuse can matter more than adding another model.
+Those ideas are execution optimisations for this project, not a Quail
 dependency and not a reason to place inference in the core library. Any cache
 or provider-specific intermediate state remains deployment-owned and must obey
-the revision/provenance rules below.
+the revision/provenance rules below. This does not imply universal matching
+prefix reuse between all rows or providers.
 
 ## Scope and status
 
@@ -42,7 +43,8 @@ the revision/provenance rules below.
 | Existing storage/retrieval/embedding contracts | **Implemented** | Stable dependency-free building blocks remain the source of candidates. |
 | `ISemanticBackend` and request/result shapes in this guide | **Contract only** | Design target; no public header is promised by this document. |
 | Planner, batching, cancellation, and semantic result provenance | **Roadmap only** | Requires an implementation PR and focused tests. |
-| External HTTP or embedded model adapters | **Not covered** | Adapters may be proposed after the contract and test fixtures exist. |
+| OpenAI-compatible HTTP adapter | **Roadmap only** | Optional infrastructure lane; requires the contract and provider fixtures. |
+| Embedded llama.cpp backend | **Not covered** | Separate future target; no implementation is currently promised. |
 | SQLite storage adapter | **Roadmap only** | See [`sqlite-adapter-roadmap.md`](sqlite-adapter-roadmap.md). |
 | Quail-style execution ideas | **Docs/tests only** | Used as an execution-pattern reference, not as a dependency or API. |
 
@@ -74,11 +76,15 @@ The first contract should cover four operations without copying SQL syntax:
 
 * `SemanticFilter`: retain or reject a candidate with `true`, `false`, or
   `unknown`.
-* `SemanticScore`: return a bounded numeric score plus an optional explanation.
+* `SemanticScore`: return a task-local numeric score plus an optional
+  explanation. Range, direction, and meaning are part of result metadata; the
+  score is not a probability or calibrated cross-task value unless a separate
+  calibration contract says so.
 * `SemanticRerank`: score a bounded candidate list for a task and merge with
   deterministic scores.
 * `SemanticJoin`: compare two bounded candidate sets and emit typed matches,
-  including `unknown` when the provider cannot decide.
+  including `unknown` when the provider cannot decide. It has independent
+  left/right candidate bounds and a `max_pairs` budget.
 
 A C++-oriented query plan can be expressed as:
 
@@ -93,56 +99,98 @@ query.source("knowledge_units")
 
 The exact types and fluent syntax are intentionally deferred. The important
 invariants are candidate bounds, deterministic prefilters, explicit operation
-kind, and a final result that can be traced to source revisions.
+kind, and a final result that can be traced to source revisions. Raw semantic
+scores must not be arithmetically added to BM25/vector scores by default;
+rank-based fusion (for example RRF), or an explicitly versioned and benchmarked
+calibration policy, is the first safe fusion lane.
 
 ## Backend contract (design target)
 
 The backend must support both single and batch execution and expose its
-capabilities before a plan is accepted:
+capabilities before a plan is accepted. The following is a design target, not
+an implemented public API:
 
 ```cpp
+struct SemanticExecutionContext {
+    RequestId request_id;
+    Deadline deadline;
+    ICancellationToken* cancellation = nullptr;  // C++17 adapter contract
+    std::uint32_t max_attempts = 1;
+};
+
 class ISemanticBackend {
 public:
     virtual ~ISemanticBackend() = default;
     virtual SemanticBackendCapabilities capabilities() const = 0;
-    virtual SemanticResult evaluate(const SemanticRequest&) = 0;
+    virtual SemanticResult evaluate(
+        const SemanticRequest&, const SemanticExecutionContext&) = 0;
     virtual std::vector<SemanticResult> evaluate_batch(
-        const std::vector<SemanticRequest>&) = 0;
+        const std::vector<SemanticRequest>&,
+        const SemanticExecutionContext&) = 0;
 };
 ```
 
-`SemanticRequest` and `SemanticResult` are design names, not implemented API.
-The eventual contract must represent:
+`SemanticRequest`, `SemanticResult`, `Deadline`, and `ICancellationToken` are
+design names, not implemented API. Batch results must preserve a stable
+request-id-to-result mapping and allow per-item partial failure; batch
+execution is not implicitly all-or-nothing. The eventual contract must
+represent:
 
 * operation kind and stable request/task identifier;
 * input record id and record revision (or immutable source revision);
-* structured output (`true`, `false`, numeric score, or `unknown`);
+* semantic value (`true`, `false`, numeric score, or `unknown`);
+* execution status (`ok`, `timeout`, `cancelled`, `provider_error`, or
+  `invalid_response`), kept separate from semantic value;
 * model/provider name and revision;
 * prompt/instruction hash and generation parameters;
 * context/token limits and actual input/output token counts when available;
-* latency, retry count, provider error, and cancellation/deadline outcome;
-* a deterministic cache-key component and backend capability snapshot.
+* latency and retry count;
+* a deterministic input fingerprint/cache-key component and backend capability
+  snapshot.
 
-Unknown and provider failure must not silently become `false`. A planner may
-choose a fail-open or fail-closed policy per operation, but that policy is part
-of the trace and is tested explicitly.
+Capabilities must explicitly report supported operation kinds, maximum batch
+and context sizes, structured-output/schema support, cancellation/deadline
+support, usage/token reporting, stable model/deployment identity, explicit or
+automatic prefix-cache capability, and deterministic-seed support when
+available. OpenAI-compatible servers do not necessarily provide identical
+capabilities.
+
+`unknown` with status `ok` is a successful semantic answer. A timeout,
+cancellation, provider error, or invalid response has no semantic answer and
+must not silently become `false`. A planner may choose a fail-open or
+fail-closed admission policy per operation, but that policy is traced as a
+separate effective decision and never overwrites the persisted raw value/status.
 
 ## Planner and batching rules
 
-The planner is responsible for execution order, not for inventing truth. A
-first implementation should:
+The planner is responsible for execution order, not for inventing truth. It
+must distinguish a logical plan (the requested operations and semantics) from
+the physical execution plan (chosen order, batching, anchors, and fallbacks).
+A first implementation should:
 
-1. apply exact scope/access/status filters;
+1. apply exact authorization, scope, and lifecycle filters;
 2. apply metadata, lexical, and vector filters;
 3. cap candidates before any semantic call;
-4. group equivalent tasks and batch requests up to provider limits;
-5. reuse stable prompt prefixes only when the provider explicitly supports it;
-6. enforce concurrency, rate limits, timeout, cancellation, and retry policy;
-7. merge semantic results with deterministic scores and emit a trace.
+4. generate only authorized join pairs and enforce independent left/right and
+   `max_pairs` budgets with deterministic truncation;
+5. group equivalent tasks and batch requests up to provider limits;
+6. reuse model/KV prefixes only when the provider explicitly supports that
+   capability;
+7. enforce concurrency, rate limits, timeout, cancellation, and retry policy;
+8. merge semantic results with rank-based or explicitly calibrated fusion and
+   emit a trace.
 
-The planner may use measured cost and selectivity estimates to reorder safe
-filters. It must retain a deterministic fallback plan and must not execute a
-network-backed model call inside a storage transaction.
+The planner may use measured cost and selectivity estimates to reorder an
+operation only when that operation is pure, side-effect-free, reorder-safe, and
+has an order-independent `unknown`/failure policy. Exact authorization, scope,
+and lifecycle filters always precede external model calls. The planner must
+retain a deterministic fallback plan and must not execute a network-backed
+model call inside a storage transaction.
+
+`SemanticJoin` additionally records `max_left_candidates`,
+`max_right_candidates`, `max_pairs`, pair-generation policy, optional anchor,
+and early-stop policy. Its trace records which pairs were truncated or skipped
+and why.
 
 ### SQLite/semantic boundary
 
@@ -158,22 +206,44 @@ SQL/network failures, and ambiguous retry semantics.
 Every persisted semantic decision must bind at least:
 
 ```text
-record id + record revision
-task id + prompt/instruction hash
+operation kind + semantic input fingerprint
+task id + exact rendered instruction/system/template hash
+output schema/parser revision
 provider + model name/revision
+host-declared immutable deployment fingerprint, when provider identity is not stable
 generation parameters
-result (true / false / score / unknown)
+raw semantic value (true / false / score / unknown)
+execution status (ok / timeout / cancelled / provider_error / invalid_response)
 latency + token counts
 retry/error metadata
 ```
 
+`SemanticInputFingerprint` is operation-specific:
+
+* Filter/Score: record id and revision.
+* Join: both left/right ids and revisions, plus orientation/canonical-pair
+  semantics.
+* Rerank: candidate-set identity and revisions, candidate ordering when it is
+  rendered into the request, initial deterministic scores/fusion-policy
+  revision when they are rendered, and the candidate-set policy revision.
+
 An optional semantic-result cache is a derived deployment artifact, never
-canonical memory. Its key must include the record revision, provider/model
-revision, prompt hash, operation kind, and generation parameters. A cache hit
-must be revalidated against current authorization and source revisions before
-reuse. This extends the boundary in
+canonical memory. A backend without a stable model/deployment identity must
+declare durable cache reuse unsupported or unsafe. Every cache hit must be
+revalidated against current authorization, security scope, and source
+revisions. Cross-scope reuse is forbidden by default unless an explicit
+security partition and revalidation contract permits it. This extends the
+boundary in
 [`host-llm-cache-integration.md`](host-llm-cache-integration.md); it does not
 turn provider caches into core DBIs.
+
+## Scope and authorization
+
+Exact scope, ACL, lifecycle, and other deny-by-default filters run before
+semantic candidate or pair generation. A semantic cache cannot bypass current
+authorization. A join must never form a cross-scope or otherwise unauthorized
+pair merely because both records are present in a local candidate set; the
+admission and security partition are part of the trace and cache identity.
 
 ## Optional backend lanes
 
@@ -205,8 +275,14 @@ An implementation PR must provide:
 
 * deterministic fake backend fixtures for `true`, `false`, score, `unknown`,
   timeout, retry, and cancellation;
-* batch-size, candidate-cap, ordering, and fallback tests;
-* provenance and cache-key round-trip tests across record revisions;
+* batch-size, candidate-cap, stable request/result mapping, partial failure,
+  ordering, and fallback tests;
+* provenance and operation-specific cache-key round-trip tests across record,
+  join-side, candidate-set, ACL, parser, and deployment revisions;
+* tests proving timeout/cancel/provider-error are not persisted as `false` and
+  that fail-open/fail-closed is an independent traced decision;
+* tests proving unsafe operator reorder is rejected and join pair budgets are
+  deterministic;
 * a test proving no semantic call occurs while a storage write transaction is
   held;
 * warm/cold and provider-error benchmark reports with candidate counts,

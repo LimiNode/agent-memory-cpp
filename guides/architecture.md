@@ -291,7 +291,8 @@ The normative design is in
 [`semantic-execution-roadmap.md`](semantic-execution-roadmap.md). Its intended
 flow is deterministic metadata/lexical/vector filtering, a bounded batch of
 semantic requests, then a provenance-aware merge. A planner may use measured
-cost/selectivity and prompt-prefix reuse, but it must preserve cancellation,
+cost/selectivity and model/KV prefix reuse when the backend supports it, but it
+must preserve cancellation,
 timeouts, provider errors, and an explicit `unknown` result.
 
 The core target must not depend on HTTP clients, model runtimes, provider SDKs,

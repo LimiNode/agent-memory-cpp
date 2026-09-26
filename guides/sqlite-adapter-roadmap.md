@@ -16,8 +16,8 @@ storage contracts
   `-- SQLite adapter (planned/optional)
        +-- documents, chunks, metadata
        +-- resource manifests
-       +-- FTS5/BM25 projections
-       +-- semantic-result derived records
+       +-- optional lexical projection store
+       +-- optional semantic-result store
        `-- temporary candidate tables
 ```
 
@@ -27,7 +27,7 @@ the exact/ANN index contracts.
 
 ## Planned adapter surface
 
-The first implementation may provide adapters such as:
+The first implementation may provide storage adapters such as:
 
 ```text
 src/agent_memory/infrastructure/sqlite/
@@ -39,14 +39,34 @@ src/agent_memory/infrastructure/sqlite/
 These names are planning targets only. They must implement existing
 dependency-free contracts and preserve scope, revision, provenance, and
 targeted-reindex semantics. No SQLite type should appear in core headers.
+Lexical projection and semantic-result persistence are separate future
+derived-store contracts; they must not be added to `IDocumentStorage` by
+convenience.
 
 ## Storage responsibilities
 
 Candidate rows should contain stable ids, scope, current revision, source
-references, and the projection generation used to produce the row. FTS5/BM25
-is a derived projection and can be rebuilt from canonical documents/chunks.
+references, and the projection generation used to produce the row. FTS5 is a
+derived projection and can be rebuilt from canonical documents/chunks.
 Semantic decisions are also derived records and must carry the provenance
 fields defined in [`semantic-execution-roadmap.md`](semantic-execution-roadmap.md).
+
+SQLite FTS5's built-in `bm25()` is backend-local ranking evidence: its score
+direction and normalization differ from the project's planned BM25/BM25F
+contract, and parity is not automatic. An adapter must either document its
+own score direction/tokenizer semantics or prove conformance with dedicated
+tests. Raw FTS5 scores must not be arithmetically mixed with vector scores;
+rank-based fusion such as RRF is the default comparison path.
+
+FTS tokenizer configuration, ranking implementation, statistics epoch, and
+projection version are part of index provenance. Changing any of them requires
+targeted rebuild/reindex even when the source revision is unchanged. A future
+`SqliteLexicalProjectionStorage` and `SqliteSemanticResultStore` must therefore
+carry their own revisioned derived-store metadata.
+
+SQLite storage and an external vector index do not form one cross-store
+transaction. Derived vector work remains revision-guarded and publication
+ordering must follow the existing resource-generation contracts.
 
 Do not invoke a network-backed LLM from a SQLite user-defined function or from
 inside a write transaction. The semantic executor reads a bounded candidate
