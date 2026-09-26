@@ -21,9 +21,25 @@
     "qinco2_official_16b_raw_vector": {"quality_status": "UNDERTRAINING_DIAGNOSTIC", "mean_ndcg10": 0.16477198295447013, "side_payload_bytes": 20, "cascade_total_bytes": 116},
     "qinco2_official_16b_residual_mismatch": {"quality_status": "TRAINING_DOMAIN_MISMATCH_CONTROL", "mean_ndcg10": 0.6164195004136372, "side_payload_bytes": 20, "cascade_total_bytes": 116}
   },
+  "matched_residual_training": {
+    "status": "EXECUTED_BOUNDED",
+    "training_manifest_sha256": "88152f9f3dcbb74ead3ab13cd392e11ee8bca37c4df7de5e1f28887f7e7cd820",
+    "training_log_sha256": "0505cc932cc42c6728507a332cedb050cfdf3b9c6300d60e85895a05ca876232",
+    "checkpoint_sha256": "2d8cb3262e45be8926e2e69821c62875c69708feb7a4783a8e0a5f36d8ba1de2",
+    "result_sha256": "b431d74b4c620fb577055b81e7adab77ef9c868719c22e8d807d01c3e5454bae",
+    "audit_sha256": "d9a4f9291341227c1d200d0228cf01a6d0db20d68843416a6e60f6cfd02ee161",
+    "codes_artifact_sha256": "21fa2af0e6b7eabbd30b2268c4c6295c8b98c8938d7e8f145c2c0041cf74ddc3",
+    "completed_full_epochs": 4,
+    "optimizer_steps": 316,
+    "validation_mse": 0.0390571,
+    "reset_codewords_after_epoch_3": 4034,
+    "matched_residual_mean_ndcg10": 0.6533772143868611,
+    "reverse_domain_raw_mean_ndcg10": 0.0829923909590996,
+    "audit_status": "PASS"
+  },
   "audit_status": "PASS",
   "source_replay": true,
   "independent_thq_shell": true,
   "persisted_code_dtype": "uint8",
-  "pending": ["matched residual-QINCo fit with pinned Hydra environment", "post-fit training receipt", "fresh held-out query confirmation", "no production selection"]
+  "pending": ["larger or stabilized residual-QINCo fit", "fresh held-out query confirmation", "no production selection"]
 }

@@ -1,9 +1,8 @@
 # QINCo2 corrective diagnostic and residual-training gate
 
 Date: 2026-09-26  
-Status: `EXECUTED` for the corrected raw/residual diagnostic replay; residual
-training is `BLOCKED_MISSING_PINNED_HYDRA` until the upstream environment is
-restored.
+Status: `EXECUTED` for the corrected diagnostic replay and matched residual
+training replay; no production selection.
 
 ## Protocol correction
 
@@ -45,9 +44,8 @@ validation split.  The current materialized matrix SHA is
 `1218d7915d7e3b010bc4385fb8ffb938e0462b94e624dc83b32a3bb31a1ed6f1`.
 
 The matched residual-QINCo fit uses the same model and schedule as the raw
-control.  On this host the system Python lacks the pinned upstream `hydra`
-dependency, so the fit is not claimed as executed until that environment is
-restored; no synthetic substitute is accepted.
+control.  The pinned upstream environment dependencies were restored before
+fit; no synthetic substitute was used.
 
 ## Corrected replay result
 
@@ -64,6 +62,25 @@ The residual value reproduces the earlier bounded `.6164195` result.  The raw
 arm is intentionally not a production comparison: it demonstrates that this
 short checkpoint is not a competent raw-vector codec, while the residual arm
 also remains out-of-domain because the checkpoint was trained on raw vectors.
+
+## Matched residual-trained result
+
+The canonical residual matrix was then used for a matched 20,000-train / 5,000
+validation fit with the same official model, seed, batch, and scheduler.  The
+best checkpoint was saved after four completed epochs (316 optimizer steps),
+with validation MSE `0.0390571`.  The official training log also shows severe
+codeword under-utilization: 4,034/4,096 codewords were reset after epoch 3.
+
+| arm | mean nDCG@10 | p05 | worst | side bytes | status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| residual-trained → THQ residual | 0.653377 | 0 | 0 | 20 | matched bounded control |
+| residual-trained → raw vector | 0.082992 | 0 | 0 | 20 | reverse-domain diagnostic |
+
+The matched residual fit improves over the raw-trained residual mismatch arm
+by `+0.036958` nDCG, confirming that training-domain alignment matters.  It
+still does not beat the current compact classical frontier, and the occupancy
+collapse plus historical query reuse make this a bounded negative for this
+short 25k setup, not a family-level QINCo2 rejection.
 
 ## Interpretation
 
