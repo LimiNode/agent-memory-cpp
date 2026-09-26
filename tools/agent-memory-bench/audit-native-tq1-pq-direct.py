@@ -157,6 +157,11 @@ def main() -> None:
             "native execution receipt binary binding differs")
     require(run_receipt.get("build_manifest_sha256") == sha256(args.build_manifest),
             "native execution receipt build binding differs")
+    require(run_receipt.get("payload_receipt_path") == str(args.receipt) and
+            run_receipt.get("runner_source_path") == str(args.native_runner) and
+            run_receipt.get("runner_binary_path") == str(args.native_binary) and
+            run_receipt.get("build_manifest_path") == str(args.build_manifest),
+            "native execution receipt declared paths differ")
     for field, expected_path in {
         "thq_sha256": "thq_path",
         "thresholds_sha256": "thresholds_path",
