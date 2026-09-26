@@ -78,9 +78,40 @@ def validate_codes(codes: np.ndarray, stages: int, document_count: int) -> None:
         raise RuntimeError("persisted QINCo2 uint8 code shape/cardinality mismatch")
 
 
+def validate_norms(norms: np.ndarray, document_count: int) -> None:
+    if norms.dtype != np.float32 or norms.shape != (document_count,) or not np.isfinite(norms).all() or np.any(norms <= 0):
+        raise RuntimeError("persisted QINCo2 final-norm sidecar mismatch")
+
+
+def validate_summary(summary: dict, values: list[float]) -> None:
+    expected = {
+        "mean_qrels_ndcg10": float(np.mean(values)),
+        "p05_qrels_ndcg10": float(np.percentile(values, 5)),
+        "worst_qrels_ndcg10": float(np.min(values)),
+    }
+    for key, value in expected.items():
+        if abs(float(summary.get(key, -1.0)) - value) > 1e-12:
+            raise RuntimeError(f"QINCo2 summary mismatch: {key}")
+
+
 def self_test() -> None:
     codes = np.zeros((4, 16), dtype=np.uint8)
     validate_codes(codes, 4, 16)
+    validate_norms(np.ones(16, dtype=np.float32), 16)
+    try:
+        validate_norms(np.zeros(16, dtype=np.float32), 16)
+        raise RuntimeError("QINCo2 audit malformed norm was accepted")
+    except RuntimeError as exc:
+        if "malformed" in str(exc):
+            raise
+    values = [0.0, 0.5, 1.0]
+    validate_summary({"mean_qrels_ndcg10": 0.5, "p05_qrels_ndcg10": 0.05, "worst_qrels_ndcg10": 0.0}, values)
+    try:
+        validate_summary({"mean_qrels_ndcg10": 0.0, "p05_qrels_ndcg10": 0.05, "worst_qrels_ndcg10": 0.0}, values)
+        raise RuntimeError("QINCo2 audit altered summary was accepted")
+    except RuntimeError as exc:
+        if "altered" in str(exc):
+            raise
     try:
         validate_codes(codes.astype(np.uint16), 4, 16)
         raise RuntimeError("QINCo2 audit malformed dtype was accepted")
@@ -109,7 +140,7 @@ def main() -> None:
     result = json.loads(a.result.read_text(encoding="utf-8"))
     root = a.qinco_root.resolve()
     revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
-    if result.get("family") != "thq_qinco2_official_replay_v2" or result.get("upstream_revision") != revision:
+    if result.get("family") != "thq_qinco2_official_replay_v3" or result.get("upstream_revision") != revision:
         raise RuntimeError("unexpected QINCo2 result/upstream revision")
     if result.get("runner_sha256") != sha256(a.runner) or result.get("checkpoint_sha256") != sha256(a.checkpoint) or result.get("codes_artifact_sha256") != sha256(a.codes_artifact):
         raise RuntimeError("runner/checkpoint/code artifact binding differs")
@@ -132,13 +163,16 @@ def main() -> None:
     artifact = np.load(a.codes_artifact, allow_pickle=False)
     selected = np.asarray(artifact["selected_ids"], dtype=np.int64)
     unique_ids = np.asarray(artifact["unique_ids"], dtype=np.int64)
-    codes = np.asarray(artifact["codes"])
-    final_norms = np.asarray(artifact["final_norms"], dtype=np.float32)
-    validate_codes(codes, int(params["M"]), len(unique_ids))
-    if len(selected) != QUERY_COUNT:
+    residual_codes = np.asarray(artifact["codes"])
+    residual_norms = np.asarray(artifact["final_norms"], dtype=np.float32)
+    raw_codes = np.asarray(artifact["raw_codes"])
+    raw_norms = np.asarray(artifact["raw_final_norms"], dtype=np.float32)
+    validate_codes(residual_codes, int(params["M"]), len(unique_ids))
+    validate_codes(raw_codes, int(params["M"]), len(unique_ids))
+    if selected.shape != (QUERY_COUNT, 128):
         raise RuntimeError("persisted QINCo2 selected-id cardinality mismatch")
-    if final_norms.shape != (len(unique_ids),) or not np.isfinite(final_norms).all() or np.any(final_norms <= 0):
-        raise RuntimeError("persisted QINCo2 final-norm sidecar mismatch")
+    validate_norms(residual_norms, len(unique_ids))
+    validate_norms(raw_norms, len(unique_ids))
     candidate_ids, offsets = load_candidates(a.candidate_flat, a.candidate_raw, a.candidate_receipt)
     train_count = a.train_vectors.stat().st_size // (4 * D)
     train = np.memmap(a.train_vectors, mode="r", dtype="<f4", shape=(train_count, D))
@@ -169,36 +203,66 @@ def main() -> None:
         raise RuntimeError("persisted candidate THQ top128 differs from independent replay")
     with torch.inference_mode():
         # Storage is uint8; torch embedding indices must be promoted for decode.
-        decoded = model.decode(torch.from_numpy(codes.astype(np.int64, copy=False))).cpu().numpy() * float(model.data_std.item()) + model.data_mean.cpu().numpy()
+        decoded_residual = model.decode(torch.from_numpy(residual_codes.astype(np.int64, copy=False))).cpu().numpy() * float(model.data_std.item()) + model.data_mean.cpu().numpy()
+        decoded_raw = model.decode(torch.from_numpy(raw_codes.astype(np.int64, copy=False))).cpu().numpy() * float(model.data_std.item()) + model.data_mean.cpu().numpy()
     base = centroids[np.arange(D)[None, :], unpack(np.asarray(thq[unique_ids]))]
-    reconstructed = base + decoded.astype(np.float32)
+    reconstructed = base + decoded_residual.astype(np.float32)
+    raw_reconstructed = decoded_raw.astype(np.float32)
     recomputed_norms = np.linalg.norm(reconstructed, axis=1).astype(np.float32)
-    if not np.allclose(recomputed_norms, final_norms, rtol=0.0, atol=2e-5):
+    recomputed_raw_norms = np.linalg.norm(raw_reconstructed, axis=1).astype(np.float32)
+    if not np.allclose(recomputed_norms, residual_norms, rtol=0.0, atol=2e-5) or not np.allclose(recomputed_raw_norms, raw_norms, rtol=0.0, atol=2e-5):
         raise RuntimeError("persisted QINCo2 final norms differ from decoded vectors")
     position = {int(doc): i for i, doc in enumerate(unique_ids)}
-    rows = {int(row["query"]): row for row in result.get("rows", [])}
-    mismatches = 0
+    rows = {(str(row["arm"]), int(row["query"])): row for row in result.get("rows", [])}
+    arms = {"qinco2_official_16b_residual_mismatch": (reconstructed, residual_norms), "qinco2_official_16b_raw_vector": (raw_reconstructed, raw_norms)}
+    expected_keys = {(arm, qi) for arm in arms for qi in range(QUERY_COUNT)}
+    if len(result.get("rows", [])) != len(expected_keys) or set(rows) != expected_keys:
+        raise RuntimeError("QINCo2 result rows must contain exactly one row per arm and query")
+    candidate_fp32 = {}
     for qi in range(QUERY_COUNT):
         ids = selected[qi]
-        indexes = np.asarray([position[int(doc)] for doc in ids], dtype=np.int64)
-        values = np.asarray(reconstructed[indexes], dtype=np.float64)
         query = np.asarray(queries[qi], dtype=np.float64)
-        scores = (values @ query) / np.maximum(np.asarray(final_norms[indexes], dtype=np.float64) * np.linalg.norm(query), 1e-30)
-        ranked = top_ids(scores, ids).astype(int).tolist()
-        if ranked != rows[qi]["top10_ids"]:
-            mismatches += 1
-        if int(rows[qi]["side_payload_bytes"]) != int(params["M"]) + 4 or int(rows[qi]["cascade_total_bytes"]) != THQ_BYTES + int(params["M"]) + 4:
-            raise RuntimeError("QINCo2 storage contract differs")
-        grades = {int(doc): float(score) for doc, score in zip(qrel_ids[qi], qrel_scores[qi]) if int(doc) >= 0 and float(score) > 0}
-        value = ndcg10(np.asarray(ranked), grades)
-        if abs(value - float(rows[qi]["qrels_ndcg10"])) > 1e-12:
-            raise RuntimeError(f"qrels nDCG mismatch for query {qi}")
-        teacher_overlap = float(np.isin(teacher_ids[qi], ranked).sum() / 10.0)
-        if abs(teacher_overlap - float(rows[qi].get("teacher_overlap", teacher_overlap))) > 1e-12:
-            raise RuntimeError(f"teacher overlap mismatch for query {qi}")
+        exact = np.asarray(documents[ids], dtype=np.float64)
+        candidate_fp32[qi] = top_ids((exact @ query) / np.maximum(np.linalg.norm(exact, axis=1) * np.linalg.norm(query), 1e-30), ids).astype(int).tolist()
+    mismatches = 0
+    for arm, (vectors, norms) in arms.items():
+        quality_values = []
+        for qi in range(QUERY_COUNT):
+            ids = selected[qi]
+            indexes = np.asarray([position[int(doc)] for doc in ids], dtype=np.int64)
+            query = np.asarray(queries[qi], dtype=np.float64)
+            values = np.asarray(vectors[indexes], dtype=np.float64)
+            scores = (values @ query) / np.maximum(np.asarray(norms[indexes], dtype=np.float64) * np.linalg.norm(query), 1e-30)
+            ranked = top_ids(scores, ids).astype(int).tolist()
+            row = rows[(arm, qi)]
+            if ranked != row["top10_ids"]:
+                mismatches += 1
+            if row["candidate_fp32_top10_ids"] != candidate_fp32[qi]:
+                raise RuntimeError(f"candidate FP32 top10 mismatch for {arm} query {qi}")
+            if abs(float(row["candidate_fp32_overlap"]) - float(np.isin(candidate_fp32[qi], ranked).sum() / 10.0)) > 1e-12:
+                raise RuntimeError(f"candidate FP32 overlap mismatch for {arm} query {qi}")
+            if int(row["side_payload_bytes"]) != int(params["M"]) + 4 or int(row["cascade_total_bytes"]) != THQ_BYTES + int(params["M"]) + 4:
+                raise RuntimeError("QINCo2 storage contract differs")
+            grades = {int(doc): float(score) for doc, score in zip(qrel_ids[qi], qrel_scores[qi]) if int(doc) >= 0 and float(score) > 0}
+            value = ndcg10(np.asarray(ranked), grades)
+            quality_values.append(value)
+            if abs(value - float(row["qrels_ndcg10"])) > 1e-12:
+                raise RuntimeError(f"qrels nDCG mismatch for {arm} query {qi}")
+            teacher_overlap = float(np.isin(teacher_ids[qi], ranked).sum() / 10.0)
+            if abs(teacher_overlap - float(row.get("teacher_overlap", teacher_overlap))) > 1e-12:
+                raise RuntimeError(f"teacher overlap mismatch for {arm} query {qi}")
+        summary = result.get("summaries", {}).get(arm, {})
+        validate_summary(summary, quality_values)
+    expected_config = {k: int(params[k]) for k in ("M", "K", "L", "de", "dh", "A", "B")}
+    if result.get("config") != expected_config:
+        raise RuntimeError("result configuration differs from checkpoint parameters")
+    contract = result.get("storage_contract", {})
+    if (contract.get("code_dtype") != "uint8" or int(contract.get("code_bytes", -1)) != int(params["M"])
+            or int(contract.get("final_norm_bytes", -1)) != 4 or int(contract.get("cascade_total_bytes", -1)) != THQ_BYTES + int(params["M"]) + 4):
+        raise RuntimeError("top-level QINCo2 storage contract differs")
     if mismatches:
         raise RuntimeError(f"persisted official QINCo2 decode mismatches: {mismatches}")
-    audit = {"schema_version": 2, "family": "thq_qinco2_official_replay_audit_v2", "status": "PASS", "source_replay": True, "source_binding": True, "official_model_decode_replay": True, "independent_decoder": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "checkpoint_sha256": sha256(a.checkpoint), "codes_artifact_sha256": sha256(a.codes_artifact), "source_hashes": {k: sha256(v) for k, v in sources.items()}, "row_count": int(len(result.get("rows", []))), "query_count": QUERY_COUNT, "top10_mismatch_count": mismatches, "persisted_code_dtype": str(codes.dtype), "persisted_code_shape": list(codes.shape), "persisted_norm_sidecar": True, "checks": ["upstream revision and runner/checkpoint/code binding", "all canonical source input SHA binding", "independent candidate-stream and THQ interval² top128 replay", "persisted uint8 code shape/cardinality/range", "official QINCo2 decode", "persisted FP32 norm sidecar parity", "152-query top10 and summary replay", "logical storage contract 16 B code + 4 B norm"], "limitations": ["official decoder replay, not an independent QINCo2 reimplementation", "bounded undertrained 25k control", "historical 152-query fold"]}
+    audit = {"schema_version": 3, "family": "thq_qinco2_official_replay_audit_v3", "status": "PASS", "source_replay": True, "source_binding": True, "official_model_decode_replay": True, "independent_decoder": False, "result_sha256": sha256(a.result), "runner_sha256": sha256(a.runner), "checkpoint_sha256": sha256(a.checkpoint), "codes_artifact_sha256": sha256(a.codes_artifact), "source_hashes": {k: sha256(v) for k, v in sources.items()}, "row_count": int(len(result.get("rows", []))), "query_count": QUERY_COUNT, "top10_mismatch_count": mismatches, "persisted_code_dtype": str(residual_codes.dtype), "persisted_code_shape": list(residual_codes.shape), "persisted_norm_sidecar": True, "checks": ["upstream revision and runner/checkpoint/code binding", "all canonical source input SHA binding", "independent candidate-stream and THQ interval² top128 replay", "persisted uint8 code shape/cardinality/range for both diagnostic arms", "official QINCo2 decode for raw and THQ-residual arms", "persisted FP32 norm sidecar parity", "candidate FP32 top10 and overlap replay", "152-query per-arm top10 and summary replay", "logical storage contract 16 B code + 4 B norm", "checkpoint configuration equality"], "limitations": ["official decoder replay, not an independent QINCo2 reimplementation", "bounded undertrained 25k control", "historical 152-query fold"]}
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

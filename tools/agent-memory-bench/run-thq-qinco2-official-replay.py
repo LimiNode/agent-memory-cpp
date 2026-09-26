@@ -156,43 +156,60 @@ def main() -> None:
     base = centroids[np.arange(D)[None, :], levels]
     residual = np.asarray(documents[unique_ids], dtype=np.float32) - base
     codes_parts, decode_parts = [], []
+    raw_codes_parts, raw_decode_parts = [], []
     with torch.inference_mode():
         for start in range(0, len(unique_ids), a.batch_size):
             batch = torch.from_numpy(np.ascontiguousarray(residual[start : start + a.batch_size]))
-            codes, decoded = model.encode((batch - model.data_mean) / model.data_std)
-            stage_codes = codes.cpu().numpy()
-            if stage_codes.shape[0] == int(params["M"]):
-                stage_codes = stage_codes.T
-            if stage_codes.dtype.kind not in "iu" or np.any(stage_codes < 0) or np.any(stage_codes >= 256):
-                raise RuntimeError("QINCo returned code outside uint8 range")
-            codes_parts.append(stage_codes.T.astype(np.uint8, copy=False))
-            decode_parts.append((decoded * model.data_std + model.data_mean).cpu().numpy().astype(np.float32))
+            raw_batch = torch.from_numpy(np.ascontiguousarray(np.asarray(documents[unique_ids[start : start + a.batch_size]], dtype=np.float32)))
+            for source_batch, code_sink, decode_sink in ((batch, codes_parts, decode_parts), (raw_batch, raw_codes_parts, raw_decode_parts)):
+                codes, decoded = model.encode((source_batch - model.data_mean) / model.data_std)
+                stage_codes = codes.cpu().numpy()
+                if stage_codes.shape[0] == int(params["M"]):
+                    stage_codes = stage_codes.T
+                if stage_codes.dtype.kind not in "iu" or np.any(stage_codes < 0) or np.any(stage_codes >= 256):
+                    raise RuntimeError("QINCo returned code outside uint8 range")
+                code_sink.append(stage_codes.T.astype(np.uint8, copy=False))
+                decode_sink.append((decoded * model.data_std + model.data_mean).cpu().numpy().astype(np.float32))
     codes = np.concatenate(codes_parts, axis=1).astype(np.uint8, copy=False)
     decoded = np.concatenate(decode_parts, axis=0)
+    raw_codes = np.concatenate(raw_codes_parts, axis=1).astype(np.uint8, copy=False)
+    raw_decoded = np.concatenate(raw_decode_parts, axis=0)
     reconstructed = base + decoded
+    raw_reconstructed = raw_decoded
     final_norms = np.linalg.norm(reconstructed, axis=1).astype(np.float32)
-    if codes.shape != (int(params["M"]), len(unique_ids)) or not np.isfinite(final_norms).all():
+    raw_final_norms = np.linalg.norm(raw_reconstructed, axis=1).astype(np.float32)
+    if (codes.shape != (int(params["M"]), len(unique_ids)) or raw_codes.shape != codes.shape
+            or not np.isfinite(final_norms).all() or not np.isfinite(raw_final_norms).all()):
         raise RuntimeError("persisted QINCo shape/norm contract failed")
     position = {int(doc): i for i, doc in enumerate(unique_ids)}
     rows = []
+    summaries = {}
+    arm_data = {
+        "qinco2_official_16b_residual_mismatch": (reconstructed, final_norms),
+        "qinco2_official_16b_raw_vector": (raw_reconstructed, raw_final_norms),
+    }
     for qi in range(QUERY_COUNT):
         ids = selected[qi]
         indexes = np.asarray([position[int(doc)] for doc in ids], dtype=np.int64)
-        values = np.asarray(reconstructed[indexes], dtype=np.float64)
         query = np.asarray(queries[qi], dtype=np.float64)
-        scores = (values @ query) / np.maximum(np.asarray(final_norms[indexes], dtype=np.float64) * np.linalg.norm(query), 1e-30)
         exact = np.asarray(documents[ids], dtype=np.float64)
         exact_scores = (exact @ query) / np.maximum(np.linalg.norm(exact, axis=1) * np.linalg.norm(query), 1e-30)
-        ranked, exact_top = top_ids(scores, ids), top_ids(exact_scores, ids)
+        exact_top = top_ids(exact_scores, ids)
         grades = {int(doc): float(score) for doc, score in zip(qrel_ids[qi], qrel_scores[qi]) if int(doc) >= 0 and float(score) > 0}
-        rows.append({"query": qi, "arm": "qinco2_official_16b", "top10_ids": ranked.astype(int).tolist(), "candidate_fp32_top10_ids": exact_top.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact_top, ranked).sum() / 10.0), "qrels_ndcg10": ndcg10(ranked, grades), "teacher_overlap": float(np.isin(teacher_ids[qi], ranked).sum() / 10.0), "side_payload_bytes": int(params["M"]) + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + int(params["M"]) + 4})
+        for arm, (vectors, norms) in arm_data.items():
+            values = np.asarray(vectors[indexes], dtype=np.float64)
+            scores = (values @ query) / np.maximum(np.asarray(norms[indexes], dtype=np.float64) * np.linalg.norm(query), 1e-30)
+            ranked = top_ids(scores, ids)
+            rows.append({"query": qi, "arm": arm, "top10_ids": ranked.astype(int).tolist(), "candidate_fp32_top10_ids": exact_top.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact_top, ranked).sum() / 10.0), "qrels_ndcg10": ndcg10(ranked, grades), "teacher_overlap": float(np.isin(teacher_ids[qi], ranked).sum() / 10.0), "side_payload_bytes": int(params["M"]) + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + int(params["M"]) + 4})
     a.codes_output.parent.mkdir(parents=True, exist_ok=True)
-    np.savez_compressed(a.codes_output, selected_ids=selected, unique_ids=unique_ids, codes=codes, final_norms=final_norms)
+    np.savez_compressed(a.codes_output, selected_ids=selected, unique_ids=unique_ids, codes=codes, final_norms=final_norms, raw_codes=raw_codes, raw_final_norms=raw_final_norms)
     model_bytes = int(sum(value.numel() * value.element_size() for value in saved["model"].values() if hasattr(value, "numel")))
-    summary = {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in rows])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in rows], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in rows])), "side_payload_bytes": int(params["M"]) + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + int(params["M"]) + 4, "global_model_bytes": model_bytes, "checkpoint_bytes": int(a.checkpoint.stat().st_size)}
+    for arm in arm_data:
+        arm_rows = [r for r in rows if r["arm"] == arm]
+        summaries[arm] = {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in arm_rows])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in arm_rows], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in arm_rows])), "side_payload_bytes": int(params["M"]) + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + int(params["M"] ) + 4, "global_model_bytes": model_bytes, "checkpoint_bytes": int(a.checkpoint.stat().st_size)}
     sources = {"training-dataset": a.training_dataset, "documents": a.documents, "train-vectors": a.train_vectors, "queries": a.queries, "qrel-ids": a.qrel_ids, "qrel-scores": a.qrel_scores, "teacher-ids": a.teacher_ids, "thq4-codes": a.thq4_codes, "thq4-thresholds": a.thq4_thresholds, "candidate-flat": a.candidate_flat, "candidate-raw": a.candidate_raw, "candidate-receipt": a.candidate_receipt}
-    training = {"checkpoint_epoch": int(saved.get("epoch", -1)), "requested_epochs": int(saved.get("scheduler", {}).get("_max_epochs", -1)), "optimizer_steps": int(saved.get("logger", {}).get("cur_step", -1)), "dataset_sha256": sha256(a.training_dataset), "dataset_semantics": "raw canonical train vectors; this checkpoint was not trained on the THQ residual matrix", "resolved_config": {k: int(params[k]) for k in required}, "optimizer": {"name": "AdamW", "learning_rate": float(saved.get("optimizer", {}).get("param_groups", [{}])[0].get("lr", 0.0)), "scheduler": "upstream QINCo cosine/ramp scheduler"}, "exact_command": "run.py cpu=true task=train L=2 dh=256 de=128 A=16 B=32 M=16 K=256 ds.valset=5000 ds.loop=20000 epochs=1 batch=256 verbose=false", "schedule_note": "The upstream scheduler checkpoint records the completed epoch/step; requested max epochs and completed checkpoint epoch differ because the upstream ramp performs terminal scheduler steps after the final data epoch."}
-    result = {"schema_version": 2, "family": "thq_qinco2_official_replay_v2", "status": "EXECUTED", "quality_status": "BOUNDED_UNDERTRAINED_RAW_VECTOR_CONTROL", "metric": "cosine", "query_count": QUERY_COUNT, "upstream_repository": "https://github.com/facebookresearch/Qinco", "upstream_revision": revision, "upstream_license": "CC-BY-NC-4.0", "candidate_count": TOP, "candidate_shell": "canonical candidate stream -> independently recomputed THQ interval² top128", "unique_documents": int(len(unique_ids)), "checkpoint_sha256": sha256(a.checkpoint), "codes_artifact_sha256": sha256(a.codes_output), "runner_sha256": sha256(Path(__file__)), "source_hashes": {k: sha256(v) for k, v in sources.items()}, "config": {k: int(params[k]) for k in required}, "training": training, "summaries": {"qinco2_official_16b": summary}, "rows": rows, "storage_contract": {"code_dtype": "uint8", "code_shape": [int(params["M"]), "unique_documents"], "code_bytes": int(params["M"]), "final_norm_dtype": "float32", "final_norm_bytes": 4, "side_payload_bytes": int(params["M"]) + 4, "cascade_total_bytes": THQ_BYTES + int(params["M"]) + 4}, "limitations": ["official QINCo2 checkpoint trained on raw canonical vectors, not a THQ-residual training matrix", "bounded 25k/short schedule, not the 60-epoch production schedule", "candidate-local replay on the historical 152-query fold", "external CC-BY-NC source is not vendored", "no production selection claim"]}
+    training = {"checkpoint_epoch": int(saved.get("epoch", -1)), "requested_epochs": int(saved.get("scheduler", {}).get("_max_epochs", -1)), "completed_full_epochs": int(saved.get("epoch", -1)), "effective_train_rows": 20000, "validation_rows": 5000, "optimizer_steps": int(saved.get("logger", {}).get("cur_step", -1)), "dataset_sha256": sha256(a.training_dataset), "dataset_semantics": "raw canonical train vectors; this checkpoint was not trained on the THQ residual matrix", "resolved_config": {k: int(params[k]) for k in required}, "optimizer": {"name": "AdamW", "learning_rate": float(saved.get("optimizer", {}).get("param_groups", [{}])[0].get("lr", 0.0)), "scheduler": "upstream QINCo cosine/ramp scheduler"}, "exact_command": "run.py cpu=true task=train L=2 dh=256 de=128 A=16 B=32 M=16 K=256 ds.valset=5000 ds.loop=20000 epochs=1 batch=256 verbose=false", "schedule_note": "checkpoint_epoch is the number of completed full epochs over the effective 20,000-row training split; the 25,000-row source pool is split into 20,000 train and 5,000 validation rows."}
+    result = {"schema_version": 3, "family": "thq_qinco2_official_replay_v3", "status": "EXECUTED", "quality_status": "BOUNDED_TRAINING_DOMAIN_MISMATCH_CONTROL", "metric": "cosine", "query_count": QUERY_COUNT, "upstream_repository": "https://github.com/facebookresearch/Qinco", "upstream_revision": revision, "upstream_license": "CC-BY-NC-4.0", "candidate_count": TOP, "candidate_shell": "canonical candidate stream -> independently recomputed THQ interval² top128", "unique_documents": int(len(unique_ids)), "checkpoint_sha256": sha256(a.checkpoint), "codes_artifact_sha256": sha256(a.codes_output), "runner_sha256": sha256(Path(__file__)), "source_hashes": {k: sha256(v) for k, v in sources.items()}, "config": {k: int(params[k]) for k in required}, "training": training, "summaries": summaries, "rows": rows, "storage_contract": {"code_dtype": "uint8", "code_shape": [int(params["M"]), "unique_documents"], "code_bytes": int(params["M"]), "final_norm_dtype": "float32", "final_norm_bytes": 4, "side_payload_bytes": int(params["M"]) + 4, "cascade_total_bytes": THQ_BYTES + int(params["M"]) + 4}, "arms": {"qinco2_official_16b_residual_mismatch": "raw-trained checkpoint applied to THQ residuals; training-domain mismatch diagnostic", "qinco2_official_16b_raw_vector": "raw-trained checkpoint applied directly to raw vectors; undertraining diagnostic"}, "limitations": ["official QINCo2 checkpoint trained on raw canonical vectors, not a THQ-residual training matrix", "bounded 25k source pool with 20k effective training rows and 5k validation rows; short schedule, not the 60-epoch production schedule", "candidate-local replay on the historical 152-query fold", "external CC-BY-NC source is not vendored", "no production selection claim"]}
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

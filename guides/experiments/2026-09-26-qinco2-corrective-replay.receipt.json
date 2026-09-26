@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "experiment_note": "guides/experiments/2026-09-26-qinco2-corrective-replay.md",
+  "checkpoint": {
+    "path": "E:/_repoz/agent-memory-workspaces/qinco2-canonical-25k-v1/checkpoint-epoch2.pt",
+    "sha256": "a83aa534a3b646f9eccfd51a343867ba2de17d2149a008bce635a2fd4837df9e",
+    "epoch": 3,
+    "effective_train_rows": 20000,
+    "validation_rows": 5000,
+    "optimizer_steps": 237
+  },
+  "runner_sha256": "2a993ffe90213984c026f7654fbd36c5697c51e46467a563bfcbfb0283535067",
+  "result_sha256": "996ca99b3594f4e6cad0b9410c2838c598d9f5d516a31e699df9e730d27e2bcd",
+  "audit_sha256": "fd6195c493c20c541a689343780ccaedff369497950ce29d1a7b9d14b8c3a7e0",
+  "codes_artifact_sha256": "3e95837d78bd20d55be006621baa43a8f13777a65f2e38052acef609ae691849",
+  "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
+  "query_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "candidate_shell": "independent canonical THQ interval² top128",
+  "arms": {
+    "qinco2_official_16b_raw_vector": {"quality_status": "UNDERTRAINING_DIAGNOSTIC", "mean_ndcg10": 0.16477198295447013, "side_payload_bytes": 20, "cascade_total_bytes": 116},
+    "qinco2_official_16b_residual_mismatch": {"quality_status": "TRAINING_DOMAIN_MISMATCH_CONTROL", "mean_ndcg10": 0.6164195004136372, "side_payload_bytes": 20, "cascade_total_bytes": 116}
+  },
+  "audit_status": "PASS",
+  "source_replay": true,
+  "independent_thq_shell": true,
+  "persisted_code_dtype": "uint8",
+  "pending": ["matched residual-QINCo fit with pinned Hydra environment", "post-fit training receipt", "fresh held-out query confirmation", "no production selection"]
+}
