@@ -39,7 +39,10 @@ approximately 60 epochs). The current shared Python environment has
 now supplies the missing Hydra packages. A bounded official QINCo2-S control
 has been run on the canonical 25k training subset (`L=2`, `M=16`, `K=256`,
 `A=16`, `B=32`, CPU) in
-`E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1`. The upstream
+`E:\\_repoz\\agent-memory-workspaces\\qinco2-canonical-25k-v1`. The training
+dataset is the raw canonical 25k vector array (SHA-256
+`a466ed151f9d0454b160aa3b3a13eff20c6f17fc26f85d50d44b396530971255`), not a
+THQ-residual matrix. The upstream
 scheduler completed three short epochs before the best checkpoint was frozen.
 This remains an execution/provenance milestone only: it is deliberately
 labelled `BOUNDED_UNDERTRAINED_CONTROL` and cannot support a family-level
@@ -50,6 +53,7 @@ by this run.
 The remaining QINCo2 gates are stronger training on larger unsupervised pools
 (100k/250k/1M), followed by the same independent decode, cosine top-10, and
 storage audit. The official-model persisted-code audit already passes for all
-152 queries: mean nDCG@10 is `0.616420` at 112 B/doc (16-byte QINCo2 code plus
-the 96-byte THQ shell), with p05/worst-query nDCG equal to zero. No production
-selection claim is made.
+152 queries: mean nDCG@10 is `0.616420` at 116 B/doc (16 `uint8` stage indices,
+a persisted FP32 final-norm sidecar, and the 96-byte THQ shell), with
+p05/worst-query nDCG equal to zero. This is a raw-vector control;
+residual-trained QINCo remains pending. No production selection claim is made.
