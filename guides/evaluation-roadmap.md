@@ -29,6 +29,22 @@ embedding/model IDs, index parameters, candidate depth, final limit,
 filter policy, concurrency, cold/warm procedure, and inclusion of encoding time
 ```
 
+For external or lifecycle comparisons, the machine-readable manifest must also
+carry these fields (not merely prose in a report):
+
+```text
+corpus_sha256, query_sha256, qrels_sha256, oracle_sha256, benchmark_config_sha256
+row_counts, cpu_model, physical_cores, logical_cores, numa_topology, ram_bytes
+storage_medium, process_affinity, thread_affinity, effective_thread_counts
+repeat_count, warmup_count, raw_distribution_sha256, startup_open_load_ms
+index_parameters, batch_size, concurrency, result_shape
+```
+
+`result_shape` states whether the measurement returns IDs only, IDs plus
+scores, or full records. A backend's advertised batch size is not assumed to
+be one physical write operation; the manifest records the actual operation
+path.
+
 Quality fields are selected by workload (`recall@k`, `nDCG@k`, `MRR`, source
 coverage, citation preservation). Cost fields include build/ingest time,
 query p50/p95/p99, peak RSS/map size, logical and physical index bytes, page
@@ -47,6 +63,31 @@ reads, and update/reindex cost when applicable.
 - External comparisons require a `ComparisonParityManifest` and an explicit
   compatibility matrix. Missing inputs produce `PENDING_SOURCE_REPLAY`, never
   an inferred result.
+- Quality/latency frontiers are compared only at measured comparable quality.
+  `Recall@K` is reported against the exact oracle; `nDCG@K` is reported against
+  qrels. They are separate metrics and must not be substituted for one another.
+- Report search-kernel, full embedded retrieval, and client/server request
+  costs as separate timing layers. Include query encoding, transport,
+  serialization and result materialization only in the layers where they occur.
+
+## Ingestion and lifecycle timing
+
+Write measurements separate these observable boundaries:
+
+```text
+accepted -> durable_commit -> index_ready -> search_visible
+```
+
+`ACK` is not automatically `search_visible`. Bulk build and incremental
+insert/update/delete are separate scenarios, and each records durability mode,
+batch size, physical write operation, index publication/rebuild time and the
+first query that observes the new revision.
+
+Operational replay includes a bounded concurrent scenario with search running
+during updates, deletes and rebuild. Its pre-registered acceptance fields are
+query/write p95/p99, visibility lag, queue/backlog depth,
+revision-generation filtering, and no deleted-record resurrection. A passing
+write benchmark without these correctness checks is not a lifecycle result.
 
 ## Minimal benchmark matrix
 
