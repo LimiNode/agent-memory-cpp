@@ -1,0 +1,24 @@
+{
+  "schema_version": 2,
+  "family": "thq_residual_binary_gate_c_v2",
+  "status": "EXECUTED",
+  "audit_status": "PASS",
+  "source_binding": true,
+  "independent_decode_replay": true,
+  "result_sha256": "de7a680243591817d5e03de89878c855a64191fbee8ad2d7ca32f53458e28e8b",
+  "audit_sha256": "de5ab2cb12f8f67e9bcedddb13104eb69196d329826902282cd57b3167d1bc9c",
+  "runner_sha256": "239c95dbdae0d0d3ab499ff1ec278f74bd4008918b8d0eea9e081a4f84ab207e",
+  "audit_runner_sha256": "ea4c4b275379092d409ccd02cf11a89c2a9f94ca52c7870b35ae6b452831b1ae",
+  "models_sha256": "6d8519c810fdb9e75b1c25cf78bb8e74a6cbae4d9fe21c919e1f962f442991b9",
+  "codes_sha256": "0e4581c7fee4b43d8f821d65dd2e029424456038c3fdb5b2a91774d871964006",
+  "query_count": 152,
+  "row_count": 608,
+  "summaries": {
+    "rabitq_like:code_only": {"mean_qrels_ndcg10": 0.15088734261489045, "side_payload_bytes": 50, "cascade_total_bytes": 146},
+    "rabitq_like:scale": {"mean_qrels_ndcg10": 0.6409714015989781, "side_payload_bytes": 50, "cascade_total_bytes": 146},
+    "bbq_like:code_only": {"mean_qrels_ndcg10": 0.15088734261489045, "side_payload_bytes": 64, "cascade_total_bytes": 160},
+    "bbq_like:scale": {"mean_qrels_ndcg10": 0.6435933649026225, "side_payload_bytes": 64, "cascade_total_bytes": 160}
+  },
+  "artifact_location": "E:/_repoz/research-wave-2026-09-21/gatec.{result,audit,models,codes}.*",
+  "limitations": ["local RaBitQ/BBQ-like references; not faithful TurboQuant/NEQ", "cosine lane only", "candidate-local replay", "no production selection claim"]
+}

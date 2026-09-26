@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "audit_status": "PASS",
+  "date": "2026-09-23",
+  "family": "thq_qdrant_tq_plus_residual_composite_gate_c_v3",
+  "metric": "cosine",
+  "external_workspace": "E:/_repoz/research-wave-2026-09-23-tq-plus-canonical",
+  "result_sha256": "b8ca566217dc10ef6c0585da70437f5be092fe1c7aa2eab60d0f1fb64c18699b",
+  "audit_sha256": "63f2aaf0c88eaed1eb100aa6534c670d1b463193c7cda86fa8a4febe55428968",
+  "payload_sha256": "f1f78b94d8f119661316b10e1a69981c000e0d1ea8d38e8dee16d0862acdd887",
+  "runner_sha256": "034d9aafcf262d18e392d266b885a10e970ad3fd261fdfec0f86c692421ba57a",
+  "audit_runner_sha256": "40d3970d11f5fb9ca156a2b6c64ea730dec68e0784bab7728f6ff86544909abd",
+  "upstream_revision": "6ab21cac18ebb6f4ae29102c7f8f5cc11affd5de",
+  "query_contract": "scalar QuerySimd<8,2> / Query1bitWideSimd reference with x86 balanced radix-256 split",
+  "query_memory_contract": {
+    "logical_int16_bytes": 768,
+    "qdrant_query_plane_bytes": 1024,
+    "plane_length_bytes": 64
+  },
+  "source_hashes": {
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "qrel_ids": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "teacher_ids": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b"
+  },
+  "summaries": {
+    "reconstructed_cosine_diagnostic_56b": 0.6578291242642481,
+    "ideal_float_composite_60b": 0.6578291242642481,
+    "exact_wide_scalar_composite_60b": 0.654486005904916
+  },
+  "interpretation": "The earlier .626174 lane was an unnormalized composite dot surrogate and is superseded. The corrected wide-query lane isolates QuerySimd<8,2> loss from codec/composite-norm loss. This replay uses the canonical frozen R4 candidate stream and is directly paired with the other candidate-local finalist replays.",
+  "limitations": [
+    "candidate-local THQ top128 replay",
+    "scalar reference, no native SIMD timing",
+    "60-byte composite lane includes a diagnostic FP32 final_norm",
+    "not a byte-identical Qdrant wire-format artifact"
+  ]
+}

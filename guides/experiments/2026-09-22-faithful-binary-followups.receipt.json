@@ -1,0 +1,128 @@
+{
+  "schema_version": 2,
+  "status": "EXECUTED",
+  "date": "2026-09-22",
+  "external_workspace": {
+    "rabitq": "E:/_repoz/research-wave-2026-09-22-rabitq",
+    "lsq_strong": "E:/_repoz/research-wave-2026-09-22-lsq-strong",
+    "turboquant": "E:/_repoz/research-wave-2026-09-22-turboquant",
+    "turboquant_plus": "E:/_repoz/research-wave-2026-09-22-turboquant-plus",
+    "elastic_bbq": "E:/_repoz/research-wave-2026-09-22-elastic-bbq-v2"
+  },
+  "artifacts": {
+    "rabitq_result_sha256": "5b919a43a758adcb0036558fc8c0db48a21047d2b3f714e839962bb8917ded55",
+    "lsq_strong_result_sha256": "ded13d8d31455644e793d1c0b2c7ee8ce012f0501df2ee23c385388295de5e3f",
+    "lsq_strong_audit_sha256": "aeefc49d365111b24ca8be9bf8c0c21d53d5ff39cfb6f80bf9323b877eb69ba4",
+    "turboquant_result_sha256": "f4a4d12fcfc1702fef11909306cb6153eea985a9479c740294fcf4e7fe73392c",
+    "turboquant_audit_sha256": "847059eb814d91f43d59877ed763246caa37c9437611444a45a7dad36ac2e12e",
+    "turboquant_payload_sha256": "123e015bdca05edae64fb3e05a996c7c9f5ae72a117c96364a3739d4760a965a",
+    "elastic_bbq_result_sha256": "103d437c03247bf2751f71a0f943be5fc801687a49f861661e9ae6db4cc9aa9e",
+    "elastic_bbq_audit_sha256": "e48df10c2e93408b1b04506525aa9edac36459c79a6bf62634ca06e21730253e",
+    "elastic_bbq_payload_sha256": "4557e69805200ed2de3b5bd27ebef65c49ca7ff2fbc7f8a93d2f12d14de65846"
+    ,"turboquant_plus_result_sha256": "7169e2e05844def98a1bc8100fac13310f10c8e1ed0f334f3a03dc696f2c32d7"
+    ,"turboquant_plus_audit_sha256": "cd9413c91f2e38f859432165e44f914f3658103718b1518f2552cc930f499922"
+    ,"turboquant_plus_payload_sha256": "1735f8515bdc14047bbbd174736d44a8d5f81cb35a11aa883e6c2646cc80a180"
+    ,"elastic_bbq_v4_none_result_sha256": "103d437c03247bf2751f71a0f943be5fc801687a49f861661e9ae6db4cc9aa9e"
+    ,"elastic_bbq_v4_none_audit_sha256": "e48df10c2e93408b1b04506525aa9edac36459c79a6bf62634ca06e21730253e"
+    ,"elastic_bbq_v4_block_pca_result_sha256": "e8096bbba77f7ddd5ac1f71c04ed9cdd3a456013f5eb0ef55981d81dfbd6fb81"
+    ,"elastic_bbq_v4_block_pca_audit_sha256": "332b58bec6ae219fbd44aa83750b778c49e4c487f39cc86845933cdeb3fc848a"
+  },
+  "runner_hashes": {
+    "rabitq_sha256": "b8eeed5a9d19a52c86d2c4081c70bca62cc800543c09389ffb31f6f036cdd037",
+    "lsq_runner_sha256": "cf674ce2cfcf02cf90cebcef8c6b14422e4ba3ac8cd360d0760b999eb5f52468",
+    "lsq_audit_sha256": "d2c95ce8cbf075f7dd00775ff0f89d037c6f55b332fe4a37ff9622f8c2519333",
+    "turboquant_sha256": "5b2ced356b87a82ec27f78b7e6fe486e5aad0b09929ab2e92ee46a835f8fc7e2",
+    "turboquant_audit_sha256": "8263e6d3e40dfefc5b4a2ccb3c309da1e1148f894f136aa7c22eb31b188a19dc",
+    "elastic_bbq_sha256": "6d8d0bc7548d02fcad083829e59f38a42b09976c6a01e4777505db979d94577c",
+    "elastic_bbq_audit_sha256": "6f4e3f3fa89f0e113b85f5dce47d1222d8b955917cb7988c8a8b5007c45643fb",
+    "turboquant_plus_sha256": "3544e71c57d5792926405a01a33162b7bada75e30282ead554a790ddaf77211",
+    "turboquant_plus_audit_sha256": "048138c333c42c715b9de16a2c0332a0c2da7fc8c47448c567b4698000940c7e"
+  },
+  "summaries": {
+    "rabitq_official_ip": {
+      "explicit_ip_mean_qrels_ndcg10": 0.5585821889661619,
+      "packed_ip_mean_qrels_ndcg10": 0.5585821889661619,
+      "fp32_rerank_mean_qrels_ndcg10": 0.6532781820917092,
+      "p05_qrels_ndcg10": 0.0,
+      "worst_qrels_ndcg10": 0.0,
+      "topk_mismatch_count": 25,
+      "top10_mismatch_count": 0,
+      "side_payload_bytes": 52,
+      "thq4_plus_side_payload_bytes": 148
+    },
+    "faiss_lsq32_strong": {
+      "side_payload_bytes": 32,
+      "mean_qrels_ndcg10": 0.6572638342235313,
+      "p05_qrels_ndcg10": 0.0,
+      "worst_qrels_ndcg10": 0.0
+    },
+    "faiss_lsq48_strong": {
+      "side_payload_bytes": 48,
+      "mean_qrels_ndcg10": 0.6615148674948713,
+      "p05_qrels_ndcg10": 0.0,
+      "worst_qrels_ndcg10": 0.0
+    },
+    "turboquant1": {
+      "side_payload_bytes": 52,
+      "mean_qrels_ndcg10": 0.6591756211462181,
+      "p05_qrels_ndcg10": 0.0,
+      "worst_qrels_ndcg10": 0.0
+    },
+    "turboquant2": {
+      "side_payload_bytes": 100,
+      "mean_qrels_ndcg10": 0.6562538769632004,
+      "p05_qrels_ndcg10": 0.0,
+      "worst_qrels_ndcg10": 0.0
+    },
+    "turboquant_plus1_faithful_direct": {
+      "side_payload_bytes": 56,
+      "mean_qrels_ndcg10": 0.6578291200000000,
+      "p05_qrels_ndcg10": 0.0,
+      "worst_qrels_ndcg10": 0.0
+    },
+    "turboquant_plus1_faithful_asymmetric": {
+      "side_payload_bytes": 56,
+      "mean_qrels_ndcg10": 0.6261740660407656,
+      "p05_qrels_ndcg10": 0.0,
+      "worst_qrels_ndcg10": 0.0
+    },
+    "elastic_bbq_v4_none_direct": {
+      "logical_side_payload_bytes": 62,
+      "aligned_side_payload_bytes": 64,
+      "mean_qrels_ndcg10": 0.573386387340742
+    },
+    "elastic_bbq_v4_none_asymmetric": {
+      "logical_side_payload_bytes": 62,
+      "aligned_side_payload_bytes": 64,
+      "mean_qrels_ndcg10": 0.585535532943873
+    },
+    "elastic_bbq_v4_block_pca_direct": {
+      "logical_side_payload_bytes": 62,
+      "aligned_side_payload_bytes": 64,
+      "mean_qrels_ndcg10": 0.5632193609342578
+    },
+    "elastic_bbq_v4_block_pca_asymmetric": {
+      "logical_side_payload_bytes": 62,
+      "aligned_side_payload_bytes": 64,
+      "mean_qrels_ndcg10": 0.5894841033060465
+    }
+  },
+  "native_complete_cascade": {
+    "receipt": "2026-09-22-native-complete-cascade.receipt.json",
+    "status": "EXECUTED_PREDECODED_CONTROL",
+    "compressed_decode_status": "PENDING_OPTIONAL_CODEC_SPECIFIC_GATE"
+  },
+  "superseded": {
+    "elastic_bbq_residual_v1": {"status": "SUPERSEDED", "mean_qrels_ndcg10": 0.6355198731743864},
+    "elastic_bbq_old_query_control": {"status": "SUPERSEDED", "mean_qrels_ndcg10": 0.4611792619031063},
+    "turboquant_plus_mean_std_v1": {"status": "SUPERSEDED", "direct_mean_qrels_ndcg10": 0.6536431464284411, "asymmetric_mean_qrels_ndcg10": 0.6331632371680458}
+  },
+  "limitations": [
+    "candidate-local source replay, not native serving latency",
+    "RaBitQ is a separate IP lane",
+    "QJL and native TurboQuant+/BBQ serving are not measured",
+    "Elastic BBQ native SIMD, query-side quantization, oversampling/rescore, and BBQ-disk topology are not measured",
+    "TurboQuant normal-mode and bounded TQ+ decode are independently audited; QJL remains open",
+    "LSQ is a Faiss research control, not AVQ/AAQ/QINCo"
+  ]
+}

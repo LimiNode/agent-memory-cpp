@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "source_replay": true,
+  "source_bundle": {
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+    "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+    "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+    "teacher_ids_sha256": "bbb2e1b0010cf57eace33251d6844528eac54e9d699f8a9210c1128685e8594d",
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "candidate_flat_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw_sha256": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "candidate_receipt_sha256": "82f3cebfee6e9249eebaf68e31cf86f7ac93f701e8fe0f5752dbd8eba28d437b"
+  },
+  "implementation_hashes": {
+    "run_thq_elastic_bbq_reference": "6d8d0bc7548d02fcad083829e59f38a42b09976c6a01e4777505db979d94577c",
+    "audit_thq_elastic_bbq_reference": "6f4e3f3fa89f0e113b85f5dce47d1222d8b955917cb7988c8a8b5007c45643fb",
+    "run_thq_turboquant_plus_reference": "3544e71c57d5792926405a01a33162b7bada75e30282ead554a790ddaf77211",
+    "audit_thq_turboquant_plus_reference": "048138c333c42c715b9de16a2c0332a0c2da7fc8c47448c567b4698000940c7e"
+  },
+  "bbq_lucene": {
+    "runner": "tools/agent-memory-bench/run-thq-elastic-bbq-reference.py",
+    "audit": "tools/agent-memory-bench/audit-thq-elastic-bbq-reference.py",
+    "none": {
+      "result_sha256": "103d437c03247bf2751f71a0f943be5fc801687a49f861661e9ae6db4cc9aa9e",
+      "audit_sha256": "e48df10c2e93408b1b04506525aa9edac36459c79a6bf62634ca06e21730253e",
+      "artifact_sha256": "4557e69805200ed2de3b5bd27ebef65c49ca7ff2fbc7f8a93d2f12d14de65846",
+      "mean_direct_ndcg10": 0.573386387340742,
+      "mean_asymmetric_ndcg10": 0.585535532943873
+    },
+    "block_pca_8x8": {
+      "result_sha256": "e8096bbba77f7ddd5ac1f71c04ed9cdd3a456013f5eb0ef55981d81dfbd6fb81",
+      "audit_sha256": "332b58bec6ae219fbd44aa83750b778c49e4c487f39cc86845933cdeb3fc848a",
+      "artifact_sha256": "15a8da72e8607e8568f664d4cb501a67836c8382bb05ee7d9cfdfbc8358e217b",
+      "mean_direct_ndcg10": 0.5632193609342578,
+      "mean_asymmetric_ndcg10": 0.5894841033060465
+    }
+  },
+  "turboquant_plus": {
+    "runner": "tools/agent-memory-bench/run-thq-turboquant-plus-reference.py",
+    "audit": "tools/agent-memory-bench/audit-thq-turboquant-plus-reference.py",
+    "result_sha256": "7169e2e05844def98a1bc8100fac13310f10c8e1ed0f334f3a03dc696f2c32d7",
+    "audit_sha256": "cd9413c91f2e38f859432165e44f914f3658103718b1518f2552cc930f499922",
+    "artifact_sha256": "1735f8515bdc14047bbbd174736d44a8d5f81cb35a11aa883e6c2646cc80a180",
+    "side_payload_bytes": 56,
+    "mean_direct_ndcg10": 0.6536431464284411,
+    "mean_asymmetric_ndcg10": 0.6331632371680458
+  },
+  "interpretation": "The BBQ v4 replay supersedes the prior residual-only BBQ control. TurboQuant+ is a bounded Qdrant TQMode::Plus algebraic control; neither result is native serving evidence or a production selection."
+}
