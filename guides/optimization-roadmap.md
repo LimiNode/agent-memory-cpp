@@ -1650,6 +1650,14 @@ compaction workload. Reports include recall/nDCG, p50/p95/p99, encoded bytes,
 seeks, RSS, disk footprint and write amplification. Corpus size, a latency goal
 or a generic recall percentage alone never selects a backend.
 
+The operational boundaries for these measurements are normative in
+[`evaluation-roadmap.md`](evaluation-roadmap.md): acceptance, durable commit,
+index readiness, and search visibility are separate events; `ACK` is not
+implicitly search-ready. Bulk build and incremental insert/update/delete are
+separate benchmark rows. A lifecycle gate also runs queries while writes and
+rebuild execute, reporting query/write p95/p99, visibility lag, backlog, and
+stale-generation/deletion correctness.
+
 ### Multi-Mode Migration
 
 Mode change = major migration (новая БД + transfer), не silent in-place
@@ -2451,7 +2459,10 @@ storage estimates, quality targets и per-stack defaults).
     - Per-stack параметры (M, efConstruction, efSearch) — см. таблицу.
     - Benchmark versus Exact and BinaryCandidateFilter: recall/nDCG,
       latency, update/delete churn, tombstone ratio, rebuild cost and restart
-      recovery; thresholds are profile-specific.
+      recovery; thresholds are profile-specific. Include a pre-registered
+      mixed search/update/rebuild workload and record the actual HNSW
+      parameters, threads, concurrency, batch size, durability mode, and
+      returned payload.
     - Tradeoff: graph storage overhead ~20% vs random access latency.
 
 30. **Step 30 (M2): MatryoshkaTruncationCodec.**

@@ -657,6 +657,15 @@ source-revision policy, temporal and contradiction policy, traversal limits,
 access policy, query/answer set and evaluation procedure. AM-22 acceptance
 rejects a comparison whose digest differs, even when the corpus name matches.
 
+Lifecycle timings follow [`evaluation-roadmap.md`](evaluation-roadmap.md):
+acceptance, durable commit, derived-index readiness, and first search
+visibility are distinct events. The minimum mixed-workload scenario runs
+searches concurrently with insert/update/delete and rebuild, with the
+operation mix and thresholds locked before execution. It reports query/write
+p95/p99, visibility lag, backlog, restart behavior, and stale-generation or
+deleted-record resurrection. This is a planned M2 gate, not evidence that an
+external vector store is currently selected.
+
 ## 14. AM-23: Fail-Closed Memory Admission And External Materialization
 
 This capability has two independent gates. **Ingress preflight** decides
