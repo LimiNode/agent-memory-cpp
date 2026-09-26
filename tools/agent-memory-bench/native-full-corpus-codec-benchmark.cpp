@@ -466,7 +466,6 @@ LsqScoredRows score_lsq_gather(const LsqPayload& payload,
                                const float* query) {
   const auto begin = std::chrono::steady_clock::now();
   LsqScoredRows result;
-  result.top10 = exact_cosine_top10_lsq(payload, thq, ids, query);
   const auto rows = lsq_rows(payload, ids);
   double query_norm = 0.0;
   for (std::size_t d = 0; d < kDimension; ++d)
@@ -492,6 +491,7 @@ LsqScoredRows score_lsq_gather(const LsqPayload& payload,
         static_cast<double>(payload.norms[row]) * query_norm,
         std::numeric_limits<double>::min()));
   }
+  result.top10 = lsq_top10(ids, result.scores);
   result.score_ms = elapsed_ms(begin, std::chrono::steady_clock::now());
   return result;
 }

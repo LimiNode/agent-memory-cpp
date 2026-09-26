@@ -36,6 +36,8 @@ def main() -> None:
     parser.add_argument("--payload", type=Path)
     parser.add_argument("--receipt", type=Path)
     parser.add_argument("--native-jsonl", type=Path)
+    parser.add_argument("--run-receipt", type=Path)
+    parser.add_argument("--score-replay", type=Path)
     parser.add_argument("--materializer", type=Path)
     parser.add_argument("--native-runner", type=Path)
     parser.add_argument("--expected-pq-result", type=Path)
@@ -48,6 +50,8 @@ def main() -> None:
         return
     for value in (args.payload, args.receipt, args.native_jsonl,
                   args.materializer, args.native_runner,
+                  args.run_receipt,
+                  args.score_replay,
                   args.expected_pq_result, args.expected_tq_result, args.output):
         if value is None:
             parser.error("all audit paths are required")
@@ -57,6 +61,16 @@ def main() -> None:
     require(receipt["payload_sha256"] == sha256(args.payload), "payload hash mismatch")
     require(receipt["materializer_sha256"] == sha256(args.materializer),
             "materializer hash mismatch")
+    run_receipt = json.loads(args.run_receipt.read_text(encoding="utf-8"))
+    require(run_receipt.get("status") == "EXECUTED" and
+            run_receipt.get("runner_sha256") == sha256(args.native_runner) and
+            run_receipt.get("payload_sha256") == sha256(args.payload) and
+            run_receipt.get("native_jsonl_sha256") == sha256(args.native_jsonl),
+            "native execution receipt does not bind this run")
+    score_replay = json.loads(args.score_replay.read_text(encoding="utf-8"))
+    require(score_replay.get("status") == "PASS" and
+            score_replay.get("rows") == len(load_jsonl(args.native_jsonl)),
+            "independent packed-score replay did not pass")
     rows = load_jsonl(args.native_jsonl)
     require(len(rows) > 0 and len({int(row["query"]) for row in rows}) == len(rows),
             "native output must contain one row per query")
@@ -97,6 +111,10 @@ def main() -> None:
         "payload_sha256": receipt["payload_sha256"],
         "materializer_sha256": receipt["materializer_sha256"],
         "native_runner_sha256": sha256(args.native_runner),
+        "native_run_receipt_sha256": sha256(args.run_receipt),
+        "score_replay_sha256": sha256(args.score_replay),
+        "max_abs_tq_score_error": score_replay.get("max_abs_tq_score_error"),
+        "max_abs_pq8_score_error": score_replay.get("max_abs_pq8_score_error"),
         "native_jsonl_sha256": sha256(args.native_jsonl),
     }
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n",

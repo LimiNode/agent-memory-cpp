@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <cstring>
 #include <fstream>
+#include <iomanip>
 #include <iostream>
 #include <limits>
 #include <numeric>
@@ -99,8 +100,23 @@ Payload read_payload(const std::string& path) {
   copy(result.final_norms.data(), result.final_norms.size() * sizeof(float));
   copy(result.thq_centroids.data(), result.thq_centroids.size() * sizeof(float));
   copy(result.pq_centroids.data(), result.pq_centroids.size() * sizeof(float));
-  if (!std::is_sorted(result.ids.begin(), result.ids.end()))
-    throw std::runtime_error("TQ1/PQ8 payload IDs are not sorted");
+  if (!std::is_sorted(result.ids.begin(), result.ids.end()) ||
+      std::adjacent_find(result.ids.begin(), result.ids.end()) != result.ids.end())
+    throw std::runtime_error("TQ1/PQ8 payload IDs are not strictly sorted");
+  auto finite = [](const auto& values) {
+    for (const auto value : values)
+      if (!std::isfinite(static_cast<double>(value))) return false;
+    return true;
+  };
+  if (!finite(result.scales) || !finite(result.final_norms) ||
+      std::any_of(result.final_norms.begin(), result.final_norms.end(),
+                  [](float value) { return value <= 0.0F; }) ||
+      (result.has_tq_norm &&
+       (!finite(result.tq_norms) ||
+        std::any_of(result.tq_norms.begin(), result.tq_norms.end(),
+                    [](float value) { return value <= 0.0F; }))) ||
+      !finite(result.thq_centroids) || !finite(result.pq_centroids))
+    throw std::runtime_error("TQ1/PQ8 payload contains non-finite values");
   return result;
 }
 
@@ -272,6 +288,15 @@ void emit_ids(const std::vector<std::int32_t>& values) {
   std::cout << ']';
 }
 
+void emit_scores(const std::vector<Candidate>& values) {
+  std::cout << '[';
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    if (index != 0) std::cout << ',';
+    std::cout << std::setprecision(17) << values[index].score;
+  }
+  std::cout << ']';
+}
+
 double milliseconds(std::chrono::steady_clock::time_point begin,
                     std::chrono::steady_clock::time_point end) {
   return std::chrono::duration<double, std::milli>(end - begin).count();
@@ -294,6 +319,9 @@ int run_gate(int argc, char** argv) {
       thresholds.size() != kDimension * 3 || offsets.size() != query_count + 1 ||
       queries.size() != query_count * kDimension || side_bytes != expected_side_bytes)
     throw std::runtime_error("TQ1/PQ8 candidate gate shape differs");
+  if (offsets.front() != 0 ||
+      !std::is_sorted(offsets.begin(), offsets.end()))
+    throw std::runtime_error("candidate offsets are not monotonic from zero");
   std::size_t record_bytes = 0;
   for (const std::size_t width : {std::size_t{100}, std::size_t{148}})
     if (flat.size() % width == 0 && offsets.back() == flat.size() / width)
@@ -303,6 +331,9 @@ int run_gate(int argc, char** argv) {
   for (std::size_t index = 0; index < candidate_ids.size(); ++index)
     std::memcpy(&candidate_ids[index], flat.data() + index * record_bytes,
                 sizeof(std::int32_t));
+  for (const auto id : candidate_ids)
+    if (id < 0 || static_cast<std::size_t>(id) >= kDocuments)
+      throw std::runtime_error("candidate ID is outside the document corpus");
 
   for (std::size_t query_index = 0; query_index < query_count; ++query_index) {
     const auto* query = queries.data() + query_index * kDimension;
@@ -361,8 +392,8 @@ int run_gate(int argc, char** argv) {
       pq_scores.push_back({numerator / final_denominator, id});
     }
     const auto tq_top10 = payload.has_tq_norm
-        ? top_ids(std::move(tq_scores), 10, true) : std::vector<std::int32_t>{};
-    const auto pq_top10 = top_ids(std::move(pq_scores), 10, true);
+        ? top_ids(tq_scores, 10, true) : std::vector<std::int32_t>{};
+    const auto pq_top10 = top_ids(pq_scores, 10, true);
     const auto score_end = std::chrono::steady_clock::now();
 
     std::cout << "{\"query\":" << query_index << ",\"candidate_count\":"
@@ -373,6 +404,10 @@ int run_gate(int argc, char** argv) {
     emit_ids(tq_top10);
     std::cout << ",\"tq1_pq8_top10_ids\":";
     emit_ids(pq_top10);
+    std::cout << ",\"tq1_scores\":";
+    emit_scores(tq_scores);
+    std::cout << ",\"tq1_pq8_scores\":";
+    emit_scores(pq_scores);
     std::cout << ",\"timing_ms\":{\"thq4_prefilter\":"
               << milliseconds(coarse_begin, coarse_end)
               << ",\"query_prepare\":" << milliseconds(prepare_begin, prepare_end)

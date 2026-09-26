@@ -332,6 +332,9 @@ jobs:
           python tools/agent-memory-bench/run-thq-faiss-lsq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-faiss-lsq-replay.py --self-test
           python tools/agent-memory-bench/audit-native-tq1-pq-direct.py --self-test
+          python tools/agent-memory-bench/materialize-native-tq1-pq-payload.py --self-test
+          python tools/agent-memory-bench/write-native-tq1-pq-run-receipt.py --self-test
+          python tools/agent-memory-bench/replay-native-tq1-pq-scores.py --self-test
           python tools/agent-memory-bench/run-thq-official-rabitq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-official-rabitq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-rabitq-official-ip.py --self-test

@@ -50,16 +50,30 @@ def fit_centroids(train: np.ndarray, thresholds: np.ndarray) -> np.ndarray:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--documents", type=Path, required=True)
-    parser.add_argument("--train-vectors", type=Path, required=True)
-    parser.add_argument("--thresholds", type=Path, required=True)
-    parser.add_argument("--thq", type=Path, required=True)
-    parser.add_argument("--canonical-tq-payload", type=Path, required=True)
-    parser.add_argument("--pq-artifact", type=Path, required=True)
+    parser.add_argument("--documents", type=Path)
+    parser.add_argument("--train-vectors", type=Path)
+    parser.add_argument("--thresholds", type=Path)
+    parser.add_argument("--thq", type=Path)
+    parser.add_argument("--canonical-tq-payload", type=Path)
+    parser.add_argument("--pq-artifact", type=Path)
     parser.add_argument("--include-tq-norm", action="store_true")
-    parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--receipt", type=Path, required=True)
+    parser.add_argument("--output", type=Path)
+    parser.add_argument("--receipt", type=Path)
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
+
+    if args.self_test:
+        rotated = np.asarray([[-1.0e-7, 0.0, 1.0e-7]], dtype=np.float32)
+        expected = np.asarray([[False, False, True]], dtype=bool)
+        if not np.array_equal(rotated > 0.0, expected):
+            raise RuntimeError("TQ1 zero-boundary contract failed")
+        print("native TQ1 materializer self-test PASS")
+        return
+    required = (args.documents, args.train_vectors, args.thresholds, args.thq,
+                args.canonical_tq_payload, args.pq_artifact, args.output,
+                args.receipt)
+    if any(value is None for value in required):
+        parser.error("all materialization paths are required")
 
     documents = np.memmap(args.documents, mode="r", dtype="<f4",
                           shape=(1_000_000, D))
@@ -85,7 +99,9 @@ def main() -> None:
         residual_norms = np.linalg.norm(residual.astype(np.float64), axis=1).astype(np.float32)
         safe = np.where(residual_norms > 1e-12, residual_norms, 1.0).astype(np.float32)
         rotated = tq.rotate(residual) * (np.sqrt(float(D)) / safe)[:, None]
-        signs = rotated >= 0.0
+        # Canonical 1-bit TQ uses the strict zero boundary: zero maps to the
+        # negative centroid, matching np.sum(rotated > boundaries).
+        signs = rotated > 0.0
         packed_signs = np.packbits(signs, axis=1, bitorder="little")
         scales = (safe / np.sqrt(float(D))).astype(np.float32)
         scales[residual_norms <= 1e-12] = 0.0
