@@ -6,6 +6,13 @@
 
 Этот гайд существует как **operational decision matrix** для выбора Vector Store под конкретный workload. Не обзор алгоритмов, не benchmark suite, а engineering-решения вида «у меня 1M эмбеддингов с metadata filtering и частыми апдейтами — какую БД ставить».
 
+Архитектурный default самого `agent-memory-cpp` остаётся embedded MDBX:
+канонические записи, lifecycle, scope/authority checks и retrieval contract
+принадлежат библиотеке. Qdrant, Milvus, Weaviate, Chroma и Pinecone — только
+опциональные адаптеры и внешние comparison targets. Их operational profiles
+ниже не меняют нормативный выбор embedded storage и не являются результатами
+сравнительного benchmark'а.
+
 Cross-link на смежные гайды:
 
 - [`optimization-roadmap.md`](optimization-roadmap.md) — vector / binary / ANN optimisation, encoder registry, dense index modes (Exact / BinaryCandidateFilter / BinaryOnly / ApproximateVector).
@@ -252,7 +259,11 @@ Decision sub-matrix внутри §8:
 | Custom ann-параметры (m, efConstruction, k-means K) | ✅ полный контроль | ❌ managed скрывает параметры |
 | Embedding drift / re-indexing каждую неделю | ✅ scripted pipeline | ✅ managed handles |
 
-Практический default для `agent-memory-cpp`: **Qdrant self-host** для production workload'ов, **Chroma** для прототипов и learning, **Pinecone** только когда нет DevOps-команды.
+Это decision matrix для внешнего comparison/adaptor слоя, а не production
+default библиотеки. Для `agent-memory-cpp` основной путь — embedded MDBX;
+Qdrant self-host, Chroma и Pinecone могут рассматриваться только как
+workload-specific внешние варианты после matched benchmark по
+[`evaluation-roadmap.md`](evaluation-roadmap.md).
 
 ## §10. Open questions
 
