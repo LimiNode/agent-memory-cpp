@@ -60,6 +60,12 @@ metadata, response-cache invalidation and all stale/tool-call semantics. It may
 not write generated responses into canonical memory without an explicit normal
 write/curation path.
 
+The host semantic fallback contract, including bounded candidate/token/time
+budgets and `completed`/`unknown`/`failed`/`needs_review` outcomes, is defined
+in [`host-llm-cache-integration.md`](host-llm-cache-integration.md). This
+runtime roadmap only records provider-neutral context and revision metadata;
+it does not add a semantic worker, provider cache, SQLite queue, or model call.
+
 ### Historical Note
 
 Detailed provider-cache, response-cache and cache-augmented-generation designs

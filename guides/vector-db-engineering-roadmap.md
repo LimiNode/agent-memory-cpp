@@ -252,7 +252,15 @@ Decision sub-matrix внутри §8:
 | Custom ann-параметры (m, efConstruction, k-means K) | ✅ полный контроль | ❌ managed скрывает параметры |
 | Embedding drift / re-indexing каждую неделю | ✅ scripted pipeline | ✅ managed handles |
 
-Практический default для `agent-memory-cpp`: **Qdrant self-host** для production workload'ов, **Chroma** для прототипов и learning, **Pinecone** только когда нет DevOps-команды.
+Архитектурное направление `agent-memory-cpp`: **canonical storage remains
+local/embedded** for the first-party deployment. MDBX is the planned/reference
+production storage implementation, not a mandatory persistence substrate:
+core contracts remain backend-independent and a future host-managed profile may
+replace canonical storage through an explicit adapter. External vector stores
+are optional derived-index adapters and comparison targets. The current
+compile-time default remains `AGENT_MEMORY_ENABLE_MDBX=OFF`; enabling MDBX is an
+explicit build choice. Qdrant self-host, Chroma and Pinecone are
+deployment-specific adapter candidates, not project defaults.
 
 ## §10. Open questions
 
@@ -270,6 +278,12 @@ Decision sub-matrix внутри §8:
 - **Феоктистов Станислав (AIRnD, 2025). "Инженерный взгляд на RAG: сравнение векторных баз и алгоритмов."** Доклад на канале «Клуб разработчиков СПб» (devclubspb). URL: <https://www.youtube.com/watch?v=v-EX_AYdolE>. Покрывает: scalar vs product quantisation (4× vs ~96×), HNSW vs IVF vs ANNOY tradeoff, Chroma / Qdrant / Milvus / Pinecone / Weaviate comparison, три практических кейса (NoteBase startup, Old Russian metric books, product catalog с high QPS).
 - **Jégou, Hervé; Douze, Matthijs; Schmid, Cordelia (2011); Johnson, Jeff; Douze, Matthijs; Jégou, Hervé (2017). "Billion-scale similarity search with GPUs."** arXiv:1702.08734 (FAISS). URL: <https://arxiv.org/abs/1702.08734>. Product Quantisation + asymmetric ADC distance.
 - **Официальные сайты Vector Store:** <https://www.trychroma.com/>, <https://qdrant.tech/>, <https://milvus.io/>, <https://www.pinecone.io/>, <https://weaviate.io/>.
+- **Belyanin, Georgiy (2026).** "Сравнение Tarantool, USearch, Qdrant и
+  pgvector" (Habr): <https://habr.com/ru/companies/vktech/articles/1080978/>.
+  The checked benchmark snapshot is a protocol reference, not an acceptance
+  threshold: the article does not publish numeric recall, the pinned public
+  branch contains no committed experiment configuration/results, and its common
+  batch abstraction hides different physical write paths.
 
 ### 9.2. Internal notes (ai-agent-playbook)
 

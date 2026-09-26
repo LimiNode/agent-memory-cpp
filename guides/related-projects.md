@@ -76,7 +76,7 @@ Disclaimer:
   - vs FAISS: BinaryOnlyIndex vs FAISS IndexBinaryFlat + IVF.
   - vs hnswlib: HnswVectorIndex (своя impl или adapter) vs hnswlib as reference HNSW implementation. Ground truth для ANN evaluation = ExactVectorIndex или FAISS IndexFlatL2 (per dataset).
   - vs sqlite-vec: ExactVectorIndex vs sqlite-vec на SQLite (как reference embedded vector search).
-  - vs USearch: HnswVectorIndex vs USearch на тех же datasets (Recall@K curves).
+  - vs USearch: HnswVectorIndex vs USearch на тех же datasets (Recall@K curves). Run this as a matched external comparison under [`evaluation-roadmap.md`](evaluation-roadmap.md): report exact-oracle Recall@K and qrels nDCG@10 beside kernel, embedded, and (if applicable) client/server latency. Record actual HNSW parameters, thread/concurrency settings, batch size, returned payload, and cold/warm procedure; compare measured quality frontiers rather than advertised speedups.
 
 **BM25 search:**
   - vs Tantivy (Rust) или Lucene (Java, JVM overhead отдельно): BM25 scoring throughput per document.
@@ -95,6 +95,18 @@ Disclaimer:
     unused DBIs. Реальный выигрыш зависит от конкретного profile config.
   - Latency: гипотеза для validation. Zero-copy mmap + per-stack tuning могут помочь,
     но benchmark decides.
+
+### Reference note: external vector-store benchmark article
+
+The Habr article ["Сравнение векторных баз и алгоритмов"](<https://habr.com/ru/companies/vktech/articles/1080978/>) is useful as a prompt for measuring the full storage/update/search cycle, but it is not an acceptance baseline. The checked benchmark sources are pinned to revision [`4466dfc`](<https://github.com/georgiy-belyanin/vector-db-benchmark/tree/4466dfc9e870c6d4cfd99977ddc8f7f428bcbf13>) for source inspection only.
+
+The article does not publish numeric recall results, its loading paths are not
+matched (Tarantool uses one record per `insert`, while Qdrant uses batch
+`upsert`), and the published run does not identify an immutable commit for the
+exact data collection. Its speed multipliers therefore do not become project
+thresholds. Any follow-up comparison uses the protocol in
+[`evaluation-roadmap.md`](evaluation-roadmap.md) and keeps embedded MDBX and
+optional external adapters in the same quality/latency table.
 
 ## 6. Architecture inspiration notes (что позаимствовать из каждого)
 
