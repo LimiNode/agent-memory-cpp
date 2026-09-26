@@ -38,6 +38,12 @@ struct LsqPayload {
   std::vector<float> norms;
   std::size_t serialized_bytes = 0;
 };
+struct LsqScoredRows {
+  std::vector<DenseCandidate> top10;
+  std::vector<double> scores;
+  double prepare_ms = 0.0;
+  double score_ms = 0.0;
+};
 bool better(const Candidate& a, const Candidate& b) {
   return a.score < b.score || (a.score == b.score && a.id < b.id);
 }
@@ -347,6 +353,149 @@ std::vector<DenseCandidate> exact_cosine_top10_lsq(
   return scored;
 }
 
+std::vector<std::size_t> lsq_rows(const LsqPayload& payload,
+                                  const std::vector<std::int32_t>& ids) {
+  std::vector<std::size_t> rows;
+  rows.reserve(ids.size());
+  for (const auto id : ids) {
+    const auto position = std::lower_bound(payload.ids.begin(), payload.ids.end(), id);
+    if (position == payload.ids.end() || *position != id)
+      throw std::runtime_error("LSQ payload is missing candidate document");
+    rows.push_back(static_cast<std::size_t>(position - payload.ids.begin()));
+  }
+  return rows;
+}
+
+std::vector<DenseCandidate> lsq_top10(const std::vector<std::int32_t>& ids,
+                                      const std::vector<double>& scores) {
+  if (ids.size() != scores.size()) throw std::runtime_error("LSQ score count differs");
+  std::vector<DenseCandidate> ranked;
+  ranked.reserve(ids.size());
+  for (std::size_t i = 0; i < ids.size(); ++i) ranked.push_back({scores[i], ids[i]});
+  const auto limit = std::min<std::size_t>(10, ranked.size());
+  std::partial_sort(ranked.begin(), ranked.begin() + limit, ranked.end(),
+                    better_dense_desc);
+  ranked.resize(limit);
+  return ranked;
+}
+
+std::array<double, kThqBytes * 256> build_thq_dot_byte_lut(
+    const LsqPayload& payload, const float* query) {
+  std::array<double, kThqBytes * 256> lut{};
+  for (std::size_t byte = 0; byte < kThqBytes; ++byte) {
+    for (std::size_t packed = 0; packed < 256; ++packed) {
+      double dot = 0.0;
+      for (std::size_t lane = 0; lane < 4; ++lane) {
+        const auto dimension = byte * 4 + lane;
+        const auto level = (packed >> (lane * 2)) & 3U;
+        dot += static_cast<double>(payload.centroids[dimension * 4 + level]) *
+               query[dimension];
+      }
+      lut[byte * 256 + packed] = dot;
+    }
+  }
+  return lut;
+}
+
+LsqScoredRows score_lsq_lut(const LsqPayload& payload,
+                            const std::vector<std::uint8_t>& thq,
+                            const std::vector<std::int32_t>& ids,
+                            const float* query, bool sparse) {
+  const auto rows = lsq_rows(payload, ids);
+  double query_norm = 0.0;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    query_norm += static_cast<double>(query[d]) * query[d];
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<double>::min()));
+
+  const auto prepare_begin = std::chrono::steady_clock::now();
+  const auto base_lut = build_thq_dot_byte_lut(payload, query);
+  const double missing = std::numeric_limits<double>::quiet_NaN();
+  std::vector<double> stage_lut(payload.stages * 256ULL, missing);
+  for (std::size_t stage = 0; stage < payload.stages; ++stage) {
+    std::array<bool, 256> used{};
+    if (sparse) {
+      for (const auto row : rows)
+        used[payload.codes[row * payload.stages + stage]] = true;
+    } else {
+      used.fill(true);
+    }
+    for (std::size_t code = 0; code < 256; ++code) {
+      if (!used[code]) continue;
+      const auto* book = payload.codebooks.data() +
+                         (stage * 256ULL + code) * kDimension;
+      double dot = 0.0;
+      for (std::size_t d = 0; d < kDimension; ++d)
+        dot += static_cast<double>(book[d]) * query[d];
+      stage_lut[stage * 256 + code] = dot;
+    }
+  }
+  const auto prepare_end = std::chrono::steady_clock::now();
+
+  LsqScoredRows result;
+  result.scores.reserve(ids.size());
+  const auto score_begin = std::chrono::steady_clock::now();
+  for (std::size_t i = 0; i < ids.size(); ++i) {
+    const auto id = ids[i];
+    const auto row = rows[i];
+    const auto* thq_row = thq.data() + static_cast<std::size_t>(id) * kThqBytes;
+    const auto* code = payload.codes.data() + row * payload.stages;
+    double dot = 0.0;
+    for (std::size_t byte = 0; byte < kThqBytes; ++byte)
+      dot += base_lut[byte * 256 + thq_row[byte]];
+    for (std::size_t stage = 0; stage < payload.stages; ++stage) {
+      const double contribution = stage_lut[stage * 256 + code[stage]];
+      if (!std::isfinite(contribution))
+        throw std::runtime_error("sparse LSQ LUT misses a used codeword");
+      dot += contribution;
+    }
+    const double denominator = std::max(
+        static_cast<double>(payload.norms[row]) * query_norm,
+        std::numeric_limits<double>::min());
+    result.scores.push_back(dot / denominator);
+  }
+  const auto score_end = std::chrono::steady_clock::now();
+  result.top10 = lsq_top10(ids, result.scores);
+  result.prepare_ms = elapsed_ms(prepare_begin, prepare_end);
+  result.score_ms = elapsed_ms(score_begin, score_end);
+  return result;
+}
+
+LsqScoredRows score_lsq_gather(const LsqPayload& payload,
+                               const std::vector<std::uint8_t>& thq,
+                               const std::vector<std::int32_t>& ids,
+                               const float* query) {
+  const auto begin = std::chrono::steady_clock::now();
+  LsqScoredRows result;
+  result.top10 = exact_cosine_top10_lsq(payload, thq, ids, query);
+  const auto rows = lsq_rows(payload, ids);
+  double query_norm = 0.0;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    query_norm += static_cast<double>(query[d]) * query[d];
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<double>::min()));
+  result.scores.reserve(ids.size());
+  for (std::size_t i = 0; i < ids.size(); ++i) {
+    const auto row = rows[i];
+    const auto* code = payload.codes.data() + row * payload.stages;
+    const auto* thq_row = thq.data() + static_cast<std::size_t>(ids[i]) * kThqBytes;
+    double dot = 0.0;
+    for (std::size_t d = 0; d < kDimension; ++d) {
+      const auto level = (thq_row[d / 4] >> ((d % 4) * 2)) & 3U;
+      dot += static_cast<double>(payload.centroids[d * 4 + level]) * query[d];
+    }
+    for (std::size_t stage = 0; stage < payload.stages; ++stage) {
+      const auto* book = payload.codebooks.data() +
+                         (stage * 256ULL + code[stage]) * kDimension;
+      for (std::size_t d = 0; d < kDimension; ++d)
+        dot += static_cast<double>(book[d]) * query[d];
+    }
+    result.scores.push_back(dot / std::max(
+        static_cast<double>(payload.norms[row]) * query_norm,
+        std::numeric_limits<double>::min()));
+  }
+  result.score_ms = elapsed_ms(begin, std::chrono::steady_clock::now());
+  return result;
+}
+
 int run_lsq_candidate_gate(int argc, char** argv) {
   if (argc != 10)
     throw std::runtime_error("usage: benchmark --lsq-candidate-gate thq thresholds model candidate_flat offsets query_file query_count payload_bytes");
@@ -365,11 +514,14 @@ int run_lsq_candidate_gate(int argc, char** argv) {
   if (queries.size() != query_count * kDimension)
     throw std::runtime_error("LSQ candidate query shape differs");
   std::vector<std::int32_t> candidate_ids;
-  if (flat.size() % kCandidateRecordBytes == 0 &&
-      offsets.back() == flat.size() / kCandidateRecordBytes) {
-    candidate_ids.resize(flat.size() / kCandidateRecordBytes);
+  std::size_t candidate_record_bytes = 0;
+  for (const std::size_t width : {std::size_t{100}, kCandidateRecordBytes})
+    if (flat.size() % width == 0 && offsets.back() == flat.size() / width)
+      candidate_record_bytes = width;
+  if (candidate_record_bytes != 0) {
+    candidate_ids.resize(flat.size() / candidate_record_bytes);
     for (std::size_t i = 0; i < candidate_ids.size(); ++i)
-      std::memcpy(&candidate_ids[i], flat.data() + i * kCandidateRecordBytes,
+      std::memcpy(&candidate_ids[i], flat.data() + i * candidate_record_bytes,
                   sizeof(std::int32_t));
   } else if (flat.size() % sizeof(std::int32_t) == 0 &&
              offsets.back() == flat.size() / sizeof(std::int32_t)) {
@@ -395,8 +547,22 @@ int run_lsq_candidate_gate(int argc, char** argv) {
     coarse_ids.reserve(coarse.size());
     for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
     const auto codec_begin = std::chrono::steady_clock::now();
-    const auto reranked = exact_cosine_top10_lsq(payload, thq, coarse_ids, query);
+    const auto gather = score_lsq_gather(payload, thq, coarse_ids, query);
+    const auto full_lut = score_lsq_lut(payload, thq, coarse_ids, query, false);
+    const auto sparse_lut = score_lsq_lut(payload, thq, coarse_ids, query, true);
     const auto codec_end = std::chrono::steady_clock::now();
+    if (gather.top10.size() != full_lut.top10.size() ||
+        gather.top10.size() != sparse_lut.top10.size())
+      throw std::runtime_error("LSQ scorer top10 cardinality differs");
+    double full_error = 0.0, sparse_error = 0.0;
+    for (std::size_t i = 0; i < gather.scores.size(); ++i) {
+      full_error = std::max(full_error, std::abs(gather.scores[i] - full_lut.scores[i]));
+      sparse_error = std::max(sparse_error, std::abs(gather.scores[i] - sparse_lut.scores[i]));
+    }
+    for (std::size_t i = 0; i < gather.top10.size(); ++i)
+      if (gather.top10[i].id != full_lut.top10[i].id ||
+          gather.top10[i].id != sparse_lut.top10[i].id)
+        throw std::runtime_error("LSQ scorer ordered top10 parity differs");
     auto emit_ids = [](const auto& values) {
       std::cout << '[';
       for (std::size_t i = 0; i < values.size(); ++i) {
@@ -412,16 +578,27 @@ int run_lsq_candidate_gate(int argc, char** argv) {
               << ",\"thq4_top128_ids\":";
     emit_ids(coarse);
     std::cout << ",\"top10_ids\":";
-    emit_ids(reranked);
+    emit_ids(gather.top10);
+    std::cout << ",\"full_lut_top10_ids\":";
+    emit_ids(full_lut.top10);
+    std::cout << ",\"sparse_lut_top10_ids\":";
+    emit_ids(sparse_lut.top10);
     std::cout << ",\"timing_ms\":{\"thq4_prefilter\":"
-              << elapsed_ms(thq_begin, thq_end) << ",\"codec_rerank\":"
-              << elapsed_ms(codec_begin, codec_end) << ",\"total\":"
+              << elapsed_ms(thq_begin, thq_end) << ",\"gather_dot\":"
+              << gather.score_ms << ",\"full_lut_prepare\":" << full_lut.prepare_ms
+              << ",\"full_lut_score\":" << full_lut.score_ms
+              << ",\"sparse_lut_prepare\":" << sparse_lut.prepare_ms
+              << ",\"sparse_lut_score\":" << sparse_lut.score_ms
+              << ",\"all_codec_variants\":" << elapsed_ms(codec_begin, codec_end)
+              << ",\"total\":"
               << elapsed_ms(thq_begin, codec_end) << "},\"thq_pages\":"
               << thq_pages << ",\"codec_pages\":" << codec_pages
               << ",\"model_pages\":" << model_pages
               << ",\"full_corpus_codec_pages\":" << full_corpus_lsq_pages(payload)
               << ",\"codec_layout\":\"candidate_local_packed_rows\""
-              << ",\"logical_payload_bytes\":" << payload_bytes << "}\n";
+              << ",\"logical_payload_bytes\":" << payload_bytes
+              << ",\"max_abs_score_error\":{\"full_lut\":" << full_error
+              << ",\"sparse_lut\":" << sparse_error << "}}\n";
   }
   std::cerr << "{\"queries\":" << query_count
             << ",\"timing_scope\":\"native THQ byte-LUT plus direct compressed LSQ cosine scorer; FP32 final norm sidecar included\"}\n";
@@ -964,6 +1141,41 @@ int main(int argc, char** argv) {
         lsq_model_pages(page_payload) != 3074 ||
         full_corpus_lsq_pages(page_payload) != 8790)
       throw std::runtime_error("packed LSQ page accounting differs");
+    LsqPayload scorer_payload;
+    scorer_payload.stages = 2;
+    scorer_payload.dimensions = kDimension;
+    scorer_payload.ids.resize(16);
+    std::iota(scorer_payload.ids.begin(), scorer_payload.ids.end(), 0);
+    scorer_payload.codes.resize(16 * scorer_payload.stages);
+    scorer_payload.codebooks.resize(scorer_payload.stages * 256ULL * kDimension);
+    scorer_payload.centroids.resize(4 * kDimension);
+    scorer_payload.norms.resize(16, 1.0f);
+    for (std::size_t i = 0; i < scorer_payload.codes.size(); ++i)
+      scorer_payload.codes[i] = static_cast<std::uint8_t>((i * 17) & 255U);
+    for (std::size_t i = 0; i < scorer_payload.codebooks.size(); ++i)
+      scorer_payload.codebooks[i] = static_cast<float>((static_cast<int>(i % 23) - 11) * 0.0001);
+    for (std::size_t i = 0; i < scorer_payload.centroids.size(); ++i)
+      scorer_payload.centroids[i] = static_cast<float>((static_cast<int>(i % 13) - 6) * 0.001);
+    std::vector<std::uint8_t> scorer_thq(16 * kThqBytes);
+    for (std::size_t i = 0; i < scorer_thq.size(); ++i)
+      scorer_thq[i] = static_cast<std::uint8_t>((i * 29) & 255U);
+    std::vector<std::int32_t> scorer_ids(16);
+    std::iota(scorer_ids.begin(), scorer_ids.end(), 0);
+    const auto gather = score_lsq_gather(scorer_payload, scorer_thq, scorer_ids,
+                                         query.data());
+    const auto full = score_lsq_lut(scorer_payload, scorer_thq, scorer_ids,
+                                    query.data(), false);
+    const auto sparse = score_lsq_lut(scorer_payload, scorer_thq, scorer_ids,
+                                      query.data(), true);
+    for (std::size_t i = 0; i < gather.scores.size(); ++i) {
+      if (std::abs(gather.scores[i] - full.scores[i]) > 1e-12 ||
+          std::abs(gather.scores[i] - sparse.scores[i]) > 1e-12)
+        throw std::runtime_error("LSQ LUT score parity differs");
+    }
+    for (std::size_t i = 0; i < gather.top10.size(); ++i)
+      if (gather.top10[i].id != full.top10[i].id ||
+          gather.top10[i].id != sparse.top10[i].id)
+        throw std::runtime_error("LSQ LUT top10 parity differs");
     std::cout << "native-full-corpus-codec-benchmark self-test PASS\n";
     return 0;
   }

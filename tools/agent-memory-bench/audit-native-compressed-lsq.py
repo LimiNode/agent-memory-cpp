@@ -57,10 +57,15 @@ def main() -> None:
     native_rows = [json.loads(line) for line in args.native_jsonl.read_text(encoding="utf-8").splitlines() if line.strip()]
     if len(native_rows) != len(source_rows) or sorted(int(row["query"]) for row in native_rows) != sorted(source_rows):
         raise RuntimeError("native/source query cardinality differs")
-    flat = np.fromfile(args.candidate_flat, dtype="<i4")
     offsets = np.fromfile(args.candidate_offsets, dtype="<u8")
-    if len(offsets) != len(native_rows) + 1 or int(offsets[-1]) != len(flat):
+    raw_flat = args.candidate_flat.read_bytes()
+    record_bytes = next((width for width in (4, 100, 148)
+                         if len(raw_flat) % width == 0 and
+                         int(offsets[-1]) == len(raw_flat) // width), None)
+    if len(offsets) != len(native_rows) + 1 or record_bytes is None:
         raise RuntimeError("candidate stream offsets differ")
+    records = np.frombuffer(raw_flat, dtype=np.uint8).reshape(-1, record_bytes)
+    flat = records[:, :4].copy().view("<i4").reshape(-1)
 
     payload = args.payload.read_bytes()
     if payload[:7] != b"AMLSQ01":
@@ -75,18 +80,34 @@ def main() -> None:
     full_corpus_pages = (DOCUMENTS * stages + PAGE - 1) // PAGE + (DOCUMENTS * 4 + PAGE - 1) // PAGE
 
     ordered_top10 = set_top10 = ordered_thq = set_thq = 0
-    timings: dict[str, list[float]] = {"thq4_prefilter": [], "codec_rerank": [], "total": []}
+    timing_names = ("thq4_prefilter", "gather_dot", "full_lut_prepare",
+                    "full_lut_score", "sparse_lut_prepare",
+                    "sparse_lut_score", "all_codec_variants", "total")
+    timings: dict[str, list[float]] = {name: [] for name in timing_names}
+    full_lut_parity = sparse_lut_parity = 0
+    max_full_error = max_sparse_error = 0.0
     codec_page_values: list[int] = []
     thq_page_values: list[int] = []
     for native in native_rows:
         query = int(native["query"])
         source_row = source_rows[query]
         native_top10 = [int(value) for value in native["top10_ids"]]
+        full_lut_top10 = [int(value) for value in native["full_lut_top10_ids"]]
+        sparse_lut_top10 = [int(value) for value in native["sparse_lut_top10_ids"]]
         native_thq = [int(value) for value in native["thq4_top128_ids"]]
         ordered_top10 += int(native_top10 == [int(value) for value in source_row["top10_ids"]])
         set_top10 += int(set(native_top10) == set(int(value) for value in source_row["top10_ids"]))
         ordered_thq += int(native_thq == [int(value) for value in source_row["thq4_top128_ids"]])
         set_thq += int(set(native_thq) == set(int(value) for value in source_row["thq4_top128_ids"]))
+        full_lut_parity += int(full_lut_top10 == native_top10)
+        sparse_lut_parity += int(sparse_lut_top10 == native_top10)
+        full_error = float(native["max_abs_score_error"]["full_lut"])
+        sparse_error = float(native["max_abs_score_error"]["sparse_lut"])
+        if (not np.isfinite(full_error) or not np.isfinite(sparse_error) or
+                full_error > 1e-10 or sparse_error > 1e-10):
+            raise RuntimeError(f"LSQ LUT numerical parity differs at query {query}")
+        max_full_error = max(max_full_error, full_error)
+        max_sparse_error = max(max_sparse_error, sparse_error)
         begin, end = int(offsets[query]), int(offsets[query + 1])
         if int(native["candidate_count"]) != end - begin or not set(native_thq).issubset(set(flat[begin:end].tolist())):
             raise RuntimeError(f"candidate stream mismatch at query {query}")
@@ -107,9 +128,11 @@ def main() -> None:
         thq_page_values.append(int(native["thq_pages"]))
 
     audit = {
-        "schema_version": 1,
+        "schema_version": 2,
         "family": "thq_native_compressed_lsq_audit_v1",
-        "status": "PASS" if ordered_top10 == set_top10 == set_thq == len(native_rows) else "PASS_WITH_TIE_ORDER_DIAGNOSTIC",
+        "status": "PASS" if (ordered_top10 == set_top10 == set_thq ==
+                              full_lut_parity == sparse_lut_parity == len(native_rows))
+                  else "PASS_WITH_TIE_ORDER_DIAGNOSTIC",
         "source_binding": True,
         "native_jsonl_sha256": sha256(args.native_jsonl),
         "source_result_sha256": sha256(args.source_result),
@@ -124,13 +147,17 @@ def main() -> None:
         "set_top10_parity": set_top10 / len(native_rows),
         "ordered_thq_top128_parity": ordered_thq / len(native_rows),
         "set_thq_top128_parity": set_thq / len(native_rows),
+        "full_lut_ordered_top10_parity": full_lut_parity / len(native_rows),
+        "sparse_lut_ordered_top10_parity": sparse_lut_parity / len(native_rows),
+        "max_abs_score_error": {"full_lut": max_full_error,
+                                "sparse_lut": max_sparse_error},
         "timing_ms": {name: {"mean": float(np.mean(values)), **quantiles(values)} for name, values in timings.items()},
         "codec_pages_mean": float(np.mean(codec_page_values)),
         "thq_pages_mean": float(np.mean(thq_page_values)),
         "model_pages": model_pages,
         "full_corpus_codec_pages": full_corpus_pages,
         "codec_layout": "candidate_local_packed_rows",
-        "checks": ["source top10 parity", "THQ retained-set parity", "candidate stream binding", "packed-row codec pages", "shared-model pages", "full-corpus hypothetical pages", "finite timing rows"],
+        "checks": ["source top10 parity", "THQ retained-set parity", "candidate stream binding", "gather/full/sparse ordered-top10 parity", "full/sparse numerical parity", "packed-row codec pages", "shared-model pages", "full-corpus hypothetical pages", "finite timing rows"],
         "limitations": ["candidate-local frozen R4 stream, not a full-corpus serving replay", "two ordered THQ mismatches are ordering-only numerical/accumulation differences with set parity 152/152; equal-score identity was not independently established", "native timing is scalar C++ on one host; no OS page-latency claim"],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

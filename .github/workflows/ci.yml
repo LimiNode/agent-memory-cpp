@@ -190,6 +190,7 @@ jobs:
           agent-memory-neuroute-record-codec-contract
           agent-memory-neuroute-final-representation
           agent-memory-native-full-corpus-codec-benchmark
+          agent-memory-native-tq1-pq-direct-benchmark
           agent-memory-thq-fastscan-kernel-benchmark
           agent-memory-thq-fastscan-v3-benchmark
 
@@ -200,6 +201,7 @@ jobs:
           ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-record-codec-contract --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-neuroute-final-representation --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-native-full-corpus-codec-benchmark --self-test
+          ./build-r4/tools/agent-memory-bench/agent-memory-native-tq1-pq-direct-benchmark --self-test
           ./build-r4/tools/agent-memory-bench/agent-memory-thq-fastscan-v3-benchmark --self-test
 
       - name: Run R4 native self-test (Windows)
@@ -209,6 +211,7 @@ jobs:
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-record-codec-contract.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-neuroute-final-representation.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-native-full-corpus-codec-benchmark.exe --self-test
+          .\build-r4\tools\agent-memory-bench\Release\agent-memory-native-tq1-pq-direct-benchmark.exe --self-test
           .\build-r4\tools\agent-memory-bench\Release\agent-memory-thq-fastscan-v3-benchmark.exe --self-test
 
       - name: Exercise R4 dense closure contracts
@@ -328,6 +331,7 @@ jobs:
           python tools/agent-memory-bench/audit-thq-faiss-rq-replay.py --self-test
           python tools/agent-memory-bench/run-thq-faiss-lsq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-faiss-lsq-replay.py --self-test
+          python tools/agent-memory-bench/audit-native-tq1-pq-direct.py --self-test
           python tools/agent-memory-bench/run-thq-official-rabitq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-official-rabitq-replay.py --self-test
           python tools/agent-memory-bench/audit-thq-rabitq-official-ip.py --self-test
