@@ -73,10 +73,26 @@ def ndcg10(ids: np.ndarray, grades: dict[int, float]) -> float:
     return float(np.sum(gains / np.log2(np.arange(2, 2 + len(gains))) / denom)) if denom else 0.0
 
 
+def validate_codes(codes: np.ndarray, stages: int, document_count: int) -> None:
+    if codes.dtype != np.uint8 or codes.shape != (stages, document_count) or np.any(codes >= 256):
+        raise RuntimeError("persisted QINCo2 uint8 code shape/cardinality mismatch")
+
+
 def self_test() -> None:
     codes = np.zeros((4, 16), dtype=np.uint8)
-    if codes.shape != (4, 16) or codes.dtype != np.uint8 or np.any(codes >= 256):
-        raise RuntimeError("QINCo2 audit uint8 contract self-test failed")
+    validate_codes(codes, 4, 16)
+    try:
+        validate_codes(codes.astype(np.uint16), 4, 16)
+        raise RuntimeError("QINCo2 audit malformed dtype was accepted")
+    except RuntimeError as exc:
+        if "malformed" in str(exc):
+            raise
+    try:
+        validate_codes(np.zeros((4, 15), dtype=np.uint8), 4, 16)
+        raise RuntimeError("QINCo2 audit malformed shape was accepted")
+    except RuntimeError as exc:
+        if "malformed" in str(exc):
+            raise
     if unpack(np.zeros((1, THQ_BYTES), dtype=np.uint8)).shape != (1, D):
         raise RuntimeError("QINCo2 THQ unpack self-test failed")
     print("audit-thq-qinco2-official-replay self-test: PASS")
@@ -118,8 +134,9 @@ def main() -> None:
     unique_ids = np.asarray(artifact["unique_ids"], dtype=np.int64)
     codes = np.asarray(artifact["codes"])
     final_norms = np.asarray(artifact["final_norms"], dtype=np.float32)
-    if codes.dtype != np.uint8 or codes.shape != (int(params["M"]), len(unique_ids)) or np.any(codes >= 256) or len(selected) != QUERY_COUNT:
-        raise RuntimeError("persisted QINCo2 uint8 code shape/cardinality mismatch")
+    validate_codes(codes, int(params["M"]), len(unique_ids))
+    if len(selected) != QUERY_COUNT:
+        raise RuntimeError("persisted QINCo2 selected-id cardinality mismatch")
     if final_norms.shape != (len(unique_ids),) or not np.isfinite(final_norms).all() or np.any(final_norms <= 0):
         raise RuntimeError("persisted QINCo2 final-norm sidecar mismatch")
     candidate_ids, offsets = load_candidates(a.candidate_flat, a.candidate_raw, a.candidate_receipt)
