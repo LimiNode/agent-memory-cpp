@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import tempfile
 from pathlib import Path
 
 
@@ -14,6 +15,24 @@ def sha256(path: Path) -> str:
         for chunk in iter(lambda: stream.read(1 << 20), b""):
             digest.update(chunk)
     return digest.hexdigest()
+
+def require(condition: bool, message: str) -> None:
+    if not condition:
+        raise RuntimeError(message)
+
+def self_test() -> None:
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        source = root / "source"
+        source.write_bytes(b"immutable-input")
+        value = {"sha256": sha256(source), "argv": ["--candidate-gate", "payload"]}
+        require(value["sha256"] == sha256(source), "receipt synthetic PASS failed")
+        source.write_bytes(b"mutated-input")
+        require(value["sha256"] != sha256(source), "receipt mutation was accepted")
+        value["argv"].append("--mutated")
+        require(value["argv"] != ["--candidate-gate", "payload"],
+                "receipt argv mutation was accepted")
+    print("native TQ1/PQ8 run-receipt self-test PASS")
 
 
 def main() -> None:
@@ -34,7 +53,7 @@ def main() -> None:
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
-        print("native TQ1/PQ8 run-receipt self-test PASS")
+        self_test()
         return
     if args.runner_binary is None or args.build_manifest is None:
         parser.error("--runner-binary and --build-manifest are required for executed receipts")
