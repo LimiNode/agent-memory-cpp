@@ -42,6 +42,31 @@ emission. These attempts produce no quality claim and no replay receipt. They
 are recorded so a future scheduled batch run cannot be mistaken for missing
 work or silently substituted with a compact synthetic result.
 
+## Official Faiss OPQ/PQ control (executed)
+
+The canonical 152-query split was replayed with Faiss `OPQMatrix(384, 32)`
+and 4-bit `ProductQuantizer`, using `niter=50`, `niter_pq=40`,
+`niter_pq_0=40`, and PQ k-means `40`. The fitted model was persisted before
+the scoring pass and then reloaded for a second deterministic score replay.
+The source-bound candidate-local result is:
+
+| arm | payload | mean qrels nDCG@10 | candidate union |
+| --- | ---: | ---: | ---: |
+| official Faiss OPQ32x4 | 16 B | 0.6616096795 | 18,362 |
+
+Result SHA-256 is
+`2f8604ed4017d7f9589ea8995471d312d5eb0064140dede919def75d025ab89d` and
+model SHA-256 is
+`d211a7e2b5fd30608d7075889eea31451723326cf5abfd48201664b5ee2464a7`.
+This is an executed fidelity control, not a production claim: it is
+candidate-local, has no native latency/page evidence, and its fit wall time is
+not recorded because the first fit completed before the model-replay wrapper
+was corrected. The quality result is nevertheless bound to the persisted
+rotation/codebooks and exact source hashes.
+The independent persisted-model audit is `audit-thq-faiss-opq-control.py` and
+passes shape, finiteness, orthogonality, row-cardinality, configuration, and
+model-hash checks.
+
 ## Final serving gate
 
 After the controls converge, freeze only Pareto finalists and run one fresh
