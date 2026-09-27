@@ -25,6 +25,14 @@ paper control `0.025`) and the scheduler LR-floor variant. If an official
 pretrained checkpoint can be materialized, it is an additional sanity arm, not
 a substitute for the matched training control.
 
+RSLM1 uses the official 4D `C4D` codebook: 96 four-dimensional symbols are
+packed as 48 bytes, followed by the 2-byte inner UE7M9 scale. In relative mode
+the full-vector reconstruction scale adds another 2 bytes, so the residual
+codec side is 52 B and the THQ4 cascade total is 148 B. RSLM1 is included in
+the same source-bound materializer and sample replay audit as RSLM2/3/4; its
+presence does not by itself provide native latency or production-selection
+evidence.
+
 ## Fail-closed interpretation
 
 The existing LSQ multi-seed artifacts are source-bound and audit-PASS, but they

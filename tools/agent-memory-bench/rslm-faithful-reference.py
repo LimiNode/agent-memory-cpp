@@ -55,6 +55,22 @@ C4D = np.asarray(list(zip(
     [0.619376,-0.002269,0.485405,1.624921,-0.769526,0.904128,-0.835606,-1.482903,-0.842221,-1.121391,0.266300,0.225374,-0.418472,0.582220,-0.070251,0.860906])), dtype=np.float32)
 
 
+def _pack_nibbles(symbols: np.ndarray) -> np.ndarray:
+    """Pack two 4-bit symbols per byte, low nibble first."""
+    symbols = np.asarray(symbols, dtype=np.uint8)
+    if symbols.shape[1] % 2:
+        symbols = np.pad(symbols, ((0, 0), (0, 1)))
+    return (symbols[:, 0::2] | (symbols[:, 1::2] << 4)).astype(np.uint8)
+
+
+def _unpack_nibbles(packed: np.ndarray, count: int) -> np.ndarray:
+    packed = np.asarray(packed, dtype=np.uint8)
+    symbols = np.empty((len(packed), packed.shape[1] * 2), dtype=np.uint8)
+    symbols[:, 0::2] = packed & 0x0F
+    symbols[:, 1::2] = packed >> 4
+    return symbols[:, :count]
+
+
 def ue7m9_encode(value: float) -> np.uint16:
     if value <= 0.0 or math.isnan(value):
         return np.uint16(0)
@@ -142,6 +158,37 @@ def _scale_for(rotated: np.ndarray, quantized: np.ndarray) -> np.ndarray:
     return np.asarray([ue7m9_encode(float(x)) for x in scale], dtype=np.uint16)
 
 
+def encode_joint1(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Encode official RSLM1: one 4D C4D symbol per four rotated coordinates."""
+    vectors = np.asarray(values, dtype=np.float32)
+    if vectors.ndim != 2 or vectors.shape[1] != D:
+        raise ValueError("encode_joint1 expects [N,384]")
+    rotated = rotate(vectors)
+    groups = rotated.reshape(len(rotated), D // 4, 4)
+    amax = np.max(np.abs(rotated), axis=1)
+    normalized = rotated / np.maximum(amax[:, None] * _expected_max_inv(), 1e-12)
+    normalized_groups = normalized.reshape(len(rotated), D // 4, 4)
+    distances = np.sum((normalized_groups[:, :, None, :] - C4D[None, None, :, :]) ** 2, axis=3)
+    symbols = np.argmin(distances, axis=2).astype(np.uint8)
+    quantized = C4D[symbols].reshape(len(rotated), D)
+    scales = _scale_for(rotated, quantized)
+    zero = amax == 0.0
+    packed = _pack_nibbles(symbols)
+    packed[zero] = 0
+    scales[zero] = np.uint16(0)
+    return packed, scales
+
+
+def decode_joint1(packed: np.ndarray, scales: np.ndarray) -> np.ndarray:
+    """Decode official RSLM1 symbols and inner UE7M9 scale."""
+    packed = np.asarray(packed, dtype=np.uint8)
+    scales = np.asarray(scales, dtype=np.uint16)
+    symbols = _unpack_nibbles(packed, D // 4)
+    quantized = C4D[symbols].reshape(len(packed), D)
+    decoded_scale = np.asarray([ue7m9_decode(int(v)) for v in scales], dtype=np.float32)
+    return rotate(quantized * decoded_scale[:, None], inverse=True)
+
+
 def encode(values: np.ndarray, bits: int) -> tuple[np.ndarray, np.ndarray]:
     """Encode vectors; returns packed symbol bytes and UE7M9 scales."""
     vectors = np.asarray(values, dtype=np.float32)
@@ -149,6 +196,8 @@ def encode(values: np.ndarray, bits: int) -> tuple[np.ndarray, np.ndarray]:
         raise ValueError("encode expects [N,384]")
     rotated = rotate(vectors)
     scales = np.empty(len(rotated), dtype=np.uint16)
+    if bits == 1:
+        return encode_joint1(vectors)
     if bits in (3, 4):
         cents, mids = C1D[bits]
         amax = np.max(np.abs(rotated), axis=1)
@@ -220,6 +269,8 @@ def _expected_max_inv() -> float:
 def decode(packed: np.ndarray, scales: np.ndarray, bits: int) -> np.ndarray:
     packed = np.asarray(packed, dtype=np.uint8)
     scales = np.asarray(scales, dtype=np.uint16)
+    if bits == 1:
+        return decode_joint1(packed, scales)
     if bits in (3, 4):
         symbols = _unpack_symbols(packed, D, bits)
         if bits == 4:
@@ -241,7 +292,7 @@ def self_test() -> dict:
     result = {"rotation_max_abs_error": rotation_error, "codecs": {}}
     if rotation_error > 2e-4:
         raise RuntimeError(f"rotation roundtrip failed: {rotation_error}")
-    for bits in (2, 3, 4):
+    for bits in (1, 2, 3, 4):
         packed, scales = encode(values, bits)
         decoded = decode(packed, scales, bits)
         result["codecs"][str(bits)] = {
@@ -251,10 +302,10 @@ def self_test() -> dict:
             "mse": float(np.mean((decoded - values) ** 2)),
         }
     zero = np.zeros((1, D), dtype=np.float32)
-    zero_packed, zero_scales = encode(zero, 4)
-    if np.any(zero_packed) or int(zero_scales[0]) != 0 or np.any(decode(zero_packed, zero_scales, 4)):
-        raise RuntimeError("RSLM4 zero-vector record is not canonical")
-    result["zero_vector"] = {"status": "PASS", "rslm4_packed_zero": True}
+    zero_packed, zero_scales = encode(zero, 1)
+    if np.any(zero_packed) or int(zero_scales[0]) != 0 or np.any(decode(zero_packed, zero_scales, 1)):
+        raise RuntimeError("RSLM1 zero-vector record is not canonical")
+    result["zero_vector"] = {"status": "PASS", "rslm1_packed_zero": True}
     golden_path = Path(__file__).with_name("rslm-faithful-golden.json")
     golden = json.loads(golden_path.read_text(encoding="utf-8"))
     if golden.get("reference_initial_commit") != REFERENCE_INITIAL_COMMIT:

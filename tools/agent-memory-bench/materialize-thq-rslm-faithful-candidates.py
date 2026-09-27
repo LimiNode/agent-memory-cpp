@@ -19,7 +19,7 @@ import numpy as np
 
 D = 384
 DOCUMENTS = 1_000_000
-BITS = (3, 4)
+BITS = (1, 2, 3, 4)
 
 
 def load_module(name: str, path: Path):
@@ -45,16 +45,20 @@ def sha256(path: Path) -> str:
 
 
 def load_candidates(flat: Path, raw: Path) -> np.ndarray:
-    rows = json.loads(raw.read_text(encoding="utf-8")).get("rows", [])
+    payload = json.loads(raw.read_text(encoding="utf-8"))
+    rows = payload.get("rows", [])
     if len(rows) != 152:
         raise RuntimeError("candidate raw must contain 152 rows")
     counts = np.asarray([int(row["candidate_count"]) for row in rows], dtype=np.int64)
     if np.any(counts < 5000) or np.any(counts > 5099):
         raise RuntimeError("candidate count outside frozen 5000..5099 contract")
     total = int(np.sum(counts))
-    if flat.stat().st_size != total * 148:
+    record_bytes = int(payload.get("record_bytes", 0))
+    if record_bytes not in (100, 148):
+        raise RuntimeError(f"unsupported candidate record width: {record_bytes}")
+    if flat.stat().st_size != total * record_bytes:
         raise RuntimeError("candidate flat size differs from raw row counts")
-    records = np.memmap(flat, mode="r", dtype=np.uint8, shape=(total, 148))
+    records = np.memmap(flat, mode="r", dtype=np.uint8, shape=(total, record_bytes))
     ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     if np.any(ids < 0) or np.any(ids >= DOCUMENTS):
         raise RuntimeError("candidate ID out of range")
@@ -67,9 +71,16 @@ def main() -> None:
                  "candidate-flat", "candidate-raw", "candidate-receipt", "output"):
         parser.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     parser.add_argument("--chunk-size", type=int, default=4096)
+    parser.add_argument("--bits", default="1,2,3,4", help="comma-separated codec widths to materialize")
     args = parser.parse_args()
     if args.chunk_size <= 0:
         raise SystemExit("chunk size must be positive")
+    try:
+        bits_to_run = tuple(sorted({int(value) for value in args.bits.split(",") if value.strip()}))
+    except ValueError as exc:
+        raise SystemExit("--bits must be a comma-separated list of integers") from exc
+    if not bits_to_run or any(bits not in BITS for bits in bits_to_run):
+        raise SystemExit(f"--bits must be a non-empty subset of {BITS}")
     count = args.documents.stat().st_size // (4 * D)
     train_count = args.train_vectors.stat().st_size // (4 * D)
     if count != DOCUMENTS:
@@ -90,7 +101,7 @@ def main() -> None:
     centroids_path = args.output / "thq4-centroids.f32"
     np.asarray(centroids, dtype="<f4").tofile(centroids_path)
     models = {}
-    for bits in BITS:
+    for bits in bits_to_run:
         symbol_path = args.output / f"rslm{bits}.symbols.u8"
         inner_path = args.output / f"rslm{bits}.inner-scale.u16"
         outer_path = args.output / f"rslm{bits}.outer-scale.u16"
@@ -147,6 +158,7 @@ def main() -> None:
         "candidate_ids_sha256": sha256(ids_path),
         "thq4_centroids_sha256": sha256(centroids_path),
         "models": models,
+        "bits": list(bits_to_run),
         "limitations": [
             "candidate-union materialization, not a full 1M direct table",
             "portable native scorer and top-10 parity are a separate gate",
