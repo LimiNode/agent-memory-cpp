@@ -1,0 +1,22 @@
+{
+  "family": "thq_qinco2_official_convergence_diagnostic_v1",
+  "status": "PARTIALLY_EXECUTED",
+  "quality_status": "NO_QUALITY_CLAIM",
+  "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
+  "config": {"M": 16, "K": 256, "dh": 256, "de": 128, "A": 16, "B": 32, "epochs_requested": 10, "train_rows": 25000, "validation_rows": 5000},
+  "checkpoint": {"epoch": 4, "sha256": "bc77f77ff64ca577965d11371b0f6928a30ad16a0b5f8488a0d49ab1150384ed"},
+  "trace": {
+    "epoch_2_validation_mse": 0.0433337,
+    "epoch_3_validation_mse": 0.0426993,
+    "epoch_3_train_codeword_entropy": 0.266178,
+    "epoch_3_validation_codeword_entropy": 0.196194,
+    "epoch_3_step_entropies": [3.24, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.02, 0.0],
+    "epoch_3_codeword_resets": 4061,
+    "epoch_3_codeword_capacity": 4096
+  },
+  "limitations": [
+    "The long 10-epoch run is still in progress; this checkpoint is a convergence/occupancy diagnostic only.",
+    "Independent persisted-code quality replay was attempted but exceeds the available CPU/memory budget at full candidate-union batch sizes and is not claimed executed.",
+    "The observed collapse prevents any QINCo2 family or production conclusion."
+  ]
+}
