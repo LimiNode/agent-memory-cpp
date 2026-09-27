@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Materialize official relative RSLM3/4 records for the frozen R4 union.
+"""Materialize official relative RSLM1/2/3/4 records for the frozen R4 union.
 
 The output is a candidate-union payload, not a direct 1M document table.  Each
 row is keyed by ``candidate.ids.i4`` and contains official packed symbols,

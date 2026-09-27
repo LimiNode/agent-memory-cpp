@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Paper-faithful RSLM2/3/4 reference for D=384 residual experiments.
+"""Paper-faithful RSLM1/2/3/4 reference for D=384 residual experiments.
 
 The constants and transform are copied from the official Google Research
 reference notebook (arXiv:2608.30384, google-research/rslm).  This module is

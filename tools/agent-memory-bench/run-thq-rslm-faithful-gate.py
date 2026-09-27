@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Matched THQ4 residual gate for paper-faithful RSLM and local controls.
 
-The three RSLM arms are alternatives after the same THQ4 top-128 filter.  The
+The faithful RSLM1/2/3/4 arms are alternatives after the same THQ4 top-128 filter.  The
 local arms intentionally retain the historical randomized FWHT/Lloyd-Max
 control so that a paper-faithful claim cannot be smuggled into old results.
 """
