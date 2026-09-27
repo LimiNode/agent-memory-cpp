@@ -8,6 +8,13 @@
   "input_sha256": "478f159f52311ce11755ecf910f6d63c19f6496b69df63ee88047a8177b41dea",
   "transform_sha256": "fdd0b1b3d75492afc201b79eb6101a3064d85f31c8fa4bd25ddbb59124b82bdd",
   "codecs": {
+    "1": {
+      "symbols_sha256": "2379fda4d13b95e6f328cb98e078e0bd97535e67e2495d56c1f0e22b620cedb2",
+      "packed_sha256": "3378684a0f83d4435f94d77d078c8e11d88e8d199cff426a542fb828d9cb1e2b",
+      "scales_sha256": "8e048529fb90a77a6b2c907c7e8ae6391f80554065dedf0dcaebb67e63a43575",
+      "official_record_stream_sha256": "58515751194b5e1056109a0c47a0abf0346b3b4e714407d8e39bb975072e30c3",
+      "decoded_max_abs_error": 2.101534366607666
+    },
     "2": {
       "symbols_sha256": "e534d7ff42ca335cd8161160ceed3606df86f65bd76a580d2523a741d70177a9",
       "packed_sha256": "0fe7671bfada5b73bd5b037c68176385b6f613e85b63067c17607975683e5435",

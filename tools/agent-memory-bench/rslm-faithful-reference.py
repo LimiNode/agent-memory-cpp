@@ -8,6 +8,7 @@ kernel.  It implements the regular codecs with a two-byte UE7M9 scale.
 """
 from __future__ import annotations
 
+import hashlib
 import math
 import json
 import struct
@@ -166,16 +167,17 @@ def encode_joint1(values: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     rotated = rotate(vectors)
     groups = rotated.reshape(len(rotated), D // 4, 4)
     amax = np.max(np.abs(rotated), axis=1)
-    normalized = rotated / np.maximum(amax[:, None] * _expected_max_inv(), 1e-12)
+    # Official notebook uses an explicit underflow branch, not a denominator
+    # clamp.  This distinction matters for tiny non-zero vectors.
+    inv_scale = np.zeros_like(amax, dtype=np.float32)
+    np.divide(1.0, amax * _expected_max_inv(), out=inv_scale, where=amax > 1e-8)
+    normalized = rotated * inv_scale[:, None]
     normalized_groups = normalized.reshape(len(rotated), D // 4, 4)
     distances = np.sum((normalized_groups[:, :, None, :] - C4D[None, None, :, :]) ** 2, axis=3)
     symbols = np.argmin(distances, axis=2).astype(np.uint8)
     quantized = C4D[symbols].reshape(len(rotated), D)
     scales = _scale_for(rotated, quantized)
-    zero = amax == 0.0
     packed = _pack_nibbles(symbols)
-    packed[zero] = 0
-    scales[zero] = np.uint16(0)
     return packed, scales
 
 
@@ -201,7 +203,9 @@ def encode(values: np.ndarray, bits: int) -> tuple[np.ndarray, np.ndarray]:
     if bits in (3, 4):
         cents, mids = C1D[bits]
         amax = np.max(np.abs(rotated), axis=1)
-        normalized = rotated / np.maximum(amax[:, None] * _expected_max_inv(), 1e-12)
+        inv_scale = np.zeros_like(amax, dtype=np.float32)
+        np.divide(1.0, amax * _expected_max_inv(), out=inv_scale, where=amax > 1e-8)
+        normalized = rotated * inv_scale[:, None]
         symbols = _nearest_1d(normalized, mids)
         quant = cents[symbols]
         scales[:] = _scale_for(rotated, quant)
@@ -303,9 +307,14 @@ def self_test() -> dict:
         }
     zero = np.zeros((1, D), dtype=np.float32)
     zero_packed, zero_scales = encode(zero, 1)
-    if np.any(zero_packed) or int(zero_scales[0]) != 0 or np.any(decode(zero_packed, zero_scales, 1)):
-        raise RuntimeError("RSLM1 zero-vector record is not canonical")
-    result["zero_vector"] = {"status": "PASS", "rslm1_packed_zero": True}
+    expected_zero = np.full((1, D // 4), np.argmin(np.sum(C4D * C4D, axis=1)), dtype=np.uint8)
+    expected_zero_packed = _pack_nibbles(expected_zero)
+    if not np.array_equal(zero_packed, expected_zero_packed) or int(zero_scales[0]) != 0:
+        raise RuntimeError("RSLM1 zero-vector record differs from official symbol/scale semantics")
+    if not np.allclose(decode(zero_packed, zero_scales, 1), 0.0):
+        raise RuntimeError("RSLM1 zero-vector decode is not zero")
+    result["zero_vector"] = {"status": "PASS", "rslm1_packed_zero": False,
+                              "rslm1_expected_symbol": int(expected_zero[0, 0])}
     golden_path = Path(__file__).with_name("rslm-faithful-golden.json")
     golden = json.loads(golden_path.read_text(encoding="utf-8"))
     if golden.get("reference_initial_commit") != REFERENCE_INITIAL_COMMIT:
@@ -319,15 +328,24 @@ def self_test() -> dict:
         raise RuntimeError("golden transform differs")
     if float(np.max(np.abs(rotate(rotated, inverse=True) - golden_values))) > 2e-5:
         raise RuntimeError("golden transform inverse differs")
-    for bits in (2, 3, 4):
+    for bits in (1, 2, 3, 4):
         packed, scales = encode(golden_values, bits)
-        symbols = _unpack_symbols(packed, D, bits)
+        symbols = (_unpack_nibbles(packed, D // 4) if bits == 1 else
+                   _unpack_symbols(packed, D, bits))
         decoded = decode(packed, scales, bits)
         expected = golden["codecs"][str(bits)]
+        decoded_ok = (_sha256_array(decoded) == expected.get("decoded_sha256") if
+                      "decoded_sha256" in expected else
+                      abs(float(np.max(np.abs(decoded - golden_values))) -
+                          float(expected["decoded_max_abs_error"])) < 1e-6)
+        record_ok = True
+        if bits == 1:
+            record_stream = b"".join(packed[i].tobytes() + scales[i].astype("<u2").tobytes()
+                                      for i in range(len(packed)))
+            record_ok = hashlib.sha256(record_stream).hexdigest() == expected["official_record_stream_sha256"]
         if (_sha256_array(symbols) != expected["symbols_sha256"] or
                 _sha256_array(packed) != expected["packed_sha256"] or
-                _sha256_array(scales) != expected["scales_sha256"] or
-                _sha256_array(decoded) != expected["decoded_sha256"]):
+                _sha256_array(scales) != expected["scales_sha256"] or not decoded_ok or not record_ok):
             raise RuntimeError(f"golden codec {bits}-bit vector differs")
     result["golden_vectors"] = {"status": "PASS", "reference_initial_commit": REFERENCE_INITIAL_COMMIT,
                                 "reference_content_commit": REFERENCE_CONTENT_COMMIT}

@@ -50,30 +50,30 @@ emission. These attempts produce no quality claim and no replay receipt. They
 are recorded so a future scheduled batch run cannot be mistaken for missing
 work or silently substituted with a compact synthetic result.
 
-## Official Faiss OPQ/PQ control (executed)
+## Official Faiss OPQ/PQ control (corrected replay)
 
-The canonical 152-query split was replayed with Faiss `OPQMatrix(384, 32)`
-and 4-bit `ProductQuantizer`, using `niter=50`, `niter_pq=40`,
-`niter_pq_0=40`, and PQ k-means `40`. The fitted model was persisted before
-the scoring pass and then reloaded for a second deterministic score replay.
-The source-bound candidate-local result is:
+The first heavy fit used a strong custom schedule (`niter=50`, `niter_pq=40`,
+`niter_pq_0=40`, PQ k-means `40`), but its scorer used the wrong row-major
+orientation for Faiss `LinearTransform`. That result is superseded and must
+not be quoted. The persisted fit was retained and replayed with the corrected
+orientation (`residual @ A.T`, inverse `decoded @ A`). The source-bound
+candidate-local result is:
 
 | arm | payload | mean qrels nDCG@10 | candidate union |
 | --- | ---: | ---: | ---: |
-| official Faiss OPQ32x4 | 16 B | 0.6616096795 | 18,362 |
+| strong Faiss OPQ32x4 (`50/40/40`) | 16 B | 0.6482593499 | 18,362 |
 
 Result SHA-256 is
-`2f8604ed4017d7f9589ea8995471d312d5eb0064140dede919def75d025ab89d` and
+`a1b41e4f449ef37262a67c707a0342bf8ea4db230ece903d587e4db9d434dcb5` and
 model SHA-256 is
 `d211a7e2b5fd30608d7075889eea31451723326cf5abfd48201664b5ee2464a7`.
-This is an executed fidelity control, not a production claim: it is
-candidate-local, has no native latency/page evidence, and its fit wall time is
-not recorded because the first fit completed before the model-replay wrapper
-was corrected. The quality result is nevertheless bound to the persisted
-rotation/codebooks and exact source hashes.
-The independent persisted-model audit is `audit-thq-faiss-opq-control.py` and
-passes shape, finiteness, orthogonality, row-cardinality, configuration, and
-model-hash checks.
+The old result SHA `2f8604ed...` and quality `.6616096795` are
+`SUPERSEDED_INVALID_REPLAY` because of that orientation bug. The corrected
+result is still a fidelity control, not a production claim: it is
+candidate-local and has no native latency/page evidence. The independent
+audit now replays THQ candidate selection, Faiss `LinearTransform`, Faiss PQ
+assignment/decode, reconstructed vectors, cosine scores, deterministic top-10
+and qrels nDCG for all 152 rows; it passes.
 
 ## TurboQuant source-bound replay
 

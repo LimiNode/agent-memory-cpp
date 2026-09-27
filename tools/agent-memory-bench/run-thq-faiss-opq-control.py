@@ -41,7 +41,7 @@ def main() -> None:
         p.add_argument("--" + name.replace("_", "-"), dest=name, type=Path, required=True)
     p.add_argument("--seed", type=int, default=20260927)
     p.add_argument("--opq-niter", type=int, default=50)
-    p.add_argument("--opq-niter-pq", type=int, default=40)
+    p.add_argument("--opq-niter-pq", type=int, default=4)
     p.add_argument("--opq-niter-pq-0", type=int, default=40)
     p.add_argument("--pq-kmeans-iters", type=int, default=40)
     p.add_argument("--model-input", type=Path)
@@ -115,14 +115,16 @@ def main() -> None:
     model_path = args.output.with_suffix(".model.npz")
     model_path.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(model_path, rotation=rotation, centers=centers)
-    transformed = np.ascontiguousarray(residual @ rotation, dtype=np.float32)
+    # Faiss LinearTransform applies y = A x.  Row-major NumPy storage therefore
+    # uses X @ A.T, and the orthogonal inverse is decoded @ A.
+    transformed = np.ascontiguousarray(residual @ rotation.T, dtype=np.float32)
     codes = np.empty((len(transformed), 32), dtype=np.uint8)
     width = D // 32
     for subspace in range(32):
         part = transformed[:, subspace * width:(subspace + 1) * width]
         distances = ((part[:, None, :] - centers[subspace][None, :, :]) ** 2).sum(axis=2)
         codes[:, subspace] = distances.argmin(axis=1).astype(np.uint8)
-    decoded = centers[np.arange(32)[None, :], codes].reshape(len(union), D) @ rotation.T
+    decoded = centers[np.arange(32)[None, :], codes].reshape(len(union), D) @ rotation
     reconstructed = union_base + decoded
     by_id = {int(doc): i for i, doc in enumerate(union)}
     rows_out = []; qualities = []
@@ -139,7 +141,7 @@ def main() -> None:
               "subquantizers": 32, "bits": 4, "seed": args.seed,
               "opq_config": {"niter": args.opq_niter, "niter_pq": args.opq_niter_pq,
                              "niter_pq_0": args.opq_niter_pq_0, "pq_kmeans_iters": args.pq_kmeans_iters,
-                             "official_faiss_defaults": args.opq_niter == 50 and args.opq_niter_pq == 40 and args.opq_niter_pq_0 == 40},
+                             "official_faiss_defaults": args.opq_niter == 50 and args.opq_niter_pq == 4 and args.opq_niter_pq_0 == 40},
               "fit_seconds": fit_seconds, "model_replay_only": args.model_input is not None,
               "mean_qrels_ndcg10": float(np.mean(qualities)),
               "candidate_union_documents": int(len(union)), "model_path": str(model_path),

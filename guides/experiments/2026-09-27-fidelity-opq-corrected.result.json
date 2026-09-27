@@ -1,0 +1,40 @@
+{
+  "schema_version": 1,
+  "family": "thq_faiss_opq_strong_corrected_replay",
+  "status": "EXECUTED",
+  "quality_status": "CANDIDATE_LOCAL_FIDELITY_CONTROL",
+  "metric": "cosine",
+  "query_count": 152,
+  "candidate_union_documents": 18362,
+  "payload_bytes": 16,
+  "config": {
+    "subquantizers": 32,
+    "bits": 4,
+    "niter": 50,
+    "niter_pq": 40,
+    "niter_pq_0": 40,
+    "pq_kmeans_iters": 40,
+    "official_faiss_defaults": false,
+    "seed": 20260927
+  },
+  "mean_qrels_ndcg10": 0.6482593498524956,
+  "result_sha256": "a1b41e4f449ef37262a67c707a0342bf8ea4db230ece903d587e4db9d434dcb5",
+  "model_sha256": "d211a7e2b5fd30608d7075889eea31451723326cf5abfd48201664b5ee2464a7",
+  "audit": {
+    "status": "PASS",
+    "faiss_linear_transform_parity": true,
+    "faiss_pq_assignment_parity": true,
+    "faiss_pq_decode_parity": true,
+    "all_152_top10_rows_replayed": true,
+    "all_152_ndcg_rows_replayed": true
+  },
+  "supersedes": {
+    "result_sha256": "2f8604ed4017d7f9589ea8995471d312d5eb0064140dede919def75d025ab89d",
+    "reason": "invalid row-major OPQ orientation in the scorer"
+  },
+  "limitations": [
+    "candidate-local frozen 152-query replay",
+    "strong custom Faiss schedule, not the 50/4/40 library-default control",
+    "no native serving or page-latency claim"
+  ]
+}

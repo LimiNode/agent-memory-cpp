@@ -10,7 +10,7 @@ models and code arrays are not committed.
 | gate | configuration | output | status at launch |
 | --- | --- | --- | --- |
 | Faiss LSQ | payloads 32/48, 25k rows, `train_iters=50`, `train_ils_iters=32`, `encode_ils_iters=32`, seed `20260927` | `lsq-50-32/` | running |
-| official Faiss OPQ/PQ | OPQ32x4, `niter=50`, `niter_pq=40`, `niter_pq_0=40`, PQ k-means 40, seed `20260927` | `opq-official/` | running |
+| official Faiss OPQ/PQ | OPQ32x4 strong arm, `niter=50`, `niter_pq=40`, `niter_pq_0=40`, PQ k-means 40, seed `20260927` | `opq-official/` plus corrected replay | completed; first scorer superseded |
 
 The input conversion is deterministic: the existing canonical `.npy`
 evaluation arrays were written as raw little-endian streams required by the
