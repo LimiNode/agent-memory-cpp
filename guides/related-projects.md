@@ -98,12 +98,6 @@ Disclaimer:
 
 ### Reference note: external vector-store benchmark article
 
-<!-- Superseded wording retained only in history; the corrected note follows. -->
-
-The Habr article ["Сравнение векторных баз и алгоритмов"](<https://habr.com/ru/companies/vktech/articles/1080978/>) is useful as a prompt for measuring the full storage/update/search cycle, but it is not an acceptance baseline. The checked benchmark sources are pinned to revision [`4466dfc`](<https://github.com/georgiy-belyanin/vector-db-benchmark/tree/4466dfc9e870c6d4cfd99977ddc8f7f428bcbf13>) for source inspection only.
-
--->
-
 The corrected note is: the public `tarantool` branch currently points to
 `4466dfc` for source inspection, while `master` currently points to
 `c5b4d45659feafaaa968b6f07fdc12a7eb20e171`. Neither branch proves which
@@ -225,7 +219,6 @@ run has no immutable benchmark commit; the currently reachable repository tip
 `c5b4d45659feafaaa968b6f07fdc12a7eb20e171` was inspected on 2026-09-27 only
 for source context. The article reports no numeric recall and uses different
 loading paths, so its speedups are not acceptance thresholds for this project.
-This correction supersedes any earlier paragraph in this file that presents
-`4466dfc9e8707c6d4cfd99977ddc8f7f428bcbf13` as a reproducibility pin: that
-revision is not reachable from the public repository and must not be used as
-evidence.
+The public `tarantool` branch currently exposes
+`4466dfc9e870c6d4cfd99977ddc8f7f428bcbf13`, but that reachable source tip is
+not evidence that the article's published run used this exact revision.
