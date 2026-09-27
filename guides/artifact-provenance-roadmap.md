@@ -876,6 +876,40 @@ representation label and never masquerade as a direct original quote.
 
 ## 7. Persistence, Retention And Backup
 
+### Portable memory continuity package (M2+ planned)
+
+Export/import may optionally carry a portable continuity projection for an
+application that replaces its model or host. This is a manifest over existing
+canonical records and provenance; it is not a new global brain object and does
+not copy MDBX pages. A package may include, subject to the active retention and
+privacy policy:
+
+- stable global identity/lineage references and selected autobiographical
+  evidence;
+- relationships, values/preferences and their source revisions;
+- model, policy and projection revisions that produced derived records;
+- explicit omissions, conflicts, uncertainty and unavailable evidence;
+- a deterministic manifest root, export recipe, retention decisions and
+  source-revision bindings.
+
+Import preserves the identity lineage and provenance but creates a new local
+activation/binding generation. It must never silently carry authority leases,
+credentials, provider sessions, pending execution grants or unverified claims.
+Local identifiers may be remapped through the existing global-identity import
+contract; unresolved or conflicting records remain explicit import conflicts,
+not silently merged facts. A host application may associate its own runtime
+instance with the package, while the library stores only the typed manifest and
+evidence references.
+
+The minimum docs/evaluation fixture covers model replacement, omitted and
+conflicting memories, privacy/retention filtering, local-ID remapping,
+round-trip provenance, and rejection of stale or incompatible identity
+schemes. Acceptance requires deterministic manifest bytes, preserved source
+anchors, no authority/session transfer, and fail-closed handling of unresolved
+conflicts. This remains roadmap-only and depends on the durable global identity
+and import/export contracts; it is not an authorization or autonomous-agent
+protocol.
+
 Artifact provenance is an application-owned profile capability, not a new
 generic `mdbx-containers` domain API. A future MDBX profile may use a compact
 typed catalog table plus application-owned lineage and segment-to-unit indexes.

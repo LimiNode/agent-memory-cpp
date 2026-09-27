@@ -1699,6 +1699,44 @@ struct RetrievalPlan {
 Override полезен для A/B evaluation, миграций, debug queries, per-query
 fallback paths.
 
+### Bounded retrieval executor and covering profiles (M2+ planned)
+
+The retrieval plan may be executed by a stateful, host-owned executor that
+keeps the candidate frontier, bounded queues and batch read lifetimes together
+for one request. This is an execution optimization, not a new storage owner or
+an actor/runtime dependency in the core. A future `RetrievalExecutionPlan`
+extends the existing `RetrievalPlan` with:
+
+- routing/cluster depth, `max_candidates`, `top_k` and byte/payload budgets;
+- candidate and hydration batch sizes, deadline and cancellation policy;
+- the canonical identity used for deduplication and a stable equal-score tie
+  rule;
+- index id/generation and embedding-model revision for every cache key;
+- a declared covering profile (`ids-only`, `code/score`, or explicitly enabled
+  short-text/embedding fields) and its fallback to canonical hydration.
+
+The executor's physical stages are deliberately explicit:
+
+```text
+route -> batch candidate read -> bounded top-N -> deduplicate
+  -> batch covering/payload read -> exact score/rerank -> stable top-K
+```
+
+Adapters may overlap these stages through bounded queues, but may not retain an
+unbounded candidate set or treat a covering table as canonical memory. Derived
+covering rows carry source revision and index generation; stale rows are
+discarded before scoring. Cache entries are valid only for the tuple
+`(index_id, generation, embedding_model_revision, plan_fingerprint)`.
+
+The first implementation is a fake-reader contract test followed by an
+apples-to-apples sequential-versus-pipelined benchmark. The fixture must cover
+duplicate candidates, an incomplete final batch, empty partitions, deleted
+records, stale generations, cache invalidation and cancellation. Promotion
+requires equal exact-oracle quality and deterministic output at bounded memory;
+latency or throughput gains are secondary evidence. This work depends on the
+stable retrieval and lifecycle contracts and carries the risk that a faster
+pipeline merely hides extra hydration or changes the candidate set.
+
 ### SIMD And Bucket Promotion Rule
 
 The preceding bucket and SIMD descriptions are implementation candidates, not

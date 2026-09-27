@@ -89,6 +89,54 @@ query/write p95/p99, visibility lag, queue/backlog depth,
 revision-generation filtering, and no deleted-record resurrection. A passing
 write benchmark without these correctness checks is not a lifecycle result.
 
+## Physical retrieval execution gate (planned)
+
+The retrieval protocol also evaluates how a candidate stream is executed. This
+is a library-internal optimization boundary, not a distributed-actor contract.
+An implementation may use a stateful `RetrievalExecutor` (or an equivalent
+host-owned executor) that owns the execution plan, bounded queues and batch
+lifetimes for one request. It must remain dependency-free in the core and
+delegate persistence-specific reads to adapters.
+
+Every executor profile declares a `RetrievalExecutionPlan` containing at least:
+
+- candidate source and routing depth (`level_top`/cluster count);
+- `max_candidates`, `top_k`, byte and payload budgets;
+- batch sizes for candidate reads and canonical payload hydration;
+- deduplication key and deterministic equal-score/tie policy;
+- index id/generation and embedding-model revision required for cache hits;
+- whether a covering or partial-covering projection may satisfy scoring fields;
+- cancellation/deadline behavior and the returned result shape.
+
+The physical pipeline is measured as explicit stages:
+
+```text
+prepare query -> choose partitions -> batch candidate read -> bounded top-N
+  -> deduplicate -> batch payload/covering read -> exact score/rerank -> top-K
+```
+
+Implementations may overlap candidate reads, hydration and scoring only through
+bounded queues. They must not retain an unbounded candidate list, and a covering
+projection is always a rebuildable derived index rather than a second canonical
+store. Full embeddings in a covering projection are opt-in; the default profile
+stores only identifiers, revisions, code/score data and the minimum fields
+needed by the declared scorer.
+
+The minimum benchmark compares sequential and pipelined executors over the same
+index, candidate stream, recall target and result shape. It records stage-wise
+and end-to-end p50/p95/p99, peak queue depth, candidate/read counts, duplicate
+rate, payload bytes, cache hit rate, stale-generation drops and cancellation
+latency. Acceptance requires equal exact-oracle quality within the pre-registered
+tolerance, no stale-generation or deleted-record leakage, bounded memory, and
+no hidden extra storage reads. A failed covering or cache lookup falls back to
+canonical hydration and is recorded as such.
+
+This gate is planned for M2+ and depends on stable retrieval contracts, an
+index-generation manifest and the lifecycle replay in this document. The main
+risk is optimizing adapter or I/O scheduling while accidentally changing the
+candidate set or quality contract; the benchmark therefore freezes quality and
+storage inputs before timing.
+
 ## Minimal benchmark matrix
 
 ```text

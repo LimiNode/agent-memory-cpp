@@ -110,6 +110,20 @@ optional external adapters in the same quality/latency table.
 
 ## 6. Architecture inspiration notes (что позаимствовать из каждого)
 
+### Physical retrieval execution and continuity references
+
+The Habr article ["Оптимизация векторного поиска в YDB"](<https://habr.com/ru/articles/1072032/>) is a useful execution-design reference, not a quality or backend-performance baseline. Its transferable ideas are a stateful search executor, batched candidate/payload reads, bounded top-K state, overlap deduplication, covering projections and cache keys tied to index state. These are recorded as planned `RetrievalExecutionPlan`/executor and benchmark requirements in [`evaluation-roadmap.md`](evaluation-roadmap.md) and [`optimization-roadmap.md`](optimization-roadmap.md). The article's throughput, p50/p99 and recall numbers remain workload-specific and are not project thresholds.
+
+Project Nan0 and other persona/continuity projects are likewise requirements
+references rather than implementation dependencies. The transferable boundary
+is a portable continuity manifest over identity lineage, selected evidence,
+relationships, revisions, omissions and conflicts. It must create a new local
+activation generation on import and must not transfer authority, credentials,
+provider sessions or unverified beliefs. The corresponding roadmap-only
+contract lives in [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md);
+no new `Thought`, global memory or autonomous background cycle is added to the
+core library.
+
 - **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until), episodes as source evidence, deterministic-first entity/edge dedupe and hybrid semantic+keyword+graph retrieval. Current M1 design has single-axis `TemporalComponent` + `GraphEdge`; Graphiti-style valid-time/recorded-time semantics are planned in [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md) AM-13, with AM-19..AM-22 covering entity resolution, typed query/MCP safety, logical index separation and the optional temporal-context-graph profile/evaluation lane.
 - **Cognee**: knowledge graph + community detection для "global questions". У нас CommunitySummaryJob (M2+, GraphRAG-style).
 - **mem0**: explicit fact extraction с slot-based QA retrieval. У нас QALookup slot в QAKB profile.
