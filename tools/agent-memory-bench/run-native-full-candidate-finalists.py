@@ -52,6 +52,12 @@ def candidate_stream(flat: Path, raw_path: Path) -> tuple[np.ndarray, np.ndarray
                         dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts, dtype=np.int64)))
     record_bytes = int(raw.get("record_bytes", 0))
+    if record_bytes not in (100, 148):
+        # Older fused receipts kept the width in the receipt rather than the
+        # raw note.  The row count still gives a fail-closed inference.
+        require(flat.stat().st_size % int(offsets[-1]) == 0,
+                "candidate flat/raw cardinality differs")
+        record_bytes = flat.stat().st_size // int(offsets[-1])
     require(record_bytes in (100, 148), "unsupported candidate record width")
     require(flat.stat().st_size == int(offsets[-1]) * record_bytes,
             "candidate flat/raw cardinality differs")
