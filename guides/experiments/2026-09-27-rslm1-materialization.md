@@ -12,7 +12,8 @@ quality or serving claim.
 - shell: frozen THQ4 candidate stream, 152 rows, 100-byte records, with
   `463,258` unique document IDs;
 - metric contract: cosine serving diagnostic and paper-faithful IP control;
-- codec: official 4D `C4D`, 4-bit symbol per 4 coordinates, 48 symbol bytes,
+- codec: official 4D `C4D`, 4-bit symbol per 4 coordinates (first symbol in
+  the high nibble, matching `i0 << 4 | i1`), 48 symbol bytes,
   2-byte inner UE7M9 scale, and 2-byte relative outer scale.
 
 ## Evidence
