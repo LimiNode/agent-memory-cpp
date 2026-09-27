@@ -50,13 +50,16 @@ must not support a family-level negative conclusion until the official Faiss
 control is persisted. Under-converged or collapsed QINCo2 runs are diagnostic
 only and do not establish that the family is dominated.
 
-The first convergence attempt (LSQ32, 25k rows, seed `20260927`,
-`train_iters=50`, `encode_ils_iters=32`) was stopped before artifact emission
-after demonstrating that the full 32-stage fit is batch-scale work on the
-available host. A second `50/16` attempt was likewise stopped before artifact
-emission. These attempts produce no quality claim and no replay receipt. They
-are recorded so a future scheduled batch run cannot be mistaken for missing
-work or silently substituted with a compact synthetic result.
+The stronger LSQ convergence attempts were run source-bound and fail closed,
+but none emitted atomic result/model/code artifacts on the available host. The
+dual-payload `50/32` fit (seed `20260927`) ran overnight for roughly 14 hours;
+the single-payload `50/32` retry with 16 BLAS threads ran for roughly two hours;
+and an independent-seed `25/16` LSQ32 retry (seed `20260928`) also remained
+CPU-bound without artifact emission. Their exact parameters and stopped status
+are recorded in `2026-09-28-lsq-convergence-host-limit.result.json`. These
+attempts produce no quality claim and no replay receipt. The previously audited
+25-iteration LSQ controls remain bounded evidence only; a scheduled
+high-memory/Faiss-optimized worker is required to close the 50/32 ceiling gate.
 
 ## Official Faiss OPQ/PQ control (corrected replay)
 

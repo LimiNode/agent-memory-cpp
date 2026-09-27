@@ -1,0 +1,53 @@
+{
+  "family": "thq_faiss_lsq_convergence_host_limit_v1",
+  "status": "PARTIALLY_EXECUTED",
+  "quality_status": "NO_NEW_QUALITY_CLAIM",
+  "source_bound": true,
+  "source_bundle": "canonical DE-1M / 25,000 train rows / 152-query candidate fold",
+  "attempts": [
+    {
+      "name": "lsq32_50_32_dual_payload",
+      "seed": 20260927,
+      "train_iters": 50,
+      "train_ils_iters": 32,
+      "encode_ils_iters": 32,
+      "payloads": [32, 48],
+      "runtime": "overnight CPU run; stopped after approximately 14 wall-hours",
+      "artifacts": [],
+      "interpretation": "host-limited; no quality or convergence claim"
+    },
+    {
+      "name": "lsq32_50_32_single_payload",
+      "seed": 20260927,
+      "train_iters": 50,
+      "train_ils_iters": 32,
+      "encode_ils_iters": 32,
+      "payloads": [32],
+      "thread_environment": {"OMP_NUM_THREADS": 16, "MKL_NUM_THREADS": 16, "OPENBLAS_NUM_THREADS": 16},
+      "runtime": "approximately 2 wall-hours; stopped before artifact emission",
+      "artifacts": [],
+      "interpretation": "host-limited; no quality or convergence claim"
+    },
+    {
+      "name": "lsq32_25_16_independent_seed",
+      "seed": 20260928,
+      "train_iters": 25,
+      "train_ils_iters": 16,
+      "encode_ils_iters": 16,
+      "payloads": [32],
+      "thread_environment": {"OMP_NUM_THREADS": 16, "MKL_NUM_THREADS": 16, "OPENBLAS_NUM_THREADS": 16},
+      "runtime": "approximately 20 wall-minutes; stopped before artifact emission",
+      "artifacts": [],
+      "interpretation": "host-limited; no independent quality claim"
+    }
+  ],
+  "existing_control": {
+    "status": "EXECUTED_AND_AUDITED",
+    "description": "Previously committed 25-iteration LSQ bounded controls remain the only LSQ quality evidence; they are not paper-converged ceiling results."
+  },
+  "limitations": [
+    "Faiss LocalSearchQuantizer did not emit atomic result/model/code artifacts for the stronger runs on this host.",
+    "No convergence, family-level negative, or production-selection claim is made from an incomplete fit.",
+    "A scheduled high-memory or Faiss-optimized worker is required to close the 50/32 ceiling gate."
+  ]
+}
