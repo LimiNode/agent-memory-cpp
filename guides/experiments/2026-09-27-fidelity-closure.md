@@ -13,6 +13,17 @@ scoring, and the persisted THQ4 top-128 shell.
 | PQ/OPQ | official Faiss `ProductQuantizer` and `OPQMatrix` on the same residual/domain split | Faiss version, native module hash, compile options, exact `niter`, `niter_pq`, k-means iterations, rotation/codebook hashes, independent decode/ADC replay |
 | RSLM | source-grounded RSLM1/2/3/4 | source revision, exact tables and transform hashes, packed-code replay, matched side bytes |
 | QINCo2 | official upstream architecture and preset, with a convergence/occupancy sweep | upstream revision/license, immutable training plan, checkpoint and code hashes, validation trace, occupancy/entropy, persisted-code decode audit |
+| TurboQuant | Qdrant Rust parity on frozen vectors; optional TQ1.5 frontier point | Rust revision and build, rotation/packed-symbol/scale hashes, decoded-vector and asymmetric-score tolerances; TQ1.5 is exploratory and cannot block the parity gate |
+
+The QINCo2 gate is not satisfied by a short A16/B32 pilot. The closure run
+must compare the existing A16/B32 checkpoint against the paper-scale A32/B64
+evaluation beam, record occupancy and entropy after residual-quantizer
+initialization and after every epoch, and continue beyond the three-epoch
+learning-rate ramp. Source-faithful and paper-faithful controls are separate
+arms; the receipt records the codebook-noise initialization (`0.1` versus the
+paper control `0.025`) and the scheduler LR-floor variant. If an official
+pretrained checkpoint can be materialized, it is an additional sanity arm, not
+a substitute for the matched training control.
 
 ## Fail-closed interpretation
 

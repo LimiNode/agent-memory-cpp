@@ -100,6 +100,16 @@ def audit_self_test() -> None:
             pass
         else:
             raise RuntimeError("oversized score error was accepted")
+        execution_receipt = {
+            "status": "EXECUTED",
+            "runner_source_sha256": "runner",
+            "payload_sha256": "payload",
+            "payload_receipt_sha256": "receipt",
+            "native_jsonl_sha256": "native",
+        }
+        require("expected_pq_result_sha256" not in execution_receipt and
+                "expected_tq_result_sha256" not in execution_receipt,
+                "execution receipt contains audit-only reference hashes")
     require(sha256(Path(__file__)) == sha256(Path(__file__)), "hash self-test failed")
     print("native-tq1-pq-direct audit self-test PASS")
 
@@ -143,8 +153,6 @@ def main() -> None:
         "payload_sha256": sha256(args.payload),
         "payload_receipt_sha256": sha256(args.receipt),
         "native_jsonl_sha256": sha256(args.native_jsonl),
-        "expected_pq_result_sha256": sha256(args.expected_pq_result),
-        "expected_tq_result_sha256": sha256(args.expected_tq_result),
     }
     require(run_receipt.get("status") == "EXECUTED" and
             run_receipt.get("argv") and
@@ -228,6 +236,8 @@ def main() -> None:
         "native_runner_sha256": sha256(args.native_runner),
         "native_run_receipt_sha256": sha256(args.run_receipt),
         "score_replay_sha256": sha256(args.score_replay),
+        "expected_pq_result_sha256": sha256(args.expected_pq_result),
+        "expected_tq_result_sha256": sha256(args.expected_tq_result),
         "max_abs_tq_score_error": score_replay.get("max_abs_tq_score_error"),
         "max_abs_pq8_score_error": score_replay.get("max_abs_pq8_score_error"),
         "native_jsonl_sha256": sha256(args.native_jsonl),

@@ -28,6 +28,29 @@ struct CascadeResult {
   std::uint64_t rerank_payload_pages;
   std::vector<Candidate> coarse;
 };
+
+void validate_lsq_ids(const std::vector<std::int32_t>& ids) {
+  if (!std::is_sorted(ids.begin(), ids.end()) ||
+      std::adjacent_find(ids.begin(), ids.end()) != ids.end())
+    throw std::runtime_error("LSQ payload IDs must be strictly increasing");
+  if (std::any_of(ids.begin(), ids.end(), [](std::int32_t id) {
+        return id < 0 || static_cast<std::size_t>(id) >= kDocuments;
+      }))
+    throw std::runtime_error("LSQ payload ID is outside the document corpus");
+}
+
+void validate_lsq_header(std::uint32_t stages, std::uint32_t dimensions,
+                         std::uint32_t count) {
+  if (stages == 0 || dimensions != kDimension || count == 0 ||
+      count > kDocuments)
+    throw std::runtime_error("invalid LSQ payload dimensions");
+}
+
+template <typename T> bool all_finite(const std::vector<T>& values) {
+  return std::all_of(values.begin(), values.end(), [](const T value) {
+    return std::isfinite(static_cast<double>(value));
+  });
+}
 struct LsqPayload {
   std::uint32_t stages = 0;
   std::uint32_t dimensions = 0;
@@ -282,8 +305,7 @@ LsqPayload read_lsq_payload(const std::string& path) {
   const std::uint32_t dimensions = u32(12);
   const std::uint32_t count = u32(16);
   constexpr std::uint32_t kCodebookSize = 256;
-  if (stages == 0 || dimensions != kDimension || count == 0)
-    throw std::runtime_error("invalid LSQ payload dimensions");
+  validate_lsq_header(stages, dimensions, count);
   const std::size_t ids_bytes = static_cast<std::size_t>(count) * sizeof(std::int32_t);
   const std::size_t codes_bytes = static_cast<std::size_t>(count) * stages;
   const std::size_t books_bytes = static_cast<std::size_t>(stages) * kCodebookSize * dimensions * sizeof(float);
@@ -309,12 +331,13 @@ LsqPayload read_lsq_payload(const std::string& path) {
   copy(out.codebooks.data(), books_bytes);
   copy(out.centroids.data(), centroid_bytes);
   copy(out.norms.data(), norm_bytes);
-  if (!std::is_sorted(out.ids.begin(), out.ids.end()))
-    throw std::runtime_error("LSQ payload IDs must be sorted");
-  if (std::any_of(out.ids.begin(), out.ids.end(), [](std::int32_t id) {
-        return id < 0 || static_cast<std::size_t>(id) >= kDocuments;
+  validate_lsq_ids(out.ids);
+  if (!all_finite(out.codebooks) || !all_finite(out.centroids))
+    throw std::runtime_error("LSQ payload model contains non-finite values");
+  if (!std::all_of(out.norms.begin(), out.norms.end(), [](const float value) {
+        return std::isfinite(value) && value > 0.0f;
       }))
-    throw std::runtime_error("LSQ payload ID is outside the document corpus");
+    throw std::runtime_error("LSQ payload norms must be finite and positive");
   out.serialized_bytes = bytes.size();
   return out;
 }
@@ -1136,6 +1159,27 @@ int main(int argc, char** argv) {
         namespaced_pages({42}, kThqBytes, 0) != 2 ||
         namespaced_pages({0, 42}, kThqBytes, 0) != 2)
       throw std::runtime_error("cross-page record accounting differs");
+    const std::array<std::vector<std::int32_t>, 3> invalid_id_cases = {
+        std::vector<std::int32_t>{2, 2, 3},
+        std::vector<std::int32_t>{-1, 2},
+        std::vector<std::int32_t>{0, 1000000}};
+    for (const auto& invalid : invalid_id_cases) {
+      try {
+        validate_lsq_ids(invalid);
+      } catch (const std::runtime_error&) {
+        continue;
+      }
+      throw std::runtime_error("LSQ invalid-ID self-test accepted malformed IDs");
+    }
+    bool rejected_oversized_count = false;
+    try {
+      validate_lsq_header(32, kDimension, static_cast<std::uint32_t>(kDocuments) + 1);
+    } catch (const std::runtime_error&) {
+      // Expected: oversized payload counts must fail closed.
+      rejected_oversized_count = true;
+    }
+    if (!rejected_oversized_count)
+      throw std::runtime_error("LSQ oversized-count self-test accepted malformed header");
     LsqPayload page_payload;
     page_payload.stages = 32;
     page_payload.ids = {100, 900000};
