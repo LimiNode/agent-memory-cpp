@@ -110,12 +110,17 @@ must bind payload IDs, payload/result hashes, source hashes, build manifest,
 warm/cold protocol, p50/p95/p99, page counters, and exact top-10 parity. CI
 self-tests alone are not numeric replay evidence.
 
-An executed warm-process preparation gate now exists for the frozen THQ4
-top-128 rows (`2026-09-27-native-serving-top128.result.json`). It records
-per-codec p50/p95/p99 wall-clock values and native page counters, but it is
-explicitly not the complete 5k-candidate-to-top128 scan: the codec payloads
-cover the 18,362-document top-128 union rather than the 463,258-document raw
-candidate union. The all-candidate native benchmark remains pending until the
-50/32 LSQ payload and row-aligned full-union payload materialization are
-available. Compressed decode and cold/page-fault latency remain separate
-measurements.
+An executed warm-process preparation gate exists for the frozen THQ4 top-128
+rows (`2026-09-27-native-serving-top128.result.json`). A second executed gate
+now runs the complete frozen R4 candidate stream through native THQ4 top-128
+selection and reranks the full 463,258-document union for the payloads that
+are fully materialized (`2026-09-27-native-full-candidate-finalists.result.json`).
+`joint2`, faithful `RSLM3`, and faithful `RSLM4` all have exact top-10 parity
+with an independent Python scorer over all 152 queries. The native warm-process
+total p50/p95/p99 values are respectively `2.4459/47.8470/60.7997 ms`,
+`3.4313/35.8281/45.6676 ms`, and `3.1543/7.1544/11.1523 ms`.
+
+This is the complete candidate-to-top-128 serving gate for those finalists, not
+a compressed-decode or cold/page-fault benchmark. LSQ/TurboQuant/BBQ remain
+separate gates and are not substituted by these payloads; their full-union
+serving rows are added only after their own source-bound artifacts exist.
