@@ -25,6 +25,14 @@ paper control `0.025`) and the scheduler LR-floor variant. If an official
 pretrained checkpoint can be materialized, it is an additional sanity arm, not
 a substitute for the matched training control.
 
+The current M16 convergence attempt has emitted a checkpoint after the third
+completed epoch (recorded as epoch 4 state): validation MSE improved from
+`0.0433337` to `0.0426993`, but 4061/4096 codewords were reset and most later
+stages have zero entropy. These values are recorded as a diagnostic in
+`2026-09-27-qinco2-convergence-diagnostic.result.json`; the long run and a
+persisted-code replay remain pending, so no QINCo2 quality or family claim is
+made.
+
 RSLM1 uses the official 4D `C4D` codebook: 96 four-dimensional symbols are
 packed as 48 bytes, followed by the 2-byte inner UE7M9 scale. In relative mode
 the full-vector reconstruction scale adds another 2 bytes, so the residual
