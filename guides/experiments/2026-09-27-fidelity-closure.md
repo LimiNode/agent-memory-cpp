@@ -67,6 +67,19 @@ The independent persisted-model audit is `audit-thq-faiss-opq-control.py` and
 passes shape, finiteness, orthogonality, row-cardinality, configuration, and
 model-hash checks.
 
+## TurboQuant source-bound replay
+
+The existing Python TurboQuant reference was also replayed on the same
+canonical split against the Qdrant source revision
+`6ab21cac18ebb6f4ae29102c7f8f5cc11affd5de`. It produced mean nDCG@10 of
+`0.6591756211` for TQ1 (52 B side including the final norm) and
+`0.6562538770` for TQ2 (100 B side), over 18,362 unique candidate documents.
+Result SHA-256 is
+`fad8ce7642389e678b223f8e635b46f2e81a4fd99abeb0ecff9379860c7e9f83`.
+This closes the source-bound Python control only. The Rust toolchain is not
+available on this host, so direct Qdrant Rust encode/decode parity remains
+pending and these values must not be described as Rust parity evidence.
+
 ## Final serving gate
 
 After the controls converge, freeze only Pareto finalists and run one fresh
