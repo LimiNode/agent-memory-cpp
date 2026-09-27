@@ -101,3 +101,13 @@ row-aligned native benchmark over all 1,000,000 documents. The serving receipt
 must bind payload IDs, payload/result hashes, source hashes, build manifest,
 warm/cold protocol, p50/p95/p99, page counters, and exact top-10 parity. CI
 self-tests alone are not numeric replay evidence.
+
+An executed warm-process preparation gate now exists for the frozen THQ4
+top-128 rows (`2026-09-27-native-serving-top128.result.json`). It records
+per-codec p50/p95/p99 wall-clock values and native page counters, but it is
+explicitly not the complete 5k-candidate-to-top128 scan: the codec payloads
+cover the 18,362-document top-128 union rather than the 463,258-document raw
+candidate union. The all-candidate native benchmark remains pending until the
+50/32 LSQ payload and row-aligned full-union payload materialization are
+available. Compressed decode and cold/page-fault latency remain separate
+measurements.
