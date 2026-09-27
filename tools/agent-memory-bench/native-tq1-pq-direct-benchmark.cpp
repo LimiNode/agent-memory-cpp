@@ -66,7 +66,8 @@ Payload read_payload(const std::string& path) {
   const auto count = u32(12);
   const auto subspaces = u32(16);
   const auto flags = u32(20);
-  if (dimension != kDimension || count == 0 || subspaces != kPqSubspaces ||
+  if (dimension != kDimension || count == 0 || count > kDocuments ||
+      subspaces != kPqSubspaces ||
       (flags & ~1U) != 0)
     throw std::runtime_error("invalid TQ1/PQ8 payload dimensions");
   const bool has_tq_norm = (flags & 1U) != 0;
@@ -103,6 +104,10 @@ Payload read_payload(const std::string& path) {
   if (!std::is_sorted(result.ids.begin(), result.ids.end()) ||
       std::adjacent_find(result.ids.begin(), result.ids.end()) != result.ids.end())
     throw std::runtime_error("TQ1/PQ8 payload IDs are not strictly sorted");
+  if (std::any_of(result.ids.begin(), result.ids.end(), [](std::int32_t id) {
+        return id < 0 || static_cast<std::size_t>(id) >= kDocuments;
+      }))
+    throw std::runtime_error("TQ1/PQ8 payload ID is outside the document corpus");
   auto finite = [](const auto& values) {
     for (const auto value : values)
       if (!std::isfinite(static_cast<double>(value))) return false;

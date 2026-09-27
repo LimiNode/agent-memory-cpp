@@ -143,6 +143,8 @@ def main() -> None:
         "payload_sha256": sha256(args.payload),
         "payload_receipt_sha256": sha256(args.receipt),
         "native_jsonl_sha256": sha256(args.native_jsonl),
+        "expected_pq_result_sha256": sha256(args.expected_pq_result),
+        "expected_tq_result_sha256": sha256(args.expected_tq_result),
     }
     require(run_receipt.get("status") == "EXECUTED" and
             run_receipt.get("argv") and

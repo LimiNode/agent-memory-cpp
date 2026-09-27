@@ -211,3 +211,9 @@ optional external adapters in the same quality/latency table.
 - Anthropic quickstarts: https://github.com/anthropics/claude-quickstarts
 - Anthropic skills: https://github.com/anthropics/skills
 - mockturtle: https://github.com/lsils/mockturtle
+
+The Habr vector-database article is a methodology reference only. Its published
+run has no immutable benchmark commit; the currently reachable repository tip
+`c5b4d45659feafaaa968b6f07fdc12a7eb20e171` was inspected on 2026-09-27 only
+for source context. The article reports no numeric recall and uses different
+loading paths, so its speedups are not acceptance thresholds for this project.

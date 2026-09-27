@@ -311,6 +311,10 @@ LsqPayload read_lsq_payload(const std::string& path) {
   copy(out.norms.data(), norm_bytes);
   if (!std::is_sorted(out.ids.begin(), out.ids.end()))
     throw std::runtime_error("LSQ payload IDs must be sorted");
+  if (std::any_of(out.ids.begin(), out.ids.end(), [](std::int32_t id) {
+        return id < 0 || static_cast<std::size_t>(id) >= kDocuments;
+      }))
+    throw std::runtime_error("LSQ payload ID is outside the document corpus");
   out.serialized_bytes = bytes.size();
   return out;
 }
