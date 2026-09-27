@@ -137,6 +137,55 @@ risk is optimizing adapter or I/O scheduling while accidentally changing the
 candidate set or quality contract; the benchmark therefore freezes quality and
 storage inputs before timing.
 
+## Federated retrieval across heterogeneous embedding spaces (M2+ planned)
+
+Federation may combine several derived vector sources, but it must not pretend
+that scores from different embedding spaces are directly comparable. Every
+source publishes a `SemanticSpaceManifest` and an `IndexManifest` before it can
+participate in a federated query. At minimum these manifests bind the source
+and projection identities, embedding model and revision, preprocessing hash,
+dimension, metric, normalization policy, codec identity, corpus revision and
+active index generation. A candidate also carries its source, local rank,
+local score, score kind (`exact`, `reconstructed`, `approximate` or
+`rank_only`) and the space-manifest hash.
+
+The coordinator uses an explicitly selected fusion policy:
+
+```text
+query per compatible space -> local candidate batches -> stable-ID dedup
+  -> common-space exact rerank, payload/cross-encoder rerank, calibrated fusion,
+     or rank-only RRF -> deterministic top-K
+```
+
+The policy is capability-driven. Raw vectors in one compatible space may use a
+common exact rerank; reconstructed codes are marked approximate. Heterogeneous
+spaces require a declared common query/payload reranker or a separately
+validated mapping trained on anchor pairs. If only local scores or ranks are
+available, rank-only RRF is the safe default. Raw cosine, inner-product and L2
+values from unrelated models must never be added or weighted without a
+held-out calibration manifest. A mapping is not inferred from coincidentally
+similar dimensions, and a model migration adapter is not a universal
+translation guarantee.
+
+The minimum federated gate uses the same corpus, query set and exact oracle as
+the single-source controls and reports, per source and for the union:
+
+- local candidate recall, union candidate recall and final `Recall@K`/`nDCG@K`;
+- candidate, deduplication, rerank and re-encoding work plus p50/p95/p99;
+- bytes read, payload/vector hydration, cache hits and missing/stale-source
+  drops;
+- fusion policy, calibration/anchor provenance and the result shape.
+
+Fixtures must cover one compatible model with different ANN indexes, different
+codecs, genuinely heterogeneous models with shared payload, and heterogeneous
+models with no shared payload (RRF only). They also cover duplicate stable IDs,
+missing sources, incompatible manifests, stale generations and source failure.
+No federated result is accepted if it silently mixes generations or presents a
+local approximate score as a global exact score. This gate is a derived-index
+and coordinator concern; canonical records and provenance remain in the
+library-owned store, and an external or SQLite source is an optional adapter,
+not a second canonical database.
+
 ## Minimal benchmark matrix
 
 ```text

@@ -291,6 +291,18 @@ query vector, result limit, score, and exact metadata filters. Exact in-memory,
 MDBX-backed, or approximate indexes must implement these contracts without
 owning retrieval ranking policy.
 
+### Federated and heterogeneous vector sources
+
+Multiple derived vector sources may participate in one retrieval request, but
+each source remains isolated by its semantic-space and index manifests. The
+coordinator merges candidates by stable canonical identity and records local
+score semantics, source generation and provenance. It may perform a common
+exact rerank only for compatible spaces, use a declared payload/model reranker
+for heterogeneous spaces, or fall back to rank-only RRF. It must not add raw
+scores from unrelated embedding models, infer compatibility from dimension,
+or let an external vector service become canonical storage. This keeps codec,
+ANN and model replacement orthogonal to the canonical MDBX record lifecycle.
+
 `ExactVectorIndex` is allowed in the index layer because it is dependency-free
 and acts as the deterministic baseline for tests and small local workloads.
 

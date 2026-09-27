@@ -99,3 +99,35 @@ but it should not be the hot-path representation for vector search. Future
 vector storage reductions should be modeled as separate encodings such as
 float16, int8, binary signatures, or product quantization, while full float
 embeddings remain available for final ranking.
+
+## Semantic-space and index manifests
+
+An embedding is comparable only within an explicitly identified semantic
+space. A future persisted projection or vector-source contract therefore
+records a `SemanticSpaceManifest` containing:
+
+- source and projection identifiers;
+- embedding model identifier and immutable revision hash;
+- preprocessing, tokenizer/input-template and pooling revision;
+- dimension, similarity metric and normalization policy;
+- codec identifier/revision when the source stores compressed vectors;
+- corpus revision and active generation.
+
+The derived ANN structure has a separate `IndexManifest` with its index kind,
+revision, payload hash and active generation. These are provenance contracts,
+not a requirement that `mdbx-containers` understand every codec or model.
+Indexes are rebuildable projections over canonical records. An external vector
+service or a future SQLite adapter may provide one such projection, but MDBX
+remains the default canonical store and no cross-store transaction is assumed.
+
+Federated retrieval must attach the space-manifest hash, source generation,
+local rank and score semantics to every candidate. Scores from unrelated
+spaces cannot be arithmetically fused. Use a common-space exact reranker when
+raw vectors are available, a payload/cross-encoder reranker for heterogeneous
+models with shared text, or rank-only RRF when only local rankings remain. A
+learned mapping (for example Procrustes/CCA or a nonlinear adapter) is an
+explicit, versioned hypothesis trained on anchor pairs and evaluated on held-
+out data; it is never selected solely because dimensions match. Model
+migrations may use a validated backward-compatible adapter, but must preserve
+the old manifest and generation until the new projection passes its quality and
+visibility gates.

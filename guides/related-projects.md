@@ -124,6 +124,22 @@ contract lives in [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap
 no new `Thought`, global memory or autonomous background cycle is added to the
 core library.
 
+### Federated vector sources and semantic-space compatibility
+
+Research on federated retrieval across embedding models reinforces a boundary
+already implied by the project architecture: different ANN indexes are
+compatible when they share a semantic space, while different embedding models
+need a common reranker, a validated mapping, or rank-only fusion. The useful
+requirements are recorded in [`embedding.md`](embedding.md) and
+[`evaluation-roadmap.md`](evaluation-roadmap.md): immutable space/index
+manifests, candidate evidence with explicit score kind, stable-ID
+deduplication, generation checks, and per-source/union quality accounting.
+Procrustes, CCA, nonlinear translation and backward-compatible embedding
+adapters remain versioned research hypotheses; none is enabled merely because
+dimensions match. RRF is the safe fallback when only local rankings survive.
+The result is a federation/coordinator concern, not a reason to add SQLite or
+an external vector database as a second canonical store.
+
 - **Graphiti / Zep**: bi-temporal context graph pattern с edge-level temporal metadata (valid_from / valid_until), episodes as source evidence, deterministic-first entity/edge dedupe and hybrid semantic+keyword+graph retrieval. Current M1 design has single-axis `TemporalComponent` + `GraphEdge`; Graphiti-style valid-time/recorded-time semantics are planned in [`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md) AM-13, with AM-19..AM-22 covering entity resolution, typed query/MCP safety, logical index separation and the optional temporal-context-graph profile/evaluation lane.
 - **Cognee**: knowledge graph + community detection для "global questions". У нас CommunitySummaryJob (M2+, GraphRAG-style).
 - **mem0**: explicit fact extraction с slot-based QA retrieval. У нас QALookup slot в QAKB profile.
