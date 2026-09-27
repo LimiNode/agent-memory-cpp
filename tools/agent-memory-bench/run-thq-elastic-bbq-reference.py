@@ -199,8 +199,18 @@ def main() -> None:
     args = parser.parse_args()
     if args.self_test: self_test(); return
     if any(getattr(args, name.replace("-", "_")) is None for name in names): parser.error("all source and output paths are required")
-    docs = load_f32(args.documents, 1_000_000); train = unit_rows(load_f32(args.train_vectors)); queries = unit_rows(load_f32(args.queries, QUERY_COUNT)); qids = np.asarray(np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20))); grades = np.asarray(np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20))); teacher = np.asarray(np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10)))
-    raw = json.loads(args.candidate_raw.read_text(encoding="utf-8")); counts = np.asarray([int(row["candidate_count"]) for row in raw["rows"]], dtype=np.int64); offsets = np.concatenate(([0], np.cumsum(counts))); total = int(offsets[-1]); records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(total, 148)); candidate_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64); receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8")); require(receipt.get("execution_status") == "EXECUTED" and receipt.get("raw_sha256") == sha256(args.candidate_raw) and receipt.get("flat_file", {}).get("sha256") == sha256(args.candidate_flat), "candidate provenance differs")
+    # Keep the 1M corpus memory-mapped.  The previous eager ``load_f32`` call
+    # consumed another 1.5 GiB before candidate parsing and made this replay
+    # fail with WinError 8 under concurrent research jobs.
+    docs = np.memmap(args.documents, mode="r", dtype="<f4", shape=(1_000_000, D))
+    train = unit_rows(load_f32(args.train_vectors)); queries = unit_rows(load_f32(args.queries, QUERY_COUNT)); qids = np.asarray(np.memmap(args.qrel_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 20))); grades = np.asarray(np.memmap(args.qrel_scores, mode="r", dtype="<f4", shape=(QUERY_COUNT, 20))); teacher = np.asarray(np.memmap(args.teacher_ids, mode="r", dtype="<i8", shape=(QUERY_COUNT, 10)))
+    raw = json.loads(args.candidate_raw.read_text(encoding="utf-8")); counts = np.asarray([int(row["candidate_count"]) for row in raw["rows"]], dtype=np.int64); offsets = np.concatenate(([0], np.cumsum(counts))); total = int(offsets[-1]); record_bytes = int(raw.get("record_bytes", 0)); require(record_bytes in (100, 148), "unsupported candidate record width")
+    # Read only the four-byte ID lane.  A strided copy avoids retaining the
+    # 148-byte candidate records while keeping the replay independent of the
+    # platform's memory-mapping section limits.
+    flat_bytes = args.candidate_flat.read_bytes(); require(len(flat_bytes) == total * record_bytes, "candidate flat cardinality differs")
+    candidate_ids = np.ndarray(shape=(total,), dtype="<i4", buffer=flat_bytes, strides=(record_bytes,)).astype(np.int64, copy=True)
+    receipt = json.loads(args.candidate_receipt.read_text(encoding="utf-8")); require(receipt.get("execution_status") == "EXECUTED" and receipt.get("raw_sha256") == sha256(args.candidate_raw) and receipt.get("flat_file", {}).get("sha256") == sha256(args.candidate_flat), "candidate provenance differs")
     thresholds = np.fromfile(args.thq4_thresholds, dtype="<f4").reshape(D, 3); thq_codes = np.memmap(args.thq4_codes, mode="r", dtype="<u1", shape=(1_000_000, THQ_BYTES)); selected_rows = [interval_top(queries[qi], candidate_ids[offsets[qi]:offsets[qi + 1]], thq_codes, thresholds) for qi in range(QUERY_COUNT)]; selected_unique = np.unique(np.concatenate(selected_rows));
     # Lucene's cosine contract normalizes every source vector before accumulating
     # the segment centroid.  Averaging raw rows is only equivalent when all rows

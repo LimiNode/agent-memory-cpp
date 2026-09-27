@@ -84,9 +84,15 @@ canonical split against the Qdrant source revision
 `0.6562538770` for TQ2 (100 B side), over 18,362 unique candidate documents.
 Result SHA-256 is
 `fad8ce7642389e678b223f8e635b46f2e81a4fd99abeb0ecff9379860c7e9f83`.
-This closes the source-bound Python control only. The Rust toolchain is not
-available on this host, so direct Qdrant Rust encode/decode parity remains
-pending and these values must not be described as Rust parity evidence.
+This closes the source-bound Python control only. A direct Qdrant Rust replay
+was then run from the same upstream revision (`6ab21cac18ebb6f4ae29102c7f8f5cc11affd5de`)
+on the frozen 18,362-row residual payload. Rust normal-mode Dot-compatible
+encode/decode matched the Python control within `7.46e-9` maximum absolute
+error for both TQ1 and TQ2. The compact parity result is recorded in
+`2026-09-27-turboquant-rust-parity.result.json`; the independent audit is
+`rust-tq-parity.audit.json` in the external replay workspace. This is a
+decode-fidelity gate, not a native latency claim, and does not cover TQ+ shift/
+scale correction.
 
 ## Final serving gate
 

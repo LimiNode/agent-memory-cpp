@@ -60,10 +60,14 @@ def candidate_ids(flat: Path, raw_path: Path) -> tuple[np.ndarray, np.ndarray]:
     counts = np.asarray([int(row["candidate_count"]) for row in raw["rows"]],
                         dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts, dtype=np.int64)))
-    records = np.memmap(flat, mode="r", dtype=np.uint8,
-                        shape=(int(offsets[-1]), 148))
-    ids = np.frombuffer(np.asarray(records[:, :4]).tobytes(), dtype="<i4")
-    ids = ids.reshape(-1).astype(np.int32, copy=False)
+    record_bytes = int(raw.get("record_bytes", 0))
+    require(record_bytes in (100, 148), "unsupported candidate record width")
+    total = int(offsets[-1])
+    flat_bytes = flat.read_bytes()
+    require(len(flat_bytes) == total * record_bytes,
+            "candidate flat/raw cardinality differs")
+    ids = np.ndarray(shape=(total,), dtype="<i4", buffer=flat_bytes,
+                     strides=(record_bytes,)).astype(np.int32, copy=True)
     require(len(counts) == QUERY_COUNT and offsets[-1] == len(ids),
             "candidate stream cardinality differs")
     return ids, offsets.astype(np.uint64)

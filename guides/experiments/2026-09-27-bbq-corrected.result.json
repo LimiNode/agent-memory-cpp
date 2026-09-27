@@ -1,0 +1,26 @@
+{
+  "family": "thq_elastic_bbq_reference_gate_c_v3",
+  "status": "EXECUTED",
+  "metric": "cosine",
+  "preconditioner": "none",
+  "query_count": 152,
+  "selected_unique_documents": 18362,
+  "arms": {
+    "bbq_lucene_direct": {
+      "mean_qrels_ndcg10": 0.573386387340742,
+      "side_payload_bytes": 62
+    },
+    "bbq_lucene_asymmetric": {
+      "mean_qrels_ndcg10": 0.585535532943873,
+      "side_payload_bytes": 62
+    }
+  },
+  "runner_sha256": "d74ebcec7836278d515030535e088f97e1625b2be963a1885062e5c1f1b260e1",
+  "result_sha256": "aaf57039cf03848de384ea0f6e9c21a3ffea5eac9798c79e1a4f714413f1c5cf",
+  "audit_sha256": "510598340e25fe2ff269d3399fef2cd234766541c66eb849ae6b5a1add62b5aa",
+  "limitations": [
+    "Candidate-local THQ4 top-128 replay; not native serving latency.",
+    "This corrected runner keeps the canonical candidate record width (100 B) and memory-maps the 1M corpus.",
+    "The result is a source-bound BBQ control, not a production selection claim."
+  ]
+}
