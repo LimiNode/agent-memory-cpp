@@ -141,20 +141,24 @@ def main() -> None:
     unique = np.unique(ids).astype(np.int32)
     offsets_path = args.output_root / "candidate-offsets.u64"
     offsets.astype("<u8").tofile(offsets_path)
-    codec_payloads = {
-        "joint2": (32, decode_joint2(thq, unique, args.lsq_models,
-                                      args.joint_artifact_dir)),
-        "rslm3": (146, np.asarray(np.memmap(
-            args.rslm_dir / "rslm3.faithful.f32", mode="r", dtype="<f4",
-            shape=(len(unique), D)), dtype=np.float32)),
-        "rslm4": (194, np.asarray(np.memmap(
-            args.rslm_dir / "rslm4.faithful.f32", mode="r", dtype="<f4",
-            shape=(len(unique), D)), dtype=np.float32)),
-    }
     query_values = np.memmap(args.queries, mode="r", dtype="<f4",
                              shape=(QUERY_COUNT, D))
     rows = []
-    for name, (payload_bytes, vectors) in codec_payloads.items():
+    # Process one dense payload at a time.  The full union is 463,258 rows;
+    # retaining all three 711-MiB matrices simultaneously turns this gate into
+    # an avoidable host-memory/OOM experiment.
+    codec_specs = (
+        ("joint2", 32, lambda: decode_joint2(
+            thq, unique, args.lsq_models, args.joint_artifact_dir)),
+        ("rslm3", 146, lambda: np.memmap(
+            args.rslm_dir / "rslm3.faithful.f32", mode="r", dtype="<f4",
+            shape=(len(unique), D))),
+        ("rslm4", 194, lambda: np.memmap(
+            args.rslm_dir / "rslm4.faithful.f32", mode="r", dtype="<f4",
+            shape=(len(unique), D))),
+    )
+    for name, payload_bytes, load_vectors in codec_specs:
+        vectors = load_vectors()
         require(vectors.shape == (len(unique), D) and np.isfinite(vectors).all(),
                 f"invalid {name} dense payload")
         ids_path = args.output_root / f"{name}.document-ids.i4"
@@ -201,6 +205,7 @@ def main() -> None:
                          completed.stderr.strip().splitlines()[-1]),
                      "output_sha256": sha256(output_path),
                      "decoded_payload_sha256": sha256(payload_path)})
+        del vectors
     result = {
         "schema_version": 1,
         "family": "thq_native_full_candidate_predecoded_v1",
