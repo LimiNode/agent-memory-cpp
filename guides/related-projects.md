@@ -217,3 +217,7 @@ run has no immutable benchmark commit; the currently reachable repository tip
 `c5b4d45659feafaaa968b6f07fdc12a7eb20e171` was inspected on 2026-09-27 only
 for source context. The article reports no numeric recall and uses different
 loading paths, so its speedups are not acceptance thresholds for this project.
+This correction supersedes any earlier paragraph in this file that presents
+`4466dfc9e8707c6d4cfd99977ddc8f7f428bcbf13` as a reproducibility pin: that
+revision is not reachable from the public repository and must not be used as
+evidence.
