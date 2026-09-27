@@ -34,9 +34,9 @@ Key hashes (artifact root outside Git):
 
 | artifact | SHA-256 |
 | --- | --- |
-| `materialization.raw.json` | `713f7de81bfe193887ca543770c8f0b2e7ef5c119fb0430a04450e34aea53c61` |
-| `materialization.audit.json` | `12d581afeb2c9067d9053b22a66206e2cda6a9ce3df829616b2fedf4c795b3a5` |
-| `rslm1.symbols.u8` | `ee84f3d9d93987e8800b56479f31bac4399d4163f225a0acb2ba8f40a0decc9f` |
+| `materialization.raw.json` | `6d8b360281a34f4f56e1d5370d6b061211bff28e75f8e9bf1bdf8d8d64807d52` |
+| `materialization.audit.json` | `119b89e73e3f96d7c75586ecc568abcfdfb9bbb857d16129c688b04ebc270a40` |
+| `rslm1.symbols.u8` | `b7d99c5abfc005958e45b749df0db82e827e6f576b90e4fb14bb98a6365a38d6` |
 | `rslm1.inner-scale.u16` | `6238248d7f262ce4e67d8ac71c976bf3a9b116b68ecbd9910ff83a5d258a346d` |
 | `rslm1.outer-scale.u16` | `22a0569e80008198352baed333d57d555fbab00cdbb7570a1363c9b3319cc02c` |
 

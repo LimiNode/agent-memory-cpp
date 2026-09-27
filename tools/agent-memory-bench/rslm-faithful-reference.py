@@ -56,18 +56,18 @@ C4D = np.asarray(list(zip(
 
 
 def _pack_nibbles(symbols: np.ndarray) -> np.ndarray:
-    """Pack two 4-bit symbols per byte, low nibble first."""
+    """Pack two 4-bit symbols per byte, first symbol in the high nibble."""
     symbols = np.asarray(symbols, dtype=np.uint8)
     if symbols.shape[1] % 2:
         symbols = np.pad(symbols, ((0, 0), (0, 1)))
-    return (symbols[:, 0::2] | (symbols[:, 1::2] << 4)).astype(np.uint8)
+    return ((symbols[:, 0::2] << 4) | symbols[:, 1::2]).astype(np.uint8)
 
 
 def _unpack_nibbles(packed: np.ndarray, count: int) -> np.ndarray:
     packed = np.asarray(packed, dtype=np.uint8)
     symbols = np.empty((len(packed), packed.shape[1] * 2), dtype=np.uint8)
-    symbols[:, 0::2] = packed & 0x0F
-    symbols[:, 1::2] = packed >> 4
+    symbols[:, 0::2] = packed >> 4
+    symbols[:, 1::2] = packed & 0x0F
     return symbols[:, :count]
 
 
