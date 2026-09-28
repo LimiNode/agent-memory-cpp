@@ -85,3 +85,16 @@ baseline, an explicitly budgeted fallback, typed outcomes, idempotent retry
 evidence, revision-safe cache invalidation, and a test proving that no provider
 call occurs inside a core storage transaction. This does not add SQLite, HTTP,
 or an LLM dependency to the core library.
+## Cancellation and stale-result rules
+
+Provider adapters must propagate cancellation and attach an execution epoch to
+every request. A late response is discarded when its epoch, model revision,
+context fingerprint or authority scope no longer matches the waiting operation.
+Cancellation is not a rollback of canonical memory and a provider timeout is
+not evidence that the requested fact is absent. Hosts should record
+`completed`, `cancelled`, `failed` and `stale` outcomes separately.
+
+Structured output, grammar constraints and streaming callbacks are adapter
+capabilities. They do not grant the provider permission to write memory or
+dispatch effects; any such result returns to the host verifier and ordinary
+curation/write path.

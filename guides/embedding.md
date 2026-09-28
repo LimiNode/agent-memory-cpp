@@ -71,6 +71,28 @@ Concrete backends should live behind adapter boundaries, for example:
 Each backend must keep its dependency wiring optional and must not leak backend
 types into dependency-free contracts.
 
+## Provider adapter operations
+
+The adapter boundary should remain capability-oriented rather than exposing a
+single "LLM can do everything" interface. Planned provider-neutral roles are
+`IEmbedder`, completion/structured-output provider, reranker provider and (if
+needed) tokenizer provider. A provider may implement several roles, but each
+request declares which role it is using and which model revision produced the
+result.
+
+An optional local `LlamaLib`/`llama.cpp` adapter is a valid future backend. It
+must be an adapter or host package, never a core dependency. Useful capabilities
+to advertise explicitly are batching, streaming, cancellation, structured
+grammar/schema output, multiple slots, warmup and local/remote execution. A
+JSON schema or grammar validates shape only; the host still verifies semantics,
+authority and provenance before accepting a derived result.
+
+Every provider result should be replayable from a receipt containing at least
+`provider_id`, provider revision, model digest, backend/device, purpose,
+tokenizer or preprocessing hash, grammar/schema hash, request/context digest,
+generation parameters, cancellation status and result digest. Model chat
+history and summaries are provider-derived caches, not canonical memory.
+
 ## Deferred Tokenizer Acceleration Research
 
 [`gigatoken`](https://github.com/marcelroed/gigatoken) is a potential future

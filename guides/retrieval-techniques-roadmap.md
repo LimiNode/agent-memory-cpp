@@ -41,6 +41,12 @@ Non-goals:
 
 See [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadmap.md) for the conceptual framing of what good retrieval preserves (numbers, commands, constraints, exceptions, provenance) and [`vector-db-engineering-roadmap.md`](vector-db-engineering-roadmap.md) for the vector-store decision matrix.
 
+Physical candidate execution, bounded queues, covering reads and generation
+aware caching are specified in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md).
+Cross-space fan-out and compatibility rules are specified in
+[`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
+
 ## §2. Typology
 
 8 классов retrieval techniques по `ai-agent-playbook/concepts/rag-knowledge/11 RAG стратегий — спектр и комбинации.md` и `ai-agent-playbook/concepts/rag-knowledge/Типы RAG - от Naive до Agentic.md`:

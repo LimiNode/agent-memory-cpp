@@ -20,6 +20,11 @@ Non-goals:
 - Не каталогизировать embedding models (это в `optimization-roadmap.md` и `binary-embeddings-roadmap.md`).
 - Не выбирать единственный «правильный» vector store — workload-driven.
 
+Physical retrieval execution is specified in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md); searches
+across heterogeneous embedding spaces are specified in
+[`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
+
 ## §2. Source attribution policy
 
 Этот гайд синтезирует материал из нескольких источников. Цитаты следуют двухуровневому паттерну:
@@ -261,6 +266,10 @@ are optional derived-index adapters and comparison targets. The current
 compile-time default remains `AGENT_MEMORY_ENABLE_MDBX=OFF`; enabling MDBX is an
 explicit build choice. Qdrant self-host, Chroma and Pinecone are
 deployment-specific adapter candidates, not project defaults.
+Physical retrieval execution is specified in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md); searches
+across heterogeneous embedding spaces are specified in
+[`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
 
 ## §10. Open questions
 
@@ -292,6 +301,10 @@ deployment-specific adapter candidates, not project defaults.
 
 ### 9.3. In-house guides
 
+The project-level execution and federation contracts are in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md) and
+[`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
+
 - [`optimization-roadmap.md`](optimization-roadmap.md) — vector math baseline, optional Eigen adapter, SIMD dispatch (SSE4.2 / AVX2 / AVX-512), `HammingTopK` kernel, encoder registry, `DenseIndexMode` (Exact / BinaryCandidateFilter / BinaryOnly / ApproximateVector / Hnsw).
 - [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) — typology of retrieval techniques (Naive / Advanced / Hybrid / Contextual / Graph / Fusion / Adaptive / Agentic / RLM); какой retriever поверх какого vector store.
 - [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md) — binarisation landscape (sign / autoencoder / LSH / PQ), SIMD-accelerated distance, hybrid binary + dense, composite compression (MRL + INT8 / PQ / binary).
@@ -299,3 +312,12 @@ deployment-specific adapter candidates, not project defaults.
 - [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) §5.5/§5.5.1 — capability-aware physical MDBX manifest and DBI budget.
 - [`related-projects.md`](related-projects.md) — внешние сравнения Vector Store и benchmark suites (если есть).
 - [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadmap.md) — conceptual backbone (prediction ↔ compression equivalence, "7 check-questions for compression quality", "operational > general"); см. §4 «For RAG» и §6 application matrix для понимания, что Vector Store отвечает и за что не отвечает.
+
+### 9.4. Project ownership correction
+
+The external-store matrix above is comparison material, not the project
+default. The normative path for `agent-memory-cpp` is embedded MDBX as the
+canonical owner of records, revisions, tombstones and provenance. Qdrant,
+Milvus, Weaviate and managed stores are optional derived-index adapters and
+benchmark targets. A host may choose one for a workload, but that choice does
+not transfer canonical ownership or change the library's storage contract.
