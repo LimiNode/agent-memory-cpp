@@ -82,6 +82,15 @@ layout work, while the canonical 32/48-byte fit is CPU-bound by the product of
 25k rows, 32--48 stages, and large ILS/ICM iteration budgets. The smoke is a
 regression check only and does not relax the `BLOCKED_HOST_BUDGET` status.
 
+The same bounded smoke also shows why logical-thread count is not a direct
+runtime multiplier on this host (Xeon E5-2696 v3, 18 physical / 36 logical
+CPUs). With `4096 x 128`, eight stages and the same reduced fit budget, measured
+fit time was `2.30 s` at one thread, `0.80 s` at four, `0.79 s` at sixteen,
+and `2.87 s` at thirty-six. This is a diagnostic, not a canonical benchmark,
+but it demonstrates the expected cache/coordination penalty from oversubscribing
+the local-search workload; more logical threads do not make the 50/32 fit
+finish predictably.
+
 ## Official Faiss OPQ/PQ control (corrected replay)
 
 The first heavy fit used a strong custom schedule (`niter=50`, `niter_pq=40`,
