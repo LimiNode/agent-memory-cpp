@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "family": "thq_qinco2_official_replay_v3",
+  "status": "EXECUTED",
+  "quality_status": "BOUNDED_TRAINING_DOMAIN_MISMATCH_CONTROL",
+  "metric": "cosine",
+  "query_count": 152,
+  "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
+  "checkpoint_sha256": "fe5d05778f9ede377eb663e3d391ea1eb2fbab86576894ce6330796335ec387c",
+  "runner_sha256": "524c2962b21bd5d98e10b0b115bf14a7f145c65e5c08ad179d637ccd05dce04b",
+  "codes_artifact_sha256": "84143036ae74b561ab866f0bb60ca3089cdcad9306f17db1f411b2be5691ca69",
+  "audit_status": "PASS",
+  "audit_sha256": "81fde16fac099836f4c8e7e96f203d50216f32805d9dafdebadab577d9fcef4b",
+  "config": {"M": 16, "K": 256, "L": 2, "dh": 256, "de": 128, "A": 16, "B": 32},
+  "training": {
+    "source_pool_rows": 25000,
+    "effective_train_rows": 20000,
+    "validation_rows": 5000,
+    "completed_full_epochs": 4,
+    "checkpoint_epoch_field": 5,
+    "training_dataset_sha256": "fb1f74a0feac55c640863fd91fdbf080fea22ddfc7e6672d849be24b707f5128",
+    "training_log_sha256": "475a3ecd361f6b6f7dad6504d33db937f474382f37686ee8e383760738d2b2c8",
+    "training_trace_sha256": "6f8e49ea05448407e3cea2817f05b0bacd212e2faf2fce5c39f02a56e9188497",
+    "validation_mse_epoch4": 0.0425441,
+    "train_codeword_entropy_epoch4": 0.267217,
+    "validation_codeword_entropy_epoch4": 0.256526,
+    "step_entropies_epoch4": [3.10, 1.0, 0.0, 0.15, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.02, 0.0],
+    "reset_count_epoch4": 4025,
+    "codeword_capacity": 4096
+  },
+  "arms": {
+    "qinco2_official_16b_residual_mismatch": {
+      "mean_qrels_ndcg10": 0.6422150224643906,
+      "side_payload_bytes": 20,
+      "cascade_total_bytes": 116,
+      "global_model_bytes": 29942788,
+      "final_norm_sidecar_bytes": 4
+    },
+    "qinco2_official_16b_raw_vector": {
+      "mean_qrels_ndcg10": 0.0627454353033429,
+      "side_payload_bytes": 20,
+      "cascade_total_bytes": 116,
+      "global_model_bytes": 29942788,
+      "final_norm_sidecar_bytes": 4
+    }
+  },
+  "limitations": [
+    "Checkpoint was trained on raw canonical vectors and applied to THQ residuals; residual arm is a bounded domain-mismatch control.",
+    "Only 4 epochs on 20k effective train rows, not the paper-scale 70-epoch A32/B64 evaluation protocol.",
+    "RQ-initialization occupancy and A32/B64 inference remain separate future controls.",
+    "No production or family-negative conclusion is made."
+  ]
+}

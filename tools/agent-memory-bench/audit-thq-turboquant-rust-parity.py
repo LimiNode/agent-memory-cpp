@@ -85,9 +85,18 @@ def main() -> None:
             "turboquant2": compare(args.expected_2, args.rust_2, rows, 384),
         },
         "acceptance": {"max_abs_error": 1e-7, "independent_rust_decode": True},
+        "wire_parity": {
+            "packed_bytes": False,
+            "extras_scale_bytes": False,
+            "asymmetric_score": False,
+            "harness_source_sha256": None,
+            "binary_sha256": None,
+            "cargo_lock_sha256": None,
+        },
         "limitations": [
             "Parity covers official Rust encode/decode, not native serving throughput.",
             "The compared payload is the frozen THQ candidate-union residual; TQ+ shift/scale is separate.",
+            "Packed wire bytes, extras, asymmetric scores and build hashes are not compared by this decode-only harness.",
         ],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

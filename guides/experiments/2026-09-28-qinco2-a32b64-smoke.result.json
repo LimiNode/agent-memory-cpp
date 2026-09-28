@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "family": "qinco2_official_source_smoke_v1",
+  "status": "EXECUTED",
+  "quality_status": "NOT_EXECUTED",
+  "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
+  "source_result_sha256": "7f9ef3ad59d3e9e2635823f1a681aac1131a92155a50468053ec763bd1f5e50a",
+  "config": {
+    "dimension": 16,
+    "stages": 3,
+    "codebook_size": 256,
+    "beam_a": 32,
+    "beam_b": 64,
+    "rows": 32,
+    "device": "cpu"
+  },
+  "checks": [
+    "official QINCo2 source construction",
+    "A32/B64 encode/decode shape",
+    "repeated encode determinism",
+    "decode(codes) parity"
+  ],
+  "limitations": [
+    "synthetic untrained model only",
+    "no E5/R4-trained checkpoint",
+    "no corpus quality number",
+    "does not close the A32/B64 trained-corpus gate"
+  ]
+}

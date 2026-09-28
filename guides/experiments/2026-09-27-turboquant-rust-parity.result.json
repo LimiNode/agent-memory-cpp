@@ -31,8 +31,17 @@
     "independent_rust_decode": true,
     "max_abs_error": 1e-07
   },
+  "wire_parity": {
+    "packed_bytes": false,
+    "extras_scale_bytes": false,
+    "asymmetric_score": false,
+    "harness_source_sha256": null,
+    "binary_sha256": null,
+    "cargo_lock_sha256": null
+  },
   "limitations": [
     "Parity covers official Rust encode/decode, not native serving throughput.",
-    "The compared payload is the frozen THQ candidate-union residual; TQ+ shift/scale is separate."
+    "The compared payload is the frozen THQ candidate-union residual; TQ+ shift/scale is separate.",
+    "Packed wire bytes, extras, asymmetric scores and build hashes are not compared by this decode-only harness."
   ]
 }

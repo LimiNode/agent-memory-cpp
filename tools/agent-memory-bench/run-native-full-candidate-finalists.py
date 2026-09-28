@@ -150,10 +150,12 @@ def main() -> None:
     codec_specs = (
         ("joint2", 32, lambda: decode_joint2(
             thq, unique, args.lsq_models, args.joint_artifact_dir)),
-        ("rslm3", 146, lambda: np.memmap(
+        # Faithful RSLM relative payloads include 2 B inner UE7M9 and 2 B
+        # outer reconstruction scale: 148 B for RSLM3, 196 B for RSLM4.
+        ("rslm3", 148, lambda: np.memmap(
             args.rslm_dir / "rslm3.faithful.f32", mode="r", dtype="<f4",
             shape=(len(unique), D))),
-        ("rslm4", 194, lambda: np.memmap(
+        ("rslm4", 196, lambda: np.memmap(
             args.rslm_dir / "rslm4.faithful.f32", mode="r", dtype="<f4",
             shape=(len(unique), D))),
     )
@@ -181,10 +183,20 @@ def main() -> None:
         native_by_query = {int(row["query"]): row for row in native_rows}
         parity = True
         parity_mismatches = []
+        thq_set_parity = True
+        thq_ordered_parity = True
+        thq_mismatches = []
         for query_index in range(QUERY_COUNT):
             query = np.asarray(query_values[query_index], dtype=np.float32)
             selected = thq_top(query, ids[offsets[query_index]:offsets[query_index + 1]],
                                thq, thresholds)
+            native_thq = np.asarray(native_by_query[query_index]["thq4_top128_ids"],
+                                    dtype=np.int32)
+            if not np.array_equal(np.sort(native_thq), np.sort(selected)):
+                thq_set_parity = False
+                thq_mismatches.append(query_index)
+            if not np.array_equal(native_thq, selected):
+                thq_ordered_parity = False
             positions = np.searchsorted(unique, selected)
             expected = cosine_top(query, selected, vectors[positions])
             actual = np.asarray(native_by_query[query_index]["top10_ids"],
@@ -201,6 +213,10 @@ def main() -> None:
                      "timing_percentiles_ms": timing,
                      "exact_top10_parity": parity,
                      "parity_mismatch_queries": parity_mismatches,
+                     "thq_top128_set_parity": thq_set_parity,
+                     "thq_top128_ordered_parity": thq_ordered_parity,
+                     "thq_top128_ordering_policy": "set parity mandatory; ordering-only numerical/tie-order differences are reported, not treated as semantic mismatches",
+                     "thq_top128_set_mismatch_queries": thq_mismatches,
                      "native_summary": json.loads(
                          completed.stderr.strip().splitlines()[-1]),
                      "output_sha256": sha256(output_path),

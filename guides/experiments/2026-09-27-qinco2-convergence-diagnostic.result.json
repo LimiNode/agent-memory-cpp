@@ -3,8 +3,17 @@
   "status": "PARTIALLY_EXECUTED",
   "quality_status": "NO_QUALITY_CLAIM",
   "upstream_revision": "5a324954d5c9b3700d4407d6cc24c3db6e52890e",
-  "config": {"M": 16, "K": 256, "dh": 256, "de": 128, "A": 16, "B": 32, "epochs_requested": 10, "train_rows": 25000, "validation_rows": 5000},
+  "config": {"M": 16, "K": 256, "dh": 256, "de": 128, "A": 16, "B": 32, "epochs_requested": 10, "source_pool_rows": 25000, "effective_train_rows": 20000, "validation_rows": 5000},
   "checkpoint": {"epoch": 5, "sha256": "fe5d05778f9ede377eb663e3d391ea1eb2fbab86576894ce6330796335ec387c"},
+  "provenance": {
+    "training_plan_sha256": "f8413b5dc6cdd1894516f55bf9124816ce72a8dd89b08bf49ffdd1a5ae2081ff",
+    "training_manifest_sha256": "c5ff949157a31671e14e22b6b401792cbda51e51935ddbbf6ff824686c8f0afb",
+    "training_log_sha256": "475a3ecd361f6b6f7dad6504d33db937f474382f37686ee8e383760738d2b2c8",
+    "training_trace_sha256": "6f8e49ea05448407e3cea2817f05b0bacd212e2faf2fce5c39f02a56e9188497",
+    "dataset_sha256": "fb1f74a0feac55c640863fd91fdbf080fea22ddfc7e6672d849be24b707f5128",
+    "codes_artifact_sha256": "84143036ae74b561ab866f0bb60ca3089cdcad9306f17db1f411b2be5691ca69",
+    "replay_result_sha256": "a56c37dbd795980d0fea0ade9a9f5b5786c6a610510388f82a023e817589b5b2"
+  },
   "trace": {
     "epoch_2_validation_mse": 0.0433337,
     "epoch_3_validation_mse": 0.0426993,

@@ -1,0 +1,15 @@
+{
+  "family": "thq_faiss_official_opq_control_v1",
+  "status": "PROVENANCE_RECORDED",
+  "supersedes_invalid_quality": "0.6616096795",
+  "corrected_result_mean_qrels_ndcg10": 0.6482593499,
+  "faiss_provenance": {
+    "python_package_version": "1.15.0",
+    "python_module_sha256": "c19ae417b7e4e876beb73fa572e59d20bf7994f27941d8392270356486f6f320",
+    "native_module": "faiss/_swigfaiss.pyd",
+    "native_module_sha256": "31bf800d7899fd93538c02b556422017da73187fc25d56a9b174116f1aa5b3d5",
+    "compile_options": ""
+  },
+  "opq_config": {"niter": 50, "niter_pq": 40, "niter_pq_0": 40, "pq_kmeans_iters": 40, "payload_bytes": 16},
+  "interpretation": "Corrected source-bound fidelity control; not a production finalist and no new fit was required."
+}

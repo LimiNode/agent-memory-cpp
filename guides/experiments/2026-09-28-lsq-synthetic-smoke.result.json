@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "family": "thq_faiss_lsq_synthetic_smoke_v1",
+  "status": "PASS",
+  "quality_status": "NO_QUALITY_CLAIM",
+  "faiss_version": "1.15.0",
+  "config": {
+    "rows": 256,
+    "dimensions": 16,
+    "stages": 2,
+    "train_iters": 2,
+    "train_ils_iters": 1,
+    "encode_ils_iters": 2,
+    "icm_iters": 1,
+    "nperts": 1,
+    "seed": 20260928
+  },
+  "timing_seconds": {
+    "fit": 0.37210770044475794,
+    "encode_32_rows": 0.004036399535834789,
+    "total": 0.3772108005359769
+  },
+  "checks": [
+    "finite decoded vectors",
+    "additive manual decode parity",
+    "uint8 stage-code shape (32, 2)"
+  ],
+  "limitations": [
+    "synthetic bounded matrix only",
+    "reduced fit/ILS budget",
+    "does not estimate canonical 1M fit time or convergence"
+  ]
+}

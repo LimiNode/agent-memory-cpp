@@ -47,6 +47,14 @@ def main() -> None:
     p.add_argument("--model-input", type=Path)
     args = p.parse_args()
     import faiss
+    faiss_module = Path(faiss.__file__).resolve()
+    faiss_provenance = {
+        "version": getattr(faiss, "__version__", "unknown"),
+        "module_path": str(faiss_module),
+        "module_sha256": sha(faiss_module),
+        "compile_options": (faiss.get_compile_options()
+                             if hasattr(faiss, "get_compile_options") else "unknown"),
+    }
 
     train = np.memmap(args.train_vectors, mode="r", dtype="<f4",
                       shape=(args.train_vectors.stat().st_size // (4 * D), D))
@@ -139,6 +147,7 @@ def main() -> None:
     result = {"schema_version": 1, "family": "thq_faiss_official_opq_control_v1", "status": "EXECUTED",
               "source_replay": True, "metric": "cosine", "query_count": len(queries), "payload_bytes": 16,
               "subquantizers": 32, "bits": 4, "seed": args.seed,
+              "faiss_provenance": faiss_provenance,
               "opq_config": {"niter": args.opq_niter, "niter_pq": args.opq_niter_pq,
                              "niter_pq_0": args.opq_niter_pq_0, "pq_kmeans_iters": args.pq_kmeans_iters,
                              "official_faiss_defaults": args.opq_niter == 50 and args.opq_niter_pq == 4 and args.opq_niter_pq_0 == 40},

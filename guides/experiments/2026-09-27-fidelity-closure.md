@@ -30,8 +30,15 @@ epochs (checkpoint epoch field 5): validation MSE improved to `0.0425441`, but
 4025/4096 codewords were reset and most later stages still have zero entropy.
 The run was stopped at this stable collapse diagnostic rather than spending
 another hour per epoch on the same under-occupied arm. The values are recorded
-in `2026-09-27-qinco2-convergence-diagnostic.result.json`; a persisted-code
-replay remains pending, so no QINCo2 quality or family claim is made.
+in `2026-09-27-qinco2-convergence-diagnostic.result.json`. The subsequent
+epoch-4 persisted-code replay and structural audit are recorded in
+`2026-09-28-qinco2-epoch4-replay.result.json`; it remains a bounded
+domain-mismatch control, not a QINCo2 family or production claim.
+
+The official implementation also passes a bounded synthetic A32/B64 inference
+smoke (`2026-09-28-qinco2-a32b64-smoke.result.json`), including deterministic
+codes and `decode(codes)` parity. This verifies that the wider paper-style beam
+is accepted by the source API; it is not a trained-corpus A32/B64 quality run.
 
 RSLM1 uses the official 4D `C4D` codebook: 96 four-dimensional symbols are
 packed as 48 bytes, followed by the 2-byte inner UE7M9 scale. In relative mode
@@ -40,6 +47,11 @@ codec side is 52 B and the THQ4 cascade total is 148 B. RSLM1 is included in
 the same source-bound materializer and sample replay audit as RSLM2/3/4; its
 presence does not by itself provide native latency or production-selection
 evidence.
+
+The source-bound RSLM quality replay now includes the missing RSLM1 arm
+(`2026-09-28-rslm-faithful-quality.result.json`): `0.657398` IP nDCG@10 and
+`0.658220` cosine nDCG@10 at `52 B` side payload (`148 B` including THQ4).
+The full 152-query source/audit contract passes.
 
 ## Fail-closed interpretation
 
@@ -60,6 +72,15 @@ are recorded in `2026-09-28-lsq-convergence-host-limit.result.json`. These
 attempts produce no quality claim and no replay receipt. The previously audited
 25-iteration LSQ controls remain bounded evidence only; a scheduled
 high-memory/Faiss-optimized worker is required to close the 50/32 ceiling gate.
+
+The plumbing itself was checked separately on a bounded synthetic matrix:
+`2026-09-28-lsq-synthetic-smoke.result.json` trains a two-stage 16-dimensional
+Faiss LSQ, encodes 32 rows, and independently reconstructs the additive
+codebook sum. It passes in `0.377 s` with the reduced smoke budget. This
+isolates the failure mode of the large runs: the implementation and code
+layout work, while the canonical 32/48-byte fit is CPU-bound by the product of
+25k rows, 32--48 stages, and large ILS/ICM iteration budgets. The smoke is a
+regression check only and does not relax the `BLOCKED_HOST_BUDGET` status.
 
 ## Official Faiss OPQ/PQ control (corrected replay)
 
@@ -104,6 +125,9 @@ error for both TQ1 and TQ2. The compact parity result is recorded in
 `rust-tq-parity.audit.json` in the external replay workspace. This is a
 decode-fidelity gate, not a native latency claim, and does not cover TQ+ shift/
 scale correction.
+Packed wire bytes, extras/scale sidecars, asymmetric score parity, and Rust
+harness/build hashes remain explicitly pending; decoded-vector parity must not
+be read as full serving-wire parity.
 
 ## Final serving gate
 
@@ -114,16 +138,19 @@ warm/cold protocol, p50/p95/p99, page counters, and exact top-10 parity. CI
 self-tests alone are not numeric replay evidence.
 
 An executed warm-process preparation gate exists for the frozen THQ4 top-128
-rows (`2026-09-27-native-serving-top128.result.json`). A second executed gate
-now runs the complete frozen R4 candidate stream through native THQ4 top-128
+rows (`2026-09-27-native-serving-top128.result.json`). A corrected second
+executed gate now runs the complete frozen R4 candidate stream through native THQ4 top-128
 selection and reranks the full 463,258-document union for the payloads that
-are fully materialized (`2026-09-27-native-full-candidate-finalists.result.json`).
-`joint2`, faithful `RSLM3`, and faithful `RSLM4` all have exact top-10 parity
-with an independent Python scorer over all 152 queries. The native warm-process
-total p50/p95/p99 values are respectively `2.4459/47.8470/60.7997 ms`,
-`3.4313/35.8281/45.6676 ms`, and `3.1543/7.1544/11.1523 ms`.
+are fully materialized (`2026-09-28-native-full-candidate-finalists-v2.result.json`).
+`joint2`, faithful `RSLM3`, and faithful `RSLM4` all have exact THQ top-128
+set/order and final top-10 parity with an independent Python scorer over all
+152 queries. RSLM relative payload accounting is `148 B` and `196 B`
+respectively (including inner and outer UE7M9 scales). The native warm-process
+total p50/p95/p99 values are recorded for orchestration only; their tail values
+are not treated as codec-comparable because scheduler/cache state dominates the
+predecoded path.
 
-This is the complete candidate-to-top-128 serving gate for those finalists, not
-a compressed-decode or cold/page-fault benchmark. LSQ/TurboQuant/BBQ remain
+This is the full-candidate native orchestration/predecoded-rerank gate for those
+finalists, not a compressed-decode or cold/page-fault benchmark. LSQ/TurboQuant/BBQ remain
 separate gates and are not substituted by these payloads; their full-union
 serving rows are added only after their own source-bound artifacts exist.

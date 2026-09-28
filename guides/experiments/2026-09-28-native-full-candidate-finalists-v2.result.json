@@ -1,0 +1,35 @@
+{
+  "schema_version": 2,
+  "family": "thq_native_full_candidate_predecoded_v1",
+  "status": "EXECUTED",
+  "metric": "cosine",
+  "query_count": 152,
+  "candidate_scope": "complete frozen R4 candidate stream -> native THQ4 top128",
+  "unique_candidate_documents": 463258,
+  "decode_scope": "persisted dense payload rerank; compressed decode excluded",
+  "timing_scope": "warm process; p50 directional only; tail comparison is not a codec claim",
+  "payload_bytes": {"joint2": 32, "rslm3": 148, "rslm4": 196},
+  "parity": {
+    "independent_audit": "PASS",
+    "thq_top128_set_parity": "152/152 for every codec",
+    "thq_top128_ordered_parity": "ordering-only numerical/tie-order differences are reported; set parity is mandatory",
+    "final_top10_parity": "152/152 for every codec"
+  },
+  "source_hashes": {
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  },
+  "timing_ms": {
+    "joint2": {"thq4_prefilter": {"p50": 1.2617, "p95": 1.405455, "p99": 1.610704}, "codec_rerank": {"p50": 0.16015, "p95": 0.19257, "p99": 0.226384}, "total": {"p50": 1.42605, "p95": 1.607455, "p99": 1.805815}},
+    "rslm3": {"thq4_prefilter": {"p50": 1.3041, "p95": 1.380785, "p99": 1.426067}, "codec_rerank": {"p50": 0.1625, "p95": 0.19178, "p99": 0.207769}, "total": {"p50": 1.46945, "p95": 1.565745, "p99": 1.614417}},
+    "rslm4": {"thq4_prefilter": {"p50": 1.2905, "p95": 1.366905, "p99": 1.481343}, "codec_rerank": {"p50": 0.16255, "p95": 0.18498, "p99": 0.19689}, "total": {"p50": 1.4565, "p95": 1.53815, "p99": 1.654055}}
+  },
+  "limitations": [
+    "The native gate starts from the frozen R4 candidate stream; R4 construction is not timed here.",
+    "Compressed-code decode and cold/page-fault behavior remain separate gates.",
+    "THQ top-128 order differences are explicitly ordering-only numerical/tie-order differences, not semantic mismatches."
+  ]
+}
