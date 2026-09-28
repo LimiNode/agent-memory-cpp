@@ -3,6 +3,7 @@
   "status": "PARTIALLY_EXECUTED",
   "quality_status": "NO_NEW_QUALITY_CLAIM",
   "source_bound": true,
+  "intended_protocol": {"fit_schedule": "25/train-ILS8; 50/train-ILS8 only if 25->50 improves", "encoding_sensitivity": "encode-ILS16 vs encode-ILS32 on the same fitted model", "status": "NOT_YET_EXECUTED"},
   "source_bundle": "canonical DE-1M / 25,000 train rows / 152-query candidate fold",
   "attempts": [
     {
@@ -14,7 +15,8 @@
       "payloads": [32, 48],
       "runtime": "overnight CPU run; stopped after approximately 14 wall-hours",
       "artifacts": [],
-      "interpretation": "host-limited; no quality or convergence claim"
+      "status": "BLOCKED_EXCESSIVE_SCHEDULE_COST",
+      "interpretation": "excessive schedule was stopped; this is not the intended convergence gate"
     },
     {
       "name": "lsq32_50_32_single_payload",
@@ -26,7 +28,8 @@
       "thread_environment": {"OMP_NUM_THREADS": 16, "MKL_NUM_THREADS": 16, "OPENBLAS_NUM_THREADS": 16},
       "runtime": "approximately 2 wall-hours; stopped before artifact emission",
       "artifacts": [],
-      "interpretation": "host-limited; no quality or convergence claim"
+      "status": "BLOCKED_EXCESSIVE_SCHEDULE_COST",
+      "interpretation": "excessive schedule was stopped; this is not the intended convergence gate"
     },
     {
       "name": "lsq32_25_16_independent_seed",
@@ -38,7 +41,8 @@
       "thread_environment": {"OMP_NUM_THREADS": 16, "MKL_NUM_THREADS": 16, "OPENBLAS_NUM_THREADS": 16},
       "runtime": "approximately 20 wall-minutes; stopped before artifact emission",
       "artifacts": [],
-      "interpretation": "host-limited; no independent quality claim"
+      "status": "NOT_YET_EXECUTED_INTENDED_GATE",
+      "interpretation": "under the intended schedule this remains unexecuted; no independent quality claim"
     }
   ],
   "existing_control": {

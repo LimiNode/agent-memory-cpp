@@ -9,7 +9,8 @@ scoring, and the persisted THQ4 top-128 shell.
 
 | family | control | required evidence |
 | --- | --- | --- |
-| LSQ | Faiss `LocalSearchQuantizer` at 25/16, 50/32, and 100/32 fit budgets | fit/encode time, nDCG@10, candidate overlap, codebook and seed hashes; repeat any improving setting on independent seeds |
+| LSQ | Faiss `LocalSearchQuantizer` at 25/train-ILS8 and (only if improving) 50/train-ILS8; encode-ILS16 vs encode-ILS32 sensitivity | fit/encode time, nDCG@10, candidate overlap, codebook and seed hashes; repeat any improving setting on independent seeds |
+| PLSQ | Faiss `ProductLocalSearchQuantizer` practical controls `PLSQ8x4x8` and `PLSQ8x6x8` | same source-bound quality/storage audit; bounded control for the dense-solve LSQ ceiling |
 | PQ/OPQ | official Faiss `ProductQuantizer` and `OPQMatrix` on the same residual/domain split | Faiss version, native module hash, compile options, exact `niter`, `niter_pq`, k-means iterations, rotation/codebook hashes, independent decode/ADC replay |
 | RSLM | source-grounded RSLM1/2/3/4 | source revision, exact tables and transform hashes, packed-code replay, matched side bytes |
 | QINCo2 | official upstream architecture and preset, with a convergence/occupancy sweep | upstream revision/license, immutable training plan, checkpoint and code hashes, validation trace, occupancy/entropy, persisted-code decode audit |
@@ -32,8 +33,19 @@ The run was stopped at this stable collapse diagnostic rather than spending
 another hour per epoch on the same under-occupied arm. The values are recorded
 in `2026-09-27-qinco2-convergence-diagnostic.result.json`. The subsequent
 epoch-4 persisted-code replay and structural audit are recorded in
-`2026-09-28-qinco2-epoch4-replay.result.json`; it remains a bounded
-domain-mismatch control, not a QINCo2 family or production claim.
+`2026-09-28-qinco2-epoch4-replay.result.json`; the checkpoint is
+residual-trained, so `train_residual -> eval_residual` is the matched bounded
+control and `train_residual -> eval_raw` is the reverse-domain diagnostic.
+Neither is a QINCo2 family or production claim.
+
+The corrected persisted replay is `BOUNDED_MATCHED_DOMAIN_CONTROL`: M16/256
+uses 20 B code-plus-norm side payload (`116 B` with THQ4), reaches mean qrels
+nDCG@10 `0.6422150225` on `train_residual -> eval_residual`, and reports
+`0.0627454353` for the reverse `train_residual -> eval_raw` diagnostic. The
+result is bound to training-plan SHA
+`f8413b5dc6cdd1894516f55bf9124816ce72a8dd89b08bf49ffdd1a5ae2081ff`, has
+checkpoint field `5` / four completed epochs, and its persisted-code audit
+passes. These are bounded controls, not convergence or production evidence.
 
 The official implementation also passes a bounded synthetic A32/B64 inference
 smoke (`2026-09-28-qinco2-a32b64-smoke.result.json`), including deterministic
@@ -53,6 +65,12 @@ The source-bound RSLM quality replay now includes the missing RSLM1 arm
 `0.658220` cosine nDCG@10 at `52 B` side payload (`148 B` including THQ4).
 The full 152-query source/audit contract passes.
 
+For the direct cosine serving contract, LSQ byte accounting includes the FP32
+final-norm sidecar: LSQ32 is `32 B` code + `4 B` norm = `36 B` side and `132 B`
+with THQ4; LSQ48 is `48 B` code + `4 B` norm = `52 B` side and `148 B` with
+THQ4. The latter is therefore the same side budget as faithful RSLM1, not a
+48-byte total payload.
+
 ## Fail-closed interpretation
 
 The existing LSQ multi-seed artifacts are source-bound and audit-PASS, but they
@@ -62,16 +80,18 @@ must not support a family-level negative conclusion until the official Faiss
 control is persisted. Under-converged or collapsed QINCo2 runs are diagnostic
 only and do not establish that the family is dominated.
 
-The stronger LSQ convergence attempts were run source-bound and fail closed,
-but none emitted atomic result/model/code artifacts on the available host. The
-dual-payload `50/32` fit (seed `20260927`) ran overnight for roughly 14 hours;
-the single-payload `50/32` retry with 16 BLAS threads ran for roughly two hours;
-and an independent-seed `25/16` LSQ32 retry (seed `20260928`) also remained
-CPU-bound without artifact emission. Their exact parameters and stopped status
-are recorded in `2026-09-28-lsq-convergence-host-limit.result.json`. These
-attempts produce no quality claim and no replay receipt. The previously audited
-25-iteration LSQ controls remain bounded evidence only; a scheduled
-high-memory/Faiss-optimized worker is required to close the 50/32 ceiling gate.
+The first heavy LSQ convergence attempt used an excessive schedule
+(`train_iters=50`, `train_ils_iters=32`, `encode_ils_iters=32`) and is recorded
+as `BLOCKED_EXCESSIVE_SCHEDULE_COST`; it is not the intended convergence gate.
+The intended source-bound protocol is 25/train-ILS8, followed by 50/train-ILS8
+only when the 25->50 result improves, with encode-ILS16/32 compared on the same
+fit. That gate remains `NOT_YET_EXECUTED` until a per-payload run emits atomic
+artifacts. LSQ32/48 have dense `M*K` codebook solves (8192/12288 rows; roughly
+512 MiB/1.125 GiB double Gram matrices before workspace), so the canonical fit
+is a memory-bandwidth and cache/NUMA-sensitive workload, not a simple logical
+thread-count benchmark. The current M8 smoke only demonstrates that
+oversubscription can hurt a small workload; it does not establish LSQ32/48
+scaling or that 36 threads are intrinsically slower.
 
 The plumbing itself was checked separately on a bounded synthetic matrix:
 `2026-09-28-lsq-synthetic-smoke.result.json` trains a two-stage 16-dimensional
@@ -80,16 +100,13 @@ codebook sum. It passes in `0.377 s` with the reduced smoke budget. This
 isolates the failure mode of the large runs: the implementation and code
 layout work, while the canonical 32/48-byte fit is CPU-bound by the product of
 25k rows, 32--48 stages, and large ILS/ICM iteration budgets. The smoke is a
-regression check only and does not relax the `BLOCKED_HOST_BUDGET` status.
+regression check only and does not satisfy the intended LSQ convergence gate.
 
-The same bounded smoke also shows why logical-thread count is not a direct
-runtime multiplier on this host (Xeon E5-2696 v3, 18 physical / 36 logical
-CPUs). With `4096 x 128`, eight stages and the same reduced fit budget, measured
-fit time was `2.30 s` at one thread, `0.80 s` at four, `0.79 s` at sixteen,
-and `2.87 s` at thirty-six. This is a diagnostic, not a canonical benchmark,
-but it demonstrates the expected cache/coordination penalty from oversubscribing
-the local-search workload; more logical threads do not make the 50/32 fit
-finish predictably.
+The same bounded smoke, on a Xeon E5-2696 v3 (18 physical / 36 logical CPUs),
+measured `4096 x 128`, eight stages at `2.30 s` (one thread), `0.80 s` (four),
+`0.79 s` (sixteen), and `2.87 s` (thirty-six). This is a diagnostic only: the
+runner did not record full BLAS backend, affinity, NUMA, repeat, or
+`threadpoolctl` provenance, so it must not be extrapolated to canonical LSQ32/48.
 
 ## Official Faiss OPQ/PQ control (corrected replay)
 
@@ -152,8 +169,9 @@ executed gate now runs the complete frozen R4 candidate stream through native TH
 selection and reranks the full 463,258-document union for the payloads that
 are fully materialized (`2026-09-28-native-full-candidate-finalists-v2.result.json`).
 `joint2`, faithful `RSLM3`, and faithful `RSLM4` all have exact THQ top-128
-set/order and final top-10 parity with an independent Python scorer over all
-152 queries. RSLM relative payload accounting is `148 B` and `196 B`
+set parity, an ordered-parity diagnostic, and exact final ordered top-10 parity
+after independent decoded-payload replay over all 152 queries. RSLM relative
+payload accounting is `148 B` and `196 B`
 respectively (including inner and outer UE7M9 scales). The native warm-process
 total p50/p95/p99 values are recorded for orchestration only; their tail values
 are not treated as codec-comparable because scheduler/cache state dominates the

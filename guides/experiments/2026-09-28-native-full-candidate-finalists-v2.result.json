@@ -11,8 +11,10 @@
   "payload_bytes": {"joint2": 32, "rslm3": 148, "rslm4": 196},
   "parity": {
     "independent_audit": "PASS",
+    "independent_audit_artifact_sha256": "f70259454aba8d4f3566f10e0e594a2fca0f3f19e11660ab62819ca367ec9b54",
     "thq_top128_set_parity": "152/152 for every codec",
     "thq_top128_ordered_parity": "ordering-only numerical/tie-order differences are reported; set parity is mandatory",
+    "final_top10_ordered_parity": "independently recomputed from persisted decoded payloads and IDs",
     "final_top10_parity": "152/152 for every codec"
   },
   "source_hashes": {

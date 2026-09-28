@@ -85,6 +85,12 @@ def main() -> None:
     parser.add_argument("--candidate-flat", type=Path, required=True)
     parser.add_argument("--candidate-raw", type=Path, required=True)
     parser.add_argument("--queries", type=Path, required=True)
+    parser.add_argument("--joint2-decoded", type=Path, required=True)
+    parser.add_argument("--joint2-ids", type=Path, required=True)
+    parser.add_argument("--rslm3-decoded", type=Path, required=True)
+    parser.add_argument("--rslm3-ids", type=Path, required=True)
+    parser.add_argument("--rslm4-decoded", type=Path, required=True)
+    parser.add_argument("--rslm4-ids", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
     result = json.loads(args.result.read_text(encoding="utf-8"))
@@ -95,6 +101,24 @@ def main() -> None:
     thresholds = np.fromfile(args.thresholds, dtype="<f4").reshape(D, 3)
     queries = np.memmap(args.queries, mode="r", dtype="<f4",
                         shape=(QUERY_COUNT, D))
+    decoded = {
+        "joint2": np.memmap(args.joint2_decoded, mode="r", dtype="<f4",
+                             shape=(args.joint2_decoded.stat().st_size // (D * 4), D)),
+        "rslm3": np.memmap(args.rslm3_decoded, mode="r", dtype="<f4",
+                            shape=(args.rslm3_decoded.stat().st_size // (D * 4), D)),
+        "rslm4": np.memmap(args.rslm4_decoded, mode="r", dtype="<f4",
+                            shape=(args.rslm4_decoded.stat().st_size // (D * 4), D)),
+    }
+    decoded_ids = {
+        "joint2": np.fromfile(args.joint2_ids, dtype="<i4"),
+        "rslm3": np.fromfile(args.rslm3_ids, dtype="<i4"),
+        "rslm4": np.fromfile(args.rslm4_ids, dtype="<i4"),
+    }
+    for codec in EXPECTED_BYTES:
+        require(len(decoded[codec]) == len(decoded_ids[codec]), f"{codec} decoded/id cardinality differs")
+        require(len(np.unique(decoded_ids[codec])) == len(decoded_ids[codec]), f"{codec} decoded IDs are not unique")
+        require(np.isfinite(decoded[codec]).all(), f"{codec} decoded payload contains non-finite values")
+    decoded_pos = {codec: {int(doc): i for i, doc in enumerate(ids)} for codec, ids in decoded_ids.items()}
     rows = []
     for codec, expected_bytes in EXPECTED_BYTES.items():
         path = args.native_dir / f"{codec}.native.jsonl"
@@ -103,6 +127,7 @@ def main() -> None:
         require(len(native_rows) == QUERY_COUNT, f"{codec} native row count differs")
         set_ok = order_ok = True
         mismatches: list[int] = []
+        final_mismatches: list[int] = []
         for query_index, native in enumerate(native_rows):
             require(int(native["query"]) == query_index, f"{codec} query order differs")
             selected = thq_top(np.asarray(queries[query_index], dtype=np.float32),
@@ -116,18 +141,31 @@ def main() -> None:
                 order_ok = False
             require(int(native["logical_payload_bytes"]) == expected_bytes,
                     f"{codec} payload byte contract differs")
+            positions = [decoded_pos[codec].get(int(doc), -1) for doc in selected]
+            require(all(position >= 0 for position in positions),
+                    f"{codec} decoded payload misses a THQ finalist")
+            values = np.asarray(decoded[codec][positions], dtype=np.float64)
+            query = np.asarray(queries[query_index], dtype=np.float64)
+            scores = (values @ query) / np.maximum(np.linalg.norm(values, axis=1) * np.linalg.norm(query), 1e-30)
+            independent_top10 = selected[np.lexsort((selected, -scores))[:10]]
+            actual_top10 = np.asarray(native.get("top10_ids", []), dtype=np.int32)
+            require(actual_top10.shape == (10,), f"{codec} native final top10 is missing")
+            if not np.array_equal(independent_top10, actual_top10):
+                final_mismatches.append(query_index)
         result_row = next(row for row in result["rows"] if row["codec"] == codec)
         require(int(result_row["payload_bytes"]) == expected_bytes,
                 f"{codec} result payload bytes differ")
         rows.append({"codec": codec, "thq_top128_set_parity": set_ok,
                      "thq_top128_ordered_parity": order_ok,
+                     "final_ordered_top10_parity": not final_mismatches,
                      "mismatch_queries": mismatches,
+                     "final_mismatch_queries": final_mismatches,
                      "native_sha256": sha256(path)})
     # Native and Python use the same deterministic ID tie-break, but scalar
     # accumulation can move equal/near-equal THQ distances across the cut.
     # The fail-closed correctness contract is therefore set parity; ordering
     # differences are reported explicitly rather than mislabelled as equality.
-    status = "PASS" if all(row["thq_top128_set_parity"] for row in rows) else "FAIL"
+    status = "PASS" if all(row["thq_top128_set_parity"] and row["final_ordered_top10_parity"] for row in rows) else "FAIL"
     audit = {"schema_version": 1,
              "family": "thq_native_full_candidate_finalists_audit_v1",
              "status": status, "query_count": QUERY_COUNT,
@@ -140,6 +178,7 @@ def main() -> None:
              "rows": rows,
              "acceptance": {"thq_set_parity": True,
                             "thq_ordered_parity": "reported; explicit numerical/tie-order exception",
+                            "final_ordered_top10_parity": True,
                             "payload_bytes": EXPECTED_BYTES,
                             "ordering_policy": "set parity is mandatory; ordering-only differences are not semantic mismatches"}}
     args.output.parent.mkdir(parents=True, exist_ok=True)
