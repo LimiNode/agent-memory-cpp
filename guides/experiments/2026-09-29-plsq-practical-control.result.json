@@ -1,0 +1,23 @@
+{
+  "family": "thq_faiss_plsq_practical_control_v1",
+  "status": "PARTIALLY_EXECUTED",
+  "quality_status": "NO_NEW_QUALITY_CLAIM",
+  "profiles": ["PLSQ8x4x8", "PLSQ8x6x8"],
+  "source_bound": true,
+  "attempt": {
+    "profile": "PLSQ8x4x8",
+    "train_rows": 25000,
+    "faiss_threads": 1,
+    "runtime": "stopped after approximately 12 wall-minutes before artifact emission",
+    "artifacts": [],
+    "interpretation": "canonical PLSQ control remains unexecuted; no quality or family claim"
+  },
+  "protocol": {
+    "PLSQ8x4x8": {"splits": 8, "bits_per_split": 4, "search_probes": 8, "side_payload_bytes": 36, "cascade_total_bytes": 132},
+    "PLSQ8x6x8": {"splits": 8, "bits_per_split": 6, "search_probes": 8, "side_payload_bytes": 52, "cascade_total_bytes": 148}
+  },
+  "limitations": [
+    "Faiss ProductLocalSearchQuantizer emitted no canonical artifact on the available host.",
+    "This attempt does not close the PLSQ practical-control gate or support production selection."
+  ]
+}

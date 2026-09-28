@@ -71,6 +71,12 @@ with THQ4; LSQ48 is `48 B` code + `4 B` norm = `52 B` side and `148 B` with
 THQ4. The latter is therefore the same side budget as faithful RSLM1, not a
 48-byte total payload.
 
+The first canonical PLSQ8x4x8 practical-control attempt (25,000 residual
+training rows, one Faiss thread) was stopped after roughly twelve minutes
+without an artifact. Its status is recorded in
+`2026-09-29-plsq-practical-control.result.json`; PLSQ8x4x8/8x6x8 therefore
+remain explicit pending controls and provide no quality claim.
+
 ## Fail-closed interpretation
 
 The existing LSQ multi-seed artifacts are source-bound and audit-PASS, but they
