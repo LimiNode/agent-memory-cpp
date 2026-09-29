@@ -945,3 +945,15 @@ execution audit.  This closes a provenance gap, not a new quality experiment.
 The next decision is therefore Pareto/product evaluation across quality,
 storage, query latency, insert, rebuild cost, and portability rather than a
 single historical nDCG winner.
+
+### First real serving baseline for the product phase (2026-09-30)
+
+The current native build was run over the complete 1M-document THQ4/INT8
+materialization and the 152-query control fixture.  Warm in-memory means were
+417.694 ms/query for direct linear INT8, 96.2208 ms/query for the THQ cascade
+with linear rerank, 618.174 ms/query for direct power-0.625 INT8, and 96.4203
+ms/query for its cascade.  These are real full-corpus native measurements,
+not candidate-local timings, but they still exclude MDBX I/O, cold faults,
+write/update/rebuild work, and fresh qrels.  The result is a Gate-B baseline,
+not a codec selection.  See
+`2026-09-30-native-full-corpus-serving-control.md` and its compact result.

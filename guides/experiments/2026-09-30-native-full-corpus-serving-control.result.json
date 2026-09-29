@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "family": "native_full_corpus_serving_control_v1",
+  "status": "EXECUTED_BOUNDED_CONTROL",
+  "corpus_documents": 1000000,
+  "query_count": 152,
+  "query_fixture": "historical 152-query control; not fresh qrels",
+  "timing_scope": "warm process, in-memory scalar arrays; no MDBX I/O, cold faults, insert, update, or rebuild",
+  "runner_source_sha256": "548b75765f11240cc7ff1f64afbccb8619472df7e6c038dfb23fd50057cec9e9",
+  "runner_binary_sha256": "b4883c9d26fe2a8d1fd8b97d57608f3e67d09858f168690f9ef93764585ef0d1",
+  "query_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "inputs": {
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "int8_linear_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+    "int8_linear_scales_sha256": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+    "int8_power0625_sha256": "1b70c6e1d7878e056ef97c7c6f2aca2d5d6c768e588f76a270f928da07d9b887",
+    "int8_power0625_scales_sha256": "7111c2836e8fa2a0e0817df6abf8b5bd60c223f5437dc00fcd5d5542920a6686"
+  },
+  "mean_query_ms": {
+    "direct_linear": 417.694,
+    "cascade_linear": 96.2208,
+    "direct_power0625": 618.174,
+    "cascade_power0625": 96.4203
+  },
+  "page_proxies": {
+    "direct_code_scale_pages": {"p50": 94727, "p95": 94727, "p99": 94727},
+    "cascade_thq_scan_pages": {"p50": 23438, "p95": 23438, "p99": 23438},
+    "cascade_rerank_payload_pages": {"p50": 232, "p95": 251, "p99": 252},
+    "cascade_total_namespaced_pages": {"p50": 23670, "p95": 23689, "p99": 23690}
+  },
+  "raw_output": {
+    "path": "build-fidelity/native-full-152.jsonl",
+    "bytes": 415807,
+    "sha256": "8f2f66cd54597b89d15fbea96131cbbfca420b945906114672ba7debd5a161e1"
+  },
+  "interpretation": "A real 1M native warm-scan baseline for Gate B; not an MDBX serving result and not a codec winner claim."
+}
