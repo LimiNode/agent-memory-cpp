@@ -1,7 +1,7 @@
 # Codec closure protocol
 
 Date: 2026-09-25
-Status: `IN_PROGRESS`; no product selection.
+Status: `DEFERRED_COMPUTE`; no product selection.
 
 This is the bounded final research program for compressed final scorers.  It
 replaces neither the source-bound historical-152 evidence nor a fresh final
@@ -52,7 +52,10 @@ research inputs, not vendored product dependencies.
    M8 and M16 controls under separate immutable plans.  The fits are explicitly
    undertrained, both collapse severely, and cannot support a
    production choice. Larger 100k/250k/1M unsupervised pools remain a separate gate. Treat
-   QINCo2 as an external non-commercial research control. Run AAQ/query-aware
+   QINCo2 as an external non-commercial research control and mark this gate
+   `DEFERRED_COMPUTE_RESEARCH_ONLY` until a converged, independently decoded
+   neural replay exists. The persisted-code structural audit is not an
+   independent neural decode/ranking replay. Run AAQ/query-aware
    codecs only after a separate judged query-training pool and a pre-registered
    evaluation split exist.
 4. **SAQ portability and quality.** Execute the pinned SAQ source on an
@@ -67,6 +70,38 @@ research inputs, not vendored product dependencies.
    and encode throughput.
 7. **One final confirmation.** Select a fixed finalist set before opening a
    fresh, pre-registered query/qrels evaluation only once.
+
+## LSQ convergence ladder
+
+LSQ convergence is not closed by the existing 25-iteration controls. The
+required ladder is fixed before any additional fit:
+
+- `25 / train-ILS8` is the bounded baseline;
+- `50 / train-ILS8` is the mandatory convergence probe;
+- `100 / train-ILS8` is run only when the 50-iteration probe materially
+  improves the 25-iteration result;
+- `encode-ILS16` and `encode-ILS32` are compared on one fitted model, not on
+  separately fitted codebooks.
+
+If the 50/8 probe cannot be completed on the available host, record
+`DEFERRED_COMPUTE` with the fit budget and logs. LSQ32 and LSQ48 remain
+finalists because a deferred convergence probe is not evidence of family
+failure. It also does not authorize a production-superiority claim.
+
+## Finalist freeze and next phase
+
+The research frontier is frozen for this wave as follows: LSQ32/48 (bounded
+strong, convergence unresolved), TQ1, TQ1+PQ8, RSLM1, joint2, RSLM3/4, OPQ,
+BBQ and RaBitQ. QINCo2 is research-only and deferred; AAQ and SAQ remain
+separate deferred/blocker gates; corrected PLSQ8x4x8 is executed as a bounded
+control, while PLSQ8x6x8 remains deferred because it cannot change this freeze.
+This finalist freeze separates algorithm-research closure from
+product codec selection.
+
+After closure, run a fresh untouched query/qrels evaluation and a 1M packed
+native serving benchmark (warm/cold/page-fault, p50/p95/p99, pages touched,
+encode throughput and parity). Historical-152 evidence cannot substitute for
+that product gate.
 
 ## Explicit open evidence backlog
 
@@ -85,9 +120,16 @@ the bounded controls above:
 - fresh held-out evaluation and the full 1M native cascade with parity,
   p50/p95/p99, warm/cold/page behavior, pages touched, and encode throughput.
 
-## Explicit stopping condition
+## Terminal statuses and stopping condition
 
-The algorithm search closes when every gate above has either source-bound
-executed evidence or a documented source/licensing blocker.  New papers after
-that point enter normal feature/research PRs; they do not retroactively change
-the selected frontier without the same protocol.
+Every gate ends in one of `EXECUTED`, `BLOCKED_HARDWARE`,
+`BLOCKED_LICENSE`, or `DEFERRED_COMPUTE`. `DEFERRED_COMPUTE` is valid only
+when bounded source-faithful evidence exists, no family-negative or
+production-superiority claim is made, unresolved families remain finalists when
+the result could change selection, and the deferred gate is explicitly
+separated from product selection.
+
+The algorithm search closes when every gate above has executed evidence,
+hardware/license blocker, or a compliant deferred-compute record. New papers
+after that point enter normal feature/research PRs; they do not retroactively
+change the frozen finalist frontier without the same protocol.

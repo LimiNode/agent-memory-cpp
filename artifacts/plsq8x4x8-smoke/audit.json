@@ -1,0 +1,46 @@
+{
+  "code_shape": [
+    152,
+    128,
+    32
+  ],
+  "codes_sha256": "7891ce17b3bf5057e896e78d622629fb532d729bdac231833d3c293d9509307b",
+  "family": "thq_faiss_plsq_replay_audit_v2",
+  "limitations": [
+    "persisted-code contract audit; no second PLSQ implementation",
+    "bounded candidate-local control; no production selection claim"
+  ],
+  "profile": {
+    "code_bytes": 32,
+    "encode_ils_iters": 16,
+    "faiss_threads": 8,
+    "icm_iters": 4,
+    "inner_nperts": 4,
+    "msub": 4,
+    "nbits": 8,
+    "nsplits": 8,
+    "profile": "8x4x8",
+    "train_ils_iters": 8,
+    "train_iters": 25
+  },
+  "quality_status": "BOUNDED_PLSQ_CONTROL",
+  "result_sha256": "ad8c9a8bab6097aa5b89fca8b39461a58763f7aa909e6cab28506306ac7f2c18",
+  "rows": 152,
+  "schema_version": 2,
+  "selected_shape": [
+    152,
+    128
+  ],
+  "status": "PASS",
+  "summary": {
+    "candidate_union_documents": 18362,
+    "candidate_union_encode_seconds": 17.093983200378716,
+    "cascade_total_bytes": 132,
+    "code_bytes": 32,
+    "fit_seconds": 91.49385219998658,
+    "mean_candidate_fp32_overlap": 0.8855263157894736,
+    "mean_qrels_ndcg10": 0.6541511698939273,
+    "mean_teacher_overlap": 0.8835526315789475,
+    "side_payload_bytes": 36
+  }
+}

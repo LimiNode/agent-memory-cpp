@@ -22,6 +22,7 @@
   "residual_sha256": "7ed40978766aa7466671716b38cfe93c372ef344230fa8e8b8f378f66fe1cf62",
   "schema_version": 1,
   "status": "PASS",
+  "claim_scope": "source-grounded Rust algorithmic encode/decode parity",
   "upstream": {
     "mode": "TurboQuant normal, Dot-compatible residual path, padded rotation",
     "project": "qdrant/qdrant",
@@ -30,6 +31,10 @@
   "acceptance": {
     "independent_rust_decode": true,
     "max_abs_error": 1e-07
+  },
+  "project_owned_format": {
+    "name": "TQ1/TQ1+PQ8 packed serving format",
+    "qdrant_wire_compatible": false
   },
   "wire_parity": {
     "packed_bytes": false,
@@ -42,6 +47,7 @@
   "limitations": [
     "Parity covers official Rust encode/decode, not native serving throughput.",
     "The compared payload is the frozen THQ candidate-union residual; TQ+ shift/scale is separate.",
-    "Packed wire bytes, extras, asymmetric scores and build hashes are not compared by this decode-only harness."
+    "This is not Qdrant wire compatibility: packed bytes, extras/scale fields, asymmetric scorer parity and complete build provenance are not compared.",
+    "No native serving-throughput claim is made from the Rust harness."
   ]
 }

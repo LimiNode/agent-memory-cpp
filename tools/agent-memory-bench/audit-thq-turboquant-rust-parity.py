@@ -72,6 +72,7 @@ def main() -> None:
         "schema_version": 1,
         "family": "thq_turboquant_rust_parity_v1",
         "status": "PASS",
+        "claim_scope": "source-grounded Rust algorithmic encode/decode parity",
         "upstream": {
             "project": "qdrant/qdrant",
             "revision": args.upstream_revision,
@@ -85,6 +86,10 @@ def main() -> None:
             "turboquant2": compare(args.expected_2, args.rust_2, rows, 384),
         },
         "acceptance": {"max_abs_error": 1e-7, "independent_rust_decode": True},
+        "project_owned_format": {
+            "name": "TQ1/TQ1+PQ8 packed serving format",
+            "qdrant_wire_compatible": False,
+        },
         "wire_parity": {
             "packed_bytes": False,
             "extras_scale_bytes": False,
@@ -96,7 +101,8 @@ def main() -> None:
         "limitations": [
             "Parity covers official Rust encode/decode, not native serving throughput.",
             "The compared payload is the frozen THQ candidate-union residual; TQ+ shift/scale is separate.",
-            "Packed wire bytes, extras, asymmetric scores and build hashes are not compared by this decode-only harness.",
+            "This is not Qdrant wire compatibility: packed bytes, extras/scale fields, asymmetric scorer parity and complete build provenance are not compared.",
+            "No native serving-throughput claim is made from the Rust harness.",
         ],
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)

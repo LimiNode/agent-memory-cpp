@@ -73,9 +73,16 @@ THQ4. The latter is therefore the same side budget as faithful RSLM1, not a
 
 The first canonical PLSQ8x4x8 practical-control attempt (25,000 residual
 training rows, one Faiss thread) was stopped after roughly twelve minutes
-without an artifact. Its status is recorded in
-`2026-09-29-plsq-practical-control.result.json`; PLSQ8x4x8/8x6x8 therefore
-remain explicit pending controls and provide no quality claim.
+without an artifact. A corrected source-bound replay then completed with the
+Faiss constructor `ProductLocalSearchQuantizer(384, 8, 4, 8)`, eight Faiss
+threads, and the bounded `25/train-ILS8` schedule. Fit time was `425.91 s`,
+candidate-union encoding `18.04 s`, mean qrels nDCG@10 `0.649133`, and the
+persisted side payload was `36 B` (`132 B` including THQ4). The runner emitted
+`(152,128,32)` code rows and the independent persisted-code audit passed. Full
+details are recorded in `2026-09-29-plsq-practical-control.result.json` and
+the replay artifacts. This executes the bounded PLSQ8x4x8 control; it does not
+close LSQ convergence or make a production selection claim. PLSQ8x6x8 remains
+deferred because the 8x4x8 result alone does not change finalist selection.
 
 ## Fail-closed interpretation
 

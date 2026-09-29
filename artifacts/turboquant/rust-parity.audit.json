@@ -1,0 +1,56 @@
+{
+  "acceptance": {
+    "independent_rust_decode": true,
+    "max_abs_error": 1e-07
+  },
+  "arms": {
+    "turboquant1": {
+      "dimension": 384,
+      "expected_sha256": "aa1fc9ddb848e339d678a2b995273fb3c0ba4d765fede0fce736fa659a8f0a76",
+      "max_abs_error": 7.450580596923828e-09,
+      "mean_abs_error": 1.7898620985442525e-10,
+      "p99_abs_error": 1.862645149230957e-09,
+      "rows": 18362,
+      "rust_sha256": "bb259838c19c9bb3ea515041c46f849be6da8562b02afc03e4af21b803a04d0c"
+    },
+    "turboquant2": {
+      "dimension": 384,
+      "expected_sha256": "b449d2419e891a01b9742e775fd64c5a416c06c9753b744e324d35b601616ed1",
+      "max_abs_error": 7.450580596923828e-09,
+      "mean_abs_error": 2.564136203784287e-10,
+      "p99_abs_error": 1.862645149230957e-09,
+      "rows": 18362,
+      "rust_sha256": "60dd65745bca1a24bdddf47817ba11b6f5fd58a7e28670c6c2b771a388a0e49b"
+    }
+  },
+  "claim_scope": "source-grounded Rust algorithmic encode/decode parity",
+  "dimension": 384,
+  "family": "thq_turboquant_rust_parity_v1",
+  "limitations": [
+    "Parity covers official Rust encode/decode, not native serving throughput.",
+    "The compared payload is the frozen THQ candidate-union residual; TQ+ shift/scale is separate.",
+    "This is not Qdrant wire compatibility: packed bytes, extras/scale fields, asymmetric scorer parity and complete build provenance are not compared.",
+    "No native serving-throughput claim is made from the Rust harness."
+  ],
+  "project_owned_format": {
+    "name": "TQ1/TQ1+PQ8 packed serving format",
+    "qdrant_wire_compatible": false
+  },
+  "residual_sha256": "7ed40978766aa7466671716b38cfe93c372ef344230fa8e8b8f378f66fe1cf62",
+  "row_count": 18362,
+  "schema_version": 1,
+  "status": "PASS",
+  "upstream": {
+    "mode": "TurboQuant normal, Dot-compatible residual path, padded rotation",
+    "project": "qdrant/qdrant",
+    "revision": "6ab21cac18ebb6f4ae29102c7f8f5cc11affd5de"
+  },
+  "wire_parity": {
+    "asymmetric_score": false,
+    "binary_sha256": null,
+    "cargo_lock_sha256": null,
+    "extras_scale_bytes": false,
+    "harness_source_sha256": null,
+    "packed_bytes": false
+  }
+}
