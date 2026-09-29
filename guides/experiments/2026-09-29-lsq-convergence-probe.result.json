@@ -1,0 +1,44 @@
+{
+  "family": "thq_faiss_lsq_convergence_probe_v1",
+  "status": "EXECUTED",
+  "source_bound": true,
+  "profile": {
+    "payload": 32,
+    "train_rows": 25000,
+    "base_train_rows": 25000,
+    "train_iters": 50,
+    "train_ils_iters": 8,
+    "encode_ils_iters": 16,
+    "icm_iters": 4,
+    "nperts": 4,
+    "seed": 20260921,
+    "faiss_omp_threads": 8
+  },
+  "hardware": {
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "physical_cores": 18,
+    "logical_cores": 36
+  },
+  "replay": {
+    "fit_seconds": 5612.7083660000935,
+    "query_count": 152,
+    "candidate_union_documents": 18362,
+    "mean_qrels_ndcg10": 0.6571634918798698,
+    "side_payload_bytes": 36,
+    "cascade_total_bytes": 132
+  },
+  "comparison": {
+    "baseline": "canonical-lsq-25k-strong-v1/seed-20260925/lsq32.result.json",
+    "baseline_train_iters": 25,
+    "baseline_mean_qrels_ndcg10": 0.6602148919120238,
+    "delta_probe_minus_baseline": -0.003051400032154,
+    "decision": "DO_NOT_RUN_100_ITERATIONS"
+  },
+  "audit": "artifacts/lsq50-8-probe/audit.json",
+  "interpretation": "The mandatory 50/train-ILS8 probe executed and did not materially improve the 25-iteration baseline; the convergence ladder stops here. This is not evidence that the LSQ family is negative, and it does not select a production codec.",
+  "limitations": [
+    "Historical-152 candidate-local replay, not untouched final evaluation.",
+    "encode-ILS32 sensitivity on this fitted model remains a separate optional diagnostic.",
+    "Full 1M native serving benchmark remains a product gate."
+  ]
+}

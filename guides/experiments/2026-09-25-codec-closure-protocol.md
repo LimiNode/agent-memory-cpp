@@ -83,15 +83,18 @@ required ladder is fixed before any additional fit:
 - `encode-ILS16` and `encode-ILS32` are compared on one fitted model, not on
   separately fitted codebooks.
 
-If the 50/8 probe cannot be completed on the available host, record
-`DEFERRED_COMPUTE` with the fit budget and logs. LSQ32 and LSQ48 remain
-finalists because a deferred convergence probe is not evidence of family
-failure. It also does not authorize a production-superiority claim.
+The 50/8 probe was executed for LSQ32 on the canonical 25k split; it took
+5612.71 s and did not improve the 25-iteration baseline, so the 100-iteration
+arm is not run. LSQ32 and LSQ48 remain finalists as bounded-strong controls:
+the flat result is not evidence of family failure and does not authorize a
+production-superiority claim. If a future host cannot reproduce the probe,
+record `DEFERRED_COMPUTE` with the fit budget and logs rather than replacing it
+with synthetic data.
 
 ## Finalist freeze and next phase
 
 The research frontier is frozen for this wave as follows: LSQ32/48 (bounded
-strong, convergence unresolved), TQ1, TQ1+PQ8, RSLM1, joint2, RSLM3/4, OPQ,
+strong; 50/8 probe executed without improvement), TQ1, TQ1+PQ8, RSLM1, joint2, RSLM3/4, OPQ,
 BBQ and RaBitQ. QINCo2 is research-only and deferred; AAQ and SAQ remain
 separate deferred/blocker gates; corrected PLSQ8x4x8 is executed as a bounded
 control, while PLSQ8x6x8 remains deferred because it cannot change this freeze.

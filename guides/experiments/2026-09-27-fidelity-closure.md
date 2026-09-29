@@ -96,10 +96,14 @@ only and do not establish that the family is dominated.
 The first heavy LSQ convergence attempt used an excessive schedule
 (`train_iters=50`, `train_ils_iters=32`, `encode_ils_iters=32`) and is recorded
 as `BLOCKED_EXCESSIVE_SCHEDULE_COST`; it is not the intended convergence gate.
-The intended source-bound protocol is 25/train-ILS8, followed by 50/train-ILS8
-only when the 25->50 result improves, with encode-ILS16/32 compared on the same
-fit. That gate remains `NOT_YET_EXECUTED` until a per-payload run emits atomic
-artifacts. LSQ32/48 have dense `M*K` codebook solves (8192/12288 rows; roughly
+The intended source-bound protocol was then executed for LSQ32 at
+25/train-ILS8 and 50/train-ILS8, with encode-ILS16 on the same source split.
+The 50-iteration fit took `5612.71 s` and reached mean qrels nDCG@10
+`0.657163`, versus `0.660215` for the canonical 25-iteration baseline
+(`delta=-0.003051`); therefore the pre-registered ladder stops and the
+100-iteration arm is not run. The result and independent audit are recorded in
+`2026-09-29-lsq-convergence-probe.result.json` and
+`artifacts/lsq50-8-probe/audit.json`. LSQ32/48 have dense `M*K` codebook solves (8192/12288 rows; roughly
 512 MiB/1.125 GiB double Gram matrices before workspace), so the canonical fit
 is a memory-bandwidth and cache/NUMA-sensitive workload, not a simple logical
 thread-count benchmark. The current M8 smoke only demonstrates that
