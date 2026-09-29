@@ -1,7 +1,15 @@
 # Codec closure protocol
 
 Date: 2026-09-25
-Status: `DEFERRED_COMPUTE`; no product selection.
+Research wave status: `CLOSED`; product selection: `PENDING`.
+
+The paired LSQ convergence control and same-budget PLSQ8x6x8 control have
+executed and passed independent audits. The conditional LSQ100 ceiling probe
+is terminal `DEFERRED_COMPUTE`/`BLOCKED_HOST_BUDGET` after 61,809 CPU seconds
+without artifact emission; this is not a family-negative result. Per-gate
+statuses use `EXECUTED`, `DEFERRED_COMPUTE`,
+`BLOCKED_HARDWARE`, or `BLOCKED_LICENSE`; those statuses must not be confused
+with the aggregate research-wave status.
 
 This is the bounded final research program for compressed final scorers.  It
 replaces neither the source-bound historical-152 evidence nor a fresh final
@@ -21,6 +29,11 @@ than turning a sequence of exploratory runs into a product claim.
 - Every executed arm needs source hashes, a persisted code/model artifact,
   independent decoding or score replay where applicable, and complete storage
   accounting.
+
+Large model/code payloads are kept in the external workspace bound by
+`2026-09-29-fidelity-artifact-manifest.json`. A missing external payload is a
+terminal `DEFERRED_COMPUTE` condition; it must never be silently replaced by a
+synthetic or differently sourced artifact.
 
 ## Current external source registry
 
@@ -77,29 +90,34 @@ LSQ convergence is not closed by the existing 25-iteration controls. The
 required ladder is fixed before any additional fit:
 
 - `25 / train-ILS8` is the bounded baseline;
-- `50 / train-ILS8` is the mandatory convergence probe;
-- `100 / train-ILS8` is run only when the 50-iteration probe materially
+- `50 / train-ILS8` is the mandatory convergence probe (paired with the same
+  seed and source split as the baseline);
+- `100 / train-ILS8` is run only when the paired 50-iteration probe materially
   improves the 25-iteration result;
 - `encode-ILS16` and `encode-ILS32` are compared on one fitted model, not on
   separately fitted codebooks.
 
-The 50/8 probe was executed for LSQ32 on the canonical 25k split; it took
-5612.71 s and did not improve the 25-iteration baseline, so the 100-iteration
-arm is not run. LSQ32 and LSQ48 remain finalists as bounded-strong controls:
-the flat result is not evidence of family failure and does not authorize a
-production-superiority claim. If a future host cannot reproduce the probe,
-record `DEFERRED_COMPUTE` with the fit budget and logs rather than replacing it
-with synthetic data.
+The existing 50/8 result used a different seed from the previously cited
+25-iteration result and therefore was not a valid convergence comparison. The
+paired source-bound 25/50 control now uses seed `20260921` for both fits and
+passes independent audit. Point delta is `+0.005401`, but the historical-152
+paired bootstrap 95% CI is `[-0.01039,+0.02192]`; it crosses zero, so this is
+not a convergence or production claim. The conditional 100-iteration probe
+was attempted and stopped as `DEFERRED_COMPUTE`/`BLOCKED_HOST_BUDGET` after
+61,809 CPU seconds without an artifact. The terminal record is
+`2026-09-29-lsq100-host-budget.result.json`; no synthetic replacement is used.
 
 ## Finalist freeze and next phase
 
-The research frontier is frozen for this wave as follows: LSQ32/48 (bounded
-strong; 50/8 probe executed without improvement), TQ1, TQ1+PQ8, RSLM1, joint2, RSLM3/4, OPQ,
-BBQ and RaBitQ. QINCo2 is research-only and deferred; AAQ and SAQ remain
-separate deferred/blocker gates; corrected PLSQ8x4x8 is executed as a bounded
-control, while PLSQ8x6x8 remains deferred because it cannot change this freeze.
-This finalist freeze separates algorithm-research closure from
-product codec selection.
+The closed research registry includes all executed controls: OPQ, BBQ, RaBitQ,
+RSLM3/4, QINCo2 bounded diagnostics, joint2, and other completed families.
+The fresh-evaluation shortlist is now frozen for the next product gate:
+LSQ32, LSQ48, TQ1, TQ1+PQ8, and PLSQ8x6x8. RSLM1/joint2 remain reference
+controls when evaluation budget permits. The closed registry retains all other
+executed controls (OPQ, BBQ, RaBitQ, RSLM3/4, QINCo2 bounded diagnostics,
+joint2, and related families). This separates research closure from product
+codec selection and records the LSQ100 ceiling as deferred rather than hiding
+it in the shortlist.
 
 After closure, run a fresh untouched query/qrels evaluation and a 1M packed
 native serving benchmark (warm/cold/page-fault, p50/p95/p99, pages touched,

@@ -71,18 +71,21 @@ with THQ4; LSQ48 is `48 B` code + `4 B` norm = `52 B` side and `148 B` with
 THQ4. The latter is therefore the same side budget as faithful RSLM1, not a
 48-byte total payload.
 
-The first canonical PLSQ8x4x8 practical-control attempt (25,000 residual
-training rows, one Faiss thread) was stopped after roughly twelve minutes
-without an artifact. A corrected source-bound replay then completed with the
-Faiss constructor `ProductLocalSearchQuantizer(384, 8, 4, 8)`, eight Faiss
-threads, and the bounded `25/train-ILS8` schedule. Fit time was `425.91 s`,
-candidate-union encoding `18.04 s`, mean qrels nDCG@10 `0.649133`, and the
-persisted side payload was `36 B` (`132 B` including THQ4). The runner emitted
-`(152,128,32)` code rows and the independent persisted-code audit passed. Full
-details are recorded in `2026-09-29-plsq-practical-control.result.json` and
-the replay artifacts. This executes the bounded PLSQ8x4x8 control; it does not
-close LSQ convergence or make a production selection claim. PLSQ8x6x8 remains
-deferred because the 8x4x8 result alone does not change finalist selection.
+The source-bound PLSQ controls use 25,000 residual training rows, eight Faiss
+threads, and the bounded `25/train-ILS8` schedule. PLSQ8x4x8 reached mean
+qrels nDCG@10 `0.649133` at `36 B` side (`132 B` including THQ4), while
+PLSQ8x6x8 reached `0.656438` at `52 B` side (`148 B` including THQ4). The
+latter is close enough to the measured historical frontier to enter the fresh
+evaluation shortlist; excluding it without running it would have been
+unjustified. Both runners persist THQ centroids and every subquantizer's
+codebooks and offsets. The independent audit manually performs additive PLSQ
+decode, THQ-base reconstruction, cosine scoring, and stable top-10 ranking;
+both profiles pass all 152 rows with zero ranking mismatches. Full details are
+recorded in `2026-09-29-plsq-practical-control.result.json` and the replay
+artifacts. Large model/code files are externalized under the workspace recorded
+in `2026-09-29-fidelity-artifact-manifest.json`; result/audit SHA-256 values are
+the binding identity. These are bounded historical-152 controls, not product
+selection.
 
 ## Fail-closed interpretation
 
@@ -96,14 +99,14 @@ only and do not establish that the family is dominated.
 The first heavy LSQ convergence attempt used an excessive schedule
 (`train_iters=50`, `train_ils_iters=32`, `encode_ils_iters=32`) and is recorded
 as `BLOCKED_EXCESSIVE_SCHEDULE_COST`; it is not the intended convergence gate.
-The intended source-bound protocol was then executed for LSQ32 at
-25/train-ILS8 and 50/train-ILS8, with encode-ILS16 on the same source split.
-The 50-iteration fit took `5612.71 s` and reached mean qrels nDCG@10
-`0.657163`, versus `0.660215` for the canonical 25-iteration baseline
-(`delta=-0.003051`); therefore the pre-registered ladder stops and the
-100-iteration arm is not run. The result and independent audit are recorded in
-`2026-09-29-lsq-convergence-probe.result.json` and
-`artifacts/lsq50-8-probe/audit.json`. LSQ32/48 have dense `M*K` codebook solves (8192/12288 rows; roughly
+The 50-iteration LSQ32 fit took `5612.71 s` and reached mean qrels nDCG@10
+`0.657163`, but the previously cited 25-iteration result used seed `20260925`
+while this probe used `20260921`. The old `-0.003051` delta therefore mixes
+seed variance with iteration count and is superseded as a convergence claim.
+A source-bound 25/train-ILS8 control with the same seed, source split, and
+encode-ILS16 schedule was then executed and independently audited; the paired
+decision is recorded in `2026-09-29-lsq-paired-convergence.result.json`.
+LSQ32/48 have dense `M*K` codebook solves (8192/12288 rows; roughly
 512 MiB/1.125 GiB double Gram matrices before workspace), so the canonical fit
 is a memory-bandwidth and cache/NUMA-sensitive workload, not a simple logical
 thread-count benchmark. The current M8 smoke only demonstrates that

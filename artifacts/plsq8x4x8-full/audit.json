@@ -5,11 +5,14 @@
     32
   ],
   "codes_sha256": "06d7bb137037e9ad75b7a3b009c7b6ac31849b080382f77abe81778f687b8e97",
-  "family": "thq_faiss_plsq_replay_audit_v2",
+  "family": "thq_faiss_plsq_replay_audit_v4",
+  "independent_decode": true,
   "limitations": [
-    "persisted-code contract audit; no second PLSQ implementation",
+    "independent additive decode/ranking/nDCG replay uses persisted PLSQ codebooks",
     "bounded candidate-local control; no production selection claim"
   ],
+  "model_sha256": "3045476daab29e01c5c4c1a5684f43f9702d773ff8049162b79fe55d9f081824",
+  "persisted_norms_verified": true,
   "profile": {
     "code_bytes": 32,
     "encode_ils_iters": 16,
@@ -20,13 +23,25 @@
     "nbits": 8,
     "nsplits": 8,
     "profile": "8x4x8",
+    "random_seed_by_split": [
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565
+    ],
     "train_ils_iters": 8,
     "train_iters": 25
   },
   "quality_status": "BOUNDED_PLSQ_CONTROL",
-  "result_sha256": "78086732bcff60fdda2e40787f16b30f0b781b1e3dc651851b2f5e78df45f30a",
+  "ranking_mismatches": 0,
+  "recomputed_mean_qrels_ndcg10": 0.6491330212693489,
+  "result_sha256": "4b6c76731c950cd9ca2163573e720b2f95c6bed46af88d4617bb05eda7f14acc",
   "rows": 152,
-  "schema_version": 2,
+  "schema_version": 4,
   "selected_shape": [
     152,
     128
@@ -34,10 +49,10 @@
   "status": "PASS",
   "summary": {
     "candidate_union_documents": 18362,
-    "candidate_union_encode_seconds": 18.038392099551857,
+    "candidate_union_encode_seconds": 17.265554499812424,
     "cascade_total_bytes": 132,
     "code_bytes": 32,
-    "fit_seconds": 425.91449109930545,
+    "fit_seconds": 427.6603715000674,
     "mean_candidate_fp32_overlap": 0.9032894736842106,
     "mean_qrels_ndcg10": 0.6491330212693489,
     "mean_teacher_overlap": 0.8973684210526316,

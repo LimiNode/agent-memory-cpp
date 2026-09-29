@@ -1,0 +1,55 @@
+{
+  "family": "thq_faiss_lsq_paired_convergence_v1",
+  "status": "EXECUTED",
+  "source_bound": true,
+  "protocol": {
+    "payload": 32,
+    "train_rows": 25000,
+    "base_train_rows": 25000,
+    "train_ils_iters": 8,
+    "encode_ils_iters": 16,
+    "icm_iters": 4,
+    "nperts": 4,
+    "seed": 20260921,
+    "faiss_omp_threads": 8,
+    "query_count": 152,
+    "candidate_union_documents": 18362
+  },
+  "arms": {
+    "25": {
+      "train_iters": 25,
+      "mean_qrels_ndcg10": 0.6517623244045091,
+      "mean_candidate_fp32_overlap": 0.8875,
+      "mean_teacher_overlap": 0.8855263157894738,
+      "fit_seconds": 3247.348183900118,
+      "artifact_directory": "artifacts/lsq25-8-paired-seed20260921",
+      "audit_status": "PASS"
+    },
+    "50": {
+      "train_iters": 50,
+      "mean_qrels_ndcg10": 0.6571634918798698,
+      "mean_candidate_fp32_overlap": 0.8914473684210527,
+      "mean_teacher_overlap": 0.8888157894736843,
+      "fit_seconds": 5612.7083660000935,
+      "artifact_directory": "artifacts/lsq50-8-probe",
+      "audit_status": "PASS"
+    }
+  },
+  "comparison": {
+    "point_delta_50_minus_25": 0.00540116747536068,
+    "bootstrap_seed": 20260929,
+    "bootstrap_replicates": 100000,
+    "bootstrap_ci95_delta": [-0.01038776, 0.02192472],
+    "wins": 45,
+    "losses": 42,
+    "ties": 65,
+    "decision": "100_CEILING_PROBE_ATTEMPTED_BUT_DEFERRED_HOST_BUDGET"
+  },
+  "timing_note": "The 25-iteration arm was co-scheduled with the PLSQ8x6x8 fit; its fit_seconds is recorded for provenance but is not a standalone training-cost comparison.",
+  "interpretation": "The paired point estimate favors 50 iterations, but historical-152 uncertainty crosses zero. This closes the paired-control gate, not LSQ family convergence or product selection.",
+  "limitations": [
+    "Historical-152 candidate-local replay, not untouched final evaluation.",
+    "Conditional LSQ100 probe has a separate terminal host-budget record.",
+    "No production superiority claim."
+  ]
+}

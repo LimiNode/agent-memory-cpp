@@ -214,6 +214,13 @@ def main():
             rows.append({"query": qi, "arm": f"faiss_lsq{m}", "base_codec": "thq_centroids", "base_train_rows": int(a.base_train_rows), "side_payload_bytes": m + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + m + 4, "top10_ids": ranked.astype(int).tolist(), "thq4_top128_ids": selected.astype(int).tolist(), "candidate_fp32_top10_ids": exact.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact, ranked).sum() / 10), "teacher_overlap": float(np.isin(teacher[qi], ranked).sum() / 10), "qrels_ndcg10": ndcg10(ranked, qrel_ids[qi], qrel_scores[qi])})
     a.models_output.parent.mkdir(parents=True, exist_ok=True); a.codes_output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.models_output, centroids=centroids.astype("<f4"), **{f"lsq{m}_codebooks": model_data[m][0].astype("<f4") for m in payloads}, **{f"lsq{m}_offsets": model_data[m][1].astype("<i8") for m in payloads}); np.savez_compressed(a.codes_output, selected_ids=np.stack(selected_all).astype("<i8"), **{f"codes_{m}": np.stack(codes_all[m]) for m in payloads}, **{f"final_norms_{m}": np.stack(norms_all[m]).astype("<f4") for m in payloads})
+    # Partial files are crash-recovery checkpoints only. Once the complete
+    # model and codes exist, keeping the single-payload copies needlessly
+    # duplicates large research artifacts.
+    for m in payloads:
+        partial = a.models_output.with_name(f"{a.models_output.stem}.lsq{m}.partial.npz")
+        if partial.is_file():
+            partial.unlink()
     summaries = {}
     for m in payloads:
         r = [x for x in rows if x["arm"] == f"faiss_lsq{m}"]; summaries[f"faiss_lsq{m}"] = {"mean_qrels_ndcg10": float(np.mean([x["qrels_ndcg10"] for x in r])), "p05_qrels_ndcg10": float(np.percentile([x["qrels_ndcg10"] for x in r], 5)), "worst_qrels_ndcg10": float(np.min([x["qrels_ndcg10"] for x in r])), "mean_candidate_fp32_overlap": float(np.mean([x["candidate_fp32_overlap"] for x in r])), "mean_teacher_overlap": float(np.mean([x["teacher_overlap"] for x in r])), "side_payload_bytes": m + 4, "cascade_total_bytes": THQ_BYTES + m + 4, "global_codebook_bytes": int(model_data[m][0].size * 4), "full_1m_logical_total_bytes": 1_000_000 * (THQ_BYTES + m + 4) + int(model_data[m][0].size * 4), "base_codec": "thq_centroids", "base_train_rows": int(a.base_train_rows), "lsq_train_rows": int(a.train_rows), "final_norm_sidecar_bytes": 4}

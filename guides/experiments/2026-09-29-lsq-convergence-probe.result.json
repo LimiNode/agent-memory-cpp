@@ -35,7 +35,7 @@
     "decision": "DO_NOT_RUN_100_ITERATIONS"
   },
   "audit": "artifacts/lsq50-8-probe/audit.json",
-  "interpretation": "The mandatory 50/train-ILS8 probe executed and did not materially improve the 25-iteration baseline; the convergence ladder stops here. This is not evidence that the LSQ family is negative, and it does not select a production codec.",
+  "interpretation": "This different-seed 50/train-ILS8 probe is retained as a diagnostic only; its comparison with seed-20260925 is not a valid convergence delta. The paired seed-20260921 control is authoritative in 2026-09-29-lsq-paired-convergence.result.json.",
   "limitations": [
     "Historical-152 candidate-local replay, not untouched final evaluation.",
     "encode-ILS32 sensitivity on this fitted model remains a separate optional diagnostic.",

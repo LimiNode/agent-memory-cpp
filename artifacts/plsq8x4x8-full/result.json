@@ -1,18 +1,33 @@
 {
   "candidate_union_documents": 18362,
   "codes_sha256": "06d7bb137037e9ad75b7a3b009c7b6ac31849b080382f77abe81778f687b8e97",
-  "family": "thq_faiss_plsq_replay_v2",
+  "faiss_compile_options": "",
+  "faiss_compile_options_available": false,
+  "faiss_loader_variant": "faiss._swigfaiss",
+  "faiss_native_module_path": "C:\\Users\\User\\AppData\\Local\\Programs\\Python\\Python311\\Lib\\site-packages\\faiss\\_swigfaiss.pyd",
+  "faiss_native_module_sha256": "31bf800d7899fd93538c02b556422017da73187fc25d56a9b174116f1aa5b3d5",
+  "faiss_omp_threads": 8,
+  "faiss_version": "1.15.0",
+  "family": "thq_faiss_plsq_replay_v4",
+  "hardware": {
+    "cpu_architecture": "AMD64",
+    "cpu_logical_cores": 36,
+    "cpu_model": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "cpu_physical_cores": 18,
+    "detection_source": "windows_cim",
+    "operating_system": "Windows",
+    "platform": "Windows-10-10.0.26100-SP0"
+  },
   "limitations": [
     "bounded candidate-local source replay",
     "PLSQ practical control, not a production selection claim",
     "full native serving benchmark remains separate"
   ],
   "metric": "cosine",
-  "training": {
-    "available_train_rows": 25000,
-    "base_train_rows": 25000,
-    "train_rows": 25000
-  },
+  "artifact_location": "E:\\_repoz\\agent-memory-workspaces\\fidelity-closure-payload-v1\\plsq8x4x8-full",
+  "artifacts_external": true,
+  "model_path": "artifacts\\plsq8x4x8-full\\model.npz",
+  "model_sha256": "3045476daab29e01c5c4c1a5684f43f9702d773ff8049162b79fe55d9f081824",
   "plsq": {
     "code_bytes": 32,
     "encode_ils_iters": 16,
@@ -23,6 +38,16 @@
     "nbits": 8,
     "nsplits": 8,
     "profile": "8x4x8",
+    "random_seed_by_split": [
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565
+    ],
     "train_ils_iters": 8,
     "train_iters": 25
   },
@@ -5046,8 +5071,8 @@
       ]
     }
   ],
-  "runner_sha256": "d3e648733ecd8f9449c218bedfd60b514dfeb0a2635effd1d0b655f61fee04f4",
-  "schema_version": 2,
+  "runner_sha256": "0f1ab4323ab18b2abfaa0459d36e05b18a0a833b11c85fcd468199c6886a1551",
+  "schema_version": 4,
   "source_hashes": {
     "candidate-flat": "d746a8efb12b3ca0b1f9693bd1ebc0b73fa57bf9ed5c7688e0dd6ee85b2621fb",
     "candidate-raw": "6ce8e812d7d240d86e282eb201e0fab77706fdbb60938d9be180cf5d0d153567",
@@ -5064,13 +5089,18 @@
   "status": "EXECUTED",
   "summary": {
     "candidate_union_documents": 18362,
-    "candidate_union_encode_seconds": 18.038392099551857,
+    "candidate_union_encode_seconds": 17.265554499812424,
     "cascade_total_bytes": 132,
     "code_bytes": 32,
-    "fit_seconds": 425.91449109930545,
+    "fit_seconds": 427.6603715000674,
     "mean_candidate_fp32_overlap": 0.9032894736842106,
     "mean_qrels_ndcg10": 0.6491330212693489,
     "mean_teacher_overlap": 0.8973684210526316,
     "side_payload_bytes": 36
+  },
+  "training": {
+    "available_train_rows": 25000,
+    "base_train_rows": 25000,
+    "train_rows": 25000
   }
 }

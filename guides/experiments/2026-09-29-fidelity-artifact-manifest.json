@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "workspace": "E:\\_repoz\\agent-memory-workspaces\\fidelity-closure-payload-v1",
+  "policy": "Large model/code payloads remain outside Git; compact result and audit files bind them by SHA-256 and size.",
+  "artifacts": [
+    {"path": "lsq50-8-probe/models.npz", "bytes": 11696098, "sha256": "a642108cfd4c656033c687199b719dcdb3d483e1974447ef516a36f0069fb43a"},
+    {"path": "lsq50-8-probe/codes.npz", "bytes": 744234, "sha256": "1b5647b2a398ee0e680a476b276fed5eca4147274d219a1ec3f6a83e33e1b2e4"},
+    {"path": "lsq25-8-paired-seed20260921/models.npz", "bytes": 11695249, "sha256": "58a7d384de95a9b1be876b0c184991907607bb9cce8229137eae9dc988664e02"},
+    {"path": "lsq25-8-paired-seed20260921/codes.npz", "bytes": 744237, "sha256": "08d66f8e6dda7f35c9fc5490506a92ad6cbeb2530bad63c1054af4976bfaab1d"},
+    {"path": "plsq8x4x8-full/model.npz", "bytes": 1472612, "sha256": "3045476daab29e01c5c4c1a5684f43f9702d773ff8049162b79fe55d9f081824"},
+    {"path": "plsq8x4x8-full/codes.npz", "bytes": 743691, "sha256": "06d7bb137037e9ad75b7a3b009c7b6ac31849b080382f77abe81778f687b8e97"},
+    {"path": "plsq8x6x8-full/model.npz", "bytes": 2202209, "sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b"},
+    {"path": "plsq8x6x8-full/codes.npz", "bytes": 1054792, "sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c"}
+  ],
+  "redundant_removed": ["artifacts/lsq25-8-paired-seed20260921/models.lsq32.partial.npz", "artifacts/lsq50-8-probe/models.lsq32.partial.npz"],
+  "replay_rule": "Before an audit, materialize the external payload at the recorded workspace path and verify every listed size/SHA; missing payload is DEFERRED_COMPUTE, never silently replaced."
+}
