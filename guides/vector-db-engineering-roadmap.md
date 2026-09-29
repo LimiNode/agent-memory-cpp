@@ -210,7 +210,7 @@ Binary (256-bit, autoencoder):
 
 | Workload | Рекомендованный алгоритм | Почему |
 |---|---|---|
-| Medium RAG (~1M-10M vectors, mixed queries) | **HNSW** (~80% дефолт) | Log-scale latency, fast insert, no reclustering overhead. Post-filter на metadata допустим, если selectivity высокая. |
+| Medium RAG (~1M-10M vectors, mixed queries) | **Benchmark-gated: Exact/BinaryCandidateFilter first; HNSW only as an optional adapter** | Measure recall, filtering behavior, memory and p50/p95/p99 on the target workload before selecting HNSW. No HNSW default is implied. |
 | Full metadata filtering на больших коллекциях | **IVF + PQ** | IVF позволяет отбросить clusters целиком до сканирования; PQ экономит память. Re-clustering cadence — workload-dependent: на static corpora может быть «никогда»; на streaming-данных — чаще. |
 | Billion-scale с жёстким memory budget | **IVF + PQ (m=8-16)** | Только PQ с ADC даёт нужную память; HNSW на 1B+ vectors экономически нецелесообразен без PQ. |
 | Edge / mobile coarse filter | **Binary (LSH или autoencoder)** | Binary codes — single-instruction XOR+POPCNT distance, минимальная RAM footprint. См. [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md). |
@@ -241,7 +241,8 @@ External Vector Store (Qdrant / Milvus / Pinecone / Weaviate / Chroma)
 - `DenseIndexMode::BinaryCandidateFilter` — binary prefilter (signatures / LSH / autoencoder), float rerank сверху.
 - `DenseIndexMode::BinaryOnly` — standalone binary (no float rerank).
 - `DenseIndexMode::ApproximateVector` — binary + decoder → approximate float → cosine rerank.
-- `DenseIndexMode::Hnsw` — mainline M2+ backend (композиция с BinaryCandidateFilter).
+- `DenseIndexMode::Hnsw` — optional, benchmark-gated M2+ research backend
+  (possible composition with `BinaryCandidateFilter`), not a mainline default.
 
 На стороне Vector Store мы только **публикуем derived embeddings** через C++17
 ABI / IPC и **принимаем top-K candidates**. Canonical storage retains the

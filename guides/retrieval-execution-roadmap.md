@@ -67,10 +67,12 @@ row from another generation must never be merged opportunistically.
 The pipeline may overlap candidate scanning, payload reads and scoring, but
 each queue is bounded. Backpressure pauses producers; it must not silently
 reduce route fan-out or adaptive recall. If a budget or deadline prevents more
-work, the existing `BudgetExhaustionAction` is applied and the existing
-query-level `RetrievalCompletion` plus per-route `RetrievalRouteCompletion`
-values (`Partial`, `RouteDropped`/`Dropped`, `RequiredRouteFailed`) are
-recorded.
+work, the existing `BudgetExhaustionAction` is applied and the exact existing
+enum values are recorded. Query-level `RetrievalCompletion` has
+`Complete`, `Partial`, `BudgetExhausted`, `RouteDropped` and
+`RequiredRouteFailed`; per-route `RetrievalRouteCompletion` has
+`Complete`, `Partial`, `Unavailable`, `BudgetExhausted`, `Dropped` and
+`RequiredRouteFailed`.
 
 ## Reader and covering contracts
 
