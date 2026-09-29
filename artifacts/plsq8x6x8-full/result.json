@@ -1,8 +1,8 @@
 {
   "candidate_union_documents": 18362,
-  "codec_model_bytes": 1573184,
-  "effective_1m_bytes_per_doc": 37.579328,
-  "codes_sha256": "06d7bb137037e9ad75b7a3b009c7b6ac31849b080382f77abe81778f687b8e97",
+  "codec_model_bytes": 2359744,
+  "effective_1m_bytes_per_doc": 54.365888,
+  "codes_sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c",
   "faiss_compile_options": "",
   "faiss_compile_options_available": false,
   "faiss_loader_variant": "faiss._swigfaiss",
@@ -26,20 +26,18 @@
     "full native serving benchmark remains separate"
   ],
   "metric": "cosine",
-  "artifact_location": "E:\\_repoz\\agent-memory-workspaces\\fidelity-closure-payload-v1\\plsq8x4x8-full",
-  "artifacts_external": true,
-  "model_path": "artifacts\\plsq8x4x8-full\\model.npz",
-  "model_sha256": "3045476daab29e01c5c4c1a5684f43f9702d773ff8049162b79fe55d9f081824",
+  "model_path": "artifacts\\plsq8x6x8-full\\model.npz",
+  "model_sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b",
   "plsq": {
-    "code_bytes": 32,
+    "code_bytes": 48,
     "encode_ils_iters": 16,
     "faiss_threads": 8,
     "icm_iters": 4,
     "inner_nperts": 4,
-    "msub": 4,
+    "msub": 6,
     "nbits": 8,
     "nsplits": 8,
-    "profile": "8x4x8",
+    "profile": "8x6x8",
     "random_seed_by_split": [
       74565,
       74565,
@@ -58,7 +56,7 @@
   "query_count": 152,
   "rows": [
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         553416,
@@ -72,26 +70,26 @@
         553423,
         553417
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.43067655807339306,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5,
       "query": 0,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         553416,
         553415,
-        666917,
         553420,
+        666917,
         553422,
         553419,
         553418,
-        553421,
         553423,
+        553421,
         553417
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         617629,
@@ -105,10 +103,10 @@
         889398,
         207041
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6843515475204855,
       "query": 1,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         617629,
@@ -117,14 +115,14 @@
         203223,
         238076,
         351359,
-        384799,
         889401,
+        384799,
         207041,
-        743372
+        365479
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         958980,
@@ -138,27 +136,27 @@
         517789,
         648807
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.9709286432396583,
       "query": 2,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         958980,
-        958979,
         958984,
-        958983,
+        958979,
         958982,
+        958983,
         958981,
         74154,
-        517789,
         802226,
+        517789,
         517791
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         705992,
         849622,
@@ -171,26 +169,26 @@
         999861,
         849625
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 3,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         705992,
         849622,
         999860,
-        849626,
         999861,
-        999859,
+        849626,
         849624,
         849627,
         849625,
-        705991
+        999859,
+        601180
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         209584,
@@ -204,26 +202,26 @@
         299554,
         143527
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.2890648263178879,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.0,
       "query": 4,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         209584,
-        270830,
         730931,
-        243919,
-        209583,
         257374,
-        627633,
         299554,
+        243919,
+        270830,
+        209583,
+        627633,
         143527,
-        44668
+        888941
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         535722,
@@ -237,10 +235,10 @@
         298226,
         721962
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8451850618939637,
       "query": 5,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         535722,
@@ -249,15 +247,15 @@
         188642,
         997272,
         246719,
-        653776,
         535723,
+        653776,
         298226,
-        15402
+        392636
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         971653,
         540719,
@@ -270,27 +268,27 @@
         412455,
         281138
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 6,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         971653,
         540719,
         132180,
         924752,
-        727139,
         929525,
-        432060,
-        412455,
+        727139,
+        75707,
         281138,
-        75707
+        412455,
+        453088
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         910125,
         977230,
@@ -303,26 +301,26 @@
         747169,
         579263
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6934264036172708,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9197207891481876,
       "query": 7,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
-        910125,
         977230,
+        910125,
         61863,
-        160963,
         684342,
-        746091,
         513514,
-        973246,
-        39804,
-        579263
+        160963,
+        579263,
+        240800,
+        61862,
+        973246
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         5419,
@@ -336,10 +334,10 @@
         271097,
         890245
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.5183322919267586,
       "query": 8,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         5419,
@@ -347,15 +345,15 @@
         270289,
         270288,
         360642,
-        270287,
         270290,
+        270287,
         329833,
         890245,
         271097
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         724454,
@@ -369,26 +367,26 @@
         537870,
         903988
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9197207891481876,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 1.0,
       "query": 9,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         724454,
-        385139,
         808947,
+        385139,
+        963646,
         524359,
         973968,
-        102946,
         860467,
         903988,
-        903784,
-        963646
+        102946,
+        615385
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         465089,
@@ -402,26 +400,26 @@
         516310,
         246038
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6309297535714575,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 1.0,
       "query": 10,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
-        516309,
         465089,
         764518,
+        516309,
         516311,
-        516312,
         722665,
-        516305,
-        516310,
+        516312,
         516307,
-        246038
+        516305,
+        246038,
+        516310
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         238765,
@@ -435,10 +433,10 @@
         546391,
         648583
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8854598815714874,
       "query": 11,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         238765,
@@ -448,13 +446,13 @@
         875924,
         840660,
         542801,
+        734552,
         546391,
-        648583,
-        734552
+        648583
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         447609,
@@ -468,10 +466,10 @@
         642586,
         34254
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 12,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         481790,
@@ -487,7 +485,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         321019,
@@ -501,27 +499,27 @@
         825759,
         326732
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.38685280723454163,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.31546487678572877,
       "query": 13,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         321019,
         528756,
         351642,
-        473723,
-        825759,
-        211652,
         297955,
-        326732,
+        211652,
+        473723,
         473721,
-        505197
+        825759,
+        473724,
+        325808
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         35274,
         209178,
@@ -534,27 +532,27 @@
         492540,
         139431
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.0,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.2890648263178879,
       "query": 14,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
-        209178,
-        291672,
         563233,
-        35274,
+        209178,
         109149,
-        741820,
         322152,
-        264195,
-        492540,
-        166968
+        741820,
+        166968,
+        291672,
+        400929,
+        35274,
+        76967
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         324327,
         324328,
@@ -567,26 +565,26 @@
         997124,
         52452
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 15,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         324327,
         324328,
-        608084,
         384979,
+        608084,
         608085,
-        846346,
         384975,
+        846346,
         384978,
         324329,
-        997124
+        375924
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         744784,
@@ -600,27 +598,27 @@
         744792,
         744795
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.23463936301137822,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.2960819109658652,
       "query": 16,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         744784,
-        744787,
         755428,
+        744787,
         744786,
-        744793,
         744782,
+        744793,
         744788,
         744792,
-        261224,
-        792992
+        792992,
+        726517
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         51097,
         949473,
@@ -633,26 +631,26 @@
         950398,
         852244
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.38685280723454163,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.43067655807339306,
       "query": 17,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         51097,
-        949473,
         51890,
-        854767,
+        949473,
         931415,
-        854766,
-        950398,
+        854767,
         946456,
+        950398,
+        51098,
         952213,
-        51098
+        852244
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         631345,
@@ -666,26 +664,26 @@
         631231,
         340661
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.5670738205908158,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5064767203222518,
       "query": 18,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         631343,
-        631356,
-        920236,
         442063,
+        920236,
+        631356,
         631345,
         246035,
-        631344,
         340661,
+        631344,
         465089,
         631231
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         923849,
@@ -699,26 +697,26 @@
         466913,
         890053
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 19,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         228462,
         923849,
         721079,
-        466913,
         992790,
-        763853,
+        402454,
         890053,
         385382,
-        402454,
-        444391
+        272241,
+        763853,
+        466913
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         53510,
@@ -732,10 +730,10 @@
         169526,
         216801
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 20,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         53510,
@@ -744,15 +742,15 @@
         216804,
         216805,
         216800,
-        216802,
         216806,
+        216802,
         216801,
         169526
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         778981,
         519266,
@@ -765,26 +763,26 @@
         706092,
         452172
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.618890676363047,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6364391809889587,
       "query": 21,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
-        519266,
         778981,
+        519266,
         706093,
         756535,
-        260260,
         207889,
+        260260,
         397841,
-        250938,
-        324189,
-        452172
+        222851,
+        433688,
+        706092
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         342296,
@@ -798,27 +796,27 @@
         868788,
         857590
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8699594546339143,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8677498204895239,
       "query": 22,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         342296,
         241925,
         875922,
-        241083,
         908699,
-        875923,
         241058,
-        378158,
+        241083,
+        875923,
         868788,
+        378158,
         857590
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         454116,
         669718,
@@ -831,27 +829,27 @@
         576510,
         454121
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.7598336331031966,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7246262544989281,
       "query": 23,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         454116,
-        669718,
         849720,
-        454117,
+        669718,
         254787,
-        454120,
-        961105,
+        454117,
         454118,
-        983762,
-        984578
+        454120,
+        576510,
+        961105,
+        521115
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.7,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         14132,
         672749,
@@ -864,26 +862,26 @@
         84609,
         404362
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8772153153380493,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9197207891481876,
       "query": 24,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.7,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         14132,
         672749,
-        474781,
         474780,
-        374780,
+        474781,
+        653039,
+        326314,
         84609,
-        198145,
-        495003,
-        463980,
-        374857
+        374780,
+        404362,
+        198145
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         250938,
@@ -897,26 +895,26 @@
         250939,
         380122
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9197207891481876,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 1.0,
       "query": 25,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         250941,
-        250938,
         250937,
-        598357,
+        250938,
         250940,
+        598357,
+        250942,
         250939,
         484623,
         380122,
-        250942,
-        698612
+        143673
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         567116,
@@ -930,26 +928,26 @@
         567119,
         758460
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.43067655807339306,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.3562071871080222,
       "query": 26,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         579788,
         567116,
         262561,
-        579787,
         429519,
         399638,
-        854688,
+        579787,
         240885,
+        277011,
         658616,
         567119
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         533637,
@@ -963,27 +961,27 @@
         473536,
         622024
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.2640681225725909,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.23719771276929622,
       "query": 27,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
-        533637,
         533626,
+        533637,
         242301,
-        345858,
         277856,
+        345858,
+        144013,
+        524970,
         845271,
         600738,
-        524970,
-        622024,
-        144013
+        473536
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         416307,
         888778,
@@ -996,27 +994,27 @@
         888771,
         216172
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.36612301905000083,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.483639123806428,
       "query": 28,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
+        312459,
         888778,
         416307,
-        312459,
-        635524,
-        819954,
         551049,
-        343144,
+        819954,
+        635524,
         888773,
-        216172,
-        888771
+        343144,
+        888771,
+        412830
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         675484,
         675486,
@@ -1029,11 +1027,11 @@
         752858,
         369269
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6508205185601091,
       "query": 29,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         675484,
         675486,
@@ -1042,14 +1040,14 @@
         354803,
         407617,
         407618,
-        723394,
         752858,
+        369269,
         27560
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         993374,
         443617,
@@ -1062,27 +1060,27 @@
         580253,
         930170
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6309297535714575,
       "query": 30,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         993374,
         443617,
-        993375,
-        531168,
-        386262,
         957210,
+        386262,
         930171,
+        993375,
         304980,
-        930170,
-        363043
+        531168,
+        580253,
+        930170
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         7731,
         253436,
@@ -1095,26 +1093,26 @@
         466454,
         992393
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 31,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         7731,
-        137844,
         253436,
         319261,
+        137844,
         868243,
         650612,
         30015,
-        466454,
+        993159,
         992393,
-        993159
+        137834
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         189618,
@@ -1128,26 +1126,26 @@
         619359,
         641458
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.787702056960637,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8048099750039491,
       "query": 32,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         189618,
         189622,
         242143,
-        582191,
         241960,
-        716429,
+        582191,
         242129,
+        716429,
         465601,
-        619359,
-        619450
+        338470,
+        619359
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         46148,
@@ -1161,10 +1159,10 @@
         643878,
         763400
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 33,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         394283,
@@ -1173,14 +1171,14 @@
         740807,
         763401,
         394295,
-        457688,
         690228,
-        643878,
-        176615
+        457688,
+        46149,
+        400527
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         556474,
@@ -1194,27 +1192,27 @@
         556467,
         255706
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8503449055347546,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9197207891481876,
       "query": 34,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         556474,
         556477,
+        604412,
         556475,
         379217,
-        604412,
-        228194,
-        556476,
         556467,
-        255706,
-        830981
+        556476,
+        228194,
+        830981,
+        255706
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         383808,
         383807,
@@ -1227,27 +1225,27 @@
         799118,
         690146
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 35,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         383808,
         383807,
         383804,
         342114,
         344224,
-        8283,
-        383806,
         344223,
-        379929,
-        799118
+        383806,
+        8283,
+        799118,
+        690146
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.7,
       "candidate_fp32_top10_ids": [
         229575,
         882288,
@@ -1260,26 +1258,26 @@
         444821,
         447990
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 36,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.7,
       "top10_ids": [
         229575,
         882288,
         818987,
-        508299,
-        182246,
         631909,
-        447990,
+        182246,
+        508299,
         444821,
-        742241,
-        818992
+        602119,
+        238487,
+        581520
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         494592,
@@ -1293,27 +1291,27 @@
         109347,
         483472
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 37,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         494592,
         362983,
         865846,
-        936799,
-        402642,
         262088,
-        109347,
-        937263,
+        936799,
         321415,
-        890750
+        937263,
+        109347,
+        890750,
+        402642
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         517917,
         485611,
@@ -1326,26 +1324,26 @@
         295707,
         820185
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9197207891481876,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8503449055347546,
       "query": 38,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         517917,
         295708,
-        819632,
         485611,
         251571,
-        962153,
+        819632,
         295705,
-        252663,
         327913,
+        820185,
+        962153,
         295707
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         112466,
@@ -1359,27 +1357,27 @@
         110067,
         118877
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 39,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         112466,
         110085,
         166740,
         110078,
-        110067,
-        307540,
         110086,
         118875,
+        307540,
+        110067,
         114744,
         118877
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         574718,
         831688,
@@ -1392,27 +1390,27 @@
         924744,
         462821
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.3562071871080222,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.3333333333333333,
       "query": 40,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         574718,
         831688,
-        830479,
-        697625,
         267777,
-        897849,
-        946494,
-        627594,
+        697625,
+        830479,
         279474,
+        897849,
+        924744,
+        130632,
         671776
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         431369,
         135471,
@@ -1425,26 +1423,26 @@
         650698,
         470650
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 41,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         135471,
         431369,
         182246,
         641109,
-        358767,
-        644427,
-        536609,
         785211,
-        55499,
-        465365
+        358767,
+        536609,
+        644427,
+        650698,
+        739080
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         225555,
@@ -1458,27 +1456,27 @@
         943774,
         862245
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6309297535714575,
       "query": 42,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         225555,
         362746,
         713290,
-        648176,
-        240719,
-        355210,
         648175,
+        648176,
         722322,
-        348389,
-        161152
+        355210,
+        862245,
+        161152,
+        426463
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         829696,
         920985,
@@ -1491,26 +1489,26 @@
         373812,
         702384
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.7653606369886217,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7039180890341347,
       "query": 43,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         829696,
-        920985,
         939588,
+        920985,
         284311,
         517350,
         571512,
-        451443,
-        373812,
+        702384,
         623787,
-        391413
+        392570,
+        451443
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         668094,
@@ -1524,10 +1522,10 @@
         387056,
         394556
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6975637657739948,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8104089071229301,
       "query": 44,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         668094,
@@ -1536,14 +1534,14 @@
         203444,
         505782,
         503633,
-        107035,
-        833966,
-        373391,
-        306600
+        306600,
+        387056,
+        330642,
+        616444
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         510281,
@@ -1557,26 +1555,26 @@
         510293,
         464453
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6739577727076379,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6992148198508501,
       "query": 45,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         510281,
         510286,
         747098,
-        510289,
-        510283,
         510102,
+        510289,
         510282,
+        510283,
+        798039,
         510293,
-        464453,
-        798040
+        576332
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         218181,
@@ -1590,10 +1588,10 @@
         202891,
         202894
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8200261225503443,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8122682216087223,
       "query": 46,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         218181,
@@ -1601,15 +1599,15 @@
         202892,
         554095,
         554094,
-        202890,
-        267243,
-        202893,
         202891,
+        202890,
+        202893,
+        267243,
         202894
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         243162,
@@ -1623,10 +1621,10 @@
         441477,
         104454
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8503449055347546,
       "query": 47,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         243162,
@@ -1634,16 +1632,16 @@
         724719,
         590759,
         724720,
-        243166,
         243163,
-        441477,
         147750,
-        104454
+        243166,
+        104454,
+        441477
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         250515,
         189624,
@@ -1656,26 +1654,26 @@
         113020,
         495029
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.4441228664487979,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5051284895111403,
       "query": 48,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         189624,
-        4635,
-        985810,
         250515,
-        113020,
         985815,
-        495029,
+        985810,
+        4635,
         985812,
+        53372,
         250513,
-        791207
+        495029,
+        113020
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         770233,
@@ -1689,17 +1687,17 @@
         51479,
         423390
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.777079017590005,
       "query": 49,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         770233,
         770234,
         423389,
-        770240,
         770235,
+        770240,
         658606,
         52184,
         423393,
@@ -1708,7 +1706,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         312838,
@@ -1722,26 +1720,26 @@
         484907,
         488094
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.9197207891481876,
       "query": 50,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         312838,
         312839,
         312840,
-        375313,
         512534,
-        498422,
+        375313,
         264470,
+        498422,
+        499098,
         832921,
-        375302,
-        488094
+        484907
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         345579,
@@ -1755,26 +1753,26 @@
         209101,
         451527
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6462302129493456,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.49818925746641285,
       "query": 51,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         345579,
         196620,
         312497,
         651046,
-        416888,
         351380,
         214355,
-        112427,
-        534173,
-        282354
+        416888,
+        209101,
+        282354,
+        534173
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         878216,
@@ -1788,10 +1786,10 @@
         878219,
         878221
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.5,
       "query": 52,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         878216,
@@ -1800,15 +1798,15 @@
         251638,
         878220,
         913141,
-        641425,
         641423,
+        641425,
         878219,
         878221
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         473842,
         373489,
@@ -1821,26 +1819,26 @@
         578243,
         373495
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.7087212693585175,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7246262544989281,
       "query": 53,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         473842,
         373489,
         217683,
         428642,
         373494,
+        354976,
         428638,
         430773,
-        354976,
-        614537,
-        428615
+        373495,
+        614537
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         817707,
@@ -1854,10 +1852,10 @@
         290064,
         290075
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8772153153380493,
       "query": 54,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         817707,
@@ -1865,16 +1863,16 @@
         746889,
         290063,
         607918,
-        290074,
         725407,
+        3532,
+        290074,
         290070,
-        633266,
-        3532
+        813564
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         190898,
         780945,
@@ -1887,27 +1885,27 @@
         273721,
         319256
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9325210919548239,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9469024295259745,
       "query": 55,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         190898,
         780945,
         984136,
         984135,
-        683115,
         348073,
-        663897,
-        273721,
+        683115,
         490068,
-        319256
+        663897,
+        613157,
+        273721
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         325806,
         325808,
@@ -1920,11 +1918,11 @@
         321019,
         473721
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.9197207891481876,
       "query": 56,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         325806,
         325808,
@@ -1934,13 +1932,13 @@
         239316,
         214612,
         319938,
-        326732,
-        473721
+        473721,
+        321019
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.7,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         508956,
         508960,
@@ -1953,27 +1951,27 @@
         652972,
         508958
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 57,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.7,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         508956,
         508960,
-        361611,
         361600,
+        361611,
         508966,
-        648776,
-        508962,
         648775,
         508961,
-        90035
+        647508,
+        652972,
+        648776
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.6,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         804130,
         804284,
@@ -1986,27 +1984,27 @@
         224872,
         876422
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.5,
       "query": 58,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.6,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         804130,
         804284,
         408773,
+        329363,
+        804129,
         993309,
         224872,
-        329363,
-        995122,
-        236745,
-        735442,
-        462129
+        462129,
+        261656,
+        236745
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         465799,
         465797,
@@ -2019,27 +2017,27 @@
         345045,
         119446
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.3562071871080222,
       "query": 59,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
+        465797,
         465799,
         465800,
-        465797,
-        302187,
         448099,
+        302187,
         448096,
         465802,
-        345045,
         210977,
-        302184
+        119446,
+        345045
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         110423,
         231102,
@@ -2052,27 +2050,27 @@
         552653,
         502090
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 60,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         110423,
         231102,
         498688,
-        466403,
         466464,
+        466403,
         466550,
-        552653,
-        351144,
         112224,
-        509416
+        425213,
+        552653,
+        502090
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         622244,
         847395,
@@ -2085,27 +2083,27 @@
         396685,
         162538
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9197207891481876,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 1.0,
       "query": 61,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         634559,
-        847395,
         622244,
+        847395,
         206065,
         634561,
         409618,
         546432,
         634562,
-        396685,
+        959537,
         580242
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         432299,
         432298,
@@ -2118,26 +2116,26 @@
         29960,
         800284
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.7756199604526248,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7860137352654724,
       "query": 62,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
-        432299,
-        494400,
         432298,
+        494400,
+        432299,
         693427,
-        169390,
         693428,
+        169390,
         29960,
         448759,
         908241,
-        861068
+        800284
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         217429,
@@ -2151,26 +2149,26 @@
         346328,
         591093
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.2890648263178879,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.31546487678572877,
       "query": 63,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         217429,
+        307526,
         53909,
         505217,
-        307526,
-        806871,
-        210046,
         930856,
         346328,
+        210046,
+        445400,
         275267,
-        445400
+        591093
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         757138,
@@ -2184,26 +2182,26 @@
         932959,
         932962
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.0,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.17723928678404774,
       "query": 64,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         757138,
+        932957,
+        345101,
         635454,
         932960,
-        345101,
-        932957,
-        932959,
         932963,
-        932965,
+        932959,
         932961,
-        918518
+        918518,
+        932962
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         348931,
@@ -2217,26 +2215,26 @@
         352144,
         20985
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6309297535714575,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 1.0,
       "query": 65,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
-        605036,
         348931,
         423595,
-        500714,
-        20985,
-        828791,
-        475845,
-        62913,
+        605036,
         352144,
-        837456
+        828791,
+        62913,
+        500714,
+        450058,
+        554366,
+        475845
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         870421,
@@ -2250,10 +2248,10 @@
         248246,
         817507
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.792884011849373,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7805552904143293,
       "query": 66,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         870421,
@@ -2261,16 +2259,16 @@
         353308,
         396718,
         870419,
+        159823,
         843496,
         353305,
-        159823,
         248246,
         585183
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         461955,
         461961,
@@ -2283,26 +2281,26 @@
         332745,
         448907
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6713860725233041,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6364391809889587,
       "query": 67,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         461955,
         461961,
         699082,
-        160664,
-        461959,
         461956,
-        855739,
+        461959,
+        160664,
         493494,
+        855739,
         332745,
-        448907
+        461957
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         816637,
@@ -2316,26 +2314,26 @@
         51352,
         967703
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 68,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         816637,
         516027,
-        901520,
         894138,
-        758484,
-        219982,
         372226,
+        482496,
+        219982,
         941684,
-        127607,
-        482496
+        901520,
+        715364,
+        758484
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         301388,
@@ -2349,27 +2347,27 @@
         220200,
         896165
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6309297535714575,
       "query": 69,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         301388,
         652127,
         301389,
         301390,
-        55447,
         652128,
-        220200,
+        55447,
         301391,
         378027,
+        220200,
         896165
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         795252,
         20228,
@@ -2382,27 +2380,27 @@
         5408,
         752994
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6283303929311415,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7827141072039429,
       "query": 70,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
-        20228,
         795252,
+        20228,
         20227,
         5407,
         5743,
         943363,
         8318,
+        8315,
         5408,
-        863051,
-        8315
+        752994
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.7,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         420815,
         271349,
@@ -2415,27 +2413,27 @@
         685319,
         511224
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.5012658353418871,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.23719771276929622,
       "query": 71,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.7,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         420815,
+        673522,
+        928994,
+        511224,
+        271349,
+        903470,
+        685319,
         327843,
         5835,
-        271349,
-        93514,
-        586578,
-        673522,
-        54435,
-        685319,
-        903470
+        586578
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         755428,
         744782,
@@ -2448,27 +2446,27 @@
         744783,
         744795
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.39233405721184117,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.2691828628414762,
       "query": 72,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
-        744782,
         755428,
+        744782,
         744784,
-        744787,
         744786,
+        744787,
         744793,
         744788,
-        744783,
         744794,
-        545404
+        545404,
+        744792
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.7,
       "candidate_fp32_top10_ids": [
         646689,
         742053,
@@ -2481,27 +2479,27 @@
         873706,
         242667
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 73,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.7,
       "top10_ids": [
         354354,
-        742053,
         646689,
         524170,
-        873706,
+        742053,
         74957,
+        873706,
         159277,
+        819480,
         714244,
-        456333,
-        803938
+        495926
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         241757,
         533693,
@@ -2514,26 +2512,26 @@
         267059,
         297292
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9705437052559005,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9838048780283075,
       "query": 74,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         241757,
         533693,
         240916,
-        240912,
         754909,
-        918698,
+        240912,
         240913,
+        918698,
         813616,
         267059,
-        374389
+        297292
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         311591,
@@ -2547,26 +2545,26 @@
         141031,
         816257
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.7653606369886217,
       "query": 75,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         311591,
         343988,
         512800,
-        343989,
-        463613,
         537026,
-        268325,
         260852,
-        816257,
-        706838
+        343989,
+        268325,
+        706838,
+        141031,
+        816257
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         697606,
@@ -2580,27 +2578,27 @@
         131103,
         639566
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 76,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         697606,
         571692,
         660164,
         552338,
-        367203,
+        643761,
         697607,
+        367203,
         580101,
         131103,
-        141805,
-        643761
+        231453
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         341612,
         341613,
@@ -2613,26 +2611,26 @@
         394136,
         899749
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6509209298071326,
       "query": 77,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         341612,
         341613,
         394134,
         341615,
         341616,
+        341614,
         394135,
         986410,
-        341614,
         394136,
-        899749
+        445365
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         958690,
@@ -2646,26 +2644,26 @@
         684312,
         576999
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.43067655807339306,
       "query": 78,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         958690,
         934640,
         840602,
         237228,
-        684312,
-        41063,
         461846,
-        576999,
-        779139,
-        628244
+        628244,
+        684312,
+        175141,
+        317085,
+        208978
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         752677,
@@ -2679,18 +2677,18 @@
         405412,
         752685
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.7130329901830805,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7365447429771821,
       "query": 79,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         752677,
         752687,
+        154224,
+        752681,
         752679,
         154223,
-        752681,
-        154224,
         103309,
         49344,
         405412,
@@ -2698,7 +2696,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         724073,
@@ -2712,27 +2710,27 @@
         724072,
         724075
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9325210919548239,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9134015924715543,
       "query": 80,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
-        724073,
         724071,
+        724073,
         687235,
-        855340,
         724074,
-        213132,
-        724072,
         724076,
+        724072,
+        855340,
+        213132,
         268254,
         724077
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         429809,
         429810,
@@ -2745,11 +2743,11 @@
         643878,
         429811
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 81,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         429809,
         429810,
@@ -2758,13 +2756,13 @@
         429814,
         429812,
         394283,
-        643878,
         290533,
-        464668
+        643878,
+        429811
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         257407,
@@ -2778,10 +2776,10 @@
         257412,
         257413
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.9999999999999999,
       "query": 82,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         257407,
@@ -2797,7 +2795,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         266746,
@@ -2811,10 +2809,10 @@
         266750,
         599375
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.843706044175124,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8400853550530741,
       "query": 83,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         266746,
@@ -2825,13 +2823,13 @@
         949415,
         662337,
         266754,
-        599375,
-        266750
+        266750,
+        599375
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         832985,
         832987,
@@ -2844,27 +2842,27 @@
         84652,
         205103
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8503449055347546,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8175295903539445,
       "query": 84,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         832985,
         832987,
         832986,
         18681,
-        541220,
-        484677,
         113034,
+        484677,
+        541220,
         583298,
-        84652,
-        205103
+        823421,
+        98323
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         447451,
         447450,
@@ -2877,26 +2875,26 @@
         627308,
         430745
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.0,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.13565197343244778,
       "query": 85,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
-        421963,
         447451,
+        447450,
+        421963,
         328402,
         239905,
         366039,
-        447450,
-        430745,
-        676755,
         627308,
-        381932
+        381932,
+        599229,
+        366038
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         201255,
@@ -2910,10 +2908,10 @@
         375033,
         201514
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.5802792108518124,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5912352048230277,
       "query": 86,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         201255,
@@ -2922,15 +2920,15 @@
         201258,
         201259,
         812118,
-        201514,
         154262,
+        190232,
         375033,
-        190232
+        201514
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         603142,
         549999,
@@ -2943,27 +2941,27 @@
         476532,
         232659
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6105456988825855,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6049306994552042,
       "query": 87,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         603142,
         549999,
         603144,
+        603140,
         756230,
         603143,
-        603140,
         245502,
+        476532,
         232659,
-        937195,
-        630441
+        937195
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         929774,
         130152,
@@ -2976,26 +2974,26 @@
         134422,
         130150
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 88,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         929774,
         130152,
         856252,
-        497873,
         924663,
+        497873,
         130151,
-        962456,
-        929768,
+        130150,
         929767,
-        929775
+        929775,
+        134422
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         353471,
@@ -3009,16 +3007,16 @@
         329356,
         63467
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.3065735963827292,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.2640681225725909,
       "query": 89,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         353471,
         503631,
-        503629,
         503628,
+        503629,
         503630,
         503627,
         503625,
@@ -3028,7 +3026,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         285417,
@@ -3042,27 +3040,27 @@
         950692,
         699559
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.37800210039683896,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.45749452618986164,
       "query": 90,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
-        434596,
         285417,
-        576651,
         285418,
-        271102,
         699560,
-        699559,
         887849,
+        434596,
+        576651,
+        271102,
         922195,
+        699559,
         950692
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         300629,
         262984,
@@ -3075,26 +3073,26 @@
         300631,
         659509
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8315546295836225,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8772153153380493,
       "query": 91,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         300629,
         262984,
-        230316,
         202124,
-        122884,
         478338,
-        481770,
+        122884,
         559833,
+        230316,
+        481770,
         300631,
-        870417
+        659509
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         230167,
@@ -3108,26 +3106,26 @@
         230171,
         778199
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8021574504628255,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6679412917570869,
       "query": 92,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
-        230167,
         230158,
+        230167,
         230168,
-        263758,
-        230166,
         325366,
         230159,
+        230166,
+        263758,
         230171,
         230173,
         778199
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         599405,
@@ -3141,27 +3139,27 @@
         210140,
         206849
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.3156484524795145,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.38356636737133565,
       "query": 93,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
-        599405,
         426245,
-        979459,
         538425,
+        979459,
+        599405,
         599406,
-        233833,
         280499,
-        210140,
+        206849,
         599403,
+        233833,
         280493
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.7,
       "candidate_fp32_top10_ids": [
         323111,
         323117,
@@ -3174,27 +3172,27 @@
         15637,
         447875
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.5,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6309297535714575,
       "query": 94,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.7,
       "top10_ids": [
         323117,
-        447136,
         323111,
+        447136,
         323119,
-        476081,
+        419212,
         305956,
-        447142,
         323112,
+        476081,
         15637,
-        419212
+        587388
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         219707,
         627061,
@@ -3207,27 +3205,27 @@
         219708,
         219711
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6934264036172708,
       "query": 95,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         219707,
         627061,
         219710,
-        84410,
         219712,
-        219714,
+        84410,
         219711,
-        219713,
-        494389,
+        981298,
+        698622,
+        219708,
         219709
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         442082,
         441548,
@@ -3240,27 +3238,27 @@
         441547,
         516935
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 96,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         442082,
-        221687,
         441548,
+        221687,
         442081,
-        441922,
-        927969,
         416097,
-        516935,
+        441922,
+        99570,
         302946,
-        441547
+        441547,
+        516935
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         576992,
         273905,
@@ -3273,11 +3271,11 @@
         364806,
         736199
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9066276098484507,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9217868789962071,
       "query": 97,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         576992,
         273905,
@@ -3285,14 +3283,14 @@
         364805,
         371852,
         810289,
-        256890,
-        364806,
         320635,
-        389295
+        256890,
+        736199,
+        364806
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         905364,
@@ -3306,27 +3304,27 @@
         905367,
         905369
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.5601521372325761,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.7183750273402225,
       "query": 98,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
-        905360,
         905364,
         376459,
         466734,
+        905360,
         18908,
-        905367,
         605577,
-        905365,
         905363,
-        905361
+        905365,
+        905361,
+        905367
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         37076,
         884384,
@@ -3339,27 +3337,27 @@
         554952,
         188109
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6309297535714575,
       "query": 99,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         37076,
         884384,
-        37080,
         37077,
+        37080,
         37078,
         293682,
+        280625,
         884382,
         393216,
-        280625,
-        465295
+        554952
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         839505,
         839506,
@@ -3372,27 +3370,27 @@
         657510,
         839504
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.5012658353418871,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5437713091520254,
       "query": 100,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
-        839506,
         839505,
+        839506,
+        839508,
         839499,
         988242,
-        839508,
         839502,
-        657510,
         820683,
+        657510,
         888718,
-        839504
+        754486
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         471525,
         260979,
@@ -3405,26 +3403,26 @@
         494540,
         680579
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.23719771276929622,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.38685280723454163,
       "query": 101,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         471525,
-        680577,
-        260979,
-        675827,
         8110,
-        680579,
-        828652,
-        494540,
+        680577,
         880574,
-        668513
+        675827,
+        260979,
+        494540,
+        668513,
+        680579,
+        117077
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         14696,
@@ -3438,26 +3436,26 @@
         689247,
         14702
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.4716276524567204,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.4860089900278708,
       "query": 102,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         14701,
-        14696,
         14697,
-        14700,
+        14696,
         14699,
         14705,
+        14700,
         14704,
         14703,
-        47040,
-        14702
+        14702,
+        47040
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.7,
       "candidate_fp32_top10_ids": [
         876936,
@@ -3471,26 +3469,26 @@
         270363,
         907765
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6131471927654584,
       "query": 103,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.7,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.6,
       "top10_ids": [
         876936,
-        332633,
-        923274,
-        83586,
         554928,
+        332633,
+        954134,
         997727,
-        835551,
-        480821,
-        12447,
-        33412
+        270363,
+        83586,
+        907765,
+        923274,
+        12447
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         926509,
@@ -3504,26 +3502,26 @@
         649309,
         443933
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.43067655807339306,
       "query": 104,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
+        446549,
         354921,
         926509,
-        446549,
         446546,
-        417151,
         446548,
         488791,
+        417151,
         417152,
         649309,
         443933
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         984550,
@@ -3537,10 +3535,10 @@
         589379,
         707660
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8451850618939637,
       "query": 105,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         984551,
@@ -3548,15 +3546,15 @@
         589377,
         984553,
         921546,
-        984552,
         864801,
+        984552,
         864800,
         589379,
         707660
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         851098,
@@ -3570,18 +3568,18 @@
         98920,
         359236
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 106,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         851098,
         16662,
         98918,
         98919,
-        16661,
         700004,
+        16661,
         851101,
         851099,
         98920,
@@ -3589,8 +3587,8 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         262631,
         280884,
@@ -3603,26 +3601,26 @@
         262636,
         264969
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.43067655807339306,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5,
       "query": 107,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         262631,
         412596,
-        280884,
         262632,
+        280884,
         981197,
         861443,
-        782460,
         782461,
+        782460,
         262636,
-        262635
+        264969
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         472744,
@@ -3636,10 +3634,10 @@
         345564,
         773434
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 108,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         472744,
@@ -3655,7 +3653,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         687162,
@@ -3669,26 +3667,26 @@
         3065,
         835662
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.20438239758848611,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.21840743681816419,
       "query": 109,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         687162,
         351978,
-        452706,
         570724,
+        452706,
         840193,
-        833608,
         430856,
-        835662,
+        15244,
         3065,
-        933254
+        124389,
+        835662
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         733441,
@@ -3702,27 +3700,27 @@
         685052,
         732245
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8529278650606567,
       "query": 110,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         733441,
         920222,
         233756,
-        279455,
         733446,
+        279455,
         339684,
-        733442,
         733444,
+        26744,
         685052,
-        26744
+        733442
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         525627,
         342288,
@@ -3735,27 +3733,27 @@
         762071,
         950182
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6131471927654584,
       "query": 111,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         525627,
         342288,
         552195,
         517145,
-        980948,
-        762071,
         489704,
+        980948,
         950179,
-        140137,
-        397821
+        762071,
+        950182,
+        140137
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.7,
       "candidate_fp32_top10_ids": [
         525018,
         104428,
@@ -3768,26 +3766,26 @@
         477942,
         446494
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 112,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.7,
       "top10_ids": [
-        104428,
         525018,
+        104428,
         730866,
         177273,
+        9430,
         525015,
         477942,
-        446494,
-        9430,
         861752,
-        739954
+        475068,
+        545850
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         202573,
@@ -3801,26 +3799,26 @@
         202577,
         202585
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.7719970585389948,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.639945385422766,
       "query": 113,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         202573,
-        202572,
         313209,
-        407713,
-        399603,
         202574,
-        202585,
+        407713,
+        202572,
+        399603,
         202580,
-        724079,
-        860832
+        202575,
+        202585,
+        724079
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         110338,
@@ -3834,27 +3832,27 @@
         354841,
         263819
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.3391602052736161,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.4371994911049732,
       "query": 114,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         110338,
         110344,
         110341,
-        393186,
-        570231,
         110337,
-        110340,
+        570231,
         110336,
+        110340,
+        393186,
         354841,
-        110339
+        900556
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         621049,
         621048,
@@ -3867,26 +3865,26 @@
         265485,
         743913
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9197207891481876,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6934264036172708,
       "query": 115,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
-        621048,
         621049,
+        621048,
         621045,
         665470,
         621046,
-        621047,
         247422,
+        621047,
+        743913,
         265484,
-        361698,
         265485
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         510184,
@@ -3900,26 +3898,26 @@
         250855,
         60644
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.38685280723454163,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.3065735963827292,
       "query": 116,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         510184,
+        418021,
         945508,
         819111,
-        418021,
         250825,
         522270,
         985153,
-        250855,
-        797005,
-        671873
+        671873,
+        60644,
+        518535
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         972043,
@@ -3933,18 +3931,18 @@
         625142,
         625141
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.4401191709229659,
       "query": 117,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         972043,
         625144,
         530626,
         625143,
-        890851,
         250652,
+        890851,
         282715,
         769246,
         625142,
@@ -3952,7 +3950,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         471269,
@@ -3966,26 +3964,26 @@
         447004,
         195479
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.24630238874073,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.35914753008966527,
       "query": 118,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         471269,
         520436,
         792035,
-        703911,
         373783,
         848182,
+        703911,
+        332365,
         447004,
-        350318,
-        422347,
-        229097
+        229097,
+        195479
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         234505,
@@ -3999,10 +3997,10 @@
         234512,
         990894
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8927537907700456,
       "query": 119,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         234505,
@@ -4011,14 +4009,14 @@
         234507,
         183590,
         127744,
-        234508,
         234509,
+        234508,
         234512,
         990894
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         225184,
@@ -4032,26 +4030,26 @@
         127879,
         161074
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 120,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         225184,
-        650480,
         225678,
-        46959,
+        650480,
         454717,
-        80511,
         621924,
+        80511,
         161074,
+        127879,
         144714,
-        127879
+        46959
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         963208,
@@ -4065,26 +4063,26 @@
         241192,
         496929
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.17723928678404774,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.18457569677956817,
       "query": 121,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         963208,
         125768,
-        980205,
         669827,
+        980205,
         707068,
-        669834,
         669829,
-        241192,
+        669834,
         496929,
-        669831
+        669831,
+        241192
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         874994,
@@ -4098,26 +4096,26 @@
         952954,
         874995
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.43067655807339306,
       "query": 122,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         874994,
-        874992,
         306496,
+        874992,
         85847,
         304286,
         784065,
         988944,
-        952954,
+        874996,
         874995,
-        686228
+        952954
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         493974,
@@ -4131,10 +4129,10 @@
         199652,
         416055
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.9197207891481876,
       "query": 123,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         493974,
@@ -4142,16 +4140,16 @@
         493972,
         493978,
         493976,
-        199652,
-        641669,
         243941,
         970667,
-        577769
+        641669,
+        199652,
+        649572
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         238523,
         25792,
@@ -4164,27 +4162,27 @@
         238525,
         238530
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9619991470595832,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.9709286432396583,
       "query": 124,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         238523,
         25792,
         238524,
         238529,
-        238527,
         238531,
         331521,
+        238527,
         238528,
         238530,
-        663169
+        238525
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         481209,
         140862,
@@ -4197,27 +4195,27 @@
         189034,
         296298
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 125,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         481209,
         140862,
-        248252,
-        512654,
         837179,
+        512654,
+        248252,
         852707,
+        670920,
         822045,
         189034,
-        670920,
-        296298
+        261393
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         437011,
         437014,
@@ -4230,27 +4228,27 @@
         345335,
         525145
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6052602440527057,
       "query": 126,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 1.0,
       "top10_ids": [
         437011,
         437014,
         437012,
-        367049,
         367048,
+        367049,
         244868,
         53388,
-        345335,
         437013,
-        860084
+        345335,
+        525145
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         447217,
         447220,
@@ -4263,27 +4261,27 @@
         67575,
         379241
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.5706417189553201,
       "query": 127,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         447217,
         447220,
         490929,
         432248,
         598090,
-        121017,
         46504,
-        598091,
-        473857,
-        258575
+        121017,
+        67575,
+        119113,
+        379241
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         548910,
         214637,
@@ -4296,27 +4294,27 @@
         430007,
         624350
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8065735963827293,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8315546295836225,
       "query": 128,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         548910,
         214637,
+        215140,
         119719,
         426709,
-        215140,
+        378986,
         336376,
         157101,
-        378986,
         624350,
-        430007
+        974812
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         169307,
         271300,
@@ -4329,11 +4327,11 @@
         850164,
         744784
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 129,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         169307,
         271300,
@@ -4341,14 +4339,14 @@
         838373,
         169308,
         905348,
-        396793,
-        850164,
         587952,
-        794401
+        396793,
+        744784,
+        311642
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         311945,
@@ -4362,26 +4360,26 @@
         216222,
         421444
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.5012658353418871,
       "query": 130,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
-        311944,
         311945,
+        311944,
         311946,
         298420,
         752778,
         591707,
-        311943,
         286171,
         216222,
+        311943,
         456182
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         511085,
@@ -4395,27 +4393,27 @@
         325196,
         597838
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.9217868789962071,
       "query": 131,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         511085,
         321360,
         321359,
         790827,
-        477308,
         325200,
+        477308,
         477309,
-        325196,
         477314,
-        597838
+        597838,
+        325196
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         330272,
         240964,
@@ -4428,27 +4426,27 @@
         282527,
         612553
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.0,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.19342640361727081,
       "query": 132,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
-        330272,
         240964,
+        330272,
         666685,
         240966,
-        648718,
-        655618,
-        377195,
         459679,
-        175333,
+        377195,
+        655618,
+        612553,
+        648718,
         750821
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         428112,
         59470,
@@ -4461,27 +4459,27 @@
         685601,
         861947
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.4820304494229843,
       "query": 133,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 1.0,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
-        428112,
         59470,
+        428112,
         648760,
-        59469,
-        59472,
-        59468,
         932861,
+        59472,
+        59469,
+        59468,
         861946,
-        685601,
+        455656,
         861947
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.7,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         341556,
         303244,
@@ -4494,26 +4492,26 @@
         736068,
         734310
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6309297535714575,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.38685280723454163,
       "query": 134,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.7,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         303244,
-        276208,
-        341556,
         844845,
         621258,
         779295,
-        49153,
-        621259,
-        957882,
-        204182
+        276208,
+        491496,
+        341556,
+        734310,
+        204182,
+        864490
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         446547,
@@ -4527,26 +4525,26 @@
         983139,
         750363
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 135,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         446547,
-        847515,
         446538,
+        847515,
         446545,
-        189618,
         847514,
         338744,
         983139,
+        189618,
         538285,
-        620939
+        681083
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         424487,
@@ -4560,10 +4558,10 @@
         523394,
         379858
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8315546295836225,
       "query": 136,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         424487,
@@ -4579,7 +4577,7 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         957336,
@@ -4593,26 +4591,26 @@
         790680,
         423743
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.86034433104172,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.812653045383133,
       "query": 137,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         957336,
         957338,
-        885202,
         957335,
+        885202,
         885204,
+        957339,
+        298202,
         113919,
         790680,
-        298202,
-        885203,
-        957339
+        885203
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         553416,
@@ -4626,26 +4624,26 @@
         553417,
         553421
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.5400753810454857,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5498407734605132,
       "query": 138,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         553416,
         553415,
-        666917,
         553423,
+        666917,
+        553420,
         553418,
         241554,
         553422,
-        553420,
-        553419,
-        553417
+        553421,
+        553419
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         228668,
@@ -4659,26 +4657,26 @@
         276813,
         620580
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.6719882468370725,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.5307212739772434,
       "query": 139,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         228668,
         552647,
         620582,
-        316797,
         546532,
-        533431,
-        546533,
+        316797,
         620580,
-        276813,
+        533431,
+        620577,
+        546533,
         10763
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         315232,
@@ -4692,27 +4690,27 @@
         402302,
         135970
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 140,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         315232,
         303782,
         584967,
+        643899,
+        31605,
         400683,
         233831,
-        31605,
-        643899,
         813607,
-        135970,
-        402302
+        402302,
+        135970
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.8,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.7,
       "candidate_fp32_top10_ids": [
         462512,
         295609,
@@ -4725,26 +4723,26 @@
         362153,
         697794
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.19519002499605084,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.13905617951077562,
       "query": 141,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.7,
       "top10_ids": [
-        295609,
         462512,
-        842711,
-        545021,
+        295609,
         323233,
-        399543,
-        742689,
-        602185,
+        545021,
         362152,
-        552564
+        842711,
+        742689,
+        552564,
+        399543,
+        932150
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.8,
       "candidate_fp32_top10_ids": [
         992681,
@@ -4758,26 +4756,26 @@
         399288,
         159166
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.6131471927654584,
       "query": 142,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.8,
       "top10_ids": [
         992681,
         358596,
-        547711,
         398906,
-        214357,
-        585215,
+        547711,
+        214359,
         75455,
+        214357,
         266255,
-        399286,
-        159166
+        585215,
+        399286
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         350587,
@@ -4791,27 +4789,27 @@
         139441,
         575319
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.591176585485452,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.45221360703148816,
       "query": 143,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         350587,
         350590,
         350578,
         350579,
-        350582,
-        350581,
-        873829,
-        139441,
         350577,
-        350576
+        350576,
+        350581,
+        139441,
+        575319,
+        873829
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 0.9,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         880263,
         880264,
@@ -4824,26 +4822,26 @@
         389905,
         535950
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 144,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.8,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.9,
       "top10_ids": [
         880263,
         880264,
         260547,
-        335868,
         536370,
-        389905,
+        537363,
         96636,
-        535950,
-        389907,
-        537374
+        335868,
+        389905,
+        537374,
+        535950
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         358933,
@@ -4857,10 +4855,10 @@
         358935,
         873560
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.8315546295836225,
       "query": 145,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         358933,
@@ -4870,13 +4868,13 @@
         358934,
         358939,
         358938,
-        358935,
         358936,
+        358935,
         873560
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         605588,
@@ -4890,17 +4888,17 @@
         293510,
         494527
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.5912352048230277,
       "query": 146,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         605588,
         605589,
         605590,
-        652183,
         605591,
+        652183,
         605592,
         139029,
         139030,
@@ -4909,8 +4907,8 @@
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         289797,
         289796,
@@ -4923,27 +4921,27 @@
         289791,
         913194
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 1.0,
       "query": 147,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         289797,
-        521188,
         289796,
         21981,
+        521188,
         434932,
-        775611,
-        289791,
         289793,
         289794,
-        913194
+        775611,
+        289791,
+        289795
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
-      "candidate_fp32_overlap": 1.0,
+      "arm": "faiss_plsq_8x6x8",
+      "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         398806,
         257957,
@@ -4956,26 +4954,26 @@
         898803,
         383091
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.7039180890341347,
       "query": 148,
-      "side_payload_bytes": 36,
-      "teacher_overlap": 0.9,
+      "side_payload_bytes": 52,
+      "teacher_overlap": 0.8,
       "top10_ids": [
         398806,
         257955,
         257957,
         448518,
-        257958,
         737820,
-        257956,
+        257958,
         641776,
-        898803,
-        383091
+        257956,
+        383091,
+        594920
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         240811,
@@ -4989,26 +4987,26 @@
         268481,
         262465
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.9217868789962071,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.6871475159848289,
       "query": 149,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
-        631828,
-        255710,
         240811,
+        255710,
+        631828,
         631830,
         631831,
         255711,
         646219,
-        268481,
         631829,
+        268481,
         262465
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 1.0,
       "candidate_fp32_top10_ids": [
         374098,
@@ -5022,10 +5020,10 @@
         978422,
         865794
       ],
-      "cascade_total_bytes": 132,
-      "qrels_ndcg10": 0.8400853550530741,
+      "cascade_total_bytes": 148,
+      "qrels_ndcg10": 0.8367843608168841,
       "query": 150,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 1.0,
       "top10_ids": [
         374098,
@@ -5033,15 +5031,15 @@
         374099,
         906492,
         479545,
-        254637,
         906493,
+        254637,
         906496,
-        865794,
-        978422
+        978422,
+        865794
       ]
     },
     {
-      "arm": "faiss_plsq_8x4x8",
+      "arm": "faiss_plsq_8x6x8",
       "candidate_fp32_overlap": 0.9,
       "candidate_fp32_top10_ids": [
         601568,
@@ -5055,22 +5053,22 @@
         540177,
         998809
       ],
-      "cascade_total_bytes": 132,
+      "cascade_total_bytes": 148,
       "qrels_ndcg10": 0.0,
       "query": 151,
-      "side_payload_bytes": 36,
+      "side_payload_bytes": 52,
       "teacher_overlap": 0.9,
       "top10_ids": [
         601568,
-        878338,
         615609,
-        763217,
-        998809,
         638353,
+        878338,
+        578731,
         880662,
         134667,
-        237381,
-        540177
+        998809,
+        763217,
+        237381
       ]
     }
   ],
@@ -5092,14 +5090,14 @@
   "status": "EXECUTED",
   "summary": {
     "candidate_union_documents": 18362,
-    "candidate_union_encode_seconds": 17.265554499812424,
-    "cascade_total_bytes": 132,
-    "code_bytes": 32,
-    "fit_seconds": 427.6603715000674,
-    "mean_candidate_fp32_overlap": 0.9032894736842106,
-    "mean_qrels_ndcg10": 0.6491330212693489,
-    "mean_teacher_overlap": 0.8973684210526316,
-    "side_payload_bytes": 36
+    "candidate_union_encode_seconds": 36.87984950002283,
+    "cascade_total_bytes": 148,
+    "code_bytes": 48,
+    "fit_seconds": 837.6636132998392,
+    "mean_candidate_fp32_overlap": 0.9144736842105263,
+    "mean_qrels_ndcg10": 0.6564381975309258,
+    "mean_teacher_overlap": 0.9092105263157896,
+    "side_payload_bytes": 52
   },
   "training": {
     "available_train_rows": 25000,

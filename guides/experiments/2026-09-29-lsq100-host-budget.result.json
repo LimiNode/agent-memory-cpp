@@ -1,7 +1,7 @@
 {
   "family": "thq_faiss_lsq_convergence_ceiling_v1",
   "status": "DEFERRED_COMPUTE",
-  "gate_status": "BLOCKED_HOST_BUDGET",
+  "gate_status": "WALL_BUDGET_EXHAUSTED",
   "source_bound": true,
   "profile": {
     "payload": 32,
@@ -28,12 +28,12 @@
     "point_delta_50_minus_25": 0.00540116747536068,
     "bootstrap_seed": 20260929,
     "bootstrap_ci95_delta": [-0.01038776, 0.02192472],
-    "interpretation": "Point improvement is positive, but the historical-152 paired bootstrap CI crosses zero; no convergence or production claim follows."
+    "interpretation": "Point improvement is positive, but the historical-152 paired bootstrap CI crosses zero; no convergence or production claim follows. The 25-to-50 comparison is a training-budget/annealing-schedule sensitivity control, not a continuation trajectory."
   },
   "decision": "DEFERRED_COMPUTE",
   "limitations": [
     "No 100-iteration quality artifact was emitted.",
-    "The host-budget stop is not evidence against the LSQ family.",
+    "The wall-budget stop is not evidence against the LSQ family.",
     "A higher-budget or better-conditioned implementation/host is required for a true 100-iteration ceiling probe."
   ]
 }

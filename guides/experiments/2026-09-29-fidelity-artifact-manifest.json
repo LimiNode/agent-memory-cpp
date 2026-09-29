@@ -11,7 +11,15 @@
     {"path": "plsq8x4x8-full/model.npz", "bytes": 1472612, "sha256": "3045476daab29e01c5c4c1a5684f43f9702d773ff8049162b79fe55d9f081824"},
     {"path": "plsq8x4x8-full/codes.npz", "bytes": 743691, "sha256": "06d7bb137037e9ad75b7a3b009c7b6ac31849b080382f77abe81778f687b8e97"},
     {"path": "plsq8x6x8-full/model.npz", "bytes": 2202209, "sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b"},
-    {"path": "plsq8x6x8-full/codes.npz", "bytes": 1054792, "sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c"}
+    {"path": "plsq8x6x8-full/codes.npz", "bytes": 1054792, "sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c"},
+    {"path": "artifacts/lsq25-8-paired-seed20260921/result.json", "bytes": 455816, "sha256": "c187756f44d3d8b98c91445f58998ede2df211784ac270db9d28feab023759a3"},
+    {"path": "artifacts/lsq25-8-paired-seed20260921/audit.json", "bytes": 3685, "sha256": "bacfaf511955322bf1796ab29d76f0716d636416de579b11a8e6ad6714241411"},
+    {"path": "artifacts/lsq50-8-probe/result.json", "bytes": 455852, "sha256": "52d4cb9ced33c6330383b30cd34bedf64c593c81c547ae26f4310c2e442abb99"},
+    {"path": "artifacts/lsq50-8-probe/audit.json", "bytes": 3685, "sha256": "c49b5b8a4c9dba606599dcd4985d999f8febcd4dc165420d4838f21f018c5c7c"},
+    {"path": "artifacts/plsq8x4x8-full/result.json", "bytes": 103985, "sha256": "4d3cbaa648cb1424936c24667c52c8d09ba1d31fc902d66c4b1e8676262afcb2"},
+    {"path": "artifacts/plsq8x4x8-full/audit.json", "bytes": 1775, "sha256": "fb2620f6f48a64c3d65890897d9768e7abfd57de954dd98310a19635df5e6710"},
+    {"path": "artifacts/plsq8x6x8-full/result.json", "bytes": 103816, "sha256": "e9c8b30b9383e7aa178c83e749987fd105f0223687de7bb93c267969d5acf4c2"},
+    {"path": "artifacts/plsq8x6x8-full/audit.json", "bytes": 1776, "sha256": "a3bbefde2cdf31fff42ddc5171b85d1534b9e560d6ef94b340fe790be1dbf842"}
   ],
   "redundant_removed": ["artifacts/lsq25-8-paired-seed20260921/models.lsq32.partial.npz", "artifacts/lsq50-8-probe/models.lsq32.partial.npz"],
   "replay_rule": "Before an audit, materialize the external payload at the recorded workspace path and verify every listed size/SHA; missing payload is DEFERRED_COMPUTE, never silently replaced."

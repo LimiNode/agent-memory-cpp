@@ -1,0 +1,36 @@
+{
+  "bootstrap_implementation_sha256": "34ffb680d01ad42cbba71b71a63add5b0f00d2c383510040abaafe9f46355d78",
+  "ci_method": "paired query bootstrap percentile interval",
+  "comparison": {
+    "bootstrap_ci95_high": 0.021924718821258096,
+    "bootstrap_ci95_low": -0.010387762097959441,
+    "losses": 42,
+    "mean_delta": 0.005401167475360626,
+    "median_delta": 0.0,
+    "ties": 65,
+    "wins": 45
+  },
+  "confidence_level": 0.95,
+  "family": "thq_faiss_lsq_paired_training_budget_bootstrap_v1",
+  "left": {
+    "arm": "faiss_lsq32",
+    "result_sha256": "52d4cb9ced33c6330383b30cd34bedf64c593c81c547ae26f4310c2e442abb99"
+  },
+  "limitations": [
+    "fixed historical-152 query fold; not held-out confirmation",
+    "fitted models are held fixed and training-seed variance is excluded",
+    "a confidence interval crossing zero is not an equivalence proof",
+    "this is training-budget/annealing-schedule sensitivity, not a convergence ceiling"
+  ],
+  "metric": "query-level qrels nDCG@10",
+  "query_count": 152,
+  "resamples": 100000,
+  "result_sha256": "7134da29780be0be0bc21f368c6069a68da845fd8ccb84c200b60cca90219d1c",
+  "right": {
+    "arm": "faiss_lsq32",
+    "result_sha256": "c187756f44d3d8b98c91445f58998ede2df211784ac270db9d28feab023759a3"
+  },
+  "schema_version": 1,
+  "seed": 20260929,
+  "status": "EXECUTED"
+}

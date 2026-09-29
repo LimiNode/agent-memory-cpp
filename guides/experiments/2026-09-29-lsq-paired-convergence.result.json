@@ -1,5 +1,5 @@
 {
-  "family": "thq_faiss_lsq_paired_convergence_v1",
+  "family": "thq_faiss_lsq_paired_training_budget_sensitivity_v1",
   "status": "EXECUTED",
   "source_bound": true,
   "protocol": {
@@ -17,19 +17,25 @@
   },
   "arms": {
     "25": {
+      "codec_model_bytes": 12583176,
       "train_iters": 25,
       "mean_qrels_ndcg10": 0.6517623244045091,
       "mean_candidate_fp32_overlap": 0.8875,
       "mean_teacher_overlap": 0.8855263157894738,
+      "shared_base_model_bytes": 6144,
+      "effective_1m_bytes_per_doc": 48.58932,
       "fit_seconds": 3247.348183900118,
       "artifact_directory": "artifacts/lsq25-8-paired-seed20260921",
       "audit_status": "PASS"
     },
     "50": {
+      "codec_model_bytes": 12583176,
       "train_iters": 50,
       "mean_qrels_ndcg10": 0.6571634918798698,
       "mean_candidate_fp32_overlap": 0.8914473684210527,
       "mean_teacher_overlap": 0.8888157894736843,
+      "shared_base_model_bytes": 6144,
+      "effective_1m_bytes_per_doc": 48.58932,
       "fit_seconds": 5612.7083660000935,
       "artifact_directory": "artifacts/lsq50-8-probe",
       "audit_status": "PASS"
@@ -43,10 +49,14 @@
     "wins": 45,
     "losses": 42,
     "ties": 65,
-    "decision": "100_CEILING_PROBE_ATTEMPTED_BUT_DEFERRED_HOST_BUDGET"
+    "decision": "TRAINING_BUDGET_ANNEALING_SENSITIVITY_EXECUTED"
+  },
+  "bootstrap_receipt": {
+    "path": "guides/experiments/2026-09-29-lsq-paired-training-budget.bootstrap.json",
+    "sha256": "0681c6069224083027cd8217a81a2f2ed7642faaa5f4bb52e78fcc4b0b174445"
   },
   "timing_note": "The 25-iteration arm was co-scheduled with the PLSQ8x6x8 fit; its fit_seconds is recorded for provenance but is not a standalone training-cost comparison.",
-  "interpretation": "The paired point estimate favors 50 iterations, but historical-152 uncertainty crosses zero. This closes the paired-control gate, not LSQ family convergence or product selection.",
+  "interpretation": "The paired point estimate favors the 50-iteration training budget, but historical-152 uncertainty crosses zero. Because Faiss recomputes its annealing schedule from train_iters, this is training-budget/annealing-schedule sensitivity, not a continuation of the 25-iteration trajectory. It closes the paired sensitivity control, not LSQ family convergence or product selection.",
   "limitations": [
     "Historical-152 candidate-local replay, not untouched final evaluation.",
     "Conditional LSQ100 probe has a separate terminal host-budget record.",

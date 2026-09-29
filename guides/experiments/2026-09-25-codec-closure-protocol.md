@@ -3,9 +3,10 @@
 Date: 2026-09-25
 Research wave status: `CLOSED`; product selection: `PENDING`.
 
-The paired LSQ convergence control and same-budget PLSQ8x6x8 control have
+The paired LSQ training-budget/annealing-schedule sensitivity control and
+same-budget PLSQ8x6x8 control have
 executed and passed independent audits. The conditional LSQ100 ceiling probe
-is terminal `DEFERRED_COMPUTE`/`BLOCKED_HOST_BUDGET` after 61,809 CPU seconds
+is terminal `DEFERRED_COMPUTE`/`WALL_BUDGET_EXHAUSTED` after 61,809 CPU seconds
 without artifact emission; this is not a family-negative result. Per-gate
 statuses use `EXECUTED`, `DEFERRED_COMPUTE`,
 `BLOCKED_HARDWARE`, or `BLOCKED_LICENSE`; those statuses must not be confused
@@ -84,10 +85,10 @@ research inputs, not vendored product dependencies.
 7. **One final confirmation.** Select a fixed finalist set before opening a
    fresh, pre-registered query/qrels evaluation only once.
 
-## LSQ convergence ladder
+## LSQ budget-sensitivity ladder
 
-LSQ convergence is not closed by the existing 25-iteration controls. The
-required ladder is fixed before any additional fit:
+True LSQ convergence is not closed by the existing controls. The bounded
+budget-sensitivity ladder is fixed before any additional fit:
 
 - `25 / train-ILS8` is the bounded baseline;
 - `50 / train-ILS8` is the mandatory convergence probe (paired with the same
@@ -101,9 +102,13 @@ The existing 50/8 result used a different seed from the previously cited
 25-iteration result and therefore was not a valid convergence comparison. The
 paired source-bound 25/50 control now uses seed `20260921` for both fits and
 passes independent audit. Point delta is `+0.005401`, but the historical-152
-paired bootstrap 95% CI is `[-0.01039,+0.02192]`; it crosses zero, so this is
-not a convergence or production claim. The conditional 100-iteration probe
-was attempted and stopped as `DEFERRED_COMPUTE`/`BLOCKED_HOST_BUDGET` after
+paired bootstrap 95% CI is `[-0.01039,+0.02192]`; it crosses zero. Because
+Faiss recomputes its annealing schedule from `train_iters`, this is
+training-budget sensitivity, not a continuation trajectory or production
+claim. The source-bound receipt is
+`2026-09-29-lsq-paired-training-budget.bootstrap.json`. The conditional
+100-iteration probe was attempted and stopped as
+`DEFERRED_COMPUTE`/`WALL_BUDGET_EXHAUSTED` after
 61,809 CPU seconds without an artifact. The terminal record is
 `2026-09-29-lsq100-host-budget.result.json`; no synthetic replacement is used.
 
@@ -111,9 +116,11 @@ was attempted and stopped as `DEFERRED_COMPUTE`/`BLOCKED_HOST_BUDGET` after
 
 The closed research registry includes all executed controls: OPQ, BBQ, RaBitQ,
 RSLM3/4, QINCo2 bounded diagnostics, joint2, and other completed families.
-The fresh-evaluation shortlist is now frozen for the next product gate:
-LSQ32, LSQ48, TQ1, TQ1+PQ8, and PLSQ8x6x8. RSLM1/joint2 remain reference
-controls when evaluation budget permits. The closed registry retains all other
+The exact executable fresh-evaluation arm manifest is
+`2026-09-29-fresh-evaluation-arm-manifest.json`. The shortlist is frozen for
+the next product gate: LSQ32, LSQ48, TQ1, TQ1+PQ8, PLSQ8x6x8 and faithful RSLM1
+at the matched 52 B side budget. Joint2 remains a lower-byte reference control
+when evaluation budget permits. The closed registry retains all other
 executed controls (OPQ, BBQ, RaBitQ, RSLM3/4, QINCo2 bounded diagnostics,
 joint2, and related families). This separates research closure from product
 codec selection and records the LSQ100 ceiling as deferred rather than hiding

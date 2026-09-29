@@ -1,15 +1,15 @@
 {
   "artifact_hashes": {
-    "codes": "1b5647b2a398ee0e680a476b276fed5eca4147274d219a1ec3f6a83e33e1b2e4",
-    "models": "a642108cfd4c656033c687199b719dcdb3d483e1974447ef516a36f0069fb43a"
+    "codes": "08d66f8e6dda7f35c9fc5490506a92ad6cbeb2530bad63c1054af4976bfaab1d",
+    "models": "58a7d384de95a9b1be876b0c184991907607bb9cce8229137eae9dc988664e02"
   },
   "candidate_union_documents": 18362,
   "codec_model_bytes": 12583176,
   "candidate_union_encode_docs_per_second_by_payload": {
-    "32": 122.81505063741315
+    "32": 129.13526009865993
   },
   "candidate_union_encode_seconds_by_payload": {
-    "32": 149.509363100864
+    "32": 142.1919929999858
   },
   "centroid_source_replay": true,
   "checks": [
@@ -34,7 +34,7 @@
   "family": "thq_faiss_lsq_replay_audit_v2",
   "shared_base_model_bytes": 6144,
   "fit_seconds_by_payload": {
-    "32": 5612.7083660000935
+    "32": 3247.348183900118
   },
   "hardware": {
     "cpu_architecture": "AMD64",
@@ -70,17 +70,17 @@
   "performance_provenance": "HARDENED",
   "persisted_code_decode_replay": true,
   "query_count": 152,
-  "result_sha256": "52d4cb9ced33c6330383b30cd34bedf64c593c81c547ae26f4310c2e442abb99",
+  "result_sha256": "c187756f44d3d8b98c91445f58998ede2df211784ac270db9d28feab023759a3",
   "row_count": 152,
-  "runner_sha256": "f542ec2e24494554d6a5ee44e905f278d8e917740a702c1c43e1eb52088a7787",
+  "runner_sha256": "c1445ef3e583294c3057257df368411210d78cf856c60a79c1a297ed6715b34d",
   "schema_version": 7,
   "source_replay": true,
   "status": "PASS",
   "summaries": {
     "faiss_lsq32": {
-      "mean_candidate_fp32_overlap": 0.8914473684210527,
-      "mean_qrels_ndcg10": 0.6571634918798698,
-      "mean_teacher_overlap": 0.8888157894736843,
+      "mean_candidate_fp32_overlap": 0.8875000000000001,
+      "mean_qrels_ndcg10": 0.6517623244045091,
+      "mean_teacher_overlap": 0.8855263157894738,
       "p05_qrels_ndcg10": 0.0,
       "worst_qrels_ndcg10": 0.0
     }

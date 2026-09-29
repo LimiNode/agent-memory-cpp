@@ -1,5 +1,5 @@
 {
-  "family": "thq_faiss_lsq_convergence_probe_v1",
+  "family": "thq_faiss_lsq_training_budget_probe_v1",
   "status": "EXECUTED",
   "source_bound": true,
   "profile": {
@@ -35,7 +35,7 @@
     "decision": "DO_NOT_RUN_100_ITERATIONS"
   },
   "audit": "artifacts/lsq50-8-probe/audit.json",
-  "interpretation": "This different-seed 50/train-ILS8 probe is retained as a diagnostic only; its comparison with seed-20260925 is not a valid convergence delta. The paired seed-20260921 control is authoritative in 2026-09-29-lsq-paired-convergence.result.json.",
+  "interpretation": "This different-seed 50/train-ILS8 probe is retained as a diagnostic only; its comparison with seed-20260925 is not a valid training-budget sensitivity delta. The paired seed-20260921 control is authoritative in 2026-09-29-lsq-paired-convergence.result.json.",
   "limitations": [
     "Historical-152 candidate-local replay, not untouched final evaluation.",
     "encode-ILS32 sensitivity on this fitted model remains a separate optional diagnostic.",

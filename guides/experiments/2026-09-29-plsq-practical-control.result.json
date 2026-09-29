@@ -5,6 +5,7 @@
   "source_bound": true,
   "profiles": {
     "PLSQ8x4x8": {
+      "codec_model_bytes": 1573184,
       "nsplits": 8,
       "msub": 4,
       "nbits": 8,
@@ -18,6 +19,8 @@
       "mean_qrels_ndcg10": 0.6491330212693489,
       "mean_candidate_fp32_overlap": 0.9032894736842106,
       "mean_teacher_overlap": 0.8973684210526316,
+      "shared_base_model_bytes": 6144,
+      "effective_1m_bytes_per_doc": 37.579328,
       "artifact_directory": "artifacts/plsq8x4x8-full",
       "model_sha256": "3045476daab29e01c5c4c1a5684f43f9702d773ff8049162b79fe55d9f081824",
       "codes_sha256": "06d7bb137037e9ad75b7a3b009c7b6ac31849b080382f77abe81778f687b8e97",
@@ -26,6 +29,7 @@
       "ranking_mismatches": 0
     },
     "PLSQ8x6x8": {
+      "codec_model_bytes": 2359744,
       "nsplits": 8,
       "msub": 6,
       "nbits": 8,
@@ -39,6 +43,8 @@
       "mean_qrels_ndcg10": 0.6564381975309258,
       "mean_candidate_fp32_overlap": 0.9144736842105263,
       "mean_teacher_overlap": 0.9092105263157896,
+      "shared_base_model_bytes": 6144,
+      "effective_1m_bytes_per_doc": 54.365888,
       "artifact_directory": "artifacts/plsq8x6x8-full",
       "model_sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b",
       "codes_sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c",

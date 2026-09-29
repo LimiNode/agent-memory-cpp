@@ -9,7 +9,7 @@ scoring, and the persisted THQ4 top-128 shell.
 
 | family | control | required evidence |
 | --- | --- | --- |
-| LSQ | Faiss `LocalSearchQuantizer` at 25/train-ILS8 and (only if improving) 50/train-ILS8; encode-ILS16 vs encode-ILS32 sensitivity | fit/encode time, nDCG@10, candidate overlap, codebook and seed hashes; repeat any improving setting on independent seeds |
+| LSQ | Faiss `LocalSearchQuantizer` at 25/train-ILS8 and (only if improving) 50/train-ILS8; encode-ILS16 vs encode-ILS32 sensitivity | fit/encode time, nDCG@10, candidate overlap, codebook and seed hashes; repeat any improving setting on independent seeds; label 25→50 as training-budget/annealing-schedule sensitivity |
 | PLSQ | Faiss `ProductLocalSearchQuantizer` practical controls `PLSQ8x4x8` and `PLSQ8x6x8` | same source-bound quality/storage audit; bounded control for the dense-solve LSQ ceiling |
 | PQ/OPQ | official Faiss `ProductQuantizer` and `OPQMatrix` on the same residual/domain split | Faiss version, native module hash, compile options, exact `niter`, `niter_pq`, k-means iterations, rotation/codebook hashes, independent decode/ADC replay |
 | RSLM | source-grounded RSLM1/2/3/4 | source revision, exact tables and transform hashes, packed-code replay, matched side bytes |
@@ -87,6 +87,18 @@ in `2026-09-29-fidelity-artifact-manifest.json`; result/audit SHA-256 values are
 the binding identity. These are bounded historical-152 controls, not product
 selection.
 
+The compact receipts now expose exact model accounting rather than charging
+only per-document codes and norms:
+
+| arm | codec model bytes | shared THQ base bytes | effective 1M bytes/doc |
+| --- | ---: | ---: | ---: |
+| LSQ32 (seed 20260921) | 12,583,176 | 6,144 | 48.589320 |
+| PLSQ8x4x8 | 1,573,184 | 6,144 | 37.579328 |
+| PLSQ8x6x8 | 2,359,744 | 6,144 | 54.365888 |
+
+The historical LSQ48 receipt remains externalized; its exact model artifact
+must be materialized and bound before quoting an effective footprint.
+
 ## Fail-closed interpretation
 
 The existing LSQ multi-seed artifacts are source-bound and audit-PASS, but they
@@ -96,7 +108,7 @@ must not support a family-level negative conclusion until the official Faiss
 control is persisted. Under-converged or collapsed QINCo2 runs are diagnostic
 only and do not establish that the family is dominated.
 
-The first heavy LSQ convergence attempt used an excessive schedule
+The first heavy LSQ extended-budget attempt used an excessive schedule
 (`train_iters=50`, `train_ils_iters=32`, `encode_ils_iters=32`) and is recorded
 as `BLOCKED_EXCESSIVE_SCHEDULE_COST`; it is not the intended convergence gate.
 The 50-iteration LSQ32 fit took `5612.71 s` and reached mean qrels nDCG@10
@@ -105,7 +117,11 @@ while this probe used `20260921`. The old `-0.003051` delta therefore mixes
 seed variance with iteration count and is superseded as a convergence claim.
 A source-bound 25/train-ILS8 control with the same seed, source split, and
 encode-ILS16 schedule was then executed and independently audited; the paired
-decision is recorded in `2026-09-29-lsq-paired-convergence.result.json`.
+decision is recorded in `2026-09-29-lsq-paired-convergence.result.json`; its
+source-bound bootstrap receipt is
+`2026-09-29-lsq-paired-training-budget.bootstrap.json`. Because Faiss
+recomputes its annealing schedule from `train_iters`, 25→50 is
+training-budget/annealing-schedule sensitivity, not a continuation trajectory.
 LSQ32/48 have dense `M*K` codebook solves (8192/12288 rows; roughly
 512 MiB/1.125 GiB double Gram matrices before workspace), so the canonical fit
 is a memory-bandwidth and cache/NUMA-sensitive workload, not a simple logical
@@ -120,7 +136,8 @@ codebook sum. It passes in `0.377 s` with the reduced smoke budget. This
 isolates the failure mode of the large runs: the implementation and code
 layout work, while the canonical 32/48-byte fit is CPU-bound by the product of
 25k rows, 32--48 stages, and large ILS/ICM iteration budgets. The smoke is a
-regression check only and does not satisfy the intended LSQ convergence gate.
+regression check only and does not satisfy the deferred true LSQ convergence
+ceiling gate.
 
 The same bounded smoke, on a Xeon E5-2696 v3 (18 physical / 36 logical CPUs),
 measured `4096 x 128`, eight stages at `2.30 s` (one thread), `0.80 s` (four),
