@@ -98,14 +98,21 @@ must retain a semantically equivalent stateless plan otherwise. Remote versus
 embedded execution is not a semantic provider type.
 
 Every provider attempt emits a common provenance receipt containing at least
-`provider_id`, provider revision, model digest, runtime/backend identity,
-purpose, tokenizer or preprocessing hash, grammar/schema hash,
-request/context digest, generation parameters and result digest. Exact replay
-is claimed only when the provider advertises deterministic replayability and
-the receipt includes its capability-specific grammar, tokenizer, sampling and
-seed fields. A receipt from a nondeterministic remote provider remains
-provenance, not an exact replay promise. Model chat history and summaries are
-provider-derived caches, not canonical memory.
+`provider_id`, provider revision, immutable model identity/revision,
+runtime/backend identity, purpose, request/context digest and result digest.
+A model digest and preprocessing/tokenizer identity are recorded when the
+provider exposes or controls them; an opaque remote model revision is not
+invented into a digest. Capability-specific fields are required when
+the role uses them: embedding receipts bind pooling/normalization and input
+template; tokenizer receipts bind tokenizer implementation/schema and
+vocabulary; completion/reranker receipts bind structured-output grammar/schema,
+generation parameters, sampling/seed and scoring configuration. A provider must not omit a field that
+can change its output merely because the generic interface does not name it.
+Exact replay is claimed only when the provider advertises deterministic
+replayability and the receipt contains all such capability fields. A receipt
+from a nondeterministic remote provider remains provenance, not an exact replay
+promise. Model chat history and summaries are provider-derived caches, not
+canonical memory.
 
 ## Deferred Tokenizer Acceleration Research
 

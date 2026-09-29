@@ -10,7 +10,9 @@ Every searchable space must publish a versioned manifest containing:
 
 ```text
 space_id
-scope_id
+scope_ids (the exact scopes admitted by the space; one scope is represented as
+           a one-element set, and empty is valid only for an explicitly
+           scope-neutral space)
 projection_kind / embedding_purpose
 embedding_model_id + immutable revision/digest
 query/document role and input-template policy
@@ -27,6 +29,10 @@ Candidate results retain the manifest identity, exact source revision,
 canonical `KnowledgeUnitRef` (or profile-equivalent logical identity), local
 score, local rank and source provenance. A manifest is derived metadata; it
 does not transfer canonical ownership from the configured storage backend.
+For a federated request, the executor binds each space to the intersection of
+the manifest's declared scope set and the `RetrievalPlan.scope_ids`; a legacy
+single `scope_id` normalizes to a one-element set and never authorizes every
+scope.
 
 ## Compatibility and fusion
 
@@ -64,7 +70,10 @@ fan-out budget. External routes receive only the existing
 policy fingerprint), never raw `RetrievalAccessContext`, grants, roles,
 jurisdictions or policy claims. A backend unable to apply that exact
 pre-ranking constraint is unavailable for a policy-aware route; canonical
-hydration remains mandatory.
+hydration remains mandatory. `ExternalCandidateConstraint` may cross only a
+same-trust-domain adapter boundary: an untrusted or cross-trust external
+backend is unavailable for policy-aware federation. A future opaque
+partition-handle protocol is deferred and requires a separate security design.
 
 Do not collapse independent result axes:
 

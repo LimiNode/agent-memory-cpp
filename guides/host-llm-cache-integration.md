@@ -67,8 +67,10 @@ degraded result rather than retrying indefinitely.
 
 Provider output is typed and provenance-bearing rather than an opaque
 instruction. The minimum host-side outcome vocabulary is `completed`,
-`unknown`, `failed`, and `needs_review`; none authorizes execution without a
-separate host admission decision. Every attempt records an idempotency key,
+`unknown`, `failed`, and `needs_review`; `ambiguous` and `conflict` are evidence
+qualifiers on an otherwise typed outcome, not alternate predicate states. None
+authorizes execution without a separate host admission decision. Every attempt
+records an idempotency key,
 execution epoch, deadline, retry count, provider/model revision,
 prompt/context fingerprint and source revision identifiers.
 
@@ -109,8 +111,16 @@ ProviderExecutionStatus:
   Completed | Cancelled | TimedOut | Failed | Stale
 
 ProviderSemanticOutcome:
-  Answered | Unknown | NeedsReview | NoEvidence | Ambiguous | Conflict
+  Answered | Unknown | NeedsReview | NoEvidence
+
+ProviderSemanticQualifier:
+  Ambiguous | Conflict
 ```
+
+`Ambiguous` and `Conflict` in the attempt record are diagnostic evidence
+qualifiers. For the public `AI.IF` contract they map to `Unknown` or
+`NeedsReview` according to host policy; they must never be silently coerced to
+`true` or `false`.
 
 `TimedOut`, `Cancelled` and `Stale` are execution statuses, not semantic
 `Unknown` answers. A semantic outcome is recorded only when a provider response

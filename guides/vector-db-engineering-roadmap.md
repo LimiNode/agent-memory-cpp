@@ -221,7 +221,11 @@ Binary (256-bit, autoencoder):
 
 ## §8. Integration with our MDBX layer
 
-Важное архитектурное разграничение: **Vector Stores — внешние компоненты**, не часть нашего MDBX-слоя.
+External Vector Stores are external components. First-party ANN/search indexes
+are application-owned, rebuildable projections and may live directly inside the
+MDBX-backed embedded profile. Qdrant, Milvus, Pinecone, Weaviate and similar
+services remain optional derived-index adapters and comparison targets; they do
+not define the default dense-retrieval architecture.
 
 ```text
 agent-memory-cpp MDBX layer (envelope + components + projections)

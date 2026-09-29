@@ -48,7 +48,11 @@ AI operators are derived, bounded computations over rows or candidate pairs;
 they are not authority and they never execute side effects:
 
 - `AI.IF` — typed predicate with `true`, `false`, `unknown` or `needs_review`;
-- `AI.SCORE` — calibrated score with model/provenance receipt;
+  `ambiguous` and `conflict` are evidence qualifiers attached to the typed
+  result, not additional boolean outcomes;
+- `AI.SCORE` — typed numeric score with metric/model/provenance receipt;
+  calibration is present only through an explicit `CalibrationRef` and
+  calibration evidence, never implied by the word "score";
 - `AI.RERANK` — bounded candidate reranking;
 - `AI.JOIN` — bounded pair generation after deterministic relational filters.
 
@@ -72,8 +76,9 @@ admission path.
 - Bound rows, candidate pairs, bytes, model tokens, wall time and attempts.
 - Prefer batch predicate evaluation and shared-document/prefix reuse when the
   provider advertises those capabilities; keep a stateless fallback.
-- Preserve `unknown`, `ambiguous`, `conflict` and `needs_review` rather than
-  coercing them into a boolean answer.
+- Preserve `unknown` and `needs_review` outcomes and attach
+  `ambiguous`/`conflict` evidence qualifiers rather than coercing either into a
+  boolean answer.
 - Record provider execution status separately from semantic outcome.
 - Keep SQL/AI calls outside MDBX transactions and revalidate the pinned
   frontier before materializing context.
