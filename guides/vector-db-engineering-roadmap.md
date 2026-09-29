@@ -20,6 +20,11 @@ Non-goals:
 - Не каталогизировать embedding models (это в `optimization-roadmap.md` и `binary-embeddings-roadmap.md`).
 - Не выбирать единственный «правильный» vector store — workload-driven.
 
+Physical retrieval execution is specified in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md); searches
+across heterogeneous embedding spaces are specified in
+[`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
+
 ## §2. Source attribution policy
 
 Этот гайд синтезирует материал из нескольких источников. Цитаты следуют двухуровневому паттерну:
@@ -83,7 +88,10 @@ Non-goals:
 
 ## §5. Three case studies
 
-Из источника `Инженерный взгляд на RAG` — три типовых workload'а и рекомендованный Vector Store.
+Из источника `Инженерный взгляд на RAG` — три типовых workload'а и
+рекомендации автора по внешним Vector Store. Это comparison material, а не
+нормативный выбор для `agent-memory-cpp`; первым делом применяются наши
+embedded MDBX и backend-neutral storage contracts.
 
 ### §5.1. NoteBase startup (~100K notes, single process)
 
@@ -91,8 +99,9 @@ Non-goals:
 
 Рекомендация:
 
-- **Старт: Chroma** — single instance, HNSW, ограниченная фильтрация, простейшее развёртывание.
-- **Когда нужна сложная фильтрация + horizontal scaling → мигрировать на Qdrant**.
+- Источник предлагает **Chroma** как внешний single-instance вариант для MVP.
+- При сложной фильтрации и horizontal scaling источник предлагает рассмотреть
+  **Qdrant**.
 
 Decision attributes: Algorithm (HNSW подходит для <100K-1M), License (OSS бесплатно), Filtering (базовой хватает на старте), Scaling (single instance ок), Deployment (single-binary, zero DevOps), Maturity (production-ready, активное комьюнити).
 
@@ -105,8 +114,8 @@ Decision attributes: Algorithm (HNSW подходит для <100K-1M), License 
 
 Рекомендация:
 
-- **Milvus + IVF + Product Quantisation** — IVF с PQ даёт disk-resident storage + не нужна рекластеризация (данные статичны). Milvus покрывает 400M embeddings и предоставляет batch API.
-- **Альтернатива без DevOps → Pinecone** (managed).
+- Источник предлагает внешний **Milvus + IVF + Product Quantisation** для
+  статичного крупного corpus и **Pinecone** как managed alternative.
 
 Decision attributes: Algorithm (IVF + PQ для static), License (OSS или managed), Filtering (любая, corpus однородный), Scaling (горизонтальное для 400M), Quantisation (PQ обязателен при таком объёме), Deployment (microservices для Milvus, zero DevOps для Pinecone).
 
@@ -116,8 +125,9 @@ Decision attributes: Algorithm (IVF + PQ для static), License (OSS или man
 
 Рекомендация:
 
-- **Старт: Qdrant** — собственная HNSW-реализация с диском, полная фильтрация, шардирование + репликация, scalar + product quantisation, production-ready.
-- **При росте до сотен миллионов embeddings и QPS в десятки тысяч → мигрировать на Milvus** (read-write split, отдельные узлы).
+- Источник предлагает внешний **Qdrant** для этого workload и **Milvus** при
+  дальнейшем масштабировании. Эти рекомендации требуют собственного
+  parity-бенчмарка и не означают production-default проекта.
 
 Decision attributes: Algorithm (HNSW-based с фильтрацией — Qdrant), License (OSS), Filtering (full, Qdrant native), Scaling (sharding + replication), Quantisation (scalar + product для memory), Deployment (single Rust binary, moderate DevOps).
 
@@ -200,7 +210,7 @@ Binary (256-bit, autoencoder):
 
 | Workload | Рекомендованный алгоритм | Почему |
 |---|---|---|
-| Medium RAG (~1M-10M vectors, mixed queries) | **HNSW** (~80% дефолт) | Log-scale latency, fast insert, no reclustering overhead. Post-filter на metadata допустим, если selectivity высокая. |
+| Medium RAG (~1M-10M vectors, mixed queries) | **Benchmark-gated: Exact/BinaryCandidateFilter first; HNSW only as an optional adapter** | Measure recall, filtering behavior, memory and p50/p95/p99 on the target workload before selecting HNSW. No HNSW default is implied. |
 | Full metadata filtering на больших коллекциях | **IVF + PQ** | IVF позволяет отбросить clusters целиком до сканирования; PQ экономит память. Re-clustering cadence — workload-dependent: на static corpora может быть «никогда»; на streaming-данных — чаще. |
 | Billion-scale с жёстким memory budget | **IVF + PQ (m=8-16)** | Только PQ с ADC даёт нужную память; HNSW на 1B+ vectors экономически нецелесообразен без PQ. |
 | Edge / mobile coarse filter | **Binary (LSH или autoencoder)** | Binary codes — single-instruction XOR+POPCNT distance, минимальная RAM footprint. См. [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md). |
@@ -211,16 +221,22 @@ Binary (256-bit, autoencoder):
 
 ## §8. Integration with our MDBX layer
 
-Важное архитектурное разграничение: **Vector Stores — внешние компоненты**, не часть нашего MDBX-слоя.
+External Vector Stores are external components. First-party ANN/search indexes
+are application-owned, rebuildable projections and may live directly inside the
+MDBX-backed embedded profile. Qdrant, Milvus, Pinecone, Weaviate and similar
+services remain optional derived-index adapters and comparison targets; they do
+not define the default dense-retrieval architecture.
 
 ```text
 agent-memory-cpp MDBX layer (envelope + components + projections)
-  → owns: scope keys, envelopes, lexical DBI, components, Graph DBIs
-  → does NOT own: ANN index, vector embeddings, HNSW/IVF state
+  → owns: canonical scope keys, envelopes, lexical DBI, components, and
+    first-party rebuildable vector projections
+  → does NOT own: the private ANN state of an external vector service
 
 External Vector Store (Qdrant / Milvus / Pinecone / Weaviate / Chroma)
-  → owns: dense embeddings, ANN index, quantisation state
-  → does NOT own: scope keys, lexical scoring, decay policies, anti-loop cooldown
+  → owns: its derived embedding copy, ANN index and quantisation state
+  → does NOT own: canonical records, revisions, scope keys, provenance,
+    lexical scoring, decay policies or anti-loop cooldown
 ```
 
 Граница проводится через `DenseVectors` capability и `DenseIndexMode` enum (см. [`optimization-roadmap.md`](optimization-roadmap.md) §"Dense Index Modes"):
@@ -229,9 +245,13 @@ External Vector Store (Qdrant / Milvus / Pinecone / Weaviate / Chroma)
 - `DenseIndexMode::BinaryCandidateFilter` — binary prefilter (signatures / LSH / autoencoder), float rerank сверху.
 - `DenseIndexMode::BinaryOnly` — standalone binary (no float rerank).
 - `DenseIndexMode::ApproximateVector` — binary + decoder → approximate float → cosine rerank.
-- `DenseIndexMode::Hnsw` — mainline M2+ backend (композиция с BinaryCandidateFilter).
+- `DenseIndexMode::Hnsw` — optional, benchmark-gated M2+ research backend
+  (possible composition with `BinaryCandidateFilter`), not a mainline default.
 
-На стороне Vector Store мы только **публикуем embeddings** через C++17 ABI / IPC и **принимаем top-K candidates**. Scope isolation, decay, anti-loop cooldown, lexical scoring остаются в MDBX-слое.
+На стороне Vector Store мы только **публикуем derived embeddings** через C++17
+ABI / IPC и **принимаем top-K candidates**. Canonical storage retains the
+authoritative projection/revision binding; scope isolation, decay, anti-loop
+cooldown and lexical scoring remain in the canonical retrieval layer.
 
 ### §8.1. Связь с conceptual framing
 
@@ -252,15 +272,22 @@ Decision sub-matrix внутри §8:
 | Custom ann-параметры (m, efConstruction, k-means K) | ✅ полный контроль | ❌ managed скрывает параметры |
 | Embedding drift / re-indexing каждую неделю | ✅ scripted pipeline | ✅ managed handles |
 
-Архитектурное направление `agent-memory-cpp`: **canonical storage remains
-local/embedded** for the first-party deployment. MDBX is the planned/reference
-production storage implementation, not a mandatory persistence substrate:
-core contracts remain backend-independent and a future host-managed profile may
-replace canonical storage through an explicit adapter. External vector stores
-are optional derived-index adapters and comparison targets. The current
-compile-time default remains `AGENT_MEMORY_ENABLE_MDBX=OFF`; enabling MDBX is an
-explicit build choice. Qdrant self-host, Chroma and Pinecone are
-deployment-specific adapter candidates, not project defaults.
+Архитектурное направление `agent-memory-cpp`: **the first-party embedded
+profile uses MDBX as canonical storage**. Core contracts remain
+backend-independent, so an explicitly selected host-managed SQLite or
+PostgreSQL profile may replace the canonical backend only after satisfying the
+full canonical-storage, publication, lifecycle, recovery, authorization and
+provenance conformance contract (including atomic publication, revisions and
+frontiers, tombstones, snapshots, migrations, backup/restore,
+derived-index lifecycle and compaction/retention).
+The current `AGENT_MEMORY_ENABLE_MDBX=OFF` flag only keeps the optional
+dependency out of a minimal build; it does not make an external Vector Store a
+project default. Qdrant, Chroma, Milvus, Pinecone and Weaviate are optional
+derived-index adapters and comparison targets.
+Physical retrieval execution is specified in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md); searches
+across heterogeneous embedding spaces are specified in
+[`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
 
 ## §10. Open questions
 
@@ -292,6 +319,10 @@ deployment-specific adapter candidates, not project defaults.
 
 ### 9.3. In-house guides
 
+The project-level execution and federation contracts are in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md) and
+[`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
+
 - [`optimization-roadmap.md`](optimization-roadmap.md) — vector math baseline, optional Eigen adapter, SIMD dispatch (SSE4.2 / AVX2 / AVX-512), `HammingTopK` kernel, encoder registry, `DenseIndexMode` (Exact / BinaryCandidateFilter / BinaryOnly / ApproximateVector / Hnsw).
 - [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) — typology of retrieval techniques (Naive / Advanced / Hybrid / Contextual / Graph / Fusion / Adaptive / Agentic / RLM); какой retriever поверх какого vector store.
 - [`binary-embeddings-roadmap.md`](binary-embeddings-roadmap.md) — binarisation landscape (sign / autoencoder / LSH / PQ), SIMD-accelerated distance, hybrid binary + dense, composite compression (MRL + INT8 / PQ / binary).
@@ -299,3 +330,30 @@ deployment-specific adapter candidates, not project defaults.
 - [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) §5.5/§5.5.1 — capability-aware physical MDBX manifest and DBI budget.
 - [`related-projects.md`](related-projects.md) — внешние сравнения Vector Store и benchmark suites (если есть).
 - [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadmap.md) — conceptual backbone (prediction ↔ compression equivalence, "7 check-questions for compression quality", "operational > general"); см. §4 «For RAG» и §6 application matrix для понимания, что Vector Store отвечает и за что не отвечает.
+
+### 9.4. Project ownership correction
+
+The external-store matrix above is comparison material, not the project
+default. The normative path for `agent-memory-cpp` is embedded MDBX as the
+canonical owner of records, revisions, tombstones and provenance. Qdrant,
+Milvus, Weaviate and managed stores are optional derived-index adapters and
+benchmark targets. A host may choose one for a workload, but that choice does
+not transfer canonical ownership or change the library's storage contract.
+
+### 9.5. Canonical backend profiles
+
+- **MDBX profile (first-party embedded default):** canonical memory records,
+  revisions, tombstones and provenance, with rebuildable vector/lexical
+  projections in the same environment.
+- **SQLite profile (optional):** useful for SQL/lexical and AI-augmented
+  structured search when a vector index is unnecessary. It may replace MDBX as
+  canonical storage only after passing the complete canonical-storage
+  conformance contract; it is not a hidden second store behind the MDBX
+  profile.
+- **PostgreSQL/host-managed profile (optional):** suitable for deployments that
+  need an external SQL owner, provided the complete canonical-storage,
+  publication, recovery, authorization, provenance and lifecycle contracts are
+  preserved.
+
+Structured routes and typed AI operators are planned in
+[`structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md).

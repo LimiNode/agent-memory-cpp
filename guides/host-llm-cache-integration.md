@@ -67,8 +67,10 @@ degraded result rather than retrying indefinitely.
 
 Provider output is typed and provenance-bearing rather than an opaque
 instruction. The minimum host-side outcome vocabulary is `completed`,
-`unknown`, `failed`, and `needs_review`; none authorizes execution without a
-separate host admission decision. Every attempt records an idempotency key,
+`unknown`, `failed`, and `needs_review`; `ambiguous` and `conflict` are evidence
+qualifiers on an otherwise typed outcome, not alternate predicate states. None
+authorizes execution without a separate host admission decision. Every attempt
+records an idempotency key,
 execution epoch, deadline, retry count, provider/model revision,
 prompt/context fingerprint and source revision identifiers.
 
@@ -85,3 +87,43 @@ baseline, an explicitly budgeted fallback, typed outcomes, idempotent retry
 evidence, revision-safe cache invalidation, and a test proving that no provider
 call occurs inside a core storage transaction. This does not add SQLite, HTTP,
 or an LLM dependency to the core library.
+## Cancellation and stale-result rules
+
+Provider adapters must propagate cancellation and attach an execution epoch to
+every request. A late response is discarded when its epoch, model revision,
+context fingerprint or authority scope no longer matches the waiting operation.
+Cancellation is not a rollback of canonical memory and a provider timeout is
+not evidence that the requested fact is absent. Hosts should record
+`completed`, `cancelled`, `failed` and `stale` outcomes separately.
+
+Structured output, grammar constraints and streaming callbacks are adapter
+capabilities. They do not grant the provider permission to write memory or
+dispatch effects; any such result returns to the host verifier and ordinary
+curation/write path.
+
+## Provider execution versus semantic outcome
+
+The host keeps transport/runtime state separate from the meaning of a model
+response:
+
+```text
+ProviderExecutionStatus:
+  Completed | Cancelled | TimedOut | Failed | Stale
+
+ProviderSemanticOutcome:
+  Answered | Unknown | NeedsReview | NoEvidence
+
+ProviderSemanticQualifier:
+  Ambiguous | Conflict
+```
+
+`Ambiguous` and `Conflict` in the attempt record are diagnostic evidence
+qualifiers. For the public `AI.IF` contract they map to `Unknown` or
+`NeedsReview` according to host policy; they must never be silently coerced to
+`true` or `false`.
+
+`TimedOut`, `Cancelled` and `Stale` are execution statuses, not semantic
+`Unknown` answers. A semantic outcome is recorded only when a provider response
+was received and passed the host's structural/provenance checks. The combined
+attempt record retains both axes, the execution epoch and the source/model
+revisions.

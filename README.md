@@ -9,6 +9,12 @@ Markdown knowledge bases, and knowledge graphs.
 The library is designed for local and embedded use. It does not require a
 separate vector database server.
 
+The first-party embedded profile keeps canonical memory in MDBX and places
+revision-aware lexical, vector and native approximate-search projections in
+the same workspace. SQLite/PostgreSQL storage adapters, external vector stores
+and model runtimes are optional integration paths, not architectural
+requirements.
+
 ## Current status
 
 The repository is in the early foundation stage. The first PR established a

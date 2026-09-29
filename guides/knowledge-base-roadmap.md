@@ -465,7 +465,8 @@ struct BoundedQueryPlan {
 
 Validation rejects an empty plan, duplicate branch ids, cycles, branch counts
 above `max_branches`, or aggregate budgets above their declared totals. Fusion
-deduplicates candidates by canonical unit/revision identity, and the retrieval
+deduplicates candidates by logical canonical identity after validating each
+candidate's revision binding, and the retrieval
 trace records branch-to-hit-to-context-block lineage. M0/M1 use one original
 branch; decomposition, multi-hop routing and multilingual pivots are M2
 opt-in behavior.

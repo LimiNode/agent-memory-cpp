@@ -1774,7 +1774,8 @@ Migration tool встроен в CLI как `agent-memory-cli profile-migrate`.
   - `BinaryCandidateFilterIndex` (optional M1 experiment: binary filter + float rerank).
   - `BinaryOnlyIndex` (M2+, experimental/compact, Hamming ranking).
   - `ApproximateVectorIndex` (M2+, experimental, decoder support для binary → approx vector → rerank).
-  - `HnswVectorIndex` (M2+ experimental, 5th mode — mainline ANN backend; см. optimization-roadmap.md §"HNSW Vector Index").
+  - `HnswVectorIndex` (M2+ experimental, optional benchmark-gated ANN
+    backend; not a mainline default; см. optimization-roadmap.md §"HNSW Vector Index").
 - Mode-specific DBI creation в `MemoryStack::open(spec, mode)` с capability-aware логикой (см. §12.7).
 - `BinaryCandidateFilter` may become a profile default only after its
   application-owned `BinaryBucketIndexDescriptor`, `BinaryBucketSearchBudget`,

@@ -263,6 +263,33 @@ index only and does not own canonical artifact bytes, evidence anchors or
 backup truth. The library's MDBX path remains the default; a text-only external
 adapter is optional for M1a migration/benchmark comparison and must hydrate and
 revalidate every candidate from canonical local storage.
+Core canonical-storage contracts remain backend-independent. An explicitly
+selected SQLite or PostgreSQL adapter is a structured retrieval source by
+default. It may replace MDBX as canonical storage only after satisfying the
+full canonical-storage conformance contract: atomic publication, revision and
+read-frontier semantics, tombstones, durability and recovery, concurrent
+snapshots, schema migration, backup/restore, derived-index lifecycle,
+compaction/retention, authorization and provenance. This does not make an
+external vector index canonical. See
+[`guides/structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md)
+for the optional SQL/AI route and
+[`guides/federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md) for
+cross-space execution.
+
+## First-party embedded retrieval direction
+
+`agent-memory-cpp` is an embedded-first C++ memory and retrieval engine. The
+primary deployment couples canonical KV memory in MDBX with revision-aware
+lexical, vector and native approximate-search projections in the same portable
+workspace. Exact search is the oracle; binary buckets, routing/IVF segments,
+compact candidate scorers and other ANN structures are first-party rebuildable
+projections promoted only through matched quality, lifecycle and latency gates.
+
+The primary path is therefore **MDBX plus project-owned retrieval indexes**,
+not MDBX plus a required external vector service. SQLite/PostgreSQL storage
+adapters, external vector stores and model runtimes remain useful optional
+deployment or acceleration adapters, but they are escape hatches and comparison
+targets rather than the default dense-retrieval architecture.
 
 The canonical, currently normative specification of the data model,
 profiles, stacks, capability matrix, validation rules, and maturity lives in

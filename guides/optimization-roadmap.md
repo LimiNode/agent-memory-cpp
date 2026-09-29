@@ -1504,7 +1504,8 @@ class ExactVectorIndex final : public IDenseIndex {
     // Linear scan, batch cosine по (scope_id, projection_kind, model_id).
 };
 
-// 2. Binary filter + float rerank. Default production.
+// 2. Binary filter + float rerank. Candidate first-party path after its
+//    exact-baseline and lifecycle benchmark gate; not an unconditional default.
 class BinaryCandidateFilterIndex final : public IDenseIndex {
     // Hamming bucket lookup → candidate set → float cosine rerank.
 };
@@ -1520,7 +1521,7 @@ class ApproximateVectorIndex final : public IDenseIndex {
     // Два варианта: Safe (binary + float + decoder) vs Compact (binary + decoder only).
 };
 
-// 5. HNSW graph ANN. Mainline M2+ backend.
+// 5. HNSW graph ANN. Optional, benchmark-gated research backend.
 class HnswVectorIndex final : public IDenseIndex {
     // M-level proximity graph, greedy traversal on upper levels,
     // beam search on lower levels. Query cost is benchmarked, not guaranteed.
@@ -1636,11 +1637,11 @@ FullResearch:       Exact (BinaryCandidateFilter after benchmark gate)
 |---|---|---|---|
 | BasicRag | Exact | Exact | Small corpus, keyword-heavy, M2 не меняется |
 | QAKnowledgeBase | Exact | benchmark-selected ANN or BinaryCF | Measured corpus/I/O/filter frontier |
-| AgentLTM | Exact | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
+| AgentLTM | Exact | benchmark-selected first-party ANN/BinaryCF | Latency vs storage tradeoff |
 | SpeakerAwareChat | Exact | Exact | Keyword-heavy, не semantic-heavy |
-| CompiledWiki | Exact | HNSW или BinaryCF (AE-256) | Quality priority |
+| CompiledWiki | Exact | benchmark-selected first-party ANN or BinaryCF (AE-256) | Quality priority |
 | TemporalFactStore | Exact | Exact | Smaller corpus, recency-based |
-| FullResearch | Exact | HNSW + BinaryCF (hybrid) | Latency vs storage tradeoff |
+| FullResearch | Exact | benchmark-selected first-party ANN/BinaryCF | Latency vs storage tradeoff |
 
 The table contains bootstrap hypotheses, not automatic production defaults.
 Promotion of HNSW, BinaryCandidateFilter, BinaryOnly or a future ANN backend is
@@ -2454,7 +2455,11 @@ storage estimates, quality targets и per-stack defaults).
 
 ### Steps 29-31: Additional dense index and codecs (M2+)
 
-29. **Step 29 (M2): HNSW Vector Index (HnswVectorIndex or hnswlib adapter).**
+29. **Step 29 (M2+ research): optional HNSW Vector Index
+   (HnswVectorIndex or hnswlib adapter).** It is benchmark-gated and is not a
+   mainline ANN default; promotion requires matched exact-oracle quality,
+   filtering, lifecycle and tail-latency evidence against the first-party
+   bucket/routing path.
     - 5-й `IDenseIndex` mode (см. §"HNSW Vector Index" выше).
     - Per-stack параметры (M, efConstruction, efSearch) — см. таблицу.
     - Benchmark versus Exact and BinaryCandidateFilter: recall/nDCG,
