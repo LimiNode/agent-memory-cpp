@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED_BUILD_BINDING",
+  "source_revision": "865bedb4e4f514dda37325d4f9a573ed282d5715",
+  "generator": "Visual Studio 17 2022",
+  "configuration": "Release",
+  "cmake_cache_path": "E:/_repoz/agent-memory-workspaces/codec-serving-closure/build-codec-serving/CMakeCache.txt",
+  "cmake_cache_sha256": "fbbc8880da13c11a965f9f55cd99f5c7b3b9b22e531f5e1a2f15ca96403ae05a",
+  "runner_source_path": "E:/_repoz/agent-memory-workspaces/codec-serving-closure/tools/agent-memory-bench/native-tq1-pq-direct-benchmark.cpp",
+  "runner_source_sha256": "3695653240a61f19e12a4c96abfd7a9fa0b4ff12e23cf2a875e46480b9426b46",
+  "runner_binary_path": "E:/_repoz/agent-memory-workspaces/codec-serving-closure/build-codec-serving/tools/agent-memory-bench/Release/agent-memory-native-tq1-pq-direct-benchmark.exe",
+  "runner_binary_sha256": "5237bc615f4393e2884027ec7851b24bd89e1767c5a021ad856ecc00a7713791"
+}

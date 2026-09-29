@@ -2,7 +2,7 @@
   "schema_version": 1,
   "status": "FROZEN_FOR_FRESH_EVALUATION",
   "selection_status": "PENDING_FRESH_QRELS_AND_NATIVE_SERVING",
-  "source_bundle": "canonical DE-1M / frozen R4 candidate stream / 152-query historical control",
+  "source_bundle": "canonical DE-1M / frozen R4-THQ configuration + 152-query historical control stream",
   "freeze": {
     "corpus": {
       "identity": "canonical DE-1M evaluation-document-vectors.f32",
@@ -101,7 +101,13 @@
       "source_receipt": "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json",
       "source_receipt_sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0",
       "native_run_receipt": "artifacts/fresh-shortlist/tq1-pq8-64.native.run-receipt.json",
-      "native_run_receipt_sha256": "43219a486e86c97ea1be01b731f8ab397953c6a51ca9b4bf36582abed0433e49"
+      "native_run_receipt_sha256": "03b98054cc34ff368032474538df84069119d4c06650aebd41b972b4c30c7a24",
+      "audit": "artifacts/fresh-shortlist/tq1-pq8-64.audit.json",
+      "audit_sha256": "17567ce577a74e062652649de260f357e3767d59b56e32dec829a1b6bff64009",
+      "score_replay": "artifacts/fresh-shortlist/tq1-pq8-64.score-replay.json",
+      "score_replay_sha256": "1aa4c1b05602c8c8d276365f44f0c19cb643e96e786c55ba52cfcbec7bb30fcf",
+      "build_manifest": "artifacts/fresh-shortlist/tq1-pq8-64.build-manifest.json",
+      "build_manifest_sha256": "acb2c222a7d6908d20fc6f7232135492773e07e4623644e5a52f3cbe91a00fe8"
     },
     {
       "arm_id": "plsq8x6x8-train25-seed74565",
