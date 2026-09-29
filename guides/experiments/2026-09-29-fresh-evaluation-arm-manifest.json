@@ -20,6 +20,7 @@
       "audit": "artifacts/lsq25-8-paired-seed20260921/audit.json",
       "result_sha256": "c187756f44d3d8b98c91445f58998ede2df211784ac270db9d28feab023759a3",
       "audit_sha256": "bacfaf511955322bf1796ab29d76f0716d636416de579b11a8e6ad6714241411",
+      "runner_sha256": "c1445ef3e583294c3057257df368411210d78cf856c60a79c1a297ed6715b34d",
       "model_sha256": "58a7d384de95a9b1be876b0c184991907607bb9cce8229137eae9dc988664e02",
       "codes_sha256": "08d66f8e6dda7f35c9fc5490506a92ad6cbeb2530bad63c1054af4976bfaab1d"
     },
@@ -32,6 +33,7 @@
       "source_receipt_sha256": "fc285ecd40bbda0064402cd23544a4dbfdcb3c8bf0cc11c3bf240aa8fdfa8afc",
       "result_sha256": "ded13d8d31455644e793d1c0b2c7ee8ce012f0501df2ee23c385388295de5e3f",
       "audit_sha256": "aeefc49d365111b24ca8be9bf8c0c21d53d5ff39cfb6f80bf9323b877eb69ba4"
+      ,"runner_sha256": "cf674ce2cfcf02cf90cebcef8c6b14422e4ba3ac8cd360d0760b999eb5f52468"
     },
     {
       "arm_id": "tq1-source-bound",
@@ -42,6 +44,7 @@
       "source_receipt_sha256": "fc285ecd40bbda0064402cd23544a4dbfdcb3c8bf0cc11c3bf240aa8fdfa8afc",
       "result_sha256": "f4a4d12fcfc1702fef11909306cb6153eea985a9479c740294fcf4e7fe73392c",
       "audit_sha256": "847059eb814d91f43d59877ed763246caa37c9437611444a45a7dad36ac2e12e"
+      ,"runner_sha256": "5b2ced356b87a82ec27f78b7e6fe486e5aad0b09929ab2e92ee46a835f8fc7e2"
     },
     {
       "arm_id": "tq1-pq8-final-only-64b",
@@ -62,6 +65,7 @@
       "audit_sha256": "a3bbefde2cdf31fff42ddc5171b85d1534b9e560d6ef94b340fe790be1dbf842",
       "model_sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b",
       "codes_sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c"
+      ,"runner_sha256": "0f1ab4323ab18b2abfaa0459d36e05b18a0a833b11c85fcd468199c6886a1551"
     },
     {
       "arm_id": "rslm1-faithful-relative",
@@ -71,6 +75,7 @@
       "source_result": "guides/experiments/2026-09-28-rslm-faithful-quality.result.json",
       "source_result_sha256": "615b7de3afeb6e8b453e321b9cc420abf1e71745bca2eab988a0ba7fca1b9f9c",
       "audit_sha256": "b9911b73ee7ee71484bc55b1e0c4962df5a3310ff92dc0cb72c0d8968518408b"
+      ,"runner_sha256": "b673c927cde54194c379ad011c32212e9a42730033a28aac9a04365d296268b6"
     }
   ],
   "limitations": [
