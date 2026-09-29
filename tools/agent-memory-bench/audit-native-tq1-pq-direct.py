@@ -57,6 +57,7 @@ def validate_score_replay(score_replay: dict, native_jsonl: Path,
         "queries_sha256": sha256(queries),
         "thq_sha256": sha256(thq),
         "replay_runner_sha256": sha256(Path(__file__).with_name("replay-native-tq1-pq-scores.py")),
+        "tq_reference_sha256": sha256(Path(__file__).with_name("run-thq-turboquant-reference.py")),
     }
     for name, expected in expected_hashes.items():
         require(score_replay.get(name) == expected,
@@ -77,7 +78,8 @@ def audit_self_test() -> None:
                  "max_abs_pq8_score_error": 0.0,
                  "payload_sha256": sha256(payload), "native_jsonl_sha256": sha256(native),
                  "queries_sha256": sha256(queries), "thq_sha256": sha256(thq),
-                 "replay_runner_sha256": sha256(Path(__file__).with_name("replay-native-tq1-pq-scores.py"))}
+                 "replay_runner_sha256": sha256(Path(__file__).with_name("replay-native-tq1-pq-scores.py")),
+                 "tq_reference_sha256": sha256(Path(__file__).with_name("run-thq-turboquant-reference.py"))}
         validate_score_replay(score, native, payload, queries, thq)
         mutated = dict(score); mutated["payload_sha256"] = "mutated"
         try:
@@ -93,6 +95,13 @@ def audit_self_test() -> None:
             pass
         else:
             raise RuntimeError("mutated JSONL hash was accepted")
+        mutated = dict(score); mutated["tq_reference_sha256"] = "mutated"
+        try:
+            validate_score_replay(mutated, native, payload, queries, thq)
+        except RuntimeError:
+            pass
+        else:
+            raise RuntimeError("mutated TQ reference hash was accepted")
         mutated = dict(score); mutated["max_abs_pq8_score_error"] = 1e-3
         try:
             validate_score_replay(mutated, native, payload, queries, thq)
@@ -234,6 +243,7 @@ def main() -> None:
         "payload_sha256": receipt["payload_sha256"],
         "materializer_sha256": receipt["materializer_sha256"],
         "native_runner_sha256": sha256(args.native_runner),
+        "audit_runner_sha256": sha256(Path(__file__)),
         "native_run_receipt_sha256": sha256(args.run_receipt),
         "score_replay_sha256": sha256(args.score_replay),
         "expected_pq_result_sha256": sha256(args.expected_pq_result),

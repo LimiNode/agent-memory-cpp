@@ -1,13 +1,13 @@
 {
   "argv": [
-    "--candidate-gate tq1-pq8-64.payload.bin expected-side-bytes=64"
+    "--candidate-gate payload thq thresholds candidate-flat offsets queries query-count=152 expected-side-bytes=64"
   ],
   "build_manifest_path": "artifacts\\fresh-shortlist\\tq1-pq8-64.build-manifest.json",
   "build_manifest_sha256": "acb2c222a7d6908d20fc6f7232135492773e07e4623644e5a52f3cbe91a00fe8",
-  "candidate_flat_path": "E:\\_repoz\\agent-memory-workspaces\\fidelity-heavy-batch-v1\\native-top128-input\\candidate.flat.bin",
-  "candidate_flat_sha256": "d746a8efb12b3ca0b1f9693bd1ebc0b73fa57bf9ed5c7688e0dd6ee85b2621fb",
-  "native_jsonl_path": "E:\\_repoz\\agent-memory-workspaces\\codec-serving-closure-output\\tq1-pq8-64.native.jsonl",
-  "native_jsonl_sha256": "5a8aa8d4d1e497f4dea625c891a585df8153fdc6b575950a1c1b895d0aeaf591",
+  "candidate_flat_path": "E:\\_repoz\\agent-memory-workspaces\\canonical-thq4-rebound-candidate-v1\\candidate-canonical-flat.bin",
+  "candidate_flat_sha256": "b77d29f0435faf581576581ca7ccb812700ea87fe831610cae595fbdadb46096",
+  "native_jsonl_path": "E:\\_repoz\\agent-memory-workspaces\\codec-serving-closure-output\\tq1-pq8-64.native.current.jsonl",
+  "native_jsonl_sha256": "b86c9cfdc67d7e66bbb8fbf9d9c7fafc10dc9d5502b58197d45aaf770ba84413",
   "offsets_path": "E:\\_repoz\\agent-memory-workspaces\\codec-serving-closure-output\\candidate.offsets.u64",
   "offsets_sha256": "0aef061b46d2f5c76f93a55f13e5ca3e6c66118b8e8092df80cccae4bc7a9a23",
   "payload_receipt_path": "artifacts\\fresh-shortlist\\tq1-pq8-64.receipt.json",

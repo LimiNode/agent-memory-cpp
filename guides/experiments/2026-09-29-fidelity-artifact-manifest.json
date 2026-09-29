@@ -21,10 +21,10 @@
     {"path": "artifacts/plsq8x6x8-full/result.json", "bytes": 103873, "sha256": "36cfe21272cddcf2f1b895dc8694f5d8511643751e8f0e2a67a11bb7843ca039"},
     {"path": "artifacts/plsq8x6x8-full/audit.json", "bytes": 1843, "sha256": "56c0ea8006c787955856f9121e8be343ab17a4b35dfacd5beaacdaa290575cce"},
     {"path": "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json", "bytes": 1099, "sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0"},
-    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.native.run-receipt.json", "bytes": 2496, "sha256": "03b98054cc34ff368032474538df84069119d4c06650aebd41b972b4c30c7a24"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.native.run-receipt.json", "bytes": 2555, "sha256": "867e2dfbbfbdb0e726235eca5202f4b375de1ba8fe77ac63ca0e253389d2d855"},
     {"path": "artifacts/fresh-shortlist/tq1-pq8-64.build-manifest.json", "bytes": 922, "sha256": "acb2c222a7d6908d20fc6f7232135492773e07e4623644e5a52f3cbe91a00fe8"},
-    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.audit.json", "bytes": 1408, "sha256": "17567ce577a74e062652649de260f357e3767d59b56e32dec829a1b6bff64009"},
-    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.score-replay.json", "bytes": 149, "sha256": "1aa4c1b05602c8c8d276365f44f0c19cb643e96e786c55ba52cfcbec7bb30fcf"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.audit.json", "bytes": 1140, "sha256": "df6d224cf3a21cdcdb38308b3a5a570c03dbdbba4e63dbc530f77895209285da"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.score-replay.json", "bytes": 845, "sha256": "6be165795d8dfd176f270a43d7a61f50db0bc0badaf3042e0cc79ff088733015"},
     {"path": "artifacts/fresh-shortlist/tq1-pq8-64.reference-audit.json", "bytes": 846, "sha256": "2a819d37d153e6e770887b7d1cc8d199db77eb7696c0ef130b59cf46fbc1f86e"}
   ],
   "redundant_removed": ["artifacts/lsq25-8-paired-seed20260921/models.lsq32.partial.npz", "artifacts/lsq50-8-probe/models.lsq32.partial.npz"],

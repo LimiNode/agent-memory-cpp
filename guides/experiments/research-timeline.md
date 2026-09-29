@@ -933,9 +933,15 @@ pending fresh qrels and a full 1M native serving benchmark.
 The candidate-local TQ1+PQ8 serving evidence was re-bound to the current
 execution-receipt contract: runner source, runner binary, build manifest,
 payload, native JSONL, queries, THQ, thresholds, and offsets are all
-hash-bound.  A compact score-replay record and audit remain beside the receipt;
-the independent reference audit reports 19,456 scores, maximum PQ8 score
-error below `1e-8`, and exact THQ top-128/PQ8 top-10 parity.  This closes a
-provenance gap, not a new quality experiment.  The next decision is therefore
-Pareto/product evaluation across quality, storage, query latency, insert,
-rebuild cost, and portability rather than a single historical nDCG winner.
+hash-bound.  The current native candidate gate was re-run with the
+hash-bound runner binary and canonical 762,082-record candidate stream, then
+the current replay runner and current audit runner were executed on its
+152-query JSONL.  Their full schema outputs are committed beside the receipt.
+The replay binds both its own source and
+the imported TQ reference module.  It reports 19,456 scores, maximum PQ8
+score error below `1e-8`, and exact THQ top-128/PQ8 top-10 parity.  The older
+reference audit remains explicitly historical and is not used as the current
+execution audit.  This closes a provenance gap, not a new quality experiment.
+The next decision is therefore Pareto/product evaluation across quality,
+storage, query latency, insert, rebuild cost, and portability rather than a
+single historical nDCG winner.
