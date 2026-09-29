@@ -286,7 +286,7 @@ compact candidate scorers and other ANN structures are first-party rebuildable
 projections promoted only through matched quality, lifecycle and latency gates.
 
 The primary path is therefore **MDBX plus project-owned retrieval indexes**,
-not MDBX plus a required external vector service. SQLite/PostgreSQL canonical
+not MDBX plus a required external vector service. SQLite/PostgreSQL storage
 adapters, external vector stores and model runtimes remain useful optional
 deployment or acceleration adapters, but they are escape hatches and comparison
 targets rather than the default dense-retrieval architecture.
