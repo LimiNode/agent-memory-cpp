@@ -9,8 +9,10 @@ without an LLM or a remote vector service.
 The first-party embedded profile uses MDBX as the canonical owner of memory
 records, revisions, visibility, tombstones and provenance. The storage
 contracts remain backend-independent, so a host-managed SQLite, PostgreSQL or
-other adapter may implement the same canonical contract after its own
-compatibility and lifecycle gates. Vector, lexical and routing indexes are
+other adapter may replace MDBX only after satisfying the full canonical-storage
+conformance contract defined in `architecture.md`, including publication,
+frontier, recovery, migration, backup/restore, authorization and provenance
+gates. Vector, lexical and routing indexes are
 revision-bound rebuildable projections, even when their bytes are stored in
 MDBX. An external vector service is a derived-index adapter by default.
 

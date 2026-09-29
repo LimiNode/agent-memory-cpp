@@ -121,4 +121,5 @@ source and the merged result; a merged score must not hide a failed source.
 External vector stores, if used, are derived-index adapters and comparison
 targets. The first-party embedded profile keeps canonical memory records,
 revisions, tombstones and provenance in MDBX; a host may substitute another
-canonical backend through its explicit storage adapter contract.
+canonical backend only through the full canonical-storage conformance contract
+defined in `architecture.md`, not through a federation adapter alone.

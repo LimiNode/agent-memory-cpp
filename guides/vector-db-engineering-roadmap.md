@@ -274,8 +274,12 @@ Decision sub-matrix внутри §8:
 
 Архитектурное направление `agent-memory-cpp`: **the first-party embedded
 profile uses MDBX as canonical storage**. Core contracts remain
-backend-independent, so a host-managed SQLite or PostgreSQL profile may replace
-the canonical backend through an explicit adapter and its own lifecycle gates.
+backend-independent, so an explicitly selected host-managed SQLite or
+PostgreSQL profile may replace the canonical backend only after satisfying the
+full canonical-storage, publication, lifecycle, recovery, authorization and
+provenance conformance contract (including atomic publication, revisions and
+frontiers, tombstones, snapshots, migrations, backup/restore,
+derived-index lifecycle and compaction/retention).
 The current `AGENT_MEMORY_ENABLE_MDBX=OFF` flag only keeps the optional
 dependency out of a minimal build; it does not make an external Vector Store a
 project default. Qdrant, Chroma, Milvus, Pinecone and Weaviate are optional
@@ -342,12 +346,14 @@ not transfer canonical ownership or change the library's storage contract.
   revisions, tombstones and provenance, with rebuildable vector/lexical
   projections in the same environment.
 - **SQLite profile (optional):** useful for SQL/lexical and AI-augmented
-  structured search when a vector index is unnecessary. It may also implement
-  the canonical storage contract when selected explicitly, but is not a hidden
-  second store behind the MDBX profile.
+  structured search when a vector index is unnecessary. It may replace MDBX as
+  canonical storage only after passing the complete canonical-storage
+  conformance contract; it is not a hidden second store behind the MDBX
+  profile.
 - **PostgreSQL/host-managed profile (optional):** suitable for deployments that
-  need an external SQL owner, provided snapshot, authorization, provenance and
-  lifecycle contracts are preserved.
+  need an external SQL owner, provided the complete canonical-storage,
+  publication, recovery, authorization, provenance and lifecycle contracts are
+  preserved.
 
 Structured routes and typed AI operators are planned in
 [`structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md).

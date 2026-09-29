@@ -264,9 +264,13 @@ backup truth. The library's MDBX path remains the default; a text-only external
 adapter is optional for M1a migration/benchmark comparison and must hydrate and
 revalidate every candidate from canonical local storage.
 Core canonical-storage contracts remain backend-independent. An explicitly
-selected SQLite or PostgreSQL adapter may own a structured/host-managed profile
-when it satisfies the same revision, frontier, authorization and provenance
-contracts; this does not make an external vector index canonical. See
+selected SQLite or PostgreSQL adapter is a structured retrieval source by
+default. It may replace MDBX as canonical storage only after satisfying the
+full canonical-storage conformance contract: atomic publication, revision and
+read-frontier semantics, tombstones, durability and recovery, concurrent
+snapshots, schema migration, backup/restore, derived-index lifecycle,
+compaction/retention, authorization and provenance. This does not make an
+external vector index canonical. See
 [`guides/structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md)
 for the optional SQL/AI route and
 [`guides/federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md) for

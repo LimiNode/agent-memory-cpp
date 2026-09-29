@@ -12,7 +12,12 @@ backend-independent. A host may select an adapter backed by SQLite,
 PostgreSQL, or another SQL system when structured data is the primary source or
 when deployment needs a host-managed database. Such an adapter must expose a
 read frontier, typed row identity, provenance and read-only/authorization
-policy; it does not silently create a second canonical memory store.
+policy; it does not silently create a second canonical memory store. SQL is a
+structured retrieval source by default. Replacing MDBX as canonical storage
+requires the complete canonical-storage conformance contract: atomic
+publication, revision/read-frontier semantics, tombstones, durability and
+recovery, concurrent snapshots, schema migration, backup/restore,
+derived-index lifecycle, compaction/retention, authorization and provenance.
 
 SQLite is therefore a useful SQL/lexical and AI-augmented-search backend when
 vector search is unnecessary, while MDBX remains the default embedded vector
