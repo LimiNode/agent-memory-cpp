@@ -23,7 +23,8 @@
       "mean_candidate_fp32_overlap": 0.8875,
       "mean_teacher_overlap": 0.8855263157894738,
       "shared_base_model_bytes": 6144,
-      "effective_1m_bytes_per_doc": 48.58932,
+      "effective_1m_side_bytes_per_doc": 48.58932,
+      "effective_1m_cascade_bytes_per_doc": 144.58932,
       "fit_seconds": 3247.348183900118,
       "artifact_directory": "artifacts/lsq25-8-paired-seed20260921",
       "audit_status": "PASS"
@@ -35,7 +36,8 @@
       "mean_candidate_fp32_overlap": 0.8914473684210527,
       "mean_teacher_overlap": 0.8888157894736843,
       "shared_base_model_bytes": 6144,
-      "effective_1m_bytes_per_doc": 48.58932,
+      "effective_1m_side_bytes_per_doc": 48.58932,
+      "effective_1m_cascade_bytes_per_doc": 144.58932,
       "fit_seconds": 5612.7083660000935,
       "artifact_directory": "artifacts/lsq50-8-probe",
       "audit_status": "PASS"

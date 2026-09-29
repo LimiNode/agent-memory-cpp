@@ -38,10 +38,13 @@
     "train_iters": 25
   },
   "quality_status": "BOUNDED_PLSQ_CONTROL",
-  "effective_1m_bytes_per_doc": 37.579328,
+  "codec_model_bytes": 1573184,
+  "shared_base_model_bytes": 6144,
+  "effective_1m_side_bytes_per_doc": 37.579328,
+  "effective_1m_cascade_bytes_per_doc": 133.579328,
   "ranking_mismatches": 0,
   "recomputed_mean_qrels_ndcg10": 0.6491330212693489,
-  "result_sha256": "4d3cbaa648cb1424936c24667c52c8d09ba1d31fc902d66c4b1e8676262afcb2",
+  "result_sha256": "4d9f519b20636b9bc201834e1c7a95b1258b7f8198d737d4307b2f891ba0f57c",
   "rows": 152,
   "schema_version": 4,
   "selected_shape": [

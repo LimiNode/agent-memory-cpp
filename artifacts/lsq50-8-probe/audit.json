@@ -26,7 +26,8 @@
   "effective_seed_by_payload": {
     "32": 20260921
   },
-  "effective_1m_bytes_per_doc": 48.58932,
+  "effective_1m_side_bytes_per_doc": 48.58932,
+  "effective_1m_cascade_bytes_per_doc": 144.58932,
   "faiss_compile_options": "",
   "faiss_compile_options_available": false,
   "faiss_native_module_sha256": "31bf800d7899fd93538c02b556422017da73187fc25d56a9b174116f1aa5b3d5",
@@ -70,7 +71,7 @@
   "performance_provenance": "HARDENED",
   "persisted_code_decode_replay": true,
   "query_count": 152,
-  "result_sha256": "52d4cb9ced33c6330383b30cd34bedf64c593c81c547ae26f4310c2e442abb99",
+  "result_sha256": "47957ba11a17eb46a6e8169c28219e40f14187b5b3edbb5252e1d945aa78052d",
   "row_count": 152,
   "runner_sha256": "f542ec2e24494554d6a5ee44e905f278d8e917740a702c1c43e1eb52088a7787",
   "schema_version": 7,

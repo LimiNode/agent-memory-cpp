@@ -1,7 +1,8 @@
 {
   "candidate_union_documents": 18362,
   "codec_model_bytes": 2359744,
-  "effective_1m_bytes_per_doc": 54.365888,
+  "effective_1m_side_bytes_per_doc": 54.365888,
+  "effective_1m_cascade_bytes_per_doc": 150.365888,
   "codes_sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c",
   "faiss_compile_options": "",
   "faiss_compile_options_available": false,

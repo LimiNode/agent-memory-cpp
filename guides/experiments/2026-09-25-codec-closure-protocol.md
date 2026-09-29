@@ -30,6 +30,9 @@ than turning a sequence of exploratory runs into a product claim.
 - Every executed arm needs source hashes, a persisted code/model artifact,
   independent decoding or score replay where applicable, and complete storage
   accounting.
+- Storage receipts name `effective_1m_side_bytes_per_doc` for the codec side
+  payload plus amortized codec/shared-base models, and
+  `effective_1m_cascade_bytes_per_doc` after adding the 96-byte THQ4 base.
 
 Large model/code payloads are kept in the external workspace bound by
 `2026-09-29-fidelity-artifact-manifest.json`. A missing external payload is a
@@ -91,8 +94,8 @@ True LSQ convergence is not closed by the existing controls. The bounded
 budget-sensitivity ladder is fixed before any additional fit:
 
 - `25 / train-ILS8` is the bounded baseline;
-- `50 / train-ILS8` is the mandatory convergence probe (paired with the same
-  seed and source split as the baseline);
+- `50 / train-ILS8` is the mandatory higher-budget sensitivity probe (paired
+  with the same seed and source split as the baseline);
 - `100 / train-ILS8` is run only when the paired 50-iteration probe materially
   improves the 25-iteration result;
 - `encode-ILS16` and `encode-ILS32` are compared on one fitted model, not on

@@ -6,7 +6,9 @@
   ],
   "codec_model_bytes": 2359744,
   "codes_sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c",
-  "family": "thq_faiss_plsq_replay_audit_v3",
+  "effective_1m_cascade_bytes_per_doc": 150.365888,
+  "effective_1m_side_bytes_per_doc": 54.365888,
+  "family": "thq_faiss_plsq_replay_audit_v4",
   "independent_decode": true,
   "limitations": [
     "independent additive decode/ranking/nDCG replay uses persisted PLSQ codebooks",
@@ -38,12 +40,11 @@
     "train_iters": 25
   },
   "quality_status": "BOUNDED_PLSQ_CONTROL",
-  "effective_1m_bytes_per_doc": 54.365888,
   "ranking_mismatches": 0,
   "recomputed_mean_qrels_ndcg10": 0.6564381975309258,
-  "result_sha256": "e9c8b30b9383e7aa178c83e749987fd105f0223687de7bb93c267969d5acf4c2",
+  "result_sha256": "36cfe21272cddcf2f1b895dc8694f5d8511643751e8f0e2a67a11bb7843ca039",
   "rows": 152,
-  "schema_version": 3,
+  "schema_version": 4,
   "selected_shape": [
     152,
     128

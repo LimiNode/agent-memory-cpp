@@ -3,6 +3,47 @@
   "status": "FROZEN_FOR_FRESH_EVALUATION",
   "selection_status": "PENDING_FRESH_QRELS_AND_NATIVE_SERVING",
   "source_bundle": "canonical DE-1M / frozen R4 candidate stream / 152-query historical control",
+  "freeze": {
+    "corpus": {
+      "identity": "canonical DE-1M evaluation-document-vectors.f32",
+      "sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+      "rows": 1000000,
+      "dimension": 384
+    },
+    "embedding_model": {
+      "model_id": "intfloat/multilingual-e5-small",
+      "revision": "614241f622f53c4eeff9890bdc4f31cfecc418b3",
+      "normalized": true,
+      "dimension": 384,
+      "train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+    },
+    "r4": {
+      "config": "frozen R4 candidate stream",
+      "generation": "r4-frozen-candidate-generation-20260915",
+      "candidate_flat_sha256": "d746a8efb12b3ca0b1f9693bd1ebc0b73fa57bf9ed5c7688e0dd6ee85b2621fb",
+      "candidate_raw_sha256": "6ce8e812d7d240d86e282eb201e0fab77706fdbb60938d9be180cf5d0d153567",
+      "candidate_receipt_sha256": "31164a14b2ffc8569bee18f353060fa33294d866a3788b7fcdec7b70f19f73d6"
+    },
+    "thq": {
+      "config": "THQ4 top-128 persisted candidate shell",
+      "codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+      "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+    },
+    "historical_control": {
+      "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+      "qrel_ids_sha256": "45e3b9f01a551aad850c8ad77e41cfced815874a4d51ef6b105562cb042c64af",
+      "qrel_scores_sha256": "8034391872dff154f79b1327501d78c9c6112c204cba94f4a8f0f57f5ba8b7ec",
+      "candidate_stream_is_historical_only": true
+    }
+  },
+  "fresh_split_contract": {
+    "fresh_queries_and_qrels_opened_after_manifest": true,
+    "fresh_query_texts_must_not_be_reused_from_historical_control": true,
+    "historical_candidate_ids_must_not_be_reused_for_fresh_queries": true,
+    "regenerate_r4_and_thq_candidate_stream_for_fresh_queries": true,
+    "selection_and_tuning_must_be_frozen_before_fresh_queries_and_qrels_are_opened": true,
+    "fresh_qrels_must_be_opened_after_this_manifest": true
+  },
   "scoring_contract": {
     "metric": "cosine",
     "candidate_shell": "THQ4 top-128",
@@ -18,8 +59,8 @@
       "config": {"train_iters": 25, "train_ils_iters": 8, "encode_ils_iters": 16, "icm_iters": 4, "nperts": 4, "seed": 20260921, "train_rows": 25000},
       "result": "artifacts/lsq25-8-paired-seed20260921/result.json",
       "audit": "artifacts/lsq25-8-paired-seed20260921/audit.json",
-      "result_sha256": "c187756f44d3d8b98c91445f58998ede2df211784ac270db9d28feab023759a3",
-      "audit_sha256": "bacfaf511955322bf1796ab29d76f0716d636416de579b11a8e6ad6714241411",
+      "result_sha256": "850ffe1ac7889c78de2fb5066abdec466318a216a07214ca9ee4ee765c1fa71f",
+      "audit_sha256": "4fe2b2b5e9aa2712a90b3a426d6b8065189f53cb82c6ea351dfe29d03518ce53",
       "runner_sha256": "c1445ef3e583294c3057257df368411210d78cf856c60a79c1a297ed6715b34d",
       "model_sha256": "58a7d384de95a9b1be876b0c184991907607bb9cce8229137eae9dc988664e02",
       "codes_sha256": "08d66f8e6dda7f35c9fc5490506a92ad6cbeb2530bad63c1054af4976bfaab1d"
@@ -32,8 +73,14 @@
       "source_receipt": "guides/experiments/2026-09-22-faithful-binary-followups.receipt.json",
       "source_receipt_sha256": "fc285ecd40bbda0064402cd23544a4dbfdcb3c8bf0cc11c3bf240aa8fdfa8afc",
       "result_sha256": "ded13d8d31455644e793d1c0b2c7ee8ce012f0501df2ee23c385388295de5e3f",
-      "audit_sha256": "aeefc49d365111b24ca8be9bf8c0c21d53d5ff39cfb6f80bf9323b877eb69ba4"
-      ,"runner_sha256": "cf674ce2cfcf02cf90cebcef8c6b14422e4ba3ac8cd360d0760b999eb5f52468"
+      "audit_sha256": "aeefc49d365111b24ca8be9bf8c0c21d53d5ff39cfb6f80bf9323b877eb69ba4",
+      "runner_sha256": "cf674ce2cfcf02cf90cebcef8c6b14422e4ba3ac8cd360d0760b999eb5f52468",
+      "model_artifact": "E:/_repoz/agent-memory-workspaces/canonical-lsq-25k-strong-v1/seed-20260925/lsq.models.npz",
+      "model_bytes": 29227869,
+      "model_sha256": "0f8fc9d380bb79b1aee66f8ed609a1885ba427aa42f31e4cacba8515001cf004",
+      "codes_artifact": "E:/_repoz/agent-memory-workspaces/canonical-lsq-25k-strong-v1/seed-20260925/lsq.codes.npz",
+      "codes_bytes": 1734529,
+      "codes_sha256": "7b675e36c36c50e6f9e1a48724c793d1abcc63a4fb84bb7f00ad79cd65082e67"
     },
     {
       "arm_id": "tq1-source-bound",
@@ -51,8 +98,10 @@
       "family": "TurboQuant TQ1 plus strong PQ8",
       "payload_bytes": 64,
       "config": {"layout": "final-only", "packed_asymmetric_pq": true, "intermediate_tq_norm": false},
-      "source_receipt": "E:/_repoz/agent-memory-workspaces/codec-serving-closure-output/tq1-pq8-64.receipt.json",
-      "source_receipt_sha256": "329456c1a77f11b72253f2e3e641c1419b11c1d7fbf36cd207467a06016f4f1a"
+      "source_receipt": "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json",
+      "source_receipt_sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0",
+      "native_run_receipt": "artifacts/fresh-shortlist/tq1-pq8-64.native.run-receipt.json",
+      "native_run_receipt_sha256": "43219a486e86c97ea1be01b731f8ab397953c6a51ca9b4bf36582abed0433e49"
     },
     {
       "arm_id": "plsq8x6x8-train25-seed74565",
@@ -61,8 +110,8 @@
       "config": {"nsplits": 8, "msub": 6, "nbits": 8, "train_iters": 25, "train_ils_iters": 8, "encode_ils_iters": 16, "icm_iters": 4, "train_rows": 25000, "seed_by_split": 74565},
       "result": "artifacts/plsq8x6x8-full/result.json",
       "audit": "artifacts/plsq8x6x8-full/audit.json",
-      "result_sha256": "e9c8b30b9383e7aa178c83e749987fd105f0223687de7bb93c267969d5acf4c2",
-      "audit_sha256": "a3bbefde2cdf31fff42ddc5171b85d1534b9e560d6ef94b340fe790be1dbf842",
+      "result_sha256": "36cfe21272cddcf2f1b895dc8694f5d8511643751e8f0e2a67a11bb7843ca039",
+      "audit_sha256": "56c0ea8006c787955856f9121e8be343ab17a4b35dfacd5beaacdaa290575cce",
       "model_sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b",
       "codes_sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c"
       ,"runner_sha256": "0f1ab4323ab18b2abfaa0459d36e05b18a0a833b11c85fcd468199c6886a1551"

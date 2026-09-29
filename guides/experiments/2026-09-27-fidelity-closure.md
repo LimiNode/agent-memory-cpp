@@ -9,7 +9,7 @@ scoring, and the persisted THQ4 top-128 shell.
 
 | family | control | required evidence |
 | --- | --- | --- |
-| LSQ | Faiss `LocalSearchQuantizer` at 25/train-ILS8 and (only if improving) 50/train-ILS8; encode-ILS16 vs encode-ILS32 sensitivity | fit/encode time, nDCG@10, candidate overlap, codebook and seed hashes; repeat any improving setting on independent seeds; label 25→50 as training-budget/annealing-schedule sensitivity |
+| LSQ | Faiss `LocalSearchQuantizer` at 25/train-ILS8 and mandatory paired 50/train-ILS8 higher-budget sensitivity; encode-ILS16 vs encode-ILS32 sensitivity; 100/train-ILS8 only if the paired 50 result materially improves | fit/encode time, nDCG@10, candidate overlap, codebook and seed hashes; repeat any improving setting on independent seeds; label 25→50 as training-budget/annealing-schedule sensitivity |
 | PLSQ | Faiss `ProductLocalSearchQuantizer` practical controls `PLSQ8x4x8` and `PLSQ8x6x8` | same source-bound quality/storage audit; bounded control for the dense-solve LSQ ceiling |
 | PQ/OPQ | official Faiss `ProductQuantizer` and `OPQMatrix` on the same residual/domain split | Faiss version, native module hash, compile options, exact `niter`, `niter_pq`, k-means iterations, rotation/codebook hashes, independent decode/ADC replay |
 | RSLM | source-grounded RSLM1/2/3/4 | source revision, exact tables and transform hashes, packed-code replay, matched side bytes |

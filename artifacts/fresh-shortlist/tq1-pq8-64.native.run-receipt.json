@@ -1,0 +1,17 @@
+{
+  "argv": [
+    "--candidate-gate tq1-pq8-64.payload.bin expected-side-bytes=64"
+  ],
+  "candidate_flat_sha256": "b77d29f0435faf581576581ca7ccb812700ea87fe831610cae595fbdadb46096",
+  "native_jsonl_sha256": "5a8aa8d4d1e497f4dea625c891a585df8153fdc6b575950a1c1b895d0aeaf591",
+  "offsets_sha256": "0aef061b46d2f5c76f93a55f13e5ca3e6c66118b8e8092df80cccae4bc7a9a23",
+  "payload_receipt_sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0",
+  "payload_sha256": "5b479224262413de885f9880d99cb046ea10e3c9051979b91b00621f8a31f0da",
+  "payload_side_bytes_per_document": 64,
+  "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "runner_sha256": "3695653240a61f19e12a4c96abfd7a9fa0b4ff12e23cf2a875e46480b9426b46",
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+  "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+}

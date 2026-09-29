@@ -15,7 +15,8 @@
   "effective_seed_by_payload": {
     "32": 20260921
   },
-  "effective_1m_bytes_per_doc": 48.58932,
+  "effective_1m_side_bytes_per_doc": 48.58932,
+  "effective_1m_cascade_bytes_per_doc": 144.58932,
   "faiss_compile_options": "",
   "faiss_compile_options_available": false,
   "faiss_loader_variant": "faiss._swigfaiss",

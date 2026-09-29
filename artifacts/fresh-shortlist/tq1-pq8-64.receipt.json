@@ -1,0 +1,26 @@
+{
+  "candidate_local": true,
+  "dimension": 384,
+  "documents": 18362,
+  "family": "native_tq1_pq8_direct_payload_v1",
+  "final_norm_bytes": 4,
+  "include_tq_norm": false,
+  "materializer_sha256": "b34041540ed70c003c6b4a97fac750e96baf8eb3f60863ded39b3f3c62a46f84",
+  "payload_bytes": 1648000,
+  "payload_sha256": "5b479224262413de885f9880d99cb046ea10e3c9051979b91b00621f8a31f0da",
+  "pq_code_bytes": 8,
+  "schema_version": 1,
+  "side_bytes_per_document": 64,
+  "source_hashes": {
+    "canonical-tq-payload": "123e015bdca05edae64fb3e05a996c7c9f5ae72a117c96364a3739d4760a965a",
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "pq-artifact": "65e15c23fed865f7abfb470e25aae418010ccea13cbe662645b72c73ab8c5fff",
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train-vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "status": "EXECUTED",
+  "tq_norm_bytes": 0,
+  "tq_scale_bytes": 4,
+  "tq_sign_bytes": 48
+}
