@@ -147,6 +147,11 @@ and immutable derived-vector blob deduplication. These are benchmark-gated
 optimisations over the canonical M1 storage contracts, not alternate sources of
 truth.
 
+Structured SQL/AI retrieval is an optional M2+ route, not an M0/M1 dependency.
+Its `structured-data-retrieval-roadmap.md` ladder must first establish typed
+read-frontier contracts and bounded relational execution; SQLite and PostgreSQL
+are adapters, and provider/runtime integrations remain optional.
+
 ### M2+ - Research / Optional
 
 Bi-temporal storage, abstraction graphs, causal relations, entity resolution,
@@ -257,6 +262,7 @@ incomparable vector-search score.
 | `source-trust-roadmap.md` | Normative | Provenance and trust propagation for raw and derived memory |
 | `retrieval-explainability-roadmap.md` | Proposal | Optional diagnostic records; not on the fast path by default |
 | `retrieval-roadmap-coverage.md` | Informational | Conservative audit of implementation versus contract versus roadmap status |
+| `structured-data-retrieval-roadmap.md` | Roadmap only | Optional SQL/AI route; no core SQL engine or LLM dependency |
 | `memory-architectures-roadmap.md` | Informational | External architecture mapping |
 | `usage-memory-models.md` | Informational | Usage guidance and examples |
 | `advanced-binary-techniques-roadmap.md` | Experiment / M3 research | Not M0/M1/M2 ship-it scope |

@@ -1,86 +1,115 @@
 # Federated Retrieval Roadmap
 
-Federated retrieval means searching multiple independent vector or lexical
-spaces and merging their candidates. It is an optional retrieval capability,
-not a reason to make an external service the source of truth.
+Federated retrieval means searching multiple independent vector, lexical or
+structured spaces and merging their candidates. It is optional retrieval
+capability, not a reason to make an external service the source of truth.
 
 ## Space manifest
 
-Every searchable space must publish a manifest containing:
+Every searchable space must publish a versioned manifest containing:
 
 ```text
 space_id
 scope_id
+projection_kind / embedding_purpose
 embedding_model_id + immutable revision/digest
-dimension
-metric and normalization
-preprocessing/tokenizer hash
+query/document role and input-template policy
+input-template/preprocessing/tokenizer digest
+dimension + metric + normalization
 codec and index kind
 index_generation
-source_revision watermark
+canonical/corpus frontier
+index_configuration_digest
+manifest_digest
 ```
 
-The manifest is versioned derived metadata. Candidate results must include the
-same fields plus `record_id`, record revision, local score, local rank and
-source provenance.
+Candidate results retain the manifest identity, exact source revision,
+canonical `KnowledgeUnitRef` (or profile-equivalent logical identity), local
+score, local rank and source provenance. A manifest is derived metadata; it
+does not transfer canonical ownership from the configured storage backend.
 
-## Compatibility classes
+## Compatibility and fusion
 
-1. **Same space:** identical model revision, dimension, preprocessing,
-   normalization and metric. Scores may be compared after the declared tie and
-   precision policy.
-2. **Calibratable spaces:** different index/codec representations with a
-   common decoded representation. Decode and rerank in that representation;
-   never compare raw compressed scores.
-3. **Incompatible spaces:** different models, dimensions or semantics. Do not
-   perform a shared vector rerank. Use local ranking plus RRF or a separately
-   calibrated rank/score fusion policy.
+1. **Same underlying space:** identical model revision, role/template,
+   preprocessing, dimension, normalization and metric. A common exact reranker
+   may compare candidates after the declared precision and tie policy.
+2. **Heterogeneous generators, common representation:** codecs or indexes may
+   differ, but candidates can be decoded into one canonical representation and
+   reranked there. Decoded vectors are not automatically score-compatible just
+   because their dimensions match; the representation and metric contract must
+   match.
+3. **Incompatible spaces:** different models, dimensions, purposes or
+   semantics. Do not perform a shared vector rerank. Use an explicitly
+   calibrated score fusion or rank-only/RRF policy, with its own evidence.
 
-Embedding translation is a separate research adapter. It must produce a
-versioned translation artifact and its own quality evidence before it can move
-an incompatible space into class 1 or 2.
+The safe exact path is:
 
-## Fan-out and merge
+```text
+heterogeneous candidate generators
+  -> union candidates
+  -> canonical/exact representation
+  -> one common reranker
+```
 
-The planned federated executor should:
+Embedding translation is a separate research adapter. It needs a versioned
+translation artifact and held-out quality evidence before changing a space's
+compatibility class.
 
-- select spaces by scope, capability and a bounded routing budget;
-- execute local plans with independent deadlines and cancellation;
-- preserve local top-N even when one space is unavailable;
-- deduplicate by canonical `(record_id, revision)`;
-- use calibrated score fusion only for compatible spaces;
-- use RRF/rank-only fallback for incompatible spaces;
-- return per-candidate provenance and an explicit partial/timeout status.
+## Bounded fan-out, security and completion
 
-Federation is not global exact search. A result must state whether it is local,
-merged, partial, or rank-only, and which spaces were queried or skipped.
+The planned federated executor should select spaces by scope and capability,
+then lower each route from the same logical `RetrievalPlan` with a bounded
+fan-out budget. External routes receive only the existing
+`ExternalCandidateConstraint` (eligible canonical units, pinned frontier and
+policy fingerprint), never raw `RetrievalAccessContext`, grants, roles,
+jurisdictions or policy claims. A backend unable to apply that exact
+pre-ranking constraint is unavailable for a policy-aware route; canonical
+hydration remains mandatory.
+
+Do not collapse independent result axes:
+
+```text
+topology:   Local | Federated
+completion: existing RetrievalCompletion (and per-space route completion)
+fusion:     ExactCommonRerank | CalibratedScore | RRF
+```
+
+The result records each queried/skipped space and its route completion. A
+timeout or unavailable provider is a provider/route execution status, not a
+semantic `Unknown` result. Partial and required-route failures use the existing
+`RetrievalCompletion` contract rather than a new status vocabulary.
+
+Backpressure pauses producers. If a deadline or budget drops a route, the
+declared `BudgetExhaustionAction` and completion value are recorded; fan-out is
+never silently changed to trade away recall.
 
 ## Merge versus physical unification
 
 If spaces share one model and storage format, physically rebuilding one index
 may be cheaper and more reproducible than permanent fan-out. Keep federation
 when isolation, ownership, update cadence or data residency requires it. Never
-merge indexes from different embedding models by concatenating bytes or
-pretending that their cosine scores are comparable.
+merge indexes from different models by concatenating bytes or pretending that
+their cosine scores are comparable.
 
 ## Acceptance protocol
 
-The minimum federated fixture has two compatible spaces, one incompatible
-space, duplicate records, one stale generation and one unavailable source. It
-must verify local quality, merged `nDCG@K`, candidate coverage, duplicate
-resolution, stale filtering, fan-out count, timeout behavior and rank-only
-fallback. Report quality separately for each local source and for the merged
-result; a merged score must not hide a failed source.
+The minimum fixture has two compatible spaces, one incompatible space,
+duplicate logical units, one stale generation and one unavailable source. It
+must verify local quality, merged `nDCG@K`, candidate coverage, canonical
+deduplication, stale filtering, fan-out count, timeout behavior, route
+completion and rank-only fallback. Report quality separately for each local
+source and the merged result; a merged score must not hide a failed source.
 
 ## Milestones
 
 | Milestone | Dependency | Minimum evidence | Acceptance | Risk |
 |---|---|---|---|---|
 | F1 manifests and candidate envelope | artifact provenance + index generations | schema and compatibility tests | incompatible spaces are rejected from shared rerank | metadata drift |
-| F2 bounded fan-out | retrieval execution plan | fake multi-space replay | deadlines, partial results and provenance are deterministic | tail amplification |
+| F2 bounded fan-out | `RetrievalPlan` and execution lowering | fake multi-space replay | deadlines, partial results and provenance are deterministic | tail amplification |
 | F3 fusion calibration | qrels and matched query folds | RRF and calibrated-score comparison | no global claim without per-space metrics | overfitting |
 | F4 physical merge decision | F1/F2 benchmark | rebuild-versus-fan-out report | choose only on matched quality, cost and lifecycle evidence | premature consolidation |
 
-External vector stores, if used, are adapters and comparison targets. MDBX
-remains the canonical owner of memory records, revisions, tombstones and
-provenance.
+External vector stores, if used, are derived-index adapters and comparison
+targets. The first-party embedded profile keeps canonical memory records,
+revisions, tombstones and provenance in MDBX; a host may substitute another
+canonical backend through its explicit storage adapter contract.

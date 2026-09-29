@@ -42,6 +42,8 @@ agent framework.
   aware caches.
 - [Federated retrieval](guides/federated-retrieval-roadmap.md) - compatible
   space manifests, fan-out, fusion and provenance rules.
+- [Structured retrieval](guides/structured-data-retrieval-roadmap.md) - SQL
+  adapters, typed relational plans and optional bounded AI operators.
 - [Multilingual autoencoder evaluation](guides/multilingual-autoencoder-evaluation.md) -
   external-data protocol and evidence ladder for learned binary encoders.
 - [Coding style](guides/coding-style.md) - naming, file layout, comments, and

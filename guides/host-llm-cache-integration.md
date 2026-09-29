@@ -98,3 +98,22 @@ Structured output, grammar constraints and streaming callbacks are adapter
 capabilities. They do not grant the provider permission to write memory or
 dispatch effects; any such result returns to the host verifier and ordinary
 curation/write path.
+
+## Provider execution versus semantic outcome
+
+The host keeps transport/runtime state separate from the meaning of a model
+response:
+
+```text
+ProviderExecutionStatus:
+  Completed | Cancelled | TimedOut | Failed | Stale
+
+ProviderSemanticOutcome:
+  Answered | Unknown | NeedsReview | NoEvidence | Ambiguous | Conflict
+```
+
+`TimedOut`, `Cancelled` and `Stale` are execution statuses, not semantic
+`Unknown` answers. A semantic outcome is recorded only when a provider response
+was received and passed the host's structural/provenance checks. The combined
+attempt record retains both axes, the execution epoch and the source/model
+revisions.

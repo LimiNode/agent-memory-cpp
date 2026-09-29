@@ -46,6 +46,8 @@ aware caching are specified in
 [`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md).
 Cross-space fan-out and compatibility rules are specified in
 [`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
+Structured SQL and AI-augmented retrieval are specified in
+[`structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md).
 
 ## §2. Typology
 

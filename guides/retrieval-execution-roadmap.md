@@ -6,80 +6,107 @@ without an LLM or a remote vector service.
 
 ## Architectural boundary
 
-MDBX (or another configured canonical backend) owns documents, revisions,
-embeddings, tombstones and provenance. Vector, lexical and routing indexes are
-rebuildable derived projections. A retrieval executor may read several derived
-indexes, but it must hydrate and validate candidates against the canonical
-revision before returning them.
+The first-party embedded profile uses MDBX as the canonical owner of memory
+records, revisions, visibility, tombstones and provenance. The storage
+contracts remain backend-independent, so a host-managed SQLite, PostgreSQL or
+other adapter may implement the same canonical contract after its own
+compatibility and lifecycle gates. Vector, lexical and routing indexes are
+revision-bound rebuildable projections, even when their bytes are stored in
+MDBX. An external vector service is a derived-index adapter by default.
 
-The executor is an orchestration component, not a second storage engine. A
-SQLite or external-vector adapter may implement the reader contracts, but it
-does not become canonical merely because it is used for retrieval.
+The executor is an orchestration component, not a second storage engine. It
+must hydrate and validate every candidate against the canonical frontier before
+returning it.
 
-## Planned execution plan
+## Logical plan, physical lowering and runtime context
 
-The planned `RetrievalExecutionPlan` is a host-neutral value describing one
-bounded search:
+`RetrievalPlan` is the existing logical policy and budget value contract (owned
+by the retrieval/memory-stack roadmap). It describes requested scopes,
+retrievers, limits, filters and budget-exhaustion actions. This guide does not
+introduce a second independent `RetrievalExecutionPlan` value.
 
-- scope and active projection/index generations;
-- candidate sources and routing depth (`top_clusters`, `max_candidates`);
-- final `top_k`, rerank metric and tie policy;
-- candidate and payload batch sizes, maximum in-flight bytes and queue depth;
-- deadline, cancellation token and maximum work units;
-- covering level (`id_only`, `code`, `partial_payload`, or `full_payload`);
-- whether approximate scores may be used before canonical hydration.
-
-The name is intentionally planned. It must not be treated as an implemented
-class until an ADR fixes its ownership and ABI.
-
-## Execution pipeline
+The planned lowering is:
 
 ```text
-validate query and active generations
-  -> route to bounded source/cluster set
+RetrievalPlan
+  -> validation and lowering
+  -> ResolvedRetrievalExecutionPlan
+       + pinned ReadFrontier
+       + pinned ProjectionVersionRef/index generations
+       + physical batches, queues and covering profile
+  -> RetrievalExecutionContext
+       + execution_id/trace
+       + deadline and cancellation state
+```
+
+`ResolvedRetrievalExecutionPlan` is an internal, reproducible snapshot of the
+logical plan. Cancellation and deadline state belong to the runtime context,
+not to the value plan. The resolved plan is not a public class until an ADR
+fixes ownership and ABI.
+
+## Snapshot and execution pipeline
+
+```text
+validate logical plan and access policy
+  -> pin one ReadFrontier and all projection/index generations
+  -> lower routes to bounded source/cluster batches
   -> batch-read candidate IDs and compact score data
-  -> deduplicate by (record_id, revision)
-  -> keep a bounded top-N heap with deterministic tie ordering
+  -> retain candidate provenance and canonical unit identity
+  -> bounded top-N selection with deterministic ties
   -> batch-read payloads for survivors
-  -> reject tombstones and stale generations
-  -> exact score/rerank in one compatible space
+  -> require row.index_generation == pinned generation
+  -> hydrate at the pinned frontier; drop tombstones/superseded revisions
+  -> exact rerank only in one compatible representation
   -> stable top-K result with provenance
 ```
 
-The pipeline may overlap candidate scanning, payload reads and scoring, but each
-queue is bounded. Backpressure must reduce fan-out or pause producers; it must
-not silently spill an unbounded candidate list to memory.
+Publication of a newer generation affects subsequent requests only. It does
+not invalidate the generation already pinned by an in-flight execution, and a
+row from another generation must never be merged opportunistically.
+
+The pipeline may overlap candidate scanning, payload reads and scoring, but
+each queue is bounded. Backpressure pauses producers; it must not silently
+reduce route fan-out or adaptive recall. If a budget or deadline prevents more
+work, the existing `BudgetExhaustionAction` is applied and the existing
+query-level `RetrievalCompletion` plus per-route `RetrievalRouteCompletion`
+values (`Partial`, `RouteDropped`/`Dropped`, `RequiredRouteFailed`) are
+recorded.
 
 ## Reader and covering contracts
 
 Future readers should expose batch operations equivalent to:
 
-- `read_candidates(keys, limit, generation)`;
-- `read_payloads(record_ids, revision, projection)`;
-- `read_covering_rows(keys, generation, covering_level)`.
+- `read_candidates(keys, limit)` in a resolved generation context;
+- `read_payloads(const std::vector<KnowledgeUnitRef>& refs, ProjectionSpec)`;
+- `read_covering_rows(keys, covering_level)` in that same context.
 
-The minimum covering row contains `record_id`, `revision`, `index_generation`,
-codec/space identity and the approximate score inputs. Optional levels may add
-compressed vector codes or a short text fragment. Full embeddings and full
-text are opt-in because copying them into an index can dominate storage.
+Generation and frontier are properties of the resolved reader/snapshot
+context, not loose repeated arguments on every payload call. A minimum
+covering row contains the canonical unit reference, exact projection/revision
+identity, pinned index generation, codec/space identity and approximate score
+inputs. Optional levels may add compressed vector codes or a short text
+fragment. Full embeddings and full text are opt-in because copying them into an
+index can dominate storage.
 
-Every row carries the generation it was built from. A row from an older
-generation is a stale miss, not a candidate that can be merged opportunistically.
+## Identity, deduplication, ties and deletion
 
-## Dedupe, ties and deletion
-
-Deduplication happens before final reranking. The identity key is
-`(record_id, revision)`; the same record in two clusters is not two results.
-If equal scores remain, order by immutable `record_id` (and then revision) so
-sequential and pipelined executors produce identical results. Tombstones and
-deleted revisions are filtered after hydration as well as during index scans.
+Every candidate retains its exact source revision and projection version for
+provenance. Hydration validates that binding against the pinned canonical
+frontier. Superseded or stale revisions are dropped. Final deduplication uses
+the canonical logical result identity (`KnowledgeUnitId`, `KnowledgeUnitRef`,
+or the profile's declared equivalent), not a generic `(record_id, revision)`
+pair; repeated cluster hits for one logical unit therefore produce one result.
+If equal scores remain, order by the canonical identity and declared revision
+tie rule so sequential and pipelined executors produce identical results.
+Tombstones are checked during candidate admission and again during hydration.
 
 ## Cache contract
 
 Centroids, routing metadata and immutable covering blocks may be cached under:
 
 ```text
-index_id + index_generation + embedding_model_revision + preprocessing_hash
+index_id + index_generation + configuration_digest
+  + model_or_projection_revision + preprocessing_or_input_template_digest
 ```
 
 Never reuse a cache entry solely by path or model name. Cache misses and
@@ -88,29 +115,29 @@ on cache warmth.
 
 ## Required tests and benchmark
 
-The first implementation gate is a fake-reader test suite covering empty
-results, duplicate IDs, an incomplete final batch, tombstones, stale
-generations, equal-score ties, cancellation and bounded-queue backpressure.
-Then compare sequential and overlapped execution on the same immutable index,
-hardware and query set. Record candidate count, hydrated count, stale/tombstone
-rejections, queue high-water marks, bytes read, p50/p95/p99 and exact-oracle
-quality. A throughput improvement is admissible only at matched quality and
-matched result semantics.
+The first implementation gate is a fake-reader suite covering empty results,
+duplicate logical identities, an incomplete final batch, tombstones, stale
+generations, equal-score ties, cancellation, queue backpressure and budget
+exhaustion actions. Then compare sequential and overlapped execution on the
+same immutable index, pinned frontier and query set. Record candidate and
+hydrated counts, stale/tombstone rejections, queue high-water marks, bytes
+read, p50/p95/p99 and exact-oracle quality. A throughput improvement is
+admissible only at matched quality and matched result semantics.
 
 ## Milestones, dependencies and risks
 
 | Milestone | Dependency | Minimum evidence | Acceptance | Risk |
 |---|---|---|---|---|
-| E1 plan/reader contract | canonical revision and index-generation rules | fake reader + malformed-row tests | no stale or duplicate result survives | API churn |
-| E2 bounded executor | E1, batch-capable MDBX reader | sequential vs overlapped replay | equal top-K and bounded memory | queue deadlock |
+| E1 plan/reader contract | `RetrievalPlan`, canonical frontier and generation rules | fake reader + malformed-row tests | no stale, superseded or duplicate logical result survives | API churn |
+| E2 bounded executor | E1, batch-capable canonical reader | sequential vs overlapped replay | equal top-K, pinned snapshot and bounded memory | queue deadlock |
 | E3 covering profiles | E2, storage-size accounting | id-only/code/partial profiles | lower payload I/O without quality loss | index bloat |
 | E4 production-shaped benchmark | E2/E3, lifecycle fixtures | query/write/rebuild overlap | published quality, visibility and tail metrics | machine-specific wins |
 
 ### Reference note
 
-The discussed vector-search execution article is useful as a hypothesis about
-specialised executors, batch reads, covering data and bounded top-K state. Its
-reported speedups are not project thresholds: the exact public URL, benchmark
-revision, recall protocol and hardware must be pinned before using it as a
-citation or comparison. The article does not change the canonical MDBX and
-derived-index boundary above.
+The execution pattern is informed by the public article
+<https://habr.com/ru/articles/1072032/>: specialised executors, batch reads,
+covering data and bounded top-K state are useful hypotheses. Its reported
+speedups are not project evidence or acceptance thresholds. Any comparison here
+must pin the article's benchmark revision, quality protocol, hardware and
+result shape, then rerun under this project's exact-oracle contract.

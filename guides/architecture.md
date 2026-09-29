@@ -263,6 +263,14 @@ index only and does not own canonical artifact bytes, evidence anchors or
 backup truth. The library's MDBX path remains the default; a text-only external
 adapter is optional for M1a migration/benchmark comparison and must hydrate and
 revalidate every candidate from canonical local storage.
+Core canonical-storage contracts remain backend-independent. An explicitly
+selected SQLite or PostgreSQL adapter may own a structured/host-managed profile
+when it satisfies the same revision, frontier, authorization and provenance
+contracts; this does not make an external vector index canonical. See
+[`guides/structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md)
+for the optional SQL/AI route and
+[`guides/federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md) for
+cross-space execution.
 
 The canonical, currently normative specification of the data model,
 profiles, stacks, capability matrix, validation rules, and maturity lives in
