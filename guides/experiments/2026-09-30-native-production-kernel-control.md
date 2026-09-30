@@ -68,3 +68,14 @@ fresh qrels.  The result therefore authorises only the next implementation
 step: a row/segment layout bakeoff with the same top-10 contract and repeated
 isolated-process samples.  No codec winner or production threshold is inferred
 from these numbers.
+
+## 2026-09-30 normalized v2 follow-up
+
+The original result above remains the historical fixed-heap control. It is
+superseded for kernel timing by
+[`2026-09-30-native-production-kernel-normalized-v2.md`](2026-09-30-native-production-kernel-normalized-v2.md),
+which includes query preparation, block32 dense THQ scoring,
+register-accumulating INT8 AVX2, stage timings, two-level percentiles,
+scale-sidecar page accounting and an independent raw-JSONL audit. The v2
+result remains an in-memory THQ/INT8 control rather than a finalist comparison
+or codec-selection gate.
