@@ -33,3 +33,9 @@ The bounded lifecycle companion (`2026-09-30-native-mdbx-lifecycle.result.json`)
 passes update visibility, tombstone preservation, and committed generation
 publication. It is a smoke gate, not a crash-recovery or concurrent-writer
 stress result.
+
+The single 4,096-row profile above is retained as the historical two-layout
+reference. The completed segment-size sweep in
+`2026-09-30-native-mdbx-segment-sweep.md` supersedes it for layout selection:
+all eight segment sizes were materialized on the same 1M corpus and audited
+with the same 152/152 parity contract.
