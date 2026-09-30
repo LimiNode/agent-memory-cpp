@@ -111,6 +111,7 @@ struct QueryLut {
 
 struct ThqBlock32Layout {
   std::vector<std::uint8_t> codes;
+  std::size_t documents = 0;
   std::size_t padded_documents = 0;
 };
 
@@ -150,12 +151,15 @@ QueryLut build_lut(const std::vector<float>& thresholds, const float* query) {
 
 ThqBlock32Layout pack_thq_block32(const std::vector<std::uint8_t>& doc_major) {
   ThqBlock32Layout result;
+  if (doc_major.empty() || doc_major.size() % kThqBytes != 0)
+    throw std::runtime_error("THQ block32 input is not a whole document set");
+  result.documents = doc_major.size() / kThqBytes;
   result.padded_documents =
-      ((kDocuments + kBlockSize - 1) / kBlockSize) * kBlockSize;
+      ((result.documents + kBlockSize - 1) / kBlockSize) * kBlockSize;
   result.codes.assign((result.padded_documents / kBlockSize) *
                           kThqBytes * kBlockSize,
                       0);
-  for (std::size_t id = 0; id < kDocuments; ++id) {
+  for (std::size_t id = 0; id < result.documents; ++id) {
     const std::size_t block = id / kBlockSize;
     const std::size_t lane = id % kBlockSize;
     for (std::size_t byte = 0; byte < kThqBytes; ++byte) {
@@ -365,7 +369,7 @@ void score_thq_block32(const ThqBlock32Layout& layout, const QueryLut& lut,
     }
   }
 #else
-  for (std::size_t id = 0; id < kDocuments; ++id) {
+  for (std::size_t id = 0; id < layout.padded_documents; ++id) {
     const std::size_t block = id / kBlockSize;
     const std::size_t lane = id % kBlockSize;
     float score = 0.0f;
@@ -1728,6 +1732,33 @@ int main(int argc, char** argv) {
       throw std::runtime_error("packed THQ score parity differs");
     if (std::abs(thq_score_row_unrolled4(row.data(), lut) - reference) > 1e-3f)
       throw std::runtime_error("unrolled THQ score parity differs");
+    {
+      constexpr std::size_t synthetic_documents = 37;
+      std::vector<std::uint8_t> synthetic_doc_major(
+          synthetic_documents * kThqBytes);
+      for (std::size_t id = 0; id < synthetic_documents; ++id) {
+        for (std::size_t byte = 0; byte < kThqBytes; ++byte)
+          synthetic_doc_major[id * kThqBytes + byte] =
+              static_cast<std::uint8_t>((id * 13U + byte * 7U) & 255U);
+      }
+      const auto synthetic_layout = pack_thq_block32(synthetic_doc_major);
+      if (synthetic_layout.documents != synthetic_documents ||
+          synthetic_layout.padded_documents != 64)
+        throw std::runtime_error("synthetic THQ block32 padding differs");
+      std::vector<float> synthetic_scores(synthetic_layout.padded_documents,
+                                          -1.0f);
+      score_thq_block32(synthetic_layout, lut, synthetic_scores);
+      for (std::size_t id = 0; id < synthetic_documents; ++id) {
+        const float expected = thq_score_row_unrolled4(
+            synthetic_doc_major.data() + id * kThqBytes, lut);
+        if (std::abs(synthetic_scores[id] - expected) > 1e-3f)
+          throw std::runtime_error("synthetic THQ block32 score parity differs");
+      }
+      // The padded tail is intentionally outside the logical document count;
+      // callers must pass synthetic_layout.documents to top-k, never padded.
+      if (synthetic_scores.size() != synthetic_layout.padded_documents)
+        throw std::runtime_error("synthetic THQ score workspace shape differs");
+    }
     for (std::size_t pair = 0; pair < kThqPairs; ++pair) {
       for (std::size_t packed = 0; packed < 16; ++packed) {
         const float expected =
