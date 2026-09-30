@@ -1017,3 +1017,22 @@ receipt auditor and the MDBX lifecycle smoke are now registered in CTest, and
 the CI MDBX benchmark job builds and runs the lifecycle target. This improves
 coverage and provenance but does not retroactively turn the 4,096-row layout
 into a complete segment sweep or prove crash/concurrent-rebuild semantics.
+
+### Matched native finalist serving wave (2026-09-30)
+
+The frozen top-128 candidate shell was replayed through one native
+THQ4-to-ordered-top10 contract for LSQ32, LSQ48, PLSQ8x6, TQ1, TQ1+secondary,
+RSLM3 and RSLM4. Every arm reproduced ordered top-10 for 152/152 queries;
+compact p50/p95/p99 totals and payload hashes are in
+`2026-09-30-native-matched-finalist-serving-wave.result.json`. The payloads
+were predecoded and the scope remains serving-kernel only: this is matched
+evidence, not decode-throughput, MDBX, fresh-qrels or codec-winner evidence.
+
+### MDBX segment sweep harness (2026-09-30)
+
+The MDBX serving runner now accepts an explicit segment-row parameter and uses
+order-preserving big-endian integer keys. A sweep harness covers 16, 32, 64,
+128, 256, 512, 1024 and 4096 rows per segment, with compact machine-readable
+receipts and parity checks. CI will execute the lifecycle and sweep harnesses
+with initialized MDBX submodules; local execution remains unavailable in this
+workspace because the submodule package directories are empty.
