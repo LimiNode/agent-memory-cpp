@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "family": "native_matched_finalist_serving_wave_v1",
+  "status": "EXECUTED",
+  "metric": "cosine",
+  "query_count": 152,
+  "candidate_contract": "frozen R4 candidate stream -> THQ4 top128 -> ordered top10",
+  "timing_scope": "native warm per-query serving; predecoded payloads; no decode or MDBX",
+  "source_sha256": {
+    "candidate_flat": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
+    "candidate_raw": "251872e745f4c18426418fd144c7a58e843ff1c31a878b6fc27c6aee1755741a",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  },
+  "arms": [
+    {"codec":"lsq32","payload_bytes":32,"ordered_top10_parity":"152/152","total_p50_ms":0.2349,"total_p95_ms":0.300545,"total_p99_ms":0.334161,"payload_sha256":"ed43c1b572eaf299f8781cd7c86b973ee6c50bcdc521c1936f269fa5c05dbded"},
+    {"codec":"lsq48","payload_bytes":48,"ordered_top10_parity":"152/152","total_p50_ms":0.23505,"total_p95_ms":0.259165,"total_p99_ms":0.343934,"payload_sha256":"58ceca2a2c9c448508ff6f5ad2a8c1984861612d3c8eee72b231cb625d8f1f41"},
+    {"codec":"plsq8x6","payload_bytes":52,"ordered_top10_parity":"152/152","total_p50_ms":0.2307,"total_p95_ms":0.26365,"total_p99_ms":0.297385,"payload_sha256":"71948de8027493468524ad5b05c4dbd7f9c65dae9ce8384260efcb2bd3488af1"},
+    {"codec":"turboquant1","payload_bytes":52,"ordered_top10_parity":"152/152","total_p50_ms":0.23885,"total_p95_ms":0.27019,"total_p99_ms":0.335522,"payload_sha256":"b32cc9871ad1267f2fd68195902b446c712485dca8c52a97534a786403a5de7f"},
+    {"codec":"turboquant2","payload_bytes":100,"ordered_top10_parity":"152/152","total_p50_ms":0.24035,"total_p95_ms":0.319805,"total_p99_ms":0.366199,"payload_sha256":"bdf0f08d43103fa42fbf9fa68f2b59e386275f0de7c1520440373efde4efb8d3"},
+    {"codec":"rslm3","payload_bytes":146,"ordered_top10_parity":"152/152","total_p50_ms":0.23805,"total_p95_ms":0.286725,"total_p99_ms":0.34776,"payload_sha256":"b4000016e611cc80bebe9c6bdc6913d70937d23beae8fcf275400324ceae4141"},
+    {"codec":"rslm4","payload_bytes":194,"ordered_top10_parity":"152/152","total_p50_ms":0.23335,"total_p95_ms":0.31747,"total_p99_ms":0.35377,"payload_sha256":"97be95c62d84d2d2c584e613f04f3c6e8b7f209b90d60330365f8604e6ed350a"}
+  ],
+  "limitations": [
+    "payloads are predecoded frozen artifacts; codec decode is outside timing",
+    "candidate generation and quality qrels are separate gates",
+    "this receipt uses the frozen 152-query top-128 candidate shell, not MDBX persistence",
+    "no codec winner or production threshold is inferred"
+  ]
+}

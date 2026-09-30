@@ -50,8 +50,10 @@ template <class T> std::vector<T> read_binary(const std::filesystem::path& path)
 
 void write_u32(std::string& key, std::uint32_t value) {
   key.resize(4);
+  // MDBX compares byte strings lexicographically; big-endian encoding keeps
+  // numeric document/segment order monotonic in the key space.
   for (std::size_t byte = 0; byte < 4; ++byte)
-    key[byte] = static_cast<char>(value >> (byte * 8));
+    key[byte] = static_cast<char>(value >> ((3 - byte) * 8));
 }
 
 std::string key(std::uint32_t value) { std::string result; write_u32(result, value); return result; }
@@ -93,8 +95,10 @@ std::vector<std::uint32_t> top10(const float* query, const std::vector<std::uint
 
 class Store final {
  public:
-  Store(const std::filesystem::path& path, const std::string& mode, bool recreate)
-      : path_(path), mode_(mode) {
+  Store(const std::filesystem::path& path, const std::string& mode, bool recreate,
+        std::size_t segment_rows = kSegmentRows)
+      : path_(path), mode_(mode), segment_rows_(segment_rows) {
+    if (segment_rows_ == 0) throw std::runtime_error("segment rows must be positive");
     if (recreate) std::filesystem::remove(path_);
     mdbxc::Config config;
     config.pathname = path_.string();
@@ -114,9 +118,9 @@ class Store final {
       for (std::size_t id = 0; id < documents; ++id)
         table_->insert_or_assign(key(static_cast<std::uint32_t>(id)), packed_row(thq, codes, scales, id), transaction);
     } else if (mode_ == "segment") {
-      for (std::size_t segment = 0; segment * kSegmentRows < documents; ++segment) {
-        const auto begin = segment * kSegmentRows;
-        const auto end = std::min(documents, begin + kSegmentRows);
+      for (std::size_t segment = 0; segment * segment_rows_ < documents; ++segment) {
+        const auto begin = segment * segment_rows_;
+        const auto end = std::min(documents, begin + segment_rows_);
         std::string payload((end - begin) * kRowBytes, '\0');
         for (std::size_t id = begin; id < end; ++id) {
           const auto row = packed_row(thq, codes, scales, id);
@@ -144,14 +148,14 @@ class Store final {
     } else {
       std::unordered_map<std::uint32_t, std::string> segments;
       for (const auto id : ids) {
-        const auto segment = id / static_cast<std::uint32_t>(kSegmentRows);
+        const auto segment = id / static_cast<std::uint32_t>(segment_rows_);
         if (segments.find(segment) == segments.end()) {
           const auto payload = table_->find(key(segment), transaction);
           if (!payload || payload->size() % kRowBytes != 0) throw std::runtime_error("segment payload missing or malformed");
           segments.emplace(segment, *payload);
         }
         const auto& payload = segments.at(segment);
-        const auto offset = (id % kSegmentRows) * kRowBytes;
+        const auto offset = (id % segment_rows_) * kRowBytes;
         if (offset + kRowBytes > payload.size()) throw std::runtime_error("segment row offset differs");
         Row row{};
         std::copy_n(reinterpret_cast<const std::int8_t*>(payload.data() + offset + kThqBytes), kInt8Bytes, row.code);
@@ -168,6 +172,7 @@ class Store final {
  private:
   std::filesystem::path path_;
   std::string mode_;
+  std::size_t segment_rows_;
   std::shared_ptr<mdbxc::Connection> connection_;
   std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> table_;
 };
@@ -197,19 +202,21 @@ void lifecycle_smoke(const std::filesystem::path& path) {
 int main(int argc, char** argv) {
   try {
     if (argc == 3 && std::string(argv[1]) == "--lifecycle-smoke") { lifecycle_smoke(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
-    if (argc == 8 && std::string(argv[1]) == "--materialize") {
+    if ((argc == 8 || argc == 9) && std::string(argv[1]) == "--materialize") {
       const std::string mode = argv[2];
       const std::filesystem::path db = argv[3];
       const auto thq = read_binary<std::uint8_t>(argv[4]);
       const auto codes = read_binary<std::int8_t>(argv[5]);
       const auto scales = read_binary<float>(argv[6]);
       const auto documents = static_cast<std::size_t>(std::stoull(argv[7]));
-      Store store(db, mode, true);
+      const auto segment_rows = argc == 9 ? static_cast<std::size_t>(std::stoull(argv[8])) : kSegmentRows;
+      Store store(db, mode, true, segment_rows);
       const auto begin = Clock::now();
       store.materialize(thq, codes, scales, documents);
       const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
       std::cout << std::fixed << std::setprecision(3) << "{\"status\":\"MATERIALIZED\",\"mode\":\""
-                << mode << "\",\"documents\":" << documents << ",\"db_bytes\":" << store.bytes()
+                << mode << "\",\"documents\":" << documents << ",\"segment_rows\":" << segment_rows
+                << ",\"db_bytes\":" << store.bytes()
                 << ",\"materialize_ms\":" << elapsed << "}\n";
       return 0;
     }
@@ -226,11 +233,12 @@ int main(int argc, char** argv) {
     const auto expected = read_binary<std::uint32_t>(argv[9]);
     const std::size_t query_count = argc > 10 ? std::stoull(argv[10]) : expected.size() / 10;
     const std::size_t repeats = argc > 11 ? std::stoull(argv[11]) : 5;
+    const std::size_t segment_rows = argc > 12 ? std::stoull(argv[12]) : kSegmentRows;
     if (query_count == 0 || queries.size() < query_count * kDimension || candidates.size() != query_count * 128 || expected.size() != query_count * 10)
       throw std::runtime_error("serving fixture shape differs");
     const auto documents = codes.size() / kInt8Bytes;
     if (thq.size() != documents * kThqBytes || scales.size() != documents) throw std::runtime_error("payload shape differs");
-    Store store(db, mode, false);
+    Store store(db, mode, false, segment_rows);
     const auto first_start = Clock::now();
     std::size_t parity = 0;
     store.read_rows(std::vector<std::uint32_t>(candidates.begin(), candidates.begin() + 128), [&](const auto&) {});
@@ -253,7 +261,8 @@ int main(int argc, char** argv) {
     }
     std::cout << std::fixed << std::setprecision(6)
               << "{\"status\":\"EXECUTED\",\"mode\":\"" << mode << "\",\"documents\":" << documents
-              << ",\"queries\":" << query_count << ",\"repeats\":" << repeats << ",\"db_bytes\":" << store.bytes()
+              << ",\"segment_rows\":" << segment_rows << ",\"queries\":" << query_count
+              << ",\"repeats\":" << repeats << ",\"db_bytes\":" << store.bytes()
               << ",\"reopen_first_query_ms\":" << reopen_ms << ",\"p50_ms\":" << percentile(timings, .5)
               << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99)
               << ",\"parity\":" << parity << ",\"parity_total\":" << query_count
