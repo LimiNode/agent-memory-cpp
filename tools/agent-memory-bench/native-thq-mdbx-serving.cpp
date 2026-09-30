@@ -49,16 +49,6 @@ template <class T> std::vector<T> read_binary(const std::filesystem::path& path)
   return values;
 }
 
-void write_u32(std::string& key, std::uint32_t value) {
-  key.resize(4);
-  // MDBX compares byte strings lexicographically; big-endian encoding keeps
-  // numeric document/segment order monotonic in the key space.
-  for (std::size_t byte = 0; byte < 4; ++byte)
-    key[byte] = static_cast<char>(value >> ((3 - byte) * 8));
-}
-
-std::string key(std::uint32_t value) { std::string result; write_u32(result, value); return result; }
-
 struct Row final { std::int8_t code[kInt8Bytes]; float scale; };
 
 std::string packed_final_row(const std::vector<std::int8_t>& codes,
@@ -66,6 +56,13 @@ std::string packed_final_row(const std::vector<std::int8_t>& codes,
   std::string result(kFinalRowBytes, '\0');
   std::memcpy(result.data(), codes.data() + id * kInt8Bytes, kInt8Bytes);
   std::memcpy(result.data() + kInt8Bytes, scales.data() + id, sizeof(float));
+  return result;
+}
+
+std::string legacy_big_endian_key(std::uint32_t value) {
+  std::string result(4, '\0');
+  for (std::size_t byte = 0; byte < 4; ++byte)
+    result[byte] = static_cast<char>(value >> ((3 - byte) * 8));
   return result;
 }
 
@@ -120,7 +117,9 @@ class Store final {
     config.no_subdir = true;
     config.relative_to_exe = false;
     connection_ = mdbxc::Connection::create(config);
-    table_ = std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(connection_, "payload");
+    // uint32_t selects MDBX_INTEGERKEY in mdbx-containers, preserving numeric
+    // ordering without an application-level endian or string-key encoding.
+    table_ = std::make_unique<mdbxc::KeyValueTable<std::uint32_t, std::string>>(connection_, "payload");
   }
 
   void materialize(const std::vector<std::uint8_t>& thq, const std::vector<std::int8_t>& codes,
@@ -137,7 +136,7 @@ class Store final {
       auto transaction = connection_->transaction(mdbxc::TransactionMode::WRITABLE);
       if (mode_ == "row") {
         for (std::size_t id = batch_begin; id < batch_end; ++id)
-          table_->insert_or_assign(key(static_cast<std::uint32_t>(id)), packed_final_row(codes, scales, id), transaction);
+          table_->insert_or_assign(static_cast<std::uint32_t>(id), packed_final_row(codes, scales, id), transaction);
       } else if (mode_ == "segment") {
         const auto first_segment = batch_begin / segment_rows_;
         const auto last_segment = (batch_end + segment_rows_ - 1) / segment_rows_;
@@ -151,7 +150,7 @@ class Store final {
           for (std::size_t id = begin; id < end; ++id)
             std::memcpy(payload.data() + (id - begin) * kFinalRowBytes + kInt8Bytes,
                         scales.data() + id, sizeof(float));
-          table_->insert_or_assign(key(static_cast<std::uint32_t>(segment)), payload, transaction);
+          table_->insert_or_assign(static_cast<std::uint32_t>(segment), payload, transaction);
         }
       } else throw std::runtime_error("mode must be row or segment");
       transaction.commit();
@@ -168,7 +167,7 @@ class Store final {
     if (mode_ == "row") {
       for (std::size_t index = 0; index < count; ++index) {
         const auto id = ids[index];
-        const auto payload = table_->find(key(id), transaction);
+        const auto payload = table_->find(id, transaction);
         if (!payload || payload->size() != kFinalRowBytes) throw std::runtime_error("row payload missing or malformed");
         std::memcpy(rows[index].code, payload->data(), kInt8Bytes);
         std::memcpy(&rows[index].scale, payload->data() + kInt8Bytes, sizeof(float));
@@ -183,7 +182,7 @@ class Store final {
         std::size_t cache_index = 0;
         while (cache_index < segment_count && segments[cache_index].id != segment) ++cache_index;
         if (cache_index == segment_count) {
-          const auto payload = table_->find(key(segment), transaction);
+          const auto payload = table_->find(segment, transaction);
           if (!payload || payload->size() % kFinalRowBytes != 0) throw std::runtime_error("segment payload missing or malformed");
           if (segment_count == segments.size()) throw std::runtime_error("segment cache is full");
           segments[segment_count].id = segment;
@@ -210,7 +209,7 @@ class Store final {
   std::size_t segment_rows_;
   std::size_t durable_commits_ = 0;
   std::shared_ptr<mdbxc::Connection> connection_;
-  std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> table_;
+  std::unique_ptr<mdbxc::KeyValueTable<std::uint32_t, std::string>> table_;
 };
 
 void emit_samples(const std::vector<double>& values) {
@@ -242,11 +241,46 @@ void lifecycle_smoke(const std::filesystem::path& path) {
   }
   std::filesystem::remove(path);
 }
+
+void migrate_legacy_payload(const std::filesystem::path& source,
+                            const std::filesystem::path& destination,
+                            std::size_t segment_rows, std::size_t documents) {
+  std::filesystem::remove(destination);
+  mdbxc::Config source_config;
+  source_config.pathname = source.string();
+  source_config.max_dbs = 4;
+  source_config.no_subdir = true;
+  source_config.relative_to_exe = false;
+  auto source_connection = mdbxc::Connection::create(source_config);
+  auto source_table = std::make_unique<mdbxc::KeyValueTable<std::string, std::string>>(
+      source_connection, "payload");
+  mdbxc::Config destination_config;
+  destination_config.pathname = destination.string();
+  destination_config.max_dbs = 4;
+  destination_config.no_subdir = true;
+  destination_config.relative_to_exe = false;
+  auto destination_connection = mdbxc::Connection::create(destination_config);
+  auto destination_table = std::make_unique<mdbxc::KeyValueTable<std::uint32_t, std::string>>(
+      destination_connection, "payload");
+  auto transaction = destination_connection->transaction(mdbxc::TransactionMode::WRITABLE);
+  const auto segments = (documents + segment_rows - 1) / segment_rows;
+  for (std::size_t segment = 0; segment < segments; ++segment) {
+    const auto payload = source_table->find(legacy_big_endian_key(static_cast<std::uint32_t>(segment)));
+    if (!payload) throw std::runtime_error("legacy payload segment missing");
+    destination_table->insert_or_assign(static_cast<std::uint32_t>(segment), *payload, transaction);
+  }
+  transaction.commit();
+}
 }
 
 int main(int argc, char** argv) {
   try {
     if (argc == 3 && std::string(argv[1]) == "--lifecycle-smoke") { lifecycle_smoke(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
+    if (argc == 6 && std::string(argv[1]) == "--migrate-legacy") {
+      migrate_legacy_payload(argv[2], argv[3], std::stoull(argv[4]), std::stoull(argv[5]));
+      std::cout << "{\"status\":\"MIGRATED\"}\n";
+      return 0;
+    }
     if ((argc >= 8 && argc <= 10) && std::string(argv[1]) == "--materialize") {
       const std::string mode = argv[2];
       const std::filesystem::path db = argv[3];

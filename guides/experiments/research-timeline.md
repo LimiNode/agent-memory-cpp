@@ -1031,12 +1031,13 @@ evidence, not decode-throughput, MDBX, fresh-qrels or codec-winner evidence.
 ### MDBX segment sweep harness (2026-09-30)
 
 The MDBX serving runner now accepts an explicit segment-row parameter and uses
-order-preserving big-endian integer keys. A sweep harness covers 16, 32, 64,
+native uint32 MDBX_INTEGERKEY ordering. A sweep harness covers 16, 32, 64,
 128, 256, 512, 1024 and 4096 rows per segment, with compact machine-readable
 receipts and parity checks. The completed 1M-document run materialized all
 eight profiles and reproduced ordered top-10 parity for 152/152 queries in
-each profile. Warm p50 ranged from 0.8758 ms (16 rows) through 113.55 ms
-(4096 rows); p95 ranged from 1.6561 ms through 142.1197 ms. Materialization
+each profile. The re-keyed replay warm p50 ranged from 0.9155 ms (16 rows)
+through 113.6379 ms (4096 rows); p95 ranged from 1.5765 ms through 148.1682
+ms. Materialization
 fell from 19,516.215 ms to 1,453.676 ms, while the split final-code projection
 occupied 402,653,184 bytes for every segment size. The timed reader uses
 bounded fixed arrays and insertion top-k; the independent fail-closed receipt

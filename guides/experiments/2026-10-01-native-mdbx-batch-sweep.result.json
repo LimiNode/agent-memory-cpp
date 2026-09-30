@@ -12,14 +12,17 @@
     "scales": "3ac3a5af5ffc7e690a8cd426d80094fce2803e810f28af7eb36fa053f3508167"
   },
   "rows": [
-    {"status": "MATERIALIZED", "batch_documents": 1024, "durable_commits": 977, "materialize_ms": 4224.735, "db_bytes": 402653184},
-    {"status": "MATERIALIZED", "batch_documents": 8192, "durable_commits": 123, "materialize_ms": 3865.627, "db_bytes": 402653184},
-    {"status": "MATERIALIZED", "batch_documents": 65536, "durable_commits": 16, "materialize_ms": 3835.639, "db_bytes": 402653184},
-    {"status": "MATERIALIZED", "batch_documents": 131072, "durable_commits": 8, "materialize_ms": 3870.436, "db_bytes": 402653184},
-    {"status": "MATERIALIZED", "batch_documents": 262144, "durable_commits": 4, "materialize_ms": 3846.078, "db_bytes": 402653184},
-    {"status": "MATERIALIZED", "batch_documents": 524288, "durable_commits": 2, "materialize_ms": 3833.542, "db_bytes": 402653184},
-    {"status": "MATERIALIZED", "batch_documents": 1000000, "durable_commits": 1, "materialize_ms": 3777.766, "db_bytes": 402653184}
+    {"status": "MATERIALIZED", "batch_documents": 1024, "durable_commits": 977, "materialize_ms": 4077.589, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 8192, "durable_commits": 123, "materialize_ms": 3945.140, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 65536, "durable_commits": 16, "materialize_ms": 3797.726, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 131072, "durable_commits": 8, "materialize_ms": 3870.797, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 262144, "durable_commits": 4, "materialize_ms": 3904.565, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 524288, "durable_commits": 2, "materialize_ms": 4033.973, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 1000000, "durable_commits": 1, "materialize_ms": 3981.496, "db_bytes": 402653184}
   ],
+  "source_receipt": "build-fidelity/mdbx-batch-synthetic/results-native-v2/native-mdbx-batch-sweep.result.json",
+  "source_receipt_sha256": "22217561c2e307146417a8d199af3993f627fe723ab594fee4fdbb05a9008721",
+  "key_contract": "uint32_t MDBX_INTEGERKEY",
   "limitations": [
     "materialization-only; no query quality or latency claim",
     "synthetic payload; not a codec comparison",
