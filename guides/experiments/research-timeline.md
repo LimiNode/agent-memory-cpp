@@ -957,3 +957,16 @@ not candidate-local timings, but they still exclude MDBX I/O, cold faults,
 write/update/rebuild work, and fresh qrels.  The result is a Gate-B baseline,
 not a codec selection.  See
 `2026-09-30-native-full-corpus-serving-control.md` and its compact result.
+
+### Production-kernel normalisation control (2026-09-30)
+
+The follow-up keeps the same 1M materialisation and 152-query fixture but
+removes the scalar-control asymmetries: bounded THQ top-128 selection, a common
+ordered top-10 output contract, page accounting outside the timed region,
+per-query warmup, fixed-seed arm randomisation, and p50/p95/p99 summaries.  The
+single-host AVX2 control measured 235.907 ms mean (234.046 p50) for direct
+INT8 top-10 and 92.9262 ms mean (92.0117 p50) for THQ bounded top-128 followed
+by INT8 top-10.  These are still bounded in-memory kernel measurements: ten
+timed repeats after two warmups, no pinned NUMA/affinity, no MDBX, no cold/restart or write lifecycle,
+and no fresh qrels.  They are not a codec ranking or production selection.
+See `2026-09-30-native-production-kernel-control.md` and its compact result.
