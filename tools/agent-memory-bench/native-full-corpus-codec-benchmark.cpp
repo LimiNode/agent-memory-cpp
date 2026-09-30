@@ -23,6 +23,8 @@ namespace {
 constexpr std::size_t kDocuments = 1000000;
 constexpr std::size_t kDimension = 384;
 constexpr std::size_t kThqBytes = 96;
+constexpr std::size_t kThqPairs = kDimension / 2;
+constexpr std::size_t kBlockSize = 32;
 constexpr std::size_t kPageBytes = 4096;
 constexpr std::size_t kCandidateRecordBytes = 148;
 struct Candidate { float score; std::int32_t id; };
@@ -93,12 +95,27 @@ template <typename T> std::vector<T> read(const std::string& path) {
   return out;
 }
 
+std::size_t file_bytes(const std::string& path) {
+  std::ifstream in(path, std::ios::binary | std::ios::ate);
+  if (!in) throw std::runtime_error("cannot open " + path);
+  const auto end = in.tellg();
+  if (end < 0) throw std::runtime_error("cannot measure " + path);
+  return static_cast<std::size_t>(end);
+}
+
 struct QueryLut {
   std::array<float, kDimension * 4> coordinate{};
   std::array<float, kThqBytes * 256> byte{};
+  std::array<float, kThqPairs * 16> pair{};
+};
+
+struct ThqBlock32Layout {
+  std::vector<std::uint8_t> codes;
+  std::size_t padded_documents = 0;
 };
 
 float thq_score_row(const std::uint8_t* row, const QueryLut& lut);
+float thq_score_row_unrolled4(const std::uint8_t* row, const QueryLut& lut);
 
 QueryLut build_lut(const std::vector<float>& thresholds, const float* query) {
   QueryLut lut;
@@ -121,7 +138,32 @@ QueryLut build_lut(const std::vector<float>& thresholds, const float* query) {
       lut.byte[byte * 256 + packed] = score;
     }
   }
+  for (std::size_t pair = 0; pair < kThqPairs; ++pair) {
+    for (std::size_t packed = 0; packed < 16; ++packed) {
+      lut.pair[pair * 16 + packed] =
+          lut.coordinate[(pair * 2) * 4 + (packed & 3U)] +
+          lut.coordinate[(pair * 2 + 1) * 4 + (packed >> 2U)];
+    }
+  }
   return lut;
+}
+
+ThqBlock32Layout pack_thq_block32(const std::vector<std::uint8_t>& doc_major) {
+  ThqBlock32Layout result;
+  result.padded_documents =
+      ((kDocuments + kBlockSize - 1) / kBlockSize) * kBlockSize;
+  result.codes.assign((result.padded_documents / kBlockSize) *
+                          kThqBytes * kBlockSize,
+                      0);
+  for (std::size_t id = 0; id < kDocuments; ++id) {
+    const std::size_t block = id / kBlockSize;
+    const std::size_t lane = id % kBlockSize;
+    for (std::size_t byte = 0; byte < kThqBytes; ++byte) {
+      result.codes[(block * kThqBytes + byte) * kBlockSize + lane] =
+          doc_major[id * kThqBytes + byte];
+    }
+  }
+  return result;
 }
 
 std::vector<Candidate> thq_top128(const std::vector<std::uint8_t>& codes,
@@ -206,11 +248,28 @@ struct WorseDescendingCandidate {
   }
 };
 
+template <std::size_t Capacity, typename Compare, typename Better>
+std::array<Candidate, Capacity> bounded_top_from_scores(
+    const std::vector<float>& scores, std::size_t count, Better is_better) {
+  if (count < Capacity || scores.size() < count)
+    throw std::runtime_error("bounded score buffer is shorter than requested top-k");
+  FixedCandidateHeap<Capacity, Compare> heap;
+  for (std::size_t id = 0; id < count; ++id) {
+    const Candidate candidate{scores[id], static_cast<std::int32_t>(id)};
+    if (heap.size() < Capacity) heap.push(candidate);
+    else if (is_better(candidate, heap.top())) heap.replace_top(candidate);
+  }
+  std::array<Candidate, Capacity> result{};
+  for (std::size_t i = result.size(); i-- > 0;) result[i] = heap.pop_top();
+  std::sort(result.begin(), result.end(), is_better);
+  return result;
+}
+
 std::array<Candidate, 128> thq_top128_bounded(
     const std::vector<std::uint8_t>& codes, const QueryLut& lut) {
   FixedCandidateHeap<128, WorseCandidate> heap;
   for (std::size_t id = 0; id < kDocuments; ++id) {
-    const Candidate candidate{thq_score_row(codes.data() + id * kThqBytes, lut),
+    const Candidate candidate{thq_score_row_unrolled4(codes.data() + id * kThqBytes, lut),
                               static_cast<std::int32_t>(id)};
     if (heap.size() < 128) {
       heap.push(candidate);
@@ -233,7 +292,7 @@ std::vector<Candidate> thq_top128_candidates(
   all.reserve(ids.size());
   for (const auto id : ids) {
     const auto* row = codes.data() + static_cast<std::size_t>(id) * kThqBytes;
-    all.push_back({thq_score_row(row, lut), id});
+    all.push_back({thq_score_row_unrolled4(row, lut), id});
   }
   const auto limit = std::min<std::size_t>(128, all.size());
   std::partial_sort(all.begin(), all.begin() + limit, all.end(), better);
@@ -246,6 +305,78 @@ float thq_score_row(const std::uint8_t* row, const QueryLut& lut) {
   for (std::size_t byte = 0; byte < kThqBytes; ++byte)
     score += lut.byte[byte * 256 + row[byte]];
   return score;
+}
+
+float thq_score_row_unrolled4(const std::uint8_t* row, const QueryLut& lut) {
+  float score0 = 0.0f;
+  float score1 = 0.0f;
+  float score2 = 0.0f;
+  float score3 = 0.0f;
+  for (std::size_t byte = 0; byte < kThqBytes; byte += 4) {
+    score0 += lut.byte[(byte + 0) * 256 + row[byte + 0]];
+    score1 += lut.byte[(byte + 1) * 256 + row[byte + 1]];
+    score2 += lut.byte[(byte + 2) * 256 + row[byte + 2]];
+    score3 += lut.byte[(byte + 3) * 256 + row[byte + 3]];
+  }
+  return (score0 + score1) + (score2 + score3);
+}
+
+#if defined(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2) && AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2
+__m256 lookup16_fp32(const float* table, __m256i indices) {
+  const __m256 low = _mm256_loadu_ps(table);
+  const __m256 high = _mm256_loadu_ps(table + 8);
+  const __m256i local = _mm256_and_si256(indices, _mm256_set1_epi32(7));
+  const __m256 low_values = _mm256_permutevar8x32_ps(low, local);
+  const __m256 high_values = _mm256_permutevar8x32_ps(high, local);
+  const __m256 mask = _mm256_castsi256_ps(
+      _mm256_cmpgt_epi32(indices, _mm256_set1_epi32(7)));
+  return _mm256_blendv_ps(low_values, high_values, mask);
+}
+#endif
+
+void score_thq_block32(const ThqBlock32Layout& layout, const QueryLut& lut,
+                       std::vector<float>& scores) {
+  if (scores.size() < layout.padded_documents)
+    throw std::runtime_error("THQ score workspace is shorter than block32 layout");
+#if defined(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2) && AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2
+  for (std::size_t block = 0; block < layout.padded_documents / kBlockSize;
+       ++block) {
+    const auto* block_data =
+        layout.codes.data() + block * kThqBytes * kBlockSize;
+    for (std::size_t lane = 0; lane < kBlockSize; lane += 8) {
+      __m256 sums[4] = {_mm256_setzero_ps(), _mm256_setzero_ps(),
+                        _mm256_setzero_ps(), _mm256_setzero_ps()};
+      for (std::size_t byte = 0; byte < kThqBytes; byte += 4) {
+        for (std::size_t part = 0; part < 4; ++part) {
+          const std::size_t position = byte + part;
+          const __m128i packed8 = _mm_loadl_epi64(
+              reinterpret_cast<const __m128i*>(
+                  block_data + position * kBlockSize + lane));
+          const __m256i indices = _mm256_cvtepu8_epi32(packed8);
+          sums[part] = _mm256_add_ps(
+              sums[part],
+              _mm256_i32gather_ps(lut.byte.data() + position * 256,
+                                  indices, sizeof(float)));
+        }
+      }
+      const __m256 score = _mm256_add_ps(_mm256_add_ps(sums[0], sums[1]),
+                                         _mm256_add_ps(sums[2], sums[3]));
+      _mm256_storeu_ps(scores.data() + block * kBlockSize + lane, score);
+    }
+  }
+#else
+  for (std::size_t id = 0; id < kDocuments; ++id) {
+    const std::size_t block = id / kBlockSize;
+    const std::size_t lane = id % kBlockSize;
+    float score = 0.0f;
+    for (std::size_t byte = 0; byte < kThqBytes; ++byte) {
+      const auto packed =
+          layout.codes[(block * kThqBytes + byte) * kBlockSize + lane];
+      score += lut.byte[byte * 256 + packed];
+    }
+    scores[id] = score;
+  }
+#endif
 }
 
 template <typename CodeT>
@@ -277,10 +408,19 @@ Candidate best_int8(const std::vector<CodeT>& codes, const std::vector<float>& s
   return {score, id};
 }
 
+float score_int8_float_scalar(const std::int8_t* values, float scale,
+                              const float* query) {
+  float dot = 0.0f;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    dot += static_cast<float>(values[d]) * query[d];
+  return dot * scale;
+}
+
 #if defined(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2) && AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2
 float score_int8_float_avx2(const std::int8_t* values, float scale,
                             const float* query) {
-  float dot = 0.0f;
+  __m256 sum0 = _mm256_setzero_ps();
+  __m256 sum1 = _mm256_setzero_ps();
   for (std::size_t offset = 0; offset < kDimension; offset += 16) {
     const __m128i bytes = _mm_loadu_si128(
         reinterpret_cast<const __m128i*>(values + offset));
@@ -291,16 +431,17 @@ float score_int8_float_avx2(const std::int8_t* values, float scale,
         _mm256_castsi256_si128(signed16));
     const __m256i hi32 = _mm256_cvtepi16_epi32(
         _mm256_extracti128_si256(signed16, 1));
-    const __m256 product = _mm256_add_ps(
-        _mm256_mul_ps(_mm256_cvtepi32_ps(lo32),
-                      _mm256_loadu_ps(query + offset)),
-        _mm256_mul_ps(_mm256_cvtepi32_ps(hi32),
-                      _mm256_loadu_ps(query + offset + 8)));
-    alignas(32) float lanes[8];
-    _mm256_store_ps(lanes, product);
-    for (const float value : lanes) dot += value;
+    sum0 = _mm256_add_ps(sum0, _mm256_mul_ps(
+        _mm256_cvtepi32_ps(lo32), _mm256_loadu_ps(query + offset)));
+    sum1 = _mm256_add_ps(sum1, _mm256_mul_ps(
+        _mm256_cvtepi32_ps(hi32), _mm256_loadu_ps(query + offset + 8)));
   }
-  return dot * scale;
+  const __m256 sum = _mm256_add_ps(sum0, sum1);
+  const __m128 halves = _mm_add_ps(_mm256_castps256_ps128(sum),
+                                   _mm256_extractf128_ps(sum, 1));
+  const __m128 pairs = _mm_add_ps(halves, _mm_movehl_ps(halves, halves));
+  const __m128 total = _mm_add_ss(pairs, _mm_shuffle_ps(pairs, pairs, 0x55));
+  return _mm_cvtss_f32(total) * scale;
 }
 #endif
 
@@ -312,11 +453,18 @@ float score_int8_production(const std::vector<std::int8_t>& codes,
 #if defined(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2) && AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2
   return score_int8_float_avx2(row, scales[index], query);
 #else
-  float dot = 0.0f;
-  for (std::size_t d = 0; d < kDimension; ++d)
-    dot += static_cast<float>(row[d]) * query[d];
-  return dot * scales[index];
+  return score_int8_float_scalar(row, scales[index], query);
 #endif
+}
+
+void score_int8_dense(const std::vector<std::int8_t>& codes,
+                      const std::vector<float>& scales, const float* query,
+                      std::vector<float>& scores) {
+  if (scores.size() < kDocuments)
+    throw std::runtime_error("INT8 score workspace is shorter than corpus");
+  for (std::size_t id = 0; id < kDocuments; ++id)
+    scores[id] = score_int8_production(codes, scales, query,
+                                       static_cast<std::int32_t>(id));
 }
 
 std::array<Candidate, 10> direct_top10_production(
@@ -819,12 +967,54 @@ double percentile(std::vector<double> values, double fraction) {
   return values[lower] * (1.0 - weight) + values[upper] * weight;
 }
 
-void emit_timing_summary(const char* name, const std::vector<double>& values) {
+double query_median_percentile(const std::vector<double>& values,
+                               std::size_t query_count, std::size_t repeats,
+                               double fraction) {
+  if (values.size() != query_count * repeats || repeats == 0)
+    throw std::runtime_error("timing series shape differs for query medians");
+  std::vector<double> medians;
+  medians.reserve(query_count);
+  for (std::size_t query = 0; query < query_count; ++query) {
+    std::vector<double> samples(values.begin() + query * repeats,
+                                values.begin() + (query + 1) * repeats);
+    medians.push_back(percentile(std::move(samples), 0.5));
+  }
+  return percentile(std::move(medians), fraction);
+}
+
+void emit_timing_summary(const char* name, const std::vector<double>& values,
+                         std::size_t query_count, std::size_t repeats) {
   const double sum = std::accumulate(values.begin(), values.end(), 0.0);
   std::cerr << '"' << name << "\":{\"mean_ms\":" << sum / values.size()
             << ",\"p50_ms\":" << percentile(values, 0.50)
             << ",\"p95_ms\":" << percentile(values, 0.95)
-            << ",\"p99_ms\":" << percentile(values, 0.99) << '}';
+            << ",\"p99_ms\":" << percentile(values, 0.99)
+            << ",\"query_median_p50_ms\":" << query_median_percentile(values, query_count, repeats, 0.50)
+            << ",\"query_median_p95_ms\":" << query_median_percentile(values, query_count, repeats, 0.95)
+            << ",\"query_median_p99_ms\":" << query_median_percentile(values, query_count, repeats, 0.99)
+            << '}';
+}
+
+// Legacy benchmark modes report one sample per query and are not grouped into
+// repeated per-query measurements. Keep their compact summary contract rather
+// than manufacturing query-median percentiles from an incompatible shape.
+void emit_timing_summary(const char* name, const std::vector<double>& values) {
+  if (values.empty()) throw std::runtime_error("cannot summarize empty timing series");
+  const double sum = std::accumulate(values.begin(), values.end(), 0.0);
+  std::cerr << '"' << name << "\":{\"mean_ms\":" << sum / values.size()
+            << ",\"p50_ms\":" << percentile(values, 0.50)
+            << ",\"p95_ms\":" << percentile(values, 0.95)
+            << ",\"p99_ms\":" << percentile(values, 0.99)
+            << '}';
+}
+
+void emit_samples(const std::vector<double>& values) {
+  std::cout << '[';
+  for (std::size_t i = 0; i < values.size(); ++i) {
+    if (i != 0) std::cout << ',';
+    std::cout << values[i];
+  }
+  std::cout << ']';
 }
 
 int run_production_control(int argc, char** argv) {
@@ -835,27 +1025,34 @@ int run_production_control(int argc, char** argv) {
   const auto thresholds = read<float>(argv[3]);
   const auto linear = read<std::int8_t>(argv[4]);
   const auto linear_scales = read<float>(argv[5]);
-  const auto power = read<std::int8_t>(argv[6]);
-  const auto power_scales = read<float>(argv[7]);
   const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[9]));
   const std::size_t warmups = static_cast<std::size_t>(std::stoull(argv[10]));
   const std::size_t repeats = static_cast<std::size_t>(std::stoull(argv[11]));
   const std::uint32_t seed = static_cast<std::uint32_t>(std::stoul(argv[12]));
   if (query_count == 0 || warmups == 0 || repeats == 0 ||
       thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
-      linear.size() != kDocuments * kDimension || power.size() != kDocuments * kDimension ||
-      linear_scales.size() != kDocuments || power_scales.size() != kDocuments)
+      linear.size() != kDocuments * kDimension ||
+      linear_scales.size() != kDocuments ||
+      file_bytes(argv[6]) != kDocuments * kDimension ||
+      file_bytes(argv[7]) != kDocuments * sizeof(float))
     throw std::runtime_error("production control payload shape differs");
   const auto queries = read<float>(argv[8]);
   if (queries.size() < query_count * kDimension)
     throw std::runtime_error("production control query payload is shorter than query_count");
 
-  std::vector<double> direct_ms, cascade_ms;
-  direct_ms.reserve(query_count * repeats);
-  cascade_ms.reserve(query_count * repeats);
-  std::vector<float> power_gains(kDocuments);
-  for (std::size_t id = 0; id < kDocuments; ++id)
-    power_gains[id] = std::pow(power_scales[id], 1.6f);
+  const auto thq_block32 = pack_thq_block32(thq);
+  std::vector<float> thq_scores(thq_block32.padded_documents);
+  std::vector<float> direct_scores(kDocuments);
+  std::vector<double> direct_prepare_ms, direct_score_ms, direct_topk_ms,
+      direct_total_ms;
+  std::vector<double> cascade_prepare_ms, cascade_score_ms,
+      cascade_topk_ms, cascade_rerank_ms, cascade_total_ms;
+  for (auto* values : {&direct_prepare_ms, &direct_score_ms, &direct_topk_ms,
+                       &direct_total_ms,
+                       &cascade_prepare_ms, &cascade_score_ms,
+                       &cascade_topk_ms, &cascade_rerank_ms,
+                       &cascade_total_ms})
+    values->reserve(query_count * repeats);
   const auto emit_ids = [](const auto& values) {
     std::cout << '[';
     for (std::size_t i = 0; i < values.size(); ++i) {
@@ -866,12 +1063,26 @@ int run_production_control(int argc, char** argv) {
   };
   for (std::size_t qi = 0; qi < query_count; ++qi) {
     const float* query = queries.data() + qi * kDimension;
-    const QueryLut lut = build_lut(thresholds, query);
     std::array<Candidate, 10> last_direct{}, last_cascade{};
     std::array<Candidate, 128> last_coarse{};
+    std::vector<double> query_direct_prepare, query_direct_score,
+        query_direct_topk, query_direct_total;
+    std::vector<double> query_cascade_prepare, query_cascade_score,
+        query_cascade_topk, query_cascade_rerank, query_cascade_total;
+    for (auto* values : {&query_direct_prepare, &query_direct_score,
+                         &query_direct_topk,
+                         &query_direct_total, &query_cascade_prepare,
+                         &query_cascade_score, &query_cascade_topk,
+                         &query_cascade_rerank, &query_cascade_total})
+      values->reserve(repeats);
     for (std::size_t warmup = 0; warmup < warmups; ++warmup) {
-      last_direct = direct_top10_production(linear, linear_scales, query);
-      last_coarse = thq_top128_bounded(thq, lut);
+      score_int8_dense(linear, linear_scales, query, direct_scores);
+      last_direct = bounded_top_from_scores<10, WorseDescendingCandidate>(
+          direct_scores, kDocuments, better_desc);
+      const QueryLut lut = build_lut(thresholds, query);
+      score_thq_block32(thq_block32, lut, thq_scores);
+      last_coarse = bounded_top_from_scores<128, WorseCandidate>(
+          thq_scores, kDocuments, better);
       last_cascade = rerank_top10_production(linear, linear_scales, query, last_coarse);
     }
     for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
@@ -879,26 +1090,85 @@ int run_production_control(int argc, char** argv) {
       std::mt19937 rng(seed ^ static_cast<std::uint32_t>(qi * 0x9e3779b9U + repeat));
       std::shuffle(order.begin(), order.end(), rng);
       for (const int arm : order) {
-        const auto begin = std::chrono::steady_clock::now();
         if (arm == 0) {
-          last_direct = direct_top10_production(linear, linear_scales, query);
-          direct_ms.push_back(elapsed_ms(begin, std::chrono::steady_clock::now()));
+          const auto total_begin = std::chrono::steady_clock::now();
+          score_int8_dense(linear, linear_scales, query, direct_scores);
+          const auto score_end = std::chrono::steady_clock::now();
+          last_direct = bounded_top_from_scores<10, WorseDescendingCandidate>(
+              direct_scores, kDocuments, better_desc);
+          const auto topk_end = std::chrono::steady_clock::now();
+          query_direct_prepare.push_back(0.0);
+          query_direct_score.push_back(elapsed_ms(total_begin, score_end));
+          query_direct_topk.push_back(elapsed_ms(score_end, topk_end));
+          query_direct_total.push_back(elapsed_ms(total_begin, topk_end));
+          direct_prepare_ms.push_back(0.0);
+          direct_score_ms.push_back(query_direct_score.back());
+          direct_topk_ms.push_back(query_direct_topk.back());
+          direct_total_ms.push_back(query_direct_total.back());
         } else {
-          last_coarse = thq_top128_bounded(thq, lut);
+          const auto total_begin = std::chrono::steady_clock::now();
+          const QueryLut lut = build_lut(thresholds, query);
+          const auto prepare_end = std::chrono::steady_clock::now();
+          score_thq_block32(thq_block32, lut, thq_scores);
+          const auto score_end = std::chrono::steady_clock::now();
+          last_coarse = bounded_top_from_scores<128, WorseCandidate>(
+              thq_scores, kDocuments, better);
+          const auto topk_end = std::chrono::steady_clock::now();
           last_cascade = rerank_top10_production(linear, linear_scales, query, last_coarse);
-          cascade_ms.push_back(elapsed_ms(begin, std::chrono::steady_clock::now()));
+          const auto rerank_end = std::chrono::steady_clock::now();
+          query_cascade_prepare.push_back(elapsed_ms(total_begin, prepare_end));
+          query_cascade_score.push_back(elapsed_ms(prepare_end, score_end));
+          query_cascade_topk.push_back(elapsed_ms(score_end, topk_end));
+          query_cascade_rerank.push_back(elapsed_ms(topk_end, rerank_end));
+          query_cascade_total.push_back(elapsed_ms(total_begin, rerank_end));
+          cascade_prepare_ms.push_back(query_cascade_prepare.back());
+          cascade_score_ms.push_back(query_cascade_score.back());
+          cascade_topk_ms.push_back(query_cascade_topk.back());
+          cascade_rerank_ms.push_back(query_cascade_rerank.back());
+          cascade_total_ms.push_back(query_cascade_total.back());
         }
       }
     }
     if (last_direct.size() != last_cascade.size())
       throw std::runtime_error("production top10 cardinality differs");
-    const auto cascade_pages = namespaced_pages(
-        [&] {
-          std::vector<std::int32_t> ids;
-          ids.reserve(last_coarse.size());
-          for (const auto& candidate : last_coarse) ids.push_back(candidate.id);
-          return ids;
-        }(), kDimension, 1ULL << 48);
+    std::vector<std::int32_t> coarse_ids;
+    coarse_ids.reserve(last_coarse.size());
+    for (const auto& candidate : last_coarse) coarse_ids.push_back(candidate.id);
+    const auto code_pages = namespaced_pages(coarse_ids, kDimension, 1ULL << 48);
+    const auto scale_pages = namespaced_pages(coarse_ids, sizeof(float), 1ULL << 49);
+    const auto scalar_coarse = thq_top128_bounded(thq, build_lut(thresholds, query));
+    bool thq_parity = true;
+    for (std::size_t i = 0; i < last_coarse.size(); ++i)
+      thq_parity = thq_parity && last_coarse[i].id == scalar_coarse[i].id;
+    FixedCandidateHeap<10, WorseDescendingCandidate> scalar_heap;
+    double max_abs_error = 0.0;
+    double max_relative_error = 0.0;
+    for (std::size_t id = 0; id < kDocuments; ++id) {
+      const float scalar = score_int8_float_scalar(
+          linear.data() + id * kDimension, linear_scales[id], query);
+      const float production = direct_scores[id];
+      const double absolute = std::abs(static_cast<double>(production) - scalar);
+      max_abs_error = std::max(max_abs_error, absolute);
+      max_relative_error = std::max(
+          max_relative_error,
+          absolute / std::max(std::abs(static_cast<double>(scalar)), 1e-12));
+      const Candidate candidate{scalar, static_cast<std::int32_t>(id)};
+      if (scalar_heap.size() < 10) scalar_heap.push(candidate);
+      else if (better_desc(candidate, scalar_heap.top()))
+        scalar_heap.replace_top(candidate);
+    }
+    std::array<Candidate, 10> scalar_top10{};
+    for (std::size_t i = scalar_top10.size(); i-- > 0;)
+      scalar_top10[i] = scalar_heap.pop_top();
+    std::sort(scalar_top10.begin(), scalar_top10.end(), better_desc);
+    bool int8_top10_parity = true;
+    bool cascade_top10_parity = true;
+    for (std::size_t i = 0; i < last_direct.size(); ++i) {
+      int8_top10_parity = int8_top10_parity &&
+                          last_direct[i].id == scalar_top10[i].id;
+      cascade_top10_parity = cascade_top10_parity &&
+                             last_direct[i].id == last_cascade[i].id;
+    }
     std::cout << "{\"query\":" << qi << ",\"direct_top10\":";
     emit_ids(last_direct);
     std::cout << ",\"cascade_top10\":";
@@ -907,19 +1177,63 @@ int run_production_control(int argc, char** argv) {
     emit_ids(last_coarse);
     std::cout << ",\"page_proxy\":{\"thq_scan\":"
               << ((kDocuments * kThqBytes + kPageBytes - 1) / kPageBytes)
-              << ",\"rerank_payload\":" << cascade_pages << "}}\n";
+              << ",\"rerank_codes\":" << code_pages
+              << ",\"rerank_scales\":" << scale_pages
+              << ",\"rerank_payload\":" << code_pages + scale_pages
+              << "},\"parity\":{\"thq_block32_vs_unrolled\":"
+              << (thq_parity ? "true" : "false")
+              << ",\"int8_avx2_vs_scalar_top10\":"
+              << (int8_top10_parity ? "true" : "false")
+              << ",\"direct_vs_cascade_top10\":"
+              << (cascade_top10_parity ? "true" : "false")
+              << "},\"int8_score_error\":{\"max_absolute\":"
+              << max_abs_error << ",\"max_relative\":" << max_relative_error
+              << "},\"timing_ms\":{\"direct\":{\"prepare\":";
+    emit_samples(query_direct_prepare);
+    std::cout << ",\"score\":";
+    emit_samples(query_direct_score);
+    std::cout << ",\"topk\":";
+    emit_samples(query_direct_topk);
+    std::cout << ",\"total\":";
+    emit_samples(query_direct_total);
+    std::cout << "},\"cascade\":{\"prepare\":";
+    emit_samples(query_cascade_prepare);
+    std::cout << ",\"score\":";
+    emit_samples(query_cascade_score);
+    std::cout << ",\"topk\":";
+    emit_samples(query_cascade_topk);
+    std::cout << ",\"rerank\":";
+    emit_samples(query_cascade_rerank);
+    std::cout << ",\"total\":";
+    emit_samples(query_cascade_total);
+    std::cout << "}}}\n";
   }
   std::cerr << "{\"queries\":" << query_count
             << ",\"warmups\":" << warmups << ",\"repeats\":" << repeats
             << ",\"arm_order\":\"per-query randomized with fixed seed\""
-            << ",\"timing_scope\":\"allocation-free bounded top-k control; page accounting outside timed path\""
-            << ",\"int8_kernel\":\"exact float-query AVX2 when enabled, scalar fallback otherwise\",\"arms\":{";
-  emit_timing_summary("direct_top10", direct_ms);
+            << ",\"timing_scope\":\"query preparation, scoring, bounded top-k and rerank separated; page and parity audits outside timed path\""
+            << ",\"thq_dense_kernel\":\"exact byte-LUT AVX2 gather block32 when enabled, scalar fallback otherwise\""
+            << ",\"thq_sparse_kernel\":\"exact doc-major byte-LUT unrolled4\""
+            << ",\"int8_kernel\":\"exact float-query AVX2 register accumulation when enabled, scalar fallback otherwise\",\"arms\":{";
+  std::cerr << "\"direct\":{";
+  emit_timing_summary("prepare", direct_prepare_ms, query_count, repeats);
   std::cerr << ',';
-  emit_timing_summary("cascade_top10", cascade_ms);
-  std::cerr << "}}\n";
-  (void)power;
-  (void)power_gains;
+  emit_timing_summary("score", direct_score_ms, query_count, repeats);
+  std::cerr << ',';
+  emit_timing_summary("topk", direct_topk_ms, query_count, repeats);
+  std::cerr << ',';
+  emit_timing_summary("total", direct_total_ms, query_count, repeats);
+  std::cerr << "},\"cascade\":{";
+  emit_timing_summary("prepare", cascade_prepare_ms, query_count, repeats);
+  std::cerr << ',';
+  emit_timing_summary("score", cascade_score_ms, query_count, repeats);
+  std::cerr << ',';
+  emit_timing_summary("topk", cascade_topk_ms, query_count, repeats);
+  std::cerr << ',';
+  emit_timing_summary("rerank", cascade_rerank_ms, query_count, repeats);
+  std::cerr << ',';
+  emit_timing_summary("total", cascade_total_ms, query_count, repeats);
+  std::cerr << "}}}\n";
   return 0;
 }
 
@@ -1412,6 +1726,17 @@ int main(int argc, char** argv) {
       reference += lut.byte[byte * 256 + row[byte]];
     if (thq_score_row(row.data(), lut) != reference)
       throw std::runtime_error("packed THQ score parity differs");
+    if (std::abs(thq_score_row_unrolled4(row.data(), lut) - reference) > 1e-3f)
+      throw std::runtime_error("unrolled THQ score parity differs");
+    for (std::size_t pair = 0; pair < kThqPairs; ++pair) {
+      for (std::size_t packed = 0; packed < 16; ++packed) {
+        const float expected =
+            lut.coordinate[(pair * 2) * 4 + (packed & 3U)] +
+            lut.coordinate[(pair * 2 + 1) * 4 + (packed >> 2U)];
+        if (lut.pair[pair * 16 + packed] != expected)
+          throw std::runtime_error("pair THQ LUT parity differs");
+      }
+    }
     std::vector<std::int8_t> int8_row(kDimension);
     for (std::size_t d = 0; d < kDimension; ++d)
       int8_row[d] = static_cast<std::int8_t>(static_cast<int>(d % 255) - 127);
@@ -1423,6 +1748,30 @@ int main(int argc, char** argv) {
         int8_row, one_scale, query.data(), 0);
     if (std::abs(production_dot - scalar_dot * one_scale[0]) > 1e-3f)
       throw std::runtime_error("production INT8 score parity differs");
+#if defined(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2) && AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2
+    std::mt19937 parity_rng(20260930U);
+    std::uniform_int_distribution<int> code_distribution(-127, 127);
+    std::uniform_real_distribution<float> query_distribution(-1.0f, 1.0f);
+    for (std::size_t sample = 0; sample < 1024; ++sample) {
+      for (std::size_t d = 0; d < kDimension; ++d) {
+        int8_row[d] = static_cast<std::int8_t>(code_distribution(parity_rng));
+        query[d] = query_distribution(parity_rng);
+      }
+      if (sample == 0) {
+        for (std::size_t d = 0; d < kDimension; ++d) {
+          int8_row[d] = static_cast<std::int8_t>((d & 1U) == 0 ? 127 : -127);
+          query[d] = (d & 2U) == 0 ? 1.0f : -1.0f;
+        }
+      }
+      const float scalar = score_int8_float_scalar(
+          int8_row.data(), one_scale[0], query.data());
+      const float avx2 = score_int8_float_avx2(
+          int8_row.data(), one_scale[0], query.data());
+      const float tolerance = std::max(0.02f, std::abs(scalar) * 2e-5f);
+      if (!std::isfinite(avx2) || std::abs(avx2 - scalar) > tolerance)
+        throw std::runtime_error("random/adversarial INT8 AVX2 parity differs");
+    }
+#endif
     const Candidate tie_a{1.0f, 7};
     const Candidate tie_b{1.0f, 8};
     if (!better(tie_a, tie_b) || better(tie_b, tie_a))

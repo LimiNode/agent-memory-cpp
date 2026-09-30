@@ -985,3 +985,18 @@ This is physical payload-serving evidence, not a full THQ scan, cold-cache
 restart test, concurrent update/rebuild test, fresh-quality gate, or codec
 selection. See `2026-09-30-native-mdbx-serving-layout.md` and the two compact
 JSON receipts.
+
+### Audited production-kernel normalization v2 (2026-09-30)
+
+The in-memory THQ/INT8 control was rerun with query preparation and individual
+score/top-k/rerank stages inside the measurement contract. INT8 now accumulates
+in AVX2 registers and the dense THQ path uses a persistent block32 layout. An
+initial pair-LUT implementation was rejected after changing the top-128
+boundary on 2/152 queries; the accepted byte-LUT gather path preserves ordered
+top-128 parity on 152/152. The independent JSONL audit also established
+152/152 AVX2/scalar INT8 ordered top-10 parity, maximum absolute score error
+`1.37091e-6`, and correct code-plus-scale page accounting. Query-median totals
+were 106.403 ms for direct INT8 and 83.717 ms for THQ→INT8. This remains a
+normalized THQ/INT8 control, not a comparison of the frozen codec shortlist or
+a winner claim. See `2026-09-30-native-production-kernel-normalized-v2.md` and
+the v2 audit receipt.
