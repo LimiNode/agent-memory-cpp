@@ -1022,7 +1022,7 @@ into a complete segment sweep or prove crash/concurrent-rebuild semantics.
 
 The frozen top-128 candidate shell was replayed through one native
 THQ4-to-ordered-top10 contract for LSQ32, LSQ48, PLSQ8x6, TQ1, TQ1+secondary,
-RSLM3 and RSLM4. Every arm reproduced ordered top-10 for 152/152 queries;
+RSLM1, RSLM3 and RSLM4. Every arm reproduced ordered top-10 for 152/152 queries;
 compact p50/p95/p99 totals and payload hashes are in
 `2026-09-30-native-matched-finalist-serving-wave.result.json`. The payloads
 were predecoded and the scope remains serving-kernel only: this is matched

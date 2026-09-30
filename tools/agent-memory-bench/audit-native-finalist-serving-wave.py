@@ -23,21 +23,32 @@ def audit(value: dict) -> None:
     require(value.get("candidate_contract") ==
             "frozen R4 candidate stream -> THQ4 top128 -> ordered top10",
             "candidate contract differs")
+    expected_widths = {"lsq32": 32, "lsq48": 48, "plsq8x6": 52,
+                       "turboquant1": 52, "turboquant2": 100,
+                       "rslm1": 52, "rslm3": 148, "rslm4": 196}
     arms = value.get("arms")
     require(isinstance(arms, list) and {a.get("codec") for a in arms} ==
-            {"lsq32", "lsq48", "plsq8x6", "turboquant1", "turboquant2", "rslm3", "rslm4"},
+            set(expected_widths),
             "finalist arm set differs")
+    sources = value.get("source_sha256", {})
+    for name in ("candidate_flat", "candidate_raw", "queries", "thq", "thresholds"):
+        digest = sources.get(name)
+        require(isinstance(digest, str) and len(digest) == 64,
+                f"source hash is invalid: {name}")
     for arm in arms:
+        codec = arm.get("codec")
         require(arm.get("ordered_top10_parity") == "152/152",
-                f"{arm.get('codec')} parity is incomplete")
-        require(int(arm.get("payload_bytes", 0)) > 0,
-                f"{arm.get('codec')} payload width is invalid")
+                f"{codec} parity is incomplete")
+        require(arm.get("payload_bytes") == expected_widths[codec],
+                f"{codec} payload width is invalid")
         for metric in ("total_p50_ms", "total_p95_ms", "total_p99_ms"):
             require(isinstance(arm.get(metric), (int, float)) and arm[metric] >= 0,
-                    f"{arm.get('codec')}.{metric} is invalid")
+                    f"{codec}.{metric} is invalid")
+        require(arm["total_p50_ms"] <= arm["total_p95_ms"] <=
+                arm["total_p99_ms"], f"{codec} percentile order is invalid")
         digest = arm.get("payload_sha256")
         require(isinstance(digest, str) and len(digest) == 64,
-                f"{arm.get('codec')} payload hash is invalid")
+                f"{codec} payload hash is invalid")
 
 
 def self_test() -> None:
@@ -46,17 +57,23 @@ def self_test() -> None:
         "family": "native_matched_finalist_serving_wave_v1",
         "status": "EXECUTED", "query_count": 152,
         "candidate_contract": "frozen R4 candidate stream -> THQ4 top128 -> ordered top10",
+        "source_sha256": {name: "0" * 64 for name in
+                          ("candidate_flat", "candidate_raw", "queries", "thq", "thresholds")},
         "arms": [{"codec": name, "ordered_top10_parity": "152/152",
-                  "payload_bytes": 1, "total_p50_ms": 1,
+                  "payload_bytes": width, "total_p50_ms": 1,
                   "total_p95_ms": 1, "total_p99_ms": 1,
                   "payload_sha256": "0" * 64}
-                 for name in ("lsq32", "lsq48", "plsq8x6", "turboquant1",
-                              "turboquant2", "rslm3", "rslm4")]}
+                 for name, width in {"lsq32": 32, "lsq48": 48,
+                                     "plsq8x6": 52, "turboquant1": 52,
+                                     "turboquant2": 100, "rslm1": 52,
+                                     "rslm3": 148, "rslm4": 196}.items()]}
     audit(baseline)
     for label, mutate in (
         ("missing arm", lambda x: x["arms"].pop()),
         ("false parity", lambda x: x["arms"][0].update(ordered_top10_parity="0/152")),
         ("bad hash", lambda x: x["arms"][1].update(payload_sha256="bad")),
+        ("wrong width", lambda x: x["arms"][2].update(payload_bytes=1)),
+        ("bad percentiles", lambda x: x["arms"][3].update(total_p99_ms=0)),
     ):
         candidate = copy.deepcopy(baseline)
         mutate(candidate)
