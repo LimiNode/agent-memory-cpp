@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "family": "native_full_corpus_production_kernel_control_v1",
+  "status": "EXECUTED_BOUNDED_CONTROL",
+  "corpus_documents": 1000000,
+  "query_count": 152,
+  "warmups": 2,
+  "repeats": 10,
+  "arm_order": "per-query randomized with fixed seed 20260930",
+  "timing_scope": "allocation-free bounded top-k control; page accounting outside timed path",
+  "int8_kernel": "exact float-query AVX2",
+  "environment": {
+    "cpu": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "physical_cores": 18,
+    "logical_processors": 36,
+    "compiler": "CMake Release / MSBuild 17.14.51",
+    "cmake_options": ["AGENT_MEMORY_NEUROUTE_ENABLE_AVX2=ON"],
+    "avx2": true,
+    "thread_policy": "single-thread process; affinity and NUMA placement not pinned"
+  },
+  "query_fixture_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "inputs": {
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "int8_linear_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+    "int8_linear_scales_sha256": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+    "int8_power0625_sha256": "1b70c6e1d7878e056ef97c7c6f2aca2d5d6c768e588f76a270f928da07d9b887",
+    "int8_power0625_scales_sha256": "7111c2836e8fa2a0e0817df6abf8b5bd60c223f5437dc00fcd5d5542920a6686"
+  },
+  "runner_source_sha256": "86383a4e7d53150d5616e4aab2761e298be26d0c3fa497d5489cd8cb0904a66c",
+  "runner_binary_sha256": "4d8779ed63c44c2ee607f1a655f57b66a5ee98328b2ebc5d8802fd25d7f17268",
+  "raw_output": {
+    "path": "build-fidelity/production-152-fixedheap.jsonl",
+    "sha256": "fd585b3edebc3e2f3f19c786c0c14184eb50d66784064aefdc3b63d0aa85b9c9"
+  },
+  "latency_ms": {
+    "direct_top10": {"mean": 235.907, "p50": 234.046, "p95": 250.231, "p99": 272.49},
+    "cascade_top10": {"mean": 92.9262, "p50": 92.0117, "p95": 98.2524, "p99": 107.05}
+  },
+  "page_proxy": {
+    "thq_scan": {"p50": 23438, "p95": 23438, "p99": 23438},
+    "rerank_payload": {"p50": 125, "p95": 133, "p99": 136}
+  },
+  "parity": {
+    "bounded_thq_top128_vs_scalar_control": "152/152 ordered rows",
+    "direct_top1_vs_scalar_control": "152/152",
+    "cascade_top1_vs_scalar_control": "152/152",
+    "direct_vs_cascade_ordered_top10": "152/152"
+  },
+  "interpretation": "bounded production-shaped kernel control; not MDBX serving evidence and not a codec winner claim",
+  "production_activation": false
+}
