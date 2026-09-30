@@ -289,6 +289,21 @@ Physical retrieval execution is specified in
 across heterogeneous embedding spaces are specified in
 [`federated-retrieval-roadmap.md`](federated-retrieval-roadmap.md).
 
+### §8.3. External-index promotion and projection SLO (planned)
+
+An external vector store remains a derived-index adapter and comparison target.
+Promotion for a profile requires evidence for the complete operational envelope,
+not only ANN latency: target scale, quality under declared filters,
+availability/failover, backup/restore, update/delete semantics and operator
+cost must be compared with the embedded baseline.
+
+The minimum receipt records `publication_lag`, `delete_visibility_lag`,
+`stale_hit_rate`, `projection_coverage`, failed updates and retry/backlog depth,
+rebuild recovery time, generation cutover correctness, warm/cold p50/p95/p99,
+encoded bytes, seeks and peak RSS. The gate is workload-specific and
+benchmark-gated; an adapter cannot transfer canonical ownership, revision
+authority or provenance merely by implementing candidate reads.
+
 ## §10. Open questions
 
 1. **Hybrid Search бенчмарки** — конкретные замеры Qdrant vs Milvus vs Weaviate hybrid search на одинаковых условиях в нашем стеке. Playbook не покрывает.

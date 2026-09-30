@@ -1629,6 +1629,28 @@ TemporalFactStore:  Exact (n/a)
 FullResearch:       Exact (BinaryCandidateFilter after benchmark gate)
 ```
 
+### Filter-selectivity planner and preparation gate (planned)
+
+The planner may route a query by measured filtered population and selectivity:
+
+```text
+small filtered population  -> exact search
+medium population          -> benchmarked R4/THQ candidate route
+large population           -> ANN or dense fallback
+```
+
+These are candidate policies, not hard-coded corpus thresholds. A promotion
+run freezes the corpus snapshot, tenant/namespace mix, filter distribution,
+qrels, embedding revision and source-revision hash before tuning ANN probes or
+candidate depth. The report includes a tenant/filter-interference axis so a
+hot tenant, selective filter or concurrent rebuild is not hidden by an
+aggregate average.
+
+Embedding migration is a dual-generation operation: publish the new
+generation, read both generations under an explicit fusion policy, measure
+coverage and lag, then retire the old generation only after parity and rollback
+checks pass.
+
 ### Per-Stack Default Mode: M1 vs M2 Production Candidate
 
 Декомпозиция M1 production defaults и M2 candidate migration:

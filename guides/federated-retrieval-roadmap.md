@@ -61,6 +61,41 @@ Embedding translation is a separate research adapter. It needs a versioned
 translation artifact and held-out quality evidence before changing a space's
 compatibility class.
 
+## Query-local canonical candidate workspace (planned)
+
+After bounded per-space retrieval, a request may materialize a transient
+workspace in RAM:
+
+```text
+selected spaces
+  -> bounded source results
+  -> union/deduplicate by canonical identity
+  -> hydrate revision-checked canonical envelopes
+  -> CandidateWorkspace
+       + optional common dense representation
+       + lexical/metadata feature view
+       + source/rank/score evidence
+  -> common second-stage ranker or secondary retrieval
+  -> canonical top-K
+```
+
+`DirectCandidateRerank` is the planned path for a small contiguous pool;
+`EphemeralIndexedRerank` is for repeated subqueries or a medium pool. Pool
+sizes are benchmark inputs, not normative thresholds. A large or repeatedly
+refilled pool should request more structured source execution or a physical
+merge instead of hiding unbounded work in the workspace.
+
+Do not recompute global BM25 IDF from the biased candidate pool. Use frozen
+corpus statistics, source BM25 as a feature, or label pool-relative scoring as
+a query-conditioned reranker. Candidate recall remains bounded by the source
+union: a second-stage ranker cannot recover a document that no source returned.
+
+The future gate compares RRF, calibrated score fusion, common exact-embedding
+rerank and the transient workspace on the same source union, filters and
+revisions. It reports candidate Recall@K, nDCG@10, MRR, source diversity,
+workspace build cost, p50/p95/p99 latency, peak RAM and source-depth sweeps
+16/32/64/128/256.
+
 ## Bounded fan-out, security and completion
 
 The planned federated executor should select spaces by scope and capability,
