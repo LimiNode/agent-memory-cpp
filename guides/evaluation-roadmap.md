@@ -50,6 +50,14 @@ coverage, citation preservation). Cost fields include build/ingest time,
 query p50/p95/p99, peak RSS/map size, logical and physical index bytes, page
 reads, and update/reindex cost when applicable.
 
+For activation and runtime evidence, report declarative and procedural quality
+separately. `DeclarativeRecall` measures retrieval of required facts and
+preconditions; `ProceduralExecutionSuccess` measures host-side completion and
+verification; `ProcedureTransfer`, `CorrectionReuse` and
+`ProcedureGeneralization` measure transfer, reuse of corrected failures and
+performance outside memorized concrete cases. These metrics never authorize
+execution and do not replace retrieval `Recall@K` or qrels-based `nDCG@10`.
+
 ## Acceptance rules
 
 - Approximate search must report quality against the exact oracle on the same

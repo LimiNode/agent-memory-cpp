@@ -872,6 +872,39 @@ trace episodes
 Memory records proposals and evaluations. Promotion to active procedure is a
 runtime/operator policy decision.
 
+### Procedural evidence and correction traces
+
+Procedure mining consumes an explicit semantic evidence contract rather than
+only a success counter. A `ProcedureEvidenceTrace` is an immutable or
+revisioned record with these fields:
+
+```text
+initial_context, goal, relevant_inputs,
+attempted_action, observed_result, failure_or_effect_class,
+diagnostic_summary, corrective_action, verification_result,
+final_outcome, cost_and_latency_effects, source_trace_refs
+```
+
+The contract does not require persisting model chain-of-thought. A diagnostic
+summary is an externally produced, provenance-bearing explanation or error
+classification. Both successful executions and failed-then-corrected
+executions are eligible evidence; an unverified proposal remains a candidate.
+Failure, rollback and unsuccessful verification are first-class evidence and
+must not be collapsed into a successful outcome.
+
+`ProcedureStatsComponent` is interpreted conditionally: outcome aggregates
+are keyed by procedure version plus validated precondition and capability or
+environment fingerprints. A global `P(success | procedure)` is not assumed
+stationary. The smallest useful stored observation is the fingerprint,
+outcome class, cost, and source trace reference; higher-level aggregates may
+be rebuilt.
+
+An optional `ProcedureTraceExport` may emit canonical traces as JSONL, Parquet
+or an external callback for offline mining, imitation or evaluation. Training
+frameworks, schedulers and executors remain outside the library. Importers
+must preserve identity, sequence, causal links, outcomes, versioning and
+provenance, and must fail closed on an omitted source revision.
+
 Long-running runtime work may persist a problem, procedure state, checkpoint
 and trajectory as durable evidence, while the active LLM session, scheduler and
 executor remain ephemeral host concerns. A resumed run must bind its new
