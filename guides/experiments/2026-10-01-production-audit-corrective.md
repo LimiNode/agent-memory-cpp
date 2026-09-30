@@ -25,3 +25,7 @@ longer-budget rerun is available.
 The MDBX corrective pass also added bounded durable materialization support;
 the corresponding 1M batch sweep and concurrent publication/rebuild test are
 still pending lifecycle gates rather than inferred from the small smoke.
+
+The row layout follows the same split rule as the segment layout: random-access
+rows contain only INT8 code plus scale, while THQ is consumed from its routing
+projection and is not duplicated in the final-code payload.

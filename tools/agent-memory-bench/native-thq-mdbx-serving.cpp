@@ -31,7 +31,6 @@ using Clock = std::chrono::steady_clock;
 constexpr std::size_t kDimension = 384;
 constexpr std::size_t kThqBytes = 96;
 constexpr std::size_t kInt8Bytes = 384;
-constexpr std::size_t kRowBytes = kThqBytes + kInt8Bytes + sizeof(float);
 constexpr std::size_t kFinalRowBytes = kInt8Bytes + sizeof(float);
 constexpr std::size_t kSegmentRows = 4096;
 constexpr std::size_t kMaxCandidates = 128;
@@ -62,13 +61,11 @@ std::string key(std::uint32_t value) { std::string result; write_u32(result, val
 
 struct Row final { std::int8_t code[kInt8Bytes]; float scale; };
 
-std::string packed_row(const std::vector<std::uint8_t>& thq, const std::vector<std::int8_t>& codes,
-                       const std::vector<float>& scales, std::size_t id) {
-  std::string result(kRowBytes, '\0');
-  std::copy_n(reinterpret_cast<const char*>(thq.data() + id * kThqBytes), kThqBytes, result.data());
-  std::copy_n(reinterpret_cast<const char*>(codes.data() + id * kInt8Bytes), kInt8Bytes,
-              result.data() + kThqBytes);
-  std::copy_n(reinterpret_cast<const char*>(scales.data() + id), sizeof(float), result.data() + kThqBytes + kInt8Bytes);
+std::string packed_final_row(const std::vector<std::int8_t>& codes,
+                             const std::vector<float>& scales, std::size_t id) {
+  std::string result(kFinalRowBytes, '\0');
+  std::memcpy(result.data(), codes.data() + id * kInt8Bytes, kInt8Bytes);
+  std::memcpy(result.data() + kInt8Bytes, scales.data() + id, sizeof(float));
   return result;
 }
 
@@ -140,7 +137,7 @@ class Store final {
       auto transaction = connection_->transaction(mdbxc::TransactionMode::WRITABLE);
       if (mode_ == "row") {
         for (std::size_t id = batch_begin; id < batch_end; ++id)
-          table_->insert_or_assign(key(static_cast<std::uint32_t>(id)), packed_row(thq, codes, scales, id), transaction);
+          table_->insert_or_assign(key(static_cast<std::uint32_t>(id)), packed_final_row(codes, scales, id), transaction);
       } else if (mode_ == "segment") {
         const auto first_segment = batch_begin / segment_rows_;
         const auto last_segment = (batch_end + segment_rows_ - 1) / segment_rows_;
@@ -172,9 +169,9 @@ class Store final {
       for (std::size_t index = 0; index < count; ++index) {
         const auto id = ids[index];
         const auto payload = table_->find(key(id), transaction);
-        if (!payload || payload->size() != kRowBytes) throw std::runtime_error("row payload missing or malformed");
-        std::memcpy(rows[index].code, payload->data() + kThqBytes, kInt8Bytes);
-        std::memcpy(&rows[index].scale, payload->data() + kThqBytes + kInt8Bytes, sizeof(float));
+        if (!payload || payload->size() != kFinalRowBytes) throw std::runtime_error("row payload missing or malformed");
+        std::memcpy(rows[index].code, payload->data(), kInt8Bytes);
+        std::memcpy(&rows[index].scale, payload->data() + kInt8Bytes, sizeof(float));
       }
     } else {
       struct SegmentCache final { std::uint32_t id = 0; std::string payload; };
