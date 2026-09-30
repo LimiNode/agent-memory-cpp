@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "family": "native_thq_mdbx_lifecycle_smoke_v1",
+  "status": "PASS",
+  "checks": [
+    "committed update is visible to a later read snapshot",
+    "tombstone value is preserved and observable for fail-closed filtering",
+    "new generation is published by one committed active-generation switch"
+  ],
+  "scope": "bounded lifecycle smoke; not a concurrent-writer stress test or crash-recovery proof"
+}

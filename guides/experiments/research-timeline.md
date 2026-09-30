@@ -970,3 +970,18 @@ by INT8 top-10.  These are still bounded in-memory kernel measurements: ten
 timed repeats after two warmups, no pinned NUMA/affinity, no MDBX, no cold/restart or write lifecycle,
 and no fresh qrels.  They are not a codec ranking or production selection.
 See `2026-09-30-native-production-kernel-control.md` and its compact result.
+
+### Physical MDBX serving layout gate (2026-09-30)
+
+The first persisted-serving bakeoff used the same frozen 1M THQ4/INT8 payload
+and 152-query candidate fixture. A row-per-document MDBX table took 308.345 s
+to materialize and occupied 553,648,128 bytes; a 4,096-row segment/blob table
+took 1.795 s and occupied 486,539,264 bytes. On sparse 128-candidate payload
+reads, row KV measured 0.329/0.886/1.125 ms warm p50/p95/p99, while the segment
+layout measured 136.977/163.316/185.366 ms. Both layouts reproduced the
+ordered top-10 for all 152 queries. A separate lifecycle smoke passed update
+visibility, tombstone preservation, and committed generation publication.
+This is physical payload-serving evidence, not a full THQ scan, cold-cache
+restart test, concurrent update/rebuild test, fresh-quality gate, or codec
+selection. See `2026-09-30-native-mdbx-serving-layout.md` and the two compact
+JSON receipts.

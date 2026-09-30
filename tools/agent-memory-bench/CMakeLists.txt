@@ -393,6 +393,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             agent_memory::json
             mdbx_containers::mdbx_containers
     )
+    add_executable(agent-memory-native-thq-mdbx-serving
+        native-thq-mdbx-serving.cpp
+    )
+    agent_memory_set_evaluator_source_manifest(agent-memory-native-thq-mdbx-serving
+        "${CMAKE_CURRENT_SOURCE_DIR}/native-thq-mdbx-serving.cpp"
+    )
+    agent_memory_set_evaluator_build_environment(agent-memory-native-thq-mdbx-serving)
+    target_link_libraries(agent-memory-native-thq-mdbx-serving
+        PRIVATE
+            mdbx_containers::mdbx_containers
+    )
 endif()
 
 add_executable(agent-memory-neuroute-exact-e5-rerank
