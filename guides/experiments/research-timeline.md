@@ -1043,3 +1043,10 @@ bounded fixed arrays and insertion top-k; the independent fail-closed receipt
 auditor replays raw timing samples and the expected-ID checksum. This closes
 the bounded physical segment-size gate, but not cold-cache/recovery, concurrent
 update/rebuild, full routing, or fresh-quality gates.
+
+On 2026-10-01, the compact-code MDBX materializer was exercised across
+1,024-1,000,000 document batches on a synthetic 1M payload. Durable commits
+decreased from 977 to 1 while the 402,653,184-byte footprint stayed constant;
+this is materialization evidence only and does not claim publication or query
+quality. The consolidated cross-stage status is in
+[`codec-evaluation-report.md`](codec-evaluation-report.md).

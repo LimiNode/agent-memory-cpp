@@ -27,9 +27,10 @@ The external raw receipt is SHA-256
 its 760 timing samples per profile are replayed by the independent auditor,
 including percentile and expected-ID checksum recomputation.
 
-The sweep answers the physical segment-size trade-off only. The segment
-projection is split and stores only the final INT8 code plus scale; the row
-profile remains the mixed-format comparison baseline. Decode/training, full THQ routing, cold-cache eviction,
+The sweep answers the physical segment-size trade-off only. Both row and
+segment projections now store only the final INT8 code plus scale (388 bytes
+per logical row); THQ remains a separate routing/index input rather than being
+duplicated in the final-code payload. Decode/training, full THQ routing, cold-cache eviction,
 crash recovery, concurrent update/rebuild and fresh qrels remain separate
 gates. The results therefore do not select a codec or establish a production
 latency threshold. The compact receipt is committed as
