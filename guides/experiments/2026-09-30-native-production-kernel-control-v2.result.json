@@ -5,6 +5,33 @@
   "rows": 152,
   "warmups": 2,
   "repeats": 10,
+  "tolerance_contract": {
+    "max_abs_score_error": 0.02,
+    "max_relative_score_error": 0.00002
+  },
+  "environment": {
+    "cpu": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "physical_cores": 18,
+    "logical_processors": 36,
+    "compiler": "GCC",
+    "compiler_version": "15.2.0",
+    "language": "C++17",
+    "optimization": "Release (-O3 -DNDEBUG)",
+    "simd_flags": ["AVX2"],
+    "avx2": true,
+    "threads": 1,
+    "affinity": "unpinned",
+    "numa": "unpinned",
+    "power_policy": "uncontrolled"
+  },
+  "run_config": {
+    "source_commit": "381abff",
+    "expected_manifest": "2026-09-29-fresh-evaluation-arm-manifest.json",
+    "query_count": 152,
+    "warmups": 2,
+    "repeats": 10,
+    "seed": 20260930
+  },
   "parity": {
     "thq_block32_vs_unrolled": "152/152 ordered top-128 rows",
     "int8_avx2_vs_scalar": "152/152 ordered top-10 rows",
@@ -127,7 +154,7 @@
     "raw_jsonl": "5d92a90891552ea9c384089c6e5e8556ded1c6c97efc78aafa24e882b793ee34",
     "summary_json": "f400e6a566c862aeabcbefcb0974aa61141bf094a72718dc33df65746b362d3a",
     "runner_source": "731edafd7acfd1d35f11f142c86c74921ba68bf1a9964af291dc23c216716a0a",
-    "audit_source": "72975879ccd53137b13041d0cce0a988abd0110f43a8dabee40cbd08960c7807",
+    "audit_source": "4aaf9816c76069806602604e53c85309e6af73583028e0d67779fb4d09b6640b",
     "runner_binary": "249dfee641cb9af16cdddcee82cb6ac1bf838f4654e2613b14c6834e19f91096",
     "query_fixture": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
     "thq4_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
@@ -135,7 +162,9 @@
     "int8_linear": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
     "int8_linear_scales": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
     "int8_power0625": "1b70c6e1d7878e056ef97c7c6f2aca2d5d6c768e588f76a270f928da07d9b887",
-    "int8_power0625_scales": "7111c2836e8fa2a0e0817df6abf8b5bd60c223f5437dc00fcd5d5542920a6686"
+    "int8_power0625_scales": "7111c2836e8fa2a0e0817df6abf8b5bd60c223f5437dc00fcd5d5542920a6686",
+    "expected_manifest": "67db2a6ebb02a033887d1b0dcfe9b541087b4f2f7d94b98178cca20a95469ce2",
+    "audited_receipt": "595341d89f9e1b437b1da889b527e92e109e3764f2cf9866279821bba29b413e"
   },
   "interpretation": "normalized in-memory kernel evidence only; no codec winner or MDBX serving claim",
   "production_activation": false

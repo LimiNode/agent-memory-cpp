@@ -14,6 +14,7 @@
 #include <array>
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -23,8 +24,6 @@
 #include <random>
 #include <stdexcept>
 #include <string>
-#include <unordered_map>
-#include <unordered_set>
 #include <vector>
 
 namespace {
@@ -33,7 +32,10 @@ constexpr std::size_t kDimension = 384;
 constexpr std::size_t kThqBytes = 96;
 constexpr std::size_t kInt8Bytes = 384;
 constexpr std::size_t kRowBytes = kThqBytes + kInt8Bytes + sizeof(float);
+constexpr std::size_t kFinalRowBytes = kInt8Bytes + sizeof(float);
 constexpr std::size_t kSegmentRows = 4096;
+constexpr std::size_t kMaxCandidates = 128;
+constexpr std::size_t kTopK = 10;
 
 template <class T> std::vector<T> read_binary(const std::filesystem::path& path) {
   std::ifstream stream(path, std::ios::binary | std::ios::ate);
@@ -70,26 +72,41 @@ std::string packed_row(const std::vector<std::uint8_t>& thq, const std::vector<s
   return result;
 }
 
-std::vector<std::uint32_t> top10(const float* query, const std::vector<std::uint32_t>& ids,
-                                 const std::unordered_map<std::uint32_t, Row>& rows) {
-  struct Score { float value; std::uint32_t id; };
-  std::vector<Score> scores;
-  scores.reserve(ids.size());
-  for (const auto id : ids) {
-    const auto it = rows.find(id);
-    if (it == rows.end()) throw std::runtime_error("missing payload row");
+struct ScoredId final { float value; std::uint32_t id; };
+
+std::size_t score_candidates(const float* query, const std::uint32_t* ids,
+                             std::size_t count,
+                             const std::array<Row, kMaxCandidates>& rows,
+                             std::array<ScoredId, kMaxCandidates>& scores) {
+  for (std::size_t index = 0; index < count; ++index) {
     float score = 0.0F;
     for (std::size_t dimension = 0; dimension < kDimension; ++dimension)
-      score += query[dimension] * static_cast<float>(it->second.code[dimension]);
-    scores.push_back({score * it->second.scale, id});
+      score += query[dimension] * static_cast<float>(rows[index].code[dimension]);
+    scores[index] = {score * rows[index].scale, ids[index]};
   }
-  std::sort(scores.begin(), scores.end(), [](const Score& left, const Score& right) {
-    if (left.value != right.value) return left.value > right.value;
-    return left.id < right.id;
-  });
-  if (scores.size() > 10) scores.resize(10);
-  std::vector<std::uint32_t> result;
-  for (const auto score : scores) result.push_back(score.id);
+  return count;
+}
+
+std::array<ScoredId, kTopK> select_top10(const std::array<ScoredId, kMaxCandidates>& scores,
+                                         std::size_t count) {
+  std::array<ScoredId, kTopK> result{};
+  std::size_t result_count = 0;
+  for (std::size_t index = 0; index < count; ++index) {
+    const auto candidate = scores[index];
+    std::size_t position = result_count;
+    if (position < kTopK) ++result_count;
+    else if (candidate.value < result[kTopK - 1].value ||
+             (candidate.value == result[kTopK - 1].value && candidate.id >= result[kTopK - 1].id))
+      continue;
+    if (position > kTopK - 1) position = kTopK - 1;
+    while (position > 0 &&
+           (candidate.value > result[position - 1].value ||
+            (candidate.value == result[position - 1].value && candidate.id < result[position - 1].id))) {
+      result[position] = result[position - 1];
+      --position;
+    }
+    result[position] = candidate;
+  }
   return result;
 }
 
@@ -110,72 +127,103 @@ class Store final {
   }
 
   void materialize(const std::vector<std::uint8_t>& thq, const std::vector<std::int8_t>& codes,
-                   const std::vector<float>& scales, std::size_t documents) {
+                   const std::vector<float>& scales, std::size_t documents,
+                   std::size_t batch_documents = 0) {
     if (thq.size() != documents * kThqBytes || codes.size() != documents * kInt8Bytes || scales.size() != documents)
       throw std::runtime_error("materialization input shape differs");
-    auto transaction = connection_->transaction(mdbxc::TransactionMode::WRITABLE);
-    if (mode_ == "row") {
-      for (std::size_t id = 0; id < documents; ++id)
-        table_->insert_or_assign(key(static_cast<std::uint32_t>(id)), packed_row(thq, codes, scales, id), transaction);
-    } else if (mode_ == "segment") {
-      for (std::size_t segment = 0; segment * segment_rows_ < documents; ++segment) {
-        const auto begin = segment * segment_rows_;
-        const auto end = std::min(documents, begin + segment_rows_);
-        std::string payload((end - begin) * kRowBytes, '\0');
-        for (std::size_t id = begin; id < end; ++id) {
-          const auto row = packed_row(thq, codes, scales, id);
-          std::copy(row.begin(), row.end(), payload.begin() + (id - begin) * kRowBytes);
+    if (batch_documents == 0) batch_documents = documents;
+    if (mode_ == "segment" && batch_documents % segment_rows_ != 0 && batch_documents < documents)
+      throw std::runtime_error("segment batch must align to segment_rows");
+    std::size_t durable_commits = 0;
+    for (std::size_t batch_begin = 0; batch_begin < documents; batch_begin += batch_documents) {
+      const auto batch_end = std::min(documents, batch_begin + batch_documents);
+      auto transaction = connection_->transaction(mdbxc::TransactionMode::WRITABLE);
+      if (mode_ == "row") {
+        for (std::size_t id = batch_begin; id < batch_end; ++id)
+          table_->insert_or_assign(key(static_cast<std::uint32_t>(id)), packed_row(thq, codes, scales, id), transaction);
+      } else if (mode_ == "segment") {
+        const auto first_segment = batch_begin / segment_rows_;
+        const auto last_segment = (batch_end + segment_rows_ - 1) / segment_rows_;
+        for (std::size_t segment = first_segment; segment < last_segment; ++segment) {
+          const auto begin = segment * segment_rows_;
+          const auto end = std::min(documents, begin + segment_rows_);
+          std::string payload((end - begin) * kFinalRowBytes, '\0');
+          for (std::size_t id = begin; id < end; ++id)
+            std::memcpy(payload.data() + (id - begin) * kFinalRowBytes,
+                        codes.data() + id * kInt8Bytes, kInt8Bytes);
+          for (std::size_t id = begin; id < end; ++id)
+            std::memcpy(payload.data() + (id - begin) * kFinalRowBytes + kInt8Bytes,
+                        scales.data() + id, sizeof(float));
+          table_->insert_or_assign(key(static_cast<std::uint32_t>(segment)), payload, transaction);
         }
-        table_->insert_or_assign(key(static_cast<std::uint32_t>(segment)), payload, transaction);
-      }
-    } else throw std::runtime_error("mode must be row or segment");
-    transaction.commit();
+      } else throw std::runtime_error("mode must be row or segment");
+      transaction.commit();
+      ++durable_commits;
+    }
+    durable_commits_ = durable_commits;
   }
 
-  template <class Callback> void read_rows(const std::vector<std::uint32_t>& ids, Callback&& callback) const {
+  template <class Callback> void read_rows(const std::uint32_t* ids, std::size_t count,
+                                           Callback&& callback) const {
+    if (count == 0 || count > kMaxCandidates) throw std::runtime_error("candidate count differs");
     auto transaction = connection_->transaction(mdbxc::TransactionMode::READ_ONLY);
-    std::unordered_map<std::uint32_t, Row> rows;
-    rows.reserve(ids.size());
+    std::array<Row, kMaxCandidates> rows{};
     if (mode_ == "row") {
-      for (const auto id : ids) {
+      for (std::size_t index = 0; index < count; ++index) {
+        const auto id = ids[index];
         const auto payload = table_->find(key(id), transaction);
         if (!payload || payload->size() != kRowBytes) throw std::runtime_error("row payload missing or malformed");
-        Row row{};
-        std::copy_n(reinterpret_cast<const std::int8_t*>(payload->data() + kThqBytes), kInt8Bytes, row.code);
-        std::copy_n(reinterpret_cast<const char*>(payload->data() + kThqBytes + kInt8Bytes), sizeof(float), reinterpret_cast<char*>(&row.scale));
-        rows.emplace(id, row);
+        std::memcpy(rows[index].code, payload->data() + kThqBytes, kInt8Bytes);
+        std::memcpy(&rows[index].scale, payload->data() + kThqBytes + kInt8Bytes, sizeof(float));
       }
     } else {
-      std::unordered_map<std::uint32_t, std::string> segments;
-      for (const auto id : ids) {
+      struct SegmentCache final { std::uint32_t id = 0; std::string payload; };
+      std::array<SegmentCache, kMaxCandidates> segments{};
+      std::size_t segment_count = 0;
+      for (std::size_t index = 0; index < count; ++index) {
+        const auto id = ids[index];
         const auto segment = id / static_cast<std::uint32_t>(segment_rows_);
-        if (segments.find(segment) == segments.end()) {
+        std::size_t cache_index = 0;
+        while (cache_index < segment_count && segments[cache_index].id != segment) ++cache_index;
+        if (cache_index == segment_count) {
           const auto payload = table_->find(key(segment), transaction);
-          if (!payload || payload->size() % kRowBytes != 0) throw std::runtime_error("segment payload missing or malformed");
-          segments.emplace(segment, *payload);
+          if (!payload || payload->size() % kFinalRowBytes != 0) throw std::runtime_error("segment payload missing or malformed");
+          if (segment_count == segments.size()) throw std::runtime_error("segment cache is full");
+          segments[segment_count].id = segment;
+          segments[segment_count].payload = std::move(*payload);
+          cache_index = segment_count++;
         }
-        const auto& payload = segments.at(segment);
-        const auto offset = (id % segment_rows_) * kRowBytes;
-        if (offset + kRowBytes > payload.size()) throw std::runtime_error("segment row offset differs");
-        Row row{};
-        std::copy_n(reinterpret_cast<const std::int8_t*>(payload.data() + offset + kThqBytes), kInt8Bytes, row.code);
-        std::copy_n(reinterpret_cast<const char*>(payload.data() + offset + kThqBytes + kInt8Bytes), sizeof(float), reinterpret_cast<char*>(&row.scale));
-        rows.emplace(id, row);
+        const auto& payload = segments[cache_index].payload;
+        const auto offset = (id % segment_rows_) * kFinalRowBytes;
+        if (offset + kFinalRowBytes > payload.size()) throw std::runtime_error("segment row offset differs");
+        std::memcpy(rows[index].code, payload.data() + offset, kInt8Bytes);
+        std::memcpy(&rows[index].scale, payload.data() + offset + kInt8Bytes, sizeof(float));
       }
     }
-    callback(rows);
+    callback(ids, count, rows);
     transaction.commit();
   }
 
   std::size_t bytes() const { return static_cast<std::size_t>(std::filesystem::file_size(path_)); }
+  std::size_t durable_commits() const { return durable_commits_; }
 
  private:
   std::filesystem::path path_;
   std::string mode_;
   std::size_t segment_rows_;
+  std::size_t durable_commits_ = 0;
   std::shared_ptr<mdbxc::Connection> connection_;
   std::unique_ptr<mdbxc::KeyValueTable<std::string, std::string>> table_;
 };
+
+void emit_samples(const std::vector<double>& values) {
+  std::cout << '[';
+  for (std::size_t index = 0; index < values.size(); ++index) {
+    if (index != 0) std::cout << ',';
+    std::cout << values[index];
+  }
+  std::cout << ']';
+}
 
 double percentile(std::vector<double> values, double p) {
   if (values.empty()) return 0.0;
@@ -202,22 +250,25 @@ void lifecycle_smoke(const std::filesystem::path& path) {
 int main(int argc, char** argv) {
   try {
     if (argc == 3 && std::string(argv[1]) == "--lifecycle-smoke") { lifecycle_smoke(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
-    if ((argc == 8 || argc == 9) && std::string(argv[1]) == "--materialize") {
+    if ((argc >= 8 && argc <= 10) && std::string(argv[1]) == "--materialize") {
       const std::string mode = argv[2];
       const std::filesystem::path db = argv[3];
       const auto thq = read_binary<std::uint8_t>(argv[4]);
       const auto codes = read_binary<std::int8_t>(argv[5]);
       const auto scales = read_binary<float>(argv[6]);
       const auto documents = static_cast<std::size_t>(std::stoull(argv[7]));
-      const auto segment_rows = argc == 9 ? static_cast<std::size_t>(std::stoull(argv[8])) : kSegmentRows;
+      const auto segment_rows = argc >= 9 ? static_cast<std::size_t>(std::stoull(argv[8])) : kSegmentRows;
+      const auto batch_documents = argc == 10 ? static_cast<std::size_t>(std::stoull(argv[9])) : 0;
       Store store(db, mode, true, segment_rows);
       const auto begin = Clock::now();
-      store.materialize(thq, codes, scales, documents);
+      store.materialize(thq, codes, scales, documents, batch_documents);
       const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
       std::cout << std::fixed << std::setprecision(3) << "{\"status\":\"MATERIALIZED\",\"mode\":\""
                 << mode << "\",\"documents\":" << documents << ",\"segment_rows\":" << segment_rows
                 << ",\"db_bytes\":" << store.bytes()
-                << ",\"materialize_ms\":" << elapsed << "}\n";
+                << ",\"materialize_ms\":" << elapsed << ",\"batch_documents\":"
+                << (batch_documents == 0 ? documents : batch_documents)
+                << ",\"durable_commits\":" << store.durable_commits() << "}\n";
       return 0;
     }
     if (argc < 10 || std::string(argv[1]) != "--benchmark") {
@@ -241,23 +292,43 @@ int main(int argc, char** argv) {
     Store store(db, mode, false, segment_rows);
     const auto first_start = Clock::now();
     std::size_t parity = 0;
-    store.read_rows(std::vector<std::uint32_t>(candidates.begin(), candidates.begin() + 128), [&](const auto&) {});
+    store.read_rows(candidates.data(), 128, [&](const auto*, std::size_t, const auto&) {});
     const double reopen_ms = std::chrono::duration<double, std::milli>(Clock::now() - first_start).count();
     std::vector<double> timings; timings.reserve(query_count * repeats);
+    std::vector<double> read_timings; read_timings.reserve(query_count * repeats);
+    std::vector<double> score_timings; score_timings.reserve(query_count * repeats);
+    std::vector<double> topk_timings; topk_timings.reserve(query_count * repeats);
     std::uint64_t checksum = 0;
     for (std::size_t repeat = 0; repeat < repeats; ++repeat) for (std::size_t query = 0; query < query_count; ++query) {
-      std::vector<std::uint32_t> ids(candidates.begin() + query * 128, candidates.begin() + (query + 1) * 128);
+      const auto* ids = candidates.data() + query * 128;
       const auto begin = Clock::now();
-      store.read_rows(ids, [&](const auto& rows) {
-        const auto result = top10(queries.data() + query * kDimension, ids, rows);
-        for (std::size_t index = 0; index < result.size(); ++index) checksum = checksum * 1315423911ULL + result[index];
+      double read_ms = 0.0;
+      double score_ms = 0.0;
+      double topk_ms = 0.0;
+      store.read_rows(ids, 128, [&](const auto* selected_ids, std::size_t count, const auto& rows) {
+        const auto score_begin = Clock::now();
+        std::array<ScoredId, kMaxCandidates> scores{};
+        const auto scored = score_candidates(queries.data() + query * kDimension,
+                                              selected_ids, count, rows, scores);
+        const auto score_end = Clock::now();
+        const auto result = select_top10(scores, scored);
+        const auto topk_end = Clock::now();
+        score_ms = std::chrono::duration<double, std::milli>(score_end - score_begin).count();
+        topk_ms = std::chrono::duration<double, std::milli>(topk_end - score_end).count();
+        for (std::size_t index = 0; index < kTopK; ++index) checksum = checksum * 1315423911ULL + result[index].id;
         if (repeat == 0) {
-          bool same = result.size() == 10;
-          for (std::size_t index = 0; same && index < result.size(); ++index) same = result[index] == expected[query * 10 + index];
+          bool same = true;
+          for (std::size_t index = 0; same && index < kTopK; ++index) same = result[index].id == expected[query * 10 + index];
           if (same) ++parity;
         }
       });
-      timings.push_back(std::chrono::duration<double, std::milli>(Clock::now() - begin).count());
+      const auto end = Clock::now();
+      const auto total_ms = std::chrono::duration<double, std::milli>(end - begin).count();
+      timings.push_back(total_ms);
+      score_timings.push_back(score_ms);
+      topk_timings.push_back(topk_ms);
+      read_ms = std::max(0.0, total_ms - score_ms - topk_ms);
+      read_timings.push_back(read_ms);
     }
     std::cout << std::fixed << std::setprecision(6)
               << "{\"status\":\"EXECUTED\",\"mode\":\"" << mode << "\",\"documents\":" << documents
@@ -265,8 +336,19 @@ int main(int argc, char** argv) {
               << ",\"repeats\":" << repeats << ",\"db_bytes\":" << store.bytes()
               << ",\"reopen_first_query_ms\":" << reopen_ms << ",\"p50_ms\":" << percentile(timings, .5)
               << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99)
+              << ",\"read_decode_p50_ms\":" << percentile(read_timings, .5)
+              << ",\"read_decode_p95_ms\":" << percentile(read_timings, .95)
+              << ",\"read_decode_p99_ms\":" << percentile(read_timings, .99)
+              << ",\"score_p50_ms\":" << percentile(score_timings, .5)
+              << ",\"score_p95_ms\":" << percentile(score_timings, .95)
+              << ",\"score_p99_ms\":" << percentile(score_timings, .99)
+              << ",\"topk_p50_ms\":" << percentile(topk_timings, .5)
+              << ",\"topk_p95_ms\":" << percentile(topk_timings, .95)
+              << ",\"topk_p99_ms\":" << percentile(topk_timings, .99)
               << ",\"parity\":" << parity << ",\"parity_total\":" << query_count
-              << ",\"checksum\":" << checksum << "}\n";
+              << ",\"checksum\":" << checksum << ",\"samples_ms\":";
+    emit_samples(timings);
+    std::cout << "}\n";
     return parity == query_count ? 0 : 5;
   } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; }
 }

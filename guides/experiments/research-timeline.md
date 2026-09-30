@@ -1035,10 +1035,11 @@ order-preserving big-endian integer keys. A sweep harness covers 16, 32, 64,
 128, 256, 512, 1024 and 4096 rows per segment, with compact machine-readable
 receipts and parity checks. The completed 1M-document run materialized all
 eight profiles and reproduced ordered top-10 parity for 152/152 queries in
-each profile. Warm p50 ranged from 0.998 ms (16 rows) through 135.2274 ms
-(4096 rows); p95 ranged from 1.7662 ms through 154.7272 ms. Materialization
-fell from 19,877.888 ms to 1,787.445 ms, while the file footprint stabilized
-at 486,539,264 bytes from 128 rows onward. The independent fail-closed receipt
-auditor and its self-test are now part of the CTest suite. This closes the
-bounded physical segment-size gate, but not cold-cache/recovery, concurrent
+each profile. Warm p50 ranged from 0.8758 ms (16 rows) through 113.55 ms
+(4096 rows); p95 ranged from 1.6561 ms through 142.1197 ms. Materialization
+fell from 19,516.215 ms to 1,453.676 ms, while the split final-code projection
+occupied 402,653,184 bytes for every segment size. The timed reader uses
+bounded fixed arrays and insertion top-k; the independent fail-closed receipt
+auditor replays raw timing samples and the expected-ID checksum. This closes
+the bounded physical segment-size gate, but not cold-cache/recovery, concurrent
 update/rebuild, full routing, or fresh-quality gates.
