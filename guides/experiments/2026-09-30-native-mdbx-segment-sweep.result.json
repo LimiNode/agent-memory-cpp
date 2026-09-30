@@ -16,17 +16,19 @@
     "expected": "1dbc3f7dd2185987767c907aa7a6ca0ea0f5d704c73ce56ff96694121aae2dda"
   },
   "rows": [
-    {"segment_rows": 16, "materialize_ms": 19516.215, "db_bytes": 402653184, "p50_ms": 0.8758, "p95_ms": 1.6561, "p99_ms": 2.0174, "reopen_first_query_ms": 2.6758, "parity": "152/152"},
-    {"segment_rows": 32, "materialize_ms": 10473.956, "db_bytes": 402653184, "p50_ms": 1.2556, "p95_ms": 2.2152, "p99_ms": 2.5298, "reopen_first_query_ms": 3.0771, "parity": "152/152"},
-    {"segment_rows": 64, "materialize_ms": 5981.152, "db_bytes": 402653184, "p50_ms": 1.5917, "p95_ms": 4.4835, "p99_ms": 5.2384, "reopen_first_query_ms": 5.394, "parity": "152/152"},
-    {"segment_rows": 128, "materialize_ms": 3768.009, "db_bytes": 402653184, "p50_ms": 3.9749, "p95_ms": 7.4267, "p99_ms": 9.1237, "reopen_first_query_ms": 9.9045, "parity": "152/152"},
-    {"segment_rows": 256, "materialize_ms": 2559.099, "db_bytes": 402653184, "p50_ms": 8.1424, "p95_ms": 12.4888, "p99_ms": 15.9731, "reopen_first_query_ms": 18.9958, "parity": "152/152"},
-    {"segment_rows": 512, "materialize_ms": 1890.503, "db_bytes": 402653184, "p50_ms": 16.6245, "p95_ms": 20.9217, "p99_ms": 26.0936, "reopen_first_query_ms": 33.2785, "parity": "152/152"},
-    {"segment_rows": 1024, "materialize_ms": 1655.578, "db_bytes": 402653184, "p50_ms": 29.1617, "p95_ms": 37.4689, "p99_ms": 46.219, "reopen_first_query_ms": 55.7764, "parity": "152/152"},
-    {"segment_rows": 4096, "materialize_ms": 1453.676, "db_bytes": 402653184, "p50_ms": 113.55, "p95_ms": 142.1197, "p99_ms": 155.0576, "reopen_first_query_ms": 182.1636, "parity": "152/152"}
+    {"segment_rows": 16, "materialize_ms": 19516.215, "db_bytes": 402653184, "p50_ms": 0.9155, "p95_ms": 1.5765, "p99_ms": 1.8933, "reopen_first_query_ms": 2.6817, "parity": "152/152"},
+    {"segment_rows": 32, "materialize_ms": 10473.956, "db_bytes": 402653184, "p50_ms": 1.2660, "p95_ms": 2.4578, "p99_ms": 3.0936, "reopen_first_query_ms": 4.1821, "parity": "152/152"},
+    {"segment_rows": 64, "materialize_ms": 5981.152, "db_bytes": 402653184, "p50_ms": 1.5618, "p95_ms": 4.4750, "p99_ms": 5.3903, "reopen_first_query_ms": 5.7457, "parity": "152/152"},
+    {"segment_rows": 128, "materialize_ms": 3768.009, "db_bytes": 402653184, "p50_ms": 4.2209, "p95_ms": 7.4977, "p99_ms": 9.0137, "reopen_first_query_ms": 9.6967, "parity": "152/152"},
+    {"segment_rows": 256, "materialize_ms": 2559.099, "db_bytes": 402653184, "p50_ms": 8.6213, "p95_ms": 12.4385, "p99_ms": 15.3197, "reopen_first_query_ms": 16.8557, "parity": "152/152"},
+    {"segment_rows": 512, "materialize_ms": 1890.503, "db_bytes": 402653184, "p50_ms": 16.2234, "p95_ms": 20.6380, "p99_ms": 25.8707, "reopen_first_query_ms": 30.6953, "parity": "152/152"},
+    {"segment_rows": 1024, "materialize_ms": 1655.578, "db_bytes": 402653184, "p50_ms": 27.9224, "p95_ms": 34.5709, "p99_ms": 41.0736, "reopen_first_query_ms": 57.0882, "parity": "152/152"},
+    {"segment_rows": 4096, "materialize_ms": 1453.676, "db_bytes": 402653184, "p50_ms": 113.6379, "p95_ms": 148.1682, "p99_ms": 167.026, "reopen_first_query_ms": 214.6662, "parity": "152/152"}
   ],
-  "source_receipt": "build-fidelity/mdbx-layout-sweep-v2/native-mdbx-segment-sweep.result.json",
-  "source_receipt_sha256": "7df6185d2cbfabc00a6c0bd254a23fa9293fc74cfdb7bc6cfa41033119f5deaf9",
-  "audit_source_sha256": "63306923ca56a5c0589284aa488ac989b78e08ee7e06bda0dbb68e44f0c72107",
-  "raw_timing_samples": "760 per segment profile; independently replayed by audit-native-mdbx-layout-sweep.py"
+  "source_receipt": "build-fidelity/mdbx-layout-sweep-v3/native-mdbx-segment-sweep.result.json",
+  "source_receipt_sha256": "876ed42e41c9f506be6a1e2cbb4d37a39017a58e2e411c5692bbe22e6995ba03",
+  "audit_source_sha256": "093f047759726cc37379c9b8d9afd03734daa4bd64d40a529b03aad9a5bb830c",
+  "raw_timing_samples": "760 per segment profile; independently replayed by audit-native-mdbx-layout-sweep.py",
+  "materialize_timing_provenance": "historical_pre_native_rekey; serving_and_reopen_rerun_native_key; do_not_use_for_native_build_rate",
+  "key_contract": "uint32_t MDBX_INTEGERKEY; old split payloads re-keyed from legacy big-endian strings and parity-replayed"
 }

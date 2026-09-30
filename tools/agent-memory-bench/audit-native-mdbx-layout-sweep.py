@@ -44,6 +44,10 @@ def audit(value: dict, expected_values: list[int] | None = None) -> None:
     require(value.get("documents") == 1_000_000, "document count differs")
     require(tuple(value.get("segment_rows", ())) == EXPECTED_SEGMENTS,
             "segment sweep set differs")
+    provenance = value.get("materialize_timing_provenance")
+    require(provenance in ("measured_by_current_executable",
+                           "historical_pre_native_rekey; serving_and_reopen_rerun_native_key; do_not_use_for_native_build_rate"),
+            "materialization timing provenance is missing or unsupported")
     hashes = value.get("inputs_sha256", {})
     for name in ("thq", "codes", "scales", "queries", "candidates", "expected"):
         digest = hashes.get(name)
@@ -107,6 +111,7 @@ def self_test() -> None:
         "status": "EXECUTED",
         "documents": 1_000_000,
         "segment_rows": list(EXPECTED_SEGMENTS),
+        "materialize_timing_provenance": "measured_by_current_executable",
         "inputs_sha256": {name: "0" * 64 for name in
                            ("thq", "codes", "scales", "queries", "candidates", "expected")},
         "rows": [{
