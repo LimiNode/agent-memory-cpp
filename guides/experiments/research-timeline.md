@@ -1000,3 +1000,20 @@ were 106.403 ms for direct INT8 and 83.717 ms for THQ→INT8. This remains a
 normalized THQ/INT8 control, not a comparison of the frozen codec shortlist or
 a winner claim. See `2026-09-30-native-production-kernel-normalized-v2.md` and
 the v2 audit receipt.
+
+### Corrective evidence pass (2026-09-30)
+
+The production-kernel audit now has a fail-closed synthetic fixture: malformed
+query order, duplicate IDs, short THQ top-128, false parity, and broken stage
+totals are each rejected. The receipt records a predeclared score-error
+tolerance contract and machine-readable environment/run configuration; an
+optional frozen-manifest check binds known THQ, threshold and query hashes.
+The C++ self-test additionally packs 37 synthetic THQ documents into a padded
+block32 layout and compares every logical score with the doc-major unrolled
+scorer, keeping the padded tail outside the logical count.
+
+The historical MDBX layout receipt remains reference-grade. An independent
+receipt auditor and the MDBX lifecycle smoke are now registered in CTest, and
+the CI MDBX benchmark job builds and runs the lifecycle target. This improves
+coverage and provenance but does not retroactively turn the 4,096-row layout
+into a complete segment sweep or prove crash/concurrent-rebuild semantics.

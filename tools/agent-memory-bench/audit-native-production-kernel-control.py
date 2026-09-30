@@ -7,6 +7,11 @@ import argparse
 import hashlib
 import json
 import math
+import os
+import platform
+import shlex
+import subprocess
+import tempfile
 import sys
 from pathlib import Path
 from statistics import median
@@ -54,6 +59,61 @@ def close_enough(actual: float, expected: float) -> bool:
     return abs(actual - expected) <= max(1e-4, abs(expected) * 2e-5)
 
 
+def expected_manifest_hashes(path: Path) -> dict[str, str]:
+    manifest = json.loads(path.read_text(encoding="utf-8"))
+    result: dict[str, str] = {}
+    freeze = manifest.get("freeze", {})
+    thq = freeze.get("thq", {})
+    historical = freeze.get("historical_control", {})
+    for name, value in {
+        "thq": thq.get("codes_sha256"),
+        "thq_thresholds": thq.get("thresholds_sha256"),
+        "query_fixture": historical.get("queries_sha256"),
+    }.items():
+        if isinstance(value, str):
+            result[name] = value
+    return result
+
+
+def validate_expected_manifest(path: Path, inputs: dict[str, str]) -> None:
+    expected = expected_manifest_hashes(path)
+    require(expected, "expected manifest has no frozen input hashes")
+    aliases = {
+        "thq": ("thq", "thq4_codes", "thq_codes"),
+        "thq_thresholds": ("thq_thresholds", "thresholds"),
+        "query_fixture": ("query_fixture", "queries", "query"),
+    }
+    for name, digest in expected.items():
+        candidates = aliases.get(name, (name,))
+        matched = next((candidate for candidate in candidates if candidate in inputs), None)
+        require(matched is not None, f"expected manifest input is missing: {name}")
+        require(inputs[matched] == digest,
+                f"{matched} does not match the frozen artifact manifest")
+
+
+def load_environment(path: Path | None) -> dict[str, Any]:
+    if path is not None:
+        require(path.is_file(), f"environment manifest does not exist: {path}")
+        value = json.loads(path.read_text(encoding="utf-8"))
+        require(isinstance(value, dict), "environment manifest must be an object")
+        return value
+    return {
+        "cpu": platform.processor() or "unknown",
+        "physical_cores": None,
+        "logical_processors": os.cpu_count(),
+        "compiler": "unknown",
+        "compiler_version": "unknown",
+        "language": "C++17",
+        "optimization": "unknown",
+        "simd_flags": [],
+        "avx2": None,
+        "threads": 1,
+        "affinity": "unknown",
+        "numa": "unknown",
+        "power_policy": "uncontrolled",
+    }
+
+
 def parse_inputs(values: list[str]) -> dict[str, str]:
     result: dict[str, str] = {}
     for value in values:
@@ -77,6 +137,98 @@ def self_test() -> None:
     require(close_enough(100.0, 100.001), "relative tolerance self-test differs")
     require(not close_enough(100.0, 100.1),
             "relative rejection self-test differs")
+    source = Path(__file__).resolve()
+    with tempfile.TemporaryDirectory() as directory:
+        root = Path(directory)
+        raw = root / "raw.jsonl"
+        summary = root / "summary.json"
+        runner = root / "runner.py"
+        binary = root / "runner.exe"
+        query = root / "queries.f32"
+        output = root / "receipt.json"
+        row = {
+            "query": 0,
+            "direct_top10": list(range(10)),
+            "cascade_top10": list(range(10)),
+            "cascade_thq_top128_ids": list(range(128)),
+            "parity": {"thq_block32_vs_unrolled": True,
+                        "int8_avx2_vs_scalar_top10": True,
+                        "direct_vs_cascade_top10": True},
+            "int8_score_error": {"max_absolute": 0.001,
+                                  "max_relative": 0.000001},
+            "page_proxy": {"thq_scan": 1, "rerank_codes": 2,
+                           "rerank_scales": 1, "rerank_payload": 3},
+            "timing_ms": {"direct": {"prepare": [1.0], "score": [2.0],
+                                       "topk": [3.0], "total": [6.0]},
+                          "cascade": {"prepare": [1.0], "score": [2.0],
+                                        "topk": [1.0], "rerank": [2.0],
+                                        "total": [6.0]}},
+        }
+        raw.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        summary.write_text(json.dumps({
+            "queries": 1, "warmups": 0, "repeats": 1,
+            "arms": {
+                "direct": {stage: summarize([[float(value)]])[0] if False else {}
+                            for stage in ("prepare", "score", "topk", "total")},
+                "cascade": {stage: {} for stage in ("prepare", "score", "topk", "rerank", "total")},
+            }}), encoding="utf-8")
+        # Reuse the command-line auditor for fail-closed mutation coverage. The
+        # valid summary is produced by the same recomputation contract.
+        valid = json.loads(summary.read_text(encoding="utf-8"))
+        for arm, stages in (("direct", ("prepare", "score", "topk", "total")),
+                            ("cascade", ("prepare", "score", "topk", "rerank", "total"))):
+            for stage in stages:
+                valid["arms"][arm][stage] = summarize([[float(row["timing_ms"][arm][stage][0])]])
+        summary.write_text(json.dumps(valid), encoding="utf-8")
+        for path in (runner, binary, query):
+            path.write_bytes(b"fixture")
+        base = [sys.executable, str(source), "--raw", str(raw), "--summary",
+                str(summary), "--runner", str(runner), "--binary", str(binary),
+                "--query-fixture", str(query), "--expected-queries", "1",
+                "--expected-warmups", "0", "--expected-repeats", "1",
+                "--output", str(output)]
+        subprocess.run(base, check=True, capture_output=True, text=True)
+        mutations = []
+        mutated = json.loads(json.dumps(row))
+        mutated["query"] = 1
+        mutations.append(("wrong query order", mutated))
+        mutated = json.loads(json.dumps(row))
+        mutated["direct_top10"][1] = mutated["direct_top10"][0]
+        mutations.append(("duplicate ID", mutated))
+        mutated = json.loads(json.dumps(row))
+        mutated["cascade_thq_top128_ids"] = mutated["cascade_thq_top128_ids"][:-1]
+        mutations.append(("wrong top128 width", mutated))
+        mutated = json.loads(json.dumps(row))
+        mutated["parity"]["direct_vs_cascade_top10"] = False
+        mutations.append(("false parity flag", mutated))
+        mutated = json.loads(json.dumps(row))
+        mutated["timing_ms"]["direct"]["total"][0] = 5.0
+        mutations.append(("broken stage total", mutated))
+        for label, candidate in mutations:
+            raw.write_text(json.dumps(candidate) + "\n", encoding="utf-8")
+            completed = subprocess.run(base, capture_output=True, text=True)
+            require(completed.returncode != 0, f"mutation accepted: {label}")
+        raw.write_text("{malformed json}\n", encoding="utf-8")
+        completed = subprocess.run(base, capture_output=True, text=True)
+        require(completed.returncode != 0, "mutation accepted: malformed JSON row")
+        raw.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        mutated = json.loads(json.dumps(row))
+        mutated["page_proxy"].pop("rerank_scales")
+        raw.write_text(json.dumps(mutated) + "\n", encoding="utf-8")
+        completed = subprocess.run(base, capture_output=True, text=True)
+        require(completed.returncode != 0, "mutation accepted: missing scale pages")
+        raw.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        summary_value = json.loads(summary.read_text(encoding="utf-8"))
+        summary_value["repeats"] = 2
+        summary.write_text(json.dumps(summary_value), encoding="utf-8")
+        completed = subprocess.run(base, capture_output=True, text=True)
+        require(completed.returncode != 0, "mutation accepted: wrong repeats")
+        summary_value["repeats"] = 1
+        summary_value["arms"]["direct"]["total"]["mean_ms"] += 1.0
+        summary.write_text(json.dumps(summary_value), encoding="utf-8")
+        completed = subprocess.run(base, capture_output=True, text=True)
+        require(completed.returncode != 0, "mutation accepted: wrong summary value")
+        raw.write_text(json.dumps(row) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -95,12 +247,19 @@ def main() -> int:
     parser.add_argument("--expected-warmups", type=int, default=2)
     parser.add_argument("--expected-repeats", type=int, default=10)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--expected-manifest", type=Path)
+    parser.add_argument("--max-abs-score-error", type=float, default=0.02)
+    parser.add_argument("--max-relative-score-error", type=float, default=0.00002)
+    parser.add_argument("--environment-json", type=Path)
+    parser.add_argument("--argv", default=shlex.join(sys.argv))
     args = parser.parse_args()
 
     for path in (args.raw, args.summary, args.runner, args.binary,
                  args.query_fixture):
         require(path.is_file(), f"required artifact does not exist: {path}")
 
+    require(args.max_abs_score_error >= 0.0 and args.max_relative_score_error >= 0.0,
+            "score error tolerances must be non-negative")
     rows = [json.loads(line) for line in args.raw.read_text(encoding="utf-8").splitlines()
             if line.strip()]
     summary = json.loads(args.summary.read_text(encoding="utf-8"))
@@ -113,6 +272,11 @@ def main() -> int:
             "summary warmup count differs")
     require(summary.get("repeats") == args.expected_repeats,
             "summary repeat count differs")
+    input_hashes = parse_inputs(args.input)
+    if args.expected_manifest:
+        require(args.expected_manifest.is_file(),
+                f"expected manifest does not exist: {args.expected_manifest}")
+        validate_expected_manifest(args.expected_manifest, input_hashes)
 
     stage_names = {
         "direct": ("prepare", "score", "topk", "total"),
@@ -197,6 +361,10 @@ def main() -> int:
         arm: {stage: summarize(values) for stage, values in stages.items()}
         for arm, stages in collected.items()
     }
+    require(max_absolute_error <= args.max_abs_score_error,
+            "INT8 absolute score error exceeds declared tolerance")
+    require(max_relative_error <= args.max_relative_score_error,
+            "INT8 relative score error exceeds declared tolerance")
     reported_arms = summary.get("arms", {})
     for arm, stages in recomputed.items():
         for stage, metrics in stages.items():
@@ -230,6 +398,17 @@ def main() -> int:
             "max_absolute": max_absolute_error,
             "max_relative": max_relative_error,
         },
+        "tolerance_contract": {
+            "max_abs_score_error": args.max_abs_score_error,
+            "max_relative_score_error": args.max_relative_score_error,
+        },
+        "environment": load_environment(args.environment_json),
+        "run_config": {
+            "argv": args.argv,
+            "query_count": args.expected_queries,
+            "warmups": args.expected_warmups,
+            "repeats": args.expected_repeats,
+        },
         "latency_ms": recomputed,
         "page_proxy": page_summary,
         "artifact_sha256": {
@@ -239,7 +418,7 @@ def main() -> int:
             "audit_source": sha256(Path(__file__)),
             "runner_binary": sha256(args.binary),
             "query_fixture": sha256(args.query_fixture),
-            **parse_inputs(args.input),
+            **input_hashes,
         },
         "interpretation": (
             "normalized in-memory kernel evidence only; no codec winner or "
