@@ -156,6 +156,20 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    # This audit is a pure-Python fail-closed contract and must run in the
+    # default test configuration as well as in benchmark builds.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME agent_memory_native_production_kernel_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-production-kernel-control.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    else()
+        message(WARNING "Python3 interpreter not found; skipping production-kernel audit self-test")
+    endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
             NAME agent_memory_mih_native_hot_path_self_test
@@ -1773,13 +1787,6 @@ if(AGENT_MEMORY_BUILD_TESTS)
         add_test(
             NAME agent_memory_native_full_corpus_codec_benchmark_self_test
             COMMAND $<TARGET_FILE:agent-memory-native-full-corpus-codec-benchmark> --self-test
-            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-        )
-        add_test(
-            NAME agent_memory_native_production_kernel_audit_self_test
-            COMMAND ${Python3_EXECUTABLE}
-                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-production-kernel-control.py
-                    --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(

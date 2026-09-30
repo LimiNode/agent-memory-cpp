@@ -35,6 +35,8 @@ def self_test() -> None:
     sizes = (16, 32, 64, 128, 256, 512, 1024, 4096)
     require(sizes == tuple(sorted(set(sizes))), "segment sweep is not strict")
     require(all(size > 0 for size in sizes), "segment sweep contains zero")
+    require(0 < 256 < 1_000_000,
+            "bounded batch fixture is not deterministic")
     print("run-native-mdbx-layout-sweep self-test PASS")
 
 
@@ -54,6 +56,8 @@ def main() -> int:
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--segment-rows", type=int, nargs="+",
                         default=[16, 32, 64, 128, 256, 512, 1024, 4096])
+    parser.add_argument("--batch-documents", type=int, default=0,
+                        help="optional durable materialization batch size")
     args = parser.parse_args()
     require(args.executable.is_file(), "MDBX executable is missing")
     for path in (args.thq, args.codes, args.scales, args.queries,
@@ -65,9 +69,12 @@ def main() -> int:
     rows = []
     for size in sizes:
         db = args.output_root / f"segment-{size}.mdbx"
-        materialize = run_json([str(args.executable), "--materialize", "segment",
-                                str(db), str(args.thq), str(args.codes),
-                                str(args.scales), str(args.documents), str(size)])
+        materialize_command = [str(args.executable), "--materialize", "segment",
+                               str(db), str(args.thq), str(args.codes),
+                               str(args.scales), str(args.documents), str(size)]
+        if args.batch_documents:
+            materialize_command.append(str(args.batch_documents))
+        materialize = run_json(materialize_command)
         benchmark = run_json([str(args.executable), "--benchmark", "segment",
                               str(db), str(args.thq), str(args.codes),
                               str(args.scales), str(args.queries),
@@ -82,6 +89,7 @@ def main() -> int:
         "family": "native_thq_mdbx_segment_sweep_v1",
         "status": "EXECUTED",
         "documents": args.documents,
+        "batch_documents": args.batch_documents or args.documents,
         "segment_rows": list(sizes),
         "environment": {"cpu": platform.processor() or "unknown",
                         "logical_processors": __import__("os").cpu_count(),
@@ -93,8 +101,9 @@ def main() -> int:
             "expected": args.expected}.items()},
         "rows": rows,
         "limitations": [
-            "row and segment payloads still use the reference mixed value format",
-            "allocation-free candidate reads and split THQ/final projections are separate follow-up work",
+            "row layout retains the reference mixed value format for comparison",
+            "segment layout stores a split final-code projection (INT8 plus scale); THQ remains in its own source input",
+            "live generation publication and bounded batch materialization require separate lifecycle gates",
             "cold-cache, crash-recovery and concurrent rebuild require separate lifecycle gates"],
     }
     path = args.output_root / "native-mdbx-segment-sweep.result.json"
