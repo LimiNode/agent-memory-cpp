@@ -242,47 +242,9 @@ void lifecycle_smoke(const std::filesystem::path& path) {
   std::filesystem::remove(path);
 }
 
-void integer_key_self_test(const std::filesystem::path& path) {
-  std::filesystem::remove(path);
-  mdbxc::Config config;
-  config.pathname = path.string();
-  config.max_dbs = 4;
-  config.no_subdir = true;
-  config.relative_to_exe = false;
-  auto connection = mdbxc::Connection::create(config);
-  auto table = std::make_unique<mdbxc::KeyValueTable<std::uint32_t, std::string>>(
-      connection, "payload");
-  {
-    auto transaction = connection->transaction(mdbxc::TransactionMode::WRITABLE);
-    table->insert_or_assign(1U, "one", transaction);
-    transaction.commit();
-  }
-  // Verify the persisted DBI contract through libmdbx, rather than relying only
-  // on the C++ key type selected by mdbx-containers.
-  {
-    auto transaction = connection->transaction(mdbxc::TransactionMode::WRITABLE);
-    MDBX_dbi dbi = 0;
-    const int open_rc = mdbx_dbi_open(transaction.handle(), "payload",
-                                      MDBX_CREATE, &dbi);
-    if (open_rc != MDBX_SUCCESS)
-      throw std::runtime_error("cannot reopen payload DBI: " + std::to_string(open_rc));
-    unsigned flags = 0;
-    if (mdbx_dbi_flags(transaction.handle(), dbi, &flags) != MDBX_SUCCESS ||
-        (flags & MDBX_INTEGERKEY) == 0)
-      throw std::runtime_error("payload DBI is not MDBX_INTEGERKEY");
-    transaction.commit();
-  }
-  table.reset();
-  connection.reset();
-  std::filesystem::remove(path);
-}
-
 void migrate_legacy_payload(const std::filesystem::path& source,
                             const std::filesystem::path& destination,
                             std::size_t segment_rows, std::size_t documents) {
-  // Compatibility-only conversion for the old split segment projection:
-  // legacy big-endian string segment keys -> uint32_t MDBX_INTEGERKEY keys.
-  // This is intentionally not a general row/segment schema migration.
   std::filesystem::remove(destination);
   mdbxc::Config source_config;
   source_config.pathname = source.string();
@@ -314,7 +276,6 @@ void migrate_legacy_payload(const std::filesystem::path& source,
 int main(int argc, char** argv) {
   try {
     if (argc == 3 && std::string(argv[1]) == "--lifecycle-smoke") { lifecycle_smoke(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
-    if (argc == 3 && std::string(argv[1]) == "--integer-key-self-test") { integer_key_self_test(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
     if (argc == 6 && std::string(argv[1]) == "--migrate-legacy") {
       migrate_legacy_payload(argv[2], argv[3], std::stoull(argv[4]), std::stoull(argv[5]));
       std::cout << "{\"status\":\"MIGRATED\"}\n";

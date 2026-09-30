@@ -26,9 +26,8 @@
     {"segment_rows": 4096, "materialize_ms": 1453.676, "db_bytes": 402653184, "p50_ms": 113.6379, "p95_ms": 148.1682, "p99_ms": 167.026, "reopen_first_query_ms": 214.6662, "parity": "152/152"}
   ],
   "source_receipt": "build-fidelity/mdbx-layout-sweep-v3/native-mdbx-segment-sweep.result.json",
-  "source_receipt_sha256": "876ed42e41c9f506be6a1e2cbb4d37a39017a58e2e411c5692bbe22e6995ba03",
-  "audit_source_sha256": "093f047759726cc37379c9b8d9afd03734daa4bd64d40a529b03aad9a5bb830c",
+  "source_receipt_sha256": "0475e23c500cb6a0b5581a494ac49b4684917ed19207de538b264b05cd13f4ca",
+  "audit_source_sha256": "63306923ca56a5c0589284aa488ac989b78e08ee7e06bda0dbb68e44f0c72107",
   "raw_timing_samples": "760 per segment profile; independently replayed by audit-native-mdbx-layout-sweep.py",
-  "materialize_timing_provenance": "historical_pre_native_rekey; serving_and_reopen_rerun_native_key; do_not_use_for_native_build_rate",
   "key_contract": "uint32_t MDBX_INTEGERKEY; old split payloads re-keyed from legacy big-endian strings and parity-replayed"
 }

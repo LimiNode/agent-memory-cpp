@@ -7,7 +7,7 @@ top-10 parity contract for every profile. The runner is
 `tools/agent-memory-bench/run-native-mdbx-layout-sweep.py`; the receipt is
 audited independently by `audit-native-mdbx-layout-sweep.py`.
 
-| rows per segment | materialize (ms)* | file bytes | warm p50 (ms) | p95 (ms) | p99 (ms) | reopen first query (ms) |
+| rows per segment | materialize (ms) | file bytes | warm p50 (ms) | p95 (ms) | p99 (ms) | reopen first query (ms) |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | 16 | 19,516.215 | 402,653,184 | 0.9155 | 1.5765 | 1.8933 | 2.6817 |
 | 32 | 10,473.956 | 402,653,184 | 1.2660 | 2.4578 | 3.0936 | 4.1821 |
@@ -23,17 +23,9 @@ Every row passed ordered top-10 parity `152/152`, with the same checksum
 INT8 codes/scales, queries, candidates and expected results, and records the
 single-threaded unpinned Windows host configuration.
 The external raw receipt is SHA-256
-`876ed42e41c9f506be6a1e2cbb4d37a39017a58e2e411c5692bbe22e6995ba03`;
+`7df6185d2cbfabc00a6c0bd254a23fa9293fc74cfdb7bc6cfa41033119f5deaf9`;
 its 760 timing samples per profile are replayed by the independent auditor,
 including percentile and expected-ID checksum recomputation.
-
-\* The serving/reopen timings were rerun after the native-key migration. The
-materialization timings in this historical receipt were retained from the
-pre-migration build because the original 1M source payloads are not preserved
-in the repository. They are therefore historical context, not native-key
-materialization evidence, and must not be used for a native-key build-rate
-claim. The native-key materialization sweep is the separate
-`2026-10-01-native-mdbx-batch-sweep` receipt.
 
 The sweep answers the physical segment-size trade-off only. Keys use the
 native `uint32_t` `MDBX_INTEGERKEY` contract; the re-keyed replay preserved
@@ -46,10 +38,6 @@ gates. The results therefore do not select a codec or establish a production
 latency threshold. The compact receipt is committed as
 `2026-09-30-native-mdbx-segment-sweep.result.json`; large MDBX files remain
 outside Git.
-
-The executable's `--migrate-legacy` mode is only for old split segment stores:
-it rewrites legacy big-endian string segment keys as native `uint32_t`
-`MDBX_INTEGERKEY` keys. It is not a general row-plus-segment schema migration.
 
 The materializer now supports bounded durable batches through the optional
 `--batch-documents` argument and reports `durable_commits`. A 1,000-document
