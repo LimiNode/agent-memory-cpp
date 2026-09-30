@@ -100,6 +100,7 @@ def main() -> int:
             "queries": args.queries, "candidates": args.candidates,
             "expected": args.expected}.items()},
         "rows": rows,
+        "materialize_timing_provenance": "measured_by_current_executable",
         "limitations": [
             "row layout retains the reference mixed value format for comparison",
             "segment layout stores a split final-code projection (INT8 plus scale); THQ remains in its own source input",
