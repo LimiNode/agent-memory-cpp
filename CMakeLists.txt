@@ -1411,6 +1411,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     ${CMAKE_CURRENT_BINARY_DIR}/neuroute-native-mdbx-cost-self-test.mdbx
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(
+                NAME agent_memory_native_thq_mdbx_serving_lifecycle_self_test
+                COMMAND
+                    $<TARGET_FILE:agent-memory-native-thq-mdbx-serving>
+                    --lifecycle-smoke
+                    ${CMAKE_CURRENT_BINARY_DIR}/native-thq-mdbx-serving-lifecycle-self-test.mdbx
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
         if(AGENT_MEMORY_BUILD_BENCHMARKS)
             add_test(

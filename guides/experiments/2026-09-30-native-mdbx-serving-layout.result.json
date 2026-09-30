@@ -1,0 +1,60 @@
+{
+  "schema_version": 1,
+  "family": "native_thq_mdbx_serving_layout_bakeoff_v1",
+  "status": "EXECUTED",
+  "scope": "physical MDBX payload serving only; candidate generation and THQ scan are supplied by the frozen production-control fixture",
+  "corpus_documents": 1000000,
+  "query_count": 152,
+  "candidate_width": 128,
+  "top_k": 10,
+  "repeats": 10,
+  "durability": "MDBX writable commit with default bundled configuration; read-only snapshot per query",
+  "environment": {
+    "cpu": "Intel(R) Xeon(R) CPU E5-2696 v3 @ 2.30GHz",
+    "physical_cores": 18,
+    "logical_processors": 36,
+    "compiler": "MSVC 19.44.35228.0 / Release",
+    "thread_policy": "single-thread process; affinity and NUMA placement not pinned",
+    "cache_policy": "warm process and filesystem state; no explicit OS-cache eviction"
+  },
+  "inputs": {
+    "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "int8_linear_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+    "int8_linear_scales_sha256": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+    "query_fixture_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "candidate_fixture_sha256": "26adac708ad88dbba657a91d4e540a22451898ca01b902b02c6d6b7fe61aadf9",
+    "expected_fixture_sha256": "1dbc3f7dd2185987767c907aa7a6ca0ea0f5d704c73ce56ff96694121aae2dda"
+  },
+  "runner": {
+    "source_sha256": "dee56d99ea26ff0dd1f11961a3712c31adc17224618dc1128b18cb0d0d818468",
+    "binary_sha256": "b50a742ad0ca36460fc5df437b03e74f8690094015eef87360ac5ac022a4de38",
+    "mdbx_containers_revision": "9ce6a1221fd8f08807546f0fc3637503afeeca86",
+    "libmdbx_revision": "fc8b8e4697e0ef8b2cd5aee1f2d9fb0974fc665f"
+  },
+  "layouts": {
+    "row_kv": {
+      "key": "uint32 document id",
+      "value": "96-byte THQ4 + 384-byte INT8 + float32 scale",
+      "materialize_ms": 308344.921,
+      "mdbx_bytes": 553648128,
+      "reopen_first_query_ms": 1.8335,
+      "warm_p50_ms": 0.3291,
+      "warm_p95_ms": 0.8856,
+      "warm_p99_ms": 1.1247,
+      "ordered_top10_parity": "152/152"
+    },
+    "segment_blob": {
+      "segment_rows": 4096,
+      "key": "uint32 segment id",
+      "value": "contiguous fixed-width rows",
+      "materialize_ms": 1794.665,
+      "mdbx_bytes": 486539264,
+      "reopen_first_query_ms": 220.5671,
+      "warm_p50_ms": 136.9765,
+      "warm_p95_ms": 163.316,
+      "warm_p99_ms": 185.3661,
+      "ordered_top10_parity": "152/152"
+    }
+  },
+  "interpretation": "Physical MDBX serving evidence for a fixed 128-candidate payload read. Row KV is much slower to build and larger on disk, but faster for sparse payload reads; segment/blob commits compactly and favors sequential access. This is not a full index scan benchmark, not a cold OS-cache benchmark, and not a codec-winner claim."
+}
