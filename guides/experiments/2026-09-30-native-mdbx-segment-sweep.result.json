@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "family": "native_thq_mdbx_segment_sweep_v1",
+  "status": "EXECUTED",
+  "documents": 1000000,
+  "queries": 152,
+  "candidate_width": 128,
+  "repeats": 5,
+  "segment_rows": [16, 32, 64, 128, 256, 512, 1024, 4096],
+  "inputs_sha256": {
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "codes": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+    "scales": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "candidates": "26adac708ad88dbba657a91d4e540a22451898ca01b902b02c6d6b7fe61aadf9",
+    "expected": "1dbc3f7dd2185987767c907aa7a6ca0ea0f5d704c73ce56ff96694121aae2dda"
+  },
+  "rows": [
+    {"segment_rows": 16, "materialize_ms": 19877.888, "db_bytes": 503316480, "p50_ms": 0.998, "p95_ms": 1.7662, "p99_ms": 2.3164, "reopen_first_query_ms": 3.1817, "parity": "152/152"},
+    {"segment_rows": 32, "materialize_ms": 10914.127, "db_bytes": 503316480, "p50_ms": 1.589, "p95_ms": 2.6414, "p99_ms": 3.0623, "reopen_first_query_ms": 3.7075, "parity": "152/152"},
+    {"segment_rows": 64, "materialize_ms": 6396.197, "db_bytes": 503316480, "p50_ms": 1.823, "p95_ms": 5.4103, "p99_ms": 6.0745, "reopen_first_query_ms": 6.2953, "parity": "152/152"},
+    {"segment_rows": 128, "materialize_ms": 4132.988, "db_bytes": 486539264, "p50_ms": 3.0401, "p95_ms": 9.5181, "p99_ms": 11.1006, "reopen_first_query_ms": 11.9634, "parity": "152/152"},
+    {"segment_rows": 256, "materialize_ms": 2965.206, "db_bytes": 486539264, "p50_ms": 4.2032, "p95_ms": 14.7332, "p99_ms": 18.8471, "reopen_first_query_ms": 21.8002, "parity": "152/152"},
+    {"segment_rows": 512, "materialize_ms": 2300.693, "db_bytes": 486539264, "p50_ms": 9.0948, "p95_ms": 25.6068, "p99_ms": 32.5447, "reopen_first_query_ms": 37.4706, "parity": "152/152"},
+    {"segment_rows": 1024, "materialize_ms": 1962.705, "db_bytes": 486539264, "p50_ms": 16.6265, "p95_ms": 40.0918, "p99_ms": 51.8804, "reopen_first_query_ms": 71.6912, "parity": "152/152"},
+    {"segment_rows": 4096, "materialize_ms": 1787.445, "db_bytes": 486539264, "p50_ms": 135.2274, "p95_ms": 154.7272, "p99_ms": 163.2206, "reopen_first_query_ms": 224.4743, "parity": "152/152"}
+  ],
+  "source_receipt": "build-fidelity/mdbx-layout-sweep/native-mdbx-segment-sweep.result.json"
+}
