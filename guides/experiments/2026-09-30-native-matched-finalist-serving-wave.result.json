@@ -14,13 +14,14 @@
     "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
   },
   "arms": [
-    {"codec":"lsq32","payload_bytes":32,"ordered_top10_parity":"152/152","total_p50_ms":0.2349,"total_p95_ms":0.300545,"total_p99_ms":0.334161,"payload_sha256":"ed43c1b572eaf299f8781cd7c86b973ee6c50bcdc521c1936f269fa5c05dbded"},
-    {"codec":"lsq48","payload_bytes":48,"ordered_top10_parity":"152/152","total_p50_ms":0.23505,"total_p95_ms":0.259165,"total_p99_ms":0.343934,"payload_sha256":"58ceca2a2c9c448508ff6f5ad2a8c1984861612d3c8eee72b231cb625d8f1f41"},
-    {"codec":"plsq8x6","payload_bytes":52,"ordered_top10_parity":"152/152","total_p50_ms":0.2307,"total_p95_ms":0.26365,"total_p99_ms":0.297385,"payload_sha256":"71948de8027493468524ad5b05c4dbd7f9c65dae9ce8384260efcb2bd3488af1"},
-    {"codec":"turboquant1","payload_bytes":52,"ordered_top10_parity":"152/152","total_p50_ms":0.23885,"total_p95_ms":0.27019,"total_p99_ms":0.335522,"payload_sha256":"b32cc9871ad1267f2fd68195902b446c712485dca8c52a97534a786403a5de7f"},
-    {"codec":"turboquant2","payload_bytes":100,"ordered_top10_parity":"152/152","total_p50_ms":0.24035,"total_p95_ms":0.319805,"total_p99_ms":0.366199,"payload_sha256":"bdf0f08d43103fa42fbf9fa68f2b59e386275f0de7c1520440373efde4efb8d3"},
-    {"codec":"rslm3","payload_bytes":146,"ordered_top10_parity":"152/152","total_p50_ms":0.23805,"total_p95_ms":0.286725,"total_p99_ms":0.34776,"payload_sha256":"b4000016e611cc80bebe9c6bdc6913d70937d23beae8fcf275400324ceae4141"},
-    {"codec":"rslm4","payload_bytes":194,"ordered_top10_parity":"152/152","total_p50_ms":0.23335,"total_p95_ms":0.31747,"total_p99_ms":0.35377,"payload_sha256":"97be95c62d84d2d2c584e613f04f3c6e8b7f209b90d60330365f8604e6ed350a"}
+    {"codec":"lsq32","payload_bytes":32,"ordered_top10_parity":"152/152","total_p50_ms":0.2,"total_p95_ms":0.290765,"total_p99_ms":0.327669,"payload_sha256":"ed43c1b572eaf299f8781cd7c86b973ee6c50bcdc521c1936f269fa5c05dbded"},
+    {"codec":"lsq48","payload_bytes":48,"ordered_top10_parity":"152/152","total_p50_ms":0.19675,"total_p95_ms":0.23462,"total_p99_ms":0.249249,"payload_sha256":"58ceca2a2c9c448508ff6f5ad2a8c1984861612d3c8eee72b231cb625d8f1f41"},
+    {"codec":"plsq8x6","payload_bytes":52,"ordered_top10_parity":"152/152","total_p50_ms":0.19895,"total_p95_ms":0.225625,"total_p99_ms":0.258063,"payload_sha256":"71948de8027493468524ad5b05c4dbd7f9c65dae9ce8384260efcb2bd3488af1"},
+    {"codec":"turboquant1","payload_bytes":52,"ordered_top10_parity":"152/152","total_p50_ms":0.20235,"total_p95_ms":0.2357,"total_p99_ms":0.297308,"payload_sha256":"b32cc9871ad1267f2fd68195902b446c712485dca8c52a97534a786403a5de7f"},
+    {"codec":"turboquant2","payload_bytes":100,"ordered_top10_parity":"152/152","total_p50_ms":0.1921,"total_p95_ms":0.22706,"total_p99_ms":0.251725,"payload_sha256":"bdf0f08d43103fa42fbf9fa68f2b59e386275f0de7c1520440373efde4efb8d3"},
+    {"codec":"rslm1","payload_bytes":52,"ordered_top10_parity":"152/152","total_p50_ms":0.1958,"total_p95_ms":0.21569,"total_p99_ms":0.258138,"payload_sha256":"eba0e14d349c61aa7f2c81b135b5c6d5c1eb22c017f070f2fecef494c73f5e6a"},
+    {"codec":"rslm3","payload_bytes":148,"ordered_top10_parity":"152/152","total_p50_ms":0.2058,"total_p95_ms":0.29533,"total_p99_ms":0.338173,"payload_sha256":"b4000016e611cc80bebe9c6bdc6913d70937d23beae8fcf275400324ceae4141"},
+    {"codec":"rslm4","payload_bytes":196,"ordered_top10_parity":"152/152","total_p50_ms":0.2035,"total_p95_ms":0.29145,"total_p99_ms":0.328116,"payload_sha256":"97be95c62d84d2d2c584e613f04f3c6e8b7f209b90d60330365f8604e6ed350a"}
   ],
   "limitations": [
     "payloads are predecoded frozen artifacts; codec decode is outside timing",
