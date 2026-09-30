@@ -1033,6 +1033,12 @@ evidence, not decode-throughput, MDBX, fresh-qrels or codec-winner evidence.
 The MDBX serving runner now accepts an explicit segment-row parameter and uses
 order-preserving big-endian integer keys. A sweep harness covers 16, 32, 64,
 128, 256, 512, 1024 and 4096 rows per segment, with compact machine-readable
-receipts and parity checks. CI will execute the lifecycle and sweep harnesses
-with initialized MDBX submodules; local execution remains unavailable in this
-workspace because the submodule package directories are empty.
+receipts and parity checks. The completed 1M-document run materialized all
+eight profiles and reproduced ordered top-10 parity for 152/152 queries in
+each profile. Warm p50 ranged from 0.998 ms (16 rows) through 135.2274 ms
+(4096 rows); p95 ranged from 1.7662 ms through 154.7272 ms. Materialization
+fell from 19,877.888 ms to 1,787.445 ms, while the file footprint stabilized
+at 486,539,264 bytes from 128 rows onward. The independent fail-closed receipt
+auditor and its self-test are now part of the CTest suite. This closes the
+bounded physical segment-size gate, but not cold-cache/recovery, concurrent
+update/rebuild, full routing, or fresh-quality gates.
