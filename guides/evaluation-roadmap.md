@@ -19,6 +19,28 @@ dependency in the core library.
 
 A passing lower rung never implies that a higher rung is passed.
 
+## Canonical serving modes for compressed retrieval
+
+Codec comparisons use three distinct serving modes:
+
+1. **Full-flat packed 1M:** scan every packed document and produce ordered
+   top-10. This isolates codec/kernel cost and cache behaviour.
+2. **Prototype-IVF / balanced cascade:** deterministic prototype cells produce
+   a declared candidate budget, followed by THQ top-128 and the packed final
+   scorer. This measures a cheaper coarse route.
+3. **Modern R4 cascade:** the frozen R4 route produces its candidate stream,
+   followed by THQ4 top-128 and the packed final scorer. This is the primary
+   quality-oriented production path.
+
+The fixed-top128 scorer fixture is component evidence only. It is not a fourth
+serving mode. Each mode has its own candidate contract, routing parameters and
+latency scope; values from one mode must not fill another mode's table.
+
+For a codec bake-off, freeze the same corpus, query order, numeric-ID tie rule,
+payload revisions, one warmup plus five measured repeats, percentile rule and
+independent parity audit. Prototype-IVF additionally records the prototype
+manifest, training prefix, seed, `nlist`, assignment and candidate budget.
+
 ## Required report
 
 Every comparative run publishes a compact JSON report and a manifest binding:
