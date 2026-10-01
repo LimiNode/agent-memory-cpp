@@ -30,7 +30,7 @@ def make_lsq(model: dict, width: int):
 
 def make_plsq(model: dict, profile: str):
     import faiss
-    splits, msub = (8, 4) if profile == '8x4x8' else (8, 6)
+    splits, msub = (8, 4) if profile in ('8x4', '8x4x8') else (8, 6)
     q = faiss.ProductLocalSearchQuantizer(D, splits, msub, 8)
     for split in range(splits):
         local = faiss.downcast_AdditiveQuantizer(q.subquantizer(split))
@@ -128,7 +128,7 @@ def main() -> None:
                               profile_centroids, np.asarray(books[0], dtype=np.float32))
         else:
             profile_tail = profile[4:]
-            splits, sub = (8, 4) if profile_tail == '8x4x8' else (8, 6)
+            splits, sub = (8, 4) if profile_tail in ('8x4', '8x4x8') else (8, 6)
             all_codes = np.memmap(codes_path, mode='r', dtype=np.uint8,
                                   shape=(limit, code_width))
             all_norms = np.memmap(norms_path, mode='r', dtype='<f4', shape=(limit,))
