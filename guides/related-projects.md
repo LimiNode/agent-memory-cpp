@@ -45,6 +45,13 @@ Disclaimer:
 | LlamaIndex | Python framework | Document agent + OCR + indices/graphs/retrievers/query engines/reranking. | LlamaIndex = огромный application framework. Совпадает по retriever interface pattern (IRetriever, HybridRetriever). Не конкуренты, разные abstraction levels. |
 | codebase-memory-mcp (research source / pattern donor, не direct competitor) | C static-binary MCP server | Code intelligence через tree-sitter + Hybrid LSP + SQLite-graph (14 MCP tools, ~162 KB pure C). | НЕ direct competitor (different scope: code intelligence, не agent memory). Изучен как pattern donor — 9 конкретных engineering patterns (MinHash + LSH, RotSQ quantization, coverage shadow graph, atomic shared ID, bounded BFS, team-shared artifact, Cypher subset, AC-over-LZ4, adaptive-poll watcher). См. детали и приоритеты в [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md). License: MIT. |
 
+### Associative-memory research references
+
+| Project | Scope and provenance | Project boundary |
+|---|---|---|
+| AH-MemoryHub | Typed symbols/hypernodes, candidate extraction and activation-oriented traces; inspected revision `9de7172e150c4968cbacad3bcae08c0cd81699f1` (MIT). | Pattern donor only. No Neo4j, ignition runtime, prompts or datasets are dependencies; see [`2026-10-01-associative-heterarchical-memory-reference.md`](experiments/2026-10-01-associative-heterarchical-memory-reference.md). |
+| AG_Memory | Typed evidence/conclusion and bounded reasoning patterns from supplied revision `44cc62f`. | No root `LICENSE` found in the inspected snapshot. Research-only citation; no code, prompts or datasets are copied. |
+
 ## 3. Sister library / adapter references
 
 | Project | Что у нас похожего | Что можно позаимствовать |

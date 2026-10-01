@@ -91,9 +91,48 @@ origin-qualified `SourceRef` values already used by the project.
 | M1b/M2 research | Candidate IR to deterministic mutation plan boundary | provider adapter, validation, atomic publication and quarantine contracts | Replaying the same candidate set yields byte-identical decisions and one atomic successor; malformed/unauthorized candidates are rejected | Provider leakage into canonical state |
 | M1b/M2 research | Activation trace contract (`seed`, `step`, `reason`, `source path`, `admission`) | knowledge activation, bounded graph expansion, retrieval trace | Same snapshot and plan produce the same trace; answer-support path is separately identifiable; access filters remain fail-closed | Treating activation as proof or hidden authorization |
 | M2+ research | Structured graph/activation evaluation profile | evaluation roadmap, qrels and exact oracle | Compare lexical+dense hybrid, typed graph expansion, and optional activation on the same corpus; report Recall@K, nDCG@10, MRR, latency, expansion and explanation coverage | Attractive graph output without downstream retrieval lift |
+| M1b/M2 research | Bounded evidence/proof replay contract | retrieval trace, source revisions, shared budgets | Replay malformed numeric fields, permutation-stable candidates, contradictory sources and budget exhaustion; require typed `UNCLEAR`, omitted-evidence and policy-revision fields | Mistaking a plausible derivation for truth or authority |
+| M2+ adapter research | Optional typed `GoalSpec`/clarification projection | host runtime, typed conclusion and provenance contracts | Same snapshot and goal produce deterministic narrowing; insufficient scope selects clarification or `UNCLEAR` without mutating canonical storage | Pulling planner/reasoner semantics into the memory core |
 
 These are planned profiles, not completed implementation or quality claims.
 The current compressed-native and serving gates retain priority.
+
+## Additional transferable evaluation patterns
+
+The following patterns are useful as bounded contracts, not as new runtime
+subsystems:
+
+- **Bounded probe protocol:** every graph or activation probe declares depth,
+  fan-out, evidence bytes, and a shared wall-clock/proof budget; exhaustion is
+  an explicit disposition rather than an implicit negative.
+- **Strict numeric-first decoding:** parse IDs, revisions, scores, limits and
+  timestamps with typed range checks before accepting free-form labels or
+  explanations. Malformed numeric fields are rejected or marked `UNCLEAR`.
+- **Evidence is not instruction:** retrieved facts, derived conclusions and
+  executable procedures remain separate typed outputs. A source or activation
+  trace cannot grant authority or execution permission.
+- **Monotonic narrowing and permutation stability:** filtering and grounding
+  may remove candidates but must not invent new ones; replaying the same
+  snapshot under input permutation preserves the ordered result and decision
+  trace.
+- **Explicit uncertainty and clarification:** `UNCLEAR` is a valid result when
+  evidence or scope is insufficient. Clarification selection is evaluated as a
+  bounded downstream policy, never hidden inside canonical storage.
+- **Typed conclusions and proof provenance:** a derived conclusion records its
+  input revisions, rule/policy revision, omitted evidence and uncertainty. A
+  proof budget is shared across expansion and validation stages.
+- **Negative architecture evidence:** failed sequential binary gates are useful
+  evidence about a rejected architecture, but do not justify a universal
+  theorem or a product threshold.
+
+`GoalSpec` compilation, if ever needed, belongs to an optional host/runtime
+adapter. The core stores the typed goal/evidence/provenance result and does not
+become a reasoner, planner or LLM runtime.
+
+Minimum follow-up fixtures are: malformed numeric fields; candidate sets under
+permutation; budget exhaustion with explicit `UNCLEAR`; contradictory source
+revisions; and evidence-vs-instruction separation. These remain planned
+research fixtures and do not alter the current compressed-native priority.
 
 ## Explicit non-goals
 
@@ -113,9 +152,13 @@ evidence about a derivation, not truth or authority by itself.
 
 - [AH-MemoryHub](https://github.com/Hausmaster333/AH-MemoryHub) — executable
   semantic reference for typed symbols, hypernodes, candidate extraction and
-  activation-oriented traces.
-- The `AG_Memory` material mentioned in the discussion was not independently
-  identified as a public repository; it is therefore not treated as evidence.
+  activation-oriented traces. The inspected source revision is
+  `9de7172e150c4968cbacad3bcae08c0cd81699f1` (MIT); only
+  architecture/protocol observations are used here.
+- `AG_Memory` — inspected source revision `44cc62f` from the supplied research
+  material. No root `LICENSE` was found in that snapshot, so it is a
+  provenance-bearing research reference only; no code, prompts or datasets are
+  copied and no license-dependent reuse is proposed.
 
 Reported retrieval comparisons in external projects are preliminary and are
 not transferred into `agent-memory-cpp` acceptance thresholds. Any graph or

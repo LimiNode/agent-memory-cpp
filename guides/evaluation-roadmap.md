@@ -113,4 +113,10 @@ the identical corpus, query set, qrels and exact oracle. Report Recall@K,
 nDCG@10, MRR, context precision, latency, candidate-expansion cost, and
 explanation/provenance coverage separately. Graph or activation output is not
 evidence of a quality lift until this downstream benchmark passes; external
-reported gains are not acceptance thresholds.
+reported gains are not acceptance thresholds. The fixtures also require
+numeric-first decoding of IDs/revisions/limits, a distinct candidate-to-
+canonical-admission boundary, separate evidence/instruction/authority result
+types, monotonic narrowing, permutation-stable replay, typed `UNCLEAR` for
+insufficient evidence or exhausted shared proof budgets, and provenance for
+typed conclusions, omitted evidence and policy/model revisions. These are
+planned research contracts, not completed quality claims or thresholds.
