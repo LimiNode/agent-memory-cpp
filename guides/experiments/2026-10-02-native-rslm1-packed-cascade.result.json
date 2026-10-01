@@ -22,7 +22,7 @@
     "outer_scale_sha256": "22a0569e80008198352baed333d57d555fbab00cdbb7570a1363c9b3319cc02c"
   },
   "runner": "tools/agent-memory-bench/native-rslm1-benchmark.cpp",
-  "runner_sha256": "ab0f8386740caae31c1a5a0ac692705d0bd5259b80ac043839464f64a34ffde2",
+  "runner_sha256": "0e803e8692175836db5f4a5e6b37ecb5633fada8c44606eb0de06483f1e86d10",
   "audit": "tools/agent-memory-bench/audit-native-rslm1-benchmark.py",
   "limitations": [
     "candidate-local packed scorer; THQ routing is supplied by the frozen shell",
