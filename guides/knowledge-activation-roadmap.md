@@ -203,6 +203,16 @@ diagnostic expansion path. Every step remains subject to independent scope and
 authorization filters, and the trace is query-time evidence rather than
 canonical corpus state.
 
+Optional provider-assisted activation must use a bounded decision profile: the
+host supplies a finite menu and an evidence-only projection, the provider
+returns a typed short answer, and host validation maps it to canonical ids.
+`Selected`, `Abstained`, `Malformed`, and `Unsupported` are distinct outcomes;
+an in-domain `Unknown` option is not the same as provider abstention. Provider
+history is not an implicit activation input for replayable profiles. Candidate
+domains may only narrow across stages; a reinterpretation creates a new
+candidate lineage with provenance. These rules are adapter/evaluation
+contracts and do not make an LLM a dependency of activation.
+
 The filesystem path must not define semantic identity. For file-backed
 catalogs, group by object kind (`concepts/`, `playbooks/`, `domain_maps/`) and
 store domains/facets as metadata.
@@ -366,6 +376,12 @@ Invariants:
 - derived search/vector/DomainMap indexes are rebuildable from canonical
   storage.
 
+An eventual activation scheduler should operate on a bounded active frontier,
+preserve the seed reason and provenance on every propagation step, and use an
+expiry queue for time-based transitions rather than scanning the whole corpus
+on every tick. Any `ActivationStepTrace` is an optional diagnostic projection;
+it does not grant access, change truth status, or define retention semantics.
+
 ## 9. Eval Classes
 
 Activation quality is evaluated separately from chunk recall:
@@ -404,3 +420,6 @@ hurts the baseline.
   refresh jobs, and role-aware context budgets.
 - M2+: learned planners, LLM query planners, contradiction-aware synthesis, and
   cross-application taxonomy adapters.
+
+The bounded-provider, branch-isolation and semantic-evaluation gates are
+recorded in [`2026-10-01-agent-memory-bounded-reasoning-reference.md`](experiments/2026-10-01-agent-memory-bounded-reasoning-reference.md).

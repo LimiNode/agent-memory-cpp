@@ -771,8 +771,20 @@ same fact. Candidate extraction, deterministic grounding, validation and
 atomic admission are separate stages, and providers never publish canonical
 IDs or revisions directly.
 
+The same boundary applies to future derived computations. A branch-local or
+counterfactual assessment carries an explicit scope/lineage and cannot admit
+its assumptions as factual memory. A derived conclusion records premise refs,
+the profile/rule revision and provenance; it is not a mutation request. A
+separate, policy-checked mutation plan may propose one atomic successor, while
+rejected, malformed or unsupported candidates remain observable in the trace.
+Compound computations consume one shared parent budget; children must not
+silently create fresh unbounded budgets.
+
 The transferable patterns and their bounded acceptance criteria are recorded
 in [`2026-10-01-associative-heterarchical-memory-reference.md`](experiments/2026-10-01-associative-heterarchical-memory-reference.md).
+Bounded provider decisions, branch isolation and semantic outcome evaluation
+are specified in
+[`2026-10-01-agent-memory-bounded-reasoning-reference.md`](experiments/2026-10-01-agent-memory-bounded-reasoning-reference.md).
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это уточняет API shape `GraphStore` для будущих расширений (callbacks + early-stop visitor, schema introspection для diagnostics).
 

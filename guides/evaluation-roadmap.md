@@ -19,6 +19,26 @@ dependency in the core library.
 
 A passing lower rung never implies that a higher rung is passed.
 
+For provider-assisted decisions and structured/activation profiles, the
+scenario harness must preserve a baseline checkpoint (or isolated clone), run
+the declared steps, collect immutable traces, evaluate structured expected
+observations, and restore state. The report separates five outcomes:
+
+```text
+transport/runtime success
+contract validity
+semantic correctness
+policy correctness
+outcome/materialization correctness
+```
+
+Valid JSON, an HTTP success, or a completed retrieval call is therefore not a
+semantic pass. Expected observations may include selected/abstained/malformed
+dispositions, required evidence refs, forbidden canonical mutations,
+candidate-lineage constraints and allowed unknowns. A bounded permutation
+profile may rerun a decision with reversed or sampled option order; a changed
+semantic result is unstable evidence and must abstain or escalate.
+
 ## Required report
 
 Every comparative run publishes a compact JSON report and a manifest binding:
@@ -98,6 +118,11 @@ exact scan -> F16/int8/binary/PQ or other codec -> HNSW/ANN -> hybrid -> rerank
 The matrix is run first on a deterministic synthetic fixture and then on a
 versioned local corpus. Held-out or multilingual slices are separate gates,
 not silently pooled into the primary score.
+
+Any future activation scheduler is evaluated as a bounded frontier/expiry
+implementation, not as an autonomous background claim: compare it with a
+full-scan control on the same snapshot and require equal active-set and expiry
+ordering before considering work or memory reductions.
 
 Structured-memory and activation profiles use the same comparison discipline:
 compare `hybrid`, `hybrid + typed graph expansion`, and optional activation on

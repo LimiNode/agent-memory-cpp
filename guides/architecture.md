@@ -310,6 +310,15 @@ fit them. The project should expose its own embedding contract with explicit
 model metadata, dimensions, similarity metric, normalization, pooling, and
 query/document purpose semantics.
 
+Optional semantic providers follow the same boundary. The host constructs a
+bounded typed question and a separate evidence projection; a provider returns
+only a bounded wire answer, while deterministic host code validates and maps
+it to project identifiers. Retrieved text is evidence, not an instruction
+channel, and provider state is not hidden canonical context. Malformed,
+ambiguous or unsupported answers fail closed. This contract belongs in an
+adapter/evaluation profile; no provider, solver or prompt runtime is required
+by the core library.
+
 ## Planned Index Direction
 
 Index contracts live under `src/agent_memory/index/` and stay dependency free.
