@@ -10,8 +10,8 @@ accumulates the score in the transform domain and does not materialize a dense
 
 - 152 queries, 128 candidates per query;
 - exact ordered top-10 parity: 152/152 against the frozen RSLM1 reference;
-- transform-domain packed timing: p50 0.7954 ms, p95 0.9858 ms, p99
-  1.3250 ms on the recorded Windows host;
+- transform-domain packed timing: p50 0.8042 ms, p95 1.1402 ms, p99
+  1.2950 ms on the recorded Windows host;
 - independent fail-closed audit and C++ self-test pass.
 
 This is candidate-local packed evidence. It is not a full 1M-row serving or
