@@ -6,6 +6,7 @@
   "query_count": 152,
   "warmups": 1,
   "repeats": 5,
+  "percentile_contract": "sorted measured samples at index min(n-1, floor(fraction*n)); receipts use the independent auditor values",
   "candidate_contract": "candidate148 frozen 152-query R4 shell; numeric document IDs; ordered score desc then ID asc",
   "raw_evidence": {
     "int8": "artifacts/2026-10-01-int8-matched-r4.raw.jsonl",
@@ -15,8 +16,18 @@
   "runner_sha256": {
     "int8": "571aae39e764e409386242fdccc07da400bc606de93116ea6ed3222bbe4f22e0",
     "plsq": "d5a168421582f2618aca10275482b9146a2eedee2373f680373f9cd159446578",
-    "rslm": "03f11012960ad98aeaa13dc911f9bc08cea5726f567286f5322af181f646cb0f",
+    "rslm": "20659f8f64691380d601eb801aa774db4d8d679e29b9271ff2abf74dd3ab9c21",
     "audit": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c"
+  },
+  "audit_artifacts": {
+    "int8": {
+      "path": "artifacts/2026-10-01-int8-matched-r4.audit.json",
+      "sha256": "e7a327283f6b28c83a347d51be1d3701b27738f6ebf8f6e9f9085942d9f53803"
+    },
+    "rslm1": {
+      "path": "artifacts/2026-10-01-rslm1-matched-r4.audit.json",
+      "sha256": "77ab831662e9a799a1b5908c50551765cf5e82cfc48046c7e9f4ea7e7fec28ac"
+    }
   },
   "source_hashes": {
     "candidate_flat": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
@@ -35,8 +46,8 @@
       "rerank_p95_ms": 0.080105,
       "rerank_p99_ms": 0.103241,
       "total_p50_ms": 0.1627,
-      "total_p95_ms": 0.20034,
-      "total_p99_ms": 0.258787,
+      "total_p95_ms": 0.2030,
+      "total_p99_ms": 0.2592,
       "raw_sha256": "2b636bd3d3c558fa946963ddd5f14feb4aff9d22559b1ff7c676d32f0588e6bf",
       "audit_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c",
       "ordered_top10_parity": "structural audit passed; independent qrels parity remains separate"
@@ -58,11 +69,11 @@
         "inner_scale": "6238248d7f262ce4e67d8ac71c976bf3a9b116b68ecbd9910ff83a5d258a346d",
         "outer_scale": "22a0569e80008198352baed333d57d555fbab00cdbb7570a1363c9b3319cc02c"
       },
-      "total_p50_ms": 0.8801,
-      "total_p95_ms": 0.9999,
-      "total_p99_ms": 1.0683,
+      "total_p50_ms": 0.8891,
+      "total_p95_ms": 1.0032,
+      "total_p99_ms": 1.0696,
       "ordered_top10_parity": "structural audit passed; packed reference parity remains separately bound",
-      "raw_sha256": "68f01fb363f00aaea00385eea711681534abcf18a221ef5d2bd3118b601a52dc",
+      "raw_sha256": "98a41affc8f735912111418e0a1e0f85fcd05b3f3004b7273f9eafa113a44447",
       "audit_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c"
     }
   },

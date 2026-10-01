@@ -21,17 +21,18 @@ select THQ top-128, and score those IDs with the native packed final scorer.
 | --- | --- | ---: | ---: | ---: | --- |
 | LSQ32 | full 1M packed flat | 223.032 | 238.494 | 244.840 | native top-10 emitted |
 | LSQ48 | full 1M packed flat | 252.526 | 264.469 | 269.872 | native top-10 emitted |
-| PLSQ8x6x8 | full 1M packed flat | 188.6500 | 199.5890 | 207.6412 | native top-10 emitted |
+| PLSQ8x6x8 | full 1M packed flat | 177.9757 | 191.1420 | 202.3426 | native top-10 emitted; independent reference 152/152 |
 | PLSQ8x4x8 | full 1M packed flat | 164.3054 | 172.1001 | 175.9914 | native top-10 emitted |
-| PLSQ8x6x8 | frozen R4 candidate stream → THQ top-128 → packed scorer | 3.5738 | 3.9454 | 5.0577 | 152/152 |
+| PLSQ8x6x8 | frozen R4 candidate stream → THQ top-128 → packed scorer | 0.6996 | 0.7810 | 0.8465 | 152/152 |
 | PLSQ8x4x8 | frozen R4 candidate stream → THQ top-128 → packed scorer | 3.3612 | 3.7177 | 3.8076 | 152/152 |
-| RSLM1 | canonical R4 candidate stream → THQ top-128 → packed scorer | 3.6574 | 3.8830 | 3.9269 | packed output matches full-candidate reference 152/152 |
+| RSLM1 | canonical R4 candidate stream → THQ top-128 → packed scorer | 0.8891 | 1.0032 | 1.0696 | structural audit passed; packed reference parity remains separate |
 
 The flat timings are host-specific research evidence, not acceptance
 thresholds. Their payload materialization and scorer source hashes are bound
 in the external receipt directory used for the run. The PLSQ/RSLM matched
 rows are end-to-end over the candidate stream, unlike the earlier candidate-
-local codec-only gates.
+local codec-only gates. PLSQ full-flat top-10 was independently replayed from
+the AMPLSQF1 payload and matched the native output for all 152 queries.
 
 ## Remaining gates
 
@@ -45,8 +46,9 @@ and fresh untouched qrels remain separate gates.
 
 Using the same frozen R4 shell and five measured repeats, the refreshed totals
 are PLSQ8x6x8 0.6996/0.7810/0.8465 ms (p50/p95/p99), RSLM1
-0.8801/0.9999/1.0683 ms, and the matched INT8 control
-0.1627/0.2003/0.2588 ms. INT8's final rerank p50 is 0.0609 ms. Raw coverage,
+0.8891/1.0032/1.0696 ms, and the matched INT8 control
+0.1627/0.2030/0.2592 ms under the canonical audited percentile contract.
+INT8's final rerank p50 is 0.0609 ms. Raw coverage,
 ID cardinality, duplicate detection, and percentile replay passed the
 independent audit. See
 [`2026-10-01-native-matched-r4-final-reranker-control.result.json`](2026-10-01-native-matched-r4-final-reranker-control.result.json).

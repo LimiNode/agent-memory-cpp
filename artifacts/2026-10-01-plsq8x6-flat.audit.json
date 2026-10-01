@@ -5,8 +5,7 @@
   "repeats": 5,
   "source_hashes": {
     "payload": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387",
-    "runner": "d5a168421582f2618aca10275482b9146a2eedee2373f680373f9cd159446578",
-    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70"
+    "runner": "d5a168421582f2618aca10275482b9146a2eedee2373f680373f9cd159446578"
   },
   "status": "PASS",
   "timing_ms": {
