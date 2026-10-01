@@ -47,6 +47,12 @@ Payload read_payload(const std::string& path) {
   p.norms.resize(count); std::memcpy(p.norms.data(), bytes.data() + offset, count * 4); offset += count * 4;
   p.centroids.resize(kD * 4); std::memcpy(p.centroids.data(), bytes.data() + offset, p.centroids.size() * 4); offset += p.centroids.size() * 4;
   p.books.resize(p.splits * p.sub * 256 * split_dim); std::memcpy(p.books.data(), bytes.data() + offset, p.books.size() * 4);
+  auto sorted_ids = p.ids; std::sort(sorted_ids.begin(), sorted_ids.end());
+  if (std::adjacent_find(sorted_ids.begin(), sorted_ids.end()) != sorted_ids.end()) throw std::runtime_error("PLSQ payload contains duplicate IDs");
+  for (const auto id : p.ids) if (id < 0 || static_cast<std::size_t>(id) >= 1'000'000) throw std::runtime_error("PLSQ payload ID is outside corpus");
+  for (const auto norm : p.norms) if (!std::isfinite(norm) || norm <= 0.0F) throw std::runtime_error("PLSQ payload norm is invalid");
+  for (const auto value : p.centroids) if (!std::isfinite(value)) throw std::runtime_error("PLSQ centroid is non-finite");
+  for (const auto value : p.books) if (!std::isfinite(value)) throw std::runtime_error("PLSQ codebook is non-finite");
   return p;
 }
 std::array<std::int32_t, kK> top10(const std::array<Candidate, kTop>& values) {
