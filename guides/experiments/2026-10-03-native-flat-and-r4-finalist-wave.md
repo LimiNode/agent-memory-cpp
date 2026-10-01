@@ -1,14 +1,16 @@
 # Native flat and matched R4 finalist wave
 
-Status: executed for LSQ32/LSQ48/PLSQ8x6 full-flat and PLSQ8x6/RSLM1 matched R4. TQ1,
-TQ1+PQ8 and RSLM1 full-flat remain pending because no 1M packed payload is
-available for those arms.
+Status: executed for LSQ32/LSQ48/PLSQ8x6 full-flat and the matched R4
+final-reranker control wave. TQ1, TQ1+PQ8 and RSLM1 full-flat remain pending
+because no 1M packed payload is available for those arms.
 
 ## Scope
 
 All completed rows use the frozen 1M document corpus, the canonical 152-query
 legacy projection, numeric document IDs, deterministic cosine top-10 ordering,
-and one warmup plus one measured repeat. The flat LSQ runner scans the ordered
+and deterministic timing contracts. The refreshed PLSQ controls use one warmup
+plus five measured repeats; older LSQ rows remain directional one-repeat
+evidence. The flat LSQ runner scans the ordered
 packed payload directly with a bounded top-10 heap. It does not reconstruct
 FP32 document rows. The matched R4 runners scan the frozen candidate stream,
 select THQ top-128, and score those IDs with the native packed final scorer.
@@ -38,3 +40,13 @@ full-flat row requires a native packed 1M representation and a scorer for the
 same representation. TQ1/TQ1+PQ8 and RSLM1 therefore remain `pending` until
 their packed corpus payloads exist; MDBX persistence, cold/restart/recovery,
 and fresh untouched qrels remain separate gates.
+
+## Matched final-reranker control refresh
+
+Using the same frozen R4 shell and five measured repeats, the refreshed totals
+are PLSQ8x6x8 0.6996/0.7810/0.8465 ms (p50/p95/p99), RSLM1
+0.8801/0.9999/1.0683 ms, and the matched INT8 control
+0.1627/0.2003/0.2588 ms. INT8's final rerank p50 is 0.0609 ms. Raw coverage,
+ID cardinality, duplicate detection, and percentile replay passed the
+independent audit. See
+[`2026-10-01-native-matched-r4-final-reranker-control.result.json`](2026-10-01-native-matched-r4-final-reranker-control.result.json).

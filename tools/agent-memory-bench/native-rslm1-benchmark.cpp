@@ -11,6 +11,7 @@
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -106,16 +107,27 @@ bool order(const Candidate&a,const Candidate&b){return a.score>b.score||(a.score
 std::vector<std::int32_t> top10(std::vector<Candidate> v){std::sort(v.begin(),v.end(),order);std::vector<std::int32_t> out;for(std::size_t i=0;i<std::min<std::size_t>(10,v.size());++i)out.push_back(v[i].id);return out;}
 
 int run_matched(int argc, char** argv) {
-  if (argc != 13) throw std::runtime_error("usage: --matched symbols inner outer ids thq centroids thresholds candidate_flat offsets queries raw");
+  if (argc != 13 && argc != 15) throw std::runtime_error("usage: --matched symbols inner outer ids thq centroids thresholds candidate_flat offsets queries raw [warmups repeats]");
   auto symbols=read<std::uint8_t>(argv[2]); auto inner=read<std::uint16_t>(argv[3]); auto outer=read<std::uint16_t>(argv[4]); auto ids=read<std::int32_t>(argv[5]); auto thq=read<std::uint8_t>(argv[6]); auto cent=read<float>(argv[7]); auto thresholds=read<float>(argv[8]); auto candidate=read<std::uint8_t>(argv[9]); auto offsets=read<std::uint64_t>(argv[10]); auto queries=read<float>(argv[11]);
   const auto record_bytes = offsets.size() == 153 && offsets.back() != 0 && candidate.size() % offsets.back() == 0 ? candidate.size() / offsets.back() : 0;
   if(ids.empty()||symbols.size()!=ids.size()*SYMBOL_BYTES||inner.size()!=ids.size()||outer.size()!=ids.size()||cent.size()!=D*4||thq.size()!=DOCUMENTS*THQ_BYTES||thresholds.size()!=D*3||queries.size()!=152*D||offsets.size()!=153||(record_bytes!=100&&record_bytes!=148)) throw std::runtime_error("matched RSLM fixture shape differs");
   if(!std::is_sorted(ids.begin(),ids.end())||std::adjacent_find(ids.begin(),ids.end())!=ids.end()) throw std::runtime_error("RSLM1 payload IDs are not strictly sorted");
+  // Materialize the immutable ID-to-payload-row map before the timed loop.
+  // Candidate pages may share documents, so the payload is deduplicated rather
+  // than laid out as query_count * BLOCK rows.
+  std::unordered_map<std::int32_t, std::size_t> row_by_id;
+  row_by_id.reserve(ids.size());
+  for (std::size_t row = 0; row < ids.size(); ++row)
+    row_by_id.emplace(ids[row], row);
   std::vector<std::size_t> rows(0); std::vector<double> timings;
   std::ofstream raw(argv[12]);
   if(!raw) throw std::runtime_error("cannot open matched RSLM raw output");
+  const std::size_t warmups = argc == 15 ? static_cast<std::size_t>(std::stoul(argv[13])) : 0;
+  const std::size_t repeats = argc == 15 ? static_cast<std::size_t>(std::stoul(argv[14])) : 1;
+  if (repeats == 0) throw std::runtime_error("RSLM repeats must be positive");
   std::size_t query_parity=0;
   for(std::size_t qi=0;qi<152;++qi){
+    for (std::size_t repeat = 0; repeat < warmups + repeats; ++repeat) {
     const auto start=std::chrono::steady_clock::now();
     const float* query=queries.data()+qi*D; std::array<float,D> qarray{}; std::copy(query,query+D,qarray.begin()); const auto qrot=rotate_forward(qarray); const double qnorm=std::sqrt(std::inner_product(query,query+D,query,0.0));
     std::array<float,D*4> coord{}; for(std::size_t d=0;d<D;++d) for(std::size_t l=0;l<4;++l){const float lo=l==0?-std::numeric_limits<float>::infinity():thresholds[d*3+l-1]; const float hi=l==3?std::numeric_limits<float>::infinity():thresholds[d*3+l]; const float v=query[d]; const float delta=v<lo?lo-v:(v>hi?v-hi:0.0f); coord[d*4+l]=delta*delta;}
@@ -124,12 +136,15 @@ int run_matched(int argc, char** argv) {
     if(coarse.size()<BLOCK) throw std::runtime_error("matched RSLM candidate page is narrower than top128");
     std::partial_sort(coarse.begin(),coarse.begin()+BLOCK,coarse.end(),[](const Candidate&a,const Candidate&b){return a.score<b.score||(a.score==b.score&&a.id<b.id);});
     std::vector<Candidate> scored; scored.reserve(BLOCK);
-    for(std::size_t i=0;i<BLOCK;++i){const auto id=coarse[i].id; auto it=std::lower_bound(ids.begin(),ids.end(),id); if(it==ids.end()||*it!=id) throw std::runtime_error("matched RSLM top128 ID missing from payload"); const auto row=static_cast<std::size_t>(it-ids.begin()); scored.push_back({direct_score(symbols.data()+row*SYMBOL_BYTES,inner[row],thq.data()+static_cast<std::size_t>(id)*THQ_BYTES,cent.data(),query,qrot,qnorm),id});}
+    for(std::size_t i=0;i<BLOCK;++i){const auto id=coarse[i].id; auto it=row_by_id.find(id); if(it==row_by_id.end()) throw std::runtime_error("matched RSLM top128 ID missing from payload"); const auto row=it->second; scored.push_back({direct_score(symbols.data()+row*SYMBOL_BYTES,inner[row],thq.data()+static_cast<std::size_t>(id)*THQ_BYTES,cent.data(),query,qrot,qnorm),id});}
     const auto elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count(); timings.push_back(elapsed); const auto top=top10(std::move(scored));
-    raw<<"{\"query\":"<<qi<<",\"timing_ms\":"<<std::setprecision(12)<<elapsed<<",\"top10_ids\":["; for(std::size_t i=0;i<top.size();++i){if(i)raw<<',';raw<<top[i];} raw<<"]}\n";
+    if (repeat >= warmups) {
+      raw<<"{\"repeat\":"<<(repeat-warmups)<<",\"query\":"<<qi<<",\"timing_ms\":"<<std::setprecision(12)<<elapsed<<",\"top10_ids\":["; for(std::size_t i=0;i<top.size();++i){if(i)raw<<',';raw<<top[i];} raw<<"]}\n";
+    }
+    }
   }
   std::sort(timings.begin(),timings.end()); const auto pct=[&](double p){return timings[std::min(timings.size()-1,static_cast<std::size_t>(p*timings.size()))];};
-  std::cout<<std::fixed<<std::setprecision(6)<<"{\"status\":\"EXECUTED\",\"scope\":\"R4 candidate stream -> THQ top128 -> RSLM1 packed scorer\",\"queries\":152,\"p50_ms\":"<<pct(.50)<<",\"p95_ms\":"<<pct(.95)<<",\"p99_ms\":"<<pct(.99)<<"}\n"; return 0;
+  std::cout<<std::fixed<<std::setprecision(6)<<"{\"status\":\"EXECUTED\",\"scope\":\"R4 candidate stream -> THQ top128 -> RSLM1 packed scorer\",\"queries\":152,\"warmups\":"<<warmups<<",\"repeats\":"<<repeats<<",\"p50_ms\":"<<pct(.50)<<",\"p95_ms\":"<<pct(.95)<<",\"p99_ms\":"<<pct(.99)<<"}\n"; return 0;
 }
 
 void self_test(){

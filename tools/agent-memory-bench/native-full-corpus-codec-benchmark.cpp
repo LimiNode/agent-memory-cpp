@@ -1778,6 +1778,82 @@ int run_int8_cosine_candidate_gate(int argc, char** argv) {
             << total_ms / static_cast<double>(query_count) << "}\n";
   return 0;
 }
+
+int run_int8_matched_r4(int argc, char** argv) {
+  if (argc != 12)
+    throw std::runtime_error("usage: benchmark --int8-matched-r4 thq thresholds codes scales candidate_flat offsets query_file warmups repeats raw_output");
+  const auto thq = read<std::uint8_t>(argv[2]);
+  const auto thresholds = read<float>(argv[3]);
+  const auto codes = read<std::int8_t>(argv[4]);
+  const auto scales = read<float>(argv[5]);
+  const auto flat = read<std::uint8_t>(argv[6]);
+  const auto offsets = read<std::uint64_t>(argv[7]);
+  const auto queries = read<float>(argv[8]);
+  const std::size_t warmups = static_cast<std::size_t>(std::stoull(argv[9]));
+  const std::size_t repeats = static_cast<std::size_t>(std::stoull(argv[10]));
+  const std::size_t record_bytes = flat.size() % 100 == 0 && offsets.size() == 153 && offsets.back() != 0 &&
+      flat.size() / 100 == offsets.back() ? 100 :
+      (flat.size() % 148 == 0 && offsets.size() == 153 && offsets.back() != 0 && flat.size() / 148 == offsets.back() ? 148 : 0);
+  if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
+      codes.size() != kDocuments * kDimension || scales.size() != kDocuments || record_bytes == 0 ||
+      offsets.size() != 153 ||
+      offsets.front() != 0 || offsets.back() != flat.size() / record_bytes ||
+      queries.size() != 152 * kDimension || warmups == 0 || repeats == 0)
+    throw std::runtime_error("INT8 matched R4 fixture shape differs");
+  std::ofstream raw(argv[11]);
+  if (!raw) throw std::runtime_error("cannot open INT8 matched raw output");
+  std::vector<std::int32_t> candidate_ids(flat.size() / record_bytes);
+  for (std::size_t i = 0; i < candidate_ids.size(); ++i) {
+    std::memcpy(&candidate_ids[i], flat.data() + i * record_bytes, sizeof(std::int32_t));
+    if (candidate_ids[i] < 0 || candidate_ids[i] >= static_cast<std::int32_t>(kDocuments))
+      throw std::runtime_error("INT8 matched candidate ID is out of range");
+  }
+  std::vector<double> total_samples, thq_samples, rerank_samples;
+  total_samples.reserve(152 * repeats);
+  thq_samples.reserve(152 * repeats);
+  rerank_samples.reserve(152 * repeats);
+  for (std::size_t qi = 0; qi < 152; ++qi) {
+    const auto begin_id = static_cast<std::size_t>(offsets[qi]);
+    const auto end_id = static_cast<std::size_t>(offsets[qi + 1]);
+    std::vector<std::int32_t> ids(candidate_ids.begin() + begin_id, candidate_ids.begin() + end_id);
+    if (ids.size() < 128) throw std::runtime_error("INT8 matched candidate row is narrower than top128");
+    const float* query = queries.data() + qi * kDimension;
+    for (std::size_t rep = 0; rep < warmups + repeats; ++rep) {
+      const auto total_begin = std::chrono::steady_clock::now();
+      const auto thq_begin = total_begin;
+      const auto lut = build_lut(thresholds, query);
+      const auto coarse = thq_top128_candidates(thq, lut, ids);
+      const auto thq_end = std::chrono::steady_clock::now();
+      std::vector<std::int32_t> coarse_ids;
+      coarse_ids.reserve(coarse.size());
+      for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
+      const auto rerank_begin = std::chrono::steady_clock::now();
+      const auto reranked = exact_cosine_top10_int8(codes, scales, coarse_ids, query);
+      const auto rerank_end = std::chrono::steady_clock::now();
+      const double thq_ms = elapsed_ms(thq_begin, thq_end);
+      const double rerank_ms = elapsed_ms(rerank_begin, rerank_end);
+      const double total_ms = elapsed_ms(total_begin, rerank_end);
+      if (rep >= warmups) {
+        thq_samples.push_back(thq_ms); rerank_samples.push_back(rerank_ms); total_samples.push_back(total_ms);
+        raw << "{\"repeat\":" << (rep - warmups) << ",\"query\":" << qi
+            << ",\"thq4_top128_ids\":[";
+        for (std::size_t i = 0; i < coarse_ids.size(); ++i) { if (i) raw << ','; raw << coarse_ids[i]; }
+        raw << "],\"top10_ids\":[";
+        for (std::size_t i = 0; i < reranked.size(); ++i) { if (i) raw << ','; raw << reranked[i].id; }
+        raw << "],\"timing_ms\":{\"thq4_prefilter\":" << std::setprecision(12) << thq_ms
+            << ",\"codec_rerank\":" << rerank_ms << ",\"total\":" << total_ms << "}}\n";
+      }
+    }
+  }
+  std::cout << std::fixed << std::setprecision(6)
+            << "{\"status\":\"EXECUTED\",\"scope\":\"frozen R4 candidate stream -> THQ top128 -> INT8 final reranker\",\"queries\":152,\"warmups\":" << warmups
+            << ",\"repeats\":" << repeats << ",\"parity\":\"deferred_to_independent_audit\",\"thq_p50_ms\":" << percentile(thq_samples, .50)
+            << ",\"thq_p95_ms\":" << percentile(thq_samples, .95) << ",\"thq_p99_ms\":" << percentile(thq_samples, .99)
+            << ",\"rerank_p50_ms\":" << percentile(rerank_samples, .50) << ",\"rerank_p95_ms\":" << percentile(rerank_samples, .95)
+            << ",\"rerank_p99_ms\":" << percentile(rerank_samples, .99) << ",\"total_p50_ms\":" << percentile(total_samples, .50)
+            << ",\"total_p95_ms\":" << percentile(total_samples, .95) << ",\"total_p99_ms\":" << percentile(total_samples, .99) << "}\n";
+  return 0;
+}
 }
 
 int main(int argc, char** argv) {
@@ -1799,6 +1875,10 @@ int main(int argc, char** argv) {
   }
   if (argc >= 2 && std::string(argv[1]) == "--int8-cosine-candidate-gate") {
     try { return run_int8_cosine_candidate_gate(argc, argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+  }
+  if (argc >= 2 && std::string(argv[1]) == "--int8-matched-r4") {
+    try { return run_int8_matched_r4(argc, argv); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
   }
   if (argc >= 2 && std::string(argv[1]) == "--dense-candidate-gate") {

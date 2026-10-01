@@ -96,6 +96,11 @@ The current packed finalist comparison is recorded in
 [2026-10-03-native-flat-and-r4-finalist-wave.md](2026-10-03-native-flat-and-r4-finalist-wave.md)
 with its compact machine-readable receipt beside it. It keeps full-flat,
 matched-R4, and candidate-local timings as separate scopes.
+The matched final-reranker corrective control and its source-bound receipt are
+in [2026-10-01-native-matched-r4-final-reranker-control.result.json](2026-10-01-native-matched-r4-final-reranker-control.result.json).
+Raw flat/R4 output is checked by
+`tools/agent-memory-bench/audit-native-flat-and-r4-finalist-wave.py`, whose
+fail-closed self-test is part of CTest.
 ## Latest PCA12 routing follow-ups
 
 - [Diversity-aware centroid routing](2026-09-06-pca12-routing-diversity-centroid.md)

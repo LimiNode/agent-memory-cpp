@@ -22,19 +22,23 @@
     },
     "plsq8x6x8_flat": {
       "scope": "full_1m_packed_flat",
-      "p50_ms": 188.6500,
-      "p95_ms": 199.5890,
-      "p99_ms": 207.6412,
-      "raw_sha256": "f1f526deaa88b8fd38579e33e88dd47e1e4db6fe39186ed825103ba006cbbe63",
+      "p50_ms": 177.9757,
+      "p95_ms": 191.1420,
+      "p99_ms": 202.3426,
+      "raw_sha256": "b88773f21628036d472af425e819440843ce8f55a44019837ed18118e5231f8b",
       "payload_sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387"
+      ,"measured_repeats": 5,
+      "audit_status": "PASS"
     },
     "plsq8x6x8": {
       "scope": "frozen_r4_candidate_stream_thq_top128_packed_final_scorer",
-      "p50_ms": 3.5738,
-      "p95_ms": 3.9454,
-      "p99_ms": 5.0577,
+      "p50_ms": 0.6996,
+      "p95_ms": 0.7810,
+      "p99_ms": 0.8465,
       "ordered_top10_parity": "152/152",
-      "raw_sha256": "58fdfac165568ba1e48b83961284a03ac4609d101810f095f68c7c639c8ab229"
+      "raw_sha256": "d74c3c49c180d6900b91403494887f95114a2f5d3a8348386deba4c02e7693f0",
+      "measured_repeats": 5,
+      "audit_status": "PASS"
     },
     "plsq8x4x8_flat": {
       "scope": "full_1m_packed_flat",
@@ -54,17 +58,33 @@
     },
     "rslm1": {
       "scope": "canonical_r4_candidate_stream_thq_top128_packed_final_scorer",
-      "p50_ms": 3.6574,
-      "p95_ms": 3.8830,
-      "p99_ms": 3.9269,
+      "p50_ms": 0.8801,
+      "p95_ms": 0.9999,
+      "p99_ms": 1.0683,
       "ordered_top10_parity_against_full_candidate_reference": "152/152",
-      "raw_sha256": "d71c5c76aa51f41e7fb7c52445bc0cb0f7a3a56c99546d69db0d0eb77267711b"
+      "raw_sha256": "68f01fb363f00aaea00385eea711681534abcf18a221ef5d2bd3118b601a52dc",
+      "measured_repeats": 5,
+      "audit_status": "PASS"
     }
+  },
+  "matched_r4_int8_control": {
+    "scope": "frozen R4 candidate stream -> THQ top128 -> INT8 reranker",
+    "payload_bytes": 388,
+    "rerank_p50_ms": 0.0620,
+    "rerank_p95_ms": 0.10383,
+    "rerank_p99_ms": 0.126333,
+    "total_p50_ms": 0.1627,
+    "total_p95_ms": 0.20034,
+    "total_p99_ms": 0.258787,
+    "warmups": 1,
+    "measured_repeats": 5,
+    "raw_sha256": "2b636bd3d3c558fa946963ddd5f14feb4aff9d22559b1ff7c676d32f0588e6bf",
+    "audit_status": "PASS"
   },
   "runner_sha256": {
     "lsq_flat": "245e857c2a576d24b3fc5287a00a654a2cc85f08059b383e099df161c0e93782",
-    "plsq": "d92596408f248bed4f7113189ee6e0c1362961b2ba56ee455383d92a1e13714d",
-    "rslm": "8ef42a6f1f6489b1396d3bd192405b217abea0958d4742768b9111d07fb1d987",
+    "plsq": "d5a168421582f2618aca10275482b9146a2eedee2373f680373f9cd159446578",
+    "rslm": "03f11012960ad98aeaa13dc911f9bc08cea5726f567286f5322af181f646cb0f",
     "materializer": "7b49364a9e40da4cbaa5a99a6804e3cf4c3d5231efd3de1770d40359d72f7438"
   },
   "limitations": [
