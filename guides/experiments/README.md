@@ -91,6 +91,11 @@ Experiment notes must distinguish:
 Timing values from a single local run are directional. Treat them as stable
 benchmark evidence only after the harness uses repeated runs, warm-up rules,
 fixed environment notes, and preserved raw outputs.
+
+The current packed finalist comparison is recorded in
+[2026-10-03-native-flat-and-r4-finalist-wave.md](2026-10-03-native-flat-and-r4-finalist-wave.md)
+with its compact machine-readable receipt beside it. It keeps full-flat,
+matched-R4, and candidate-local timings as separate scopes.
 ## Latest PCA12 routing follow-ups
 
 - [Diversity-aware centroid routing](2026-09-06-pca12-routing-diversity-centroid.md)

@@ -105,6 +105,33 @@ double direct_score(const std::uint8_t* symbols, std::uint16_t inner,
 bool order(const Candidate&a,const Candidate&b){return a.score>b.score||(a.score==b.score&&a.id<b.id);}
 std::vector<std::int32_t> top10(std::vector<Candidate> v){std::sort(v.begin(),v.end(),order);std::vector<std::int32_t> out;for(std::size_t i=0;i<std::min<std::size_t>(10,v.size());++i)out.push_back(v[i].id);return out;}
 
+int run_matched(int argc, char** argv) {
+  if (argc != 13) throw std::runtime_error("usage: --matched symbols inner outer ids thq centroids thresholds candidate_flat offsets queries raw");
+  auto symbols=read<std::uint8_t>(argv[2]); auto inner=read<std::uint16_t>(argv[3]); auto outer=read<std::uint16_t>(argv[4]); auto ids=read<std::int32_t>(argv[5]); auto thq=read<std::uint8_t>(argv[6]); auto cent=read<float>(argv[7]); auto thresholds=read<float>(argv[8]); auto candidate=read<std::uint8_t>(argv[9]); auto offsets=read<std::uint64_t>(argv[10]); auto queries=read<float>(argv[11]);
+  const auto record_bytes = offsets.size() == 153 && offsets.back() != 0 && candidate.size() % offsets.back() == 0 ? candidate.size() / offsets.back() : 0;
+  if(ids.empty()||symbols.size()!=ids.size()*SYMBOL_BYTES||inner.size()!=ids.size()||outer.size()!=ids.size()||cent.size()!=D*4||thq.size()!=DOCUMENTS*THQ_BYTES||thresholds.size()!=D*3||queries.size()!=152*D||offsets.size()!=153||(record_bytes!=100&&record_bytes!=148)) throw std::runtime_error("matched RSLM fixture shape differs");
+  if(!std::is_sorted(ids.begin(),ids.end())||std::adjacent_find(ids.begin(),ids.end())!=ids.end()) throw std::runtime_error("RSLM1 payload IDs are not strictly sorted");
+  std::vector<std::size_t> rows(0); std::vector<double> timings;
+  std::ofstream raw(argv[12]);
+  if(!raw) throw std::runtime_error("cannot open matched RSLM raw output");
+  std::size_t query_parity=0;
+  for(std::size_t qi=0;qi<152;++qi){
+    const auto start=std::chrono::steady_clock::now();
+    const float* query=queries.data()+qi*D; std::array<float,D> qarray{}; std::copy(query,query+D,qarray.begin()); const auto qrot=rotate_forward(qarray); const double qnorm=std::sqrt(std::inner_product(query,query+D,query,0.0));
+    std::array<float,D*4> coord{}; for(std::size_t d=0;d<D;++d) for(std::size_t l=0;l<4;++l){const float lo=l==0?-std::numeric_limits<float>::infinity():thresholds[d*3+l-1]; const float hi=l==3?std::numeric_limits<float>::infinity():thresholds[d*3+l]; const float v=query[d]; const float delta=v<lo?lo-v:(v>hi?v-hi:0.0f); coord[d*4+l]=delta*delta;}
+    const auto begin=static_cast<std::size_t>(offsets[qi]), end=static_cast<std::size_t>(offsets[qi+1]); std::vector<Candidate> coarse; coarse.reserve(end-begin);
+    for(std::size_t p=begin;p<end;++p){std::int32_t id=0; std::memcpy(&id,candidate.data()+p*record_bytes,4); const auto* row=thq.data()+static_cast<std::size_t>(id)*THQ_BYTES; double score=0.0; for(std::size_t b=0;b<THQ_BYTES;++b){const auto packed=row[b]; for(std::size_t lane=0;lane<4;++lane) score+=coord[(b*4+lane)*4+((packed>>(lane*2))&3U)];} coarse.push_back({score,id});}
+    if(coarse.size()<BLOCK) throw std::runtime_error("matched RSLM candidate page is narrower than top128");
+    std::partial_sort(coarse.begin(),coarse.begin()+BLOCK,coarse.end(),[](const Candidate&a,const Candidate&b){return a.score<b.score||(a.score==b.score&&a.id<b.id);});
+    std::vector<Candidate> scored; scored.reserve(BLOCK);
+    for(std::size_t i=0;i<BLOCK;++i){const auto id=coarse[i].id; auto it=std::lower_bound(ids.begin(),ids.end(),id); if(it==ids.end()||*it!=id) throw std::runtime_error("matched RSLM top128 ID missing from payload"); const auto row=static_cast<std::size_t>(it-ids.begin()); scored.push_back({direct_score(symbols.data()+row*SYMBOL_BYTES,inner[row],thq.data()+static_cast<std::size_t>(id)*THQ_BYTES,cent.data(),query,qrot,qnorm),id});}
+    const auto elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count(); timings.push_back(elapsed); const auto top=top10(std::move(scored));
+    raw<<"{\"query\":"<<qi<<",\"timing_ms\":"<<std::setprecision(12)<<elapsed<<",\"top10_ids\":["; for(std::size_t i=0;i<top.size();++i){if(i)raw<<',';raw<<top[i];} raw<<"]}\n";
+  }
+  std::sort(timings.begin(),timings.end()); const auto pct=[&](double p){return timings[std::min(timings.size()-1,static_cast<std::size_t>(p*timings.size()))];};
+  std::cout<<std::fixed<<std::setprecision(6)<<"{\"status\":\"EXECUTED\",\"scope\":\"R4 candidate stream -> THQ top128 -> RSLM1 packed scorer\",\"queries\":152,\"p50_ms\":"<<pct(.50)<<",\"p95_ms\":"<<pct(.95)<<",\"p99_ms\":"<<pct(.99)<<"}\n"; return 0;
+}
+
 void self_test(){
   std::array<std::uint8_t,SYMBOL_BYTES> symbols{}; for(std::size_t i=0;i<SYMBOL_BYTES;++i) symbols[i]=static_cast<std::uint8_t>(((i%16)<<4)|((i+1)%16));
   const auto residual=decode_residual(symbols.data(),0x5000); for(float v:residual)if(!std::isfinite(v))throw std::runtime_error("non-finite self-test");
@@ -126,6 +153,7 @@ void self_test(){
 int main(int argc,char**argv){
  try {
   if(argc==2&&std::string(argv[1])=="--self-test"){self_test();return 0;}
+  if(argc>=2&&std::string(argv[1])=="--matched") return run_matched(argc,argv);
   if(argc!=11||std::string(argv[1])!="--candidate-gate") throw std::runtime_error("usage: --candidate-gate symbols inner outer ids thq_codes centroids candidate_ids offsets queries");
   auto symbols=read<std::uint8_t>(argv[2]); auto inner=read<std::uint16_t>(argv[3]); auto outer=read<std::uint16_t>(argv[4]); auto ids=read<std::int32_t>(argv[5]); auto thq=read<std::uint8_t>(argv[6]); auto cent=read<float>(argv[7]); auto candidate=read<std::int32_t>(argv[8]); auto offsets=read<std::uint64_t>(argv[9]); auto queries=read<float>(argv[10]);
   if(ids.empty()||symbols.size()!=ids.size()*SYMBOL_BYTES||inner.size()!=ids.size()||outer.size()!=ids.size()||cent.size()!=D*4||thq.size()!=DOCUMENTS*THQ_BYTES||queries.size()!=152*D||offsets.size()!=153||candidate.size()!=offsets.back()) throw std::runtime_error("RSLM1 input shape differs: ids="+std::to_string(ids.size())+" symbols="+std::to_string(symbols.size())+" inner="+std::to_string(inner.size())+" outer="+std::to_string(outer.size())+" cent="+std::to_string(cent.size())+" thq="+std::to_string(thq.size())+" queries="+std::to_string(queries.size())+" offsets="+std::to_string(offsets.size())+" candidate="+std::to_string(candidate.size())+" last="+std::to_string(offsets.back()));

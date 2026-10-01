@@ -1,0 +1,61 @@
+{
+  "schema_version": 1,
+  "family": "native_flat_and_matched_r4_finalist_wave_v1",
+  "status": "EXECUTED",
+  "corpus_documents": 1000000,
+  "query_count": 152,
+  "query_projection": "canonical legacy 152-row projection",
+  "arms": {
+    "lsq32": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 223.032,
+      "p95_ms": 238.494,
+      "p99_ms": 244.840,
+      "raw_sha256": "e5f9235d55eea9de97a4075a4cbc347027884805b0bc0f4e2d0c0004f6dc6b09"
+    },
+    "lsq48": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 252.526,
+      "p95_ms": 264.469,
+      "p99_ms": 269.872,
+      "raw_sha256": "c8425e999e4bc025d12abe9a01c8456704ced69565586c8222a7c29b0eeac862"
+    },
+    "plsq8x6x8_flat": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 188.6500,
+      "p95_ms": 199.5890,
+      "p99_ms": 207.6412,
+      "raw_sha256": "f1f526deaa88b8fd38579e33e88dd47e1e4db6fe39186ed825103ba006cbbe63",
+      "payload_sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387"
+    },
+    "plsq8x6x8": {
+      "scope": "frozen_r4_candidate_stream_thq_top128_packed_final_scorer",
+      "p50_ms": 3.5738,
+      "p95_ms": 3.9454,
+      "p99_ms": 5.0577,
+      "ordered_top10_parity": "152/152",
+      "raw_sha256": "58fdfac165568ba1e48b83961284a03ac4609d101810f095f68c7c639c8ab229"
+    },
+    "rslm1": {
+      "scope": "canonical_r4_candidate_stream_thq_top128_packed_final_scorer",
+      "p50_ms": 3.6574,
+      "p95_ms": 3.8830,
+      "p99_ms": 3.9269,
+      "ordered_top10_parity_against_full_candidate_reference": "152/152",
+      "raw_sha256": "d71c5c76aa51f41e7fb7c52445bc0cb0f7a3a56c99546d69db0d0eb77267711b"
+    }
+  },
+  "runner_sha256": {
+    "lsq_flat": "245e857c2a576d24b3fc5287a00a654a2cc85f08059b383e099df161c0e93782",
+    "plsq": "d92596408f248bed4f7113189ee6e0c1362961b2ba56ee455383d92a1e13714d",
+    "rslm": "8ef42a6f1f6489b1396d3bd192405b217abea0958d4742768b9111d07fb1d987",
+    "materializer": "6e8a0278adf9e9d1621f35ad3e2d24fe3a54d5f16da82e0f363d5f4508d6b8fa"
+  },
+  "limitations": [
+    "host-specific warm in-memory timings; not acceptance thresholds",
+    "LSQ full-flat rows use native packed codes and bounded top-10, with no FP32 row reconstruction",
+    "PLSQ full-flat materialization uses direct additive codebook reconstruction for norms because the tested Faiss wheel crashes in ProductAdditiveQuantizer::decode on frozen manually loaded models",
+    "TQ1/TQ1+PQ8/RSLM1 full-flat payloads are not fabricated from decoded vectors",
+    "MDBX persistence, cold/restart/recovery and fresh qrels remain separate gates"
+  ]
+}

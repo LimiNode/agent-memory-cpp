@@ -841,6 +841,109 @@ LsqScoredRows score_lsq_gather(const LsqPayload& payload,
   return result;
 }
 
+// Full-corpus packed LSQ path.  The timed loop uses only the THQ byte LUT,
+// stage code LUTs and a bounded top-10 heap; it never reconstructs FP32 rows
+// or materializes a million Candidate objects.
+LsqScoredRows score_lsq_full_flat(const LsqPayload& payload,
+                                  const std::vector<std::uint8_t>& thq,
+                                  const float* query) {
+  if (payload.ids.size() != kDocuments || payload.ids.front() != 0 ||
+      payload.ids.back() != static_cast<std::int32_t>(kDocuments - 1))
+    throw std::runtime_error("full-flat LSQ payload must contain ordered corpus IDs");
+  const auto prepare_begin = std::chrono::steady_clock::now();
+  double query_norm = 0.0;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    query_norm += static_cast<double>(query[d]) * query[d];
+  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<double>::min()));
+  const auto base_lut = build_thq_dot_byte_lut(payload, query);
+  std::vector<double> stage_lut(payload.stages * 256ULL);
+  for (std::size_t stage = 0; stage < payload.stages; ++stage) {
+    for (std::size_t code = 0; code < 256; ++code) {
+      const auto* book = payload.codebooks.data() +
+          (stage * 256ULL + code) * kDimension;
+      double dot = 0.0;
+      for (std::size_t d = 0; d < kDimension; ++d)
+        dot += static_cast<double>(book[d]) * query[d];
+      stage_lut[stage * 256 + code] = dot;
+    }
+  }
+  const auto prepare_end = std::chrono::steady_clock::now();
+  FixedCandidateHeap<10, WorseDescendingCandidate> heap;
+  const auto score_begin = std::chrono::steady_clock::now();
+  for (std::size_t row = 0; row < kDocuments; ++row) {
+    const auto* thq_row = thq.data() + row * kThqBytes;
+    const auto* code = payload.codes.data() + row * payload.stages;
+    double dot = 0.0;
+    for (std::size_t byte = 0; byte < kThqBytes; ++byte)
+      dot += base_lut[byte * 256 + thq_row[byte]];
+    for (std::size_t stage = 0; stage < payload.stages; ++stage)
+      dot += stage_lut[stage * 256 + code[stage]];
+    const double score = dot / std::max(
+        static_cast<double>(payload.norms[row]) * query_norm,
+        std::numeric_limits<double>::min());
+    const Candidate candidate{static_cast<float>(score),
+                              static_cast<std::int32_t>(row)};
+    if (heap.size() < 10) heap.push(candidate);
+    else if (better_desc(candidate, heap.top())) heap.replace_top(candidate);
+  }
+  const auto score_end = std::chrono::steady_clock::now();
+  LsqScoredRows result;
+  result.top10.resize(10);
+  for (std::size_t i = result.top10.size(); i-- > 0;)
+  {
+    const auto candidate = heap.pop_top();
+    result.top10[i] = {static_cast<double>(candidate.score), candidate.id};
+  }
+  std::sort(result.top10.begin(), result.top10.end(), better_dense_desc);
+  result.prepare_ms = elapsed_ms(prepare_begin, prepare_end);
+  result.score_ms = elapsed_ms(score_begin, score_end);
+  return result;
+}
+
+double percentile(std::vector<double> values, double fraction);
+
+int run_lsq_full_flat(int argc, char** argv) {
+  if (argc != 8)
+    throw std::runtime_error(
+        "usage: benchmark --lsq-full-flat payload thq queries query_count warmups repeats");
+  const auto payload = read_lsq_payload(argv[2]);
+  const auto thq = read<std::uint8_t>(argv[3]);
+  const auto queries = read<float>(argv[4]);
+  const auto query_count = static_cast<std::size_t>(std::stoull(argv[5]));
+  const auto warmups = static_cast<std::size_t>(std::stoull(argv[6]));
+  const auto repeats = static_cast<std::size_t>(std::stoull(argv[7]));
+  if (thq.size() != kDocuments * kThqBytes || queries.size() < query_count * kDimension ||
+      query_count == 0 || warmups == 0 || repeats == 0)
+    throw std::runtime_error("LSQ full-flat fixture shape differs");
+  std::vector<double> prepare, score, total;
+  for (std::size_t qi = 0; qi < query_count; ++qi) {
+    const float* query = queries.data() + qi * kDimension;
+    LsqScoredRows last;
+    for (std::size_t i = 0; i < warmups; ++i) last = score_lsq_full_flat(payload, thq, query);
+    for (std::size_t i = 0; i < repeats; ++i) {
+      const auto begin = std::chrono::steady_clock::now();
+      last = score_lsq_full_flat(payload, thq, query);
+      const auto end = std::chrono::steady_clock::now();
+      prepare.push_back(last.prepare_ms); score.push_back(last.score_ms);
+      total.push_back(elapsed_ms(begin, end));
+    }
+    std::cout << "{\"query\":" << qi << ",\"top10_ids\":[";
+    for (std::size_t i = 0; i < last.top10.size(); ++i) {
+      if (i) std::cout << ',';
+      std::cout << last.top10[i].id;
+    }
+    std::cout << "]}\n";
+  }
+  std::cerr << "{\"family\":\"native_lsq_full_flat_v1\",\"documents\":"
+            << payload.ids.size() << ",\"queries\":" << query_count
+            << ",\"repeats\":" << repeats << ",\"mean_ms\":"
+            << std::accumulate(total.begin(), total.end(), 0.0) / total.size()
+            << ",\"p50_ms\":" << percentile(total, .50)
+            << ",\"p95_ms\":" << percentile(total, .95)
+            << ",\"p99_ms\":" << percentile(total, .99) << "}\n";
+  return 0;
+}
+
 int run_lsq_candidate_gate(int argc, char** argv) {
   if (argc != 10)
     throw std::runtime_error("usage: benchmark --lsq-candidate-gate thq thresholds model candidate_flat offsets query_file query_count payload_bytes");
@@ -1678,6 +1781,10 @@ int run_int8_cosine_candidate_gate(int argc, char** argv) {
 }
 
 int main(int argc, char** argv) {
+  if (argc >= 2 && std::string(argv[1]) == "--lsq-full-flat") {
+    try { return run_lsq_full_flat(argc, argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+  }
   if (argc >= 2 && std::string(argv[1]) == "--production-control") {
     try { return run_production_control(argc, argv); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }

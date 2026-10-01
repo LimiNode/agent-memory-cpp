@@ -10,12 +10,12 @@ different representation.
 
 | Arm | Algorithmic quality | Native compressed cascade | Full 1M flat | MDBX persistence |
 | --- | --- | --- | --- | --- |
-| LSQ32 | measured | measured | pending | pending |
-| LSQ48 | measured | measured | pending | pending |
-| PLSQ8x6x8 | measured | measured (candidate-local packed) | pending | pending |
+| LSQ32 | measured | measured | **measured (1M packed flat)** | pending |
+| LSQ48 | measured | measured | **measured (1M packed flat)** | pending |
+| PLSQ8x6x8 | measured | **measured (matched R4 packed)** | **measured (1M packed flat)** | pending |
 | TQ1 | measured | measured (candidate-local packed) | pending | pending |
 | TQ1+PQ8 | measured/partial serving | measured (candidate-local packed) | pending | pending |
-| RSLM1 | measured | measured (candidate-local packed) | pending | pending |
+| RSLM1 | measured | **measured (matched R4 packed)** | pending | pending |
 | INT8 reference | control | control | measured | measured |
 
 The quality rows are the historical qrels study in
@@ -85,6 +85,8 @@ cascade.
 | LSQ48 | 52 B | 1.414 | 3.479 | **4.904** | 152/152 | measured |
 | TQ1 | 68 | 2.272 | 0.075 | 2.775 | 152/152 | packed THQ→TQ intermediate gate, 68 B layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
 | TQ1+PQ8 | 64/68 | 2.251 | 0.072 | 2.813 | 152/152 | packed THQ→TQ1+PQ8 gate, 64 B final-only layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
+| PLSQ8x6x8 | 52 B | matched THQ top-128 | packed | **3.5738** | 152/152 | frozen R4 candidate stream → native packed scorer; [wave note](2026-10-03-native-flat-and-r4-finalist-wave.md) |
+| RSLM1 | 52 B | matched THQ top-128 | packed | **3.6574** | 152/152 | canonical R4 candidate stream → native packed scorer; [wave note](2026-10-03-native-flat-and-r4-finalist-wave.md) |
 
 Source: [`2026-09-23-native-compressed-lsq-result.md`](2026-09-23-native-compressed-lsq-result.md).
 
@@ -111,7 +113,10 @@ its payload is not a matrix of native codec finalists.
 | --- | ---: | --- |
 | Direct INT8 flat | 106.384 | native INT8 control |
 | THQ → INT8 | 83.672 | native THQ routing plus INT8 rerank |
-| LSQ32/LSQ48/PLSQ/TQ/RSLM1 | — | not measured on the full 1M flat path |
+| LSQ32 | **223.032** | 1M packed LSQ32 scan; p95 238.494, p99 244.840 |
+| LSQ48 | **252.526** | 1M packed LSQ48 scan; p95 264.469, p99 269.872 |
+| PLSQ8x6x8 | **188.6500** | 1M packed PLSQ scan; p95 199.5890, p99 207.6412 |
+| TQ1/TQ1+PQ8/RSLM1 | — | no full 1M packed payload; decoded/candidate-local values excluded |
 
 The production receipt explicitly remains normalized in-memory kernel evidence;
 it does not select a codec or establish an MDBX serving winner.
@@ -138,13 +143,12 @@ and [`2026-10-01-native-mdbx-batch-sweep.md`](2026-10-01-native-mdbx-batch-sweep
 ## Interpretation and next gates
 
 The evidence supports a research conclusion, not a product selection: LSQ32,
-LSQ48, PLSQ, TQ1/PQ8 and RSLM1 now have candidate-local packed scorer
-evidence. These rows are still not full-corpus or MDBX serving results. The
-ordered next gates are:
+LSQ48 and PLSQ8x6x8 now have native full-flat packed evidence, while PLSQ8x6x8
+and RSLM1 also have matched R4 packed evidence. TQ1/TQ1+PQ8/RSLM1 full-flat
+and all MDBX rows remain separate gates. The ordered next gates are:
 
-1. fill the matched retrieval table with identical R4 topology and parity for
-   all packed arms (the standalone PLSQ and RSLM1 gates are now measured);
-2. run a full 1M flat matrix using packed payloads;
+1. add native packed TQ/RSLM1 corpus payloads before filling their flat rows;
+2. extend the matched R4 runner to TQ1/TQ1+PQ8 and preserve packed parity;
 3. materialize finalist-specific compact MDBX projections;
 4. run concurrent publication, cold/restart/recovery, and fresh untouched-qrels
    gates before any Pareto or default recommendation.
