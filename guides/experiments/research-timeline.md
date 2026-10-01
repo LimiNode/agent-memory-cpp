@@ -1086,3 +1086,14 @@ TQ1/TQ1+PQ8/RSLM1 flat rows, all finalists need one unified matched-R4
 methodology, and finalist-specific MDBX, cold/recovery/concurrent-publication,
 and fresh-qrels gates remain pending. No codec winner or acceptance threshold
 is inferred from this corrective pass.
+
+### Canonical three-mode serving matrix (2026-10-02)
+
+The serving comparison is now normalized into three distinct modes: full-flat
+packed 1M, Prototype-IVF/balanced routed cascade, and Modern R4 cascade. The
+fixed-top128 scorer remains component evidence rather than a fourth production
+mode. Existing flat and R4 receipts are linked in the consolidated codec
+report; no packed Prototype-IVF receipt currently exists, so that column is
+explicitly `pending` rather than filled from decoded/scalar historical IVF
+experiments. The matched protocol, dependencies and acceptance gates are
+recorded in [`2026-10-02-serving-mode-bakeoff.md`](2026-10-02-serving-mode-bakeoff.md).

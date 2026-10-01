@@ -6,6 +6,13 @@ serving, and persistent MDBX layout. A check mark means that the cited receipt
 contains that measurement; `pending` means that no result is inferred from a
 different representation.
 
+The serving comparison has three canonical modes: full-flat packed 1M,
+Prototype-IVF/balanced routed cascade, and Modern R4 cascade. Their exact
+contracts and planned matched matrix are in
+[`2026-10-02-serving-mode-bakeoff.md`](2026-10-02-serving-mode-bakeoff.md).
+The fixed-top128 candidate-local scorer is diagnostic only and is not a fourth
+production mode.
+
 ## Status matrix
 
 | Arm | Algorithmic quality | Native compressed cascade | Full 1M flat | MDBX persistence |
@@ -75,6 +82,22 @@ explicit. No row promotes an algorithm solely because its decoded FP32 path
 was fast.
 
 ## Native compressed retrieval
+
+### Three-mode status
+
+| Codec | Full-flat packed 1M | Prototype-IVF / balanced | Modern R4 | Interpretation |
+| --- | --- | --- | --- | --- |
+| INT8 | measured control | pending matched packed route | measured control; unified refresh pending | control |
+| LSQ32 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
+| LSQ48 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
+| TQ1 | pending packed payload | pending | measured under older contract; refresh pending | candidate-local/legacy rows cannot fill flat or balanced columns |
+| TQ1+PQ8 | pending packed payload | pending | measured under older contract; refresh pending | same boundary as TQ1 |
+| PLSQ8x6x8 | measured + independent replay | pending | measured packed; refresh pending | strongest current packed coverage |
+| RSLM1 | pending packed payload | pending | measured packed; refresh pending | full-flat and balanced gates remain open |
+
+No final speed ranking is inferred from this mixed-generation table. A valid
+ranking requires one harness, one warmup/repeat contract and one audit across
+the same mode.
 
 ### Matched R4 final-reranker corrective control
 
