@@ -36,6 +36,22 @@
       "ordered_top10_parity": "152/152",
       "raw_sha256": "58fdfac165568ba1e48b83961284a03ac4609d101810f095f68c7c639c8ab229"
     },
+    "plsq8x4x8_flat": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 164.3054,
+      "p95_ms": 172.1001,
+      "p99_ms": 175.9914,
+      "raw_sha256": "91df276c69daaef4c6cddf8c0e4633155d2fcb97717161594f1cd1f4ee021e59",
+      "payload_sha256": "ee1ae0ded176302f16f7c32e7b5fd4cd5abe5c7bf7371c0644799af3f8ccdb9f"
+    },
+    "plsq8x4x8_r4": {
+      "scope": "frozen_r4_candidate_stream_thq_top128_packed_final_scorer",
+      "p50_ms": 3.3612,
+      "p95_ms": 3.7177,
+      "p99_ms": 3.8076,
+      "ordered_top10_parity": "152/152",
+      "raw_sha256": "b596e3dcc78521f57d387c0b7742156f6f6064a434836e3321b382b32133ff70"
+    },
     "rslm1": {
       "scope": "canonical_r4_candidate_stream_thq_top128_packed_final_scorer",
       "p50_ms": 3.6574,

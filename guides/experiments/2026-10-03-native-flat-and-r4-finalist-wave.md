@@ -20,7 +20,9 @@ select THQ top-128, and score those IDs with the native packed final scorer.
 | LSQ32 | full 1M packed flat | 223.032 | 238.494 | 244.840 | native top-10 emitted |
 | LSQ48 | full 1M packed flat | 252.526 | 264.469 | 269.872 | native top-10 emitted |
 | PLSQ8x6x8 | full 1M packed flat | 188.6500 | 199.5890 | 207.6412 | native top-10 emitted |
+| PLSQ8x4x8 | full 1M packed flat | 164.3054 | 172.1001 | 175.9914 | native top-10 emitted |
 | PLSQ8x6x8 | frozen R4 candidate stream → THQ top-128 → packed scorer | 3.5738 | 3.9454 | 5.0577 | 152/152 |
+| PLSQ8x4x8 | frozen R4 candidate stream → THQ top-128 → packed scorer | 3.3612 | 3.7177 | 3.8076 | 152/152 |
 | RSLM1 | canonical R4 candidate stream → THQ top-128 → packed scorer | 3.6574 | 3.8830 | 3.9269 | packed output matches full-candidate reference 152/152 |
 
 The flat timings are host-specific research evidence, not acceptance
