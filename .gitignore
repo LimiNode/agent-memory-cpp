@@ -16,3 +16,7 @@ finalist-v1/*.i4
 finalist-v1/*.i8
 finalist-v1/*.f32
 finalist-v1/*.u8
+# Learned-codec research payloads are externalized and SHA-bound by an
+# experiment manifest; keep compact JSON receipts/audits in Git.
+artifacts/lsq*-*/*.npz
+artifacts/plsq*-*/*.npz

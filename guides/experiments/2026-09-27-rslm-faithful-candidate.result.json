@@ -1,0 +1,26 @@
+{
+  "family": "thq_rslm_faithful_gate_v2",
+  "status": "EXECUTED",
+  "metric": "cosine",
+  "query_count": 152,
+  "candidate_scope": "canonical candidate stream -> THQ4 interval top128",
+  "selected_unique_documents": 463258,
+  "arms": {
+    "rslm3": {
+      "mean_qrels_ndcg10": 0.6567211710335973,
+      "side_payload_bytes": 148
+    },
+    "rslm4": {
+      "mean_qrels_ndcg10": 0.6554810031347177,
+      "side_payload_bytes": 196
+    }
+  },
+  "packed_materialization_audit_sha256": "d5cbbf9aa977fe978e178a3738667dfa199094af692f8ee05600c8084ab469f1",
+  "reference_sha256": "579d90c548b009f80bda9b3d6d2f354c1174e5234cec808f952bf991eab8257d",
+  "materializer_sha256": "da7608bc5c68bfd896582e9a19d38bd90250c6218ca6d84c1a2d765131e8a0f1",
+  "result_sha256": "a3189f8558339806c7695f0ebcc72b0ca23a8320e22ce25f25dbb276f351f04d",
+  "limitations": [
+    "Quality replay is candidate-local and does not claim native serving latency.",
+    "Packed source-bound materialization passed independent candidate/sample audit; dense arrays are serving-preparation artifacts."
+  ]
+}

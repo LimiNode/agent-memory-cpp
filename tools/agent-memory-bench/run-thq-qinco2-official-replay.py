@@ -114,7 +114,7 @@ def main() -> None:
         self_test()
         return
     p = argparse.ArgumentParser()
-    for name in ("qinco-root", "checkpoint", "training-dataset", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output", "codes-output"):
+    for name in ("qinco-root", "checkpoint", "training-dataset", "training-plan", "training-trace", "documents", "train-vectors", "queries", "qrel-ids", "qrel-scores", "teacher-ids", "thq4-codes", "thq4-thresholds", "candidate-flat", "candidate-raw", "candidate-receipt", "output", "codes-output"):
         p.add_argument(f"--{name}", dest=name.replace("-", "_"), type=Path, required=True)
     p.add_argument("--batch-size", type=int, default=64)
     a = p.parse_args()
@@ -127,6 +127,25 @@ def main() -> None:
     from qinco.model.qinco_base import QINCo
 
     saved = torch.load(a.checkpoint, map_location="cpu", weights_only=False)
+    plan = json.loads(a.training_plan.read_text(encoding="utf-8"))
+    if plan.get("status") != "PREFIT_IMMUTABLE" or plan.get("training_domain") not in {"raw", "thq_residual"}:
+        raise RuntimeError("training plan is missing an immutable training domain")
+    if plan.get("training_dataset", {}).get("sha256") != sha256(a.training_dataset):
+        raise RuntimeError("training dataset does not match immutable training plan")
+    manifest_path = Path(plan.get("training_material_manifest", {}).get("path", ""))
+    if not manifest_path.is_file() or sha256(manifest_path) != plan.get("training_material_manifest", {}).get("sha256"):
+        raise RuntimeError("training material manifest is unavailable or not hash-bound")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("status") != "PREFIT_MATERIALIZED" or manifest.get("output", {}).get("sha256") != sha256(a.training_dataset):
+        raise RuntimeError("training material manifest does not bind replay dataset")
+    trace = json.loads(a.training_trace.read_text(encoding="utf-8"))
+    epoch_trace = trace.get("epoch_trace")
+    if not isinstance(epoch_trace, list) or not epoch_trace:
+        raise RuntimeError("training trace has no completed epochs")
+    checkpoint_epoch = int(saved.get("epoch", -1))
+    completed_epochs = max(int(item.get("epoch", -1)) for item in epoch_trace)
+    if checkpoint_epoch != completed_epochs + 1:
+        raise RuntimeError("checkpoint epoch field is inconsistent with completed epoch trace")
     params = saved.get("parameters", {})
     required = {"M", "K", "L", "de", "dh", "A", "B"}
     if not required.issubset(params) or int(saved.get("data_dim", D)) != D:
@@ -186,8 +205,8 @@ def main() -> None:
     summaries = {}
     arm_prefix = f"qinco2_official_{int(params['M'])}b"
     arm_data = {
-        f"{arm_prefix}_residual_mismatch": (reconstructed, final_norms),
-        f"{arm_prefix}_raw_vector": (raw_reconstructed, raw_final_norms),
+        f"{arm_prefix}_train_{plan['training_domain']}_eval_residual": (reconstructed, final_norms),
+        f"{arm_prefix}_train_{plan['training_domain']}_eval_raw": (raw_reconstructed, raw_final_norms),
     }
     for qi in range(QUERY_COUNT):
         ids = selected[qi]
@@ -208,9 +227,43 @@ def main() -> None:
     for arm in arm_data:
         arm_rows = [r for r in rows if r["arm"] == arm]
         summaries[arm] = {"mean_qrels_ndcg10": float(np.mean([r["qrels_ndcg10"] for r in arm_rows])), "p05_qrels_ndcg10": float(np.percentile([r["qrels_ndcg10"] for r in arm_rows], 5)), "worst_qrels_ndcg10": float(np.min([r["qrels_ndcg10"] for r in arm_rows])), "side_payload_bytes": int(params["M"]) + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + int(params["M"] ) + 4, "global_model_bytes": model_bytes, "checkpoint_bytes": int(a.checkpoint.stat().st_size)}
-    sources = {"training-dataset": a.training_dataset, "documents": a.documents, "train-vectors": a.train_vectors, "queries": a.queries, "qrel-ids": a.qrel_ids, "qrel-scores": a.qrel_scores, "teacher-ids": a.teacher_ids, "thq4-codes": a.thq4_codes, "thq4-thresholds": a.thq4_thresholds, "candidate-flat": a.candidate_flat, "candidate-raw": a.candidate_raw, "candidate-receipt": a.candidate_receipt}
+    sources = {"training-dataset": a.training_dataset, "training-plan": a.training_plan, "training-trace": a.training_trace, "documents": a.documents, "train-vectors": a.train_vectors, "queries": a.queries, "qrel-ids": a.qrel_ids, "qrel-scores": a.qrel_scores, "teacher-ids": a.teacher_ids, "thq4-codes": a.thq4_codes, "thq4-thresholds": a.thq4_thresholds, "candidate-flat": a.candidate_flat, "candidate-raw": a.candidate_raw, "candidate-receipt": a.candidate_receipt}
     training = {"checkpoint_epoch": int(saved.get("epoch", -1)), "requested_epochs": int(saved.get("scheduler", {}).get("_max_epochs", -1)), "completed_full_epochs": int(saved.get("epoch", -1)), "effective_train_rows": 20000, "validation_rows": 5000, "optimizer_steps": int(saved.get("logger", {}).get("cur_step", -1)), "dataset_sha256": sha256(a.training_dataset), "dataset_semantics": "raw canonical train vectors; this checkpoint was not trained on the THQ residual matrix", "resolved_config": {k: int(params[k]) for k in required}, "optimizer": {"name": "AdamW", "learning_rate": float(saved.get("optimizer", {}).get("param_groups", [{}])[0].get("lr", 0.0)), "scheduler": "upstream QINCo cosine/ramp scheduler"}, "exact_command": "runner command is bound by the pre-fit training plan when present", "schedule_note": "checkpoint_epoch is the number of completed full epochs over the effective 20,000-row training split; the 25,000-row source pool is split into 20,000 train and 5,000 validation rows."}
     result = {"schema_version": 3, "family": "thq_qinco2_official_replay_v3", "status": "EXECUTED", "quality_status": "BOUNDED_TRAINING_DOMAIN_MISMATCH_CONTROL", "metric": "cosine", "query_count": QUERY_COUNT, "upstream_repository": "https://github.com/facebookresearch/Qinco", "upstream_revision": revision, "upstream_license": "CC-BY-NC-4.0", "candidate_count": TOP, "candidate_shell": "canonical candidate stream -> independently recomputed THQ interval² top128", "unique_documents": int(len(unique_ids)), "checkpoint_sha256": sha256(a.checkpoint), "codes_artifact_sha256": sha256(a.codes_output), "runner_sha256": sha256(Path(__file__)), "source_hashes": {k: sha256(v) for k, v in sources.items()}, "config": {k: int(params[k]) for k in required}, "training": training, "summaries": summaries, "rows": rows, "storage_contract": {"code_dtype": "uint8", "code_shape": [int(params["M"]), "unique_documents"], "code_bytes": int(params["M"]), "final_norm_dtype": "float32", "final_norm_bytes": 4, "side_payload_bytes": int(params["M"]) + 4, "cascade_total_bytes": THQ_BYTES + int(params["M"]) + 4}, "arms": {f"{arm_prefix}_residual_mismatch": "raw-trained checkpoint applied to THQ residuals; training-domain mismatch diagnostic", f"{arm_prefix}_raw_vector": "raw-trained checkpoint applied directly to raw vectors; undertraining diagnostic"}, "limitations": ["official QINCo2 checkpoint trained on raw canonical vectors, not a THQ-residual training matrix", "bounded 25k source pool with 20k effective training rows and 5k validation rows; short schedule, not the 60-epoch production schedule", "candidate-local replay on the historical 152-query fold", "external CC-BY-NC source is not vendored", "no production selection claim"]}
+    # Replace legacy labels with provenance-bound semantics after constructing
+    # the historical row payload.  The checkpoint field is the next epoch;
+    # the trace is the source of truth for completed epochs.
+    result["schema_version"] = 4
+    result["family"] = "thq_qinco2_official_replay_v4"
+    result["quality_status"] = "BOUNDED_MATCHED_DOMAIN_CONTROL" if plan["training_domain"] == "thq_residual" else "BOUNDED_TRAINING_DOMAIN_MISMATCH_CONTROL"
+    result["training"] = {
+        "checkpoint_epoch": checkpoint_epoch,
+        "requested_epochs": int(saved.get("scheduler", {}).get("_max_epochs", -1)),
+        "completed_full_epochs": completed_epochs,
+        "effective_train_rows": int(plan.get("dataset_split", {}).get("train_rows", 0)),
+        "validation_rows": int(plan.get("dataset_split", {}).get("validation_rows", 0)),
+        "optimizer_steps": int(epoch_trace[-1].get("optimizer_steps", -1)),
+        "dataset_sha256": sha256(a.training_dataset),
+        "dataset_semantics": f"{plan['training_domain']} canonical training matrix; provenance read from immutable training plan",
+        "training_domain": plan["training_domain"],
+        "training_plan_sha256": sha256(a.training_plan),
+        "training_material_manifest_sha256": sha256(manifest_path),
+        "training_trace_sha256": sha256(a.training_trace),
+        "resolved_config": {k: int(params[k]) for k in required},
+        "optimizer": result["training"].get("optimizer", {}),
+        "exact_command": "runner command is bound by the immutable pre-fit training plan",
+        "schedule_note": "checkpoint_epoch is one greater than the number of completed full epochs because the upstream checkpoint uses a one-based next-epoch field.",
+    }
+    result["arms"] = {
+        f"{arm_prefix}_train_{plan['training_domain']}_eval_residual": f"{plan['training_domain']}-trained checkpoint evaluated on THQ residuals",
+        f"{arm_prefix}_train_{plan['training_domain']}_eval_raw": f"{plan['training_domain']}-trained checkpoint evaluated directly on raw vectors",
+    }
+    result["limitations"] = [
+        "bounded 25k source pool with 20k effective training rows and 5k validation rows; short schedule, not the 60-epoch production schedule",
+        "candidate-local replay on the historical 152-query fold",
+        "external CC-BY-NC source is not vendored",
+        "no production selection claim",
+    ]
     a.output.parent.mkdir(parents=True, exist_ok=True)
     a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 

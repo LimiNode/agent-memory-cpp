@@ -8,7 +8,9 @@ import json
 from pathlib import Path
 
 
-ARMS = {f"rslm{bits}-{kind}" for bits in (2, 3, 4) for kind in ("faithful", "local")}
+ARMS = {"rslm1-faithful"} | {
+    f"rslm{bits}-{kind}" for bits in (2, 3, 4) for kind in ("faithful", "local")
+}
 SOURCE_ARGS = ("documents", "train_vectors", "queries", "qrel_ids", "qrel_scores", "teacher_ids",
                "thq4_codes", "thq4_thresholds", "candidate_flat", "candidate_raw", "candidate_receipt",
                "reference", "local_helper", "packed_helper")

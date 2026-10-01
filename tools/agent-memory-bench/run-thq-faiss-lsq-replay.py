@@ -129,6 +129,8 @@ def main():
     p.add_argument("--icm-iters", type=int, default=4)
     p.add_argument("--nperts", type=int, default=4)
     p.add_argument("--lsq-seed", type=int, default=20260921)
+    p.add_argument("--faiss-threads", type=int, default=0,
+                   help="explicit Faiss OMP thread count; 0 uses the library default")
     p.add_argument("--train-rows", type=int, default=25_000,
                    help="rows used to fit LSQ codebooks")
     p.add_argument("--base-train-rows", type=int, default=25_000,
@@ -143,6 +145,11 @@ def main():
     payloads = tuple(int(value) for value in a.payloads.split(",") if value.strip())
     if not payloads or len(set(payloads)) != len(payloads) or any(value not in PAYLOADS for value in payloads):
         raise RuntimeError("--payloads must be a non-empty unique subset of 32,48")
+    import faiss
+    if a.faiss_threads < 0:
+        raise RuntimeError("--faiss-threads must be non-negative")
+    if a.faiss_threads:
+        faiss.omp_set_num_threads(int(a.faiss_threads))
     docs = np.memmap(a.documents, mode="r", dtype="<f4", shape=(1_000_000, D)); ntrain = a.train_vectors.stat().st_size // (D * 4)
     if a.train_rows < 256 or a.train_rows > ntrain or a.base_train_rows < 256 or a.base_train_rows > ntrain: raise RuntimeError("train rows outside [256, canonical]")
     train_all = np.memmap(a.train_vectors, mode="r", dtype="<f4", shape=(ntrain, D))
@@ -160,6 +167,14 @@ def main():
                     a.encode_ils_iters, a.icm_iters, a.nperts)
         )
         fit_seconds[m] = time.perf_counter() - started
+        # Persist each fitted payload immediately so a later payload cannot
+        # erase a completed fit if the process is interrupted.
+        partial = a.models_output.with_name(f"{a.models_output.stem}.lsq{m}.partial.npz")
+        partial.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(partial, payload=np.asarray([m], dtype=np.int32),
+                            codebooks=model_data[m][0].astype("<f4"),
+                            offsets=model_data[m][1].astype("<i8"),
+                            fit_seconds=np.asarray([fit_seconds[m]], dtype=np.float64))
     # Select the THQ shell once, then batch LSQ assignment over the union of
     # selected documents.  Calling compute_codes 152*2 times makes Faiss
     # rebuild its local-search workspaces for every tiny batch and obscures the
@@ -199,11 +214,23 @@ def main():
             rows.append({"query": qi, "arm": f"faiss_lsq{m}", "base_codec": "thq_centroids", "base_train_rows": int(a.base_train_rows), "side_payload_bytes": m + 4, "final_norm_sidecar_bytes": 4, "cascade_total_bytes": THQ_BYTES + m + 4, "top10_ids": ranked.astype(int).tolist(), "thq4_top128_ids": selected.astype(int).tolist(), "candidate_fp32_top10_ids": exact.astype(int).tolist(), "candidate_fp32_overlap": float(np.isin(exact, ranked).sum() / 10), "teacher_overlap": float(np.isin(teacher[qi], ranked).sum() / 10), "qrels_ndcg10": ndcg10(ranked, qrel_ids[qi], qrel_scores[qi])})
     a.models_output.parent.mkdir(parents=True, exist_ok=True); a.codes_output.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(a.models_output, centroids=centroids.astype("<f4"), **{f"lsq{m}_codebooks": model_data[m][0].astype("<f4") for m in payloads}, **{f"lsq{m}_offsets": model_data[m][1].astype("<i8") for m in payloads}); np.savez_compressed(a.codes_output, selected_ids=np.stack(selected_all).astype("<i8"), **{f"codes_{m}": np.stack(codes_all[m]) for m in payloads}, **{f"final_norms_{m}": np.stack(norms_all[m]).astype("<f4") for m in payloads})
+    # Partial files are crash-recovery checkpoints only. Once the complete
+    # model and codes exist, keeping the single-payload copies needlessly
+    # duplicates large research artifacts.
+    for m in payloads:
+        partial = a.models_output.with_name(f"{a.models_output.stem}.lsq{m}.partial.npz")
+        if partial.is_file():
+            partial.unlink()
     summaries = {}
     for m in payloads:
         r = [x for x in rows if x["arm"] == f"faiss_lsq{m}"]; summaries[f"faiss_lsq{m}"] = {"mean_qrels_ndcg10": float(np.mean([x["qrels_ndcg10"] for x in r])), "p05_qrels_ndcg10": float(np.percentile([x["qrels_ndcg10"] for x in r], 5)), "worst_qrels_ndcg10": float(np.min([x["qrels_ndcg10"] for x in r])), "mean_candidate_fp32_overlap": float(np.mean([x["candidate_fp32_overlap"] for x in r])), "mean_teacher_overlap": float(np.mean([x["teacher_overlap"] for x in r])), "side_payload_bytes": m + 4, "cascade_total_bytes": THQ_BYTES + m + 4, "global_codebook_bytes": int(model_data[m][0].size * 4), "full_1m_logical_total_bytes": 1_000_000 * (THQ_BYTES + m + 4) + int(model_data[m][0].size * 4), "base_codec": "thq_centroids", "base_train_rows": int(a.base_train_rows), "lsq_train_rows": int(a.train_rows), "final_norm_sidecar_bytes": 4}
-    sources = {n: getattr(a, n.replace("-", "_")) for n in names[:11]}; import faiss
-    result = {"schema_version": 7, "family": "thq_faiss_lsq_replay_v2", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_config": {"train_iters": a.train_iters, "train_ils_iters": a.train_ils_iters, "encode_ils_iters": a.encode_ils_iters, "icm_iters": a.icm_iters, "nperts": a.nperts, "random_seed": a.lsq_seed, "train_rows": int(len(train)), "base_train_rows": int(a.base_train_rows)}, "lsq_train_rows": int(len(train)), "base_train_rows": int(a.base_train_rows), "lsq_train_iters": a.train_iters, "lsq_train_ils_iters": a.train_ils_iters, "lsq_encode_ils_iters": a.encode_ils_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed_base": a.lsq_seed, "effective_seed_by_payload": {str(m): a.lsq_seed for m in payloads}, "independent_fits": True, "payloads": list(payloads), "candidate_union_documents": int(len(selected_union)), "fit_seconds_by_payload": {str(m): fit_seconds[m] for m in payloads}, "candidate_union_encode_seconds_by_payload": {str(m): encode_seconds[m] for m in payloads}, "candidate_union_encode_docs_per_second_by_payload": {str(m): float(len(selected_union) / encode_seconds[m]) if encode_seconds[m] > 0 else float("inf") for m in payloads}, "faiss_omp_threads": int(faiss.omp_get_max_threads()), **faiss_provenance(faiss), "hardware": hardware_snapshot(), "storage_contract": {"metric": "cosine", "final_norm_sidecar_bytes": 4, "side_payload_bytes_by_width": {str(m): m + 4 for m in payloads}}, "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ fits; no shared-prefix assumption", "candidate-local side-code assignment benchmark, not end-to-end insertion throughput", "fit and candidate-union encoding time are recorded separately; full-1M materialization remains pending"]}
+    sources = {n: getattr(a, n.replace("-", "_")) for n in names[:11]}
+    try:
+        import threadpoolctl
+        threadpool_info = threadpoolctl.threadpool_info()
+    except Exception as exc:
+        threadpool_info = {"unavailable": str(exc)}
+    result = {"schema_version": 8, "family": "thq_faiss_lsq_replay_v2", "status": "EXECUTED", "source_replay": True, "runner_sha256": sha256(Path(__file__)), "query_count": QUERY_COUNT, "metric": "cosine", "faiss_version": faiss.__version__, "lsq_config": {"train_iters": a.train_iters, "train_ils_iters": a.train_ils_iters, "encode_ils_iters": a.encode_ils_iters, "icm_iters": a.icm_iters, "nperts": a.nperts, "random_seed": a.lsq_seed, "train_rows": int(len(train)), "base_train_rows": int(a.base_train_rows)}, "lsq_train_rows": int(len(train)), "base_train_rows": int(a.base_train_rows), "lsq_train_iters": a.train_iters, "lsq_train_ils_iters": a.train_ils_iters, "lsq_encode_ils_iters": a.encode_ils_iters, "lsq_icm_iters": a.icm_iters, "lsq_nperts": a.nperts, "lsq_seed_base": a.lsq_seed, "effective_seed_by_payload": {str(m): a.lsq_seed for m in payloads}, "independent_fits": True, "payloads": list(payloads), "candidate_union_documents": int(len(selected_union)), "fit_seconds_by_payload": {str(m): fit_seconds[m] for m in payloads}, "candidate_union_encode_seconds_by_payload": {str(m): encode_seconds[m] for m in payloads}, "candidate_union_encode_docs_per_second_by_payload": {str(m): float(len(selected_union) / encode_seconds[m]) if encode_seconds[m] > 0 else float("inf") for m in payloads}, "faiss_omp_threads": int(faiss.omp_get_max_threads()), "requested_faiss_threads": int(a.faiss_threads), "threadpool_info": threadpool_info, **faiss_provenance(faiss), "hardware": hardware_snapshot(), "storage_contract": {"metric": "cosine", "final_norm_sidecar_bytes": 4, "side_payload_bytes_by_width": {str(m): m + 4 for m in payloads}}, "artifact_hashes": {"models": sha256(a.models_output), "codes": sha256(a.codes_output)}, "source_hashes": {n: sha256(v) for n, v in sources.items()}, "summaries": summaries, "rows": rows, "limitations": ["Faiss LocalSearchQuantizer research control, not AVQ/AAQ/QINCo", "independent LSQ fits; no shared-prefix assumption", "candidate-local side-code assignment benchmark, not end-to-end insertion throughput", "fit and candidate-union encoding time are recorded separately; full-1M materialization remains pending"]}
     a.output.parent.mkdir(parents=True, exist_ok=True); a.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 if __name__ == "__main__": main()

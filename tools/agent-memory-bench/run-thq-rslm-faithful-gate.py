@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Matched THQ4 residual gate for paper-faithful RSLM and local controls.
 
-The three RSLM arms are alternatives after the same THQ4 top-128 filter.  The
+The faithful RSLM1/2/3/4 arms are alternatives after the same THQ4 top-128 filter.  The
 local arms intentionally retain the historical randomized FWHT/Lloyd-Max
 control so that a paper-faithful claim cannot be smuggled into old results.
 """
@@ -60,15 +60,19 @@ def fit_centroids(train: np.ndarray, thresholds: np.ndarray) -> tuple[np.ndarray
 
 
 def load_candidates(flat: Path, raw: Path, receipt: Path) -> tuple[np.ndarray, np.ndarray]:
-    rows = json.loads(raw.read_text(encoding="utf-8")).get("rows")
+    payload = json.loads(raw.read_text(encoding="utf-8"))
+    rows = payload.get("rows")
     if not isinstance(rows, list) or len(rows) != QUERY_COUNT:
         raise RuntimeError("candidate raw must contain 152 rows")
     counts = np.asarray([int(row["candidate_count"]) for row in rows], dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts, dtype=np.int64)))
     total = int(offsets[-1])
-    if flat.stat().st_size != total * 148:
+    record_bytes = int(payload.get("record_bytes", 0))
+    if record_bytes not in (100, 148):
+        raise RuntimeError(f"unsupported candidate record width: {record_bytes}")
+    if flat.stat().st_size != total * record_bytes:
         raise RuntimeError("candidate flat/raw cardinality mismatch")
-    records = np.memmap(flat, mode="r", dtype=np.uint8, shape=(total, 148))
+    records = np.memmap(flat, mode="r", dtype=np.uint8, shape=(total, record_bytes))
     ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
     if np.any(ids < 0) or np.any(ids >= 1_000_000):
         raise RuntimeError("candidate ID out of range")
@@ -113,7 +117,7 @@ def ndcg10(ids: np.ndarray, qids: np.ndarray, grades: np.ndarray) -> float:
 def self_test() -> None:
     result = faithful.self_test()
     assert result["rotation_max_abs_error"] < 2e-4
-    assert all(result["codecs"][str(bits)]["packed_bytes"] == {2: 96, 3: 144, 4: 192}[bits] for bits in (2, 3, 4))
+    assert all(result["codecs"][str(bits)]["packed_bytes"] == {1: 48, 2: 96, 3: 144, 4: 192}[bits] for bits in (1, 2, 3, 4))
     print(json.dumps({"status": "PASS", "reference": "google-research/rslm", "reference_initial_commit": faithful.REFERENCE_INITIAL_COMMIT, "reference_content_commit": faithful.REFERENCE_CONTENT_COMMIT, "reference_snapshot_commit": faithful.REFERENCE_SNAPSHOT_COMMIT, "reference_notebook_blob": faithful.REFERENCE_NOTEBOOK_BLOB, "reference_notebook_sha256": faithful.REFERENCE_NOTEBOOK_SHA256, **result}, indent=2, sort_keys=True))
 
 
@@ -168,7 +172,7 @@ def main() -> None:
     models: dict[str, dict[str, object]] = {}
     local_fit_rows = min(max(1, int(args.local_fit_rows)), len(train_residual))
     local_fit = train_residual[:local_fit_rows]
-    for bits in (2, 3, 4):
+    for bits in (1, 2, 3, 4):
         faithful_path = artifact_dir / f"rslm{bits}.faithful.f32"
         faithful_decoded = np.memmap(faithful_path, mode="w+", dtype="<f4", shape=(len(unique_ids), D))
         for start in range(0, len(unique_ids), 8192):
@@ -196,6 +200,8 @@ def main() -> None:
             "inner_scale_bytes": 2, "outer_scale_bytes": 2,
             "source": "official-relative-mode", "artifact_sha256": sha256(faithful_path)
         }
+        if bits == 1:
+            continue
         signs = np.random.default_rng(20260916).choice(np.asarray([-1.0, 1.0], dtype=np.float32), size=(3, 128))
         centers = local_helpers.lloyd_centers(local_helpers.fwht_blocks(local_fit, signs), bits, iterations=int(args.local_iterations))
         local_path = artifact_dir / f"rslm{bits}.local-residual.f32"

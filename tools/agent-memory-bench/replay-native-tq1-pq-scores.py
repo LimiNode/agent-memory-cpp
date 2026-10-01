@@ -17,8 +17,12 @@ CENTROID = 0.7978846
 SCORE_TOLERANCE = 1e-8
 
 
+def tq_reference_path() -> Path:
+    return Path(__file__).with_name("run-thq-turboquant-reference.py")
+
+
 def load_tq():
-    path = Path(__file__).with_name("run-thq-turboquant-reference.py")
+    path = tq_reference_path()
     spec = importlib.util.spec_from_file_location("tq_score_reference", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("cannot load TQ reference")
@@ -140,7 +144,7 @@ def main() -> None:
     if bool(payload["has_tq_norm"]):
         require(np.isfinite(max_tq) and max_tq <= SCORE_TOLERANCE,
                 f"TQ score replay error exceeds tolerance: {max_tq}")
-    require(checked == sum(len(row["thq4_top128_ids"]) for row in rows),
+    require(checked == sum(len(row["thq4_top128_ids"]) for row in rows.values()),
             "score replay count does not match frozen candidate lists")
     result = {"schema_version": 1, "status": "PASS", "rows": len(rows), "scores": checked,
               "score_tolerance": SCORE_TOLERANCE,
@@ -151,7 +155,8 @@ def main() -> None:
               "queries_sha256": sha256(args.queries),
               "thq_sha256": sha256(args.thq),
               "payload_receipt_sha256": sha256(args.payload_receipt) if args.payload_receipt else None,
-              "replay_runner_sha256": sha256(Path(__file__))}
+              "replay_runner_sha256": sha256(Path(__file__)),
+              "tq_reference_sha256": sha256(tq_reference_path())}
     args.output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(result, sort_keys=True))
 

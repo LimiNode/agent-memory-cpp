@@ -1,0 +1,16 @@
+{
+  "max_abs_pq8_score_error": 7.92383159087251e-10,
+  "max_abs_tq_score_error": null,
+  "native_jsonl_sha256": "b86c9cfdc67d7e66bbb8fbf9d9c7fafc10dc9d5502b58197d45aaf770ba84413",
+  "payload_receipt_sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0",
+  "payload_sha256": "5b479224262413de885f9880d99cb046ea10e3c9051979b91b00621f8a31f0da",
+  "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "replay_runner_sha256": "c8ed0133275e16aee0e51088ddb5eaf0cffb1a771b96de69ba51ad2737a04fa8",
+  "rows": 152,
+  "schema_version": 1,
+  "score_tolerance": 1e-08,
+  "scores": 19456,
+  "status": "PASS",
+  "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+  "tq_reference_sha256": "b2fbd24f6cf22b04370546f4b0d87ee9447f1f11d5f0cf74182f740b10eed277"
+}

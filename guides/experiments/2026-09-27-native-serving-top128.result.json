@@ -1,0 +1,22 @@
+{
+  "family": "thq_native_predecoded_rerank_v3",
+  "status": "EXECUTED",
+  "metric": "cosine",
+  "candidate_scope": "frozen THQ4 top-128 rows (18,362 unique documents)",
+  "timing_scope": "warm process per-query wall-clock; compressed decode excluded",
+  "result_sha256": "002ff4e72f4cfee8940f47de3751436becf67b041d2cb9ceeb96a327fc59be5d",
+  "codecs": {
+    "joint2": {"payload_bytes": 32, "p50_ms": 0.35695, "p95_ms": 1.39942, "p99_ms": 22.939398},
+    "lsq32": {"payload_bytes": 32, "p50_ms": 0.35975, "p95_ms": 1.02081, "p99_ms": 26.058732},
+    "lsq48": {"payload_bytes": 48, "p50_ms": 0.3614, "p95_ms": 0.756975, "p99_ms": 4.410046},
+    "turboquant1": {"payload_bytes": 52, "p50_ms": 0.3624, "p95_ms": 1.049245, "p99_ms": 33.797982},
+    "turboquant2": {"payload_bytes": 100, "p50_ms": 0.3569, "p95_ms": 1.84335, "p99_ms": 7.736275},
+    "elastic_bbq": {"payload_bytes": 62, "p50_ms": 0.3609, "p95_ms": 2.30515, "p99_ms": 6.606955},
+    "rslm3": {"payload_bytes": 146, "p50_ms": 0.399, "p95_ms": 2.88277, "p99_ms": 20.409204},
+    "rslm4": {"payload_bytes": 194, "p50_ms": 0.4375, "p95_ms": 3.88733, "p99_ms": 9.573915}
+  },
+  "limitations": [
+    "This is the serving-preparation gate over the frozen top-128 candidate rows; it is not a full 5k-to-top128 scan benchmark.",
+    "Native executable reports scalar THQ byte-LUT plus predecoded cosine rerank; compressed decode cost and cold/page-fault latency are excluded."
+  ]
+}

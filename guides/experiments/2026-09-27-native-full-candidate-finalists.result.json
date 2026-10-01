@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "family": "thq_native_full_candidate_predecoded_v1",
+  "status": "EXECUTED",
+  "metric": "cosine",
+  "query_count": 152,
+  "candidate_scope": "complete frozen R4 candidate stream -> native THQ4 top128",
+  "unique_candidate_documents": 463258,
+  "decode_scope": "persisted dense payload rerank; compressed decode excluded",
+  "timing_scope": "warm process per-query wall-clock; cold/page-fault latency excluded",
+  "source_hashes": {
+    "candidate_flat": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+    "candidate_raw": "c1d91c940e5f420679f63fb37282889a58fc96dd82f6f8b0aa876d70c98bb60b",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  },
+  "codecs": {
+    "joint2": {
+      "payload_bytes": 32,
+      "exact_top10_parity": true,
+      "timing_ms": {
+        "thq4_prefilter": {"p50": 2.1273, "p95": 42.440575, "p99": 57.783893},
+        "codec_rerank": {"p50": 0.25345, "p95": 3.68339, "p99": 48.623148},
+        "total": {"p50": 2.4459, "p95": 47.847035, "p99": 60.79966}
+      },
+      "decoded_payload_sha256": "fdf050c76787416eb9f6e732dfd12319828167dd39c00d8ea406abaf3e8c9081",
+      "output_sha256": "72ab4b581448096561e2866536eb01f6c61a9aa0f70d615d3827c31a3941c344"
+    },
+    "rslm3": {
+      "payload_bytes": 146,
+      "exact_top10_parity": true,
+      "timing_ms": {
+        "thq4_prefilter": {"p50": 2.7329, "p95": 34.189825, "p99": 41.4684},
+        "codec_rerank": {"p50": 0.29015, "p95": 1.85209, "p99": 22.981472},
+        "total": {"p50": 3.4313, "p95": 35.82805, "p99": 45.667622}
+      },
+      "decoded_payload_sha256": "c3ca4963b601178fe0871206551b0f1456776162987d5b37bdccb7dddf365e4e",
+      "output_sha256": "ba293cf64d5c26d6d86ac579f44ef3e6682871e5e08739e1b8bb4a5c854359b9"
+    },
+    "rslm4": {
+      "payload_bytes": 194,
+      "exact_top10_parity": true,
+      "timing_ms": {
+        "thq4_prefilter": {"p50": 2.82015, "p95": 6.285325, "p99": 8.5332},
+        "codec_rerank": {"p50": 0.31815, "p95": 0.689835, "p99": 2.048318},
+        "total": {"p50": 3.15425, "p95": 7.154395, "p99": 11.15225}
+      },
+      "decoded_payload_sha256": "9e295b1772c38e637473e0d045d744ab1753ea36abc7d911117d7d0503355833",
+      "output_sha256": "cfa75c9643f16d0743ec4ab6a7e91525e9714ebe51f8fe005cf7546578863532"
+    }
+  },
+  "limitations": [
+    "The native gate starts from the frozen R4 candidate stream; upstream R4 construction is not timed here.",
+    "Compressed-code decode is excluded from native timing and remains a separate audit.",
+    "LSQ, TurboQuant and BBQ are separate gates and were not silently substituted."
+  ]
+}

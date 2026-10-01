@@ -879,3 +879,69 @@ finalist gate, conditional on the still-open faithful RSLM comparison; no
 production codec or serving latency claim is made. See
 `2026-09-20-thq-faiss-additive-acceleration.md` and the three
 `2026-09-21-thq-faiss-rq-seed*.audit.json` files.
+
+### Faithful binary follow-ups and native finalist preparation (2026-09-22--23)
+
+The source-bound binary follow-up wave fixed the interpretation of the
+matched 52-byte controls.  Faithful RSLM1/2/3/4 replays, normal-mode
+TurboQuant controls, and the native predecoded finalist orchestration were
+recorded as bounded evidence with independent provenance.  RSLM1 became a
+real source-faithful reference arm rather than a missing implementation
+placeholder.  The native result is deliberately limited to the frozen THQ4
+top-128 shell: compressed decode, cold/page-fault behavior, and full 1M
+materialization remain separate gates.  See
+`2026-09-22-faithful-binary-followups.md`,
+`2026-09-22-native-complete-cascade.md`, and
+`2026-09-23-native-compressed-cascade.md`.
+
+### Codec closure protocol and external-family boundary (2026-09-25--26)
+
+The closure protocol froze the evidence ladder, source revisions, storage
+accounting, and stopping rules.  QINCo2 was retained as a non-commercial,
+bounded undertrained research control; its short replay does not establish
+convergence, occupancy quality, or a production choice.  SAQ remains a
+hardware-gated external lane.  The protocol separates algorithmic closure
+from the fresh-query and native-serving product gates.  See
+`2026-09-25-codec-closure-protocol.md` and
+`2026-09-26-qinco2-corrective-replay.md`.
+
+### Source-faithful RSLM1 and codec-function diagnostics (2026-09-27--28)
+
+RSLM1 materialization and quality replay closed the missing official-source
+arm at 52 B side / 148 B THQ cascade.  OPQ, QINCo2 epoch-4, Rust TurboQuant
+normal-mode parity, and native finalist notes were corrected to distinguish
+executed bounded evidence from convergence and serving claims.  The LSQ
+convergence attempt that exceeded the host wall budget was preserved as a
+terminal deferred-compute record, not silently converted into a negative
+result.  See the dated `2026-09-27-*` and `2026-09-28-*` notes.
+
+### Fidelity closure and frozen finalist manifest (2026-09-29)
+
+The paired LSQ25/50 run is recorded as training-budget/annealing-schedule
+sensitivity, not a continuation convergence proof.  PLSQ8x4x8 and PLSQ8x6x8
+are bounded practical controls; the latter passed an independent persisted
+decode/ranking audit over all 152 queries.  Compact result/audit artifacts,
+external model/code hashes, and storage accounting were frozen in
+`2026-09-29-fidelity-artifact-manifest.json`.  The fresh-evaluation manifest
+freezes the canonical DE-1M, multilingual-e5-small revision, R4/THQ
+identities, and the rule that fresh queries, qrels, and candidate streams are
+opened/regenerated only after the freeze.  Product selection is still
+pending fresh qrels and a full 1M native serving benchmark.
+
+### TQ1+PQ8 receipt correction and Pareto transition (2026-09-30)
+
+The candidate-local TQ1+PQ8 serving evidence was re-bound to the current
+execution-receipt contract: runner source, runner binary, build manifest,
+payload, native JSONL, queries, THQ, thresholds, and offsets are all
+hash-bound.  The current native candidate gate was re-run with the
+hash-bound runner binary and canonical 762,082-record candidate stream, then
+the current replay runner and current audit runner were executed on its
+152-query JSONL.  Their full schema outputs are committed beside the receipt.
+The replay binds both its own source and
+the imported TQ reference module.  It reports 19,456 scores, maximum PQ8
+score error below `1e-8`, and exact THQ top-128/PQ8 top-10 parity.  The older
+reference audit remains explicitly historical and is not used as the current
+execution audit.  This closes a provenance gap, not a new quality experiment.
+The next decision is therefore Pareto/product evaluation across quality,
+storage, query latency, insert, rebuild cost, and portability rather than a
+single historical nDCG winner.

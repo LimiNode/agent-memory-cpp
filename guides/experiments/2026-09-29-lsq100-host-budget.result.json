@@ -1,0 +1,39 @@
+{
+  "family": "thq_faiss_lsq_convergence_ceiling_v1",
+  "status": "DEFERRED_COMPUTE",
+  "gate_status": "WALL_BUDGET_EXHAUSTED",
+  "source_bound": true,
+  "profile": {
+    "payload": 32,
+    "train_rows": 25000,
+    "base_train_rows": 25000,
+    "train_iters": 100,
+    "train_ils_iters": 8,
+    "encode_ils_iters": 16,
+    "icm_iters": 4,
+    "nperts": 4,
+    "seed": 20260921,
+    "faiss_omp_threads": 8
+  },
+  "observed": {
+    "wall_start": "2026-09-29T19:09:36",
+    "wall_stop": "2026-09-29T20:47:00",
+    "cpu_seconds_at_stop": 61809.0625,
+    "artifact_emission": false,
+    "partial_artifact_retained": false
+  },
+  "paired_controls": {
+    "25_mean_qrels_ndcg10": 0.6517623244045091,
+    "50_mean_qrels_ndcg10": 0.6571634918798698,
+    "point_delta_50_minus_25": 0.00540116747536068,
+    "bootstrap_seed": 20260929,
+    "bootstrap_ci95_delta": [-0.01038776, 0.02192472],
+    "interpretation": "Point improvement is positive, but the historical-152 paired bootstrap CI crosses zero; no convergence or production claim follows. The 25-to-50 comparison is a training-budget/annealing-schedule sensitivity control, not a continuation trajectory."
+  },
+  "decision": "DEFERRED_COMPUTE",
+  "limitations": [
+    "No 100-iteration quality artifact was emitted.",
+    "The wall-budget stop is not evidence against the LSQ family.",
+    "A higher-budget or better-conditioned implementation/host is required for a true 100-iteration ceiling probe."
+  ]
+}

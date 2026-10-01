@@ -1,0 +1,65 @@
+{
+  "code_shape": [
+    152,
+    128,
+    48
+  ],
+  "codec_model_bytes": 2359744,
+  "codes_sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c",
+  "effective_1m_cascade_bytes_per_doc": 150.365888,
+  "effective_1m_side_bytes_per_doc": 54.365888,
+  "family": "thq_faiss_plsq_replay_audit_v4",
+  "independent_decode": true,
+  "limitations": [
+    "independent additive decode/ranking/nDCG replay uses persisted PLSQ codebooks",
+    "bounded candidate-local control; no production selection claim"
+  ],
+  "model_sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b",
+  "persisted_norms_verified": true,
+  "profile": {
+    "code_bytes": 48,
+    "encode_ils_iters": 16,
+    "faiss_threads": 8,
+    "icm_iters": 4,
+    "inner_nperts": 4,
+    "msub": 6,
+    "nbits": 8,
+    "nsplits": 8,
+    "profile": "8x6x8",
+    "random_seed_by_split": [
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565,
+      74565
+    ],
+    "train_ils_iters": 8,
+    "train_iters": 25
+  },
+  "quality_status": "BOUNDED_PLSQ_CONTROL",
+  "ranking_mismatches": 0,
+  "recomputed_mean_qrels_ndcg10": 0.6564381975309258,
+  "result_sha256": "36cfe21272cddcf2f1b895dc8694f5d8511643751e8f0e2a67a11bb7843ca039",
+  "rows": 152,
+  "schema_version": 4,
+  "selected_shape": [
+    152,
+    128
+  ],
+  "shared_base_model_bytes": 6144,
+  "status": "PASS",
+  "summary": {
+    "candidate_union_documents": 18362,
+    "candidate_union_encode_seconds": 36.87984950002283,
+    "cascade_total_bytes": 148,
+    "code_bytes": 48,
+    "fit_seconds": 837.6636132998392,
+    "mean_candidate_fp32_overlap": 0.9144736842105263,
+    "mean_qrels_ndcg10": 0.6564381975309258,
+    "mean_teacher_overlap": 0.9092105263157896,
+    "side_payload_bytes": 52
+  }
+}

@@ -1,7 +1,16 @@
 # Codec closure protocol
 
 Date: 2026-09-25
-Status: `IN_PROGRESS`; no product selection.
+Research wave status: `CLOSED`; product selection: `PENDING`.
+
+The paired LSQ training-budget/annealing-schedule sensitivity control and
+same-budget PLSQ8x6x8 control have
+executed and passed independent audits. The conditional LSQ100 ceiling probe
+is terminal `DEFERRED_COMPUTE`/`WALL_BUDGET_EXHAUSTED` after 61,809 CPU seconds
+without artifact emission; this is not a family-negative result. Per-gate
+statuses use `EXECUTED`, `DEFERRED_COMPUTE`,
+`BLOCKED_HARDWARE`, or `BLOCKED_LICENSE`; those statuses must not be confused
+with the aggregate research-wave status.
 
 This is the bounded final research program for compressed final scorers.  It
 replaces neither the source-bound historical-152 evidence nor a fresh final
@@ -21,6 +30,14 @@ than turning a sequence of exploratory runs into a product claim.
 - Every executed arm needs source hashes, a persisted code/model artifact,
   independent decoding or score replay where applicable, and complete storage
   accounting.
+- Storage receipts name `effective_1m_side_bytes_per_doc` for the codec side
+  payload plus amortized codec/shared-base models, and
+  `effective_1m_cascade_bytes_per_doc` after adding the 96-byte THQ4 base.
+
+Large model/code payloads are kept in the external workspace bound by
+`2026-09-29-fidelity-artifact-manifest.json`. A missing external payload is a
+terminal `DEFERRED_COMPUTE` condition; it must never be silently replaced by a
+synthetic or differently sourced artifact.
 
 ## Current external source registry
 
@@ -52,7 +69,10 @@ research inputs, not vendored product dependencies.
    M8 and M16 controls under separate immutable plans.  The fits are explicitly
    undertrained, both collapse severely, and cannot support a
    production choice. Larger 100k/250k/1M unsupervised pools remain a separate gate. Treat
-   QINCo2 as an external non-commercial research control. Run AAQ/query-aware
+   QINCo2 as an external non-commercial research control and mark this gate
+   `DEFERRED_COMPUTE_RESEARCH_ONLY` until a converged, independently decoded
+   neural replay exists. The persisted-code structural audit is not an
+   independent neural decode/ranking replay. Run AAQ/query-aware
    codecs only after a separate judged query-training pool and a pre-registered
    evaluation split exist.
 4. **SAQ portability and quality.** Execute the pinned SAQ source on an
@@ -67,6 +87,52 @@ research inputs, not vendored product dependencies.
    and encode throughput.
 7. **One final confirmation.** Select a fixed finalist set before opening a
    fresh, pre-registered query/qrels evaluation only once.
+
+## LSQ budget-sensitivity ladder
+
+True LSQ convergence is not closed by the existing controls. The bounded
+budget-sensitivity ladder is fixed before any additional fit:
+
+- `25 / train-ILS8` is the bounded baseline;
+- `50 / train-ILS8` is the mandatory higher-budget sensitivity probe (paired
+  with the same seed and source split as the baseline);
+- `100 / train-ILS8` is run only when the paired 50-iteration probe materially
+  improves the 25-iteration result;
+- `encode-ILS16` and `encode-ILS32` are compared on one fitted model, not on
+  separately fitted codebooks.
+
+The existing 50/8 result used a different seed from the previously cited
+25-iteration result and therefore was not a valid convergence comparison. The
+paired source-bound 25/50 control now uses seed `20260921` for both fits and
+passes independent audit. Point delta is `+0.005401`, but the historical-152
+paired bootstrap 95% CI is `[-0.01039,+0.02192]`; it crosses zero. Because
+Faiss recomputes its annealing schedule from `train_iters`, this is
+training-budget sensitivity, not a continuation trajectory or production
+claim. The source-bound receipt is
+`2026-09-29-lsq-paired-training-budget.bootstrap.json`. The conditional
+100-iteration probe was attempted and stopped as
+`DEFERRED_COMPUTE`/`WALL_BUDGET_EXHAUSTED` after
+61,809 CPU seconds without an artifact. The terminal record is
+`2026-09-29-lsq100-host-budget.result.json`; no synthetic replacement is used.
+
+## Finalist freeze and next phase
+
+The closed research registry includes all executed controls: OPQ, BBQ, RaBitQ,
+RSLM3/4, QINCo2 bounded diagnostics, joint2, and other completed families.
+The exact executable fresh-evaluation arm manifest is
+`2026-09-29-fresh-evaluation-arm-manifest.json`. The shortlist is frozen for
+the next product gate: LSQ32, LSQ48, TQ1, TQ1+PQ8, PLSQ8x6x8 and faithful RSLM1
+at the matched 52 B side budget. Joint2 remains a lower-byte reference control
+when evaluation budget permits. The closed registry retains all other
+executed controls (OPQ, BBQ, RaBitQ, RSLM3/4, QINCo2 bounded diagnostics,
+joint2, and related families). This separates research closure from product
+codec selection and records the LSQ100 ceiling as deferred rather than hiding
+it in the shortlist.
+
+After closure, run a fresh untouched query/qrels evaluation and a 1M packed
+native serving benchmark (warm/cold/page-fault, p50/p95/p99, pages touched,
+encode throughput and parity). Historical-152 evidence cannot substitute for
+that product gate.
 
 ## Explicit open evidence backlog
 
@@ -85,9 +151,16 @@ the bounded controls above:
 - fresh held-out evaluation and the full 1M native cascade with parity,
   p50/p95/p99, warm/cold/page behavior, pages touched, and encode throughput.
 
-## Explicit stopping condition
+## Terminal statuses and stopping condition
 
-The algorithm search closes when every gate above has either source-bound
-executed evidence or a documented source/licensing blocker.  New papers after
-that point enter normal feature/research PRs; they do not retroactively change
-the selected frontier without the same protocol.
+Every gate ends in one of `EXECUTED`, `BLOCKED_HARDWARE`,
+`BLOCKED_LICENSE`, or `DEFERRED_COMPUTE`. `DEFERRED_COMPUTE` is valid only
+when bounded source-faithful evidence exists, no family-negative or
+production-superiority claim is made, unresolved families remain finalists when
+the result could change selection, and the deferred gate is explicitly
+separated from product selection.
+
+The algorithm search closes when every gate above has executed evidence,
+hardware/license blocker, or a compliant deferred-compute record. New papers
+after that point enter normal feature/research PRs; they do not retroactively
+change the frozen finalist frontier without the same protocol.

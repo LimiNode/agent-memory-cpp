@@ -1,0 +1,17 @@
+{
+  "materializer_sha256": "b34041540ed70c003c6b4a97fac750e96baf8eb3f60863ded39b3f3c62a46f84",
+  "max_abs_pq8_score_error": 7.92383159087251e-10,
+  "max_abs_tq_score_error": null,
+  "native_jsonl_sha256": "5a8aa8d4d1e497f4dea625c891a585df8153fdc6b575950a1c1b895d0aeaf591",
+  "native_run_receipt_sha256": "fd1eefbdcaf7708d36e9e97cc144579e8666dc578773bca67d6e6177efecf525",
+  "native_runner_sha256": "3695653240a61f19e12a4c96abfd7a9fa0b4ff12e23cf2a875e46480b9426b46",
+  "payload_sha256": "5b479224262413de885f9880d99cb046ea10e3c9051979b91b00621f8a31f0da",
+  "pq8_top10_exact": 152,
+  "query_count": 152,
+  "score_replay_sha256": "1aa4c1b05602c8c8d276365f44f0c19cb643e96e786c55ba52cfcbec7bb30fcf",
+  "side_bytes_per_document": 64,
+  "source_binding": true,
+  "status": "PASS",
+  "thq_top128_exact": 152,
+  "tq1_top10_exact": null
+}

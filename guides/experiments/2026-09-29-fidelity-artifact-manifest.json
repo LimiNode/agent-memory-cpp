@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "status": "EXECUTED",
+  "workspace": "E:\\_repoz\\agent-memory-workspaces\\fidelity-closure-payload-v1",
+  "policy": "Large model/code payloads remain outside Git; compact result and audit files bind them by SHA-256 and size.",
+  "artifacts": [
+    {"path": "lsq50-8-probe/models.npz", "bytes": 11696098, "sha256": "a642108cfd4c656033c687199b719dcdb3d483e1974447ef516a36f0069fb43a"},
+    {"path": "lsq50-8-probe/codes.npz", "bytes": 744234, "sha256": "1b5647b2a398ee0e680a476b276fed5eca4147274d219a1ec3f6a83e33e1b2e4"},
+    {"path": "lsq25-8-paired-seed20260921/models.npz", "bytes": 11695249, "sha256": "58a7d384de95a9b1be876b0c184991907607bb9cce8229137eae9dc988664e02"},
+    {"path": "lsq25-8-paired-seed20260921/codes.npz", "bytes": 744237, "sha256": "08d66f8e6dda7f35c9fc5490506a92ad6cbeb2530bad63c1054af4976bfaab1d"},
+    {"path": "plsq8x4x8-full/model.npz", "bytes": 1472612, "sha256": "3045476daab29e01c5c4c1a5684f43f9702d773ff8049162b79fe55d9f081824"},
+    {"path": "plsq8x4x8-full/codes.npz", "bytes": 743691, "sha256": "06d7bb137037e9ad75b7a3b009c7b6ac31849b080382f77abe81778f687b8e97"},
+    {"path": "plsq8x6x8-full/model.npz", "bytes": 2202209, "sha256": "f31ba23c5af841ef356e502bfb970065f5ea0981c7d648cf738f6ee3306f463b"},
+    {"path": "plsq8x6x8-full/codes.npz", "bytes": 1054792, "sha256": "370031817777a0813af87c6abac12def8dad31008dbae499203b5db32709039c"},
+    {"path": "artifacts/lsq25-8-paired-seed20260921/result.json", "bytes": 455872, "sha256": "850ffe1ac7889c78de2fb5066abdec466318a216a07214ca9ee4ee765c1fa71f"},
+    {"path": "artifacts/lsq25-8-paired-seed20260921/audit.json", "bytes": 3741, "sha256": "4fe2b2b5e9aa2712a90b3a426d6b8065189f53cb82c6ea351dfe29d03518ce53"},
+    {"path": "artifacts/lsq50-8-probe/result.json", "bytes": 455908, "sha256": "47957ba11a17eb46a6e8169c28219e40f14187b5b3edbb5252e1d945aa78052d"},
+    {"path": "artifacts/lsq50-8-probe/audit.json", "bytes": 3741, "sha256": "75e470ba94267105085e9de812eb64eafb922bc4e6344bfafdae0453676749b0"},
+    {"path": "artifacts/plsq8x4x8-full/result.json", "bytes": 104042, "sha256": "4d9f519b20636b9bc201834e1c7a95b1258b7f8198d737d4307b2f891ba0f57c"},
+    {"path": "artifacts/plsq8x4x8-full/audit.json", "bytes": 1899, "sha256": "aa02fbeab410933a541ae05868363dfe2f545731abc0ff1036b497d40a058ccb"},
+    {"path": "artifacts/plsq8x6x8-full/result.json", "bytes": 103873, "sha256": "36cfe21272cddcf2f1b895dc8694f5d8511643751e8f0e2a67a11bb7843ca039"},
+    {"path": "artifacts/plsq8x6x8-full/audit.json", "bytes": 1843, "sha256": "56c0ea8006c787955856f9121e8be343ab17a4b35dfacd5beaacdaa290575cce"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json", "bytes": 1099, "sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.native.run-receipt.json", "bytes": 2555, "sha256": "867e2dfbbfbdb0e726235eca5202f4b375de1ba8fe77ac63ca0e253389d2d855"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.build-manifest.json", "bytes": 922, "sha256": "acb2c222a7d6908d20fc6f7232135492773e07e4623644e5a52f3cbe91a00fe8"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.audit.json", "bytes": 1140, "sha256": "df6d224cf3a21cdcdb38308b3a5a570c03dbdbba4e63dbc530f77895209285da"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.score-replay.json", "bytes": 845, "sha256": "6be165795d8dfd176f270a43d7a61f50db0bc0badaf3042e0cc79ff088733015"},
+    {"path": "artifacts/fresh-shortlist/tq1-pq8-64.reference-audit.json", "bytes": 846, "sha256": "2a819d37d153e6e770887b7d1cc8d199db77eb7696c0ef130b59cf46fbc1f86e"}
+  ],
+  "redundant_removed": ["artifacts/lsq25-8-paired-seed20260921/models.lsq32.partial.npz", "artifacts/lsq50-8-probe/models.lsq32.partial.npz"],
+  "replay_rule": "Before an audit, materialize the external payload at the recorded workspace path and verify every listed size/SHA; missing payload is DEFERRED_COMPUTE, never silently replaced."
+}

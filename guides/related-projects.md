@@ -98,9 +98,11 @@ Disclaimer:
 
 ### Reference note: external vector-store benchmark article
 
-The Habr article ["Сравнение векторных баз и алгоритмов"](<https://habr.com/ru/companies/vktech/articles/1080978/>) is useful as a prompt for measuring the full storage/update/search cycle, but it is not an acceptance baseline. The checked benchmark sources are pinned to revision [`4466dfc`](<https://github.com/georgiy-belyanin/vector-db-benchmark/tree/4466dfc9e870c6d4cfd99977ddc8f7f428bcbf13>) for source inspection only.
-
-The article does not publish numeric recall results, its loading paths are not
+The corrected note is: the public `tarantool` branch currently points to
+`4466dfc` for source inspection, while `master` currently points to
+`c5b4d45659feafaaa968b6f07fdc12a7eb20e171`. Neither branch proves which
+revision generated the article's published run. The article does not publish
+numeric recall results, its loading paths are not
 matched (Tarantool uses one record per `insert`, while Qdrant uses batch
 `upsert`), and the published run does not identify an immutable commit for the
 exact data collection. Its speed multipliers therefore do not become project
@@ -211,3 +213,12 @@ optional external adapters in the same quality/latency table.
 - Anthropic quickstarts: https://github.com/anthropics/claude-quickstarts
 - Anthropic skills: https://github.com/anthropics/skills
 - mockturtle: https://github.com/lsils/mockturtle
+
+The Habr vector-database article is a methodology reference only. Its published
+run has no immutable benchmark commit; the currently reachable repository tip
+`c5b4d45659feafaaa968b6f07fdc12a7eb20e171` was inspected on 2026-09-27 only
+for source context. The article reports no numeric recall and uses different
+loading paths, so its speedups are not acceptance thresholds for this project.
+The public `tarantool` branch currently exposes
+`4466dfc9e870c6d4cfd99977ddc8f7f428bcbf13`, but that reachable source tip is
+not evidence that the article's published run used this exact revision.

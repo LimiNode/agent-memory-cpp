@@ -60,10 +60,14 @@ def candidate_ids(flat: Path, raw_path: Path) -> tuple[np.ndarray, np.ndarray]:
     counts = np.asarray([int(row["candidate_count"]) for row in raw["rows"]],
                         dtype=np.int64)
     offsets = np.concatenate(([0], np.cumsum(counts, dtype=np.int64)))
-    records = np.memmap(flat, mode="r", dtype=np.uint8,
-                        shape=(int(offsets[-1]), 148))
-    ids = np.frombuffer(np.asarray(records[:, :4]).tobytes(), dtype="<i4")
-    ids = ids.reshape(-1).astype(np.int32, copy=False)
+    record_bytes = int(raw.get("record_bytes", 0))
+    require(record_bytes in (100, 148), "unsupported candidate record width")
+    total = int(offsets[-1])
+    flat_bytes = flat.read_bytes()
+    require(len(flat_bytes) == total * record_bytes,
+            "candidate flat/raw cardinality differs")
+    ids = np.ndarray(shape=(total,), dtype="<i4", buffer=flat_bytes,
+                     strides=(record_bytes,)).astype(np.int32, copy=True)
     require(len(counts) == QUERY_COUNT and offsets[-1] == len(ids),
             "candidate stream cardinality differs")
     return ids, offsets.astype(np.uint64)
@@ -239,8 +243,16 @@ def main() -> None:
         stderr = json.loads(completed.stderr.strip().splitlines()[-1])
         query_rows = [json.loads(line) for line in completed.stdout.splitlines() if line]
         require(len(query_rows) == QUERY_COUNT, f"{name} native row count differs")
+        timing_fields = ("thq4_prefilter", "codec_rerank", "total")
+        timing_percentiles = {
+            field: {f"p{percentile}": float(np.percentile(
+                [float(row["timing_ms"][field]) for row in query_rows],
+                percentile)) for percentile in (50, 95, 99)}
+            for field in timing_fields
+        }
         rows.append({"codec": name, "payload_bytes": payload_bytes,
                      "native_summary": stderr,
+                     "timing_percentiles_ms": timing_percentiles,
                      "output_sha256": sha256(output_path),
                      "decoded_payload_sha256": sha256(payload_path),
                      "top10_rows": query_rows})
@@ -253,6 +265,7 @@ def main() -> None:
         "query_count": QUERY_COUNT,
         "candidate_scope": "frozen R4 candidate stream -> native THQ4 byte-LUT top128",
         "decode_scope": "native cosine rerank over persisted predecoded rows; compressed decode excluded",
+        "timing_scope": "warm process per-query wall-clock; OS page counters are reported by the native scorer, cold start excluded",
         "unique_candidate_documents": int(len(unique)),
         "lsq_duplicate_assignment_conflicts": lsq_conflicts,
         "source_hashes": {key: sha256(path) for key, path in {

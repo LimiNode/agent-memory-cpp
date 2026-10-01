@@ -24,7 +24,8 @@ def main() -> None:
     raw = json.loads(args.raw.read_text(encoding="utf-8"))
     if raw.get("family") != "thq_rslm_faithful_gate_v1" or raw.get("status") != "EXECUTED":
         raise SystemExit("raw RSLM result contract differs")
-    if raw.get("query_count") != 152 or len(raw.get("rows", [])) != 912:
+    expected_rows = raw.get("query_count", 0) * len(raw.get("summaries", {}))
+    if raw.get("query_count") != 152 or len(raw.get("rows", [])) != expected_rows:
         raise SystemExit("raw RSLM result cardinality differs")
     arms = {}
     for name, summary in sorted(raw["summaries"].items()):

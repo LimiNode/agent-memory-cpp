@@ -1,0 +1,46 @@
+{
+  "schema_version": 1,
+  "family": "thq_rslm_faithful_gate_v1",
+  "status": "EXECUTED",
+  "audit_status": "PASS",
+  "audit_sha256": "b9911b73ee7ee71484bc55b1e0c4962df5a3310ff92dc0cb72c0d8968518408b",
+  "query_count": 152,
+  "candidate_unique_documents": 463258,
+  "metric": "IP primary; cosine diagnostic",
+  "reference_content_commit": "40b1135c9eb083dee0edb513c2723ca65e289e8f",
+  "producer_hashes": {
+    "runner_sha256": "b673c927cde54194c379ad011c32212e9a42730033a28aac9a04365d296268b6",
+    "faithful_reference_sha256": "579d90c548b009f80bda9b3d6d2f354c1174e5234cec808f952bf991eab8257d",
+    "local_helper_sha256": "d85b5b37bbe4e32445f59bd6b2e6c36da8f84bf52ab1346a0079ce168686084d",
+    "packed_codec_helper_sha256": "94f22860b5a8532235427f063d4f4e39db47709d2d016d7ce4f7415a1e92dcdf"
+  },
+  "rslm1_faithful": {
+    "symbol_bytes": 48,
+    "inner_scale_bytes": 2,
+    "outer_scale_bytes": 2,
+    "side_payload_bytes": 52,
+    "cascade_payload_bytes": 148,
+    "ip_qrels_ndcg10": 0.6573976068107388,
+    "cosine_qrels_ndcg10": 0.6582198627330574,
+    "ip_teacher_overlap": 0.893421052631579,
+    "cosine_teacher_overlap": 0.893421052631579,
+    "ip_candidate_fp32_overlap": 0.8973684210526316,
+    "cosine_candidate_fp32_overlap": 0.8980263157894737
+  },
+  "matched_controls": {
+    "rslm3_faithful_cosine_qrels_ndcg10": 0.6567211710335974,
+    "rslm4_faithful_cosine_qrels_ndcg10": 0.6592013731297126,
+    "rslm4_local_cosine_qrels_ndcg10": 0.6624558867208653
+  },
+  "artifact_hashes": {
+    "raw_result_sha256": "9dd32c18bd2d94ee643d5c90ab48721b6485133272fdcccdec1bb2a1231ed06c",
+    "rslm1_dense_payload_sha256": "65fc710ca576832370ccef4148d16a8ef57275d151cb681429c3fe6238d35dc6",
+    "candidate_flat_sha256": "b77d29f0435faf581576581ca7ccb812700ea87fe831610cae595fbdadb46096",
+    "candidate_raw_sha256": "4e98f84c39a617c36dd5e749a2165d5a1e187ee2a2039d96d748cdce32a0ada7"
+  },
+  "limitations": [
+    "RSLM1 replay is a NumPy correctness/quality gate, not native latency.",
+    "Relative payload includes both UE7M9 inner and outer scales; 52 B side and 148 B THQ cascade are the canonical accounting.",
+    "No production selection claim is made from this candidate-local replay."
+  ]
+}

@@ -197,6 +197,10 @@ def main() -> None:
     parser.add_argument("--qrel-ids", type=Path, required=True)
     parser.add_argument("--qrel-scores", type=Path, required=True)
     parser.add_argument("--teacher-ids", type=Path, required=True)
+    parser.add_argument("--opq-niter", type=int, default=8)
+    parser.add_argument("--opq-niter-pq", type=int, default=4)
+    parser.add_argument("--opq-niter-pq-0", type=int, default=4)
+    parser.add_argument("--opq-pq-kmeans-iters", type=int, default=12)
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args()
 
@@ -266,13 +270,13 @@ def main() -> None:
 
     opq = faiss.OPQMatrix(D, 32)
     opq_pq = faiss.ProductQuantizer(D, 32, 4)
-    opq_pq.cp.niter = 12
+    opq_pq.cp.niter = args.opq_pq_kmeans_iters
     opq_pq.cp.seed = 20260916
     opq_pq.cp.verbose = False
     opq.pq = opq_pq
-    opq.niter = 8
-    opq.niter_pq = 4
-    opq.niter_pq_0 = 4
+    opq.niter = args.opq_niter
+    opq.niter_pq = args.opq_niter_pq
+    opq.niter_pq_0 = args.opq_niter_pq_0
     opq.verbose = False
     opq.train(np.ascontiguousarray(train_residual))
     rotation = faiss.vector_to_array(opq.A).reshape(D, D).astype(np.float32)
@@ -394,6 +398,13 @@ def main() -> None:
         "qrel_ids_sha256": sha(args.qrel_ids),
         "qrel_scores_sha256": sha(args.qrel_scores),
         "teacher_ids_sha256": sha(args.teacher_ids),
+        "opq_config": {
+            "niter": args.opq_niter,
+            "niter_pq": args.opq_niter_pq,
+            "niter_pq_0": args.opq_niter_pq_0,
+            "pq_kmeans_iterations": args.opq_pq_kmeans_iters,
+            "faiss_control": args.opq_niter == 50 and args.opq_niter_pq == 40 and args.opq_niter_pq_0 == 40,
+        },
         "model_hashes": {name: {key: value for key, value in model.items()
                                 if key.endswith("sha256")}
                          for name, model in models.items()},

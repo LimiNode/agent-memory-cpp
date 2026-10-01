@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 
 D = 384
-BITS = (3, 4)
+BITS = (1, 2, 3, 4)
 PRODUCTION_METRIC = "cosine"
 CONTROL_METRIC = "paper-faithful-ip"
 
@@ -54,6 +54,9 @@ def main() -> None:
     args = parser.parse_args()
     raw_path = args.materialization / "materialization.raw.json"
     raw = json.loads(raw_path.read_text(encoding="utf-8"))
+    bits_to_check = tuple(sorted(int(value) for value in raw.get("bits", BITS)))
+    if not bits_to_check or any(bits not in BITS for bits in bits_to_check):
+        raise RuntimeError("materialization declares unsupported codec widths")
     failures: list[str] = []
     if raw.get("family") != "thq_rslm_faithful_candidate_materialization_v1": failures.append("family")
     if raw.get("status") != "EXECUTED": failures.append("status")
@@ -72,7 +75,7 @@ def main() -> None:
     }
     for field, path in expected_sources.items():
         if not path.is_file() or sha256(path) != raw.get(field): failures.append(f"source binding: {field}")
-    for bits in BITS:
+    for bits in bits_to_check:
         width = (D * bits + 7) // 8
         for suffix, item_size in (("symbols.u8", width), ("inner-scale.u16", 2), ("outer-scale.u16", 2)):
             path = args.materialization / f"rslm{bits}.{suffix}"
@@ -99,11 +102,13 @@ def main() -> None:
     if candidate_receipt.get("raw_sha256") != maybe_sha256(args.candidate_raw): failures.append("candidate receipt/raw binding")
     if candidate_receipt.get("flat_file", {}).get("sha256") != maybe_sha256(args.candidate_flat): failures.append("candidate receipt/flat binding")
     counts = np.asarray([int(row["candidate_count"]) for row in candidate_raw.get("rows", [])], dtype=np.int64)
+    record_bytes = int(candidate_raw.get("record_bytes", 0))
+    if record_bytes not in (100, 148): failures.append("candidate record width")
     if len(counts) != 152 or np.any(counts < 5000) or np.any(counts > 5099): failures.append("candidate cardinality")
     if not failures:
         total = int(np.sum(counts))
-        if args.candidate_flat.stat().st_size != total * 148: failures.append("candidate flat size")
-        records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(total, 148))
+        if args.candidate_flat.stat().st_size != total * record_bytes: failures.append("candidate flat size")
+        records = np.memmap(args.candidate_flat, mode="r", dtype=np.uint8, shape=(total, record_bytes))
         candidate_ids = np.asarray(records[:, :4]).copy().view("<i4").reshape(-1).astype(np.int64)
         replay_ids = np.unique(candidate_ids)
         if not np.array_equal(replay_ids, ids.astype(np.int64)): failures.append("candidate ID replay")
@@ -125,7 +130,7 @@ def main() -> None:
         levels = frontier.unpack_thq(np.asarray(thq[ids[sample]]))
         base = centroids[np.arange(D)[None, :], levels]
         docs = np.asarray(documents[ids[sample]], dtype=np.float32)
-        for bits in BITS:
+        for bits in bits_to_check:
             symbols, inner = faithful.encode(docs - base, bits)
             decoded = faithful.decode(symbols, inner, bits)
             combined = base + decoded
@@ -136,7 +141,7 @@ def main() -> None:
             stored_outer = np.memmap(args.materialization / f"rslm{bits}.outer-scale.u16", mode="r", dtype="<u2", shape=(len(ids),))[sample]
             if not np.array_equal(stored_symbols, symbols) or not np.array_equal(stored_inner, inner) or not np.array_equal(stored_outer, outer):
                 failures.append(f"sample replay: RSLM{bits}")
-    audit = {"schema_version": 2, "family": "thq_rslm_faithful_candidate_materialization_audit_v1", "status": "PASS" if not failures else "FAIL", "source_binding": not any(item.startswith("source binding:") or item.endswith("binding") for item in failures), "source_replay": False, "candidate_stream_replay": not bool(failures), "sample_replay": not bool(failures), "control_metric": CONTROL_METRIC, "production_serving_metric": PRODUCTION_METRIC, "production_payload_bytes": {"rslm3": 146, "rslm4": 194}, "materialization_raw_sha256": maybe_sha256(raw_path), "materializer_sha256": maybe_sha256(args.materializer), "candidate_flat_sha256": maybe_sha256(args.candidate_flat), "candidate_raw_sha256": maybe_sha256(args.candidate_raw), "candidate_receipt_sha256": maybe_sha256(args.candidate_receipt), "candidate_ids_sha256": maybe_sha256(ids_path), "thq4_centroids_sha256": maybe_sha256(centroids_path), "failures": failures}
+    audit = {"schema_version": 2, "family": "thq_rslm_faithful_candidate_materialization_audit_v1", "status": "PASS" if not failures else "FAIL", "source_binding": not any(item.startswith("source binding:") or item.endswith("binding") for item in failures), "source_replay": False, "candidate_stream_replay": not bool(failures), "sample_replay": not bool(failures), "control_metric": CONTROL_METRIC, "production_serving_metric": PRODUCTION_METRIC, "codec_widths": list(bits_to_check), "production_payload_bytes": {f"rslm{bits}": 96 + ((D * bits + 7) // 8 + 4) for bits in bits_to_check}, "materialization_raw_sha256": maybe_sha256(raw_path), "materializer_sha256": maybe_sha256(args.materializer), "candidate_flat_sha256": maybe_sha256(args.candidate_flat), "candidate_raw_sha256": maybe_sha256(args.candidate_raw), "candidate_receipt_sha256": maybe_sha256(args.candidate_receipt), "candidate_ids_sha256": maybe_sha256(ids_path), "thq4_centroids_sha256": maybe_sha256(centroids_path), "failures": failures}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(audit, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps(audit, indent=2, sort_keys=True))

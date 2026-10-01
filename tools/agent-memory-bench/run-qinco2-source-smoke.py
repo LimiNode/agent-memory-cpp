@@ -32,6 +32,8 @@ def main() -> None:
     p.add_argument("--qinco-root", type=Path, required=True)
     p.add_argument("--output", type=Path, required=True)
     p.add_argument("--seed", type=int, default=20260924)
+    p.add_argument("--beam-a", type=int, default=8)
+    p.add_argument("--beam-b", type=int, default=4)
     a = p.parse_args()
     root = a.qinco_root.resolve()
     revision = subprocess.check_output(["git", "-C", str(root), "rev-parse", "HEAD"], text=True).strip()
@@ -45,7 +47,7 @@ def main() -> None:
     accelerator = SimpleNamespace(device=torch.device("cpu"), print=lambda *args, **kwargs: None)
     cfg = SimpleNamespace(
         _accelerator=accelerator, _D=dim, _M_ivf=stages, K=codebook, L=1,
-        de=8, dh=32, A=8, B=4, _ivf_book=None, _qinco_jit=False,
+        de=8, dh=32, A=a.beam_a, B=a.beam_b, _ivf_book=None, _qinco_jit=False,
         ivf_in_use=False, task="train", _data_mean=np.zeros(dim, dtype=np.float32),
         _data_std=1.0, codebook_noise_init=0.1, qinco1_mode=False,
         enc_max_bs=65536,
@@ -77,7 +79,7 @@ def main() -> None:
         "source": "https://github.com/facebookresearch/Qinco",
         "upstream_revision": revision,
         "qinco_root": str(root),
-        "config": {"dimension": dim, "stages": stages, "codebook_size": codebook, "hidden_dim": 32, "embedding_dim": 8, "beam": 4, "substep_candidates": 8, "device": "cpu", "seed": a.seed, "eval_mode": True},
+        "config": {"dimension": dim, "stages": stages, "codebook_size": codebook, "hidden_dim": 32, "embedding_dim": 8, "beam_a": a.beam_a, "beam_b": a.beam_b, "device": "cpu", "seed": a.seed, "eval_mode": True},
         "fixture": {"rows": len(values), "codes_shape": list(codes.shape), "decoded_shape": list(replay.shape), "mse": float(torch.mean((replay - values) ** 2).detach()), "repeat_codes_equal": True, "repeat_encoded_reconstruction_equal": True, "repeat_decoded_equal": True, "encode_decode_allclose": True, "encode_decode_max_abs": encode_decode_max_abs},
         "limitations": ["synthetic untrained-model smoke only", "no E5/R4-trained checkpoint", "no 16-byte corpus quality number", "official QINCo2 source is an external dependency and was not modified"],
     }
