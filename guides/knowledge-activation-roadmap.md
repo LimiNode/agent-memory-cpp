@@ -195,6 +195,14 @@ updated_at_ms: 1785100000000
 rules, fallback decisions, cross-domain additions and whether activation
 changed final rank or only context budgeting.
 
+Activation is a retrieval/planning signal, not a truth, proof, authority, or
+access-control decision. A future richer trace may expose an `ActivationSeed`,
+ordered `ActivationStep` records, reason/source paths, scores, and working-set
+admission. It should distinguish a minimal answer-support path from the wider
+diagnostic expansion path. Every step remains subject to independent scope and
+authorization filters, and the trace is query-time evidence rather than
+canonical corpus state.
+
 The filesystem path must not define semantic identity. For file-backed
 catalogs, group by object kind (`concepts/`, `playbooks/`, `domain_maps/`) and
 store domains/facets as metadata.
@@ -220,6 +228,10 @@ User query
 M1b uses deterministic activation first: aliases, trigger phrases, intent
 dictionary, domain keywords, current role, and explicit graph edges. Learned or
 LLM-based planners are M2+ adapters.
+
+Provider/model extraction is likewise outside canonical admission: candidates
+must pass deterministic grounding, validation, policy checks, and atomic
+publication before they can affect activation metadata or graph projections.
 
 ## 6. Strict Filters Versus Soft Routing
 
