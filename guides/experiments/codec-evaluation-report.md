@@ -95,7 +95,7 @@ without persisted predecoded FP32 payloads. They are not full-cascade rows:
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | PLSQ8x4x8 | 36 B | 0.3801 | 0.4538 | 0.5166 | 152/152 | direct packed dot, candidate-local shell |
 | PLSQ8x6x8 | 52 B | 0.5377 | 0.6136 | 0.7252 | 152/152 | direct packed dot, candidate-local shell |
-| RSLM1 | 52 B | 0.7954 | 0.9858 | 1.3250 | 152/152 | direct transform-domain score, candidate-local shell |
+| RSLM1 | 52 B | 0.8042 | 1.1402 | 1.2950 | 152/152 | direct transform-domain score, candidate-local shell |
 
 These are candidate-local packed decode-and-score timings: candidate IDs are
 already fixed by the frozen shell, so they are not end-to-end THQ-routing

@@ -8,14 +8,13 @@
   "ordered_top10_exact": 152,
   "representation": "direct_transform_domain_score",
   "timing_ms": {
-    "p50": 0.7954,
-    "p95": 0.9858,
-    "p99": 1.3250
+    "p50": 0.8042,
+    "p95": 1.1402,
+    "p99": 1.2950
   },
-  "output_sha256": "0cd7760e117260b1cbbc05a170b821748af24be190c141d68ed8a6f80dfbb058",
+  "output_sha256": "188ec98b14135b7f97937261687a9ce3b54b52956abf93dfae51d73d86c76984",
   "expected_reference_sha256": "6c0e4b684a8d9fe2cb28a39d2449d32f801756b885f535876ad02e1ab9e7809b",
-  "runner_sha256": "43d65f7808b68151863789826f8160c34323cd37b80e3676c4f45241834e648f",
-  "audit_runner_sha256": "11e51c7d67437ef15d0f92da5dc3f97109d5d503bc62fb2f46b6c2f3fec86047",
+  "audit_runner_sha256": "8eb38b5cea6f3ec110d3e3c00dd2c8a78b28c084de19431264c3113cac6272d1",
   "packed_artifacts": {
     "symbols_sha256": "b7d99c5abfc005958e45b749df0db82e827e6f576b90e4fb14bb98a6365a38d6",
     "inner_scale_sha256": "6238248d7f262ce4e67d8ac71c976bf3a9b116b68ecbd9910ff83a5d258a346d",
