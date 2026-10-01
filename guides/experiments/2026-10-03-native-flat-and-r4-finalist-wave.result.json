@@ -1,0 +1,101 @@
+{
+  "schema_version": 1,
+  "family": "native_flat_and_matched_r4_finalist_wave_v1",
+  "status": "EXECUTED",
+  "corpus_documents": 1000000,
+  "query_count": 152,
+  "query_projection": "canonical legacy 152-row projection",
+  "arms": {
+    "lsq32": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 223.032,
+      "p95_ms": 238.494,
+      "p99_ms": 244.840,
+      "raw_sha256": "e5f9235d55eea9de97a4075a4cbc347027884805b0bc0f4e2d0c0004f6dc6b09"
+    },
+    "lsq48": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 252.526,
+      "p95_ms": 264.469,
+      "p99_ms": 269.872,
+      "raw_sha256": "c8425e999e4bc025d12abe9a01c8456704ced69565586c8222a7c29b0eeac862"
+    },
+    "plsq8x6x8_flat": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 177.9757,
+      "p95_ms": 191.1420,
+      "p99_ms": 202.3426,
+      "raw_sha256": "b88773f21628036d472af425e819440843ce8f55a44019837ed18118e5231f8b",
+      "payload_sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387",
+      "measured_repeats": 5,
+      "audit_status": "PASS",
+      "independent_top10_parity": "152/152",
+      "reference_audit": "artifacts/2026-10-01-plsq8x6-flat.reference.audit.json",
+      "reference_audit_sha256": "c66b461c7548b49910c36a0b0d075353deab78900d8986effb3788293428887f",
+      "reference_runner_sha256": "19d56b41e3d7035c9a227c15f0203429447a6579bac79448c8970a550fc050f9"
+    },
+    "plsq8x6x8": {
+      "scope": "frozen_r4_candidate_stream_thq_top128_packed_final_scorer",
+      "p50_ms": 0.6996,
+      "p95_ms": 0.7810,
+      "p99_ms": 0.8465,
+      "ordered_top10_parity": "152/152",
+      "raw_sha256": "d74c3c49c180d6900b91403494887f95114a2f5d3a8348386deba4c02e7693f0",
+      "measured_repeats": 5,
+      "audit_status": "PASS"
+    },
+    "plsq8x4x8_flat": {
+      "scope": "full_1m_packed_flat",
+      "p50_ms": 164.3054,
+      "p95_ms": 172.1001,
+      "p99_ms": 175.9914,
+      "raw_sha256": "91df276c69daaef4c6cddf8c0e4633155d2fcb97717161594f1cd1f4ee021e59",
+      "payload_sha256": "ee1ae0ded176302f16f7c32e7b5fd4cd5abe5c7bf7371c0644799af3f8ccdb9f"
+    },
+    "plsq8x4x8_r4": {
+      "scope": "frozen_r4_candidate_stream_thq_top128_packed_final_scorer",
+      "p50_ms": 3.3612,
+      "p95_ms": 3.7177,
+      "p99_ms": 3.8076,
+      "ordered_top10_parity": "152/152",
+      "raw_sha256": "b596e3dcc78521f57d387c0b7742156f6f6064a434836e3321b382b32133ff70"
+    },
+    "rslm1": {
+      "scope": "canonical_r4_candidate_stream_thq_top128_packed_final_scorer",
+      "p50_ms": 0.8891,
+      "p95_ms": 1.0032,
+      "p99_ms": 1.0696,
+      "ordered_top10_parity": "structural audit passed; packed reference parity remains separately bound",
+      "raw_sha256": "98a41affc8f735912111418e0a1e0f85fcd05b3f3004b7273f9eafa113a44447",
+      "measured_repeats": 5,
+      "audit_status": "PASS"
+    }
+  },
+  "matched_r4_int8_control": {
+    "scope": "frozen R4 candidate stream -> THQ top128 -> INT8 reranker",
+    "payload_bytes": 388,
+    "rerank_p50_ms": 0.0620,
+    "rerank_p95_ms": 0.10383,
+    "rerank_p99_ms": 0.126333,
+    "total_p50_ms": 0.1627,
+    "total_p95_ms": 0.2030,
+    "total_p99_ms": 0.2592,
+    "warmups": 1,
+    "measured_repeats": 5,
+    "raw_sha256": "2b636bd3d3c558fa946963ddd5f14feb4aff9d22559b1ff7c676d32f0588e6bf",
+    "audit_status": "PASS"
+  },
+  "runner_sha256": {
+    "lsq_flat": "245e857c2a576d24b3fc5287a00a654a2cc85f08059b383e099df161c0e93782",
+    "plsq": "d5a168421582f2618aca10275482b9146a2eedee2373f680373f9cd159446578",
+    "rslm": "20659f8f64691380d601eb801aa774db4d8d679e29b9271ff2abf74dd3ab9c21",
+    "materializer": "7b49364a9e40da4cbaa5a99a6804e3cf4c3d5231efd3de1770d40359d72f7438"
+  },
+  "limitations": [
+    "host-specific warm in-memory timings; not acceptance thresholds",
+    "LSQ full-flat rows use native packed codes and bounded top-10, with no FP32 row reconstruction",
+    "PLSQ full-flat materialization uses direct additive codebook reconstruction for norms because the tested Faiss wheel crashes in ProductAdditiveQuantizer::decode on frozen manually loaded models",
+    "TQ1/TQ1+PQ8/RSLM1 full-flat payloads are not fabricated from decoded vectors",
+    "MDBX persistence, cold/restart/recovery and fresh qrels remain separate gates"
+  ]
+}

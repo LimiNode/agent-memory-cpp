@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "family": "native_plsq_packed_cascade_v1",
+  "status": "EXECUTED",
+  "scope": "candidate-local frozen R4 shell",
+  "queries": 152,
+  "candidate_width": 128,
+  "repeats": 5,
+  "arms": {
+    "plsq8x4x8": {"side_bytes": 36, "representation": "direct_packed_dot", "p50_ms": 0.3801, "p95_ms": 0.4538, "p99_ms": 0.5166, "ordered_parity": "152/152", "payload_sha256": "3f7e90ccda248ffc89380a510ccb27c3a90da70d3b2a10219b6b240e47a12fb1", "raw_output_sha256": "89f530733036c11c2ca5b2aebf85301fdb733fe75ddc13034042e82d5ab46d08"},
+    "plsq8x6x8": {"side_bytes": 52, "representation": "direct_packed_dot", "p50_ms": 0.5377, "p95_ms": 0.6136, "p99_ms": 0.7252, "ordered_parity": "152/152", "payload_sha256": "1f8b05b030cf234c0b35a28bd27b1c86464a6e0bbedd1f89460ec02570281f41", "raw_output_sha256": "efbb9f9682ebcd44828ff74f4e805f10b914705dc7bde23ce19b9d0347acb902"}
+  },
+  "source_hashes": {
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "runner_source": "a8427d25b5decc60607cf776e919f94d84fd612bf37d143fab1b8a79e6003e2c",
+    "materializer": "007170f786cae1c4a79399c8dab38bfa97ff3b4dd141f5c8d9e769ed4f84e13c"
+  },
+  "audit_runner_sha256": "0bb0cfbf5541998678b8af1cfc73c86733dd6b252e368eb75e69443ef54e7997",
+  "expected_ids_sha256": {
+    "plsq8x4x8": "ae9aa217d4ccfae0070eb7b1c5707fc20a96a4dc9c75516278d2fa1bf4409cc3",
+    "plsq8x6x8": "d4cd4ea2a2fed8aed12aae6641b5addccf955f042e16fd13442c55b5676b067b"
+  },
+  "limitations": [
+    "candidate-local frozen R4 shell",
+    "no full 1M PLSQ payload or MDBX serving claim",
+    "quality qrels are bound to the independent Faiss replay, not recomputed by this timing receipt"
+  ]
+}

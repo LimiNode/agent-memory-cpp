@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "family": "native_thq_mdbx_bounded_batch_sweep_v1",
+  "status": "EXECUTED",
+  "fixture_kind": "synthetic zero-code payload; materialization only",
+  "documents": 1000000,
+  "segment_rows": 128,
+  "batch_documents": [1024, 8192, 65536, 131072, 262144, 524288, 1000000],
+  "inputs_sha256": {
+    "thq": "0037aa866f12a55584ed5e8119192e8bc2024a2d59ab1db027bd36b2590b7501",
+    "codes": "244800ebba4408ba63e8ecc4339c1f2e214991d18508fd53910134cc816f3d4a",
+    "scales": "3ac3a5af5ffc7e690a8cd426d80094fce2803e810f28af7eb36fa053f3508167"
+  },
+  "rows": [
+    {"status": "MATERIALIZED", "batch_documents": 1024, "durable_commits": 977, "materialize_ms": 4077.589, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 8192, "durable_commits": 123, "materialize_ms": 3945.140, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 65536, "durable_commits": 16, "materialize_ms": 3797.726, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 131072, "durable_commits": 8, "materialize_ms": 3870.797, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 262144, "durable_commits": 4, "materialize_ms": 3904.565, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 524288, "durable_commits": 2, "materialize_ms": 4033.973, "db_bytes": 402653184},
+    {"status": "MATERIALIZED", "batch_documents": 1000000, "durable_commits": 1, "materialize_ms": 3981.496, "db_bytes": 402653184}
+  ],
+  "source_receipt": "build-fidelity/mdbx-batch-synthetic/results-native-v2/native-mdbx-batch-sweep.result.json",
+  "source_receipt_sha256": "22217561c2e307146417a8d199af3993f627fe723ab594fee4fdbb05a9008721",
+  "key_contract": "uint32_t MDBX_INTEGERKEY",
+  "limitations": [
+    "materialization-only; no query quality or latency claim",
+    "synthetic payload; not a codec comparison",
+    "publication, concurrent readers and crash recovery remain separate gates"
+  ]
+}

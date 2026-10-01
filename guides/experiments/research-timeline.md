@@ -945,3 +945,144 @@ execution audit.  This closes a provenance gap, not a new quality experiment.
 The next decision is therefore Pareto/product evaluation across quality,
 storage, query latency, insert, rebuild cost, and portability rather than a
 single historical nDCG winner.
+
+### First real serving baseline for the product phase (2026-09-30)
+
+The current native build was run over the complete 1M-document THQ4/INT8
+materialization and the 152-query control fixture.  Warm in-memory means were
+417.694 ms/query for direct linear INT8, 96.2208 ms/query for the THQ cascade
+with linear rerank, 618.174 ms/query for direct power-0.625 INT8, and 96.4203
+ms/query for its cascade.  These are real full-corpus native measurements,
+not candidate-local timings, but they still exclude MDBX I/O, cold faults,
+write/update/rebuild work, and fresh qrels.  The result is a Gate-B baseline,
+not a codec selection.  See
+`2026-09-30-native-full-corpus-serving-control.md` and its compact result.
+
+### Production-kernel normalisation control (2026-09-30)
+
+The follow-up keeps the same 1M materialisation and 152-query fixture but
+removes the scalar-control asymmetries: bounded THQ top-128 selection, a common
+ordered top-10 output contract, page accounting outside the timed region,
+per-query warmup, fixed-seed arm randomisation, and p50/p95/p99 summaries.  The
+single-host AVX2 control measured 235.907 ms mean (234.046 p50) for direct
+INT8 top-10 and 92.9262 ms mean (92.0117 p50) for THQ bounded top-128 followed
+by INT8 top-10.  These are still bounded in-memory kernel measurements: ten
+timed repeats after two warmups, no pinned NUMA/affinity, no MDBX, no cold/restart or write lifecycle,
+and no fresh qrels.  They are not a codec ranking or production selection.
+See `2026-09-30-native-production-kernel-control.md` and its compact result.
+
+### Physical MDBX serving layout gate (2026-09-30)
+
+The first persisted-serving bakeoff used the same frozen 1M THQ4/INT8 payload
+and 152-query candidate fixture. A row-per-document MDBX table took 308.345 s
+to materialize and occupied 553,648,128 bytes; a 4,096-row segment/blob table
+took 1.795 s and occupied 486,539,264 bytes. On sparse 128-candidate payload
+reads, row KV measured 0.329/0.886/1.125 ms warm p50/p95/p99, while the segment
+layout measured 136.977/163.316/185.366 ms. Both layouts reproduced the
+ordered top-10 for all 152 queries. A separate lifecycle smoke passed update
+visibility, tombstone preservation, and committed generation publication.
+This is physical payload-serving evidence, not a full THQ scan, cold-cache
+restart test, concurrent update/rebuild test, fresh-quality gate, or codec
+selection. See `2026-09-30-native-mdbx-serving-layout.md` and the two compact
+JSON receipts.
+
+### Audited production-kernel normalization v2 (2026-09-30)
+
+The in-memory THQ/INT8 control was rerun with query preparation and individual
+score/top-k/rerank stages inside the measurement contract. INT8 now accumulates
+in AVX2 registers and the dense THQ path uses a persistent block32 layout. An
+initial pair-LUT implementation was rejected after changing the top-128
+boundary on 2/152 queries; the accepted byte-LUT gather path preserves ordered
+top-128 parity on 152/152. The independent JSONL audit also established
+152/152 AVX2/scalar INT8 ordered top-10 parity, maximum absolute score error
+`1.37091e-6`, and correct code-plus-scale page accounting. Query-median totals
+were 106.403 ms for direct INT8 and 83.717 ms for THQ→INT8. This remains a
+normalized THQ/INT8 control, not a comparison of the frozen codec shortlist or
+a winner claim. See `2026-09-30-native-production-kernel-normalized-v2.md` and
+the v2 audit receipt.
+
+### Corrective evidence pass (2026-09-30)
+
+The production-kernel audit now has a fail-closed synthetic fixture: malformed
+query order, duplicate IDs, short THQ top-128, false parity, and broken stage
+totals are each rejected. The receipt records a predeclared score-error
+tolerance contract and machine-readable environment/run configuration; an
+optional frozen-manifest check binds known THQ, threshold and query hashes.
+The C++ self-test additionally packs 37 synthetic THQ documents into a padded
+block32 layout and compares every logical score with the doc-major unrolled
+scorer, keeping the padded tail outside the logical count.
+
+The historical MDBX layout receipt remains reference-grade. An independent
+receipt auditor and the MDBX lifecycle smoke are now registered in CTest, and
+the CI MDBX benchmark job builds and runs the lifecycle target. This improves
+coverage and provenance but does not retroactively turn the 4,096-row layout
+into a complete segment sweep or prove crash/concurrent-rebuild semantics.
+
+### Matched native finalist serving wave (2026-09-30)
+
+The frozen top-128 candidate shell was replayed through one native
+THQ4-to-ordered-top10 contract for LSQ32, LSQ48, PLSQ8x6, TQ1, TQ1+secondary,
+RSLM1, RSLM3 and RSLM4. Every arm reproduced ordered top-10 for 152/152 queries;
+compact p50/p95/p99 totals and payload hashes are in
+`2026-09-30-native-matched-finalist-serving-wave.result.json`. The payloads
+were predecoded and the scope remains serving-kernel only: this is matched
+evidence, not decode-throughput, MDBX, fresh-qrels or codec-winner evidence.
+
+### MDBX segment sweep harness (2026-09-30)
+
+The MDBX serving runner now accepts an explicit segment-row parameter and uses
+native uint32 MDBX_INTEGERKEY ordering. A sweep harness covers 16, 32, 64,
+128, 256, 512, 1024 and 4096 rows per segment, with compact machine-readable
+receipts and parity checks. The completed 1M-document run materialized all
+eight profiles and reproduced ordered top-10 parity for 152/152 queries in
+each profile. The re-keyed replay warm p50 ranged from 0.9155 ms (16 rows)
+through 113.6379 ms (4096 rows); p95 ranged from 1.5765 ms through 148.1682
+ms. Materialization
+fell from 19,516.215 ms to 1,453.676 ms, while the split final-code projection
+occupied 402,653,184 bytes for every segment size. The timed reader uses
+bounded fixed arrays and insertion top-k; the independent fail-closed receipt
+auditor replays raw timing samples and the expected-ID checksum. This closes
+the bounded physical segment-size gate, but not cold-cache/recovery, concurrent
+update/rebuild, full routing, or fresh-quality gates.
+
+On 2026-10-01, the compact-code MDBX materializer was exercised across
+1,024-1,000,000 document batches on a synthetic 1M payload. Durable commits
+decreased from 977 to 1 while the 402,653,184-byte footprint stayed constant;
+this is materialization evidence only and does not claim publication or query
+quality. The consolidated cross-stage status is in
+[`codec-evaluation-report.md`](codec-evaluation-report.md).
+
+### Packed finalist scorer closure (2026-10-02)
+
+The native scorer wave was extended beyond the earlier LSQ controls. Persisted
+PLSQ8x4x8/8x6x8 payloads now have a direct packed-codebook scorer with exact
+152/152 ordered parity and codec-only p50 0.3801/0.5377 ms respectively. The
+official RSLM1 candidate-union symbols, UE7M9 scales and C4D/FWHT transform
+also have a direct transform-domain packed scorer; it reproduces the frozen
+RSLM1 top-10 for 152/152 queries (codec p50 0.8042 ms, p95 1.1402 ms, p99
+1.2950 ms). The
+existing TQ1/PQ8 packed gate is now linked from the same consolidated matrix
+with its repeated 64/68-byte layout timings. Independent fail-closed audits,
+C++ self-tests, CTest and the R4 CI harness cover all three families.
+These are still candidate-local packed gates: full 1M row-aligned payloads,
+MDBX layouts, cold/restart lifecycle and fresh untouched-qrels remain separate
+product gates.
+
+### Final flat and matched-R4 evidence corrective pass (2026-10-02)
+
+The finalist refresh closed the remaining receipt-contract inconsistencies in
+the native flat/matched-R4 wave. INT8 matched-R4 timings now use the same
+nearest-rank percentile replay in the committed receipt and independent audit;
+RSLM warmups are excluded from both raw samples and the executable summary.
+PLSQ8x6x8 full-flat output was replayed by an independent NumPy packed scorer
+from the AMPLSQF1 payload and matched the native ordered top-10 for 152/152
+queries. The raw JSONL, audit receipts, source hashes and reference hash are
+committed under `artifacts/` and summarized in
+[`2026-10-03-native-flat-and-r4-finalist-wave.md`](2026-10-03-native-flat-and-r4-finalist-wave.md).
+
+This closes the evidence-contract gap for the completed rows, but does not
+close the product program: native 1M packed payloads are still needed for
+TQ1/TQ1+PQ8/RSLM1 flat rows, all finalists need one unified matched-R4
+methodology, and finalist-specific MDBX, cold/recovery/concurrent-publication,
+and fresh-qrels gates remain pending. No codec winner or acceptance threshold
+is inferred from this corrective pass.

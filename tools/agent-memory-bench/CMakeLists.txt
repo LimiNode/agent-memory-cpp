@@ -393,6 +393,17 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             agent_memory::json
             mdbx_containers::mdbx_containers
     )
+    add_executable(agent-memory-native-thq-mdbx-serving
+        native-thq-mdbx-serving.cpp
+    )
+    agent_memory_set_evaluator_source_manifest(agent-memory-native-thq-mdbx-serving
+        "${CMAKE_CURRENT_SOURCE_DIR}/native-thq-mdbx-serving.cpp"
+    )
+    agent_memory_set_evaluator_build_environment(agent-memory-native-thq-mdbx-serving)
+    target_link_libraries(agent-memory-native-thq-mdbx-serving
+        PRIVATE
+            mdbx_containers::mdbx_containers
+    )
 endif()
 
 add_executable(agent-memory-neuroute-exact-e5-rerank
@@ -586,12 +597,25 @@ add_executable(agent-memory-rthq-native-benchmark
     rthq_native_benchmark.cpp)
 target_compile_features(agent-memory-rthq-native-benchmark PRIVATE cxx_std_17)
 
-# Full-corpus scalar control for the native THQ/INT8 materialization.  The
-# executable is intentionally a portable reference target; it is not the
-# R4 candidate-stream gate and does not claim production latency.
+# Full-corpus THQ/INT8 harness.  The default invocation remains a portable
+# scalar correctness/reference control; --production-control enables the
+# bounded top-k and AVX2-normalised kernel control.  Neither mode is the R4
+# candidate-stream gate or a production latency claim by itself.
 add_executable(agent-memory-native-full-corpus-codec-benchmark
     native-full-corpus-codec-benchmark.cpp)
 target_compile_features(agent-memory-native-full-corpus-codec-benchmark PRIVATE cxx_std_17)
+set(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2 0)
+if(AGENT_MEMORY_NEUROUTE_ENABLE_AVX2
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|AMD64|amd64|i[3-6]86)$")
+    set(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2 1)
+    if(MSVC)
+        target_compile_options(agent-memory-native-full-corpus-codec-benchmark PRIVATE /arch:AVX2)
+    else()
+        target_compile_options(agent-memory-native-full-corpus-codec-benchmark PRIVATE -mavx2)
+    endif()
+endif()
+target_compile_definitions(agent-memory-native-full-corpus-codec-benchmark PRIVATE
+    AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2=${AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2})
 agent_memory_set_evaluator_source_manifest(
     agent-memory-native-full-corpus-codec-benchmark
     "${CMAKE_CURRENT_SOURCE_DIR}/native-full-corpus-codec-benchmark.cpp")
@@ -609,6 +633,20 @@ agent_memory_set_evaluator_source_manifest(
     "${CMAKE_CURRENT_SOURCE_DIR}/native-tq1-pq-direct-benchmark.cpp")
 agent_memory_set_evaluator_build_environment(
     agent-memory-native-tq1-pq-direct-benchmark)
+
+add_executable(agent-memory-native-plsq-benchmark
+    native-plsq-benchmark.cpp)
+target_compile_features(agent-memory-native-plsq-benchmark PRIVATE cxx_std_17)
+agent_memory_set_evaluator_source_manifest(agent-memory-native-plsq-benchmark
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-plsq-benchmark.cpp")
+agent_memory_set_evaluator_build_environment(agent-memory-native-plsq-benchmark)
+
+add_executable(agent-memory-native-rslm1-benchmark
+    native-rslm1-benchmark.cpp)
+target_compile_features(agent-memory-native-rslm1-benchmark PRIVATE cxx_std_17)
+agent_memory_set_evaluator_source_manifest(agent-memory-native-rslm1-benchmark
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-rslm1-benchmark.cpp")
+agent_memory_set_evaluator_build_environment(agent-memory-native-rslm1-benchmark)
 
 # Native packed ordinal THQ/ADC gate.  This benchmark is an exhaustive
 # validation harness: it compares the 144-byte thermometer representation with

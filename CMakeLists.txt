@@ -156,6 +156,48 @@ endif()
 
 if(AGENT_MEMORY_BUILD_TESTS)
     enable_testing()
+    # This audit is a pure-Python fail-closed contract and must run in the
+    # default test configuration as well as in benchmark builds.
+    find_package(Python3 COMPONENTS Interpreter QUIET)
+    if(Python3_Interpreter_FOUND)
+        add_test(
+            NAME agent_memory_native_production_kernel_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-production-kernel-control.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_mdbx_batch_sweep_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-native-mdbx-batch-sweep.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_mdbx_batch_sweep_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-mdbx-batch-sweep.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_flat_r4_finalist_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-flat-and-r4-finalist-wave.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_plsq_flat_reference_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-plsq-flat-reference.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+    else()
+        message(WARNING "Python3 interpreter not found; skipping production-kernel audit self-test")
+    endif()
     if(AGENT_MEMORY_BUILD_BENCHMARKS)
         add_test(
             NAME agent_memory_mih_native_hot_path_self_test
@@ -1411,6 +1453,22 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     ${CMAKE_CURRENT_BINARY_DIR}/neuroute-native-mdbx-cost-self-test.mdbx
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(
+                NAME agent_memory_native_thq_mdbx_serving_lifecycle_self_test
+                COMMAND
+                    $<TARGET_FILE:agent-memory-native-thq-mdbx-serving>
+                    --lifecycle-smoke
+                    ${CMAKE_CURRENT_BINARY_DIR}/native-thq-mdbx-serving-lifecycle-self-test.mdbx
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
+            add_test(
+                NAME agent_memory_native_thq_mdbx_serving_integer_key_self_test
+                COMMAND
+                    $<TARGET_FILE:agent-memory-native-thq-mdbx-serving>
+                    --integer-key-self-test
+                    ${CMAKE_CURRENT_BINARY_DIR}/native-thq-mdbx-serving-integer-key-self-test.mdbx
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
         if(AGENT_MEMORY_BUILD_BENCHMARKS)
             add_test(
@@ -1765,6 +1823,70 @@ if(AGENT_MEMORY_BUILD_TESTS)
         add_test(
             NAME agent_memory_native_full_corpus_codec_benchmark_self_test
             COMMAND $<TARGET_FILE:agent-memory-native-full-corpus-codec-benchmark> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_plsq_benchmark_self_test
+            COMMAND $<TARGET_FILE:agent-memory-native-plsq-benchmark> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_tq1_pq_direct_benchmark_self_test
+            COMMAND $<TARGET_FILE:agent-memory-native-tq1-pq-direct-benchmark> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_tq1_pq_direct_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-tq1-pq-direct.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_rslm1_benchmark_self_test
+            COMMAND $<TARGET_FILE:agent-memory-native-rslm1-benchmark> --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_rslm1_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-rslm1-benchmark.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_plsq_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-plsq-benchmark.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_mdbx_serving_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-mdbx-serving.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_mdbx_layout_sweep_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-native-mdbx-layout-sweep.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_mdbx_layout_sweep_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-mdbx-layout-sweep.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_native_finalist_serving_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-finalist-serving-wave.py
+                    --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
         add_test(
