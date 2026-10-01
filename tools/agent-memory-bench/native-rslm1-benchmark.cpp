@@ -108,6 +108,9 @@ std::vector<std::int32_t> top10(std::vector<Candidate> v){std::sort(v.begin(),v.
 void self_test(){
   std::array<std::uint8_t,SYMBOL_BYTES> symbols{}; for(std::size_t i=0;i<SYMBOL_BYTES;++i) symbols[i]=static_cast<std::uint8_t>(((i%16)<<4)|((i+1)%16));
   const auto residual=decode_residual(symbols.data(),0x5000); for(float v:residual)if(!std::isfinite(v))throw std::runtime_error("non-finite self-test");
+  constexpr std::array<std::size_t,8> checks{0,1,2,63,127,128,255,383};
+  constexpr std::array<float,8> expected{-2.046750609e-7F,3.417328855e-7F,1.956614853e-7F,-8.141464747e-8F,-3.387781078e-8F,-1.184007630e-7F,1.754771973e-8F,1.870040478e-8F};
+  for(std::size_t i=0;i<checks.size();++i)if(std::abs(residual[checks[i]]-expected[i])>1e-12F)throw std::runtime_error("RSLM faithful golden residual differs");
   std::array<float,D> input{}; for(std::size_t i=0;i<D;++i) input[i]=static_cast<float>(i%17)-8.0F;
   const auto rotated=rotate_forward(input); std::array<float,D> roundtrip=rotated;
   for(std::size_t block=0;block<3;++block)fwht(roundtrip.data()+block*BLOCK);
