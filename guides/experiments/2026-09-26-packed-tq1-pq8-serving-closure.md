@@ -57,6 +57,14 @@ The 68 B run reports, for query 0, 4.42 ms THQ prefilter, 0.69 ms query
 preparation, 0.13 ms top-128 scoring, and 5.24 ms total. These are single
 warm-process directional timings, not production latency claims.
 
+The repeated native receipts also provide a bounded comparison point over all
+152 queries: the 64 B final-only layout has p50/p95/p99 of 2.8128/3.3195/
+3.5893 ms total and 0.0716/0.0928/0.1210 ms for the top-128 packed scorer;
+the 68 B layout has 2.7745/3.0412/3.1349 ms total and 0.0748/0.1004/0.1146
+ms for the scorer. These numbers are candidate-local (the THQ input contains
+about 5,020 candidates per query), host-specific, and are not full-corpus or
+MDBX acceptance thresholds.
+
 ## Interpretation and limitations
 
 Packed direct scoring is now a reproducible native control for this frozen

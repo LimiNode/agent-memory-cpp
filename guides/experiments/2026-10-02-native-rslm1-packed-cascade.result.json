@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "family": "native_rslm1_packed_candidate_gate_v1",
+  "status": "PASS",
+  "scope": "candidate-local frozen R4 shell",
+  "query_count": 152,
+  "candidate_count_per_query": 128,
+  "ordered_top10_exact": 152,
+  "timing_ms": {
+    "p50": 0.7206,
+    "p95": 1.216605,
+    "p99": 1.256133
+  },
+  "output_sha256": "0cd7760e117260b1cbbc05a170b821748af24be190c141d68ed8a6f80dfbb058",
+  "expected_reference_sha256": "6c0e4b684a8d9fe2cb28a39d2449d32f801756b885f535876ad02e1ab9e7809b",
+  "runner_sha256": "43d65f7808b68151863789826f8160c34323cd37b80e3676c4f45241834e648f",
+  "audit_runner_sha256": "11e51c7d67437ef15d0f92da5dc3f97109d5d503bc62fb2f46b6c2f3fec86047",
+  "packed_artifacts": {
+    "symbols_sha256": "b7d99c5abfc005958e45b749df0db82e827e6f576b90e4fb14bb98a6365a38d6",
+    "inner_scale_sha256": "6238248d7f262ce4e67d8ac71c976bf3a9b116b68ecbd9910ff83a5d258a346d",
+    "outer_scale_sha256": "22a0569e80008198352baed333d57d555fbab00cdbb7570a1363c9b3319cc02c"
+  },
+  "runner": "tools/agent-memory-bench/native-rslm1-benchmark.cpp",
+  "audit": "tools/agent-memory-bench/audit-native-rslm1-benchmark.py",
+  "limitations": [
+    "candidate-local packed scorer; THQ routing is supplied by the frozen shell",
+    "not a full 1M-row or MDBX serving benchmark",
+    "timings are host-specific and not an acceptance threshold"
+  ]
+}

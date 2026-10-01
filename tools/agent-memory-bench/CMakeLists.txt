@@ -634,6 +634,20 @@ agent_memory_set_evaluator_source_manifest(
 agent_memory_set_evaluator_build_environment(
     agent-memory-native-tq1-pq-direct-benchmark)
 
+add_executable(agent-memory-native-plsq-benchmark
+    native-plsq-benchmark.cpp)
+target_compile_features(agent-memory-native-plsq-benchmark PRIVATE cxx_std_17)
+agent_memory_set_evaluator_source_manifest(agent-memory-native-plsq-benchmark
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-plsq-benchmark.cpp")
+agent_memory_set_evaluator_build_environment(agent-memory-native-plsq-benchmark)
+
+add_executable(agent-memory-native-rslm1-benchmark
+    native-rslm1-benchmark.cpp)
+target_compile_features(agent-memory-native-rslm1-benchmark PRIVATE cxx_std_17)
+agent_memory_set_evaluator_source_manifest(agent-memory-native-rslm1-benchmark
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-rslm1-benchmark.cpp")
+agent_memory_set_evaluator_build_environment(agent-memory-native-rslm1-benchmark)
+
 # Native packed ordinal THQ/ADC gate.  This benchmark is an exhaustive
 # validation harness: it compares the 144-byte thermometer representation with
 # a derived 96-byte ordinal payload and query-conditioned interval ADC.  It
