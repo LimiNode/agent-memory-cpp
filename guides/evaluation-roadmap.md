@@ -106,3 +106,11 @@ exact scan -> F16/int8/binary/PQ or other codec -> HNSW/ANN -> hybrid -> rerank
 The matrix is run first on a deterministic synthetic fixture and then on a
 versioned local corpus. Held-out or multilingual slices are separate gates,
 not silently pooled into the primary score.
+
+Structured-memory and activation profiles use the same comparison discipline:
+compare `hybrid`, `hybrid + typed graph expansion`, and optional activation on
+the identical corpus, query set, qrels and exact oracle. Report Recall@K,
+nDCG@10, MRR, context precision, latency, candidate-expansion cost, and
+explanation/provenance coverage separately. Graph or activation output is not
+evidence of a quality lift until this downstream benchmark passes; external
+reported gains are not acceptance thresholds.
