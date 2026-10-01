@@ -6,6 +6,12 @@ associated associative-heterarchical memory material. It is a reference and
 roadmap input, not a proposal to add AH-MemoryHub, Neo4j, or an ignition runtime
 as a dependency of `agent-memory-cpp`.
 
+The source-observed material includes role-bearing facts, hypernodes, typed
+symbols, extraction, activation paths and explanation-oriented traces. The
+candidate-IR, deterministic grounding and atomic-admission pipeline below is a
+design recommendation for `agent-memory-cpp` derived from those boundaries;
+it is not claimed as a literal AH-MemoryHub API or implementation contract.
+
 ## What is relevant to this project
 
 ### Typed n-ary facts
@@ -112,8 +118,9 @@ evidence about a derivation, not truth or authority by itself.
 ## References and evidence limits
 
 - [AH-MemoryHub](https://github.com/Hausmaster333/AH-MemoryHub) — executable
-  semantic reference for typed symbols, hypernodes, candidate extraction and
-  activation-oriented traces.
+  semantic reference for typed symbols, hypernodes, extraction and
+  activation-oriented traces; the admission pipeline above is our derived
+  design recommendation.
 - The `AG_Memory` material mentioned in the discussion was not independently
   identified as a public repository; it is therefore not treated as evidence.
 
