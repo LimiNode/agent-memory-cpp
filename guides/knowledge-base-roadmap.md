@@ -749,6 +749,31 @@ after global-ID remapping. A packed adjacency segment is derived and rebuildable
 it is never the source for edge kind, confidence, causal explanation or
 provenance after restore.
 
+#### Optional typed relational facts
+
+Future structured-memory profiles may represent a fact as a typed n-ary
+relation rather than forcing every event into binary edges:
+
+```text
+RelationalFact
+  predicate/schema
+  typed role bindings[]
+  occurrence/context identity
+  temporal fields
+  SourceRef/EvidenceAnchor support
+```
+
+This is a payload/profile choice, not a replacement for `KnowledgeUnitEnvelope`
+or `Relation` units. Notes and chunks remain valid without graph structure.
+An admitted relational fact must be source-grounded and occurrence-qualified;
+the same target entity in two episodes does not make those occurrences the
+same fact. Candidate extraction, deterministic grounding, validation and
+atomic admission are separate stages, and providers never publish canonical
+IDs or revisions directly.
+
+The transferable patterns and their bounded acceptance criteria are recorded
+in [`2026-10-01-associative-heterarchical-memory-reference.md`](experiments/2026-10-01-associative-heterarchical-memory-reference.md).
+
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это уточняет API shape `GraphStore` для будущих расширений (callbacks + early-stop visitor, schema introspection для diagnostics).
 
 ### 7.6. Adaptive Routing
