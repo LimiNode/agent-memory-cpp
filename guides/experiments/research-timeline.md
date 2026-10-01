@@ -1051,3 +1051,18 @@ decreased from 977 to 1 while the 402,653,184-byte footprint stayed constant;
 this is materialization evidence only and does not claim publication or query
 quality. The consolidated cross-stage status is in
 [`codec-evaluation-report.md`](codec-evaluation-report.md).
+
+### Packed finalist scorer closure (2026-10-02)
+
+The native scorer wave was extended beyond the earlier LSQ controls. Persisted
+PLSQ8x4x8/8x6x8 payloads now have a direct packed-codebook scorer with exact
+152/152 ordered parity and codec-only p50 0.3647/0.4988 ms respectively. The
+official RSLM1 candidate-union symbols, UE7M9 scales and C4D/FWHT transform
+also have a native packed scorer; it reproduces the frozen RSLM1 top-10 for
+152/152 queries (codec p50 0.7206 ms, p95 1.2166 ms, p99 1.2561 ms). The
+existing TQ1/PQ8 packed gate is now linked from the same consolidated matrix
+with its repeated 64/68-byte layout timings. Independent fail-closed audits,
+C++ self-tests, CTest and the R4 CI harness cover all three families.
+These are still candidate-local packed gates: full 1M row-aligned payloads,
+MDBX layouts, cold/restart lifecycle and fresh untouched-qrels remain separate
+product gates.
