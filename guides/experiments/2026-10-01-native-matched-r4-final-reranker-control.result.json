@@ -1,0 +1,75 @@
+{
+  "schema_version": 1,
+  "family": "native_matched_r4_final_reranker_control_v1",
+  "status": "EXECUTED",
+  "scope": "same frozen R4 candidate stream -> THQ top128 -> packed final reranker",
+  "query_count": 152,
+  "warmups": 1,
+  "repeats": 5,
+  "candidate_contract": "candidate148 frozen 152-query R4 shell; numeric document IDs; ordered score desc then ID asc",
+  "raw_evidence": {
+    "int8": "artifacts/2026-10-01-int8-matched-r4.raw.jsonl",
+    "plsq8x6x8": "artifacts/2026-10-01-plsq8x6-matched-r4.raw.jsonl",
+    "rslm1": "artifacts/2026-10-01-rslm1-matched-r4.raw.jsonl"
+  },
+  "runner_sha256": {
+    "int8": "571aae39e764e409386242fdccc07da400bc606de93116ea6ed3222bbe4f22e0",
+    "plsq": "d5a168421582f2618aca10275482b9146a2eedee2373f680373f9cd159446578",
+    "rslm": "03f11012960ad98aeaa13dc911f9bc08cea5726f567286f5322af181f646cb0f",
+    "audit": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c"
+  },
+  "source_hashes": {
+    "candidate_flat": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
+    "candidate_offsets": "cb694e287c55fe64ef27c8c5e2d28b470f475758b7fe9cd74f36e9e2f1a96f8d",
+    "thq_codes": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+  },
+  "arms": {
+    "int8_control": {
+      "payload_bytes": 388,
+      "payload_hashes": {
+        "codes": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+        "scales": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d"
+      },
+      "rerank_p50_ms": 0.0609,
+      "rerank_p95_ms": 0.080105,
+      "rerank_p99_ms": 0.103241,
+      "total_p50_ms": 0.1627,
+      "total_p95_ms": 0.20034,
+      "total_p99_ms": 0.258787,
+      "raw_sha256": "2b636bd3d3c558fa946963ddd5f14feb4aff9d22559b1ff7c676d32f0588e6bf",
+      "audit_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c",
+      "ordered_top10_parity": "structural audit passed; independent qrels parity remains separate"
+    },
+    "plsq8x6x8": {
+      "payload_bytes": 52,
+      "payload_sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387",
+      "total_p50_ms": 0.6996,
+      "total_p95_ms": 0.7810,
+      "total_p99_ms": 0.8465,
+      "ordered_top10_parity": "152/152",
+      "raw_sha256": "d74c3c49c180d6900b91403494887f95114a2f5d3a8348386deba4c02e7693f0",
+      "audit_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c"
+    },
+    "rslm1": {
+      "payload_bytes": 52,
+      "payload_hashes": {
+        "symbols": "b7d99c5abfc005958e45b749df0db82e827e6f576b90e4fb14bb98a6365a38d6",
+        "inner_scale": "6238248d7f262ce4e67d8ac71c976bf3a9b116b68ecbd9910ff83a5d258a346d",
+        "outer_scale": "22a0569e80008198352baed333d57d555fbab00cdbb7570a1363c9b3319cc02c"
+      },
+      "total_p50_ms": 0.8801,
+      "total_p95_ms": 0.9999,
+      "total_p99_ms": 1.0683,
+      "ordered_top10_parity": "structural audit passed; packed reference parity remains separately bound",
+      "raw_sha256": "68f01fb363f00aaea00385eea711681534abcf18a221ef5d2bd3118b601a52dc",
+      "audit_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c"
+    }
+  },
+  "limitations": [
+    "predecoded packed payloads; decode and MDBX persistence are outside the timed path",
+    "INT8 is a matched R4 final-reranker control, not the separate full-corpus THQ->INT8 receipt",
+    "timings are host-specific research evidence, not acceptance thresholds",
+    "fresh qrels and persistent finalist-specific layouts remain separate gates"
+  ]
+}

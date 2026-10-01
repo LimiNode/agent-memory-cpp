@@ -18,6 +18,7 @@ different representation.
 | TQ1+PQ8 | measured/partial serving | measured (candidate-local packed) | pending | pending |
 | RSLM1 | measured | **measured (matched R4 packed)** | pending | pending |
 | INT8 reference | control | control | measured | measured |
+| INT8 matched R4 control | control | **measured (matched R4)** | n/a | n/a |
 
 The quality rows are the historical qrels study in
 [`2026-09-22-faithful-binary-followups.md`](2026-09-22-faithful-binary-followups.md).
@@ -75,6 +76,23 @@ was fast.
 
 ## Native compressed retrieval
 
+### Matched R4 final-reranker corrective control
+
+All rows below use the same frozen candidate stream and THQ top-128 stage with
+one warmup and five measured repeats. The values are end-to-end over this
+in-memory R4 shell; decode, MDBX I/O and fresh qrels are outside scope.
+
+| Final reranker | Side bytes/doc | rerank p50 ms | total p50 ms | total p95/p99 ms | audit |
+| --- | ---: | ---: | ---: | ---: | --- |
+| INT8 control | 388 | 0.0609 | **0.1627** | 0.2003 / 0.2588 | raw structural replay PASS |
+| PLSQ8x6x8 | 52 | 0.6996* | **0.6996** | 0.7810 / 0.8465 | ordered parity 152/152 |
+| RSLM1 | 52 | 0.8801* | **0.8801** | 0.9999 / 1.0683 | raw structural replay PASS |
+
+`*` The PLSQ/RSLM runner reports a combined matched stage in this corrective
+receipt; the separate codec-only scorer timings remain in their dedicated
+candidate-local receipts. The complete source/hash binding is in
+[`2026-10-01-native-matched-r4-final-reranker-control.result.json`](2026-10-01-native-matched-r4-final-reranker-control.result.json).
+
 The measurements below separate matched full-cascade topology from
 candidate-local packed decode-and-score fixtures. Candidate-local rows do not
 include THQ-routing latency and must not be compared as if they were the LSQ
@@ -117,7 +135,7 @@ its payload is not a matrix of native codec finalists.
 | THQ → INT8 | 83.672 | native THQ routing plus INT8 rerank |
 | LSQ32 | **223.032** | 1M packed LSQ32 scan; p95 238.494, p99 244.840 |
 | LSQ48 | **252.526** | 1M packed LSQ48 scan; p95 264.469, p99 269.872 |
-| PLSQ8x6x8 | **188.6500** | 1M packed PLSQ scan; p95 199.5890, p99 207.6412 |
+| PLSQ8x6x8 | **177.9757** | 1M packed PLSQ scan; p95 191.1420, p99 202.3426; five measured repeats |
 | PLSQ8x4x8 | **164.3054** | 1M packed PLSQ scan; p95 172.1001, p99 175.9914 |
 | TQ1/TQ1+PQ8/RSLM1 | — | no full 1M packed payload; decoded/candidate-local values excluded |
 

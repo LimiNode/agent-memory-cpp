@@ -10,6 +10,7 @@
 #include <limits>
 #include <stdexcept>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 namespace {
@@ -94,7 +95,7 @@ std::vector<std::uint64_t> read_u64(const std::string& path) {
   return read_file<std::uint64_t>(path);
 }
 int run_flat(int argc, char** argv) {
-  if (argc != 8) throw std::runtime_error("usage: --flat payload thq queries query_count warmups repeats");
+  if (argc != 8 && argc != 9) throw std::runtime_error("usage: --flat payload thq queries query_count warmups repeats [raw_output]");
   const auto payload = read_flat_payload(argv[2]);
   const auto thq = read_file<std::uint8_t>(argv[3]);
   const auto queries = read_file<float>(argv[4]);
@@ -106,6 +107,8 @@ int run_flat(int argc, char** argv) {
     throw std::runtime_error("full PLSQ fixture shape differs");
   std::vector<double> timings;
   timings.reserve(qcount * repeats);
+  std::ofstream raw;
+  if (argc == 9) { raw.open(argv[8]); if (!raw) throw std::runtime_error("cannot open flat raw output"); }
   const auto better_local = [](const Candidate& a, const Candidate& b) {
     return a.score > b.score || (a.score == b.score && a.id < b.id);
   };
@@ -146,7 +149,15 @@ int run_flat(int argc, char** argv) {
         else { std::size_t worst = 0; for (std::size_t i = 1; i < 10; ++i) if (better_local(top[worst], top[i])) worst = i; if (better_local(c, top[worst])) top[worst] = c; }
       }
       std::sort(top.begin(), top.end(), better_local);
-      if (rep >= warmups) timings.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count());
+      if (rep >= warmups) {
+        const double elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+        timings.push_back(elapsed);
+        if (raw) {
+          raw << "{\"repeat\":" << (rep - warmups) << ",\"query\":" << q << ",\"timing_ms\":" << std::setprecision(12) << elapsed << ",\"top10_ids\":[";
+          for (std::size_t i = 0; i < top.size(); ++i) { if (i) raw << ','; raw << top[i].id; }
+          raw << "]}\n";
+        }
+      }
     }
   }
   std::sort(timings.begin(), timings.end());
@@ -173,6 +184,20 @@ int run_matched(int argc, char** argv) {
     throw std::runtime_error("matched PLSQ fixture shape differs");
   std::ofstream raw(argv[10]);
   if (!raw) throw std::runtime_error("cannot open matched raw output");
+  std::vector<std::unordered_map<std::int32_t, std::size_t>> row_by_query(kQueries);
+  for (std::size_t q = 0; q < kQueries; ++q) {
+    const auto first = static_cast<std::size_t>(offsets[q]);
+    const auto last = static_cast<std::size_t>(offsets[q + 1]);
+    for (std::size_t pos = first; pos < last; ++pos) {
+      std::int32_t id = 0;
+      std::memcpy(&id, flat.data() + pos * 148, sizeof(id));
+      auto it = std::find(payload.ids.begin() + static_cast<std::ptrdiff_t>(q * kTop),
+                          payload.ids.begin() + static_cast<std::ptrdiff_t>((q + 1) * kTop), id);
+      if (it == payload.ids.begin() + static_cast<std::ptrdiff_t>((q + 1) * kTop))
+        throw std::runtime_error("candidate ID is not represented in packed PLSQ payload");
+      row_by_query[q].emplace(id, static_cast<std::size_t>(it - payload.ids.begin()));
+    }
+  }
   std::vector<double> timings;
   std::size_t parity = 0;
   for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
@@ -213,10 +238,10 @@ int run_matched(int argc, char** argv) {
       std::array<Candidate, kTop> scores{};
       for (std::size_t i = 0; i < kTop; ++i) {
         const auto id = coarse[i].id;
-        auto it = std::find(payload.ids.begin() + static_cast<std::ptrdiff_t>(q * kTop), payload.ids.begin() + static_cast<std::ptrdiff_t>((q + 1) * kTop), id);
-        if (it == payload.ids.begin() + static_cast<std::ptrdiff_t>((q + 1) * kTop))
+        const auto mapping = row_by_query[q].find(id);
+        if (mapping == row_by_query[q].end())
           throw std::runtime_error("matched THQ top128 is not represented in packed payload");
-        const auto row = static_cast<std::size_t>(it - payload.ids.begin());
+        const auto row = mapping->second;
         scores[i] = {direct_score(payload, thq.data() + static_cast<std::size_t>(id) * kThqBytes, query, query_norm, payload.codes.data() + row * payload.code_bytes, row), id};
       }
       const auto result = top10(scores);
