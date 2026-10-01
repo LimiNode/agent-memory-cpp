@@ -1,16 +1,17 @@
 # Native packed RSLM1 candidate gate (2026-10-02)
 
-This closes the native scorer gate for the paper-faithful RSLM1 arm on the
-frozen candidate-local R4 shell. The scorer reads packed 4-bit C4D symbols,
-UE7M9 inner/outer scales, THQ4 codes and official C4D/FWHT constants; it does
-not read the persisted decoded FP32 finalist vectors.
+This closes the candidate-local packed decode-and-score gate for the
+paper-faithful RSLM1 arm on the frozen R4 shell. The scorer reads packed 4-bit
+C4D symbols, UE7M9 scales, THQ4 codes and official C4D/FWHT constants. It
+accumulates the score in the transform domain and does not materialize a dense
+384-D document vector or perform a candidate-row lookup in the timed region.
 
 ## Evidence
 
 - 152 queries, 128 candidates per query;
 - exact ordered top-10 parity: 152/152 against the frozen RSLM1 reference;
-- codec rerank timing from the native packed path: p50 0.7206 ms, p95
-  1.2166 ms, p99 1.2561 ms on the recorded Windows host;
+- transform-domain packed timing: p50 0.7954 ms, p95 0.9858 ms, p99
+  1.3250 ms on the recorded Windows host;
 - independent fail-closed audit and C++ self-test pass.
 
 This is candidate-local packed evidence. It is not a full 1M-row serving or

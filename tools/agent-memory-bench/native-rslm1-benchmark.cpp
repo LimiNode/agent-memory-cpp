@@ -65,10 +65,59 @@ std::array<float,D> decode_residual(const std::uint8_t* symbols, std::uint16_t s
   for(std::size_t block=0;block<3;++block)fwht(un.data()+block*BLOCK);
   for(std::size_t i=0;i<D;++i)un[i]*=FLIPS[i%256]; return un;
 }
+std::array<float,D> rotate_forward(std::array<float,D> x) {
+  for(std::size_t i=0;i<D;++i)x[i]*=FLIPS[i%256];
+  for(std::size_t block=0;block<3;++block)fwht(x.data()+block*BLOCK);
+  std::array<float,D> inter{};
+  for(std::size_t block=0;block<3;++block)
+    for(std::size_t i=0;i<BLOCK;++i) inter[i*3+block]=x[block*BLOCK+PERM[i]];
+  for(std::size_t i=0;i<D;++i)inter[i]*=FLIPS[(i+127)%256];
+  for(std::size_t block=0;block<3;++block)fwht(inter.data()+block*BLOCK);
+  return inter;
+}
+double direct_score(const std::uint8_t* symbols, std::uint16_t inner,
+                    const std::uint8_t* thq_row, const float* centroids,
+                    const float* query, const std::array<float,D>& query_rot,
+                    double query_norm) {
+  std::array<float,D> base{};
+  for(std::size_t byte=0;byte<THQ_BYTES;++byte) {
+    const auto packed=thq_row[byte];
+    for(std::size_t lane=0;lane<4;++lane) {
+      const auto d=byte*4+lane; const auto level=(packed>>(lane*2U))&3U;
+      base[d]=centroids[d*4+level];
+    }
+  }
+  const auto base_rot=rotate_forward(base); const float scale=ue7m9(inner);
+  // The positive outer UE7M9 scale multiplies the full reconstructed vector,
+  // so it cancels from cosine ordering and is intentionally absent here.
+  double dot=0.0, norm2=0.0, residual_norm2=0.0, cross=0.0;
+  for(std::size_t d=0;d<D;++d) { dot += static_cast<double>(base[d])*query[d]; norm2 += static_cast<double>(base[d])*base[d]; }
+  for(std::size_t g=0;g<D/4;++g) {
+    const auto packed=symbols[g/2]; const auto symbol=static_cast<std::size_t>((g&1U)?(packed&15U):(packed>>4U));
+    for(std::size_t lane=0;lane<4;++lane) {
+      const float value=C4[symbol*4+lane]*scale; const auto d=g*4+lane;
+      dot += static_cast<double>(value)*query_rot[d]; residual_norm2 += static_cast<double>(value)*value; cross += static_cast<double>(value)*base_rot[d];
+    }
+  }
+  norm2 += residual_norm2 + 2.0*cross;
+  return dot / std::sqrt(std::max(norm2, 1e-30) * std::max(query_norm*query_norm, 1e-30));
+}
 bool order(const Candidate&a,const Candidate&b){return a.score>b.score||(a.score==b.score&&a.id<b.id);}
 std::vector<std::int32_t> top10(std::vector<Candidate> v){std::sort(v.begin(),v.end(),order);std::vector<std::int32_t> out;for(std::size_t i=0;i<std::min<std::size_t>(10,v.size());++i)out.push_back(v[i].id);return out;}
 
-void self_test(){std::array<std::uint8_t,SYMBOL_BYTES> s{}; auto x=decode_residual(s.data(),0); for(float v:x)if(!std::isfinite(v))throw std::runtime_error("non-finite self-test"); std::cout<<"native-rslm1-benchmark self-test PASS\n";}
+void self_test(){
+  std::array<std::uint8_t,SYMBOL_BYTES> symbols{}; for(std::size_t i=0;i<SYMBOL_BYTES;++i) symbols[i]=static_cast<std::uint8_t>(((i%16)<<4)|((i+1)%16));
+  const auto residual=decode_residual(symbols.data(),0x5000); for(float v:residual)if(!std::isfinite(v))throw std::runtime_error("non-finite self-test");
+  std::array<float,D> input{}; for(std::size_t i=0;i<D;++i) input[i]=static_cast<float>(i%17)-8.0F;
+  const auto rotated=rotate_forward(input); std::array<float,D> roundtrip=rotated;
+  for(std::size_t block=0;block<3;++block)fwht(roundtrip.data()+block*BLOCK);
+  for(std::size_t i=0;i<D;++i)roundtrip[i]*=FLIPS[(i+127)%256];
+  std::array<float,D> un{}; for(std::size_t block=0;block<3;++block)for(std::size_t i=0;i<BLOCK;++i)un[block*BLOCK+PERM[i]]=roundtrip[i*3+block];
+  for(std::size_t block=0;block<3;++block)fwht(un.data()+block*BLOCK); for(std::size_t i=0;i<D;++i)un[i]*=FLIPS[i%256];
+  float max_error=0.0F; for(std::size_t i=0;i<D;++i)max_error=std::max(max_error,std::abs(un[i]-input[i]));
+  if(max_error>1e-4F || std::abs(ue7m9(0x5000)-1.1920928955078125e-7F)>1e-12F)throw std::runtime_error("RSLM golden transform self-test failed");
+  std::cout<<"native-rslm1-benchmark self-test PASS\n";
+}
 }
 
 int main(int argc,char**argv){
@@ -78,17 +127,17 @@ int main(int argc,char**argv){
   auto symbols=read<std::uint8_t>(argv[2]); auto inner=read<std::uint16_t>(argv[3]); auto outer=read<std::uint16_t>(argv[4]); auto ids=read<std::int32_t>(argv[5]); auto thq=read<std::uint8_t>(argv[6]); auto cent=read<float>(argv[7]); auto candidate=read<std::int32_t>(argv[8]); auto offsets=read<std::uint64_t>(argv[9]); auto queries=read<float>(argv[10]);
   if(ids.empty()||symbols.size()!=ids.size()*SYMBOL_BYTES||inner.size()!=ids.size()||outer.size()!=ids.size()||cent.size()!=D*4||thq.size()!=DOCUMENTS*THQ_BYTES||queries.size()!=152*D||offsets.size()!=153||candidate.size()!=offsets.back()) throw std::runtime_error("RSLM1 input shape differs: ids="+std::to_string(ids.size())+" symbols="+std::to_string(symbols.size())+" inner="+std::to_string(inner.size())+" outer="+std::to_string(outer.size())+" cent="+std::to_string(cent.size())+" thq="+std::to_string(thq.size())+" queries="+std::to_string(queries.size())+" offsets="+std::to_string(offsets.size())+" candidate="+std::to_string(candidate.size())+" last="+std::to_string(offsets.back()));
   if(!std::is_sorted(ids.begin(),ids.end())||std::adjacent_find(ids.begin(),ids.end())!=ids.end()) throw std::runtime_error("RSLM1 payload IDs are not strictly sorted");
+  std::vector<std::size_t> candidate_rows(candidate.size());
+  for(std::size_t p=0;p<candidate.size();++p){auto it=std::lower_bound(ids.begin(),ids.end(),candidate[p]);if(it==ids.end()||*it!=candidate[p])throw std::runtime_error("candidate ID missing from RSLM payload");candidate_rows[p]=static_cast<std::size_t>(it-ids.begin());}
   for(std::size_t qi=0;qi<152;++qi){
     const auto begin=offsets[qi], end=offsets[qi+1]; if(end<begin||end>candidate.size()) throw std::runtime_error("invalid candidate offsets");
     std::vector<Candidate> scored; scored.reserve(static_cast<std::size_t>(end-begin));
-    const float* query=queries.data()+qi*D;
+    const float* query=queries.data()+qi*D; std::array<float,D> query_array{}; std::copy(query,query+D,query_array.begin()); const auto query_rot=rotate_forward(query_array); const double query_norm=std::sqrt(std::inner_product(query,query+D,query,0.0));
     const auto start=std::chrono::steady_clock::now();
     for(std::uint64_t p=begin;p<end;++p){
-      const auto id=candidate[static_cast<std::size_t>(p)]; auto it=std::lower_bound(ids.begin(),ids.end(),id); if(it==ids.end()||*it!=id) throw std::runtime_error("candidate ID missing from RSLM payload");
-      const auto row=static_cast<std::size_t>(it-ids.begin()); auto residual=decode_residual(symbols.data()+row*SYMBOL_BYTES,inner[row]); std::array<float,D> vector{};
+      const auto position=static_cast<std::size_t>(p); const auto id=candidate[position]; const auto row=candidate_rows[position];
       const auto* code=thq.data()+static_cast<std::size_t>(id)*THQ_BYTES;
-      for(std::size_t byte=0;byte<THQ_BYTES;++byte){const auto packed=code[byte];for(std::size_t lane=0;lane<4;++lane){const auto level=(packed>>(lane*2U))&3U; vector[byte*4+lane]=cent[(byte*4+lane)*4+level]+residual[byte*4+lane];}}
-      const float scale=ue7m9(outer[row]); double dot=0.0,norm=0.0; for(std::size_t d=0;d<D;++d){const double value=static_cast<double>(vector[d])*scale;dot+=value*query[d];norm+=value*value;} scored.push_back({dot/std::sqrt(norm),id});
+      scored.push_back({direct_score(symbols.data()+row*SYMBOL_BYTES,inner[row],code,cent.data(),query,query_rot,query_norm),id});
     }
     const auto elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count(); auto top=top10(std::move(scored));
     std::cout<<"{\"query\":"<<qi<<",\"candidate_count\":"<<(end-begin)<<",\"top10_ids\":[";for(std::size_t i=0;i<top.size();++i){if(i)std::cout<<',';std::cout<<top[i];}std::cout<<"],\"timing_ms\":{\"codec_rerank\":"<<std::setprecision(10)<<elapsed<<"}}\n";
