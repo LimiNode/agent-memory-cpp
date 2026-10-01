@@ -12,10 +12,10 @@ different representation.
 | --- | --- | --- | --- | --- |
 | LSQ32 | measured | measured | pending | pending |
 | LSQ48 | measured | measured | pending | pending |
-| PLSQ8x6x8 | measured | pending | pending | pending |
-| TQ1 | measured | pending | pending | pending |
-| TQ1+PQ8 | measured/partial serving | pending | pending | pending |
-| RSLM1 | measured | pending | pending | pending |
+| PLSQ8x6x8 | measured | measured (candidate-local packed) | pending | pending |
+| TQ1 | measured | measured (candidate-local packed) | pending | pending |
+| TQ1+PQ8 | measured/partial serving | measured (candidate-local packed) | pending | pending |
+| RSLM1 | measured | measured (candidate-local packed) | pending | pending |
 | INT8 reference | control | control | measured | measured |
 
 The quality rows are the historical qrels study in
@@ -32,9 +32,9 @@ packed scorer and candidate topology.
 | LSQ48 strong | 48 | 0.661515 | source note | measured |
 | TQ1 | 52 | 0.659176 | source note | measured |
 | RSLM1 cosine | 52 | 0.658220 | source note | measured |
-| PLSQ8x6x8 | 52 | 0.656438 | source note | measured; native gate pending |
-| PLSQ8x4x8 | 36 | 0.649133 | source note | measured; native gate pending |
-| TQ+ direct | 56 | 0.657829 | source note | measured; native gate pending |
+| PLSQ8x6x8 | 52 | 0.656438 | source note | measured; packed native candidate gate |
+| PLSQ8x4x8 | 36 | 0.649133 | source note | measured; packed native candidate gate |
+| TQ+ direct | 56 | 0.657829 | source note | measured; native TQ/PQ gate |
 
 These values are historical research evidence, not acceptance thresholds or a
 codec winner. See the source note for p05/worst-query and teacher-overlap
@@ -50,10 +50,11 @@ are likewise left unreported when the source receipt did not bind them.
 | Family / variant | Code bytes | Quality / overlap evidence | Training cost | Model / decode bytes | Status | Decision and evidence |
 | --- | ---: | --- | --- | ---: | --- | --- |
 | LSQ32 / LSQ48 | 32 / 48 | nDCG .657264 / .661515 | measured; budget-sensitive | — | FINALIST | native packed cascade exists; [LSQ note](2026-09-23-native-compressed-lsq-result.md) |
-| PLSQ8x4x8 / PLSQ8x6x8 | 36 / 52 | nDCG .649133 / .656438 | measured | — | DEFERRED | native scorer still required; [quality follow-up](2026-09-22-faithful-binary-followups.md) |
-| TQ1 / TQ2 | 52 / — | nDCG .659176 / — | measured / — | — | DEFERRED | packed scorer and parity gate pending; [TQ wave](2026-09-24-thq-tq1-residual-correction-next-wave.md) |
+| PLSQ8x4x8 / PLSQ8x6x8 | 36 / 52 | nDCG .649133 / .656438 | measured | — | CONTROL | packed candidate-local scorer measured; [packed PLSQ gate](2026-10-02-native-plsq-packed-cascade.md) |
+| TQ1 | 52 | nDCG .659176 | measured | — | CONTROL | packed TQ1/PQ8 scorer and parity gate measured; [TQ wave](2026-09-26-packed-tq1-pq8-serving-closure.md) |
+| TQ2 | — | — | — | — | DEFERRED | no native packed scorer or matched quality row; [TQ wave](2026-09-24-thq-tq1-residual-correction-next-wave.md) |
 | TQ+ | 56 | nDCG .657829 | measured | — | DEFERRED | quality control only until native TQ+ scorer exists; [follow-up](2026-09-22-faithful-binary-followups.md) |
-| RSLM1 / RSLM2 / RSLM3 / RSLM4 | 52 / 96 / 144 / 192 | RSLM1 nDCG .658220; later rows use separate persistable-gate metrics | measured / — | — | DEFERRED | faithful RSLM1 native scorer and matched replay pending; [RSLM gate](2026-09-19-thq-rslm-persistable-gate.md) |
+| RSLM1 / RSLM2 / RSLM3 / RSLM4 | 52 / 96 / 144 / 192 | RSLM1 nDCG .658220; later rows use separate persistable-gate metrics | measured / — | — | CONTROL | faithful RSLM1 packed candidate scorer measured; [packed RSLM1 gate](2026-10-02-native-rslm1-packed-cascade.md) |
 | RQ32 / RQ48 | 32 / 48 | nDCG range .651069–.659922 across seeds | measured | shared codebooks; sizes bound in source | CONTROL | additive-quantizer control, not a native winner; [RQ replay](2026-09-20-thq-faiss-additive-acceleration.md) |
 | RaBitQ references | 16–52 | candidate-overlap only in the cited local replay | measured | per-variant metadata | CONTROL | useful filter reference; not an official binary-compatible implementation; [family matrix](2026-09-04-binary-code-family-matrix.md) |
 | BBQ / BBQ-like references | 32–80 | candidate-overlap only in the cited local replay | measured | per-variant metadata | CONTROL | explicitly BBQ-like, not an official replay; [family matrix](2026-09-04-binary-code-family-matrix.md) |
@@ -81,12 +82,24 @@ stage for the two completed arms.
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | LSQ32 | 36 B | 1.371 | 2.184 | **3.551** | 152/152 | measured |
 | LSQ48 | 52 B | 1.414 | 3.479 | **4.904** | 152/152 | measured |
-| PLSQ8x6 | — | — | — | — | — | native scorer pending |
-| TQ1 | — | — | — | — | — | native scorer pending |
-| TQ1+PQ8 | — | — | — | — | — | native scorer pending |
-| RSLM1 | — | — | — | — | — | native scorer pending |
+| PLSQ8x6 | 52 | 0.4988 | — | — | 152/152 | candidate-local packed scorer; [PLSQ gate](2026-10-02-native-plsq-packed-cascade.md) |
+| TQ1 | 68 | 2.272 | 0.075 | 2.775 | 152/152 | packed THQ→TQ intermediate gate, 68 B layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
+| TQ1+PQ8 | 64/68 | 2.251 | 0.072 | 2.813 | 152/152 | packed THQ→TQ1+PQ8 gate, 64 B final-only layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
+| RSLM1 | 52 | 0.7206 | 1.2166 | 1.2561 | 152/152 | candidate-local packed scorer; [RSLM1 gate](2026-10-02-native-rslm1-packed-cascade.md) |
 
 Source: [`2026-09-23-native-compressed-lsq-result.md`](2026-09-23-native-compressed-lsq-result.md).
+
+The separate packed PLSQ gate measures the codec scorer itself, without a
+predecoded FP32 payload:
+
+| Arm | Payload | codec-only p50 (ms) | p95 (ms) | p99 (ms) | ordered parity | Scope |
+| --- | ---: | ---: | ---: | ---: | ---: | --- |
+| PLSQ8x4x8 | 36 B | 0.3647 | 0.4304 | 0.4860 | 152/152 | frozen candidate-local shell |
+| PLSQ8x6x8 | 52 B | 0.4988 | 0.6122 | 0.6985 | 152/152 | frozen candidate-local shell |
+
+These are codec-only packed timings: candidate IDs are already fixed by the
+frozen shell, so they are not end-to-end THQ-routing latency. See
+[`2026-10-02-native-plsq-packed-cascade.result.json`](2026-10-02-native-plsq-packed-cascade.result.json).
 
 ## Full 1M flat serving
 
@@ -123,13 +136,13 @@ and [`2026-10-01-native-mdbx-batch-sweep.md`](2026-10-01-native-mdbx-batch-sweep
 
 ## Interpretation and next gates
 
-The evidence supports a research conclusion, not a product selection: LSQ32
-and LSQ48 are the only finalists with both quality evidence and native packed
-cascade timing. The remaining arms require native compressed scorers before
-their latency can be compared. The ordered next gates are:
+The evidence supports a research conclusion, not a product selection: LSQ32,
+LSQ48, PLSQ, TQ1/PQ8 and RSLM1 now have candidate-local packed scorer
+evidence. These rows are still not full-corpus or MDBX serving results. The
+ordered next gates are:
 
-1. implement and audit native PLSQ8x6, TQ1/TQ1+PQ8 and RSLM1 scorers;
-2. fill the matched retrieval table with identical R4 topology and parity;
+1. fill the matched retrieval table with identical R4 topology and parity for
+   all packed arms (the standalone PLSQ and RSLM1 gates are now measured);
 3. run a full 1M flat matrix using packed payloads;
 4. materialize finalist-specific compact MDBX projections;
 5. run concurrent publication, cold/restart/recovery, and fresh untouched-qrels

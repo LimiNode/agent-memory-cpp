@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "family": "native_plsq_packed_cascade_v1",
+  "status": "EXECUTED",
+  "scope": "candidate-local frozen R4 shell",
+  "queries": 152,
+  "candidate_width": 128,
+  "repeats": 5,
+  "arms": {
+    "plsq8x4x8": {"side_bytes": 36, "p50_ms": 0.3647, "p95_ms": 0.4304, "p99_ms": 0.4860, "ordered_parity": "152/152", "payload_sha256": "3f7e90ccda248ffc89380a510ccb27c3a90da70d3b2a10219b6b240e47a12fb1"},
+    "plsq8x6x8": {"side_bytes": 52, "p50_ms": 0.4988, "p95_ms": 0.6122, "p99_ms": 0.6985, "ordered_parity": "152/152", "payload_sha256": "1f8b05b030cf234c0b35a28bd27b1c86464a6e0bbedd1f89460ec02570281f41"}
+  },
+  "source_hashes": {
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "runner_source": "5161270115dd49674be9e2411842a9b82659bb899ad5dffbd6896e9e018ff26d",
+    "materializer": "007170f786cae1c4a79399c8dab38bfa97ff3b4dd141f5c8d9e769ed4f84e13c"
+  },
+  "limitations": [
+    "candidate-local frozen R4 shell",
+    "no full 1M PLSQ payload or MDBX serving claim",
+    "quality qrels are bound to the independent Faiss replay, not recomputed by this timing receipt"
+  ]
+}
