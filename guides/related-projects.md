@@ -104,6 +104,10 @@ Disclaimer:
 - **Letta / MemGPT**: agent context block architecture (Persona + Memory + Recent). У нас ContextBlock / Context через ContextBuilder.
 - **LlamaIndex**: retriever interface (IUnitRetriever), query engine (= HybridRetriever orchestration), exports для observability.
 - **A-MEM**: memory evolution через compaction (Compaction + Merge + SummaryPromotion).
+- **Associative/heterarchical memory references**: typed n-ary role bindings,
+  source-span provenance, activation seed reasons, support traces, and
+  evaluation isolation; see the dated research note in
+  [`experiments/2026-10-01-associative-heterarchical-memory-reference.md`](experiments/2026-10-01-associative-heterarchical-memory-reference.md).
 - **FAISS**: index factory pattern + codec registry для разных представлений векторов (Float / Float16 / Int8 / Binary / Matryoshka / PQ).
 - **hnswlib**: header-only C++11 с incremental insert/delete (без build-then-load pattern). Adapter option для нашего HnswVectorIndex.
 - **USearch**: SIMD-first design для binary embeddings (HammingTopK kernel).
