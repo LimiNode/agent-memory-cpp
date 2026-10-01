@@ -242,6 +242,34 @@ void lifecycle_smoke(const std::filesystem::path& path) {
   std::filesystem::remove(path);
 }
 
+void integer_key_smoke(const std::filesystem::path& path) {
+  std::filesystem::remove(path);
+  {
+    mdbxc::Config config;
+    config.pathname = path.string();
+    config.max_dbs = 4;
+    config.no_subdir = true;
+    config.relative_to_exe = false;
+    auto connection = mdbxc::Connection::create(config);
+    auto table = std::make_unique<mdbxc::KeyValueTable<std::uint32_t, std::string>>(
+        connection, "integer_keys");
+    auto transaction = connection->transaction(mdbxc::TransactionMode::WRITABLE);
+    table->insert_or_assign(100U, "one-hundred", transaction);
+    table->insert_or_assign(2U, "two", transaction);
+    table->insert_or_assign(10U, "ten", transaction);
+    transaction.commit();
+
+    const auto ordered = table->range<std::vector>(0U, std::numeric_limits<std::uint32_t>::max());
+    if (ordered.size() != 3 || ordered[0].first != 2U || ordered[1].first != 10U ||
+        ordered[2].first != 100U) {
+      throw std::runtime_error("numeric MDBX key ordering failed");
+    }
+    const auto value = table->find(10U);
+    if (!value || *value != "ten") throw std::runtime_error("numeric MDBX key lookup failed");
+  }
+  std::filesystem::remove(path);
+}
+
 void migrate_legacy_payload(const std::filesystem::path& source,
                             const std::filesystem::path& destination,
                             std::size_t segment_rows, std::size_t documents) {
@@ -276,6 +304,7 @@ void migrate_legacy_payload(const std::filesystem::path& source,
 int main(int argc, char** argv) {
   try {
     if (argc == 3 && std::string(argv[1]) == "--lifecycle-smoke") { lifecycle_smoke(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
+    if (argc == 3 && std::string(argv[1]) == "--integer-key-self-test") { integer_key_smoke(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
     if (argc == 6 && std::string(argv[1]) == "--migrate-legacy") {
       migrate_legacy_payload(argv[2], argv[3], std::stoull(argv[4]), std::stoull(argv[5]));
       std::cout << "{\"status\":\"MIGRATED\"}\n";
