@@ -9,6 +9,11 @@ The location and lifecycle rules for source bundles, raw artifacts, and
 temporary worktrees are in [research workspace layout](research-workspace-layout.md).
 The active bounded research program is the [codec closure protocol](2026-09-25-codec-closure-protocol.md).
 
+For the consolidated codec status across quality, native retrieval, 1M flat
+serving, and MDBX persistence, see the [codec evaluation report](codec-evaluation-report.md).
+
+For the structured-memory and activation reference drawn from AH-MemoryHub,
+see [associative and heterarchical memory reference](2026-10-01-associative-heterarchical-memory-reference.md).
 For the cross-PR causal history and merge/evidence ledger, see
 [`research-timeline.md`](research-timeline.md). It is an index into the
 experiment notes, not a replacement for them.
