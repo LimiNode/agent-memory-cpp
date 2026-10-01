@@ -137,8 +137,9 @@ int run_matched(int argc, char** argv) {
     std::partial_sort(coarse.begin(),coarse.begin()+BLOCK,coarse.end(),[](const Candidate&a,const Candidate&b){return a.score<b.score||(a.score==b.score&&a.id<b.id);});
     std::vector<Candidate> scored; scored.reserve(BLOCK);
     for(std::size_t i=0;i<BLOCK;++i){const auto id=coarse[i].id; auto it=row_by_id.find(id); if(it==row_by_id.end()) throw std::runtime_error("matched RSLM top128 ID missing from payload"); const auto row=it->second; scored.push_back({direct_score(symbols.data()+row*SYMBOL_BYTES,inner[row],thq.data()+static_cast<std::size_t>(id)*THQ_BYTES,cent.data(),query,qrot,qnorm),id});}
-    const auto elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count(); timings.push_back(elapsed); const auto top=top10(std::move(scored));
+    const auto elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count(); const auto top=top10(std::move(scored));
     if (repeat >= warmups) {
+      timings.push_back(elapsed);
       raw<<"{\"repeat\":"<<(repeat-warmups)<<",\"query\":"<<qi<<",\"timing_ms\":"<<std::setprecision(12)<<elapsed<<",\"top10_ids\":["; for(std::size_t i=0;i<top.size();++i){if(i)raw<<',';raw<<top[i];} raw<<"]}\n";
     }
     }
