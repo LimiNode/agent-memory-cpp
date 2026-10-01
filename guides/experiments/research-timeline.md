@@ -1067,3 +1067,22 @@ C++ self-tests, CTest and the R4 CI harness cover all three families.
 These are still candidate-local packed gates: full 1M row-aligned payloads,
 MDBX layouts, cold/restart lifecycle and fresh untouched-qrels remain separate
 product gates.
+
+### Final flat and matched-R4 evidence corrective pass (2026-10-02)
+
+The finalist refresh closed the remaining receipt-contract inconsistencies in
+the native flat/matched-R4 wave. INT8 matched-R4 timings now use the same
+nearest-rank percentile replay in the committed receipt and independent audit;
+RSLM warmups are excluded from both raw samples and the executable summary.
+PLSQ8x6x8 full-flat output was replayed by an independent NumPy packed scorer
+from the AMPLSQF1 payload and matched the native ordered top-10 for 152/152
+queries. The raw JSONL, audit receipts, source hashes and reference hash are
+committed under `artifacts/` and summarized in
+[`2026-10-03-native-flat-and-r4-finalist-wave.md`](2026-10-03-native-flat-and-r4-finalist-wave.md).
+
+This closes the evidence-contract gap for the completed rows, but does not
+close the product program: native 1M packed payloads are still needed for
+TQ1/TQ1+PQ8/RSLM1 flat rows, all finalists need one unified matched-R4
+methodology, and finalist-specific MDBX, cold/recovery/concurrent-publication,
+and fresh-qrels gates remain pending. No codec winner or acceptance threshold
+is inferred from this corrective pass.
