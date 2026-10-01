@@ -6,10 +6,11 @@
   "query_count": 152,
   "candidate_count_per_query": 128,
   "ordered_top10_exact": 152,
+  "representation": "direct_transform_domain_score",
   "timing_ms": {
-    "p50": 0.7206,
-    "p95": 1.216605,
-    "p99": 1.256133
+    "p50": 0.7954,
+    "p95": 0.9858,
+    "p99": 1.3250
   },
   "output_sha256": "0cd7760e117260b1cbbc05a170b821748af24be190c141d68ed8a6f80dfbb058",
   "expected_reference_sha256": "6c0e4b684a8d9fe2cb28a39d2449d32f801756b885f535876ad02e1ab9e7809b",
@@ -21,6 +22,7 @@
     "outer_scale_sha256": "22a0569e80008198352baed333d57d555fbab00cdbb7570a1363c9b3319cc02c"
   },
   "runner": "tools/agent-memory-bench/native-rslm1-benchmark.cpp",
+  "runner_sha256": "ab0f8386740caae31c1a5a0ac692705d0bd5259b80ac043839464f64a34ffde2",
   "audit": "tools/agent-memory-bench/audit-native-rslm1-benchmark.py",
   "limitations": [
     "candidate-local packed scorer; THQ routing is supplied by the frozen shell",

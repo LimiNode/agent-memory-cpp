@@ -57,8 +57,64 @@ std::array<std::int32_t, kK> top10(const std::array<Candidate, kTop>& values) {
   std::array<std::int32_t, kK> result{}; for (std::size_t i = 0; i < kK; ++i) result[i] = values[order[i]].id; return result;
 }
 double percentile(std::vector<double> values, double p) { std::sort(values.begin(), values.end()); return values[std::min(values.size() - 1, static_cast<std::size_t>(p * values.size()))]; }
+double direct_score(const Payload& payload, const std::uint8_t* thq_row,
+                    const float* query, double query_norm,
+                    const std::uint8_t* code, std::size_t row) {
+  double dot = 0.0;
+  for (std::size_t d = 0; d < kD; ++d)
+    dot += static_cast<double>(payload.centroids[d * 4 +
+        ((thq_row[d / 4] >> ((d % 4) * 2)) & 3U)]) * query[d];
+  const std::size_t split_dim = kD / payload.splits;
+  for (std::size_t split = 0; split < payload.splits; ++split)
+    for (std::size_t part = 0; part < payload.sub; ++part) {
+      const auto symbol = code[split * payload.sub + part];
+      const auto* book = payload.books.data() +
+          ((split * payload.sub + part) * 256 + symbol) * split_dim;
+      for (std::size_t lane = 0; lane < split_dim; ++lane)
+        dot += static_cast<double>(book[lane]) *
+               query[split * split_dim + lane];
+    }
+  return dot / (std::max<double>(payload.norms[row], 1e-30) *
+                std::max(query_norm, 1e-30));
+}
+double dense_score(const Payload& payload, const std::uint8_t* thq_row,
+                   const float* query, double query_norm,
+                   const std::uint8_t* code, std::size_t row) {
+  std::array<double, kD> vector{};
+  for (std::size_t d = 0; d < kD; ++d)
+    vector[d] = payload.centroids[d * 4 +
+        ((thq_row[d / 4] >> ((d % 4) * 2)) & 3U)];
+  const std::size_t split_dim = kD / payload.splits;
+  for (std::size_t split = 0; split < payload.splits; ++split)
+    for (std::size_t part = 0; part < payload.sub; ++part) {
+      const auto symbol = code[split * payload.sub + part];
+      const auto* book = payload.books.data() +
+          ((split * payload.sub + part) * 256 + symbol) * split_dim;
+      for (std::size_t lane = 0; lane < split_dim; ++lane)
+        vector[split * split_dim + lane] += book[lane];
+    }
+  double dot = 0.0; for (std::size_t d = 0; d < kD; ++d) dot += vector[d] * query[d];
+  return dot / (std::max<double>(payload.norms[row], 1e-30) *
+                std::max(query_norm, 1e-30));
+}
+void self_test() {
+  Payload payload; payload.queries = 1; payload.width = 1; payload.splits = 8;
+  payload.sub = 4; payload.code_bytes = 32; payload.ids = {7};
+  payload.codes.assign(32, 0); payload.norms = {1.0F}; payload.centroids.assign(kD * 4, 0.25F);
+  payload.books.assign(8 * 4 * 256 * (kD / 8), 0.5F);
+  std::array<std::uint8_t, kThqBytes> thq{}; std::array<float, kD> query{};
+  query.fill(1.0F); const double norm = std::sqrt(static_cast<double>(kD));
+  const double direct = direct_score(payload, thq.data(), query.data(), norm,
+                                     payload.codes.data(), 0);
+  const double dense = dense_score(payload, thq.data(), query.data(), norm,
+                                   payload.codes.data(), 0);
+  if (!std::isfinite(direct) || std::abs(direct - dense) > 1e-9 ||
+      std::abs(direct - (864.0 / norm)) > 1e-9)
+    throw std::runtime_error("PLSQ direct-score golden self-test failed: " + std::to_string(direct) + "," + std::to_string(dense));
+  std::cout << "native-plsq-benchmark self-test PASS\n";
+}
 int run(int argc, char** argv) {
-  if (argc != 7) throw std::runtime_error("usage: --benchmark payload thq queries expected repeats");
+  if (argc != 7 && argc != 8) throw std::runtime_error("usage: --benchmark payload thq queries expected repeats [raw_output]");
   const auto payload = read_payload(argv[2]);
   const auto thq = read_file<std::uint8_t>(argv[3]);
   const auto queries = read_file<float>(argv[4]);
@@ -66,6 +122,7 @@ int run(int argc, char** argv) {
   const auto repeats = static_cast<std::size_t>(std::stoul(argv[6]));
   if (thq.size() != 1'000'000 * kThqBytes || queries.size() != kQueries * kD || expected.size() != kQueries * kK || repeats == 0) throw std::runtime_error("PLSQ fixture shape differs");
   std::vector<double> timings; std::size_t parity = 0; std::uint64_t checksum = 0;
+  std::ofstream raw; if (argc == 8) { raw.open(argv[7]); if (!raw) throw std::runtime_error("cannot open raw output"); }
   for (std::size_t repeat = 0; repeat < repeats; ++repeat) for (std::size_t q = 0; q < kQueries; ++q) {
     const auto begin = std::chrono::steady_clock::now();
     std::array<Candidate, kTop> scores{};
@@ -74,24 +131,18 @@ int run(int argc, char** argv) {
     for (std::size_t row = 0; row < kTop; ++row) {
       const auto id = payload.ids[q * kTop + row];
       const auto* thq_row = thq.data() + static_cast<std::size_t>(id) * kThqBytes;
-      std::array<double, kD> vector{};
-      for (std::size_t d = 0; d < kD; ++d) vector[d] = payload.centroids[d * 4 + ((thq_row[d / 4] >> ((d % 4) * 2)) & 3U)];
       const auto* code = payload.codes.data() + (q * kTop + row) * payload.code_bytes;
-      for (std::size_t split = 0; split < payload.splits; ++split) for (std::size_t part = 0; part < payload.sub; ++part) {
-        const auto symbol = code[split * payload.sub + part];
-        const auto* book = payload.books.data() + ((split * payload.sub + part) * 256 + symbol) * (kD / payload.splits);
-        for (std::size_t lane = 0; lane < kD / payload.splits; ++lane) vector[split * (kD / payload.splits) + lane] += book[lane];
-      }
-      double dot = 0.0; for (std::size_t d = 0; d < kD; ++d) dot += vector[d] * query[d];
-      scores[row] = {dot / (std::max<double>(payload.norms[q * kTop + row], 1e-30) * std::max(query_norm, 1e-30)), id};
+      scores[row] = {direct_score(payload, thq_row, query, query_norm, code,
+                                  q * kTop + row), id};
     }
     const auto result = top10(scores); const auto end = std::chrono::steady_clock::now();
-    timings.push_back(std::chrono::duration<double, std::milli>(end - begin).count());
+    const double elapsed = std::chrono::duration<double, std::milli>(end - begin).count(); timings.push_back(elapsed);
     for (const auto id : result) checksum = checksum * 1315423911ULL + static_cast<std::uint32_t>(id);
     if (repeat == 0) { bool same = true; for (std::size_t i = 0; i < kK; ++i) same = same && result[i] == expected[q * kK + i]; if (same) ++parity; }
+    if (raw) { raw << "{\"repeat\":" << repeat << ",\"query\":" << q << ",\"timing_ms\":" << std::setprecision(12) << elapsed << ",\"top10_ids\":["; for (std::size_t i = 0; i < kK; ++i) { if (i) raw << ','; raw << result[i]; } raw << "]}\n"; }
   }
-  std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"profile\":\"PLSQ8x" << payload.sub << "x8\",\"queries\":152,\"repeats\":" << repeats << ",\"parity\":" << parity << ",\"parity_total\":152,\"checksum\":" << checksum << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << "}\n";
+  std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"score_mode\":\"direct_packed_dot\",\"profile\":\"PLSQ8x" << payload.sub << "x8\",\"queries\":152,\"repeats\":" << repeats << ",\"parity\":" << parity << ",\"parity_total\":152,\"checksum\":" << checksum << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << "}\n";
   return 0;
 }
 }
-int main(int argc, char** argv) { try { if (argc == 2 && std::string(argv[1]) == "--self-test") { std::cout << "native-plsq-benchmark self-test PASS\n"; return 0; } if (argc >= 2 && std::string(argv[1]) == "--benchmark") return run(argc, argv); throw std::runtime_error("expected --self-test or --benchmark"); } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; } }
+int main(int argc, char** argv) { try { if (argc == 2 && std::string(argv[1]) == "--self-test") { self_test(); return 0; } if (argc >= 2 && std::string(argv[1]) == "--benchmark") return run(argc, argv); throw std::runtime_error("expected --self-test or --benchmark"); } catch (const std::exception& error) { std::cerr << error.what() << '\n'; return 1; } }

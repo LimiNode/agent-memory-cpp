@@ -74,31 +74,32 @@ was fast.
 
 ## Native compressed retrieval
 
-The matched R4 cascade is `candidate shortlist → THQ top-128 → packed codec
-scorer → ordered top-10`, with no reconstructed FP32 vector in the timed codec
-stage for the two completed arms.
+The measurements below separate matched full-cascade topology from
+candidate-local packed decode-and-score fixtures. Candidate-local rows do not
+include THQ-routing latency and must not be compared as if they were the LSQ
+cascade.
 
 | Arm | Payload | THQ p50 ms | codec p50 ms | total p50 ms | parity | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
 | LSQ32 | 36 B | 1.371 | 2.184 | **3.551** | 152/152 | measured |
 | LSQ48 | 52 B | 1.414 | 3.479 | **4.904** | 152/152 | measured |
-| PLSQ8x6 | 52 | 0.4988 | — | — | 152/152 | candidate-local packed scorer; [PLSQ gate](2026-10-02-native-plsq-packed-cascade.md) |
 | TQ1 | 68 | 2.272 | 0.075 | 2.775 | 152/152 | packed THQ→TQ intermediate gate, 68 B layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
 | TQ1+PQ8 | 64/68 | 2.251 | 0.072 | 2.813 | 152/152 | packed THQ→TQ1+PQ8 gate, 64 B final-only layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
-| RSLM1 | 52 | 0.7206 | 1.2166 | 1.2561 | 152/152 | candidate-local packed scorer; [RSLM1 gate](2026-10-02-native-rslm1-packed-cascade.md) |
 
 Source: [`2026-09-23-native-compressed-lsq-result.md`](2026-09-23-native-compressed-lsq-result.md).
 
-The separate packed PLSQ gate measures the codec scorer itself, without a
-predecoded FP32 payload:
+The candidate-local packed decode-and-score gates measure the codec stage
+without persisted predecoded FP32 payloads. They are not full-cascade rows:
 
 | Arm | Payload | codec-only p50 (ms) | p95 (ms) | p99 (ms) | ordered parity | Scope |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| PLSQ8x4x8 | 36 B | 0.3647 | 0.4304 | 0.4860 | 152/152 | frozen candidate-local shell |
-| PLSQ8x6x8 | 52 B | 0.4988 | 0.6122 | 0.6985 | 152/152 | frozen candidate-local shell |
+| PLSQ8x4x8 | 36 B | 0.3801 | 0.4538 | 0.5166 | 152/152 | direct packed dot, candidate-local shell |
+| PLSQ8x6x8 | 52 B | 0.5377 | 0.6136 | 0.7252 | 152/152 | direct packed dot, candidate-local shell |
+| RSLM1 | 52 B | 0.7954 | 0.9858 | 1.3250 | 152/152 | direct transform-domain score, candidate-local shell |
 
-These are codec-only packed timings: candidate IDs are already fixed by the
-frozen shell, so they are not end-to-end THQ-routing latency. See
+These are candidate-local packed decode-and-score timings: candidate IDs are
+already fixed by the frozen shell, so they are not end-to-end THQ-routing
+latency or a direct-compressed production scorer claim. See
 [`2026-10-02-native-plsq-packed-cascade.result.json`](2026-10-02-native-plsq-packed-cascade.result.json).
 
 ## Full 1M flat serving
@@ -143,7 +144,7 @@ ordered next gates are:
 
 1. fill the matched retrieval table with identical R4 topology and parity for
    all packed arms (the standalone PLSQ and RSLM1 gates are now measured);
-3. run a full 1M flat matrix using packed payloads;
-4. materialize finalist-specific compact MDBX projections;
-5. run concurrent publication, cold/restart/recovery, and fresh untouched-qrels
+2. run a full 1M flat matrix using packed payloads;
+3. materialize finalist-specific compact MDBX projections;
+4. run concurrent publication, cold/restart/recovery, and fresh untouched-qrels
    gates before any Pareto or default recommendation.
