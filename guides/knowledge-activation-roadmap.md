@@ -295,6 +295,13 @@ struct ProcedureActivationCandidate {
 };
 ```
 
+Activation may return a procedure header first and, when the context budget
+allows, one to three representative `ProcedureEvidenceTrace` references:
+typically a successful exemplar, a corrected failure, and an edge case. These
+are retrieval evidence, not execution requests. Selection is revision-aware
+and preserves the procedure version, environment fingerprint and source-trace
+provenance.
+
 An optional runtime adapter may enrich a missing `CapabilityRef` with the
 runtime object that could provide it, but that adapter-only detail is not part
 of this canonical M1b candidate and never turns it into execution.
@@ -370,6 +377,11 @@ Activation quality is evaluated separately from chunk recall:
 | `EvidenceGrounding` | Canonical concepts/playbooks cite supporting evidence |
 | `SoftRoutingRecall` | Useful cross-domain results are not removed by domain filters |
 | `FallbackSafety` | Corpus-wide fallback recovers missed domains without bypassing strict filters |
+| `DeclarativeRecall` | Required facts and preconditions are retrieved independently of execution success |
+| `ProceduralExecutionSuccess` | A host can apply an activated procedure and satisfy its verification contract |
+| `ProcedureTransfer` | A validated procedure transfers to a new task instance with the same contract |
+| `CorrectionReuse` | A prior failure-to-correction trace prevents recurrence of the same failure class |
+| `ProcedureGeneralization` | A procedure works beyond memorized concrete cases |
 
 Example: "How do I launch an AI influencer and get the first audience?" must
 cover AI content generation, positioning, traffic acquisition, monetization,

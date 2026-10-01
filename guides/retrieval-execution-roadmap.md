@@ -71,10 +71,34 @@ each queue is bounded. Backpressure pauses producers; it must not silently
 reduce route fan-out or adaptive recall. If a budget or deadline prevents more
 work, the existing `BudgetExhaustionAction` is applied and the exact existing
 enum values are recorded. Query-level `RetrievalCompletion` has
-`Complete`, `Partial`, `BudgetExhausted`, `RouteDropped` and
+`Complete`, `Partial`, `BudgetExhausted`, `Dropped` and
 `RequiredRouteFailed`; per-route `RetrievalRouteCompletion` has
 `Complete`, `Partial`, `Unavailable`, `BudgetExhausted`, `Dropped` and
 `RequiredRouteFailed`.
+
+### Filter-aware sufficiency and bounded refill
+
+`candidate_limit` is an input budget, not a promise that a filtered query can
+return `target_k` results. The executor must expose the following bounded
+loop:
+
+```text
+target_k
+  -> candidate generation
+  -> access/metadata filtering and stale/tombstone removal
+  -> deduplicate by canonical identity
+  -> sufficiency check
+       -> Complete
+       -> bounded refill from the source
+       -> BudgetExhausted / Partial
+```
+
+The trace records `generated`, `rejected_by_access`,
+`rejected_by_metadata`, `survived`, `refill_rounds` and `visited_candidates`.
+Refill consumes the same posting, I/O, deadline and rerank budgets; it must not
+silently become an unbounded scan. Acceptance requires a locked selective
+fixture with correct `Complete`/`BudgetExhausted` semantics and deletion and
+stale-generation filtering.
 
 ## Reader and covering contracts
 
