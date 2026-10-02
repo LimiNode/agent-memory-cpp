@@ -724,9 +724,9 @@ std::vector<DenseCandidate> lsq_top10(const std::vector<std::int32_t>& ids,
   return ranked;
 }
 
-std::array<double, kThqBytes * 256> build_thq_dot_byte_lut(
+std::vector<double> build_thq_dot_byte_lut(
     const LsqPayload& payload, const float* query) {
-  std::array<double, kThqBytes * 256> lut{};
+  std::vector<double> lut(kThqBytes * 256, 0.0);
   for (std::size_t byte = 0; byte < kThqBytes; ++byte) {
     for (std::size_t packed = 0; packed < 256; ++packed) {
       double dot = 0.0;

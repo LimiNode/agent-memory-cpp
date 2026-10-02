@@ -1250,3 +1250,15 @@ p50/p95/p99 directly from each raw JSONL timing stream and fail closed on a
 receipt mismatch. The committed diagnostic receipt was regenerated with that
 canonical timing contract; this fixes evidence consistency only and does not
 change its predecoded-FP32 scope.
+
+### Packed LSQ routed rows (2026-10-02)
+
+The native LSQ candidate runner initially overflowed the Windows stack because
+its THQ dot lookup table was copied as a large stack array. The table is now
+heap-backed. LSQ32 and LSQ48 were then measured using their full-corpus packed
+payloads on both frozen candidate streams: Modern R4 and Prototype-IVF. Every
+row uses one warmup and five measured repeats, canonical THQ top-128, the
+codec-specific packed LSQ scorer, and independent packed Python replay of both
+THQ selection and ordered top-10 (`152/152`). The strict completion inventory
+therefore advances from 7/21 to 11/21. The remaining arms are not inferred
+from diagnostic controls.

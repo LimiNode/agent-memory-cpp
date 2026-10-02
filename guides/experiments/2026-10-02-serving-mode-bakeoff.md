@@ -26,8 +26,8 @@ and raw JSONL plus an independent audit.
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
 | INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical control; fresh qrels pending |
-| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
-| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
+| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **8.837 / 10.203 / 11.013 ms** | **7.583 / 9.023 / 9.485 ms** | historical qrels; fresh pending |
+| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **13.676 / 14.923 / 15.910 ms** | **11.263 / 13.039 / 13.558 ms** | historical qrels; fresh pending |
 | TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
 | TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | pending | predecoded/legacy downstream controls only; packed refresh pending | partial historical; fresh pending |
 | PLSQ8x6x8 | 52 | measured packed + independent replay | pending | predecoded downstream control; packed refresh pending | historical qrels; fresh pending |

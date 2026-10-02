@@ -1,0 +1,30 @@
+{
+  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "codec": "LSQ52",
+  "family": "native_packed_lsq_modern_r4_v1",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "packed native downstream shell; route generation and MDBX I/O remain outside scope"
+  ],
+  "mode": "modern_r4",
+  "payload_sha256": "7c17a0c6a630ff86d01fe1fa3b24467bd4861b94c1d9d4ffa6cf2e328989f5b8",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "f56a8c9e49ae5ea98111ffd754de3f5e7367e69dfeeb25cb872b3917ec6c9d48",
+  "reference_kind": "independent_packed_replay",
+  "audit_path": "artifacts/prototype-ivf/lsq48.audit.json",
+  "audit_sha256": "69c0c4c7cf92c3367f764b641b8c6c1af3774bfbd3b91f149fd7ba501947d49c",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 13.6759,
+    "p95": 14.9233,
+    "p99": 15.9095
+  },
+  "warmups": 1
+}

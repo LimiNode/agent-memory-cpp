@@ -251,6 +251,20 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )
+        add_test(
+            NAME agent_memory_packed_lsq_r4_runner_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-packed-lsq-r4.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_packed_lsq_r4_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-packed-lsq-r4.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
     else()
         message(WARNING "Python3 interpreter not found; skipping production-kernel audit self-test")
     endif()

@@ -85,20 +85,12 @@
         "status": "DIAGNOSTIC"
       },
       "LSQ32": {
-        "reason": "predecoded FP32 downstream control; not packed production evidence",
-        "result": {
-          "path": "artifacts/modern-r4-refresh-v4/audits/lsq32.audit.json",
-          "status": "PRESENT"
-        },
-        "status": "DIAGNOSTIC"
+        "result": {"path": "artifacts/modern-r4-packed/lsq32.result.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "LSQ48": {
-        "reason": "predecoded FP32 downstream control; not packed production evidence",
-        "result": {
-          "path": "artifacts/modern-r4-refresh-v4/audits/lsq48.audit.json",
-          "status": "PRESENT"
-        },
-        "status": "DIAGNOSTIC"
+        "result": {"path": "artifacts/modern-r4-packed/lsq48.result.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "PLSQ8x6x8": {
         "bytes": 303,
@@ -134,12 +126,12 @@
         "status": "PENDING_SOURCE_REPLAY"
       },
       "LSQ32": {
-        "reason": "packed Prototype-IVF route receipt not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {"path": "artifacts/prototype-ivf/lsq32.result.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "LSQ48": {
-        "reason": "packed Prototype-IVF route receipt not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {"path": "artifacts/prototype-ivf/lsq48.result.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "PLSQ8x6x8": {
         "reason": "packed Prototype-IVF route receipt not committed",
