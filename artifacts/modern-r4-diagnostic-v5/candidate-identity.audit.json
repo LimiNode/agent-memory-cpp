@@ -1,0 +1,15 @@
+{
+  "candidate_id_parity": "152/152",
+  "canonical_record_width": 100,
+  "canonical_sha256": "d746a8efb12b3ca0b1f9693bd1ebc0b73fa57bf9ed5c7688e0dd6ee85b2621fb",
+  "current_record_width": 148,
+  "current_sha256": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
+  "family": "r4_candidate_semantic_identity_audit_v1",
+  "limitations": [
+    "compares ordered candidate IDs only; record payload bytes may differ"
+  ],
+  "query_count": 152,
+  "schema_version": 1,
+  "semantic_identity": true,
+  "status": "PASS"
+}
