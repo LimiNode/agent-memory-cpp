@@ -1,6 +1,5 @@
 {
   "blocked_gates": [
-    "native packed RSLM1 full-flat payload",
     "packed Prototype-IVF route for every finalist",
     "one unified five-repeat R4 harness for all finalists",
     "fresh untouched qrels after route/configuration freeze"
@@ -41,12 +40,13 @@
         "status": "PRESENT"
       },
       "RSLM1": {
-        "candidate_only": {
-          "path": "E:/_repoz/agent-memory-workspaces/native-finalist-v1/rslm-faithful-candidate-union",
-          "status": "EXTERNAL_CANDIDATE_ONLY"
+        "result": {
+          "bytes": 1333,
+          "path": "guides/experiments/2026-10-02-rslm1-full-flat.result.json",
+          "sha256": "d0715dbb8e030cbfa10996258cebd8a814f1831f09ffbeb193400a5a634ed850",
+          "status": "PRESENT"
         },
-        "reason": "faithful full-corpus payload not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "status": "PRESENT"
       },
       "TQ1": {
         "result": {

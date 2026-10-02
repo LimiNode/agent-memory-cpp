@@ -106,6 +106,25 @@ double direct_score(const std::uint8_t* symbols, std::uint16_t inner,
 bool order(const Candidate&a,const Candidate&b){return a.score>b.score||(a.score==b.score&&a.id<b.id);}
 std::vector<std::int32_t> top10(std::vector<Candidate> v){std::sort(v.begin(),v.end(),order);std::vector<std::int32_t> out;for(std::size_t i=0;i<std::min<std::size_t>(10,v.size());++i)out.push_back(v[i].id);return out;}
 
+double nearest_percentile(std::vector<double> values, double fraction) { std::sort(values.begin(), values.end()); const auto rank=std::max<std::size_t>(1,static_cast<std::size_t>(std::ceil(fraction*values.size()))); return values[std::min(values.size()-1,rank-1)]; }
+
+int run_full_flat(int argc, char** argv) {
+  if (argc != 12) throw std::runtime_error("usage: --full-flat symbols inner outer final_norm thq centroids queries warmups repeats raw");
+  auto symbols=read<std::uint8_t>(argv[2]); auto inner=read<std::uint16_t>(argv[3]); auto outer=read<std::uint16_t>(argv[4]); auto final_norm=read<float>(argv[5]); auto thq=read<std::uint8_t>(argv[6]); auto cent=read<float>(argv[7]); auto queries=read<float>(argv[8]); const auto warmups=static_cast<std::size_t>(std::stoul(argv[9])); const auto repeats=static_cast<std::size_t>(std::stoul(argv[10]));
+  std::ofstream raw(argv[11]);
+  if (symbols.size()!=DOCUMENTS*SYMBOL_BYTES || inner.size()!=DOCUMENTS || outer.size()!=DOCUMENTS || final_norm.size()!=DOCUMENTS || thq.size()!=DOCUMENTS*THQ_BYTES || cent.size()!=D*4 || queries.size()<152*D || !raw || warmups==0 || repeats==0) throw std::runtime_error("RSLM full-flat fixture shape differs");
+  std::vector<double> timings; timings.reserve(152*repeats);
+  for(std::size_t qi=0;qi<152;++qi){ const float* query=queries.data()+qi*D; std::array<float,D> qarray{}; std::copy(query,query+D,qarray.begin()); const auto qrot=rotate_forward(qarray); const double qnorm=std::sqrt(std::inner_product(query,query+D,query,0.0));
+    std::array<double,THQ_BYTES*256> base_lut{}; for(std::size_t byte=0;byte<THQ_BYTES;++byte) for(std::size_t packed=0;packed<256;++packed) for(std::size_t lane=0;lane<4;++lane) base_lut[byte*256+packed]+=static_cast<double>(cent[(byte*4+lane)*4+((packed>>(lane*2))&3U)])*query[byte*4+lane];
+    std::array<double, D/4*16> residual_lut{}; for(std::size_t group=0;group<D/4;++group) for(std::size_t symbol=0;symbol<16;++symbol) for(std::size_t lane=0;lane<4;++lane) residual_lut[group*16+symbol]+=static_cast<double>(C4[symbol*4+lane])*qrot[group*4+lane];
+    for(std::size_t rep=0;rep<warmups+repeats;++rep){ const auto start=std::chrono::steady_clock::now(); std::array<Candidate,10> top{}; std::size_t count=0;
+      for(std::size_t row=0;row<DOCUMENTS;++row){ double numerator=0.0; const auto* thq_row=thq.data()+row*THQ_BYTES; const auto* symbol_row=symbols.data()+row*SYMBOL_BYTES; for(std::size_t byte=0;byte<THQ_BYTES;++byte) numerator+=base_lut[byte*256+thq_row[byte]]; double residual_score=0.0; for(std::size_t group=0;group<D/4;++group){const auto packed=symbol_row[group/2]; const auto symbol=(group&1U)?(packed&15U):(packed>>4U); residual_score+=residual_lut[group*16+symbol];} numerator+=residual_score*ue7m9(inner[row]); const Candidate candidate{numerator/(std::max(static_cast<double>(final_norm[row])*qnorm,1e-30)),static_cast<std::int32_t>(row)}; if(count<top.size()) top[count++]=candidate; else {std::size_t worst=0; for(std::size_t i=1;i<top.size();++i) if(order(top[worst],top[i])) worst=i; if(order(candidate,top[worst])) top[worst]=candidate;} }
+      std::sort(top.begin(),top.end(),order); if(rep>=warmups){const double elapsed=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count(); timings.push_back(elapsed); raw<<"{\"query\":"<<qi<<",\"repeat\":"<<(rep-warmups)<<",\"timing_ms\":"<<elapsed<<",\"top10_ids\":["; for(std::size_t i=0;i<top.size();++i){if(i)raw<<',';raw<<top[i].id;} raw<<"]}\n";}
+    }
+  }
+  std::cout<<std::fixed<<std::setprecision(6)<<"{\"status\":\"EXECUTED\",\"codec\":\"RSLM1\",\"metric\":\"reconstructed_cosine\",\"mode\":\"full_flat_1m\",\"queries\":152,\"repeats\":"<<repeats<<",\"p50_ms\":"<<nearest_percentile(timings,.5)<<",\"p95_ms\":"<<nearest_percentile(timings,.95)<<",\"p99_ms\":"<<nearest_percentile(timings,.99)<<"}\n"; return 0;
+}
+
 int run_matched(int argc, char** argv) {
   if (argc != 13 && argc != 15) throw std::runtime_error("usage: --matched symbols inner outer ids thq centroids thresholds candidate_flat offsets queries raw [warmups repeats]");
   auto symbols=read<std::uint8_t>(argv[2]); auto inner=read<std::uint16_t>(argv[3]); auto outer=read<std::uint16_t>(argv[4]); auto ids=read<std::int32_t>(argv[5]); auto thq=read<std::uint8_t>(argv[6]); auto cent=read<float>(argv[7]); auto thresholds=read<float>(argv[8]); auto candidate=read<std::uint8_t>(argv[9]); auto offsets=read<std::uint64_t>(argv[10]); auto queries=read<float>(argv[11]);
@@ -170,6 +189,7 @@ int main(int argc,char**argv){
  try {
   if(argc==2&&std::string(argv[1])=="--self-test"){self_test();return 0;}
   if(argc>=2&&std::string(argv[1])=="--matched") return run_matched(argc,argv);
+  if(argc>=2&&std::string(argv[1])=="--full-flat") return run_full_flat(argc,argv);
   if(argc!=11||std::string(argv[1])!="--candidate-gate") throw std::runtime_error("usage: --candidate-gate symbols inner outer ids thq_codes centroids candidate_ids offsets queries");
   auto symbols=read<std::uint8_t>(argv[2]); auto inner=read<std::uint16_t>(argv[3]); auto outer=read<std::uint16_t>(argv[4]); auto ids=read<std::int32_t>(argv[5]); auto thq=read<std::uint8_t>(argv[6]); auto cent=read<float>(argv[7]); auto candidate=read<std::int32_t>(argv[8]); auto offsets=read<std::uint64_t>(argv[9]); auto queries=read<float>(argv[10]);
   if(ids.empty()||symbols.size()!=ids.size()*SYMBOL_BYTES||inner.size()!=ids.size()||outer.size()!=ids.size()||cent.size()!=D*4||thq.size()!=DOCUMENTS*THQ_BYTES||queries.size()!=152*D||offsets.size()!=153||candidate.size()!=offsets.back()) throw std::runtime_error("RSLM1 input shape differs: ids="+std::to_string(ids.size())+" symbols="+std::to_string(symbols.size())+" inner="+std::to_string(inner.size())+" outer="+std::to_string(outer.size())+" cent="+std::to_string(cent.size())+" thq="+std::to_string(thq.size())+" queries="+std::to_string(queries.size())+" offsets="+std::to_string(offsets.size())+" candidate="+std::to_string(candidate.size())+" last="+std::to_string(offsets.back()));

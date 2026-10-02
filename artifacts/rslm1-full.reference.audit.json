@@ -1,0 +1,14 @@
+{
+  "final_norm_sha256": "3aba3a28bca221504a5fd70e9191854975a219da1e31fb8c018d4c76139338a5",
+  "independent_top10_exact": "152/152",
+  "inner_sha256": "23492bca832939ddb0c048af013a75b67a7d4bf5c9dcc209d88529450a2340e2",
+  "metric": "reconstructed_cosine",
+  "mismatches": [],
+  "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "query_count": 152,
+  "raw_sha256": "6dd53764d5c565e1f7bd3b1341112bfc47a2c6d5ce1da7838c3da3dfb5812b75",
+  "reference_runner_sha256": "50eb4d6e729f17a1d34b75f3816afcdb28040d2b65a978d80c29e38c5d29db50",
+  "status": "PASS",
+  "symbols_sha256": "5a0d9ac798822de792d75d7fc4e283e105c6dff5d04f0d5b05d79064ea7c6862",
+  "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70"
+}

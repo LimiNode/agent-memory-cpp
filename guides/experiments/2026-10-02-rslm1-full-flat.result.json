@@ -1,0 +1,32 @@
+{
+  "audit_sha256": "5965955683a0b076dffa6845f0020e55d8cf8208caaef94af1d803e8c3520851",
+  "audit_status": "PASS",
+  "codec": "RSLM1",
+  "documents": 1000000,
+  "family": "three_mode_full_flat_replay_v1",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "faithful RSLM1 symbols and UE7M9 scales are source-bound; final norm is an explicit 4-byte sidecar (56 B/doc serving layout)",
+    "native full-flat scorer uses packed symbol LUTs and no per-row FP32 reconstruction in timed path",
+    "Prototype-IVF, unified R4, fresh-qrels and MDBX gates remain separate"
+  ],
+  "materialization_receipt_sha256": "536f0ac6927d4a86b39848fd7d5b259fe5539cecd519c99ab8f492a82e1c0a57",
+  "measured_repeats": 5,
+  "metric": "reconstructed_cosine",
+  "mode": "full_flat_1m",
+  "payload_bytes": 56000000,
+  "payload_sha256": "5a0d9ac798822de792d75d7fc4e283e105c6dff5d04f0d5b05d79064ea7c6862",
+  "percentile": "nearest_rank",
+  "queries": 152,
+  "raw_sha256": "6dd53764d5c565e1f7bd3b1341112bfc47a2c6d5ce1da7838c3da3dfb5812b75",
+  "reference_runner_sha256": "50eb4d6e729f17a1d34b75f3816afcdb28040d2b65a978d80c29e38c5d29db50",
+  "schema_version": 1,
+  "status": "PASS",
+  "tie_break": "score_desc_id_asc",
+  "timing_ms": {
+    "p50": 245.586,
+    "p95": 261.116,
+    "p99": 272.168
+  },
+  "warmup_count": 1
+}

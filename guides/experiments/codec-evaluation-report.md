@@ -165,7 +165,7 @@ its payload is not a matrix of native codec finalists.
 | PLSQ8x4x8 | **148.6951** | optional 1M packed low-byte control; p95 162.0236, p99 178.5959; structural audit PASS, independent 8x4 reference replay pending |
 | TQ1 | **238.600** | 1M packed TQ1 reconstructed-cosine scan; p95 246.370, p99 258.653; one warmup + five repeats; independent ordered top-10 replay **152/152** |
 | TQ1+PQ8 | **289.122** | 1M packed TQ1+PQ8 scan; p95 302.801, p99 323.720; 64 B/doc persisted final norm; one warmup + five repeats; independent ordered top-10 replay **152/152** |
-| RSLM1 | — | no faithful full 1M packed payload; candidate-local values excluded |
+| RSLM1 | **245.586** | 1M faithful RSLM1 packed scan; p95 261.116, p99 272.168; 56 B/doc including final norm sidecar; one warmup + five repeats; independent ordered top-10 replay **152/152** |
 
 The production receipt explicitly remains normalized in-memory kernel evidence;
 it does not select a codec or establish an MDBX serving winner.

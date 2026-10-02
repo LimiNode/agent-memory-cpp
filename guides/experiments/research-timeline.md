@@ -1170,3 +1170,13 @@ p50/p95/p99 of 289.122/302.801/323.720 ms. An independent packed replay of
 the same reconstructed-cosine contract matches ordered top-10 for 152/152
 queries. This closes the TQ1+PQ8 full-flat row; RSLM1, Prototype-IVF,
 unified R4 refresh and fresh-qrels remain open.
+### Faithful RSLM1 full-flat replay (2026-10-02)
+
+The official RSLM1 symbols and UE7M9 inner/outer scales were materialized for
+all 1M documents. Because the outer scale is a relative correction rather than
+a cosine denominator, the serving ablation persists an explicit 4-byte final
+norm sidecar (56 B/doc total) and keeps that cost visible. The packed native
+scan reports p50/p95/p99 of 245.586/261.116/272.168 ms under one warmup and
+five measured repeats. An independent replay through the faithful Python
+decoder matches ordered top-10 for 152/152 queries. This closes the RSLM1
+full-flat row; the three-mode route and fresh-quality gates remain open.
