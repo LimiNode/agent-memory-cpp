@@ -1,0 +1,157 @@
+{
+  "arms": [
+    {
+      "codec": "lsq32",
+      "ids_sha256": "0ccfc1701477ce45800839e878591a25e2b75018d2e791cbfcae0b4fcb78964a",
+      "native_jsonl_sha256": "e1e0b0915361bad04e9804022a93c03c01169ddabed8767d83fbd3b6f6ff9de7",
+      "native_summary": {
+        "queries": 152,
+        "repeats": 5,
+        "timing_scope": "native warm per-query serving; predecoded codec rows; decode cost excluded"
+      },
+      "ordered_top10_parity": "152/152",
+      "payload_bytes": 32,
+      "payload_sha256": "ed43c1b572eaf299f8781cd7c86b973ee6c50bcdc521c1936f269fa5c05dbded",
+      "query_count": 152,
+      "timing_ms": {
+        "codec_rerank": {
+          "p50": 0.091,
+          "p95": 0.12384499999999996,
+          "p99": 0.14182799999999998
+        },
+        "thq4_prefilter": {
+          "p50": 0.1054,
+          "p95": 0.14414499999999997,
+          "p99": 0.176587
+        },
+        "total": {
+          "p50": 0.20005,
+          "p95": 0.2532499999999999,
+          "p99": 0.29545099999999996
+        }
+      }
+    },
+    {
+      "codec": "lsq48",
+      "ids_sha256": "0ccfc1701477ce45800839e878591a25e2b75018d2e791cbfcae0b4fcb78964a",
+      "native_jsonl_sha256": "b9e69ff4a999af5445e35a01efaaf7122496c948627f29a75991948550a42c16",
+      "native_summary": {
+        "queries": 152,
+        "repeats": 5,
+        "timing_scope": "native warm per-query serving; predecoded codec rows; decode cost excluded"
+      },
+      "ordered_top10_parity": "152/152",
+      "payload_bytes": 48,
+      "payload_sha256": "58ceca2a2c9c448508ff6f5ad2a8c1984861612d3c8eee72b231cb625d8f1f41",
+      "query_count": 152,
+      "timing_ms": {
+        "codec_rerank": {
+          "p50": 0.0902,
+          "p95": 0.12462999999999998,
+          "p99": 0.14575099999999996
+        },
+        "thq4_prefilter": {
+          "p50": 0.1037,
+          "p95": 0.14134499999999997,
+          "p99": 0.170641
+        },
+        "total": {
+          "p50": 0.19774999999999998,
+          "p95": 0.2542499999999999,
+          "p99": 0.293851
+        }
+      }
+    },
+    {
+      "codec": "turboquant1",
+      "ids_sha256": "0ccfc1701477ce45800839e878591a25e2b75018d2e791cbfcae0b4fcb78964a",
+      "native_jsonl_sha256": "f201765ebcde4a77715fcdcd368ddb15d2ed26ffb0cefd5ec1618851951d5032",
+      "native_summary": {
+        "queries": 152,
+        "repeats": 5,
+        "timing_scope": "native warm per-query serving; predecoded codec rows; decode cost excluded"
+      },
+      "ordered_top10_parity": "152/152",
+      "payload_bytes": 52,
+      "payload_sha256": "b32cc9871ad1267f2fd68195902b446c712485dca8c52a97534a786403a5de7f",
+      "query_count": 152,
+      "timing_ms": {
+        "codec_rerank": {
+          "p50": 0.0943,
+          "p95": 0.12542,
+          "p99": 0.14753299999999994
+        },
+        "thq4_prefilter": {
+          "p50": 0.107,
+          "p95": 0.13940999999999998,
+          "p99": 0.1625939999999999
+        },
+        "total": {
+          "p50": 0.20429999999999998,
+          "p95": 0.25448499999999996,
+          "p99": 0.2878959999999998
+        }
+      }
+    },
+    {
+      "codec": "rslm1",
+      "ids_sha256": "0ccfc1701477ce45800839e878591a25e2b75018d2e791cbfcae0b4fcb78964a",
+      "native_jsonl_sha256": "db63e1807cfdd63f4f3325058e9281568a15d012c374d04182b3977f4f70f9c9",
+      "native_summary": {
+        "queries": 152,
+        "repeats": 5,
+        "timing_scope": "native warm per-query serving; predecoded codec rows; decode cost excluded"
+      },
+      "ordered_top10_parity": "152/152",
+      "payload_bytes": 52,
+      "payload_sha256": "eba0e14d349c61aa7f2c81b135b5c6d5c1eb22c017f070f2fecef494c73f5e6a",
+      "query_count": 152,
+      "timing_ms": {
+        "codec_rerank": {
+          "p50": 0.09025,
+          "p95": 0.12321,
+          "p99": 0.14798899999999993
+        },
+        "thq4_prefilter": {
+          "p50": 0.1034,
+          "p95": 0.145205,
+          "p99": 0.17384499999999983
+        },
+        "total": {
+          "p50": 0.1961,
+          "p95": 0.2559,
+          "p99": 0.2953179999999997
+        }
+      }
+    }
+  ],
+  "candidate_contract": "frozen R4 candidate stream -> THQ4 top128 -> ordered top10",
+  "environment": {
+    "affinity": "unpinned",
+    "cpu": "Intel64 Family 6 Model 63 Stepping 2, GenuineIntel",
+    "logical_processors": 36,
+    "numa": "unpinned",
+    "power_policy": "uncontrolled",
+    "threads": 1
+  },
+  "family": "native_matched_finalist_serving_wave_v1",
+  "limitations": [
+    "payloads are predecoded frozen artifacts; codec decode is outside timing",
+    "candidate generation and quality qrels are separate gates",
+    "no MDBX persistence or cold/restart claim"
+  ],
+  "metric": "cosine",
+  "query_count": 152,
+  "repeats": 5,
+  "schema_version": 1,
+  "source_sha256": {
+    "candidate_flat": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
+    "candidate_raw": "251872e745f4c18426418fd144c7a58e843ff1c31a878b6fc27c6aee1755741a",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+  },
+  "status": "EXECUTED",
+  "timing_scope": "native warm per-query serving; predecoded payloads; no decode or MDBX",
+  "warmups": 1
+}

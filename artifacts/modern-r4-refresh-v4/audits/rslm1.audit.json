@@ -1,0 +1,35 @@
+{
+  "candidate_stream_sha256": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
+  "codec": "rslm1",
+  "family": "modern_r4_unified_refresh_audit_v1",
+  "independent_reference": "runner-side FP32 cosine replay over frozen top128",
+  "limitations": [
+    "predecoded payload; codec decode and route generation are outside timing"
+  ],
+  "ordered_top10_parity": "152/152",
+  "payload_sha256": "eba0e14d349c61aa7f2c81b135b5c6d5c1eb22c017f070f2fecef494c73f5e6a",
+  "query_count": 152,
+  "raw_sha256": "db63e1807cfdd63f4f3325058e9281568a15d012c374d04182b3977f4f70f9c9",
+  "repeats": 5,
+  "schema_version": 1,
+  "status": "PASS",
+  "timing_ms": {
+    "codec_rerank": {
+      "p50": 0.09025,
+      "p95": 0.12321,
+      "p99": 0.14798899999999993
+    },
+    "thq4_prefilter": {
+      "p50": 0.1034,
+      "p95": 0.145205,
+      "p99": 0.17384499999999983
+    },
+    "total": {
+      "p50": 0.1961,
+      "p95": 0.2559,
+      "p99": 0.2953179999999997
+    }
+  },
+  "timing_scope": "native warm per-query serving; predecoded payloads; no decode or MDBX",
+  "warmups": 1
+}

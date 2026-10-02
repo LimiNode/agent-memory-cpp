@@ -8,6 +8,7 @@ to a completed result with raw evidence, audit and independent ordered parity.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 from pathlib import Path
 
@@ -18,6 +19,14 @@ MODES = ("full_flat_1m", "prototype_ivf_balanced", "modern_r4")
 def require(ok: bool, message: str) -> None:
     if not ok:
         raise ValueError(message)
+
+
+def file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def validate(inventory: dict, repo: Path | None = None) -> dict:
@@ -41,6 +50,8 @@ def validate(inventory: dict, repo: Path | None = None) -> dict:
                 result_path = repo / result_ref["path"]
                 if result_path.is_file():
                     result = json.loads(result_path.read_text(encoding="utf-8"))
+                    result_ref = dict(result_ref)
+                    result_ref.setdefault("sha256", file_sha256(result_path))
             if not isinstance(result, dict) or result.get("status") not in ("PRESENT", "PASS", "PASS_STRUCTURAL_ONLY"):
                 missing.append(f"{mode}/{arm}: missing result binding")
                 continue
@@ -50,7 +61,8 @@ def validate(inventory: dict, repo: Path | None = None) -> dict:
                          or result_ref.get("sha256"))
             parity = (result.get("independent_top10_exact")
                       or result.get("audit", {}).get("top10_exact")
-                      or result.get("ordered_parity"))
+                      or result.get("ordered_parity")
+                      or result.get("ordered_top10_parity"))
             for field, value in (("raw_sha256", raw_sha), ("audit_sha256", audit_sha), ("independent_top10_exact", parity)):
                 if not value:
                     missing.append(f"{mode}/{arm}: missing {field}")

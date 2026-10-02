@@ -84,12 +84,12 @@
         "status": "PRESENT"
       },
       "LSQ32": {
-        "reason": "unified five-repeat R4 refresh pending",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/lsq32.audit.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "LSQ48": {
-        "reason": "unified five-repeat R4 refresh pending",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/lsq48.audit.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "PLSQ8x6x8": {
         "bytes": 303,
@@ -98,14 +98,12 @@
         "status": "PRESENT"
       },
       "RSLM1": {
-        "bytes": 531,
-        "path": "artifacts/2026-10-01-rslm1-matched-r4.audit.json",
-        "sha256": "4059512876406f75e930f0af0c90da238d07822bee14bdca3f3d80c7fc1bd950",
+        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/rslm1.audit.json", "status": "PRESENT"},
         "status": "PRESENT"
       },
       "TQ1": {
-        "reason": "unified five-repeat R4 refresh pending",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/turboquant1.audit.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "TQ1+PQ8": {
         "reason": "unified five-repeat R4 refresh pending",

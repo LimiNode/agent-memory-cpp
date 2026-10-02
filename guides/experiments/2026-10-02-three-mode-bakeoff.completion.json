@@ -1,5 +1,5 @@
 {
-  "completed_rows": 8,
+  "completed_rows": 12,
   "family": "three_mode_codec_bakeoff_completion_v1",
   "missing": [
     "prototype_ivf_balanced/INT8: status=PENDING_SOURCE_REPLAY",
@@ -11,12 +11,7 @@
     "prototype_ivf_balanced/RSLM1: status=PENDING_SOURCE_REPLAY",
     "modern_r4/INT8: missing independent_top10_exact",
     "modern_r4/INT8: parity=None",
-    "modern_r4/LSQ32: status=PENDING_SOURCE_REPLAY",
-    "modern_r4/LSQ48: status=PENDING_SOURCE_REPLAY",
-    "modern_r4/TQ1: status=PENDING_SOURCE_REPLAY",
-    "modern_r4/TQ1+PQ8: status=PENDING_SOURCE_REPLAY",
-    "modern_r4/RSLM1: missing independent_top10_exact",
-    "modern_r4/RSLM1: parity=None"
+    "modern_r4/TQ1+PQ8: status=PENDING_SOURCE_REPLAY"
   ],
   "required_rows": 21,
   "schema_version": 1,

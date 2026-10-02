@@ -81,9 +81,12 @@ def main() -> int:
     parser.add_argument("--queries", type=Path, required=True)
     parser.add_argument("--output-root", type=Path, required=True)
     parser.add_argument("--arm", action="append", default=[])
+    parser.add_argument("--warmups", type=int, default=1)
+    parser.add_argument("--repeats", type=int, default=5)
     args = parser.parse_args()
     args.output_root.mkdir(parents=True, exist_ok=True)
     arms = parse_arm(args.arm)
+    require(args.warmups >= 0 and args.repeats > 0, "invalid repeat contract")
     offsets = candidate_offsets(args.candidate_raw, args.candidate_flat)
     offsets_path = args.output_root / "candidate-offsets.u64"
     offsets.tofile(offsets_path)
@@ -95,23 +98,33 @@ def main() -> int:
                    str(args.thq), str(args.thresholds), str(ids_path),
                    str(payload_path), str(args.candidate_flat), str(offsets_path),
                    str(args.queries), str(QUERY_COUNT), str(payload_bytes)]
-        completed = subprocess.run(command, check=False, capture_output=True,
-                                   text=True)
-        require(completed.returncode == 0,
-                f"{name} native scorer failed: {completed.stderr.strip()}")
-        native_rows = [json.loads(line) for line in completed.stdout.splitlines()
-                       if line.strip()]
-        require(len(native_rows) == QUERY_COUNT, f"{name} query row count differs")
-        summary = json.loads(completed.stderr.strip().splitlines()[-1])
+        native_rows = []
+        for repeat in range(args.warmups + args.repeats):
+            completed = subprocess.run(command, check=False, capture_output=True,
+                                       text=True)
+            require(completed.returncode == 0,
+                    f"{name} native scorer failed: {completed.stderr.strip()}")
+            batch_rows = [json.loads(line) for line in completed.stdout.splitlines()
+                    if line.strip()]
+            require(len(batch_rows) == QUERY_COUNT, f"{name} query row count differs")
+            if repeat >= args.warmups:
+                for row in batch_rows:
+                    row["repeat"] = repeat - args.warmups
+                native_rows.extend(batch_rows)
+        summary = {"queries": QUERY_COUNT, "repeats": args.repeats,
+                   "timing_scope": "native warm per-query serving; predecoded codec rows; decode cost excluded"}
         output_path = args.output_root / f"{name}.native.jsonl"
-        output_path.write_text(completed.stdout, encoding="utf-8")
+        output_path.write_text("".join(json.dumps(row, sort_keys=True) + "\n" for row in native_rows), encoding="utf-8")
         ids = np.fromfile(ids_path, dtype="<i4")
         vectors = np.memmap(payload_path, mode="r", dtype="<f4",
                             shape=(len(ids), D))
         require(len(ids) == payload_path.stat().st_size // (D * 4),
                 f"{name} payload cardinality differs")
         parity = 0
-        for query_index, row in enumerate(native_rows):
+        first_rows = {int(row["query"]): row for row in native_rows[:QUERY_COUNT]}
+        require(len(first_rows) == QUERY_COUNT, f"{name} first measured repeat differs")
+        for query_index in range(QUERY_COUNT):
+            row = first_rows[query_index]
             require(int(row["query"]) == query_index, f"{name} query order differs")
             selected = np.asarray(row["thq4_top128_ids"], dtype=np.int32)
             require(len(selected) == TOP and len(np.unique(selected)) == TOP,
@@ -147,6 +160,8 @@ def main() -> int:
         "status": "EXECUTED",
         "metric": "cosine",
         "query_count": QUERY_COUNT,
+        "warmups": args.warmups,
+        "repeats": args.repeats,
         "candidate_contract": "frozen R4 candidate stream -> THQ4 top128 -> ordered top10",
         "timing_scope": "native warm per-query serving; predecoded payloads; no decode or MDBX",
         "environment": {"cpu": platform.processor() or "unknown",

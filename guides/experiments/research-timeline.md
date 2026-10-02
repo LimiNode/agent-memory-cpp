@@ -1215,3 +1215,13 @@ under `artifacts/prototype-ivf/`. This is a routing-only checkpoint: no codec
 row is promoted until packed THQ/final scoring, raw timing, independent
 ordered parity and quality decomposition are generated against this frozen
 stream.
+
+### Unified Modern R4 downstream refresh (2026-10-02)
+
+LSQ32, LSQ48, TQ1 and RSLM1 were rerun through the same frozen candidate148
+stream and THQ4 top-128 shell with one warmup and five measured repeats. Each
+arm has 760 raw rows and ordered top-10 parity 152/152 against the independent
+FP32 cosine replay used by the harness. The resulting receipts are committed
+under `artifacts/modern-r4-refresh-v4/`. The measurements are intentionally
+scoped to matched downstream R4 with predecoded payloads; route generation and
+codec decode are not included.
