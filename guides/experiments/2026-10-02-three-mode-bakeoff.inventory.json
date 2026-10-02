@@ -1,6 +1,6 @@
 {
   "blocked_gates": [
-    "native packed TQ1/TQ1+PQ8/RSLM1 full-flat payloads",
+    "native packed TQ1+PQ8/RSLM1 full-flat payloads",
     "packed Prototype-IVF route for every finalist",
     "one unified five-repeat R4 harness for all finalists",
     "fresh untouched qrels after route/configuration freeze"
@@ -50,9 +50,9 @@
       },
       "TQ1": {
         "result": {
-          "bytes": 999,
+          "bytes": 1482,
           "path": "guides/experiments/2026-10-02-tq1-full-flat.result.json",
-          "sha256": "9c7573f46e6871c8895f38c202dfc5c7e53435183b9fb97104e4bf76a0441fbf",
+          "sha256": "24b9bfc6e1de3b6f4f1c1dafeabf2276a09b4b6208b0598136cd7148fd2c2b7f",
           "status": "PRESENT"
         },
         "status": "PRESENT"

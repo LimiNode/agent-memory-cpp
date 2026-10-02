@@ -1138,11 +1138,16 @@ from missing-source to `MATERIALIZED_PENDING_NATIVE_SCORER`. No flat latency or
 quality claim is made until a native packed scorer, raw timing receipt and
 independent replay are complete.
 
-The native TQ1 full-flat scorer then scanned the corrected interleaved 1M
-payload under the common contract, reporting p50/p95/p99 of
-186.0972/192.6554/203.0382 ms. Raw rows, structural audit and an independent
-packed replay are committed in `artifacts/` and bound by
-`2026-10-02-tq1-full-flat.result.json`; ordered top-10 parity is 152/152.
+The first native TQ1 full-flat scorer used an unnormalised `dot / ||q||`
+ranking and is superseded. The corrective scorer now computes the canonical
+reconstructed-cosine denominator analytically from the THQ base, packed signs,
+the shared inverse rotation and the row scale, outside the timed query path;
+the payload remains 52 bytes/document. Under the common one-warmup/five-repeat
+contract it reports p50/p95/p99 of 238.600/246.370/258.653 ms. The independent
+packed replay uses the same canonical reconstructed-cosine reference and
+matches ordered top-10 for 152/152 queries. The corrected raw/audit/result
+artifacts supersede the earlier dot-compatible receipt; TQ1 is no longer in
+the blocked full-flat source list, while TQ1+PQ8 and RSLM1 remain open.
 
 ### PLSQ8x6x8 full-flat replay (2026-10-02)
 

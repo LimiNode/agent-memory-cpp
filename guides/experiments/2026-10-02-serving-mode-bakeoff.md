@@ -28,7 +28,7 @@ and raw JSONL plus an independent audit.
 | INT8 | 388 | measured control | pending | measured control; unified refresh pending | historical control; fresh qrels pending |
 | LSQ32 | 36 | measured packed | pending | measured under older contract; unified refresh pending | historical qrels; fresh pending |
 | LSQ48 | 52 | measured packed | pending | measured under older contract; unified refresh pending | historical qrels; fresh pending |
-| TQ1 | 52/68 | pending packed 1M | pending | measured under older contract; unified refresh pending | historical qrels; fresh pending |
+| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | pending | measured under canonical reconstructed-cosine full-flat contract; unified refresh pending | historical qrels; fresh pending |
 | TQ1+PQ8 | 64/68 | pending packed 1M | pending | measured under older contract; unified refresh pending | partial historical; fresh pending |
 | PLSQ8x6x8 | 52 | measured packed + independent replay | pending | measured packed; unified refresh pending | historical qrels; fresh pending |
 | RSLM1 | 52 | pending packed 1M | pending | measured packed; unified refresh pending | historical qrels; fresh pending |

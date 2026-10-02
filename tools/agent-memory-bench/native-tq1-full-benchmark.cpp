@@ -35,13 +35,37 @@ std::uint64_t permute_step(std::uint64_t state, std::size_t i, std::vector<std::
 std::vector<std::int64_t> permutation(std::uint64_t seed) { std::vector<std::int64_t> values(D); for (std::size_t i = 0; i < D; ++i) values[i] = static_cast<std::int64_t>(i); std::uint64_t state = seed; for (std::size_t i = D - 1; i > 0; --i) state = permute_step(state, i, values); return values; }
 void wht(std::vector<double>& x) { for (std::size_t offset = 0, left = D; left;) { const std::size_t size = std::size_t(1) << (63 - static_cast<std::size_t>(__builtin_clzll(left))); for (std::size_t h = 1; h < size; h <<= 1) for (std::size_t j = 0; j < h; ++j) for (std::size_t k = offset + j; k < offset + size; k += 2 * h) { const double a = x[k], b = x[k + h]; x[k] = a + b; x[k + h] = a - b; } const double scale = std::sqrt(static_cast<double>(size)); for (std::size_t k = offset; k < offset + size; ++k) x[k] /= scale; offset += size; left -= size; } }
 std::vector<double> rotate(const float* input) { std::vector<double> out(D); for (std::size_t i = 0; i < D; ++i) out[i] = input[i]; wht(out); for (const auto seed : {654605292835415893ULL, 8636605637963351413ULL, 1775280196666917949ULL}) { auto p = permutation(seed); std::vector<double> tmp(D); for (std::size_t i = 0; i < D; ++i) tmp[i] = out[p[i]]; out.swap(tmp); wht(out); } return out; }
-double pct(std::vector<double> values, double f) { std::sort(values.begin(), values.end()); return values[std::min(values.size() - 1, static_cast<std::size_t>(f * values.size()))]; }
+std::vector<double> inverse_rotate(std::array<double, D> values) {
+  std::vector<double> out(values.begin(), values.end());
+  wht(out);
+  for (const auto seed : {1775280196666917949ULL, 8636605637963351413ULL, 654605292835415893ULL}) {
+    const auto p = permutation(seed); std::vector<double> tmp(D);
+    for (std::size_t i = 0; i < D; ++i) tmp[p[i]] = out[i];
+    out.swap(tmp); wht(out);
+  }
+  return out;
+}
+std::vector<double> build_reconstructed_norms(const Payload& payload, const std::vector<std::uint8_t>& thq) {
+  constexpr double c = 0.7978846; std::vector<double> norms(N);
+  std::array<double, D> base{}, quantized{};
+  for (std::size_t row = 0; row < N; ++row) {
+    const auto* tr = thq.data() + row * ThqBytes; const auto* bytes = payload.rows.data() + row * (SignBytes + 4);
+    for (std::size_t b = 0; b < ThqBytes; ++b) { const auto code = tr[b]; for (std::size_t lane = 0; lane < 4; ++lane) base[b * 4 + lane] = payload.centroids[(b * 4 + lane) * 4 + ((code >> (lane * 2)) & 3U)]; }
+    for (std::size_t b = 0; b < SignBytes; ++b) for (std::size_t bit = 0; bit < 8; ++bit) quantized[b * 8 + bit] = ((bytes[b] >> bit) & 1U) ? c : -c;
+    const auto residual = inverse_rotate(quantized); float scale = 0.0F; std::memcpy(&scale, bytes + SignBytes, sizeof(float));
+    double norm2 = 0.0; for (std::size_t d = 0; d < D; ++d) { const double value = base[d] + residual[d] * scale; norm2 += value * value; }
+    norms[row] = norm2;
+  }
+  return norms;
+}
+double pct(std::vector<double> values, double f) { std::sort(values.begin(), values.end()); const auto rank = static_cast<std::size_t>(std::ceil(f * values.size())); return values[std::min(values.size() - 1, std::max<std::size_t>(1, rank) - 1)]; }
 }
 int main(int argc, char** argv) {
   try {
     if (argc < 6 || argc > 7) throw std::runtime_error("usage: native-tq1-full-benchmark payload thq queries warmups repeats [raw]");
     const auto payload = load_payload(argv[1]); const auto thq = read<std::uint8_t>(argv[2]); const auto queries = read<float>(argv[3]); const std::size_t warmups = std::stoul(argv[4]), repeats = std::stoul(argv[5]);
     if (thq.size() != N * ThqBytes || queries.size() < 152 * D || warmups == 0 || repeats == 0) throw std::runtime_error("fixture shape differs");
+    const auto reconstructed_norm2 = build_reconstructed_norms(payload, thq);
     std::ofstream raw; if (argc == 7) { raw.open(argv[6]); if (!raw) throw std::runtime_error("cannot open raw"); }
     std::vector<double> timings; timings.reserve(152 * repeats);
     for (std::size_t q = 0; q < 152; ++q) {
@@ -51,10 +75,10 @@ int main(int argc, char** argv) {
       constexpr float c = 0.7978846F; for (std::size_t b = 0; b < SignBytes; ++b) for (std::size_t v = 0; v < 256; ++v) for (std::size_t bit = 0; bit < 8; ++bit) residual[b * 256 + v] += ((v >> bit) & 1U) ? c * static_cast<float>(rq[b * 8 + bit]) : -c * static_cast<float>(rq[b * 8 + bit]);
       for (std::size_t rep = 0; rep < warmups + repeats; ++rep) {
         const auto begin = std::chrono::steady_clock::now(); std::array<Candidate, K> top{}; std::size_t topn = 0;
-        for (std::size_t row = 0; row < N; ++row) { const auto* bytes = payload.rows.data() + row * (SignBytes + 4); double base_score = 0.0, residual_score = 0.0; const auto* tr = thq.data() + row * ThqBytes; for (std::size_t b = 0; b < ThqBytes; ++b) base_score += base[b * 256 + tr[b]]; for (std::size_t b = 0; b < SignBytes; ++b) residual_score += residual[b * 256 + bytes[b]]; float scale = 0.0F; std::memcpy(&scale, bytes + SignBytes, sizeof(float)); const double score = (base_score + residual_score * scale) / std::max(qnorm, 1e-30); Candidate cnd{score, static_cast<std::int32_t>(row)}; if (topn < K) top[topn++] = cnd; else { std::size_t worst = 0; for (std::size_t i = 1; i < K; ++i) if (better(top[worst], top[i])) worst = i; if (better(cnd, top[worst])) top[worst] = cnd; } }
+        for (std::size_t row = 0; row < N; ++row) { const auto* bytes = payload.rows.data() + row * (SignBytes + 4); double base_score = 0.0, residual_score = 0.0; const auto* tr = thq.data() + row * ThqBytes; for (std::size_t b = 0; b < ThqBytes; ++b) base_score += base[b * 256 + tr[b]]; for (std::size_t b = 0; b < SignBytes; ++b) residual_score += residual[b * 256 + bytes[b]]; float scale = 0.0F; std::memcpy(&scale, bytes + SignBytes, sizeof(float)); const double denominator = std::sqrt(std::max(static_cast<double>(reconstructed_norm2[row]), 1e-30)) * qnorm; const double score = (base_score + residual_score * scale) / denominator; Candidate cnd{score, static_cast<std::int32_t>(row)}; if (topn < K) top[topn++] = cnd; else { std::size_t worst = 0; for (std::size_t i = 1; i < K; ++i) if (better(top[worst], top[i])) worst = i; if (better(cnd, top[worst])) top[worst] = cnd; } }
         std::sort(top.begin(), top.end(), better); if (rep >= warmups) { timings.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count()); if (raw) { raw << "{\"query\":" << q << ",\"repeat\":" << (rep - warmups) << ",\"timing_ms\":" << timings.back() << ",\"top10_ids\":["; for (std::size_t i = 0; i < K; ++i) { if (i) raw << ','; raw << top[i].id; } raw << "]}\n"; } }
       }
     }
-    std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"codec\":\"TQ1\",\"mode\":\"full_flat_1m\",\"queries\":152,\"repeats\":" << repeats << ",\"p50_ms\":" << pct(timings,.5) << ",\"p95_ms\":" << pct(timings,.95) << ",\"p99_ms\":" << pct(timings,.99) << "}\n";
+    std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"codec\":\"TQ1\",\"metric\":\"reconstructed_cosine\",\"mode\":\"full_flat_1m\",\"queries\":152,\"repeats\":" << repeats << ",\"p50_ms\":" << pct(timings,.5) << ",\"p95_ms\":" << pct(timings,.95) << ",\"p99_ms\":" << pct(timings,.99) << "}\n";
   } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

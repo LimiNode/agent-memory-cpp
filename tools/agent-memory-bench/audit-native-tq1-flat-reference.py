@@ -7,6 +7,7 @@ import hashlib
 import importlib.util
 import json
 import struct
+from functools import lru_cache
 from pathlib import Path
 
 import numpy as np
@@ -22,14 +23,19 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_rotate():
+@lru_cache(maxsize=1)
+def load_reference():
     path = Path(__file__).with_name("run-thq-turboquant-reference.py")
     spec = importlib.util.spec_from_file_location("tq_reference", path)
     if spec is None or spec.loader is None:
         raise RuntimeError("cannot load TQ reference")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.rotate
+    return module
+
+
+def load_rotate():
+    return load_reference().rotate
 
 
 def read_raw(path: Path, query_count: int) -> dict[int, list[int]]:
@@ -51,6 +57,25 @@ def read_raw(path: Path, query_count: int) -> dict[int, list[int]]:
     return rows
 
 
+def validate_raw_repeats(path: Path, query_count: int, repeats: int = 5) -> None:
+    seen: set[tuple[int, int]] = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        query, repeat, timing = row.get("query"), row.get("repeat"), row.get("timing_ms")
+        if not isinstance(query, int) or not isinstance(repeat, int) or not isinstance(timing, (int, float)):
+            raise ValueError("native raw timing shape differs")
+        if not (0 <= query < query_count and 0 <= repeat < repeats) or not np.isfinite(float(timing)):
+            raise ValueError("native raw query/repeat contract differs")
+        key = (query, repeat)
+        if key in seen:
+            raise ValueError("native raw duplicate query/repeat")
+        seen.add(key)
+    if len(seen) != query_count * repeats:
+        raise ValueError("native raw measured coverage differs")
+
+
 def parse_payload(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     data = path.read_bytes()
     if data[:8] != b"AMTQF01\0":
@@ -67,8 +92,30 @@ def parse_payload(path: Path) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     return centroids, signs, scales
 
 
+def build_norm2(centroids: np.ndarray, signs: np.ndarray, scales: np.ndarray,
+                thq: np.ndarray, chunk_size: int) -> np.ndarray:
+    norm2 = np.empty(N, dtype=np.float64)
+    for begin in range(0, N, chunk_size):
+        end = min(N, begin + chunk_size)
+        levels = np.empty((end - begin, D), dtype=np.uint8)
+        for byte in range(96):
+            code = thq[begin:end, byte]
+            levels[:, 4 * byte:4 * byte + 4] = np.stack(
+                (code & 3, (code >> 2) & 3, (code >> 4) & 3, (code >> 6) & 3), axis=1
+            )
+        base_vectors = centroids[np.arange(D)[None, :], levels]
+        quantized = np.where(
+            np.unpackbits(signs[begin:end], axis=1, bitorder="little")[:, :D] != 0,
+            0.7978846,
+            -0.7978846,
+        )
+        residual_vectors = load_reference().inverse_rotate(quantized) * scales[begin:end, None]
+        norm2[begin:end] = np.sum((base_vectors + residual_vectors) ** 2, axis=1)
+    return norm2
+
+
 def top10(centroids: np.ndarray, signs: np.ndarray, scales: np.ndarray,
-          thq: np.ndarray, query: np.ndarray, chunk_size: int) -> list[int]:
+          thq: np.ndarray, norm2: np.ndarray, query: np.ndarray, chunk_size: int) -> list[int]:
     rotate = load_rotate()
     rq = rotate(query[None, :])[0].astype(np.float64)
     qnorm = float(np.linalg.norm(query.astype(np.float64)))
@@ -86,8 +133,10 @@ def top10(centroids: np.ndarray, signs: np.ndarray, scales: np.ndarray,
     for begin in range(0, N, chunk_size):
         end = min(N, begin + chunk_size)
         base_score = base[np.arange(96), thq[begin:end]].sum(axis=1)
-        residual_score = residual[np.arange(48), signs[begin:end]].sum(axis=1) * scales[begin:end]
-        scores = (base_score + residual_score) / max(qnorm, 1e-30)
+        residual_score = residual[np.arange(48), signs[begin:end]].sum(axis=1)
+        scores = (base_score + residual_score * scales[begin:end]) / np.maximum(
+            np.sqrt(norm2[begin:end]) * qnorm, np.finfo(np.float64).tiny
+        )
         take = min(32, end - begin)
         indices = np.argpartition(-scores, take - 1)[:take]
         candidates.extend((float(scores[index]), begin + int(index)) for index in indices)
@@ -106,16 +155,20 @@ def main() -> None:
     parser.add_argument("--result", type=Path, required=True)
     args = parser.parse_args()
     native = read_raw(args.raw, args.query_count)
+    validate_raw_repeats(args.raw, args.query_count)
     centroids, signs, scales = parse_payload(args.payload)
     thq = np.memmap(args.thq, mode="r", dtype=np.uint8, shape=(N, 96))
+    norm2 = build_norm2(centroids, signs, scales, thq, args.chunk_size)
     query_rows = args.queries.stat().st_size // (D * 4)
     queries = np.memmap(args.queries, mode="r", dtype="<f4", shape=(query_rows, D))[:args.query_count]
     mismatches = []
     for query in range(args.query_count):
-        expected = top10(centroids, signs, scales, thq, queries[query], args.chunk_size)
+        expected = top10(centroids, signs, scales, thq, norm2, queries[query], args.chunk_size)
         if expected != native[query]:
             mismatches.append(query)
-    result = {"status": "PASS" if not mismatches else "FAIL", "query_count": args.query_count,
+    result = {"status": "PASS" if not mismatches else "FAIL", "metric": "reconstructed_cosine",
+              "norm_contract": "analytical_thq_base_plus_inverse_rotated_packed_residual",
+              "query_count": args.query_count,
               "independent_top10_exact": f"{args.query_count - len(mismatches)}/{args.query_count}",
               "mismatches": mismatches[:16], "payload_sha256": sha256(args.payload),
               "thq_sha256": sha256(args.thq), "queries_sha256": sha256(args.queries),
