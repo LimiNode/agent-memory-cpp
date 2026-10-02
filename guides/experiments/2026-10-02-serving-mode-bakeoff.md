@@ -37,6 +37,12 @@ and raw JSONL plus an independent audit.
 prototype-IVF receipts for these finalists, and decoded/scalar historical IVF
 results are not promoted into this matrix.
 
+The machine-readable checkpoint for this boundary is
+[`2026-10-02-three-mode-bakeoff.inventory.json`](2026-10-02-three-mode-bakeoff.inventory.json).
+It hashes present receipts and records every missing row as
+`PENDING_SOURCE_REPLAY`; it does not treat this inventory as a benchmark
+result.
+
 ## Execution contract
 
 1. Freeze codec payloads, THQ4 payload/query codes, route manifests and query
@@ -67,4 +73,3 @@ The existing `native_thq_ivf_bakeoff` and older IVF notes remain historical
 diagnostics because they use scalar/FP32 reranking and a different timing
 contract. They are useful for route hypotheses, not evidence for this matched
 codec matrix.
-

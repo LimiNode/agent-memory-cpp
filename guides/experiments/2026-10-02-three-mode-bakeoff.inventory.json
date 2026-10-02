@@ -1,0 +1,125 @@
+{
+  "blocked_gates": [
+    "native packed TQ1/TQ1+PQ8/RSLM1 full-flat payloads",
+    "packed Prototype-IVF route for every finalist",
+    "one unified five-repeat R4 harness for all finalists",
+    "fresh untouched qrels after route/configuration freeze"
+  ],
+  "contract": {
+    "measured_repeats": 5,
+    "percentile": "nearest_rank",
+    "query_count": 152,
+    "tie_break": "score_desc_id_asc",
+    "top_k": 10,
+    "warmup_count": 1
+  },
+  "family": "three_mode_codec_bakeoff_inventory_v1",
+  "modes": {
+    "full_flat_1m": {
+      "INT8": {
+        "bytes": 2019,
+        "path": "guides/experiments/2026-09-30-native-full-corpus-serving-control.result.json",
+        "sha256": "abb9fbf5662e51e5f32ec6cd4d31626ac93b2f33d8e4a3817d865a02a6ec6864",
+        "status": "PRESENT"
+      },
+      "LSQ32": {
+        "bytes": 14953,
+        "path": "guides/experiments/codec-evaluation-report.md",
+        "sha256": "8da1f54bf43c0e6acaa5c126546a6f8ab5cdf8ce0fa31fef6a5c0f18d70ec590",
+        "status": "SUMMARY_ONLY"
+      },
+      "LSQ48": {
+        "bytes": 14953,
+        "path": "guides/experiments/codec-evaluation-report.md",
+        "sha256": "8da1f54bf43c0e6acaa5c126546a6f8ab5cdf8ce0fa31fef6a5c0f18d70ec590",
+        "status": "SUMMARY_ONLY"
+      },
+      "PLSQ8x6x8": {
+        "bytes": 1543,
+        "path": "guides/experiments/2026-10-02-plsq8x6-flat-replay.result.json",
+        "sha256": "3268597c3830b66cab243686fe803413562fd1a493d8206eea655edcc6633d45",
+        "status": "PRESENT"
+      },
+      "RSLM1": {
+        "reason": "faithful full-corpus payload not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "TQ1": {
+        "reason": "no committed 1M packed payload",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "TQ1+PQ8": {
+        "reason": "no committed 1M packed payload",
+        "status": "PENDING_SOURCE_REPLAY"
+      }
+    },
+    "modern_r4": {
+      "INT8": {
+        "bytes": 530,
+        "path": "artifacts/2026-10-01-int8-matched-r4.audit.json",
+        "sha256": "8d038fd3aff91499ca596ecab561455fbac21a8fe1ef6162bcd161089bd495b1",
+        "status": "PRESENT"
+      },
+      "LSQ32": {
+        "reason": "unified five-repeat R4 refresh pending",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "LSQ48": {
+        "reason": "unified five-repeat R4 refresh pending",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "PLSQ8x6x8": {
+        "bytes": 303,
+        "path": "artifacts/2026-10-01-plsq8x6-matched-r4.audit.json",
+        "sha256": "7e41a5d1580c466d27bd665280b9e79c2aecced0d24ff24239aaae3ad79a6926",
+        "status": "PRESENT"
+      },
+      "RSLM1": {
+        "bytes": 531,
+        "path": "artifacts/2026-10-01-rslm1-matched-r4.audit.json",
+        "sha256": "4059512876406f75e930f0af0c90da238d07822bee14bdca3f3d80c7fc1bd950",
+        "status": "PRESENT"
+      },
+      "TQ1": {
+        "reason": "unified five-repeat R4 refresh pending",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "TQ1+PQ8": {
+        "reason": "unified five-repeat R4 refresh pending",
+        "status": "PENDING_SOURCE_REPLAY"
+      }
+    },
+    "prototype_ivf_balanced": {
+      "INT8": {
+        "reason": "packed Prototype-IVF route receipt not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "LSQ32": {
+        "reason": "packed Prototype-IVF route receipt not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "LSQ48": {
+        "reason": "packed Prototype-IVF route receipt not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "PLSQ8x6x8": {
+        "reason": "packed Prototype-IVF route receipt not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "RSLM1": {
+        "reason": "packed Prototype-IVF route receipt not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "TQ1": {
+        "reason": "packed Prototype-IVF route receipt not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      },
+      "TQ1+PQ8": {
+        "reason": "packed Prototype-IVF route receipt not committed",
+        "status": "PENDING_SOURCE_REPLAY"
+      }
+    }
+  },
+  "schema_version": 1,
+  "status": "PARTIAL"
+}

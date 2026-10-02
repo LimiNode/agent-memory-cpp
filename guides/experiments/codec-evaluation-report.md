@@ -161,12 +161,18 @@ its payload is not a matrix of native codec finalists.
 | THQ → INT8 | 83.672 | native THQ routing plus INT8 rerank |
 | LSQ32 | **223.032** | 1M packed LSQ32 scan; p95 238.494, p99 244.840 |
 | LSQ48 | **252.526** | 1M packed LSQ48 scan; p95 264.469, p99 269.872 |
-| PLSQ8x6x8 | **177.9757** | 1M packed PLSQ scan; p95 191.1420, p99 202.3426; five measured repeats; independent top-10 replay 152/152 |
+| PLSQ8x6x8 | **177.5215** | 1M packed PLSQ scan; p95 199.7548, p99 218.1127; one warmup + five measured repeats; independent ordered top-10 replay **152/152** |
 | PLSQ8x4x8 | **164.3054** | 1M packed PLSQ scan; p95 172.1001, p99 175.9914 |
 | TQ1/TQ1+PQ8/RSLM1 | — | no full 1M packed payload; decoded/candidate-local values excluded |
 
 The production receipt explicitly remains normalized in-memory kernel evidence;
 it does not select a codec or establish an MDBX serving winner.
+
+The refreshed PLSQ8x6x8 row is bound to the raw/audit receipt
+[`2026-10-02-plsq8x6-flat-replay.result.json`](2026-10-02-plsq8x6-flat-replay.result.json);
+its independent packed replay reports ordered top-10 parity for 152/152
+queries. Other rows retain their documented provenance and are not silently
+reinterpreted as this newer contract.
 
 ## Persistent MDBX layout
 
@@ -189,13 +195,23 @@ and [`2026-10-01-native-mdbx-batch-sweep.md`](2026-10-01-native-mdbx-batch-sweep
 
 ## Interpretation and next gates
 
-The evidence supports a research conclusion, not a product selection: LSQ32,
-LSQ48 and PLSQ8x6x8 now have native full-flat packed evidence, while PLSQ8x6x8
-and RSLM1 also have matched R4 packed evidence. TQ1/TQ1+PQ8/RSLM1 full-flat
-and all MDBX rows remain separate gates. The ordered next gates are:
+The evidence supports a research conclusion, not a product selection. The
+remaining work is ordered around one comparable three-mode bake-off, rather
+than promoting mixed-generation rows into a ranking:
 
-1. add native packed TQ/RSLM1 corpus payloads before filling their flat rows;
-2. extend the matched R4 runner to TQ1/TQ1+PQ8 and preserve packed parity;
-3. materialize finalist-specific compact MDBX projections;
-4. run concurrent publication, cold/restart/recovery, and fresh untouched-qrels
-   gates before any Pareto or default recommendation.
+1. complete and unify **all three serving modes** (full-flat packed 1M,
+   Prototype-IVF/balanced cascade, and Modern R4) for the frozen finalist set;
+2. freeze payloads, routes, scorer implementations, timing configuration and
+   provenance manifests, then run independent audits over the raw evidence;
+3. execute fresh untouched qrels against the frozen configurations, reporting
+   exact-oracle Recall@K, qrels-based nDCG@10/MRR and quality decomposition for
+   each routed mode;
+4. build the quality/latency/footprint/rebuild Pareto frontier and select only
+   2–3 survivors for persistent MDBX layout, publication, cold/restart and
+   recovery gates;
+5. make no default or winner recommendation until those gates are complete.
+
+Candidate-local top-128 scorer measurements remain diagnostic components, not a
+fourth serving mode. Any arm that cannot produce a faithful packed payload or
+independent parity receipt remains explicitly pending or blocked rather than
+being filled with decoded-FP32 or legacy-contract numbers.

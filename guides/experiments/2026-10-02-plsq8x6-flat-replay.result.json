@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "family": "three_mode_full_flat_replay_v1",
+  "status": "PASS",
+  "mode": "full_flat_1m",
+  "codec": "PLSQ8x6x8",
+  "documents": 1000000,
+  "queries": 152,
+  "warmup_count": 1,
+  "measured_repeats": 5,
+  "percentile": "nearest_rank",
+  "tie_break": "score_desc_id_asc",
+  "timing_ms": {"p50": 177.5215, "p95": 199.7548, "p99": 218.1127},
+  "raw_jsonl": {
+    "path": "../../artifacts/2026-10-02-plsq8x6-flat-replay.raw.jsonl",
+    "sha256": "e56850c0bdf195ab82e45ab905dfac8affe5f26a1ddc499a835693153d9aa833",
+    "bytes": 98422
+  },
+  "audit": {
+    "path": "../../artifacts/2026-10-02-plsq8x6-flat-replay.audit.json",
+    "status": "PASS",
+    "top10_exact": "152/152",
+    "audit_runner_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c",
+    "reference_audit": "../../artifacts/2026-10-02-plsq8x6-flat-replay.reference.audit.json"
+  },
+  "payload": {
+    "source_path": "E:/_repoz/agent-memory-workspaces/flat-plsq-materialization-v2/plsq8x6.payload.bin",
+    "sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387",
+    "bytes": 54365464,
+    "bytes_per_document": 52
+  },
+  "thq4": {"sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70", "bytes": 96000000},
+  "queries_fixture": {"sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191", "bytes": 233472},
+  "limitations": [
+    "raw top-10 shape and timing were independently audited",
+    "this does not close Prototype-IVF, unified R4, fresh-qrels or MDBX gates"
+  ]
+}
