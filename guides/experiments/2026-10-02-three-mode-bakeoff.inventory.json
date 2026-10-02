@@ -85,12 +85,14 @@
         "status": "DIAGNOSTIC"
       },
       "LSQ32": {
+        "reason": "candidate148 is already 128-wide; packed result is component evidence, not full R4 candidate stream",
         "result": {"path": "artifacts/modern-r4-packed/lsq32.result.json", "status": "PRESENT"},
-        "status": "PRESENT"
+        "status": "DIAGNOSTIC"
       },
       "LSQ48": {
+        "reason": "candidate148 is already 128-wide; packed result is component evidence, not full R4 candidate stream",
         "result": {"path": "artifacts/modern-r4-packed/lsq48.result.json", "status": "PRESENT"},
-        "status": "PRESENT"
+        "status": "DIAGNOSTIC"
       },
       "PLSQ8x6x8": {
         "bytes": 303,
