@@ -96,6 +96,8 @@ def load_root(root: Path) -> dict[str, Any]:
             raise EvaluationError(f"qrels line {line_number} references an unknown query")
         if document not in document_set or int(grade) < 0:
             raise EvaluationError(f"qrels line {line_number} references an invalid document or grade")
+        if document in qrels[query]:
+            raise EvaluationError(f"qrels line {line_number} duplicates a query/document judgment")
         qrels[query][document] = int(grade)
     if len(qrels) != len(query_ids) or any(not values for values in qrels.values()):
         raise EvaluationError("qrels do not cover every query")
@@ -109,6 +111,7 @@ def load_root(root: Path) -> dict[str, Any]:
         "queries": queries,
         "document_ids": np.asarray(document_ids, dtype=np.str_),
         "document_order_keys": document_order_keys,
+        "document_id_to_position": {value: index for index, value in enumerate(document_ids)},
         "query_ids": query_ids,
         "qrels": qrels,
         "qrels_sha256": outputs["evaluation_qrels"]["sha256"],
@@ -139,7 +142,7 @@ def exact_mrr_from_scores(data: dict[str, Any], query_position: int, scores: np.
     for document_id, grade in grades.items():
         if grade <= 0:
             continue
-        position = int(np.flatnonzero(ids == document_id)[0])
+        position = data["document_id_to_position"][document_id]
         score = scores[position]
         rank = 1 + int(np.count_nonzero(scores > score))
         rank += int(np.count_nonzero((scores == score) & (keys < keys[position])))
@@ -148,6 +151,8 @@ def exact_mrr_from_scores(data: dict[str, Any], query_position: int, scores: np.
 
 
 def exact_run(args: argparse.Namespace) -> None:
+    if args.top_k <= 0:
+        raise EvaluationError("top-k must be positive")
     data = load_root(args.evaluation_root)
     if len(data["query_ids"]) != 305:
         raise EvaluationError("canonical fresh run must contain exactly 305 queries")
@@ -217,8 +222,14 @@ def candidate_run(args: argparse.Namespace) -> None:
         raise EvaluationError("candidate export must contain one row per fresh query")
     by_position: dict[int, list[str]] = {}
     for row in rows:
+        if not isinstance(row, dict):
+            raise EvaluationError("candidate export row is not an object")
         position = int(row["query_position"])
         ids = [str(value) for value in row.get("candidate_ids", [])]
+        if position < 0 or position >= len(data["query_ids"]):
+            raise EvaluationError("candidate export query position is out of range")
+        if row.get("query_id") != data["query_ids"][position]:
+            raise EvaluationError("candidate export query ID differs from canonical order")
         if position in by_position or not ids or len(ids) != len(set(ids)):
             raise EvaluationError("candidate export has duplicate or empty query rows")
         by_position[position] = ids
@@ -228,7 +239,7 @@ def candidate_run(args: argparse.Namespace) -> None:
     oracle_rows = oracle.get("per_query")
     if oracle.get("source") != {"materialization_manifest_sha256": data["manifest_sha256"], "document_vectors_sha256": data["document_vectors_sha256"], "document_ids_sha256": data["document_ids_sha256"], "query_vectors_sha256": data["query_vectors_sha256"], "qrels_sha256": data["qrels_sha256"]} or len(oracle_rows) != len(data["query_ids"]):
         raise EvaluationError("oracle provenance differs")
-    id_to_position = {str(value): index for index, value in enumerate(data["document_ids"].tolist())}
+    id_to_position = data["document_id_to_position"]
     rows_out: list[dict[str, Any]] = []
     for position, query_id in enumerate(data["query_ids"]):
         candidate_ids = [str(value) for value in by_position[position]]
@@ -236,7 +247,7 @@ def candidate_run(args: argparse.Namespace) -> None:
             raise EvaluationError("candidate references an unknown document")
         candidate_positions = np.asarray([id_to_position[value] for value in candidate_ids], dtype=np.int64)
         candidate_scores = np.asarray(data["documents"][candidate_positions] @ data["queries"][position], dtype=np.float32)
-        candidate_keys = np.asarray(candidate_ids, dtype=np.str_)
+        candidate_keys = data["document_order_keys"][candidate_positions]
         order = np.lexsort((candidate_keys, -candidate_scores))
         ranked = [candidate_ids[index] for index in order]
         exact_top128 = [str(value) for value in oracle_rows[position]["top128_ids"]]

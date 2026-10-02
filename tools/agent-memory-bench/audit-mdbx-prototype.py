@@ -18,6 +18,7 @@ def audit(value: dict) -> None:
     require(value.get("status") == "EXECUTED", "prototype did not execute")
     require(value.get("metric") == "reconstructed_cosine_exact", "metric is not exact cosine")
     require(value.get("documents") == 1_000_000 and value.get("queries") == 305, "fixture shape differs")
+    require(value.get("warmups") == 1 and value.get("repeats") == 5, "timing contract differs")
     require(value.get("candidate_k") == 128 and value.get("candidate_source", "").startswith("exact FP32"), "candidate isolation contract differs")
     for digest_name in ("fixture_receipt_sha256", "runner_source_sha256"):
         digest = value.get(digest_name)
@@ -34,7 +35,7 @@ def audit(value: dict) -> None:
 
 
 def self_test() -> None:
-    baseline = {"schema_version": 1, "family": "native_mdbx_packed_int8_prototype_v1", "status": "EXECUTED", "metric": "reconstructed_cosine_exact", "documents": 1_000_000, "queries": 305, "candidate_k": 128, "candidate_source": "exact FP32 top-k", "fixture_receipt_sha256": "0" * 64, "runner_source_sha256": "1" * 64, "rows": [{"layout": name, "ordered_parity": "305/305", "db_bytes": 1, "materialize_ms": 1, "durable_commits": 1, "reopen_first_query_ms": 1, "p50_ms": 1, "p95_ms": 1, "p99_ms": 1, "read_decode_p50_ms": 1, "score_p50_ms": 1} for name in ("row_kv", "segment_blob")], "limitations": ["not Prototype-IVF"]}
+    baseline = {"schema_version": 1, "family": "native_mdbx_packed_int8_prototype_v1", "status": "EXECUTED", "metric": "reconstructed_cosine_exact", "documents": 1_000_000, "queries": 305, "warmups": 1, "repeats": 5, "candidate_k": 128, "candidate_source": "exact FP32 top-k", "fixture_receipt_sha256": "0" * 64, "runner_source_sha256": "1" * 64, "rows": [{"layout": name, "ordered_parity": "305/305", "db_bytes": 1, "materialize_ms": 1, "durable_commits": 1, "reopen_first_query_ms": 1, "p50_ms": 1, "p95_ms": 1, "p99_ms": 1, "read_decode_p50_ms": 1, "score_p50_ms": 1} for name in ("row_kv", "segment_blob")], "limitations": ["not Prototype-IVF"]}
     audit(baseline)
     baseline["rows"][0]["ordered_parity"] = "0/305"
     try:
