@@ -68,7 +68,9 @@ def candidate_offsets(raw_path: Path, flat_path: Path) -> np.ndarray:
 
 
 def percentile(values: list[float], p: float) -> float:
-    return float(np.percentile(np.asarray(values, dtype=np.float64), p))
+    ordered = np.sort(np.asarray(values, dtype=np.float64))
+    rank = max(1, int(np.ceil((p / 100.0) * ordered.size)))
+    return float(ordered[min(ordered.size, rank) - 1])
 
 
 def main() -> int:

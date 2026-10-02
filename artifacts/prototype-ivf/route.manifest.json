@@ -7,7 +7,8 @@
   "document_count": 1000000,
   "family": "prototype_ivf_balanced_route_v1",
   "limitations": [
-    "routing-only receipt; packed codec scoring and quality parity are separate gates"
+    "routing-only receipt; packed codec scoring and quality parity are separate gates",
+    "teacher-coverage audit is a calibration warning (mean 0.0131579, p05 0); this route is not yet a validated balanced quality operating point"
   ],
   "max_candidates": 5000,
   "mean_candidates": 5000,

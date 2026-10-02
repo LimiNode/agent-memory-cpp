@@ -8,11 +8,15 @@
   ],
   "ordered_top10_parity": "152/152",
   "payload_sha256": "b32cc9871ad1267f2fd68195902b446c712485dca8c52a97534a786403a5de7f",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": true,
   "query_count": 152,
   "raw_sha256": "f201765ebcde4a77715fcdcd368ddb15d2ed26ffb0cefd5ec1618851951d5032",
   "repeats": 5,
+  "representation": "predecoded_fp32_diagnostic",
   "schema_version": 1,
   "status": "PASS",
+  "timed_final_scorer": "dense_fp32_cosine_control",
   "timing_ms": {
     "codec_rerank": {
       "p50": 0.0943,
@@ -25,9 +29,9 @@
       "p99": 0.1625939999999999
     },
     "total": {
-      "p50": 0.20429999999999998,
-      "p95": 0.25448499999999996,
-      "p99": 0.2878959999999998
+      "p50": 0.2041,
+      "p95": 0.2544,
+      "p99": 0.2912
     }
   },
   "timing_scope": "native warm per-query serving; predecoded payloads; no decode or MDBX",

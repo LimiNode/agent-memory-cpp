@@ -25,13 +25,13 @@ and raw JSONL plus an independent audit.
 
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
-| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | pending | refreshed native full-flat control under unified 1+5 contract; unified R4 refresh pending | historical control; fresh qrels pending |
-| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | pending | refreshed matched downstream R4: **0.200 / 0.253 / 0.295 ms** total | historical qrels; fresh pending |
-| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | pending | refreshed matched downstream R4: **0.198 / 0.254 / 0.294 ms** total | historical qrels; fresh pending |
-| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | pending | refreshed matched downstream R4: **0.202 / 0.261 / 0.301 ms** total | historical qrels; fresh pending |
-| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | pending | measured under frozen 64-byte reconstructed-cosine full-flat contract; unified refresh pending | partial historical; fresh pending |
-| PLSQ8x6x8 | 52 | measured packed + independent replay | pending | measured packed; unified refresh pending | historical qrels; fresh pending |
-| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | pending | refreshed matched downstream R4: **0.197 / 0.253 / 0.294 ms** total | historical qrels; fresh pending |
+| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical control; fresh qrels pending |
+| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
+| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
+| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
+| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | pending | predecoded/legacy downstream controls only; packed refresh pending | partial historical; fresh pending |
+| PLSQ8x6x8 | 52 | measured packed + independent replay | pending | predecoded downstream control; packed refresh pending | historical qrels; fresh pending |
+| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
 
 `pending` is intentional: the repository currently has no source-bound packed
 prototype-IVF receipts for these finalists, and decoded/scalar historical IVF
@@ -50,6 +50,13 @@ checkpoint: packed THQ/final-codec scoring, independent parity and quality
 decomposition remain required before any Prototype-IVF matrix cell can move
 from `PENDING_SOURCE_REPLAY`.
 
+The pre-freeze teacher coverage audit is recorded at
+`artifacts/prototype-ivf/quality.audit.json`. It reports mean top-10 teacher
+coverage 0.0131579, p05 0 and a 0/10 worst query. Because the teacher file is
+not an independently recomputed exact oracle, this is calibration evidence,
+not Recall@5000. The route is therefore not yet a validated balanced quality
+operating point and must not be used for a final codec comparison.
+
 ### Modern R4 refresh checkpoint (2026-10-02)
 
 The unified native downstream harness was rerun with one warmup and five
@@ -57,9 +64,10 @@ measured repeats for LSQ32, LSQ48, TQ1 and RSLM1. It uses the same frozen
 candidate148 stream and THQ4 top-128 shell for each arm, records 760 raw rows
 per arm, and verifies ordered top-10 parity 152/152 against an independent
 FP32 cosine replay over the selected top-128 rows. The receipts are under
-`artifacts/modern-r4-refresh-v4/`. These are matched downstream R4
-measurements with predecoded payloads; route generation and codec decode remain
-outside the timed scope. INT8/TQ1+PQ8 and packed Prototype-IVF rows remain open.
+`artifacts/modern-r4-refresh-v4/`. These are explicitly **Modern R4
+predecoded-FP32 downstream controls**, not packed production rows: route
+generation, codec decode and codec-specific packed scoring remain outside the
+timed scope. INT8/TQ1+PQ8 and every packed Modern R4 row remain open.
 
 The machine-readable checkpoint for this boundary is
 [`2026-10-02-three-mode-bakeoff.inventory.json`](2026-10-02-three-mode-bakeoff.inventory.json).

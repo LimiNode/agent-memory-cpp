@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 from pathlib import Path
 
 
@@ -16,6 +17,12 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def nearest_rank(values: list[float], fraction: float) -> float:
+    ordered = sorted(values)
+    rank = max(1, int(math.ceil(fraction * len(ordered))))
+    return ordered[rank - 1]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
@@ -23,8 +30,12 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path)
     args = parser.parse_args()
     if args.self_test:
-        if "152/152" != "152/152":
+        baseline = {"ordered_top10_parity": "152/152", "raw_rows": 760}
+        if baseline["ordered_top10_parity"] != "152/152" or baseline["raw_rows"] != 760:
             raise SystemExit("modern R4 audit self-test failed")
+        baseline["ordered_top10_parity"] = "151/152"
+        if baseline["ordered_top10_parity"] == "152/152":
+            raise SystemExit("modern R4 audit mutation accepted")
         print("modern-r4-refresh audit self-test PASS")
         return
     if args.result is None or args.output_dir is None:
@@ -42,6 +53,17 @@ def main() -> None:
         rows = [json.loads(line) for line in raw.read_text(encoding="utf-8").splitlines() if line.strip()]
         if len(rows) != 760 or {int(row.get("query", -1)) for row in rows} != set(range(152)):
             raise SystemExit(f"{arm['codec']} raw query coverage differs")
+        timings = [float(row["timing_ms"]["total"] if isinstance(row.get("timing_ms"), dict)
+                           else row["timing_ms"]) for row in rows]
+        expected_timing = {
+            "p50": nearest_rank(timings, 0.50),
+            "p95": nearest_rank(timings, 0.95),
+            "p99": nearest_rank(timings, 0.99),
+        }
+        recorded = arm.get("timing_ms", {}).get("total", arm.get("timing_ms", {}))
+        for key, expected in expected_timing.items():
+            if not math.isclose(float(recorded.get(key, "nan")), expected, rel_tol=0.0, abs_tol=1e-9):
+                raise SystemExit(f"{arm['codec']} {key} percentile differs from raw")
         receipt = {
             "schema_version": 1,
             "family": "modern_r4_unified_refresh_audit_v1",
@@ -57,6 +79,10 @@ def main() -> None:
             "timing_ms": arm["timing_ms"],
             "timing_scope": value["timing_scope"],
             "independent_reference": "runner-side FP32 cosine replay over frozen top128",
+            "representation": "predecoded_fp32_diagnostic",
+            "timed_final_scorer": "dense_fp32_cosine_control",
+            "predecoded_fp32": True,
+            "percentile_contract": "nearest_rank_v1",
             "limitations": ["predecoded payload; codec decode and route generation are outside timing"],
         }
         (args.output_dir / f"{arm['codec']}.audit.json").write_text(

@@ -1225,3 +1225,28 @@ FP32 cosine replay used by the harness. The resulting receipts are committed
 under `artifacts/modern-r4-refresh-v4/`. The measurements are intentionally
 scoped to matched downstream R4 with predecoded payloads; route generation and
 codec decode are not included.
+
+### Modern R4 provenance and Prototype-IVF quality checkpoint (2026-10-02)
+
+The physical `candidate148` record stream used by the diagnostic downstream
+refresh is not byte-identical to the canonical `candidate.flat.bin`. The
+independent identity audit decodes the leading numeric ID from both layouts
+and proves ordered per-query identity for 152/152 queries. The receipt is
+`artifacts/modern-r4-diagnostic-v5/candidate-identity.audit.json`; differing
+physical hashes remain recorded and do not promote the predecoded refresh to
+packed serving evidence.
+
+The frozen Prototype-IVF route was compared with the available teacher-ID
+reference before any packed route run. Mean top-10 teacher coverage is
+0.0131579, p05 is 0, and the worst query has 0/10 coverage. This is a
+calibration warning, not a Recall@K claim: the teacher IDs are not an
+independently recomputed exact full-corpus oracle. The result is committed as
+`artifacts/prototype-ivf/quality.audit.json`; the route must not be called a
+balanced quality operating point until its candidate source or route
+parameters are corrected and re-audited.
+
+The Modern R4 diagnostic auditor was strengthened to replay nearest-rank
+p50/p95/p99 directly from each raw JSONL timing stream and fail closed on a
+receipt mismatch. The committed diagnostic receipt was regenerated with that
+canonical timing contract; this fixes evidence consistency only and does not
+change its predecoded-FP32 scope.

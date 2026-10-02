@@ -17,13 +17,13 @@ production mode.
 
 | Arm | Algorithmic quality | Native compressed cascade | Full 1M flat | MDBX persistence |
 | --- | --- | --- | --- | --- |
-| LSQ32 | measured | measured | **measured (1M packed flat)** | pending |
-| LSQ48 | measured | measured | **measured (1M packed flat)** | pending |
-| PLSQ8x6x8 | measured | **measured (matched R4 packed)** | **measured (1M packed flat)** | pending |
-| PLSQ8x4x8 | measured | **measured (matched R4 packed)** | **measured (1M packed flat)** | pending |
-| TQ1 | measured | measured (candidate-local packed) | pending | pending |
-| TQ1+PQ8 | measured/partial serving | measured (candidate-local packed) | pending | pending |
-| RSLM1 | measured | **measured (matched R4 packed)** | pending | pending |
+| LSQ32 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
+| LSQ48 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
+| PLSQ8x6x8 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
+| PLSQ8x4x8 | measured | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
+| TQ1 | measured | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
+| TQ1+PQ8 | measured/partial serving | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
+| RSLM1 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
 | INT8 reference | control | control | measured | measured |
 | INT8 matched R4 control | control | **measured (matched R4)** | n/a | n/a |
 
@@ -87,13 +87,13 @@ was fast.
 
 | Codec | Full-flat packed 1M | Prototype-IVF / balanced | Modern R4 | Interpretation |
 | --- | --- | --- | --- | --- |
-| INT8 | measured control | pending matched packed route | measured control; unified refresh pending | control |
-| LSQ32 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
-| LSQ48 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
-| TQ1 | measured reconstructed-cosine packed | pending packed downstream scorer | measured under older contract; refresh pending | canonical full-flat row is closed; routed rows remain open |
-| TQ1+PQ8 | measured reconstructed-cosine packed | pending packed downstream scorer | measured under older contract; refresh pending | canonical full-flat row is closed; routed rows remain open |
-| PLSQ8x6x8 | measured + independent replay | pending | measured packed; refresh pending | strongest current packed coverage |
-| RSLM1 | measured faithful packed | pending packed downstream scorer | measured packed; refresh pending | full-flat row is closed; routed gates remain open |
+| INT8 | measured control | pending matched packed route | diagnostic predecoded control; packed refresh pending | control |
+| LSQ32 | measured packed | pending | diagnostic predecoded control; packed refresh pending | finalist, not yet cross-mode matched |
+| LSQ48 | measured packed | pending | diagnostic predecoded control; packed refresh pending | finalist, not yet cross-mode matched |
+| TQ1 | measured reconstructed-cosine packed | pending packed downstream scorer | diagnostic/legacy control; packed refresh pending | canonical full-flat row is closed; routed rows remain open |
+| TQ1+PQ8 | measured reconstructed-cosine packed | pending packed downstream scorer | diagnostic/legacy control; packed refresh pending | canonical full-flat row is closed; routed rows remain open |
+| PLSQ8x6x8 | measured + independent replay | pending | diagnostic predecoded control; packed refresh pending | strongest current flat packed coverage |
+| RSLM1 | measured faithful packed | pending packed downstream scorer | diagnostic predecoded control; packed refresh pending | full-flat row is closed; routed gates remain open |
 
 No final speed ranking is inferred from this mixed-generation table. A valid
 ranking requires one harness, one warmup/repeat contract and one audit across
@@ -101,18 +101,17 @@ the same mode.
 
 ### Matched R4 final-reranker corrective control
 
-The corrective rows below (INT8, PLSQ8x6x8 and RSLM1) use the same frozen
-candidate stream and THQ top-128 stage with one warmup and five measured
-repeats. The values are end-to-end over this in-memory R4 shell; decode, MDBX
-I/O and fresh qrels are outside scope. Older rows in the historical comparison
-table below retain their original run contracts and are not silently promoted
-to this refreshed methodology.
+The corrective rows below use the same frozen candidate stream and THQ
+top-128 stage with one warmup and five measured repeats. The INT8 row is a
+packed control; the PLSQ/RSLM rows are explicitly predecoded FP32 downstream
+controls. Decode, MDBX I/O and fresh qrels are outside scope, and these
+diagnostic rows are not promoted to the mandatory packed matrix.
 
 | Final reranker | Side bytes/doc | rerank p50 ms | total p50 ms | total p95/p99 ms | audit |
 | --- | ---: | ---: | ---: | ---: | --- |
 | INT8 control | 388 | 0.0609 | **0.1627** | 0.2030 / 0.2592 | canonical percentile replay PASS |
-| PLSQ8x6x8 | 52 | 0.6996* | **0.6996** | 0.7810 / 0.8465 | ordered parity 152/152 |
-| RSLM1 | 52 | 0.8891* | **0.8891** | 1.0032 / 1.0696 | raw structural replay PASS |
+| PLSQ8x6x8 | 52 | 0.6996* | **0.6996** | 0.7810 / 0.8465 | predecoded FP32 control; not packed evidence |
+| RSLM1 | 52 | 0.8891* | **0.8891** | 1.0032 / 1.0696 | predecoded FP32 control; not packed evidence |
 
 `*` The PLSQ/RSLM runner reports a combined matched stage in this corrective
 receipt; the separate codec-only scorer timings remain in their dedicated

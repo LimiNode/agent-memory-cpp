@@ -55,6 +55,16 @@ def validate(inventory: dict, repo: Path | None = None) -> dict:
             if not isinstance(result, dict) or result.get("status") not in ("PRESENT", "PASS", "PASS_STRUCTURAL_ONLY"):
                 missing.append(f"{mode}/{arm}: missing result binding")
                 continue
+            if result.get("representation") != "packed_native":
+                missing.append(f"{mode}/{arm}: representation={result.get('representation')}")
+            if result.get("timed_final_scorer") != "codec_specific":
+                missing.append(f"{mode}/{arm}: timed_final_scorer={result.get('timed_final_scorer')}")
+            if result.get("predecoded_fp32") is not False:
+                missing.append(f"{mode}/{arm}: predecoded_fp32={result.get('predecoded_fp32')}")
+            if result.get("percentile_contract") != "nearest_rank_v1":
+                missing.append(f"{mode}/{arm}: percentile_contract={result.get('percentile_contract')}")
+            if result.get("reference_kind") not in ("independent_packed_replay", "independent_reference"):
+                missing.append(f"{mode}/{arm}: reference_kind={result.get('reference_kind')}")
             raw_sha = result.get("raw_sha256") or result.get("raw_jsonl", {}).get("sha256")
             audit_sha = (result.get("audit_sha256")
                          or result.get("audit", {}).get("audit_runner_sha256")
@@ -81,7 +91,15 @@ def self_test() -> None:
     for mode in MODES:
         base["modes"][mode] = {}
         for arm in FINALISTS:
-            base["modes"][mode][arm] = {"status": "PRESENT", "result": {"status": "PASS", "raw_sha256": "x", "audit_sha256": "y", "independent_top10_exact": "152/152"}}
+            base["modes"][mode][arm] = {"status": "PRESENT", "result": {
+                "status": "PASS", "raw_sha256": "x", "audit_sha256": "y",
+                "independent_top10_exact": "152/152",
+                "representation": "packed_native",
+                "timed_final_scorer": "codec_specific",
+                "predecoded_fp32": False,
+                "percentile_contract": "nearest_rank_v1",
+                "reference_kind": "independent_packed_replay",
+            }}
     require(validate(base)["status"] == "PASS", "completion self-test pass case failed")
     base["modes"]["full_flat_1m"]["TQ1"]["status"] = "PENDING_SOURCE_REPLAY"
     result = validate(base)

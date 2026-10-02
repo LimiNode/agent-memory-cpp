@@ -80,30 +80,48 @@
       "INT8": {
         "bytes": 530,
         "path": "artifacts/2026-10-01-int8-matched-r4.audit.json",
+        "reason": "predecoded FP32 downstream control; not packed production evidence",
         "sha256": "8d038fd3aff91499ca596ecab561455fbac21a8fe1ef6162bcd161089bd495b1",
-        "status": "PRESENT"
+        "status": "DIAGNOSTIC"
       },
       "LSQ32": {
-        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/lsq32.audit.json", "status": "PRESENT"},
-        "status": "PRESENT"
+        "reason": "predecoded FP32 downstream control; not packed production evidence",
+        "result": {
+          "path": "artifacts/modern-r4-refresh-v4/audits/lsq32.audit.json",
+          "status": "PRESENT"
+        },
+        "status": "DIAGNOSTIC"
       },
       "LSQ48": {
-        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/lsq48.audit.json", "status": "PRESENT"},
-        "status": "PRESENT"
+        "reason": "predecoded FP32 downstream control; not packed production evidence",
+        "result": {
+          "path": "artifacts/modern-r4-refresh-v4/audits/lsq48.audit.json",
+          "status": "PRESENT"
+        },
+        "status": "DIAGNOSTIC"
       },
       "PLSQ8x6x8": {
         "bytes": 303,
         "path": "artifacts/2026-10-01-plsq8x6-matched-r4.audit.json",
+        "reason": "predecoded FP32 downstream control; not packed production evidence",
         "sha256": "7e41a5d1580c466d27bd665280b9e79c2aecced0d24ff24239aaae3ad79a6926",
-        "status": "PRESENT"
+        "status": "DIAGNOSTIC"
       },
       "RSLM1": {
-        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/rslm1.audit.json", "status": "PRESENT"},
-        "status": "PRESENT"
+        "reason": "predecoded FP32 downstream control; not packed production evidence",
+        "result": {
+          "path": "artifacts/modern-r4-refresh-v4/audits/rslm1.audit.json",
+          "status": "PRESENT"
+        },
+        "status": "DIAGNOSTIC"
       },
       "TQ1": {
-        "result": {"path": "artifacts/modern-r4-refresh-v4/audits/turboquant1.audit.json", "status": "PRESENT"},
-        "status": "PRESENT"
+        "reason": "predecoded FP32 downstream control; not packed production evidence",
+        "result": {
+          "path": "artifacts/modern-r4-refresh-v4/audits/turboquant1.audit.json",
+          "status": "PRESENT"
+        },
+        "status": "DIAGNOSTIC"
       },
       "TQ1+PQ8": {
         "reason": "unified five-repeat R4 refresh pending",
@@ -141,13 +159,19 @@
       }
     }
   },
-  "schema_version": 1,
   "prototype_route_checkpoint": {
-    "manifest": "artifacts/prototype-ivf/route.manifest.json",
     "candidate_stream": "artifacts/prototype-ivf/candidate-ids.i4",
-    "status": "ROUTING_ONLY",
-    "note": "Frozen deterministic route exists; packed codec serving rows remain pending until downstream scoring and independent parity are generated."
+    "manifest": "artifacts/prototype-ivf/route.manifest.json",
+    "quality_audit": "artifacts/prototype-ivf/quality.audit.json",
+    "note": "Frozen deterministic route exists; teacher-coverage audit is a calibration warning (mean 0.0131579, p05 0), and packed codec serving rows remain pending until downstream scoring and independent parity are generated.",
+    "status": "ROUTING_ONLY"
   },
+  "modern_r4_candidate_identity": {
+    "audit": "artifacts/modern-r4-diagnostic-v5/candidate-identity.audit.json",
+    "status": "PASS_SEMANTIC_IDS_ONLY",
+    "note": "candidate148 and canonical candidate streams have ordered ID identity 152/152 despite different physical record hashes; current R4 measurements remain predecoded diagnostics."
+  },
+  "schema_version": 1,
   "source_requirements": {
     "canonical_document_vectors": {
       "expected_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
