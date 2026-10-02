@@ -1341,7 +1341,7 @@ separate gates.
 
 After merge commit `9bd438f3`, the untouched canonical DE-1M bundle was opened
 for the first time. An exact FP32 reference over all 305 queries and 1,000,000
-documents reports mean nDCG@10 `0.6723946081` and mean MRR `0.6938813429`; the
+documents reports mean nDCG@10 `0.6723946081` and mean MRR `0.6938856135`; the
 full source hashes and per-query raw rows are bound by
 `2026-10-03-fresh-qrels-exact.result.json`. This is an oracle ceiling only:
 route, THQ and codec losses have not been mixed into it.

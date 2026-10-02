@@ -82,6 +82,7 @@ def load_root(root: Path) -> dict[str, Any]:
         [int(value) for value in document_ids] if numeric else document_ids,
         dtype=np.int64 if numeric else np.str_,
     )
+    document_set = set(document_ids)
     qrels: dict[str, dict[str, int]] = {value: {} for value in query_ids}
     for line_number, line in enumerate(output("evaluation_qrels").read_text(encoding="utf-8").splitlines(), 1):
         fields = line.split()
@@ -93,7 +94,11 @@ def load_root(root: Path) -> dict[str, Any]:
             raise EvaluationError(f"qrels line {line_number} has an invalid field count")
         if query not in qrels:
             raise EvaluationError(f"qrels line {line_number} references an unknown query")
+        if document not in document_set or int(grade) < 0:
+            raise EvaluationError(f"qrels line {line_number} references an invalid document or grade")
         qrels[query][document] = int(grade)
+    if len(qrels) != len(query_ids) or any(not values for values in qrels.values()):
+        raise EvaluationError("qrels do not cover every query")
     documents = np.memmap(output("evaluation_document_vectors"), dtype="<f4", mode="r").reshape(len(document_ids), dimension)
     queries = np.memmap(output("evaluation_query_vectors"), dtype="<f4", mode="r").reshape(len(query_ids), dimension)
     return {
@@ -124,6 +129,24 @@ def exact_top(data: dict[str, Any], query_position: int, k: int) -> tuple[np.nda
     return positions, scores[positions]
 
 
+def exact_mrr_from_scores(data: dict[str, Any], query_position: int, scores: np.ndarray) -> float:
+    """Compute reciprocal rank of the first judged relevant document exactly."""
+    query_id = data["query_ids"][query_position]
+    grades = data["qrels"][query_id]
+    best_rank: int | None = None
+    ids = data["document_ids"]
+    keys = data["document_order_keys"]
+    for document_id, grade in grades.items():
+        if grade <= 0:
+            continue
+        position = int(np.flatnonzero(ids == document_id)[0])
+        score = scores[position]
+        rank = 1 + int(np.count_nonzero(scores > score))
+        rank += int(np.count_nonzero((scores == score) & (keys < keys[position])))
+        best_rank = rank if best_rank is None else min(best_rank, rank)
+    return 0.0 if best_rank is None else 1.0 / best_rank
+
+
 def exact_run(args: argparse.Namespace) -> None:
     data = load_root(args.evaluation_root)
     if len(data["query_ids"]) != 305:
@@ -132,7 +155,10 @@ def exact_run(args: argparse.Namespace) -> None:
     raw_rows: list[dict[str, Any]] = []
     per_query: list[dict[str, Any]] = []
     for position, query_id in enumerate(data["query_ids"]):
-        positions, _ = exact_top(data, position, max_k)
+        scores = np.asarray(data["documents"] @ data["queries"][position], dtype=np.float32)
+        take = min(max_k, scores.size)
+        positions = np.argpartition(-scores, take - 1)[:take]
+        positions = positions[np.lexsort((data["document_order_keys"][positions], -scores[positions]))]
         ids = data["document_ids"][positions].tolist()
         grades = data["qrels"][query_id]
         row = {
@@ -141,7 +167,7 @@ def exact_run(args: argparse.Namespace) -> None:
             "top10_ids": ids[:10],
             "top128_ids": ids[:128],
             "ndcg_at_10": ndcg_at_10(ids, grades),
-            "mrr": mrr(ids, grades),
+            "mrr": exact_mrr_from_scores(data, position, scores),
             "relevant_in_top10": sum(grades.get(value, 0) > 0 for value in ids[:10]),
         }
         per_query.append(row)

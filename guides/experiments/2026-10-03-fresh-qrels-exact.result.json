@@ -8,7 +8,7 @@
   "qrels_row_count": 3144,
   "mean_ndcg_at_10": 0.6723946080838488,
   "p05_ndcg_at_10": 0.0,
-  "mean_mrr": 0.6938813428621784,
+  "mean_mrr": 0.6938856134550563,
   "p05_mrr": 0.08333333333333333,
   "tie_policy": "score_desc_id_asc_numeric_when_numeric_else_lexical",
   "source": {

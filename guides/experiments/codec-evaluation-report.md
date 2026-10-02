@@ -245,7 +245,7 @@ and [`2026-10-01-native-mdbx-batch-sweep.md`](2026-10-01-native-mdbx-batch-sweep
 
 The untouched canonical DE-1M qrels are now opened after the serving freeze.
 The exact FP32 reference covers all 305 queries and reports mean nDCG@10
-`0.6723946081` and mean MRR `0.6938813429`; this is the quality ceiling, not a
+`0.6723946081` and mean MRR `0.6938856135`; this is the quality ceiling, not a
 codec result. Routed Prototype-IVF and Modern-R4 candidates still have to be
 regenerated on this query set. See
 [`2026-10-03-fresh-qrels-exact.result.json`](2026-10-03-fresh-qrels-exact.result.json).

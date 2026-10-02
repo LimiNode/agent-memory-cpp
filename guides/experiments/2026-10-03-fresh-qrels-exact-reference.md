@@ -32,7 +32,7 @@ python tools/agent-memory-bench/evaluate-fresh-qrels.py exact \
 | qrels rows | 3,144 |
 | mean nDCG@10 | 0.6723946081 |
 | p05 nDCG@10 | 0.0000000000 |
-| mean MRR | 0.6938813429 |
+| mean MRR | 0.6938856135 |
 | p05 MRR | 0.0833333333 |
 
 The exact result and per-query raw rows are retained in the local evidence
