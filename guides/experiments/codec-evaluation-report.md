@@ -17,14 +17,14 @@ production mode.
 
 | Arm | Algorithmic quality | Native compressed cascade | Full 1M flat | MDBX persistence |
 | --- | --- | --- | --- | --- |
-| LSQ32 | measured | measured | **measured (1M packed flat)** | pending |
-| LSQ48 | measured | measured | **measured (1M packed flat)** | pending |
-| PLSQ8x6x8 | measured | **measured (matched R4 packed)** | **measured (1M packed flat)** | pending |
-| PLSQ8x4x8 | measured | **measured (matched R4 packed)** | **measured (1M packed flat)** | pending |
-| TQ1 | measured | measured (candidate-local packed) | pending | pending |
-| TQ1+PQ8 | measured/partial serving | measured (candidate-local packed) | pending | pending |
-| RSLM1 | measured | **measured (matched R4 packed)** | pending | pending |
-| INT8 reference | control | control | measured | measured |
+| LSQ32 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| LSQ48 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| PLSQ8x6x8 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| PLSQ8x4x8 | measured | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
+| TQ1 | measured | **packed 3-mode matrix (exact reconstructed norm)** | **measured (1M packed flat)** | pending |
+| TQ1+PQ8 | measured/partial serving | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| RSLM1 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| INT8 reference | exact reconstructed-cosine control | exact reconstructed-cosine control | measured | measured |
 | INT8 matched R4 control | control | **measured (matched R4)** | n/a | n/a |
 
 The quality rows are the historical qrels study in
@@ -32,6 +32,14 @@ The quality rows are the historical qrels study in
 They are not interchangeable with latency rows: quality uses qrels and
 candidate-overlap diagnostics, while serving rows require the same native
 packed scorer and candidate topology.
+
+The canonical three-mode downstream completion receipt is
+[`2026-10-02-three-mode-bakeoff.completion.json`](2026-10-02-three-mode-bakeoff.completion.json);
+it currently validates `21/21` packed serving rows, including mode/family/codec
+identity, raw/audit hashes, independent scorer receipts, and the Modern-R4
+semantic candidate identity. Prototype-IVF receipts are bound to the selected
+calibrated route; this remains a checkpoint until fresh qrels and
+finalist-specific MDBX persistence are complete.
 
 ## Algorithmic quality
 
@@ -87,13 +95,13 @@ was fast.
 
 | Codec | Full-flat packed 1M | Prototype-IVF / balanced | Modern R4 | Interpretation |
 | --- | --- | --- | --- | --- |
-| INT8 | measured control | pending matched packed route | measured control; unified refresh pending | control |
-| LSQ32 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
-| LSQ48 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
-| TQ1 | pending packed payload | pending | measured under older contract; refresh pending | candidate-local/legacy rows cannot fill flat or balanced columns |
-| TQ1+PQ8 | pending packed payload | pending | measured under older contract; refresh pending | same boundary as TQ1 |
-| PLSQ8x6x8 | measured + independent replay | pending | measured packed; refresh pending | strongest current packed coverage |
-| RSLM1 | pending packed payload | pending | measured packed; refresh pending | full-flat and balanced gates remain open |
+| INT8 | measured control | **measured packed** | **measured packed** | control |
+| LSQ32 | measured packed | **measured packed** | **measured packed** | finalist |
+| LSQ48 | measured packed | **measured packed** | **measured packed** | finalist |
+| TQ1 | measured reconstructed-cosine packed | **measured packed (exact TQ norm)** | **measured packed (exact TQ norm)** | fresh quality pending |
+| TQ1+PQ8 | measured reconstructed-cosine packed | **measured packed** | **measured packed** | fresh quality pending |
+| PLSQ8x6x8 | measured + independent replay | **measured packed** | **measured packed** | finalist |
+| RSLM1 | measured faithful packed | **measured packed** | **measured packed** | finalist |
 
 No final speed ranking is inferred from this mixed-generation table. A valid
 ranking requires one harness, one warmup/repeat contract and one audit across
@@ -101,33 +109,33 @@ the same mode.
 
 ### Matched R4 final-reranker corrective control
 
-The corrective rows below (INT8, PLSQ8x6x8 and RSLM1) use the same frozen
-candidate stream and THQ top-128 stage with one warmup and five measured
-repeats. The values are end-to-end over this in-memory R4 shell; decode, MDBX
-I/O and fresh qrels are outside scope. Older rows in the historical comparison
-table below retain their original run contracts and are not silently promoted
-to this refreshed methodology.
+The corrective rows below use the same frozen candidate stream and THQ
+top-128 stage with one warmup and five measured repeats. The INT8 row is a
+packed control; the PLSQ/RSLM rows are explicitly predecoded FP32 downstream
+controls. Decode, MDBX I/O and fresh qrels are outside scope, and these
+diagnostic rows are not promoted to the mandatory packed matrix.
 
 | Final reranker | Side bytes/doc | rerank p50 ms | total p50 ms | total p95/p99 ms | audit |
 | --- | ---: | ---: | ---: | ---: | --- |
-| INT8 control | 388 | 0.0609 | **0.1627** | 0.2030 / 0.2592 | canonical percentile replay PASS |
-| PLSQ8x6x8 | 52 | 0.6996* | **0.6996** | 0.7810 / 0.8465 | ordered parity 152/152 |
-| RSLM1 | 52 | 0.8891* | **0.8891** | 1.0032 / 1.0696 | raw structural replay PASS |
+| INT8 historical matched control | 388 | 0.0609 | 0.1627 | 0.2030 / 0.2592 | superseded shell; retained for provenance |
+| PLSQ8x6x8 | 52 | 0.6996* | **0.6996** | 0.7810 / 0.8465 | predecoded FP32 control; not packed evidence |
+| RSLM1 | 52 | 0.8891* | **0.8891** | 1.0032 / 1.0696 | predecoded FP32 control; not packed evidence |
 
 `*` The PLSQ/RSLM runner reports a combined matched stage in this corrective
 receipt; the separate codec-only scorer timings remain in their dedicated
 candidate-local receipts. The complete source/hash binding is in
 [`2026-10-01-native-matched-r4-final-reranker-control.result.json`](2026-10-01-native-matched-r4-final-reranker-control.result.json).
 
-The measurements below separate matched full-cascade topology from
-candidate-local packed decode-and-score fixtures. Candidate-local rows do not
-include THQ-routing latency and must not be compared as if they were the LSQ
-cascade.
+The measurements below separate the selected Prototype-IVF full-cascade
+topology from candidate-local packed decode-and-score fixtures. Candidate-local
+rows do not include THQ-routing latency and must not be compared as if they
+were the LSQ cascade. The canonical Modern-R4 rows are in the three-mode
+serving table.
 
 | Arm | Payload | THQ p50 ms | codec p50 ms | total p50 ms | parity | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| LSQ32 | 36 B | 1.371 | 2.184 | **3.551** | 152/152 | measured |
-| LSQ48 | 52 B | 1.414 | 3.479 | **4.904** | 152/152 | measured |
+| LSQ32 | 36 B | 1.224 | 2.160 | **3.386** | 152/152 | sparse-LUT selected; measured |
+| LSQ48 | 52 B | 1.243 | 3.239 | **4.482** | 152/152 | sparse-LUT selected; measured |
 | TQ1 | 68 | 2.272 | 0.075 | 2.775 | 152/152 | packed THQ→TQ intermediate gate, 68 B layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
 | TQ1+PQ8 | 64/68 | 2.251 | 0.072 | 2.813 | 152/152 | packed THQ→TQ1+PQ8 gate, 64 B final-only layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
 | PLSQ8x6x8 | 52 B | matched THQ top-128 | packed | **0.6996** | 152/152 | frozen R4 candidate stream → native packed scorer; [wave note](2026-10-03-native-flat-and-r4-finalist-wave.md) |
@@ -135,6 +143,12 @@ cascade.
 | RSLM1 | 52 B | matched THQ top-128 | packed | **0.8891** | structural audit | canonical R4 candidate stream → native packed scorer; packed reference parity remains separate; [wave note](2026-10-03-native-flat-and-r4-finalist-wave.md) |
 
 Source: [`2026-09-23-native-compressed-lsq-result.md`](2026-09-23-native-compressed-lsq-result.md).
+
+The LSQ routed rows use the selected sparse-LUT production scorer. Gather and
+full-LUT parity implementations run only outside the timed interval; the
+scorer-equity receipt is [`artifacts/lsq-scorer-bakeoff.json`](../../artifacts/lsq-scorer-bakeoff.json),
+and the implementation-path contract is
+[`artifacts/three-mode-performance-paths.json`](../../artifacts/three-mode-performance-paths.json).
 
 The candidate-local packed decode-and-score gates measure the codec stage
 without persisted predecoded FP32 payloads. They are not full-cascade rows:
@@ -152,23 +166,63 @@ latency or a direct-compressed production scorer claim. See
 
 ## Full 1M flat serving
 
-The accepted normalized 1M receipt is an INT8 control and THQ→INT8 cascade;
-its payload is not a matrix of native codec finalists.
+The accepted normalized 1M receipt is an exact reconstructed-cosine INT8
+control and THQ→INT8 cascade;
+its payload is not a product winner or a fresh quality result. The former
+scaled-dot timing remains a control-only row.
 
 | Path | p50 ms | Interpretation |
 | --- | ---: | --- |
-| Direct INT8 flat | 106.384 | native INT8 control |
+| Direct INT8 flat exact reconstructed cosine | **407.166** | canonical 1+5 packed run; p95 417.831, p99 428.745; independent ordered top-10 replay 152/152 |
 | THQ → INT8 | 83.672 | native THQ routing plus INT8 rerank |
-| LSQ32 | **223.032** | 1M packed LSQ32 scan; p95 238.494, p99 244.840 |
-| LSQ48 | **252.526** | 1M packed LSQ48 scan; p95 264.469, p99 269.872 |
-| PLSQ8x6x8 | **177.9757** | 1M packed PLSQ scan; p95 191.1420, p99 202.3426; five measured repeats; independent top-10 replay 152/152 |
-| PLSQ8x4x8 | **164.3054** | 1M packed PLSQ scan; p95 172.1001, p99 175.9914 |
-| TQ1/TQ1+PQ8/RSLM1 | — | no full 1M packed payload; decoded/candidate-local values excluded |
+| LSQ32 | **178.670** | 1M packed LSQ32 scan; p95 188.975, p99 209.586; one warmup + five repeats; independent ordered top-10 replay **152/152** |
+| LSQ48 | **228.908** | 1M packed LSQ48 scan; p95 241.341, p99 254.029; one warmup + five repeats; independent ordered top-10 replay **152/152** |
+| LSQ48 (directional historical row) | **252.526** | retained historical row; canonical receipt is the 3-mode matrix |
+| PLSQ8x6x8 | **177.5215** | 1M packed PLSQ scan; p95 199.7548, p99 218.1127; one warmup + five measured repeats; independent ordered top-10 replay **152/152** |
+| PLSQ8x4x8 | **148.6951** | optional 1M packed low-byte control; p95 162.0236, p99 178.5959; structural audit PASS, independent 8x4 reference replay pending |
+| TQ1 | **238.600** | 1M packed TQ1 reconstructed-cosine scan; p95 246.370, p99 258.653; one warmup + five repeats; independent ordered top-10 replay **152/152** |
+| TQ1+PQ8 | **289.122** | 1M packed TQ1+PQ8 scan; p95 302.801, p99 323.720; 64 B/doc persisted final norm; one warmup + five repeats; independent ordered top-10 replay **152/152** |
+| RSLM1 | **245.586** | 1M faithful RSLM1 packed scan; p95 261.116, p99 272.168; 56 B/doc including final norm sidecar; one warmup + five repeats; independent ordered top-10 replay **152/152** |
 
 The production receipt explicitly remains normalized in-memory kernel evidence;
 it does not select a codec or establish an MDBX serving winner.
 
+The refreshed PLSQ8x6x8 row is bound to the raw/audit receipt
+[`2026-10-02-plsq8x6-flat-replay.result.json`](2026-10-02-plsq8x6-flat-replay.result.json);
+its independent packed replay reports ordered top-10 parity for 152/152
+queries. Other rows retain their documented provenance and are not silently
+reinterpreted as this newer contract.
+
+### INT8 metric correction and optimization equity
+
+The canonical INT8 representation is packed signed codes plus scale and an
+inverse code-norm sidecar (392 bytes per document including the sidecar). Its
+metric is exact reconstructed cosine, not scaled dot:
+
+`dot(code, query) / (||code|| * ||query||)`.
+
+The sidecar norm distribution is min 0.998447, max 1.001533, mean 1.000018,
+with p95 absolute deviation 0.000601 from unit norm. Exact dense and fused
+native paths have ordered parity 760/760; the old scaled-dot control has only
+435/760 parity against exact cosine and is therefore not used as a canonical
+row. The evidence is recorded in
+[`artifacts/int8-cosine-equity.audit.json`](../../artifacts/int8-cosine-equity.audit.json)
+and the strict validator requires `metric=reconstructed_cosine_exact` for all
+three INT8 modes.
+
 ## Persistent MDBX layout
+
+### Corrective scorer and identity evidence (2026-10-02)
+
+The TQ1 and TQ1+PQ8 routed rows were regenerated in separate native
+invocations. TQ1 uses the persisted analytical reconstructed norm; TQ1+PQ8 uses
+its own PQ-corrected final norm. Both Prototype-IVF and Modern-R4 audits report
+ordered top-10 parity 152/152. RSLM1 now has an independent transform-domain
+replay with the same parity. The Modern-R4 fused physical stream is bound to
+the canonical candidate identity by
+`artifacts/modern-r4-packed/candidate-identity.audit.json` (152/152 set and
+ordered identity). These receipts are packed scorer evidence, not fresh qrels
+or MDBX persistence evidence.
 
 The completed segment sweep uses a split final-code projection (INT8 plus scale,
 388 bytes per logical row), fixed bounded top-k workspaces, raw timing samples,
@@ -189,13 +243,23 @@ and [`2026-10-01-native-mdbx-batch-sweep.md`](2026-10-01-native-mdbx-batch-sweep
 
 ## Interpretation and next gates
 
-The evidence supports a research conclusion, not a product selection: LSQ32,
-LSQ48 and PLSQ8x6x8 now have native full-flat packed evidence, while PLSQ8x6x8
-and RSLM1 also have matched R4 packed evidence. TQ1/TQ1+PQ8/RSLM1 full-flat
-and all MDBX rows remain separate gates. The ordered next gates are:
+The evidence supports a research conclusion, not a product selection. The
+remaining work is ordered around one comparable three-mode bake-off, rather
+than promoting mixed-generation rows into a ranking:
 
-1. add native packed TQ/RSLM1 corpus payloads before filling their flat rows;
-2. extend the matched R4 runner to TQ1/TQ1+PQ8 and preserve packed parity;
-3. materialize finalist-specific compact MDBX projections;
-4. run concurrent publication, cold/restart/recovery, and fresh untouched-qrels
-   gates before any Pareto or default recommendation.
+1. complete and unify **all three serving modes** (full-flat packed 1M,
+   Prototype-IVF/balanced cascade, and Modern R4) for the frozen finalist set;
+2. freeze payloads, routes, scorer implementations, timing configuration and
+   provenance manifests, then run independent audits over the raw evidence;
+3. execute fresh untouched qrels against the frozen configurations, reporting
+   exact-oracle Recall@K, qrels-based nDCG@10/MRR and quality decomposition for
+   each routed mode;
+4. build the quality/latency/footprint/rebuild Pareto frontier and select only
+   2–3 survivors for persistent MDBX layout, publication, cold/restart and
+   recovery gates;
+5. make no default or winner recommendation until those gates are complete.
+
+Candidate-local top-128 scorer measurements remain diagnostic components, not a
+fourth serving mode. Any arm that cannot produce a faithful packed payload or
+independent parity receipt remains explicitly pending or blocked rather than
+being filled with decoded-FP32 or legacy-contract numbers.

@@ -1,0 +1,11 @@
+{
+  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "family": "independent_packed_rslm1_routed_v1",
+  "independent_top10_exact": "152/152",
+  "mismatches": [],
+  "query_count": 152,
+  "raw_sha256": "ae07eb6d7bff7939c0c2d4b51c8851962632975bfd5197811aedd87cbd6194a7",
+  "reference_kind": "independent_packed_replay",
+  "schema_version": 1,
+  "status": "PASS"
+}

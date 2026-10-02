@@ -1,0 +1,180 @@
+{
+  "blocked_gates": [
+    "fresh untouched qrels after route/configuration freeze"
+  ],
+  "contract": {
+    "measured_repeats": 5,
+    "percentile": "nearest_rank",
+    "query_count": 152,
+    "tie_break": "score_desc_id_asc",
+    "top_k": 10,
+    "warmup_count": 1
+  },
+  "family": "three_mode_codec_bakeoff_inventory_v1",
+  "modes": {
+    "full_flat_1m": {
+      "INT8": {
+        "bytes": 1314,
+        "path": "guides/experiments/2026-10-02-int8-full-flat.result.json",
+        "sha256": "910359db96c3f19b61f93ea66d0e1174b7cd7dcd9cbe8a316079d6430a91cd26",
+        "status": "PRESENT"
+      },
+      "LSQ32": {
+        "bytes": 1264,
+        "path": "guides/experiments/2026-10-02-lsq32-full-flat.result.json",
+        "sha256": "e25597f11504933813f10eab435008261a1bcb15fbb3defd56ae368410ba44e7",
+        "status": "PRESENT"
+      },
+      "LSQ48": {
+        "bytes": 1265,
+        "path": "guides/experiments/2026-10-02-lsq48-full-flat.result.json",
+        "sha256": "740052eba31fa10f343173c06dfb90b7d4c35600f99c6420e07dc5d2931e8e1d",
+        "status": "PRESENT"
+      },
+      "PLSQ8x6x8": {
+        "bytes": 1835,
+        "path": "guides/experiments/2026-10-02-plsq8x6-flat-replay.result.json",
+        "sha256": "634ab913480ea2d5b2f1417896431864e2bf86f74fb8f5a654eaaae2d62bf046",
+        "status": "PRESENT"
+      },
+      "RSLM1": {
+        "bytes": 1537,
+        "path": "guides/experiments/2026-10-02-rslm1-full-flat.result.json",
+        "sha256": "2ae92de6224edcd1e776da82c803d4d7f8161bc3119042dc4705837e07f41f29",
+        "status": "PRESENT"
+      },
+      "TQ1": {
+        "bytes": 1686,
+        "path": "guides/experiments/2026-10-02-tq1-full-flat.result.json",
+        "sha256": "9b091cf53264eb4c4a96372bc44b3a5e7c64364106f167c688c4c4783381c1c0",
+        "status": "PRESENT"
+      },
+      "TQ1+PQ8": {
+        "bytes": 1469,
+        "path": "guides/experiments/2026-10-02-tq1-pq8-full-flat.result.json",
+        "sha256": "22fc4f05211a546ea5f22a4be5519ee2650b53a056bf573602d4906e263a764f",
+        "status": "PRESENT"
+      }
+    },
+    "modern_r4": {
+      "INT8": {
+        "bytes": 1595,
+        "path": "artifacts/modern-r4-packed/int8.result.json",
+        "sha256": "429064b4710214106cfe681f489a700793f95f8cf392d58a1ddacfeafaab42a4",
+        "status": "PRESENT"
+      },
+      "LSQ32": {
+        "bytes": 1821,
+        "path": "artifacts/modern-r4-packed/lsq32.result.json",
+        "sha256": "c22ad3d8eb3762be6b6379f329e8d84d3f1b5333b933613fc0c2365b2b2ff26f",
+        "status": "PRESENT"
+      },
+      "LSQ48": {
+        "bytes": 1819,
+        "path": "artifacts/modern-r4-packed/lsq48.result.json",
+        "sha256": "18bb4a24da0fb6c6ec30e5bb83f4afc5f45e3c50050bb29ea39e7b1fe7023776",
+        "status": "PRESENT"
+      },
+      "PLSQ8x6x8": {
+        "bytes": 1166,
+        "path": "artifacts/modern-r4-packed/plsq8x6x8.result.json",
+        "sha256": "e258b4c4f5f7bf37f177f1230859afe034213d943ef64709d66656236ebc05f9",
+        "status": "PRESENT"
+      },
+      "RSLM1": {
+        "bytes": 1160,
+        "path": "artifacts/modern-r4-packed/rslm1.result.json",
+        "sha256": "d3f71d1cbdf60ab9eba1eacf61ccac295caffdb0f6b1a6c0f1e4c21825c626b7",
+        "status": "PRESENT"
+      },
+      "TQ1": {
+        "bytes": 1273,
+        "path": "artifacts/modern-r4-packed/tq1.result.json",
+        "sha256": "87089d5b1011ef1e4016e92643892984f4b6dd125da891ec6bc8c91754f7cfcf",
+        "status": "PRESENT"
+      },
+      "TQ1+PQ8": {
+        "bytes": 1263,
+        "path": "artifacts/modern-r4-packed/tq1-pq8.result.json",
+        "sha256": "681fb74c25a9243264cc4b802c9c921ba41dfef79f778d427837f44b48944010",
+        "status": "PRESENT"
+      }
+    },
+    "prototype_ivf_balanced": {
+      "INT8": {
+        "bytes": 1474,
+        "path": "artifacts/prototype-ivf/int8.result.json",
+        "sha256": "8290801ef89418528bf5c1a0823e8f5cb269afc622ffd9cee28656fa96d55e80",
+        "status": "PRESENT"
+      },
+      "LSQ32": {
+        "bytes": 1654,
+        "path": "artifacts/prototype-ivf/lsq32.result.json",
+        "sha256": "6b396af81761015b3ad64be810c2853829d341b624b6d5bb0d1e2b0cf6a54d2b",
+        "status": "PRESENT"
+      },
+      "LSQ48": {
+        "bytes": 1652,
+        "path": "artifacts/prototype-ivf/lsq48.result.json",
+        "sha256": "59f99cd6c641e7cfbc77ed5ce6a7f633597103f6ca44534ca0b3b7776e279d57",
+        "status": "PRESENT"
+      },
+      "PLSQ8x6x8": {
+        "bytes": 1004,
+        "path": "artifacts/prototype-ivf/plsq8x6.result.json",
+        "sha256": "819d656f371eeba84e057250736c0dec877e3655587a4bb6d5af548890caa874",
+        "status": "PRESENT"
+      },
+      "RSLM1": {
+        "bytes": 990,
+        "path": "artifacts/prototype-ivf/rslm1.result.json",
+        "sha256": "e6e0ad963582be6e41cc390d620d42d98322ca24ef0637296b5fe48613def4dc",
+        "status": "PRESENT"
+      },
+      "TQ1": {
+        "bytes": 1112,
+        "path": "artifacts/prototype-ivf/tq1.result.json",
+        "sha256": "61a9489df053269703efed1c7c86a6eb9826086dd22a16daee4b70105d5ba456",
+        "status": "PRESENT"
+      },
+      "TQ1+PQ8": {
+        "bytes": 1105,
+        "path": "artifacts/prototype-ivf/tq1-pq8.result.json",
+        "sha256": "2d8735d63fac305cc4a2a5fb6a32c087abae13beddf4d0d2ad34c97d0d4ba677",
+        "status": "PRESENT"
+      }
+    }
+  },
+  "schema_version": 1,
+  "source_requirements": {
+    "canonical_document_vectors": {
+      "expected_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+      "path": "E:/_repoz/agent-memory-cpp/tmp/native-ann-confirmation-v1/de-1m/e5/evaluation-document-vectors.f32",
+      "required_for": [
+        "TQ1",
+        "TQ1+PQ8",
+        "RSLM1",
+        "prototype_ivf_balanced"
+      ],
+      "status": "AVAILABLE_EXTERNAL"
+    },
+    "canonical_thq4_queries": {
+      "path": "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1/inputs/queries.f32",
+      "status": "AVAILABLE_EXTERNAL"
+    },
+    "fresh_untouched_qrels": {
+      "required_for": [
+        "fresh nDCG@10",
+        "fresh Recall@K",
+        "Pareto freeze"
+      ],
+      "searched": [
+        "repository artifacts and guides/experiments",
+        "E:/_repoz/agent-memory-workspaces/three-mode-bakeoff",
+        "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1"
+      ],
+      "status": "EXTERNAL_NOT_FOUND"
+    }
+  },
+  "status": "CHECKPOINT"
+}

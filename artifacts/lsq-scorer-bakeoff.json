@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "family": "lsq_scorer_bakeoff_v1",
+  "status": "PASS",
+  "candidate_shell": "Modern R4 frozen candidate stream, THQ top128, 152 queries",
+  "contract": {
+    "warmups": 1,
+    "measured_repeats": 5,
+    "percentile": "nearest_rank_v1",
+    "top_k": 10,
+    "parity": "152/152 for every implementation"
+  },
+  "implementations": {
+    "LSQ32": {
+      "gather": {"total_p50_ms": 3.6225, "total_p95_ms": 4.1621, "total_p99_ms": 5.3382},
+      "full_lut": {"total_p50_ms": 5.2077, "total_p95_ms": 5.7551, "total_p99_ms": 6.0232},
+      "sparse_lut": {"total_p50_ms": 3.1789, "total_p95_ms": 3.7368, "total_p99_ms": 4.1422},
+      "selected": "sparse_lut"
+    },
+    "LSQ48": {
+      "gather": {"total_p50_ms": 4.9832, "total_p95_ms": 5.4280, "total_p99_ms": 5.7676},
+      "full_lut": {"total_p50_ms": 7.5243, "total_p95_ms": 8.2259, "total_p99_ms": 9.6450},
+      "sparse_lut": {"total_p50_ms": 4.5964, "total_p95_ms": 4.9755, "total_p99_ms": 5.4304},
+      "selected": "sparse_lut"
+    }
+  },
+  "selection_rule": "minimum prepare+score+top-k total at identical candidate and query contract",
+  "limitations": [
+    "This is an implementation bake-off, not a fresh-quality or MDBX result.",
+    "The selected sparse-LUT scorer is validated against gather and full-LUT outside the timed interval."
+  ]
+}

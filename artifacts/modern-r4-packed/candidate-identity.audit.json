@@ -1,0 +1,16 @@
+{
+  "candidate_record_width": 148,
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "canonical_record_width": 148,
+  "canonical_top128_sha256": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
+  "family": "modern_r4_candidate_semantic_identity_v2",
+  "identity_contract": "per-query candidate-set equality; ordered ties use score_desc_id_asc",
+  "mismatches": [],
+  "ordered_parity": "152/152",
+  "query_count": 152,
+  "reference_kind": "independent_thq_identity_replay",
+  "schema_version": 1,
+  "semantic_identity": true,
+  "set_parity": "152/152",
+  "status": "PASS"
+}

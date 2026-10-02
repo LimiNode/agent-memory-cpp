@@ -1,0 +1,27 @@
+{
+  "audit_path": "artifacts/prototype-ivf/plsq8x6.audit.json",
+  "audit_sha256": "5c0951d612a3231108914795dde83a099fa8de5773a615e0a0221ac480d02ddd",
+  "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
+  "codec": "PLSQ8x6x8",
+  "family": "native_packed_plsq_prototype_ivf_balanced_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "prototype_ivf_balanced",
+  "payload_sha256": "624132ef1054e6320dea29c10e209ac69ed574acb94274dae68855998c7133d5",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "fc8481e8a7a046eb0b1f538211a95b51c75edc68fc743f016433b77231b472da",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 3.3921,
+    "p95": 3.7148,
+    "p99": 3.9467
+  },
+  "warmups": 1
+}

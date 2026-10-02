@@ -1,0 +1,1 @@
+{"status":"EXECUTED","scope":"candidate stream -> THQ top128 -> PLSQ packed scorer","queries":152,"warmups":1,"repeats":5,"parity":152,"p50_ms":3.106400,"p95_ms":3.564500,"p99_ms":3.802100}

@@ -1,0 +1,27 @@
+{
+  "audit_path": "artifacts/prototype-ivf/rslm1.audit.json",
+  "audit_sha256": "855c81f4c540728bd97056e502bb2f193a8faf3bbcc665447ed184a85f9ab4ab",
+  "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
+  "codec": "RSLM1",
+  "family": "packed_rslm1_prototype_ivf_balanced_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "prototype_ivf_balanced",
+  "payload_sha256": "5a0d9ac798822de792d75d7fc4e283e105c6dff5d04f0d5b05d79064ea7c6862",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "c5f910157eb6b72efc72cedbeec3dcd1b02fa226d94e426eaefb2e26afe4348f",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 3.099,
+    "p95": 3.4601,
+    "p99": 3.6804
+  },
+  "warmups": 1
+}

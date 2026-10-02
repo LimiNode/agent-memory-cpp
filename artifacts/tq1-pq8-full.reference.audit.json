@@ -1,0 +1,12 @@
+{
+  "independent_top10_exact": "152/152",
+  "metric": "reconstructed_cosine",
+  "mismatches": [],
+  "payload_sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802",
+  "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "query_count": 152,
+  "raw_sha256": "f3098bddd1cacfa520af1ec361da303c978b90ccffd05edc11d436b71bd0f4a8",
+  "reference_runner_sha256": "6b64f2baa4a70ab0f178a8d8b0a09c3cdf5ee7191c24bcc2318d924dbb33518a",
+  "status": "PASS",
+  "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70"
+}

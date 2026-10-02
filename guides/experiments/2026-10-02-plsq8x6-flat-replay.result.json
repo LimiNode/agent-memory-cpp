@@ -1,0 +1,53 @@
+{
+  "audit": {
+    "audit_runner_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c",
+    "path": "../../artifacts/2026-10-02-plsq8x6-flat-replay.audit.json",
+    "reference_audit": "../../artifacts/2026-10-02-plsq8x6-flat-replay.reference.audit.json",
+    "status": "PASS",
+    "top10_exact": "152/152"
+  },
+  "codec": "PLSQ8x6x8",
+  "documents": 1000000,
+  "family": "three_mode_full_flat_replay_v1",
+  "limitations": [
+    "raw top-10 shape and timing were independently audited",
+    "this does not close Prototype-IVF, unified R4, fresh-qrels or MDBX gates"
+  ],
+  "measured_repeats": 5,
+  "mode": "full_flat_1m",
+  "payload": {
+    "bytes": 54365464,
+    "bytes_per_document": 52,
+    "sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387",
+    "source_path": "E:/_repoz/agent-memory-workspaces/flat-plsq-materialization-v2/plsq8x6.payload.bin"
+  },
+  "percentile": "nearest_rank",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "queries": 152,
+  "queries_fixture": {
+    "bytes": 233472,
+    "sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191"
+  },
+  "raw_jsonl": {
+    "bytes": 98422,
+    "path": "../../artifacts/2026-10-02-plsq8x6-flat-replay.raw.jsonl",
+    "sha256": "e56850c0bdf195ab82e45ab905dfac8affe5f26a1ddc499a835693153d9aa833"
+  },
+  "reference_kind": "independent_packed_replay",
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PASS",
+  "thq4": {
+    "bytes": 96000000,
+    "sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70"
+  },
+  "tie_break": "score_desc_id_asc",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 177.5215,
+    "p95": 199.7548,
+    "p99": 218.1127
+  },
+  "warmup_count": 1
+}

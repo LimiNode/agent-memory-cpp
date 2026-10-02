@@ -1,0 +1,37 @@
+{
+  "audit_sha256": "64bf461295a6f24611902af0345dad7d765f430a1c87632033081d3245d7587a",
+  "audit_status": "PASS",
+  "codec": "TQ1+PQ8",
+  "documents": 1000000,
+  "family": "three_mode_full_flat_replay_v1",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "full 1M packed TQ1+PQ8 scan uses the frozen strong-pq PQ8 codebook",
+    "final norms are persisted as a 4-byte sidecar, so this is the explicit 64-byte layout",
+    "Prototype-IVF, unified R4, fresh-qrels and MDBX gates remain separate"
+  ],
+  "materialization_receipt_sha256": "8de6dc93e42a513d1528100e62b3a7b8f823ee6fc15fe947fefcab201dd4e0c4",
+  "measured_repeats": 5,
+  "metric": "reconstructed_cosine",
+  "mode": "full_flat_1m",
+  "payload_bytes": 68399384,
+  "payload_sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802",
+  "percentile": "nearest_rank",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "queries": 152,
+  "raw_sha256": "f3098bddd1cacfa520af1ec361da303c978b90ccffd05edc11d436b71bd0f4a8",
+  "reference_kind": "independent_packed_replay",
+  "reference_runner_sha256": "6b64f2baa4a70ab0f178a8d8b0a09c3cdf5ee7191c24bcc2318d924dbb33518a",
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PASS",
+  "tie_break": "score_desc_id_asc",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 289.122,
+    "p95": 302.801,
+    "p99": 323.72
+  },
+  "warmup_count": 1
+}

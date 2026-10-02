@@ -86,7 +86,7 @@ std::array<std::int32_t, kK> top10(const std::array<Candidate, kTop>& values) {
   });
   std::array<std::int32_t, kK> result{}; for (std::size_t i = 0; i < kK; ++i) result[i] = values[order[i]].id; return result;
 }
-double percentile(std::vector<double> values, double p) { std::sort(values.begin(), values.end()); return values[std::min(values.size() - 1, static_cast<std::size_t>(p * values.size()))]; }
+double percentile(std::vector<double> values, double p) { std::sort(values.begin(), values.end()); const auto rank = std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(p * values.size()))); return values[std::min(values.size() - 1, rank - 1)]; }
 double direct_score(const Payload& payload, const std::uint8_t* thq_row,
                    const float* query, double query_norm,
                    const std::uint8_t* code, std::size_t row);
@@ -167,8 +167,8 @@ int run_flat(int argc, char** argv) {
 }
 
 int run_matched(int argc, char** argv) {
-  if (argc != 11)
-    throw std::runtime_error("usage: --matched payload thq thresholds candidate_flat offsets queries expected repeats raw_output");
+  if (argc != 11 && argc != 12)
+    throw std::runtime_error("usage: --matched payload thq thresholds candidate_flat offsets queries expected repeats raw_output [warmups]");
   const auto payload = read_payload(argv[2]);
   const auto thq = read_file<std::uint8_t>(argv[3]);
   const auto thresholds = read_file<float>(argv[4]);
@@ -177,10 +177,13 @@ int run_matched(int argc, char** argv) {
   const auto queries = read_file<float>(argv[7]);
   const auto expected = read_file<std::int32_t>(argv[8]);
   const auto repeats = static_cast<std::size_t>(std::stoul(argv[9]));
+  const auto warmups = argc == 12 ? static_cast<std::size_t>(std::stoul(argv[11])) : 0;
+  const auto record_bytes = flat.size() % 148 == 0 && offsets.back() == flat.size() / 148 ? std::size_t{148} :
+                            (flat.size() % 4 == 0 && offsets.back() == flat.size() / 4 ? std::size_t{4} : 0);
   if (thq.size() != 1'000'000 * kThqBytes || thresholds.size() != kD * 3 ||
       offsets.size() != kQueries + 1 || queries.size() != kQueries * kD ||
       expected.size() != kQueries * kK ||
-      flat.size() % 148 != 0 || offsets.back() != flat.size() / 148 || repeats == 0)
+      record_bytes == 0 || repeats == 0)
     throw std::runtime_error("matched PLSQ fixture shape differs");
   std::ofstream raw(argv[10]);
   if (!raw) throw std::runtime_error("cannot open matched raw output");
@@ -190,17 +193,16 @@ int run_matched(int argc, char** argv) {
     const auto last = static_cast<std::size_t>(offsets[q + 1]);
     for (std::size_t pos = first; pos < last; ++pos) {
       std::int32_t id = 0;
-      std::memcpy(&id, flat.data() + pos * 148, sizeof(id));
+      std::memcpy(&id, flat.data() + pos * record_bytes, sizeof(id));
       auto it = std::find(payload.ids.begin() + static_cast<std::ptrdiff_t>(q * kTop),
                           payload.ids.begin() + static_cast<std::ptrdiff_t>((q + 1) * kTop), id);
-      if (it == payload.ids.begin() + static_cast<std::ptrdiff_t>((q + 1) * kTop))
-        throw std::runtime_error("candidate ID is not represented in packed PLSQ payload");
-      row_by_query[q].emplace(id, static_cast<std::size_t>(it - payload.ids.begin()));
+      if (it != payload.ids.begin() + static_cast<std::ptrdiff_t>((q + 1) * kTop))
+        row_by_query[q].emplace(id, static_cast<std::size_t>(it - payload.ids.begin()));
     }
   }
   std::vector<double> timings;
   std::size_t parity = 0;
-  for (std::size_t repeat = 0; repeat < repeats; ++repeat) {
+  for (std::size_t repeat = 0; repeat < warmups + repeats; ++repeat) {
     for (std::size_t q = 0; q < kQueries; ++q) {
       const auto begin = std::chrono::steady_clock::now();
       std::array<float, kD * 4> coordinate{};
@@ -219,7 +221,7 @@ int run_matched(int argc, char** argv) {
       coarse.reserve(last - first);
       for (std::size_t pos = first; pos < last; ++pos) {
         std::int32_t id = 0;
-        std::memcpy(&id, flat.data() + pos * 148, sizeof(id));
+        std::memcpy(&id, flat.data() + pos * record_bytes, sizeof(id));
         const auto* row = thq.data() + static_cast<std::size_t>(id) * kThqBytes;
         double score = 0.0;
         for (std::size_t b = 0; b < kThqBytes; ++b) {
@@ -246,18 +248,20 @@ int run_matched(int argc, char** argv) {
       }
       const auto result = top10(scores);
       const auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - begin).count();
-      timings.push_back(elapsed);
-      if (repeat == 0) {
+      if (repeat >= warmups) timings.push_back(elapsed);
+      if (repeat == warmups) {
         bool same = true;
         for (std::size_t i = 0; i < kK; ++i) same = same && result[i] == expected[q * kK + i];
         if (same) ++parity;
       }
-      raw << "{\"repeat\":" << repeat << ",\"query\":" << q << ",\"timing_ms\":" << std::setprecision(12) << elapsed << ",\"top10_ids\":[";
-      for (std::size_t i = 0; i < kK; ++i) { if (i) raw << ','; raw << result[i]; }
-      raw << "]}\n";
+      if (repeat >= warmups) {
+        raw << "{\"repeat\":" << (repeat - warmups) << ",\"query\":" << q << ",\"timing_ms\":" << std::setprecision(12) << elapsed << ",\"top10_ids\":[";
+        for (std::size_t i = 0; i < kK; ++i) { if (i) raw << ','; raw << result[i]; }
+        raw << "]}\n";
+      }
     }
   }
-  std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"scope\":\"R4 candidate stream -> THQ top128 -> PLSQ packed scorer\",\"queries\":152,\"repeats\":" << repeats << ",\"parity\":" << parity << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << "}\n";
+  std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"scope\":\"candidate stream -> THQ top128 -> PLSQ packed scorer\",\"queries\":152,\"warmups\":" << warmups << ",\"repeats\":" << repeats << ",\"parity\":" << parity << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << "}\n";
   return 0;
 }
 double direct_score(const Payload& payload, const std::uint8_t* thq_row,

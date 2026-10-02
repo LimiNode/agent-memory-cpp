@@ -1,0 +1,39 @@
+{
+  "candidate_stream_sha256": "9a85e41038a7abfd82e5a035c9dceb4172dc0da3f64bfb07c063796955b59762",
+  "codec": "lsq32",
+  "family": "modern_r4_unified_refresh_audit_v1",
+  "independent_reference": "runner-side FP32 cosine replay over frozen top128",
+  "limitations": [
+    "predecoded payload; codec decode and route generation are outside timing"
+  ],
+  "ordered_top10_parity": "152/152",
+  "payload_sha256": "ed43c1b572eaf299f8781cd7c86b973ee6c50bcdc521c1936f269fa5c05dbded",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": true,
+  "query_count": 152,
+  "raw_sha256": "e1e0b0915361bad04e9804022a93c03c01169ddabed8767d83fbd3b6f6ff9de7",
+  "repeats": 5,
+  "representation": "predecoded_fp32_diagnostic",
+  "schema_version": 1,
+  "status": "PASS",
+  "timed_final_scorer": "dense_fp32_cosine_control",
+  "timing_ms": {
+    "codec_rerank": {
+      "p50": 0.091,
+      "p95": 0.12384499999999996,
+      "p99": 0.14182799999999998
+    },
+    "thq4_prefilter": {
+      "p50": 0.1054,
+      "p95": 0.14414499999999997,
+      "p99": 0.176587
+    },
+    "total": {
+      "p50": 0.2,
+      "p95": 0.2532,
+      "p99": 0.2961
+    }
+  },
+  "timing_scope": "native warm per-query serving; predecoded payloads; no decode or MDBX",
+  "warmups": 1
+}

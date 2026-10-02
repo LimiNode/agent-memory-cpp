@@ -1,0 +1,31 @@
+{
+  "audit_path": "artifacts/modern-r4-packed/tq1.score.audit.json",
+  "audit_sha256": "db73a1694edb35be0557185c8ced53f0c2e9fd884cb44701468dcb15bb4fb4f2",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "candidate_identity_path": "artifacts/modern-r4-packed/candidate-identity.audit.json",
+  "candidate_identity_sha256": "7db828bee27e34ca312ac7e61d8768410819603482eb3d53945f203c42fb26ac",
+  "codec": "TQ1",
+  "family": "packed_tq1_modern_r4_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "modern_r4",
+  "metric": "reconstructed_cosine_exact_tq_norm",
+  "norm_contract": "persisted analytical reconstructed TQ1 norm sidecar",
+  "payload_sha256": "e3333161ba3d2ca9c5d33b73efeedef9056564c2c418eef8dfb03fd1d707251c",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "a3ee4174e9acd996f39ee4b3b900c3bbf2fe8c75b76d8c16ff74dcebfbc37b1d",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 2.5114,
+    "p95": 2.8529,
+    "p99": 2.9633
+  },
+  "warmups": 1
+}

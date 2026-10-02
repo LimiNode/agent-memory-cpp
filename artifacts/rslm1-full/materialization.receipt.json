@@ -1,0 +1,20 @@
+{
+  "candidate_local": false,
+  "centroids_sha256": "1dd563197d82cd4796625d2ae5ed877ca67efaafcfb215145a7113a2cc17ebd8",
+  "dimension": 384,
+  "documents": 1000000,
+  "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+  "faithful_reference_sha256": "579d90c548b009f80bda9b3d6d2f354c1174e5234cec808f952bf991eab8257d",
+  "family": "thq_rslm1_faithful_full_materialization_v1",
+  "final_norm_sha256": "3aba3a28bca221504a5fd70e9191854975a219da1e31fb8c018d4c76139338a5",
+  "inner_scale_sha256": "23492bca832939ddb0c048af013a75b67a7d4bf5c9dcc209d88529450a2340e2",
+  "materializer_sha256": "5c0989a08e3ecd3e7f4381806c088bec86c0ec1700ac2baa33e7e490c38bcd64",
+  "outer_scale_sha256": "370397479a10f9b06d5323f807140806a5c5b67c84c59fd04ae124d784b62b93",
+  "schema_version": 1,
+  "side_bytes_per_document": 56,
+  "status": "EXECUTED",
+  "symbols_sha256": "5a0d9ac798822de792d75d7fc4e283e105c6dff5d04f0d5b05d79064ea7c6862",
+  "thq4_codes_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+  "thq4_thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+  "train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+}

@@ -1,0 +1,56 @@
+{
+  "audit_path": "artifacts/modern-r4-packed/lsq48.audit.json",
+  "audit_sha256": "de46e0dad5a175167f1cd5fe5c2f59f95915b587ac1304ee925a0ce35e5952bf",
+  "candidate_identity_path": "artifacts/modern-r4-packed/candidate-identity.audit.json",
+  "candidate_identity_sha256": "7db828bee27e34ca312ac7e61d8768410819603482eb3d53945f203c42fb26ac",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "codec": "LSQ48",
+  "family": "native_packed_lsq_modern_r4_v1",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "native packed downstream scorer with selected sparse-LUT path; alternate LSQ implementations validated outside timed interval"
+  ],
+  "logical_payload_bytes": 52,
+  "mode": "modern_r4",
+  "payload_sha256": "7c17a0c6a630ff86d01fe1fa3b24467bd4861b94c1d9d4ffa6cf2e328989f5b8",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "production_scorer": "sparse_lut",
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "a8b55b03efda30c69d93b265d19cd139c691a937ca1a41dc6312b3698632a4c6",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 4.5964,
+    "p95": 4.9755,
+    "p99": 5.4304,
+    "stages": {
+      "prepare": {
+        "p50": 3.1265,
+        "p95": 3.4074,
+        "p99": 3.7414
+      },
+      "score": {
+        "p50": 0.069,
+        "p95": 0.11,
+        "p99": 0.1413
+      },
+      "thq4_prefilter": {
+        "p50": 1.3005,
+        "p95": 1.4285,
+        "p99": 1.5513
+      },
+      "topk": {
+        "p50": 0.0044,
+        "p95": 0.0191,
+        "p99": 0.0233
+      }
+    }
+  },
+  "warmups": 1
+}

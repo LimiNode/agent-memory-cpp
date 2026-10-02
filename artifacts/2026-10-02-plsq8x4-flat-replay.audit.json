@@ -1,0 +1,16 @@
+{
+  "audit_runner_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c",
+  "query_count": 152,
+  "raw_sha256": "15b045257ac3f4c2abfb510c21eab1649bb22532e83dc1bba77ed8e74ea18f88",
+  "repeats": 5,
+  "source_hashes": {
+    "runner": "d5a168421582f2618aca10275482b9146a2eedee2373f680373f9cd159446578"
+  },
+  "status": "PASS",
+  "timing_ms": {
+    "p50": 148.6951,
+    "p95": 162.0236,
+    "p99": 178.5959
+  },
+  "top10_exact": null
+}

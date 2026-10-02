@@ -1,0 +1,14 @@
+{
+  "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
+  "family": "independent_packed_tq1-pq8_routed_v1",
+  "independent_top10_exact": "152/152",
+  "max_abs_score_error": 1.4271118731201682e-09,
+  "mismatches": [],
+  "payload_sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802",
+  "query_count": 152,
+  "raw_sha256": "b7b5ca9ca67756b7f6102a728c505c8be08976b8d6838d9c576fa7358f973e75",
+  "reference_kind": "independent_packed_replay",
+  "schema_version": 1,
+  "score_tolerance": 1e-08,
+  "status": "PASS"
+}

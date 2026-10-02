@@ -1,0 +1,11 @@
+{
+  "independent_top10_exact": "152/152",
+  "native_repeat": 0,
+  "payload_sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387",
+  "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "query_count": 152,
+  "raw_sha256": "e56850c0bdf195ab82e45ab905dfac8affe5f26a1ddc499a835693153d9aa833",
+  "reference_runner_sha256": "19d56b41e3d7035c9a227c15f0203429447a6579bac79448c8970a550fc050f9",
+  "status": "PASS",
+  "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70"
+}

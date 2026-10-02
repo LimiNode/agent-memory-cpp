@@ -1,0 +1,37 @@
+{
+  "audit_path": "artifacts/int8-full-cosine-direct.audit.json",
+  "audit_sha256": "455cf737a81b8e623e2a98af05c14cd458b46d0d55c16cd06ee13d3284eab386",
+  "codec": "INT8",
+  "family": "three_mode_full_flat_replay_v2",
+  "independent_top10_exact": "152/152",
+  "inverse_code_norms_sha256": "69e7e6c092643b4b78508481af7bd367eee8940a37b1cad5f9ef0d9d093dd284",
+  "metric": "reconstructed_cosine_exact",
+  "mode": "full_flat_1m",
+  "norm_distribution": {
+    "max": 1.001533241931562,
+    "max_abs_delta_from_one": 0.0015528256200125767,
+    "mean": 1.0000184278593984,
+    "min": 0.9984471743799874,
+    "p95_abs_delta_from_one": 0.0006013244237225211
+  },
+  "payload_bytes": 392,
+  "payload_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "9e2c38b495d0faf87012898a2aa1d9ee1dea8b1312b059fc1fef5577cfb27028",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "scorer": "cosine_direct",
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 407.166,
+    "p95": 417.831,
+    "p99": 428.745
+  },
+  "warmups": 1
+}

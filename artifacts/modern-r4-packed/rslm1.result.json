@@ -1,0 +1,29 @@
+{
+  "audit_path": "artifacts/modern-r4-packed/rslm1.score.audit.json",
+  "audit_sha256": "10ca394064c2a10a1055cbab56c3fc3a80daca2de32db190e858b60d1912cd39",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "candidate_identity_path": "artifacts/modern-r4-packed/candidate-identity.audit.json",
+  "candidate_identity_sha256": "7db828bee27e34ca312ac7e61d8768410819603482eb3d53945f203c42fb26ac",
+  "codec": "RSLM1",
+  "family": "packed_rslm1_modern_r4_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "modern_r4",
+  "payload_sha256": "5a0d9ac798822de792d75d7fc4e283e105c6dff5d04f0d5b05d79064ea7c6862",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "d91965d5cb27dc6fe2f486f1c7af350f610afbe8173ebce432150ab38ac44e1e",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 3.0579,
+    "p95": 3.4805,
+    "p99": 3.8269
+  },
+  "warmups": 1
+}

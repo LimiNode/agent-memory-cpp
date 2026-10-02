@@ -1,0 +1,20 @@
+{
+  "candidate_local": false,
+  "dimension": 384,
+  "documents": 1000000,
+  "family": "native_tq1_pq8_full_payload_v1",
+  "materializer_sha256": "04d04283ae7f25c128f54e5c3c70ad9fc7acc0f5a6c16cade5cf617b423cad0b",
+  "payload_bytes": 68399384,
+  "payload_sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802",
+  "pq_codebook_sha256": "65e15c23fed865f7abfb470e25aae418010ccea13cbe662645b72c73ab8c5fff",
+  "schema_version": 1,
+  "side_bytes_per_document": 64,
+  "source_hashes": {
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "pq_artifact": "65e15c23fed865f7abfb470e25aae418010ccea13cbe662645b72c73ab8c5fff",
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "status": "EXECUTED"
+}
