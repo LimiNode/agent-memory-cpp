@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "family": "three_mode_full_flat_replay_v1",
+  "status": "PASS_STRUCTURAL_ONLY",
+  "mode": "full_flat_1m",
+  "codec": "PLSQ8x4x8",
+  "documents": 1000000,
+  "queries": 152,
+  "warmup_count": 1,
+  "measured_repeats": 5,
+  "percentile": "nearest_rank",
+  "tie_break": "score_desc_id_asc",
+  "timing_ms": {"p50": 148.6951, "p95": 162.0236, "p99": 178.5959},
+  "raw_jsonl": {"path": "../../artifacts/2026-10-02-plsq8x4-flat-replay.raw.jsonl", "sha256": "15b045257ac3f4c2abfb510c21eab1649bb22532e83dc1bba77ed8e74ea18f88", "bytes": 98451},
+  "audit": {"path": "../../artifacts/2026-10-02-plsq8x4-flat-replay.audit.json", "status": "PASS", "top10_exact": null, "audit_runner_sha256": "fad3ee91083213d6ac846e8da18506f5e43f53a5092d7f7d1682fa9dec77d97c"},
+  "payload": {"source_path": "E:/_repoz/agent-memory-workspaces/flat-plsq8x4-materialization-v2/plsq8x4.payload.bin", "sha256": "ee1ae0ded176302f16f7c32e7b5fd4cd5abe5c7bf7371c0644799af3f8ccdb9f", "bytes": 37579032, "bytes_per_document": 36},
+  "thq4": {"sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70", "bytes": 96000000},
+  "queries_fixture": {"sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191", "bytes": 233472},
+  "limitations": [
+    "native full-flat timing and structural raw audit PASS",
+    "the current independent AMPLSQF1 replay supports 8x6x8 only; 8x4x8 ordered parity remains pending",
+    "this optional low-byte control does not close Prototype-IVF, unified R4, fresh-qrels or MDBX gates"
+  ]
+}

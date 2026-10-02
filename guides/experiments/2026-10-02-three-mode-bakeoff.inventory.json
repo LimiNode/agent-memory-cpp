@@ -23,15 +23,15 @@
         "status": "PRESENT"
       },
       "LSQ32": {
-        "bytes": 14953,
+        "bytes": 15375,
         "path": "guides/experiments/codec-evaluation-report.md",
-        "sha256": "8da1f54bf43c0e6acaa5c126546a6f8ab5cdf8ce0fa31fef6a5c0f18d70ec590",
+        "sha256": "d299ecd4b17a4bf2156783dddcac73f2efbd7b844f8a549bdd4c52641adbb9ee",
         "status": "SUMMARY_ONLY"
       },
       "LSQ48": {
-        "bytes": 14953,
+        "bytes": 15375,
         "path": "guides/experiments/codec-evaluation-report.md",
-        "sha256": "8da1f54bf43c0e6acaa5c126546a6f8ab5cdf8ce0fa31fef6a5c0f18d70ec590",
+        "sha256": "d299ecd4b17a4bf2156783dddcac73f2efbd7b844f8a549bdd4c52641adbb9ee",
         "status": "SUMMARY_ONLY"
       },
       "PLSQ8x6x8": {

@@ -1112,6 +1112,12 @@ packed payload, and the R4 rows are not yet one unified harness generation.
 This is an evidence/provenance checkpoint, not a codec ranking or product
 selection.
 
+The optional PLSQ8x4x8 low-byte control was also rescanned under the same
+one-warmup/five-repeat contract (p50/p95/p99 148.6951/162.0236/178.5959 ms).
+Its raw rows and structural audit are committed, but the existing independent
+AMPLSQF1 replay is specialized to the 8x6x8 payload shape; therefore this row
+remains structural-only until an 8x4 reference auditor is added.
+
 ### PLSQ8x6x8 full-flat replay (2026-10-02)
 
 The source-bound AMPLSQF1 PLSQ8x6x8 payload was rescanned over the full 1M
