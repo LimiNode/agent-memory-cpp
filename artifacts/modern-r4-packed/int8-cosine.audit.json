@@ -1,0 +1,20 @@
+{
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "family": "independent_packed_int8_routed_v1",
+  "independent_top10_exact": "152/152",
+  "inverse_code_norms_sha256": "69e7e6c092643b4b78508481af7bd367eee8940a37b1cad5f9ef0d9d093dd284",
+  "metric": "reconstructed_cosine_exact",
+  "mismatches": [],
+  "query_count": 152,
+  "raw_sha256": "4731cc86fb9685797fd08d231d224959cf0632ed05836dc0add210c4a4c3db56",
+  "reconstructed_norm_distribution": {
+    "max": 1.001533241931562,
+    "max_abs_delta_from_one": 0.0015528256200125767,
+    "mean": 1.0000184278593984,
+    "min": 0.9984471743799874,
+    "p95_abs_delta_from_one": 0.0006013244237225211
+  },
+  "reference_kind": "independent_packed_replay",
+  "schema_version": 1,
+  "status": "PASS"
+}

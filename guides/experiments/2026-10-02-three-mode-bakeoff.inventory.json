@@ -14,9 +14,9 @@
   "modes": {
     "full_flat_1m": {
       "INT8": {
-        "bytes": 1372,
+        "bytes": 1314,
         "path": "guides/experiments/2026-10-02-int8-full-flat.result.json",
-        "sha256": "65e9653f27d89cae032d88d3a447893b757b65b37d8f8636e328928077d51bef",
+        "sha256": "910359db96c3f19b61f93ea66d0e1174b7cd7dcd9cbe8a316079d6430a91cd26",
         "status": "PRESENT"
       },
       "LSQ32": {
@@ -58,9 +58,9 @@
     },
     "modern_r4": {
       "INT8": {
-        "bytes": 1208,
+        "bytes": 1595,
         "path": "artifacts/modern-r4-packed/int8.result.json",
-        "sha256": "4f0902a594c83ba54796de89399a3dce163fa7ddbd82adf7a11e7369003a48e9",
+        "sha256": "429064b4710214106cfe681f489a700793f95f8cf392d58a1ddacfeafaab42a4",
         "status": "PRESENT"
       },
       "LSQ32": {
@@ -102,9 +102,9 @@
     },
     "prototype_ivf_balanced": {
       "INT8": {
-        "bytes": 1032,
+        "bytes": 1474,
         "path": "artifacts/prototype-ivf/int8.result.json",
-        "sha256": "20c657186c4f101f5f32420193620428f524f872a88e7317fcc838f5624db00f",
+        "sha256": "8290801ef89418528bf5c1a0823e8f5cb269afc622ffd9cee28656fa96d55e80",
         "status": "PRESENT"
       },
       "LSQ32": {
@@ -126,7 +126,7 @@
         "status": "PRESENT"
       },
       "RSLM1": {
-        "bytes": 991,
+        "bytes": 990,
         "path": "artifacts/prototype-ivf/rslm1.result.json",
         "sha256": "e6e0ad963582be6e41cc390d620d42d98322ca24ef0637296b5fe48613def4dc",
         "status": "PRESENT"

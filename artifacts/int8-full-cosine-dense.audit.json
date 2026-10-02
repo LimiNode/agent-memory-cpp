@@ -1,0 +1,21 @@
+{
+  "codec": "INT8",
+  "codes_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+  "independent_top10_exact": "152/152",
+  "inverse_code_norms_sha256": "69e7e6c092643b4b78508481af7bd367eee8940a37b1cad5f9ef0d9d093dd284",
+  "metric": "reconstructed_cosine_exact",
+  "mismatches": [],
+  "queries_sha256": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
+  "query_count": 152,
+  "raw_sha256": "3225eaa1db0f21ae95dfc2bfe9d0334ca2c8bb678bfb06a9bfbd84ab64882086",
+  "reconstructed_norm_distribution": {
+    "max": 1.001533241931562,
+    "max_abs_delta_from_one": 0.0015528256200125767,
+    "mean": 1.0000184278593984,
+    "min": 0.9984471743799874,
+    "p95_abs_delta_from_one": 0.0006013244237225211
+  },
+  "reference_runner_sha256": "242121c5775f0339a7250704d19980f3195667902f0dd3a95a038a9c55c354ef",
+  "scales_sha256": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+  "status": "PASS"
+}

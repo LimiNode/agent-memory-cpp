@@ -71,7 +71,7 @@ def validate(inventory: dict, repo: Path | None = None) -> dict:
             if result.get("codec") != arm:
                 missing.append(f"{mode}/{arm}: codec={result.get('codec')}")
             family = str(result.get("family", ""))
-            family_ok = ((mode == "full_flat_1m" and family == "three_mode_full_flat_replay_v1") or
+            family_ok = ((mode == "full_flat_1m" and family in ("three_mode_full_flat_replay_v1", "three_mode_full_flat_replay_v2")) or
                          (mode == "prototype_ivf_balanced" and "prototype_ivf_balanced" in family) or
                          (mode == "modern_r4" and "modern_r4" in family))
             if not family_ok:
@@ -103,6 +103,8 @@ def validate(inventory: dict, repo: Path | None = None) -> dict:
                 missing.append(f"{mode}/{arm}: TQ1 norm contract is not exact")
             if repo is not None and mode != "full_flat_1m" and arm == "TQ1+PQ8" and result.get("metric") != "reconstructed_cosine_tq1_plus_pq8":
                 missing.append(f"{mode}/{arm}: TQ1+PQ8 metric contract differs")
+            if arm == "INT8" and result.get("metric") != "reconstructed_cosine_exact":
+                missing.append(f"{mode}/{arm}: INT8 metric contract differs")
             if mode != "full_flat_1m" and arm in ("LSQ32", "LSQ48"):
                 if result.get("production_scorer") != "sparse_lut":
                     missing.append(f"{mode}/{arm}: selected LSQ production scorer differs")
@@ -159,6 +161,7 @@ def self_test() -> None:
                 "predecoded_fp32": False,
                 "percentile_contract": "nearest_rank_v1",
                 "reference_kind": "independent_packed_replay",
+                "metric": "reconstructed_cosine_exact" if arm == "INT8" else "cosine",
                 "audit_status": "PASS",
                 "production_scorer": "sparse_lut" if arm in ("LSQ32", "LSQ48") and mode != "full_flat_1m" else None,
                 "timing_ms": {"stages": {"thq4_prefilter": {}, "prepare": {}, "score": {}, "topk": {}}},

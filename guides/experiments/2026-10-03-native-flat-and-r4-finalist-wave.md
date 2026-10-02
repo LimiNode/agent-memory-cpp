@@ -1,8 +1,10 @@
 # Native flat and matched R4 finalist wave
 
-Status: executed for LSQ32/LSQ48/PLSQ8x6 full-flat and the matched R4
-final-reranker control wave. TQ1, TQ1+PQ8 and RSLM1 full-flat remain pending
-because no 1M packed payload is available for those arms.
+Status: executed for the canonical three-mode serving matrix. The INT8
+corrective pass below replaces the earlier scaled-dot label with exact
+reconstructed cosine and binds all three INT8 rows to independent packed
+replay receipts. Fresh untouched qrels and finalist-specific MDBX remain
+separate gates.
 
 ## Scope
 
@@ -44,11 +46,39 @@ and fresh untouched qrels remain separate gates.
 
 ## Matched final-reranker control refresh
 
-Using the same frozen R4 shell and five measured repeats, the refreshed totals
-are PLSQ8x6x8 0.6996/0.7810/0.8465 ms (p50/p95/p99), RSLM1
-0.8891/1.0032/1.0696 ms, and the matched INT8 control
-0.1627/0.2030/0.2592 ms under the canonical audited percentile contract.
-INT8's final rerank p50 is 0.0609 ms. Raw coverage,
-ID cardinality, duplicate detection, and percentile replay passed the
-independent audit. See
+The earlier matched-reranker control receipt reported 0.1627/0.2030/0.2592 ms
+for INT8 under a different shell and is retained only as historical control
+evidence. The canonical three-mode INT8 reruns are listed below with the same
+1+5 contract. Raw coverage, ID cardinality, duplicate detection, and
+percentile replay passed the independent audit. See
 [`2026-10-01-native-matched-r4-final-reranker-control.result.json`](2026-10-01-native-matched-r4-final-reranker-control.result.json).
+
+## INT8 semantic corrective pass
+
+The previous INT8 receipts labelled a scaled reconstructed dot-product as
+`reconstructed_cosine`. The canonical scorer now uses the persisted inverse
+code norm and computes exact reconstructed cosine:
+
+`dot(code, query) / (||code|| * ||query||)`.
+
+The sidecar is `artifacts/int8-full-code-norms.f32` (SHA-256
+`69e7e6c092643b4b78508481af7bd367eee8940a37b1cad5f9ef0d9d093dd284`), and
+the resulting reconstructed-norm distribution is min 0.998447, max 1.001533,
+mean 1.000018, p95 absolute deviation 0.000601. Exact dense and fused paths
+agree for all 760 measured rows; the old scaled-dot control agrees with exact
+cosine for only 435/760 rows and is retained only as an optimization control.
+
+Canonical INT8 evidence is now:
+
+| Mode | p50 / p95 / p99 ms | ordered parity | candidate SHA |
+| --- | ---: | ---: | --- |
+| Full-flat 1M | 407.166 / 417.831 / 428.745 | 152/152 | packed payload SHA `75d76475…` |
+| Prototype-IVF balanced | 0.7485 / 0.868 / 1.214 | 152/152 | `a983347f…` calibrated route |
+| Modern R4 | 0.7927 / 0.9357 / 1.151 | 152/152 | `d76cabd5…` semantic identity |
+
+The full-flat raw/audit pair is
+`artifacts/int8-full-cosine-direct.{raw.jsonl,audit.json}`; routed raw and
+audit receipts are under `artifacts/prototype-ivf/` and
+`artifacts/modern-r4-packed/`. The strict completion validator reports 21/21
+serving rows; this is evidence completeness, not a fresh-quality or product
+winner claim.

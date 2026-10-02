@@ -24,7 +24,7 @@ production mode.
 | TQ1 | measured | **packed 3-mode matrix (exact reconstructed norm)** | **measured (1M packed flat)** | pending |
 | TQ1+PQ8 | measured/partial serving | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | RSLM1 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
-| INT8 reference | control | control | measured | measured |
+| INT8 reference | exact reconstructed-cosine control | exact reconstructed-cosine control | measured | measured |
 | INT8 matched R4 control | control | **measured (matched R4)** | n/a | n/a |
 
 The quality rows are the historical qrels study in
@@ -117,7 +117,7 @@ diagnostic rows are not promoted to the mandatory packed matrix.
 
 | Final reranker | Side bytes/doc | rerank p50 ms | total p50 ms | total p95/p99 ms | audit |
 | --- | ---: | ---: | ---: | ---: | --- |
-| INT8 control | 388 | 0.0609 | **0.1627** | 0.2030 / 0.2592 | canonical percentile replay PASS |
+| INT8 historical matched control | 388 | 0.0609 | 0.1627 | 0.2030 / 0.2592 | superseded shell; retained for provenance |
 | PLSQ8x6x8 | 52 | 0.6996* | **0.6996** | 0.7810 / 0.8465 | predecoded FP32 control; not packed evidence |
 | RSLM1 | 52 | 0.8891* | **0.8891** | 1.0032 / 1.0696 | predecoded FP32 control; not packed evidence |
 
@@ -166,16 +166,18 @@ latency or a direct-compressed production scorer claim. See
 
 ## Full 1M flat serving
 
-The accepted normalized 1M receipt is an INT8 control and THQ→INT8 cascade;
-its payload is not a matrix of native codec finalists.
+The accepted normalized 1M receipt is an exact reconstructed-cosine INT8
+control and THQ→INT8 cascade;
+its payload is not a product winner or a fresh quality result. The former
+scaled-dot timing remains a control-only row.
 
 | Path | p50 ms | Interpretation |
 | --- | ---: | --- |
-| Direct INT8 flat | **407.349** | refreshed 1+5 native INT8 control; p95 412.041, p99 415.342; independent ordered top-10 replay 152/152 |
+| Direct INT8 flat exact reconstructed cosine | **407.166** | canonical 1+5 packed run; p95 417.831, p99 428.745; independent ordered top-10 replay 152/152 |
 | THQ → INT8 | 83.672 | native THQ routing plus INT8 rerank |
 | LSQ32 | **178.670** | 1M packed LSQ32 scan; p95 188.975, p99 209.586; one warmup + five repeats; independent ordered top-10 replay **152/152** |
 | LSQ48 | **228.908** | 1M packed LSQ48 scan; p95 241.341, p99 254.029; one warmup + five repeats; independent ordered top-10 replay **152/152** |
-| LSQ48 | **252.526** | 1M packed LSQ48 scan; p95 264.469, p99 269.872 |
+| LSQ48 (directional historical row) | **252.526** | retained historical row; canonical receipt is the 3-mode matrix |
 | PLSQ8x6x8 | **177.5215** | 1M packed PLSQ scan; p95 199.7548, p99 218.1127; one warmup + five measured repeats; independent ordered top-10 replay **152/152** |
 | PLSQ8x4x8 | **148.6951** | optional 1M packed low-byte control; p95 162.0236, p99 178.5959; structural audit PASS, independent 8x4 reference replay pending |
 | TQ1 | **238.600** | 1M packed TQ1 reconstructed-cosine scan; p95 246.370, p99 258.653; one warmup + five repeats; independent ordered top-10 replay **152/152** |
@@ -190,6 +192,23 @@ The refreshed PLSQ8x6x8 row is bound to the raw/audit receipt
 its independent packed replay reports ordered top-10 parity for 152/152
 queries. Other rows retain their documented provenance and are not silently
 reinterpreted as this newer contract.
+
+### INT8 metric correction and optimization equity
+
+The canonical INT8 representation is packed signed codes plus scale and an
+inverse code-norm sidecar (392 bytes per document including the sidecar). Its
+metric is exact reconstructed cosine, not scaled dot:
+
+`dot(code, query) / (||code|| * ||query||)`.
+
+The sidecar norm distribution is min 0.998447, max 1.001533, mean 1.000018,
+with p95 absolute deviation 0.000601 from unit norm. Exact dense and fused
+native paths have ordered parity 760/760; the old scaled-dot control has only
+435/760 parity against exact cosine and is therefore not used as a canonical
+row. The evidence is recorded in
+[`artifacts/int8-cosine-equity.audit.json`](../../artifacts/int8-cosine-equity.audit.json)
+and the strict validator requires `metric=reconstructed_cosine_exact` for all
+three INT8 modes.
 
 ## Persistent MDBX layout
 

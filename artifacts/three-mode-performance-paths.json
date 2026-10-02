@@ -12,11 +12,11 @@
     "INT8": {
       "runner": "native-full-corpus-codec-benchmark.cpp",
       "entry_point": "--int8-cosine-candidate-gate",
-      "kernel": "native INT8 reconstructed-cosine scorer",
+      "kernel": "native INT8 exact reconstructed-cosine scorer",
       "backend": "scalar native C++",
       "timed_stages": ["THQ prefilter", "INT8 score", "top-k"],
       "excluded_stages": ["independent replay", "route generation", "MDBX I/O"],
-      "representation": "packed INT8 codes plus per-row scale"
+      "representation": "packed INT8 codes plus per-row scale and inverse code-norm sidecar"
     },
     "LSQ32": {
       "runner": "native-full-corpus-codec-benchmark.cpp",

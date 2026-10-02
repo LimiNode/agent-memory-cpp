@@ -1,0 +1,27 @@
+{
+  "arms": {
+    "exact_cosine_dense": {
+      "raw_sha256": "3225eaa1db0f21ae95dfc2bfe9d0334ca2c8bb678bfb06a9bfbd84ab64882086",
+      "top10_vs_exact_cosine": "760/760"
+    },
+    "exact_cosine_fused": {
+      "raw_sha256": "9e2c38b495d0faf87012898a2aa1d9ee1dea8b1312b059fc1fef5577cfb27028",
+      "top10_vs_exact_cosine": "760/760"
+    },
+    "scaled_dot_direct": {
+      "raw_sha256": "72c11c3f1b36bdc39675b03f32ac1d0453f146b5b55aced422559a8eb0246f69",
+      "top10_vs_exact_cosine": "435/760"
+    }
+  },
+  "contract": {
+    "documents": 1000000,
+    "measured_repeats": 5,
+    "queries": 152,
+    "tie_break": "score_desc_id_asc",
+    "warmups": 1
+  },
+  "family": "int8_cosine_optimization_equity_v1",
+  "interpretation": "The canonical INT8 arm is exact reconstructed cosine; scaled dot is retained only as a control.",
+  "schema_version": 1,
+  "status": "PASS"
+}

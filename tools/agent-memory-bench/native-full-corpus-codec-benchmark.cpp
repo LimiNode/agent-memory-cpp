@@ -462,6 +462,30 @@ float score_int8_production(const std::vector<std::int8_t>& codes,
 #endif
 }
 
+float query_l2_norm(const float* query) {
+  float squared = 0.0f;
+  for (std::size_t d = 0; d < kDimension; ++d)
+    squared += query[d] * query[d];
+  return std::sqrt(std::max(squared, std::numeric_limits<float>::min()));
+}
+
+// The positive per-row symmetric scale cancels from reconstructed cosine.
+// `inverse_code_norms` is a persisted sidecar containing
+// 1 / sqrt(sum(int8_code[d]^2)) for each row.
+float score_int8_cosine_production(const std::vector<std::int8_t>& codes,
+                                   const std::vector<float>& inverse_code_norms,
+                                   float inverse_query_norm, const float* query,
+                                   std::int32_t id) {
+  const auto index = static_cast<std::size_t>(id);
+  const auto* row = codes.data() + index * kDimension;
+#if defined(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2) && AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2
+  const float dot = score_int8_float_avx2(row, 1.0f, query);
+#else
+  const float dot = score_int8_float_scalar(row, 1.0f, query);
+#endif
+  return dot * inverse_code_norms[index] * inverse_query_norm;
+}
+
 void score_int8_dense(const std::vector<std::int8_t>& codes,
                       const std::vector<float>& scales, const float* query,
                       std::vector<float>& scores) {
@@ -491,6 +515,37 @@ std::array<Candidate, 10> direct_top10_production(
   }
   std::sort(result.begin(), result.end(), better_desc);
   return result;
+}
+
+std::array<Candidate, 10> direct_top10_cosine_production(
+    const std::vector<std::int8_t>& codes,
+    const std::vector<float>& inverse_code_norms, const float* query) {
+  const float inverse_query_norm = 1.0f / query_l2_norm(query);
+  FixedCandidateHeap<10, WorseDescendingCandidate> heap;
+  for (std::size_t id = 0; id < kDocuments; ++id) {
+    const Candidate candidate{score_int8_cosine_production(
+                                  codes, inverse_code_norms, inverse_query_norm,
+                                  query, static_cast<std::int32_t>(id)),
+                              static_cast<std::int32_t>(id)};
+    if (heap.size() < 10) heap.push(candidate);
+    else if (better_desc(candidate, heap.top())) heap.replace_top(candidate);
+  }
+  std::array<Candidate, 10> result{};
+  for (std::size_t i = result.size(); i-- > 0;) result[i] = heap.pop_top();
+  std::sort(result.begin(), result.end(), better_desc);
+  return result;
+}
+
+void score_int8_cosine_dense(const std::vector<std::int8_t>& codes,
+                             const std::vector<float>& inverse_code_norms,
+                             const float* query, std::vector<float>& scores) {
+  if (scores.size() < kDocuments)
+    throw std::runtime_error("INT8 cosine score workspace is shorter than corpus");
+  const float inverse_query_norm = 1.0f / query_l2_norm(query);
+  for (std::size_t id = 0; id < kDocuments; ++id)
+    scores[id] = score_int8_cosine_production(codes, inverse_code_norms,
+                                               inverse_query_norm, query,
+                                               static_cast<std::int32_t>(id));
 }
 
 std::array<Candidate, 10> rerank_top10_production(
@@ -1105,27 +1160,60 @@ double percentile(std::vector<double> values, double fraction) {
 }
 
 int run_int8_full_flat(int argc, char** argv) {
-  if (argc != 8)
-    throw std::runtime_error("usage: benchmark --int8-full-flat codes scales queries warmups repeats raw_output");
-  const auto codes = read<std::int8_t>(argv[2]); const auto scales = read<float>(argv[3]);
-  const auto queries = read<float>(argv[4]); const auto warmups = static_cast<std::size_t>(std::stoull(argv[5]));
-  const auto repeats = static_cast<std::size_t>(std::stoull(argv[6])); std::ofstream raw(argv[7]);
-  if (codes.size() != kDocuments * kDimension || scales.size() != kDocuments || queries.size() < 152 * kDimension || !raw || warmups == 0 || repeats == 0)
+  if (argc != 9 && argc != 10)
+    throw std::runtime_error("usage: benchmark --int8-full-flat codes scales inverse_code_norms queries warmups repeats raw_output [cosine_direct|cosine_dense|scaled_dot_direct]");
+  const auto codes = read<std::int8_t>(argv[2]);
+  const auto scales = read<float>(argv[3]);
+  const auto inverse_code_norms = read<float>(argv[4]);
+  const auto queries = read<float>(argv[5]);
+  const auto warmups = static_cast<std::size_t>(std::stoull(argv[6]));
+  const auto repeats = static_cast<std::size_t>(std::stoull(argv[7]));
+  const std::string scorer = argc == 10 ? argv[9] : "cosine_direct";
+  std::ofstream raw(argv[8]);
+  if (scorer != "cosine_direct" && scorer != "cosine_dense" &&
+      scorer != "scaled_dot_direct")
+    throw std::runtime_error("unknown INT8 full-flat scorer");
+  if (codes.size() != kDocuments * kDimension || scales.size() != kDocuments ||
+      inverse_code_norms.size() != kDocuments || queries.size() < 152 * kDimension ||
+      !raw || warmups == 0 || repeats == 0)
     throw std::runtime_error("INT8 full-flat fixture shape differs");
+  for (const float value : inverse_code_norms)
+    if (!(value > 0.0f) || !std::isfinite(value))
+      throw std::runtime_error("INT8 inverse norm sidecar contains invalid values");
   std::vector<double> timings; timings.reserve(152 * repeats);
+  std::vector<float> dense_scores(kDocuments);
   for (std::size_t qi = 0; qi < 152; ++qi) {
     const float* query = queries.data() + qi * kDimension;
     for (std::size_t rep = 0; rep < warmups + repeats; ++rep) {
-      const auto begin = std::chrono::steady_clock::now(); const auto top = direct_top10_production(codes, scales, query);
+      const auto begin = std::chrono::steady_clock::now();
+      std::array<Candidate, 10> top{};
+      if (scorer == "cosine_direct") {
+        top = direct_top10_cosine_production(codes, inverse_code_norms, query);
+      } else if (scorer == "scaled_dot_direct") {
+        top = direct_top10_production(codes, scales, query);
+      } else {
+        score_int8_cosine_dense(codes, inverse_code_norms, query, dense_scores);
+        top = bounded_top_from_scores<10, WorseDescendingCandidate>(
+            dense_scores, kDocuments, better_desc);
+      }
       if (rep >= warmups) {
         const double elapsed = elapsed_ms(begin, std::chrono::steady_clock::now()); timings.push_back(elapsed);
-        raw << "{\"query\":" << qi << ",\"repeat\":" << (rep - warmups) << ",\"timing_ms\":" << elapsed << ",\"top10_ids\":[";
+        raw << "{\"query\":" << qi << ",\"repeat\":" << (rep - warmups)
+            << ",\"scorer\":\"" << scorer << "\",\"timing_ms\":" << elapsed
+            << ",\"top10_ids\":[";
         for (std::size_t index = 0; index < top.size(); ++index) { if (index) raw << ','; raw << top[index].id; }
         raw << "]}\n";
       }
     }
   }
-  std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"codec\":\"INT8\",\"metric\":\"reconstructed_cosine\",\"mode\":\"full_flat_1m\",\"queries\":152,\"repeats\":" << repeats << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << "}\n";
+  const char* metric = scorer == "scaled_dot_direct" ? "scaled_reconstructed_dot" : "reconstructed_cosine_exact";
+  std::cout << std::fixed << std::setprecision(6)
+            << "{\"status\":\"EXECUTED\",\"codec\":\"INT8\",\"metric\":\""
+            << metric << "\",\"scorer\":\"" << scorer
+            << "\",\"mode\":\"full_flat_1m\",\"queries\":152,\"repeats\":"
+            << repeats << ",\"p50_ms\":" << percentile(timings, .5)
+            << ",\"p95_ms\":" << percentile(timings, .95)
+            << ",\"p99_ms\":" << percentile(timings, .99) << "}\n";
   return 0;
 }
 
@@ -1565,28 +1653,20 @@ std::vector<Candidate> exact_cosine_top10(const std::vector<float>& documents,
 }
 
 std::vector<Candidate> exact_cosine_top10_int8(
-    const std::vector<std::int8_t>& codes, const std::vector<float>& scales,
+    const std::vector<std::int8_t>& codes,
+    const std::vector<float>& inverse_code_norms,
     const std::vector<std::int32_t>& ids, const float* query) {
-  float query_norm = 0.0f;
-  for (std::size_t d = 0; d < kDimension; ++d)
-    query_norm += query[d] * query[d];
-  query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<float>::min()));
+  const float inverse_query_norm = 1.0f / query_l2_norm(query);
   std::vector<Candidate> scored;
   scored.reserve(ids.size());
   for (const auto id : ids) {
     const auto index = static_cast<std::size_t>(id);
     const auto* row = codes.data() + index * kDimension;
-    const float scale = scales[index];
     float dot = 0.0f;
-    float norm = 0.0f;
     for (std::size_t d = 0; d < kDimension; ++d) {
-      const float value = static_cast<float>(row[d]) * scale;
-      dot += value * query[d];
-      norm += value * value;
+      dot += static_cast<float>(row[d]) * query[d];
     }
-    const float denominator = std::max(std::sqrt(norm) * query_norm,
-                                       std::numeric_limits<float>::min());
-    scored.push_back({dot / denominator, id});
+    scored.push_back({dot * inverse_code_norms[index] * inverse_query_norm, id});
   }
   const auto limit = std::min<std::size_t>(10, scored.size());
   std::partial_sort(scored.begin(), scored.begin() + limit, scored.end(), better_desc);
@@ -1772,21 +1852,23 @@ int run_fp32_candidate_gate(int argc, char** argv) {
 }
 
 int run_int8_cosine_candidate_gate(int argc, char** argv) {
-  if (argc != 10)
-    throw std::runtime_error("usage: benchmark --int8-cosine-candidate-gate thq thresholds codes scales candidate_flat offsets query_file query_count");
+  if (argc != 11)
+    throw std::runtime_error("usage: benchmark --int8-cosine-candidate-gate thq thresholds codes scales inverse_code_norms candidate_flat offsets query_file query_count");
   const auto thq = read<std::uint8_t>(argv[2]);
   const auto thresholds = read<float>(argv[3]);
   const auto codes = read<std::int8_t>(argv[4]);
   const auto scales = read<float>(argv[5]);
-  const auto flat = read<std::uint8_t>(argv[6]);
-  const auto offsets = read<std::uint64_t>(argv[7]);
-  const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[9]));
+  const auto inverse_code_norms = read<float>(argv[6]);
+  const auto flat = read<std::uint8_t>(argv[7]);
+  const auto offsets = read<std::uint64_t>(argv[8]);
+  const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[10]));
   if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
       codes.size() != kDocuments * kDimension || scales.size() != kDocuments ||
+      inverse_code_norms.size() != kDocuments ||
       flat.size() % kCandidateRecordBytes != 0 || offsets.size() != query_count + 1 ||
       offsets.front() != 0 || offsets.back() != flat.size() / kCandidateRecordBytes)
     throw std::runtime_error("INT8 cosine candidate cascade payload shape differs");
-  const auto queries = read<float>(argv[8]);
+  const auto queries = read<float>(argv[9]);
   if (queries.size() != query_count * kDimension)
     throw std::runtime_error("INT8 cosine candidate cascade query shape differs");
   std::vector<std::int32_t> candidate_ids(flat.size() / kCandidateRecordBytes);
@@ -1811,7 +1893,7 @@ int run_int8_cosine_candidate_gate(int argc, char** argv) {
     std::vector<std::int32_t> coarse_ids;
     coarse_ids.reserve(coarse.size());
     for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
-    const auto reranked = exact_cosine_top10_int8(codes, scales, coarse_ids, query);
+    const auto reranked = exact_cosine_top10_int8(codes, inverse_code_norms, coarse_ids, query);
     const auto elapsed = std::chrono::duration<double, std::milli>(
         std::chrono::steady_clock::now() - start).count();
     total_ms += elapsed;
@@ -1835,28 +1917,29 @@ int run_int8_cosine_candidate_gate(int argc, char** argv) {
 }
 
 int run_int8_matched_r4(int argc, char** argv) {
-  if (argc != 12)
-    throw std::runtime_error("usage: benchmark --int8-matched-r4 thq thresholds codes scales candidate_flat offsets query_file warmups repeats raw_output");
+  if (argc != 13)
+    throw std::runtime_error("usage: benchmark --int8-matched-r4 thq thresholds codes scales inverse_code_norms candidate_flat offsets query_file warmups repeats raw_output");
   const auto thq = read<std::uint8_t>(argv[2]);
   const auto thresholds = read<float>(argv[3]);
   const auto codes = read<std::int8_t>(argv[4]);
   const auto scales = read<float>(argv[5]);
-  const auto flat = read<std::uint8_t>(argv[6]);
-  const auto offsets = read<std::uint64_t>(argv[7]);
-  const auto queries = read<float>(argv[8]);
-  const std::size_t warmups = static_cast<std::size_t>(std::stoull(argv[9]));
-  const std::size_t repeats = static_cast<std::size_t>(std::stoull(argv[10]));
+  const auto inverse_code_norms = read<float>(argv[6]);
+  const auto flat = read<std::uint8_t>(argv[7]);
+  const auto offsets = read<std::uint64_t>(argv[8]);
+  const auto queries = read<float>(argv[9]);
+  const std::size_t warmups = static_cast<std::size_t>(std::stoull(argv[10]));
+  const std::size_t repeats = static_cast<std::size_t>(std::stoull(argv[11]));
   const std::size_t record_bytes = flat.size() % 4 == 0 && offsets.size() == 153 && offsets.back() != 0 && flat.size() / 4 == offsets.back() ? 4 :
       (flat.size() % 100 == 0 && offsets.size() == 153 && offsets.back() != 0 &&
       flat.size() / 100 == offsets.back() ? 100 :
       (flat.size() % 148 == 0 && offsets.size() == 153 && offsets.back() != 0 && flat.size() / 148 == offsets.back() ? 148 : 0));
   if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
       codes.size() != kDocuments * kDimension || scales.size() != kDocuments || record_bytes == 0 ||
-      offsets.size() != 153 ||
+      inverse_code_norms.size() != kDocuments || offsets.size() != 153 ||
       offsets.front() != 0 || offsets.back() != flat.size() / record_bytes ||
       queries.size() != 152 * kDimension || warmups == 0 || repeats == 0)
     throw std::runtime_error("INT8 matched R4 fixture shape differs");
-  std::ofstream raw(argv[11]);
+  std::ofstream raw(argv[12]);
   if (!raw) throw std::runtime_error("cannot open INT8 matched raw output");
   std::vector<std::int32_t> candidate_ids(flat.size() / record_bytes);
   for (std::size_t i = 0; i < candidate_ids.size(); ++i) {
@@ -1884,7 +1967,7 @@ int run_int8_matched_r4(int argc, char** argv) {
       coarse_ids.reserve(coarse.size());
       for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
       const auto rerank_begin = std::chrono::steady_clock::now();
-      const auto reranked = exact_cosine_top10_int8(codes, scales, coarse_ids, query);
+      const auto reranked = exact_cosine_top10_int8(codes, inverse_code_norms, coarse_ids, query);
       const auto rerank_end = std::chrono::steady_clock::now();
       const double thq_ms = elapsed_ms(thq_begin, thq_end);
       const double rerank_ms = elapsed_ms(rerank_begin, rerank_end);
@@ -2026,6 +2109,17 @@ int main(int argc, char** argv) {
         int8_row, one_scale, query.data(), 0);
     if (std::abs(production_dot - scalar_dot * one_scale[0]) > 1e-3f)
       throw std::runtime_error("production INT8 score parity differs");
+    float code_squared = 0.0f;
+    for (const auto value : int8_row)
+      code_squared += static_cast<float>(value) * static_cast<float>(value);
+    const std::vector<float> inverse_code_norms{
+        1.0f / std::sqrt(code_squared)};
+    const float inverse_query = 1.0f / query_l2_norm(query.data());
+    const float expected_cosine = scalar_dot * inverse_code_norms[0] * inverse_query;
+    const float production_cosine = score_int8_cosine_production(
+        int8_row, inverse_code_norms, inverse_query, query.data(), 0);
+    if (std::abs(production_cosine - expected_cosine) > 1e-4f)
+      throw std::runtime_error("exact reconstructed-cosine INT8 parity differs");
 #if defined(AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2) && AGENT_MEMORY_NATIVE_FULL_CORPUS_HAS_AVX2
     std::mt19937 parity_rng(20260930U);
     std::uniform_int_distribution<int> code_distribution(-127, 127);

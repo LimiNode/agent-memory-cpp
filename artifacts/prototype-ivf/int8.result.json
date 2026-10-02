@@ -1,29 +1,39 @@
 {
-  "audit_path": "artifacts/prototype-ivf/int8.audit.json",
-  "audit_sha256": "33eeefdbe06c89ad934ebaf84cad5afc7fd65fdacba6320256b2e401b008abab",
+  "audit_path": "artifacts/prototype-ivf/int8-cosine-calibrated.audit.json",
+  "audit_sha256": "485f61064c0339dcd207e36ffa8effa019c219c34270c967cb42aaff16b47cfc",
+  "candidate_identity_path": null,
   "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
   "codec": "INT8",
-  "family": "packed_int8_prototype_ivf_balanced_v1",
+  "family": "packed_int8_prototype_ivf_balanced_v2",
   "independent_top10_exact": "152/152",
+  "inverse_code_norms_sha256": "69e7e6c092643b4b78508481af7bd367eee8940a37b1cad5f9ef0d9d093dd284",
+  "metric": "reconstructed_cosine_exact",
   "mode": "prototype_ivf_balanced",
+  "norm_distribution": {
+    "max": 1.001533241931562,
+    "max_abs_delta_from_one": 0.0015528256200125767,
+    "mean": 1.0000184278593984,
+    "min": 0.9984471743799874,
+    "p95_abs_delta_from_one": 0.0006013244237225211
+  },
+  "payload_bytes": 392,
   "payload_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
   "query_count": 152,
   "raw_rows": 760,
-  "raw_sha256": "4281d3ce213725b7e816441ba2cfcf6ee130d0de7036cc03ad1fa2bf70dd150e",
+  "raw_sha256": "99268c3138fd81728f79096a723385fd184e20f9f13882aac5489b22b81dcf20",
   "reference_kind": "independent_packed_replay",
   "repeats": 5,
   "representation": "packed_native",
-  "rerank_p50": null,
   "schema_version": 1,
+  "scorer": "cosine_direct",
   "status": "PRESENT",
-  "thq_p50": null,
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 1.3358,
-    "p95": 1.4825,
-    "p99": 1.6794
+    "p50": 0.7485,
+    "p95": 0.868,
+    "p99": 1.214
   },
   "warmups": 1
 }

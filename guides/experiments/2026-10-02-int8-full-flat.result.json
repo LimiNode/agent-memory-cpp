@@ -1,36 +1,37 @@
 {
-  "audit_sha256": "a7bdfd2ceeaefa7f01d31a5874d33923a95fb13e28fa848a5556cc94db2cccd1",
-  "audit_status": "PASS",
+  "audit_path": "artifacts/int8-full-cosine-direct.audit.json",
+  "audit_sha256": "455cf737a81b8e623e2a98af05c14cd458b46d0d55c16cd06ee13d3284eab386",
   "codec": "INT8",
-  "codes_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
-  "documents": 1000000,
-  "family": "three_mode_full_flat_replay_v1",
+  "family": "three_mode_full_flat_replay_v2",
   "independent_top10_exact": "152/152",
-  "limitations": [
-    "INT8 is the full-flat control with separate 384-byte codes and 4-byte scale sidecar",
-    "Prototype-IVF, unified R4, fresh-qrels and MDBX gates remain separate"
-  ],
-  "measured_repeats": 5,
-  "metric": "reconstructed_cosine",
+  "inverse_code_norms_sha256": "69e7e6c092643b4b78508481af7bd367eee8940a37b1cad5f9ef0d9d093dd284",
+  "metric": "reconstructed_cosine_exact",
   "mode": "full_flat_1m",
-  "payload_bytes": 388000000,
-  "percentile": "nearest_rank",
+  "norm_distribution": {
+    "max": 1.001533241931562,
+    "max_abs_delta_from_one": 0.0015528256200125767,
+    "mean": 1.0000184278593984,
+    "min": 0.9984471743799874,
+    "p95_abs_delta_from_one": 0.0006013244237225211
+  },
+  "payload_bytes": 392,
+  "payload_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
-  "queries": 152,
-  "raw_sha256": "e1a2f45aafadf09408188276e665e0bfddb6a61f50da0f58c8437e01fb971ccf",
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "9e2c38b495d0faf87012898a2aa1d9ee1dea8b1312b059fc1fef5577cfb27028",
   "reference_kind": "independent_packed_replay",
-  "reference_runner_sha256": "0f00af3151c412b4b9f441801519af48fa610746d1a6ddecc614fc03b43edade",
+  "repeats": 5,
   "representation": "packed_native",
-  "scales_sha256": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
   "schema_version": 1,
-  "status": "PASS",
-  "tie_break": "score_desc_id_asc",
+  "scorer": "cosine_direct",
+  "status": "PRESENT",
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 407.349,
-    "p95": 412.041,
-    "p99": 415.342
+    "p50": 407.166,
+    "p95": 417.831,
+    "p99": 428.745
   },
-  "warmup_count": 1
+  "warmups": 1
 }
