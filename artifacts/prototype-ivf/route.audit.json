@@ -1,0 +1,13 @@
+{
+  "candidate_k": 5000,
+  "candidate_stream_sha256": "455613d5e7c239e56efea78c2b2fd1f99c43751b3f4bac55fdaa103aabeab7ce",
+  "failures": [],
+  "family": "prototype_ivf_balanced_route_audit_v1",
+  "limitations": [
+    "routing-only; no packed codec timing or quality parity"
+  ],
+  "manifest_sha256": "b42ec2a5fec56e9e9491711c63b7993c41f422c2d007198e2274f8ede9d08b8f",
+  "query_count": 152,
+  "schema_version": 1,
+  "status": "PASS"
+}

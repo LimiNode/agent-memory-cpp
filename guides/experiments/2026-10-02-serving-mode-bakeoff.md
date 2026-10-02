@@ -41,7 +41,8 @@ results are not promoted into this matrix.
 
 The first deterministic route artifact is now materialized at
 `artifacts/prototype-ivf/route.manifest.json` with the candidate stream in
-`artifacts/prototype-ivf/candidate-ids.i4`. It uses the canonical 1M vectors,
+`artifacts/prototype-ivf/candidate-ids.i4`; its structural receipt is
+`artifacts/prototype-ivf/route.audit.json`. It uses the canonical 1M vectors,
 25,000 training rows, spherical 256-cell k-means, four selected cells per
 query, an 8,192-posting bound and a 5,000-ID downstream candidate budget. The
 route is source-bound and reproducible, but it is deliberately only a routing
