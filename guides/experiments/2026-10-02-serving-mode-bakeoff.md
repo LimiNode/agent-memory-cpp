@@ -43,6 +43,12 @@ It hashes present receipts and records every missing row as
 `PENDING_SOURCE_REPLAY`; it does not treat this inventory as a benchmark
 result.
 
+Completion is checked separately by
+`tools/agent-memory-bench/validate-three-mode-completion.py`. That validator
+is intentionally strict: it requires all seven mandatory finalists in all
+three modes, raw/audit bindings and independent ordered `152/152` parity. It
+must fail while the checkpoint inventory is partial.
+
 ## Execution contract
 
 1. Freeze codec payloads, THQ4 payload/query codes, route manifests and query
