@@ -1180,3 +1180,11 @@ scan reports p50/p95/p99 of 245.586/261.116/272.168 ms under one warmup and
 five measured repeats. An independent replay through the faithful Python
 decoder matches ordered top-10 for 152/152 queries. This closes the RSLM1
 full-flat row; the three-mode route and fresh-quality gates remain open.
+
+### LSQ32 full-flat replay (2026-10-02)
+
+The frozen 32-byte LSQ payload was rescanned over all 1M rows with the common
+one-warmup/five-repeat contract. Native p50/p95/p99 are 178.670/188.975/209.586
+ms, and the independent packed decode/ranking replay matches ordered top-10 for
+152/152 queries. This replaces the prior summary-only LSQ32 flat row; LSQ48,
+Prototype-IVF, unified R4 refresh and fresh quality remain open.

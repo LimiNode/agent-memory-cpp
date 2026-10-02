@@ -159,7 +159,7 @@ its payload is not a matrix of native codec finalists.
 | --- | ---: | --- |
 | Direct INT8 flat | 106.384 | native INT8 control |
 | THQ → INT8 | 83.672 | native THQ routing plus INT8 rerank |
-| LSQ32 | **223.032** | 1M packed LSQ32 scan; p95 238.494, p99 244.840 |
+| LSQ32 | **178.670** | 1M packed LSQ32 scan; p95 188.975, p99 209.586; one warmup + five repeats; independent ordered top-10 replay **152/152** |
 | LSQ48 | **252.526** | 1M packed LSQ48 scan; p95 264.469, p99 269.872 |
 | PLSQ8x6x8 | **177.5215** | 1M packed PLSQ scan; p95 199.7548, p99 218.1127; one warmup + five measured repeats; independent ordered top-10 replay **152/152** |
 | PLSQ8x4x8 | **148.6951** | optional 1M packed low-byte control; p95 162.0236, p99 178.5959; structural audit PASS, independent 8x4 reference replay pending |

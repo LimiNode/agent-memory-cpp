@@ -22,10 +22,13 @@
         "status": "PRESENT"
       },
       "LSQ32": {
-        "bytes": 15517,
-        "path": "guides/experiments/codec-evaluation-report.md",
-        "sha256": "6a464e2114b6d975969520ef62bf5ef6827f9a1af58ba50b3b48bd6eb699c93a",
-        "status": "SUMMARY_ONLY"
+        "result": {
+          "bytes": 1060,
+          "path": "guides/experiments/2026-10-02-lsq32-full-flat.result.json",
+          "sha256": "f7bf7cf68e455a16b9bf6ffdbe85974bb3435a4712b2494a3231b7542c879ecf",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "LSQ48": {
         "bytes": 15517,

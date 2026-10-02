@@ -903,15 +903,17 @@ LsqScoredRows score_lsq_full_flat(const LsqPayload& payload,
 double percentile(std::vector<double> values, double fraction);
 
 int run_lsq_full_flat(int argc, char** argv) {
-  if (argc != 8)
+  if (argc != 8 && argc != 9)
     throw std::runtime_error(
-        "usage: benchmark --lsq-full-flat payload thq queries query_count warmups repeats");
+        "usage: benchmark --lsq-full-flat payload thq queries query_count warmups repeats [raw_output]");
   const auto payload = read_lsq_payload(argv[2]);
   const auto thq = read<std::uint8_t>(argv[3]);
   const auto queries = read<float>(argv[4]);
   const auto query_count = static_cast<std::size_t>(std::stoull(argv[5]));
   const auto warmups = static_cast<std::size_t>(std::stoull(argv[6]));
   const auto repeats = static_cast<std::size_t>(std::stoull(argv[7]));
+  std::ofstream raw;
+  if (argc == 9) { raw.open(argv[8]); if (!raw) throw std::runtime_error("cannot open LSQ raw output"); }
   if (thq.size() != kDocuments * kThqBytes || queries.size() < query_count * kDimension ||
       query_count == 0 || warmups == 0 || repeats == 0)
     throw std::runtime_error("LSQ full-flat fixture shape differs");
@@ -926,6 +928,11 @@ int run_lsq_full_flat(int argc, char** argv) {
       const auto end = std::chrono::steady_clock::now();
       prepare.push_back(last.prepare_ms); score.push_back(last.score_ms);
       total.push_back(elapsed_ms(begin, end));
+      if (raw) {
+        raw << "{\"query\":" << qi << ",\"repeat\":" << i << ",\"timing_ms\":" << total.back() << ",\"top10_ids\":[";
+        for (std::size_t index = 0; index < last.top10.size(); ++index) { if (index) raw << ','; raw << last.top10[index].id; }
+        raw << "]}\n";
+      }
     }
     std::cout << "{\"query\":" << qi << ",\"top10_ids\":[";
     for (std::size_t i = 0; i < last.top10.size(); ++i) {

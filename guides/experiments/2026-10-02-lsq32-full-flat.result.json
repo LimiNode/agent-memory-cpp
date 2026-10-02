@@ -1,0 +1,30 @@
+{
+  "audit_sha256": "ae53910af80bf94cfbc690ef0ab124fb22811867045577dca38391aa41d57976",
+  "audit_status": "PASS",
+  "codec": "LSQ32",
+  "documents": 1000000,
+  "family": "three_mode_full_flat_replay_v1",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "full 1M packed LSQ32 scan uses source-bound frozen LSQ payload",
+    "Prototype-IVF, unified R4, fresh-qrels and MDBX gates remain separate"
+  ],
+  "measured_repeats": 5,
+  "metric": "reconstructed_cosine",
+  "mode": "full_flat_1m",
+  "payload_bytes": 52589076,
+  "payload_sha256": "04d4a744788e5789ad4e92f3a15122f8b2ce48d3ad82e5744e8c64ccc2645698",
+  "percentile": "nearest_rank",
+  "queries": 152,
+  "raw_sha256": "c6a5bdb9d2bbf63da91a4a2ea404154d55f3f03d830690f5e5fc9cc23cc4902f",
+  "reference_runner_sha256": "cb93a2e3f82f64e3c88616824c75975b0aa83f5730b5a7b342e059d17c24665b",
+  "schema_version": 1,
+  "status": "PASS",
+  "tie_break": "score_desc_id_asc",
+  "timing_ms": {
+    "p50": 178.67,
+    "p95": 188.975,
+    "p99": 209.586
+  },
+  "warmup_count": 1
+}
