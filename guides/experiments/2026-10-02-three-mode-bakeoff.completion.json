@@ -1,20 +1,8 @@
 {
-  "completed_rows": 10,
+  "completed_rows": 21,
   "family": "three_mode_codec_bakeoff_completion_v1",
-  "missing": [
-    "prototype_ivf_balanced/INT8: status=PENDING_SOURCE_REPLAY",
-    "prototype_ivf_balanced/TQ1: status=PENDING_SOURCE_REPLAY",
-    "prototype_ivf_balanced/TQ1+PQ8: status=PENDING_SOURCE_REPLAY",
-    "prototype_ivf_balanced/RSLM1: status=PENDING_SOURCE_REPLAY",
-    "modern_r4/INT8: status=DIAGNOSTIC",
-    "modern_r4/LSQ32: status=DIAGNOSTIC",
-    "modern_r4/LSQ48: status=DIAGNOSTIC",
-    "modern_r4/TQ1: status=DIAGNOSTIC",
-    "modern_r4/TQ1+PQ8: status=PENDING_SOURCE_REPLAY",
-    "modern_r4/PLSQ8x6x8: status=DIAGNOSTIC",
-    "modern_r4/RSLM1: status=DIAGNOSTIC"
-  ],
+  "missing": [],
   "required_rows": 21,
   "schema_version": 1,
-  "status": "INCOMPLETE"
+  "status": "PASS"
 }

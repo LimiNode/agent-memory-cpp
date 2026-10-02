@@ -17,13 +17,13 @@ production mode.
 
 | Arm | Algorithmic quality | Native compressed cascade | Full 1M flat | MDBX persistence |
 | --- | --- | --- | --- | --- |
-| LSQ32 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
-| LSQ48 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
-| PLSQ8x6x8 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
+| LSQ32 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| LSQ48 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| PLSQ8x6x8 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | PLSQ8x4x8 | measured | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
-| TQ1 | measured | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
-| TQ1+PQ8 | measured/partial serving | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
-| RSLM1 | measured | diagnostic predecoded control | **measured (1M packed flat)** | pending |
+| TQ1 | measured | **packed 3-mode matrix (bounded norm control)** | **measured (1M packed flat)** | pending |
+| TQ1+PQ8 | measured/partial serving | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| RSLM1 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | INT8 reference | control | control | measured | measured |
 | INT8 matched R4 control | control | **measured (matched R4)** | n/a | n/a |
 
@@ -32,6 +32,11 @@ The quality rows are the historical qrels study in
 They are not interchangeable with latency rows: quality uses qrels and
 candidate-overlap diagnostics, while serving rows require the same native
 packed scorer and candidate topology.
+
+The canonical three-mode downstream completion receipt is
+[`2026-10-02-three-mode-bakeoff.completion.json`](2026-10-02-three-mode-bakeoff.completion.json);
+it currently validates `21/21` packed serving rows. This does not close fresh
+qrels or finalist-specific MDBX persistence.
 
 ## Algorithmic quality
 
@@ -87,13 +92,13 @@ was fast.
 
 | Codec | Full-flat packed 1M | Prototype-IVF / balanced | Modern R4 | Interpretation |
 | --- | --- | --- | --- | --- |
-| INT8 | measured control | pending matched packed route | diagnostic predecoded control; packed refresh pending | control |
-| LSQ32 | measured packed | pending | diagnostic predecoded control; packed refresh pending | finalist, not yet cross-mode matched |
-| LSQ48 | measured packed | pending | diagnostic predecoded control; packed refresh pending | finalist, not yet cross-mode matched |
-| TQ1 | measured reconstructed-cosine packed | pending packed downstream scorer | diagnostic/legacy control; packed refresh pending | canonical full-flat row is closed; routed rows remain open |
-| TQ1+PQ8 | measured reconstructed-cosine packed | pending packed downstream scorer | diagnostic/legacy control; packed refresh pending | canonical full-flat row is closed; routed rows remain open |
-| PLSQ8x6x8 | measured + independent replay | pending | diagnostic predecoded control; packed refresh pending | strongest current flat packed coverage |
-| RSLM1 | measured faithful packed | pending packed downstream scorer | diagnostic predecoded control; packed refresh pending | full-flat row is closed; routed gates remain open |
+| INT8 | measured control | **measured packed** | **measured packed** | control |
+| LSQ32 | measured packed | **measured packed** | **measured packed** | finalist |
+| LSQ48 | measured packed | **measured packed** | **measured packed** | finalist |
+| TQ1 | measured reconstructed-cosine packed | **measured packed (bounded norm control)** | **measured packed (bounded norm control)** | fresh quality pending |
+| TQ1+PQ8 | measured reconstructed-cosine packed | **measured packed** | **measured packed** | fresh quality pending |
+| PLSQ8x6x8 | measured + independent replay | **measured packed** | **measured packed** | finalist |
+| RSLM1 | measured faithful packed | **measured packed** | **measured packed** | finalist |
 
 No final speed ranking is inferred from this mixed-generation table. A valid
 ranking requires one harness, one warmup/repeat contract and one audit across

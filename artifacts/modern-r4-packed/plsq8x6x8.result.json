@@ -1,0 +1,27 @@
+{
+  "audit_path": "artifacts/modern-r4-packed/plsq8x6.audit.json",
+  "audit_sha256": "219222ba15bf5bcf8cf6cc84091f96745a2a9c4d8ec471f2b57b90d9a752a3d1",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "codec": "PLSQ8x6x8",
+  "family": "packed_plsq8x6x8_modern_r4_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "modern_r4",
+  "payload_sha256": "3245fea28ac385d8b63d8d2718a4f2566852a8e8b4dd6dd05010ed1094edc13a",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "3569634e7c9101815778f5fc49d0acb4c1e293dd6fc45809bd9dda0784f8950d",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 3.1064,
+    "p95": 3.5645,
+    "p99": 3.8021
+  },
+  "warmups": 1
+}

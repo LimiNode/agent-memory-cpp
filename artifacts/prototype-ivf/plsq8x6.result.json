@@ -1,6 +1,6 @@
 {
   "audit_path": "artifacts/prototype-ivf/plsq8x6.audit.json",
-  "audit_sha256": "0de8ebe186f94c3fa97538bce4295cea3ea591c3952670ce6a215927b0452333",
+  "audit_sha256": "8ff03505395896d3e4ce3c2602a2fbad0d42acea5840a36a3e8e2c212a223b1a",
   "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
   "codec": "PLSQ8x6x8",
   "family": "native_packed_plsq_prototype_ivf_v1",
@@ -13,7 +13,7 @@
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
   "query_count": 152,
-  "raw_sha256": "6af54cc7154273dcab58872186760a32e3d8715cf73ababaf47f32eabf67f78e",
+  "raw_sha256": "34834b8ae56f645fe9aa59d0f9b13df772ccdaa9ec9c2f539421de9fee8ff14c",
   "reference_kind": "independent_packed_replay",
   "repeats": 5,
   "representation": "packed_native",

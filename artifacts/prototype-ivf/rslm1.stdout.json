@@ -1,0 +1,1 @@
+{"status":"EXECUTED","scope":"R4 candidate stream -> THQ top128 -> RSLM1 packed scorer","queries":152,"warmups":1,"repeats":5,"p50_ms":2.955600,"p95_ms":3.445000,"p99_ms":3.797000}

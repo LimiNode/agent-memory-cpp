@@ -1,6 +1,8 @@
 # Canonical three-mode serving bake-off
 
-Status: `PLANNED`; no new measurements are claimed by this note.
+Status: `EXECUTED_DOWNSTREAM_MATRIX`; the serving receipts are source-bound and
+the strict validator reports 21/21 packed downstream rows. Fresh qrels and
+persistent MDBX gates remain separate.
 
 The compressed-codec program has three serving modes. They answer different
 questions and must not be collapsed into one latency ranking:
@@ -25,17 +27,17 @@ and raw JSONL plus an independent audit.
 
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
-| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical control; fresh qrels pending |
-| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **8.837 / 10.203 / 11.013 ms** | packed top-128 component; full R4 pending | historical qrels; fresh pending |
-| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **13.676 / 14.923 / 15.910 ms** | packed top-128 component; full R4 pending | historical qrels; fresh pending |
-| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
-| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | pending | predecoded/legacy downstream controls only; packed refresh pending | partial historical; fresh pending |
-| PLSQ8x6x8 | 52 | measured packed + independent replay | pending | predecoded downstream control; packed refresh pending | historical qrels; fresh pending |
-| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | pending | predecoded FP32 downstream control only; packed refresh pending | historical qrels; fresh pending |
+| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | **0.760 / 0.914 / 1.180 ms** | **0.739 / 0.873 / 0.918 ms** | historical control; fresh qrels pending |
+| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **8.837 / 10.203 / 11.013 ms** | **7.583 / 9.023 / 9.485 ms** | historical qrels; fresh pending |
+| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **13.676 / 14.923 / 15.910 ms** | **11.263 / 13.039 / 13.558 ms** | historical qrels; fresh pending |
+| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | **2.726 / 3.074 / 3.344 ms** | **2.811 / 3.482 / 3.789 ms** | bounded packed-norm control; fresh pending |
+| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | **2.726 / 3.074 / 3.344 ms** | **2.811 / 3.482 / 3.789 ms** | packed downstream; fresh pending |
+| PLSQ8x6x8 | 52 | **177.522 / 199.755 / 218.113 ms** | **3.498 / 3.871 / 4.692 ms** | **3.106 / 3.565 / 3.802 ms** | packed + independent replay; fresh pending |
+| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | **2.954 / 3.442 / 3.797 ms** | **3.058 / 3.481 / 3.827 ms** | faithful packed; fresh pending |
 
-`pending` is intentional: the repository currently has no source-bound packed
-prototype-IVF receipts for these finalists, and decoded/scalar historical IVF
-results are not promoted into this matrix.
+All 21 downstream cells now have source-bound packed receipts. These numbers
+exclude route generation and MDBX I/O; they are not fresh-quality or product
+selection evidence.
 
 ### Prototype route checkpoint (2026-10-02)
 
@@ -45,10 +47,9 @@ The first deterministic route artifact is now materialized at
 `artifacts/prototype-ivf/route.audit.json`. It uses the canonical 1M vectors,
 25,000 training rows, spherical 256-cell k-means, four selected cells per
 query, an 8,192-posting bound and a 5,000-ID downstream candidate budget. The
-route is source-bound and reproducible, but it is deliberately only a routing
-checkpoint: packed THQ/final-codec scoring, independent parity and quality
-decomposition remain required before any Prototype-IVF matrix cell can move
-from `PENDING_SOURCE_REPLAY`.
+route is source-bound and reproducible. Packed THQ/final-codec scoring and
+independent parity are now recorded for all seven Prototype-IVF cells; quality
+decomposition remains a separate gate.
 
 The pre-freeze teacher coverage audit is recorded at
 `artifacts/prototype-ivf/quality.audit.json`. After correcting the posting
@@ -60,27 +61,23 @@ decomposition remain required.
 
 ### Modern R4 refresh checkpoint (2026-10-02)
 
-The unified native downstream harness was rerun with one warmup and five
-measured repeats for LSQ32, LSQ48, TQ1 and RSLM1. It uses the same frozen
-candidate148 stream and THQ4 top-128 shell for each arm, records 760 raw rows
-per arm, and verifies ordered top-10 parity 152/152 against an independent
-FP32 cosine replay over the selected top-128 rows. The receipts are under
-`artifacts/modern-r4-refresh-v4/`. These are explicitly **Modern R4
-predecoded-FP32 downstream controls**, not packed production rows: route
-generation, codec decode and codec-specific packed scoring remain outside the
-timed scope. INT8/TQ1+PQ8 and every packed Modern R4 row remain open.
+The fused source-bound ~5k candidate stream was rerun with one warmup and five
+measured repeats for all seven packed finalists. Each arm records 760 raw rows,
+packed payload provenance and ordered top-10 parity 152/152. The receipts are
+under `artifacts/modern-r4-packed/`; the older `candidate148` predecoded rows
+remain diagnostic only. Route generation, codec decode and MDBX I/O remain
+outside the timed downstream scope.
 
 The machine-readable checkpoint for this boundary is
 [`2026-10-02-three-mode-bakeoff.inventory.json`](2026-10-02-three-mode-bakeoff.inventory.json).
-It hashes present receipts and records every missing row as
-`PENDING_SOURCE_REPLAY`; it does not treat this inventory as a benchmark
-result.
+It hashes the receipts and is expected to report `21/21`; it does not turn the
+downstream matrix into a fresh-quality or persistence result.
 
 Completion is checked separately by
 `tools/agent-memory-bench/validate-three-mode-completion.py`. That validator
 is intentionally strict: it requires all seven mandatory finalists in all
 three modes, raw/audit bindings and independent ordered `152/152` parity. It
-must fail while the checkpoint inventory is partial.
+fails if any packed row loses those bindings.
 
 ## Execution contract
 

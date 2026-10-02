@@ -1,0 +1,27 @@
+{
+  "audit_path": "artifacts/modern-r4-packed/tq1.audit.json",
+  "audit_sha256": "66ef91d110853e46f8c08945f652e9ecced367285054c602a825d18cef61ba76",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "codec": "TQ1",
+  "family": "packed_tq1_modern_r4_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "modern_r4",
+  "payload_sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "b5ad1a7a74d7317a76c1ceb60d7c3ebeed62e333beb5e6ee89152f882d318154",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 2.8113,
+    "p95": 3.4821,
+    "p99": 3.7888
+  },
+  "warmups": 1
+}

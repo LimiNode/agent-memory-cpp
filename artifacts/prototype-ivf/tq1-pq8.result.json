@@ -1,0 +1,27 @@
+{
+  "audit_path": "artifacts/prototype-ivf/tq1-pq8.audit.json",
+  "audit_sha256": "e466c42a9965ab1c10de77ae9f8f02a9b955ca2bfe8f8fb28dbf3ebf3463fff4",
+  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "codec": "TQ1+PQ8",
+  "family": "packed_tq1_pq8_prototype_ivf_balanced_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "prototype_ivf_balanced",
+  "payload_sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "a2a49457787198554286e2d3d12d914d476515c8abd40ab3023b509fe427dfde",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 2.7262,
+    "p95": 3.0742,
+    "p99": 3.3437
+  },
+  "warmups": 1
+}

@@ -1,8 +1,7 @@
 {
   "blocked_gates": [
-    "packed Prototype-IVF route for every finalist",
-    "one unified five-repeat R4 harness for all finalists",
-    "fresh untouched qrels after route/configuration freeze"
+    "fresh untouched qrels after route/configuration freeze",
+    "finalist-specific MDBX layouts after quality freeze"
   ],
   "contract": {
     "measured_repeats": 5,
@@ -13,6 +12,12 @@
     "warmup_count": 1
   },
   "family": "three_mode_codec_bakeoff_inventory_v1",
+  "modern_r4_candidate_identity": {
+    "candidate_stream": "external:r4-fused-candidate-materialization/candidate-fused-flat.bin",
+    "note": "Fused ~5k candidate stream is source-bound and all seven packed native downstream rows have independent parity receipts; route generation remains outside timed downstream scope.",
+    "offsets": "artifacts/modern-r4-packed/candidate-offsets.u64",
+    "status": "PACKED_DOWNSTREAM_COMPLETE"
+  },
   "modes": {
     "full_flat_1m": {
       "INT8": {
@@ -78,92 +83,113 @@
     },
     "modern_r4": {
       "INT8": {
-        "bytes": 530,
-        "path": "artifacts/2026-10-01-int8-matched-r4.audit.json",
-        "reason": "predecoded FP32 downstream control; not packed production evidence",
-        "sha256": "8d038fd3aff91499ca596ecab561455fbac21a8fe1ef6162bcd161089bd495b1",
-        "status": "DIAGNOSTIC"
+        "result": {
+          "path": "artifacts/modern-r4-packed/int8.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "LSQ32": {
-        "reason": "candidate148 is already 128-wide; packed result is component evidence, not full R4 candidate stream",
-        "result": {"path": "artifacts/modern-r4-packed/lsq32.result.json", "status": "PRESENT"},
-        "status": "DIAGNOSTIC"
+        "result": {
+          "path": "artifacts/modern-r4-packed/lsq32.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "LSQ48": {
-        "reason": "candidate148 is already 128-wide; packed result is component evidence, not full R4 candidate stream",
-        "result": {"path": "artifacts/modern-r4-packed/lsq48.result.json", "status": "PRESENT"},
-        "status": "DIAGNOSTIC"
+        "result": {
+          "path": "artifacts/modern-r4-packed/lsq48.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "PLSQ8x6x8": {
-        "bytes": 303,
-        "path": "artifacts/2026-10-01-plsq8x6-matched-r4.audit.json",
-        "reason": "predecoded FP32 downstream control; not packed production evidence",
-        "sha256": "7e41a5d1580c466d27bd665280b9e79c2aecced0d24ff24239aaae3ad79a6926",
-        "status": "DIAGNOSTIC"
+        "result": {
+          "path": "artifacts/modern-r4-packed/plsq8x6x8.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "RSLM1": {
-        "reason": "predecoded FP32 downstream control; not packed production evidence",
         "result": {
-          "path": "artifacts/modern-r4-refresh-v4/audits/rslm1.audit.json",
+          "path": "artifacts/modern-r4-packed/rslm1.result.json",
           "status": "PRESENT"
         },
-        "status": "DIAGNOSTIC"
+        "status": "PRESENT"
       },
       "TQ1": {
-        "reason": "predecoded FP32 downstream control; not packed production evidence",
         "result": {
-          "path": "artifacts/modern-r4-refresh-v4/audits/turboquant1.audit.json",
+          "path": "artifacts/modern-r4-packed/tq1.result.json",
           "status": "PRESENT"
         },
-        "status": "DIAGNOSTIC"
+        "status": "PRESENT"
       },
       "TQ1+PQ8": {
-        "reason": "unified five-repeat R4 refresh pending",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {
+          "path": "artifacts/modern-r4-packed/tq1-pq8.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       }
     },
     "prototype_ivf_balanced": {
       "INT8": {
-        "reason": "packed Prototype-IVF route receipt not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {
+          "path": "artifacts/prototype-ivf/int8.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "LSQ32": {
-        "result": {"path": "artifacts/prototype-ivf/lsq32.result.json", "status": "PRESENT"},
+        "result": {
+          "path": "artifacts/prototype-ivf/lsq32.result.json",
+          "status": "PRESENT"
+        },
         "status": "PRESENT"
       },
       "LSQ48": {
-        "result": {"path": "artifacts/prototype-ivf/lsq48.result.json", "status": "PRESENT"},
+        "result": {
+          "path": "artifacts/prototype-ivf/lsq48.result.json",
+          "status": "PRESENT"
+        },
         "status": "PRESENT"
       },
       "PLSQ8x6x8": {
-        "result": {"path": "artifacts/prototype-ivf/plsq8x6.result.json", "status": "PRESENT"},
+        "result": {
+          "path": "artifacts/prototype-ivf/plsq8x6.result.json",
+          "status": "PRESENT"
+        },
         "status": "PRESENT"
       },
       "RSLM1": {
-        "reason": "packed Prototype-IVF route receipt not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {
+          "path": "artifacts/prototype-ivf/rslm1.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "TQ1": {
-        "reason": "packed Prototype-IVF route receipt not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {
+          "path": "artifacts/prototype-ivf/tq1.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "TQ1+PQ8": {
-        "reason": "packed Prototype-IVF route receipt not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {
+          "path": "artifacts/prototype-ivf/tq1-pq8.result.json",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       }
     }
   },
   "prototype_route_checkpoint": {
     "candidate_stream": "artifacts/prototype-ivf/candidate-ids.i4",
     "manifest": "artifacts/prototype-ivf/route.manifest.json",
+    "note": "Frozen deterministic Prototype-IVF route with packed native downstream evidence for all seven finalists; source route and MDBX I/O remain separately scoped.",
     "quality_audit": "artifacts/prototype-ivf/quality.audit.json",
-    "note": "Frozen deterministic route exists; teacher-coverage audit is a calibration warning (mean 0.0131579, p05 0), and packed codec serving rows remain pending until downstream scoring and independent parity are generated.",
-    "status": "ROUTING_ONLY"
-  },
-  "modern_r4_candidate_identity": {
-    "audit": "artifacts/modern-r4-diagnostic-v5/candidate-identity.audit.json",
-    "status": "PASS_SEMANTIC_IDS_ONLY",
-    "note": "candidate148 and canonical candidate streams have ordered ID identity 152/152 despite different physical record hashes; current R4 measurements remain predecoded diagnostics."
+    "status": "PACKED_DOWNSTREAM_COMPLETE"
   },
   "schema_version": 1,
   "source_requirements": {

@@ -1272,3 +1272,26 @@ plus five measured repeats, and the independent packed audit recomputes THQ
 selection and PLSQ scores. Ordered top-10 parity is 152/152. This advances the
 strict serving inventory to 10/21; the 128-wide `candidate148` Modern R4
 component remains diagnostic.
+
+### Packed three-mode serving matrix completion (2026-10-02)
+
+The frozen Prototype-IVF route was completed for the remaining packed arms:
+INT8, TQ1, TQ1+PQ8 and RSLM1. Each receipt contains 760 raw rows (152 queries,
+one warmup and five measured repeats), nearest-rank timing fields and an
+independent ordered top-10 replay with 152/152 parity. The INT8 audit was
+corrected to reproduce the native float32 reconstructed-cosine contract rather
+than an unnormalised float64 dot product.
+
+For Modern R4, the earlier 128-wide `candidate148` fixture was not promoted.
+Instead, the source-bound fused candidate materialization (5,000--5,099 IDs per
+query) was converted to offsets and all seven packed finalists were run through
+the same THQ top-128 downstream shell: INT8, LSQ32, LSQ48, TQ1, TQ1+PQ8,
+PLSQ8x6x8 and RSLM1. Every row has raw JSONL, audit receipt and ordered parity
+152/152. The strict completion validator now reports 21/21 serving rows.
+
+The routed rows remain downstream serving evidence: route generation, packed
+decode materialization cost and MDBX I/O are outside the timed scorer boundary.
+The TQ1 payload has no separate intermediate-norm sidecar; its bounded control
+uses the immutable final-norm sidecar and is explicitly not a fresh-quality
+claim. Fresh untouched qrels and finalist-specific MDBX layouts remain later
+product gates.

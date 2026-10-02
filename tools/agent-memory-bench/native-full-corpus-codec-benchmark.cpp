@@ -1823,9 +1823,10 @@ int run_int8_matched_r4(int argc, char** argv) {
   const auto queries = read<float>(argv[8]);
   const std::size_t warmups = static_cast<std::size_t>(std::stoull(argv[9]));
   const std::size_t repeats = static_cast<std::size_t>(std::stoull(argv[10]));
-  const std::size_t record_bytes = flat.size() % 100 == 0 && offsets.size() == 153 && offsets.back() != 0 &&
+  const std::size_t record_bytes = flat.size() % 4 == 0 && offsets.size() == 153 && offsets.back() != 0 && flat.size() / 4 == offsets.back() ? 4 :
+      (flat.size() % 100 == 0 && offsets.size() == 153 && offsets.back() != 0 &&
       flat.size() / 100 == offsets.back() ? 100 :
-      (flat.size() % 148 == 0 && offsets.size() == 153 && offsets.back() != 0 && flat.size() / 148 == offsets.back() ? 148 : 0);
+      (flat.size() % 148 == 0 && offsets.size() == 153 && offsets.back() != 0 && flat.size() / 148 == offsets.back() ? 148 : 0));
   if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
       codes.size() != kDocuments * kDimension || scales.size() != kDocuments || record_bytes == 0 ||
       offsets.size() != 153 ||

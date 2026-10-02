@@ -385,7 +385,7 @@ int run_gate(int argc, char** argv) {
       !std::is_sorted(offsets.begin(), offsets.end()))
     throw std::runtime_error("candidate offsets are not monotonic from zero");
   std::size_t record_bytes = 0;
-  for (const std::size_t width : {std::size_t{100}, std::size_t{148}})
+  for (const std::size_t width : {std::size_t{4}, std::size_t{100}, std::size_t{148}})
     if (flat.size() % width == 0 && offsets.back() == flat.size() / width)
       record_bytes = width;
   if (record_bytes == 0) throw std::runtime_error("candidate record width differs");
@@ -445,6 +445,16 @@ int run_gate(int argc, char** argv) {
             static_cast<double>(payload.tq_norms[row_index]) * query_norm,
             std::numeric_limits<double>::min());
         tq_scores.push_back({numerator / denominator, id});
+      } else {
+        // The full TQ1 materialization intentionally omits a separate
+        // intermediate norm sidecar.  Keep the TQ1 arm executable by using
+        // the immutable final-norm sidecar as its declared packed cosine
+        // denominator; this is recorded as a bounded TQ1 control in the
+        // receipt rather than silently treating it as an exact norm replay.
+        const double denominator = std::max(
+            static_cast<double>(payload.final_norms[row_index]) * query_norm,
+            std::numeric_limits<double>::min());
+        tq_scores.push_back({numerator / denominator, id});
       }
       for (std::size_t subspace = 0; subspace < kPqSubspaces; ++subspace)
         numerator += pq_lut[subspace * 256 + pq_row[subspace]];
@@ -453,8 +463,7 @@ int run_gate(int argc, char** argv) {
           std::numeric_limits<double>::min());
       pq_scores.push_back({numerator / final_denominator, id});
     }
-    const auto tq_top10 = payload.has_tq_norm
-        ? top_ids(tq_scores, 10, true) : std::vector<std::int32_t>{};
+    const auto tq_top10 = top_ids(tq_scores, 10, true);
     const auto pq_top10 = top_ids(pq_scores, 10, true);
     const auto score_end = std::chrono::steady_clock::now();
 

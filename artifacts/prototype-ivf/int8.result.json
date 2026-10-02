@@ -1,0 +1,29 @@
+{
+  "audit_path": "artifacts/prototype-ivf/int8.audit.json",
+  "audit_sha256": "034134b87dd8fefaaea408289c0213be2425af1a578ecabb2678e73b2372539b",
+  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "codec": "INT8",
+  "family": "packed_int8_prototype_ivf_balanced_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "prototype_ivf_balanced",
+  "payload_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "d9188d19c2386d5d844fca7725c327bd1f23bdb4c08d58b5990051d66cba51b5",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 0.7596,
+    "p95": 0.91424,
+    "p99": 1.18036,
+    "rerank_p50": 0.0686,
+    "thq_p50": 0.6878
+  },
+  "warmups": 1
+}

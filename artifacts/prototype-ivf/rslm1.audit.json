@@ -1,0 +1,17 @@
+{
+  "family": "independent_packed_routed_jsonl_v1",
+  "independent_top10_exact": "152/152",
+  "percentile_contract": "nearest_rank_v1",
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "ae07eb6d7bff7939c0c2d4b51c8851962632975bfd5197811aedd87cbd6194a7",
+  "reference_kind": "independent_packed_replay",
+  "runner_sha256": "978ac3eab1a593b5c4dd5dd315f5799ea99a45d050ded8d118dbd192a8ced7a0",
+  "schema_version": 1,
+  "status": "PASS",
+  "timing_ms": {
+    "p50": 2.9543,
+    "p95": 3.4418,
+    "p99": 3.797
+  }
+}

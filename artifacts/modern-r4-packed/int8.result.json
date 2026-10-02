@@ -1,0 +1,29 @@
+{
+  "audit_path": "artifacts/modern-r4-packed/int8.audit.json",
+  "audit_sha256": "df51741a13bdd766bd537866a101f8d0398917c1977df2e2e5d3aaae036a63d3",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "codec": "INT8",
+  "family": "packed_int8_modern_r4_v1",
+  "independent_top10_exact": "152/152",
+  "mode": "modern_r4",
+  "payload_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_rows": 760,
+  "raw_sha256": "bf2a134fe33a3fbff9a35ea8851dcce6f6a0a038af5e70af8b15534090456d36",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 0.739,
+    "p95": 0.873025,
+    "p99": 0.917878,
+    "rerank_p50": 0.06395,
+    "thq_p50": 0.6706
+  },
+  "warmups": 1
+}
