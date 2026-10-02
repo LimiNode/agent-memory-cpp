@@ -23,15 +23,15 @@
         "status": "PRESENT"
       },
       "LSQ32": {
-        "bytes": 15375,
+        "bytes": 15517,
         "path": "guides/experiments/codec-evaluation-report.md",
-        "sha256": "d299ecd4b17a4bf2156783dddcac73f2efbd7b844f8a549bdd4c52641adbb9ee",
+        "sha256": "6a464e2114b6d975969520ef62bf5ef6827f9a1af58ba50b3b48bd6eb699c93a",
         "status": "SUMMARY_ONLY"
       },
       "LSQ48": {
-        "bytes": 15375,
+        "bytes": 15517,
         "path": "guides/experiments/codec-evaluation-report.md",
-        "sha256": "d299ecd4b17a4bf2156783dddcac73f2efbd7b844f8a549bdd4c52641adbb9ee",
+        "sha256": "6a464e2114b6d975969520ef62bf5ef6827f9a1af58ba50b3b48bd6eb699c93a",
         "status": "SUMMARY_ONLY"
       },
       "PLSQ8x6x8": {
@@ -49,12 +49,13 @@
         "status": "PENDING_SOURCE_REPLAY"
       },
       "TQ1": {
-        "candidate_only": {
-          "path": "artifacts/fresh-shortlist/tq1-pq8-68.receipt.json",
-          "status": "PENDING_SOURCE_REPLAY"
+        "result": {
+          "bytes": 999,
+          "path": "guides/experiments/2026-10-02-tq1-full-flat.result.json",
+          "sha256": "9c7573f46e6871c8895f38c202dfc5c7e53435183b9fb97104e4bf76a0441fbf",
+          "status": "PRESENT"
         },
-        "reason": "no committed 1M packed payload",
-        "status": "PENDING_SOURCE_REPLAY"
+        "status": "PRESENT"
       },
       "TQ1+PQ8": {
         "candidate_only": {

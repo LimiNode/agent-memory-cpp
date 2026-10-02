@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "family": "three_mode_full_flat_replay_v1",
+  "status": "PASS",
+  "mode": "full_flat_1m",
+  "codec": "TQ1",
+  "documents": 1000000,
+  "queries": 152,
+  "warmup_count": 1,
+  "measured_repeats": 5,
+  "percentile": "nearest_rank",
+  "tie_break": "score_desc_id_asc",
+  "timing_ms": {"p50": 186.0972, "p95": 192.6554, "p99": 203.0382},
+  "payload_sha256": "e3333161ba3d2ca9c5d33b73efeedef9056564c2c418eef8dfb03fd1d707251c",
+  "payload_bytes": 52006168,
+  "materialization_receipt_sha256": "61eaa5caf195a0f71bb1c4e202b9ac05ac2b1149645e7d5159e84069841dd301",
+  "raw_sha256": "a904be47cb2047865d07948d80c85fa077257b36ee6db0280600c58b00285c1a",
+  "audit_sha256": "a95cf0455b2bd4b02d162cab47e0fd892750dacf631f323a69af2a7947b1d0ea",
+  "audit_status": "PASS",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "native packed timing, structural audit and independent replay are complete",
+    "Prototype-IVF, unified R4, fresh-qrels and MDBX gates remain separate"
+  ]
+}

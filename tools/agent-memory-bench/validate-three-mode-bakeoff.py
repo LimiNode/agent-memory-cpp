@@ -45,7 +45,7 @@ def build_inventory(repo: Path) -> dict:
         "LSQ32": evidence(repo, "guides/experiments/codec-evaluation-report.md", summary_only=True),
         "LSQ48": evidence(repo, "guides/experiments/codec-evaluation-report.md", summary_only=True),
         "PLSQ8x6x8": evidence(repo, "guides/experiments/2026-10-02-plsq8x6-flat-replay.result.json"),
-        "TQ1": {"status": "MATERIALIZED_PENDING_NATIVE_SCORER", "materialization": evidence(repo, "artifacts/tq1-full.materialization.receipt.json"), "reason": "native full-flat scorer and audit pending"},
+        "TQ1": {"status": "PRESENT", "result": evidence(repo, "guides/experiments/2026-10-02-tq1-full-flat.result.json")},
         "TQ1+PQ8": {"status": "PENDING_SOURCE_REPLAY", "reason": "no committed 1M packed payload", "candidate_only": evidence(repo, "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json")},
         "RSLM1": {"status": "PENDING_SOURCE_REPLAY", "reason": "faithful full-corpus payload not committed", "candidate_only": {"status": "EXTERNAL_CANDIDATE_ONLY", "path": "E:/_repoz/agent-memory-workspaces/native-finalist-v1/rslm-faithful-candidate-union"}},
     }

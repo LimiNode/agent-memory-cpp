@@ -622,6 +622,18 @@ agent_memory_set_evaluator_source_manifest(
 agent_memory_set_evaluator_build_environment(
     agent-memory-native-full-corpus-codec-benchmark)
 
+# Full-corpus TQ1 packed scorer. The payload/materialization and independent
+# replay receipts remain external research fixtures; this target only builds
+# the native scorer used by that gate.
+add_executable(agent-memory-native-tq1-full-benchmark
+    native-tq1-full-benchmark.cpp)
+target_compile_features(agent-memory-native-tq1-full-benchmark PRIVATE cxx_std_17)
+agent_memory_set_evaluator_source_manifest(
+    agent-memory-native-tq1-full-benchmark
+    "${CMAKE_CURRENT_SOURCE_DIR}/native-tq1-full-benchmark.cpp")
+agent_memory_set_evaluator_build_environment(
+    agent-memory-native-tq1-full-benchmark)
+
 # Candidate-stream gate for packed TurboQuant one-bit residuals and an
 # optional PQ8 correction.  The scorer consumes packed signs, scalar/norm
 # sidecars, and PQ codes directly; it never reconstructs float[384] rows.

@@ -89,8 +89,10 @@ def main() -> None:
             packed = np.packbits(signs, axis=1, bitorder="little")
             scales = (safe / np.sqrt(float(D))).astype("<f4")
             scales[norms <= 1e-12] = 0.0
-            stream.write(packed.tobytes())
-            stream.write(scales.tobytes())
+            rows = np.empty((stop - start, 52), dtype=np.uint8)
+            rows[:, :48] = packed
+            rows[:, 48:] = scales.view(np.uint8).reshape(-1, 4)
+            stream.write(rows.tobytes())
     receipt = {
         "schema_version": 1,
         "family": "native_tq1_full_payload_v1",

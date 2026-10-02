@@ -5,10 +5,10 @@
   "limitations": [
     "packed materialization only; native flat serving scorer is a separate gate"
   ],
-  "materializer_sha256": "eb26f8dd733b5c2359019303ec8e5f6d7f73ff5fc39d9b41edf80034ae343038",
+  "materializer_sha256": "5941952db2a122bd036e348bf4b6e99e09bfb5d0087e82cde73ecfca1d921747",
   "packed_sign_bytes": 48,
   "payload_bytes": 52006168,
-  "payload_sha256": "049f04253f7eb4754ae901c44a865fd8844252d29538be25a02f93d1f1a26d25",
+  "payload_sha256": "e3333161ba3d2ca9c5d33b73efeedef9056564c2c418eef8dfb03fd1d707251c",
   "schema_version": 1,
   "side_bytes_per_document": 52,
   "source_hashes": {
