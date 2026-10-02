@@ -1,0 +1,21 @@
+{
+  "dimension": 384,
+  "documents": 1000000,
+  "family": "native_tq1_full_payload_v1",
+  "limitations": [
+    "packed materialization only; native flat serving scorer is a separate gate"
+  ],
+  "materializer_sha256": "eb26f8dd733b5c2359019303ec8e5f6d7f73ff5fc39d9b41edf80034ae343038",
+  "packed_sign_bytes": 48,
+  "payload_bytes": 52006168,
+  "payload_sha256": "049f04253f7eb4754ae901c44a865fd8844252d29538be25a02f93d1f1a26d25",
+  "schema_version": 1,
+  "side_bytes_per_document": 52,
+  "source_hashes": {
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "thq": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "status": "EXECUTED"
+}

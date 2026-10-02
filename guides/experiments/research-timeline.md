@@ -1129,6 +1129,14 @@ vectors. The canonical THQ receipt records the required document-vector hash
 corresponding source file is absent from the workspace. The inventory now
 records this exact missing input and keeps the affected modes fail-closed.
 
+The source was subsequently recovered from the validated DE-1M workspace and
+used to materialize a full 1M TQ1 packed table. The receipt
+`artifacts/tq1-full.materialization.receipt.json` binds the document, train,
+threshold and THQ hashes; the payload is 52 bytes/document. This advances TQ1
+from missing-source to `MATERIALIZED_PENDING_NATIVE_SCORER`. No flat latency or
+quality claim is made until a native packed scorer, raw timing receipt and
+independent replay are complete.
+
 ### PLSQ8x6x8 full-flat replay (2026-10-02)
 
 The source-bound AMPLSQF1 PLSQ8x6x8 payload was rescanned over the full 1M
