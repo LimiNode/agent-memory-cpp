@@ -1159,3 +1159,14 @@ packed replay reproduced ordered top-10 for 152/152 queries. This closes the
 PLSQ8x6x8 full-flat evidence row under the common contract, but does not imply
 that its latency is comparable to legacy rows until the remaining finalists
 are refreshed, and it does not close Prototype-IVF, fresh-qrels or MDBX gates.
+
+### TQ1+PQ8 full-flat replay (2026-10-02)
+
+The frozen strong-pq PQ8 codebook was applied source-faithfully to all 1M
+document residuals, producing a 64-byte/document payload (48-byte TQ signs,
+4-byte scale, 8-byte PQ codes and 4-byte persisted final norm). The native
+full-flat scan under one warmup and five measured repeats reports
+p50/p95/p99 of 289.122/302.801/323.720 ms. An independent packed replay of
+the same reconstructed-cosine contract matches ordered top-10 for 152/152
+queries. This closes the TQ1+PQ8 full-flat row; RSLM1, Prototype-IVF,
+unified R4 refresh and fresh-qrels remain open.

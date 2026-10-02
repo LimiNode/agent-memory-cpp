@@ -307,6 +307,63 @@ double milliseconds(std::chrono::steady_clock::time_point begin,
   return std::chrono::duration<double, std::milli>(end - begin).count();
 }
 
+double nearest_percentile(std::vector<double> values, double fraction) {
+  std::sort(values.begin(), values.end());
+  const auto rank = std::max<std::size_t>(1, static_cast<std::size_t>(std::ceil(fraction * values.size())));
+  return values[std::min(values.size() - 1, rank - 1)];
+}
+
+int run_full_flat(int argc, char** argv) {
+  if (argc != 8)
+    throw std::runtime_error("usage: benchmark --full-flat payload thq queries warmups repeats raw_output");
+  const auto payload = read_payload(argv[2]);
+  const auto thq = read<std::uint8_t>(argv[3]);
+  const auto queries = read<float>(argv[4]);
+  const auto warmups = static_cast<std::size_t>(std::stoull(argv[5]));
+  const auto repeats = static_cast<std::size_t>(std::stoull(argv[6]));
+  std::ofstream raw(argv[7]);
+  if (!raw || payload.count != kDocuments || thq.size() != kDocuments * kThqBytes ||
+      queries.size() < 152 * kDimension || warmups == 0 || repeats == 0)
+    throw std::runtime_error("TQ1/PQ8 full-flat fixture shape differs");
+  std::vector<double> timings; timings.reserve(152 * repeats);
+  for (std::size_t query_index = 0; query_index < 152; ++query_index) {
+    const auto* query = queries.data() + query_index * kDimension;
+    const auto base_lut = build_thq_dot_lut(payload, query);
+    const auto rotated_query = rotate_query(query);
+    const auto tq_lut = build_tq_dot_lut(rotated_query);
+    const auto pq_lut = build_pq_dot_lut(payload, query);
+    double query_norm = 0.0;
+    for (std::size_t dimension = 0; dimension < kDimension; ++dimension)
+      query_norm += static_cast<double>(query[dimension]) * query[dimension];
+    query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<double>::min()));
+    for (std::size_t repeat = 0; repeat < warmups + repeats; ++repeat) {
+      const auto begin = std::chrono::steady_clock::now();
+      std::array<Candidate, 10> top{}; std::size_t top_count = 0;
+      for (std::size_t row = 0; row < payload.count; ++row) {
+        double numerator = 0.0;
+        const auto* thq_row = thq.data() + row * kThqBytes;
+        const auto* sign_row = payload.signs.data() + row * kTqBytes;
+        const auto* pq_row = payload.pq_codes.data() + row * kPqSubspaces;
+        for (std::size_t byte = 0; byte < kThqBytes; ++byte) numerator += base_lut[byte * 256 + thq_row[byte]];
+        for (std::size_t byte = 0; byte < kTqBytes; ++byte) numerator += tq_lut[byte * 256 + sign_row[byte]] * payload.scales[row];
+        for (std::size_t subspace = 0; subspace < kPqSubspaces; ++subspace) numerator += pq_lut[subspace * 256 + pq_row[subspace]];
+        const Candidate candidate{numerator / std::max(static_cast<double>(payload.final_norms[row]) * query_norm, std::numeric_limits<double>::min()), payload.ids[row]};
+        if (top_count < top.size()) top[top_count++] = candidate;
+        else { std::size_t worst = 0; for (std::size_t i = 1; i < top.size(); ++i) if (descending(top[worst], top[i])) worst = i; if (descending(candidate, top[worst])) top[worst] = candidate; }
+      }
+      std::sort(top.begin(), top.end(), descending);
+      if (repeat >= warmups) {
+        const double elapsed = milliseconds(begin, std::chrono::steady_clock::now()); timings.push_back(elapsed);
+        raw << "{\"query\":" << query_index << ",\"repeat\":" << (repeat - warmups) << ",\"timing_ms\":" << elapsed << ",\"top10_ids\":[";
+        for (std::size_t index = 0; index < top.size(); ++index) { if (index) raw << ','; raw << top[index].id; }
+        raw << "]}\n";
+      }
+    }
+  }
+  std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"codec\":\"TQ1+PQ8\",\"metric\":\"reconstructed_cosine\",\"mode\":\"full_flat_1m\",\"queries\":152,\"repeats\":" << repeats << ",\"p50_ms\":" << nearest_percentile(timings, .5) << ",\"p95_ms\":" << nearest_percentile(timings, .95) << ",\"p99_ms\":" << nearest_percentile(timings, .99) << "}\n";
+  return 0;
+}
+
 int run_gate(int argc, char** argv) {
   if (argc != 10)
     throw std::runtime_error("usage: benchmark --candidate-gate payload thq thresholds candidate_flat offsets queries query_count expected_side_bytes");
@@ -458,6 +515,8 @@ int main(int argc, char** argv) {
     }
     if (argc >= 2 && std::string(argv[1]) == "--candidate-gate")
       return run_gate(argc, argv);
+    if (argc >= 2 && std::string(argv[1]) == "--full-flat")
+      return run_full_flat(argc, argv);
     throw std::runtime_error("expected --self-test or --candidate-gate");
   } catch (const std::exception& error) {
     std::cerr << error.what() << '\n';

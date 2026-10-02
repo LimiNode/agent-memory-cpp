@@ -1,6 +1,6 @@
 {
   "blocked_gates": [
-    "native packed TQ1+PQ8/RSLM1 full-flat payloads",
+    "native packed RSLM1 full-flat payload",
     "packed Prototype-IVF route for every finalist",
     "one unified five-repeat R4 harness for all finalists",
     "fresh untouched qrels after route/configuration freeze"
@@ -58,14 +58,13 @@
         "status": "PRESENT"
       },
       "TQ1+PQ8": {
-        "candidate_only": {
-          "bytes": 1099,
-          "path": "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json",
-          "sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0",
+        "result": {
+          "bytes": 1265,
+          "path": "guides/experiments/2026-10-02-tq1-pq8-full-flat.result.json",
+          "sha256": "279a6f97af0dbc488800ef1fba8ffe04ef1715c72b728d858f50db5803f62aff",
           "status": "PRESENT"
         },
-        "reason": "no committed 1M packed payload",
-        "status": "PENDING_SOURCE_REPLAY"
+        "status": "PRESENT"
       }
     },
     "modern_r4": {
