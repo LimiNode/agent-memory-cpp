@@ -1081,6 +1081,31 @@ double percentile(std::vector<double> values, double fraction) {
   return values[lower] * (1.0 - weight) + values[upper] * weight;
 }
 
+int run_int8_full_flat(int argc, char** argv) {
+  if (argc != 8)
+    throw std::runtime_error("usage: benchmark --int8-full-flat codes scales queries warmups repeats raw_output");
+  const auto codes = read<std::int8_t>(argv[2]); const auto scales = read<float>(argv[3]);
+  const auto queries = read<float>(argv[4]); const auto warmups = static_cast<std::size_t>(std::stoull(argv[5]));
+  const auto repeats = static_cast<std::size_t>(std::stoull(argv[6])); std::ofstream raw(argv[7]);
+  if (codes.size() != kDocuments * kDimension || scales.size() != kDocuments || queries.size() < 152 * kDimension || !raw || warmups == 0 || repeats == 0)
+    throw std::runtime_error("INT8 full-flat fixture shape differs");
+  std::vector<double> timings; timings.reserve(152 * repeats);
+  for (std::size_t qi = 0; qi < 152; ++qi) {
+    const float* query = queries.data() + qi * kDimension;
+    for (std::size_t rep = 0; rep < warmups + repeats; ++rep) {
+      const auto begin = std::chrono::steady_clock::now(); const auto top = direct_top10_production(codes, scales, query);
+      if (rep >= warmups) {
+        const double elapsed = elapsed_ms(begin, std::chrono::steady_clock::now()); timings.push_back(elapsed);
+        raw << "{\"query\":" << qi << ",\"repeat\":" << (rep - warmups) << ",\"timing_ms\":" << elapsed << ",\"top10_ids\":[";
+        for (std::size_t index = 0; index < top.size(); ++index) { if (index) raw << ','; raw << top[index].id; }
+        raw << "]}\n";
+      }
+    }
+  }
+  std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"codec\":\"INT8\",\"metric\":\"reconstructed_cosine\",\"mode\":\"full_flat_1m\",\"queries\":152,\"repeats\":" << repeats << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << "}\n";
+  return 0;
+}
+
 double query_median_percentile(const std::vector<double>& values,
                                std::size_t query_count, std::size_t repeats,
                                double fraction) {
@@ -1866,6 +1891,10 @@ int run_int8_matched_r4(int argc, char** argv) {
 int main(int argc, char** argv) {
   if (argc >= 2 && std::string(argv[1]) == "--lsq-full-flat") {
     try { return run_lsq_full_flat(argc, argv); }
+    catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
+  }
+  if (argc >= 2 && std::string(argv[1]) == "--int8-full-flat") {
+    try { return run_int8_full_flat(argc, argv); }
     catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
   }
   if (argc >= 2 && std::string(argv[1]) == "--production-control") {

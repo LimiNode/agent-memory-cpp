@@ -25,7 +25,7 @@ and raw JSONL plus an independent audit.
 
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
-| INT8 | 388 | measured control | pending | measured control; unified refresh pending | historical control; fresh qrels pending |
+| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | pending | refreshed native full-flat control under unified 1+5 contract; unified R4 refresh pending | historical control; fresh qrels pending |
 | LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | pending | measured under unified full-flat packed contract; unified R4 refresh pending | historical qrels; fresh pending |
 | LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | pending | measured under unified full-flat packed contract; unified R4 refresh pending | historical qrels; fresh pending |
 | TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | pending | measured under canonical reconstructed-cosine full-flat contract; unified refresh pending | historical qrels; fresh pending |

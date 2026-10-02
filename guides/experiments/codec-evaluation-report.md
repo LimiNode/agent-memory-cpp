@@ -157,7 +157,7 @@ its payload is not a matrix of native codec finalists.
 
 | Path | p50 ms | Interpretation |
 | --- | ---: | --- |
-| Direct INT8 flat | 106.384 | native INT8 control |
+| Direct INT8 flat | **407.349** | refreshed 1+5 native INT8 control; p95 412.041, p99 415.342; independent ordered top-10 replay 152/152 |
 | THQ → INT8 | 83.672 | native THQ routing plus INT8 rerank |
 | LSQ32 | **178.670** | 1M packed LSQ32 scan; p95 188.975, p99 209.586; one warmup + five repeats; independent ordered top-10 replay **152/152** |
 | LSQ48 | **228.908** | 1M packed LSQ48 scan; p95 241.341, p99 254.029; one warmup + five repeats; independent ordered top-10 replay **152/152** |

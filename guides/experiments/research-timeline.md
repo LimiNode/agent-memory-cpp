@@ -1196,3 +1196,11 @@ one-warmup/five-repeat contract. Native p50/p95/p99 are 228.908/241.341/254.029
 ms, and the independent packed decode/ranking replay matches ordered top-10 for
 152/152 queries. This closes the LSQ48 full-flat row; INT8, routed modes and
 fresh quality remain open.
+
+### INT8 full-flat control refresh (2026-10-02)
+
+The INT8 control was rerun over the full 1M corpus with the same one-warmup,
+five-repeat and nearest-rank contract used by the packed finalists. Native
+p50/p95/p99 are 407.349/412.041/415.342 ms; an independent scalar packed
+replay matches ordered top-10 for 152/152 queries. This replaces the older
+mixed-generation flat control row and completes the full-flat 7/7 matrix.

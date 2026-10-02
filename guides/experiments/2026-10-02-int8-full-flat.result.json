@@ -1,0 +1,31 @@
+{
+  "audit_sha256": "a7bdfd2ceeaefa7f01d31a5874d33923a95fb13e28fa848a5556cc94db2cccd1",
+  "audit_status": "PASS",
+  "codec": "INT8",
+  "codes_sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c",
+  "documents": 1000000,
+  "family": "three_mode_full_flat_replay_v1",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "INT8 is the full-flat control with separate 384-byte codes and 4-byte scale sidecar",
+    "Prototype-IVF, unified R4, fresh-qrels and MDBX gates remain separate"
+  ],
+  "measured_repeats": 5,
+  "metric": "reconstructed_cosine",
+  "mode": "full_flat_1m",
+  "payload_bytes": 388000000,
+  "percentile": "nearest_rank",
+  "queries": 152,
+  "raw_sha256": "e1a2f45aafadf09408188276e665e0bfddb6a61f50da0f58c8437e01fb971ccf",
+  "reference_runner_sha256": "0f00af3151c412b4b9f441801519af48fa610746d1a6ddecc614fc03b43edade",
+  "scales_sha256": "7bff3b0efa1f643e1258e8526498b88876bae732850ab8f10da27ad19c53488d",
+  "schema_version": 1,
+  "status": "PASS",
+  "tie_break": "score_desc_id_asc",
+  "timing_ms": {
+    "p50": 407.349,
+    "p95": 412.041,
+    "p99": 415.342
+  },
+  "warmup_count": 1
+}

@@ -16,9 +16,12 @@
   "modes": {
     "full_flat_1m": {
       "INT8": {
-        "bytes": 2019,
-        "path": "guides/experiments/2026-09-30-native-full-corpus-serving-control.result.json",
-        "sha256": "abb9fbf5662e51e5f32ec6cd4d31626ac93b2f33d8e4a3817d865a02a6ec6864",
+        "result": {
+          "bytes": 1168,
+          "path": "guides/experiments/2026-10-02-int8-full-flat.result.json",
+          "sha256": "d22468093673d358f92e08013a653af191a83c80e9be6ee5725aad5a1b08d71f",
+          "status": "PRESENT"
+        },
         "status": "PRESENT"
       },
       "LSQ32": {
