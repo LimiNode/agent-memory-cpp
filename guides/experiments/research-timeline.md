@@ -1188,3 +1188,11 @@ one-warmup/five-repeat contract. Native p50/p95/p99 are 178.670/188.975/209.586
 ms, and the independent packed decode/ranking replay matches ordered top-10 for
 152/152 queries. This replaces the prior summary-only LSQ32 flat row; LSQ48,
 Prototype-IVF, unified R4 refresh and fresh quality remain open.
+
+### LSQ48 full-flat replay (2026-10-02)
+
+The frozen 48-byte LSQ payload was rescanned over all 1M rows under the same
+one-warmup/five-repeat contract. Native p50/p95/p99 are 228.908/241.341/254.029
+ms, and the independent packed decode/ranking replay matches ordered top-10 for
+152/152 queries. This closes the LSQ48 full-flat row; INT8, routed modes and
+fresh quality remain open.

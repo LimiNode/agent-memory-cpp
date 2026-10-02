@@ -31,10 +31,13 @@
         "status": "PRESENT"
       },
       "LSQ48": {
-        "bytes": 15517,
-        "path": "guides/experiments/codec-evaluation-report.md",
-        "sha256": "6a464e2114b6d975969520ef62bf5ef6827f9a1af58ba50b3b48bd6eb699c93a",
-        "status": "SUMMARY_ONLY"
+        "result": {
+          "bytes": 1061,
+          "path": "guides/experiments/2026-10-02-lsq48-full-flat.result.json",
+          "sha256": "5567b9ccb16db6919fd6c6ae501b030dcc98efd1657bddc529fcc1226fe9343c",
+          "status": "PRESENT"
+        },
+        "status": "PRESENT"
       },
       "PLSQ8x6x8": {
         "bytes": 1543,
