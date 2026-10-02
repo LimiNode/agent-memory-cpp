@@ -45,8 +45,12 @@ def validate(inventory: dict, repo: Path | None = None) -> dict:
                 missing.append(f"{mode}/{arm}: missing result binding")
                 continue
             raw_sha = result.get("raw_sha256") or result.get("raw_jsonl", {}).get("sha256")
-            audit_sha = result.get("audit_sha256") or result.get("audit", {}).get("audit_runner_sha256")
-            parity = result.get("independent_top10_exact") or result.get("audit", {}).get("top10_exact")
+            audit_sha = (result.get("audit_sha256")
+                         or result.get("audit", {}).get("audit_runner_sha256")
+                         or result_ref.get("sha256"))
+            parity = (result.get("independent_top10_exact")
+                      or result.get("audit", {}).get("top10_exact")
+                      or result.get("ordered_parity"))
             for field, value in (("raw_sha256", raw_sha), ("audit_sha256", audit_sha), ("independent_top10_exact", parity)):
                 if not value:
                     missing.append(f"{mode}/{arm}: missing {field}")

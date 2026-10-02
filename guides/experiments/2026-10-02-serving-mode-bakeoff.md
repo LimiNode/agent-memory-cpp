@@ -37,6 +37,18 @@ and raw JSONL plus an independent audit.
 prototype-IVF receipts for these finalists, and decoded/scalar historical IVF
 results are not promoted into this matrix.
 
+### Prototype route checkpoint (2026-10-02)
+
+The first deterministic route artifact is now materialized at
+`artifacts/prototype-ivf/route.manifest.json` with the candidate stream in
+`artifacts/prototype-ivf/candidate-ids.i4`. It uses the canonical 1M vectors,
+25,000 training rows, spherical 256-cell k-means, four selected cells per
+query, an 8,192-posting bound and a 5,000-ID downstream candidate budget. The
+route is source-bound and reproducible, but it is deliberately only a routing
+checkpoint: packed THQ/final-codec scoring, independent parity and quality
+decomposition remain required before any Prototype-IVF matrix cell can move
+from `PENDING_SOURCE_REPLAY`.
+
 The machine-readable checkpoint for this boundary is
 [`2026-10-02-three-mode-bakeoff.inventory.json`](2026-10-02-three-mode-bakeoff.inventory.json).
 It hashes present receipts and records every missing row as

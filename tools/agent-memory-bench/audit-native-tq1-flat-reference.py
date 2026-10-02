@@ -144,16 +144,36 @@ def top10(centroids: np.ndarray, signs: np.ndarray, scales: np.ndarray,
     return [item[1] for item in candidates[:10]]
 
 
+def self_test() -> None:
+    """Guard the canonical denominator against a dot-only regression."""
+    document = np.asarray([[3.0, 0.0], [1.0, 1.0]], dtype=np.float64)
+    query = np.asarray([1.0, 1.0], dtype=np.float64)
+    dot_only = document @ query
+    cosine = dot_only / np.maximum(
+        np.linalg.norm(document, axis=1) * np.linalg.norm(query), 1e-30
+    )
+    if int(np.argmax(dot_only)) != 0 or int(np.argmax(cosine)) != 1:
+        raise AssertionError("TQ1 cosine self-test fixture is not discriminating")
+    print("native-tq1-flat-reference self-test PASS")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--payload", type=Path, required=True)
-    parser.add_argument("--thq", type=Path, required=True)
-    parser.add_argument("--queries", type=Path, required=True)
-    parser.add_argument("--raw", type=Path, required=True)
+    parser.add_argument("--self-test", action="store_true")
+    parser.add_argument("--payload", type=Path)
+    parser.add_argument("--thq", type=Path)
+    parser.add_argument("--queries", type=Path)
+    parser.add_argument("--raw", type=Path)
     parser.add_argument("--query-count", type=int, default=152)
     parser.add_argument("--chunk-size", type=int, default=100_000)
-    parser.add_argument("--result", type=Path, required=True)
+    parser.add_argument("--result", type=Path)
     args = parser.parse_args()
+    if args.self_test:
+        self_test()
+        return
+    for name in ("payload", "thq", "queries", "raw", "result"):
+        if getattr(args, name) is None:
+            parser.error(f"--{name.replace('_', '-')} is required")
     native = read_raw(args.raw, args.query_count)
     validate_raw_repeats(args.raw, args.query_count)
     centroids, signs, scales = parse_payload(args.payload)

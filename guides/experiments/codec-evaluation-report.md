@@ -90,10 +90,10 @@ was fast.
 | INT8 | measured control | pending matched packed route | measured control; unified refresh pending | control |
 | LSQ32 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
 | LSQ48 | measured packed | pending | measured under older contract; refresh pending | finalist, not yet cross-mode matched |
-| TQ1 | pending packed payload | pending | measured under older contract; refresh pending | candidate-local/legacy rows cannot fill flat or balanced columns |
-| TQ1+PQ8 | pending packed payload | pending | measured under older contract; refresh pending | same boundary as TQ1 |
+| TQ1 | measured reconstructed-cosine packed | pending packed downstream scorer | measured under older contract; refresh pending | canonical full-flat row is closed; routed rows remain open |
+| TQ1+PQ8 | measured reconstructed-cosine packed | pending packed downstream scorer | measured under older contract; refresh pending | canonical full-flat row is closed; routed rows remain open |
 | PLSQ8x6x8 | measured + independent replay | pending | measured packed; refresh pending | strongest current packed coverage |
-| RSLM1 | pending packed payload | pending | measured packed; refresh pending | full-flat and balanced gates remain open |
+| RSLM1 | measured faithful packed | pending packed downstream scorer | measured packed; refresh pending | full-flat row is closed; routed gates remain open |
 
 No final speed ranking is inferred from this mixed-generation table. A valid
 ranking requires one harness, one warmup/repeat contract and one audit across

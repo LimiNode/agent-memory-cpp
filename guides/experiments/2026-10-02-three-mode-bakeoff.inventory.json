@@ -144,6 +144,12 @@
     }
   },
   "schema_version": 1,
+  "prototype_route_checkpoint": {
+    "manifest": "artifacts/prototype-ivf/route.manifest.json",
+    "candidate_stream": "artifacts/prototype-ivf/candidate-ids.i4",
+    "status": "ROUTING_ONLY",
+    "note": "Frozen deterministic route exists; packed codec serving rows remain pending until downstream scoring and independent parity are generated."
+  },
   "source_requirements": {
     "canonical_document_vectors": {
       "expected_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",

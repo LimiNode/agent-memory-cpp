@@ -1204,3 +1204,14 @@ five-repeat and nearest-rank contract used by the packed finalists. Native
 p50/p95/p99 are 407.349/412.041/415.342 ms; an independent scalar packed
 replay matches ordered top-10 for 152/152 queries. This replaces the older
 mixed-generation flat control row and completes the full-flat 7/7 matrix.
+
+### Prototype-IVF route checkpoint (2026-10-02)
+
+A deterministic source-bound Prototype-IVF route was materialized from the
+canonical 1M document vectors using 25,000 training rows, spherical 256-cell
+k-means, four selected cells and an 8,192-posting bound before selecting 5,000
+downstream IDs. The route manifest and int32 candidate stream are committed
+under `artifacts/prototype-ivf/`. This is a routing-only checkpoint: no codec
+row is promoted until packed THQ/final scoring, raw timing, independent
+ordered parity and quality decomposition are generated against this frozen
+stream.

@@ -1,0 +1,31 @@
+{
+  "candidate_budget": 8192,
+  "candidate_id_dtype": "int32",
+  "candidate_k": 5000,
+  "candidate_tie_policy": "score_desc_id_asc",
+  "dimension": 384,
+  "document_count": 1000000,
+  "family": "prototype_ivf_balanced_route_v1",
+  "limitations": [
+    "routing-only receipt; packed codec scoring and quality parity are separate gates"
+  ],
+  "max_candidates": 5000,
+  "mean_candidates": 5000,
+  "metric": "cosine",
+  "min_candidates": 5000,
+  "nlist": 256,
+  "nprobe": 4,
+  "output_sha256": "455613d5e7c239e56efea78c2b2fd1f99c43751b3f4bac55fdaa103aabeab7ce",
+  "query_count": 152,
+  "raw_candidate_count_max": 26442,
+  "raw_candidate_count_mean": 15376.190789473685,
+  "route_model_sha256": "8e951e0a55f5bfb805e0b63f301cfbeece0a361086972da0484048ad3106319d",
+  "schema_version": 1,
+  "source_hashes": {
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "queries": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "status": "PASS",
+  "training_rows": 25000
+}

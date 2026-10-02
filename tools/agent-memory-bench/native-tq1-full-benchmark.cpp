@@ -33,7 +33,12 @@ std::uint64_t permute_step(std::uint64_t state, std::size_t i, std::vector<std::
   state = state * 6364136223846793005ULL + 1442695040888963407ULL; const std::size_t j = static_cast<std::size_t>((state >> 32) % (i + 1)); std::swap(values[i], values[j]); return state;
 }
 std::vector<std::int64_t> permutation(std::uint64_t seed) { std::vector<std::int64_t> values(D); for (std::size_t i = 0; i < D; ++i) values[i] = static_cast<std::int64_t>(i); std::uint64_t state = seed; for (std::size_t i = D - 1; i > 0; --i) state = permute_step(state, i, values); return values; }
-void wht(std::vector<double>& x) { for (std::size_t offset = 0, left = D; left;) { const std::size_t size = std::size_t(1) << (63 - static_cast<std::size_t>(__builtin_clzll(left))); for (std::size_t h = 1; h < size; h <<= 1) for (std::size_t j = 0; j < h; ++j) for (std::size_t k = offset + j; k < offset + size; k += 2 * h) { const double a = x[k], b = x[k + h]; x[k] = a + b; x[k + h] = a - b; } const double scale = std::sqrt(static_cast<double>(size)); for (std::size_t k = offset; k < offset + size; ++k) x[k] /= scale; offset += size; left -= size; } }
+std::size_t highest_power_of_two(std::size_t value) {
+  std::size_t result = 1;
+  while ((result << 1U) <= value) result <<= 1U;
+  return result;
+}
+void wht(std::vector<double>& x) { for (std::size_t offset = 0, left = D; left;) { const std::size_t size = highest_power_of_two(left); for (std::size_t h = 1; h < size; h <<= 1) for (std::size_t j = 0; j < h; ++j) for (std::size_t k = offset + j; k < offset + size; k += 2 * h) { const double a = x[k], b = x[k + h]; x[k] = a + b; x[k + h] = a - b; } const double scale = std::sqrt(static_cast<double>(size)); for (std::size_t k = offset; k < offset + size; ++k) x[k] /= scale; offset += size; left -= size; } }
 std::vector<double> rotate(const float* input) { std::vector<double> out(D); for (std::size_t i = 0; i < D; ++i) out[i] = input[i]; wht(out); for (const auto seed : {654605292835415893ULL, 8636605637963351413ULL, 1775280196666917949ULL}) { auto p = permutation(seed); std::vector<double> tmp(D); for (std::size_t i = 0; i < D; ++i) tmp[i] = out[p[i]]; out.swap(tmp); wht(out); } return out; }
 std::vector<double> inverse_rotate(std::array<double, D> values) {
   std::vector<double> out(values.begin(), values.end());
