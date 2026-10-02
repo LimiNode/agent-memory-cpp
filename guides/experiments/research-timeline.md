@@ -1118,6 +1118,17 @@ Its raw rows and structural audit are committed, but the existing independent
 AMPLSQF1 replay is specialized to the 8x6x8 payload shape; therefore this row
 remains structural-only until an 8x4 reference auditor is added.
 
+### Source-artifact recovery checkpoint (2026-10-02)
+
+The recovery pass inspected the available TQ/RSLM and THQ artifacts. TQ1 and
+TQ1+PQ8 payloads are candidate-union artifacts with 18,362 rows, and the
+RSLM symbols are likewise candidate-union materializations; neither can be
+expanded to a 1M row-aligned serving payload without the original document
+vectors. The canonical THQ receipt records the required document-vector hash
+`d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007`, but the
+corresponding source file is absent from the workspace. The inventory now
+records this exact missing input and keeps the affected modes fail-closed.
+
 ### PLSQ8x6x8 full-flat replay (2026-10-02)
 
 The source-bound AMPLSQF1 PLSQ8x6x8 payload was rescanned over the full 1M

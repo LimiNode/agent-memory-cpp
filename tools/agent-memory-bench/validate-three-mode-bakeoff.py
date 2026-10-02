@@ -67,6 +67,17 @@ def build_inventory(repo: Path) -> dict:
                      "percentile": "nearest_rank",
                      "tie_break": "score_desc_id_asc",
                      "query_count": 152, "top_k": 10},
+        "source_requirements": {
+            "canonical_document_vectors": {
+                "expected_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+                "status": "MISSING_FROM_WORKSPACE",
+                "required_for": ["TQ1", "TQ1+PQ8", "RSLM1", "prototype_ivf_balanced"],
+            },
+            "canonical_thq4_queries": {
+                "status": "AVAILABLE_EXTERNAL",
+                "path": "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1/inputs/queries.f32",
+            },
+        },
         "modes": {"full_flat_1m": flat, "prototype_ivf_balanced": prototype,
                   "modern_r4": r4},
         "blocked_gates": [
