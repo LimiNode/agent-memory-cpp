@@ -1126,8 +1126,9 @@ RSLM symbols are likewise candidate-union materializations; neither can be
 expanded to a 1M row-aligned serving payload without the original document
 vectors. The canonical THQ receipt records the required document-vector hash
 `d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007`, but the
-corresponding source file is absent from the workspace. The inventory now
-records this exact missing input and keeps the affected modes fail-closed.
+the corresponding source file was absent from the fresh research worktree.
+The validated source was recovered read-only from the original workspace, and
+the inventory records its external path and exact hash.
 
 The source was subsequently recovered from the validated DE-1M workspace and
 used to materialize a full 1M TQ1 packed table. The receipt

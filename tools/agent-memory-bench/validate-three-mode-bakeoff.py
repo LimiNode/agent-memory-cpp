@@ -70,7 +70,8 @@ def build_inventory(repo: Path) -> dict:
         "source_requirements": {
             "canonical_document_vectors": {
                 "expected_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
-                "status": "MISSING_FROM_WORKSPACE",
+                "status": "AVAILABLE_EXTERNAL",
+                "path": "E:/_repoz/agent-memory-cpp/tmp/native-ann-confirmation-v1/de-1m/e5/evaluation-document-vectors.f32",
                 "required_for": ["TQ1", "TQ1+PQ8", "RSLM1", "prototype_ivf_balanced"],
             },
             "canonical_thq4_queries": {
