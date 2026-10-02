@@ -1262,3 +1262,13 @@ canonical THQ top-128 and independent packed Python replay (`152/152`). The
 `candidate148` artifact is already 128-wide; its packed run is retained as a
 top-128 component diagnostic, not a full Modern R4 serving row. The strict
 completion inventory therefore advances from 7/21 to 9/21.
+
+### Packed PLSQ Prototype-IVF row (2026-10-02)
+
+The full-corpus PLSQ8x6x8 payload was materialized into query-local packed
+pages after the frozen 5,000-ID Prototype-IVF route. The native scorer now
+accepts both 4-byte route IDs and 148-byte candidate records, runs one warmup
+plus five measured repeats, and the independent packed audit recomputes THQ
+selection and PLSQ scores. Ordered top-10 parity is 152/152. This advances the
+strict serving inventory to 10/21; the 128-wide `candidate148` Modern R4
+component remains diagnostic.

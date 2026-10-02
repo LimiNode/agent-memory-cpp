@@ -136,8 +136,8 @@
         "status": "PRESENT"
       },
       "PLSQ8x6x8": {
-        "reason": "packed Prototype-IVF route receipt not committed",
-        "status": "PENDING_SOURCE_REPLAY"
+        "result": {"path": "artifacts/prototype-ivf/plsq8x6.result.json", "status": "PRESENT"},
+        "status": "PRESENT"
       },
       "RSLM1": {
         "reason": "packed Prototype-IVF route receipt not committed",

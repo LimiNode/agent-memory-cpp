@@ -1,0 +1,29 @@
+{
+  "audit_path": "artifacts/prototype-ivf/plsq8x6.audit.json",
+  "audit_sha256": "0de8ebe186f94c3fa97538bce4295cea3ea591c3952670ce6a215927b0452333",
+  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "codec": "PLSQ8x6x8",
+  "family": "native_packed_plsq_prototype_ivf_v1",
+  "independent_top10_exact": "152/152",
+  "limitations": [
+    "route and THQ are timed together; MDBX I/O is outside scope"
+  ],
+  "mode": "prototype_ivf_balanced",
+  "payload_sha256": "74ba1dfb9a17b815b692d6d02436791433895a7fc632aea8fb7bcb0178820558",
+  "percentile_contract": "nearest_rank_v1",
+  "predecoded_fp32": false,
+  "query_count": 152,
+  "raw_sha256": "6af54cc7154273dcab58872186760a32e3d8715cf73ababaf47f32eabf67f78e",
+  "reference_kind": "independent_packed_replay",
+  "repeats": 5,
+  "representation": "packed_native",
+  "schema_version": 1,
+  "status": "PRESENT",
+  "timed_final_scorer": "codec_specific",
+  "timing_ms": {
+    "p50": 3.498,
+    "p95": 3.8714,
+    "p99": 4.6916
+  },
+  "warmups": 1
+}

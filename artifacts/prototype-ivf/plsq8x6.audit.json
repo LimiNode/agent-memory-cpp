@@ -1,0 +1,12 @@
+{
+  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "family": "independent_packed_plsq_routed_v1",
+  "independent_top10_exact": "152/152",
+  "mismatches": [],
+  "payload_sha256": "74ba1dfb9a17b815b692d6d02436791433895a7fc632aea8fb7bcb0178820558",
+  "query_count": 152,
+  "raw_sha256": "6af54cc7154273dcab58872186760a32e3d8715cf73ababaf47f32eabf67f78e",
+  "reference_kind": "independent_packed_replay",
+  "schema_version": 1,
+  "status": "PASS"
+}
