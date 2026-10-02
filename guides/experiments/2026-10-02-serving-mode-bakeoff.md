@@ -1,8 +1,11 @@
 # Canonical three-mode serving bake-off
 
-Status: `EXECUTED_DOWNSTREAM_MATRIX`; the serving receipts are source-bound and
-the strict validator reports 21/21 packed downstream rows. Fresh qrels and
-persistent MDBX gates remain separate.
+Status: `CHECKPOINT`; the serving receipts are source-bound and the strict
+validator reports 21/21 downstream rows after identity/audit checks. The
+historical Prototype-IVF route sweep is complete and the packed matrix has
+been regenerated against the selected `256/32/5000` route. This is not yet a
+product freeze: fresh untouched qrels and persistent MDBX gates remain
+separate.
 
 The compressed-codec program has three serving modes. They answer different
 questions and must not be collapsed into one latency ranking:
@@ -27,13 +30,13 @@ and raw JSONL plus an independent audit.
 
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
-| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | **0.760 / 0.914 / 1.180 ms** | **0.739 / 0.873 / 0.918 ms** | historical control; fresh qrels pending |
-| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **8.837 / 10.203 / 11.013 ms** | **7.583 / 9.023 / 9.485 ms** | historical qrels; fresh pending |
-| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **13.676 / 14.923 / 15.910 ms** | **11.263 / 13.039 / 13.558 ms** | historical qrels; fresh pending |
-| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | **2.726 / 3.074 / 3.344 ms** | **2.811 / 3.482 / 3.789 ms** | bounded packed-norm control; fresh pending |
-| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | **2.726 / 3.074 / 3.344 ms** | **2.811 / 3.482 / 3.789 ms** | packed downstream; fresh pending |
-| PLSQ8x6x8 | 52 | **177.522 / 199.755 / 218.113 ms** | **3.498 / 3.871 / 4.692 ms** | **3.106 / 3.565 / 3.802 ms** | packed + independent replay; fresh pending |
-| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | **2.954 / 3.442 / 3.797 ms** | **3.058 / 3.481 / 3.827 ms** | faithful packed; fresh pending |
+| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | **1.336 / 1.483 / 1.679 ms** | **0.739 / 0.873 / 0.918 ms** | historical control; fresh qrels pending |
+| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **8.742 / 10.000 / 10.421 ms** | **7.583 / 9.023 / 9.485 ms** | historical qrels; fresh pending |
+| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **13.801 / 15.081 / 15.511 ms** | **11.263 / 13.039 / 13.558 ms** | historical qrels; fresh pending |
+| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | **2.564 / 2.838 / 2.989 ms** | **2.511 / 2.853 / 2.963 ms** | exact reconstructed TQ norm; fresh pending |
+| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | **2.773 / 3.108 / 3.554 ms** | **2.613 / 3.007 / 3.414 ms** | independent PQ8 replay; fresh pending |
+| PLSQ8x6x8 | 52 | **177.522 / 199.755 / 218.113 ms** | **3.392 / 3.715 / 3.947 ms** | **3.106 / 3.565 / 3.802 ms** | packed + independent replay; fresh pending |
+| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | **3.099 / 3.460 / 3.680 ms** | **3.058 / 3.481 / 3.827 ms** | faithful packed; fresh pending |
 
 All 21 downstream cells now have source-bound packed receipts. These numbers
 exclude route generation and MDBX I/O; they are not fresh-quality or product
@@ -41,23 +44,21 @@ selection evidence.
 
 ### Prototype route checkpoint (2026-10-02)
 
-The first deterministic route artifact is now materialized at
+The selected deterministic route artifact is materialized at
 `artifacts/prototype-ivf/route.manifest.json` with the candidate stream in
-`artifacts/prototype-ivf/candidate-ids.i4`; its structural receipt is
+`artifacts/prototype-ivf/calibrated-256-32-5000.i4`; its structural receipt is
 `artifacts/prototype-ivf/route.audit.json`. It uses the canonical 1M vectors,
-25,000 training rows, spherical 256-cell k-means, four selected cells per
-query, an 8,192-posting bound and a 5,000-ID downstream candidate budget. The
-route is source-bound and reproducible. Packed THQ/final-codec scoring and
-independent parity are now recorded for all seven Prototype-IVF cells; quality
-decomposition remains a separate gate.
+25,000 training rows, spherical 256-cell k-means, 32 selected cells per
+query, a 5,000-ID downstream candidate budget and score-descending/ID-ascending
+posting order. The route is source-bound and reproducible. Packed THQ/final-
+codec scoring and independent parity are now recorded for all seven
+Prototype-IVF cells; quality decomposition remains a separate gate.
 
-The pre-freeze teacher coverage audit is recorded at
-`artifacts/prototype-ivf/quality.audit.json`. After correcting the posting
-bound to select by coarse score rather than raw ID order, it reports mean
-top-10 teacher coverage 0.6447368, p05 0.1 and a 0/10 worst query. Because the
-teacher file is not an independently recomputed exact oracle, this is
-calibration evidence, not Recall@5000; packed serving and exact route-quality
-decomposition remain required.
+The historical calibration audit is recorded at
+`artifacts/prototype-ivf/historical-calibration.json`. The selected point
+reports mean exact FP32 Recall@candidate 0.9263, p05 0.7 and worst 0.4 on the
+historical fixture. This is calibration evidence, not fresh qrels; fresh
+quality and route-loss decomposition remain required.
 
 ### Modern R4 refresh checkpoint (2026-10-02)
 
@@ -70,14 +71,45 @@ outside the timed downstream scope.
 
 The machine-readable checkpoint for this boundary is
 [`2026-10-02-three-mode-bakeoff.inventory.json`](2026-10-02-three-mode-bakeoff.inventory.json).
-It hashes the receipts and is expected to report `21/21`; it does not turn the
-downstream matrix into a fresh-quality or persistence result.
+It hashes the receipts and reports `21/21` only for the downstream evidence
+inventory. It does not turn the matrix into a fresh-quality or persistence
+result, and it is not a frozen product acceptance gate.
+
+### Corrective evidence pass (2026-10-02)
+
+TQ1 and TQ1+PQ8 are timed in separate native invocations. TQ1 uses the exact
+analytical reconstructed-norm sidecar; it no longer reuses the PQ8 final-norm
+denominator. Independent packed replays pass ordered top-10 parity 152/152 for
+both modes and both routed shells. RSLM1 has an independent transform/UE7M9
+replay with the same 152/152 parity. The Modern-R4 physical fused stream is
+bound to the canonical candidate identity by
+`artifacts/modern-r4-packed/candidate-identity.audit.json`.
+
+The historical route gate is complete. Fresh qrels remain closed until the
+route/configuration manifest is frozen and all fresh candidate streams are
+regenerated from untouched inputs.
+
+The completed historical sweep covers all 48 declared points. The strongest
+historical candidate-recall point was `nlist=256, nprobe=32, budget=5,000`
+(mean Recall@candidate 0.9263, p05 0.7, worst 0.4); the current 256/4 route
+was only 0.6447 mean with p05 0.1 and worst 0.0. These are exact-FP32
+candidate-recall diagnostics on the historical query fixture, not fresh qrels.
+The packed Prototype-IVF receipts are now bound to the selected
+`a983347f...` stream; the prior `f281...` receipts are retained only as
+historical evidence.
 
 Completion is checked separately by
 `tools/agent-memory-bench/validate-three-mode-completion.py`. That validator
 is intentionally strict: it requires all seven mandatory finalists in all
 three modes, raw/audit bindings and independent ordered `152/152` parity. It
 fails if any packed row loses those bindings.
+
+The remaining external gate is fresh untouched qrels. The inventory records
+the concrete search scope (`repository artifacts/guides`, this workspace and
+`fidelity-heavy-batch-v1`) as `EXTERNAL_NOT_FOUND`; the available
+`qrel-ids.i8`/`qrel-scores.f32` files are the historical fixture and are not
+reused as fresh labels. No fresh quality or Pareto/product winner is claimed
+until that external label bundle is supplied.
 
 ## Execution contract
 

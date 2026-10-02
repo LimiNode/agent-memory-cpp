@@ -1,17 +1,19 @@
 {
   "audit_path": "artifacts/prototype-ivf/tq1.audit.json",
-  "audit_sha256": "a226726d39b360455ccb6358eaeef309d307e902d77f1b5af5c013dd1a42212b",
-  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "audit_sha256": "f8568d1b13b4af3bc610c13937b04e8adfc438568507ae823587cdaa6bfb5d42",
+  "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
   "codec": "TQ1",
   "family": "packed_tq1_prototype_ivf_balanced_v1",
   "independent_top10_exact": "152/152",
+  "metric": "reconstructed_cosine_exact_tq_norm",
   "mode": "prototype_ivf_balanced",
-  "payload_sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802",
+  "norm_contract": "persisted analytical reconstructed TQ1 norm sidecar",
+  "payload_sha256": "e3333161ba3d2ca9c5d33b73efeedef9056564c2c418eef8dfb03fd1d707251c",
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
   "query_count": 152,
   "raw_rows": 760,
-  "raw_sha256": "1e3db97eb0198729a34e400ec8b9d50e8c098397d46988734cdac68036f3ca37",
+  "raw_sha256": "cd6cc8d78cfb68352b809f7e5c9b356d1f920fff320c11fdc402dc5717ff37ca",
   "reference_kind": "independent_packed_replay",
   "repeats": 5,
   "representation": "packed_native",
@@ -19,9 +21,9 @@
   "status": "PRESENT",
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 2.7262,
-    "p95": 3.0742,
-    "p99": 3.3437
+    "p50": 2.5641,
+    "p95": 2.8375,
+    "p99": 2.9888
   },
   "warmups": 1
 }

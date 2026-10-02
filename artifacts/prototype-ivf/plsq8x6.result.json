@@ -1,19 +1,17 @@
 {
   "audit_path": "artifacts/prototype-ivf/plsq8x6.audit.json",
-  "audit_sha256": "8ff03505395896d3e4ce3c2602a2fbad0d42acea5840a36a3e8e2c212a223b1a",
-  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "audit_sha256": "5c0951d612a3231108914795dde83a099fa8de5773a615e0a0221ac480d02ddd",
+  "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
   "codec": "PLSQ8x6x8",
-  "family": "native_packed_plsq_prototype_ivf_v1",
+  "family": "native_packed_plsq_prototype_ivf_balanced_v1",
   "independent_top10_exact": "152/152",
-  "limitations": [
-    "route and THQ are timed together; MDBX I/O is outside scope"
-  ],
   "mode": "prototype_ivf_balanced",
-  "payload_sha256": "74ba1dfb9a17b815b692d6d02436791433895a7fc632aea8fb7bcb0178820558",
+  "payload_sha256": "624132ef1054e6320dea29c10e209ac69ed574acb94274dae68855998c7133d5",
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
   "query_count": 152,
-  "raw_sha256": "34834b8ae56f645fe9aa59d0f9b13df772ccdaa9ec9c2f539421de9fee8ff14c",
+  "raw_rows": 760,
+  "raw_sha256": "fc8481e8a7a046eb0b1f538211a95b51c75edc68fc743f016433b77231b472da",
   "reference_kind": "independent_packed_replay",
   "repeats": 5,
   "representation": "packed_native",
@@ -21,9 +19,9 @@
   "status": "PRESENT",
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 3.498,
-    "p95": 3.8714,
-    "p99": 4.6916
+    "p50": 3.3921,
+    "p95": 3.7148,
+    "p99": 3.9467
   },
   "warmups": 1
 }

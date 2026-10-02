@@ -1,30 +1,30 @@
 {
-  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
-  "codec": "LSQ36",
-  "family": "native_packed_lsq_modern_r4_v1",
+  "audit_path": "artifacts/prototype-ivf/lsq32.audit.json",
+  "audit_sha256": "bfe4dc6621b465b67e8f9b581a15f5dd2f59202cf097cce8d19039c5f7c77ee7",
+  "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
+  "codec": "LSQ32",
+  "family": "native_packed_lsq_prototype_ivf_balanced_v1",
   "independent_top10_exact": "152/152",
   "limitations": [
-    "packed native downstream shell; route generation and MDBX I/O remain outside scope"
+    "native packed timing; independent Python replay must be completed before parity gate"
   ],
-  "mode": "modern_r4",
+  "mode": "prototype_ivf_balanced",
   "payload_sha256": "04d4a744788e5789ad4e92f3a15122f8b2ce48d3ad82e5744e8c64ccc2645698",
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
   "query_count": 152,
   "raw_rows": 760,
-  "raw_sha256": "3efe28b5467e2d1024fab75145bd77de0be0cf1cde789acdf61642bf11770b8b",
+  "raw_sha256": "f90cbbcbf796870cd27512a8277b9f62df7a595d6a8014a9800b1abf4340ff33",
   "reference_kind": "independent_packed_replay",
-  "audit_path": "artifacts/prototype-ivf/lsq32.audit.json",
-  "audit_sha256": "d22b8dd35c9f34e1207714c65586377497b51d7be65112d53f60d76b79b317bd",
   "repeats": 5,
   "representation": "packed_native",
   "schema_version": 1,
   "status": "PRESENT",
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 8.837,
-    "p95": 10.2031,
-    "p99": 11.0129
+    "p50": 8.7417,
+    "p95": 10.0004,
+    "p99": 10.4212
   },
   "warmups": 1
 }

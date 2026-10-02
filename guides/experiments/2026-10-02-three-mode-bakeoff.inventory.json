@@ -1,7 +1,6 @@
 {
   "blocked_gates": [
-    "fresh untouched qrels after route/configuration freeze",
-    "finalist-specific MDBX layouts after quality freeze"
+    "fresh untouched qrels after route/configuration freeze"
   ],
   "contract": {
     "measured_repeats": 5,
@@ -12,184 +11,139 @@
     "warmup_count": 1
   },
   "family": "three_mode_codec_bakeoff_inventory_v1",
-  "modern_r4_candidate_identity": {
-    "candidate_stream": "external:r4-fused-candidate-materialization/candidate-fused-flat.bin",
-    "note": "Fused ~5k candidate stream is source-bound and all seven packed native downstream rows have independent parity receipts; route generation remains outside timed downstream scope.",
-    "offsets": "artifacts/modern-r4-packed/candidate-offsets.u64",
-    "status": "PACKED_DOWNSTREAM_COMPLETE"
-  },
   "modes": {
     "full_flat_1m": {
       "INT8": {
-        "result": {
-          "bytes": 1168,
-          "path": "guides/experiments/2026-10-02-int8-full-flat.result.json",
-          "sha256": "d22468093673d358f92e08013a653af191a83c80e9be6ee5725aad5a1b08d71f",
-          "status": "PRESENT"
-        },
+        "bytes": 1372,
+        "path": "guides/experiments/2026-10-02-int8-full-flat.result.json",
+        "sha256": "65e9653f27d89cae032d88d3a447893b757b65b37d8f8636e328928077d51bef",
         "status": "PRESENT"
       },
       "LSQ32": {
-        "result": {
-          "bytes": 1060,
-          "path": "guides/experiments/2026-10-02-lsq32-full-flat.result.json",
-          "sha256": "f7bf7cf68e455a16b9bf6ffdbe85974bb3435a4712b2494a3231b7542c879ecf",
-          "status": "PRESENT"
-        },
+        "bytes": 1264,
+        "path": "guides/experiments/2026-10-02-lsq32-full-flat.result.json",
+        "sha256": "e25597f11504933813f10eab435008261a1bcb15fbb3defd56ae368410ba44e7",
         "status": "PRESENT"
       },
       "LSQ48": {
-        "result": {
-          "bytes": 1061,
-          "path": "guides/experiments/2026-10-02-lsq48-full-flat.result.json",
-          "sha256": "5567b9ccb16db6919fd6c6ae501b030dcc98efd1657bddc529fcc1226fe9343c",
-          "status": "PRESENT"
-        },
+        "bytes": 1265,
+        "path": "guides/experiments/2026-10-02-lsq48-full-flat.result.json",
+        "sha256": "740052eba31fa10f343173c06dfb90b7d4c35600f99c6420e07dc5d2931e8e1d",
         "status": "PRESENT"
       },
       "PLSQ8x6x8": {
-        "bytes": 1543,
+        "bytes": 1835,
         "path": "guides/experiments/2026-10-02-plsq8x6-flat-replay.result.json",
-        "sha256": "3268597c3830b66cab243686fe803413562fd1a493d8206eea655edcc6633d45",
+        "sha256": "634ab913480ea2d5b2f1417896431864e2bf86f74fb8f5a654eaaae2d62bf046",
         "status": "PRESENT"
       },
       "RSLM1": {
-        "result": {
-          "bytes": 1333,
-          "path": "guides/experiments/2026-10-02-rslm1-full-flat.result.json",
-          "sha256": "d0715dbb8e030cbfa10996258cebd8a814f1831f09ffbeb193400a5a634ed850",
-          "status": "PRESENT"
-        },
+        "bytes": 1537,
+        "path": "guides/experiments/2026-10-02-rslm1-full-flat.result.json",
+        "sha256": "2ae92de6224edcd1e776da82c803d4d7f8161bc3119042dc4705837e07f41f29",
         "status": "PRESENT"
       },
       "TQ1": {
-        "result": {
-          "bytes": 1482,
-          "path": "guides/experiments/2026-10-02-tq1-full-flat.result.json",
-          "sha256": "24b9bfc6e1de3b6f4f1c1dafeabf2276a09b4b6208b0598136cd7148fd2c2b7f",
-          "status": "PRESENT"
-        },
+        "bytes": 1686,
+        "path": "guides/experiments/2026-10-02-tq1-full-flat.result.json",
+        "sha256": "9b091cf53264eb4c4a96372bc44b3a5e7c64364106f167c688c4c4783381c1c0",
         "status": "PRESENT"
       },
       "TQ1+PQ8": {
-        "result": {
-          "bytes": 1265,
-          "path": "guides/experiments/2026-10-02-tq1-pq8-full-flat.result.json",
-          "sha256": "279a6f97af0dbc488800ef1fba8ffe04ef1715c72b728d858f50db5803f62aff",
-          "status": "PRESENT"
-        },
+        "bytes": 1469,
+        "path": "guides/experiments/2026-10-02-tq1-pq8-full-flat.result.json",
+        "sha256": "22fc4f05211a546ea5f22a4be5519ee2650b53a056bf573602d4906e263a764f",
         "status": "PRESENT"
       }
     },
     "modern_r4": {
       "INT8": {
-        "result": {
-          "path": "artifacts/modern-r4-packed/int8.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1208,
+        "path": "artifacts/modern-r4-packed/int8.result.json",
+        "sha256": "4f0902a594c83ba54796de89399a3dce163fa7ddbd82adf7a11e7369003a48e9",
         "status": "PRESENT"
       },
       "LSQ32": {
-        "result": {
-          "path": "artifacts/modern-r4-packed/lsq32.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1271,
+        "path": "artifacts/modern-r4-packed/lsq32.result.json",
+        "sha256": "7ac786e9938dd79e36bde1bbace4b0f0e2659cece10a62d01f8736ae1672177c",
         "status": "PRESENT"
       },
       "LSQ48": {
-        "result": {
-          "path": "artifacts/modern-r4-packed/lsq48.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1274,
+        "path": "artifacts/modern-r4-packed/lsq48.result.json",
+        "sha256": "6c9de84c48587755400b7681e223619a17e23234150af772a422a8e0cf905264",
         "status": "PRESENT"
       },
       "PLSQ8x6x8": {
-        "result": {
-          "path": "artifacts/modern-r4-packed/plsq8x6x8.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1166,
+        "path": "artifacts/modern-r4-packed/plsq8x6x8.result.json",
+        "sha256": "e258b4c4f5f7bf37f177f1230859afe034213d943ef64709d66656236ebc05f9",
         "status": "PRESENT"
       },
       "RSLM1": {
-        "result": {
-          "path": "artifacts/modern-r4-packed/rslm1.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1160,
+        "path": "artifacts/modern-r4-packed/rslm1.result.json",
+        "sha256": "d3f71d1cbdf60ab9eba1eacf61ccac295caffdb0f6b1a6c0f1e4c21825c626b7",
         "status": "PRESENT"
       },
       "TQ1": {
-        "result": {
-          "path": "artifacts/modern-r4-packed/tq1.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1273,
+        "path": "artifacts/modern-r4-packed/tq1.result.json",
+        "sha256": "87089d5b1011ef1e4016e92643892984f4b6dd125da891ec6bc8c91754f7cfcf",
         "status": "PRESENT"
       },
       "TQ1+PQ8": {
-        "result": {
-          "path": "artifacts/modern-r4-packed/tq1-pq8.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1263,
+        "path": "artifacts/modern-r4-packed/tq1-pq8.result.json",
+        "sha256": "681fb74c25a9243264cc4b802c9c921ba41dfef79f778d427837f44b48944010",
         "status": "PRESENT"
       }
     },
     "prototype_ivf_balanced": {
       "INT8": {
-        "result": {
-          "path": "artifacts/prototype-ivf/int8.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1032,
+        "path": "artifacts/prototype-ivf/int8.result.json",
+        "sha256": "20c657186c4f101f5f32420193620428f524f872a88e7317fcc838f5624db00f",
         "status": "PRESENT"
       },
       "LSQ32": {
-        "result": {
-          "path": "artifacts/prototype-ivf/lsq32.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1117,
+        "path": "artifacts/prototype-ivf/lsq32.result.json",
+        "sha256": "e0553ea1a28aa3a94c3423a8b0c5dfd312ba92957ad143fa5df52f0a06d88b29",
         "status": "PRESENT"
       },
       "LSQ48": {
-        "result": {
-          "path": "artifacts/prototype-ivf/lsq48.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1118,
+        "path": "artifacts/prototype-ivf/lsq48.result.json",
+        "sha256": "8240cffdee0d6b09d11be99764e53ea84cbb3c1b3265f3bac144a772d4f0b509",
         "status": "PRESENT"
       },
       "PLSQ8x6x8": {
-        "result": {
-          "path": "artifacts/prototype-ivf/plsq8x6.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1004,
+        "path": "artifacts/prototype-ivf/plsq8x6.result.json",
+        "sha256": "819d656f371eeba84e057250736c0dec877e3655587a4bb6d5af548890caa874",
         "status": "PRESENT"
       },
       "RSLM1": {
-        "result": {
-          "path": "artifacts/prototype-ivf/rslm1.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 991,
+        "path": "artifacts/prototype-ivf/rslm1.result.json",
+        "sha256": "e6e0ad963582be6e41cc390d620d42d98322ca24ef0637296b5fe48613def4dc",
         "status": "PRESENT"
       },
       "TQ1": {
-        "result": {
-          "path": "artifacts/prototype-ivf/tq1.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1112,
+        "path": "artifacts/prototype-ivf/tq1.result.json",
+        "sha256": "61a9489df053269703efed1c7c86a6eb9826086dd22a16daee4b70105d5ba456",
         "status": "PRESENT"
       },
       "TQ1+PQ8": {
-        "result": {
-          "path": "artifacts/prototype-ivf/tq1-pq8.result.json",
-          "status": "PRESENT"
-        },
+        "bytes": 1105,
+        "path": "artifacts/prototype-ivf/tq1-pq8.result.json",
+        "sha256": "2d8735d63fac305cc4a2a5fb6a32c087abae13beddf4d0d2ad34c97d0d4ba677",
         "status": "PRESENT"
       }
     }
-  },
-  "prototype_route_checkpoint": {
-    "candidate_stream": "artifacts/prototype-ivf/candidate-ids.i4",
-    "manifest": "artifacts/prototype-ivf/route.manifest.json",
-    "note": "Frozen deterministic Prototype-IVF route with packed native downstream evidence for all seven finalists; source route and MDBX I/O remain separately scoped.",
-    "quality_audit": "artifacts/prototype-ivf/quality.audit.json",
-    "status": "PACKED_DOWNSTREAM_COMPLETE"
   },
   "schema_version": 1,
   "source_requirements": {
@@ -207,7 +161,20 @@
     "canonical_thq4_queries": {
       "path": "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1/inputs/queries.f32",
       "status": "AVAILABLE_EXTERNAL"
+    },
+    "fresh_untouched_qrels": {
+      "required_for": [
+        "fresh nDCG@10",
+        "fresh Recall@K",
+        "Pareto freeze"
+      ],
+      "searched": [
+        "repository artifacts and guides/experiments",
+        "E:/_repoz/agent-memory-workspaces/three-mode-bakeoff",
+        "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1"
+      ],
+      "status": "EXTERNAL_NOT_FOUND"
     }
   },
-  "status": "PARTIAL"
+  "status": "CHECKPOINT"
 }

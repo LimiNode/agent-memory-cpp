@@ -21,7 +21,7 @@ production mode.
 | LSQ48 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | PLSQ8x6x8 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | PLSQ8x4x8 | measured | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
-| TQ1 | measured | **packed 3-mode matrix (bounded norm control)** | **measured (1M packed flat)** | pending |
+| TQ1 | measured | **packed 3-mode matrix (exact reconstructed norm)** | **measured (1M packed flat)** | pending |
 | TQ1+PQ8 | measured/partial serving | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | RSLM1 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | INT8 reference | control | control | measured | measured |
@@ -35,8 +35,11 @@ packed scorer and candidate topology.
 
 The canonical three-mode downstream completion receipt is
 [`2026-10-02-three-mode-bakeoff.completion.json`](2026-10-02-three-mode-bakeoff.completion.json);
-it currently validates `21/21` packed serving rows. This does not close fresh
-qrels or finalist-specific MDBX persistence.
+it currently validates `21/21` packed serving rows, including mode/family/codec
+identity, raw/audit hashes, independent scorer receipts, and the Modern-R4
+semantic candidate identity. Prototype-IVF receipts are bound to the selected
+calibrated route; this remains a checkpoint until fresh qrels and
+finalist-specific MDBX persistence are complete.
 
 ## Algorithmic quality
 
@@ -95,7 +98,7 @@ was fast.
 | INT8 | measured control | **measured packed** | **measured packed** | control |
 | LSQ32 | measured packed | **measured packed** | **measured packed** | finalist |
 | LSQ48 | measured packed | **measured packed** | **measured packed** | finalist |
-| TQ1 | measured reconstructed-cosine packed | **measured packed (bounded norm control)** | **measured packed (bounded norm control)** | fresh quality pending |
+| TQ1 | measured reconstructed-cosine packed | **measured packed (exact TQ norm)** | **measured packed (exact TQ norm)** | fresh quality pending |
 | TQ1+PQ8 | measured reconstructed-cosine packed | **measured packed** | **measured packed** | fresh quality pending |
 | PLSQ8x6x8 | measured + independent replay | **measured packed** | **measured packed** | finalist |
 | RSLM1 | measured faithful packed | **measured packed** | **measured packed** | finalist |
@@ -182,6 +185,18 @@ queries. Other rows retain their documented provenance and are not silently
 reinterpreted as this newer contract.
 
 ## Persistent MDBX layout
+
+### Corrective scorer and identity evidence (2026-10-02)
+
+The TQ1 and TQ1+PQ8 routed rows were regenerated in separate native
+invocations. TQ1 uses the persisted analytical reconstructed norm; TQ1+PQ8 uses
+its own PQ-corrected final norm. Both Prototype-IVF and Modern-R4 audits report
+ordered top-10 parity 152/152. RSLM1 now has an independent transform-domain
+replay with the same parity. The Modern-R4 fused physical stream is bound to
+the canonical candidate identity by
+`artifacts/modern-r4-packed/candidate-identity.audit.json` (152/152 set and
+ordered identity). These receipts are packed scorer evidence, not fresh qrels
+or MDBX persistence evidence.
 
 The completed segment sweep uses a split final-code projection (INT8 plus scale,
 388 bytes per logical row), fixed bounded top-k workspaces, raw timing samples,

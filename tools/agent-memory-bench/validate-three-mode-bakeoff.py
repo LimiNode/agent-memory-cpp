@@ -41,28 +41,28 @@ def evidence(repo: Path, relative: str, *, summary_only: bool = False) -> dict:
 
 def build_inventory(repo: Path) -> dict:
     flat = {
-        "INT8": evidence(repo, "guides/experiments/2026-09-30-native-full-corpus-serving-control.result.json"),
-        "LSQ32": evidence(repo, "guides/experiments/codec-evaluation-report.md", summary_only=True),
-        "LSQ48": evidence(repo, "guides/experiments/codec-evaluation-report.md", summary_only=True),
-        "PLSQ8x6x8": evidence(repo, "guides/experiments/2026-10-02-plsq8x6-flat-replay.result.json"),
-        "TQ1": {"status": "PRESENT", "result": evidence(repo, "guides/experiments/2026-10-02-tq1-full-flat.result.json")},
-        "TQ1+PQ8": {"status": "PENDING_SOURCE_REPLAY", "reason": "no committed 1M packed payload", "candidate_only": evidence(repo, "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json")},
-        "RSLM1": {"status": "PENDING_SOURCE_REPLAY", "reason": "faithful full-corpus payload not committed", "candidate_only": {"status": "EXTERNAL_CANDIDATE_ONLY", "path": "E:/_repoz/agent-memory-workspaces/native-finalist-v1/rslm-faithful-candidate-union"}},
+        arm: evidence(repo, path) for arm, path in {
+            "INT8": "guides/experiments/2026-10-02-int8-full-flat.result.json",
+            "LSQ32": "guides/experiments/2026-10-02-lsq32-full-flat.result.json",
+            "LSQ48": "guides/experiments/2026-10-02-lsq48-full-flat.result.json",
+            "TQ1": "guides/experiments/2026-10-02-tq1-full-flat.result.json",
+            "TQ1+PQ8": "guides/experiments/2026-10-02-tq1-pq8-full-flat.result.json",
+            "PLSQ8x6x8": "guides/experiments/2026-10-02-plsq8x6-flat-replay.result.json",
+            "RSLM1": "guides/experiments/2026-10-02-rslm1-full-flat.result.json",
+        }.items()
     }
-    r4 = {
-        "INT8": evidence(repo, "artifacts/2026-10-01-int8-matched-r4.audit.json"),
-        "PLSQ8x6x8": evidence(repo, "artifacts/2026-10-01-plsq8x6-matched-r4.audit.json"),
-        "RSLM1": evidence(repo, "artifacts/2026-10-01-rslm1-matched-r4.audit.json"),
-    }
-    for arm in FINALISTS:
-        r4.setdefault(arm, {"status": "PENDING_SOURCE_REPLAY", "reason": "unified five-repeat R4 refresh pending"})
-    prototype = {arm: {"status": "PENDING_SOURCE_REPLAY",
-                       "reason": "packed Prototype-IVF route receipt not committed"}
-                 for arm in FINALISTS}
+    prototype = {arm: evidence(repo, f"artifacts/prototype-ivf/{name}.result.json")
+                 for arm, name in {"INT8": "int8", "LSQ32": "lsq32", "LSQ48": "lsq48",
+                                   "TQ1": "tq1", "TQ1+PQ8": "tq1-pq8",
+                                   "PLSQ8x6x8": "plsq8x6", "RSLM1": "rslm1"}.items()}
+    r4 = {arm: evidence(repo, f"artifacts/modern-r4-packed/{name}.result.json")
+          for arm, name in {"INT8": "int8", "LSQ32": "lsq32", "LSQ48": "lsq48",
+                            "TQ1": "tq1", "TQ1+PQ8": "tq1-pq8",
+                            "PLSQ8x6x8": "plsq8x6x8", "RSLM1": "rslm1"}.items()}
     return {
         "schema_version": 1,
         "family": "three_mode_codec_bakeoff_inventory_v1",
-        "status": "PARTIAL",
+        "status": "CHECKPOINT",
         "contract": {"warmup_count": 1, "measured_repeats": 5,
                      "percentile": "nearest_rank",
                      "tie_break": "score_desc_id_asc",
@@ -78,15 +78,19 @@ def build_inventory(repo: Path) -> dict:
                 "status": "AVAILABLE_EXTERNAL",
                 "path": "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1/inputs/queries.f32",
             },
+            "fresh_untouched_qrels": {
+                "status": "EXTERNAL_NOT_FOUND",
+                "searched": [
+                    "repository artifacts and guides/experiments",
+                    "E:/_repoz/agent-memory-workspaces/three-mode-bakeoff",
+                    "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1",
+                ],
+                "required_for": ["fresh nDCG@10", "fresh Recall@K", "Pareto freeze"],
+            },
         },
         "modes": {"full_flat_1m": flat, "prototype_ivf_balanced": prototype,
                   "modern_r4": r4},
-        "blocked_gates": [
-            "native packed TQ1/TQ1+PQ8/RSLM1 full-flat payloads",
-            "packed Prototype-IVF route for every finalist",
-            "one unified five-repeat R4 harness for all finalists",
-            "fresh untouched qrels after route/configuration freeze",
-        ],
+        "blocked_gates": ["fresh untouched qrels after route/configuration freeze"],
     }
 
 

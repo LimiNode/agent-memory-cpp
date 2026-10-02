@@ -1,9 +1,5 @@
 {
   "candidate_budget": 5000,
-  "calibration_path": "artifacts/prototype-ivf/historical-calibration.json",
-  "calibration_sha256": "c5275b76db226964b9d7fd9360266f04369f23b2581c0ed590696a1920c527e",
-  "calibration_status": "COMPLETE_HISTORICAL_ONLY",
-  "frozen_for_fresh_qrels": false,
   "candidate_id_dtype": "int32",
   "candidate_k": 5000,
   "candidate_tie_policy": "score_desc_id_asc",
@@ -11,8 +7,7 @@
   "document_count": 1000000,
   "family": "prototype_ivf_balanced_route_v1",
   "limitations": [
-    "routing-only receipt; packed codec scoring and quality parity are separate gates",
-    "teacher coverage is calibration evidence, not exact-oracle Recall@K"
+    "routing-only receipt; packed codec scoring and quality parity are separate gates"
   ],
   "max_candidates": 5000,
   "mean_candidates": 5000,
@@ -22,8 +17,8 @@
   "nprobe": 32,
   "output_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
   "query_count": 152,
-  "raw_candidate_count_max": 21643,
-  "raw_candidate_count_mean": 15516.052631578947,
+  "raw_candidate_count_max": 150015,
+  "raw_candidate_count_mean": 122442.50657894737,
   "route_model_sha256": "8e951e0a55f5bfb805e0b63f301cfbeece0a361086972da0484048ad3106319d",
   "schema_version": 1,
   "source_hashes": {

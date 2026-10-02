@@ -1,7 +1,7 @@
 {
   "audit_path": "artifacts/prototype-ivf/rslm1.audit.json",
-  "audit_sha256": "70c8ec253070d2cb8f9588e4619c47f28bf210ff335f3bc2ab4ed68809a986e5",
-  "candidate_stream_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
+  "audit_sha256": "855c81f4c540728bd97056e502bb2f193a8faf3bbcc665447ed184a85f9ab4ab",
+  "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
   "codec": "RSLM1",
   "family": "packed_rslm1_prototype_ivf_balanced_v1",
   "independent_top10_exact": "152/152",
@@ -11,7 +11,7 @@
   "predecoded_fp32": false,
   "query_count": 152,
   "raw_rows": 760,
-  "raw_sha256": "ae07eb6d7bff7939c0c2d4b51c8851962632975bfd5197811aedd87cbd6194a7",
+  "raw_sha256": "c5f910157eb6b72efc72cedbeec3dcd1b02fa226d94e426eaefb2e26afe4348f",
   "reference_kind": "independent_packed_replay",
   "repeats": 5,
   "representation": "packed_native",
@@ -19,9 +19,9 @@
   "status": "PRESENT",
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 2.9543,
-    "p95": 3.4418,
-    "p99": 3.797
+    "p50": 3.099,
+    "p95": 3.4601,
+    "p99": 3.6804
   },
   "warmups": 1
 }

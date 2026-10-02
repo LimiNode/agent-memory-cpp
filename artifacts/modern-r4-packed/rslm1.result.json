@@ -1,7 +1,9 @@
 {
-  "audit_path": "artifacts/modern-r4-packed/rslm1.audit.json",
-  "audit_sha256": "40b21b462aa977b047b3f7548404b319725211b86f07f551107b044a8e77b5ef",
+  "audit_path": "artifacts/modern-r4-packed/rslm1.score.audit.json",
+  "audit_sha256": "10ca394064c2a10a1055cbab56c3fc3a80daca2de32db190e858b60d1912cd39",
   "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "candidate_identity_path": "artifacts/modern-r4-packed/candidate-identity.audit.json",
+  "candidate_identity_sha256": "7db828bee27e34ca312ac7e61d8768410819603482eb3d53945f203c42fb26ac",
   "codec": "RSLM1",
   "family": "packed_rslm1_modern_r4_v1",
   "independent_top10_exact": "152/152",

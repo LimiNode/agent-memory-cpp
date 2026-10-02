@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <unordered_set>
 
 namespace {
 constexpr std::size_t kDocuments = 1000000;
@@ -55,7 +56,7 @@ template <typename T> std::vector<T> read(const std::string& path) {
 Payload read_payload(const std::string& path) {
   const auto bytes = read<std::uint8_t>(path);
   constexpr std::size_t header = 24;
-  if (bytes.size() < header || std::memcmp(bytes.data(), "AMTQP01", 7) != 0)
+  if (bytes.size() < header)
     throw std::runtime_error("invalid TQ1/PQ8 payload header");
   auto u32 = [&](std::size_t offset) {
     std::uint32_t value = 0;
@@ -66,10 +67,43 @@ Payload read_payload(const std::string& path) {
   const auto count = u32(12);
   const auto subspaces = u32(16);
   const auto flags = u32(20);
-  if (dimension != kDimension || count == 0 || count > kDocuments ||
-      subspaces != kPqSubspaces ||
+  const bool full_tq = std::memcmp(bytes.data(), "AMTQF01", 7) == 0;
+  const bool tq_pq = std::memcmp(bytes.data(), "AMTQP01", 7) == 0;
+  if ((!full_tq && !tq_pq) || dimension != kDimension || count == 0 ||
+      count > kDocuments || (tq_pq && subspaces != kPqSubspaces) ||
       (flags & ~1U) != 0)
     throw std::runtime_error("invalid TQ1/PQ8 payload dimensions");
+  if (full_tq && flags != 0)
+    throw std::runtime_error("full TQ1 payload flags differ");
+  if (full_tq) {
+    const std::size_t expected = header + kDimension * 4 * sizeof(float) +
+        count * (kTqBytes + sizeof(float));
+    if (bytes.size() != expected)
+      throw std::runtime_error("full TQ1 payload size differs");
+    Payload result;
+    result.count = count;
+    result.has_tq_norm = false;
+    result.ids.resize(count);
+    result.signs.resize(count * kTqBytes);
+    result.scales.resize(count);
+    result.pq_codes.clear();
+    result.final_norms.clear();
+    result.thq_centroids.resize(kDimension * 4);
+    result.pq_centroids.clear();
+    std::size_t offset = header;
+    std::memcpy(result.thq_centroids.data(), bytes.data() + offset,
+                result.thq_centroids.size() * sizeof(float));
+    offset += result.thq_centroids.size() * sizeof(float);
+    for (std::size_t row = 0; row < count; ++row) {
+      result.ids[row] = static_cast<std::int32_t>(row);
+      std::memcpy(result.signs.data() + row * kTqBytes,
+                  bytes.data() + offset, kTqBytes);
+      offset += kTqBytes;
+      std::memcpy(&result.scales[row], bytes.data() + offset, sizeof(float));
+      offset += sizeof(float);
+    }
+    return result;
+  }
   const bool has_tq_norm = (flags & 1U) != 0;
   const std::size_t expected = header + count * sizeof(std::int32_t) +
       count * kTqBytes + count * sizeof(float) + count * kPqSubspaces +
@@ -180,6 +214,42 @@ std::vector<double> rotate_query(const float* query) {
     wht_normalized(result);
   }
   return result;
+}
+
+std::size_t payload_row(const Payload& payload, std::int32_t id);
+
+std::vector<double> inverse_rotate(std::vector<double> values) {
+  wht_normalized(values);
+  for (auto seed = kSeeds.rbegin(); seed != kSeeds.rend(); ++seed) {
+    const auto order = permutation(kDimension, *seed);
+    std::vector<double> unpermuted(kDimension);
+    for (std::size_t i = 0; i < kDimension; ++i)
+      unpermuted[order[i]] = values[i];
+    values = std::move(unpermuted);
+    wht_normalized(values);
+  }
+  return values;
+}
+
+float reconstructed_tq_norm(const Payload& payload,
+                            const std::vector<std::uint8_t>& thq,
+                            std::int32_t id) {
+  const auto row = payload_row(payload, id);
+  const auto* thq_row = thq.data() + static_cast<std::size_t>(id) * kThqBytes;
+  const auto* signs = payload.signs.data() + row * kTqBytes;
+  std::vector<double> residual(kDimension);
+  for (std::size_t byte = 0; byte < kTqBytes; ++byte)
+    for (std::size_t bit = 0; bit < 8; ++bit)
+      residual[byte * 8 + bit] = ((signs[byte] >> bit) & 1U) ? kTqCentroid : -kTqCentroid;
+  residual = inverse_rotate(std::move(residual));
+  double norm2 = 0.0;
+  for (std::size_t d = 0; d < kDimension; ++d) {
+    const auto level = (thq_row[d / 4] >> ((d % 4) * 2)) & 3U;
+    const double base = payload.thq_centroids[d * 4 + level];
+    const double value = base + residual[d] * payload.scales[row];
+    norm2 += value * value;
+  }
+  return static_cast<float>(std::sqrt(std::max(norm2, 1e-30)));
 }
 
 std::vector<double> build_thq_dot_lut(
@@ -313,6 +383,26 @@ double nearest_percentile(std::vector<double> values, double fraction) {
   return values[std::min(values.size() - 1, rank - 1)];
 }
 
+int materialize_tq_norms(int argc, char** argv) {
+  if (argc != 5)
+    throw std::runtime_error("usage: benchmark --materialize-tq-norms payload thq output");
+  const auto payload = read_payload(argv[2]);
+  const auto thq = read<std::uint8_t>(argv[3]);
+  if (payload.count != kDocuments || thq.size() != kDocuments * kThqBytes)
+    throw std::runtime_error("TQ norm materialization fixture shape differs");
+  std::vector<float> norms(kDocuments);
+  for (std::size_t id = 0; id < kDocuments; ++id)
+    norms[id] = reconstructed_tq_norm(payload, thq, static_cast<std::int32_t>(id));
+  std::ofstream out(argv[4], std::ios::binary);
+  if (!out) throw std::runtime_error("cannot open TQ norm output");
+  out.write(reinterpret_cast<const char*>(norms.data()),
+            static_cast<std::streamsize>(norms.size() * sizeof(float)));
+  if (!out) throw std::runtime_error("cannot write TQ norm output");
+  std::cout << "{\"status\":\"EXECUTED\",\"documents\":" << norms.size()
+            << ",\"norm_sha256_pending\":true}\n";
+  return 0;
+}
+
 int run_full_flat(int argc, char** argv) {
   if (argc != 8)
     throw std::runtime_error("usage: benchmark --full-flat payload thq queries warmups repeats raw_output");
@@ -365,8 +455,9 @@ int run_full_flat(int argc, char** argv) {
 }
 
 int run_gate(int argc, char** argv) {
-  if (argc != 10)
-    throw std::runtime_error("usage: benchmark --candidate-gate payload thq thresholds candidate_flat offsets queries query_count expected_side_bytes");
+  if (argc != 11)
+    throw std::runtime_error("usage: benchmark --candidate-gate[-tq1|-tq1-pq8] payload thq thresholds candidate_flat offsets queries query_count expected_side_bytes tq_norms");
+  const bool tq_only = std::string(argv[1]) == "--candidate-gate-tq1";
   const auto payload = read_payload(argv[2]);
   const auto thq = read<std::uint8_t>(argv[3]);
   const auto thresholds = read<float>(argv[4]);
@@ -375,11 +466,15 @@ int run_gate(int argc, char** argv) {
   const auto queries = read<float>(argv[7]);
   const auto query_count = static_cast<std::size_t>(std::stoull(argv[8]));
   const auto expected_side_bytes = static_cast<std::size_t>(std::stoull(argv[9]));
-  const std::size_t side_bytes = kTqBytes + sizeof(float) + kPqSubspaces +
-      sizeof(float) + (payload.has_tq_norm ? sizeof(float) : 0);
+  const auto tq_norms = read<float>(argv[10]);
+  const std::size_t side_bytes = tq_only
+      ? kTqBytes + sizeof(float) + sizeof(float)
+      : kTqBytes + sizeof(float) + kPqSubspaces + sizeof(float) +
+          (payload.has_tq_norm ? sizeof(float) : 0);
   if (thq.size() != kDocuments * kThqBytes ||
       thresholds.size() != kDimension * 3 || offsets.size() != query_count + 1 ||
-      queries.size() != query_count * kDimension || side_bytes != expected_side_bytes)
+      queries.size() != query_count * kDimension || side_bytes != expected_side_bytes ||
+      (!payload.has_tq_norm && tq_norms.size() != kDocuments))
     throw std::runtime_error("TQ1/PQ8 candidate gate shape differs");
   if (offsets.front() != 0 ||
       !std::is_sorted(offsets.begin(), offsets.end()))
@@ -417,7 +512,7 @@ int run_gate(int argc, char** argv) {
     const auto base_lut = build_thq_dot_lut(payload, query);
     const auto rotated_query = rotate_query(query);
     const auto tq_lut = build_tq_dot_lut(rotated_query);
-    const auto pq_lut = build_pq_dot_lut(payload, query);
+    const auto pq_lut = tq_only ? std::vector<double>{} : build_pq_dot_lut(payload, query);
     double query_norm = 0.0;
     for (std::size_t dimension = 0; dimension < kDimension; ++dimension)
       query_norm += static_cast<double>(query[dimension]) * query[dimension];
@@ -440,31 +535,23 @@ int run_gate(int argc, char** argv) {
       for (std::size_t byte = 0; byte < kTqBytes; ++byte)
         tq_dot += tq_lut[byte * 256 + sign_row[byte]];
       numerator += tq_dot * payload.scales[row_index];
-      if (payload.has_tq_norm) {
-        const double denominator = std::max(
-            static_cast<double>(payload.tq_norms[row_index]) * query_norm,
-            std::numeric_limits<double>::min());
-        tq_scores.push_back({numerator / denominator, id});
+      const double tq_norm = payload.has_tq_norm
+          ? static_cast<double>(payload.tq_norms[row_index])
+          : static_cast<double>(tq_norms[static_cast<std::size_t>(id)]);
+      if (tq_only) {
+        tq_scores.push_back({numerator / std::max(tq_norm * query_norm,
+                                                   std::numeric_limits<double>::min()), id});
       } else {
-        // The full TQ1 materialization intentionally omits a separate
-        // intermediate norm sidecar.  Keep the TQ1 arm executable by using
-        // the immutable final-norm sidecar as its declared packed cosine
-        // denominator; this is recorded as a bounded TQ1 control in the
-        // receipt rather than silently treating it as an exact norm replay.
-        const double denominator = std::max(
+        for (std::size_t subspace = 0; subspace < kPqSubspaces; ++subspace)
+          numerator += pq_lut[subspace * 256 + pq_row[subspace]];
+        const double final_denominator = std::max(
             static_cast<double>(payload.final_norms[row_index]) * query_norm,
             std::numeric_limits<double>::min());
-        tq_scores.push_back({numerator / denominator, id});
+        pq_scores.push_back({numerator / final_denominator, id});
       }
-      for (std::size_t subspace = 0; subspace < kPqSubspaces; ++subspace)
-        numerator += pq_lut[subspace * 256 + pq_row[subspace]];
-      const double final_denominator = std::max(
-          static_cast<double>(payload.final_norms[row_index]) * query_norm,
-          std::numeric_limits<double>::min());
-      pq_scores.push_back({numerator / final_denominator, id});
     }
-    const auto tq_top10 = top_ids(tq_scores, 10, true);
-    const auto pq_top10 = top_ids(pq_scores, 10, true);
+    const auto tq_top10 = tq_only ? top_ids(tq_scores, 10, true) : std::vector<std::int32_t>{};
+    const auto pq_top10 = tq_only ? std::vector<std::int32_t>{} : top_ids(pq_scores, 10, true);
     const auto score_end = std::chrono::steady_clock::now();
 
     std::cout << "{\"query\":" << query_index << ",\"candidate_count\":"
@@ -486,7 +573,7 @@ int run_gate(int argc, char** argv) {
               << ",\"total\":" << milliseconds(coarse_begin, score_end)
               << "},\"side_bytes_per_document\":" << side_bytes
               << ",\"has_tq_intermediate_norm\":"
-              << (payload.has_tq_norm ? "true" : "false") << "}\n";
+              << "true,\"scorer_mode\":\"" << (tq_only ? "tq1" : "tq1_pq8") << "\"}\n";
   }
   return 0;
 }
@@ -524,6 +611,12 @@ int main(int argc, char** argv) {
     }
     if (argc >= 2 && std::string(argv[1]) == "--candidate-gate")
       return run_gate(argc, argv);
+    if (argc >= 2 && std::string(argv[1]) == "--candidate-gate-tq1")
+      return run_gate(argc, argv);
+    if (argc >= 2 && std::string(argv[1]) == "--candidate-gate-tq1-pq8")
+      return run_gate(argc, argv);
+    if (argc >= 2 && std::string(argv[1]) == "--materialize-tq-norms")
+      return materialize_tq_norms(argc, argv);
     if (argc >= 2 && std::string(argv[1]) == "--full-flat")
       return run_full_flat(argc, argv);
     throw std::runtime_error("expected --self-test or --candidate-gate");

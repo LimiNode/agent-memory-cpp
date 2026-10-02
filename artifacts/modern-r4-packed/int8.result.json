@@ -2,6 +2,8 @@
   "audit_path": "artifacts/modern-r4-packed/int8.audit.json",
   "audit_sha256": "df51741a13bdd766bd537866a101f8d0398917c1977df2e2e5d3aaae036a63d3",
   "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "candidate_identity_path": "artifacts/modern-r4-packed/candidate-identity.audit.json",
+  "candidate_identity_sha256": "7db828bee27e34ca312ac7e61d8768410819603482eb3d53945f203c42fb26ac",
   "codec": "INT8",
   "family": "packed_int8_modern_r4_v1",
   "independent_top10_exact": "152/152",

@@ -1291,7 +1291,36 @@ PLSQ8x6x8 and RSLM1. Every row has raw JSONL, audit receipt and ordered parity
 
 The routed rows remain downstream serving evidence: route generation, packed
 decode materialization cost and MDBX I/O are outside the timed scorer boundary.
-The TQ1 payload has no separate intermediate-norm sidecar; its bounded control
-uses the immutable final-norm sidecar and is explicitly not a fresh-quality
-claim. Fresh untouched qrels and finalist-specific MDBX layouts remain later
-product gates.
+The TQ1 routed arm uses its persisted analytical reconstructed-norm sidecar;
+TQ1+PQ8 uses its own persisted final-norm sidecar. These are scorer-contract
+bindings, not fresh-quality claims. Fresh untouched qrels and finalist-specific
+MDBX layouts remain later product gates.
+### Corrective three-mode evidence pass (2026-10-02)
+
+The prior `21/21` checkpoint was audited for methodology rather than promoted
+to a final freeze. TQ1 and TQ1+PQ8 are now separate native timing invocations;
+TQ1 uses an analytical reconstructed-norm sidecar and TQ1+PQ8 uses its own
+persisted final norm. Independent packed replays pass ordered top-10 parity
+152/152 for both routed modes. RSLM1 now has an independent faithful
+transform/UE7M9 replay (152/152). Prototype LSQ receipts carry the correct
+mode/family, and the Modern-R4 fused physical stream is bound to the canonical
+candidate identity by `artifacts/modern-r4-packed/candidate-identity.audit.json`.
+
+The strict completion validator now checks mode, codec, family, candidate-stream
+hash, metric contract, raw/audit SHA bindings, independent replay status and
+semantic candidate identity. Its `21/21` result is a serving-evidence
+checkpoint, not a product freeze. Historical Prototype-IVF route calibration
+is complete over the declared nlist/nprobe/candidate-budget grid, including
+exact FP32 Recall@candidate and teacher coverage. Fresh qrels remain closed
+until the route/configuration manifest is frozen and untouched candidate
+streams are regenerated; no codec winner or MDBX finalist is selected from
+this checkpoint.
+
+The historical sweep is now materialized at
+`artifacts/prototype-ivf/historical-calibration.json` (48/48 grid points,
+exact FP32 candidate recall plus teacher coverage). The best historical point
+was nlist=256, nprobe=32, candidate budget=5,000 (mean 0.9263, p05 0.7,
+worst 0.4), while the prior 256/4 route measured 0.6447 mean, p05 0.1,
+worst 0.0. The seven packed Prototype-IVF receipts are now regenerated against
+the selected `a983347f...` stream; the prior `f281...` stream is retained only
+as historical evidence.
