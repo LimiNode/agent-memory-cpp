@@ -29,6 +29,12 @@ def self_test() -> None:
     ids = np.argsort(-scores, kind="stable")[:2]
     if ids.tolist() != [0, 2] or not np.all(np.isfinite(scores)):
         raise AssertionError("prototype route self-test differs")
+    # The bounded posting selection must be score-first, not ID-first.
+    candidate_ids = np.asarray([9, 1, 7], dtype="int32")
+    candidate_scores = np.asarray([0.1, 0.9, 0.8], dtype="float32")
+    bounded = np.lexsort((candidate_ids, -candidate_scores))[:2]
+    if candidate_ids[bounded].tolist() != [1, 7]:
+        raise AssertionError("prototype route score-bound self-test differs")
     print("prototype-ivf route self-test PASS")
 
 
@@ -90,12 +96,14 @@ def main() -> None:
         if candidates.size == 0:
             raise RuntimeError("prototype route selected no postings")
         raw_counts.append(int(candidates.size))
-        if candidates.size > 8192:
-            candidates = candidates[:8192]
         values = np.asarray(documents[candidates], dtype="float32").copy()
         values /= np.maximum(np.linalg.norm(values, axis=1, keepdims=True), 1e-30)
         candidate_scores = values @ query_values[query_index]
-        order = np.lexsort((candidates, -candidate_scores))[: ids.shape[1]]
+        # Apply the bounded posting budget by score, never by raw ID order.
+        # ID truncation silently discarded the nearest documents and made the
+        # route unsuitable for a quality calibration.
+        posting_order = np.lexsort((candidates, -candidate_scores))[:8192]
+        order = posting_order[: ids.shape[1]]
         count = len(order)
         ids[query_index, :count] = candidates[order]
         scores[query_index, :count] = candidate_scores[order]

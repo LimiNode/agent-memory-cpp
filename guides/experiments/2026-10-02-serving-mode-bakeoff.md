@@ -51,11 +51,12 @@ decomposition remain required before any Prototype-IVF matrix cell can move
 from `PENDING_SOURCE_REPLAY`.
 
 The pre-freeze teacher coverage audit is recorded at
-`artifacts/prototype-ivf/quality.audit.json`. It reports mean top-10 teacher
-coverage 0.0131579, p05 0 and a 0/10 worst query. Because the teacher file is
-not an independently recomputed exact oracle, this is calibration evidence,
-not Recall@5000. The route is therefore not yet a validated balanced quality
-operating point and must not be used for a final codec comparison.
+`artifacts/prototype-ivf/quality.audit.json`. After correcting the posting
+bound to select by coarse score rather than raw ID order, it reports mean
+top-10 teacher coverage 0.6447368, p05 0.1 and a 0/10 worst query. Because the
+teacher file is not an independently recomputed exact oracle, this is
+calibration evidence, not Recall@5000; packed serving and exact route-quality
+decomposition remain required.
 
 ### Modern R4 refresh checkpoint (2026-10-02)
 

@@ -8,7 +8,7 @@
   "family": "prototype_ivf_balanced_route_v1",
   "limitations": [
     "routing-only receipt; packed codec scoring and quality parity are separate gates",
-    "teacher-coverage audit is a calibration warning (mean 0.0131579, p05 0); this route is not yet a validated balanced quality operating point"
+    "teacher coverage is calibration evidence, not exact-oracle Recall@K"
   ],
   "max_candidates": 5000,
   "mean_candidates": 5000,
@@ -16,15 +16,15 @@
   "min_candidates": 5000,
   "nlist": 256,
   "nprobe": 4,
-  "output_sha256": "455613d5e7c239e56efea78c2b2fd1f99c43751b3f4bac55fdaa103aabeab7ce",
+  "output_sha256": "f2813140df82cbe00e8370d4be1d604ab55e091ed4ef2023c355aad931e2ed6f",
   "query_count": 152,
-  "raw_candidate_count_max": 26442,
-  "raw_candidate_count_mean": 15376.190789473685,
+  "raw_candidate_count_max": 21643,
+  "raw_candidate_count_mean": 15516.052631578947,
   "route_model_sha256": "8e951e0a55f5bfb805e0b63f301cfbeece0a361086972da0484048ad3106319d",
   "schema_version": 1,
   "source_hashes": {
     "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
-    "queries": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "queries": "abe14a8790bd488fc91b01b4b1d6ab664db1d2f2d69e67147ed8439f54c73191",
     "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
   "status": "PASS",
