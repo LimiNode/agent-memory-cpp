@@ -41,14 +41,28 @@
         "status": "PRESENT"
       },
       "RSLM1": {
+        "candidate_only": {
+          "path": "E:/_repoz/agent-memory-workspaces/native-finalist-v1/rslm-faithful-candidate-union",
+          "status": "EXTERNAL_CANDIDATE_ONLY"
+        },
         "reason": "faithful full-corpus payload not committed",
         "status": "PENDING_SOURCE_REPLAY"
       },
       "TQ1": {
+        "candidate_only": {
+          "path": "artifacts/fresh-shortlist/tq1-pq8-68.receipt.json",
+          "status": "PENDING_SOURCE_REPLAY"
+        },
         "reason": "no committed 1M packed payload",
         "status": "PENDING_SOURCE_REPLAY"
       },
       "TQ1+PQ8": {
+        "candidate_only": {
+          "bytes": 1099,
+          "path": "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json",
+          "sha256": "3cadd13883e92c5cd64610b93561c5e81a832ffcba9778af3752ac5a265d9fd0",
+          "status": "PRESENT"
+        },
         "reason": "no committed 1M packed payload",
         "status": "PENDING_SOURCE_REPLAY"
       }

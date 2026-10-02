@@ -45,9 +45,9 @@ def build_inventory(repo: Path) -> dict:
         "LSQ32": evidence(repo, "guides/experiments/codec-evaluation-report.md", summary_only=True),
         "LSQ48": evidence(repo, "guides/experiments/codec-evaluation-report.md", summary_only=True),
         "PLSQ8x6x8": evidence(repo, "guides/experiments/2026-10-02-plsq8x6-flat-replay.result.json"),
-        "TQ1": {"status": "PENDING_SOURCE_REPLAY", "reason": "no committed 1M packed payload"},
-        "TQ1+PQ8": {"status": "PENDING_SOURCE_REPLAY", "reason": "no committed 1M packed payload"},
-        "RSLM1": {"status": "PENDING_SOURCE_REPLAY", "reason": "faithful full-corpus payload not committed"},
+        "TQ1": {"status": "PENDING_SOURCE_REPLAY", "reason": "no committed 1M packed payload", "candidate_only": evidence(repo, "artifacts/fresh-shortlist/tq1-pq8-68.receipt.json")},
+        "TQ1+PQ8": {"status": "PENDING_SOURCE_REPLAY", "reason": "no committed 1M packed payload", "candidate_only": evidence(repo, "artifacts/fresh-shortlist/tq1-pq8-64.receipt.json")},
+        "RSLM1": {"status": "PENDING_SOURCE_REPLAY", "reason": "faithful full-corpus payload not committed", "candidate_only": {"status": "EXTERNAL_CANDIDATE_ONLY", "path": "E:/_repoz/agent-memory-workspaces/native-finalist-v1/rslm-faithful-candidate-union"}},
     }
     r4 = {
         "INT8": evidence(repo, "artifacts/2026-10-01-int8-matched-r4.audit.json"),
