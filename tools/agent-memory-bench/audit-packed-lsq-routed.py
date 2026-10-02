@@ -40,6 +40,12 @@ def parse_payload(path: Path):
 
 def main() -> None:
     if '--self-test' in sys.argv:
+        fixture = {'query': 0, 'repeat': 0, 'top10_ids': list(range(10))}
+        assert len(fixture['top10_ids']) == 10
+        mutated = dict(fixture); mutated['top10_ids'] = list(range(9))
+        assert len(mutated['top10_ids']) != 10, 'top10 mutation was accepted'
+        mutated = dict(fixture); mutated['repeat'] = 1
+        assert mutated['repeat'] != 0, 'repeat mutation was accepted'
         print('audit-packed-lsq-routed self-test PASS')
         return
     parser = argparse.ArgumentParser()

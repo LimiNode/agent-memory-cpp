@@ -1,32 +1,56 @@
 {
-  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
+  "audit_path": "artifacts/modern-r4-packed/lsq32.audit.json",
+  "audit_sha256": "9bb226ad1ff1dbd2eb46e2684184cd15ac6ee440e1d397e11fc3cd3219cc24cb",
   "candidate_identity_path": "artifacts/modern-r4-packed/candidate-identity.audit.json",
   "candidate_identity_sha256": "7db828bee27e34ca312ac7e61d8768410819603482eb3d53945f203c42fb26ac",
+  "candidate_stream_sha256": "d76cabd553bbd1453908a9cd28fe3578895cf2cd3876026a5b1fd5813839bc79",
   "codec": "LSQ32",
   "family": "native_packed_lsq_modern_r4_v1",
   "independent_top10_exact": "152/152",
   "limitations": [
-    "packed native downstream shell; route generation and MDBX I/O remain outside scope"
+    "native packed downstream scorer with selected sparse-LUT path; alternate LSQ implementations validated outside timed interval"
   ],
+  "logical_payload_bytes": 36,
   "mode": "modern_r4",
   "payload_sha256": "04d4a744788e5789ad4e92f3a15122f8b2ce48d3ad82e5744e8c64ccc2645698",
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
+  "production_scorer": "sparse_lut",
   "query_count": 152,
   "raw_rows": 760,
-  "raw_sha256": "1b9bf327815d52427eed8d8833dcf2e87bdba69eaa29a8d8ecf1acc53daae9f0",
+  "raw_sha256": "6882afd399efbed1a212a33bffe30da4c7aec100f06884f6321dcedf20494ea4",
   "reference_kind": "independent_packed_replay",
-  "audit_path": "artifacts/modern-r4-packed/lsq32.audit.json",
-  "audit_sha256": "7b5ec1f3abe452ee1f765b9f5c9b5f409d32a5e57c58d7734ea555654d53c71b",
   "repeats": 5,
   "representation": "packed_native",
   "schema_version": 1,
   "status": "PRESENT",
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 7.5833,
-    "p95": 9.0231,
-    "p99": 9.4846
+    "p50": 3.4786,
+    "p95": 3.855,
+    "p99": 4.3835,
+    "stages": {
+      "prepare": {
+        "p50": 2.0591,
+        "p95": 2.3161,
+        "p99": 2.6378
+      },
+      "score": {
+        "p50": 0.0537,
+        "p95": 0.0832,
+        "p99": 0.1134
+      },
+      "thq4_prefilter": {
+        "p50": 1.2828,
+        "p95": 1.4403,
+        "p99": 1.6474
+      },
+      "topk": {
+        "p50": 0.0042,
+        "p95": 0.0216,
+        "p99": 0.0307
+      }
+    }
   },
   "warmups": 1
 }

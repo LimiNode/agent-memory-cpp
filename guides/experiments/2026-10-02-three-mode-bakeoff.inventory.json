@@ -64,15 +64,15 @@
         "status": "PRESENT"
       },
       "LSQ32": {
-        "bytes": 1271,
+        "bytes": 1821,
         "path": "artifacts/modern-r4-packed/lsq32.result.json",
-        "sha256": "7ac786e9938dd79e36bde1bbace4b0f0e2659cece10a62d01f8736ae1672177c",
+        "sha256": "c22ad3d8eb3762be6b6379f329e8d84d3f1b5333b933613fc0c2365b2b2ff26f",
         "status": "PRESENT"
       },
       "LSQ48": {
-        "bytes": 1274,
+        "bytes": 1819,
         "path": "artifacts/modern-r4-packed/lsq48.result.json",
-        "sha256": "6c9de84c48587755400b7681e223619a17e23234150af772a422a8e0cf905264",
+        "sha256": "18bb4a24da0fb6c6ec30e5bb83f4afc5f45e3c50050bb29ea39e7b1fe7023776",
         "status": "PRESENT"
       },
       "PLSQ8x6x8": {
@@ -108,15 +108,15 @@
         "status": "PRESENT"
       },
       "LSQ32": {
-        "bytes": 1117,
+        "bytes": 1654,
         "path": "artifacts/prototype-ivf/lsq32.result.json",
-        "sha256": "e0553ea1a28aa3a94c3423a8b0c5dfd312ba92957ad143fa5df52f0a06d88b29",
+        "sha256": "6b396af81761015b3ad64be810c2853829d341b624b6d5bb0d1e2b0cf6a54d2b",
         "status": "PRESENT"
       },
       "LSQ48": {
-        "bytes": 1118,
+        "bytes": 1652,
         "path": "artifacts/prototype-ivf/lsq48.result.json",
-        "sha256": "8240cffdee0d6b09d11be99764e53ea84cbb3c1b3265f3bac144a772d4f0b509",
+        "sha256": "59f99cd6c641e7cfbc77ed5ce6a7f633597103f6ca44534ca0b3b7776e279d57",
         "status": "PRESENT"
       },
       "PLSQ8x6x8": {

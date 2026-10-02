@@ -126,15 +126,16 @@ receipt; the separate codec-only scorer timings remain in their dedicated
 candidate-local receipts. The complete source/hash binding is in
 [`2026-10-01-native-matched-r4-final-reranker-control.result.json`](2026-10-01-native-matched-r4-final-reranker-control.result.json).
 
-The measurements below separate matched full-cascade topology from
-candidate-local packed decode-and-score fixtures. Candidate-local rows do not
-include THQ-routing latency and must not be compared as if they were the LSQ
-cascade.
+The measurements below separate the selected Prototype-IVF full-cascade
+topology from candidate-local packed decode-and-score fixtures. Candidate-local
+rows do not include THQ-routing latency and must not be compared as if they
+were the LSQ cascade. The canonical Modern-R4 rows are in the three-mode
+serving table.
 
 | Arm | Payload | THQ p50 ms | codec p50 ms | total p50 ms | parity | Status |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
-| LSQ32 | 36 B | 1.371 | 2.184 | **3.551** | 152/152 | measured |
-| LSQ48 | 52 B | 1.414 | 3.479 | **4.904** | 152/152 | measured |
+| LSQ32 | 36 B | 1.224 | 2.160 | **3.386** | 152/152 | sparse-LUT selected; measured |
+| LSQ48 | 52 B | 1.243 | 3.239 | **4.482** | 152/152 | sparse-LUT selected; measured |
 | TQ1 | 68 | 2.272 | 0.075 | 2.775 | 152/152 | packed THQ→TQ intermediate gate, 68 B layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
 | TQ1+PQ8 | 64/68 | 2.251 | 0.072 | 2.813 | 152/152 | packed THQ→TQ1+PQ8 gate, 64 B final-only layout; [TQ gate](2026-09-26-packed-tq1-pq8-serving-closure.md) |
 | PLSQ8x6x8 | 52 B | matched THQ top-128 | packed | **0.6996** | 152/152 | frozen R4 candidate stream → native packed scorer; [wave note](2026-10-03-native-flat-and-r4-finalist-wave.md) |
@@ -142,6 +143,12 @@ cascade.
 | RSLM1 | 52 B | matched THQ top-128 | packed | **0.8891** | structural audit | canonical R4 candidate stream → native packed scorer; packed reference parity remains separate; [wave note](2026-10-03-native-flat-and-r4-finalist-wave.md) |
 
 Source: [`2026-09-23-native-compressed-lsq-result.md`](2026-09-23-native-compressed-lsq-result.md).
+
+The LSQ routed rows use the selected sparse-LUT production scorer. Gather and
+full-LUT parity implementations run only outside the timed interval; the
+scorer-equity receipt is [`artifacts/lsq-scorer-bakeoff.json`](../../artifacts/lsq-scorer-bakeoff.json),
+and the implementation-path contract is
+[`artifacts/three-mode-performance-paths.json`](../../artifacts/three-mode-performance-paths.json).
 
 The candidate-local packed decode-and-score gates measure the codec stage
 without persisted predecoded FP32 payloads. They are not full-cascade rows:

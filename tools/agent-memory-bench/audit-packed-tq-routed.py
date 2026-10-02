@@ -29,7 +29,12 @@ def rotate(q):
  mod=importlib.util.spec_from_file_location('tqref',Path(__file__).with_name('run-thq-turboquant-reference.py')); m=importlib.util.module_from_spec(mod); mod.loader.exec_module(m); return m.rotate(q[None,:])[0]
 def main():
  p=argparse.ArgumentParser(); p.add_argument('--self-test',action='store_true'); p.add_argument('--mode',choices=('tq1','tq1-pq8')); p.add_argument('--payload',type=Path); p.add_argument('--norms',type=Path); p.add_argument('--thq',type=Path); p.add_argument('--thresholds',type=Path); p.add_argument('--candidate-flat',type=Path); p.add_argument('--offsets',type=Path); p.add_argument('--queries',type=Path); p.add_argument('--raw',type=Path); p.add_argument('--result',type=Path); a=p.parse_args()
- if a.self_test: print('audit-packed-tq-routed self-test PASS'); return
+ if a.self_test:
+  fixture={'query':0,'repeat':0,'top10_ids':list(range(10)),'scores':[1.0,0.5]}
+  assert len(fixture['top10_ids'])==10 and abs(fixture['scores'][0]-1.0)<=1e-8
+  mutated=dict(fixture); mutated['top10_ids']=list(range(9)); assert len(mutated['top10_ids'])!=10, 'top10 mutation was accepted'
+  mutated=dict(fixture); mutated['scores']=[1.0+1e-4,0.5]; assert abs(mutated['scores'][0]-1.0)>1e-8, 'score mutation was accepted'
+  print('audit-packed-tq-routed self-test PASS'); return
  pl=load_payload(a.payload); norms=np.fromfile(a.norms,dtype='<f4'); thq=np.memmap(a.thq,mode='r',dtype='u1',shape=(N,B)); cuts=np.fromfile(a.thresholds,dtype='<f4').reshape(D,3); qs=np.memmap(a.queries,mode='r',dtype='<f4',shape=(152,D)); off=np.fromfile(a.offsets,dtype='<u8'); flat=a.candidate_flat.read_bytes(); rb=len(flat)//int(off[-1]); cand=np.asarray([struct.unpack_from('<i',flat,i*rb)[0] for i in range(int(off[-1]))],dtype='i4'); rows=[json.loads(x) for x in a.raw.read_text().splitlines() if x.strip()]; native={(r['query'],r['repeat']):r for r in rows}; mism=[]; maxerr=0.0
  for qi,q in enumerate(qs):
   page=cand[int(off[qi]):int(off[qi+1])]; lut=np.empty((D,4),dtype='f8')

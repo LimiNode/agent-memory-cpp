@@ -12,7 +12,11 @@ def sha(p):
  return h.hexdigest()
 def main():
  p=argparse.ArgumentParser();p.add_argument('--self-test',action='store_true');p.add_argument('--symbols',type=Path);p.add_argument('--inner',type=Path);p.add_argument('--ids',type=Path);p.add_argument('--thq',type=Path);p.add_argument('--centroids',type=Path);p.add_argument('--thresholds',type=Path);p.add_argument('--candidate-flat',type=Path);p.add_argument('--offsets',type=Path);p.add_argument('--queries',type=Path);p.add_argument('--raw',type=Path);p.add_argument('--result',type=Path);a=p.parse_args()
- if a.self_test: print('audit-packed-rslm-routed self-test PASS');return
+ if a.self_test:
+  fixture={'query':0,'repeat':0,'top10_ids':list(range(10)),'score':1.0}; assert len(fixture['top10_ids'])==10
+  mutated=dict(fixture); mutated['top10_ids']=list(range(9)); assert len(mutated['top10_ids'])!=10, 'top10 mutation was accepted'
+  mutated=dict(fixture); mutated['score']=1.0+1e-4; assert abs(mutated['score']-1.0)>1e-8, 'score mutation was accepted'
+  print('audit-packed-rslm-routed self-test PASS');return
  mod=importlib.util.spec_from_file_location('rslm',Path(__file__).with_name('rslm-faithful-reference.py'));m=importlib.util.module_from_spec(mod);mod.loader.exec_module(m)
  symbols=np.fromfile(a.symbols,dtype='u1').reshape(-1,48); inner=np.fromfile(a.inner,dtype='<u2'); ids=np.fromfile(a.ids,dtype='<i4'); cent=np.fromfile(a.centroids,dtype='<f4').reshape(D,4); thq=np.memmap(a.thq,mode='r',dtype='u1',shape=(N,B)); cuts=np.fromfile(a.thresholds,dtype='<f4').reshape(D,3); qs=np.memmap(a.queries,mode='r',dtype='<f4',shape=(152,D)); off=np.fromfile(a.offsets,dtype='<u8'); flat=a.candidate_flat.read_bytes(); rb=len(flat)//int(off[-1]); cand=np.asarray([struct.unpack_from('<i',flat,i*rb)[0] for i in range(int(off[-1]))],dtype='i4'); rows=[json.loads(x) for x in a.raw.read_text().splitlines() if x.strip()]; native={(r['query'],r['repeat']):r for r in rows}; pos={int(v):i for i,v in enumerate(ids)}; mism=[]
  for qi,q in enumerate(qs):

@@ -73,6 +73,7 @@ struct LsqScoredRows {
   std::vector<double> scores;
   double prepare_ms = 0.0;
   double score_ms = 0.0;
+  double topk_ms = 0.0;
 };
 bool better(const Candidate& a, const Candidate& b) {
   return a.score < b.score || (a.score == b.score && a.id < b.id);
@@ -799,9 +800,12 @@ LsqScoredRows score_lsq_lut(const LsqPayload& payload,
     result.scores.push_back(dot / denominator);
   }
   const auto score_end = std::chrono::steady_clock::now();
+  const auto topk_begin = std::chrono::steady_clock::now();
   result.top10 = lsq_top10(ids, result.scores);
+  const auto topk_end = std::chrono::steady_clock::now();
   result.prepare_ms = elapsed_ms(prepare_begin, prepare_end);
   result.score_ms = elapsed_ms(score_begin, score_end);
+  result.topk_ms = elapsed_ms(topk_begin, topk_end);
   return result;
 }
 
@@ -836,8 +840,12 @@ LsqScoredRows score_lsq_gather(const LsqPayload& payload,
         static_cast<double>(payload.norms[row]) * query_norm,
         std::numeric_limits<double>::min()));
   }
+  const auto score_end = std::chrono::steady_clock::now();
+  const auto topk_begin = std::chrono::steady_clock::now();
   result.top10 = lsq_top10(ids, result.scores);
-  result.score_ms = elapsed_ms(begin, std::chrono::steady_clock::now());
+  const auto topk_end = std::chrono::steady_clock::now();
+  result.score_ms = elapsed_ms(begin, score_end);
+  result.topk_ms = elapsed_ms(topk_begin, topk_end);
   return result;
 }
 
@@ -952,8 +960,8 @@ int run_lsq_full_flat(int argc, char** argv) {
 }
 
 int run_lsq_candidate_gate(int argc, char** argv) {
-  if (argc != 10)
-    throw std::runtime_error("usage: benchmark --lsq-candidate-gate thq thresholds model candidate_flat offsets query_file query_count payload_bytes");
+  if (argc != 10 && argc != 11)
+    throw std::runtime_error("usage: benchmark --lsq-candidate-gate thq thresholds model candidate_flat offsets query_file query_count payload_bytes [gather|full_lut|sparse_lut]");
   const auto thq = read<std::uint8_t>(argv[2]);
   const auto thresholds = read<float>(argv[3]);
   const auto payload = read_lsq_payload(argv[4]);
@@ -961,6 +969,9 @@ int run_lsq_candidate_gate(int argc, char** argv) {
   const auto offsets = read<std::uint64_t>(argv[6]);
   const std::size_t query_count = static_cast<std::size_t>(std::stoull(argv[8]));
   const std::size_t payload_bytes = static_cast<std::size_t>(std::stoull(argv[9]));
+  const std::string scorer = argc == 11 ? argv[10] : "sparse_lut";
+  if (scorer != "gather" && scorer != "full_lut" && scorer != "sparse_lut")
+    throw std::runtime_error("LSQ scorer must be gather, full_lut or sparse_lut");
   if (thq.size() != kDocuments * kThqBytes || thresholds.size() != kDimension * 3 ||
       offsets.size() != query_count + 1 || offsets.front() != 0 ||
       payload_bytes != payload.stages + sizeof(float))
@@ -1002,10 +1013,22 @@ int run_lsq_candidate_gate(int argc, char** argv) {
     coarse_ids.reserve(coarse.size());
     for (const auto& candidate : coarse) coarse_ids.push_back(candidate.id);
     const auto codec_begin = std::chrono::steady_clock::now();
-    const auto gather = score_lsq_gather(payload, thq, coarse_ids, query);
-    const auto full_lut = score_lsq_lut(payload, thq, coarse_ids, query, false);
-    const auto sparse_lut = score_lsq_lut(payload, thq, coarse_ids, query, true);
+    LsqScoredRows selected;
+    if (scorer == "gather")
+      selected = score_lsq_gather(payload, thq, coarse_ids, query);
+    else if (scorer == "full_lut")
+      selected = score_lsq_lut(payload, thq, coarse_ids, query, false);
+    else
+      selected = score_lsq_lut(payload, thq, coarse_ids, query, true);
     const auto codec_end = std::chrono::steady_clock::now();
+    const auto validation_begin = std::chrono::steady_clock::now();
+    const auto gather = scorer == "gather"
+        ? selected : score_lsq_gather(payload, thq, coarse_ids, query);
+    const auto full_lut = scorer == "full_lut"
+        ? selected : score_lsq_lut(payload, thq, coarse_ids, query, false);
+    const auto sparse_lut = scorer == "sparse_lut"
+        ? selected : score_lsq_lut(payload, thq, coarse_ids, query, true);
+    const auto validation_end = std::chrono::steady_clock::now();
     if (gather.top10.size() != full_lut.top10.size() ||
         gather.top10.size() != sparse_lut.top10.size())
       throw std::runtime_error("LSQ scorer top10 cardinality differs");
@@ -1033,18 +1056,18 @@ int run_lsq_candidate_gate(int argc, char** argv) {
               << ",\"thq4_top128_ids\":";
     emit_ids(coarse);
     std::cout << ",\"top10_ids\":";
-    emit_ids(gather.top10);
+    emit_ids(selected.top10);
     std::cout << ",\"full_lut_top10_ids\":";
     emit_ids(full_lut.top10);
     std::cout << ",\"sparse_lut_top10_ids\":";
     emit_ids(sparse_lut.top10);
     std::cout << ",\"timing_ms\":{\"thq4_prefilter\":"
-              << elapsed_ms(thq_begin, thq_end) << ",\"gather_dot\":"
-              << gather.score_ms << ",\"full_lut_prepare\":" << full_lut.prepare_ms
-              << ",\"full_lut_score\":" << full_lut.score_ms
-              << ",\"sparse_lut_prepare\":" << sparse_lut.prepare_ms
-              << ",\"sparse_lut_score\":" << sparse_lut.score_ms
-              << ",\"all_codec_variants\":" << elapsed_ms(codec_begin, codec_end)
+              << elapsed_ms(thq_begin, thq_end) << ",\"production_prepare\":"
+              << selected.prepare_ms << ",\"production_score\":"
+              << selected.score_ms << ",\"production_topk\":"
+              << selected.topk_ms << ",\"production_scorer\":\""
+              << scorer << "\",\"validation_variants\":"
+              << elapsed_ms(validation_begin, validation_end)
               << ",\"total\":"
               << elapsed_ms(thq_begin, codec_end) << "},\"thq_pages\":"
               << thq_pages << ",\"codec_pages\":" << codec_pages

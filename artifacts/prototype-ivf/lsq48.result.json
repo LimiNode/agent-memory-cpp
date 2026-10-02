@@ -1,20 +1,22 @@
 {
   "audit_path": "artifacts/prototype-ivf/lsq48.audit.json",
-  "audit_sha256": "e5e641af0ebf2282698bb07e8bb2ff952997b864c0047b6341313b8a542c8b95",
+  "audit_sha256": "393c3bb4e89809ca08b00f26ce39b990f585d53bae46d762cc8031a76843ea5f",
   "candidate_stream_sha256": "a983347fa5dd46bad1c34367407f67094450af09b6bfef707b1d898ded411e0b",
   "codec": "LSQ48",
   "family": "native_packed_lsq_prototype_ivf_balanced_v1",
   "independent_top10_exact": "152/152",
   "limitations": [
-    "native packed timing; independent Python replay must be completed before parity gate"
+    "native packed downstream scorer with selected sparse-LUT path; alternate LSQ implementations validated outside timed interval"
   ],
+  "logical_payload_bytes": 52,
   "mode": "prototype_ivf_balanced",
   "payload_sha256": "7c17a0c6a630ff86d01fe1fa3b24467bd4861b94c1d9d4ffa6cf2e328989f5b8",
   "percentile_contract": "nearest_rank_v1",
   "predecoded_fp32": false,
+  "production_scorer": "sparse_lut",
   "query_count": 152,
   "raw_rows": 760,
-  "raw_sha256": "6ff6bbc36a5fda9de8bd8ba67c7264ae5f46dc1e2ddbd69a8248c17a9b9858b3",
+  "raw_sha256": "69fd95b322891ebca65486e4c2e6625224b069850c1b819502ff13e6d87ef482",
   "reference_kind": "independent_packed_replay",
   "repeats": 5,
   "representation": "packed_native",
@@ -22,9 +24,31 @@
   "status": "PRESENT",
   "timed_final_scorer": "codec_specific",
   "timing_ms": {
-    "p50": 13.8011,
-    "p95": 15.0809,
-    "p99": 15.5107
+    "p50": 4.482,
+    "p95": 4.8678,
+    "p99": 5.1275,
+    "stages": {
+      "prepare": {
+        "p50": 3.079,
+        "p95": 3.3811,
+        "p99": 3.5206
+      },
+      "score": {
+        "p50": 0.0666,
+        "p95": 0.1073,
+        "p99": 0.156
+      },
+      "thq4_prefilter": {
+        "p50": 1.2433,
+        "p95": 1.3781,
+        "p99": 1.4877
+      },
+      "topk": {
+        "p50": 0.0043,
+        "p95": 0.006,
+        "p99": 0.0172
+      }
+    }
   },
   "warmups": 1
 }

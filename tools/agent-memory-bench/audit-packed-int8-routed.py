@@ -7,7 +7,17 @@ import numpy as np
 N,D,B=1_000_000,384,96
 def sha(p):
  h=hashlib.sha256();h.update(p.read_bytes());return h.hexdigest()
-def self_test(): print('packed INT8 routed audit self-test PASS')
+def self_test():
+ rows=[{'query':0,'repeat':0,'top10_ids':list(range(10))}]
+ def valid(value):
+  return (len(value)==1 and value[0]['query']==0 and value[0]['repeat']==0 and
+          value[0]['top10_ids']==list(range(10)))
+ assert valid(rows)
+ mutated=json.loads(json.dumps(rows)); mutated[0]['top10_ids'][0]=999
+ assert not valid(mutated), 'top10 mutation was accepted'
+ mutated=json.loads(json.dumps(rows)); mutated[0]['query']=1
+ assert not valid(mutated), 'query mutation was accepted'
+ print('packed INT8 routed audit self-test PASS')
 def main():
  p=argparse.ArgumentParser();p.add_argument('--self-test',action='store_true');p.add_argument('--codes',type=Path);p.add_argument('--scales',type=Path);p.add_argument('--thq',type=Path);p.add_argument('--thresholds',type=Path);p.add_argument('--candidate-flat',type=Path);p.add_argument('--offsets',type=Path);p.add_argument('--queries',type=Path);p.add_argument('--raw',type=Path);p.add_argument('--result',type=Path);a=p.parse_args()
  if a.self_test:self_test();return

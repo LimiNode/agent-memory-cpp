@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "family": "three_mode_performance_path_manifest_v1",
+  "status": "CHECKPOINT",
+  "timing_contract": {
+    "warmups": 1,
+    "measured_repeats": 5,
+    "percentile": "nearest_rank_v1",
+    "timed_scope": "route shell, THQ top128 and one selected packed scorer; independent validation is outside the interval"
+  },
+  "paths": {
+    "INT8": {
+      "runner": "native-full-corpus-codec-benchmark.cpp",
+      "entry_point": "--int8-cosine-candidate-gate",
+      "kernel": "native INT8 reconstructed-cosine scorer",
+      "backend": "scalar native C++",
+      "timed_stages": ["THQ prefilter", "INT8 score", "top-k"],
+      "excluded_stages": ["independent replay", "route generation", "MDBX I/O"],
+      "representation": "packed INT8 codes plus per-row scale"
+    },
+    "LSQ32": {
+      "runner": "native-full-corpus-codec-benchmark.cpp",
+      "entry_point": "--lsq-candidate-gate ... sparse_lut",
+      "kernel": "LSQ sparse codebook LUT scorer",
+      "backend": "scalar native C++ LUT",
+      "timed_stages": ["THQ prefilter", "LSQ LUT prepare", "LSQ score", "top-k"],
+      "excluded_stages": ["gather/full-LUT parity validation", "independent replay", "route generation", "MDBX I/O"],
+      "representation": "packed LSQ codes plus persisted norm",
+      "selection_evidence": "artifacts/lsq-scorer-bakeoff.json"
+    },
+    "LSQ48": {
+      "runner": "native-full-corpus-codec-benchmark.cpp",
+      "entry_point": "--lsq-candidate-gate ... sparse_lut",
+      "kernel": "LSQ sparse codebook LUT scorer",
+      "backend": "scalar native C++ LUT",
+      "timed_stages": ["THQ prefilter", "LSQ LUT prepare", "LSQ score", "top-k"],
+      "excluded_stages": ["gather/full-LUT parity validation", "independent replay", "route generation", "MDBX I/O"],
+      "representation": "packed LSQ codes plus persisted norm",
+      "selection_evidence": "artifacts/lsq-scorer-bakeoff.json"
+    },
+    "TQ1": {
+      "runner": "native-tq1-pq-direct-benchmark.cpp",
+      "entry_point": "--candidate-gate-tq1",
+      "kernel": "TQ1 packed LUT scorer",
+      "backend": "scalar native C++ LUT",
+      "timed_stages": ["THQ prefilter", "TQ1 score", "top-k"],
+      "excluded_stages": ["TQ1+PQ8 scorer", "independent replay", "route generation", "MDBX I/O"],
+      "representation": "TQ1 signs, scale and analytical norm sidecar"
+    },
+    "TQ1+PQ8": {
+      "runner": "native-tq1-pq-direct-benchmark.cpp",
+      "entry_point": "--candidate-gate-tq1-pq8",
+      "kernel": "TQ1+PQ8 packed LUT scorer",
+      "backend": "scalar native C++ LUT",
+      "timed_stages": ["THQ prefilter", "TQ1+PQ8 score", "top-k"],
+      "excluded_stages": ["TQ1 scorer", "independent replay", "route generation", "MDBX I/O"],
+      "representation": "TQ1 signs, scale, PQ8 codes and final norm sidecar"
+    },
+    "PLSQ8x6x8": {
+      "runner": "native-plsq-benchmark.cpp",
+      "entry_point": "packed routed scorer",
+      "kernel": "PLSQ packed scorer",
+      "backend": "scalar native C++",
+      "timed_stages": ["THQ prefilter", "PLSQ score", "top-k"],
+      "excluded_stages": ["independent replay", "route generation", "MDBX I/O"],
+      "representation": "packed PLSQ codes and sidecars"
+    },
+    "RSLM1": {
+      "runner": "native-rslm1-benchmark.cpp",
+      "entry_point": "packed routed scorer",
+      "kernel": "faithful RSLM1 transform scorer",
+      "backend": "scalar native C++ transform",
+      "timed_stages": ["THQ prefilter", "RSLM transform/score"],
+      "excluded_stages": ["RSLM top-k materialization", "independent replay", "route generation", "MDBX I/O"],
+      "representation": "packed RSLM symbols, UE7M9 scale and sidecars"
+    }
+  },
+  "limitations": [
+    "The manifest documents current native implementations, not fully SIMD-optimized kernels.",
+    "Fresh untouched qrels and persistent MDBX measurements remain separate gates."
+  ]
+}

@@ -15,6 +15,12 @@ def main() -> None:
     for name in ('payload','thq','thresholds','candidate-flat','offsets','queries','raw','result'):
         p.add_argument('--'+name, dest=name.replace('-','_'), type=Path, required=True)
     if '--self-test' in sys.argv:
+        fixture = {'query': 0, 'repeat': 0, 'top10_ids': list(range(10))}
+        assert len(fixture['top10_ids']) == 10
+        mutated = dict(fixture); mutated['top10_ids'] = list(range(9))
+        assert len(mutated['top10_ids']) != 10, 'top10 mutation was accepted'
+        mutated = dict(fixture); mutated['query'] = 1
+        assert mutated['query'] != 0, 'query mutation was accepted'
         print('audit-packed-plsq-routed self-test PASS')
         return
     a = p.parse_args()

@@ -31,8 +31,8 @@ and raw JSONL plus an independent audit.
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
 | INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | **1.336 / 1.483 / 1.679 ms** | **0.739 / 0.873 / 0.918 ms** | historical control; fresh qrels pending |
-| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **8.742 / 10.000 / 10.421 ms** | **7.583 / 9.023 / 9.485 ms** | historical qrels; fresh pending |
-| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **13.801 / 15.081 / 15.511 ms** | **11.263 / 13.039 / 13.558 ms** | historical qrels; fresh pending |
+| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **3.386 / 3.782 / 4.046 ms** | **3.479 / 3.855 / 4.384 ms** | sparse-LUT scorer; historical qrels; fresh pending |
+| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **4.482 / 4.868 / 5.128 ms** | **4.596 / 4.976 / 5.430 ms** | sparse-LUT scorer; historical qrels; fresh pending |
 | TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | **2.564 / 2.838 / 2.989 ms** | **2.511 / 2.853 / 2.963 ms** | exact reconstructed TQ norm; fresh pending |
 | TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | **2.773 / 3.108 / 3.554 ms** | **2.613 / 3.007 / 3.414 ms** | independent PQ8 replay; fresh pending |
 | PLSQ8x6x8 | 52 | **177.522 / 199.755 / 218.113 ms** | **3.392 / 3.715 / 3.947 ms** | **3.106 / 3.565 / 3.802 ms** | packed + independent replay; fresh pending |
@@ -74,6 +74,18 @@ The machine-readable checkpoint for this boundary is
 It hashes the receipts and reports `21/21` only for the downstream evidence
 inventory. It does not turn the matrix into a fresh-quality or persistence
 result, and it is not a frozen product acceptance gate.
+
+### LSQ scorer-equity correction (2026-10-03)
+
+The earlier LSQ routed rows timed gather, full-LUT and sparse-LUT scorers in
+one interval and therefore were not a fair production comparison. A separate
+frozen-shell bake-off selected `sparse_lut` for both LSQ32 and LSQ48 by the
+complete prepare+score+top-k total. Gather and full-LUT remain correctness
+checks outside the timed interval. The four LSQ routed cells were regenerated
+with one selected scorer; the selection receipt is
+[`artifacts/lsq-scorer-bakeoff.json`](../../artifacts/lsq-scorer-bakeoff.json)
+and the implementation-path manifest is
+[`artifacts/three-mode-performance-paths.json`](../../artifacts/three-mode-performance-paths.json).
 
 ### Corrective evidence pass (2026-10-02)
 

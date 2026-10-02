@@ -1324,3 +1324,15 @@ worst 0.4), while the prior 256/4 route measured 0.6447 mean, p05 0.1,
 worst 0.0. The seven packed Prototype-IVF receipts are now regenerated against
 the selected `a983347f...` stream; the prior `f281...` stream is retained only
 as historical evidence.
+
+### LSQ scorer-equity correction (2026-10-03)
+
+The first routed LSQ receipt was invalid for latency ranking because gather,
+full-LUT and sparse-LUT implementations all ran inside one timed interval. A
+frozen-shell bake-off measured each implementation separately with one warmup
+and five repeats, including prepare, score and top-k. Sparse-LUT was selected
+for both LSQ32 and LSQ48 by total latency; the other implementations remain
+parity checks outside the production timing interval. The four LSQ routed rows
+were regenerated with that single scorer. This corrects latency comparability,
+but does not claim fully optimized SIMD kernels; fresh qrels and MDBX remain
+separate gates.

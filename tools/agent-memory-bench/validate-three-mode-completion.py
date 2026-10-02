@@ -103,6 +103,12 @@ def validate(inventory: dict, repo: Path | None = None) -> dict:
                 missing.append(f"{mode}/{arm}: TQ1 norm contract is not exact")
             if repo is not None and mode != "full_flat_1m" and arm == "TQ1+PQ8" and result.get("metric") != "reconstructed_cosine_tq1_plus_pq8":
                 missing.append(f"{mode}/{arm}: TQ1+PQ8 metric contract differs")
+            if mode != "full_flat_1m" and arm in ("LSQ32", "LSQ48"):
+                if result.get("production_scorer") != "sparse_lut":
+                    missing.append(f"{mode}/{arm}: selected LSQ production scorer differs")
+                stages = result.get("timing_ms", {}).get("stages", {})
+                if not all(stage in stages for stage in ("thq4_prefilter", "prepare", "score", "topk")):
+                    missing.append(f"{mode}/{arm}: selected LSQ stage timings missing")
             audit_path = result.get("audit_path")
             if audit_path and repo is not None:
                 audit_file = repo / audit_path
@@ -154,6 +160,8 @@ def self_test() -> None:
                 "percentile_contract": "nearest_rank_v1",
                 "reference_kind": "independent_packed_replay",
                 "audit_status": "PASS",
+                "production_scorer": "sparse_lut" if arm in ("LSQ32", "LSQ48") and mode != "full_flat_1m" else None,
+                "timing_ms": {"stages": {"thq4_prefilter": {}, "prepare": {}, "score": {}, "topk": {}}},
             }}
     require(validate(base)["status"] == "PASS", "completion self-test pass case failed")
     mutated = json.loads(json.dumps(base))
@@ -168,6 +176,9 @@ def self_test() -> None:
     mutated = json.loads(json.dumps(base))
     mutated["modes"]["prototype_ivf_balanced"]["INT8"]["result"]["family"] = "three_mode_full_flat_replay_v1"
     require(validate(mutated)["status"] == "INCOMPLETE", "family mutation was accepted")
+    mutated = json.loads(json.dumps(base))
+    mutated["modes"]["modern_r4"]["LSQ32"]["result"]["production_scorer"] = "gather"
+    require(validate(mutated)["status"] == "INCOMPLETE", "LSQ scorer mutation was accepted")
     mutated = json.loads(json.dumps(base))
     mutated["modes"]["full_flat_1m"]["INT8"]["result"]["audit_status"] = "FAIL"
     require(validate(mutated)["status"] == "INCOMPLETE", "audit mutation was accepted")
