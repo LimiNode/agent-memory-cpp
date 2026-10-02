@@ -1336,3 +1336,21 @@ parity checks outside the production timing interval. The four LSQ routed rows
 were regenerated with that single scorer. This corrects latency comparability,
 but does not claim fully optimized SIMD kernels; fresh qrels and MDBX remain
 separate gates.
+
+### Fresh qrels and packed MDBX prototype (2026-10-03)
+
+After merge commit `9bd438f3`, the untouched canonical DE-1M bundle was opened
+for the first time. An exact FP32 reference over all 305 queries and 1,000,000
+documents reports mean nDCG@10 `0.6723946081` and mean MRR `0.6938813429`; the
+full source hashes and per-query raw rows are bound by
+`2026-10-03-fresh-qrels-exact.result.json`. This is an oracle ceiling only:
+route, THQ and codec losses have not been mixed into it.
+
+The same fresh query order was used for a prototype INT8 MDBX physical-layout
+run. Exact-oracle top-128 candidates isolate storage reads, while the native
+runner measures exact reconstructed cosine with five repeats. Row KV measured
+`0.2166 / 0.6259 / 0.8796 ms` (p50/p95/p99) at 512 MiB; 4,096-row segment
+blobs measured `138.6463 / 162.5034 / 172.5282 ms` at 384 MiB. Ordered parity
+was `305/305` for both. These are prototype read-amplification numbers, not
+Prototype-IVF/R4 or product-winner evidence; see
+`2026-10-03-mdbx-packed-int8-prototype.md`.

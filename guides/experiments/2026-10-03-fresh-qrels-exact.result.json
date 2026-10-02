@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "family": "fresh_exact_fp32_qrels_reference_v1",
+  "status": "EXECUTED",
+  "target_commit": "9bd438f310f70316853bd638db55282b2a39fe35",
+  "query_count": 305,
+  "document_count": 1000000,
+  "qrels_row_count": 3144,
+  "mean_ndcg_at_10": 0.6723946080838488,
+  "p05_ndcg_at_10": 0.0,
+  "mean_mrr": 0.6938813428621784,
+  "p05_mrr": 0.08333333333333333,
+  "tie_policy": "score_desc_id_asc_numeric_when_numeric_else_lexical",
+  "source": {
+    "materialization_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "document_vectors_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
+    "query_vectors_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071"
+  },
+  "raw_evidence": "tmp/fresh-qrels/exact.raw.jsonl",
+  "raw_evidence_sha256": "07c979d314d1ece4420e3bf42ada347471574df3e2954581edc57a24e9f1f343",
+  "raw_evidence_policy": "local evidence workspace; publish via evidence release"
+}
