@@ -51,6 +51,12 @@ and are not committed as a large generated dump.  Their compact provenance is:
 }
 ```
 
+The corrective boundary-safe replay was compared against the retained exact
+receipt before this gate was closed: all 305 `top10_ids` and `top128_ids`
+rows matched byte-for-byte, and mean nDCG@10 and mean MRR remained
+`0.6723946081` and `0.6938856135`.  No downstream packed-quality regeneration
+was required.
+
 ## Interpretation and limits
 
 This establishes the untouched exact quality ceiling for the fresh query set.
