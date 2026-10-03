@@ -30,13 +30,13 @@ and raw JSONL plus an independent audit.
 
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
-| INT8 | 392 | **407.166 / 417.831 / 428.745 ms** | **0.7485 / 0.868 / 1.214 ms** | **0.7927 / 0.9357 / 1.151 ms** | exact reconstructed-cosine control; fresh qrels pending |
-| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **3.386 / 3.782 / 4.046 ms** | **3.479 / 3.855 / 4.384 ms** | sparse-LUT scorer; historical qrels; fresh pending |
-| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **4.482 / 4.868 / 5.128 ms** | **4.596 / 4.976 / 5.430 ms** | sparse-LUT scorer; historical qrels; fresh pending |
-| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | **2.564 / 2.838 / 2.989 ms** | **2.511 / 2.853 / 2.963 ms** | exact reconstructed TQ norm; fresh pending |
-| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | **2.773 / 3.108 / 3.554 ms** | **2.613 / 3.007 / 3.414 ms** | independent PQ8 replay; fresh pending |
-| PLSQ8x6x8 | 52 | **177.522 / 199.755 / 218.113 ms** | **3.392 / 3.715 / 3.947 ms** | **3.106 / 3.565 / 3.802 ms** | packed + independent replay; fresh pending |
-| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | **3.099 / 3.460 / 3.680 ms** | **3.058 / 3.481 / 3.827 ms** | faithful packed; fresh pending |
+| INT8 | 392 | **407.166 / 417.831 / 428.745 ms** | **0.7485 / 0.868 / 1.214 ms** | **0.7927 / 0.9357 / 1.151 ms** | exact reconstructed-cosine control; fresh packed decomposition pending |
+| LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **3.386 / 3.782 / 4.046 ms** | **3.479 / 3.855 / 4.384 ms** | sparse-LUT scorer; historical qrels; fresh packed decomposition pending |
+| LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **4.482 / 4.868 / 5.128 ms** | **4.596 / 4.976 / 5.430 ms** | sparse-LUT scorer; historical qrels; fresh packed decomposition pending |
+| TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | **2.564 / 2.838 / 2.989 ms** | **2.511 / 2.853 / 2.963 ms** | exact reconstructed TQ norm; fresh packed decomposition pending |
+| TQ1+PQ8 | 64/68 | **289.122 / 302.801 / 323.720 ms** | **2.773 / 3.108 / 3.554 ms** | **2.613 / 3.007 / 3.414 ms** | independent PQ8 replay; fresh packed decomposition pending |
+| PLSQ8x6x8 | 52 | **177.522 / 199.755 / 218.113 ms** | **3.392 / 3.715 / 3.947 ms** | **3.106 / 3.565 / 3.802 ms** | packed + independent replay; fresh packed decomposition pending |
+| RSLM1 | 52/56 | **245.586 / 261.116 / 272.168 ms** | **3.099 / 3.460 / 3.680 ms** | **3.058 / 3.481 / 3.827 ms** | faithful packed; fresh packed decomposition pending |
 
 All 21 downstream cells now have source-bound packed receipts. These numbers
 exclude route generation and MDBX I/O; they are not fresh-quality or product
@@ -116,12 +116,12 @@ is intentionally strict: it requires all seven mandatory finalists in all
 three modes, raw/audit bindings and independent ordered `152/152` parity. It
 fails if any packed row loses those bindings.
 
-The remaining external gate is fresh untouched qrels. The inventory records
-the concrete search scope (`repository artifacts/guides`, this workspace and
-`fidelity-heavy-batch-v1`) as `EXTERNAL_NOT_FOUND`; the available
-`qrel-ids.i8`/`qrel-scores.f32` files are the historical fixture and are not
-reused as fresh labels. No fresh quality or Pareto/product winner is claimed
-until that external label bundle is supplied.
+The fresh untouched qrels gate is now open and the exact 305-query oracle plus
+fresh Prototype-IVF route diagnostics are recorded in the 2026-10-03 notes.
+The remaining quality gate is fresh packed `THQ4 → codec` decomposition for
+each finalist; the canonical Modern-R4 fresh route/model bundle is still
+pending. No fresh packed-codec Pareto/product winner is claimed until those
+replays are complete.
 
 ## Execution contract
 
