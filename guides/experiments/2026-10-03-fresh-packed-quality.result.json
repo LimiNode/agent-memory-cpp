@@ -1,7 +1,8 @@
 {
-  "bundle_root_sha256": "f4ce85ba23d09ee353cb530af2609452f264541763be5ebff6b7f94f1df43b62",
-  "bundle_sha256": "d0bdc9b111949a2eadb183d1db81fe7caa947a7e391fa920e8a1cfa3d122674f",
+  "bundle_sha256": "250883db32f491938fad61f039963cd3338b3f1d3df965ec384c89a311a2e70e",
   "codec_count": 7,
+  "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
+  "evidence_binding_sha256": "295e79c773422328ea93e88907131449dddee4d68b8d43d3e83ad264b7849836",
   "exact_oracle": {
     "mean_mrr": 0.6938856134550563,
     "mean_mrr_at_10": 0.6911215196461099,
@@ -10,10 +11,11 @@
     "worst_ndcg_at_10": 0.0
   },
   "family": "fresh_packed_quality_decomposition_receipt_v1",
+  "measured_code_commit": "16f6a2810b633d0d2669d35ed6f67e21fcadf90d",
   "metric_contract": {
-    "mrr": "full ranked-stage MRR",
+    "mrr": "full ranked-stage MRR with independently checked first relevant identity",
     "mrr_at_10": "diagnostic only",
-    "ndcg": "nDCG@10",
+    "ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels",
     "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"
   },
   "payloads": {
@@ -71,8 +73,10 @@
     }
   },
   "query_count": 305,
-  "result_sha256": "4249ebd33453092fae6574b3d5e53abc25c23c0a5267e1314ca519c4727ced64",
-  "schema_version": 1,
+  "receipt_commit": "16f6a2810b633d0d2669d35ed6f67e21fcadf90d",
+  "release_target_commit": "16f6a2810b633d0d2669d35ed6f67e21fcadf90d",
+  "result_sha256": "ed2197ac755a2138d9634991b50cade19406c177c8f35cd1a7288305921dd1e7",
+  "schema_version": 2,
   "source": {
     "candidate_streams": {
       "modern_r4": {
@@ -86,13 +90,14 @@
     },
     "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
     "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
-    "exact_result_sha256": "1d6c8d9eace2fdb2a13b7228472aa3f1fb7892e3ffe6b291671ece53de724c9e",
+    "exact_result_sha256": "ec755518db999f89841e3b7a7c8b7cad1b0c05f898009721fc5c4afcc2ef2693",
     "manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
     "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071",
     "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
     "query_ids_sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385",
     "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
-    "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4"
+    "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
   },
   "stages": {
     "modern_r4": {
@@ -230,6 +235,5 @@
       }
     }
   },
-  "status": "PASS",
-  "target_commit": "c7c6deee"
+  "status": "PASS"
 }
