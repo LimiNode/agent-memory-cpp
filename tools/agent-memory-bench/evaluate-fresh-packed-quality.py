@@ -193,14 +193,17 @@ def make_scorer(name: str, path: Path, thq: np.memmap, thresholds: np.ndarray, a
     raise ValueError(f"unsupported codec {name}")
 
 
-def metrics(top_ids: list[str], qrels: dict[str, int]) -> dict[str, float]:
+def metrics(top_ids: list[str], qrels: dict[str, int]) -> dict[str, Any]:
     grades = [qrels.get(x, 0) for x in top_ids[:10]]
     ideal = sorted(qrels.values(), reverse=True)[:10]
     def dcg(values: list[int]) -> float:
         return sum((2.0 ** v - 1.0) / np.log2(i + 2.0) for i, v in enumerate(values))
     denom = dcg(ideal); ndcg = 0.0 if denom == 0.0 else dcg(grades) / denom
-    rr = next((1.0 / (i + 1) for i, v in enumerate(grades) if v > 0), 0.0)
-    return {"ndcg_at_10": float(ndcg), "mrr": float(rr)}
+    first = next((i + 1 for i, value in enumerate(top_ids) if qrels.get(value, 0) > 0), None)
+    first10 = next((i + 1 for i, value in enumerate(top_ids[:10]) if qrels.get(value, 0) > 0), None)
+    return {"ndcg_at_10": float(ndcg), "mrr": 0.0 if first is None else 1.0 / first,
+            "mrr_at_10": 0.0 if first10 is None else 1.0 / first10,
+            "first_relevant_rank": first, "top10_ids": list(top_ids[:10])}
 
 
 def main() -> None:
@@ -210,6 +213,8 @@ def main() -> None:
     ap.add_argument("--thresholds", type=Path, required=True)
     ap.add_argument("--prototype", type=Path, required=True)
     ap.add_argument("--r4", type=Path, required=True)
+    ap.add_argument("--prototype-manifest", type=Path, required=True)
+    ap.add_argument("--r4-manifest", type=Path, required=True)
     ap.add_argument("--output", type=Path, required=True)
     ap.add_argument("--exact-result", type=Path)
     ap.add_argument("--int8", type=Path, required=True); ap.add_argument("--int8-inv-norm", type=Path, required=True)
@@ -225,38 +230,59 @@ def main() -> None:
     for line in (payload / "evaluation-qrels.tsv").read_text().splitlines():
         qid, _, did, grade = line.split(); qrels[qid][did] = int(grade)
     thresholds = np.fromfile(args.thresholds, dtype="<f4").reshape(D, 3); thq = np.memmap(args.thq, dtype=np.uint8, mode="r", shape=(N, THQ_BYTES))
-    streams = {"prototype_ivf": np.fromfile(args.prototype, dtype="<i4").reshape(Q, CANDIDATES), "modern_r4": np.fromfile(args.r4, dtype="<i4").reshape(Q, CANDIDATES)}
+    streams: dict[str, np.ndarray] = {}
+    manifests = {"prototype_ivf": args.prototype_manifest, "modern_r4": args.r4_manifest}
+    for name, path in (("prototype_ivf", args.prototype), ("modern_r4", args.r4)):
+        manifest = json.loads(manifests[name].read_text(encoding="utf-8"))
+        if manifest.get("query_count") != Q or manifest.get("candidate_k") != CANDIDATES:
+            raise ValueError(f"{name} manifest shape differs")
+        if manifest.get("output_sha256") != sha256(path):
+            raise ValueError(f"{name} stream hash differs from manifest")
+        values = np.fromfile(path, dtype="<i4")
+        if values.size != Q * CANDIDATES:
+            raise ValueError(f"{name} stream byte shape differs")
+        values = values.reshape(Q, CANDIDATES)
+        if np.any(values < 0) or np.any(values >= N):
+            raise ValueError(f"{name} stream contains an out-of-range ID")
+        if any(len(set(row.tolist())) != CANDIDATES for row in values):
+            raise ValueError(f"{name} stream contains duplicate IDs")
+        streams[name] = values
     codecs = {"int8": (args.int8, {"int8_inv_norm": args.int8_inv_norm}), "lsq32": (args.lsq32, {}), "lsq48": (args.lsq48, {}), "tq1": (args.tq1, {"tq1_norms": args.tq1_norms}), "tq1-pq8": (args.tq1_pq8, {}), "plsq8x6x8": (args.plsq, {}), "rslm1": (args.rslm_symbols, {"rslm_symbols": args.rslm_symbols, "rslm_inner": args.rslm_inner, "rslm_norms": args.rslm_norms, "rslm_centroids": args.rslm_centroids})}
     scorers = {name: make_scorer(name, path, thq, thresholds, aux) for name, (path, aux) in codecs.items()}
     out: dict[str, Any] = {"schema_version": 1, "family": "fresh_packed_quality_decomposition_v1", "status": "EXECUTED", "query_count": Q, "candidate_count": CANDIDATES, "stages": {}, "source": {"documents_sha256": sha256(payload / "evaluation-document-vectors.f32"), "queries_sha256": sha256(payload / "evaluation-query-vectors.f32"), "qrels_sha256": sha256(payload / "evaluation-qrels.tsv"), "thq_sha256": sha256(args.thq), "thresholds_sha256": sha256(args.thresholds)}}
-    out["source"]["candidate_streams"] = {name: sha256(path) for name, path in (("prototype_ivf", args.prototype), ("modern_r4", args.r4))}
+    out["source"]["candidate_streams"] = {name: {"sha256": sha256(path), "manifest_sha256": sha256(manifests[name])} for name, path in (("prototype_ivf", args.prototype), ("modern_r4", args.r4))}
+    out["source"]["document_ids_sha256"] = sha256(payload / "evaluation-document-ids.jsonl")
+    out["source"]["query_ids_sha256"] = sha256(payload / "evaluation-query-ids.jsonl")
+    out["source"]["manifest_sha256"] = sha256(payload / "manifest.json")
+    out["source"]["exact_result_sha256"] = sha256(args.exact_result) if args.exact_result else None
     exact_top10 = []
-    exact_rows: list[dict[str, float]] = []
+    exact_rows: list[dict[str, Any]] = []
     if args.exact_result is not None:
         baseline = json.loads(args.exact_result.read_text(encoding="utf-8"))
         rows = baseline.get("per_query", [])
         if len(rows) != Q:
             raise ValueError("exact result does not cover 305 queries")
         exact_top10 = [np.asarray([doc_pos[str(value)] for value in row["top10_ids"]], dtype=np.int32) for row in rows]
-        exact_rows = [{"ndcg_at_10": float(row["ndcg_at_10"]), "mrr": float(row["mrr"])} for row in rows]
+        exact_rows = [{"ndcg_at_10": float(row["ndcg_at_10"]), "mrr": float(row["mrr"]), "mrr_at_10": metrics(row["top10_ids"], qrels[query_ids[i]])["mrr_at_10"], "top10_ids": row["top10_ids"]} for i, row in enumerate(rows)]
     else:
         for qi, q in enumerate(queries):
             scores = np.asarray(docs @ q, dtype=np.float32); ids = ordered_top(np.arange(N, dtype=np.int32), scores, 10); exact_top10.append(ids)
-    def summarize(rows: list[dict[str, float]]) -> dict[str, Any]:
+    def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         nd = [r["ndcg_at_10"] for r in rows]; mr = [r["mrr"] for r in rows]
-        return {"mean_ndcg_at_10": float(np.mean(nd)), "mean_mrr": float(np.mean(mr)), "p05_ndcg_at_10": float(np.sort(nd)[max(0, int(np.ceil(.05 * len(nd))) - 1)]), "p05_mrr": float(np.sort(mr)[max(0, int(np.ceil(.05 * len(mr))) - 1)]), "worst_ndcg_at_10": float(np.min(nd)), "worst_mrr": float(np.min(mr)), "per_query": rows}
+        mr10 = [r["mrr_at_10"] for r in rows]
+        return {"mean_ndcg_at_10": float(np.mean(nd)), "mean_mrr": float(np.mean(mr)), "mean_mrr_at_10": float(np.mean(mr10)), "p05_ndcg_at_10": float(np.sort(nd)[max(0, int(np.ceil(.05 * len(nd))) - 1)]), "p05_mrr": float(np.sort(mr)[max(0, int(np.ceil(.05 * len(mr))) - 1)]), "worst_ndcg_at_10": float(np.min(nd)), "worst_mrr": float(np.min(mr)), "per_query": rows}
     if not exact_rows:
         exact_rows = [metrics([doc_ids[i] for i in ids], qrels[query_ids[qi]]) for qi, ids in enumerate(exact_top10)]
     out["exact_oracle"] = summarize(exact_rows)
     for mode, stream in streams.items():
-        route_rows: list[dict[str, float]] = []; thq_rows: list[dict[str, float]] = []; codec_rows = {name: [] for name in codecs}
+        route_rows: list[dict[str, Any]] = []; thq_rows: list[dict[str, Any]] = []; codec_rows = {name: [] for name in codecs}
         for qi, q in enumerate(queries):
-            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); route_ids = ordered_top(cand, exact_scores, 10); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]]))
-            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, 10); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]]))
+            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); route_ids = ordered_top(cand, exact_scores, CANDIDATES); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]]))
+            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, TOP); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]]))
             for name, scorer in scorers.items():
-                packed = ordered_top(top, scorer(top, q), 10); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]]))
+                packed = ordered_top(top, scorer(top, q), TOP); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]]))
         out["stages"][mode] = {"route_exact_fp32": summarize(route_rows), "thq_top128_exact_fp32": summarize(thq_rows), "packed": {name: summarize(rows) for name, rows in codec_rows.items()}}
-    out["payloads"] = {name: {"path": str(path), "sha256": sha256(path)} for name, (path, _) in codecs.items()}
+    out["payloads"] = {name: {"path": str(path), "sha256": sha256(path), **{key: {"path": str(value), "sha256": sha256(value)} for key, value in aux.items() if isinstance(value, Path)}} for name, (path, aux) in codecs.items()}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8"); print(json.dumps({"output": str(args.output), "query_count": Q, "codecs": list(codecs)}, sort_keys=True))
 
 
