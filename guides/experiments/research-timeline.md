@@ -1370,8 +1370,11 @@ recorded separately in `2026-10-03-finalist-layout-model.result.json`; RSLM1
 remains `EXTERNAL_NOT_FOUND` until a verified full-corpus packed source is
 available.
 
-After #463 merged, the first non-weighted Pareto profile screen was recorded
-in `2026-10-03-final-pareto-profiles.md`: LSQ32 as `compact`, TQ1 as
-`balanced`, and exact-cosine INT8 as `speed`. These are engineering profiles,
-not a product winner; fresh packed quality and real MDBX measurements remain
-separate gates.
+After #463 merged, the provisional historical profile screen was corrected in
+`2026-10-03-provisional-historical-profile-screen.md`. The complete historical
+nondominated set includes LSQ32, PLSQ8x6x8, TQ1, LSQ48 and INT8; RSLM1 is
+historically dominated by TQ1. Representative presets remain LSQ32 (`compact`),
+TQ1 (`routed-balanced`) and INT8 (`routed-speed`), while PLSQ is retained as a
+flat-throughput contender and LSQ48 as a historical-quality contender. These
+are not product winners; no finalist is eliminated before fresh packed-codec
+decomposition and real MDBX measurements.
