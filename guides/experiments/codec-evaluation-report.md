@@ -22,7 +22,7 @@ production mode.
 | PLSQ8x6x8 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | PLSQ8x4x8 | measured | candidate-local packed diagnostic | **measured (1M packed flat)** | pending |
 | TQ1 | measured | **packed 3-mode matrix (exact reconstructed norm)** | **measured (1M packed flat)** | pending |
-| TQ1+PQ8 | measured/partial serving | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
+| TQ1+PQ8 | serving measured; comparable qrels unavailable | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | RSLM1 | measured | **packed 3-mode matrix** | **measured (1M packed flat)** | pending |
 | INT8 reference | exact reconstructed-cosine control | exact reconstructed-cosine control | measured | measured |
 | INT8 matched R4 control | control | **measured (matched R4)** | n/a | n/a |
@@ -48,6 +48,7 @@ finalist-specific MDBX persistence are complete.
 | LSQ32 strong | 32 | 0.657264 | 0.890132 | measured |
 | LSQ48 strong | 48 | 0.661515 | source note | measured |
 | TQ1 | 52 | 0.659176 | source note | measured |
+| TQ1+PQ8 | 64 | — | source note | serving measured; comparable historical qrels unavailable |
 | RSLM1 cosine | 52 | 0.658220 | source note | measured |
 | PLSQ8x6x8 | 52 | 0.656438 | source note | measured; packed native candidate gate |
 | PLSQ8x4x8 | 36 | 0.649133 | source note | measured; packed native candidate gate |
@@ -98,8 +99,8 @@ was fast.
 | INT8 | measured control | **measured packed** | **measured packed** | control |
 | LSQ32 | measured packed | **measured packed** | **measured packed** | finalist |
 | LSQ48 | measured packed | **measured packed** | **measured packed** | finalist |
-| TQ1 | measured reconstructed-cosine packed | **measured packed (exact TQ norm)** | **measured packed (exact TQ norm)** | fresh quality pending |
-| TQ1+PQ8 | measured reconstructed-cosine packed | **measured packed** | **measured packed** | fresh quality pending |
+| TQ1 | measured reconstructed-cosine packed | **measured packed (exact TQ norm)** | **measured packed (exact TQ norm)** | fresh packed decomposition pending |
+| TQ1+PQ8 | measured reconstructed-cosine packed | **measured packed** | **measured packed** | fresh packed decomposition pending |
 | PLSQ8x6x8 | measured + independent replay | **measured packed** | **measured packed** | finalist |
 | RSLM1 | measured faithful packed | **measured packed** | **measured packed** | finalist |
 

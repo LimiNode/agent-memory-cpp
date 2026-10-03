@@ -1,11 +1,12 @@
 # Provisional historical serving profile screen (2026-10-03)
 
 This is a historical serving screen, not a final product Pareto. It uses the
-matched three-mode receipts from the merged serving study and applies exact
-nondominance over payload, flat latency, Prototype-IVF latency, Modern-R4
-latency and historical nDCG@10. No weighted score is used.
+matched three-mode receipts from the merged serving study and computes a
+complete-axis historical frontier where all quality coordinates are present.
+Rows with missing comparable quality are kept in a separate eligibility set.
+No weighted score is used.
 
-## Historical nondominated frontier
+## Historical complete-axis frontier
 
 | Codec | Bytes/doc | Flat p50 | Prototype-IVF p50 | Modern R4 p50 | Historical nDCG@10 |
 | --- | ---: | ---: | ---: | ---: | ---: |
@@ -13,16 +14,23 @@ latency and historical nDCG@10. No weighted score is used.
 | PLSQ8x6x8 | 52 | **177.522 ms** | 3.392 ms | **3.106 ms** | 0.656438 |
 | TQ1 | 52 | 238.600 ms | **2.564 ms** | **2.511 ms** | 0.659176 |
 | LSQ48 | 52 | 228.908 ms | 4.482 ms | 4.596 ms | **0.661515** |
-| INT8 exact cosine | 392 | 407.166 ms | **0.7485 ms** | **0.7927 ms** | unknown |
 
-RSLM1 is historically dominated by TQ1 under these axes: comparable payload,
-slower flat and routed timings, and lower historical quality. It remains
-listed in the underlying serving matrix, but is not on this provisional
-frontier.
+RSLM1 is historically dominated by TQ1 under these complete axes: comparable
+payload, slower flat and routed timings, and lower historical quality. It
+remains listed in the underlying serving matrix, but is not on this frontier.
 
-INT8 remains frontier-eligible because its fresh/canonical quality is not
-available on the same quality axis and it is strictly fastest on routed
-latency. Unknown quality is not treated as zero.
+## Missing-quality frontier eligibility
+
+The following finalist rows cannot be placed on a complete-axis frontier yet:
+
+| Codec | Bytes/doc | Flat p50 | Prototype-IVF p50 | Modern R4 p50 | Quality status |
+| --- | ---: | ---: | ---: | ---: | --- |
+| INT8 exact cosine | 392 | 407.166 ms | **0.7485 ms** | **0.7927 ms** | unknown comparable quality; routed-speed eligible |
+| TQ1+PQ8 | 64/68 | 289.122 ms | 2.773 ms | 2.613 ms | comparable historical quality unavailable |
+
+Unknown quality is neither treated as zero nor silently treated as complete.
+TQ1+PQ8 therefore remains explicitly `eligibility unresolved`, rather than
+being removed from the candidate set by the TQ1 row.
 
 ## Representative presets
 
