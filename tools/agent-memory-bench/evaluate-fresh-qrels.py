@@ -150,6 +150,24 @@ def exact_mrr_from_scores(data: dict[str, Any], query_position: int, scores: np.
     return 0.0 if best_rank is None else 1.0 / best_rank
 
 
+def exact_first_relevant(data: dict[str, Any], query_position: int, scores: np.ndarray) -> tuple[int | None, str | None]:
+    """Return the exact first relevant rank and document under the frozen tie rule."""
+    query_id = data["query_ids"][query_position]
+    keys = data["document_order_keys"]
+    ids = data["document_ids"]
+    best: tuple[int, str] | None = None
+    for document_id, grade in data["qrels"][query_id].items():
+        if grade <= 0:
+            continue
+        position = data["document_id_to_position"][document_id]
+        rank = 1 + int(np.count_nonzero(scores > scores[position]))
+        rank += int(np.count_nonzero((scores == scores[position]) & (keys < keys[position])))
+        candidate = (rank, str(ids[position]))
+        if best is None or candidate[0] < best[0] or (candidate[0] == best[0] and candidate[1] < best[1]):
+            best = candidate
+    return (None, None) if best is None else best
+
+
 def exact_run(args: argparse.Namespace) -> None:
     if args.top_k <= 0:
         raise EvaluationError("top-k must be positive")
@@ -166,6 +184,7 @@ def exact_run(args: argparse.Namespace) -> None:
         positions = positions[np.lexsort((data["document_order_keys"][positions], -scores[positions]))]
         ids = data["document_ids"][positions].tolist()
         grades = data["qrels"][query_id]
+        first_rank, first_doc = exact_first_relevant(data, position, scores)
         row = {
             "query_position": position,
             "query_id": query_id,
@@ -173,6 +192,8 @@ def exact_run(args: argparse.Namespace) -> None:
             "top128_ids": ids[:128],
             "ndcg_at_10": ndcg_at_10(ids, grades),
             "mrr": exact_mrr_from_scores(data, position, scores),
+            "first_relevant_rank": first_rank,
+            "first_relevant_doc_id": first_doc,
             "relevant_in_top10": sum(grades.get(value, 0) > 0 for value in ids[:10]),
         }
         per_query.append(row)

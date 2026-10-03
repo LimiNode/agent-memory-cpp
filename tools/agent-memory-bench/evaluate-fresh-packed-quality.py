@@ -19,6 +19,17 @@ import numpy as np
 
 D, N, Q, THQ_BYTES, CANDIDATES, TOP = 384, 1_000_000, 305, 96, 5000, 128
 
+EXPECTED_SOURCE_HASHES = {
+    "documents": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "queries": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "train_vectors": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80",
+}
+
+EXPECTED_ROUTE_MANIFESTS = {
+    "prototype_ivf": {"family": "prototype_ivf_balanced_route_v1", "status": "PASS"},
+    "modern_r4": {"family": "fresh_modern_r4_prototype_route_v1", "status": "PROTOTYPE_EXECUTED"},
+}
+
 
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
@@ -201,9 +212,11 @@ def metrics(top_ids: list[str], qrels: dict[str, int]) -> dict[str, Any]:
     denom = dcg(ideal); ndcg = 0.0 if denom == 0.0 else dcg(grades) / denom
     first = next((i + 1 for i, value in enumerate(top_ids) if qrels.get(value, 0) > 0), None)
     first10 = next((i + 1 for i, value in enumerate(top_ids[:10]) if qrels.get(value, 0) > 0), None)
+    first_doc = None if first is None else str(top_ids[first - 1])
     return {"ndcg_at_10": float(ndcg), "mrr": 0.0 if first is None else 1.0 / first,
             "mrr_at_10": 0.0 if first10 is None else 1.0 / first10,
-            "first_relevant_rank": first, "top10_ids": list(top_ids[:10])}
+            "first_relevant_rank": first, "first_relevant_doc_id": first_doc,
+            "top10_ids": list(top_ids[:10])}
 
 
 def main() -> None:
@@ -236,6 +249,14 @@ def main() -> None:
         manifest = json.loads(manifests[name].read_text(encoding="utf-8"))
         if manifest.get("query_count") != Q or manifest.get("candidate_k") != CANDIDATES:
             raise ValueError(f"{name} manifest shape differs")
+        expected = EXPECTED_ROUTE_MANIFESTS[name]
+        if manifest.get("family") != expected["family"] or manifest.get("status") != expected["status"]:
+            raise ValueError(f"{name} manifest family/status differs")
+        if manifest.get("document_count") != N or manifest.get("dimension") != D or manifest.get("metric") != "cosine":
+            raise ValueError(f"{name} manifest corpus contract differs")
+        source_hashes = manifest.get("source_hashes")
+        if not isinstance(source_hashes, dict) or any(source_hashes.get(key) != value for key, value in EXPECTED_SOURCE_HASHES.items()):
+            raise ValueError(f"{name} manifest source hashes differ")
         if manifest.get("output_sha256") != sha256(path):
             raise ValueError(f"{name} stream hash differs from manifest")
         values = np.fromfile(path, dtype="<i4")
@@ -249,7 +270,10 @@ def main() -> None:
         streams[name] = values
     codecs = {"int8": (args.int8, {"int8_inv_norm": args.int8_inv_norm}), "lsq32": (args.lsq32, {}), "lsq48": (args.lsq48, {}), "tq1": (args.tq1, {"tq1_norms": args.tq1_norms}), "tq1-pq8": (args.tq1_pq8, {}), "plsq8x6x8": (args.plsq, {}), "rslm1": (args.rslm_symbols, {"rslm_symbols": args.rslm_symbols, "rslm_inner": args.rslm_inner, "rslm_norms": args.rslm_norms, "rslm_centroids": args.rslm_centroids})}
     scorers = {name: make_scorer(name, path, thq, thresholds, aux) for name, (path, aux) in codecs.items()}
-    out: dict[str, Any] = {"schema_version": 1, "family": "fresh_packed_quality_decomposition_v1", "status": "EXECUTED", "query_count": Q, "candidate_count": CANDIDATES, "stages": {}, "source": {"documents_sha256": sha256(payload / "evaluation-document-vectors.f32"), "queries_sha256": sha256(payload / "evaluation-query-vectors.f32"), "qrels_sha256": sha256(payload / "evaluation-qrels.tsv"), "thq_sha256": sha256(args.thq), "thresholds_sha256": sha256(args.thresholds)}}
+    actual_source_hashes = {"documents": sha256(payload / "evaluation-document-vectors.f32"), "queries": sha256(payload / "evaluation-query-vectors.f32"), "train_vectors": sha256(payload / "train-vectors.f32")}
+    if actual_source_hashes != EXPECTED_SOURCE_HASHES:
+        raise ValueError("canonical source hashes differ from the frozen fresh route contract")
+    out: dict[str, Any] = {"schema_version": 1, "family": "fresh_packed_quality_decomposition_v1", "status": "EXECUTED", "query_count": Q, "candidate_count": CANDIDATES, "stages": {}, "source": {"documents_sha256": actual_source_hashes["documents"], "queries_sha256": actual_source_hashes["queries"], "train_vectors_sha256": actual_source_hashes["train_vectors"], "qrels_sha256": sha256(payload / "evaluation-qrels.tsv"), "thq_sha256": sha256(args.thq), "thresholds_sha256": sha256(args.thresholds)}}
     out["source"]["candidate_streams"] = {name: {"sha256": sha256(path), "manifest_sha256": sha256(manifests[name])} for name, path in (("prototype_ivf", args.prototype), ("modern_r4", args.r4))}
     out["source"]["document_ids_sha256"] = sha256(payload / "evaluation-document-ids.jsonl")
     out["source"]["query_ids_sha256"] = sha256(payload / "evaluation-query-ids.jsonl")
@@ -263,7 +287,7 @@ def main() -> None:
         if len(rows) != Q:
             raise ValueError("exact result does not cover 305 queries")
         exact_top10 = [np.asarray([doc_pos[str(value)] for value in row["top10_ids"]], dtype=np.int32) for row in rows]
-        exact_rows = [{"ndcg_at_10": float(row["ndcg_at_10"]), "mrr": float(row["mrr"]), "mrr_at_10": metrics(row["top10_ids"], qrels[query_ids[i]])["mrr_at_10"], "top10_ids": row["top10_ids"]} for i, row in enumerate(rows)]
+        exact_rows = [{"ndcg_at_10": float(row["ndcg_at_10"]), "mrr": float(row["mrr"]), "mrr_at_10": metrics(row["top10_ids"], qrels[query_ids[i]])["mrr_at_10"], "first_relevant_rank": row.get("first_relevant_rank"), "first_relevant_doc_id": row.get("first_relevant_doc_id"), "top10_ids": row["top10_ids"]} for i, row in enumerate(rows)]
     else:
         for qi, q in enumerate(queries):
             scores = np.asarray(docs @ q, dtype=np.float32); ids = ordered_top(np.arange(N, dtype=np.int32), scores, 10); exact_top10.append(ids)
