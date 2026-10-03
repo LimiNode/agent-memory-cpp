@@ -35,9 +35,9 @@ python tools/agent-memory-bench/evaluate-fresh-qrels.py exact \
 | mean MRR | 0.6938856135 |
 | p05 MRR | 0.0833333333 |
 
-The exact result and per-query raw rows are retained in the local evidence
-workspace and are not committed as a large generated dump.  Their compact
-provenance is:
+The exact result and per-query raw rows are retained in the namespaced
+[evidence release](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/fresh-qrels-mdbx-v1)
+and are not committed as a large generated dump.  Their compact provenance is:
 
 ```json
 {

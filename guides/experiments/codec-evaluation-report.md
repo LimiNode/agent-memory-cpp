@@ -252,8 +252,8 @@ regenerated on this query set. See
 
 A separate prototype uses exact-oracle top-128 candidates to isolate MDBX
 physical reads for a deterministic per-document INT8 proxy. Row KV measured
-`0.2166 / 0.6259 / 0.8796 ms` p50/p95/p99 at 512 MiB; 4,096-row segment blobs
-measured `138.6463 / 162.5034 / 172.5282 ms` at 384 MiB, with ordered parity
+`0.2249 / 0.2840 / 0.3479 ms` p50/p95/p99 at 512 MiB; 4,096-row segment blobs
+measured `116.8782 / 141.5308 / 151.5041 ms` at 384 MiB, with ordered parity
 305/305 for both. These are not finalist-specific persistence or routed
 latency evidence. See
 [`2026-10-03-mdbx-packed-int8-prototype.result.json`](2026-10-03-mdbx-packed-int8-prototype.result.json).

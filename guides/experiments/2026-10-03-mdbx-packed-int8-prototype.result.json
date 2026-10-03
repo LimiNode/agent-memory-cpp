@@ -2,6 +2,7 @@
   "schema_version": 1,
   "family": "native_mdbx_packed_int8_prototype_v1",
   "status": "EXECUTED",
+  "evidence_release": "https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/fresh-qrels-mdbx-v1",
   "target_commit": "9bd438f310f70316853bd638db55282b2a39fe35",
   "metric": "reconstructed_cosine_exact",
   "documents": 1000000,

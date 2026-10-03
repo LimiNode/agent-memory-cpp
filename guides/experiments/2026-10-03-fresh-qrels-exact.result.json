@@ -20,5 +20,6 @@
   },
   "raw_evidence": "tmp/fresh-qrels/exact.raw.jsonl",
   "raw_evidence_sha256": "07c979d314d1ece4420e3bf42ada347471574df3e2954581edc57a24e9f1f343",
-  "raw_evidence_policy": "local evidence workspace; publish via evidence release"
+  "raw_evidence_policy": "GitHub evidence release; large source payload remains external",
+  "evidence_release": "https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/fresh-qrels-mdbx-v1"
 }
