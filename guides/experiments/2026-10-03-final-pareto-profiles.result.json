@@ -1,0 +1,58 @@
+{
+  "schema_version": 1,
+  "family": "codec_pareto_profiles_v1",
+  "status": "RESEARCH_PROFILE",
+  "selection_policy": "non-dominated profile labels; no weighted score and no product winner",
+  "profiles": {
+    "compact": {
+      "codec": "LSQ32",
+      "bytes_per_document": 36,
+      "flat_p50_ms": 178.670,
+      "prototype_ivf_p50_ms": 3.386,
+      "modern_r4_p50_ms": 3.479,
+      "historical_ndcg_at_10": 0.657264,
+      "rationale": "minimum verified finalist payload among canonical packed rows with complete historical serving evidence"
+    },
+    "balanced": {
+      "codec": "TQ1",
+      "bytes_per_document": 52,
+      "flat_p50_ms": 238.600,
+      "prototype_ivf_p50_ms": 2.564,
+      "modern_r4_p50_ms": 2.511,
+      "historical_ndcg_at_10": 0.659176,
+      "rationale": "compact payload with the strongest latency/quality compromise in the historical matched matrix"
+    },
+    "speed": {
+      "codec": "INT8",
+      "bytes_per_document": 392,
+      "flat_p50_ms": 407.166,
+      "prototype_ivf_p50_ms": 0.7485,
+      "modern_r4_p50_ms": 0.7927,
+      "historical_ndcg_at_10": null,
+      "rationale": "fastest matched downstream reranker; canonical metric is exact reconstructed cosine"
+    }
+  },
+  "fresh_quality_context": {
+    "exact_oracle_ndcg_at_10": 0.6723946080838488,
+    "exact_oracle_mrr": 0.6938856134550563,
+    "prototype_ivf_exact_rerank_ndcg_at_10": 0.6597463669380758,
+    "prototype_ivf_exact_rerank_mrr": 0.6921471174812039,
+    "prototype_ivf_route_recall_at_128": 0.8628073770491803,
+    "r4_prototype_exact_rerank_ndcg_at_10": 0.6455913410616324,
+    "r4_prototype_exact_rerank_mrr": 0.6865232557998373,
+    "r4_prototype_route_recall_at_128": 0.8126280737704918,
+    "scope": "fresh route diagnostics with exact FP32 rerank; no fresh packed THQ/codec decomposition"
+  },
+  "persistent_layout_context": {
+    "page_model_only": true,
+    "row_kv_physical_bytes": {"INT8": 400003072, "LSQ32": 44003328, "TQ1": 60002304},
+    "segment_blob_physical_bytes": {"INT8": 393003008, "LSQ32": 37003264, "TQ1": 53002240},
+    "rslm1": "EXTERNAL_NOT_FOUND"
+  },
+  "limitations": [
+    "historical nDCG values are not fresh qrels",
+    "fresh route rows use exact FP32 rerank and do not identify a codec winner",
+    "Modern R4 canonical source bundle and packed fresh decomposition remain pending",
+    "persistent numbers are deterministic page models, not measured MDBX files"
+  ]
+}
