@@ -11,7 +11,7 @@
     "worst_ndcg_at_10": 0.0
   },
   "family": "fresh_packed_quality_decomposition_receipt_v1",
-  "measured_code_commit": "f288e4d7ede94e35853475480ac858fea785f8ac",
+  "measured_code_commit": "6f0a0448e2d4fd3288daad23ff527a6e35816228",
   "metric_contract": {
     "mrr": "full ranked-stage MRR with first-relevant score/rank proof (higher-score and tied-lower-ID counts)",
     "mrr_at_10": "diagnostic only",
@@ -73,8 +73,9 @@
     }
   },
   "query_count": 305,
-  "receipt_commit": "f288e4d7ede94e35853475480ac858fea785f8ac",
-  "release_target_commit": "f288e4d7ede94e35853475480ac858fea785f8ac",
+  "receipt_commit": "6f0a0448e2d4fd3288daad23ff527a6e35816228",
+  "receipt_commit_semantics": "generation commit for this receipt; the containing commit is its successor because a commit cannot embed its own hash",
+  "release_target_commit": "6f0a0448e2d4fd3288daad23ff527a6e35816228",
   "result_sha256": "73e3b39db91f442459ec0cc0765381f15adc56255c33c8d66e50cd4b1e5057e1",
   "schema_version": 2,
   "source": {
