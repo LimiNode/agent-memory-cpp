@@ -1,8 +1,8 @@
 {
-  "bundle_sha256": "0b11b789aa6d8d6cd7ab217c32723bfaf6a77e3843e2ba4cc6141d9be291fb19",
+  "bundle_sha256": "5776eadb9c224ef776bddbf1c8470525337848f293d589e22a4ced025b1f2bd3",
   "codec_count": 7,
   "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
-  "evidence_binding_sha256": "bdbeaf221225a9259af4c0e68ae626b4c31c16fe4c4af45e429f9efd0f50ae6d",
+  "evidence_binding_sha256": "3f1d88cff604fe9483b78930ff3dd9b69e4151421977ccb818de4da6f7cf5a27",
   "exact_oracle": {
     "mean_mrr": 0.6938856134550563,
     "mean_mrr_at_10": 0.6911215196461099,
@@ -12,7 +12,7 @@
     "worst_ndcg_at_10": 0.0
   },
   "family": "fresh_packed_quality_decomposition_receipt_v1",
-  "measured_code_commit": "a056321c1473cdceaf7fd581fd7c173c205b765e",
+  "measured_code_commit": "fe01a3058a7bc1452dae6949d29955ef16666ee6",
   "metric_contract": {
     "mrr": "routed stages independently recomputed from ranked_ids/ranked_scores/order_keys; exact 1M oracle checks persisted canonical proof consistency",
     "mrr_at_10": "diagnostic only",
@@ -74,10 +74,10 @@
     }
   },
   "query_count": 305,
-  "receipt_commit": "a056321c1473cdceaf7fd581fd7c173c205b765e",
+  "receipt_commit": "fe01a3058a7bc1452dae6949d29955ef16666ee6",
   "receipt_commit_semantics": "generation commit for this receipt; the containing commit is its successor because a commit cannot embed its own hash",
-  "release_target_commit": "a056321c1473cdceaf7fd581fd7c173c205b765e",
-  "result_sha256": "a14bf6585faef5eb5c4f37e7afc52eb21ebc903535cee65daf8c064edb2840b6",
+  "release_target_commit": "fe01a3058a7bc1452dae6949d29955ef16666ee6",
+  "result_sha256": "65587b2ffb80f902afbbbeb52d3c68414e6c9d5442dac60eec672ea924cb5818",
   "schema_version": 2,
   "source": {
     "candidate_streams": {
