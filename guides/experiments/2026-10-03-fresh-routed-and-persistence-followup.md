@@ -35,12 +35,14 @@ FP32 oracle scorer.
 
 ## Modern R4 status
 
-The historical Modern-R4 fused stream is a 152-query artifact and its source
-manifests do not contain a fresh 305-query route/materialization.  It is not
-reused for fresh quality.  A strict fresh replay receipt therefore remains
-`PENDING_SOURCE_REPLAY` until the canonical R4 layout/order/model bundle is
-provided or regenerated.  An exact top-5,000 diagnostic can be generated as an
-upper bound, but it must not be labelled Modern R4 quality.
+A fresh three-seed IVF fusion was regenerated for all 305 queries as an
+explicit prototype route (`nlist=256`, `nprobe=8`, 5,000-ID fusion budget).
+With exact FP32 rerank it reports mean route Recall@128 `0.812628`, mean
+nDCG@10 `0.645591` and mean MRR `0.686523`.  This is useful fresh route
+diagnostic evidence, but it is **not** the historical NeuRoute Modern-R4 model:
+the canonical R4 layout/order/model bundle and packed THQ scorer are still
+absent, so the receipt remains `PROTOTYPE_EXECUTED_CANONICAL_PENDING`.
+The historical 152-query fused stream is not reused.
 
 ## Persistent finalist layouts
 
