@@ -49,7 +49,7 @@ def main() -> None:
         raise ValueError("fresh matrix shape differs")
     if set(result.get("stages", {})) != {"prototype_ivf", "modern_r4"}:
         raise ValueError("serving-mode coverage differs")
-    compact = {"schema_version": 1, "family": "fresh_packed_quality_decomposition_receipt_v1", "status": "PASS", "target_commit": args.target_commit, "result_sha256": sha256(args.result), "bundle_sha256": args.bundle_sha256, "query_count": Q, "codec_count": len(CODECS), "metric_contract": {"ndcg": "nDCG@10", "mrr": "full ranked-stage MRR", "mrr_at_10": "diagnostic only", "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"}, "source": result.get("source"), "stages": {}}
+    compact = {"schema_version": 1, "family": "fresh_packed_quality_decomposition_receipt_v1", "status": "PASS", "target_commit": args.target_commit, "result_sha256": sha256(args.result), "bundle_sha256": args.bundle_sha256, "query_count": Q, "codec_count": len(CODECS), "metric_contract": {"ndcg": "nDCG@10", "mrr": "full ranked-stage MRR", "mrr_at_10": "diagnostic only", "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"}, "source": result.get("source"), "payloads": result.get("payloads"), "stages": {}}
     check_stage(result["exact_oracle"], 0.0)
     compact["exact_oracle"] = {k: result["exact_oracle"][k] for k in ("mean_ndcg_at_10", "mean_mrr", "mean_mrr_at_10", "p05_ndcg_at_10", "worst_ndcg_at_10")}
     for mode, value in result["stages"].items():
