@@ -1,8 +1,8 @@
 {
-  "bundle_sha256": "1b29146914c9a62422d797fc5369997924fdd6b63e10de78337ebedf970c98d2",
+  "bundle_sha256": "0b11b789aa6d8d6cd7ab217c32723bfaf6a77e3843e2ba4cc6141d9be291fb19",
   "codec_count": 7,
   "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
-  "evidence_binding_sha256": "aa346e35ffbbb41b73548267a02238a94495d2a4a9a73bfee0dc0387e995948c",
+  "evidence_binding_sha256": "bdbeaf221225a9259af4c0e68ae626b4c31c16fe4c4af45e429f9efd0f50ae6d",
   "exact_oracle": {
     "mean_mrr": 0.6938856134550563,
     "mean_mrr_at_10": 0.6911215196461099,
@@ -12,12 +12,12 @@
     "worst_ndcg_at_10": 0.0
   },
   "family": "fresh_packed_quality_decomposition_receipt_v1",
-  "measured_code_commit": "5897627e3d8f66a143cf44927126b7c53985431c",
+  "measured_code_commit": "a056321c1473cdceaf7fd581fd7c173c205b765e",
   "metric_contract": {
-    "mrr": "routed stages independently recomputed from ranked_ids/ranked_scores; exact 1M oracle checks persisted canonical proof consistency",
+    "mrr": "routed stages independently recomputed from ranked_ids/ranked_scores/order_keys; exact 1M oracle checks persisted canonical proof consistency",
     "mrr_at_10": "diagnostic only",
     "ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels",
-    "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"
+    "tie_policy": "score-desc-or-THQ-distance-asc then numeric document order key ascending"
   },
   "payloads": {
     "int8": {
@@ -74,10 +74,10 @@
     }
   },
   "query_count": 305,
-  "receipt_commit": "5897627e3d8f66a143cf44927126b7c53985431c",
+  "receipt_commit": "a056321c1473cdceaf7fd581fd7c173c205b765e",
   "receipt_commit_semantics": "generation commit for this receipt; the containing commit is its successor because a commit cannot embed its own hash",
-  "release_target_commit": "5897627e3d8f66a143cf44927126b7c53985431c",
-  "result_sha256": "a00bd17b1645188a7cd0dd1d7beaa576b69905ce5fec49c0774008da5a29f3d6",
+  "release_target_commit": "a056321c1473cdceaf7fd581fd7c173c205b765e",
+  "result_sha256": "a14bf6585faef5eb5c4f37e7afc52eb21ebc903535cee65daf8c064edb2840b6",
   "schema_version": 2,
   "source": {
     "candidate_streams": {
