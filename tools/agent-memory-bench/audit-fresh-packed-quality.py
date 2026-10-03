@@ -66,6 +66,7 @@ def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str
     nd_values: list[float] = []
     mr_values: list[float] = []
     mr10_values: list[float] = []
+    independently_ranked = True
     for index, row in enumerate(rows):
         top10 = row.get("top10_ids")
         if not isinstance(top10, list) or len(top10) != 10 or any(str(value) not in known_docs for value in top10) or len(set(map(str, top10))) != 10:
@@ -76,6 +77,27 @@ def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str
             raise ValueError(f"nDCG recomputation differs at query {index}")
         rank = row.get("first_relevant_rank")
         first_doc = row.get("first_relevant_doc_id")
+        ranked_ids = row.get("ranked_ids")
+        ranked_scores = row.get("ranked_scores")
+        if ranked_ids is None and ranked_scores is None:
+            independently_ranked = False
+        elif not isinstance(ranked_ids, list) or not isinstance(ranked_scores, list) or len(ranked_ids) != len(ranked_scores) or len(ranked_ids) < 10 or len(set(map(str, ranked_ids))) != len(ranked_ids) or any(str(value) not in known_docs for value in ranked_ids) or not all(isinstance(value, (int, float)) and np.isfinite(float(value)) for value in ranked_scores):
+            raise ValueError(f"invalid full ranked evidence at query {index}")
+        else:
+            ranked_ids = [str(value) for value in ranked_ids]
+            ranked_scores = np.asarray([float(value) for value in ranked_scores], dtype=np.float64)
+            if ranked_ids[:10] != top10:
+                raise ValueError(f"top10/full-ranking evidence differs at query {index}")
+            recomputed_rank = next((position + 1 for position, value in enumerate(ranked_ids) if qrels[query_ids[index]].get(value, 0) > 0), None)
+            recomputed_doc = None if recomputed_rank is None else ranked_ids[recomputed_rank - 1]
+            if recomputed_rank != rank or recomputed_doc != (None if first_doc is None else str(first_doc)):
+                raise ValueError(f"first relevant rank is not independently reproduced at query {index}")
+            if recomputed_rank is not None:
+                score = float(ranked_scores[recomputed_rank - 1])
+                higher = int(np.count_nonzero(ranked_scores > score))
+                tied_lower = int(sum(candidate_score == score and candidate_id < recomputed_doc for candidate_id, candidate_score in zip(ranked_ids, ranked_scores)))
+                if row.get("first_relevant_score") is None or abs(float(row["first_relevant_score"]) - score) > 1e-12 or row.get("higher_score_count") != higher or row.get("tied_lower_id_count") != tied_lower or 1 + higher + tied_lower != recomputed_rank:
+                    raise ValueError(f"first relevant score/rank proof is not independently reproduced at query {index}")
         if rank is None:
             if first_doc is not None or row.get("first_relevant_score") is not None or row.get("higher_score_count") is not None or row.get("tied_lower_id_count") is not None or float(row["mrr"]) != 0.0:
                 raise ValueError(f"missing first relevant identity at query {index}")
@@ -112,7 +134,7 @@ def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str
         raise ValueError("full-rank MRR aggregate differs")
     if abs(float(stage["mean_mrr_at_10"]) - float(mr10.mean())) > 1e-12:
         raise ValueError("MRR@10 aggregate differs")
-    return {"mean_ndcg_at_10": float(nd.mean()), "mean_mrr": float(mr.mean()), "mean_mrr_at_10": float(mr10.mean()), "p05_ndcg_at_10": float(np.sort(nd)[14]), "worst_ndcg_at_10": float(nd.min())}
+    return {"mean_ndcg_at_10": float(nd.mean()), "mean_mrr": float(mr.mean()), "mean_mrr_at_10": float(mr10.mean()), "p05_ndcg_at_10": float(np.sort(nd)[14]), "worst_ndcg_at_10": float(nd.min()), "rank_proof": "independently_recomputed_from_ranked_ids_scores" if independently_ranked else "persisted_proof_consistency_only"}
 
 
 def main() -> None:
@@ -148,7 +170,7 @@ def main() -> None:
         "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
         "query_count": Q,
         "codec_count": len(CODECS),
-        "metric_contract": {"ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels", "mrr": "full ranked-stage MRR with first-relevant score/rank proof (higher-score and tied-lower-ID counts)", "mrr_at_10": "diagnostic only", "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"},
+        "metric_contract": {"ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels", "mrr": "routed stages independently recomputed from ranked_ids/ranked_scores; exact 1M oracle checks persisted canonical proof consistency", "mrr_at_10": "diagnostic only", "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"},
         "source": result.get("source"),
         "payloads": result.get("payloads"),
         "stages": {},

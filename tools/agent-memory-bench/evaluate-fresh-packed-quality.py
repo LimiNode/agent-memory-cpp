@@ -229,7 +229,9 @@ def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray
             "first_relevant_rank": first, "first_relevant_doc_id": first_doc,
             "first_relevant_score": first_score, "higher_score_count": higher_count,
             "tied_lower_id_count": tied_lower_id_count,
-            "top10_ids": list(top_ids[:10])}
+            "top10_ids": list(top_ids[:10]),
+            "ranked_ids": list(top_ids) if ranked_scores is not None else None,
+            "ranked_scores": [float(value) for value in ranked_scores] if ranked_scores is not None else None}
 
 
 def main() -> None:
