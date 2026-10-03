@@ -140,6 +140,7 @@ def main() -> None:
         "status": "PASS",
         "measured_code_commit": args.measured_code_commit,
         "receipt_commit": args.receipt_commit,
+        "receipt_commit_semantics": "generation commit for this receipt; the containing commit is its successor because a commit cannot embed its own hash",
         "release_target_commit": args.release_target_commit,
         "result_sha256": result_hash,
         "bundle_sha256": args.bundle_sha256,

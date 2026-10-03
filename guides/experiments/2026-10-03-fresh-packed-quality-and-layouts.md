@@ -98,5 +98,8 @@ persisted rank proof (`first_relevant_score`, `higher_score_count`, and
 Route manifests are fail-closed on family/status, corpus shape/metric, frozen
 document/query/train-vector hashes, and candidate-stream hashes.  The receipt
 records separate measured-code, receipt-generation, and release-target commit
-fields; its `evidence_binding_sha256` is explicitly a deterministic binding
-digest, not a content-tree root.
+fields.  `receipt_commit` is explicitly the generation commit (the containing
+commit is necessarily its successor because a commit cannot embed its own
+hash); its semantics are recorded in the receipt.  The
+`evidence_binding_sha256` is explicitly a deterministic binding digest, not a
+content-tree root.
