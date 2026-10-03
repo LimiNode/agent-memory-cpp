@@ -75,3 +75,7 @@ Regenerate the canonical fresh Modern-R4 route from its source-bound model and
 THQ inputs, then rerun packed final scorers and quality decomposition.  Only
 after that gate should finalist-specific MDBX be promoted beyond this physical
 layout prototype.
+
+The compact evidence bundle is published as
+`evidence/fresh-routed-mdbx-v2` with archive SHA-256
+`e853d6911fad35c9c6757187d37a79958b90a121fff07102ffd58a379fdfa6bb`.
