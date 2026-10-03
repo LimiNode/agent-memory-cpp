@@ -31,6 +31,12 @@ EXPECTED_ROUTE_MANIFESTS = {
 }
 
 
+def document_order_key(value: str | int) -> tuple[int, int | str]:
+    """Return the frozen numeric-first, lexical-fallback document ordering key."""
+    text = str(value)
+    return (0, int(text)) if text.lstrip("-").isdigit() else (1, text)
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -204,7 +210,7 @@ def make_scorer(name: str, path: Path, thq: np.memmap, thresholds: np.ndarray, a
     raise ValueError(f"unsupported codec {name}")
 
 
-def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray | None = None) -> dict[str, Any]:
+def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray | None = None, ranked_order_keys: np.ndarray | None = None) -> dict[str, Any]:
     grades = [qrels.get(x, 0) for x in top_ids[:10]]
     ideal = sorted(qrels.values(), reverse=True)[:10]
     def dcg(values: list[int]) -> float:
@@ -217,11 +223,12 @@ def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray
     higher_count = None
     tied_lower_id_count = None
     if first is not None and ranked_scores is not None:
-        if len(ranked_scores) != len(top_ids):
+        if len(ranked_scores) != len(top_ids) or ranked_order_keys is None or len(ranked_order_keys) != len(top_ids):
             raise ValueError("rank proof length differs from ranked IDs")
         first_score = float(ranked_scores[first - 1])
         higher_count = int(np.count_nonzero(ranked_scores > first_score))
-        tied_lower_id_count = int(sum(float(score) == first_score and str(doc_id) < first_doc for doc_id, score in zip(top_ids, ranked_scores)))
+        first_order_key = document_order_key(ranked_order_keys[first - 1])
+        tied_lower_id_count = int(sum(float(score) == first_score and document_order_key(order_key) < first_order_key for order_key, score in zip(ranked_order_keys, ranked_scores)))
         if 1 + higher_count + tied_lower_id_count != first:
             raise ValueError("rank proof disagrees with ordered ranking")
     return {"ndcg_at_10": float(ndcg), "mrr": 0.0 if first is None else 1.0 / first,
@@ -231,7 +238,8 @@ def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray
             "tied_lower_id_count": tied_lower_id_count,
             "top10_ids": list(top_ids[:10]),
             "ranked_ids": list(top_ids) if ranked_scores is not None else None,
-            "ranked_scores": [float(value) for value in ranked_scores] if ranked_scores is not None else None}
+            "ranked_scores": [float(value) for value in ranked_scores] if ranked_scores is not None else None,
+            "ranked_order_keys": [int(value) for value in ranked_order_keys] if ranked_order_keys is not None else None}
 
 
 def main() -> None:
@@ -316,10 +324,10 @@ def main() -> None:
     for mode, stream in streams.items():
         route_rows: list[dict[str, Any]] = []; thq_rows: list[dict[str, Any]] = []; codec_rows = {name: [] for name in codecs}
         for qi, q in enumerate(queries):
-            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); route_ids = ordered_top(cand, exact_scores, CANDIDATES); route_score_map = {int(doc): float(score) for doc, score in zip(cand, exact_scores)}; route_ordered_scores = np.asarray([route_score_map[int(doc)] for doc in route_ids], dtype=np.float64); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]], route_ordered_scores))
-            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, TOP); thq_score_map = {int(doc): float(score) for doc, score in zip(top, thq_exact)}; thq_ordered_scores = np.asarray([thq_score_map[int(doc)] for doc in thq_ids], dtype=np.float64); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]], thq_ordered_scores))
+            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); route_ids = ordered_top(cand, exact_scores, CANDIDATES); route_score_map = {int(doc): float(score) for doc, score in zip(cand, exact_scores)}; route_ordered_scores = np.asarray([route_score_map[int(doc)] for doc in route_ids], dtype=np.float64); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]], route_ordered_scores, route_ids))
+            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, TOP); thq_score_map = {int(doc): float(score) for doc, score in zip(top, thq_exact)}; thq_ordered_scores = np.asarray([thq_score_map[int(doc)] for doc in thq_ids], dtype=np.float64); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]], thq_ordered_scores, thq_ids))
             for name, scorer in scorers.items():
-                packed_scores = scorer(top, q); packed = ordered_top(top, packed_scores, TOP); packed_score_map = {int(doc): float(score) for doc, score in zip(top, packed_scores)}; packed_ordered_scores = np.asarray([packed_score_map[int(doc)] for doc in packed], dtype=np.float64); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]], packed_ordered_scores))
+                packed_scores = scorer(top, q); packed = ordered_top(top, packed_scores, TOP); packed_score_map = {int(doc): float(score) for doc, score in zip(top, packed_scores)}; packed_ordered_scores = np.asarray([packed_score_map[int(doc)] for doc in packed], dtype=np.float64); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]], packed_ordered_scores, packed))
         out["stages"][mode] = {"route_exact_fp32": summarize(route_rows), "thq_top128_exact_fp32": summarize(thq_rows), "packed": {name: summarize(rows) for name, rows in codec_rows.items()}}
     out["payloads"] = {name: {"path": str(path), "sha256": sha256(path), **{key: {"path": str(value), "sha256": sha256(value)} for key, value in aux.items() if isinstance(value, Path)}} for name, (path, aux) in codecs.items()}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8"); print(json.dumps({"output": str(args.output), "query_count": Q, "codecs": list(codecs)}, sort_keys=True))
