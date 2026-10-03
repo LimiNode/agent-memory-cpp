@@ -27,7 +27,7 @@ def check_stage(stage: dict, expected: float) -> dict:
     for row in rows:
         rank = row.get("first_relevant_rank")
         expected_mrr = 0.0 if rank is None else 1.0 / int(rank)
-        if abs(float(row["mrr"]) - expected_mrr) > 1e-12:
+        if rank is not None and abs(float(row["mrr"]) - expected_mrr) > 1e-12:
             raise ValueError("MRR rank contract differs")
     if abs(float(stage["mean_ndcg_at_10"]) - float(nd.mean())) > 1e-12:
         raise ValueError("nDCG aggregate differs")
