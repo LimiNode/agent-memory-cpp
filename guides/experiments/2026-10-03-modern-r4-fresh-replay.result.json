@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "family": "fresh_modern_r4_quality_replay_v1",
+  "status": "PENDING_SOURCE_REPLAY",
+  "query_count": 305,
+  "required_contract": "canonical Modern R4 route -> THQ4 top128 -> packed final scorer",
+  "historical_artifact_query_count": 152,
+  "missing_sources": [
+    "fresh 305-query R4 route/order/model manifest",
+    "fresh R4 postings/materialized candidate stream",
+    "fresh THQ4 query/document representation bound to the R4 manifest"
+  ],
+  "searched_workspaces": [
+    "E:/_repoz/agent-memory-workspaces/r4-full-native-route",
+    "E:/_repoz/agent-memory-workspaces/r4-fused-candidate-materialization",
+    "E:/_repoz/agent-memory-workspaces/r4-fused-candidate-materialization-raw",
+    "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1"
+  ],
+  "policy": "do not reuse historical 152-query stream or label exact-top5000 diagnostic as Modern R4"
+}

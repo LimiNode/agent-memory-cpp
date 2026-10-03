@@ -1,0 +1,28 @@
+{
+  "schema_version": 1,
+  "family": "fresh_prototype_ivf_quality_receipt_v1",
+  "status": "EXECUTED",
+  "query_count": 305,
+  "documents": 1000000,
+  "route": {"nlist": 256, "nprobe": 32, "candidate_k": 5000, "training_rows": 25000, "seed": 20261002},
+  "mean_route_recall_at_128": 0.8628073770491803,
+  "p05_route_recall_at_128": 0.671875,
+  "mean_ndcg_at_10": 0.6597463669380758,
+  "mean_mrr": 0.6921471174812039,
+  "p05_ndcg_at_10": 0.0,
+  "exact_oracle_mean_ndcg_at_10": 0.6723946080838488,
+  "exact_oracle_mean_mrr": 0.6938856134550563,
+  "decomposition": {
+    "exact_oracle": {"mean_ndcg_at_10": 0.6723946080838488, "mean_mrr": 0.6938856134550563},
+    "prototype_route_plus_exact_rerank": {"mean_ndcg_at_10": 0.6597463669380758, "mean_mrr": 0.6921471174812039},
+    "route_loss_ndcg_at_10": 0.012648241145773,
+    "route_loss_mrr": 0.0017384959738529,
+    "thq_loss": "PENDING_SOURCE_REPLAY",
+    "packed_final_scorer_loss": "PENDING_SOURCE_REPLAY"
+  },
+  "candidate_stream_sha256": "abbfb94b5aa9d20d2e7ef82b1322e7d447102f9bc8492f51d660af7229163cf6",
+  "candidate_export_sha256": "43ea0733e67cb46169ff1acb17a3661b1ea881a2f3ef9e3efeaef03bb3842b4b",
+  "oracle_sha256": "1d6c8d9eace2fdb2a13b7228472aa3f1fb7892e3ffe6b291671ece53de724c9e",
+  "metric_scope": "fresh Prototype-IVF candidates with exact FP32 rerank; not packed-codec evidence",
+  "limitations": ["THQ and packed final-scorer loss are not measured", "Modern R4 fresh source replay remains pending"]
+}

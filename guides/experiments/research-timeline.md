@@ -1355,3 +1355,13 @@ five measured repeats. Row KV measured `0.2249 / 0.2840 / 0.3479 ms`
 was `305/305` for both. These are prototype read-amplification numbers, not
 Prototype-IVF/R4 or product-winner evidence; see
 `2026-10-03-mdbx-packed-int8-prototype.md`.
+
+The fresh `256/32/5000` Prototype-IVF replay then ran on all 305 queries. It
+achieved mean route Recall@128 `0.862807`, mean nDCG@10 `0.659746` and mean
+MRR `0.692147` with an exact FP32 rerank. The route stream is source-bound by
+`2026-10-03-fresh-prototype-ivf.result.json`; this is route-quality evidence,
+not packed-codec timing. A fresh Modern-R4 replay remains explicitly
+`PENDING_SOURCE_REPLAY` because the available canonical R4 stream is only the
+historical 152-query artifact. The finalist page model is recorded separately
+in `2026-10-03-finalist-layout-model.result.json`; RSLM1 remains
+`EXTERNAL_NOT_FOUND` until a verified full-corpus packed source is available.
