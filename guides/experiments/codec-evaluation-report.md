@@ -241,6 +241,23 @@ the bounded durable-batch sweep separately varies commit granularity.
 See [`2026-09-30-native-mdbx-segment-sweep.md`](2026-09-30-native-mdbx-segment-sweep.md)
 and [`2026-10-01-native-mdbx-batch-sweep.md`](2026-10-01-native-mdbx-batch-sweep.md).
 
+### Fresh quality oracle and packed MDBX prototype (2026-10-03)
+
+The untouched canonical DE-1M qrels are now opened after the serving freeze.
+The exact FP32 reference covers all 305 queries and reports mean nDCG@10
+`0.6723946081` and mean MRR `0.6938856135`; this is the quality ceiling, not a
+codec result. Routed Prototype-IVF and Modern-R4 candidates still have to be
+regenerated on this query set. See
+[`2026-10-03-fresh-qrels-exact.result.json`](2026-10-03-fresh-qrels-exact.result.json).
+
+A separate prototype uses exact-oracle top-128 candidates to isolate MDBX
+physical reads for a deterministic per-document INT8 proxy. Row KV measured
+`0.2166 / 0.6259 / 0.8796 ms` p50/p95/p99 at 512 MiB; 4,096-row segment blobs
+measured `138.6463 / 162.5034 / 172.5282 ms` at 384 MiB, with ordered parity
+305/305 for both. These are not finalist-specific persistence or routed
+latency evidence. See
+[`2026-10-03-mdbx-packed-int8-prototype.result.json`](2026-10-03-mdbx-packed-int8-prototype.result.json).
+
 ## Interpretation and next gates
 
 The evidence supports a research conclusion, not a product selection. The
@@ -251,9 +268,9 @@ than promoting mixed-generation rows into a ranking:
    Prototype-IVF/balanced cascade, and Modern R4) for the frozen finalist set;
 2. freeze payloads, routes, scorer implementations, timing configuration and
    provenance manifests, then run independent audits over the raw evidence;
-3. execute fresh untouched qrels against the frozen configurations, reporting
-   exact-oracle Recall@K, qrels-based nDCG@10/MRR and quality decomposition for
-   each routed mode;
+3. regenerate routed fresh-qrels candidates against the established exact
+   oracle, reporting Recall@K, qrels-based nDCG@10/MRR and quality decomposition
+   for each routed mode;
 4. build the quality/latency/footprint/rebuild Pareto frontier and select only
    2–3 survivors for persistent MDBX layout, publication, cold/restart and
    recovery gates;

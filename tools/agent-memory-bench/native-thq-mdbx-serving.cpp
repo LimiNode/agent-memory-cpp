@@ -1,7 +1,13 @@
 #if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
 #include <windows.h>
 #ifdef small
 #undef small
+#endif
+#ifdef max
+#undef max
 #endif
 #endif
 #include <mdbx_containers/KeyValueTable.hpp>
@@ -9,10 +15,14 @@
 #ifdef small
 #undef small
 #endif
+#ifdef max
+#undef max
+#endif
 
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <filesystem>
@@ -71,12 +81,26 @@ struct ScoredId final { float value; std::uint32_t id; };
 std::size_t score_candidates(const float* query, const std::uint32_t* ids,
                              std::size_t count,
                              const std::array<Row, kMaxCandidates>& rows,
-                             std::array<ScoredId, kMaxCandidates>& scores) {
-  for (std::size_t index = 0; index < count; ++index) {
-    float score = 0.0F;
+                             std::array<ScoredId, kMaxCandidates>& scores,
+                             bool exact_cosine) {
+  double query_norm = 0.0;
+  if (exact_cosine) {
     for (std::size_t dimension = 0; dimension < kDimension; ++dimension)
-      score += query[dimension] * static_cast<float>(rows[index].code[dimension]);
-    scores[index] = {score * rows[index].scale, ids[index]};
+      query_norm += static_cast<double>(query[dimension]) * query[dimension];
+    query_norm = std::sqrt(std::max(query_norm, std::numeric_limits<double>::min()));
+  }
+  for (std::size_t index = 0; index < count; ++index) {
+    double dot = 0.0;
+    double code_norm = 0.0;
+    for (std::size_t dimension = 0; dimension < kDimension; ++dimension) {
+      dot += static_cast<double>(query[dimension]) * rows[index].code[dimension];
+      if (exact_cosine) code_norm += static_cast<double>(rows[index].code[dimension]) * rows[index].code[dimension];
+    }
+    const double score = exact_cosine
+        ? dot / std::max(std::sqrt(std::max(code_norm, std::numeric_limits<double>::min())) * query_norm,
+                         std::numeric_limits<double>::min())
+        : dot * rows[index].scale;
+    scores[index] = {static_cast<float>(score), ids[index]};
   }
   return count;
 }
@@ -345,6 +369,10 @@ int main(int argc, char** argv) {
     const std::size_t query_count = argc > 10 ? std::stoull(argv[10]) : expected.size() / 10;
     const std::size_t repeats = argc > 11 ? std::stoull(argv[11]) : 5;
     const std::size_t segment_rows = argc > 12 ? std::stoull(argv[12]) : kSegmentRows;
+    const std::string metric = argc > 13 ? argv[13] : "scaled_dot";
+    const std::size_t warmups = argc > 14 ? std::stoull(argv[14]) : 1;
+    if (metric != "scaled_dot" && metric != "reconstructed_cosine_exact")
+      throw std::runtime_error("metric must be scaled_dot or reconstructed_cosine_exact");
     if (query_count == 0 || queries.size() < query_count * kDimension || candidates.size() != query_count * 128 || expected.size() != query_count * 10)
       throw std::runtime_error("serving fixture shape differs");
     const auto documents = codes.size() / kInt8Bytes;
@@ -359,7 +387,8 @@ int main(int argc, char** argv) {
     std::vector<double> score_timings; score_timings.reserve(query_count * repeats);
     std::vector<double> topk_timings; topk_timings.reserve(query_count * repeats);
     std::uint64_t checksum = 0;
-    for (std::size_t repeat = 0; repeat < repeats; ++repeat) for (std::size_t query = 0; query < query_count; ++query) {
+    for (std::size_t iteration = 0; iteration < warmups + repeats; ++iteration) for (std::size_t query = 0; query < query_count; ++query) {
+      const bool measured = iteration >= warmups;
       const auto* ids = candidates.data() + query * 128;
       const auto begin = Clock::now();
       double read_ms = 0.0;
@@ -369,14 +398,16 @@ int main(int argc, char** argv) {
         const auto score_begin = Clock::now();
         std::array<ScoredId, kMaxCandidates> scores{};
         const auto scored = score_candidates(queries.data() + query * kDimension,
-                                              selected_ids, count, rows, scores);
+                                              selected_ids, count, rows, scores,
+                                              metric == "reconstructed_cosine_exact");
         const auto score_end = Clock::now();
         const auto result = select_top10(scores, scored);
         const auto topk_end = Clock::now();
         score_ms = std::chrono::duration<double, std::milli>(score_end - score_begin).count();
         topk_ms = std::chrono::duration<double, std::milli>(topk_end - score_end).count();
-        for (std::size_t index = 0; index < kTopK; ++index) checksum = checksum * 1315423911ULL + result[index].id;
-        if (repeat == 0) {
+        if (measured)
+          for (std::size_t index = 0; index < kTopK; ++index) checksum = checksum * 1315423911ULL + result[index].id;
+        if (iteration == warmups) {
           bool same = true;
           for (std::size_t index = 0; same && index < kTopK; ++index) same = result[index].id == expected[query * 10 + index];
           if (same) ++parity;
@@ -384,16 +415,18 @@ int main(int argc, char** argv) {
       });
       const auto end = Clock::now();
       const auto total_ms = std::chrono::duration<double, std::milli>(end - begin).count();
-      timings.push_back(total_ms);
-      score_timings.push_back(score_ms);
-      topk_timings.push_back(topk_ms);
-      read_ms = std::max(0.0, total_ms - score_ms - topk_ms);
-      read_timings.push_back(read_ms);
+      if (measured) {
+        timings.push_back(total_ms);
+        score_timings.push_back(score_ms);
+        topk_timings.push_back(topk_ms);
+        read_ms = std::max(0.0, total_ms - score_ms - topk_ms);
+        read_timings.push_back(read_ms);
+      }
     }
     std::cout << std::fixed << std::setprecision(6)
-              << "{\"status\":\"EXECUTED\",\"mode\":\"" << mode << "\",\"documents\":" << documents
+              << "{\"status\":\"EXECUTED\",\"mode\":\"" << mode << "\",\"metric\":\"" << metric << "\",\"documents\":" << documents
               << ",\"segment_rows\":" << segment_rows << ",\"queries\":" << query_count
-              << ",\"repeats\":" << repeats << ",\"db_bytes\":" << store.bytes()
+              << ",\"warmups\":" << warmups << ",\"repeats\":" << repeats << ",\"db_bytes\":" << store.bytes()
               << ",\"reopen_first_query_ms\":" << reopen_ms << ",\"p50_ms\":" << percentile(timings, .5)
               << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99)
               << ",\"read_decode_p50_ms\":" << percentile(read_timings, .5)

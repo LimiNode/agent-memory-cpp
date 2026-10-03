@@ -1,0 +1,57 @@
+{
+  "schema_version": 1,
+  "family": "native_mdbx_packed_int8_prototype_v1",
+  "status": "EXECUTED",
+  "target_commit": "9bd438f310f70316853bd638db55282b2a39fe35",
+  "metric": "reconstructed_cosine_exact",
+  "documents": 1000000,
+  "queries": 305,
+  "candidate_k": 128,
+  "candidate_source": "exact FP32 top-128; physical-read isolation only",
+  "fixture_receipt_sha256": "1dcd08cc3fb83b078a0d5184d2c237e14f068a57e8788b0dd0ce6eb3cecfa1d7",
+  "runner_source_sha256": "998e1012d69c1fa320107f7f9a7615ffa54cba63319b51f0fa794770ff5c7519",
+  "warmups": 1,
+  "repeats": 5,
+  "rows": [
+    {
+      "layout": "row_kv",
+      "raw_benchmark_sha256": "622e9997befc73d72d48701f425be39c9f9a2c5298c4074b8e0b321347fd23ec",
+      "segment_rows": 4096,
+      "db_bytes": 536870912,
+      "materialize_ms": 257953.302,
+      "durable_commits": 1,
+      "reopen_first_query_ms": 1.0732,
+      "p50_ms": 0.2249,
+      "p95_ms": 0.284,
+      "p99_ms": 0.3479,
+      "read_decode_p50_ms": 0.1602,
+      "score_p50_ms": 0.0638,
+      "ordered_parity": "305/305"
+    },
+    {
+      "layout": "segment_blob",
+      "raw_benchmark_sha256": "9ab758ee07834886fd1dced16ad478a50ee976a0ba5d3f631bf51f3dacde4bc2",
+      "segment_rows": 4096,
+      "db_bytes": 402653184,
+      "materialize_ms": 1482.76,
+      "durable_commits": 245,
+      "reopen_first_query_ms": 188.2706,
+      "p50_ms": 116.8782,
+      "p95_ms": 141.5308,
+      "p99_ms": 151.5041,
+      "read_decode_p50_ms": 116.8103,
+      "score_p50_ms": 0.0657,
+      "ordered_parity": "305/305"
+    }
+  ],
+  "source": {
+    "materialization_manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "document_vectors_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "query_vectors_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2"
+  },
+  "limitations": [
+    "exact-oracle candidates are not Prototype-IVF or Modern R4 quality evidence",
+    "benchmark INT8 quantizer is a storage proxy, not a frozen finalist artifact",
+    "cold-cache eviction, concurrent publication, interrupted rebuild and crash recovery remain separate prototypes"
+  ]
+}
