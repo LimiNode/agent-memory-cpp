@@ -19,8 +19,10 @@ NumPy fixture generator.
 | segment blob (4096) | 402,653,184 | 1,482.760 | 245 | 188.271 | 116.8782 / 141.5308 / 151.5041 | 116.8103 | 0.0657 | 305/305 |
 
 The compact receipt is `2026-10-03-mdbx-packed-int8-prototype.result.json`.
-Raw fixture binaries, MDBX files, and JSONL samples remain external/local and
-are bound by the fixture and runner SHA-256 values in that receipt.
+Raw JSONL samples and compact runner sources are retained in the
+[evidence release](https://github.com/LimiNode/agent-memory-cpp/releases/tag/evidence/fresh-qrels-mdbx-v1).
+Fixture binaries and MDBX files remain external/local and are bound by the
+fixture and runner SHA-256 values in that receipt.
 
 ## Interpretation
 
