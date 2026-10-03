@@ -19,12 +19,15 @@ def load(name: str, filename: str):
 
 evaluator = load("fresh_quality_evaluator", "evaluate-fresh-packed-quality.py")
 auditor = load("fresh_quality_auditor", "audit-fresh-packed-quality.py")
+exact_evaluator = load("fresh_exact_evaluator", "evaluate-fresh-qrels.py")
 
 
 class FreshPackedQualityContractTests(unittest.TestCase):
     def test_numeric_document_order_key(self) -> None:
         self.assertLess(evaluator.document_order_key("2"), evaluator.document_order_key("10"))
         self.assertEqual(evaluator.document_order_key("de:10#0"), (1, "de:10#0"))
+        for value in ("2", "10", "de:10#0"):
+            self.assertEqual(exact_evaluator.document_order_key(value), evaluator.document_order_key(value))
 
     def test_boundary_ties_use_document_ids_not_dense_positions(self) -> None:
         dense_positions = np.asarray(list(range(4999, -1, -1)), dtype=np.int32)
@@ -39,6 +42,13 @@ class FreshPackedQualityContractTests(unittest.TestCase):
         scores = np.ones(len(ids), dtype=np.float32)
         selected = evaluator.ordered_top(dense_positions, scores, 128, ids)
         self.assertEqual(selected.tolist(), list(range(128)))
+
+    def test_exact_oracle_boundary_ties_use_document_ids(self) -> None:
+        dense_positions = np.asarray(list(range(4999, -1, -1)), dtype=np.int32)
+        ids = [str(value) for value in dense_positions]
+        scores = np.ones(len(ids), dtype=np.float32)
+        selected = exact_evaluator.ordered_top_positions(scores, [exact_evaluator.document_order_key(value) for value in ids], 128)
+        self.assertEqual(selected.tolist(), list(range(4999, 4871, -1)))
 
     def test_shuffled_dense_positions_follow_canonical_id_order(self) -> None:
         dense_positions = np.asarray([100, 3, 50], dtype=np.int32)
@@ -89,6 +99,15 @@ class FreshPackedQualityContractTests(unittest.TestCase):
         ids = [str(value) for value in range(128)]
         scores = [float(128 - value) for value in range(128)]
         stage, query_ids, known_docs, qrels = self._synthetic_stage(ids[:-1], scores[:-1])
+        with self.assertRaises(ValueError):
+            auditor.check_stage(stage, query_ids, known_docs, qrels, 128)
+
+    def test_auditor_rejects_missing_routed_rankings(self) -> None:
+        ids = [str(value) for value in range(128)]
+        scores = [float(128 - value) for value in range(128)]
+        stage, query_ids, known_docs, qrels = self._synthetic_stage(ids, scores)
+        for key in ("ranked_ids", "ranked_scores", "ranked_order_keys"):
+            stage["per_query"][0][key] = None
         with self.assertRaises(ValueError):
             auditor.check_stage(stage, query_ids, known_docs, qrels, 128)
 

@@ -90,6 +90,12 @@ def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str
         ranked_ids = row.get("ranked_ids")
         ranked_scores = row.get("ranked_scores")
         ranked_order_keys = row.get("ranked_order_keys")
+        if expected_rank_count is not None and (
+            not isinstance(ranked_ids, list)
+            or not isinstance(ranked_scores, list)
+            or not isinstance(ranked_order_keys, list)
+        ):
+            raise ValueError(f"full ranked evidence is required at query {index}")
         if ranked_ids is None and ranked_scores is None:
             independently_ranked = False
         elif not isinstance(ranked_ids, list) or not isinstance(ranked_scores, list) or not isinstance(ranked_order_keys, list) or len(ranked_ids) != len(ranked_scores) or len(ranked_ids) != len(ranked_order_keys) or (expected_rank_count is not None and len(ranked_ids) != expected_rank_count) or len(ranked_ids) < 10 or len(set(map(str, ranked_ids))) != len(ranked_ids) or len(set(map(str, ranked_order_keys))) != len(ranked_order_keys) or any(str(value) not in known_docs for value in ranked_ids) or not all(isinstance(value, (int, float)) and np.isfinite(float(value)) for value in ranked_scores):
