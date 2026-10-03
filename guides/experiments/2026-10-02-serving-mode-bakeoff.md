@@ -30,7 +30,7 @@ and raw JSONL plus an independent audit.
 
 | Codec | Bytes/doc | Flat 1M | Prototype-IVF cascade | Modern R4 cascade | Quality |
 | --- | ---: | --- | --- | --- | --- |
-| INT8 | 388 | **407.349 / 412.041 / 415.342 ms** | **1.336 / 1.483 / 1.679 ms** | **0.739 / 0.873 / 0.918 ms** | historical control; fresh qrels pending |
+| INT8 | 392 | **407.166 / 417.831 / 428.745 ms** | **0.7485 / 0.868 / 1.214 ms** | **0.7927 / 0.9357 / 1.151 ms** | exact reconstructed-cosine control; fresh qrels pending |
 | LSQ32 | 36 | **178.670 / 188.975 / 209.586 ms** | **3.386 / 3.782 / 4.046 ms** | **3.479 / 3.855 / 4.384 ms** | sparse-LUT scorer; historical qrels; fresh pending |
 | LSQ48 | 52 | **228.908 / 241.341 / 254.029 ms** | **4.482 / 4.868 / 5.128 ms** | **4.596 / 4.976 / 5.430 ms** | sparse-LUT scorer; historical qrels; fresh pending |
 | TQ1 | 52/68 | **238.600 / 246.370 / 258.653 ms** | **2.564 / 2.838 / 2.989 ms** | **2.511 / 2.853 / 2.963 ms** | exact reconstructed TQ norm; fresh pending |
