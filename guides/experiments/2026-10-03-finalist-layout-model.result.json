@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "family": "finalist_persistent_layout_model_v1",
+  "status": "EXECUTED",
+  "production_activation": false,
+  "documents": 1000000,
+  "candidate_count": 5000,
+  "segment_rows": 4096,
+  "page_bytes": 4096,
+  "source_receipt": "tmp/fresh-routed/finalist-layouts.result.json",
+  "rows": [
+    {"codec": "INT8", "bytes_per_document": 392, "row_kv_physical_bytes": 400003072, "segment_blob_physical_bytes": 393003008, "row_kv_amplification": 1.020416, "segment_blob_amplification": 1.002558693877551},
+    {"codec": "LSQ32", "bytes_per_document": 36, "row_kv_physical_bytes": 44003328, "segment_blob_physical_bytes": 37003264, "row_kv_amplification": 1.2223146666666667, "segment_blob_amplification": 1.0278684444444444},
+    {"codec": "LSQ48", "bytes_per_document": 52, "row_kv_physical_bytes": 60002304, "segment_blob_physical_bytes": 53002240, "row_kv_amplification": 1.1538904615384615, "segment_blob_amplification": 1.0192738461538462},
+    {"codec": "TQ1", "bytes_per_document": 52, "row_kv_physical_bytes": 60002304, "segment_blob_physical_bytes": 53002240, "row_kv_amplification": 1.1538904615384615, "segment_blob_amplification": 1.0192738461538462},
+    {"codec": "TQ1+PQ8", "bytes_per_document": 68, "row_kv_physical_bytes": 76001280, "segment_blob_physical_bytes": 69001216, "row_kv_amplification": 1.1176658823529412, "segment_blob_amplification": 1.0147237647058824},
+    {"codec": "PLSQ8x6x8", "bytes_per_document": 52, "row_kv_physical_bytes": 60002304, "segment_blob_physical_bytes": 53002240, "row_kv_amplification": 1.1538904615384615, "segment_blob_amplification": 1.0192738461538462},
+    {"codec": "RSLM1", "bytes_per_document": null, "row_kv_physical_bytes": null, "segment_blob_physical_bytes": null, "status": "EXTERNAL_NOT_FOUND"}
+  ],
+  "limitations": ["page model only; no MDBX benchmark", "no cold/reopen/recovery/concurrency claim", "fresh candidate budget is Prototype-IVF only"]
+}

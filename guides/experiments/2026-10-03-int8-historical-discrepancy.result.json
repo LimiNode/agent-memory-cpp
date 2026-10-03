@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "family": "int8_historical_discrepancy_analysis_v1",
+  "status": "ANALYZED",
+  "historical": {
+    "source_note": "2026-09-30-native-production-kernel-normalized-v2.md",
+    "direct_p50_ms": 106.384,
+    "cascade_p50_ms": 83.672,
+    "build": "MSVC 19.44 /O2 /arch:AVX2 C++17 Release",
+    "scope": "normalized in-memory direct INT8 register-accumulating AVX2 score plus bounded top-10",
+    "queries": 152,
+    "warmups": 2,
+    "repeats": 10,
+    "metric": "scaled dot with persisted scale; not reconstructed cosine"
+  },
+  "current": {
+    "source_receipt": "2026-10-02-int8-full-flat.result.json",
+    "p50_ms": 407.166,
+    "p95_ms": 417.831,
+    "p99_ms": 428.745,
+    "scope": "packed full-flat exact reconstructed cosine; one warmup plus five measured repeats",
+    "logical_row_bytes": 392,
+    "metric": "reconstructed_cosine_exact",
+    "parity": "152/152"
+  },
+  "matched_a_b": {
+    "scaled_dot_vs_exact_cosine": "435/760",
+    "exact_cosine_dense_vs_fused": "760/760",
+    "arms": ["direct_top10_production", "direct_top10_cosine_production", "score_int8_dense"]
+  },
+  "conclusion": "The historical value is not a canonical exact-cosine latency. The observed gap combines a narrower historical timing scope, a different scaled-dot metric and a different execution contract; no current-path regression is proven by these unmatched receipts.",
+  "follow_up": "Run a same-fixture Release AVX2 matched replay if historical-kernel attribution is required."
+}

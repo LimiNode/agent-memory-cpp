@@ -22,6 +22,29 @@ def sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def bounded_document_scores(documents: np.memmap, candidates: np.ndarray,
+                            query: np.ndarray, limit: int = 8192,
+                            chunk_rows: int = 16384) -> tuple[np.ndarray, np.ndarray]:
+    """Score a posting union without materializing its full FP32 matrix."""
+    if candidates.size == 0 or limit <= 0 or chunk_rows <= 0:
+        raise ValueError("candidate and chunk limits must be positive")
+    best_ids = np.empty(0, dtype="int32")
+    best_scores = np.empty(0, dtype="float32")
+    for begin in range(0, candidates.size, chunk_rows):
+        chunk_ids = candidates[begin:min(begin + chunk_rows, candidates.size)]
+        values = np.asarray(documents[chunk_ids], dtype="float32").copy()
+        values /= np.maximum(np.linalg.norm(values, axis=1, keepdims=True), 1e-30)
+        scores = values @ query
+        take = min(limit, scores.size)
+        local = np.argpartition(-scores, take - 1)[:take]
+        merged_ids = np.concatenate((best_ids, chunk_ids[local]))
+        merged_scores = np.concatenate((best_scores, scores[local]))
+        order = np.lexsort((merged_ids, -merged_scores))[:limit]
+        best_ids = merged_ids[order]
+        best_scores = merged_scores[order]
+    return best_ids, best_scores
+
+
 def self_test() -> None:
     vectors = np.asarray([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]], dtype="float32")
     queries = np.asarray([[1.0, 0.0]], dtype="float32")
@@ -96,17 +119,15 @@ def main() -> None:
         if candidates.size == 0:
             raise RuntimeError("prototype route selected no postings")
         raw_counts.append(int(candidates.size))
-        values = np.asarray(documents[candidates], dtype="float32").copy()
-        values /= np.maximum(np.linalg.norm(values, axis=1, keepdims=True), 1e-30)
-        candidate_scores = values @ query_values[query_index]
+        bounded_ids, bounded_scores = bounded_document_scores(
+            documents, candidates, query_values[query_index], limit=8192)
         # Apply the bounded posting budget by score, never by raw ID order.
         # ID truncation silently discarded the nearest documents and made the
         # route unsuitable for a quality calibration.
-        posting_order = np.lexsort((candidates, -candidate_scores))[:8192]
-        order = posting_order[: ids.shape[1]]
+        order = np.arange(min(ids.shape[1], bounded_ids.size))
         count = len(order)
-        ids[query_index, :count] = candidates[order]
-        scores[query_index, :count] = candidate_scores[order]
+        ids[query_index, :count] = bounded_ids[order]
+        scores[query_index, :count] = bounded_scores[order]
     args.output.parent.mkdir(parents=True, exist_ok=True)
     np.asarray(ids, dtype="<i4").tofile(args.output)
     manifest = {

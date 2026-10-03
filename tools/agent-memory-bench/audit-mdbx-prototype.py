@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import math
 from pathlib import Path
 
 
@@ -12,7 +14,21 @@ def require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def audit(value: dict) -> None:
+def sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1 << 20), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def nearest(values: list[float], quantile: float) -> float:
+    ordered = sorted(values)
+    index = max(0, min(len(ordered) - 1, math.ceil(quantile * len(ordered)) - 1))
+    return float(ordered[index])
+
+
+def audit(value: dict, raw_paths: dict[str, Path] | None = None) -> None:
     require(value.get("schema_version") == 1, "unsupported schema")
     require(value.get("family") == "native_mdbx_packed_int8_prototype_v1", "unexpected family")
     require(value.get("status") == "EXECUTED", "prototype did not execute")
@@ -30,6 +46,29 @@ def audit(value: dict) -> None:
         require(row.get("db_bytes", 0) > 0 and row.get("materialize_ms", -1) >= 0 and row.get("durable_commits", 0) > 0, "materialization receipt is invalid")
         for name in ("reopen_first_query_ms", "p50_ms", "p95_ms", "p99_ms", "read_decode_p50_ms", "score_p50_ms"):
             require(isinstance(row.get(name), (int, float)) and row[name] >= 0, f"{row.get('layout')}.{name} is invalid")
+        if raw_paths is not None:
+            raw_path = raw_paths[row["layout"]]
+            require(row.get("raw_benchmark_sha256") == sha256(raw_path),
+                    f"{row['layout']} raw SHA differs")
+            raw = json.loads(raw_path.read_text(encoding="utf-8-sig"))
+            expected_modes = {"row_kv": {"row", "row_kv"}, "segment_blob": {"segment", "segment_blob"}}
+            require(raw.get("mode") in expected_modes[row["layout"]], f"{row['layout']} raw mode differs")
+            require(raw.get("queries") == 305 and raw.get("warmups") == 1 and raw.get("repeats") == 5,
+                    f"{row['layout']} raw timing contract differs")
+            samples = raw.get("samples_ms")
+            require(isinstance(samples, list) and len(samples) == 305 * 5 and all(float(x) >= 0 for x in samples),
+                    f"{row['layout']} raw sample coverage differs")
+            require(abs(float(raw["p50_ms"]) - nearest([float(x) for x in samples], .50)) < 1e-9,
+                    f"{row['layout']} raw p50 is not nearest-rank")
+            require(abs(float(raw["p95_ms"]) - nearest([float(x) for x in samples], .95)) < 1e-9,
+                    f"{row['layout']} raw p95 is not nearest-rank")
+            require(abs(float(raw["p99_ms"]) - nearest([float(x) for x in samples], .99)) < 1e-9,
+                    f"{row['layout']} raw p99 is not nearest-rank")
+            for name in ("p50_ms", "p95_ms", "p99_ms"):
+                require(abs(float(row[name]) - float(raw[name])) < 1e-9,
+                        f"{row['layout']}.{name} differs from raw")
+            require(raw.get("parity") == 305 and raw.get("parity_total") == 305,
+                    f"{row['layout']} raw parity differs")
     limitations = value.get("limitations")
     require(isinstance(limitations, list) and any("not Prototype-IVF" in item for item in limitations), "prototype limitation is missing")
 
@@ -50,13 +89,20 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--result", type=Path)
+    parser.add_argument("--raw-row", type=Path)
+    parser.add_argument("--raw-segment", type=Path)
     args = parser.parse_args()
     if args.self_test:
         self_test()
         return 0
     if args.result is None:
         parser.error("--result is required")
-    audit(json.loads(args.result.read_text(encoding="utf-8")))
+    raw_paths = None
+    if args.raw_row is not None or args.raw_segment is not None:
+        if args.raw_row is None or args.raw_segment is None:
+            parser.error("--raw-row and --raw-segment must be supplied together")
+        raw_paths = {"row_kv": args.raw_row, "segment_blob": args.raw_segment}
+    audit(json.loads(args.result.read_text(encoding="utf-8")), raw_paths)
     print(f"audit-mdbx-prototype: PASS ({args.result})")
     return 0
 

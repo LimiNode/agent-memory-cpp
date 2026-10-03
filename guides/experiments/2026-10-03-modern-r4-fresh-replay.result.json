@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "family": "fresh_modern_r4_quality_replay_v1",
+  "status": "PROTOTYPE_EXECUTED_CANONICAL_PENDING",
+  "query_count": 305,
+  "required_contract": "canonical Modern R4 route -> THQ4 top128 -> packed final scorer",
+  "historical_artifact_query_count": 152,
+  "missing_sources": [
+    "fresh 305-query R4 route/order/model manifest",
+    "fresh R4 postings/materialized candidate stream",
+    "fresh THQ4 query/document representation bound to the R4 manifest"
+  ],
+  "prototype_route": {
+    "family": "fresh_modern_r4_prototype_route_v1",
+    "seeds": [2026082701, 2026082702, 2026082703],
+    "nlist": 256,
+    "nprobe": 8,
+    "candidate_k": 5000,
+    "route_model_sha256": "c591b880c87c157a0027f94bd445f3df18d4e4afdecdefb08fd45e403689d00f",
+    "candidate_stream_sha256": "8cd858dc401d40755205d0c2d01611051a01a6fdba6aef72d7a75ad35e118e5b",
+    "candidate_export_sha256": "e0bb89b630f50b445a8f05bbf2829606aeb222385ca1160709a2249469656feb",
+    "mean_route_recall_at_128": 0.8126280737704918,
+    "mean_ndcg_at_10": 0.6455913410616324,
+    "mean_mrr": 0.6865232557998373,
+    "rerank": "exact FP32; no THQ packed scorer"
+  },
+  "searched_workspaces": [
+    "E:/_repoz/agent-memory-workspaces/r4-full-native-route",
+    "E:/_repoz/agent-memory-workspaces/r4-fused-candidate-materialization",
+    "E:/_repoz/agent-memory-workspaces/r4-fused-candidate-materialization-raw",
+    "E:/_repoz/agent-memory-workspaces/fidelity-heavy-batch-v1"
+  ],
+  "policy": "do not reuse historical 152-query stream or label exact-top5000 diagnostic as Modern R4"
+}
