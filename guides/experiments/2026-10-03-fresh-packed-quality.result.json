@@ -1,8 +1,8 @@
 {
-  "bundle_sha256": "250883db32f491938fad61f039963cd3338b3f1d3df965ec384c89a311a2e70e",
+  "bundle_sha256": "c5ba9d11072ad6d27dc1ef4a174b1dcc6dd94b5123096429d2036f71b57ceaa1",
   "codec_count": 7,
   "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
-  "evidence_binding_sha256": "295e79c773422328ea93e88907131449dddee4d68b8d43d3e83ad264b7849836",
+  "evidence_binding_sha256": "6477e3ee69f7ce998c1e33a911c9767629b954f53651f00b5c34a56584cc67ac",
   "exact_oracle": {
     "mean_mrr": 0.6938856134550563,
     "mean_mrr_at_10": 0.6911215196461099,
@@ -11,9 +11,9 @@
     "worst_ndcg_at_10": 0.0
   },
   "family": "fresh_packed_quality_decomposition_receipt_v1",
-  "measured_code_commit": "16f6a2810b633d0d2669d35ed6f67e21fcadf90d",
+  "measured_code_commit": "f288e4d7ede94e35853475480ac858fea785f8ac",
   "metric_contract": {
-    "mrr": "full ranked-stage MRR with independently checked first relevant identity",
+    "mrr": "full ranked-stage MRR with first-relevant score/rank proof (higher-score and tied-lower-ID counts)",
     "mrr_at_10": "diagnostic only",
     "ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels",
     "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"
@@ -73,9 +73,9 @@
     }
   },
   "query_count": 305,
-  "receipt_commit": "16f6a2810b633d0d2669d35ed6f67e21fcadf90d",
-  "release_target_commit": "16f6a2810b633d0d2669d35ed6f67e21fcadf90d",
-  "result_sha256": "ed2197ac755a2138d9634991b50cade19406c177c8f35cd1a7288305921dd1e7",
+  "receipt_commit": "f288e4d7ede94e35853475480ac858fea785f8ac",
+  "release_target_commit": "f288e4d7ede94e35853475480ac858fea785f8ac",
+  "result_sha256": "73e3b39db91f442459ec0cc0765381f15adc56255c33c8d66e50cd4b1e5057e1",
   "schema_version": 2,
   "source": {
     "candidate_streams": {
@@ -90,7 +90,7 @@
     },
     "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
     "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
-    "exact_result_sha256": "ec755518db999f89841e3b7a7c8b7cad1b0c05f898009721fc5c4afcc2ef2693",
+    "exact_result_sha256": "963568334fc1306af83a5b770a8015e8838f661adb8d6d2bf44bf0b76c636356",
     "manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
     "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071",
     "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
