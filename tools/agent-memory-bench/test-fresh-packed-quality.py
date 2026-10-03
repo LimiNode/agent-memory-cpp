@@ -27,11 +27,18 @@ class FreshPackedQualityContractTests(unittest.TestCase):
         self.assertEqual(evaluator.document_order_key("de:10#0"), (1, "de:10#0"))
 
     def test_boundary_ties_use_document_ids_not_dense_positions(self) -> None:
-        dense_positions = np.asarray([10, 9, 8, 7, 6, 5, 4, 3, 2, 1], dtype=np.int32)
+        dense_positions = np.asarray(list(range(4999, -1, -1)), dtype=np.int32)
         ids = [str(value) for value in dense_positions]
         scores = np.ones(len(ids), dtype=np.float32)
-        selected = evaluator.ordered_top(dense_positions, scores, 3, ids)
-        self.assertEqual(selected.tolist(), [1, 2, 3])
+        selected = evaluator.ordered_top(dense_positions, scores, 128, ids)
+        self.assertEqual(selected.tolist(), list(range(128)))
+
+    def test_large_boundary_ties_use_document_ids_not_dense_positions(self) -> None:
+        dense_positions = np.asarray(list(range(10000, -1, -1)), dtype=np.int32)
+        ids = [str(value) for value in dense_positions]
+        scores = np.ones(len(ids), dtype=np.float32)
+        selected = evaluator.ordered_top(dense_positions, scores, 128, ids)
+        self.assertEqual(selected.tolist(), list(range(128)))
 
     def test_shuffled_dense_positions_follow_canonical_id_order(self) -> None:
         dense_positions = np.asarray([100, 3, 50], dtype=np.int32)
