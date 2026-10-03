@@ -1369,3 +1369,9 @@ not promoted to canonical Modern-R4 evidence. The finalist page model is
 recorded separately in `2026-10-03-finalist-layout-model.result.json`; RSLM1
 remains `EXTERNAL_NOT_FOUND` until a verified full-corpus packed source is
 available.
+
+After #463 merged, the first non-weighted Pareto profile screen was recorded
+in `2026-10-03-final-pareto-profiles.md`: LSQ32 as `compact`, TQ1 as
+`balanced`, and exact-cosine INT8 as `speed`. These are engineering profiles,
+not a product winner; fresh packed quality and real MDBX measurements remain
+separate gates.
