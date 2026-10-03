@@ -37,6 +37,10 @@ def document_order_key(value: str | int) -> tuple[int, int | str]:
     return (0, int(text)) if text.lstrip("-").isdigit() else (1, text)
 
 
+def serialize_order_key(value: tuple[int, int | str]) -> str:
+    return f"{value[0]}:{value[1]}"
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -81,16 +85,28 @@ def thq_scores(codes: np.ndarray, query: np.ndarray, thresholds: np.ndarray) -> 
     return lut[np.arange(D)[None, :], levels].sum(axis=1)
 
 
-def ordered_top(ids: np.ndarray, scores: np.ndarray, k: int, *, ascending: bool = False) -> np.ndarray:
+def ordered_top(ids: np.ndarray, scores: np.ndarray, k: int, order_values: list[str] | np.ndarray, *, ascending: bool = False) -> np.ndarray:
     if not np.all(np.isfinite(scores)):
         raise ValueError("non-finite score encountered")
+    if len(order_values) != len(ids):
+        raise ValueError("ordering key coverage differs")
     take = min(k, len(ids))
-    if take == len(ids):
-        selected = np.arange(len(ids))
+    order_keys = [document_order_key(value) for value in order_values]
+    if len(ids) <= 10_000:
+        ranked = sorted(range(len(ids)), key=lambda index: ((float(scores[index]) if ascending else -float(scores[index])), order_keys[index]))
+        return ids[np.asarray(ranked[:take], dtype=np.int64)]
+    if ascending:
+        boundary = float(np.partition(scores, take - 1)[take - 1])
+        better = np.flatnonzero(scores < boundary)
     else:
-        selected = np.argpartition(scores if ascending else -scores, take - 1)[:take]
-    order = np.lexsort((ids[selected], scores[selected] if ascending else -scores[selected]))
-    return ids[selected][order][:k]
+        boundary = float(np.partition(scores, len(scores) - take)[len(scores) - take])
+        better = np.flatnonzero(scores > boundary)
+    tied = np.flatnonzero(scores == boundary)
+    need = take - len(better)
+    tie_order = sorted(tied.tolist(), key=lambda index: order_keys[index])
+    selected = np.concatenate((better, np.asarray(tie_order[:max(0, need)], dtype=np.int64)))
+    ranked = sorted(selected.tolist(), key=lambda index: ((float(scores[index]) if ascending else -float(scores[index])), order_keys[index]))
+    return ids[np.asarray(ranked[:take], dtype=np.int64)]
 
 
 def parse_lsq(path: Path) -> dict[str, Any]:
@@ -227,8 +243,8 @@ def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray
             raise ValueError("rank proof length differs from ranked IDs")
         first_score = float(ranked_scores[first - 1])
         higher_count = int(np.count_nonzero(ranked_scores > first_score))
-        first_order_key = document_order_key(ranked_order_keys[first - 1])
-        tied_lower_id_count = int(sum(float(score) == first_score and document_order_key(order_key) < first_order_key for order_key, score in zip(ranked_order_keys, ranked_scores)))
+        first_order_key = document_order_key(first_doc)
+        tied_lower_id_count = int(sum(float(score) == first_score and document_order_key(doc_id) < first_order_key for doc_id, score in zip(top_ids, ranked_scores)))
         if 1 + higher_count + tied_lower_id_count != first:
             raise ValueError("rank proof disagrees with ordered ranking")
     return {"ndcg_at_10": float(ndcg), "mrr": 0.0 if first is None else 1.0 / first,
@@ -239,7 +255,7 @@ def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray
             "top10_ids": list(top_ids[:10]),
             "ranked_ids": list(top_ids) if ranked_scores is not None else None,
             "ranked_scores": [float(value) for value in ranked_scores] if ranked_scores is not None else None,
-            "ranked_order_keys": [int(value) for value in ranked_order_keys] if ranked_order_keys is not None else None}
+            "ranked_order_keys": [serialize_order_key(document_order_key(doc_id)) for doc_id in top_ids] if ranked_scores is not None else None}
 
 
 def main() -> None:
@@ -261,6 +277,7 @@ def main() -> None:
     root = args.source_root; payload = root / "payload"
     docs = np.memmap(payload / "evaluation-document-vectors.f32", dtype="<f4", mode="r", shape=(N, D)); queries = np.memmap(payload / "evaluation-query-vectors.f32", dtype="<f4", mode="r", shape=(Q, D))
     doc_ids = [json.loads(x)["id"] for x in (payload / "evaluation-document-ids.jsonl").read_text().splitlines()]; query_ids = [json.loads(x)["id"] for x in (payload / "evaluation-query-ids.jsonl").read_text().splitlines()]
+    doc_order_values = np.asarray(doc_ids, dtype=object)
     doc_pos = {value: index for index, value in enumerate(doc_ids)}
     qrels = {qid: {} for qid in query_ids}
     for line in (payload / "evaluation-qrels.tsv").read_text().splitlines():
@@ -313,7 +330,7 @@ def main() -> None:
         exact_rows = [{"ndcg_at_10": float(row["ndcg_at_10"]), "mrr": float(row["mrr"]), "mrr_at_10": metrics(row["top10_ids"], qrels[query_ids[i]])["mrr_at_10"], "first_relevant_rank": row.get("first_relevant_rank"), "first_relevant_doc_id": row.get("first_relevant_doc_id"), "first_relevant_score": row.get("first_relevant_score"), "higher_score_count": row.get("higher_score_count"), "tied_lower_id_count": row.get("tied_lower_id_count"), "top10_ids": row["top10_ids"]} for i, row in enumerate(rows)]
     else:
         for qi, q in enumerate(queries):
-            scores = np.asarray(docs @ q, dtype=np.float32); ids = ordered_top(np.arange(N, dtype=np.int32), scores, 10); exact_top10.append(ids)
+            scores = np.asarray(docs @ q, dtype=np.float32); ids = ordered_top(np.arange(N, dtype=np.int32), scores, 10, doc_order_values); exact_top10.append(ids)
     def summarize(rows: list[dict[str, Any]]) -> dict[str, Any]:
         nd = [r["ndcg_at_10"] for r in rows]; mr = [r["mrr"] for r in rows]
         mr10 = [r["mrr_at_10"] for r in rows]
@@ -324,10 +341,10 @@ def main() -> None:
     for mode, stream in streams.items():
         route_rows: list[dict[str, Any]] = []; thq_rows: list[dict[str, Any]] = []; codec_rows = {name: [] for name in codecs}
         for qi, q in enumerate(queries):
-            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); route_ids = ordered_top(cand, exact_scores, CANDIDATES); route_score_map = {int(doc): float(score) for doc, score in zip(cand, exact_scores)}; route_ordered_scores = np.asarray([route_score_map[int(doc)] for doc in route_ids], dtype=np.float64); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]], route_ordered_scores, route_ids))
-            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, TOP); thq_score_map = {int(doc): float(score) for doc, score in zip(top, thq_exact)}; thq_ordered_scores = np.asarray([thq_score_map[int(doc)] for doc in thq_ids], dtype=np.float64); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]], thq_ordered_scores, thq_ids))
+            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); cand_order_values = doc_order_values[cand]; route_ids = ordered_top(cand, exact_scores, CANDIDATES, cand_order_values); route_score_map = {int(doc): float(score) for doc, score in zip(cand, exact_scores)}; route_ordered_scores = np.asarray([route_score_map[int(doc)] for doc in route_ids], dtype=np.float64); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]], route_ordered_scores, route_ids))
+            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, cand_order_values, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, TOP, doc_order_values[top]); thq_score_map = {int(doc): float(score) for doc, score in zip(top, thq_exact)}; thq_ordered_scores = np.asarray([thq_score_map[int(doc)] for doc in thq_ids], dtype=np.float64); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]], thq_ordered_scores, thq_ids))
             for name, scorer in scorers.items():
-                packed_scores = scorer(top, q); packed = ordered_top(top, packed_scores, TOP); packed_score_map = {int(doc): float(score) for doc, score in zip(top, packed_scores)}; packed_ordered_scores = np.asarray([packed_score_map[int(doc)] for doc in packed], dtype=np.float64); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]], packed_ordered_scores, packed))
+                packed_scores = scorer(top, q); packed = ordered_top(top, packed_scores, TOP, doc_order_values[top]); packed_score_map = {int(doc): float(score) for doc, score in zip(top, packed_scores)}; packed_ordered_scores = np.asarray([packed_score_map[int(doc)] for doc in packed], dtype=np.float64); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]], packed_ordered_scores, packed))
         out["stages"][mode] = {"route_exact_fp32": summarize(route_rows), "thq_top128_exact_fp32": summarize(thq_rows), "packed": {name: summarize(rows) for name, rows in codec_rows.items()}}
     out["payloads"] = {name: {"path": str(path), "sha256": sha256(path), **{key: {"path": str(value), "sha256": sha256(value)} for key, value in aux.items() if isinstance(value, Path)}} for name, (path, aux) in codecs.items()}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8"); print(json.dumps({"output": str(args.output), "query_count": Q, "codecs": list(codecs)}, sort_keys=True))

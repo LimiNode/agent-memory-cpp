@@ -25,6 +25,10 @@ def document_order_key(value: str | int) -> tuple[int, int | str]:
     return (0, int(text)) if text.lstrip("-").isdigit() else (1, text)
 
 
+def serialize_order_key(value: tuple[int, int | str]) -> str:
+    return f"{value[0]}:{value[1]}"
+
+
 def sha256(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as f:
@@ -65,7 +69,7 @@ def ndcg_at_10(ids: list[str], qrels: dict[str, int]) -> float:
     return 0.0 if denominator == 0.0 else dcg(grades) / denominator
 
 
-def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str], qrels: dict[str, dict[str, int]]) -> dict[str, Any]:
+def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str], qrels: dict[str, dict[str, int]], expected_rank_count: int | None = None) -> dict[str, Any]:
     rows = stage.get("per_query")
     if not isinstance(rows, list) or len(rows) != Q:
         raise ValueError("per-query coverage differs")
@@ -88,18 +92,21 @@ def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str
         ranked_order_keys = row.get("ranked_order_keys")
         if ranked_ids is None and ranked_scores is None:
             independently_ranked = False
-        elif not isinstance(ranked_ids, list) or not isinstance(ranked_scores, list) or not isinstance(ranked_order_keys, list) or len(ranked_ids) != len(ranked_scores) or len(ranked_ids) != len(ranked_order_keys) or len(ranked_ids) < 10 or len(set(map(str, ranked_ids))) != len(ranked_ids) or len(set(map(str, ranked_order_keys))) != len(ranked_order_keys) or any(str(value) not in known_docs for value in ranked_ids) or not all(isinstance(value, (int, float)) and np.isfinite(float(value)) for value in ranked_scores) or not all(str(value).lstrip("-").isdigit() for value in ranked_order_keys):
+        elif not isinstance(ranked_ids, list) or not isinstance(ranked_scores, list) or not isinstance(ranked_order_keys, list) or len(ranked_ids) != len(ranked_scores) or len(ranked_ids) != len(ranked_order_keys) or (expected_rank_count is not None and len(ranked_ids) != expected_rank_count) or len(ranked_ids) < 10 or len(set(map(str, ranked_ids))) != len(ranked_ids) or len(set(map(str, ranked_order_keys))) != len(ranked_order_keys) or any(str(value) not in known_docs for value in ranked_ids) or not all(isinstance(value, (int, float)) and np.isfinite(float(value)) for value in ranked_scores):
             raise ValueError(f"invalid full ranked evidence at query {index}")
         else:
             ranked_ids = [str(value) for value in ranked_ids]
             ranked_scores = np.asarray([float(value) for value in ranked_scores], dtype=np.float64)
-            ranked_order_keys = [int(value) for value in ranked_order_keys]
+            ranked_order_keys = [str(value) for value in ranked_order_keys]
+            expected_order_keys = [serialize_order_key(document_order_key(value)) for value in ranked_ids]
+            if ranked_order_keys != expected_order_keys:
+                raise ValueError(f"ranked order keys are not bound to ranked IDs at query {index}")
             if ranked_ids[:10] != top10:
                 raise ValueError(f"top10/full-ranking evidence differs at query {index}")
             for position in range(len(ranked_scores) - 1):
                 left_score = ranked_scores[position]
                 right_score = ranked_scores[position + 1]
-                if left_score < right_score or (left_score == right_score and document_order_key(ranked_order_keys[position]) >= document_order_key(ranked_order_keys[position + 1])):
+                if left_score < right_score or (left_score == right_score and document_order_key(ranked_ids[position]) >= document_order_key(ranked_ids[position + 1])):
                     raise ValueError(f"ranking order/tie policy differs at query {index}, position {position}")
             recomputed_rank = next((position + 1 for position, value in enumerate(ranked_ids) if qrels[query_ids[index]].get(value, 0) > 0), None)
             recomputed_doc = None if recomputed_rank is None else ranked_ids[recomputed_rank - 1]
@@ -108,8 +115,8 @@ def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str
             if recomputed_rank is not None:
                 score = float(ranked_scores[recomputed_rank - 1])
                 higher = int(np.count_nonzero(ranked_scores > score))
-                first_order_key = document_order_key(ranked_order_keys[recomputed_rank - 1])
-                tied_lower = int(sum(candidate_score == score and document_order_key(order_key) < first_order_key for order_key, candidate_score in zip(ranked_order_keys, ranked_scores)))
+                first_order_key = document_order_key(recomputed_doc)
+                tied_lower = int(sum(candidate_score == score and document_order_key(candidate_id) < first_order_key for candidate_id, candidate_score in zip(ranked_ids, ranked_scores)))
                 if row.get("first_relevant_score") is None or abs(float(row["first_relevant_score"]) - score) > 1e-12 or row.get("higher_score_count") != higher or row.get("tied_lower_id_count") != tied_lower or 1 + higher + tied_lower != recomputed_rank:
                     raise ValueError(f"first relevant score/rank proof is not independently reproduced at query {index}")
         if rank is None:
@@ -191,7 +198,7 @@ def main() -> None:
     }
     compact["exact_oracle"] = check_stage(result["exact_oracle"], query_ids, known_docs, qrels)
     for mode, value in result["stages"].items():
-        compact["stages"][mode] = {"route_exact_fp32": check_stage(value["route_exact_fp32"], query_ids, known_docs, qrels), "thq_top128_exact_fp32": check_stage(value["thq_top128_exact_fp32"], query_ids, known_docs, qrels), "packed": {codec: check_stage(value["packed"][codec], query_ids, known_docs, qrels) for codec in CODECS}}
+        compact["stages"][mode] = {"route_exact_fp32": check_stage(value["route_exact_fp32"], query_ids, known_docs, qrels, 5000), "thq_top128_exact_fp32": check_stage(value["thq_top128_exact_fp32"], query_ids, known_docs, qrels, 128), "packed": {codec: check_stage(value["packed"][codec], query_ids, known_docs, qrels, 128) for codec in CODECS}}
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(compact, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     print(json.dumps({"status": "PASS", "result_sha256": result_hash, "output": str(args.output)}, sort_keys=True))
