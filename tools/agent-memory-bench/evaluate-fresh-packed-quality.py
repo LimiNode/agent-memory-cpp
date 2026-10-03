@@ -204,7 +204,7 @@ def make_scorer(name: str, path: Path, thq: np.memmap, thresholds: np.ndarray, a
     raise ValueError(f"unsupported codec {name}")
 
 
-def metrics(top_ids: list[str], qrels: dict[str, int]) -> dict[str, Any]:
+def metrics(top_ids: list[str], qrels: dict[str, int], ranked_scores: np.ndarray | None = None) -> dict[str, Any]:
     grades = [qrels.get(x, 0) for x in top_ids[:10]]
     ideal = sorted(qrels.values(), reverse=True)[:10]
     def dcg(values: list[int]) -> float:
@@ -213,9 +213,22 @@ def metrics(top_ids: list[str], qrels: dict[str, int]) -> dict[str, Any]:
     first = next((i + 1 for i, value in enumerate(top_ids) if qrels.get(value, 0) > 0), None)
     first10 = next((i + 1 for i, value in enumerate(top_ids[:10]) if qrels.get(value, 0) > 0), None)
     first_doc = None if first is None else str(top_ids[first - 1])
+    first_score = None
+    higher_count = None
+    tied_lower_id_count = None
+    if first is not None and ranked_scores is not None:
+        if len(ranked_scores) != len(top_ids):
+            raise ValueError("rank proof length differs from ranked IDs")
+        first_score = float(ranked_scores[first - 1])
+        higher_count = int(np.count_nonzero(ranked_scores > first_score))
+        tied_lower_id_count = int(sum(float(score) == first_score and str(doc_id) < first_doc for doc_id, score in zip(top_ids, ranked_scores)))
+        if 1 + higher_count + tied_lower_id_count != first:
+            raise ValueError("rank proof disagrees with ordered ranking")
     return {"ndcg_at_10": float(ndcg), "mrr": 0.0 if first is None else 1.0 / first,
             "mrr_at_10": 0.0 if first10 is None else 1.0 / first10,
             "first_relevant_rank": first, "first_relevant_doc_id": first_doc,
+            "first_relevant_score": first_score, "higher_score_count": higher_count,
+            "tied_lower_id_count": tied_lower_id_count,
             "top10_ids": list(top_ids[:10])}
 
 
@@ -287,7 +300,7 @@ def main() -> None:
         if len(rows) != Q:
             raise ValueError("exact result does not cover 305 queries")
         exact_top10 = [np.asarray([doc_pos[str(value)] for value in row["top10_ids"]], dtype=np.int32) for row in rows]
-        exact_rows = [{"ndcg_at_10": float(row["ndcg_at_10"]), "mrr": float(row["mrr"]), "mrr_at_10": metrics(row["top10_ids"], qrels[query_ids[i]])["mrr_at_10"], "first_relevant_rank": row.get("first_relevant_rank"), "first_relevant_doc_id": row.get("first_relevant_doc_id"), "top10_ids": row["top10_ids"]} for i, row in enumerate(rows)]
+        exact_rows = [{"ndcg_at_10": float(row["ndcg_at_10"]), "mrr": float(row["mrr"]), "mrr_at_10": metrics(row["top10_ids"], qrels[query_ids[i]])["mrr_at_10"], "first_relevant_rank": row.get("first_relevant_rank"), "first_relevant_doc_id": row.get("first_relevant_doc_id"), "first_relevant_score": row.get("first_relevant_score"), "higher_score_count": row.get("higher_score_count"), "tied_lower_id_count": row.get("tied_lower_id_count"), "top10_ids": row["top10_ids"]} for i, row in enumerate(rows)]
     else:
         for qi, q in enumerate(queries):
             scores = np.asarray(docs @ q, dtype=np.float32); ids = ordered_top(np.arange(N, dtype=np.int32), scores, 10); exact_top10.append(ids)
@@ -301,10 +314,10 @@ def main() -> None:
     for mode, stream in streams.items():
         route_rows: list[dict[str, Any]] = []; thq_rows: list[dict[str, Any]] = []; codec_rows = {name: [] for name in codecs}
         for qi, q in enumerate(queries):
-            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); route_ids = ordered_top(cand, exact_scores, CANDIDATES); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]]))
-            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, TOP); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]]))
+            cand = stream[qi]; exact_scores = np.asarray(docs[cand] @ q, dtype=np.float32); route_ids = ordered_top(cand, exact_scores, CANDIDATES); route_score_map = {int(doc): float(score) for doc, score in zip(cand, exact_scores)}; route_ordered_scores = np.asarray([route_score_map[int(doc)] for doc in route_ids], dtype=np.float64); route_rows.append(metrics([doc_ids[i] for i in route_ids], qrels[query_ids[qi]], route_ordered_scores))
+            thq_scores_row = thq_scores(np.asarray(thq[cand]), q, thresholds); top = ordered_top(cand, thq_scores_row, TOP, ascending=True); thq_exact = np.asarray(docs[top] @ q, dtype=np.float32); thq_ids = ordered_top(top, thq_exact, TOP); thq_score_map = {int(doc): float(score) for doc, score in zip(top, thq_exact)}; thq_ordered_scores = np.asarray([thq_score_map[int(doc)] for doc in thq_ids], dtype=np.float64); thq_rows.append(metrics([doc_ids[i] for i in thq_ids], qrels[query_ids[qi]], thq_ordered_scores))
             for name, scorer in scorers.items():
-                packed = ordered_top(top, scorer(top, q), TOP); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]]))
+                packed_scores = scorer(top, q); packed = ordered_top(top, packed_scores, TOP); packed_score_map = {int(doc): float(score) for doc, score in zip(top, packed_scores)}; packed_ordered_scores = np.asarray([packed_score_map[int(doc)] for doc in packed], dtype=np.float64); codec_rows[name].append(metrics([doc_ids[i] for i in packed], qrels[query_ids[qi]], packed_ordered_scores))
         out["stages"][mode] = {"route_exact_fp32": summarize(route_rows), "thq_top128_exact_fp32": summarize(thq_rows), "packed": {name: summarize(rows) for name, rows in codec_rows.items()}}
     out["payloads"] = {name: {"path": str(path), "sha256": sha256(path), **{key: {"path": str(value), "sha256": sha256(value)} for key, value in aux.items() if isinstance(value, Path)}} for name, (path, aux) in codecs.items()}
     args.output.parent.mkdir(parents=True, exist_ok=True); args.output.write_text(json.dumps(out, indent=2, sort_keys=True) + "\n", encoding="utf-8"); print(json.dumps({"output": str(args.output), "query_count": Q, "codecs": list(codecs)}, sort_keys=True))

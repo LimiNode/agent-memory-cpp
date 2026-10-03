@@ -77,13 +77,18 @@ def check_stage(stage: dict[str, Any], query_ids: list[str], known_docs: set[str
         rank = row.get("first_relevant_rank")
         first_doc = row.get("first_relevant_doc_id")
         if rank is None:
-            if first_doc is not None or float(row["mrr"]) != 0.0:
+            if first_doc is not None or row.get("first_relevant_score") is not None or row.get("higher_score_count") is not None or row.get("tied_lower_id_count") is not None or float(row["mrr"]) != 0.0:
                 raise ValueError(f"missing first relevant identity at query {index}")
             expected_mrr = 0.0
         else:
             rank = int(rank)
             if rank < 1 or first_doc is None or str(first_doc) not in known_docs or qrels[query_ids[index]].get(str(first_doc), 0) <= 0:
                 raise ValueError(f"invalid first relevant identity at query {index}")
+            score = row.get("first_relevant_score")
+            higher = row.get("higher_score_count")
+            tied_lower = row.get("tied_lower_id_count")
+            if not isinstance(score, (int, float)) or not np.isfinite(float(score)) or not isinstance(higher, int) or higher < 0 or not isinstance(tied_lower, int) or tied_lower < 0 or 1 + higher + tied_lower != rank:
+                raise ValueError(f"rank proof differs at query {index}")
             expected_mrr = 1.0 / rank
             # For ranks represented in top10, independently verify the exact
             # position and that no earlier top10 item is relevant.
@@ -142,7 +147,7 @@ def main() -> None:
         "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
         "query_count": Q,
         "codec_count": len(CODECS),
-        "metric_contract": {"ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels", "mrr": "full ranked-stage MRR with independently checked first relevant identity", "mrr_at_10": "diagnostic only", "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"},
+        "metric_contract": {"ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels", "mrr": "full ranked-stage MRR with first-relevant score/rank proof (higher-score and tied-lower-ID counts)", "mrr_at_10": "diagnostic only", "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"},
         "source": result.get("source"),
         "payloads": result.get("payloads"),
         "stages": {},

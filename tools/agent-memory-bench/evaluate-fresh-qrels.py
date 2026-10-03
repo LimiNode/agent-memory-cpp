@@ -185,6 +185,17 @@ def exact_run(args: argparse.Namespace) -> None:
         ids = data["document_ids"][positions].tolist()
         grades = data["qrels"][query_id]
         first_rank, first_doc = exact_first_relevant(data, position, scores)
+        if first_doc is None:
+            first_score = None
+            higher_count = None
+            tied_lower_id_count = None
+        else:
+            first_position = data["document_id_to_position"][first_doc]
+            first_score = float(scores[first_position])
+            higher_count = int(np.count_nonzero(scores > first_score))
+            tied_lower_id_count = int(np.count_nonzero((scores == first_score) & (data["document_order_keys"] < data["document_order_keys"][first_position])))
+            if 1 + higher_count + tied_lower_id_count != first_rank:
+                raise EvaluationError("exact first-relevant rank proof is inconsistent")
         row = {
             "query_position": position,
             "query_id": query_id,
@@ -194,6 +205,9 @@ def exact_run(args: argparse.Namespace) -> None:
             "mrr": exact_mrr_from_scores(data, position, scores),
             "first_relevant_rank": first_rank,
             "first_relevant_doc_id": first_doc,
+            "first_relevant_score": first_score,
+            "higher_score_count": higher_count,
+            "tied_lower_id_count": tied_lower_id_count,
             "relevant_in_top10": sum(grades.get(value, 0) > 0 for value in ids[:10]),
         }
         per_query.append(row)
