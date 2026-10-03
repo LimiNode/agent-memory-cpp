@@ -1,19 +1,20 @@
 {
-  "bundle_sha256": "c5ba9d11072ad6d27dc1ef4a174b1dcc6dd94b5123096429d2036f71b57ceaa1",
+  "bundle_sha256": "1b29146914c9a62422d797fc5369997924fdd6b63e10de78337ebedf970c98d2",
   "codec_count": 7,
   "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
-  "evidence_binding_sha256": "6477e3ee69f7ce998c1e33a911c9767629b954f53651f00b5c34a56584cc67ac",
+  "evidence_binding_sha256": "aa346e35ffbbb41b73548267a02238a94495d2a4a9a73bfee0dc0387e995948c",
   "exact_oracle": {
     "mean_mrr": 0.6938856134550563,
     "mean_mrr_at_10": 0.6911215196461099,
     "mean_ndcg_at_10": 0.6723946080838488,
     "p05_ndcg_at_10": 0.0,
+    "rank_proof": "persisted_proof_consistency_only",
     "worst_ndcg_at_10": 0.0
   },
   "family": "fresh_packed_quality_decomposition_receipt_v1",
-  "measured_code_commit": "6f0a0448e2d4fd3288daad23ff527a6e35816228",
+  "measured_code_commit": "5897627e3d8f66a143cf44927126b7c53985431c",
   "metric_contract": {
-    "mrr": "full ranked-stage MRR with first-relevant score/rank proof (higher-score and tied-lower-ID counts)",
+    "mrr": "routed stages independently recomputed from ranked_ids/ranked_scores; exact 1M oracle checks persisted canonical proof consistency",
     "mrr_at_10": "diagnostic only",
     "ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels",
     "tie_policy": "score-desc-or-THQ-distance-asc then numeric-id-asc"
@@ -73,10 +74,10 @@
     }
   },
   "query_count": 305,
-  "receipt_commit": "6f0a0448e2d4fd3288daad23ff527a6e35816228",
+  "receipt_commit": "5897627e3d8f66a143cf44927126b7c53985431c",
   "receipt_commit_semantics": "generation commit for this receipt; the containing commit is its successor because a commit cannot embed its own hash",
-  "release_target_commit": "6f0a0448e2d4fd3288daad23ff527a6e35816228",
-  "result_sha256": "73e3b39db91f442459ec0cc0765381f15adc56255c33c8d66e50cd4b1e5057e1",
+  "release_target_commit": "5897627e3d8f66a143cf44927126b7c53985431c",
+  "result_sha256": "a00bd17b1645188a7cd0dd1d7beaa576b69905ce5fec49c0774008da5a29f3d6",
   "schema_version": 2,
   "source": {
     "candidate_streams": {
@@ -108,6 +109,7 @@
           "mean_mrr_at_10": 0.6873692427790788,
           "mean_ndcg_at_10": 0.6461556168447292,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "lsq32": {
@@ -115,6 +117,7 @@
           "mean_mrr_at_10": 0.6830770231589903,
           "mean_ndcg_at_10": 0.640992099524224,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "lsq48": {
@@ -122,6 +125,7 @@
           "mean_mrr_at_10": 0.6735571168358053,
           "mean_ndcg_at_10": 0.6329334176574168,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "plsq8x6x8": {
@@ -129,6 +133,7 @@
           "mean_mrr_at_10": 0.6791829300026022,
           "mean_ndcg_at_10": 0.6407964992115361,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "rslm1": {
@@ -136,6 +141,7 @@
           "mean_mrr_at_10": 0.6822924798334634,
           "mean_ndcg_at_10": 0.6384929338428303,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "tq1": {
@@ -143,6 +149,7 @@
           "mean_mrr_at_10": 0.6971558678116055,
           "mean_ndcg_at_10": 0.6503870304788021,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "tq1-pq8": {
@@ -150,6 +157,7 @@
           "mean_mrr_at_10": 0.7024395003903201,
           "mean_ndcg_at_10": 0.6564067754210756,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         }
       },
@@ -158,6 +166,7 @@
         "mean_mrr_at_10": 0.6845602393963048,
         "mean_ndcg_at_10": 0.6455913410616324,
         "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
         "worst_ndcg_at_10": 0.0
       },
       "thq_top128_exact_fp32": {
@@ -165,6 +174,7 @@
         "mean_mrr_at_10": 0.6845602393963048,
         "mean_ndcg_at_10": 0.6455913410616324,
         "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
         "worst_ndcg_at_10": 0.0
       }
     },
@@ -175,6 +185,7 @@
           "mean_mrr_at_10": 0.6912125943273485,
           "mean_ndcg_at_10": 0.6611688745473839,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "lsq32": {
@@ -182,6 +193,7 @@
           "mean_mrr_at_10": 0.6890411137132448,
           "mean_ndcg_at_10": 0.6541255259086661,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "lsq48": {
@@ -189,6 +201,7 @@
           "mean_mrr_at_10": 0.6792258652094718,
           "mean_ndcg_at_10": 0.6456151888933248,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "plsq8x6x8": {
@@ -196,6 +209,7 @@
           "mean_mrr_at_10": 0.6828532396565183,
           "mean_ndcg_at_10": 0.6519376721990707,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "rslm1": {
@@ -203,6 +217,7 @@
           "mean_mrr_at_10": 0.6856661462399167,
           "mean_ndcg_at_10": 0.6547281082361884,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "tq1": {
@@ -210,6 +225,7 @@
           "mean_mrr_at_10": 0.702377049180328,
           "mean_ndcg_at_10": 0.6667067349483679,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         },
         "tq1-pq8": {
@@ -217,6 +233,7 @@
           "mean_mrr_at_10": 0.7066549570647931,
           "mean_ndcg_at_10": 0.6684279754241327,
           "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
           "worst_ndcg_at_10": 0.0
         }
       },
@@ -225,6 +242,7 @@
         "mean_mrr_at_10": 0.6893546708300807,
         "mean_ndcg_at_10": 0.6597463669380758,
         "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
         "worst_ndcg_at_10": 0.0
       },
       "thq_top128_exact_fp32": {
@@ -232,6 +250,7 @@
         "mean_mrr_at_10": 0.6893546708300807,
         "mean_ndcg_at_10": 0.6597718026788679,
         "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
         "worst_ndcg_at_10": 0.0
       }
     }
