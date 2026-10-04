@@ -9,21 +9,42 @@ Two vectors are comparable only when their complete embedding contract matches.
 Dimension alone is never an identity: `384D` MiniLM, Nomic, and E5 vectors are
 different coordinate spaces and must not be mixed.
 
-An embedding identity binds at least:
+An embedding representation identity binds at least:
 
 ```text
 provider/model name
 model revision or immutable artifact digest
 tokenizer identity and revision
 pooling mode
-normalization mode and similarity metric
-query/document prefix or instruction policy
+normalization mode
+document input policy
 output dimension and Matryoshka projection
 ```
 
 The identity is persisted with vectors, query receipts, and derived ANN/codec
 manifests. A missing or incompatible field fails closed. Changing any field
 creates a successor projection and requires a fresh quality evaluation.
+
+Keep the following contracts separate:
+
+```text
+EmbeddingRepresentationIdentity
+    model/provider revision, tokenizer, pooling, normalization,
+    document input policy, output dimension/projection
+
+QueryEncodingPolicy
+    query prefix/instruction, query template, query-side tokenizer policy
+
+RetrievalScoringIdentity
+    similarity metric, score normalization, ANN parameters
+```
+
+Changing a scoring metric requires a fresh retrieval evaluation and may require
+an index rebuild, but does not by itself require re-embedding unchanged
+vectors. Changing only a query instruction does not automatically invalidate
+the persisted document projection, although it does require a new query-policy
+receipt and evaluation. A metric or query policy is part of the comparison
+contract even when it is not part of the document-vector identity.
 
 ## Chunking is part of the retrieval model
 
@@ -59,10 +80,17 @@ canonical text
   -> the same qrels and query order
 ```
 
-Required measurements are nDCG@10, MRR, Recall@128 against the exact oracle,
+Required measurements are nDCG@10, MRR, and relevance/candidate Recall@128
+against qrels or another declared relevance target,
 query encoding p50/p95, corpus encoding throughput, peak RAM/VRAM, model and
 tokenizer identity, and a chunk-length sensitivity sweep. RU/DE/EN or other
 language slices are reported separately when the corpus supports them.
+
+This E0 recall is not ANN overlap. `RelevanceRecall@128` (or an explicitly
+named `CandidateRecall@128`) measures whether relevant resources are present in
+the returned set. E1 additionally reports `ANNRecall@128`: overlap between an
+approximate top-128 result and the exact FP32 top-128 from the same embedding
+space. Exact E0 retrieval must not report ANN recall against itself.
 
 The baseline is `intfloat/multilingual-e5-small`. `all-MiniLM-L6-v2` and
 `nomic-embed-text-v1.5` are controls/candidates, not selected backends.
@@ -98,6 +126,13 @@ Report both views when models expose a supported projection:
 Never compare a native 1024D model to a 256D model and call the difference a
 codec result. Encoder quality, vector footprint, and codec quality are separate
 axes in the report.
+
+When native chunking differs, chunk-level qrels cannot simply be reused. A
+cross-chunking comparison either uses canonical resource/document-level qrels,
+or records a deterministic projection of each judgment onto the candidate's
+chunk universe with a separate mapping receipt. The fixed document universe in
+the current DE-1M work is a special case; scientific-RAG evaluations must make
+this mapping explicit.
 
 ## Reproducibility and acceptance
 

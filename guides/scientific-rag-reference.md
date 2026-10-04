@@ -66,6 +66,12 @@ hardware. Report corpus/index bytes, ingestion/build throughput, query
 p50/p95/p99, Recall@K, nDCG@10, MRR, context precision/coverage, and provenance
 coverage. Advertised scores from external projects are not acceptance gates.
 
+Chunking changes the judgment universe. A controlled comparison may keep one
+common tokenizer-bounded chunk set, while a best-native comparison must use
+canonical document/resource qrels or publish a deterministic judgment-to-chunk
+projection receipt for each chunker. Chunk-level qrels from one chunking policy
+must not be silently reused for another.
+
 ## Scientific graph (deferred)
 
 A first graph projection can use reliable structural signals:
@@ -87,11 +93,14 @@ promised by this reference lane.
 ## External references and boundaries
 
 `ShmidtS/RAG` is a reference ingestion/use-case shape, not a dependency or a
-claim that its public corpus is a complete arXiv mirror. `ShmidtS/context-mode-rust`
-is a reference for hybrid retrieval and observable context packing, not a
-performance baseline; its implementation must not be copied into this MIT
-project without license review. `Niko1221/Strata` is an optional local-inference
-and tiered-runtime inspiration, not a RAG engine dependency.
+claim that its public corpus is a complete arXiv mirror. Its public project
+currently states `All rights reserved`; code reuse requires explicit
+permission. `ShmidtS/context-mode-rust` is a reference for hybrid retrieval
+and observable context packing, not a performance baseline; its implementation
+is `Elastic-2.0` and must not be transplanted into this MIT project without an
+explicit licensing decision. `Niko1221/Strata` is MIT, but remains optional
+local-inference and tiered-runtime inspiration rather than a RAG engine
+dependency.
 
 The reference workload must not turn into an arXiv-specific API in the core
 library. It exists to demonstrate that the same source-grounded corpus can be

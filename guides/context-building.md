@@ -32,9 +32,19 @@ struct ContextPack {
 };
 ```
 
-`ContextItem` binds the canonical resource/revision, chunk identity, retrieval
-score and rank, projection/model identity, and the text range placed in the
-pack. `ContextOmission` records the candidate identity (or an aggregate with a
+`ContextItem` binds the canonical resource/revision, chunk identity,
+projection/model identity, and the text range placed in the pack. It carries a
+stage lineage rather than one ambiguous score:
+
+```text
+lexical rank/score (when present)
+vector rank/score (when present)
+fusion rank/score and fusion policy
+reranker rank/score and model identity
+final selection rank and policy revision
+```
+
+`ContextOmission` records the candidate identity (or an aggregate with a
 stable digest), omission reason, and policy revision. Reasons include
 `token_budget`, duplicate content, source-diversity limit, authority/filter
 policy, and malformed or unavailable source.
