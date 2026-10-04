@@ -12,6 +12,7 @@
 #endif
 
 #include <mdbx_containers/KeyValueTable.hpp>
+#include <mdbx.h>
 #include <nlohmann/json.hpp>
 
 #include <algorithm>
@@ -135,8 +136,7 @@ class Store final {
   }
 
   void verify() const {
-    const auto state = metadata_table_->find("state");
-    if (!state || *state != "complete") throw std::runtime_error("MDBX build is not complete");
+    check_complete();
     const auto payload = read_binary(config_.payload);
     if (payload.size() != config_.documents * config_.row_bytes) throw std::runtime_error("source payload shape differs");
     auto tx = connection_->transaction(mdbxc::TransactionMode::READ_ONLY);
@@ -159,10 +159,57 @@ class Store final {
     tx.commit();
   }
 
+  // This deliberately checks only durable metadata.  It is safe to use before
+  // a first-query timing sample; full byte parity belongs to --verify.
+  void check_complete() const {
+    const auto state = metadata_table_->find("state");
+    const auto documents = metadata_table_->find("documents");
+    const auto row_bytes = metadata_table_->find("row_bytes");
+    const auto layout = metadata_table_->find("layout");
+    if (!state || *state != "complete") throw std::runtime_error("MDBX build is not complete");
+    if (!documents || *documents != std::to_string(config_.documents) ||
+        !row_bytes || *row_bytes != std::to_string(config_.row_bytes) ||
+        !layout || *layout != config_.layout)
+      throw std::runtime_error("MDBX metadata does not match config");
+  }
+
+  struct SpaceStats final {
+    std::uint64_t page_size = 0;
+    std::uint64_t data_pages = 0;
+    std::uint64_t data_bytes = 0;
+    std::uint64_t used_pages = 0;
+    std::uint64_t used_bytes = 0;
+    std::uint64_t allocated_file_bytes = 0;
+    std::uint64_t environment_file_bytes = 0;
+    std::uint64_t reclaimable_bytes = 0;
+  };
+
+  SpaceStats space_stats() const {
+    auto tx = connection_->transaction(mdbxc::TransactionMode::READ_ONLY);
+    MDBX_stat stat{};
+    MDBX_envinfo info{};
+    if (mdbx_env_stat_ex(connection_->env_handle(), tx.handle(), &stat, sizeof(stat)) != MDBX_SUCCESS)
+      throw std::runtime_error("cannot read MDBX environment statistics");
+    if (mdbx_env_info_ex(connection_->env_handle(), tx.handle(), &info, sizeof(info)) != MDBX_SUCCESS)
+      throw std::runtime_error("cannot read MDBX environment information");
+    tx.commit();
+    SpaceStats result;
+    result.page_size = stat.ms_psize;
+    result.data_pages = stat.ms_branch_pages + stat.ms_leaf_pages + stat.ms_overflow_pages;
+    result.data_bytes = result.data_pages * result.page_size;
+    result.used_pages = info.mi_last_pgno + 1;
+    result.used_bytes = result.used_pages * info.mi_dxb_pagesize;
+    result.allocated_file_bytes = info.mi_dxb_fallocated;
+    result.environment_file_bytes = info.mi_dxb_fsize;
+    result.reclaimable_bytes = result.allocated_file_bytes > result.used_bytes
+        ? result.allocated_file_bytes - result.used_bytes : 0;
+    return result;
+  }
+
   std::size_t bytes() const { return static_cast<std::size_t>(std::filesystem::file_size(config_.db)); }
   std::size_t commits() const { return commits_; }
 
-  struct ReadStats final { std::uint64_t checksum = 0; std::size_t reads = 0; std::size_t fetched_bytes = 0; std::size_t useful_bytes = 0; };
+  struct ReadStats final { std::uint64_t checksum = 0; std::size_t reads = 0; std::size_t logical_value_bytes_fetched = 0; std::size_t useful_bytes = 0; };
 
   ReadStats read(const std::vector<std::uint32_t>& ids, bool one_transaction) const {
     if (ids.empty()) throw std::runtime_error("candidate row is empty");
@@ -181,14 +228,14 @@ class Store final {
         for (std::size_t index = 0; index < ids.size(); ++index) {
           const auto value = payload_table_->find(ids[index], tx);
           if (!value) throw std::runtime_error("row lookup missing");
-          consume(*value, index); ++stats.reads; stats.fetched_bytes += value->size();
+          consume(*value, index); ++stats.reads; stats.logical_value_bytes_fetched += value->size();
         }
         tx.commit();
       } else {
         for (std::size_t index = 0; index < ids.size(); ++index) {
           const auto value = payload_table_->find(ids[index]);
           if (!value) throw std::runtime_error("row lookup missing");
-          consume(*value, index); ++stats.reads; stats.fetched_bytes += value->size();
+          consume(*value, index); ++stats.reads; stats.logical_value_bytes_fetched += value->size();
         }
       }
       return stats;
@@ -204,7 +251,7 @@ class Store final {
         if (!value) throw std::runtime_error("segment lookup missing");
         cache[segment] = std::move(*value);
         loaded[segment] = true;
-        ++stats.reads; stats.fetched_bytes += cache[segment].size();
+        ++stats.reads; stats.logical_value_bytes_fetched += cache[segment].size();
       }
       const auto offset = (ids[index] % config_.segment_rows) * config_.row_bytes;
       if (offset + config_.row_bytes > cache[segment].size()) throw std::runtime_error("segment row offset differs");
@@ -274,35 +321,57 @@ void self_test(const std::filesystem::path& root) {
 int main(int argc, char** argv) {
   try {
     if (argc == 3 && std::string(argv[1]) == "--self-test") { self_test(argv[2]); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
-    if (argc != 3) { std::cerr << "usage: --materialize|--verify|--benchmark config.json\n"; return 2; }
+    if (argc != 3) { std::cerr << "usage: --materialize|--verify|--coldish|--benchmark config.json\n"; return 2; }
     const std::string command = argv[1];
     const auto config_path = std::filesystem::path(argv[2]);
     const Config config = load_config(config_path);
     if (command == "--materialize") {
       Store store(config, true); store.mark_building(); const auto begin = Clock::now(); store.materialize(); store.verify();
       const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
-      std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"MATERIALIZED\",\"db_bytes\":" << store.bytes() << ",\"materialize_ms\":" << elapsed << ",\"durable_commits\":" << store.commits() << "}\n";
+      const auto space = store.space_stats();
+      std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"MATERIALIZED\",\"mdbx_allocated_file_bytes\":" << space.allocated_file_bytes
+                << ",\"environment_file_size_bytes\":" << space.environment_file_bytes << ",\"mdbx_page_size\":" << space.page_size
+                << ",\"mdbx_used_pages\":" << space.used_pages << ",\"mdbx_used_bytes\":" << space.used_bytes
+                << ",\"mdbx_data_pages\":" << space.data_pages << ",\"mdbx_data_bytes\":" << space.data_bytes
+                << ",\"mdbx_reclaimable_bytes\":" << space.reclaimable_bytes
+                << ",\"db_bytes\":" << store.bytes() << ",\"materialize_ms\":" << elapsed << ",\"durable_commits\":" << store.commits() << "}\n";
       return 0;
     }
     if (command == "--verify") { Store store(config, false); store.verify(); std::cout << "{\"status\":\"PASS\"}\n"; return 0; }
+    if (command == "--coldish") {
+      const auto value = Json::parse(std::ifstream(config_path));
+      const auto candidates = load_candidates(value.at("candidates").get<std::string>(), value.at("query_count").get<std::size_t>(), value.at("candidate_width").get<std::size_t>(), config.documents);
+      const auto one_transaction = value.value("access", std::string("query_transaction")) == "query_transaction";
+      Store store(config, false); store.check_complete();
+      const auto space = store.space_stats();
+      const auto begin = Clock::now(); const auto stats = store.read(candidates.front(), one_transaction);
+      const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
+      std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"COLDISH\",\"reopen_coldish_first_query_ms\":" << elapsed
+                << ",\"mdbx_allocated_file_bytes\":" << space.allocated_file_bytes << ",\"environment_file_size_bytes\":" << space.environment_file_bytes
+                << ",\"mdbx_page_size\":" << space.page_size << ",\"mdbx_used_pages\":" << space.used_pages << ",\"mdbx_used_bytes\":" << space.used_bytes
+                << ",\"mdbx_data_pages\":" << space.data_pages << ",\"mdbx_data_bytes\":" << space.data_bytes
+                << ",\"mdbx_reclaimable_bytes\":" << space.reclaimable_bytes << "}\n";
+      return 0;
+    }
     if (command != "--benchmark") throw std::runtime_error("unknown MDBX harness command");
     const auto value = Json::parse(std::ifstream(config_path));
     const auto candidates = load_candidates(value.at("candidates").get<std::string>(), value.at("query_count").get<std::size_t>(), value.at("candidate_width").get<std::size_t>(), config.documents);
     const auto repeats = value.value("repeats", std::size_t{5});
     const auto warmups = value.value("warmups", std::size_t{1});
     const auto one_transaction = value.value("access", std::string("query_transaction")) == "query_transaction";
-    Store store(config, false); store.verify();
+    Store store(config, false); store.check_complete();
     auto first = Clock::now(); (void)store.read(candidates.front(), one_transaction); const auto reopen_ms = std::chrono::duration<double, std::milli>(Clock::now() - first).count();
+    const auto space = store.space_stats();
     std::vector<double> timings; std::vector<double> reads; std::vector<double> fetched; std::vector<double> useful; std::uint64_t checksum = 0;
     for (std::size_t iteration = 0; iteration < warmups + repeats; ++iteration) for (const auto& row : candidates) {
       const auto begin = Clock::now(); const auto stats = store.read(row, one_transaction); const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
-      if (iteration >= warmups) { timings.push_back(elapsed); reads.push_back(static_cast<double>(stats.reads)); fetched.push_back(static_cast<double>(stats.fetched_bytes)); useful.push_back(static_cast<double>(stats.useful_bytes)); checksum ^= stats.checksum + 0x9e3779b97f4a7c15ULL + (checksum << 6) + (checksum >> 2); }
+      if (iteration >= warmups) { timings.push_back(elapsed); reads.push_back(static_cast<double>(stats.reads)); fetched.push_back(static_cast<double>(stats.logical_value_bytes_fetched)); useful.push_back(static_cast<double>(stats.useful_bytes)); checksum ^= stats.checksum + 0x9e3779b97f4a7c15ULL + (checksum << 6) + (checksum >> 2); }
     }
-    std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"access\":\"" << (one_transaction ? "query_transaction" : "point_lookup") << "\",\"queries\":" << candidates.size() << ",\"width\":" << candidates.front().size() << ",\"warmups\":" << warmups << ",\"repeats\":" << repeats << ",\"db_bytes\":" << store.bytes() << ",\"reopen_first_query_ms\":" << reopen_ms << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << ",\"median_reads\":" << percentile(reads, .5) << ",\"median_fetched_bytes\":" << percentile(fetched, .5) << ",\"median_useful_bytes\":" << percentile(useful, .5) << ",\"checksum\":" << checksum << ",\"samples_ms\":[";
+    std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"access\":\"" << (one_transaction ? "query_transaction" : "point_lookup") << "\",\"queries\":" << candidates.size() << ",\"width\":" << candidates.front().size() << ",\"warmups\":" << warmups << ",\"repeats\":" << repeats << ",\"mdbx_allocated_file_bytes\":" << space.allocated_file_bytes << ",\"environment_file_size_bytes\":" << space.environment_file_bytes << ",\"mdbx_page_size\":" << space.page_size << ",\"mdbx_used_pages\":" << space.used_pages << ",\"mdbx_used_bytes\":" << space.used_bytes << ",\"mdbx_data_pages\":" << space.data_pages << ",\"mdbx_data_bytes\":" << space.data_bytes << ",\"mdbx_reclaimable_bytes\":" << space.reclaimable_bytes << ",\"db_bytes\":" << store.bytes() << ",\"reopen_coldish_first_query_ms\":" << reopen_ms << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << ",\"median_reads\":" << percentile(reads, .5) << ",\"median_logical_value_bytes_fetched\":" << percentile(fetched, .5) << ",\"median_useful_bytes\":" << percentile(useful, .5) << ",\"checksum\":" << checksum << ",\"samples_ms\":[";
     for (std::size_t index = 0; index < timings.size(); ++index) { if (index) std::cout << ','; std::cout << timings[index]; }
     std::cout << "],\"samples_reads\":[";
     for (std::size_t index = 0; index < reads.size(); ++index) { if (index) std::cout << ','; std::cout << reads[index]; }
-    std::cout << "],\"samples_fetched_bytes\":[";
+    std::cout << "],\"samples_logical_value_bytes_fetched\":[";
     for (std::size_t index = 0; index < fetched.size(); ++index) { if (index) std::cout << ','; std::cout << fetched[index]; }
     std::cout << "],\"samples_useful_bytes\":[";
     for (std::size_t index = 0; index < useful.size(); ++index) { if (index) std::cout << ','; std::cout << useful[index]; }

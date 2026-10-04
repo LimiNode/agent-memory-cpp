@@ -42,13 +42,21 @@ def audit(value: dict) -> None:
     require(value.get("segment_rows") == 4096 and value.get("batch_rows") == 65536, "layout parameters differ")
     require(value.get("runs", 0) >= 3 and value.get("repeats", 0) >= 5 and value.get("warmups") == 1, "repeat contract differs")
     manifest = value.get("fixture_manifest_sha256")
-    require(isinstance(manifest, str) and len(manifest) == 64, "fixture provenance is missing")
+    manifest_path = Path(value.get("fixture_manifest_path", ""))
+    require(isinstance(manifest, str) and len(manifest) == 64 and manifest_path.is_file(), "fixture provenance is missing")
+    require(sha256(manifest_path) == manifest, "fixture manifest hash differs")
+    fixture = json.loads(manifest_path.read_text(encoding="utf-8"))
+    require(fixture.get("family") == "mdbx_finalist_source_fixture_v1" and fixture.get("documents") == value["documents"] and fixture.get("queries") == value["queries"], "fixture manifest identity differs")
     payloads = value.get("payloads", {})
     require(set(payloads) == set(CODECS), "codec coverage differs")
     for codec in CODECS:
         payload = payloads[codec]
         require(Path(payload["path"]).is_file(), f"payload missing: {codec}")
         require(sha256(Path(payload["path"])) == payload["payload_sha256"], f"payload hash differs: {codec}")
+        require(fixture.get("payloads", {}).get(codec) == payload, f"payload fixture binding differs: {codec}")
+        for source_path, source_hash in payload.get("source_sha256", {}).items():
+            source = Path(source_path)
+            require(source.is_file() and sha256(source) == source_hash, f"canonical source hash differs: {codec}/{source_path}")
         require(payload["payload_bytes_doc"] in (36, 52, 64, 392), f"payload width differs: {codec}")
         require(payload["row_key_bytes"] == 4, f"row key width differs: {codec}")
     workloads = value.get("workloads", {})
@@ -57,6 +65,7 @@ def audit(value: dict) -> None:
         for name, expected_width in (("route", 5000), ("top128", 128)):
             path = Path(workloads[mode][name])
             require(path.is_file() and sha256(path) == workloads[mode][name + "_sha256"], f"workload hash differs: {mode}/{name}")
+            require(fixture.get("workloads", {}).get(mode, {}).get(name + "_sha256") == workloads[mode][name + "_sha256"], f"workload fixture binding differs: {mode}/{name}")
             require(path.stat().st_size == 305 * expected_width * 4, f"workload shape differs: {mode}/{name}")
     locality = value.get("locality", {})
     require(set(locality) == set(MODES), "locality coverage differs")
@@ -74,12 +83,15 @@ def audit(value: dict) -> None:
         require(key in expected_keys and key not in seen, f"unexpected or duplicate benchmark row: {key}")
         seen.add(key)
         require(row["physical_db_bytes"] >= row["logical_payload_bytes_doc"] * 1_000_000, f"physical size is below payload: {key}")
+        require(row["mdbx_allocated_file_bytes"] >= row["mdbx_used_bytes"] >= row["mdbx_data_bytes"] >= 0, f"MDBX space statistics differ: {key}")
+        require(row["mdbx_page_size"] > 0 and row["environment_file_size_bytes"] == row["physical_db_bytes"], f"MDBX file metric differs: {key}")
         runs = row.get("runs", [])
         require(len(runs) == value["runs"], f"run count differs: {key}")
         checksums = set()
         for run in runs:
             require(run.get("status") == "EXECUTED" and run.get("queries") == 305 and run.get("width") in (128, 5000), f"run shape differs: {key}")
-            samples = run.get("samples_ms", []); reads = run.get("samples_reads", []); fetched = run.get("samples_fetched_bytes", []); useful = run.get("samples_useful_bytes", [])
+            require(float(run.get("reopen_coldish_first_query_ms", -1)) >= 0, f"coldish timing missing: {key}")
+            samples = run.get("samples_ms", []); reads = run.get("samples_reads", []); fetched = run.get("samples_logical_value_bytes_fetched", []); useful = run.get("samples_useful_bytes", [])
             expected_samples = 305 * value["repeats"]
             require(len(samples) == expected_samples and len(reads) == expected_samples and len(fetched) == expected_samples and len(useful) == expected_samples, f"raw sample count differs: {key}")
             require(all(float(sample) >= 0 for sample in samples), f"negative timing sample: {key}")
@@ -89,6 +101,7 @@ def audit(value: dict) -> None:
             require(run["checksum"] != 0, f"missing content checksum: {key}")
             checksums.add(run["checksum"])
             require(run["median_useful_bytes"] == nearest([float(item) for item in useful], .5), f"useful-byte aggregate mismatch: {key}")
+            require(run["median_logical_value_bytes_fetched"] == nearest([float(item) for item in fetched], .5), f"logical returned-byte aggregate mismatch: {key}")
             if row["layout"] == "row_kv":
                 require(all(int(item) == row["width"] for item in reads), f"row read count differs: {key}")
             else:

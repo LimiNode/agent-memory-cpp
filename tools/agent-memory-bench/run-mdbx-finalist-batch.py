@@ -90,7 +90,7 @@ def main() -> None:
                             raw_path.parent.mkdir(parents=True, exist_ok=True)
                             raw_path.write_text(json.dumps(measured, indent=2, sort_keys=True) + "\n", encoding="utf-8")
                             run_rows.append({"run": run_index, **measured})
-                        rows.append({"codec": codec, "layout": layout, "mode": mode, "workload": workload_name, "width": width, "access": access, "logical_payload_bytes_doc": payload["payload_bytes_doc"], "physical_db_bytes": materialize["db_bytes"], "physical_db_bytes_doc": materialize["db_bytes"] / fixture["documents"], "materialize": materialize, "runs": run_rows})
+                        rows.append({"codec": codec, "layout": layout, "mode": mode, "workload": workload_name, "width": width, "access": access, "logical_payload_bytes_doc": payload["payload_bytes_doc"], "mdbx_allocated_file_bytes": materialize["mdbx_allocated_file_bytes"], "environment_file_size_bytes": materialize["environment_file_size_bytes"], "mdbx_used_bytes": materialize["mdbx_used_bytes"], "mdbx_used_pages": materialize["mdbx_used_pages"], "mdbx_page_size": materialize["mdbx_page_size"], "physical_db_bytes": materialize["environment_file_size_bytes"], "physical_db_bytes_doc": materialize["environment_file_size_bytes"] / fixture["documents"], "materialize": materialize, "runs": run_rows})
     result = {
         "schema_version": 1,
         "family": "mdbx_finalist_storage_bakeoff_v1",
@@ -102,13 +102,14 @@ def main() -> None:
         "runs": args.runs,
         "repeats": args.repeats,
         "warmups": args.warmups,
-        "environment": {"os": platform.platform(), "python": platform.python_version(), "cpu": platform.processor(), "logical_processors": os.cpu_count(), "cwd": str(Path.cwd()), "storage_scope": "local filesystem; OS cache not flushed", "cold_label": "reopen-cold-ish"},
+        "environment": {"os": platform.platform(), "python": platform.python_version(), "cpu": platform.processor(), "logical_processors": os.cpu_count(), "cwd": str(Path.cwd()), "storage_scope": "local filesystem; OS cache not flushed", "cold_label": "reopen-coldish"},
+        "fixture_manifest_path": str((args.fixture / "fixture.manifest.json").resolve()),
         "fixture_manifest_sha256": source_manifest_sha,
         "payloads": payloads,
         "workloads": workloads,
         "locality": {mode: {name: locality(Path(data["top128" if name == "top128" else "route"]), args.segment_rows) for name in ("top128", "route5000")} for mode, data in workloads.items()},
         "rows": rows,
-        "limitations": ["research-only prototype; no production storage API", "reopen-cold-ish does not flush the OS page cache", "row-KV point lookup is measured only for top128 because route-5000 point lookup is not a realistic scorer path", "MDBX page statistics and crash-recovery lifecycle are separate follow-up measurements"],
+        "limitations": ["research-only prototype; no production storage API", "reopen-coldish does not flush the OS page cache", "logical_value_bytes_fetched is returned MDBX value length, not physical disk I/O", "row-KV point lookup is measured only for top128 because route-5000 point lookup is not a realistic scorer path", "crash-recovery lifecycle is a separate follow-up measurement"],
     }
     output = args.output / "mdbx-finalist-storage.result.json"
     output.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n", encoding="utf-8")

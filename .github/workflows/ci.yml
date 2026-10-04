@@ -111,10 +111,10 @@ jobs:
           -DPython3_ROOT_DIR="${{ env.pythonLocation }}"
 
       - name: Build storage benchmark harness
-        run: cmake --build build-mdbx-benchmark --config Release --target agent-memory-mih-storage-bench agent-memory-native-thq-mdbx-serving
+        run: cmake --build build-mdbx-benchmark --config Release --target agent-memory-mih-storage-bench agent-memory-native-thq-mdbx-serving agent-memory-mdbx-finalist-harness
 
       - name: Test storage benchmark harness
-        run: ctest --test-dir build-mdbx-benchmark --build-config Release --output-on-failure -R "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test"
+        run: ctest --test-dir build-mdbx-benchmark --build-config Release --output-on-failure -R "agent_memory_mih_storage|agent_memory_native_thq_mdbx_serving_(lifecycle|integer_key)|agent_memory_native_mdbx_(serving_audit|layout_sweep)(_audit)?_self_test|agent_memory_mdbx_finalist_harness_self_test"
 
   native-mih-benchmark:
     name: Native MIH benchmark harness
