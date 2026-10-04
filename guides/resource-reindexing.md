@@ -179,6 +179,17 @@ generation/schema-mismatched binding for a physically present record fails
 closed before reindex, reclaim, or erase. This does not make the independent
 stores crash-atomic; a future transaction-aware importer still owns that scope.
 
+## Model and chunker identity
+
+The resource revision is only one side of derived-index compatibility. Every
+vector, lexical projection, ANN structure and codec payload also binds the
+encoder/model identity, tokenizer and chunker revisions, pooling/
+normalization/input policy, output dimension/projection, and projection schema.
+Changing an encoder or chunking policy creates a successor projection and
+requires a fresh exact-quality gate before routing or codec fitting. Equal
+dimensions do not make projections interchangeable. A stale or mixed model /
+chunker identity fails closed rather than being silently reindexed in place.
+
 `SourceLocator` is mutable source-level history for navigation and rename
 tracking. `SourceLocatorObservation` is the immutable portable location seen by
 one `ResourceRevision`; every imported revision records at least one
