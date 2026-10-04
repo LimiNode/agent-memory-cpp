@@ -28,6 +28,9 @@ jobs:
       - name: Install tool dependencies
         run: python -m pip install -r tools/requirements-tools.txt
 
+      - name: Fresh packed-quality contract self-tests
+        run: python tools/agent-memory-bench/test-fresh-packed-quality.py
+
       - name: Configure
         run: >
           cmake -S . -B build

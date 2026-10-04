@@ -11,8 +11,10 @@ uses all 305 canonical queries and the untouched 3,144-row qrels file.  It does
 not reuse the historical 152-query candidate stream.  The implementation is
 `tools/agent-memory-bench/evaluate-fresh-qrels.py`; it uses a memory-mapped
 FP32 corpus, exact dot-product ranking, and deterministic score-descending
-then document-ID-ascending ordering.  Numeric IDs use numeric ordering; the
-canonical DE-1M IDs are strings and therefore use lexical ordering.
+then canonical document-order ordering.  The shared document-order key is
+numeric-first for numeric IDs with a lexical fallback for non-numeric IDs;
+top-k boundary ties are resolved by that same key rather than by an unsafe
+`argpartition` prefix.
 
 Command (the source bundle is intentionally external to Git):
 
@@ -48,6 +50,12 @@ and are not committed as a large generated dump.  Their compact provenance is:
   "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071"
 }
 ```
+
+The corrective boundary-safe replay was compared against the retained exact
+receipt before this gate was closed: all 305 `top10_ids` and `top128_ids`
+rows matched byte-for-byte, and mean nDCG@10 and mean MRR remained
+`0.6723946081` and `0.6938856135`.  No downstream packed-quality regeneration
+was required.
 
 ## Interpretation and limits
 

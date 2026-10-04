@@ -60,6 +60,41 @@ def mrr(ids: list[Any], qrels: dict[Any, int]) -> float:
     return 0.0
 
 
+def document_order_key(value: str | int) -> tuple[int, int | str]:
+    """Return the shared numeric-first, lexical-fallback document order key."""
+    text = str(value)
+    return (0, int(text)) if text.lstrip("-").isdigit() else (1, text)
+
+
+def ordered_top_positions(scores: np.ndarray, order_values: list[Any], k: int, *, ascending: bool = False) -> np.ndarray:
+    """Select top-k positions with deterministic boundary-tie handling."""
+    if not np.all(np.isfinite(scores)):
+        raise EvaluationError("non-finite score encountered")
+    if len(order_values) != len(scores):
+        raise EvaluationError("ordering key coverage differs")
+    take = min(k, len(scores))
+    if take == 0:
+        return np.empty(0, dtype=np.int64)
+    order_keys = list(order_values)
+    if not order_keys or not isinstance(order_keys[0], tuple):
+        order_keys = [document_order_key(value) for value in order_keys]
+    if len(scores) <= 10_000:
+        ranked = sorted(range(len(scores)), key=lambda index: ((float(scores[index]) if ascending else -float(scores[index])), order_keys[index]))
+        return np.asarray(ranked[:take], dtype=np.int64)
+    if ascending:
+        boundary = float(np.partition(scores, take - 1)[take - 1])
+        better = np.flatnonzero(scores < boundary)
+    else:
+        boundary = float(np.partition(scores, len(scores) - take)[len(scores) - take])
+        better = np.flatnonzero(scores > boundary)
+    tied = np.flatnonzero(scores == boundary)
+    needed = take - len(better)
+    tie_order = sorted(tied.tolist(), key=lambda index: order_keys[index])
+    selected = np.concatenate((better, np.asarray(tie_order[:max(0, needed)], dtype=np.int64)))
+    ranked = sorted(selected.tolist(), key=lambda index: ((float(scores[index]) if ascending else -float(scores[index])), order_keys[index]))
+    return np.asarray(ranked[:take], dtype=np.int64)
+
+
 def load_root(root: Path) -> dict[str, Any]:
     manifest_path = root / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -77,11 +112,10 @@ def load_root(root: Path) -> dict[str, Any]:
     query_ids = [json.loads(line)["id"] for line in output("evaluation_query_ids").read_text(encoding="utf-8").splitlines()]
     if len(document_ids) != len(set(document_ids)) or len(query_ids) != len(set(query_ids)):
         raise EvaluationError("evaluation IDs are not unique")
-    numeric = all(value.lstrip("-").isdigit() for value in document_ids)
-    document_order_keys: np.ndarray = np.asarray(
-        [int(value) for value in document_ids] if numeric else document_ids,
-        dtype=np.int64 if numeric else np.str_,
-    )
+    document_order_keys = [document_order_key(value) for value in document_ids]
+    document_order_rank = np.empty(len(document_ids), dtype=np.int64)
+    for rank, position in enumerate(sorted(range(len(document_ids)), key=document_order_keys.__getitem__)):
+        document_order_rank[position] = rank
     document_set = set(document_ids)
     qrels: dict[str, dict[str, int]] = {value: {} for value in query_ids}
     for line_number, line in enumerate(output("evaluation_qrels").read_text(encoding="utf-8").splitlines(), 1):
@@ -111,6 +145,7 @@ def load_root(root: Path) -> dict[str, Any]:
         "queries": queries,
         "document_ids": np.asarray(document_ids, dtype=np.str_),
         "document_order_keys": document_order_keys,
+        "document_order_rank": document_order_rank,
         "document_id_to_position": {value: index for index, value in enumerate(document_ids)},
         "query_ids": query_ids,
         "qrels": qrels,
@@ -123,12 +158,7 @@ def load_root(root: Path) -> dict[str, Any]:
 
 def exact_top(data: dict[str, Any], query_position: int, k: int) -> tuple[np.ndarray, np.ndarray]:
     scores = np.asarray(data["documents"] @ data["queries"][query_position], dtype=np.float32)
-    # The small partition bounds work for the 1M-row corpus while the final
-    # lexsort makes the result deterministic for equal scores.
-    take = min(k, scores.size)
-    positions = np.argpartition(-scores, take - 1)[:take]
-    order = np.lexsort((data["document_order_keys"][positions], -scores[positions]))
-    positions = positions[order]
+    positions = ordered_top_positions(scores, data["document_order_keys"], k)
     return positions, scores[positions]
 
 
@@ -138,16 +168,34 @@ def exact_mrr_from_scores(data: dict[str, Any], query_position: int, scores: np.
     grades = data["qrels"][query_id]
     best_rank: int | None = None
     ids = data["document_ids"]
-    keys = data["document_order_keys"]
+    order_rank = data["document_order_rank"]
     for document_id, grade in grades.items():
         if grade <= 0:
             continue
         position = data["document_id_to_position"][document_id]
         score = scores[position]
         rank = 1 + int(np.count_nonzero(scores > score))
-        rank += int(np.count_nonzero((scores == score) & (keys < keys[position])))
+        rank += int(np.count_nonzero((scores == score) & (order_rank < order_rank[position])))
         best_rank = rank if best_rank is None else min(best_rank, rank)
     return 0.0 if best_rank is None else 1.0 / best_rank
+
+
+def exact_first_relevant(data: dict[str, Any], query_position: int, scores: np.ndarray) -> tuple[int | None, str | None]:
+    """Return the exact first relevant rank and document under the frozen tie rule."""
+    query_id = data["query_ids"][query_position]
+    order_rank = data["document_order_rank"]
+    ids = data["document_ids"]
+    best: tuple[int, tuple[int, int | str], str] | None = None
+    for document_id, grade in data["qrels"][query_id].items():
+        if grade <= 0:
+            continue
+        position = data["document_id_to_position"][document_id]
+        rank = 1 + int(np.count_nonzero(scores > scores[position]))
+        rank += int(np.count_nonzero((scores == scores[position]) & (order_rank < order_rank[position])))
+        candidate = (rank, document_order_key(document_id), str(ids[position]))
+        if best is None or candidate[0] < best[0] or (candidate[0] == best[0] and candidate[1] < best[1]):
+            best = candidate
+    return (None, None) if best is None else (best[0], best[2])
 
 
 def exact_run(args: argparse.Namespace) -> None:
@@ -162,10 +210,21 @@ def exact_run(args: argparse.Namespace) -> None:
     for position, query_id in enumerate(data["query_ids"]):
         scores = np.asarray(data["documents"] @ data["queries"][position], dtype=np.float32)
         take = min(max_k, scores.size)
-        positions = np.argpartition(-scores, take - 1)[:take]
-        positions = positions[np.lexsort((data["document_order_keys"][positions], -scores[positions]))]
+        positions = ordered_top_positions(scores, data["document_order_keys"], max_k)
         ids = data["document_ids"][positions].tolist()
         grades = data["qrels"][query_id]
+        first_rank, first_doc = exact_first_relevant(data, position, scores)
+        if first_doc is None:
+            first_score = None
+            higher_count = None
+            tied_lower_id_count = None
+        else:
+            first_position = data["document_id_to_position"][first_doc]
+            first_score = float(scores[first_position])
+            higher_count = int(np.count_nonzero(scores > first_score))
+            tied_lower_id_count = int(np.count_nonzero((scores == first_score) & (data["document_order_rank"] < data["document_order_rank"][first_position])))
+            if 1 + higher_count + tied_lower_id_count != first_rank:
+                raise EvaluationError("exact first-relevant rank proof is inconsistent")
         row = {
             "query_position": position,
             "query_id": query_id,
@@ -173,6 +232,11 @@ def exact_run(args: argparse.Namespace) -> None:
             "top128_ids": ids[:128],
             "ndcg_at_10": ndcg_at_10(ids, grades),
             "mrr": exact_mrr_from_scores(data, position, scores),
+            "first_relevant_rank": first_rank,
+            "first_relevant_doc_id": first_doc,
+            "first_relevant_score": first_score,
+            "higher_score_count": higher_count,
+            "tied_lower_id_count": tied_lower_id_count,
             "relevant_in_top10": sum(grades.get(value, 0) > 0 for value in ids[:10]),
         }
         per_query.append(row)
@@ -202,7 +266,7 @@ def exact_run(args: argparse.Namespace) -> None:
             "qrels_sha256": data["qrels_sha256"],
         },
         "tie_policy": "score_desc_id_asc_numeric_when_numeric_else_lexical",
-        "oracle_algorithm": "FP32 dot on normalized vectors; argpartition then lexsort",
+        "oracle_algorithm": "FP32 dot on normalized vectors; deterministic boundary-safe top-k with canonical numeric-first document order",
         "runtime": {"python": platform.python_version(), "numpy": np.__version__},
         "per_query": per_query,
     }
@@ -247,8 +311,7 @@ def candidate_run(args: argparse.Namespace) -> None:
             raise EvaluationError("candidate references an unknown document")
         candidate_positions = np.asarray([id_to_position[value] for value in candidate_ids], dtype=np.int64)
         candidate_scores = np.asarray(data["documents"][candidate_positions] @ data["queries"][position], dtype=np.float32)
-        candidate_keys = data["document_order_keys"][candidate_positions]
-        order = np.lexsort((candidate_keys, -candidate_scores))
+        order = ordered_top_positions(candidate_scores, [data["document_order_keys"][index] for index in candidate_positions], len(candidate_positions))
         ranked = [candidate_ids[index] for index in order]
         exact_top128 = [str(value) for value in oracle_rows[position]["top128_ids"]]
         route_recall = sum(value in set(candidate_ids) for value in exact_top128) / len(exact_top128)

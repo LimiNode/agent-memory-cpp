@@ -1,0 +1,259 @@
+{
+  "bundle_sha256": "5776eadb9c224ef776bddbf1c8470525337848f293d589e22a4ced025b1f2bd3",
+  "codec_count": 7,
+  "evidence_binding_definition": "sha256(ascii(result_sha256 + bundle_sha256)); deterministic binding digest, not a content-tree root",
+  "evidence_binding_sha256": "3f1d88cff604fe9483b78930ff3dd9b69e4151421977ccb818de4da6f7cf5a27",
+  "exact_oracle": {
+    "mean_mrr": 0.6938856134550563,
+    "mean_mrr_at_10": 0.6911215196461099,
+    "mean_ndcg_at_10": 0.6723946080838488,
+    "p05_ndcg_at_10": 0.0,
+    "rank_proof": "persisted_proof_consistency_only",
+    "worst_ndcg_at_10": 0.0
+  },
+  "family": "fresh_packed_quality_decomposition_receipt_v1",
+  "measured_code_commit": "fe01a3058a7bc1452dae6949d29955ef16666ee6",
+  "metric_contract": {
+    "mrr": "routed stages independently recomputed from ranked_ids/ranked_scores/order_keys; exact 1M oracle checks persisted canonical proof consistency",
+    "mrr_at_10": "diagnostic only",
+    "ndcg": "nDCG@10 recomputed from top10_ids and canonical qrels",
+    "tie_policy": "score-desc-or-THQ-distance-asc then numeric document order key ascending"
+  },
+  "payloads": {
+    "int8": {
+      "int8_inv_norm": {
+        "path": "artifacts\\int8-full-code-norms.f32",
+        "sha256": "69e7e6c092643b4b78508481af7bd367eee8940a37b1cad5f9ef0d9d093dd284"
+      },
+      "path": "E:\\_repoz\\agent-memory-workspaces\\native-full-corpus-gate\\materialized-full-v1\\int8-linear.i8",
+      "sha256": "75d764755cc116307033abcf954c20d7b0d21197f298fa7e123a6b08d1b74a3c"
+    },
+    "lsq32": {
+      "path": "E:\\_repoz\\agent-memory-workspaces\\flat-finalist-materialization-v2\\lsq32.payload.bin",
+      "sha256": "04d4a744788e5789ad4e92f3a15122f8b2ce48d3ad82e5744e8c64ccc2645698"
+    },
+    "lsq48": {
+      "path": "E:\\_repoz\\agent-memory-workspaces\\flat-finalist-materialization-v2\\lsq48.payload.bin",
+      "sha256": "7c17a0c6a630ff86d01fe1fa3b24467bd4861b94c1d9d4ffa6cf2e328989f5b8"
+    },
+    "plsq8x6x8": {
+      "path": "E:\\_repoz\\agent-memory-workspaces\\flat-plsq-materialization-v2\\plsq8x6.payload.bin",
+      "sha256": "6b93e7a33a4f789ab570c4c6c4fa95725f593418f13c3e651aaaaa87a3701387"
+    },
+    "rslm1": {
+      "path": "artifacts\\rslm1-full\\rslm1.symbols.u8",
+      "rslm_centroids": {
+        "path": "artifacts\\rslm1-full\\thq4-centroids.f32",
+        "sha256": "1dd563197d82cd4796625d2ae5ed877ca67efaafcfb215145a7113a2cc17ebd8"
+      },
+      "rslm_inner": {
+        "path": "artifacts\\rslm1-full\\rslm1.inner-scale.u16",
+        "sha256": "23492bca832939ddb0c048af013a75b67a7d4bf5c9dcc209d88529450a2340e2"
+      },
+      "rslm_norms": {
+        "path": "artifacts\\rslm1-full\\rslm1.final-norm.f32",
+        "sha256": "3aba3a28bca221504a5fd70e9191854975a219da1e31fb8c018d4c76139338a5"
+      },
+      "rslm_symbols": {
+        "path": "artifacts\\rslm1-full\\rslm1.symbols.u8",
+        "sha256": "5a0d9ac798822de792d75d7fc4e283e105c6dff5d04f0d5b05d79064ea7c6862"
+      },
+      "sha256": "5a0d9ac798822de792d75d7fc4e283e105c6dff5d04f0d5b05d79064ea7c6862"
+    },
+    "tq1": {
+      "path": "artifacts\\tq1-full.payload.bin",
+      "sha256": "e3333161ba3d2ca9c5d33b73efeedef9056564c2c418eef8dfb03fd1d707251c",
+      "tq1_norms": {
+        "path": "artifacts\\tq1-full.tq-norms.f32",
+        "sha256": "07b95b3e2776725bbac63a97c9921c5631b5d3e463b4ebbda1b0b9dd4f7c3c19"
+      }
+    },
+    "tq1-pq8": {
+      "path": "artifacts\\tq1-pq8-full.payload.bin",
+      "sha256": "a83764a2642136438ac663cec44b0b656063a8343e7120531eb81ddefcd93802"
+    }
+  },
+  "query_count": 305,
+  "receipt_commit": "fe01a3058a7bc1452dae6949d29955ef16666ee6",
+  "receipt_commit_semantics": "generation commit for this receipt; the containing commit is its successor because a commit cannot embed its own hash",
+  "release_target_commit": "fe01a3058a7bc1452dae6949d29955ef16666ee6",
+  "result_sha256": "65587b2ffb80f902afbbbeb52d3c68414e6c9d5442dac60eec672ea924cb5818",
+  "schema_version": 2,
+  "source": {
+    "candidate_streams": {
+      "modern_r4": {
+        "manifest_sha256": "17a3254fd30a07e7993d6cc7996efb7e21eb4cce6685a3af6e5c54647c2874ac",
+        "sha256": "8cd858dc401d40755205d0c2d01611051a01a6fdba6aef72d7a75ad35e118e5b"
+      },
+      "prototype_ivf": {
+        "manifest_sha256": "eca66c54699117dfee799b7a2c041339469f9c59dc6d03780291b12bdd568b6e",
+        "sha256": "abbfb94b5aa9d20d2e7ef82b1322e7d447102f9bc8492f51d660af7229163cf6"
+      }
+    },
+    "document_ids_sha256": "4496b62e6243a90d1b64cc97c7eb12239b397f71ddcf743ad18fa82b3dcf832c",
+    "documents_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+    "exact_result_sha256": "963568334fc1306af83a5b770a8015e8838f661adb8d6d2bf44bf0b76c636356",
+    "manifest_sha256": "b89bd21966532fd3e220dd9fb2ee279ecf1ec36e9ca8f6bc3e32d0e6652d705a",
+    "qrels_sha256": "5b3d22a491558ae0955a7a968c4fec9974ddc463cb5f83fc67334cbfc87ab071",
+    "queries_sha256": "fa6c467e01bbe8a8e725d75fd5ac84c90008235be921c4a4d360d756d0d0d7b2",
+    "query_ids_sha256": "1a90547e872da84cd29d9eb02940813ae0471d914d5060ff100ad010f016d385",
+    "thq_sha256": "0a0c825720bccef97a0fd1af5c7727671b5e0a79be09b643e0fcb558236e2b70",
+    "thresholds_sha256": "ceaa7ed312525bfa81a96b9f53aa79fb7f210387eb190a752051165dbdbd37a4",
+    "train_vectors_sha256": "1f581860cff679989f0661fb27623c650bc130e8ed4593b0abe08e5474c00b80"
+  },
+  "stages": {
+    "modern_r4": {
+      "packed": {
+        "int8": {
+          "mean_mrr": 0.6894864607180877,
+          "mean_mrr_at_10": 0.6873692427790788,
+          "mean_ndcg_at_10": 0.6461556168447292,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "lsq32": {
+          "mean_mrr": 0.6849872778356385,
+          "mean_mrr_at_10": 0.6830770231589903,
+          "mean_ndcg_at_10": 0.640992099524224,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "lsq48": {
+          "mean_mrr": 0.6764833147231766,
+          "mean_mrr_at_10": 0.6735571168358053,
+          "mean_ndcg_at_10": 0.6329334176574168,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "plsq8x6x8": {
+          "mean_mrr": 0.6818910163414047,
+          "mean_mrr_at_10": 0.6791829300026022,
+          "mean_ndcg_at_10": 0.6407964992115361,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "rslm1": {
+          "mean_mrr": 0.6848141367036967,
+          "mean_mrr_at_10": 0.6822924798334634,
+          "mean_ndcg_at_10": 0.6384929338428303,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "tq1": {
+          "mean_mrr": 0.698527715752501,
+          "mean_mrr_at_10": 0.6971558678116055,
+          "mean_ndcg_at_10": 0.6503870304788021,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "tq1-pq8": {
+          "mean_mrr": 0.7039052184824403,
+          "mean_mrr_at_10": 0.7024395003903201,
+          "mean_ndcg_at_10": 0.6564067754210756,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        }
+      },
+      "route_exact_fp32": {
+        "mean_mrr": 0.6865232557998373,
+        "mean_mrr_at_10": 0.6845602393963048,
+        "mean_ndcg_at_10": 0.6455913410616324,
+        "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+        "worst_ndcg_at_10": 0.0
+      },
+      "thq_top128_exact_fp32": {
+        "mean_mrr": 0.686379108347809,
+        "mean_mrr_at_10": 0.6845602393963048,
+        "mean_ndcg_at_10": 0.6455913410616324,
+        "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+        "worst_ndcg_at_10": 0.0
+      }
+    },
+    "prototype_ivf": {
+      "packed": {
+        "int8": {
+          "mean_mrr": 0.693693692855385,
+          "mean_mrr_at_10": 0.6912125943273485,
+          "mean_ndcg_at_10": 0.6611688745473839,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "lsq32": {
+          "mean_mrr": 0.6912897584727242,
+          "mean_mrr_at_10": 0.6890411137132448,
+          "mean_ndcg_at_10": 0.6541255259086661,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "lsq48": {
+          "mean_mrr": 0.683283053907484,
+          "mean_mrr_at_10": 0.6792258652094718,
+          "mean_ndcg_at_10": 0.6456151888933248,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "plsq8x6x8": {
+          "mean_mrr": 0.6859476103606539,
+          "mean_mrr_at_10": 0.6828532396565183,
+          "mean_ndcg_at_10": 0.6519376721990707,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "rslm1": {
+          "mean_mrr": 0.6879085698368609,
+          "mean_mrr_at_10": 0.6856661462399167,
+          "mean_ndcg_at_10": 0.6547281082361884,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "tq1": {
+          "mean_mrr": 0.7038560455653597,
+          "mean_mrr_at_10": 0.702377049180328,
+          "mean_ndcg_at_10": 0.6667067349483679,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        },
+        "tq1-pq8": {
+          "mean_mrr": 0.7081519077484333,
+          "mean_mrr_at_10": 0.7066549570647931,
+          "mean_ndcg_at_10": 0.6684279754241327,
+          "p05_ndcg_at_10": 0.0,
+          "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+          "worst_ndcg_at_10": 0.0
+        }
+      },
+      "route_exact_fp32": {
+        "mean_mrr": 0.6921471174812039,
+        "mean_mrr_at_10": 0.6893546708300807,
+        "mean_ndcg_at_10": 0.6597463669380758,
+        "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+        "worst_ndcg_at_10": 0.0
+      },
+      "thq_top128_exact_fp32": {
+        "mean_mrr": 0.6921333108089631,
+        "mean_mrr_at_10": 0.6893546708300807,
+        "mean_ndcg_at_10": 0.6597718026788679,
+        "p05_ndcg_at_10": 0.0,
+        "rank_proof": "independently_recomputed_from_ranked_ids_scores",
+        "worst_ndcg_at_10": 0.0
+      }
+    }
+  },
+  "status": "PASS"
+}
