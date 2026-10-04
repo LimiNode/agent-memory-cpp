@@ -49,6 +49,16 @@ Its SHA-256 is:
 03c8b778599bdbdfd5048fb7731962c0f23813be46b8ee5bbb014524ef5f53ac
 ```
 
+The compact receipt, Z0 receipt, fixture manifest, summaries, and these notes
+are published as the versioned evidence asset
+`evidence/mdbx-finalist-storage-v1` (`mdbx-finalist-evidence-v1.zip`). The
+archive SHA-256 is
+`cab52c8f3a53c46c4ba955c587694ee769ae7642ca5be5eacfbedccd350a216c`, with
+bundle-root SHA-256
+`596b85f2b3d17f9e4deafc07e8bb278966a817a002f1c647f0607d032dcc8ca4` and target
+commit `6b00ae61`. The committed manifest is
+[`2026-10-04-mdbx-finalist-evidence.manifest.json`](2026-10-04-mdbx-finalist-evidence.manifest.json).
+
 The corrective replay refreshed `reopen-coldish` and MDBX space statistics for
 all 40 rows × 3 process runs using metadata-only preflight. Warm timing arrays
 were retained from the original canonical read-path batch because that path was

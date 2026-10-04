@@ -21,6 +21,11 @@ hashes and the fixture manifest hash are persisted in that receipt. The
 committed compact summary is
 [`2026-10-04-mdbx-z0-compression-screen.summary.json`](2026-10-04-mdbx-z0-compression-screen.summary.json).
 
+The raw Z0 receipt is also included in the versioned
+`evidence/mdbx-finalist-storage-v1` archive together with the MDBX receipt,
+fixture manifest, summaries, and experiment notes. Archive SHA-256:
+`cab52c8f3a53c46c4ba955c587694ee769ae7642ca5be5eacfbedccd350a216c`.
+
 ## Results
 
 | arm | best transform/block/level | best saving | Z1 carry-forward? |
