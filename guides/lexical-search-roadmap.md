@@ -60,6 +60,11 @@ adapters.
   later layers unless a PR introduces focused contracts for them.
 - Prefer RRF as the first hybrid fusion method because it does not require
   cross-backend score normalization.
+- Treat lexical-plus-vector retrieval as a first-class measured baseline:
+  BM25/BM25F and dense candidates are evaluated separately, then fused with
+  RRF (or a declared alternative) under the same qrels and candidate budget.
+  Pure-vector retrieval must not silently replace exact-term search for rare
+  identifiers, APIs, paths, formulas, or code symbols.
 
 ## Keyword Search Versus BM25
 

@@ -54,6 +54,20 @@ Disclaimer:
 
 ## 3. Sister library / adapter references
 
+### Scientific-RAG and context references
+
+These projects are reference workloads and pattern donors, not dependencies or
+performance baselines:
+
+| Project | Use in this repository | Boundary |
+|---|---|---|
+| [ShmidtS/RAG](https://github.com/ShmidtS/RAG) | manifest-driven scientific ingestion, structured-source fallback, and a realistic RAG workload | public project states `All rights reserved`; pattern/reference only, with explicit permission required for code reuse |
+| [ShmidtS/context-mode-rust](https://github.com/ShmidtS/context-mode-rust) | hybrid retrieval, observable context packing, and omission/provenance ideas | `Elastic-2.0`; do not transplant implementation into the MIT core without an explicit licensing decision |
+| [Niko1221/Strata](https://github.com/Niko1221/Strata) | optional local-inference and hot/cold tiering inspiration | MIT reference only; not a RAG engine or a core storage dependency |
+
+The corresponding repository contracts are [`scientific-rag-reference.md`](scientific-rag-reference.md)
+and [`context-building.md`](context-building.md).
+
 | Project | Что у нас похожего | Что можно позаимствовать |
 |---|---|---|
 | FAISS | IDenseIndex 5 modes. Codec registry. GPU k-selection. | Index factory pattern, codec registry, multi-threading per index. Не копировать API — брать архитектурные идеи. |

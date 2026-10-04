@@ -179,6 +179,36 @@ generation/schema-mismatched binding for a physically present record fails
 closed before reindex, reclaim, or erase. This does not make the independent
 stores crash-atomic; a future transaction-aware importer still owns that scope.
 
+## Projection-specific identity
+
+The resource revision is only one side of derived-index compatibility. Derived
+projections have different dependency sets and must not be invalidated as one
+undifferentiated bundle:
+
+```text
+canonical chunks
+  ├─ lexical projection
+  │    chunker, lexical analyzer/tokenizer, stemming/normalization,
+  │    lexical schema and statistics epoch
+  ├─ dense vector projection
+  │    model/revision, tokenizer, pooling, normalization,
+  │    document input policy, output dimension/Matryoshka projection
+  ├─ ANN projection
+  │    dense projection identity, ANN/index parameters, build artifact
+  └─ codec projection
+       dense projection identity, fit/training artifact, codec parameters
+```
+
+Changing an embedding model invalidates the dense, ANN and codec projections,
+but does not by itself invalidate BM25 postings. Changing a lexical analyzer,
+stemming rule, chunker or lexical schema invalidates the lexical projection;
+it does not by itself require re-embedding unchanged canonical chunks. A
+query-only instruction or scoring metric change requires a fresh retrieval
+evaluation and may require an ANN rebuild, but not necessarily a new vector
+materialization. Equal dimensions do not make projections interchangeable.
+Every projection records its own identity and fails closed on a stale or mixed
+dependency set.
+
 `SourceLocator` is mutable source-level history for navigation and rename
 tracking. `SourceLocatorObservation` is the immutable portable location seen by
 one `ResourceRevision`; every imported revision records at least one

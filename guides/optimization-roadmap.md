@@ -72,6 +72,12 @@ that it helps.
 - Multi-projection and multi-model embeddings live side by side in the same
   `embedding_vectors` DBI, addressed by `projection_kind`, `model_id`, and
   immutable `model_version` respectively.
+- Storage comparisons use whole-system accounting: canonical text, lexical
+  postings, vector/ANN payloads, graph metadata, shared model tables, page
+  overhead, and temporary decode buffers are reported separately. Bytes per
+  vector alone never establishes a deployment win. A compact codec is promoted
+  only after matched quality and measured build, query, page-read, and
+  lifecycle costs are available.
 
 ## Near-Term Tasks
 

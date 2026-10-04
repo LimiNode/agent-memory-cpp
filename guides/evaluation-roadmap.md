@@ -19,6 +19,27 @@ dependency in the core library.
 
 A passing lower rung never implies that a higher rung is passed.
 
+## Encoder gate before ANN and codec fitting
+
+Embedding-model comparisons have a separate E0 gate before any ANN, THQ, or
+codec work. The encoder-only lane evaluates exact FP32 retrieval on the same
+corpus, tokenizer-bounded chunks, query order and qrels. It records nDCG@10,
+MRR, Recall@128, query/corpus encoding cost, memory, language slices and
+chunk-length sensitivity. See [`embedding-model-evaluation.md`](embedding-model-evaluation.md).
+
+An embedding dimension is not an embedding-space identity. Every vector and
+derived index binds model/provider revision, tokenizer, pooling,
+normalization, document input policy, output dimension and any Matryoshka
+projection. Query instructions/prefixes and retrieval scoring (metric, score
+normalization, ANN parameters) are separate evaluation identities. Vectors
+with the same dimension from different models must never be compared. A
+candidate that passes E0 receives a fresh E1 route, THQ and codec fit in its
+own space; E5 results cannot be reused for MiniLM, Nomic, or another encoder.
+
+E0 reports qrels-based relevance/candidate Recall@128. E1 reports
+`ANNRecall@128` as overlap with the exact FP32 top-128 in the same space. Exact
+E0 retrieval must not claim ANN recall against itself.
+
 ## Canonical serving modes for compressed retrieval
 
 Codec comparisons use three distinct serving modes:
