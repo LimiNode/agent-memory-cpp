@@ -1602,6 +1602,14 @@ if(AGENT_MEMORY_BUILD_TESTS)
                     ${CMAKE_CURRENT_BINARY_DIR}/native-thq-mdbx-serving-integer-key-self-test.mdbx
                 WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
             )
+            add_test(
+                NAME agent_memory_mdbx_finalist_harness_self_test
+                COMMAND
+                    $<TARGET_FILE:agent-memory-mdbx-finalist-harness>
+                    --self-test
+                    ${CMAKE_CURRENT_BINARY_DIR}/mdbx-finalist-harness-self-test
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+            )
         endif()
         if(AGENT_MEMORY_BUILD_BENCHMARKS)
             add_test(
@@ -2033,6 +2041,34 @@ if(AGENT_MEMORY_BUILD_TESTS)
             NAME agent_memory_native_mdbx_layout_sweep_audit_self_test
             COMMAND ${Python3_EXECUTABLE}
                     ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-native-mdbx-layout-sweep.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mdbx_finalist_batch_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-mdbx-finalist-batch.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mdbx_finalist_fixture_contract_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/prepare-mdbx-finalist-fixture.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mdbx_compression_screen_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/run-mdbx-compression-screen.py
+                    --self-test
+            WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+        )
+        add_test(
+            NAME agent_memory_mdbx_compression_screen_audit_self_test
+            COMMAND ${Python3_EXECUTABLE}
+                    ${CMAKE_CURRENT_SOURCE_DIR}/tools/agent-memory-bench/audit-mdbx-compression-screen.py
                     --self-test
             WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
         )

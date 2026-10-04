@@ -1,0 +1,11 @@
+{
+  "schema_version": 1,
+  "family": "mdbx_finalist_evidence_manifest_v1",
+  "release_tag": "evidence/mdbx-finalist-storage-v1",
+  "asset": "mdbx-finalist-evidence-v1.zip",
+  "target_commit": "6b00ae61",
+  "archive_sha256": "cab52c8f3a53c46c4ba955c587694ee769ae7642ca5be5eacfbedccd350a216c",
+  "bundle_root_sha256": "596b85f2b3d17f9e4deafc07e8bb278966a817a002f1c647f0607d032dcc8ca4",
+  "scope": "MDBX finalist storage bakeoff plus Z0 offline compression screen",
+  "artifact_policy": "compact receipts, fixture manifest, summaries, and experiment notes; no generated payload databases"
+}

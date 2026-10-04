@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "family": "mdbx_z0_compression_screen_summary_v1",
+  "status": "EXECUTED",
+  "raw_receipt": "tmp/mdbx-compression-z0/mdbx-z0-compression.result.json",
+  "raw_receipt_sha256": "fa9d5b44e761373e4e0508aff4f01f20778279d1d07d0e8bb292c7f95c9f9c5a",
+  "fixture_manifest_sha256": "213769b5bc064366a65c2e8c8b95db3e7cde5f9db97791f24e4a33117c44e623",
+  "fp32_source_sha256": "d4f67ebe91faa159eaaeb7884281ad0d0057c27cdb67c4007f260c6442636007",
+  "contract": {
+    "representations": ["fp32", "int8", "lsq32", "tq1", "tq1-pq8"],
+    "target_block_bytes": [4096, 16384, 65536],
+    "zstd_levels": [1, 3],
+    "fp32_secondary_transform": "byte_shuffle",
+    "carry_forward_saving_threshold": 0.05
+  },
+  "best_observed_saving": {
+    "fp32": {"transform": "byte_shuffle", "target_block_bytes": 16384, "zstd_level": 3, "saving_percent": 10.8140, "carry_forward": true},
+    "int8": {"transform": "plain", "target_block_bytes": 65536, "zstd_level": 3, "saving_percent": 3.9914, "carry_forward": false},
+    "lsq32": {"transform": "plain", "target_block_bytes": 65536, "zstd_level": 1, "saving_percent": -0.0153, "carry_forward": false},
+    "tq1": {"transform": "plain", "target_block_bytes": 65536, "zstd_level": 1, "saving_percent": -0.0153, "carry_forward": false},
+    "tq1-pq8": {"transform": "plain", "target_block_bytes": 65536, "zstd_level": 1, "saving_percent": -0.0153, "carry_forward": false}
+  },
+  "interpretation": "Only FP32 crosses the provisional 5% Z0 carry-forward filter. INT8 remains a conventional accuracy/control arm; compact learned payloads are effectively incompressible in canonical document order and are not advanced to Z1 from this screen alone.",
+  "limitations": ["offline in-memory screen, not MDBX serving", "canonical document order only", "5% is a research filter, not a product threshold"]
+}
