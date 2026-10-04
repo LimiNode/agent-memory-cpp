@@ -181,7 +181,8 @@ class Store final {
     std::uint64_t used_bytes = 0;
     std::uint64_t allocated_file_bytes = 0;
     std::uint64_t environment_file_bytes = 0;
-    std::uint64_t reclaimable_bytes = 0;
+    // Allocated file space beyond the last used page; this is not MDBX GC/free-page accounting.
+    std::uint64_t allocated_tail_bytes = 0;
   };
 
   SpaceStats space_stats() const {
@@ -201,7 +202,7 @@ class Store final {
     result.used_bytes = result.used_pages * info.mi_dxb_pagesize;
     result.allocated_file_bytes = info.mi_dxb_fallocated;
     result.environment_file_bytes = info.mi_dxb_fsize;
-    result.reclaimable_bytes = result.allocated_file_bytes > result.used_bytes
+    result.allocated_tail_bytes = result.allocated_file_bytes > result.used_bytes
         ? result.allocated_file_bytes - result.used_bytes : 0;
     return result;
   }
@@ -333,7 +334,7 @@ int main(int argc, char** argv) {
                 << ",\"environment_file_size_bytes\":" << space.environment_file_bytes << ",\"mdbx_page_size\":" << space.page_size
                 << ",\"mdbx_used_pages\":" << space.used_pages << ",\"mdbx_used_bytes\":" << space.used_bytes
                 << ",\"mdbx_data_pages\":" << space.data_pages << ",\"mdbx_data_bytes\":" << space.data_bytes
-                << ",\"mdbx_reclaimable_bytes\":" << space.reclaimable_bytes
+                << ",\"mdbx_allocated_tail_bytes\":" << space.allocated_tail_bytes
                 << ",\"db_bytes\":" << store.bytes() << ",\"materialize_ms\":" << elapsed << ",\"durable_commits\":" << store.commits() << "}\n";
       return 0;
     }
@@ -350,7 +351,7 @@ int main(int argc, char** argv) {
                 << ",\"mdbx_allocated_file_bytes\":" << space.allocated_file_bytes << ",\"environment_file_size_bytes\":" << space.environment_file_bytes
                 << ",\"mdbx_page_size\":" << space.page_size << ",\"mdbx_used_pages\":" << space.used_pages << ",\"mdbx_used_bytes\":" << space.used_bytes
                 << ",\"mdbx_data_pages\":" << space.data_pages << ",\"mdbx_data_bytes\":" << space.data_bytes
-                << ",\"mdbx_reclaimable_bytes\":" << space.reclaimable_bytes << "}\n";
+                << ",\"mdbx_allocated_tail_bytes\":" << space.allocated_tail_bytes << "}\n";
       return 0;
     }
     if (command != "--benchmark") throw std::runtime_error("unknown MDBX harness command");
@@ -367,7 +368,7 @@ int main(int argc, char** argv) {
       const auto begin = Clock::now(); const auto stats = store.read(row, one_transaction); const auto elapsed = std::chrono::duration<double, std::milli>(Clock::now() - begin).count();
       if (iteration >= warmups) { timings.push_back(elapsed); reads.push_back(static_cast<double>(stats.reads)); fetched.push_back(static_cast<double>(stats.logical_value_bytes_fetched)); useful.push_back(static_cast<double>(stats.useful_bytes)); checksum ^= stats.checksum + 0x9e3779b97f4a7c15ULL + (checksum << 6) + (checksum >> 2); }
     }
-    std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"access\":\"" << (one_transaction ? "query_transaction" : "point_lookup") << "\",\"queries\":" << candidates.size() << ",\"width\":" << candidates.front().size() << ",\"warmups\":" << warmups << ",\"repeats\":" << repeats << ",\"mdbx_allocated_file_bytes\":" << space.allocated_file_bytes << ",\"environment_file_size_bytes\":" << space.environment_file_bytes << ",\"mdbx_page_size\":" << space.page_size << ",\"mdbx_used_pages\":" << space.used_pages << ",\"mdbx_used_bytes\":" << space.used_bytes << ",\"mdbx_data_pages\":" << space.data_pages << ",\"mdbx_data_bytes\":" << space.data_bytes << ",\"mdbx_reclaimable_bytes\":" << space.reclaimable_bytes << ",\"db_bytes\":" << store.bytes() << ",\"reopen_coldish_first_query_ms\":" << reopen_ms << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << ",\"median_reads\":" << percentile(reads, .5) << ",\"median_logical_value_bytes_fetched\":" << percentile(fetched, .5) << ",\"median_useful_bytes\":" << percentile(useful, .5) << ",\"checksum\":" << checksum << ",\"samples_ms\":[";
+    std::cout << std::fixed << std::setprecision(6) << "{\"status\":\"EXECUTED\",\"access\":\"" << (one_transaction ? "query_transaction" : "point_lookup") << "\",\"queries\":" << candidates.size() << ",\"width\":" << candidates.front().size() << ",\"warmups\":" << warmups << ",\"repeats\":" << repeats << ",\"mdbx_allocated_file_bytes\":" << space.allocated_file_bytes << ",\"environment_file_size_bytes\":" << space.environment_file_bytes << ",\"mdbx_page_size\":" << space.page_size << ",\"mdbx_used_pages\":" << space.used_pages << ",\"mdbx_used_bytes\":" << space.used_bytes << ",\"mdbx_data_pages\":" << space.data_pages << ",\"mdbx_data_bytes\":" << space.data_bytes << ",\"mdbx_allocated_tail_bytes\":" << space.allocated_tail_bytes << ",\"db_bytes\":" << store.bytes() << ",\"reopen_coldish_first_query_ms\":" << reopen_ms << ",\"p50_ms\":" << percentile(timings, .5) << ",\"p95_ms\":" << percentile(timings, .95) << ",\"p99_ms\":" << percentile(timings, .99) << ",\"median_reads\":" << percentile(reads, .5) << ",\"median_logical_value_bytes_fetched\":" << percentile(fetched, .5) << ",\"median_useful_bytes\":" << percentile(useful, .5) << ",\"checksum\":" << checksum << ",\"samples_ms\":[";
     for (std::size_t index = 0; index < timings.size(); ++index) { if (index) std::cout << ','; std::cout << timings[index]; }
     std::cout << "],\"samples_reads\":[";
     for (std::size_t index = 0; index < reads.size(); ++index) { if (index) std::cout << ','; std::cout << reads[index]; }

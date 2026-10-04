@@ -54,7 +54,7 @@ def main() -> None:
             updated["median_logical_value_bytes_fetched"] = updated.pop("median_logical_value_bytes_fetched", old_median_fetched)
             if "samples_fetched_bytes" in updated:
                 updated["samples_logical_value_bytes_fetched"] = updated.pop("samples_fetched_bytes")
-            for key in ("mdbx_allocated_file_bytes", "environment_file_size_bytes", "mdbx_page_size", "mdbx_used_pages", "mdbx_used_bytes", "mdbx_data_pages", "mdbx_data_bytes", "mdbx_reclaimable_bytes"):
+            for key in ("mdbx_allocated_file_bytes", "environment_file_size_bytes", "mdbx_page_size", "mdbx_used_pages", "mdbx_used_bytes", "mdbx_data_pages", "mdbx_data_bytes", "mdbx_allocated_tail_bytes"):
                 updated[key] = coldish[key]
             refreshed_runs.append(updated)
         row["runs"] = refreshed_runs
@@ -64,6 +64,7 @@ def main() -> None:
         row["environment_file_size_bytes"] = stats["environment_file_size_bytes"]
         row["mdbx_used_bytes"] = stats["mdbx_used_bytes"]
         row["mdbx_data_bytes"] = stats["mdbx_data_bytes"]
+        row["mdbx_allocated_tail_bytes"] = stats["mdbx_allocated_tail_bytes"]
         row["mdbx_used_pages"] = stats["mdbx_used_pages"]
         row["mdbx_page_size"] = stats["mdbx_page_size"]
         row["physical_db_bytes"] = stats["environment_file_size_bytes"]

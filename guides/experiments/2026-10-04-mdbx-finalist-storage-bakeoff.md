@@ -40,13 +40,13 @@ counts.
 
 The committed machine-readable summary is
 [`2026-10-04-mdbx-finalist-storage-bakeoff.summary.json`](2026-10-04-mdbx-finalist-storage-bakeoff.summary.json).
-Summary SHA-256: `f356fb0b453bb7c266055828f386cc18ce93d59194d680a5482dc9bc3d67f434`.
+Summary SHA-256: `b4bf0aa3b4302437e86ee8030261f0ea9f8d2f30319e2bc97a7a5646e8e5c46c`.
 The full raw receipt (including every timing/I/O sample) is retained in the
 research workspace at `tmp/mdbx-finalist-batch/mdbx-finalist-storage.corrected.result.json`.
 Its SHA-256 is:
 
 ```text
-095526533464bceed62a871e8f8e48f26d41c532c2394e50009f9239d46247cc
+03c8b778599bdbdfd5048fb7731962c0f23813be46b8ee5bbb014524ef5f53ac
 ```
 
 The corrective replay refreshed `reopen-coldish` and MDBX space statistics for
@@ -75,9 +75,11 @@ row), 67,108,864 B (TQ1 and TQ1+PQ8 segmented), 536,870,912 B (INT8 row),
 and 402,653,184 B (INT8 segmented). These are physical file observations,
 not exact page occupancy or logical payload widths. The raw receipt also
 records `mdbx_used_pages`, `mdbx_used_bytes`, `mdbx_data_pages`, and
-`mdbx_reclaimable_bytes` from MDBX environment statistics.
+`mdbx_allocated_tail_bytes` from MDBX environment statistics.
 `logical_value_bytes_fetched` is the value length returned by MDBX/application
-code; it is not physical disk I/O.
+code; it is not physical disk I/O. `mdbx_allocated_tail_bytes` is computed as
+`allocated file bytes - (last_used_page + 1) * page_size`; it describes
+preallocated unused tail space, not MDBX garbage-collector or free-page count.
 
 Segmented reads expose the storage trade-off directly. For route5000 the
 fresh streams touch 245 segments/query (about 95.1% candidate reuse), while
