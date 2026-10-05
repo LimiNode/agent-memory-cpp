@@ -218,6 +218,16 @@ def all_blocks(doc: dict[str, Any]) -> set[str]:
     return {b["id"] for b in doc["blocks"]}
 
 
+def canonical_text_bytes_changed(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any]) -> int:
+    old = {b["id"]: b for b in old_doc["blocks"]}; new = {b["id"]: b for b in new_doc["blocks"]}
+    total = 0
+    for block_id in set(change["changed"]):
+        total += max(len(old[block_id]["content"].encode("utf-8")), len(new[block_id]["content"].encode("utf-8")))
+    total += sum(len(new[block_id]["content"].encode("utf-8")) for block_id in change["inserted"])
+    total += sum(len(old[block_id]["content"].encode("utf-8")) for block_id in change["removed"])
+    return total
+
+
 def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any],
                 profile: str, context: str, mode: str) -> dict[str, Any]:
     old_state = build_state(old_doc, profile, context)
@@ -225,7 +235,6 @@ def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[s
     changed = set(change["changed"]) | set(change["inserted"]) | set(change["removed"]) | set(change["moved"])
     old_block_ids = all_blocks(old_doc)
     new_block_ids = all_blocks(new_doc)
-    structural = bool(change["inserted"] or change["removed"] or change["moved"])
     fallback = False
     fallback_reason = None
     if profile == "windowed_v1" and (changed or change["metadata_changed"] and context == "metadata_derived"):
@@ -256,21 +265,17 @@ def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[s
     reused = sorted((old_keys & new_keys) - invalidated)
     new_ids = sorted((new_keys - old_keys) | (new_keys & invalidated))
     removed = sorted(old_keys - new_keys)
-    if mode == "eager":
-        scheduled = new_ids
-        stale = []
-    else:
-        scheduled = []
-        stale = sorted((old_keys & new_keys) & invalidated)
+    scheduled = new_ids if mode == "eager" else []
+    stale = sorted((old_keys & new_keys) & invalidated) if mode == "deferred" else []
     eventual = sorted(new_ids)
-    stale_current = sorted(stale)
-    strict_current = sorted(set(new_keys) - set(stale_current))
+    pending_new = sorted(new_keys - set(reused)) if mode == "deferred" else []
+    strict_current = sorted(new_keys) if mode == "eager" else reused
     rewritten_blocks: set[str] = set()
     for segment_id in eventual:
         rewritten_blocks.update(new_segments[segment_id]["block_ids"])
     if fallback:
         rewritten_blocks = all_blocks(new_doc)
-    rewritten_bytes = sum(len(b["content"].encode("utf-8")) for b in new_doc["blocks"] if b["id"] in rewritten_blocks)
+    derived_bytes = sum(len(b["content"].encode("utf-8")) for b in new_doc["blocks"] if b["id"] in rewritten_blocks)
     new_specs = segment_specs(new_doc, profile)
     incremental_segments = {
         segment_id: (
@@ -284,14 +289,26 @@ def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[s
         block["id"]: (old_block_records[block["id"]] if block["id"] in old_block_records and block["id"] not in changed else digest(block))
         for block in sorted(new_doc["blocks"], key=lambda value: (value["position"], value["id"]))
     }
-    incremental_state = {"document_digest": document_digest(new_doc), "blocks": incremental_blocks,
-                         "segments": incremental_segments}
+    stale_segments = {segment_id: old_segments[segment_id] for segment_id in stale}
+    current_segments = incremental_segments if mode == "eager" else {
+        segment_id: old_segments[segment_id] for segment_id in reused
+    } | stale_segments
+    current_state = {"document_digest": document_digest(new_doc), "blocks": incremental_blocks,
+                     "segments": current_segments}
+    eventual_state = {"document_digest": document_digest(new_doc), "blocks": incremental_blocks,
+                      "segments": incremental_segments}
+    stale_record_digests = {segment_id: digest(old_segments[segment_id]) for segment_id in stale}
+    deferred_consistent = mode == "deferred" and set(current_segments) == set(reused) | set(stale) \
+        and set(pending_new).isdisjoint(strict_current) \
+        and set(stale).isdisjoint(strict_current) \
+        and all(current_segments[segment_id] == old_segments[segment_id] for segment_id in stale)
     projections = {}
     for name in ("lexical_digest", "dense_digest", "codec_digest"):
         projections[name] = {"reused": reused, "new": new_ids, "removed": removed,
                              "invalidated": sorted(invalidated), "scheduled": scheduled}
     return {"invalidation_frontier": sorted(invalidated), "recomputation_frontier": scheduled,
             "eventual_recomputation_frontier": eventual, "stale_retained": stale,
+            "pending_new_segments": pending_new, "stale_record_digests": stale_record_digests,
             "strict_current_segments": strict_current, "reused_segments": reused,
             "new_segments": new_ids, "removed_segments": removed, "projections": projections,
             "reused_blocks": sorted((old_block_ids & new_block_ids) - changed),
@@ -299,9 +316,18 @@ def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[s
             "removed_blocks": sorted(old_block_ids - new_block_ids),
             "updated_blocks": sorted(set(change["changed"]) | set(change["moved"])),
             "fallback": fallback, "fallback_reason": fallback_reason,
-            "canonical_bytes_rewritten": rewritten_bytes,
-            "oracle_parity": incremental_state == oracle_state,
-            "eventual_state": incremental_state}
+            "canonical_text_bytes_changed": canonical_text_bytes_changed(old_doc, new_doc, change),
+            "structure_changed": bool(change["inserted"] or change["removed"] or change["moved"]),
+            "metadata_changed": change["metadata_changed"],
+            "derived_text_bytes_reprocessed": derived_bytes,
+            "derived_segments_recomputed": len(eventual),
+            "current_incremental_state_digest": digest(current_state),
+            "eventual_incremental_state_digest": digest(eventual_state),
+            "oracle_state_digest": digest(oracle_state),
+            "eager_current_oracle_parity": mode == "eager" and current_state == oracle_state,
+            "deferred_current_consistency": deferred_consistent if mode == "deferred" else None,
+            "eventual_oracle_parity": eventual_state == oracle_state,
+            "eventual_state": eventual_state}
 
 
 def fixture_file(path: Path) -> None:
@@ -324,13 +350,17 @@ def compact_summary(receipt: dict[str, Any], receipt_path: Path) -> dict[str, An
             "fallback": row["fallback"], "reused_segments": len(row["reused_segments"]),
             "new_segments": len(row["new_segments"]), "removed_segments": len(row["removed_segments"]),
             "invalidated_segments": len(row["invalidation_frontier"]),
-            "canonical_bytes_rewritten": row["canonical_bytes_rewritten"],
+            "canonical_text_bytes_changed": row["canonical_text_bytes_changed"],
+            "derived_text_bytes_reprocessed": row["derived_text_bytes_reprocessed"],
         })
     return {
         "schema_version": 1, "family": "canonical_incremental_edit_screen_summary_v1", "status": "PASS",
         "receipt_sha256": sha256(receipt_path), "fixture_manifest_sha256": receipt["fixture_manifest"]["sha256"],
         "runner": receipt["runner"], "mutation_cases": len(receipt["mutation_matrix"]),
-        "result_rows": len(receipt["results"]), "oracle_parity_rows": sum(row["oracle_parity"] for row in receipt["results"]),
+        "result_rows": len(receipt["results"]),
+        "eager_current_oracle_parity_rows": sum(row["eager_current_oracle_parity"] for row in receipt["results"]),
+        "deferred_current_consistency_rows": sum(row["deferred_current_consistency"] is True for row in receipt["results"]),
+        "eventual_oracle_parity_rows": sum(row["eventual_oracle_parity"] for row in receipt["results"]),
         "fallback_cases": sorted({row["case"]["id"] for row in eager if row["fallback"]}),
         "deferred_rows": len(deferred),
         "deferred_stale_excluded_rows": sum(bool(row["stale_retained"]) and set(row["stale_retained"]).isdisjoint(row["strict_current_segments"])
@@ -358,7 +388,6 @@ def run(fixture_path: Path, output: Path, compact_output: Path | None = None) ->
                                     "recompute_mode": mode, "old_canonical_digest": document_digest(old_doc),
                                     "new_canonical_digest": document_digest(new_doc), "change": change,
                                     **{k: v for k, v in derived.items() if k != "eventual_state"},
-                                    "final_state_digest": digest(derived["eventual_state"]),
                                     "projection_digests": {
                                         name: digest({sid: record[name] for sid, record in derived["eventual_state"]["segments"].items()})
                                         for name in ("lexical_digest", "dense_digest", "codec_digest")
@@ -396,7 +425,8 @@ def self_test() -> None:
             for context in CONTEXTS:
                 eager = derive_case(old_doc, new_doc, change, profile, context, "eager")
                 deferred = derive_case(old_doc, new_doc, change, profile, context, "deferred")
-                require(eager["oracle_parity"] and deferred["oracle_parity"], f"parity failed: {case['id']}/{profile}/{context}")
+                require(eager["eager_current_oracle_parity"] and eager["eventual_oracle_parity"], f"eager parity failed: {case['id']}/{profile}/{context}")
+                require(deferred["deferred_current_consistency"] and deferred["eventual_oracle_parity"], f"deferred parity failed: {case['id']}/{profile}/{context}")
                 require(set(deferred["stale_retained"]).isdisjoint(deferred["strict_current_segments"]), "stale leaked into strict current")
     print("incremental-edit runner self-test PASS")
 

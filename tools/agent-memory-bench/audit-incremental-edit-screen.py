@@ -125,6 +125,18 @@ def build_state(doc: dict[str, Any], profile: str, context: str) -> dict[str, An
     return {"document_digest": digest(doc), "blocks": {b["id"]: digest(b) for b in blocks}, "segments": records}
 
 
+def canonical_text_bytes_changed(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any]) -> int:
+    old = {b["id"]: b for b in old_doc["blocks"]}
+    new = {b["id"]: b for b in new_doc["blocks"]}
+    total = 0
+    for block_id in change["changed"]:
+        total += max(len(old[block_id]["content"].encode("utf-8")),
+                     len(new[block_id]["content"].encode("utf-8")))
+    total += sum(len(new[block_id]["content"].encode("utf-8")) for block_id in change["inserted"])
+    total += sum(len(old[block_id]["content"].encode("utf-8")) for block_id in change["removed"])
+    return total
+
+
 def expected_result(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any],
                     profile: str, context: str, mode: str) -> dict[str, Any]:
     old_state, new_state = build_state(old_doc, profile, context), build_state(new_doc, profile, context)
@@ -144,14 +156,17 @@ def expected_result(old_doc: dict[str, Any], new_doc: dict[str, Any], change: di
     old_keys, new_keys = set(old_state["segments"]), set(new_state["segments"])
     reused = sorted((old_keys & new_keys) - invalidated); new_ids = sorted((new_keys - old_keys) | (new_keys & invalidated)); removed = sorted(old_keys - new_keys)
     scheduled = new_ids if mode == "eager" else []
-    stale = [] if mode == "eager" else sorted((old_keys & new_keys) & invalidated)
-    eventual = sorted(new_ids); strict = sorted(new_keys - set(stale))
+    stale = sorted((old_keys & new_keys) & invalidated) if mode == "deferred" else []
+    eventual = sorted(new_ids)
+    pending_new = sorted(new_keys - set(reused)) if mode == "deferred" else []
+    strict = sorted(new_keys) if mode == "eager" else reused
     rewritten_blocks: set[str] = set()
     for sid in eventual: rewritten_blocks.update(new_state["segments"][sid]["block_ids"])
     if fallback: rewritten_blocks = {b["id"] for b in new_doc["blocks"]}
-    rewritten_bytes = sum(len(b["content"].encode()) for b in new_doc["blocks"] if b["id"] in rewritten_blocks)
+    derived_bytes = sum(len(b["content"].encode("utf-8")) for b in new_doc["blocks"] if b["id"] in rewritten_blocks)
     incremental_segments = {
-        sid: (old_state["segments"][sid] if sid in reused else new_state["segments"][sid])
+        sid: (old_state["segments"][sid] if sid in reused
+              else new_state["segments"][sid])
         for sid in sorted(new_state["segments"])
     }
     incremental_blocks = {
@@ -159,8 +174,19 @@ def expected_result(old_doc: dict[str, Any], new_doc: dict[str, Any], change: di
                       if block["id"] in old_state["blocks"] and block["id"] not in changed else digest(block))
         for block in sorted(new_doc["blocks"], key=lambda value: (value["position"], value["id"]))
     }
-    incremental_state = {"document_digest": digest(new_doc), "blocks": incremental_blocks,
-                         "segments": incremental_segments}
+    stale_segments = {sid: old_state["segments"][sid] for sid in stale}
+    current_segments = incremental_segments if mode == "eager" else {
+        sid: old_state["segments"][sid] for sid in reused
+    } | stale_segments
+    current_state = {"document_digest": digest(new_doc), "blocks": incremental_blocks,
+                     "segments": current_segments}
+    eventual_state = {"document_digest": digest(new_doc), "blocks": incremental_blocks,
+                      "segments": incremental_segments}
+    stale_record_digests = {sid: digest(old_state["segments"][sid]) for sid in stale}
+    deferred_consistent = mode == "deferred" and set(current_segments) == set(reused) | set(stale) \
+        and set(pending_new).isdisjoint(strict) \
+        and set(stale).isdisjoint(strict) \
+        and all(current_segments[sid] == old_state["segments"][sid] for sid in stale)
     projections = {name: {"reused": reused, "new": new_ids, "removed": removed, "invalidated": sorted(invalidated), "scheduled": scheduled}
                    for name in ("lexical_digest", "dense_digest", "codec_digest")}
     return {"invalidation_frontier": sorted(invalidated), "recomputation_frontier": scheduled,
@@ -171,9 +197,19 @@ def expected_result(old_doc: dict[str, Any], new_doc: dict[str, Any], change: di
             "removed_blocks": sorted(old_block_ids - new_block_ids),
             "updated_blocks": sorted(set(change["changed"]) | set(change["moved"])),
             "fallback": fallback, "fallback_reason": "window_boundary_resynchronization_unproven" if fallback else None,
-            "canonical_bytes_rewritten": rewritten_bytes, "oracle_parity": incremental_state == new_state,
-            "final_state_digest": digest(incremental_state),
-            "projection_digests": {name: digest({sid: rec[name] for sid, rec in incremental_state["segments"].items()})
+            "pending_new_segments": pending_new, "stale_record_digests": stale_record_digests,
+            "canonical_text_bytes_changed": canonical_text_bytes_changed(old_doc, new_doc, change),
+            "structure_changed": bool(change["inserted"] or change["removed"] or change["moved"]),
+            "metadata_changed": change["metadata_changed"],
+            "derived_text_bytes_reprocessed": derived_bytes,
+            "derived_segments_recomputed": len(eventual),
+            "current_incremental_state_digest": digest(current_state),
+            "eventual_incremental_state_digest": digest(eventual_state),
+            "oracle_state_digest": digest(new_state),
+            "eager_current_oracle_parity": mode == "eager" and current_state == new_state,
+            "deferred_current_consistency": deferred_consistent if mode == "deferred" else None,
+            "eventual_oracle_parity": eventual_state == new_state,
+            "projection_digests": {name: digest({sid: rec[name] for sid, rec in eventual_state["segments"].items()})
                                    for name in ("lexical_digest", "dense_digest", "codec_digest")}}
 
 
@@ -214,11 +250,49 @@ def validate(receipt_path: Path) -> None:
             require(row[field] == (digest(old_doc) if field.startswith("old") else digest(new_doc)), f"{case['id']}: {field} differs")
         require(row.get("change") == change, f"{case['id']}: change set differs")
         for field in ("invalidation_frontier", "recomputation_frontier", "eventual_recomputation_frontier", "stale_retained",
-                      "strict_current_segments", "reused_segments", "new_segments", "removed_segments", "projections",
-                      "reused_blocks", "new_blocks", "removed_blocks", "updated_blocks",
-                      "fallback", "fallback_reason", "canonical_bytes_rewritten", "oracle_parity", "final_state_digest", "projection_digests"):
+                      "pending_new_segments", "stale_record_digests", "strict_current_segments", "reused_segments",
+                      "new_segments", "removed_segments", "projections", "reused_blocks", "new_blocks",
+                      "removed_blocks", "updated_blocks", "fallback", "fallback_reason",
+                      "canonical_text_bytes_changed", "structure_changed", "metadata_changed",
+                      "derived_text_bytes_reprocessed", "derived_segments_recomputed",
+                      "current_incremental_state_digest", "eventual_incremental_state_digest", "oracle_state_digest",
+                      "eager_current_oracle_parity", "deferred_current_consistency", "eventual_oracle_parity",
+                      "projection_digests"):
             require(row.get(field) == expected[field], f"{case['id']}/{row['profile']}/{row['context_profile']}/{row['recompute_mode']}: {field} differs")
-        require(set(row["stale_retained"]).isdisjoint(row["strict_current_segments"]), f"{case['id']}: stale record leaked into strict current")
+        old_state = build_state(old_doc, row["profile"], row["context_profile"])
+        pending = set(row["pending_new_segments"])
+        stale = set(row["stale_retained"])
+        strict = set(row["strict_current_segments"])
+        reused = set(row["reused_segments"])
+        require(pending.isdisjoint(strict), f"{case['id']}: pending record leaked into strict current")
+        require(stale.isdisjoint(strict), f"{case['id']}: stale record leaked into strict current")
+        if row["recompute_mode"] == "deferred":
+            require(strict == reused, f"{case['id']}: deferred strict current differs from reused frontier")
+            require(pending == (set(expected["pending_new_segments"])), f"{case['id']}: pending frontier differs")
+            require(set(strict) | stale == reused | stale, f"{case['id']}: deferred current key set is inconsistent")
+            require(row["stale_record_digests"] == {
+                sid: digest(old_state["segments"][sid]) for sid in stale
+            }, f"{case['id']}: stale payload digest is not the retained old record")
+        else:
+            require(row["pending_new_segments"] == [] and row["stale_retained"] == [],
+                    f"{case['id']}: eager state contains deferred-only records")
+            require(row["deferred_current_consistency"] is None, f"{case['id']}: eager row has deferred consistency")
+            require(strict == set(expected["strict_current_segments"]), f"{case['id']}: eager strict current differs")
+            require(row["eager_current_oracle_parity"] is True, f"{case['id']}: eager current is not oracle-parity")
+        require(row["eventual_oracle_parity"] is True, f"{case['id']}: eventual state is not oracle-parity")
+        op = case["op"]
+        if op in {"metadata", "move", "noop"}:
+            require(row["canonical_text_bytes_changed"] == 0,
+                    f"{case['id']}: non-text edit changed canonical text byte metric")
+        require(row["structure_changed"] is (op in {"insert", "delete", "move"}), f"{case['id']}: structure flag differs")
+        require(row["metadata_changed"] is (op == "metadata"), f"{case['id']}: metadata flag differs")
+        if op == "noop":
+            require(not row["invalidation_frontier"] and not row["recomputation_frontier"]
+                    and not row["eventual_recomputation_frontier"]
+                    and row["canonical_text_bytes_changed"] == 0
+                    and row["derived_text_bytes_reprocessed"] == 0
+                    and row["derived_segments_recomputed"] == 0,
+                    f"{case['id']}: no-op changed logical or byte metrics")
     print(json.dumps({"status": "PASS", "receipt": str(receipt_path), "results": len(results)}, sort_keys=True))
 
 
@@ -230,17 +304,24 @@ def self_test() -> None:
         subprocess.run([sys.executable, str(runner), "--fixture", str(fixture), "--output", str(receipt_path)], check=True, stdout=subprocess.DEVNULL)
         baseline = json.loads(receipt_path.read_text(encoding="utf-8"))
         validate(receipt_path)
+        deferred_index = 1
         mutations = [
             ("fixture hash", lambda r: r["fixture_manifest"].update(sha256="0" * 64)),
             ("changed blocks", lambda r: r["results"][0]["change"].update(changed=["tampered"])),
             ("reused set", lambda r: r["results"][0].update(reused_segments=["tampered"])),
             ("invalidation", lambda r: r["results"][0].update(invalidation_frontier=["tampered"])),
             ("recomputation", lambda r: r["results"][0].update(recomputation_frontier=["tampered"])),
-            ("stale", lambda r: r["results"][0].update(stale_retained=["tampered"])),
+            ("stale", lambda r: r["results"][deferred_index].update(stale_retained=["tampered"])),
+            ("pending leak", lambda r: r["results"][deferred_index]["strict_current_segments"].append(
+                r["results"][deferred_index]["pending_new_segments"][0]
+                if r["results"][deferred_index]["pending_new_segments"] else "tampered")),
+            ("stale replacement", lambda r: r["results"][deferred_index]["stale_record_digests"].update(
+                {r["results"][deferred_index]["stale_retained"][0]: "0" * 64}
+                if r["results"][deferred_index]["stale_retained"] else {"tampered": "0" * 64})),
             ("fallback", lambda r: r["results"][0].update(fallback=not r["results"][0]["fallback"])),
             ("projection", lambda r: r["results"][0]["projection_digests"].update(codec_digest="0" * 64)),
-            ("parity", lambda r: r["results"][0].update(oracle_parity=False)),
-            ("bytes", lambda r: r["results"][0].update(canonical_bytes_rewritten=1)),
+            ("eventual parity", lambda r: r["results"][0].update(eventual_oracle_parity=False)),
+            ("canonical bytes", lambda r: r["results"][0].update(canonical_text_bytes_changed=1)),
         ]
         for label, mutate in mutations:
             candidate = Path(directory) / f"{label.replace(' ', '-')}.json"; value = deepcopy(baseline); mutate(value); candidate.write_text(json.dumps(value), encoding="utf-8")
