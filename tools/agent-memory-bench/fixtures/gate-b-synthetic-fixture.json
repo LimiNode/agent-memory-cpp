@@ -1,0 +1,461 @@
+{
+  "documents": [
+    {
+      "blocks": [
+        {
+          "content": "Section 1: stable heading",
+          "id": "doc-001-b001",
+          "kind": "heading",
+          "parent": null,
+          "position": 100,
+          "revision": 1,
+          "section": "doc-001-section-1"
+        },
+        {
+          "content": "doc-001 section 1 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b002",
+          "kind": "paragraph",
+          "parent": "doc-001-section-1",
+          "position": 101,
+          "revision": 1,
+          "section": "doc-001-section-1"
+        },
+        {
+          "content": "doc-001 section 1 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b003",
+          "kind": "paragraph",
+          "parent": "doc-001-section-1",
+          "position": 102,
+          "revision": 1,
+          "section": "doc-001-section-1"
+        },
+        {
+          "content": "doc-001 section 1 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b004",
+          "kind": "paragraph",
+          "parent": "doc-001-section-1",
+          "position": 103,
+          "revision": 1,
+          "section": "doc-001-section-1"
+        },
+        {
+          "content": "doc-001 section 1 paragraph 4; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b005",
+          "kind": "paragraph",
+          "parent": "doc-001-section-1",
+          "position": 104,
+          "revision": 1,
+          "section": "doc-001-section-1"
+        },
+        {
+          "content": "Section 2: stable heading",
+          "id": "doc-001-b006",
+          "kind": "heading",
+          "parent": null,
+          "position": 200,
+          "revision": 1,
+          "section": "doc-001-section-2"
+        },
+        {
+          "content": "doc-001 section 2 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b007",
+          "kind": "paragraph",
+          "parent": "doc-001-section-2",
+          "position": 201,
+          "revision": 1,
+          "section": "doc-001-section-2"
+        },
+        {
+          "content": "doc-001 section 2 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b008",
+          "kind": "paragraph",
+          "parent": "doc-001-section-2",
+          "position": 202,
+          "revision": 1,
+          "section": "doc-001-section-2"
+        },
+        {
+          "content": "doc-001 section 2 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b009",
+          "kind": "paragraph",
+          "parent": "doc-001-section-2",
+          "position": 203,
+          "revision": 1,
+          "section": "doc-001-section-2"
+        },
+        {
+          "content": "doc-001 section 2 paragraph 4; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b010",
+          "kind": "paragraph",
+          "parent": "doc-001-section-2",
+          "position": 204,
+          "revision": 1,
+          "section": "doc-001-section-2"
+        },
+        {
+          "content": "Section 3: stable heading",
+          "id": "doc-001-b011",
+          "kind": "heading",
+          "parent": null,
+          "position": 300,
+          "revision": 1,
+          "section": "doc-001-section-3"
+        },
+        {
+          "content": "doc-001 section 3 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b012",
+          "kind": "paragraph",
+          "parent": "doc-001-section-3",
+          "position": 301,
+          "revision": 1,
+          "section": "doc-001-section-3"
+        },
+        {
+          "content": "doc-001 section 3 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b013",
+          "kind": "paragraph",
+          "parent": "doc-001-section-3",
+          "position": 302,
+          "revision": 1,
+          "section": "doc-001-section-3"
+        },
+        {
+          "content": "doc-001 section 3 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-001-b014",
+          "kind": "paragraph",
+          "parent": "doc-001-section-3",
+          "position": 303,
+          "revision": 1,
+          "section": "doc-001-section-3"
+        },
+        {
+          "content": "def doc_001_3():\n    return 4\n",
+          "id": "doc-001-b015",
+          "kind": "code",
+          "parent": "doc-001-section-3",
+          "position": 304,
+          "revision": 1,
+          "section": "doc-001-section-3"
+        }
+      ],
+      "id": "doc-001",
+      "metadata": {
+        "owner": "team-1",
+        "tags": [
+          "synthetic",
+          "canonical",
+          "group-1"
+        ],
+        "title": "Gate B document 1"
+      },
+      "revision": 1
+    },
+    {
+      "blocks": [
+        {
+          "content": "Section 1: stable heading",
+          "id": "doc-002-b001",
+          "kind": "heading",
+          "parent": null,
+          "position": 100,
+          "revision": 1,
+          "section": "doc-002-section-1"
+        },
+        {
+          "content": "doc-002 section 1 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b002",
+          "kind": "paragraph",
+          "parent": "doc-002-section-1",
+          "position": 101,
+          "revision": 1,
+          "section": "doc-002-section-1"
+        },
+        {
+          "content": "doc-002 section 1 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b003",
+          "kind": "paragraph",
+          "parent": "doc-002-section-1",
+          "position": 102,
+          "revision": 1,
+          "section": "doc-002-section-1"
+        },
+        {
+          "content": "doc-002 section 1 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b004",
+          "kind": "paragraph",
+          "parent": "doc-002-section-1",
+          "position": 103,
+          "revision": 1,
+          "section": "doc-002-section-1"
+        },
+        {
+          "content": "doc-002 section 1 paragraph 4; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b005",
+          "kind": "paragraph",
+          "parent": "doc-002-section-1",
+          "position": 104,
+          "revision": 1,
+          "section": "doc-002-section-1"
+        },
+        {
+          "content": "Section 2: stable heading",
+          "id": "doc-002-b006",
+          "kind": "heading",
+          "parent": null,
+          "position": 200,
+          "revision": 1,
+          "section": "doc-002-section-2"
+        },
+        {
+          "content": "doc-002 section 2 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b007",
+          "kind": "paragraph",
+          "parent": "doc-002-section-2",
+          "position": 201,
+          "revision": 1,
+          "section": "doc-002-section-2"
+        },
+        {
+          "content": "doc-002 section 2 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b008",
+          "kind": "paragraph",
+          "parent": "doc-002-section-2",
+          "position": 202,
+          "revision": 1,
+          "section": "doc-002-section-2"
+        },
+        {
+          "content": "doc-002 section 2 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b009",
+          "kind": "paragraph",
+          "parent": "doc-002-section-2",
+          "position": 203,
+          "revision": 1,
+          "section": "doc-002-section-2"
+        },
+        {
+          "content": "doc-002 section 2 paragraph 4; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b010",
+          "kind": "paragraph",
+          "parent": "doc-002-section-2",
+          "position": 204,
+          "revision": 1,
+          "section": "doc-002-section-2"
+        },
+        {
+          "content": "Section 3: stable heading",
+          "id": "doc-002-b011",
+          "kind": "heading",
+          "parent": null,
+          "position": 300,
+          "revision": 1,
+          "section": "doc-002-section-3"
+        },
+        {
+          "content": "doc-002 section 3 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b012",
+          "kind": "paragraph",
+          "parent": "doc-002-section-3",
+          "position": 301,
+          "revision": 1,
+          "section": "doc-002-section-3"
+        },
+        {
+          "content": "doc-002 section 3 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b013",
+          "kind": "paragraph",
+          "parent": "doc-002-section-3",
+          "position": 302,
+          "revision": 1,
+          "section": "doc-002-section-3"
+        },
+        {
+          "content": "doc-002 section 3 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-002-b014",
+          "kind": "paragraph",
+          "parent": "doc-002-section-3",
+          "position": 303,
+          "revision": 1,
+          "section": "doc-002-section-3"
+        },
+        {
+          "content": "def doc_002_3():\n    return 4\n",
+          "id": "doc-002-b015",
+          "kind": "code",
+          "parent": "doc-002-section-3",
+          "position": 304,
+          "revision": 1,
+          "section": "doc-002-section-3"
+        }
+      ],
+      "id": "doc-002",
+      "metadata": {
+        "owner": "team-2",
+        "tags": [
+          "synthetic",
+          "canonical",
+          "group-2"
+        ],
+        "title": "Gate B document 2"
+      },
+      "revision": 1
+    },
+    {
+      "blocks": [
+        {
+          "content": "Section 1: stable heading",
+          "id": "doc-003-b001",
+          "kind": "heading",
+          "parent": null,
+          "position": 100,
+          "revision": 1,
+          "section": "doc-003-section-1"
+        },
+        {
+          "content": "doc-003 section 1 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b002",
+          "kind": "paragraph",
+          "parent": "doc-003-section-1",
+          "position": 101,
+          "revision": 1,
+          "section": "doc-003-section-1"
+        },
+        {
+          "content": "doc-003 section 1 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b003",
+          "kind": "paragraph",
+          "parent": "doc-003-section-1",
+          "position": 102,
+          "revision": 1,
+          "section": "doc-003-section-1"
+        },
+        {
+          "content": "doc-003 section 1 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b004",
+          "kind": "paragraph",
+          "parent": "doc-003-section-1",
+          "position": 103,
+          "revision": 1,
+          "section": "doc-003-section-1"
+        },
+        {
+          "content": "doc-003 section 1 paragraph 4; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b005",
+          "kind": "paragraph",
+          "parent": "doc-003-section-1",
+          "position": 104,
+          "revision": 1,
+          "section": "doc-003-section-1"
+        },
+        {
+          "content": "Section 2: stable heading",
+          "id": "doc-003-b006",
+          "kind": "heading",
+          "parent": null,
+          "position": 200,
+          "revision": 1,
+          "section": "doc-003-section-2"
+        },
+        {
+          "content": "doc-003 section 2 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b007",
+          "kind": "paragraph",
+          "parent": "doc-003-section-2",
+          "position": 201,
+          "revision": 1,
+          "section": "doc-003-section-2"
+        },
+        {
+          "content": "doc-003 section 2 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b008",
+          "kind": "paragraph",
+          "parent": "doc-003-section-2",
+          "position": 202,
+          "revision": 1,
+          "section": "doc-003-section-2"
+        },
+        {
+          "content": "doc-003 section 2 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b009",
+          "kind": "paragraph",
+          "parent": "doc-003-section-2",
+          "position": 203,
+          "revision": 1,
+          "section": "doc-003-section-2"
+        },
+        {
+          "content": "doc-003 section 2 paragraph 4; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b010",
+          "kind": "paragraph",
+          "parent": "doc-003-section-2",
+          "position": 204,
+          "revision": 1,
+          "section": "doc-003-section-2"
+        },
+        {
+          "content": "Section 3: stable heading",
+          "id": "doc-003-b011",
+          "kind": "heading",
+          "parent": null,
+          "position": 300,
+          "revision": 1,
+          "section": "doc-003-section-3"
+        },
+        {
+          "content": "doc-003 section 3 paragraph 1; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b012",
+          "kind": "paragraph",
+          "parent": "doc-003-section-3",
+          "position": 301,
+          "revision": 1,
+          "section": "doc-003-section-3"
+        },
+        {
+          "content": "doc-003 section 3 paragraph 2; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b013",
+          "kind": "paragraph",
+          "parent": "doc-003-section-3",
+          "position": 302,
+          "revision": 1,
+          "section": "doc-003-section-3"
+        },
+        {
+          "content": "doc-003 section 3 paragraph 3; deterministic canonical text with enough variation for derived records.",
+          "id": "doc-003-b014",
+          "kind": "paragraph",
+          "parent": "doc-003-section-3",
+          "position": 303,
+          "revision": 1,
+          "section": "doc-003-section-3"
+        },
+        {
+          "content": "def doc_003_3():\n    return 4\n",
+          "id": "doc-003-b015",
+          "kind": "code",
+          "parent": "doc-003-section-3",
+          "position": 304,
+          "revision": 1,
+          "section": "doc-003-section-3"
+        }
+      ],
+      "id": "doc-003",
+      "metadata": {
+        "owner": "team-3",
+        "tags": [
+          "synthetic",
+          "canonical",
+          "group-3"
+        ],
+        "title": "Gate B document 3"
+      },
+      "revision": 1
+    }
+  ],
+  "family": "gate_b_synthetic_fixture_v1",
+  "fixture_id": "gate-b-synthetic-20261006",
+  "generator": "gate-b-synthetic-v1",
+  "manifest_sha256": "9f6697e19b7829254bfbf05bd015df5df4462b0ee085df0140d7c88398a04f57",
+  "normalized_content_sha256": "269adefca5151c04e30099f36ce0254e2d510192d18a7c534bdb5888e7aae8f9",
+  "schema_version": 1,
+  "seed": 20261006
+}
