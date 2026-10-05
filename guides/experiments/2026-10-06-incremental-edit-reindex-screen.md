@@ -46,9 +46,9 @@ The full machine-readable receipt is committed at
 the compact summary for tables is
 `guides/experiments/2026-10-06-incremental-edit-reindex-screen.result.json`.
 The measured receipt SHA-256 is
-`e1685e1b2c96d236766588f5412250f45987c232a6a0c69bfd61ef8ecd006aa4`; it was
+`7336683d7ba9a6fa0dd841631da665a296b6fca812d864a6e8ab522bbd16f51b`; it was
 generated with runner source commit
-`31114e5c8639641ed7f2c7d0d72c445545052fe3`. Evidence paths in the receipt are
+`96f1334f4b1aded52b6415a63fe3729e2ee8759f`. Evidence paths in the receipt are
 logical/relative names only.
 
 ## Result
@@ -78,20 +78,23 @@ segments only for a metadata edit, while content edits remain segment-local.
 Across the 48 eager rows for this profile/context matrix, the modeled canonical
 text changes and derived projection work were:
 
-| Context profile | Reused segment records | Invalidated/new records | Canonical text bytes changed | Derived text bytes reprocessed |
+| Context profile | Reused segment records | Invalidated/new records | Canonical text bytes affected | Derived unique text bytes covered |
 |---|---:|---:|---:|---:|
 | no_context | 186 | 89 | 1,378 | 13,058 |
 | section_local | 141 | 134 | 1,378 | 16,955 |
 | document_global | 46 | 229 | 1,378 | 24,534 |
 | metadata_derived | 163 | 112 | 1,378 | 15,512 |
 
-`canonical_text_bytes_changed` counts only inserted, deleted, or modified
-canonical UTF-8 text. Metadata-only, move-only, and normalized no-op cases are
-zero on this axis. `derived_text_bytes_reprocessed` is the input text covered
-by recomputed derived records and can be nonzero even when canonical text bytes
-did not change (for example, a move changes structure or a metadata-derived
-projection depends on document metadata). These are logical fixture byte
-counts, not storage write or latency results.
+`canonical_text_bytes_affected` counts the touched canonical UTF-8 text: for a
+modified block it is `max(old_content_bytes, new_content_bytes)`; inserted and
+deleted blocks contribute their new and old content bytes respectively.
+Metadata-only, move-only, and normalized no-op cases are zero on this axis.
+`derived_unique_text_bytes_covered` counts the unique block-text byte coverage
+of recomputed derived records; overlapping windows therefore count a block once,
+not once per model-input occurrence. It can be nonzero even when canonical text
+bytes are unaffected (for example, a move changes structure or a
+metadata-derived projection depends on document metadata). These are logical
+fixture byte counts, not storage write or latency results.
 
 ### Honest fallback profile
 
