@@ -58,6 +58,11 @@ Use `AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR` only as an override for a custom
 `mdbx-containers` checkout. The default source checkout is
 `external/mdbx-containers` when it exists.
 
+Connection ownership, attached/shared MDBX contexts and transaction boundaries
+are specified in
+[`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md);
+this dependency guide only owns the CMake lookup and flat-submodule topology.
+
 ## SIMDComp Benchmark Adapter
 
 `external/simdcomp` pins `fast-pack/simdcomp` for the optional x86/SSE2

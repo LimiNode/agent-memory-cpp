@@ -32,6 +32,9 @@ resource, not only discovered by scanning the whole database.
   original.
 - Backends that support transactions should replace resource state and derived
   records atomically.
+- Connection/environment ownership and the distinction between same-context
+  backend atomicity and cross-backend publication are defined in
+  [`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md).
 - Frequently updated indexes may use generations, tombstones, or stale-entry
   filtering before physical compaction.
 - Full float embeddings remain the quality source of truth for reranking even
@@ -361,6 +364,15 @@ publish a new active generation. Dense/vector projections can be synchronous
 only for a deliberately small profile; otherwise they remain revision-guarded
 eventual work and retrieval revalidates every derived hit against the active
 manifest. `ResourceIndexer` does not yet implement this protocol.
+
+The current `ResourceIndexer` prototype composes independent document,
+manifest, ownership and vector interfaces. Because those interfaces do not
+provide a shared cross-store transaction, its failure path uses compensation,
+snapshot restoration and pending-reclaim records. That is an explicit
+prototype limitation; a future canonical-content operation should use one
+backend-owned transaction whenever the correctness-critical records share one
+backend context, while external indexes still use generation/outbox/retry
+protocols.
 
 ## Tombstones And Compaction
 

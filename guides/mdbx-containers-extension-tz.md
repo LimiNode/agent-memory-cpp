@@ -4,6 +4,12 @@
 
 Этот документ описывает storage primitives уровня Layer 1 (см. `guides/memory-stacks-roadmap.md`, секция 11) для новой компонентной архитектуры памяти: `Envelope + Components + SearchProjections`. Секция 5.5 этого TZ является единственным canonical physical MDBX manifest; `guides/memory-stacks-roadmap.md` владеет data model, profiles and capability validation.
 
+Project-level connection ownership, shared environment/context construction,
+coarse domain transaction boundaries and mixed-backend atomicity are owned by
+[`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md).
+This TZ remains the owner of the physical MDBX manifest and upstream primitive
+compatibility; its downstream sketches are not an automatic upstream backlog.
+
 Ключевые компоненты архитектуры, для которых задаются таблицы:
 
 - `KnowledgeUnitEnvelope` — lookup-critical hot path (DBI: `knowledge_units`).

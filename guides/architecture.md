@@ -132,6 +132,13 @@ The MDBX document storage adapter lives under
 `src/agent_memory/infrastructure/mdbx/`. It implements `IDocumentStorage` and
 must not define memory strategy, retrieval ranking, or embedding behavior.
 
+Backend connection ownership, shared MDBX context construction, transaction
+boundaries, bundle topology and cross-backend atomicity are governed by
+[`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md).
+The current prototype adapters may still own one connection per store; that is
+an audited adapter limitation, not the target topology for canonical content,
+conversations or future knowledge-unit stores.
+
 ## Planned Resource Reindexing Direction
 
 Ingestion should eventually track resource ownership for all derived records.
@@ -648,6 +655,9 @@ CMake flags (planned):
 - [`guides/canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md) —
   domain-specific canonical content, stable blocks, read/materialize/edit,
   independently framed body compression and physical encoding generations.
+- [`guides/storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md) —
+  backend context/lifecycle ownership, shared connections, transaction
+  boundaries, composition and semantic conformance.
 - [`guides/mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) —
   canonical physical MDBX manifest, DBI budget, TypeDiscriminatedTable,
   MultiTableWriter, ReverseIndexTable.
