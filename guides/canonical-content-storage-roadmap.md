@@ -268,6 +268,28 @@ block creates a new block revision or replacement block and records the
 supersede/change relation. Inserting a sibling does not renumber all unrelated
 blocks.
 
+### 4.1 Stable IDs And Markdown Round-Trip
+
+The structured canonical representation is the authority for stable block IDs.
+The default Markdown export is a presentation view and does not expose those
+IDs as ordinary prose. A controlled editor may use either a sidecar manifest or
+reserved hidden markers, but both are transport conventions rather than part of
+the user's visible text.
+
+Importing Markdown edited outside a controlled editor follows this order:
+
+1. use the sidecar/marker binding when it is present and valid;
+2. otherwise match unchanged blocks by canonical digest plus unique structural
+   context (parent, heading path and neighboring order);
+3. if matching is ambiguous, create a new revision with an explicit import
+   warning and do not silently reuse IDs.
+
+Deterministic matching is therefore a safe reuse optimization, not a proof of
+identity. A caller that needs lossless block-level editing must retain the
+structured manifest. A plain Markdown file remains a supported human-readable
+source, but an external edit may legitimately produce a new block identity and
+broader re-chunking frontier.
+
 For a mostly textual document, blocks may be materialized into a normalized
 UTF-8 body stream. Segments reference block IDs and local ranges, or body frame
 ranges when the body is immutable. Absolute byte offsets may be cached for a
@@ -374,6 +396,14 @@ frame(s), reads only those frames, verifies the decoded digest, and materializes
 the requested range. Whole-document materialization scans frames in logical
 order.
 
+For vector and other projection payloads, a rebuildable route-local slot map or
+permutation is also a physical layout optimization. It may group records by a
+router or cell to reduce touched segments, but it must retain stable logical
+IDs, the routing-model digest and the layout-generation identity. It is
+independent of Zstd compression economics: locality, cache/page behavior and
+compression ratio require separate measurements. A route-local layout is never
+the canonical body or the only durable identity of a projection.
+
 One giant compressed document body is forbidden for a random-readable profile.
 One frame per tiny message is also not a default: frame overhead and loss of
 shared locality must be measured. Initial experiments should compare bounded
@@ -447,6 +477,11 @@ invalidated range and reused segments. If it cannot prove local stability, it
 may rechunk the current revision, but it must not rebuild unrelated resources.
 
 Physical writes use append/COW semantics with tombstones and later compaction.
+The physical-generation granularity is chosen by the backend: it may be a
+single frame, body, pack or a larger batch. Mixed generations are valid while a
+migration is in progress. Publication must atomically switch the active pointer
+at the chosen scope; a global whole-store generation is an optimization, not a
+semantic requirement.
 MDBX is the first live mutable profile; a packed single-file representation is a
 snapshot/export profile and must provide an equivalent manifest, frame index,
 atomic generation publication and crash recovery before it is used as a primary
@@ -541,8 +576,47 @@ original PDF/page citation after the original body is removed.
   source/log data) across plain Zstd versus trained dictionaries and 16/64/256
   KiB frame targets, measuring ratio, random materialization, one-block edit
   rewrite cost, recompression throughput and dictionary memory;
+- keep route-local vector placement experiments separate from this text-body
+  compression matrix; a layout that reduces fetched payload blocks is not
+  evidence that the payload compresses better;
 - never generalize text dictionary results to learned vector payloads without a
   separate experiment.
+
+### 9.1 Research Gate B — Incremental Edit/Reindex Screen
+
+Before production incremental editing, a deterministic harness must compare an
+incremental path with a full rebuild oracle for at least: one-block modify,
+insert, delete, move, heading change, metadata-only edit, an edit near a chunk
+boundary and a multi-block edit. It records touched/reused/new blocks and
+segments, lexical/vector/codec records, canonical-body bytes rewritten and
+projection parity. Wall time is secondary.
+
+The oracle comparison must use canonical digests and stable derivation keys; it
+must not require allocator-specific row IDs to be byte-identical. If a chunker
+cannot prove bounded local invalidation, the harness must force a whole-document
+rechunk/reindex rather than accept potentially stale projections. Section,
+document and metadata context profiles are measured separately so their blast
+radius is visible.
+
+The research artifact consists of source-bound inputs, a machine-readable
+receipt, an independent fail-closed auditor and mutation self-tests. It does
+not introduce a production editor API.
+
+### 9.2 Research Gate Z0 — Canonical Text Compression
+
+Z0 runs outside MDBX on normalized canonical text/body only. It uses a frozen
+train/held-out split and compares an uncompressed reference, plain Zstd and
+trained-dictionary Zstd at 16/64/256 KiB frame targets and predeclared levels
+(at least 1 and 3). Global and per-corpus dictionaries are separate treatments;
+the dictionary size sweep and promotion gate are fixed before measuring.
+
+Every corpus must be source-bound or explicitly marked as a fixture. The receipt
+records source/split hashes, raw and compressed bytes, dictionary size/training
+cost, encode/decode throughput, random and whole-body reads, edit-one-block
+rewrite cost, recompression temporary space, decoded SHA-256 parity,
+read-amplification and prepared-dictionary memory. An independent auditor must
+recompute the metrics. No Z0 result authorizes production dictionary code by
+itself; only arms passing the declared gate can enter an MDBX Z1 screen.
 
 ## 10. Acceptance Gates
 
@@ -593,6 +667,10 @@ acceptance evidence by themselves:
 - [SQLite's internal-versus-external BLOB study](https://www.sqlite.org/intern-v-extern-blob.html)
   is evidence that inline-versus-file placement needs a benchmark instead of a
   universal byte threshold. The same principle applies to MDBX.
+- [SQLite FTS5 external-content tables](https://www.sqlite.org/fts5.html#external_content_and_contentless_tables)
+  are a useful precedent for keeping canonical row content separate from a
+  derived lexical index; consistency and update/rebuild obligations remain
+  explicit.
 - Habr's [RAG-Anything overview](https://habr.com/ru/companies/bothub/articles/1037946/)
   and [Zstd dictionary case study](https://habr.com/ru/companies/oleg-bunin/articles/788038/)
   are practical secondary references; claims from them must still be checked
