@@ -25,6 +25,9 @@ and physical-body-encoding contracts. It extends, but does not replace:
 - [`chunkers-roadmap.md`](chunkers-roadmap.md) for chunker strategies;
 - [`optimization-roadmap.md`](optimization-roadmap.md) for codec and vector
   experiments;
+- [`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md)
+  for backend context/lifecycle ownership, shared connections, coarse
+  transaction boundaries and backend conformance;
 - [`mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) for the
   canonical physical MDBX manifest.
 
@@ -509,6 +512,12 @@ storage contracts must remain domain-oriented rather than shaped around MDBX
 or SQL tables. The optional external-SQL route is owned by
 [`structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md)
 and must not redefine this backend decision.
+The optional Semantic SQL/JEV route is a separate retrieval capability; it does
+not become the canonical-storage connection or transaction abstraction.
+
+Connection ownership, attached/shared MDBX environments, SQLite sessions and
+same-context transaction boundaries are specified in
+[`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md).
 
 ## 8. Retention And Reprocessing Frontier
 

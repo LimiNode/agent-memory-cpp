@@ -18,6 +18,12 @@ performance gates when latency/throughput is claimed. The default status for
 rows in this file is `Planned`; implementation PRs must update status to
 `Implemented` only with passing tests and diagnostics.
 
+Backend context/lifecycle, shared-connection and cross-backend atomicity rules
+are cross-cutting contract scope owned by
+[`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md).
+This guide does not make that contract an implemented milestone capability;
+milestone rows below still decide when a concrete backend/API may ship.
+
 Dependency DAG:
 
 ```text
@@ -263,6 +269,7 @@ incomparable vector-search score.
 | `knowledge-base-roadmap.md` | Normative for retrieval/store contracts | Must follow this file for M0/M1 scope |
 | `artifact-provenance-roadmap.md` | Normative for M2 artifact profiles | Required before public non-text connectors; defines a narrow M1a text-only derived-index exception |
 | `canonical-content-storage-roadmap.md` | Normative design contract; implementation staged by this file | Domain-specific canonical content, stable blocks, read/materialize/edit and physical encoding generations |
+| `storage-backend-integration-roadmap.md` | Normative architecture contract; implementation staged by this file | Backend context/lifecycle ownership, shared connections, transaction boundaries and semantic conformance |
 | `knowledge-activation-roadmap.md` | Normative for activation/planning concepts; implementation staged by this file | Domain maps, playbooks, soft routing |
 | `agent-runtime-integration-roadmap.md` | Proposal / A-lane | Cognitive runtime integration without core execution |
 | `mdbx-containers-extension-tz.md` | Normative for physical DBI manifest and upstream primitive contracts | Must track exact upstream compatibility snapshots |

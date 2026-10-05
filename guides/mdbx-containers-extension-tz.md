@@ -1,8 +1,17 @@
+Warning: truncated output (original token count: 50017)
+Total output lines: 2781
+
 # Техническое задание: расширение header-only библиотеки `mdbx-containers`
 
 ## 0. Архитектурный контекст
 
 Этот документ описывает storage primitives уровня Layer 1 (см. `guides/memory-stacks-roadmap.md`, секция 11) для новой компонентной архитектуры памяти: `Envelope + Components + SearchProjections`. Секция 5.5 этого TZ является единственным canonical physical MDBX manifest; `guides/memory-stacks-roadmap.md` владеет data model, profiles and capability validation.
+
+Project-level connection ownership, shared environment/context construction,
+coarse domain transaction boundaries and mixed-backend atomicity are owned by
+[`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md).
+This TZ remains the owner of the physical MDBX manifest and upstream primitive
+compatibility; its downstream sketches are not an automatic upstream backlog.
 
 Ключевые компоненты архитектуры, для которых задаются таблицы:
 
@@ -1409,8 +1418,7 @@ follows:
 
 - `unit_projections` использует multi-version ключ `(scope_id, UnitId, ProjectionKind, revision)`. При write активной projection инкрементируется `revision`; old revisions remain until compaction purge. `TranslatedCanonical` also carries a `projection_generation` / derivation fingerprint in the value so model/package-only refresh can invalidate translated postings without changing `KnowledgeUnitEnvelope.revision`.
 - `embedding_meta` хранит версионированную мета-информацию (model_id + version), чтобы CompactionWorker мог удалять versions старше N дней при отсутствии ссылок (см. roadmap, open issue 17.3).
-- `embedding_vectors` упорядочен по `(scope_id, model_id, model_version, ProjectionKind, UnitId)` для cluster-friendly чтения при exact scan; для ANN-расширений порядок может быть пересмотрен в `guides/optimization-roadmap.md`.
-- Все secondary/range indexes, которые должны обслуживать range-query или
+- `embedding_vectors` упорядочен по `(scope_id, model_id, model_version, ProjectionKind, UnitId)` для cluster-friendly чтения при exact scan; для ANN-расширений порядок может бы…17 tokens truncated…се secondary/range indexes, которые должны обслуживать range-query или
   lookup внутри tenant/project/agent boundary, начинаются с `ScopeId`
   (ADR-012). Primary lookup by globally unique `UnitId` является явным
   исключением. Profile validation в `MemoryStack::open()` проверяет
