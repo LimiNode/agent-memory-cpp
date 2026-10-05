@@ -154,6 +154,14 @@ before physical compaction.
 
 Detailed tasks are tracked in `guides/resource-reindexing.md`.
 
+Canonical document bodies, conversation/session event streams and agent-memory
+records use different semantic forms over that shared resource substrate. The
+normative contract for stable content blocks, random reads, materialization,
+optimistic edits, independent compressed body frames and physical encoding
+generations is [`guides/canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md).
+It is a contract-only roadmap until the M1b text vertical slice passes its
+round-trip, edit-conflict, crash-recovery and targeted-invalidation gates.
+
 ## Planned Knowledge Base Direction
 
 The knowledge base is the unified retrieval layer over heterogeneous
@@ -203,8 +211,9 @@ Cross-cutting contracts:
   domain layer. Every component / projection that needs citation,
   every `RetrievalHit`, and every retrieval trace entry references
   `SourceRef`. Artifact-aware ingestion extends this with stable source and
-  revision identities, immutable artifacts, versioned representations,
-  segment-backed Chunk units and typed evidence locators; see
+  revision identities, retained immutable artifacts or durable canonical
+  normalized representations, versioned representations, segment-backed Chunk
+  units and typed evidence locators; see
   [`guides/artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md).
 - A retriever graph built on `RetrievalPlan`, `IUnitRetriever`, and
   `RetrievalHit` with `KnowledgeUnitId` as the unified key. `ChunkId`
@@ -636,6 +645,9 @@ CMake flags (planned):
   optional cross-lingual projections and translation adapter provenance.
 - [`guides/optimization-roadmap.md`](optimization-roadmap.md) —
   vector/binary storage, scope-aware secondary indexes, compression.
+- [`guides/canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md) —
+  domain-specific canonical content, stable blocks, read/materialize/edit,
+  independently framed body compression and physical encoding generations.
 - [`guides/mdbx-containers-extension-tz.md`](mdbx-containers-extension-tz.md) —
   canonical physical MDBX manifest, DBI budget, TypeDiscriminatedTable,
   MultiTableWriter, ReverseIndexTable.

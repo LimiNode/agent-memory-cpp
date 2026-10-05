@@ -81,9 +81,10 @@ Updated:
 - `guides/chunkers-roadmap.md`: added §10 tokenizer-aware raw input pipeline,
   raw source/compression/boundary/token budget sketches, chunk metadata additions
   and ingestion benchmark gates.
-- `guides/resource-reindexing.md`: expanded `pipeline_config_hash` to include
-  source format, compression, boundary policy, tokenizer id, token budget,
-  overlap and safe-boundary policy.
+- `guides/resource-reindexing.md`: expanded the logical derivation fingerprint
+  to include decoded source format, boundary policy, tokenizer id, token budget,
+  overlap and safe-boundary policy; physical compression framing remains a
+  separate encoding identity.
 - `guides/related-projects.md`: classified Gigatoken as a sister/pattern donor,
   not a direct dependency.
 

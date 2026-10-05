@@ -728,9 +728,11 @@ Rules:
   tokenizer-safe boundaries. A tokenizer-safe split must not change the token
   sequence relative to encoding the full document, except for explicitly
   documented separator/special-token policy.
-- `ResourceRevision::pipeline_config_hash` includes source format, compression,
+- `ResourceRevision::pipeline_config_hash` includes the decoded source format,
   boundary policy, parser version, tokenizer id, token budget, overlap and
-  normalization policy.
+  normalization policy. Input compression is physical framing; it belongs to
+  the physical encoding descriptor and must not change the logical hash when
+  the decoded source bytes are identical.
 
 The C++ core owns the dependency-free contracts above. Concrete high-throughput
 tokenizers, SIMD pretokenizers, Python/Rust bridges, Parquet readers and PDF

@@ -10,6 +10,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Core domain primitives | `milestones.md`, `architecture.md` | Implemented | broader payload coverage | finish M0 fixtures |
 | Storage / MDBX | `mdbx-containers-extension-tz.md` | Contract only | full profile and crash matrix | storage foundation PR |
 | Resource manifests / reindex | `resource-reindexing.md` | Contract only | end-to-end publication | targeted reindex fixture |
+| Canonical content / materialize / edit | `canonical-content-storage-roadmap.md` | Roadmap only | no body, block, editor or frame implementation | text vertical slice with round-trip, random read and targeted invalidation |
 | Knowledge units | `knowledge-units-roadmap.md` | Contract only | complete stores | M0 unit/reopen tests |
 | Payload contracts/views | `knowledge-base-roadmap.md` | Contract only | all payload DBIs | one payload family at a time |
 | Search projections | `lexical-search-roadmap.md` | Contract only | generation-aware publisher | projection lifecycle gate |
