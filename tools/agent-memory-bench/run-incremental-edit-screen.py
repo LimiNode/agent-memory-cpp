@@ -218,7 +218,7 @@ def all_blocks(doc: dict[str, Any]) -> set[str]:
     return {b["id"] for b in doc["blocks"]}
 
 
-def canonical_text_bytes_changed(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any]) -> int:
+def canonical_text_bytes_affected(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any]) -> int:
     old = {b["id"]: b for b in old_doc["blocks"]}; new = {b["id"]: b for b in new_doc["blocks"]}
     total = 0
     for block_id in set(change["changed"]):
@@ -316,10 +316,10 @@ def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[s
             "removed_blocks": sorted(old_block_ids - new_block_ids),
             "updated_blocks": sorted(set(change["changed"]) | set(change["moved"])),
             "fallback": fallback, "fallback_reason": fallback_reason,
-            "canonical_text_bytes_changed": canonical_text_bytes_changed(old_doc, new_doc, change),
+            "canonical_text_bytes_affected": canonical_text_bytes_affected(old_doc, new_doc, change),
             "structure_changed": bool(change["inserted"] or change["removed"] or change["moved"]),
             "metadata_changed": change["metadata_changed"],
-            "derived_text_bytes_reprocessed": derived_bytes,
+            "derived_unique_text_bytes_covered": derived_bytes,
             "derived_segments_recomputed": len(eventual),
             "current_incremental_state_digest": digest(current_state),
             "eventual_incremental_state_digest": digest(eventual_state),
@@ -350,8 +350,8 @@ def compact_summary(receipt: dict[str, Any], receipt_path: Path) -> dict[str, An
             "fallback": row["fallback"], "reused_segments": len(row["reused_segments"]),
             "new_segments": len(row["new_segments"]), "removed_segments": len(row["removed_segments"]),
             "invalidated_segments": len(row["invalidation_frontier"]),
-            "canonical_text_bytes_changed": row["canonical_text_bytes_changed"],
-            "derived_text_bytes_reprocessed": row["derived_text_bytes_reprocessed"],
+            "canonical_text_bytes_affected": row["canonical_text_bytes_affected"],
+            "derived_unique_text_bytes_covered": row["derived_unique_text_bytes_covered"],
         })
     return {
         "schema_version": 1, "family": "canonical_incremental_edit_screen_summary_v1", "status": "PASS",

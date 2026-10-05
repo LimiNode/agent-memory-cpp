@@ -125,7 +125,7 @@ def build_state(doc: dict[str, Any], profile: str, context: str) -> dict[str, An
     return {"document_digest": digest(doc), "blocks": {b["id"]: digest(b) for b in blocks}, "segments": records}
 
 
-def canonical_text_bytes_changed(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any]) -> int:
+def canonical_text_bytes_affected(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[str, Any]) -> int:
     old = {b["id"]: b for b in old_doc["blocks"]}
     new = {b["id"]: b for b in new_doc["blocks"]}
     total = 0
@@ -198,10 +198,10 @@ def expected_result(old_doc: dict[str, Any], new_doc: dict[str, Any], change: di
             "updated_blocks": sorted(set(change["changed"]) | set(change["moved"])),
             "fallback": fallback, "fallback_reason": "window_boundary_resynchronization_unproven" if fallback else None,
             "pending_new_segments": pending_new, "stale_record_digests": stale_record_digests,
-            "canonical_text_bytes_changed": canonical_text_bytes_changed(old_doc, new_doc, change),
+            "canonical_text_bytes_affected": canonical_text_bytes_affected(old_doc, new_doc, change),
             "structure_changed": bool(change["inserted"] or change["removed"] or change["moved"]),
             "metadata_changed": change["metadata_changed"],
-            "derived_text_bytes_reprocessed": derived_bytes,
+            "derived_unique_text_bytes_covered": derived_bytes,
             "derived_segments_recomputed": len(eventual),
             "current_incremental_state_digest": digest(current_state),
             "eventual_incremental_state_digest": digest(eventual_state),
@@ -253,8 +253,8 @@ def validate(receipt_path: Path) -> None:
                       "pending_new_segments", "stale_record_digests", "strict_current_segments", "reused_segments",
                       "new_segments", "removed_segments", "projections", "reused_blocks", "new_blocks",
                       "removed_blocks", "updated_blocks", "fallback", "fallback_reason",
-                      "canonical_text_bytes_changed", "structure_changed", "metadata_changed",
-                      "derived_text_bytes_reprocessed", "derived_segments_recomputed",
+                      "canonical_text_bytes_affected", "structure_changed", "metadata_changed",
+                      "derived_unique_text_bytes_covered", "derived_segments_recomputed",
                       "current_incremental_state_digest", "eventual_incremental_state_digest", "oracle_state_digest",
                       "eager_current_oracle_parity", "deferred_current_consistency", "eventual_oracle_parity",
                       "projection_digests"):
@@ -282,15 +282,15 @@ def validate(receipt_path: Path) -> None:
         require(row["eventual_oracle_parity"] is True, f"{case['id']}: eventual state is not oracle-parity")
         op = case["op"]
         if op in {"metadata", "move", "noop"}:
-            require(row["canonical_text_bytes_changed"] == 0,
+            require(row["canonical_text_bytes_affected"] == 0,
                     f"{case['id']}: non-text edit changed canonical text byte metric")
         require(row["structure_changed"] is (op in {"insert", "delete", "move"}), f"{case['id']}: structure flag differs")
         require(row["metadata_changed"] is (op == "metadata"), f"{case['id']}: metadata flag differs")
         if op == "noop":
             require(not row["invalidation_frontier"] and not row["recomputation_frontier"]
                     and not row["eventual_recomputation_frontier"]
-                    and row["canonical_text_bytes_changed"] == 0
-                    and row["derived_text_bytes_reprocessed"] == 0
+                    and row["canonical_text_bytes_affected"] == 0
+                    and row["derived_unique_text_bytes_covered"] == 0
                     and row["derived_segments_recomputed"] == 0,
                     f"{case['id']}: no-op changed logical or byte metrics")
     print(json.dumps({"status": "PASS", "receipt": str(receipt_path), "results": len(results)}, sort_keys=True))
@@ -321,7 +321,7 @@ def self_test() -> None:
             ("fallback", lambda r: r["results"][0].update(fallback=not r["results"][0]["fallback"])),
             ("projection", lambda r: r["results"][0]["projection_digests"].update(codec_digest="0" * 64)),
             ("eventual parity", lambda r: r["results"][0].update(eventual_oracle_parity=False)),
-            ("canonical bytes", lambda r: r["results"][0].update(canonical_text_bytes_changed=1)),
+            ("canonical bytes", lambda r: r["results"][0].update(canonical_text_bytes_affected=1)),
         ]
         for label, mutate in mutations:
             candidate = Path(directory) / f"{label.replace(' ', '-')}.json"; value = deepcopy(baseline); mutate(value); candidate.write_text(json.dumps(value), encoding="utf-8")
