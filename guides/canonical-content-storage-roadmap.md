@@ -641,6 +641,19 @@ read-amplification and prepared-dictionary memory. An independent auditor must
 recompute the metrics. No Z0 result authorizes production dictionary code by
 itself; only arms passing the declared gate can enter an MDBX Z1 screen.
 
+### 9.4 Shared Research Artifact Contract
+
+Gates B, Z0 and physical-layout experiments use one portable corpus manifest and
+receipt shape. At minimum it names the corpus/source or fixture status,
+license/retention note, source and normalized-content digests, split, normalizer
+and parameter versions, runner commit, environment summary and auditor version.
+Results must be relocatable: receipts refer to logical manifest IDs and
+relative artifact names, never absolute workspace paths. Auditors recompute
+source binding, exact permutation/order claims, decoded-digest parity and
+mutation checks before accepting derived metrics. A report that cannot be
+replayed from its manifest is evidence for investigation, not a promotion
+decision.
+
 ## 10. Acceptance Gates
 
 A text canonical-content profile is not complete until it demonstrates:
