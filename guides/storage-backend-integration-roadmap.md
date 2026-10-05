@@ -197,6 +197,14 @@ authority remains with the host:
 - attached stores inherit the connection's read-only and environment settings;
 - transactions and cursors obey the connection's thread-ownership rules.
 
+The C++ handle lifetime and the environment's operational lifetime are separate
+contracts. A `shared_ptr` keeps the connection object alive, but it cannot stop
+the host from calling `shutdown()` or disconnecting the environment. The host
+must not perform that shutdown while agent-memory operations are in flight. If
+the environment has already been shut down, attached stores fail with the
+backend's unavailable/shutdown category; they must not infer that a live
+`shared_ptr` makes the environment operational.
+
 The exact constructor and ownership marker are intentionally deferred. The
 contract is about lifetime authority and transaction provenance, not a
 particular signature.
@@ -323,7 +331,46 @@ revision, blocks, body/frame descriptors, a change set, the active-revision
 pointer, manifest/ownership records and projection invalidation state, subject
 to the selected profile's DBI and transaction-size limits.
 
-### 6.3 Cross-backend operation
+### 6.3 Same-context consistent read snapshot
+
+Read consistency has the same backend boundary as write atomicity. A domain
+operation that reads several stores as one logical view must not let each store
+open an unrelated read transaction:
+
+```text
+read active revision
+read blocks/body descriptor
+read manifest/ownership
+read projection generation
+        -> one backend-owned read-only transaction/snapshot
+        -> one coherent result
+```
+
+The minimum contract is:
+
+| Read shape | Required behavior |
+|---|---|
+| Single-store read with no cross-store consistency requirement | The store may open one short internal read-only transaction. |
+| Same-context consistent domain read | The coordinator opens one backend-owned read-only transaction/snapshot and all participating stores use it internally. |
+| Independent reads explicitly allowed by the operation | Separate short snapshots are permitted, but the operation must say that a mixed generation is acceptable. |
+| Cross-backend read (MDBX + SQLite/CAS/external index) | No common ACID snapshot is implied; use a declared frontier/version/point-in-time policy and validate each side. |
+
+For MDBX, the shared `MdbxStorageContext` opens one read-only
+`mdbxc::Transaction` from its connection and passes it to table wrappers through
+internal overloads. The transaction remains thread-bound and must not outlive
+the read operation. The domain interface receives a domain result or read
+context owned by the backend coordinator, never a generic `ITransaction`.
+SQLite uses its native read transaction/session semantics under the same rule;
+it does not have to imitate an MDBX transaction type.
+
+Canonical materialization, generation-publication verification and retrieval
+hydration should use this shared snapshot whenever they read the active
+revision, body/block descriptors, manifest or projection generation together.
+Long-lived snapshots, caller-created backend transactions and a `shared_ptr` to
+a connection as a substitute for snapshot consistency are out of scope. A
+snapshot is a consistency boundary, not a new storage API.
+
+### 6.4 Cross-backend operation
 
 There is no implicit ACID transaction across:
 
@@ -345,7 +392,7 @@ A type named TransactionGuard must not suggest that these systems share one
 commit. If a future operation crosses backends, its contract must state which
 side is canonical and how incomplete external work is repaired.
 
-### 6.4 ResourceIndexer boundary
+### 6.5 ResourceIndexer boundary
 
 ResourceIndexer currently composes IDocumentStorage,
 IResourceManifestStorage, IResourceIndexRecordOwnerStorage, an embedder and
@@ -372,9 +419,10 @@ invariant. Examples include:
 - replace an ownership manifest and invalidate derived records.
 
 The implementation may use several physical tables, but callers see a
-domain-oriented operation and a domain error/result. Exact operation names,
-batch limits and DBI deltas are deferred until Research Gate B and the M1b
-canonical-text design.
+domain-oriented operation and a domain error/result. Gate B now provides
+research evidence for incremental dependency frontiers; it does not choose the
+production API or DBI layout. Exact operation names, batch limits and DBI
+deltas remain deferred until the M1b canonical-text design.
 
 Parsing, embedding, ANN construction, large reindex work and external network
 calls must happen outside the short publication transaction. The operation
@@ -489,12 +537,35 @@ The current CMake topology remains the contract:
 3. Otherwise the flat external/mdbx-containers source is used when present.
 4. Installed-package lookup is the fallback when no local source is selected.
 5. libmdbx and mdbx-containers remain sibling dependencies under external/.
-6. MDBX types stay behind optional infrastructure implementation boundaries.
+6. The dependency-free core target does not expose MDBX types transitively;
+   typed MDBX integration is an optional exported target.
 
 No CMake or source changes are part of this docs pass. A future attached
 connection header may include mdbx-containers types directly because it is an
-MDBX-specific optional surface; the dependency must not leak into domain or
-dependency-free storage headers.
+MDBX-specific optional surface. Once that header is installed, its package and
+include dependency is part of the consumer contract; it cannot be described as
+a purely `PRIVATE` implementation dependency.
+
+The preferred target topology is conceptual and does not fix exact CMake names:
+
+```text
+agent_memory::agent_memory
+    dependency-free domain/storage contracts
+
+agent_memory::mdbx
+    optional typed MDBX integration
+    PUBLIC/INTERFACE -> mdbx_containers::mdbx_containers
+```
+
+The optional integration target owns the installed MDBX-specific attach header,
+exports the transitive mdbx-containers include/link requirement and makes the
+package configuration discover that dependency when the target is consumed.
+The core target remains usable without `AGENT_MEMORY_ENABLE_MDBX`; consumers
+that pass `std::shared_ptr<mdbxc::Connection>` explicitly opt into the backend
+target. Making mdbx-containers PUBLIC on the core target is an alternative, but
+would unnecessarily enlarge the dependency surface for hosts that never use
+MDBX. Exact target names, export-file mechanics and ABI policy remain
+implementation work for the attached vertical slice.
 
 ## 13. Capability state and deferred work
 
@@ -516,10 +587,14 @@ dependency-free storage headers.
 - Owned and attached MDBX construction modes.
 - One shared connection per logical environment/context.
 - Same-context multi-store atomicity owned by coarse domain operations.
+- Same-context consistent reads use one backend-owned read-only
+  transaction/snapshot when the operation requires a coherent view.
 - Cross-backend publication/outbox/reconciliation boundary.
 - StorageBundle topology and factory concepts.
 - Backend error categories and semantic conformance requirements.
 - Typed MDBX-specific attached-connection header boundary.
+- Optional package/export target for the typed MDBX header and its transitive
+  mdbx-containers dependency.
 
 ### Roadmap only
 
@@ -527,10 +602,12 @@ dependency-free storage headers.
 - ConversationStore and its SQLite implementation.
 - Knowledge-unit, artifact and projection bundles.
 - Read-only propagation and attached/shared connection APIs.
+- Read-snapshot coordinator and backend-specific snapshot/session plumbing.
+- Installed package/export mechanics for the optional MDBX integration target.
 - Context-aware resource importer and canonical revision publication.
 - Conformance suites and reopen/crash tests for the new stores.
 
-### Intentionally deferred until Gate B/M1b
+### Intentionally deferred until M1b implementation/design
 
 - Exact context, factory, bundle and coarse-operation signatures.
 - Canonical-content DBI/profile deltas and transaction-size limits.
@@ -539,6 +616,9 @@ dependency-free storage headers.
 - Error value/exception type names.
 - Multi-environment sharding and any cross-context atomicity.
 - Production artifact/file-CAS integration and external vector publication.
+
+The merged Gate B screen is evidence for the dependency/frontier model, not a
+production implementation gate for these signatures.
 
 ## 14. Decision table
 
@@ -549,12 +629,14 @@ dependency-free storage headers.
 | Connection ownership | Owned or attached backend context |
 | Stores per environment | Shared context/connection |
 | Same-backend atomicity | Backend-owned transaction |
+| Same-context consistent read | Backend-owned read-only transaction/snapshot |
 | Cross-backend atomicity | Not implied |
 | Core generic IDatabase | No |
 | SQLite role | First-class alternative plus separately external SQL source |
 | First SQLite conformance target | ConversationStore |
 | Global singleton connection | No; one connection per logical environment/context |
 | Attached MDBX surface | Typed MDBX-specific header; keep it out of core/domain headers |
+| Typed MDBX package surface | Optional exported integration target with a transitive mdbx-containers dependency |
 | Bundle semantics | Convenience topology; no universal transaction promise |
 | Read-only behavior | Owned mode configures it; attached mode inherits it |
 | Physical frame/table identity | Backend detail; never a domain identity |
