@@ -132,8 +132,9 @@ proven; the fail-closed whole-document fallback is the correct result here.
 
 - The fixture and lexical/dense/codec projections are deterministic surrogates,
   not production text, embeddings, ANN, or codec implementations.
-- Modeled rewritten bytes are logical content bytes only; no MDBX, frame, cache,
-  filesystem, transaction, or crash-recovery behavior was measured.
+- The modeled byte metrics describe logical canonical-text impact and unique
+  derived-text coverage only; no physical MDBX, frame, cache, filesystem,
+  transaction, or crash-recovery writes were measured.
 - The runner and auditor are separate implementations, but both encode the same
   frozen fixture contract; a future hardening pass can move shared constants into
   a generated manifest without sharing derivation code.
