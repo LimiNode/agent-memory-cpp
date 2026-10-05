@@ -333,12 +333,15 @@ projection stores the selected profile IDs, recipe identity and digest of the
 assembled input. It must be possible to re-materialize the exact input without
 mutating the canonical content.
 
-Context invalidation is policy-controlled. A local paragraph edit should not
-implicitly rewrite a document summary used by every segment. Section context
-normally has a section-sized blast radius; document context is updated only on
-explicit consolidation or a declared significant-change threshold. The
-invalidation graph must expose the affected scope rather than silently marking
-the whole corpus stale.
+Dependency invalidation and recomputation scheduling are separate. When a
+canonical edit intersects a declared dependency, the affected context profile
+revision and projections become stale immediately, even if policy defers
+recomputing them. A projection retains the exact context-profile revision and
+assembled-input digest from which it was built. A strict-current profile may
+exclude stale projections; a relaxed profile may use them only with an explicit
+stale/deferred status. Section context normally has a section-sized blast
+radius, while a significance threshold may control recomputation scheduling for
+document context; it must not make an invalid dependency appear current.
 
 Vectors, lexical postings, binary signatures, graph indexes, OCR and captions
 are not stored inside the canonical document/chat body as authoritative data.
@@ -355,21 +358,26 @@ equivalent.
 
 ## 6. Physical Body Encoding
 
-The existing `IArtifactBodyStore`/`ResourceBodyStore` boundary is the body API.
-It should support immutable writes, digest verification, range reads when
-available, frame metadata and materialization. Placement is a policy function of
-size, access pattern, mutability, media type and retention:
+The planned body-store contract family provides the body API boundary:
+resource-level `ResourceBodyStore` semantics may later be extended by an
+artifact-aware `IArtifactBodyStore`. Neither name is claimed here as a complete
+production API. The contract should support immutable writes, digest
+verification, range reads when available, frame metadata and materialization.
+Placement is a policy function of size, access pattern, mutability, media type
+and retention:
 
 ```text
-small/hot body       -> MDBX value or MDBX-backed body table
-medium/cold bodies   -> measured inline or packed body store
-large media          -> content-addressed filesystem/object store
+small/hot body       -> MDBX value or MDBX-backed body table candidate
+medium/cold bodies   -> measured inline or packed body store candidate
+large media          -> benchmark-selected file-CAS/pack/object-store candidate
 export/snapshot      -> packed binary or portable package
 ```
 
 A small JPEG, CSV or Markdown body may therefore live in MDBX, but it remains an
-independent artifact/body record. Large PDF, audio and video bodies should use a
-file-CAS or pack backend. The caller sees one body-store contract.
+independent artifact/body record. Large PDF, audio and video are strong
+candidates for file-CAS, pack or object storage, but the exact placement
+threshold remains an empirical policy decision. The caller sees one body-store
+contract.
 
 ### 6.1 Independent frames
 
@@ -487,6 +495,19 @@ snapshot/export profile and must provide an equivalent manifest, frame index,
 atomic generation publication and crash recovery before it is used as a primary
 mutable store.
 
+### 6.3 Backend Roles
+
+MDBX is the canonical/default first-party backend. SQLite is a first-class
+alternative backend only when it passes the domain-oriented storage
+conformance contract; `ConversationStore` is the intended first real
+second-backend profile because append, revision, snapshot and materialization
+semantics are easy to compare. This decision belongs to the storage/content
+roadmap and is independent from the optional Semantic SQL route. Structured
+storage contracts must remain domain-oriented rather than shaped around MDBX
+or SQL tables. The optional external-SQL route is owned by
+[`structured-data-retrieval-roadmap.md`](structured-data-retrieval-roadmap.md)
+and must not redefine this backend decision.
+
 ## 8. Retention And Reprocessing Frontier
 
 Original source retention is policy, not a universal invariant. A profile may
@@ -537,6 +558,9 @@ original PDF/page citation after the original body is removed.
 ### Phase 1 — text vertical slice
 
 - canonical normalized UTF-8 document body and stable block tree;
+- use the resource/revision/body-digest substrate for this text-only profile;
+  full artifact/occurrence catalog semantics are introduced with the later
+  artifact-aware and multimodal profile;
 - MDBX-backed body store with plain/None and independently framed Zstd codecs;
 - document read, section/segment read, structured/Markdown materialization;
 - optimistic edit, `ContentChangeSet`, tombstones and targeted projection
@@ -619,7 +643,8 @@ must not require allocator-specific row IDs to be byte-identical. If a chunker
 cannot prove bounded local invalidation, the harness must force a whole-document
 rechunk/reindex rather than accept potentially stale projections. Section,
 document and metadata context profiles are measured separately so their blast
-radius is visible.
+radius is visible. The receipt separates the dependency-invalidation frontier,
+the scheduled recomputation frontier and stale-but-retained derived data.
 
 The research artifact consists of source-bound inputs, a machine-readable
 receipt, an independent fail-closed auditor and mutation self-tests. It does
