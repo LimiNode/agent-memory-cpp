@@ -76,13 +76,16 @@ def primary_assignment(documents: Path, train_vectors: Path, seed: int, nlist: i
 
 def locality(ids: np.ndarray, physical_slot: np.ndarray, segment_rows: int) -> dict:
     touched = []
+    fetched_rows = []
     for row in ids:
         blocks = np.unique(physical_slot[row] // segment_rows)
         touched.append(float(blocks.size))
+        fetched_rows.append(int(sum(min(N, (int(block) + 1) * segment_rows) - int(block) * segment_rows
+                                   for block in blocks)))
     codec_bytes = {}
     for codec, width in CODEC_WIDTHS.items():
         useful = ids.shape[1] * width
-        fetched = [value * segment_rows * width for value in touched]
+        fetched = [value * width for value in fetched_rows]
         codec_bytes[codec] = {
             "logical_useful_bytes": useful,
             "fetched_bytes_p50": percentile(fetched, .50),
@@ -97,6 +100,7 @@ def locality(ids: np.ndarray, physical_slot: np.ndarray, segment_rows: int) -> d
         "touched_blocks_p50": percentile(touched, .50),
         "touched_blocks_p95": percentile(touched, .95),
         "touched_blocks_p99": percentile(touched, .99),
+        "samples_fetched_rows": fetched_rows,
         "codec_bytes": codec_bytes,
         "samples_touched_blocks": [int(value) for value in touched],
     }
@@ -155,6 +159,8 @@ def main() -> None:
     for name in ("documents", "train_vectors", "output", "fixture_root", "payload_root"):
         if getattr(args, name) is None:
             parser.error(f"--{name.replace('_', '-')} is required")
+    if args.route_manifest is None:
+        parser.error("--route-manifest is required")
     assigned, order, centroids = primary_assignment(args.documents, args.train_vectors, args.seed, args.nlist, args.train_rows)
     assignment_output = args.assignment_output or args.output.with_suffix(".assignment.i4")
     permutation_output = args.permutation_output or args.output.with_suffix(".permutation.i4")
@@ -221,6 +227,7 @@ def main() -> None:
         "documents": N,
         "queries": 305,
         "dimension": D,
+        "fixture_manifest_path": str(payload_manifest),
         "fixture_manifest_sha256": sha256(payload_manifest),
         "route_model": {"nlist": args.nlist, "seed": args.seed, "train_rows": args.train_rows,
                          "documents_sha256": sha256(args.documents), "train_vectors_sha256": sha256(args.train_vectors),

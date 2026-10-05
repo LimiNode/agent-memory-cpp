@@ -33,7 +33,7 @@ The compact receipt was generated at:
 
 ```text
 tmp/route-local-ordering-screen.result.json
-receipt SHA-256: 18f4865da3730019302a55d3d5066693e4261656f186b2ace91d46923e6b2d04
+receipt SHA-256: 76cf5e890c6f6842b705f310359b9cc312df85dbb6bfa914974de21b1fa90fdc
 permutation SHA-256: e086e1b2c581bcb67e14b14c866be95724d1b91abbf94eedb3c0060ad07ba6b6
 ```
 
@@ -54,8 +54,10 @@ preserving exactly the same candidate IDs.
 | Modern-R4 top128 | 89 / 100 / 103 | 26 / 41 / 46 |
 
 For TQ1+PQ8 (64 B/doc), the corresponding median fetched bytes changed from
-64,225,280 to 14,942,208 for Prototype-IVF `route5000`, and from 64,225,280
-to 37,224,448 for Modern-R4 `route5000`. The receipt contains equivalent
+64,000,000 to 14,716,928 for Prototype-IVF `route5000`, and from 64,000,000
+to 36,999,168 for Modern-R4 `route5000`. These values account for the short
+final physical segment exactly rather than modeling every segment as full.
+The receipt contains equivalent
 per-codec byte and amplification metrics for all four payload widths.
 
 ## Compression result
