@@ -291,10 +291,12 @@ source, but an external edit may legitimately produce a new block identity and
 broader re-chunking frontier.
 
 For a mostly textual document, blocks may be materialized into a normalized
-UTF-8 body stream. Segments reference block IDs and local ranges, or body frame
-ranges when the body is immutable. Absolute byte offsets may be cached for a
-specific body generation but must not be the only durable identity for an
-editable block tree.
+UTF-8 body stream. Segment locators use stable block-local ranges or canonical
+decoded-body ranges. Physical frame IDs and frame-local ranges are
+generation-specific resolution/cache metadata; they must never participate in
+durable `Segment` identity. Absolute byte offsets may be cached for a specific
+body generation but must not be the only durable identity for an editable block
+tree.
 
 For a conversation, entries are the canonical blocks and may remain separate
 small records. For memory, atomic observations/facts/events are canonical
@@ -495,7 +497,7 @@ snapshot/export profile and must provide an equivalent manifest, frame index,
 atomic generation publication and crash recovery before it is used as a primary
 mutable store.
 
-### 6.3 Backend Roles
+### 7.1 Backend Roles
 
 MDBX is the canonical/default first-party backend. SQLite is a first-class
 alternative backend only when it passes the domain-oriented storage
