@@ -41,8 +41,9 @@ python tools/agent-memory-bench/audit-incremental-edit-screen.py \
   --receipt tmp/gate-b-incremental-edit.result.json
 ```
 
-The full receipt is generated under ignored `tmp/`; the compact summary is the
-machine-readable committed result for this research line:
+The full machine-readable receipt is committed at
+`guides/experiments/2026-10-06-incremental-edit-reindex-screen.receipt.json`;
+the compact summary for tables is
 `guides/experiments/2026-10-06-incremental-edit-reindex-screen.result.json`.
 The measured receipt SHA-256 is
 `76351fe10379209da978e940ecadb4ace0e2d7d51edcb25d10217a07c0839cb9`; it was
