@@ -46,18 +46,26 @@ The full machine-readable receipt is committed at
 the compact summary for tables is
 `guides/experiments/2026-10-06-incremental-edit-reindex-screen.result.json`.
 The measured receipt SHA-256 is
-`76351fe10379209da978e940ecadb4ace0e2d7d51edcb25d10217a07c0839cb9`; it was
+`e1685e1b2c96d236766588f5412250f45987c232a6a0c69bfd61ef8ecd006aa4`; it was
 generated with runner source commit
-`8c77480803405bedb574ef6d5c4798ef847f0a77`. Evidence paths in the receipt are
+`31114e5c8639641ed7f2c7d0d72c445545052fe3`. Evidence paths in the receipt are
 logical/relative names only.
 
 ## Result
 
 The replay produced 192 rows (`12 × 2 chunkers × 4 contexts × 2 policies`) and
-all 192 rows reached exact logical parity with the independent full-rebuild
-oracle. The auditor independently reconstructs the fixture, applies every
-mutation, rebuilds all derived state, recomputes reuse/invalidation/frontiers,
-and checks the receipt rather than trusting totals.
+the states are intentionally split by scheduling policy:
+
+- 96/96 eager current states equal the independent full-rebuild oracle;
+- 96/96 deferred current states satisfy the retained-stale and pending-new
+  invariants (deferred current is not expected to equal the oracle while work
+  is pending);
+- 192/192 eventual states equal the independent full-rebuild oracle.
+
+The auditor independently reconstructs the fixture, applies every mutation,
+rebuilds all derived state, recomputes reuse/invalidation/frontiers, checks
+stale payload digests against the old state, and checks the receipt rather than
+trusting totals.
 
 ### Bounded profile
 
@@ -68,16 +76,22 @@ expands it to the whole document. Metadata-derived context invalidates all
 segments only for a metadata edit, while content edits remain segment-local.
 
 Across the 48 eager rows for this profile/context matrix, the modeled canonical
-bytes rewritten were:
+text changes and derived projection work were:
 
-| Context profile | Reused segment records | Invalidated/new records | Modeled bytes rewritten |
-|---|---:|---:|---:|
-| no_context | 170 | 10 | 791 |
-| section_local | 125 | 55 | 4,688 |
-| document_global | 30 | 150 | 12,267 |
-| metadata_derived | 155 | 25 | 2,018 |
+| Context profile | Reused segment records | Invalidated/new records | Canonical text bytes changed | Derived text bytes reprocessed |
+|---|---:|---:|---:|---:|
+| no_context | 186 | 89 | 1,378 | 13,058 |
+| section_local | 141 | 134 | 1,378 | 16,955 |
+| document_global | 46 | 229 | 1,378 | 24,534 |
+| metadata_derived | 163 | 112 | 1,378 | 15,512 |
 
-These are logical fixture byte counts, not storage write or latency results.
+`canonical_text_bytes_changed` counts only inserted, deleted, or modified
+canonical UTF-8 text. Metadata-only, move-only, and normalized no-op cases are
+zero on this axis. `derived_text_bytes_reprocessed` is the input text covered
+by recomputed derived records and can be nonzero even when canonical text bytes
+did not change (for example, a move changes structure or a metadata-derived
+projection depends on document metadata). These are logical fixture byte
+counts, not storage write or latency results.
 
 ### Honest fallback profile
 
@@ -94,10 +108,13 @@ window is not accepted.
 ### Deferred recomputation
 
 Deferred rows retain stale records with their old context/projection digests, but
-the strict-current surface excludes every retained stale segment. The eventual
-recompute frontier is recorded separately and converges to the same full-oracle
-state. There were 78 rows with retained stale records; all 78 excluded them from
-strict-current results.
+the strict-current surface excludes every retained stale segment and every
+pending-new segment. The eventual recompute frontier is recorded separately and
+converges to the same full-oracle state. There were 78 rows with retained stale
+records; all 78 excluded them from strict-current results. Pending-new records
+may reuse the same segment identity as a retained stale record: the old payload
+remains in the deferred state, while the new payload is absent until eventual
+recomputation.
 
 ## Interpretation
 

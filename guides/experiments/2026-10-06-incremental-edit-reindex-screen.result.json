@@ -1,6 +1,9 @@
 {
+  "deferred_current_consistency_rows": 96,
   "deferred_rows": 96,
   "deferred_stale_excluded_rows": 78,
+  "eager_current_oracle_parity_rows": 96,
+  "eventual_oracle_parity_rows": 192,
   "fallback_cases": [
     "delete-block",
     "first-block",
@@ -22,20 +25,20 @@
     "no production storage or latency claim"
   ],
   "mutation_cases": 12,
-  "oracle_parity_rows": 192,
-  "receipt_sha256": "76351fe10379209da978e940ecadb4ace0e2d7d51edcb25d10217a07c0839cb9",
+  "receipt_sha256": "e1685e1b2c96d236766588f5412250f45987c232a6a0c69bfd61ef8ecd006aa4",
   "result_rows": 192,
   "runner": {
-    "git_head": "8c77480803405bedb574ef6d5c4798ef847f0a77",
+    "git_head": "31114e5c8639641ed7f2c7d0d72c445545052fe3",
     "path": "run-incremental-edit-screen.py",
     "revision_semantics": "repository HEAD at execution; source SHA-256 binds working-tree content",
-    "sha256": "9195b8b2a2912196260d24d209cf123793bdefefd600ac21ada8247f1cbe9653"
+    "sha256": "713187e099a5df686271b3cf664b806c4d058d2f82bdaf6ce79e158ef32c425b"
   },
   "scenarios": [
     {
-      "canonical_bytes_rewritten": 109,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 109,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -44,9 +47,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 440,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 440,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 5,
@@ -55,9 +59,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -66,9 +71,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 109,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 109,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -77,9 +83,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -88,9 +95,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -99,9 +107,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -110,9 +119,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "modify-paragraph",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -121,9 +131,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 38,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 38,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 1,
@@ -132,9 +143,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 471,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 471,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 6,
@@ -143,9 +155,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1265,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1265,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 16,
@@ -154,9 +167,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 38,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 38,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 1,
@@ -165,9 +179,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 1265,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1265,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 8,
@@ -176,9 +191,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1265,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1265,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 8,
@@ -187,9 +203,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1265,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1265,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 8,
@@ -198,9 +215,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1265,
+      "canonical_text_bytes_changed": 38,
       "case": "insert-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1265,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 8,
@@ -209,9 +227,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 0,
@@ -220,9 +239,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 331,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 331,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 4,
@@ -231,9 +251,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1125,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1125,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 14,
@@ -242,9 +263,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 0,
@@ -253,9 +275,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1125,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1125,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 7,
@@ -264,9 +287,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1125,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1125,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 7,
@@ -275,9 +299,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1125,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1125,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 7,
@@ -286,9 +311,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1125,
+      "canonical_text_bytes_changed": 102,
       "case": "delete-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1125,
       "fallback": true,
       "invalidated_segments": 14,
       "new_segments": 7,
@@ -297,9 +323,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 102,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 102,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -308,9 +335,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 433,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 433,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 5,
@@ -319,9 +347,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -330,9 +359,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 102,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 102,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -341,9 +371,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 10,
       "new_segments": 8,
@@ -352,9 +383,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 10,
       "new_segments": 8,
@@ -363,9 +395,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 10,
       "new_segments": 8,
@@ -374,9 +407,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-within-section",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 10,
       "new_segments": 8,
@@ -385,9 +419,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 102,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 102,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -396,9 +431,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 866,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 866,
       "fallback": false,
       "invalidated_segments": 10,
       "new_segments": 10,
@@ -407,9 +443,10 @@
       "reused_segments": 5
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -418,9 +455,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 102,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 102,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -429,9 +467,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 12,
       "new_segments": 8,
@@ -440,9 +479,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 12,
       "new_segments": 8,
@@ -451,9 +491,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 12,
       "new_segments": 8,
@@ -462,9 +503,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "move-between-sections",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": true,
       "invalidated_segments": 12,
       "new_segments": 8,
@@ -473,9 +515,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 32,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 32,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -484,9 +527,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 440,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 440,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 5,
@@ -495,9 +539,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -506,9 +551,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 32,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 32,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -517,9 +563,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -528,9 +575,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -539,9 +587,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -550,9 +599,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "heading-change",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -561,9 +611,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -572,9 +623,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -583,9 +635,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -594,9 +647,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -605,9 +659,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -616,9 +671,10 @@
       "reused_segments": 8
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -627,9 +683,10 @@
       "reused_segments": 8
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -638,9 +695,10 @@
       "reused_segments": 8
     },
     {
-      "canonical_bytes_rewritten": 1227,
+      "canonical_text_bytes_changed": 0,
       "case": "metadata-only",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1227,
       "fallback": false,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -649,9 +707,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 109,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 109,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -660,9 +719,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 440,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 440,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 5,
@@ -671,9 +731,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -682,9 +743,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 109,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 109,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -693,9 +755,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -704,9 +767,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -715,9 +779,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -726,9 +791,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 109,
       "case": "window-boundary",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -737,9 +803,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 230,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 230,
       "fallback": false,
       "invalidated_segments": 2,
       "new_segments": 2,
@@ -748,9 +815,10 @@
       "reused_segments": 13
     },
     {
-      "canonical_bytes_rewritten": 459,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 459,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 5,
@@ -759,9 +827,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1253,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1253,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -770,9 +839,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 230,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 230,
       "fallback": false,
       "invalidated_segments": 2,
       "new_segments": 2,
@@ -781,9 +851,10 @@
       "reused_segments": 13
     },
     {
-      "canonical_bytes_rewritten": 1253,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1253,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -792,9 +863,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1253,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1253,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -803,9 +875,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1253,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1253,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -814,9 +887,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1253,
+      "canonical_text_bytes_changed": 230,
       "case": "multi-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1253,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -825,9 +899,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 32,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 32,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -836,9 +911,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 440,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 440,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 5,
@@ -847,9 +923,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -858,9 +935,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 32,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 32,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -869,9 +947,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -880,9 +959,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -891,9 +971,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -902,9 +983,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 32,
       "case": "first-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -913,9 +995,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 37,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 37,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -924,9 +1007,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 368,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 368,
       "fallback": false,
       "invalidated_segments": 5,
       "new_segments": 5,
@@ -935,9 +1019,10 @@
       "reused_segments": 10
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": false,
       "invalidated_segments": 15,
       "new_segments": 15,
@@ -946,9 +1031,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 37,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 37,
       "fallback": false,
       "invalidated_segments": 1,
       "new_segments": 1,
@@ -957,9 +1043,10 @@
       "reused_segments": 14
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -968,9 +1055,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -979,9 +1067,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -990,9 +1079,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 1234,
+      "canonical_text_bytes_changed": 37,
       "case": "last-block",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 1234,
       "fallback": true,
       "invalidated_segments": 8,
       "new_segments": 8,
@@ -1001,9 +1091,10 @@
       "reused_segments": 0
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -1012,9 +1103,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -1023,9 +1115,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -1034,9 +1127,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -1045,9 +1139,10 @@
       "reused_segments": 15
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "no_context",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -1056,9 +1151,10 @@
       "reused_segments": 8
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "section_local",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -1067,9 +1163,10 @@
       "reused_segments": 8
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "document_global",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
@@ -1078,9 +1175,10 @@
       "reused_segments": 8
     },
     {
-      "canonical_bytes_rewritten": 0,
+      "canonical_text_bytes_changed": 0,
       "case": "noop-normalized",
       "context_profile": "metadata_derived",
+      "derived_text_bytes_reprocessed": 0,
       "fallback": false,
       "invalidated_segments": 0,
       "new_segments": 0,
