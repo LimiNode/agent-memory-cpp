@@ -94,10 +94,19 @@ Required capabilities:
 | Durable global identity (optional) | `GlobalKnowledgeUnitId`, `KnowledgeUnitRef`, identity-scheme declaration | `global_unit_id_to_local_id` profile delta | import/export binding and incompatible-scheme rejection | cross-workspace federation | `knowledge-units-roadmap.md`, `dbi-manifest.yaml` |
 | Common blob digest value contract | algorithm-tagged `BlobDigest` equality/encoding | none; value type only | digest round-trip and cross-adapter fingerprint fixtures | catalog/blob-store operations | `artifact-provenance-roadmap.md`, `translation-adapters-roadmap.md` |
 | Persisted translation projection (optional) | adapter-owned `TranslationPolicy`, `TranslatedCanonical` projection and provenance | existing `unit_projections` | original citation, adapter fingerprint drift, deterministic fake translator | query routing/pivoting | `translation-adapters-roadmap.md` |
+| Canonical text content and editing foundation | `ICanonicalContentStore`, `ICanonicalContentEditor`, read/materialize/edit, `ContentChangeSet` | profile-selected body/content-block stores; any MDBX DBI delta must be owned by the physical TZ | canonical normalized UTF-8 document body, stable block identity, structured/Markdown materialization, random section/segment reads, optimistic edit, stale-edit conflict, COW generation, targeted invalidation foundation | PDF/media adapters, non-text artifact-retention implementation, dictionary trainer | `canonical-content-storage-roadmap.md` |
 
 M1b may add domain maps and playbooks as `KnowledgeUnitKind` values, but they
 must be canonical, versioned objects that cite evidence; they are not just
 chunks from source documents.
+
+The canonical-content contract is shared across domain forms, but this M1b row
+covers only the normalized-text `Document` vertical slice. Conversation /
+`SessionEventStream` integration is a later M2 profile, and
+perspective/epistemic-rich `AgentMemory` integration remains governed by the
+later M2/A-lane milestones. M1b retention semantics and reprocessing-frontier
+types are part of the contract; non-text artifact retention and adapters are
+implementation work deferred to the artifact/multimodal profile.
 
 ### M1c - Runtime Maintenance
 
@@ -129,8 +138,8 @@ M2 may include graph expansion, speaker-aware chat, compiled wiki, query-time
 multilingual routing/pivoting and evaluation, richer context planning, CLI, migration tools, ANN backends,
 advanced mutation policies, artifact provenance profiles, and profile-specific
 golden datasets. An artifact provenance profile adds stable Source/Revision
-identity, immutable original bytes, versioned representations, typed evidence
-locators and segment-to-Chunk materialization. It is optional for M2, but a
+identity, source/artifact retention policy, canonical normalized representations,
+typed evidence locators and segment-to-Chunk materialization. It is optional for M2, but a
 public non-text source connector must not bypass this contract.
 
 Graph expansion may enter M2 only after its Relation-owned graph substrate
@@ -253,6 +262,7 @@ incomparable vector-search score.
 | `memory-stacks-roadmap.md` | Normative for profiles and ADRs; milestone split delegated here | Capability model |
 | `knowledge-base-roadmap.md` | Normative for retrieval/store contracts | Must follow this file for M0/M1 scope |
 | `artifact-provenance-roadmap.md` | Normative for M2 artifact profiles | Required before public non-text connectors; defines a narrow M1a text-only derived-index exception |
+| `canonical-content-storage-roadmap.md` | Normative design contract; implementation staged by this file | Domain-specific canonical content, stable blocks, read/materialize/edit and physical encoding generations |
 | `knowledge-activation-roadmap.md` | Normative for activation/planning concepts; implementation staged by this file | Domain maps, playbooks, soft routing |
 | `agent-runtime-integration-roadmap.md` | Proposal / A-lane | Cognitive runtime integration without core execution |
 | `mdbx-containers-extension-tz.md` | Normative for physical DBI manifest and upstream primitive contracts | Must track exact upstream compatibility snapshots |

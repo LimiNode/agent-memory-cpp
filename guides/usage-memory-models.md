@@ -252,11 +252,17 @@ with vector search, and a markdown wiki rewritten by a maintainer agent on a
 [Source: Karpathy talks on LLM-as-OS (2025)]
 <br>[Source: internal note — no public source available. Path: ai-agent-playbook/concepts/ai-agents/Трёхслойная память для AI-агентов - метод Карпати.md]
 
-**On `agent-memory-cpp` mapping.** Layer 1 (conversations) → file-system
-storage, not in-scope. Layer 2 (facts) → `AgentLongTermMemoryStack` with
+**On `agent-memory-cpp` mapping.** Layer 1 (conversations) → the planned
+`Conversation` / `SessionEventStream` domain store with structured
+materialization; it is in scope as a separate canonical form from documents.
+Layer 2 (facts) → `AgentLongTermMemoryStack` with
 `enable_fact_payload = true`, optional dense vectors. Layer 3 (wiki) →
 `CompiledWikiStack` with `enable_compiled_article = true` and a
 `SummaryPromotionJob`-driven maintainer loop.
+
+See [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md)
+for the shared substrate and the distinction between conversation entries,
+document revisions and memory records.
 
 **Use it when:** you want cross-agent memory with a maintainer process and
 can accept the cost of periodic LLM-driven rewriting (every 6 hours is a

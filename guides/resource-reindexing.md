@@ -26,6 +26,10 @@ resource, not only discovered by scanning the whole database.
 - Reindexing one resource must not require a full index rebuild.
 - Reindexing must be idempotent: repeating the same resource update should not
   duplicate derived records.
+- A normalized canonical body or domain content revision may outlive the raw
+  source body according to an explicit retention policy. Re-chunking and
+  re-embedding must use that canonical body without requiring a discarded
+  original.
 - Backends that support transactions should replace resource state and derived
   records atomically.
 - Frequently updated indexes may use generations, tombstones, or stale-entry
@@ -216,12 +220,24 @@ observation. A later document may reuse a retired path without changing the
 older revision's observed location. Artifact-aware profiles carry the same
 observations on the corresponding `SourceRevision` and include them in export.
 
-`pipeline_config_hash` should cover settings that change derived records even
-when source text is unchanged. Examples include chunking settings, parser
-version, embedding model id, normalization policy, signature encoder config,
-index-specific encoding settings, raw source format, compression framing,
-document boundary policy, tokenizer id, token budget, overlap, and safe-boundary
-policy.
+`pipeline_config_hash` is a compatibility name for the logical derivation
+fingerprint used by the current prototype. It must cover settings that change
+decoded canonical content, structure, segmentation or a semantic projection
+even when source bytes are unchanged. Examples include parser and normalizer
+version, chunking settings, embedding model/recipe, lexical analyzer, signature
+encoder, document boundary policy, tokenizer id, token budget, overlap and
+safe-boundary policy.
+
+Physical body encoding is a separate identity. Codec, compression level, frame
+packing, dictionary, encryption, MDBX/file-pack layout and storage generation
+belong to a `PhysicalEncodingDescriptor`/`PhysicalEncodingGeneration`; changing
+them must not invalidate semantic content, segment IDs or embeddings when the
+decoded canonical bytes are identical. New implementations must not add
+physical compression framing to the logical derivation hash.
+
+See [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md)
+for the four identity layers, stable content blocks and the
+read/materialize/edit contract.
 
 Tokenizer-aware ingestion treats source bytes, decompression, document
 boundaries, parser/extractor output, token-budgeted chunking and index
@@ -266,9 +282,17 @@ resource_bodies:
     key   = (resource_id, generation, body_digest)
     value = immutable source bytes or an addressable body/blob reference
 
+body_frames (optional packed-body profile):
+    key   = (body_id, physical_generation, frame_id)
+    value = independently encoded frame plus codec/dictionary/checksum metadata
+
+content_blocks (canonical-content profile):
+    key   = (content_revision_id, block_id)
+    value = stable block kind, parent/order, content digest and payload reference
+
 chunks:
     key   = chunk_id
-    value = chunk text, metadata, resource_id, generation, chunk_index
+    value = segment-backed locator, metadata, resource_id, generation, chunk_index
 
 embeddings:
     key   = chunk_id or embedding_id
@@ -280,7 +304,10 @@ binary_bucket_index:
 ```
 
 The manifest should store enough keys to remove or mark all derived records for
-one resource without scanning unrelated resources.
+one resource without scanning unrelated resources. `body_frames` and
+`content_blocks` are logical profile names, not an addition to the canonical
+MDBX manifest; a profile must declare any physical DBI delta in
+`mdbx-containers-extension-tz.md` before implementation.
 
 ## Reindex Algorithm
 
@@ -307,6 +334,26 @@ parsing a document, calling an embedder, or rebuilding a large derived index:
 If the body digest and ingestion settings did not change, the reindex operation may
 skip expensive work. The skip check must compare both `body_digest` and
 `pipeline_config_hash`.
+
+### Logical edits versus physical repacking
+
+The canonical-content profile exposes read/materialize/edit operations over a
+document, conversation or memory view. An edit is committed against an
+expected revision and produces a `ContentChangeSet` containing changed,
+inserted and removed blocks or entries. It may reuse unaffected blocks and
+frames; dependent SegmentSets and projections are invalidated by dependency,
+not by deleting the whole resource and rebuilding the corpus.
+
+Physical body changes follow a separate copy-on-write path. A new frame,
+compression dictionary or pack generation is written and verified first, then
+an active physical-generation pointer is published atomically. A decoded-body
+digest must match the previous generation before semantic projections remain
+valid. Tombstones and bounded compaction reclaim superseded frames later.
+
+Recompression, dictionary migration and MDBX/file-pack movement therefore do
+not count as resource reindexing when decoded canonical content is unchanged.
+They are storage maintenance jobs with their own receipts, generation and
+recovery rules.
 
 The M0 lexical-first importer requires the source body, raw units, mandatory
 provenance summaries, `Original` projections and lexical indexes before it may

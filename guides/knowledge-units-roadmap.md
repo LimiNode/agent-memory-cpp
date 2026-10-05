@@ -144,10 +144,14 @@ forced to pretend to be `Fact`, `QAPair`, `CompiledArticle` or any other
 curated kind until an explicit normalizer/extractor produces those units.
 
 Native PDF/DOCX/image/audio/video ingestion, OCR and ASR are not M0 text
-fallbacks. They begin with the M2 artifact profile, which retains original bytes
-and emits typed evidence locators. An application may import externally
-extracted text into M0, but it must label it as derived text and must not claim
-an original PDF/page/media citation that the M0 contract cannot validate.
+fallbacks. They begin with the M2 artifact profile, which admits source/revision
+and artifact provenance and emits typed evidence locators. The profile may
+retain original bytes or intentionally promote a verified normalized
+representation under an explicit retention policy. An application may import
+externally extracted text into M0, but it must label it as derived text and
+must not claim an original PDF/page/media citation that the M0 contract cannot
+validate. See [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md)
+for the normalized-body and reprocessing-frontier contract.
 
 ## 3. Common Identity And SourceRef
 

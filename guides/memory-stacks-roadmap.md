@@ -34,7 +34,8 @@ Non-goals документа:
 
 ## 2. Architectural Decision Records (ADR Index)
 
-Сводка архитектурных решений. Полный текст каждого ADR — в секции 3 и далее.
+Сводка архитектурных решений. Полный текст ADR находится в этой спецификации
+или в указанном рядом roadmap-владельце.
 
 | ID | Название | Решение |
 |---|---|---|
@@ -54,7 +55,7 @@ Non-goals документа:
 | ADR-014 | CLI | Отдельный target `agent-memory-cli`, не core library |
 | ADR-015 | Maturity Levels | M0 (MVP) / M1 (Production) / M2 (Advanced) с ship-it критериями |
 | ADR-016 | Raw resources vs normalized units | Raw ResourceBody first-class; card-like KnowledgeUnits are curated derivatives, not mandatory input format |
-| ADR-017 | Translation projections | Original text stays authoritative; translated canonical-language text is an optional derived SearchProjection |
+| ADR-017 | Translation projections | Retained original or durable canonical normalized text remains authoritative under the selected retention policy; translated canonical-language text is an optional derived SearchProjection |
 | ADR-018 | Knowledge activation | One logical corpus with domain maps, playbooks, activation metadata, soft routing, and budgeted context planning |
 | ADR-019 | Agent runtime integration boundary | Memory stores durable cognitive records; runtime owns live cognition and execution |
 | ADR-020 | Perspective orthogonal to Scope | Scope is namespace/ownership; observer/character/authority/partition are components |
@@ -64,6 +65,7 @@ Non-goals документа:
 | ADR-024 | Monotonic evidence | Raw observations/events are append-only except explicit erase policy |
 | ADR-025 | Semantic replication | Memory exports/imports records and conflicts; it does not replicate MDBX pages |
 | ADR-026 | Artifact provenance | Source/Revision/Artifact/Representation/Segment, typed evidence anchors, own catalog/blob truth and derived external-vector adapters |
+| ADR-027 | Canonical content and physical encoding | Document, conversation and memory use different canonical forms over a shared substrate; stable content blocks, materialize/edit, logical derivation identity and physical encoding generations are separate |
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для Bounded BFS + schema introspection (Pattern 5) borrowed from `codebase-memory-mcp` — это extension candidate для `GraphStore` (расширяет capability flag `GraphRelations` поверх substrate из ADR-006 GraphStorage; storage substrate и capability flag — отдельные сущности, не синонимы).
 
@@ -76,9 +78,14 @@ evaluation, policy-selectable mutation, deterministic-first entity resolution,
 typed query/MCP safety and logical index separation.
 
 See [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md) for the
-artifact-aware extension of ADR-016: source revisions, immutable original
-bytes, versioned derived representations, typed evidence locations and the
-separate artifact-processing lineage graph.
+artifact-aware extension of ADR-016: source revisions, retained originals when
+selected by policy, durable normalized representations, typed evidence
+locations and the separate artifact-processing lineage graph.
+
+See [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md)
+for ADR-027: domain-specific canonical content, stable blocks/entries,
+read/materialize/edit, normalized-body retention and the separation between
+semantic projections and physical encoding generations.
 
 See [`milestones.md`](milestones.md) for the normative M0/M1/M2 scope lock.
 This roadmap keeps architectural details, but milestone ownership and ship-it
@@ -141,11 +148,17 @@ Raw resources являются first-class input/storage layer, а card-like
 extracted `.pdf`, transcript, log или playbook не требует предварительной
 ручной конвертации в карточку. Если вход не содержит curated schema, importer
 создаёт минимальный generic document unit и связывает его с raw body через
-`ResourceId`/`SourceRef`.
+`ResourceId`/`SourceRef`. Профиль может дополнительно принять проверенное
+нормализованное представление как durable canonical body; сохранение исходного
+raw body тогда определяется retention policy.
 
 ```text
 RawResource / ResourceBody
-  original bytes or extracted text, revisions, codec, content hash
+  retained original or extracted input, revisions, codec, content hash
+
+CanonicalContentRevision
+  normalized body/block tree selected for materialization, re-chunking and
+  re-embedding; may remain after source-original retention ends
 
 KnowledgeUnitEnvelope + Components
   normalized semantic unit: Fact, QAPair, Note, Chunk, Summary, ...
@@ -166,28 +179,33 @@ card schema делает early RAG слишком хрупким. При это�
 нужны для фильтров, trust policy, lifecycle, compaction, graph relations and
 evaluation. Поэтому система поддерживает оба уровня:
 
-- raw resources обеспечивают faithful citation, export, re-chunking and
-  drill-down;
+- retained raw resources обеспечивают faithful original citation, export,
+  re-parsing and drill-down;
+- a durable canonical normalized body can provide materialization, re-chunking
+  and re-embedding after the original is intentionally discarded;
 - normalized units дают controlled semantics and policy hooks;
 - compaction/summarization может позже вывести curated facts/cards/summaries
   из raw document units.
 
 ### 3A.3. Storage boundary
 
-Raw body bytes не хранятся в envelope, `unit_components`,
-`unit_projections` или reverse indexes. Они живут в `ResourceBodyStore`
-(MDBX-backed или file-pack backend), а search indexes хранят ids, compact
-postings, projections and source ranges. См. `mdbx-containers-extension-tz.md`
-§12.9 and `optimization-roadmap.md` §"Raw Resource Body Compression".
+Raw and canonical body bytes не хранятся в envelope, `unit_components`,
+`unit_projections` или reverse indexes. Они живут в `ResourceBodyStore`/
+`IArtifactBodyStore` (MDBX-backed, file-pack or other backend), а search
+indexes хранят ids, compact postings, projections and source/block ranges. См.
+`mdbx-containers-extension-tz.md` §12.9,
+`optimization-roadmap.md` §"Raw Resource Body Compression" и
+`canonical-content-storage-roadmap.md`.
 
 ## 3B. ADR-017: Translation Projections
 
 ### 3B.1. Решение
 
 Перевод является optional derived layer поверх ingestion/retrieval, а не
-обязательным форматом хранения. Оригинальный resource body и
-`SearchProjection::Original` остаются authoritative для цитирования,
-re-chunking, export и forensic review. Если profile включает
+обязательным форматом хранения. Retained original body либо durable canonical
+normalized body и `SearchProjection::Original` остаются authoritative в рамках
+выбранной retention/reprocessing policy для цитирования, re-chunking и export;
+forensic review и повторный parsing требуют retained original. Если profile включает
 `TranslationProjection`, adapter может создать дополнительную
 `SearchProjection::TranslatedCanonical` в canonical language профиля.
 

@@ -15,10 +15,10 @@ identity, storage, provenance, retrieval and materialization contracts that
 make their output inspectable and replaceable.
 
 The default deployment is self-contained: `agent-memory-cpp` owns canonical
-catalog metadata, raw bytes and lexical/dense indexes through its own stores
-and MDBX adapters. An external vector service is an optional derived-index
-adapter only; it never owns canonical source bytes, provenance or citation
-truth.
+catalog metadata, retained source/canonical bodies and lexical/dense indexes
+through its own stores and MDBX adapters. An external vector service is an
+optional derived-index adapter only; it never owns canonical source bytes,
+provenance or citation truth.
 
 This guide extends, rather than replaces:
 
@@ -29,6 +29,9 @@ This guide extends, rather than replaces:
   context assembly;
 - [mdbx-containers-extension-tz.md](mdbx-containers-extension-tz.md) for
   MDBX-backed raw-body layouts and generic storage boundaries.
+- [canonical-content-storage-roadmap.md](canonical-content-storage-roadmap.md)
+  for normalized canonical bodies, stable content blocks, read/materialize/edit
+  operations and the separation between logical content and physical encoding.
 
 ## 2. Design Rules
 
@@ -36,9 +39,12 @@ This guide extends, rather than replaces:
    `Chunk`, `Summary`), never a file format such as PDF, image or video.
 2. A logical source and a fetched or imported revision have different,
    stable identities.
-3. Original bytes are immutable artifacts. Text extraction, OCR, transcripts,
-   layout JSON, captions and translations are versioned representations, not
-   source truth.
+3. When retained, original bytes are immutable artifacts. Text extraction,
+   OCR, transcripts, layout JSON, captions and translations are versioned
+   representations. A profile may discard an original after verified
+   canonicalization; in that case the retained normalized representation is
+   the durable retrieval source, and citations must not claim original-page or
+   original-byte materialization.
 4. Retrieval works over addressable segments and their projections, never over
    an entire PDF, image or video as one opaque record.
 5. Evidence points to a typed, renderable location in source material. A
@@ -47,6 +53,11 @@ This guide extends, rather than replaces:
 6. Artifact-processing lineage is separate from the semantic knowledge graph.
 7. Binary payloads are materialized only when the downstream runtime requests
    them; they are not automatically inserted into an LLM text context.
+
+The canonical-content/editing rules, including `KeepOriginal` versus
+`DiscardAfterVerifiedCanonicalization`, stable content blocks and
+physical-encoding generations, are normative in
+[`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md).
 
 ## 3. Identity Model
 
@@ -345,6 +356,15 @@ creates a new representation. Translation projections defined in
 [translation-adapters-roadmap.md](translation-adapters-roadmap.md) are one
 specialized representation/projection path and retain their existing package
 provenance requirements.
+
+One representation may be admitted as a durable canonical normalized body when
+its `kind`/role is explicitly `canonical_normalized`, its processor coverage
+and parameters are complete under the profile policy, and its decoded digest is
+recorded. This does not make the representation an original source artifact.
+The canonical-content profile may use it for re-chunking, materialization and
+re-embedding after a retained original has been removed. See
+[canonical-content-storage-roadmap.md](canonical-content-storage-roadmap.md)
+for the block, edit and reprocessing-frontier contract.
 
 ### 3.5 Segment Sets And Knowledge Units
 
@@ -867,12 +887,15 @@ It is likewise deferred and does not make a model adapter part of the core.
 
 `Context` carries text, `SourceRefSummary`, and typed
 `MaterializationInstruction` values by default. An instruction names its stable
-anchor, source revision, original artifact and original locator, and constrains
-the requested operation, output and authorization outcome. It is a reference,
-not an implicit byte attachment. A text-only consumer receives excerpt and a
-citation; a multimodal consumer may explicitly request the corresponding page,
-frame, crop or clip. A transcript/OCR-derived excerpt must carry its derived
-representation label and never masquerade as a direct original quote.
+anchor, source revision and best available materialization target. When the
+original binding is retained, that target may be the original artifact and
+locator; after verified canonicalization it may be the durable normalized
+representation and its locator. It is a reference, not an implicit byte
+attachment. A text-only consumer receives excerpt and a citation; a multimodal
+consumer may explicitly request the corresponding page, frame, crop or clip
+when the required body still exists. A transcript/OCR-derived excerpt must
+carry its derived-representation label and never masquerade as a direct
+original quote.
 
 ## 7. Persistence, Retention And Backup
 
@@ -1097,7 +1120,8 @@ delete propagation and benchmark parity against the library-owned baseline.
 
 ### Vertical slices after contracts
 
-The first format slice should cover PDF/document/image input: original bytes,
+The first format slice should cover PDF/document/image input: retained original
+bytes when policy selects them or a verified canonical normalized body,
 structured representation, page/block locators, extracted figures and
 segment-backed chunks. Video/audio is a later slice: original video, audio,
 timestamped transcript, scene/keyframe metadata, OCR/description projections
@@ -1105,8 +1129,8 @@ and on-demand frame/clip materialization.
 
 Concrete Docling, FFmpeg, OCR, ASR and vision implementations remain adapters.
 The core acceptance test is the same regardless of provider: a retrieval hit
-can cite, validate and, when authorized, materialize its exact original source
-location.
+can cite, validate and, when authorized, materialize its exact retained source
+location or the strongest available canonical representation locator.
 
 Minimum evaluation gates are:
 

@@ -220,7 +220,13 @@ See [`compression-is-intelligence-roadmap.md`](compression-is-intelligence-roadm
 | Index-primary | Vector DB / graph store — источник истины; raw текст — производный | Mem0, Zep, A-MEM, lifemodel | Быстрый retrieval, но ре-индексация при изменении данных |
 | Files-primary | Markdown / files — источник истины; индекс — пересобираемый кэш | Self-Evolving Memory (Cole Medin), NOUZ, Карпати Wiki | Простой rollback через git, но медленнее retrieval пока индекс не построен |
 
-Наш стек — **index-primary с отдельным raw resource store**: `IResourceStore` хранит raw bytes, индексы в MDBX пересобираются через targeted reindexing (см. [`resource-reindexing.md`](resource-reindexing.md) и `lexical-search-roadmap.md` §Targeted Reindexing). Это компромисс: hot path работает по индексу, raw поддерживается для re-derivation и для новых chunker'ов.
+Наш стек — **index-primary с отдельным body store**: `IResourceStore` хранит
+retained raw bytes и/или durable canonical normalized bodies, индексы в MDBX
+пересобираются через targeted reindexing (см.
+[`resource-reindexing.md`](resource-reindexing.md) и
+`lexical-search-roadmap.md` §Targeted Reindexing). Это компромисс: hot path
+работает по индексу, а reprocessing frontier явно зависит от выбранной
+retention policy. См. [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md).
 
 ## §6. Architectural Patterns Emerging from Comparison
 

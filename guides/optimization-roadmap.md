@@ -321,12 +321,17 @@ struct CompressedBlobHeader final {
 };
 ```
 
+- This value sketch is sufficient for an experiment, but durable body storage
+  uses an algorithm-tagged decoded-content digest rather than relying on the
+  prototype `uint64_t` hash alone.
 - Store hashes of uncompressed content so change detection does not depend on a
   codec, level, or dictionary choice.
-- Keep dictionaries identified by stable `dictionary_id` values.
-- Note: per ADR-007, embedding vectors share the same `CompressionCodec`
-  pipeline as text payloads; dictionaries are still trained per domain
-  (text chunks, binary bucket lists, embedding blobs).
+- Keep dictionaries identified by a durable dictionary identity and digest.
+- Body compression and vector representation are separate contracts. The same
+  low-level codec value type may be reused, but text-trained dictionaries must
+  not be applied to packed vector payloads, and vector quantization/codecs must
+  not be treated as ordinary body compression. Each domain has its own
+  descriptor and benchmark.
 
 ### Optional Zstd Adapter
 
@@ -344,10 +349,12 @@ AGENT_MEMORY_HAS_ZSTD
 - Keep `None` as the baseline codec for tests and minimal builds.
 - Treat miniz/zlib or LZ4 as later alternatives, not as the first required
   implementation.
-- Train separate dictionaries for different payload domains, for example text
-  chunks, binary bucket lists, and embedding blobs.
-- Do not use a text-trained dictionary for binary vector blobs without a
-  benchmark.
+- Dictionary training is post-ingest storage maintenance, not a prerequisite
+  for initial ingestion. Train separate dictionaries only for a declared body
+  domain and publish a new physical encoding generation after held-out
+  evaluation and decoded-digest verification.
+- A text-trained dictionary must never be used for binary vector blobs without
+  a separate benchmark and descriptor contract.
 
 ### Compressed Text Storage
 
@@ -361,8 +368,9 @@ AGENT_MEMORY_HAS_ZSTD
 
 ### Raw Resource Body Compression
 
-Raw resources (`.md`, `.txt`, extracted `.pdf`, transcripts, logs) are a
-separate compression domain from embeddings, postings and generated summaries.
+Raw and canonical normalized bodies (`.md`, `.txt`, extracted `.pdf` text,
+transcripts, logs) are a separate compression domain from embeddings, postings
+and generated summaries.
 The roadmap target is to support both:
 
 - MDBX-backed `ResourceBodyStore`, where body chunks live in primary blob/body
@@ -373,11 +381,15 @@ The roadmap target is to support both:
 
 Resource-body compression contract:
 
-- compression unit is a bounded body chunk, not the entire corpus;
-- each body or chunk records `codec`, `codec_level`, `dictionary_id`,
-  `uncompressed_size`, `uncompressed_hash`, content type and source revision;
-- chunk boundaries should align with ingestion/chunking offsets when feasible
-  so citation drill-down does not decompress unrelated text;
+- compression unit is a bounded independently readable body frame, not the
+  entire corpus;
+- each body/frame records `codec`, `codec_level`, dictionary identity/digest
+  when present, `uncompressed_size`, decoded-content digest, content type and
+  logical source/revision;
+- physical frame packing is separate from logical block and `SegmentSet`
+  identity; a frame may contain several adjacent blocks;
+- frame boundaries should preserve bounded random materialization without making
+  every tiny message a separate compressed object;
 - reverse indexes, posting lists and relation indexes store ids/ranges only,
   never inline body bytes;
 - raw body storage is optional profile delta and must be accounted for in
@@ -390,7 +402,9 @@ Benchmarks before enabling compression by default:
 - random chunk read latency;
 - full resource restore/export latency;
 - write amplification during replace/revision updates;
-- dictionary training benefit vs operational complexity.
+- dictionary training benefit vs operational complexity;
+- post-hoc recompression cost and semantic projection invalidation (which must
+  remain zero for byte-identical decoded bodies).
 
 ## Vector Encoding Tasks
 

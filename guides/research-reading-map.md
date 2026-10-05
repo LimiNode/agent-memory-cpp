@@ -9,6 +9,11 @@ Curated bibliography с маппингом paper → roadmap decision для `ag
 Этот документ покрывает academic papers (curated bibliography с paper → roadmap decision mapping).
 Для open-source projects (FAISS, hnswlib, USearch, sqlite-vec, mem0, Graphiti, Cognee, Letta и др.) см. `guides/related-projects.md` с cross-project benchmark plan.
 
+Для storage/content research (Zstandard frames, libmdbx placement, Docling,
+session event streams, CAR packages and audio/music embeddings) см.
+[`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md)
+§11. Его references are design anchors, not production dependencies.
+
 ## 1. Lexical Retrieval
 
 ### BM25 / BM25F
