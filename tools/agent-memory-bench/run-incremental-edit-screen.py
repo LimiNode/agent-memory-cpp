@@ -223,6 +223,8 @@ def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[s
     old_state = build_state(old_doc, profile, context)
     oracle_state = build_state(new_doc, profile, context)
     changed = set(change["changed"]) | set(change["inserted"]) | set(change["removed"]) | set(change["moved"])
+    old_block_ids = all_blocks(old_doc)
+    new_block_ids = all_blocks(new_doc)
     structural = bool(change["inserted"] or change["removed"] or change["moved"])
     fallback = False
     fallback_reason = None
@@ -292,6 +294,10 @@ def derive_case(old_doc: dict[str, Any], new_doc: dict[str, Any], change: dict[s
             "eventual_recomputation_frontier": eventual, "stale_retained": stale,
             "strict_current_segments": strict_current, "reused_segments": reused,
             "new_segments": new_ids, "removed_segments": removed, "projections": projections,
+            "reused_blocks": sorted((old_block_ids & new_block_ids) - changed),
+            "new_blocks": sorted(new_block_ids - old_block_ids),
+            "removed_blocks": sorted(old_block_ids - new_block_ids),
+            "updated_blocks": sorted(set(change["changed"]) | set(change["moved"])),
             "fallback": fallback, "fallback_reason": fallback_reason,
             "canonical_bytes_rewritten": rewritten_bytes,
             "oracle_parity": incremental_state == oracle_state,

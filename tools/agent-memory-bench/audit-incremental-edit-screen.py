@@ -129,6 +129,8 @@ def expected_result(old_doc: dict[str, Any], new_doc: dict[str, Any], change: di
                     profile: str, context: str, mode: str) -> dict[str, Any]:
     old_state, new_state = build_state(old_doc, profile, context), build_state(new_doc, profile, context)
     changed = set(change["changed"]) | set(change["inserted"]) | set(change["removed"]) | set(change["moved"])
+    old_block_ids = {b["id"] for b in old_doc["blocks"]}
+    new_block_ids = {b["id"] for b in new_doc["blocks"]}
     fallback = profile == "windowed_v1" and bool(changed)
     invalidated = set(old_state["segments"]) | set(new_state["segments"]) if fallback else set()
     if not fallback and (changed or (change["metadata_changed"] and context == "metadata_derived")):
@@ -164,6 +166,10 @@ def expected_result(old_doc: dict[str, Any], new_doc: dict[str, Any], change: di
     return {"invalidation_frontier": sorted(invalidated), "recomputation_frontier": scheduled,
             "eventual_recomputation_frontier": eventual, "stale_retained": stale, "strict_current_segments": strict,
             "reused_segments": reused, "new_segments": new_ids, "removed_segments": removed, "projections": projections,
+            "reused_blocks": sorted((old_block_ids & new_block_ids) - changed),
+            "new_blocks": sorted(new_block_ids - old_block_ids),
+            "removed_blocks": sorted(old_block_ids - new_block_ids),
+            "updated_blocks": sorted(set(change["changed"]) | set(change["moved"])),
             "fallback": fallback, "fallback_reason": "window_boundary_resynchronization_unproven" if fallback else None,
             "canonical_bytes_rewritten": rewritten_bytes, "oracle_parity": incremental_state == new_state,
             "final_state_digest": digest(incremental_state),
@@ -209,6 +215,7 @@ def validate(receipt_path: Path) -> None:
         require(row.get("change") == change, f"{case['id']}: change set differs")
         for field in ("invalidation_frontier", "recomputation_frontier", "eventual_recomputation_frontier", "stale_retained",
                       "strict_current_segments", "reused_segments", "new_segments", "removed_segments", "projections",
+                      "reused_blocks", "new_blocks", "removed_blocks", "updated_blocks",
                       "fallback", "fallback_reason", "canonical_bytes_rewritten", "oracle_parity", "final_state_digest", "projection_digests"):
             require(row.get(field) == expected[field], f"{case['id']}/{row['profile']}/{row['context_profile']}/{row['recompute_mode']}: {field} differs")
         require(set(row["stale_retained"]).isdisjoint(row["strict_current_segments"]), f"{case['id']}: stale record leaked into strict current")
