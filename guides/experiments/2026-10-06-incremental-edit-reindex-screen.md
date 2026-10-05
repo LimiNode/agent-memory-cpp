@@ -42,8 +42,13 @@ python tools/agent-memory-bench/audit-incremental-edit-screen.py \
 ```
 
 The full receipt is generated under ignored `tmp/`; the compact summary is the
-machine-readable committed result for this research line. Evidence paths in the
-receipt are logical/relative names only.
+machine-readable committed result for this research line:
+`guides/experiments/2026-10-06-incremental-edit-reindex-screen.result.json`.
+The measured receipt SHA-256 is
+`2d51f9b5fb2cc8a149f4b976912c0db0dcc4e6068917d3ca30bf629bde1bf474`; it was
+generated with runner source commit
+`32285f4bd79c1928e572b2f21959e61073e18769`. Evidence paths in the receipt are
+logical/relative names only.
 
 ## Result
 
