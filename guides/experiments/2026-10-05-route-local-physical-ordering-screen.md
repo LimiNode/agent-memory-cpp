@@ -38,7 +38,11 @@ permutation SHA-256: e086e1b2c581bcb67e14b14c866be95724d1b91abbf94eedb3c0060ad07
 ```
 
 The assignment and permutation arrays are generated evidence in ignored
-`tmp/` files. The auditor verifies both hashes and permutation bijectivity.
+`tmp/` files. The auditor verifies their hashes, bijectivity, and independently
+reconstructs the exact `(primary cell, numeric DocumentId)` lexicographic order
+from the persisted assignment. The canonical route manifest's document and
+training-vector SHA-256 values are also required to match the receipt's source
+binding before locality metrics are accepted.
 
 ## Observed locality result
 

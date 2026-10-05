@@ -29,10 +29,21 @@ def require(condition: bool, message: str) -> None:
         raise AssertionError(message)
 
 
-def validate_permutation(values: np.ndarray, expected_size: int = N) -> None:
+def expected_route_order(assignment: np.ndarray, expected_size: int = N) -> np.ndarray:
+    """Reconstruct the persisted route-local order from canonical assignment."""
+    require(assignment.dtype == np.dtype("<i4"), "assignment dtype must be int32")
+    require(assignment.size == expected_size, "assignment length differs")
+    return np.lexsort((np.arange(expected_size, dtype="<i4"), assignment)).astype("<i4")
+
+
+def validate_permutation(values: np.ndarray, assignment: np.ndarray | None = None,
+                         expected_size: int = N) -> None:
     require(values.dtype == np.dtype("<i4"), "permutation dtype must be int32")
     require(values.size == expected_size, "permutation length differs")
     require(np.array_equal(np.sort(values), np.arange(expected_size, dtype="int32")), "permutation is not bijective")
+    if assignment is not None:
+        require(np.array_equal(values, expected_route_order(assignment, expected_size)),
+                "permutation does not match primary-cell ordering")
 
 
 def percentile(values: list[float], fraction: float) -> float:
@@ -108,7 +119,7 @@ def assert_locality_matches(entry: dict, derived: dict, label: str) -> None:
             require(np.isclose(actual, expected, rtol=0.0, atol=1e-12), f"{label}/{codec}: {field} differs")
 
 
-def validate_route_binding(binding: dict, manifest: dict) -> None:
+def validate_route_binding(binding: dict, manifest: dict, model: dict | None = None) -> None:
     require(binding.get("config_matches") is True, "canonical route configuration is not bound")
     require(binding.get("canonical_nlist") == 256 and binding.get("canonical_training_rows") == 25000,
             "canonical route manifest dimensions differ")
@@ -118,10 +129,29 @@ def validate_route_binding(binding: dict, manifest: dict) -> None:
             "regenerated centroid hash differs")
     require(manifest.get("route_model_sha256") == binding.get("canonical_route_model_sha256"),
             "route model hash differs from manifest")
+    canonical_sources = manifest.get("source_hashes") or {}
+    require(canonical_sources.get("documents") and canonical_sources.get("train_vectors"),
+            "canonical route source hashes are missing")
+    if model is not None:
+        require(model.get("documents_sha256") == canonical_sources["documents"],
+                "document source hash is not bound to canonical route manifest")
+        require(model.get("train_vectors_sha256") == canonical_sources["train_vectors"],
+                "training-vector source hash is not bound to canonical route manifest")
 
 
 def self_test() -> None:
-    validate_permutation(np.arange(N, dtype="<i4"))
+    assignment = np.asarray([1, 0, 1, 0, 1, 0], dtype="<i4")
+    expected = expected_route_order(assignment, expected_size=assignment.size)
+    validate_permutation(expected, assignment, expected_size=assignment.size)
+    swapped = expected.copy()
+    swapped[[0, 1]] = swapped[[1, 0]]
+    try:
+        validate_permutation(swapped, assignment, expected_size=assignment.size)
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("swapped permutation semantics mutation was accepted")
+    validate_permutation(np.arange(6, dtype="<i4"), expected_size=6)
     raw = N * 64
     compressed = raw // 2
     saving = 1.0 - compressed / raw
@@ -151,6 +181,18 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("route binding mutation was accepted")
+    try:
+        validate_route_binding(
+            {"config_matches": True, "canonical_nlist": 256, "canonical_training_rows": 25000,
+             "centroids_hash_equals_manifest_route_model_hash": True,
+             "regenerated_centroids_sha256": "model", "canonical_route_model_sha256": "model"},
+            {"route_model_sha256": "model", "source_hashes": {"documents": "canonical-docs", "train_vectors": "canonical-train"}},
+            {"documents_sha256": "wrong-docs", "train_vectors_sha256": "canonical-train"},
+        )
+    except AssertionError:
+        pass
+    else:
+        raise AssertionError("route source binding mutation was accepted")
     print("route-local-ordering audit self-test PASS")
 
 
@@ -170,7 +212,7 @@ def audit(receipt_path: Path) -> None:
     require(manifest_path.is_file(), "canonical route manifest is missing")
     require(sha256(manifest_path) == binding.get("sha256"), "canonical route manifest hash differs")
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    validate_route_binding(binding, manifest)
+    validate_route_binding(binding, manifest, model)
     order = receipt.get("order") or {}
     require(order.get("policy") == "primary_cell_then_numeric_document_id", "ordering policy differs")
     assignment_path = Path(order.get("assignment_path", ""))
@@ -179,7 +221,7 @@ def audit(receipt_path: Path) -> None:
     assignment = np.fromfile(assignment_path, dtype="<i4")
     permutation = np.fromfile(permutation_path, dtype="<i4")
     require(assignment.size == N and np.all((assignment >= 0) & (assignment < model["nlist"])), "assignment evidence differs")
-    validate_permutation(permutation)
+    validate_permutation(permutation, assignment)
     require(hashlib.sha256(assignment.tobytes()).hexdigest() == order.get("assignment_sha256"), "assignment hash differs")
     require(hashlib.sha256(permutation.tobytes()).hexdigest() == order.get("permutation_sha256"), "permutation hash differs")
     fixture_path = Path(receipt.get("fixture_manifest_path", ""))
