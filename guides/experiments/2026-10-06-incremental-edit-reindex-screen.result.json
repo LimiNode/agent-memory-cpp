@@ -23,13 +23,13 @@
   ],
   "mutation_cases": 12,
   "oracle_parity_rows": 192,
-  "receipt_sha256": "2d51f9b5fb2cc8a149f4b976912c0db0dcc4e6068917d3ca30bf629bde1bf474",
+  "receipt_sha256": "76351fe10379209da978e940ecadb4ace0e2d7d51edcb25d10217a07c0839cb9",
   "result_rows": 192,
   "runner": {
-    "git_head": "32285f4bd79c1928e572b2f21959e61073e18769",
+    "git_head": "8c77480803405bedb574ef6d5c4798ef847f0a77",
     "path": "run-incremental-edit-screen.py",
     "revision_semantics": "repository HEAD at execution; source SHA-256 binds working-tree content",
-    "sha256": "b0157d2e1dae14f34f85d32b5cdbdb728c923e06c7c7545714b4b8fb1e4da9eb"
+    "sha256": "9195b8b2a2912196260d24d209cf123793bdefefd600ac21ada8247f1cbe9653"
   },
   "scenarios": [
     {
