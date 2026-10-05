@@ -582,7 +582,30 @@ original PDF/page citation after the original body is removed.
 - never generalize text dictionary results to learned vector payloads without a
   separate experiment.
 
-### 9.1 Research Gate B — Incremental Edit/Reindex Screen
+### 9.1 Research Gate A — Editable Canonical Content Contract
+
+The docs-only gate is complete only when the implementation team can answer the
+following without choosing a backend-specific binary layout:
+
+- which domain forms are supported (`DocumentRevision`, session/event stream
+  and `KnowledgeUnit`-based memory) and which structure is canonical for each;
+- which block/entry IDs are stable, how supersede/change relations are recorded
+  and what a plain Markdown import is allowed to reuse;
+- how structured export, controlled-editor round-trip and uncontrolled Markdown
+  edits differ, including the ambiguity rule that creates a new revision;
+- how `ContentChangeSet`, context profiles and projection dependencies describe
+  an edit's invalidation frontier;
+- which bytes are canonical decoded content and which records are derived
+  segments, indexes, media projections or physical encodings;
+- how random reads, full materialization, optimistic edits, crash-safe
+  publication and retention frontiers are exposed by the domain contract.
+
+The gate artifact is the reviewed contract and its decision table, not a
+production editor, archive format or storage implementation. Any unresolved
+choice that changes semantic identity must be recorded as an explicit ADR
+before Phase 1 code starts.
+
+### 9.2 Research Gate B — Incremental Edit/Reindex Screen
 
 Before production incremental editing, a deterministic harness must compare an
 incremental path with a full rebuild oracle for at least: one-block modify,
@@ -602,7 +625,7 @@ The research artifact consists of source-bound inputs, a machine-readable
 receipt, an independent fail-closed auditor and mutation self-tests. It does
 not introduce a production editor API.
 
-### 9.2 Research Gate Z0 — Canonical Text Compression
+### 9.3 Research Gate Z0 — Canonical Text Compression
 
 Z0 runs outside MDBX on normalized canonical text/body only. It uses a frozen
 train/held-out split and compares an uncompressed reference, plain Zstd and
