@@ -592,11 +592,29 @@ Primary-source candidates are tracked through the official
 for profile, model-reuse and timing patterns, but its path/size/mtime cache
 identity is not accepted as this project's provenance contract.
 
-The vc.ru and Habr overviews, the small ServerFlow comparison and Reddit
-discussion are secondary or anecdotal evidence. They may suggest candidates,
-localization requirements, hybrid fallback risks and test cases; their model
-rankings, six-image scores and operational anecdotes are not normative quality
-claims or Gate O0 acceptance thresholds.
+#### Secondary Candidate-Discovery / Operational References
+
+These sources are retained for research traceability only. They are secondary,
+anecdotal or operational candidate-discovery material, not primary capability
+authority and not Gate O0 quality evidence:
+
+- [vc.ru IDP/OCR overview](https://vc.ru/services/2730968-obzor-idp-sistem-dlya-raspoznavaniya-dokumentov-v-rossii)
+  — secondary overview for document-workflow and verification questions;
+- [Habr local-LLM OCR article](https://habr.com/ru/articles/971842/)
+  — secondary implementation experiment;
+- [ServerFlow local OCR comparison](https://serverflow.ru/blog/stati/luchshie-lokalnye-ocr-modeli-testy-i-sravnenie-na-realnykh-dokumentakh/)
+  — small operational comparison on real-document fixtures;
+- [Smart Engines OCR for LLM week announcement](https://habr.com/ru/companies/smartengines/news/1089732/)
+  — vendor/community announcement and candidate-discovery source;
+- [LocalLLaMA VLM/PaddleOCR PII-localization discussion](https://www.reddit.com/r/LocalLLaMA/comments/1r8smbk/local_vlms_qwen_3_vl_for_document_ocr_with/)
+  — anecdotal discussion of bounding-box and hybrid fallback requirements;
+- [SanSan OCR local wrapper](https://github.com/SanSan-/ocr-local-wrapper)
+  — operational wrapper reference for local model reuse and output handling.
+
+These links may suggest providers, localization requirements, fallback risks or
+future test cases. They must not supply model rankings, benchmark thresholds or
+acceptance numbers. Gate O0 uses source-bound fixtures, declared metrics and
+primary model/repository documentation instead.
 
 #### 3.4.6. Ownership and maturity
 
