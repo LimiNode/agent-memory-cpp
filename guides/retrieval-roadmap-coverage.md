@@ -19,7 +19,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | ExactVectorIndex | `optimization-roadmap.md` | Docs/tests only | canonical library integration | oracle benchmark |
 | ANN / HNSW | `optimization-roadmap.md` | Roadmap only | implementation and lifecycle | HNSW spike vs exact |
 | Vector compression | `binary-embeddings-roadmap.md`, `advanced-binary-techniques-roadmap.md` | Docs/tests only | codec/index integration | F32/F16/int8 matrix |
-| Hybrid / RRF | `knowledge-base-roadmap.md` | Contract only | candidate trace and fusion | RRF MVP |
+| Hybrid / RRF | `knowledge-base-roadmap.md`, `retrieval-execution-roadmap.md` | Contract only | route-local pools, hard-filter diagnostics and fusion trace | Gate H0 protocol, then RRF MVP |
 | Graph retrieval | `knowledge-activation-roadmap.md` | Roadmap only | graph substrate/traversal | relation-owned graph gate |
 | Context compression | `compaction-roadmap.md`, `compression-is-intelligence-roadmap.md` | Roadmap only | budgeted compressor | no-op/extractive baseline |
 | Query transformation | `knowledge-activation-roadmap.md` | Roadmap only | drift/evaluation hooks | no-op + trace contract |
