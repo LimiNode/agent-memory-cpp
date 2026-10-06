@@ -12,8 +12,9 @@ agent framework.
 
 - [Critical defaults](guides/critical-defaults.md) - mandatory rules for every
   repository task.
-- [Coding agent workflow](guides/coding-agent-workflow.md) - default workflow
-  for file-editing tasks.
+- [Coding agent workflow](guides/coding-agent-workflow.md) - default workflow,
+  context authority, specification before implementation, design provenance,
+  and definition of done.
 - [Project overview](guides/project-overview.md) - scope, current status,
   goals, and non-goals.
 - [Architecture](guides/architecture.md) - DDD-like boundaries, dependency

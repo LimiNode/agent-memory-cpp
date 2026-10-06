@@ -71,10 +71,33 @@ omitting the prefix would be misleading.
 ## Comments And Doxygen
 
 - All comments and Doxygen text must be in English.
-- Prefer `///` Doxygen comments for public APIs.
-- Avoid comments that restate the code.
+- Prefer triple-slash Doxygen comments for public APIs.
+- Explain why the API has its shape and state the contract or invariant; do not
+  translate obvious syntax into English.
 - Add comments for non-obvious constraints, invariants, dependency boundaries,
   ownership rules, or algorithmic choices.
+
+For contract-bearing public types and APIs, document the applicable parts of:
+
+- semantic role and stable identity rules;
+- ownership, lifetime and revision/version semantics;
+- preconditions, postconditions, no-op and conflict behavior;
+- atomicity and thread-safety;
+- dependency boundaries and fail-closed behavior.
+
+When the reason is materially architectural, name the stable repository guide
+and section or an ADR. A reference at file, type or interface level may cover
+several obvious members. Do not add roadmap links to trivial getters, obvious
+constructors, every private helper or ordinary control flow.
+
+Production comments must not use PR numbers, chat transcripts, temporary agent
+prompts, Habr/blog posts, benchmark scratch notes or local filesystem paths as
+normative authority. External sources belong in a guide's research/reference
+section and remain evidence or inspiration; the repository's guide or ADR owns
+the adopted contract.
+
+Do not introduce a custom Doxygen tag merely to encode design provenance. Plain
+stable paths and named sections are sufficient.
 
 Use this tag order when a public API needs detailed documentation:
 
