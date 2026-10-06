@@ -6,6 +6,7 @@
 /// \brief Public aggregate include for base domain value types.
 
 #include "domain/Document.hpp"
+#include "domain/CanonicalContent.hpp"
 #include "domain/Identifiers.hpp"
 #include "domain/KnowledgeUnit.hpp"
 #include "domain/Metadata.hpp"

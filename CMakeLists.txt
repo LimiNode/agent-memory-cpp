@@ -27,6 +27,7 @@ add_library(agent_memory STATIC
     src/agent_memory/chat/Message.cpp
     src/agent_memory/core/LibraryInfo.cpp
     src/agent_memory/domain/Document.cpp
+    src/agent_memory/domain/CanonicalContent.cpp
     src/agent_memory/domain/Identifiers.cpp
     src/agent_memory/domain/KnowledgeUnit.cpp
     src/agent_memory/domain/Metadata.cpp
@@ -85,6 +86,7 @@ add_library(agent_memory STATIC
     src/agent_memory/retrieval/IRetriever.cpp
     src/agent_memory/retrieval/Retrieval.cpp
     src/agent_memory/storage/IDocumentStorage.cpp
+    src/agent_memory/storage/CanonicalContentStore.cpp
     src/agent_memory/storage/IResourceIndexRecordOwnerStorage.cpp
     src/agent_memory/storage/IResourceManifestStorage.cpp
 )
