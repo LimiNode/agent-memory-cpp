@@ -255,7 +255,7 @@ struct CanonicalContentRevision {
 
 struct ContentBlock {
     ContentBlockId id;
-    std::uint64_t revision = 0;
+    std::uint64_t revision = 1; // first published block state
     ContentBlockKind kind;
     std::optional<ContentBlockId> parent_id;
     PositionId position;
@@ -266,10 +266,39 @@ struct ContentBlock {
 ```
 
 The exact public C++ types are implementation work; the invariant is not.
+
+Durable structural placement/order is distinct from a dense edit-command
+sibling ordinal. An edit request may say “insert before sibling N” or “move to
+sibling position N”; that N is resolved against the revision being edited and
+does not become durable block state. The published structure stores a stable
+PositionId or equivalent structural relation. Inserting or deleting an earlier
+sibling must not require rewriting unrelated sibling identities or revisions.
+
+Fractional order keys, tree links, sequence records, a preorder structure record
+or another implementation are all valid if they preserve this invariant. The
+ordinal is an edit command parameter; durable placement is part of the
+published canonical structure.
+
+For M1b, insert accepts `0 <= position <= sibling_count`; the upper bound means
+append. Move accepts `0 <= position <= sibling_count_after_subtree_removal`;
+the upper bound again means append. A larger position fails closed as
+`InvalidEdit`; it is not clamped or interpreted as append.
+
 `ContentBlockId` is stable while a block is reused across revisions. Editing a
 block creates a new block revision or replacement block and records the
 supersede/change relation. Inserting a sibling does not renumber all unrelated
 blocks.
+
+For the M1b text profile, the initial published document revision is 0; each
+subsequent published document revision is the previous revision plus 1. The
+initial published state of every block has block revision 1; subsequent
+published block states advance from the previous block revision by 1. Zero is
+therefore valid for a document revision but is reserved as absent or
+uninitialized for a block revision. Callers do not supply arbitrary initial
+revision numbers. A block revision describes one published logical block state,
+including its canonical payload and structural placement. An existing block
+whose final published state changes advances once for that document commit; an
+unchanged final state keeps its prior revision.
 
 ### 4.1 Stable IDs And Markdown Round-Trip
 
@@ -472,22 +501,82 @@ projection such as Markdown or JSONL. It must not require BM25, embeddings or an
 external model. Asset occurrences are emitted as stable artifact references;
 callers may explicitly request local paths, embedded bytes or media previews.
 
+Materialization follows the canonical structure and traversal order. For a fixed
+revision and materialization options it is deterministic. Markdown and JSONL are
+views, not canonical identity; internal block IDs are hidden from visible prose
+by default. A caller may request a structured manifest or explicit identity
+markers when lossless editing is required.
+
+M1b uses a leaf-only DeleteBlock contract. Deleting a block that still has
+children is rejected as an invalid structure; the operation does not silently
+delete or reparent a subtree. A future profile may add explicit subtree-delete
+or reparent operations with their own provenance and conformance rules.
+
+Initial canonical publication is a backend-neutral coarse operation owned by the
+canonical-content writer/editor contract. An ingestion or extraction
+coordinator may prepare a source representation and invoke this operation, but
+it does not define the canonical publication semantics. Initial publication
+establishes the document identity, document revision 0, stable initial block
+identities, block revision 1 for every initial block, a validated tree and
+durable placement/order, metadata and the active-revision pointer.
+The exact C++ operation name remains implementation work; no backend may omit
+one of these semantic results.
+
 An edit is optimistic and versioned:
 
 ```text
 read revision N
   -> apply block/entry operations
+  -> resolve edit ordinals into durable structure
   -> validate source/structure invariants
-  -> commit revision N+1
-  -> publish ContentChangeSet
+  -> compare the final canonical state with revision N
+  -> if equivalent, return NoChange
+  -> publish no new persistent ContentChangeSet or document revision
+  -> otherwise commit revision N+1
+  -> publish the net ContentChangeSet
   -> update only dependent projections
 ```
 
 A stale `expected_revision` produces a conflict rather than a lost update.
-`ContentChangeSet` records changed, inserted and removed blocks/entries, changed
-metadata, structure ranges and invalidation hints. A chunker may return a local
-invalidated range and reused segments. If it cannot prove local stability, it
-may rechunk the current revision, but it must not rebuild unrelated resources.
+
+ContentChangeSet describes the net difference between the previous published
+canonical revision and the newly published canonical revision; it is not an
+edit-command log. Intermediate commands may be retained in a separate audit or
+editor trace, but they do not by themselves make a block changed or moved.
+
+For example, replacing A with temporary content and then restoring A leaves A
+out of changed_blocks. Moving A and moving it back leaves A out of moved_blocks;
+structure_changed reflects only the final net structure. An existing block
+changed several times in one commit advances its block revision at most once.
+A logical no-op includes identical replacement text, a command sequence that
+returns to the original state, an equivalent metadata update or a move to the
+current placement. It publishes no new persistent `ContentChangeSet` or
+document revision; an API may return an explicit empty `NoChange` result with
+the current revision.
+
+ContentChangeSet records the net changed, inserted, removed and moved
+blocks/entries, net metadata changes, final structure ranges and invalidation
+hints. A chunker
+may return a local invalidated range and reused segments. If it cannot prove
+local stability, it may rechunk the current revision, but it must not rebuild
+unrelated resources. Historical block identities are never reused for a
+different logical block after deletion. An ID is historically used only after it
+appears in a published revision. An insert/delete sequence inside one edit that
+leaves no active block in the published result does not reserve the ID
+permanently; a later published insertion may reuse it. Once an ID has appeared
+in a published revision, deleting it reserves that historical identity for the
+document history.
+
+For M1b, `moved_blocks` uses conservative final-state common-sibling
+placement. A retained block is moved when its parent changes or when its
+ordinal among siblings present in both revisions changes; inserted and removed
+siblings are excluded from that ordinal comparison. Thus `A B C -> A X B C`
+does not mark `B` or `C` moved, while `A B C -> B C A` marks `A`, `B` and `C`
+moved. Moving a block back to its original placement cancels from the net set.
+This rule is deterministic, depends only on the before and after states, and is
+deliberately conservative for invalidation. A future minimal structural-edit
+diagnostic may be derived separately without changing the meaning of
+`ContentChangeSet`.
 
 Physical writes use append/COW semantics with tombstones and later compaction.
 The physical-generation granularity is chosen by the backend: it may be a
@@ -692,7 +781,17 @@ decision.
 
 ## 10. Acceptance Gates
 
-A text canonical-content profile is not complete until it demonstrates:
+A text canonical-content profile is not complete until it demonstrates the
+storage behaviors and semantic conformance cases below.
+
+### Semantic Conformance
+
+All in-memory, MDBX and applicable SQLite implementations must conform
+to the same semantic cases before they are considered interchangeable:
+initial publish/read; historical revision read; stable IDs; insertion without
+unrelated identity or revision churn; move; optimistic conflict; atomic
+multi-operation commit; net ContentChangeSet; logical no-op; historical ID
+non-reuse; leaf-only delete behavior; and invalid-structure failure.
 
 - decode round-trip with canonical content digest verification;
 - random segment/section reads without decoding the whole body;
