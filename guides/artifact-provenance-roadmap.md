@@ -366,6 +366,248 @@ re-embedding after a retained original has been removed. See
 [canonical-content-storage-roadmap.md](canonical-content-storage-roadmap.md)
 for the block, edit and reprocessing-frontier contract.
 
+#### 3.4.1. Document extraction provider boundary
+
+Document parsing, OCR, layout recognition, table extraction, formula
+recognition, captions and VLM descriptions are replaceable producers of
+`Representation`. They are not canonical source truth and they do not write a
+`DocumentRevision` directly. The conceptual boundary is:
+
+```text
+Artifact + ExtractionRecipe + requested capabilities
+        -> extraction provider
+        -> immutable derived Representation + ExtractionReport
+        -> validation/admission policy
+        -> optional canonical normalized body
+        -> SegmentSet and search projections
+```
+
+The provider boundary is runtime-neutral. A future adapter may be a native
+library, subprocess, local HTTP service, Python bridge or remote service. Core
+`agent-memory-cpp` must not depend on PyTorch, Transformers, Paddle, Ollama,
+vLLM, SGLang or a particular model runtime merely to retain this contract. The
+exact public C++ provider interface is intentionally deferred; this subsection
+does not make an unimplemented interface part of the ABI.
+
+An extraction request names an input artifact (or an ordered set of artifacts),
+an `ExtractionRecipe` and the capabilities it asks the provider to attempt. A
+successful provider returns one immutable `Representation`, not a mutable
+`ocr_text` field and not an implicit write into the canonical-content store.
+Compound output is allowed when one processor emits text, layout and tables,
+but each component remains addressable and its capabilities and provenance are
+observable.
+
+Architecture diagrams may call this role
+`IDocumentExtractionProvider`; that name is conceptual until a later API/ABI
+decision. It must not be confused with a concrete Docling, OCR, VLM or service
+adapter.
+
+`ExtractionRecipe` is the conceptual identity of the run. It includes, when
+applicable:
+
+| Recipe component | Examples |
+|---|---|
+| Provider and processor | provider id, processor version, model family/id and exact model revision or artifact digest |
+| Processing assets | tokenizer/processor revision, prompt/template/profile and language hints |
+| Rendering and preprocessing | page renderer, DPI, resize/max-pixels, crop policy and image normalization |
+| Decoding and output | deterministic mode, seed, temperature/beam settings, output schema and table/layout/formula options |
+| Runtime qualifiers | relevant adapter/runtime version when it can change output bytes |
+
+The reuse identity is:
+
+```text
+ordered input Artifact digest(s)
+        + canonical ExtractionRecipe digest
+        -> Representation/cache identity
+```
+
+Path, file size and mtime may be cache hints, but they are not provenance or
+identity proofs. Replacing model weights at the same path, changing a prompt,
+renderer, tokenizer or preprocessing revision therefore creates a new
+representation even if the source path is unchanged. Existing
+`Representation.input_artifact_ids`, processor fields and `parameters_digest`
+are the catalog anchors for this identity; an implementation must resolve them
+to immutable input and recipe digests rather than silently relying on a path.
+
+#### 3.4.2. Structured output and independent capabilities
+
+The `kind` field distinguishes representation roles such as:
+
+```text
+text_extraction       layout_extraction       table_extraction
+formula_extraction    ocr                      vision_description
+caption               structured_document
+```
+
+These labels are profile vocabulary, not a second catalog. An author-provided
+caption, OCR text and generated vision description are different observations
+and must never be silently overwritten or merged. A processor may publish a
+compound structured representation, but descendants retain which component
+they consumed.
+
+Where a provider exposes structure, the representation should preserve
+conceptual blocks such as `TextBlock`, `HeadingBlock`, `TableBlock`,
+`FigureOccurrence`, `FormulaBlock`, `CodeBlock`, page/region records and
+reading-order relations. The existing `Segment`, typed `Locator` and
+representation metadata are the durable ownership points; this roadmap does
+not introduce an unrelated block catalog. Table structure includes headers,
+row/column spans and merged cells when the provider can observe them. Figure
+and caption associations remain structural links, not semantic graph edges.
+
+Markdown is a useful materialized view for manual inspection and text-only
+retrieval. It is not the sole canonical extraction representation when the
+source provides page geometry, table structure, formulas or reading order that
+would be lost by flattening to Markdown.
+
+Recognition and localization are independent capabilities. A provider may have
+high text accuracy while lacking reliable geometry, or precise word boxes while
+misreading the text. Capability declarations should therefore distinguish at
+least:
+
+```text
+text recognition
+block / line / word localization
+layout and reading order
+table structure
+formula recognition
+figure-caption association
+```
+
+`PageRegionLocator`, `FrameRegionLocator`, `ImageRegionLocator` and their
+alignment rules remain the existing typed-locator contract. If a provider has
+no localization, the representation must say so; a guessed box is not a valid
+locator.
+
+#### 3.4.3. Partial extraction, fallback and alignment
+
+`ExtractionReport` remains the single failure/coverage contract. Providers must
+report `Complete`, `Partial` or `Failed`, expected and completed items,
+omitted regions, confidence where available and machine-readable issues. The
+following issue categories are useful profile vocabulary:
+
+```text
+low_confidence_region
+unreadable_region
+omitted_region
+fallback_requested
+fallback_performed
+localization_unavailable
+unsupported_table_or_formula
+```
+
+They extend the existing `ExtractionIssue` mechanism; they do not require a
+new report type. A failed run must not publish an empty successful
+representation. A partial representation may participate in retrieval only
+under an explicit admission/profile policy and must carry its coverage and
+limitations into traces and citations. Admission may reject it, accept it with
+limitations, request a retry or retain it as a non-canonical derived view.
+
+Fallback may be granular rather than document-wide:
+
+```text
+page -> block -> region
+             -> stronger extractor/VLM for uncertain crop
+```
+
+The provider that identifies a region and the provider that recognizes a crop
+may be different. Their outputs remain separate immutable representations. A
+result such as `text from provider B + bbox from provider A` is not silently
+constructed as one observation. If an adapter aligns them, it publishes a new
+derived representation with:
+
+```text
+source representations and region/crop lineage
+alignment method and version
+alignment confidence and issues
+```
+
+The existing `EvidenceAnchor::alignment` describes how a cited
+anchor maps a derived locator back to the original artifact. It is not the sole
+lineage record for a new aligned representation. For an aligned
+`Representation C` built from recognition representation `B` and
+localization/crop representation `A`, the existing artifact-processing
+lineage catalog must durably retain:
+
+```text
+Representation C
+    derived_from ordered parent RepresentationId(s) A, B
+    source region/crop references
+    alignment recipe/method and version
+    alignment confidence and issues
+```
+
+This may be encoded as `input_representation_ids` on the representation record
+or as equivalent lineage edges; the exact field name is deferred, but parent
+`RepresentationId` values are durable provenance, not a value reconstructed
+only from `input_artifact_ids` or an `EvidenceAnchor`. The aligned result is
+therefore a new immutable derived representation. A fallback crop must retain
+the source artifact and the exact parent region identity so that a later
+provider change cannot silently move the citation.
+
+#### 3.4.4. Operational reuse without core runtime coupling
+
+Adapters may lazily load and reuse a model, separate load/prepare/generate
+timings, use deterministic decoding where supported and refuse to publish an
+empty result after an error. These are operational policies, not a requirement
+that the core embed a model runtime. Cache records still use the input-artifact
+and recipe identity above, plus model artifact digests where available.
+
+Changing an OCR/parser recipe creates a new immutable
+`Representation`, with new `SegmentSet` and search-projection descendants.
+The old representation and its descendants remain valid historical derivations
+with their original provenance; they are not retroactively invalidated. An
+active retrieval profile may switch from representation A to representation B
+and mark A's view superseded for current selection, while A, its SegmentSet and
+its projections remain addressable until retention removes them. Reprocessing
+is required for the new descendants of B, not for rewriting the historical
+descendants of A. Changing only the embedding model does not require rerunning
+extraction. Changing only Zstd framing or another physical encoding does not
+require rerunning extraction. This preserves the dependency direction between
+source, representation, segments and search projections.
+
+#### 3.4.5. Candidate matrix and evidence discipline
+
+The following is a research shortlist, not a product ranking. A cell is only a
+capability to verify from the cited primary source; a blank or `unknown` cell is
+intentional.
+
+| Provider family | Text | Layout / regions | Tables | Formula | Structured output | Intended role |
+|---|---|---|---|---|---|---|
+| Docling / Granite-Docling | declared | declared | declared | verify in Gate O0 | structured document representation | lightweight structured-document candidate |
+| PaddleOCR-VL | declared | declared | declared | declared | JSON/Markdown paths in project docs | local document/OCR candidate |
+| GLM-OCR | declared | declared | declared | declared | verify exact adapter output | local OCR/document candidate |
+| MinerU 2.5 | declared | declared | declared | declared | page/document structured output | layout-heavy candidate |
+| OCRFlux | page/document text | cross-page regions to verify | cross-page table/paragraph handling | unknown | page and whole-document results | partial/cross-page extraction candidate |
+| General VLM control | possible | provider-dependent | provider-dependent | provider-dependent | prompt-dependent | hard-page fallback only until benchmarked |
+
+Primary-source candidates are tracked through the official
+[Granite-Docling model card](https://huggingface.co/ibm-granite/granite-docling-258M),
+[Docling project repository](https://github.com/docling-project/docling),
+[IBM Granite documentation (legacy landing page)](https://www.ibm.com/granite/docs/models/docling),
+[PaddleOCR documentation](https://github.com/PaddlePaddle/PaddleOCR),
+[GLM-OCR repository](https://github.com/zai-org/glm-ocr),
+[MinerU 2.5 paper](https://arxiv.org/abs/2509.22186) and
+[OCRFlux repository](https://github.com/chatdoc-com/OCRFlux). The
+[`ocr-local-wrapper`](https://github.com/SanSan-/ocr-local-wrapper) is useful
+for profile, model-reuse and timing patterns, but its path/size/mtime cache
+identity is not accepted as this project's provenance contract.
+
+The vc.ru and Habr overviews, the small ServerFlow comparison and Reddit
+discussion are secondary or anecdotal evidence. They may suggest candidates,
+localization requirements, hybrid fallback risks and test cases; their model
+rankings, six-image scores and operational anecdotes are not normative quality
+claims or Gate O0 acceptance thresholds.
+
+#### 3.4.6. Ownership and maturity
+
+| Capability | Status | Boundary |
+|---|---|---|
+| `Artifact`/`Representation`/`ExtractionReport`/typed locators | Contract only | Owned here; existing catalog and evidence records remain the source of truth. |
+| Provider/recipe/admission boundary | Contract | This subsection; exact public provider ABI is deferred. |
+| Concrete OCR, parser, VLM and region-fallback adapters | Research candidate | External or optional adapters; no core runtime dependency is implied. |
+| Markdown/table/JSON materialization views | Roadmap only | Derived views over the structured representation, not a replacement catalog. |
+| Gate O0 bakeoff | Research candidate | Protocol is described below; it is not run by this docs change. |
+
 ### 3.5 Segment Sets And Knowledge Units
 
 A `Segment` is an addressable part of a representation: a paragraph, heading,
@@ -1152,6 +1394,51 @@ Minimum evaluation gates are:
   compressed/chunked artifacts;
 - retrieval quality and latency reported separately for each modality and
   fusion policy.
+
+### Future research gate: O0 Document Extraction Bakeoff
+
+Gate O0 is a research protocol, not a production adapter and not a decision to
+download any model. Its candidate set may change after primary-source and
+license review. An initial matrix may include Docling/Granite-Docling,
+PaddleOCR-VL, GLM-OCR, MinerU 2.5 and OCRFlux, with a heavier general VLM as a
+control/fallback rather than a default OCR engine.
+
+The fixture manifest should cover legally redistributable or source-addressable
+examples across born-digital and scanned PDFs, Russian and English (including
+mixed-language pages where useful), multi-column reading order, ordinary and
+merged-cell tables, equations, code, figures/captions, bad scans, document
+photos, long documents and cross-page tables or paragraphs. Every fixture keeps
+its original `ArtifactId`, page/region truth and an explicit annotation version.
+
+O0 reports five independent axes:
+
+| Axis | Required evidence |
+|---|---|
+| Recognition | CER/WER plus omission, substitution and insertion rates; unsupported/invented field rate. |
+| Semantic preservation | Critical field/value accuracy, table-cell preservation, formula exactness and named-value retention. |
+| Structure | Block type, heading hierarchy, reading order, table spans and figure-caption linkage. |
+| Localization | Page/block/line/word region match, box IoU or matched-region accuracy, locator coverage and alignment issues. |
+| Economics | Cold load, warm page latency, pages/sec, CPU/RAM/VRAM, output size, repeat agreement, failure/truncation rate and fallback fraction. |
+
+`fallback_fraction` is the share of pages/blocks/regions sent to a stronger
+provider after a lightweight pass. It is a first-class result: a pipeline that
+handles most regions cheaply may be preferable to a single slower model even
+when their aggregate text scores are close.
+
+The protocol must retain critical-element tests because CER/WER can hide a
+wrong date, amount, identifier, table cell or formula. Extraction providers
+must distinguish observed source text from inferred or generated content;
+unreadable input should be reported as unknown/unreadable rather than silently
+repaired. O0 therefore measures insertions and unsupported fields separately
+from omissions. Recognition, localization and structure scores are never
+collapsed into one winner score without showing these component results.
+
+For each candidate, compare at least a whole-document pass with a staged
+page/block/region fallback when the adapter supports it. Freeze the recipe,
+model artifact digest, preprocessing, hardware and evaluation split before the
+confirmation run. Publish profiles such as `lightweight`, `balanced`,
+`maximum_structured_fidelity` and `hard_page_fallback`; do not promote a
+universal default from one small corpus.
 
 ## 9. Non-Goals
 
