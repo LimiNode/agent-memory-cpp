@@ -645,7 +645,7 @@ See [`retrieval-techniques-roadmap.md`](retrieval-techniques-roadmap.md) for adv
 struct RetrievalHit {
     KnowledgeUnitId unit_id;
     double score = 0.0;
-    uint32_t rank = 0;
+    uint32_t rank = 0;                     // unassigned until route lowering
     std::string source;                   // retriever name
     std::vector<CitationHandle> citations;
     std::string snippet;
@@ -669,6 +669,11 @@ default per-stack weights (см. memory-stacks-roadmap.md секция 8):
     AgentLTM:    lexical=1.0, vector=1.0, qa=1.5, graph=0.5, temporal=1.0
     SpeakerChat: lexical=1.0, speaker=1.5
 ```
+
+Branch ranks in the fusion formula are canonical **one-based** positions: the
+first candidate from every route has rank `1`. `RetrievalHit::rank == 0` is only
+the zero-initialized unassigned sentinel before a route assigns its rank; zero
+must never be passed to RRF or persisted as a valid branch position.
 
 Per-stack default weights в `HybridRetrievalConfig::retriever_weights`. Validation: `weights.size() == number of retrievers`. `WeightedMax`/`Learned` fusion — M2+.
 
