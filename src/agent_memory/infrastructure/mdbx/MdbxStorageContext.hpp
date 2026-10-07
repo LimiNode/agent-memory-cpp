@@ -10,6 +10,7 @@
 /// DBI budgeting follow `guides/mdbx-containers-extension-tz.md` and
 /// `guides/dbi-manifest.yaml`.
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -19,6 +20,9 @@ class Connection;
 }
 
 namespace agent_memory {
+
+/// Recommended MDBX capacity ceiling from the authoritative DBI budget.
+inline constexpr std::int64_t kDefaultMdbxMaxDbs = 96;
 
 /// \brief Shared MDBX environment ownership for storage adapters.
 /// Attached contexts retain, but never shut down, a host-owned connection.
@@ -30,7 +34,12 @@ namespace agent_memory {
 class MdbxStorageContext final {
   public:
     /// Opens and owns one MDBX connection.
-    static std::shared_ptr<MdbxStorageContext> open(std::string path, bool relative_to_exe = false);
+    ///
+    /// `max_dbs` defaults to the capacity ceiling declared by
+    /// `guides/dbi-manifest.yaml`; callers with a deliberately smaller profile
+    /// may provide an explicit value.
+    static std::shared_ptr<MdbxStorageContext>
+    open(std::string path, bool relative_to_exe = false, std::int64_t max_dbs = kDefaultMdbxMaxDbs);
     /// Retains a host-provided connection without calling shutdown/disconnect.
     static std::shared_ptr<MdbxStorageContext>
     attach(std::shared_ptr<mdbxc::Connection> connection);

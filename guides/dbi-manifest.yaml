@@ -281,7 +281,7 @@ profile_deltas:
         opens: always
         wire_sync_support: kv_supported
         replication_semantics: logical_adapter_required
-        physical_key: [DocumentId, BodyRevision]
+        physical_key: [DocumentId, BodyRevision, PhysicalEncodingGeneration]
         migration_peak: 1
       - name: agent_memory_canonical_ledgers
         owner: canonical_content

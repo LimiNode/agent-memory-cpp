@@ -7,13 +7,15 @@
 
 namespace agent_memory {
 
-std::shared_ptr<MdbxStorageContext> MdbxStorageContext::open(std::string path,
-                                                             bool relative_to_exe) {
+std::shared_ptr<MdbxStorageContext>
+MdbxStorageContext::open(std::string path, bool relative_to_exe, std::int64_t max_dbs) {
     if (path.empty())
         throw std::invalid_argument("MDBX path must not be empty");
+    if (max_dbs < 1)
+        throw std::invalid_argument("MDBX max_dbs must be positive");
     mdbxc::Config config;
     config.pathname = std::move(path);
-    config.max_dbs = 32;
+    config.max_dbs = max_dbs;
     config.no_subdir = true;
     config.relative_to_exe = relative_to_exe;
     return std::shared_ptr<MdbxStorageContext>(

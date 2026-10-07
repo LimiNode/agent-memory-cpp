@@ -17,6 +17,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -27,6 +28,7 @@ struct MdbxCanonicalContentStoreOptions final {
     std::string path; ///< MDBX path used when no shared context is supplied.
     std::string table_prefix = "agent_memory"; ///< Prefix for the four C1 DBIs.
     bool relative_to_exe = false; ///< Resolve an owned relative path from the executable.
+    std::int64_t max_dbs = kDefaultMdbxMaxDbs;   ///< Capacity passed to an owned context.
     std::shared_ptr<MdbxStorageContext> context; ///< Optional host/shared MDBX context.
 };
 
@@ -40,6 +42,9 @@ struct MdbxCanonicalContentStoreOptions final {
 ///
 /// C2 compression, dictionaries, and byte-identical physical re-encoding are
 /// deliberately outside this class. Core/domain headers remain MDBX-free.
+/// Domain outcomes are returned through the backend-neutral interfaces; MDBX
+/// I/O, lifecycle, corruption, and binding failures propagate as exceptions
+/// instead of being reported as `NotFound` or `InvalidEdit`.
 ///
 /// \see `guides/canonical-content-storage-roadmap.md`
 /// \see `guides/storage-backend-integration-roadmap.md`

@@ -1234,9 +1234,15 @@ schema_info                           KeyValueTable<string, SchemaInfo>         
 // Canonical content C1 profile (optional, raw/plain only)
 agent_memory_canonical_heads          KeyValueTable<DocumentId, DocumentRevision>
 agent_memory_canonical_revisions      KeyValueTable<(DocumentId, DocumentRevision), revision_blob>
-agent_memory_canonical_bodies         KeyValueTable<(DocumentId, BodyRevision), raw_body_blob>
+agent_memory_canonical_bodies         KeyValueTable<(DocumentId, BodyRevision, PhysicalEncodingGeneration), raw_body_blob>
 agent_memory_canonical_ledgers        KeyValueTable<DocumentId, historical_block_id_ledger>
 ```
+
+For the C1 raw profile, a revision blob contains ordered block descriptors and
+the logical `BodyRevision` binding; it does not own block text. The body value
+contains decoded block text, its integrity digest, codec (`raw`) and the
+independent `PhysicalEncodingGeneration`. A later physical re-encoding may
+therefore use another generation without changing the logical body revision.
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для дополнительных Layer-1 primitives under consideration (Patterns 3, 4, 6): coverage shadow graph (новый §5.7 — `coverage_units`, `coverage_files`, `coverage_regions`), `TableSequence` as the normative atomic table-bound ID generator, team-shared graph artifact (offline snapshot format — proposed job, not yet in `compaction-roadmap.md`).
 
@@ -1313,7 +1319,7 @@ dbi-profile-delta-review-projection-v1
 # name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
 agent_memory_canonical_heads|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId|1
 agent_memory_canonical_revisions|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,DocumentRevision|1
-agent_memory_canonical_bodies|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,BodyRevision|1
+agent_memory_canonical_bodies|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,BodyRevision,PhysicalEncodingGeneration|1
 agent_memory_canonical_ledgers|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId|1
 jobs_by_id|runtime_services|KeyValueTable|RuntimeQueue|kv_supported|raw_mirror_only|JobId|1
 jobs_scheduled|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|RunAfterMs,JobId|1
