@@ -4,13 +4,15 @@ This is the documentation audit for the current repository state. `Implemented`
 means exercised code exists; `Contract only` means a public or storage contract
 exists without the complete backend; `Docs/tests only` means the idea is
 described or probed but not a product path; `Roadmap only` means planned work.
+For split areas, the status follows the durable product path; the missing-work
+column records narrower reference implementations separately.
 
 | Area | Current owner | Status | Missing implementation/research | Next bounded step |
 |---|---|---|---|---|
 | Core domain primitives | `milestones.md`, `architecture.md` | Implemented | broader payload coverage | finish M0 fixtures |
 | Storage / MDBX | `mdbx-containers-extension-tz.md` | Contract only | full profile and crash matrix | storage foundation PR |
 | Resource manifests / reindex | `resource-reindexing.md` | Contract only | end-to-end publication | targeted reindex fixture |
-| Canonical content / materialize / edit | `canonical-content-storage-roadmap.md` | Roadmap only | no body, block, editor or frame implementation | text vertical slice with round-trip, random read and targeted invalidation |
+| Canonical content / materialize / edit | `canonical-content-storage-roadmap.md` | Contract only | reference in-memory semantic edit/materialize behavior is implemented and tested in GitHub PR #478; durable canonical body, body binding and MDBX store remain unimplemented | production MDBX body-binding slice with round-trip, random read and targeted invalidation |
 | Knowledge units | `knowledge-units-roadmap.md` | Contract only | complete stores | M0 unit/reopen tests |
 | Payload contracts/views | `knowledge-base-roadmap.md` | Contract only | all payload DBIs | one payload family at a time |
 | Search projections | `lexical-search-roadmap.md` | Contract only | generation-aware publisher | projection lifecycle gate |

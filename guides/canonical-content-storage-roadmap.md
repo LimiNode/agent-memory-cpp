@@ -260,12 +260,34 @@ struct ContentBlock {
     std::optional<ContentBlockId> parent_id;
     PositionId position;
     BlobDigest content_digest;
-    ContentPayloadRef payload;
+    ContentPayloadRef payload;  // conceptual logical binding; public shape deferred
     std::vector<Locator> source_locators;
 };
 ```
 
-The exact public C++ types are implementation work; the invariant is not.
+The exact public C++ types are implementation work; the invariant is not. A
+`ContentBlock` or `BlockVersion` has a logical binding to a canonical body and
+a logical decoded range, but this guide intentionally does not prescribe that
+binding as a public `CanonicalBodyRef` field. The conceptual
+`ContentPayloadRef` above is only a placeholder for that logical relation; it
+does not freeze a public field, wire shape or ABI. The production slice may
+encode the binding as a field, a separate descriptor or a lookup relation after
+the backend contract is accepted:
+
+```text
+ContentBlock / BlockVersion
+    -> canonical body binding
+    -> logical decoded range
+```
+
+`DocumentRevision`, `BlockRevision` and `BodyRevision` are independent logical
+revisions. A document revision publishes the ordered document structure and
+metadata; a block revision publishes the immutable state of a reused block;
+and a body revision identifies the logical decoded body/range mapping used for
+materialization. Their numeric values need not match and none may be inferred
+from another. A physical encoding generation (raw, Zstd, dictionary-backed
+Zstd, MDBX, file-CAS or pack) is a further storage identity and is never a
+durable block, segment or body identity.
 
 Durable structural placement/order is distinct from a dense edit-command
 sibling ordinal. An edit request may say “insert before sibling N” or “move to
@@ -397,6 +419,10 @@ resource-level `ResourceBodyStore` semantics may later be extended by an
 artifact-aware `IArtifactBodyStore`. Neither name is claimed here as a complete
 production API. The contract should support immutable writes, digest
 verification, range reads when available, frame metadata and materialization.
+This logical body-binding boundary does not make `ResourceBodyStore` the
+universal owner of media bytes: an artifact `BlobStore`, file-CAS/pack or other
+durable adapter may own large or profile-specific image, audio and video
+payloads.
 Placement is a policy function of size, access pattern, mutability, media type
 and retention:
 
@@ -412,6 +438,13 @@ independent artifact/body record. Large PDF, audio and video are strong
 candidates for file-CAS, pack or object storage, but the exact placement
 threshold remains an empirical policy decision. The caller sees one body-store
 contract.
+
+The first logical body profile may use either an uncompressed `raw`/`None`
+codec or independently framed Zstd. Both are physical encodings of the same
+logical decoded body; neither choice fixes the block-binding or revision
+contract. Z0 selects frame sizes, levels, dictionary use and promotion
+thresholds from measurements, but does not decide the logical content model or
+the production DBI layout.
 
 ### 6.1 Independent frames
 
@@ -620,6 +653,22 @@ KeepExternalReference
 DiscardAfterVerifiedCanonicalization
 ```
 
+The retention decision is capability-qualified. An acquisition artifact may be
+discarded only if every capability guaranteed by the selected profile remains
+satisfiable from retained primary representations or from a durable,
+resolvable external reference that itself satisfies the profile's
+materialization guarantee. An ordinary URL, ETag, last-modified value or
+best-effort remote locator is not such a reference. Derived projections alone
+(for example embeddings, indexes, fingerprints or a transcript that is not the
+profile's retained primary representation) do not satisfy a primary
+materialization capability. Detailed audio/video and other modality-specific
+profiles are deferred to the artifact/multimodal phase; this invariant applies
+to every profile.
+
+For example, an acoustic fingerprint is a duplicate/recognition projection,
+not byte identity. Byte identity remains the `ArtifactId`/`BlobDigest` of the
+retained bytes or of the artifact that was observed before source disposal.
+
 The canonical normalized body receives durable provenance: source revision,
 normalizer/parser identity, parameters, coverage, issues and decoded digest.
 When an original is discarded, the system can still support:
@@ -651,9 +700,17 @@ original PDF/page citation after the original body is removed.
 
 - make this guide the owner of canonical content, stable blocks,
   read/materialize/edit, logical-vs-physical identity and body generations;
+- accept the logical body-binding invariant (`ContentBlock`/`BlockVersion` to a
+  canonical body and decoded logical range) without prescribing a public C++
+  field, wire shape or DBI;
+- keep `DocumentRevision`, `BlockRevision` and `BodyRevision` independent, and
+  require capability-qualified retention before an acquisition artifact may be
+  discarded;
 - update conflicting raw-resource, artifact-retention, compression and
   conversation guidance;
-- keep all new capabilities marked roadmap/contract-only.
+- keep the durable MDBX body/store and exact DBI layout marked contract/roadmap
+  until the production storage slice; reference in-memory edit/materialize
+  behavior is tracked separately in the retrieval coverage audit.
 
 ### Phase 1 — text vertical slice
 
@@ -719,6 +776,12 @@ following without choosing a backend-specific binary layout:
   edits differ, including the ambiguity rule that creates a new revision;
 - how `ContentChangeSet`, context profiles and projection dependencies describe
   an edit's invalidation frontier;
+- how a `ContentBlock`/`BlockVersion` resolves through a logical canonical-body
+  binding and decoded range without making physical frame IDs, offsets or
+  frame-local ranges durable identity;
+- how independent document, block and body revisions relate, and which
+  capabilities remain materializable before an acquisition artifact can be
+  discarded;
 - which bytes are canonical decoded content and which records are derived
   segments, indexes, media projections or physical encodings;
 - how random reads, full materialization, optimistic edits, crash-safe
@@ -727,7 +790,9 @@ following without choosing a backend-specific binary layout:
 The gate artifact is the reviewed contract and its decision table, not a
 production editor, archive format or storage implementation. Any unresolved
 choice that changes semantic identity must be recorded as an explicit ADR
-before Phase 1 code starts.
+before Phase 1 code starts. The gate does not approve an exact MDBX DBI layout;
+that layout is deferred to the production storage slice after this binding
+contract is accepted.
 
 ### 9.2 Research Gate B — Incremental Edit/Reindex Screen
 
