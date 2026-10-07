@@ -353,17 +353,18 @@ the core. A failed representation has no retrieval-eligible SegmentSet; a
 partial one may be indexed only under an explicit policy and must retain its
 coverage and issue records in traces and citations.
 
-The primary/derived distinction is a profile-scoped ownership decision, not a
-second extraction-status type. A retained **primary representation** carries
-the bytes or structured content needed to satisfy a capability promised by the
-selected profile. A **derived representation/projection** is a rebuildable or
-replaceable interpretation used for retrieval, alignment, ranking or display;
-it cannot satisfy a primary materialization capability by itself. The same
-source may therefore have several representations, while only the profile's
-admitted retained representation is authoritative for the capabilities it
-promises. `ExtractionReport` continues to describe what a processor produced;
-profile admission decides whether that result is sufficient for retention and
-materialization.
+The retained **primary representation** role is profile-scoped and independent
+of derivation lineage. It identifies the retained bytes or structured content
+needed to satisfy a capability promised by that profile. An extracted
+transcript may be admitted as primary content for a knowledge profile while
+remaining a derived representation with its original processor provenance.
+It does not thereby satisfy a profile that promises playable audio. A derived
+representation is not necessarily rebuildable after its inputs are discarded;
+the retained primary representations must remain durable. Search projections
+alone cannot substitute for the content needed to materialize a promised
+target. `ExtractionReport` continues to describe what a processor produced;
+profile admission decides whether the retained representation set is
+sufficient. This adds no second extraction-status or coverage type.
 
 When a processor consumes another representation, lineage must retain the
 parent `RepresentationId` or IDs through the existing artifact-processing

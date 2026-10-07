@@ -4,15 +4,14 @@ This is the documentation audit for the current repository state. `Implemented`
 means exercised code exists; `Contract only` means a public or storage contract
 exists without the complete backend; `Docs/tests only` means the idea is
 described or probed but not a product path; `Roadmap only` means planned work.
-For split areas, the status follows the durable product path; the missing-work
-column records narrower reference implementations separately.
 
 | Area | Current owner | Status | Missing implementation/research | Next bounded step |
 |---|---|---|---|---|
 | Core domain primitives | `milestones.md`, `architecture.md` | Implemented | broader payload coverage | finish M0 fixtures |
 | Storage / MDBX | `mdbx-containers-extension-tz.md` | Contract only | full profile and crash matrix | storage foundation PR |
 | Resource manifests / reindex | `resource-reindexing.md` | Contract only | end-to-end publication | targeted reindex fixture |
-| Canonical content / materialize / edit | `canonical-content-storage-roadmap.md` | Contract only | reference in-memory semantic edit/materialize behavior is implemented and tested in GitHub PR #478; durable canonical body, body binding and MDBX store remain unimplemented | production MDBX body-binding slice with round-trip, random read and targeted invalidation |
+| Canonical text / in-memory read, materialize and edit | `canonical-content-storage-roadmap.md` | Implemented | durable persistence, compressed body and segment/section integration are outside this implemented subset; the exercised path is the reference backend in PR #478 | preserve the semantic conformance cases in [CanonicalContentStore](../src/agent_memory/storage/CanonicalContentStore.hpp) and [canonical-content tests](../tests/domain/canonical_content_test.cpp) |
+| Canonical body binding / durable MDBX store | `canonical-content-storage-roadmap.md`, `mdbx-containers-extension-tz.md` | Contract only | production body binding, exact DBI profile, framed codecs, reopen/recovery and targeted invalidation integration | accept the binding contract, then implement the durable text slice with conformance and re-encoding parity |
 | Knowledge units | `knowledge-units-roadmap.md` | Contract only | complete stores | M0 unit/reopen tests |
 | Payload contracts/views | `knowledge-base-roadmap.md` | Contract only | all payload DBIs | one payload family at a time |
 | Search projections | `lexical-search-roadmap.md` | Contract only | generation-aware publisher | projection lifecycle gate |

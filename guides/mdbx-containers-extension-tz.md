@@ -2495,6 +2495,12 @@ slice after the binding contract is accepted. Large or modality-specific
 artifact bytes may use the artifact `BlobStore` or file-CAS instead of this
 resource-body profile.
 
+The tuple and descriptor sketch below identifies a logical body revision; it
+does not yet specify addressing for multiple physical encodings of that same
+revision. The production profile must distinguish the physical encoding
+generation without changing the logical `body_revision` on byte-identical
+recompression. Its exact keys and descriptors remain deferred.
+
 Crash/recovery contract for chunked `ResourceBodyStore`:
 
 1. Write chunk records first with `(resource_id, body_revision, chunk_index)`.
@@ -2502,7 +2508,7 @@ Crash/recovery contract for chunked `ResourceBodyStore`:
 3. Write the complete descriptor last. Readers only discover a body through a
    complete descriptor.
 4. If a transaction aborts before the descriptor write, readers see no new body.
-5. Replacement writes a new `body_revision`; old complete revisions remain
+5. Replacement of decoded body content writes a new `body_revision`; old complete revisions remain
    readable until a bounded GC removes them after no `SourceRef`/unit points to
    them.
 6. Startup/check tooling can find descriptor-less chunks and stale descriptors

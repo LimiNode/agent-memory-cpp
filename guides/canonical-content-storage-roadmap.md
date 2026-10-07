@@ -439,12 +439,12 @@ candidates for file-CAS, pack or object storage, but the exact placement
 threshold remains an empirical policy decision. The caller sees one body-store
 contract.
 
-The first logical body profile may use either an uncompressed `raw`/`None`
-codec or independently framed Zstd. Both are physical encodings of the same
-logical decoded body; neither choice fixes the block-binding or revision
-contract. Z0 selects frame sizes, levels, dictionary use and promotion
-thresholds from measurements, but does not decide the logical content model or
-the production DBI layout.
+An individual body may use an uncompressed `raw`/`None` codec or independently
+framed Zstd; the complete Phase 1 profile below includes both. Neither encoding
+fixes the block-binding or revision contract. Z0 selects compression parameters
+and dictionary-promotion criteria from measurements; it does not decide the
+logical content model or production DBI layout. MDBX versus file/pack placement
+is evaluated separately after the compression screen.
 
 ### 6.1 Independent frames
 
@@ -792,7 +792,9 @@ production editor, archive format or storage implementation. Any unresolved
 choice that changes semantic identity must be recorded as an explicit ADR
 before Phase 1 code starts. The gate does not approve an exact MDBX DBI layout;
 that layout is deferred to the production storage slice after this binding
-contract is accepted.
+contract is accepted. Review of the binding contract is a prerequisite for the
+durable MDBX M1b slice. Detailed modality profiles and portable-package design
+do not block that text-only slice; Z0 may proceed in parallel.
 
 ### 9.2 Research Gate B — Incremental Edit/Reindex Screen
 
@@ -864,7 +866,9 @@ non-reuse; leaf-only delete behavior; and invalid-structure failure.
 - stable block identities across insert, delete and local edit cases;
 - stale edit conflict and crash-safe generation publication;
 - `ContentChangeSet` with targeted projection invalidation;
-- unchanged semantic IDs and projections after byte-identical recompression;
+- raw-to-framed-Zstd round-trip with the same decoded digest, document/block/body
+  revisions, segment identities and projections; only the physical encoding
+  generation changes, without semantic projection invalidation;
 - missing, corrupt and incompatible dictionary failure tests;
 - export/import round-trip through the structured and human-readable views;
 - no dangling asset occurrence or SourceRef after updates;
