@@ -310,6 +310,7 @@ class MdbxCanonicalContentStore::Impl final {
             revision.document_id.value(), std::to_string(revision.revision), txn);
         ledgers.insert_or_assign(revision.document_id.value(), encode_ledger(ledger), txn);
     }
+
     std::shared_ptr<MdbxStorageContext> context; ///< Shared MDBX environment.
     std::string prefix;                          ///< Sanitized application table prefix.
     mutable std::mutex mutex;                    ///< Serializes this wrapper's table access.

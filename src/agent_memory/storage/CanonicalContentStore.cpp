@@ -330,11 +330,18 @@ namespace agent_memory {
             store.m_impl->documents.find(current.document_id) != store.m_impl->documents.end()) {
             return false;
         }
+
         InMemoryCanonicalContentStore::DocumentHistory history;
         std::string message;
-        if(!valid_tree(current.blocks, message)) return false;
-        for(const auto& block : current.blocks)
-            if(all_seen_block_ids.count(block.id) == 0) return false;
+        if(!valid_tree(current.blocks, message)) {
+            return false;
+        }
+        for(const auto& block : current.blocks) {
+            if(all_seen_block_ids.count(block.id) == 0) {
+                return false;
+            }
+        }
+
         const auto document_id = current.document_id;
         history.revisions.emplace(current.revision, std::move(current));
         history.all_seen_block_ids = std::move(all_seen_block_ids);

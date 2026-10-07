@@ -623,7 +623,10 @@ def run_self_test(manifest_path: Path) -> int:
     cases.append(("peak exceeds max_dbs", peak_too_large, "expanded peak exceeds max_dbs_default"))
 
     delta_mismatch = copy.deepcopy(base)
-    delta_mismatch["profile_deltas"][0]["migration_peak"] += 1
+    for row in delta_mismatch["profile_deltas"]:
+        if row["name"] == "legacy_document_resource_adapter":
+            row["migration_peak"] += 1
+            break
     cases.append(("delta/reference mismatch", delta_mismatch, "expanded peak legacy_document_resource_adapter mismatch"))
 
     missing_delta_descriptor_field = copy.deepcopy(base)

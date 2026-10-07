@@ -5,9 +5,9 @@
 /// \file mdbx.hpp
 /// \brief Aggregate include for optional MDBX-backed infrastructure adapters.
 
+#include "mdbx/MdbxCanonicalContentStore.hpp"
 #include "mdbx/MdbxDocumentStorage.hpp"
 #include "mdbx/MdbxResourceManifestStorage.hpp"
 #include "mdbx/MdbxStorageContext.hpp"
-#include "mdbx/MdbxCanonicalContentStore.hpp"
 
 #endif

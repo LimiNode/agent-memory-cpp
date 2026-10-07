@@ -16,7 +16,9 @@
 
 namespace agent_memory {
 
-    namespace detail { class CanonicalContentHistoryLoader; }
+    namespace detail {
+        class CanonicalContentHistoryLoader;
+    }
 
     /// \brief Read/materialization contract for canonical content.
     ///
