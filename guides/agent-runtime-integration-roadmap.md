@@ -81,6 +81,38 @@ runtime integration lane is cross-listed there as ADR-019..ADR-025.
     authority, attempted and completed are separate facts. A stored capability
     descriptor or prior receipt never grants current authority.
 
+## Memory influence and action admission
+
+The runtime-facing continuation of a memory result is deliberately separate
+from the core retrieval/context lane. The latter may end at a host-approved
+provider request or at a host-reported effective-context artifact; it does not
+establish that a model used an item as evidence. The optional runtime lane is:
+
+```text
+explicit evidence binding
+  -> action intent
+  -> live authority / policy admission
+  -> execution attempt
+  -> outcome
+```
+
+An evidence binding is an explicit host/runtime observation. It names the
+bound memory occurrence, purpose, relevant revision/read frontier and runtime
+trace or outcome reference. Retrieval rank, `ContextPack` inclusion, prompt
+inclusion, a historical `AuthorityEvidenceRef` or a provider-neutral
+`ContextFingerprint` does not create that binding and does not grant current
+permission. The host must revalidate live authority and policy immediately
+before an effectful admission; memory never dispatches an action from a
+retrieval result.
+
+The distinction is normative for ADELIA adapters and for application profiles
+such as Ephi: historical authority evidence explains what was previously
+observed or asserted, while current action authority is a live runtime fact.
+Evidence status, source-of-record/materialization role and action authority
+remain separate axes. A binding or outcome may be persisted as provenance for
+later replay, but it does not retroactively promote the bound record to
+validated truth.
+
 ## Neutral Runtime References
 
 ```cpp

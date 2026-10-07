@@ -9,7 +9,7 @@ after retrieval; it is not an implicit string concatenation helper.
 retrieve candidates
   -> rerank / policy filter
   -> deduplicate
-  -> source diversity and authority policy
+  -> source admissibility, provenance and diversity policy
   -> token-budget selection
   -> context pack with provenance
 ```
@@ -17,6 +17,58 @@ retrieve candidates
 The retrieval result set and the context actually shown to a host model are
 different observable artifacts. A context builder must not make omitted
 evidence look as if it was never retrieved.
+
+## Influence lanes and authority boundaries
+
+Memory influence is a staged observation, not one boolean `used` or
+`authoritative` flag. The core retrieval/context lane is:
+
+```text
+persisted
+  -> published / visible
+  -> eligible
+  -> candidate
+  -> selected
+  -> included in ContextPack
+  -> host-approved provider request
+  -> effective provider context, if the host reports it
+```
+
+The first stages are library/retrieval artifacts. The final two stages belong
+to the external host boundary: the library may hand off a `ContextPack`, but it
+cannot infer that a provider request was approved or what a provider actually
+received. A record can stop at any stage, and reaching a later stage does not
+retroactively change the earlier evidence or provenance state.
+
+An optional runtime/action continuation is separate:
+
+```text
+explicit evidence binding
+  -> action intent
+  -> live authority / policy admission
+  -> execution attempt
+  -> outcome
+```
+
+Retrieval visibility, rank, `ContextPack` inclusion or prompt inclusion do not
+imply model use, explicit evidence binding, current action authority, action
+admission or execution success. An evidence binding is an explicit
+host/runtime event that records what was bound, for which purpose and under
+which relevant revision/frontier; it is never inferred from prompt position.
+
+In this document, **source admissibility/provenance policy** means the policy
+that decides whether a source may participate in retrieval or context. It is
+not runtime action authority. Historical authority evidence and current live
+permission remain owned by the external runtime boundary; see
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md).
+
+`ContextFingerprint` is the provider-neutral fingerprint of the finished
+library `Context`, as defined by
+[`runtime-services-roadmap.md`](runtime-services-roadmap.md). It does not
+claim to fingerprint the final provider payload. Provider compaction, system
+instructions, tool schemas, host substitutions and other transformations are
+represented only by the separate host-owned effective-context artifact
+described in [`knowledge-base-roadmap.md#831-effective-context-and-omission-provenance-m2`](knowledge-base-roadmap.md#831-effective-context-and-omission-provenance-m2).
 
 ## Minimal contract
 
