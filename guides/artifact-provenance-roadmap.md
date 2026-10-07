@@ -41,9 +41,11 @@ This guide extends, rather than replaces:
    stable identities.
 3. When retained, original bytes are immutable artifacts. Text extraction,
    OCR, transcripts, layout JSON, captions and translations are versioned
-   representations. A profile may discard an original after verified
-   canonicalization; in that case the retained normalized representation is
-   the durable retrieval source, and citations must not claim original-page or
+   representations. A profile may discard an original only under the
+   capability-qualified retention invariant in
+   [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md);
+   in that case the admitted retained primary representation is the durable
+   retrieval source, and citations must not claim original-page or
    original-byte materialization.
 4. Retrieval works over addressable segments and their projections, never over
    an entire PDF, image or video as one opaque record.
@@ -350,6 +352,26 @@ partial OCR/ASR/layout results without hard-coding a parser or model runtime in
 the core. A failed representation has no retrieval-eligible SegmentSet; a
 partial one may be indexed only under an explicit policy and must retain its
 coverage and issue records in traces and citations.
+
+The retained **primary representation** role is profile-scoped and independent
+of derivation lineage. It identifies the retained bytes or structured content
+needed to satisfy a capability promised by that profile. An extracted
+transcript may be admitted as primary content for a knowledge profile while
+remaining a derived representation with its original processor provenance.
+It does not thereby satisfy a profile that promises playable audio. A derived
+representation is not necessarily rebuildable after its inputs are discarded;
+the retained primary representations must remain durable. Search projections
+alone cannot substitute for the content needed to materialize a promised
+target. `ExtractionReport` continues to describe what a processor produced;
+profile admission decides whether the retained representation set is
+sufficient. This adds no second extraction-status or coverage type.
+
+When a processor consumes another representation, lineage must retain the
+parent `RepresentationId` or IDs through the existing artifact-processing
+lineage metadata. `input_artifact_ids` alone is insufficient for cases such as
+OCR aligned with parser geometry, cross-provider alignment or translation from
+an extracted transcript. This normalizes the existing representation-lineage
+contract; it does not introduce a competing public C++ entity.
 
 Changing processor version, model, relevant parameters or input artifact bytes
 creates a new representation. Translation projections defined in
@@ -1055,8 +1077,10 @@ declared BlobDigests and consumes those leases.
 
 `ArtifactCatalog` is not a semantic graph. Its `artifact_relations` record
 technical facts such as `derived_from`, `embedded_in`, `extracted_audio_from`,
-`rendered_from` and `generated_from`. `IGraphStore` continues to hold semantic
-relations such as `requires`, `contradicts`, `governs` and `uses`.
+`rendered_from` and `generated_from`, including representation-to-
+representation parentage where a derived representation consumes another
+representation. `IGraphStore` continues to hold semantic relations such as
+`requires`, `contradicts`, `governs` and `uses`.
 
 `BlobStore` must support digest-verified writes, immutable reads, existence
 checks, bounded range reads when the backend supports them, and materialization.
@@ -1071,6 +1095,12 @@ It may be implemented by:
 All backends expose the same artifact identity. Compression, encryption and
 chunking are storage codecs declared in the artifact/body descriptor; they do
 not alter `ArtifactId`, which is based on the original immutable byte stream.
+The logical body-binding contract remains backend-neutral. `ResourceBodyStore`
+is an eligible substrate for bounded canonical bodies and agent-local data; it
+is not the universal semantic owner of every image, audio or video payload.
+Large or profile-specific media may remain under the artifact `BlobStore`, a
+file-CAS/pack or another durable adapter while exposing the same catalog and
+materialization contract.
 
 `BindingMaterializationStatus::RetentionRemoved` means that the relevant
 catalog binding resolves an artifact identity and evidence anchor, but an

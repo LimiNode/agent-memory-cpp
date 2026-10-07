@@ -10,7 +10,8 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Core domain primitives | `milestones.md`, `architecture.md` | Implemented | broader payload coverage | finish M0 fixtures |
 | Storage / MDBX | `mdbx-containers-extension-tz.md` | Contract only | full profile and crash matrix | storage foundation PR |
 | Resource manifests / reindex | `resource-reindexing.md` | Contract only | end-to-end publication | targeted reindex fixture |
-| Canonical content / materialize / edit | `canonical-content-storage-roadmap.md` | Roadmap only | no body, block, editor or frame implementation | text vertical slice with round-trip, random read and targeted invalidation |
+| Canonical text / in-memory read, materialize and edit | `canonical-content-storage-roadmap.md` | Implemented | durable persistence, compressed body and segment/section integration are outside this implemented subset; the exercised path is the in-memory reference backend and its canonical-content test suite | preserve the semantic conformance cases in [CanonicalContentStore](../src/agent_memory/storage/CanonicalContentStore.hpp) and [canonical-content tests](../tests/domain/canonical_content_test.cpp) |
+| Canonical body binding / durable MDBX store | `canonical-content-storage-roadmap.md`, `mdbx-containers-extension-tz.md` | Contract only | production body binding, exact DBI profile, framed codecs, reopen/recovery and targeted invalidation integration | accept the binding contract, then implement the durable text slice with conformance and re-encoding parity |
 | Knowledge units | `knowledge-units-roadmap.md` | Contract only | complete stores | M0 unit/reopen tests |
 | Payload contracts/views | `knowledge-base-roadmap.md` | Contract only | all payload DBIs | one payload family at a time |
 | Search projections | `lexical-search-roadmap.md` | Contract only | generation-aware publisher | projection lifecycle gate |
