@@ -75,6 +75,17 @@ even when a retention profile is allowed to discard the original bytes. The
 retained representation can satisfy a materialization capability, but it does
 not erase the lineage or change the evidence status of what it represents.
 
+Reflection, summarization, clustering and graph synthesis may propose derived
+hypotheses, relations or summaries. Persisting such a proposal requires the
+ordinary grounding, provenance, validation and memory-admission/publication
+path; a model does not directly publish graph truth. Canonical storage of an
+admitted hypothesis still does not make it a validated fact or independent
+evidence. Read-only graph expansion returns a retrieval view, not a canonical
+graph update. Relation payload changes follow the existing new-Relation and
+supersession/erase-lineage contract in
+[`memory-stacks-roadmap.md`](memory-stacks-roadmap.md); reflection cannot
+rewrite a Relation's identity-bearing edge in place.
+
 ## Required invariants
 
 - summaries and extracted facts preserve a source/provenance reference; a
@@ -104,3 +115,6 @@ capability-qualified retention, deny-by-default access, stale projection
 exclusion, and prompt-injection-as-data handling. The fixture must also show
 that a derived representation retained as a profile's primary materialization
 source does not become independent evidence merely because retrieval uses it.
+Include a reflection-generated relation: admission preserves its derived
+status and source inputs, retrieval/expansion performs no canonical write, and
+changing an existing Relation edge cannot bypass the identity contract.
