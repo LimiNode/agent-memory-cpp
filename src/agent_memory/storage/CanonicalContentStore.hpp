@@ -16,6 +16,8 @@
 
 namespace agent_memory {
 
+    namespace detail { class CanonicalContentHistoryLoader; }
+
     /// \brief Read/materialization contract for canonical content.
     ///
     /// See `guides/canonical-content-storage-roadmap.md`, sections
@@ -106,6 +108,7 @@ namespace agent_memory {
         ) override;
 
     private:
+        friend class detail::CanonicalContentHistoryLoader;
         struct DocumentHistory;
         struct Impl;
         std::unique_ptr<Impl> m_impl;

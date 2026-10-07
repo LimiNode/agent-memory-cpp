@@ -1,4 +1,5 @@
 #include "CanonicalContentStore.hpp"
+#include "CanonicalContentStoreInternal.hpp"
 
 #include <algorithm>
 #include <cstddef>
@@ -319,6 +320,27 @@ namespace agent_memory {
         : m_impl(std::make_unique<Impl>()) {}
 
     InMemoryCanonicalContentStore::~InMemoryCanonicalContentStore() = default;
+
+    bool detail::CanonicalContentHistoryLoader::restore_current(
+        InMemoryCanonicalContentStore& store,
+        CanonicalDocumentRevision current,
+        std::set<ContentBlockId> all_seen_block_ids) {
+        std::lock_guard<std::mutex> lock(store.m_impl->mutex);
+        if(current.document_id.empty() ||
+            store.m_impl->documents.find(current.document_id) != store.m_impl->documents.end()) {
+            return false;
+        }
+        InMemoryCanonicalContentStore::DocumentHistory history;
+        std::string message;
+        if(!valid_tree(current.blocks, message)) return false;
+        for(const auto& block : current.blocks)
+            if(all_seen_block_ids.count(block.id) == 0) return false;
+        const auto document_id = current.document_id;
+        history.revisions.emplace(current.revision, std::move(current));
+        history.all_seen_block_ids = std::move(all_seen_block_ids);
+        store.m_impl->documents.emplace(document_id, std::move(history));
+        return true;
+    }
 
     bool InMemoryCanonicalContentStore::create_document(CanonicalDocumentRevision initial) {
         std::lock_guard<std::mutex> lock(m_impl->mutex);

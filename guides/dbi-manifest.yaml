@@ -248,6 +248,49 @@ canonical:
     migration_peak: 1
 
 profile_deltas:
+  - name: canonical_content_c1
+    dbis: 4
+    migration_peak: 4
+    default: false
+    names:
+      - agent_memory_canonical_heads
+      - agent_memory_canonical_revisions
+      - agent_memory_canonical_bodies
+      - agent_memory_canonical_ledgers
+    note: Raw/plain canonical content C1 profile. Revision payloads are immutable; body generations and the historical block-ID ledger are application-owned and versioned.
+    dbi_entries:
+      - name: agent_memory_canonical_heads
+        owner: canonical_content
+        table_type: KeyValueTable
+        opens: always
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId]
+        migration_peak: 1
+      - name: agent_memory_canonical_revisions
+        owner: canonical_content
+        table_type: KeyValueTable
+        opens: always
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId, DocumentRevision]
+        migration_peak: 1
+      - name: agent_memory_canonical_bodies
+        owner: canonical_content
+        table_type: KeyValueTable
+        opens: always
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId, BodyRevision]
+        migration_peak: 1
+      - name: agent_memory_canonical_ledgers
+        owner: canonical_content
+        table_type: KeyValueTable
+        opens: always
+        wire_sync_support: kv_supported
+        replication_semantics: logical_adapter_required
+        physical_key: [DocumentId]
+        migration_peak: 1
   - name: legacy_document_resource_adapter
     dbis: 6
     migration_peak: 6

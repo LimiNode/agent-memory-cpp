@@ -1230,6 +1230,12 @@ usage_by_cooldown                     RangeIndexTable<CompositeKey<ScopeId, Cool
 
 // Schema metadata
 schema_info                           KeyValueTable<string, SchemaInfo>                  // envelope_version, component_versions[], profile_signature
+
+// Canonical content C1 profile (optional, raw/plain only)
+agent_memory_canonical_heads          KeyValueTable<DocumentId, DocumentRevision>
+agent_memory_canonical_revisions      KeyValueTable<(DocumentId, DocumentRevision), revision_blob>
+agent_memory_canonical_bodies         KeyValueTable<(DocumentId, BodyRevision), raw_body_blob>
+agent_memory_canonical_ledgers        KeyValueTable<DocumentId, historical_block_id_ledger>
 ```
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для дополнительных Layer-1 primitives under consideration (Patterns 3, 4, 6): coverage shadow graph (новый §5.7 — `coverage_units`, `coverage_files`, `coverage_regions`), `TableSequence` as the normative atomic table-bound ID generator, team-shared graph artifact (offline snapshot format — proposed job, not yet in `compaction-roadmap.md`).
@@ -1305,6 +1311,10 @@ reserves are intentionally absent because they declare no physical DBI:
 ```text
 dbi-profile-delta-review-projection-v1
 # name|owner|table_type|opens|wire_sync_support|replication_semantics|physical_key|migration_peak
+agent_memory_canonical_heads|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId|1
+agent_memory_canonical_revisions|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,DocumentRevision|1
+agent_memory_canonical_bodies|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId,BodyRevision|1
+agent_memory_canonical_ledgers|canonical_content|KeyValueTable|always|kv_supported|logical_adapter_required|DocumentId|1
 jobs_by_id|runtime_services|KeyValueTable|RuntimeQueue|kv_supported|raw_mirror_only|JobId|1
 jobs_scheduled|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|RunAfterMs,JobId|1
 jobs_ready|runtime_services|RangeIndexTable|RuntimeQueue|kv_supported_if_range_is_kv_backed|raw_mirror_only|PriorityRank,JobId|1
@@ -1465,6 +1475,7 @@ Legacy/profile-specific inventory из §5.1-§5.4 не считается ав�
 | Runtime queue profile delta | 0 by default, +5 for the shared persistent queue | +5 | mixed | `jobs_by_id`, `jobs_scheduled`, `jobs_ready`, `jobs_by_lease`, `jobs_by_status`; owned by `runtime-services-roadmap.md`. |
 | Compaction handoff profile delta | 0 by default, +1 if compaction enabled | +1 | KV supported | `compaction_handoffs`; `JobId -> CompactionHandoff`, operational checkpoint for the same queue job, not queue ordering. |
 | MDBX-backed resource body delta | 0 by default, +1 simple KV or +2 chunked | +2 | KV supported | `resource_bodies` or `resource_body_manifest` + `resource_body_chunks`; see §12.9. |
+| Canonical content C1 profile | 0 by default, +4 when enabled | +4 | KV supported / logical adapter required | Raw/plain immutable heads and revisions, logical body bindings, physical body generations and no-reuse ledgers. C2 compression and re-encoding are excluded. |
 | SourceRef reverse lookup delta | 0 by default, +1 if reverse lookup is enabled | +1 | DUPSORT not supported by sync v0.1 | `source_refs_by_resource`; optional acceleration for `ResourceId -> UnitId[]`, not required for M1 full source refs. |
 | Durable global identity delta | 0 by default, +1 when `DurableGlobalIdentity` is enabled | +1 | KV supported / logical adapter required | `global_unit_id_to_local_id`; common import/export capability consumed by A0, not A-lane-owned; never raw-mirrored because its local target is environment-specific. |
 | Runtime sequence delta | 0 by default, +1 when sequence-time retrieval is enabled | +1 | KV-range if backed / logical adapter required | `runtime_sequence_index`; exports durable visibility receipts by global identity while producer-event acceleration rows are rebuilt after remapping. |

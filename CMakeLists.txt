@@ -122,6 +122,8 @@ if(AGENT_MEMORY_ENABLE_MDBX)
     target_sources(agent_memory
         PRIVATE
             src/agent_memory/infrastructure/mdbx/MdbxDocumentStorage.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
     )

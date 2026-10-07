@@ -7,5 +7,7 @@
 
 #include "mdbx/MdbxDocumentStorage.hpp"
 #include "mdbx/MdbxResourceManifestStorage.hpp"
+#include "mdbx/MdbxStorageContext.hpp"
+#include "mdbx/MdbxCanonicalContentStore.hpp"
 
 #endif
