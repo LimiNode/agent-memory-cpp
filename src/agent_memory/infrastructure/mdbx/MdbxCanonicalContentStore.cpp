@@ -12,6 +12,7 @@
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace agent_memory {
 namespace {
