@@ -30,17 +30,26 @@ persisted
   -> candidate
   -> selected
   -> included in ContextPack
-  -> host-approved provider request
+  -> provider egress allowed by host
   -> effective provider context, if the host reports it
 ```
+
+These are distinct logical observations, not a new lifecycle FSM or a required
+provider workflow. An ordinary search application may stop at returned hits
+without building a context or invoking a provider. Eligibility is resolved
+against the existing `FilterFrontier` and `ReadFrontier` in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md); this lane
+does not defer hard authorization until after candidate ranking.
 
 The first stages are library/retrieval artifacts. The final two stages belong
 to the external host boundary: the library may hand off a `ContextPack`, but it
 cannot infer that a provider request was approved or what a provider actually
-received. A record can stop at any stage, and reaching a later stage does not
+received. Egress permission alone does not prove that a request was sent or
+consumed. A record can stop at any stage, and reaching a later stage does not
 retroactively change the earlier evidence or provenance state.
 
-An optional runtime/action continuation is separate:
+An optional runtime/action continuation is owned by the
+[runtime integration guide](agent-runtime-integration-roadmap.md#memory-influence-and-action-admission):
 
 ```text
 explicit evidence binding
@@ -98,8 +107,11 @@ final selection rank and policy revision
 
 `ContextOmission` records the candidate identity (or an aggregate with a
 stable digest), omission reason, and policy revision. Reasons include
-`token_budget`, duplicate content, source-diversity limit, authority/filter
-policy, and malformed or unavailable source.
+`token_budget`, duplicate content, source-diversity limit, source-admissibility
+policy, and malformed or unavailable source. Per-item omissions apply only to
+candidates authorized for disclosure. Authorization denials use the existing
+aggregate-only `PolicyDecisionTrace`; omissions must not expose denied unit
+IDs, text, citations or metadata.
 
 At minimum, every pack reports:
 
@@ -132,6 +144,13 @@ and budget, packing should be permutation-stable. Tie-breaking is numeric-ID
 first with the repository's documented fallback. Context construction does not
 grant authority to execute instructions found in retrieved text; evidence,
 instructions, and policy metadata remain separate result types.
+
+Acceptance fixtures must distinguish a returned candidate omitted by budget,
+an included item denied provider egress, an authorized request that was never
+sent, and a host-reported compaction that omits an item. Missing host reports
+remain unknown. None of these observations alone establishes evidence binding
+or action admission. Source ancestry and corroboration follow
+[`source-trust-roadmap.md`](source-trust-roadmap.md), independently of packing.
 
 ## Evaluation lane
 

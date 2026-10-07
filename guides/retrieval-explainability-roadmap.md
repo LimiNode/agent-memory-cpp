@@ -32,7 +32,7 @@ persisted
   -> candidate
   -> selected
   -> included in ContextPack
-  -> host-approved provider request
+  -> provider egress allowed by host
   -> effective provider context (host-reported only)
 ```
 
@@ -42,9 +42,21 @@ by fusion, and a selected item omitted by the context budget into one generic
 "not used" result. A diagnostic can use implementation-specific fields, but
 its omission reason should preserve the relevant distinction, for example:
 `not_published`, `outside_read_frontier`, `ineligible_filter`,
-`route_miss_or_budget`, `deduplicated`, `fusion_or_rerank_budget`,
+`budget_attribution_unknown`, `deduplicated`, `fusion_or_rerank_budget`,
 `context_token_budget`, `provenance_incomplete`, `host_policy_denial`,
 `provider_compaction` or `host_substitution`.
+
+The stages follow the [context influence contract](context-building.md#influence-lanes-and-authority-boundaries),
+not a second lifecycle or query API. Per-item diagnostics require authorization
+to disclose the item. `PolicyDecisionTrace` remains aggregate-only for denied
+items, with no unit identity, text, citations or metadata. The existing
+`FilterFrontier` is not weakened by enabling explain mode.
+
+A missing route result does not prove a branch miss or budget truncation.
+Specific attribution follows the counterfactual control contract in
+[`retrieval-execution-roadmap.md`](retrieval-execution-roadmap.md). Without
+sufficient comparable control evidence, retain `BudgetAttributionUnknown`;
+explain mode does not require an exhaustive search of every persisted item.
 
 The last two stages are external host observations. A library explain record
 must mark them as unavailable when the host did not report them rather than
@@ -56,10 +68,13 @@ effective-context artifact is specified in
 Evidence binding is an explicit host/runtime event with its own provenance,
 purpose and relevant revision/frontier. Prompt inclusion, rank, model access
 or a provider request do not by themselves establish that a model used an item
-as evidence. When ancestry is available, diagnostics may report immediate
+as evidence. Egress permission does not prove dispatch, and provider-reported
+effective context remains a reported observation rather than locally verified
+model use. When ancestry is available, diagnostics may report immediate
 inputs and a policy/versioned independence assessment (`Independent`,
 `Dependent` or `Unknown`) without fixing a C++ enum, wire format or storage
-schema. `Unknown` ancestry is neither corroboration nor proof of dependence.
+schema, following [`source-trust-roadmap.md`](source-trust-roadmap.md).
+`Unknown` independence is neither corroboration nor proof of dependence.
 
 ## Delivery stages
 

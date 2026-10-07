@@ -30,8 +30,10 @@ missing or opaque upstream lineage remains explicitly unknown.
 Corroboration is a policy decision over evidence ancestry and observation
 lineage, not a count of records, agents, providers or source identifiers. Two
 records with different IDs can still derive from one copied source or summary.
-For conceptual policy semantics, an independence assessment has three possible
-outcomes:
+Independence is assessed between evidence inputs for a particular claim and
+observation scope, not as an intrinsic quality of one record. The assessment
+identifies its inputs, available provenance frontier and policy revision. For
+conceptual policy semantics, it has three possible outcomes:
 
 ```text
 Independent | Dependent | Unknown
@@ -39,7 +41,8 @@ Independent | Dependent | Unknown
 
 This is documentation semantics, not a required public C++ enum or storage
 schema. `Independent` requires policy-defined independent roots or observation
-lineages. `Dependent` records shared or copied ancestry. `Unknown` means that
+lineages. `Dependent` records relevant shared or copied ancestry under that
+policy. `Unknown` means that
 the available lineage cannot establish either conclusion; it is neither
 corroboration nor proof of dependence and must not be silently upgraded.
 
@@ -47,7 +50,9 @@ Storage and epistemic roles remain separate. A representation may be the
 retained **primary representation** for a materialization or search profile
 while still being a derived transcript, translation or summary with dependent
 or unknown evidence ancestry. A storage role does not make that representation
-an independent observation or a more authoritative claim. See
+an independent observation or a more authoritative claim. Root lists, compact
+summaries, digests and their storage representation remain implementation or
+research choices; this contract does not prescribe an ancestry encoding. See
 [`artifact-provenance-roadmap.md`](artifact-provenance-roadmap.md) and
 [`canonical-content-storage-roadmap.md`](canonical-content-storage-roadmap.md)
 for the capability-qualified retention rules.

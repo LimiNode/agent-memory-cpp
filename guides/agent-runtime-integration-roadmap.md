@@ -84,8 +84,9 @@ runtime integration lane is cross-listed there as ADR-019..ADR-025.
 ## Memory influence and action admission
 
 The runtime-facing continuation of a memory result is deliberately separate
-from the core retrieval/context lane. The latter may end at a host-approved
-provider request or at a host-reported effective-context artifact; it does not
+from the [core retrieval/context lane](context-building.md#influence-lanes-and-authority-boundaries).
+The latter may end at host-approved provider egress or at a host-reported
+effective-context artifact; it does not
 establish that a model used an item as evidence. The optional runtime lane is:
 
 ```text
@@ -108,8 +109,16 @@ retrieval result.
 The distinction is normative for ADELIA adapters and for application profiles
 such as Ephi: historical authority evidence explains what was previously
 observed or asserted, while current action authority is a live runtime fact.
-Evidence status, source-of-record/materialization role and action authority
-remain separate axes. A binding or outcome may be persisted as provenance for
+Canonical/source-of-record authority, epistemic evidence status and current
+action authority remain separate axes. In particular:
+
+- retrieval visibility does not grant epistemic authority;
+- epistemic authority does not grant action authority;
+- historical authority evidence does not grant current permission.
+
+A primary materialization role does not change these distinctions; evidence
+ancestry follows [`source-trust-roadmap.md`](source-trust-roadmap.md).
+A binding or outcome may be persisted as provenance for
 later replay, but it does not retroactively promote the bound record to
 validated truth.
 
