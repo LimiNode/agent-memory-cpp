@@ -407,6 +407,104 @@ high-confidence domains, missing metadata, stale DomainMap, conflicting
 playbooks, conflicting procedures, no-domain queries and cases where routing
 hurts the baseline.
 
+### Graph retrieval backlog: G0 and G1 (M2 research candidates)
+
+These are two bounded research questions, not implemented routes, selected
+policies or new public API/DBI requirements. They depend on canonical
+Relation/endpoint validation, bounded graph retrieval and the existing
+retrieval-plan/frontier contracts. They do not block the MDBX C1 text slice.
+
+The motivating [AAF article](https://habr.com/ru/articles/1010522/) describes
+graph neighbours feeding a secondary vector search and suppression of
+supernodes. Source inspection at AAF commit
+`4e67ef62b3552067439bb520a4773551cf8a2156` makes the distinction precise:
+[`_build_event_rag_context`](https://github.com/th0r3nt/AAF-Autonomous-Agent-Framework-/blob/4e67ef62b3552067439bb520a4773551cf8a2156/src/layer03_brain/llm/context/builder.py)
+passes associated node names as new queries, and
+[`raw_find_entries_in_vector_db`](https://github.com/th0r3nt/AAF-Autonomous-Agent-Framework-/blob/4e67ef62b3552067439bb520a4773551cf8a2156/src/layer01_datastate/vector_db/vector_db_management.py)
+searches by query text without an allowed-document-ID constraint. This is
+query expansion. Restricting the second search to graph-linked canonical
+candidates is a separate project hypothesis, not an observed AAF guarantee.
+The reference supplies motivation, not a quality result or project authority.
+
+#### G0: Graph-conditioned second-stage retrieval
+
+Compare these explicitly different arms over identical corpus revisions,
+qrels, models, frontiers, final K and registered total query budgets:
+
+| Arm | Search scope |
+|---|---|
+| No-graph control | Independent lexical/dense corpus routes and fusion. |
+| Additive baseline | Lexical + dense + bounded graph candidates, then fusion. |
+| Graph-derived query expansion | Initial seeds and anchors, bounded expansion, then node-derived query variants over the eligible corpus. |
+| Graph-conditioned candidate search | Initial seeds and anchors, bounded expansion, an explicit canonical candidate set, then dense/lexical scoring of that set with the original query. |
+
+Keep an independent original-query route for recovery; a conditioned-only
+ablation is labelled separately. Graph conditioning is not a global hard
+domain filter. Fallbacks must be declared in the plan and consume its budget;
+empty, unavailable and incomplete graph results are distinct. The same
+`FilterFrontier` and `ReadFrontier` apply to seeds, relations, endpoints,
+secondary searches and final canonical hydration. Semantic traversal does not
+implicitly follow `TechnicalLineage`, `Evidence` or `Supersession` edges.
+
+The graph-to-content mapping must identify canonical unit occurrences and
+revisions, with graph/projection generations and mapping coverage. An entity
+name alone is not a document ID. The existing `PriorRouteCandidates` contract
+is defined for `DenseProjectionRoute` in
+[`memory-stacks-roadmap.md`](memory-stacks-roadmap.md); it does not already
+provide an arbitrary graph parent or a lexical input API. The minimal screen
+may materialize an execution-local graph candidate set and score it exactly.
+Production lowering requires an explicit owner-contract update for that
+handoff, rather than pretending a mixed graph/dense DAG is implemented.
+
+Trace query/seed/anchor/edge/candidate lineage, bounded inputs and one-based
+route ranks through canonical deduplication and fusion. Related routes are
+retrieval votes, not independent epistemic corroboration. Report Recall@10 and
+qrels-based nDCG@10 overall and for cross-domain/relation/causal query slices;
+also report seed and graph-candidate recall, candidate counts, scanned edges,
+decoded bytes, latency and labelled irrelevant expansion / total expansion.
+Conditioned-stage recall cannot exceed its candidate-set coverage. Use the
+existing counterfactual control for budget-loss attribution, and include every
+stage's work in the comparison; extra searches are not a free quality gain.
+
+Fixtures must include ambiguous/wrong seeds, missing mappings, disconnected
+relevant evidence, stale edges and forbidden endpoints. Freeze the executable
+plan, cost envelope and decision criteria before measurements. Accept only a
+measured quality/cost trade-off with no frontier or provenance violation;
+otherwise retain the baseline or record insufficient evidence. No winner or
+new storage substrate is selected here.
+
+#### G1: Hub-aware expansion
+
+Compare ordinary bounded BFS with per-node fanout caps, top-weighted edges,
+degree-normalized scores and relation-aware quotas. Keep depth, global budgets
+and tie-breaking fixed while isolating each policy. Degree-based penalties are
+research arms, not defaults; do not hardcode agent/user/entity names as hubs.
+Suppressing expansion through a hub does not remove an otherwise valid direct
+hit or erase its relations.
+
+Degree and relation statistics must be qualified by the query's authorized,
+temporal and graph-generation scope. Unknown degree remains unknown; hidden
+neighbours must not influence a disclosed degree/score or leak through traces.
+Limit scanned/decoded adjacency work as well as returned fanout: selecting a
+top-K list after an unbounded adjacency scan is not bounded traversal. Record
+deterministic ordering, policy revision and any approximate or truncated stats.
+
+Distinguish `no_neighbors`, `filtered_by_policy`, `hub_budget_suppressed` and
+`global_budget_exhausted` as diagnostic reasons, not new completion enums.
+Only a completed inspection of the declared eligible neighbourhood establishes
+`no_neighbors`. Policy-bounded completion describes that bounded plan, not an
+exhaustive graph. Skipping work required by the plan follows existing
+`RetrievalRouteCompletion`, `IncompleteRouteAction` and
+`BudgetExhaustionAction`; suppression must not silently become an empty,
+complete route. Authorization denials remain aggregate-only.
+
+Use skewed-degree graphs with both irrelevant hubs and a relevant hub that is
+the only bridge to evidence. Compare relevance/cross-domain recall, branch
+starvation, visited/decoded edges, bytes and latency at matched global work.
+Acceptance requires reproducible suppression/completion traces and a declared
+quality/cost criterion; a fanout cap alone is not proof of improved retrieval.
+G1 may be screened independently, then combined with G0 as a labelled ablation.
+
 ## 10. Milestone Placement
 
 - M0: no activation layer beyond scope/lifecycle/source filters.
