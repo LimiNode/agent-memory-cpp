@@ -5,6 +5,7 @@
 #include <iostream>
 #include <mdbx_containers/KeyValueTable.hpp>
 #include <stdexcept>
+#include <vector>
 
 namespace {
 
@@ -34,6 +35,22 @@ std::string body_row_key(const std::string& document_id,
 
 int main() {
     using namespace agent_memory;
+    // Physical codec and generation are deliberately absent from the logical
+    // digest input. This fixture models a future raw-generation-1 versus
+    // compressed-generation-2 re-encoding of the same decoded block sequence.
+    const std::vector<ContentBlock> digest_fixture{
+        {ContentBlockId{"digest-a"},
+         1,
+         ContentBlockKind::Paragraph,
+         std::nullopt,
+         "same logical body"}};
+    const auto raw_generation_one_digest =
+        detail::canonical_decoded_content_digest(digest_fixture);
+    const auto compressed_generation_two_digest =
+        detail::canonical_decoded_content_digest(digest_fixture);
+    if (raw_generation_one_digest != compressed_generation_two_digest)
+        return 30;
+
     const auto path =
         std::filesystem::temp_directory_path() / "agent_memory_c1_canonical_test.mdbx";
     std::error_code ec;

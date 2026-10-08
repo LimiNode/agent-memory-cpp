@@ -20,8 +20,22 @@
 #include <cstdint>
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace agent_memory {
+
+namespace detail {
+
+/// \brief Computes the C1 logical decoded-content digest.
+///
+/// This backend-only primitive intentionally excludes body revision, codec,
+/// physical encoding generation, framing, and physical checksums. It is used
+/// by the MDBX adapter and its regression fixtures to preserve the identity
+/// boundary described by `guides/canonical-content-storage-roadmap.md`.
+[[nodiscard]] std::uint64_t canonical_decoded_content_digest(
+    const std::vector<ContentBlock>& blocks);
+
+} // namespace detail
 
 /// \brief Construction options for the C1 raw/plain MDBX profile.
 struct MdbxCanonicalContentStoreOptions final {
@@ -39,6 +53,12 @@ struct MdbxCanonicalContentStoreOptions final {
 /// block-ID no-reuse ledger. One accepted creation or edit is published in one
 /// writable MDBX transaction. A current read resolves its head, revision, and
 /// body inside one read-only snapshot.
+///
+/// Revision records bind a `BodyRevision` to a logical decoded-content digest;
+/// they do not embed a physical codec or `PhysicalEncodingGeneration`. Those
+/// physical fields live in the body key/value descriptor, alongside a
+/// generation-specific checksum, so a future re-encoding can be published
+/// without rewriting immutable semantic revision identities.
 ///
 /// C2 compression, dictionaries, and byte-identical physical re-encoding are
 /// deliberately outside this class. Core/domain headers remain MDBX-free.

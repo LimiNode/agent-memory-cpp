@@ -1240,9 +1240,12 @@ agent_memory_canonical_ledgers        KeyValueTable<DocumentId, historical_block
 
 For the C1 raw profile, a revision blob contains ordered block descriptors and
 the logical `BodyRevision` binding; it does not own block text. The body value
-contains decoded block text, its integrity digest, codec (`raw`) and the
-independent `PhysicalEncodingGeneration`. A later physical re-encoding may
-therefore use another generation without changing the logical body revision.
+contains decoded block text, a codec-independent logical decoded-content digest,
+a physical checksum, codec (`raw`) and the independent
+`PhysicalEncodingGeneration`. The revision stores only `BodyRevision` and the
+logical digest; generation and codec are physical-body metadata. A later
+physical re-encoding may therefore use another generation without changing the
+immutable revision binding or logical digest.
 
 См. также [`code-intelligence-roadmap.md`](code-intelligence-roadmap.md) для дополнительных Layer-1 primitives under consideration (Patterns 3, 4, 6): coverage shadow graph (новый §5.7 — `coverage_units`, `coverage_files`, `coverage_regions`), `TableSequence` as the normative atomic table-bound ID generator, team-shared graph artifact (offline snapshot format — proposed job, not yet in `compaction-roadmap.md`).
 

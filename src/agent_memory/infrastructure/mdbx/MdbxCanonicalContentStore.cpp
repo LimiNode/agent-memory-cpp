@@ -20,8 +20,9 @@ namespace {
 // Every payload begins with an application-owned version marker. The compact
 // length-prefixed codec is binary-safe and rejects truncation, overflow,
 // unknown versions, and trailing data before domain objects are exposed.
-constexpr std::string_view REV_VERSION = "agent_memory.canonical_revision.v2";
-constexpr std::string_view BODY_VERSION = "agent_memory.canonical_body.v2";
+constexpr std::string_view REV_VERSION = "agent_memory.canonical_revision.v3";
+constexpr std::string_view BODY_VERSION = "agent_memory.canonical_body.v3";
+constexpr std::string_view LOGICAL_BODY_VERSION = "agent_memory.canonical_logical_body.v1";
 constexpr std::string_view LEDGER_VERSION = "agent_memory.canonical_ledger.v1";
 constexpr std::uint64_t RAW_ENCODING_GENERATION = 1;
 constexpr std::string_view RAW_CODEC = "raw";
@@ -69,8 +70,9 @@ std::uint64_t parse_u64(std::string_view text, std::string_view field) {
 }
 
 std::uint64_t digest_bytes(std::string_view bytes) {
-    // C1 uses a deterministic integrity digest; a cryptographic body digest is
-    // reserved for the artifact-aware body store contract.
+    // C1 uses a deterministic non-cryptographic checksum for corruption
+    // detection. It is intentionally separate from the logical decoded-content
+    // digest stored by an immutable revision.
     std::uint64_t digest = 1469598103934665603ULL;
     for (const auto byte : bytes) {
         digest ^= static_cast<unsigned char>(byte);
@@ -145,19 +147,16 @@ Metadata metadata_get(Reader& r) {
 struct DecodedRevision final {
     CanonicalDocumentRevision revision;
     std::uint64_t body_revision = 0;
-    std::uint64_t encoding_generation = 0;
-    std::uint64_t body_digest = 0;
+    std::uint64_t logical_body_digest = 0;
 };
 
 std::string encode_revision(const CanonicalDocumentRevision& revision,
                             std::uint64_t body_revision,
-                            std::uint64_t encoding_generation,
-                            std::uint64_t body_digest) {
+                            std::uint64_t logical_body_digest) {
     std::string out;
     put_string(out, REV_VERSION);
     put_u64(out, body_revision);
-    put_u64(out, encoding_generation);
-    put_u64(out, body_digest);
+    put_u64(out, logical_body_digest);
     put_string(out, revision.document_id.value());
     put_u64(out, revision.revision);
     metadata_put(out, revision.metadata);
@@ -178,8 +177,7 @@ DecodedRevision decode_revision(std::string_view payload) {
     if (r.string() != REV_VERSION)
         throw std::runtime_error("unsupported canonical revision payload");
     const auto body_revision = r.u64();
-    const auto encoding_generation = r.u64();
-    const auto body_digest = r.u64();
+    const auto logical_body_digest = r.u64();
     CanonicalDocumentRevision revision{DocumentId{r.string()}, r.u64(), metadata_get(r), {}};
     const auto n = r.size();
     revision.blocks.reserve(n);
@@ -199,12 +197,13 @@ DecodedRevision decode_revision(std::string_view payload) {
         revision.blocks.push_back(std::move(b));
     }
     r.end();
-    return {std::move(revision), body_revision, encoding_generation, body_digest};
+    return {std::move(revision), body_revision, logical_body_digest};
 }
 
 struct EncodedBody final {
     std::string payload;
-    std::uint64_t digest = 0;
+    std::uint64_t logical_body_digest = 0;
+    std::uint64_t physical_checksum = 0;
 };
 
 struct DecodedBody final {
@@ -212,13 +211,34 @@ struct DecodedBody final {
     std::uint64_t encoding_generation = 0;
     std::string codec;
     std::vector<ContentBlock> blocks;
-    std::uint64_t digest = 0;
+    std::uint64_t logical_body_digest = 0;
+    std::uint64_t physical_checksum = 0;
 };
+
+std::string encode_logical_body(const std::vector<ContentBlock>& blocks) {
+    std::string out;
+    put_string(out, LOGICAL_BODY_VERSION);
+    put_size(out, blocks.size());
+    for (const auto& b : blocks) {
+        put_string(out, b.id.value());
+        put_size(out, static_cast<std::size_t>(b.kind));
+        put_size(out, b.parent_id ? 1 : 0);
+        if (b.parent_id)
+            put_string(out, b.parent_id->value());
+        put_string(out, b.text);
+    }
+    return out;
+}
+
+std::uint64_t logical_body_digest_impl(const std::vector<ContentBlock>& blocks) {
+    return digest_bytes(encode_logical_body(blocks));
+}
 
 std::string encode_body_payload(const std::vector<ContentBlock>& blocks,
                                 std::uint64_t body_revision,
                                 std::uint64_t encoding_generation,
-                                std::string_view codec) {
+                                std::string_view codec,
+                                std::uint64_t logical_digest) {
     std::string out;
     put_string(out, BODY_VERSION);
     put_u64(out, body_revision);
@@ -233,15 +253,20 @@ std::string encode_body_payload(const std::vector<ContentBlock>& blocks,
             put_string(out, b.parent_id->value());
         put_string(out, b.text);
     }
+    put_u64(out, logical_digest);
     return out;
 }
 
 EncodedBody encode_body(const CanonicalDocumentRevision& revision, std::uint64_t body_revision) {
     EncodedBody result;
-    result.payload =
-        encode_body_payload(revision.blocks, body_revision, RAW_ENCODING_GENERATION, RAW_CODEC);
-    result.digest = digest_bytes(result.payload);
-    put_u64(result.payload, result.digest);
+    result.logical_body_digest = detail::canonical_decoded_content_digest(revision.blocks);
+    result.payload = encode_body_payload(revision.blocks,
+                                         body_revision,
+                                         RAW_ENCODING_GENERATION,
+                                         RAW_CODEC,
+                                         result.logical_body_digest);
+    result.physical_checksum = digest_bytes(result.payload);
+    put_u64(result.payload, result.physical_checksum);
     return result;
 }
 
@@ -272,20 +297,26 @@ DecodedBody decode_body(std::string_view payload) {
         block.text = r.string();
         result.blocks.push_back(std::move(block));
     }
-    result.digest = r.u64();
+    result.logical_body_digest = r.u64();
+    result.physical_checksum = r.u64();
     r.end();
     const auto canonical_payload = encode_body_payload(
-        result.blocks, result.body_revision, result.encoding_generation, result.codec);
-    if (digest_bytes(canonical_payload) != result.digest)
-        throw std::runtime_error("canonical body digest mismatch");
+        result.blocks,
+        result.body_revision,
+        result.encoding_generation,
+        result.codec,
+        result.logical_body_digest);
+    if (detail::canonical_decoded_content_digest(result.blocks) != result.logical_body_digest)
+        throw std::runtime_error("canonical logical body digest mismatch");
+    if (digest_bytes(canonical_payload) != result.physical_checksum)
+        throw std::runtime_error("canonical physical body checksum mismatch");
     return result;
 }
 
 CanonicalDocumentRevision bind_body(const DecodedRevision& decoded_revision,
                                     const DecodedBody& body) {
     if (decoded_revision.body_revision != body.body_revision ||
-        decoded_revision.encoding_generation != body.encoding_generation ||
-        decoded_revision.body_digest != body.digest ||
+        decoded_revision.logical_body_digest != body.logical_body_digest ||
         body.blocks.size() != decoded_revision.revision.blocks.size()) {
         throw std::runtime_error("canonical body binding mismatch");
     }
@@ -325,6 +356,14 @@ std::set<ContentBlockId> decode_ledger(std::string_view payload) {
 
 } // namespace
 
+namespace detail {
+
+std::uint64_t canonical_decoded_content_digest(const std::vector<ContentBlock>& blocks) {
+    return logical_body_digest_impl(blocks);
+}
+
+} // namespace detail
+
 class MdbxCanonicalContentStore::Impl final {
   public:
     explicit Impl(MdbxCanonicalContentStoreOptions options)
@@ -343,7 +382,7 @@ class MdbxCanonicalContentStore::Impl final {
         std::set<ContentBlockId> ledger;                  ///< Durable block-ID no-reuse ledger.
         std::uint64_t body_revision = 0;                  ///< Logical body bound to current.
         std::uint64_t body_generation = 0;                ///< Physical encoding generation.
-        std::uint64_t body_digest = 0;                    ///< Integrity digest of the decoded body.
+        std::uint64_t logical_body_digest = 0;            ///< Codec-independent decoded-content digest.
     };
 
     Loaded load(const DocumentId& id, const mdbxc::Transaction& txn) {
@@ -364,14 +403,14 @@ class MdbxCanonicalContentStore::Impl final {
         const auto decoded = decode_revision(*payload);
         if (decoded.revision.document_id != id || decoded.revision.revision != head_revision)
             throw std::runtime_error("canonical head binding mismatch");
-        const auto body = bodies.find(
-            body_key(id.value(), decoded.body_revision, decoded.encoding_generation), txn);
+        const auto body = bodies.find(body_key(id.value(), decoded.body_revision, RAW_ENCODING_GENERATION),
+                                      txn);
         if (!body)
             throw std::runtime_error("canonical revision references missing body");
         const auto decoded_body = decode_body(*body);
         loaded.body_revision = decoded.body_revision;
-        loaded.body_generation = decoded.encoding_generation;
-        loaded.body_digest = decoded.body_digest;
+        loaded.body_generation = decoded_body.encoding_generation;
+        loaded.logical_body_digest = decoded.logical_body_digest;
         loaded.current = bind_body(decoded, decoded_body);
         return loaded;
     }
@@ -385,8 +424,8 @@ class MdbxCanonicalContentStore::Impl final {
         const auto decoded = decode_revision(*payload);
         if (decoded.revision.document_id != id || decoded.revision.revision != revision)
             throw std::runtime_error("canonical revision identity mismatch");
-        const auto body = bodies.find(
-            body_key(id.value(), decoded.body_revision, decoded.encoding_generation), txn);
+        const auto body = bodies.find(body_key(id.value(), decoded.body_revision, RAW_ENCODING_GENERATION),
+                                      txn);
         if (!body)
             throw std::runtime_error("canonical revision references missing body");
         return bind_body(decoded, decode_body(*body));
@@ -395,7 +434,7 @@ class MdbxCanonicalContentStore::Impl final {
     void write_revision(const CanonicalDocumentRevision& revision,
                         std::uint64_t body_revision,
                         std::uint64_t body_generation,
-                        std::uint64_t body_digest,
+                        std::uint64_t logical_body_digest,
                         const std::optional<EncodedBody>& body,
                         const std::set<ContentBlockId>& ledger,
                         const mdbxc::Transaction& txn) {
@@ -403,7 +442,7 @@ class MdbxCanonicalContentStore::Impl final {
         // A metadata-only edit intentionally leaves the immutable body row alone.
         revisions.insert_or_assign(
             key(revision.document_id.value(), revision.revision),
-            encode_revision(revision, body_revision, body_generation, body_digest),
+            encode_revision(revision, body_revision, logical_body_digest),
             txn);
         if (body) {
             bodies.insert_or_assign(
@@ -443,7 +482,8 @@ bool MdbxCanonicalContentStore::create_document(CanonicalDocumentRevision initia
     for (const auto& block : initial.blocks)
         ids.insert(block.id);
     const auto body = encode_body(initial, 1);
-    m_impl->write_revision(initial, 1, RAW_ENCODING_GENERATION, body.digest, body, ids, txn);
+    m_impl->write_revision(
+        initial, 1, RAW_ENCODING_GENERATION, body.logical_body_digest, body, ids, txn);
     txn.commit();
     return true;
 }
@@ -537,17 +577,17 @@ CanonicalEditResult MdbxCanonicalContentStore::commit(const CanonicalEditRequest
         }
     }
     std::optional<EncodedBody> body;
-    std::uint64_t body_digest = loaded.body_digest;
+    std::uint64_t logical_body_digest = loaded.logical_body_digest;
     if (body_changed) {
         ++body_revision;
         body = encode_body(revision, body_revision);
-        body_digest = body->digest;
+        logical_body_digest = body->logical_body_digest;
     }
     std::set<ContentBlockId> ledger = loaded.ledger;
     for (const auto& block : revision.blocks)
         ledger.insert(block.id);
     m_impl->write_revision(
-        revision, body_revision, body_generation, body_digest, body, ledger, txn);
+        revision, body_revision, body_generation, logical_body_digest, body, ledger, txn);
     txn.commit();
     return result;
 }
