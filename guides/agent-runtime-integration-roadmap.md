@@ -761,11 +761,18 @@ observation_due_at / resolution_window
     when evidence is expected or when resolution is evaluated
 
 valid_from / valid_until
-    validity bounds of the expectation record itself, when applicable
+    existing Temporal/BiTemporal source/world valid-time bounds when used
+    by the mapped expectation profile; not the predicted interval or deadline
 
 TaskPayload.deadline_ms
     obligation completion bound
 ```
+
+The canonical temporal owner remains AM-13 in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md#3-am-13-bi-temporal-knowledge).
+Its source/world valid time is separate from recorded/knowledge time. This
+profile does not redefine those fields or automatically copy the predicted
+interval or observation deadline into them.
 
 Therefore:
 
@@ -775,23 +782,28 @@ expectation window ended  != prediction refuted
 missed observation        != proposition false
 ```
 
-The conceptual resolution path is:
+Resolution and window expiry are separate conceptual axes:
 
-```text
-Pending
-  -> Confirmed
-  -> Refuted
-  -> Withdrawn
-  -> ExpiredUnresolved
-```
+| Axis | Conceptual values |
+|---|---|
+| Resolution | Pending, Confirmed, Refuted, Withdrawn |
+| Window | Open, Expired |
 
-These are alternative terminal outcomes, not one mandatory linear sequence.
+`ExpiredUnresolved` means an expired window with pending resolution; it is
+not an irreversible epistemic verdict. Late evidence may resolve it as
+`Confirmed` or `Refuted`, and an explicit withdrawal may resolve it as
+`Withdrawn`. For example, evidence received on Saturday that a package arrived
+on Friday can confirm a Friday expectation that was unresolved at expiry.
+These are normative semantics, not new public enums or a replacement Task FSM.
+
 Clock passage alone does not produce `Refuted`, `Violated` or `False`. Such a
 transition requires resolution evidence or an explicitly declared
 closed-world policy whose scope, frontier and evidence are recorded. An ended
 expectation window may therefore remain unresolved. Any durable resolution is
 append-only and preserves the original expectation, its revision/frontier and
-the evidence used for the resolution.
+the evidence used for the resolution. Late resolution records when the
+evidence became known separately from when the observed event occurred;
+it does not retroactively rewrite the earlier expired-unresolved view.
 
 ### Ephemeral scenario overlays
 
@@ -805,9 +817,25 @@ durable baseline at a pinned frontier
 
 The overlay may contain hypothetical events, assumptions or deltas, but it is
 not an observed event, commitment, decision or canonical fact. A scenario
-evaluation must carry enough provenance to reproduce the view, including the
-baseline revision/frontier or digest, overlay digest, assumptions, policy/model
-revision, projection coverage and unknowns.
+evaluation identifies its pinned baseline, hypothetical inputs, assumptions,
+policy/model revision, projection coverage and unknowns. When reproduction or
+audit/replay of the view is promised, it must retain:
+
+- a baseline revision/frontier/reference that can rematerialize the exact
+  inputs, or a retained snapshot sufficient for that purpose, plus a baseline
+  digest for verification;
+- the overlay payload or a durable replay reference resolving to that payload,
+  plus its digest;
+- the assumptions and required computation provenance, including policy/model
+  revision and any execution inputs or retained outputs needed by the declared
+  replay mode.
+
+A digest is integrity/identity evidence, not a snapshot or replay material.
+An ephemeral scenario need not promise later replay. An audit-only retained
+result may likewise declare replay unavailable; persistence alone does not
+establish reproducibility. Missing or no-longer-resolvable replay inputs must
+be reported as unavailable, not replaced with current baseline data or
+reconstructed from a digest.
 
 The overlay itself has no canonical identity, lifecycle state or usage counter.
 Baseline retrieval follows the ordinary retrieval and usage contract; evaluating
@@ -877,8 +905,10 @@ The future implementation/evaluation gate must cover at least:
 |---|---|
 | Deadline vs validity vs predicted interval | `deadline`, `valid_from/valid_until` and `expected_from/expected_until` remain distinct |
 | Expired expectation | no automatic refutation or false claim without resolution evidence/closed-world policy |
+| Late resolution | late evidence can confirm/refute an expired-unresolved expectation; append-only resolution preserves the earlier knowledge-time view |
 | Derived forecast | inputs, derivation identity and assumptions round-trip; it is not independent corroboration |
-| Scenario isolation | overlay projection is reproducible and does not publish a memory revision, lifecycle transition or hypothetical usage state |
+| Scenario isolation | overlay projection does not publish a memory revision, lifecycle transition or hypothetical usage state |
+| Scenario replay | declared replay rematerializes pinned baseline and overlay inputs and verifies digests; digest-only or unavailable inputs do not establish replayability |
 | Baseline usage | baseline retrieval follows the ordinary usage contract; the overlay creates no artificial usage event |
 | Hypothetical retention | retained scenario artifact is excluded from ordinary factual/current-state retrieval |
 | Explicit promotion | only host admission creates a durable Task, Decision or Expectation |
