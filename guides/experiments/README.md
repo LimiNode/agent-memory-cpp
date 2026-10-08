@@ -9,6 +9,10 @@ The location and lifecycle rules for source bundles, raw artifacts, and
 temporary worktrees are in [research workspace layout](research-workspace-layout.md).
 The active bounded research program is the [codec closure protocol](2026-09-25-codec-closure-protocol.md).
 
+The separate [memory feedback stability gate (F0)](2026-10-07-memory-feedback-stability-protocol.md)
+defines a proposed usage-feedback screen. It records no completed experiment
+and does not change production scoring or block canonical-content storage.
+
 For the consolidated codec status across quality, native retrieval, 1M flat
 serving, and MDBX persistence, see the [codec evaluation report](codec-evaluation-report.md).
 
