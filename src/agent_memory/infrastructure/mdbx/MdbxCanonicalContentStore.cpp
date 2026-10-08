@@ -30,6 +30,9 @@ constexpr std::uint64_t RAW_ENCODING_GENERATION = 1;
 constexpr std::string_view RAW_CODEC = "raw";
 constexpr std::uint8_t SHA256_DIGEST_ALGORITHM = 1;
 
+// The shared BlobDigest value type is specified by the artifact-provenance
+// contract but is not materialized in the C++ domain yet. C1 keeps the same
+// algorithm-tagged wire shape locally so it can be mechanically adopted later.
 struct LogicalBodyDigest final {
     std::uint8_t algorithm = SHA256_DIGEST_ALGORITHM; ///< Algorithm tag.
     std::array<std::uint8_t, 32> value{}; ///< Full SHA-256 digest bytes.
