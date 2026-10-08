@@ -28,11 +28,16 @@ persisted
   -> published / visible
   -> eligible
   -> candidate
-  -> selected
+  -> returned
+  -> selected for context
   -> included in ContextPack
   -> provider egress allowed by host
   -> effective provider context, if the host reports it
 ```
+
+Here `candidate` means an admitted route/fusion candidate; `returned` means a
+member of the final ordered `RetrievalResult`; and `selected for context`
+means that the host or context planner chose a returned item for packing.
 
 These are distinct logical observations, not a new lifecycle FSM or a required
 provider workflow. An ordinary search application may stop at returned hits
