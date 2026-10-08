@@ -26,6 +26,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Query transformation | `knowledge-activation-roadmap.md` | Roadmap only | drift/evaluation hooks | no-op + trace contract |
 | Reranking | `retrieval-techniques-roadmap.md` | Roadmap only | bounded reranker API | candidate-depth benchmark |
 | Temporal memory | `memory-lifecycle-governance-roadmap.md` | Contract only | valid-at implementation | single-axis fixture |
+| Prospective expectations / scenario overlays | `agent-runtime-integration-roadmap.md`, `memory-stacks-roadmap.md` | Contract only | durable expectation mapping, resolution/projection integration and runtime adapter | expectation/resolution and scenario-isolation fixtures |
 | Memory lifecycle | `memory-lifecycle-governance-roadmap.md` | Roadmap only | supersession/decay policies | lifecycle decision record |
 | Evaluation / benchmarks | `evaluation-roadmap.md` | Docs/tests only | unified runner | exact-oracle harness |
 | Source trust / provenance | `source-trust-roadmap.md`, `artifact-provenance-roadmap.md` | Contract only | propagation in all payloads | lineage fixture |

@@ -739,6 +739,226 @@ validation error, not an invitation for the store to infer or execute work.
 Do not persist function pointers, closures or ADELIA node handles in
 `ProcedurePayload`.
 
+## Prospective and expectation semantics
+
+This section defines the semantic overlay for records that describe a future
+action, condition or observation. It is a federated view over existing runtime
+records, temporal components, provenance and resolution evidence. It does not
+introduce a new `KnowledgeUnitKind`, a universal `ProspectiveComponent`, a
+scheduler, a recurrence engine, a reservation service or a public C++/MDBX
+schema.
+
+The existing record owners remain distinct:
+
+| Meaning | Existing owner |
+|---|---|
+| Commitment or intended action | `TaskPayload` and `TaskStateComponent` |
+| Selected future course and rationale | `DecisionPayload` and `DecisionSelectionComponent` |
+| Prediction or expected future condition | expectation/prediction semantics defined here, mapped to existing records and components by a later profile |
+| Later evidence about what happened | existing observation/event/fact/runtime evidence records |
+
+A statement in a prompt is not automatically a commitment. A task becomes a
+durable commitment only through the host/runtime admission path. A `Decision`
+is a selected course, not a generic planning container. A
+`ProcedureCandidate` remains a learned or imported action proposal and does
+not become a one-off plan merely because it has a future-oriented description.
+
+### Expectation provenance
+
+An expectation describes a proposition or condition that may be resolved by
+later evidence. Its conceptual provenance includes:
+
+- `asserted` or `derived` origin;
+- immediate inputs and source/provenance references;
+- derivation policy, rule or model identity and revision when derived;
+- explicit assumptions;
+- `generated_at`;
+- the predicted interval and any observation/resolution window;
+- confidence or calibration qualifiers when applicable;
+- append-only resolution evidence references.
+
+A derived expectation remains a derived claim. In particular:
+
+```text
+derivation              != independent observation
+copying                 != corroboration
+prediction              != observed fact
+```
+
+Confidence applies to a prediction or forecast; it does not turn a commitment
+into a probability or grant authority. A resolved expectation remains a
+historical expectation. A later observation is separate evidence linked by an
+append-only resolution record; the expectation is not rewritten into a fact.
+
+### Temporal and resolution semantics
+
+These time concepts are deliberately separate:
+
+```text
+expected_from / expected_until
+    predicted interval in which a condition is expected
+
+observation_due_at / resolution_window
+    when evidence is expected or when resolution is evaluated
+
+valid_from / valid_until
+    existing Temporal/BiTemporal source/world valid-time bounds when used
+    by the mapped expectation profile; not the predicted interval or deadline
+
+TaskPayload.deadline_ms
+    obligation completion bound
+```
+
+The canonical temporal owner remains AM-13 in
+[`memory-lifecycle-governance-roadmap.md`](memory-lifecycle-governance-roadmap.md#3-am-13-bi-temporal-knowledge).
+Its source/world valid time is separate from recorded/knowledge time. This
+profile does not redefine those fields or automatically copy the predicted
+interval or observation deadline into them.
+
+Therefore:
+
+```text
+deadline                  != valid_until
+expectation window ended  != prediction refuted
+missed observation        != proposition false
+```
+
+Resolution and window expiry are separate conceptual axes:
+
+| Axis | Conceptual values |
+|---|---|
+| Resolution | Pending, Confirmed, Refuted, Withdrawn |
+| Window | Open, Expired |
+
+`ExpiredUnresolved` means an expired window with pending resolution; it is
+not an irreversible epistemic verdict. Late evidence may resolve it as
+`Confirmed` or `Refuted`, and an explicit withdrawal may resolve it as
+`Withdrawn`. For example, evidence received on Saturday that a package arrived
+on Friday can confirm a Friday expectation that was unresolved at expiry.
+These are normative semantics, not new public enums or a replacement Task FSM.
+
+Clock passage alone does not produce `Refuted`, `Violated` or `False`. Such a
+transition requires resolution evidence or an explicitly declared
+closed-world policy whose scope, frontier and evidence are recorded. An ended
+expectation window may therefore remain unresolved. Any durable resolution is
+append-only and preserves the original expectation, its revision/frontier and
+the evidence used for the resolution. Late resolution records when the
+evidence became known separately from when the observed event occurred;
+it does not retroactively rewrite the earlier expired-unresolved view.
+
+### Ephemeral scenario overlays
+
+A what-if query is a read-only projection over a pinned baseline:
+
+```text
+durable baseline at a pinned frontier
+    + ephemeral hypothetical overlay
+    -> projected view
+```
+
+The overlay may contain hypothetical events, assumptions or deltas, but it is
+not an observed event, commitment, decision or canonical fact. A scenario
+evaluation identifies its pinned baseline, hypothetical inputs, assumptions,
+policy/model revision, projection coverage and unknowns. When reproduction or
+audit/replay of the view is promised, it must retain:
+
+- a baseline revision/frontier/reference that can rematerialize the exact
+  inputs, or a retained snapshot sufficient for that purpose, plus a baseline
+  digest for verification;
+- the overlay payload or a durable replay reference resolving to that payload,
+  plus its digest;
+- the assumptions and required computation provenance, including policy/model
+  revision and any execution inputs or retained outputs needed by the declared
+  replay mode.
+
+A digest is integrity/identity evidence, not a snapshot or replay material.
+An ephemeral scenario need not promise later replay. An audit-only retained
+result may likewise declare replay unavailable; persistence alone does not
+establish reproducibility. Missing or no-longer-resolvable replay inputs must
+be reported as unavailable, not replaced with current baseline data or
+reconstructed from a digest.
+
+The overlay itself has no canonical identity, lifecycle state or usage counter.
+Baseline retrieval follows the ordinary retrieval and usage contract; evaluating
+a scenario must not create artificial usage feedback for the hypothetical
+overlay. The projection does not publish a new memory revision, resolve an
+expectation, alter current state or grant action authority.
+
+If a scenario result is retained for audit or replay, it is explicitly a
+derived/hypothetical artifact. Persistence for audit/replay is not admission
+into factual retrieval:
+
+```text
+hypothetical artifact
+    -> excluded from ordinary factual/current-state retrieval by default
+    -> included only by an explicit scenario/history-of-reasoning profile
+```
+
+Promotion is an explicit host/runtime transition:
+
+```text
+scenario
+  -> host decision/admission
+  -> Task / Decision / Expectation
+```
+
+The memory library does not infer this promotion from repeated consideration,
+prompt inclusion or a model-generated explanation.
+
+### Projected availability and host boundary
+
+A durable commitment or expected obligation may constrain a host's projected
+capacity without changing the observed current resource state:
+
+```text
+resource exists
+    != resource is currently available
+```
+
+The memory layer stores commitments, observations and their provenance. The
+external runtime/planner owns reservations, capacity models, projected
+availability, scheduling and effectful admission. A computed availability view
+is derived output with a baseline frontier, assumptions and policy/model
+identity; it is not a new unproven current fact.
+
+### Recurrence materialization boundary
+
+A recurrence rule is owned by the host/runtime. The host may materialize a
+bounded horizon of expected occurrences into ordinary expectation records, or
+the memory layer may retain those already-materialized occurrences with
+lineage to the host-owned rule. Every materialized occurrence carries:
+
+- rule provenance and rule revision;
+- an explicit materialization horizon;
+- stable occurrence identity within that rule generation;
+- the policy/frontier used for materialization.
+
+No unbounded or hidden generation is allowed. A changed recurrence rule creates
+a new materialization generation or explicit supersession path; it does not
+silently rewrite prior observations or expectations. Scheduler execution,
+calendar expansion and reservation remain outside agent-memory-cpp.
+
+### Acceptance fixtures
+
+The future implementation/evaluation gate must cover at least:
+
+| Fixture | Required result |
+|---|---|
+| Deadline vs validity vs predicted interval | `deadline`, `valid_from/valid_until` and `expected_from/expected_until` remain distinct |
+| Expired expectation | no automatic refutation or false claim without resolution evidence/closed-world policy |
+| Late resolution | late evidence can confirm/refute an expired-unresolved expectation; append-only resolution preserves the earlier knowledge-time view |
+| Derived forecast | inputs, derivation identity and assumptions round-trip; it is not independent corroboration |
+| Scenario isolation | overlay projection does not publish a memory revision, lifecycle transition or hypothetical usage state |
+| Scenario replay | declared replay rematerializes pinned baseline and overlay inputs and verifies digests; digest-only or unavailable inputs do not establish replayability |
+| Baseline usage | baseline retrieval follows the ordinary usage contract; the overlay creates no artificial usage event |
+| Hypothetical retention | retained scenario artifact is excluded from ordinary factual/current-state retrieval |
+| Explicit promotion | only host admission creates a durable Task, Decision or Expectation |
+| Recurrence horizon | occurrences have rule lineage, bounded horizon and occurrence identity |
+| Availability projection | projected capacity preserves assumptions, frontier and unknown/partial coverage |
+
+This is a semantic and research contract. It does not claim that these records,
+projections or fixtures are implemented in the current backend.
+
 ## Typed Relations
 
 Causal and runtime relations use application-owned `EdgeKind` values and

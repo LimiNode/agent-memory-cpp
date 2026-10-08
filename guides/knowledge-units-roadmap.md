@@ -104,6 +104,14 @@ execute tasks, actions or procedures. Their first storage mapping is
 `DecisionPayload`, `DecisionSelection`, `ProcedurePayload`) so no dedicated DBI
 is added to the default profile.
 
+
+Expectation/prediction semantics are an overlay on existing runtime and temporal
+records; they do not add an `Expectation` `KnowledgeUnitKind`, a
+`ProspectiveComponent` or a dedicated DBI. See
+[`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md)
+for asserted/derived expectations, append-only resolution, scenario overlays,
+and the host-owned recurrence boundary.
+
 Introspection snapshots, unresolved problems and reconciliation conflicts start
 as `Custom` prototypes until their fields stabilize.
 

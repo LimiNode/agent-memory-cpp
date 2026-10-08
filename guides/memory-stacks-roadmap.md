@@ -96,7 +96,14 @@ the knowledge-planning layer: DomainMap, Playbook, CapabilityRegistry, strict
 filters versus soft routing, and activation-specific eval classes.
 
 See [`agent-runtime-integration-roadmap.md`](agent-runtime-integration-roadmap.md)
-for the optional A0-A4 cognitive-runtime integration lane. That lane stores
+for the optional A0-A4 cognitive-runtime integration lane.
+Prospective and expectation semantics are owned by the optional runtime
+integration lane. They are a semantic overlay over existing Task, Decision,
+temporal, observation and provenance records; they do not add a
+`MemoryCapability`, `KnowledgeUnitKind`, `ProspectiveComponent` or physical
+DBI. Scenario projections, reservations, recurrence expansion and current
+action authority remain host/runtime responsibilities.
+ That lane stores
 durable runtime origin, perspective, causal, task/decision/procedure and
 reconciliation records without adding live scheduling, action execution or
 ADELIA headers to core.
