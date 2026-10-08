@@ -145,9 +145,9 @@ Metadata metadata_get(Reader& r) {
 }
 
 struct DecodedRevision final {
-    CanonicalDocumentRevision revision;
-    std::uint64_t body_revision = 0;
-    std::uint64_t logical_body_digest = 0;
+    CanonicalDocumentRevision revision; ///< Semantic document revision.
+    std::uint64_t body_revision = 0; ///< Logical decoded-body revision.
+    std::uint64_t logical_body_digest = 0; ///< Codec-independent body digest.
 };
 
 std::string encode_revision(const CanonicalDocumentRevision& revision,
@@ -201,18 +201,18 @@ DecodedRevision decode_revision(std::string_view payload) {
 }
 
 struct EncodedBody final {
-    std::string payload;
-    std::uint64_t logical_body_digest = 0;
-    std::uint64_t physical_checksum = 0;
+    std::string payload; ///< Complete versioned physical body payload.
+    std::uint64_t logical_body_digest = 0; ///< Codec-independent body digest.
+    std::uint64_t physical_checksum = 0; ///< Checksum over the physical payload.
 };
 
 struct DecodedBody final {
-    std::uint64_t body_revision = 0;
-    std::uint64_t encoding_generation = 0;
-    std::string codec;
-    std::vector<ContentBlock> blocks;
-    std::uint64_t logical_body_digest = 0;
-    std::uint64_t physical_checksum = 0;
+    std::uint64_t body_revision = 0; ///< Logical decoded-body revision.
+    std::uint64_t encoding_generation = 0; ///< Physical encoding generation.
+    std::string codec; ///< Physical codec identifier.
+    std::vector<ContentBlock> blocks; ///< Decoded canonical block values.
+    std::uint64_t logical_body_digest = 0; ///< Codec-independent body digest.
+    std::uint64_t physical_checksum = 0; ///< Checksum stored with this payload.
 };
 
 std::string encode_logical_body(const std::vector<ContentBlock>& blocks) {
