@@ -298,6 +298,101 @@ A host may intentionally create multiple contexts for independent databases or
 workspaces. No global singleton, implicit path-based registry or automatic
 cross-context transaction is required.
 
+## 5.1 Multi-context topology and workspace routing
+
+A process may intentionally host several independent backend contexts. A context
+is the lifecycle, transaction and snapshot boundary for one logical backend
+environment; it is not a process-global singleton and it is not automatically
+a shard of every other context.
+
+The durable topology contract is:
+
+```text
+logical workspace / tenant / memory profile
+        -> explicit placement binding
+        -> one backend context
+        -> domain stores and projections in that context
+```
+
+A placement binding is application-owned composition metadata. It names the
+logical workspace or tenant scope, backend/profile, context identity and
+routing generation. It must be explicit and versioned; filesystem paths,
+database filenames and incidental object construction order are not logical
+identity. A mutable logical corpus must not be actively written through two
+contexts unless an explicit replication/publication protocol owns that split.
+
+A routing generation is a versioned placement precondition, not by itself a
+write fence. For the initial routing slice, a placement is immutable after
+workspace creation; hot relocation is unsupported. A future placement change
+may be introduced only through an explicit handoff or migration protocol that
+fences or drains writers holding the old generation before the new context
+accepts authoritative writes. Writers must validate the binding at write
+admission and publication, and a stale writer must not publish to the previous
+home. A generation check is not treated as an atomic cross-context commit.
+
+The following cases are distinct:
+
+| Topology | Guarantee |
+|---|---|
+| Several stores in one context | They may share one backend transaction or read snapshot when the domain operation requires it. |
+| Independent contexts of the same backend | They have separate lifecycle, transaction and snapshot boundaries; no cross-context ACID is implied. |
+| Contexts of different backends | They share domain semantics only through backend-neutral contracts and conformance; no backend transaction crosses the boundary. |
+| One logical query over several contexts | It is federated retrieval with per-context frontiers, provenance and partial/unavailable outcomes. |
+
+A future domain router may resolve a workspace or tenant to a context, but it
+belongs above individual stores and below the application composition root. It
+must not be a generic `IDatabase`, `MultiDatabase`, implicit path registry or
+automatic cross-context transaction manager. The first useful router is
+domain-specific (for example, a workspace storage registry or a canonical
+content router) and must declare its routing key, placement generation,
+read/write policy and failure semantics.
+
+Identity and placement remain separate layers:
+
+- logical object identity is stable across physical relocation;
+- logical scope or workspace is the namespace and ownership boundary;
+- physical context identity identifies the current storage home;
+- placement generation identifies a routing/publication version.
+
+Physical context identity and placement generation are routing or provenance
+metadata; they are never part of durable logical object identity. Where a domain
+has only local IDs, a cross-context reference carries the owning logical scope
+together with that local ID. Where it has a global logical identity, references
+use that identity and retain placement provenance separately. Relocation must
+not silently reinterpret an existing reference as a different object. Federation
+deduplicates by canonical logical identity, or by the `(logical scope, local ID)`
+pair when that is the domain identity; a shared context boundary does not make
+records independent evidence. A local `KnowledgeUnitId("42")` or document key
+is never assumed globally unique. A router must fail closed on an unknown, stale
+or ambiguous placement rather than guessing from a path or silently searching
+every context.
+
+Cross-context writes use an explicit publication protocol:
+
+```text
+intent / idempotency key
+    -> commit in context A
+    -> commit in context B or publish an outbox
+    -> receipt / reconciliation record
+```
+
+If a later step fails, the result is partial or pending publication and remains
+observable. It is not reported as one atomic commit. Recovery is retry/reconcile
+under the same idempotency key; compensation is a domain policy, not rollback
+across independent environments. Cross-context read results likewise retain
+one read frontier and completion status per context. A union or RRF merge is
+not evidence of a shared snapshot.
+
+The topology contract is backend-neutral. MDBX uses one
+`MdbxStorageContext` per environment; SQLite or another backend may use its
+native context/session boundary. A backend implementation is interchangeable
+only for the domain semantics it claims and only after the applicable
+conformance cases pass.
+
+This section defines the topology and boundaries only. It does not select a
+sharding algorithm, placement-balancing policy, replication transport,
+cross-context transaction protocol or public router ABI.
+
 ## 6. Transaction ownership and atomicity
 
 ### 6.1 Single-store operation
@@ -590,6 +685,7 @@ implementation work for the attached vertical slice.
 - Same-context consistent reads use one backend-owned read-only
   transaction/snapshot when the operation requires a coherent view.
 - Cross-backend publication/outbox/reconciliation boundary.
+- Multi-context topology, explicit workspace/tenant placement and routing-boundary semantics.
 - StorageBundle topology and factory concepts.
 - Backend error categories and semantic conformance requirements.
 - Typed MDBX-specific attached-connection header boundary.
@@ -614,7 +710,7 @@ implementation work for the attached vertical slice.
 - Public ownership markers and destructor/shutdown policy details.
 - SQLite driver/session schema and WAL policy.
 - Error value/exception type names.
-- Multi-environment sharding and any cross-context atomicity.
+- Production routing/placement implementation, replication transport and any cross-context atomicity.
 - Production artifact/file-CAS integration and external vector publication.
 
 The merged Gate B screen is evidence for the dependency/frontier model, not a
@@ -638,6 +734,9 @@ production implementation gate for these signatures.
 | Attached MDBX surface | Typed MDBX-specific header; keep it out of core/domain headers |
 | Typed MDBX package surface | Optional exported integration target with a transitive mdbx-containers dependency |
 | Bundle semantics | Convenience topology; no universal transaction promise |
+| Multi-context topology | Explicit placement and domain-specific routing; no path-based or implicit global registry |
+| Cross-context writes | Publication/outbox/reconciliation; never one atomic transaction |
+| Cross-context reads | Per-context frontiers and completion; federated result semantics |
 | Read-only behavior | Owned mode configures it; attached mode inherits it |
 | Physical frame/table identity | Backend detail; never a domain identity |
 
@@ -651,6 +750,11 @@ This pass must remain documentation-only:
 - do not add production code;
 - open a draft PR;
 - do not merge without a separate explicit request.
+
+The first follow-up implementation should add one domain-specific routing seam
+for an explicit workspace placement registry and prove unknown/stale placement,
+per-context read frontier, and interrupted cross-context publication cases before
+introducing any broader router or sharding abstraction.
 
 After this contract is reviewed, implementation work can be scheduled against
 the canonical-content Gate B/M1b design. The first implementation should create

@@ -8,6 +8,7 @@ described or probed but not a product path; `Roadmap only` means planned work.
 | Area | Current owner | Status | Missing implementation/research | Next bounded step |
 |---|---|---|---|---|
 | Core domain primitives | `milestones.md`, `architecture.md` | Implemented | broader payload coverage | finish M0 fixtures |
+| Multi-context topology / workspace routing | `storage-backend-integration-roadmap.md`, `federated-retrieval-roadmap.md` | Contract only | placement registry, domain router seam, cross-context publication/reconciliation and per-context frontier execution | routing conformance fixture |
 | Storage / MDBX | `mdbx-containers-extension-tz.md` | Contract only | full profile and crash matrix | storage foundation PR |
 | Resource manifests / reindex | `resource-reindexing.md` | Contract only | end-to-end publication | targeted reindex fixture |
 | Canonical text / in-memory read, materialize and edit | `canonical-content-storage-roadmap.md` | Implemented | durable persistence, compressed body and segment/section integration are outside this implemented subset; the exercised path is the in-memory reference backend and its canonical-content test suite | preserve the semantic conformance cases in [CanonicalContentStore](../src/agent_memory/storage/CanonicalContentStore.hpp) and [canonical-content tests](../tests/domain/canonical_content_test.cpp) |

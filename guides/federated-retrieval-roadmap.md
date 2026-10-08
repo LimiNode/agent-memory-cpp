@@ -34,6 +34,23 @@ the manifest's declared scope set and the `RetrievalPlan.scope_ids`; a legacy
 single `scope_id` normalizes to a one-element set and never authorizes every
 scope.
 
+## Context topology
+
+A federated space may be backed by a different backend context or workspace.
+The federation contract does not imply a common MDBX transaction, SQLite
+snapshot or cross-context read view. Each space reports its own canonical
+frontier, generation, completion and context/placement provenance. The executor
+must preserve those per-space boundaries through candidate union, deduplication,
+fusion and hydration.
+
+A context router is a composition-layer concern. It resolves an explicit
+workspace/tenant placement generation to a configured space or context; it does
+not infer placement from a filesystem path, search every registered database,
+or hide an unknown/stale placement as an empty result. Cross-context retrieval
+may return complete, partial or unavailable status per space, and a merged
+result must expose that status. Rank fusion is not corroboration and does not
+create one shared snapshot.
+
 ## Compatibility and fusion
 
 1. **Same underlying space:** identical model revision, role/template,

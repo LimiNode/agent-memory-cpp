@@ -10,6 +10,8 @@
 
 ## 1. Purpose
 
+Multi-context topology is governed by [`storage-backend-integration-roadmap.md`](storage-backend-integration-roadmap.md#51-multi-context-topology-and-workspace-routing). `MemoryProfileSpec` is a declarative, backend/context-independent capability and policy specification. `MemoryStack` is a runtime stack binding within a selected context; its physical context is supplied by explicit placement rather than becoming part of the profile's identity. Neither silently routes one mutable logical corpus across environments. Cross-context retrieval and publication use the federated/frontier contracts and explicit placement provenance.
+
 Этот документ фиксирует архитектурные решения для подсистемы памяти `agent-memory-cpp`:
 
 - Какие структуры данных используются (Envelope, Components, SearchProjections).
@@ -48,7 +50,7 @@ Non-goals документа:
 | ADR-007 | Embedding storage | embedding_meta + embedding_vectors, multi-projection/multi-model |
 | ADR-008 | Decay/anti-loop | Меняет retrieval score, не удаляет записи; defaults для AgentLTM |
 | ADR-009 | Compaction strategy | Hybrid: on-write cheap ops + on-schedule heavy jobs |
-| ADR-010 | MDBX environment | Один env, много DBI. Multi-env — только при обоснованной потребности |
+| ADR-010 | MDBX environment | Один env, много DBI внутри контекста; несколько env/context допустимы для независимых workspaces/tenants или явно обоснованной topology |
 | ADR-011 | Lifecycle FSM | 4 durable states: Active / Superseded / Deprecated / Erased (SoftSuppressed — runtime state в UsageStatsComponent.cooldown_until_ms) |
 | ADR-012 | Multi-tenancy | Все secondary indexes — scope-aware |
 | ADR-013 | Runtime services | CompactionWorker, WriteGate and AsyncIndexer are core-adjacent runtime services; LLM caches are host integrations |
