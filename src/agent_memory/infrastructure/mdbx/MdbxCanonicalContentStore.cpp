@@ -3,6 +3,8 @@
 #include <agent_memory/storage/CanonicalContentStoreInternal.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
+#include <array>
+#include <algorithm>
 #include <cctype>
 #include <charconv>
 #include <mdbx_containers/KeyValueTable.hpp>
@@ -26,6 +28,146 @@ constexpr std::string_view LOGICAL_BODY_VERSION = "agent_memory.canonical_logica
 constexpr std::string_view LEDGER_VERSION = "agent_memory.canonical_ledger.v1";
 constexpr std::uint64_t RAW_ENCODING_GENERATION = 1;
 constexpr std::string_view RAW_CODEC = "raw";
+constexpr std::uint8_t SHA256_DIGEST_ALGORITHM = 1;
+
+struct LogicalBodyDigest final {
+    std::uint8_t algorithm = SHA256_DIGEST_ALGORITHM; ///< Algorithm tag.
+    std::array<std::uint8_t, 32> value{}; ///< Full SHA-256 digest bytes.
+};
+
+bool operator==(const LogicalBodyDigest& left, const LogicalBodyDigest& right) noexcept {
+    return left.algorithm == right.algorithm && left.value == right.value;
+}
+
+bool operator!=(const LogicalBodyDigest& left, const LogicalBodyDigest& right) noexcept {
+    return !(left == right);
+}
+
+class Sha256 final {
+  public:
+    void update(const std::uint8_t* data, std::size_t size) {
+        for (std::size_t index = 0; index < size; ++index) {
+            m_buffer[m_buffer_size++] = data[index];
+            m_bit_count += 8U;
+            if (m_buffer_size == m_buffer.size()) {
+                transform(m_buffer.data());
+                m_buffer_size = 0;
+            }
+        }
+    }
+
+    [[nodiscard]] std::array<std::uint8_t, 32> digest() {
+        const auto total_bits = m_bit_count;
+        m_buffer[m_buffer_size++] = 0x80U;
+        if (m_buffer_size > 56U) {
+            while (m_buffer_size < m_buffer.size())
+                m_buffer[m_buffer_size++] = 0U;
+            transform(m_buffer.data());
+            m_buffer_size = 0;
+        }
+        while (m_buffer_size < 56U)
+            m_buffer[m_buffer_size++] = 0U;
+        for (int shift = 56; shift >= 0; shift -= 8)
+            m_buffer[m_buffer_size++] = static_cast<std::uint8_t>((total_bits >> shift) & 0xFFU);
+        transform(m_buffer.data());
+
+        std::array<std::uint8_t, 32> output{};
+        for (std::size_t index = 0; index < m_state.size(); ++index) {
+            output[index * 4] = static_cast<std::uint8_t>(m_state[index] >> 24U);
+            output[index * 4 + 1] = static_cast<std::uint8_t>(m_state[index] >> 16U);
+            output[index * 4 + 2] = static_cast<std::uint8_t>(m_state[index] >> 8U);
+            output[index * 4 + 3] = static_cast<std::uint8_t>(m_state[index]);
+        }
+        return output;
+    }
+
+  private:
+    static constexpr std::array<std::uint32_t, 64> kRoundConstants{{
+        0x428A2F98U, 0x71374491U, 0xB5C0FBCFU, 0xE9B5DBA5U,
+        0x3956C25BU, 0x59F111F1U, 0x923F82A4U, 0xAB1C5ED5U,
+        0xD807AA98U, 0x12835B01U, 0x243185BEU, 0x550C7DC3U,
+        0x72BE5D74U, 0x80DEB1FEU, 0x9BDC06A7U, 0xC19BF174U,
+        0xE49B69C1U, 0xEFBE4786U, 0x0FC19DC6U, 0x240CA1CCU,
+        0x2DE92C6FU, 0x4A7484AAU, 0x5CB0A9DCU, 0x76F988DAU,
+        0x983E5152U, 0xA831C66DU, 0xB00327C8U, 0xBF597FC7U,
+        0xC6E00BF3U, 0xD5A79147U, 0x06CA6351U, 0x14292967U,
+        0x27B70A85U, 0x2E1B2138U, 0x4D2C6DFCU, 0x53380D13U,
+        0x650A7354U, 0x766A0ABBU, 0x81C2C92EU, 0x92722C85U,
+        0xA2BFE8A1U, 0xA81A664BU, 0xC24B8B70U, 0xC76C51A3U,
+        0xD192E819U, 0xD6990624U, 0xF40E3585U, 0x106AA070U,
+        0x19A4C116U, 0x1E376C08U, 0x2748774CU, 0x34B0BCB5U,
+        0x391C0CB3U, 0x4ED8AA4AU, 0x5B9CCA4FU, 0x682E6FF3U,
+        0x748F82EEU, 0x78A5636FU, 0x84C87814U, 0x8CC70208U,
+        0x90BEFFFAU, 0xA4506CEBU, 0xBEF9A3F7U, 0xC67178F2U,
+    }};
+
+    [[nodiscard]] static std::uint32_t rotate_right(std::uint32_t value, int bits) {
+        return (value >> bits) | (value << (32 - bits));
+    }
+
+    [[nodiscard]] static std::uint32_t read_be32(const std::uint8_t* data) {
+        return (static_cast<std::uint32_t>(data[0]) << 24U) |
+               (static_cast<std::uint32_t>(data[1]) << 16U) |
+               (static_cast<std::uint32_t>(data[2]) << 8U) |
+               static_cast<std::uint32_t>(data[3]);
+    }
+
+    void transform(const std::uint8_t* chunk) {
+        std::array<std::uint32_t, 64> words{};
+        for (std::size_t index = 0; index < 16U; ++index)
+            words[index] = read_be32(chunk + index * 4U);
+        for (std::size_t index = 16U; index < words.size(); ++index) {
+            const auto sigma0 = rotate_right(words[index - 15U], 7) ^
+                                rotate_right(words[index - 15U], 18) ^
+                                (words[index - 15U] >> 3U);
+            const auto sigma1 = rotate_right(words[index - 2U], 17) ^
+                                rotate_right(words[index - 2U], 19) ^
+                                (words[index - 2U] >> 10U);
+            words[index] = sigma1 + words[index - 7U] + sigma0 + words[index - 16U];
+        }
+
+        auto a = m_state[0];
+        auto b = m_state[1];
+        auto c = m_state[2];
+        auto d = m_state[3];
+        auto e = m_state[4];
+        auto f = m_state[5];
+        auto g = m_state[6];
+        auto h = m_state[7];
+        for (std::size_t index = 0; index < words.size(); ++index) {
+            const auto sigma1 = rotate_right(e, 6) ^ rotate_right(e, 11) ^ rotate_right(e, 25);
+            const auto choose = (e & f) ^ (~e & g);
+            const auto temp1 = h + sigma1 + choose + kRoundConstants[index] + words[index];
+            const auto sigma0 = rotate_right(a, 2) ^ rotate_right(a, 13) ^ rotate_right(a, 22);
+            const auto majority = (a & b) ^ (a & c) ^ (b & c);
+            const auto temp2 = sigma0 + majority;
+            h = g;
+            g = f;
+            f = e;
+            e = d + temp1;
+            d = c;
+            c = b;
+            b = a;
+            a = temp1 + temp2;
+        }
+        m_state[0] += a;
+        m_state[1] += b;
+        m_state[2] += c;
+        m_state[3] += d;
+        m_state[4] += e;
+        m_state[5] += f;
+        m_state[6] += g;
+        m_state[7] += h;
+    }
+
+    std::array<std::uint32_t, 8> m_state{{
+        0x6A09E667U, 0xBB67AE85U, 0x3C6EF372U, 0xA54FF53AU,
+        0x510E527FU, 0x9B05688CU, 0x1F83D9ABU, 0x5BE0CD19U,
+    }}; ///< SHA-256 compression state.
+    std::array<std::uint8_t, 64> m_buffer{}; ///< Pending message block.
+    std::size_t m_buffer_size = 0; ///< Bytes buffered in the current block.
+    std::uint64_t m_bit_count = 0; ///< Total message length in bits.
+};
 
 std::string safe_part(std::string value) {
     if (value.empty())
@@ -59,6 +201,11 @@ void put_string(std::string& out, std::string_view value) {
 
 void put_u64(std::string& out, std::uint64_t value) {
     put_string(out, std::to_string(value));
+}
+
+void put_digest(std::string& out, const LogicalBodyDigest& digest) {
+    out.push_back(static_cast<char>(digest.algorithm));
+    out.append(reinterpret_cast<const char*>(digest.value.data()), digest.value.size());
 }
 
 std::uint64_t parse_u64(std::string_view text, std::string_view field) {
@@ -114,8 +261,30 @@ class Reader final {
         return v;
     }
 
+    std::uint8_t byte() {
+        if (m_pos >= m_payload.size())
+            throw std::runtime_error("truncated canonical payload");
+        return static_cast<std::uint8_t>(m_payload[m_pos++]);
+    }
+
+    std::string bytes(std::size_t n) {
+        if (n > m_payload.size() - m_pos)
+            throw std::runtime_error("canonical payload overrun");
+        std::string v(m_payload.data() + m_pos, n);
+        m_pos += n;
+        return v;
+    }
+
     std::uint64_t u64() {
         return parse_u64(string(), "integer");
+    }
+
+    LogicalBodyDigest digest() {
+        LogicalBodyDigest result;
+        result.algorithm = byte();
+        const auto raw = bytes(result.value.size());
+        std::copy(raw.begin(), raw.end(), result.value.begin());
+        return result;
     }
 
     void end() const {
@@ -147,16 +316,16 @@ Metadata metadata_get(Reader& r) {
 struct DecodedRevision final {
     CanonicalDocumentRevision revision; ///< Semantic document revision.
     std::uint64_t body_revision = 0; ///< Logical decoded-body revision.
-    std::uint64_t logical_body_digest = 0; ///< Codec-independent body digest.
+    LogicalBodyDigest logical_body_digest; ///< Algorithm-tagged decoded digest.
 };
 
 std::string encode_revision(const CanonicalDocumentRevision& revision,
                             std::uint64_t body_revision,
-                            std::uint64_t logical_body_digest) {
+                            const LogicalBodyDigest& logical_body_digest) {
     std::string out;
     put_string(out, REV_VERSION);
     put_u64(out, body_revision);
-    put_u64(out, logical_body_digest);
+    put_digest(out, logical_body_digest);
     put_string(out, revision.document_id.value());
     put_u64(out, revision.revision);
     metadata_put(out, revision.metadata);
@@ -177,7 +346,9 @@ DecodedRevision decode_revision(std::string_view payload) {
     if (r.string() != REV_VERSION)
         throw std::runtime_error("unsupported canonical revision payload");
     const auto body_revision = r.u64();
-    const auto logical_body_digest = r.u64();
+    const auto logical_body_digest = r.digest();
+    if (logical_body_digest.algorithm != SHA256_DIGEST_ALGORITHM)
+        throw std::runtime_error("unsupported canonical logical digest algorithm");
     CanonicalDocumentRevision revision{DocumentId{r.string()}, r.u64(), metadata_get(r), {}};
     const auto n = r.size();
     revision.blocks.reserve(n);
@@ -202,7 +373,7 @@ DecodedRevision decode_revision(std::string_view payload) {
 
 struct EncodedBody final {
     std::string payload; ///< Complete versioned physical body payload.
-    std::uint64_t logical_body_digest = 0; ///< Codec-independent body digest.
+    LogicalBodyDigest logical_body_digest; ///< Algorithm-tagged decoded digest.
     std::uint64_t physical_checksum = 0; ///< Checksum over the physical payload.
 };
 
@@ -211,7 +382,7 @@ struct DecodedBody final {
     std::uint64_t encoding_generation = 0; ///< Physical encoding generation.
     std::string codec; ///< Physical codec identifier.
     std::vector<ContentBlock> blocks; ///< Decoded canonical block values.
-    std::uint64_t logical_body_digest = 0; ///< Codec-independent body digest.
+    LogicalBodyDigest logical_body_digest; ///< Algorithm-tagged decoded digest.
     std::uint64_t physical_checksum = 0; ///< Checksum stored with this payload.
 };
 
@@ -230,15 +401,18 @@ std::string encode_logical_body(const std::vector<ContentBlock>& blocks) {
     return out;
 }
 
-std::uint64_t logical_body_digest_impl(const std::vector<ContentBlock>& blocks) {
-    return digest_bytes(encode_logical_body(blocks));
+LogicalBodyDigest logical_body_digest_impl(const std::vector<ContentBlock>& blocks) {
+    Sha256 sha;
+    const auto encoded = encode_logical_body(blocks);
+    sha.update(reinterpret_cast<const std::uint8_t*>(encoded.data()), encoded.size());
+    return {SHA256_DIGEST_ALGORITHM, sha.digest()};
 }
 
 std::string encode_body_payload(const std::vector<ContentBlock>& blocks,
                                 std::uint64_t body_revision,
                                 std::uint64_t encoding_generation,
                                 std::string_view codec,
-                                std::uint64_t logical_digest) {
+                                const LogicalBodyDigest& logical_digest) {
     std::string out;
     put_string(out, BODY_VERSION);
     put_u64(out, body_revision);
@@ -253,13 +427,13 @@ std::string encode_body_payload(const std::vector<ContentBlock>& blocks,
             put_string(out, b.parent_id->value());
         put_string(out, b.text);
     }
-    put_u64(out, logical_digest);
+    put_digest(out, logical_digest);
     return out;
 }
 
 EncodedBody encode_body(const CanonicalDocumentRevision& revision, std::uint64_t body_revision) {
     EncodedBody result;
-    result.logical_body_digest = detail::canonical_decoded_content_digest(revision.blocks);
+    result.logical_body_digest = logical_body_digest_impl(revision.blocks);
     result.payload = encode_body_payload(revision.blocks,
                                          body_revision,
                                          RAW_ENCODING_GENERATION,
@@ -297,7 +471,9 @@ DecodedBody decode_body(std::string_view payload) {
         block.text = r.string();
         result.blocks.push_back(std::move(block));
     }
-    result.logical_body_digest = r.u64();
+    result.logical_body_digest = r.digest();
+    if (result.logical_body_digest.algorithm != SHA256_DIGEST_ALGORITHM)
+        throw std::runtime_error("unsupported canonical logical digest algorithm");
     result.physical_checksum = r.u64();
     r.end();
     const auto canonical_payload = encode_body_payload(
@@ -306,7 +482,7 @@ DecodedBody decode_body(std::string_view payload) {
         result.encoding_generation,
         result.codec,
         result.logical_body_digest);
-    if (detail::canonical_decoded_content_digest(result.blocks) != result.logical_body_digest)
+    if (logical_body_digest_impl(result.blocks) != result.logical_body_digest)
         throw std::runtime_error("canonical logical body digest mismatch");
     if (digest_bytes(canonical_payload) != result.physical_checksum)
         throw std::runtime_error("canonical physical body checksum mismatch");
@@ -358,8 +534,9 @@ std::set<ContentBlockId> decode_ledger(std::string_view payload) {
 
 namespace detail {
 
-std::uint64_t canonical_decoded_content_digest(const std::vector<ContentBlock>& blocks) {
-    return logical_body_digest_impl(blocks);
+std::array<std::uint8_t, 32> canonical_decoded_content_digest(
+    const std::vector<ContentBlock>& blocks) {
+    return logical_body_digest_impl(blocks).value;
 }
 
 } // namespace detail
@@ -382,7 +559,7 @@ class MdbxCanonicalContentStore::Impl final {
         std::set<ContentBlockId> ledger;                  ///< Durable block-ID no-reuse ledger.
         std::uint64_t body_revision = 0;                  ///< Logical body bound to current.
         std::uint64_t body_generation = 0;                ///< Physical encoding generation.
-        std::uint64_t logical_body_digest = 0;            ///< Codec-independent decoded-content digest.
+        LogicalBodyDigest logical_body_digest;            ///< Algorithm-tagged decoded digest.
     };
 
     Loaded load(const DocumentId& id, const mdbxc::Transaction& txn) {
@@ -434,7 +611,7 @@ class MdbxCanonicalContentStore::Impl final {
     void write_revision(const CanonicalDocumentRevision& revision,
                         std::uint64_t body_revision,
                         std::uint64_t body_generation,
-                        std::uint64_t logical_body_digest,
+                        const LogicalBodyDigest& logical_body_digest,
                         const std::optional<EncodedBody>& body,
                         const std::set<ContentBlockId>& ledger,
                         const mdbxc::Transaction& txn) {
@@ -577,7 +754,7 @@ CanonicalEditResult MdbxCanonicalContentStore::commit(const CanonicalEditRequest
         }
     }
     std::optional<EncodedBody> body;
-    std::uint64_t logical_body_digest = loaded.logical_body_digest;
+    LogicalBodyDigest logical_body_digest = loaded.logical_body_digest;
     if (body_changed) {
         ++body_revision;
         body = encode_body(revision, body_revision);

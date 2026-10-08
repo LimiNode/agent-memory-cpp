@@ -17,6 +17,7 @@
 #if AGENT_MEMORY_HAS_MDBX
 #include "MdbxStorageContext.hpp"
 
+#include <array>
 #include <cstdint>
 #include <memory>
 #include <string>
@@ -26,13 +27,13 @@ namespace agent_memory {
 
 namespace detail {
 
-/// \brief Computes the C1 logical decoded-content digest.
+/// \brief Computes the C1 logical decoded-content SHA-256 bytes.
 ///
 /// This backend-only primitive intentionally excludes body revision, codec,
 /// physical encoding generation, framing, and physical checksums. It is used
 /// by the MDBX adapter and its regression fixtures to preserve the identity
 /// boundary described by `guides/canonical-content-storage-roadmap.md`.
-[[nodiscard]] std::uint64_t canonical_decoded_content_digest(
+[[nodiscard]] std::array<std::uint8_t, 32> canonical_decoded_content_digest(
     const std::vector<ContentBlock>& blocks);
 
 } // namespace detail
@@ -54,7 +55,8 @@ struct MdbxCanonicalContentStoreOptions final {
 /// writable MDBX transaction. A current read resolves its head, revision, and
 /// body inside one read-only snapshot.
 ///
-/// Revision records bind a `BodyRevision` to a logical decoded-content digest;
+/// Revision records bind a `BodyRevision` to an algorithm-tagged SHA-256 logical
+/// decoded-content digest;
 /// they do not embed a physical codec or `PhysicalEncodingGeneration`. Those
 /// physical fields live in the body key/value descriptor, alongside a
 /// generation-specific checksum, so a future re-encoding can be published

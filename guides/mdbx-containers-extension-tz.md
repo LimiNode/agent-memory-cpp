@@ -1240,7 +1240,8 @@ agent_memory_canonical_ledgers        KeyValueTable<DocumentId, historical_block
 
 For the C1 raw profile, a revision blob contains ordered block descriptors and
 the logical `BodyRevision` binding; it does not own block text. The body value
-contains decoded block text, a codec-independent logical decoded-content digest,
+contains decoded block text, a codec-independent algorithm-tagged SHA-256
+logical decoded-content digest,
 a physical checksum, codec (`raw`) and the independent
 `PhysicalEncodingGeneration`. The revision stores only `BodyRevision` and the
 logical digest; generation and codec are physical-body metadata. A later

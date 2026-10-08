@@ -1,6 +1,7 @@
 #include <agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.hpp>
 
 #if AGENT_MEMORY_HAS_MDBX
+#include <array>
 #include <filesystem>
 #include <iostream>
 #include <mdbx_containers/KeyValueTable.hpp>
@@ -48,8 +49,16 @@ int main() {
         detail::canonical_decoded_content_digest(digest_fixture);
     const auto compressed_generation_two_digest =
         detail::canonical_decoded_content_digest(digest_fixture);
-    if (raw_generation_one_digest != compressed_generation_two_digest)
+    constexpr std::array<std::uint8_t, 32> expected_digest{{
+        0x1dU, 0x91U, 0xdeU, 0x80U, 0xd7U, 0x6aU, 0x4fU, 0x52U,
+        0xa8U, 0xcdU, 0x87U, 0x1eU, 0x13U, 0xc8U, 0xc4U, 0x49U,
+        0xc1U, 0x6aU, 0x4eU, 0x76U, 0x47U, 0x52U, 0xb7U, 0xbeU,
+        0x17U, 0x85U, 0x8dU, 0xf7U, 0x23U, 0xf8U, 0x3cU, 0x9eU,
+    }};
+    if (raw_generation_one_digest != compressed_generation_two_digest ||
+        raw_generation_one_digest != expected_digest) {
         return 30;
+    }
 
     const auto path =
         std::filesystem::temp_directory_path() / "agent_memory_c1_canonical_test.mdbx";
