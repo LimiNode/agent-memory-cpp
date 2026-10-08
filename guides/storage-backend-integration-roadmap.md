@@ -321,6 +321,15 @@ database filenames and incidental object construction order are not logical
 identity. A mutable logical corpus must not be actively written through two
 contexts unless an explicit replication/publication protocol owns that split.
 
+A routing generation is a versioned placement precondition, not by itself a
+write fence. For the initial routing slice, a placement is immutable after
+workspace creation; hot relocation is unsupported. A future placement change
+may be introduced only through an explicit handoff or migration protocol that
+fences or drains writers holding the old generation before the new context
+accepts authoritative writes. Writers must validate the binding at write
+admission and publication, and a stale writer must not publish to the previous
+home. A generation check is not treated as an atomic cross-context commit.
+
 The following cases are distinct:
 
 | Topology | Guarantee |
@@ -328,7 +337,7 @@ The following cases are distinct:
 | Several stores in one context | They may share one backend transaction or read snapshot when the domain operation requires it. |
 | Independent contexts of the same backend | They have separate lifecycle, transaction and snapshot boundaries; no cross-context ACID is implied. |
 | Contexts of different backends | They share domain semantics only through backend-neutral contracts and conformance; no backend transaction crosses the boundary. |
-| One logical query over several contexts | It is federated retrieval/publication work with per-context frontiers, provenance and partial/unavailable outcomes. |
+| One logical query over several contexts | It is federated retrieval with per-context frontiers, provenance and partial/unavailable outcomes. |
 
 A future domain router may resolve a workspace or tenant to a context, but it
 belongs above individual stores and below the application composition root. It
@@ -338,12 +347,25 @@ domain-specific (for example, a workspace storage registry or a canonical
 content router) and must declare its routing key, placement generation,
 read/write policy and failure semantics.
 
-Local keys remain context-scoped unless the owning domain contract explicitly
-defines a global identity. Cross-context references therefore use existing
-global/logical identities and carry their source context or placement
-provenance; a local `KnowledgeUnitId("42")` or document key is never assumed
-globally unique. A router must fail closed on an unknown, stale or ambiguous
-placement rather than guessing from a path or silently searching every context.
+Identity and placement remain separate layers:
+
+- logical object identity is stable across physical relocation;
+- logical scope or workspace is the namespace and ownership boundary;
+- physical context identity identifies the current storage home;
+- placement generation identifies a routing/publication version.
+
+Physical context identity and placement generation are routing or provenance
+metadata; they are never part of durable logical object identity. Where a domain
+has only local IDs, a cross-context reference carries the owning logical scope
+together with that local ID. Where it has a global logical identity, references
+use that identity and retain placement provenance separately. Relocation must
+not silently reinterpret an existing reference as a different object. Federation
+deduplicates by canonical logical identity, or by the `(logical scope, local ID)`
+pair when that is the domain identity; a shared context boundary does not make
+records independent evidence. A local `KnowledgeUnitId("42")` or document key
+is never assumed globally unique. A router must fail closed on an unknown, stale
+or ambiguous placement rather than guessing from a path or silently searching
+every context.
 
 Cross-context writes use an explicit publication protocol:
 
