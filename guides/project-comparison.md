@@ -1,7 +1,8 @@
 # Agent memory systems: positioning and project comparison
 
-**Scope:** architectural comparison and selection guide, not a benchmark or a feature-completeness ranking.  
-**Reviewed:** 2026-10-08.  
+**Scope:** architectural comparison and selection guide, not a benchmark or a feature-completeness ranking.
+**Reviewed:** 2026-10-08.
+
 **Project:** [agent-memory-cpp](../README.md) ([Russian overview](../README-RU.md)).
 
 ## The problem we address
