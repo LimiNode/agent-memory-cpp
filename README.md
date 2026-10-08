@@ -42,7 +42,7 @@ The intended system includes knowledge-unit profiles, lexical/dense/graph/tempor
 | Native foundation | C++17/CMake library, domain interfaces and values, test/example targets | Turnkey agent-memory application |
 | Canonical text | In-memory document read/edit/materialization with stable blocks, revisions and net change sets | Full multi-domain or multimodal content editing |
 | Persistent canonical text | Optional **MDBX C1** raw/plain adapter: shared context, historical revisions, body bindings, no-reuse ledger | C2 compression/re-encoding, complete cross-store publication and recovery |
-| Retrieval/indexing | Small exact/lexical/vector implementations, retrieval contracts and experimental harnesses | Complete BM25F + dense + graph + temporal production stack and automatic context planner |
+| Retrieval/indexing | Bounded exact, lexical and vector primitives, retrieval contracts and experimental harnesses | Complete BM25F + dense + graph + temporal production stack and automatic context planner |
 | Evidence and lifecycle | Design contracts, fixtures and research protocols | Finished end-to-end provenance, temporal reasoning, feedback and authority enforcement |
 | Multiple databases | Independently constructible MDBX contexts; documented placement/federation boundaries | Production workspace router, heterogeneous backends, or cross-context ACID |
 
