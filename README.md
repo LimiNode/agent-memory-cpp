@@ -100,6 +100,7 @@ This is the implemented in-memory reference path: create revision `0`, publish o
 #include <agent_memory.hpp>
 
 #include <iostream>
+#include <optional>
 #include <utility>
 #include <vector>
 
