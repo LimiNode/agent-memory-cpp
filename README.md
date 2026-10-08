@@ -1,344 +1,94 @@
-# Agent Memory C++
+# agent-memory-cpp
 
-Embedded C++17 toolkit for building memory and retrieval systems for AI agents.
+**An embeddable C++17 foundation for memory and retrieval in AI agents.**
 
-Agent Memory C++ provides modular components for persistent agent memory,
-retrieval-augmented generation, semantic search, hybrid BM25/vector retrieval,
-Markdown knowledge bases, and knowledge graphs.
+[English](README.md) | [Русский](README-RU.md)
 
-The library is designed for local and embedded use. It does not require a
-separate vector database server.
+Agent memory is more than searching a vector database. A long-running agent needs to retain source material, recognize updates, distinguish observations from inferences, retrieve relevant history, and assemble context without silently promoting repeated or derived claims into facts.
 
-The first-party embedded profile keeps canonical memory in MDBX and places
-revision-aware lexical, vector and native approximate-search projections in
-the same workspace. SQLite/PostgreSQL storage adapters, external vector stores
-and model runtimes are optional integration paths, not architectural
-requirements.
+`agent-memory-cpp` is a **library and research/engineering project**, not an LLM, a ready-made assistant, a hosted memory service, or an agent orchestration framework. Applications own their models, decisions, tools, scheduling, and action authority.
 
-## Current status
+**Read the [project comparison and trade-offs](guides/project-comparison.md)** for how this approach relates to Mem0, Letta, Graphiti/Zep, Cognee, A-MEM, graph RAG, and vector-index libraries. The broader reference catalog is in [related projects](guides/related-projects.md).
 
-The repository is in the early foundation stage. The first PR established a
-static C++17 library target, CMake options, a smoke test, and a small example.
-Follow-up PRs are adding stable domain primitives before storage, retrieval, and
-embedding integrations.
+## Why build it?
 
-Roadmap scope and evidence are split deliberately:
+- **Embed rather than operate a service.** The core is a C++17 static library; Python or a separate vector database server is not mandatory for the core.
+- **Keep memory editable and traceable.** Stable content-block identities, immutable document revisions, historical reads, logical body revisions, and storage-generation separation underpin the canonical-content work.
+- **Separate evidence from retrieval popularity.** Source provenance, derived claims, temporal validity, memory influence, and usage-feedback failure modes have explicit design/research contracts. These are not all implemented.
+- **Keep domain contracts independent of the database.** An in-memory reference store and an optional MDBX canonical-content adapter implement the same domain-oriented interface. Other backends are future integrations, not automatic drop-in equivalents.
+- **Measure instead of promising quality.** Exact/oracle baselines, codec and retrieval experiments, replayable evidence, and failure-oriented tests inform later production choices.
 
-* [milestones](guides/milestones.md) is the normative capability manifest;
-* [roadmap coverage](guides/retrieval-roadmap-coverage.md) distinguishes code,
-  contracts, tests, and proposals;
-* [evaluation roadmap](guides/evaluation-roadmap.md) defines quality, latency,
-  storage, and provenance requirements for claims;
-* [index lifecycle](guides/index-lifecycle-roadmap.md), [source trust](guides/source-trust-roadmap.md),
-  and [retrieval explainability](guides/retrieval-explainability-roadmap.md)
-  define the deferred operational contracts.
+### Where it fits
 
-## Goals
+~~~text
+Host application / agent runtime (models, tools, decisions, permissions)
+                         |
+           memory policies / context planning       [mostly roadmap]
+                         |
+       domain retrieval + canonical-content contracts
+            /                            \
+   reference implementations       infrastructure adapters
+   in-memory / test kernels          MDBX C1 raw/plain
+                         |
+         independent evaluation and research harnesses
+~~~
 
-* Native C++17 API
-* Embedded persistent storage
-* Modular memory strategies
-* Pluggable embedding backends
-* Exact and approximate vector search
-* BM25 and hybrid retrieval
-* Markdown knowledge-base ingestion
-* Targeted source reindexing
-* Knowledge graphs and named entities
-* Deterministic, inspectable storage
-* No mandatory Python runtime
-* Optional MCP and HTTP adapters
+The intended system includes knowledge-unit profiles, lexical/dense/graph/temporal retrieval, context assembly, lifecycle policies, and optional external integrations. **This diagram is an architecture direction, not a claim that every box is production-ready.**
 
-## Planned memory types
+## Current implementation status
 
-* Conversation history
-* Sliding-window memory
-* Summary memory
-* Semantic memory
-* Episodic memory
-* Entity memory
-* User and character profiles
-* Procedural memory
-* Markdown knowledge bases
-* Graph-based memory
-* Temporal memory
-* Multi-scope agent memory
+| Area | What is available | What is not yet a complete product path |
+|---|---|---|
+| Native foundation | C++17/CMake library, domain interfaces and values, test/example targets | Turnkey agent-memory application |
+| Canonical text | In-memory document read/edit/materialization with stable blocks, revisions and net change sets | Full multi-domain or multimodal content editing |
+| Persistent canonical text | Optional **MDBX C1** raw/plain adapter: shared context, historical revisions, body bindings, no-reuse ledger | C2 compression/re-encoding, complete cross-store publication and recovery |
+| Retrieval/indexing | Small exact/lexical/vector implementations, retrieval contracts and experimental harnesses | Complete BM25F + dense + graph + temporal production stack and automatic context planner |
+| Evidence and lifecycle | Design contracts, fixtures and research protocols | Finished end-to-end provenance, temporal reasoning, feedback and authority enforcement |
+| Multiple databases | Independently constructible MDBX contexts; documented placement/federation boundaries | Production workspace router, heterogeneous backends, or cross-context ACID |
 
-## Planned retrieval methods
+The [retrieval coverage audit](guides/retrieval-roadmap-coverage.md) is the status authority. `Implemented`, `Contract only`, `Docs/tests only`, and `Roadmap only` mean different things. A benchmark prototype does not establish an available production memory stack.
 
-* Exact vector search
-* HNSW approximate nearest-neighbour search
-* BM25 full-text search
-* Hybrid BM25 + vector search
-* Reciprocal Rank Fusion
-* Metadata filtering
-* Graph traversal
-* Temporal filtering
-* Reranking
-* Query expansion
-* Multi-stage retrieval
+## Design boundaries
 
-## Architecture
+1. **Logical identity is not physical location.** Document, block and body revisions do not depend on compression or a particular MDBX path. Multi-context placement/routing is documented separately and is not yet a production router.
+2. **Retrieval is not authority.** Candidate, returned result, context selection, provider egress, and host-observed use are different stages. Frequent retrieval does not corroborate a source.
+3. **One database context is one transaction boundary.** Multiple MDBX files and future SQLite/CAS/external indexes do not acquire a distributed transaction by sharing a domain interface.
+4. **Models remain optional and external.** Embedding generation, LLM inference, entity extraction and autonomous behavior belong to adapters or host runtimes.
 
-```text
-Sources
-|-- Markdown documents
-|-- Chat messages
-|-- Code and symbols
-|-- Structured records
-`-- Agent events
-        |
-        v
-Ingestion
-|-- Parsers
-|-- Chunkers
-|-- Metadata extraction
-|-- Entity extraction
-`-- Change detection
-        |
-        v
-Indexes
-|-- BM25
-|-- Dense vectors
-|-- Sparse vectors
-|-- Knowledge graph
-`-- Temporal indexes
-        |
-        v
-Memory strategies
-|-- Recent memory
-|-- Semantic memory
-|-- Summary memory
-|-- Episodic memory
-|-- Entity memory
-`-- Composite memory
-        |
-        v
-Retrieval and context building
-        |
-        v
-LLM or AI agent
-```
+See [architecture](guides/architecture.md), [storage backend integration](guides/storage-backend-integration-roadmap.md), [canonical content](guides/canonical-content-storage-roadmap.md), and [memory influence and explainability](guides/retrieval-explainability-roadmap.md).
 
-## Source layout
+## Build
 
-Headers and implementation files live side by side under `src/`:
+Requirements: **C++17**, **CMake 3.20+**, and a supported C++ toolchain (Windows, Linux, macOS).
 
-```text
-external/
-|-- libmdbx/
-`-- mdbx-containers/
-src/
-|-- agent_memory.hpp
-`-- agent_memory/
-    |-- chat.hpp
-    |-- core.hpp
-    |-- domain.hpp
-    |-- embedding.hpp
-    |-- eval.hpp
-    |-- facts.hpp
-    |-- index.hpp
-    |-- infrastructure.hpp
-    |-- ingestion.hpp
-    |-- lexical.hpp
-    |-- memory.hpp
-    |-- retrieval.hpp
-    |-- storage.hpp
-    |-- embedding/
-    |   |-- embedding_types.hpp
-    |   |-- enums.hpp
-    |   `-- IEmbedder.hpp
-    |-- infrastructure/
-    |   |-- mdbx.hpp
-    |   `-- mdbx/
-    |       |-- MdbxDocumentStorage.hpp
-    |       `-- MdbxResourceManifestStorage.hpp
-    `-- storage/
-        |-- IDocumentStorage.hpp
-        `-- IResourceManifestStorage.hpp
-```
-
-Consumers can include the full public aggregate through the include root:
-
-```cpp
-#include <agent_memory.hpp>
-```
-
-## Storage
-
-The storage layer starts with dependency-free document/chunk contracts. The
-initial concrete backend is planned around:
-
-* [libmdbx](https://github.com/erthink/libmdbx)
-* [mdbx-containers](https://github.com/NewYaroslav/mdbx-containers)
-
-These source dependencies are kept flat as Git submodules under `external/`.
-When MDBX support is enabled, the build adds `external/libmdbx` before
-`external/mdbx-containers` so MDBXC can reuse the parent-provided MDBX target.
-
-Storage interfaces are separated from memory and retrieval algorithms so that
-additional backends can be added later.
-
-When `AGENT_MEMORY_ENABLE_MDBX=ON`, the library also builds
-`agent_memory/infrastructure/mdbx/MdbxDocumentStorage.hpp`, an MDBX-backed
-implementation of `IDocumentStorage`. Optional infrastructure headers are not
-included by the aggregate `agent_memory.hpp`; include the adapter header
-directly when MDBX support is enabled.
-
-## Embeddings
-
-Embedding generation will be exposed through a backend-independent interface.
-The project will provide its own embedding contracts instead of forking
-chat/generation wrappers such as `cpp-llamalib`. The current contract layer
-models embedding requests, vectors, model metadata, embedding purpose,
-similarity metric, pooling mode, and batch embedding.
-
-Planned backends:
-
-* ONNX Runtime
-* local E5 models
-* llama.cpp
-* OpenAI-compatible embedding APIs
-* custom user-provided implementations
-
-Example interface:
-
-```cpp
-class IEmbedder {
-public:
-    virtual ~IEmbedder();
-
-    virtual const EmbeddingModelInfo& info() const noexcept = 0;
-
-    virtual Embedding embed(const EmbeddingRequest& request) = 0;
-
-    virtual std::vector<Embedding> embed_batch(
-        const std::vector<EmbeddingRequest>& requests
-    );
-};
-```
-
-## Indexes
-
-The index layer starts with dependency-free vector contracts. `IVectorIndex`
-stores chunk embeddings and exposes nearest-neighbour search by query embedding,
-result limit, and exact metadata filters. `ExactVectorIndex` provides a small
-in-memory baseline implementation for deterministic tests and local use.
-
-## Lexical search
-
-BM25 and keyword search are planned as first-version retrieval capabilities for
-exact technical terms, identifiers, paths, commands, and errors. The planned
-token dictionary, postings layout, Unicode policy, raw resource store, and
-hybrid retrieval direction are tracked in `guides/lexical-search-roadmap.md`.
-
-## Retrieval
-
-Retrieval contracts stay dependency-free and describe text, embedding, or mixed
-queries with result limits and metadata filters. `IRetriever` returns ordered
-scored chunks; concrete retrieval pipelines can compose embedders, indexes, and
-document storage without leaking backend details into the public contract.
-
-## Evaluation
-
-The evaluation layer provides dependency-free dataset/run value types and metric
-helpers for retrieval experiments. It can represent BEIR-style corpus, queries,
-and relevance judgments, then compute Recall@K, MRR, nDCG@K, no-answer accuracy,
-and latency summaries for BM25, exact vector, hybrid, and future approximate
-search runs.
-
-Current MRR is unbounded; MRR@K is reserved for follow-up benchmark runner
-work once reporting requirements are clearer.
-
-The metric helper treats implicit hit order as the vector order. Unordered
-score dumps should be normalized by future importer/runner tooling before
-evaluation. Corpus/qrels integrity checks are also reserved for dataset loader
-validation rather than the metric-only helper.
-
-## Ingestion
-
-Resource indexing starts with a small orchestration layer over existing
-contracts. `ResourceIndexer` accepts a pre-chunked resource snapshot, embeds its
-chunks, upserts vector records, stores document state, and writes a resource
-manifest for targeted reindexing.
-
-## Resource reindexing
-
-Future ingestion work will track resource ownership for derived records so one
-source can be replaced without rebuilding the whole knowledge base. The intended
-manifest and partial-reindex flow are tracked in
-`guides/resource-reindexing.md`.
-
-## Optimization roadmap
-
-Follow-up tasks for text compression, optional Eigen/SIMD scoring, vector
-encodings, binary signature bucket indexes, MDBX-backed approximate search, and
-benchmark gates are tracked in `guides/optimization-roadmap.md`.
-
-## Project status
-
-The project is in the initial design and prototyping stage.
-
-The first milestone will provide:
-
-* MDBX-backed document storage
-* Markdown ingestion
-* multilingual E5 embeddings through ONNX Runtime
-* exact cosine-similarity search
-* BM25 search
-* Reciprocal Rank Fusion
-* semantic memory
-* recent conversation memory
-* a minimal context builder
-* unit tests and benchmarks
-
-## Non-goals for the first milestone
-
-* Distributed vector database
-* Multi-node replication
-* Hosted embedding service
-* General-purpose agent orchestration
-* LLM inference engine
-* Autonomous-agent framework
-
-## Building
-
-```bash
-git clone --recursive https://github.com/<owner>/agent-memory-cpp.git
+~~~bash
+git clone --recursive https://github.com/LimiNode/agent-memory-cpp.git
 cd agent-memory-cpp
 
-cmake -S . -B build \
-    -DCMAKE_BUILD_TYPE=Release \
-    -DAGENT_MEMORY_BUILD_TESTS=ON \
-    -DAGENT_MEMORY_BUILD_EXAMPLES=ON
+cmake -S . -B build -DCMAKE_BUILD_TYPE=Release \
+  -DAGENT_MEMORY_BUILD_TESTS=ON \
+  -DAGENT_MEMORY_BUILD_EXAMPLES=ON
 
 cmake --build build --config Release
 ctest --test-dir build --build-config Release --output-on-failure
-```
+~~~
 
-Available CMake options:
+Optional MDBX support is **OFF by default**. For the C1 adapter, configure a separate build with `-DAGENT_MEMORY_ENABLE_MDBX=ON` and provide the declared `libmdbx` / `mdbx-containers` dependencies (submodules, parent targets, or installed dependencies).
 
-* `AGENT_MEMORY_BUILD_TESTS`
-* `AGENT_MEMORY_BUILD_EXAMPLES`
-* `AGENT_MEMORY_BUILD_BENCHMARKS`
-* `AGENT_MEMORY_NEUROUTE_ENABLE_AVX2`
-* `AGENT_MEMORY_ENABLE_WARNINGS`
-* `AGENT_MEMORY_ENABLE_MDBX`
-* `AGENT_MEMORY_MDBX_CONTAINERS_SOURCE_DIR`
-* `AGENT_MEMORY_MDBX_DEPS_MODE`
+The target is `agent_memory::agent_memory`. The core aggregate header is `<agent_memory.hpp>`; optional MDBX adapters have their own infrastructure headers. See [examples](examples/) and [CMake options](cmake/AgentMemoryOptions.cmake) for the currently available surface.
 
-`AGENT_MEMORY_ENABLE_MDBX` is `OFF` by default. When enabled, the build reuses
-an existing `mdbx_containers::mdbx_containers` target, adds flat local
-`external/libmdbx` and `external/mdbx-containers` source trees, or falls back to
-`find_package(mdbx_containers)`.
-The public compile definition `AGENT_MEMORY_HAS_MDBX` is always defined as `0`
-or `1`.
+## Roadmap and evaluation
 
-## Requirements
+- [Milestones](guides/milestones.md) — normative implementation scope.
+- [Coverage audit](guides/retrieval-roadmap-coverage.md) — implemented versus contracts and research.
+- [Evaluation roadmap](guides/evaluation-roadmap.md) and [experiments](guides/experiments/) — baselines, receipts and reproducibility.
+- [Memory-feedback stability F0](guides/experiments/2026-10-07-memory-feedback-stability-protocol.md) — how repeated retrieval, recency refresh and cooldown could distort ranking; **protocol, not a successful experiment**.
+- [Project comparison](guides/project-comparison.md) — alternatives, strengths, limitations and selection guidance.
 
-* C++17 compiler
-* CMake 3.20 or newer
-* Windows, Linux, or macOS
+## Non-goals
+
+A hosted memory platform, universal database abstraction, distributed transaction manager, agent runtime, mandatory Python/LLM dependency, or unsupported claims of superior speed/accuracy.
 
 ## License
 
-MIT
+[MIT](LICENSE).
