@@ -367,6 +367,17 @@ is never assumed globally unique. A router must fail closed on an unknown, stale
 or ambiguous placement rather than guessing from a path or silently searching
 every context.
 
+The C1 MDBX reference slice implements this contract with
+`MdbxWorkspaceStorageRegistry` and `MdbxCanonicalContentRouter`. A registry
+binding is create-only and retains one `MdbxStorageContext` plus one
+workspace-local canonical store. Router calls carry the workspace key and
+expected generation explicitly; unknown workspaces, stale generations and
+duplicate bindings throw before a domain operation is dispatched. Reopening
+two independent MDBX files therefore requires rebuilding the same explicit
+bindings, and does not infer routing from filenames. The implementation and
+integration coverage are limited to canonical content in the R0 slice; this is
+not a general federation, relocation or cross-context transaction facility.
+
 Cross-context writes use an explicit publication protocol:
 
 ```text

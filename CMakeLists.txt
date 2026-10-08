@@ -124,8 +124,10 @@ if(AGENT_MEMORY_ENABLE_MDBX)
             src/agent_memory/infrastructure/mdbx/MdbxDocumentStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxStorageContext.cpp
             src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentStore.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxCanonicalContentRouter.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceIndexRecordOwnerStorage.cpp
             src/agent_memory/infrastructure/mdbx/MdbxResourceManifestStorage.cpp
+            src/agent_memory/infrastructure/mdbx/MdbxWorkspaceStorageRegistry.cpp
     )
 
     agent_memory_provide_mdbx_containers(AGENT_MEMORY_MDBX_CONTAINERS_TARGET)
