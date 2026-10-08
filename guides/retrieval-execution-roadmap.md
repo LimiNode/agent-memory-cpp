@@ -256,6 +256,13 @@ was too small from a candidate that reached fusion and lost there. This is the
 execution counterpart of the stable explain shape in
 [`retrieval-explainability-roadmap.md`](retrieval-explainability-roadmap.md).
 
+The [G0/G1 graph retrieval backlog](knowledge-activation-roadmap.md#graph-retrieval-backlog-g0-and-g1-m2-research-candidates)
+screens graph-derived query expansion, graph-conditioned candidate scoring
+and hub-aware traversal under these same frontiers, budgets and completion
+rules. It is M2 research, not an implemented mixed-route DAG; graph-to-dense or
+graph-to-lexical candidate handoff needs an explicit lowering contract before
+production integration.
+
 ### Evaluation decomposition
 
 Existing aggregate Recall, MRR and nDCG metrics remain valid. The hybrid gate
