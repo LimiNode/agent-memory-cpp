@@ -366,5 +366,53 @@ int main() {
         return fail("Markdown heading depth must be clamped to six levels");
     }
 
+    InMemoryCanonicalContentStore sibling_store;
+    const DocumentId sibling_id{"doc:siblings"};
+    if(!sibling_store.create_document(CanonicalDocumentRevision{
+           sibling_id,
+           0,
+           {},
+           {
+               ContentBlock{ContentBlockId{"A"}, 1, ContentBlockKind::Paragraph,
+                   std::nullopt, "A"},
+               ContentBlock{ContentBlockId{"B"}, 1, ContentBlockKind::Paragraph,
+                   std::nullopt, "B"},
+               ContentBlock{ContentBlockId{"C"}, 1, ContentBlockKind::Paragraph,
+                   std::nullopt, "C"},
+           },
+       })) {
+        return fail("sibling baseline must be created");
+    }
+    const auto inserted_middle = sibling_store.commit(request(sibling_id, 0,
+        {InsertBlock{ContentBlock{ContentBlockId{"X"}, 1, ContentBlockKind::Paragraph,
+             std::nullopt, "X"}, 1}}));
+    if(inserted_middle.status != CanonicalEditStatus::Ok ||
+        !inserted_middle.changes.moved_blocks.empty()) {
+        return fail("insertion between siblings must not mark unrelated siblings moved");
+    }
+
+    InMemoryCanonicalContentStore rotation_store;
+    const DocumentId rotation_id{"doc:rotation"};
+    if(!rotation_store.create_document(CanonicalDocumentRevision{
+           rotation_id,
+           0,
+           {},
+           {
+               ContentBlock{ContentBlockId{"A"}, 1, ContentBlockKind::Paragraph,
+                   std::nullopt, "A"},
+               ContentBlock{ContentBlockId{"B"}, 1, ContentBlockKind::Paragraph,
+                   std::nullopt, "B"},
+               ContentBlock{ContentBlockId{"C"}, 1, ContentBlockKind::Paragraph,
+                   std::nullopt, "C"},
+           },
+       })) {
+        return fail("rotation baseline must be created");
+    }
+    const auto rotated = rotation_store.commit(
+        request(rotation_id, 0, {MoveBlock{ContentBlockId{"A"}, std::nullopt, 2}}));
+    if(rotated.status != CanonicalEditStatus::Ok || rotated.changes.moved_blocks.size() != 3) {
+        return fail("common-sibling move semantics must mark all affected siblings");
+    }
+
     return 0;
 }
