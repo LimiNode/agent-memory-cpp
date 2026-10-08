@@ -6,7 +6,7 @@
 /// \brief Immutable logical-workspace to MDBX placement bindings.
 ///
 /// R0 placement is deliberately explicit: a logical workspace is bound once to
-/// one independently owned MDBX context and a routing generation. The binding
+/// one MDBX context and a routing generation. The binding
 /// is never replaced in-place and lookup never infers a path or searches other
 /// contexts. See `guides/storage-backend-integration-roadmap.md`.
 
@@ -24,25 +24,25 @@ namespace agent_memory {
 
 class MdbxCanonicalContentRouter;
 
-/// rief Base error for fail-closed workspace routing failures.
+/// \brief Base error for fail-closed workspace routing failures.
 class MdbxWorkspaceRoutingError : public std::runtime_error {
   public:
     using std::runtime_error::runtime_error;
 };
 
-/// rief Raised when a workspace has no explicit placement binding.
+/// \brief Raised when a workspace has no explicit placement binding.
 class MdbxUnknownWorkspaceError final : public MdbxWorkspaceRoutingError {
   public:
     using MdbxWorkspaceRoutingError::MdbxWorkspaceRoutingError;
 };
 
-/// rief Raised when a caller presents an obsolete routing generation.
+/// \brief Raised when a caller presents an obsolete routing generation.
 class MdbxStalePlacementError final : public MdbxWorkspaceRoutingError {
   public:
     using MdbxWorkspaceRoutingError::MdbxWorkspaceRoutingError;
 };
 
-/// rief Raised when create-only placement binding would be duplicated.
+/// \brief Raised when create-only placement binding would be duplicated.
 class MdbxPlacementConflictError final : public MdbxWorkspaceRoutingError {
   public:
     using MdbxWorkspaceRoutingError::MdbxWorkspaceRoutingError;
@@ -71,23 +71,26 @@ class MdbxWorkspacePlacement final {
     MdbxWorkspacePlacement(std::string workspace_id,
                            std::uint64_t generation,
                            std::shared_ptr<MdbxStorageContext> context,
-                           std::shared_ptr<MdbxCanonicalContentStore> canonical_content);
+                           std::shared_ptr<MdbxCanonicalContentStore> canonical_content,
+                           std::string table_prefix);
 
     std::string m_workspace_id; ///< Stable logical workspace key.
     std::uint64_t m_generation; ///< Caller-visible routing generation.
     std::shared_ptr<MdbxStorageContext> m_context; ///< Independent MDBX lifecycle boundary.
     std::shared_ptr<MdbxCanonicalContentStore> m_canonical_content; ///< Workspace-local store.
+    std::string m_table_prefix; ///< Normalized DBI namespace within the context.
 
     [[nodiscard]] const std::shared_ptr<MdbxCanonicalContentStore>&
     mutable_canonical_content() const noexcept;
+    [[nodiscard]] const std::string& table_prefix() const noexcept;
 };
 
 /// \brief Registry for immutable, explicit workspace placements.
 ///
 /// `bind` is create-only. A second binding for the same workspace is rejected,
-/// including when it names the same context, so callers cannot silently mutate
-/// an existing placement or create an ambiguous route. `resolve` is exact and
-/// fail-closed for unknown or stale generations.
+/// including when it would reuse a context/table namespace, so callers cannot
+/// silently mutate an existing placement or create an ambiguous route.
+/// `resolve` is exact and fail-closed for unknown or stale generations.
 ///
 /// \see `guides/storage-backend-integration-roadmap.md`
 class MdbxWorkspaceStorageRegistry final {
@@ -97,7 +100,8 @@ class MdbxWorkspaceStorageRegistry final {
     MdbxWorkspaceStorageRegistry& operator=(const MdbxWorkspaceStorageRegistry&) = delete;
 
     /// \brief Creates one immutable placement for `workspace_id`.
-    /// \throws MdbxPlacementConflictError when the workspace is already bound.
+    /// \throws MdbxPlacementConflictError when the workspace is already bound
+    /// or the context/table namespace is already assigned.
     /// \throws MdbxWorkspaceRoutingError for invalid arguments.
     [[nodiscard]] std::shared_ptr<const MdbxWorkspacePlacement>
     bind(std::string workspace_id,

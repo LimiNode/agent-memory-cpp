@@ -84,6 +84,14 @@ int main() {
             duplicate = true;
         }
         expect(duplicate, 8);
+
+        bool namespace_conflict = false;
+        try {
+            (void)registry.bind("workspace-a-alias", context_a, 1, "workspace_a");
+        } catch (const MdbxPlacementConflictError&) {
+            namespace_conflict = true;
+        }
+        expect(namespace_conflict, 9);
     }
 
     {
@@ -91,8 +99,8 @@ int main() {
         MdbxWorkspaceStorageRegistry registry;
         const auto placement = registry.bind("workspace-b", context_b, 11, "workspace_b");
         MdbxCanonicalContentRouter router(registry);
-        expect(placement->generation() == 11, 9);
-        expect(router.create_document("workspace-b", 11, document("B")), 10);
+        expect(placement->generation() == 11, 10);
+        expect(router.create_document("workspace-b", 11, document("B")), 11);
     }
 
     // Rebuild explicit bindings after reopen and verify same local IDs remain
@@ -103,13 +111,17 @@ int main() {
         MdbxWorkspaceStorageRegistry registry;
         const auto placement_a = registry.bind("workspace-a", context_a, 7, "workspace_a");
         const auto placement_b = registry.bind("workspace-b", context_b, 11, "workspace_b");
-        expect(placement_a->context() != placement_b->context(), 11);
+        expect(placement_a->context() != placement_b->context(), 12);
         MdbxCanonicalContentRouter router(registry);
         const DocumentId shared_id{"shared-document"};
+        expect(router.read_current("workspace-a", 7, shared_id)->revision == 1, 13);
+        expect(router.read_revision("workspace-a", 7, shared_id, 0)->blocks.front().text == "A",
+               14);
         expect(router.read_block("workspace-a", 7, shared_id, ContentBlockId{"body"})->text == "A2",
-               12);
+               15);
         expect(router.read_block("workspace-b", 11, shared_id, ContentBlockId{"body"})->text == "B",
-               13);
+               16);
+        expect(router.materialize_markdown("workspace-b", 11, shared_id).value() == "B\n", 17);
 
         bool invalid_generation = false;
         try {
@@ -117,7 +129,7 @@ int main() {
         } catch (const MdbxWorkspaceRoutingError&) {
             invalid_generation = true;
         }
-        expect(invalid_generation, 14);
+        expect(invalid_generation, 18);
     }
 
     std::filesystem::remove(path_a, ec);
